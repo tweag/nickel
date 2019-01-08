@@ -1,0 +1,17 @@
+[package]
+name = "nickel"
+version = "0.1.0"
+authors = ["Nicl team"]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+description = "Programmable configuration files."
+
+[build-dependencies] # <-- We added this and everything after!
+lalrpop = "0.16.2"
+
+[dependencies]
+lalrpop-util = "0.16.2"
+regex = "0.2.1"
+
+[dev-dependencies]
+pretty_assertions = "0.5.1"

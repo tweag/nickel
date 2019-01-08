@@ -1,0 +1,38 @@
+use identifier::Ident;
+use std::str::FromStr;
+use term::Term;
+
+grammar;
+
+pub Term = {
+    "fun" <ps:Pattern+> "=>" <t:Term> =>
+        Term::Fun(ps, Box::new(t)),
+    "let" <id:Ident> "=" <t1:Term> "in" <t2:Term> =>
+        Term::Let(id, Box::new(t1), Box::new(t2)),
+    Applicative,
+};
+
+Atom: Term = {
+    "(" <Term> ")",
+    Num => Term::Num(<>),
+    Bool => Term::Bool(<>),
+    Ident => Term::Var(<>),
+}
+
+Applicative: Term = {
+    Atom,
+    <t1:Applicative> <t2:Atom> => Term::App(Box::new(t1), Box::new(t2)),
+}
+
+Pattern: Ident = {
+    Ident,
+}
+
+Ident: Ident = r"[[:alpha:]_][[:word:]-]*" => Ident(<>.to_string());
+
+Num: f64 = r"[0-9]+(?:\.[0-9]+)?" => f64::from_str(<>).unwrap();
+
+Bool: bool = {
+    "true" => true,
+    "false" => false,
+};
