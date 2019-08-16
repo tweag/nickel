@@ -15,8 +15,8 @@ struct Closure {
 #[derive(Debug)]
 enum Continuation {
     Ite(Closure, Closure),
-    Plus1(Enviroment, Closure),
-    Plus2(Enviroment, f64),
+    Plus0(Enviroment, Closure),
+    Plus1(Enviroment, f64),
 }
 
 #[derive(Debug)]
@@ -213,7 +213,7 @@ pub fn eval(t0: Term) -> Term {
                 body: Term::Plus(t1, t2),
                 env,
             } => {
-                stack.push_cont(Continuation::Plus1(
+                stack.push_cont(Continuation::Plus0(
                     env.clone(),
                     Closure {
                         body: *t2,
@@ -231,52 +231,11 @@ pub fn eval(t0: Term) -> Term {
                 }
             }
             // Continuate
-            _ if 0 < stack.count_conts() => match stack.pop_cont() {
-                Some(Continuation::Ite(t, e)) => {
-                    if let Closure {
-                        body: Term::Bool(b),
-                        env,
-                    } = clos
-                    {
-                        if b {
-                            clos = t;
-                        } else {
-                            clos = e;
-                        }
-                    } else {
-                        panic!("Expected Bool, got {:?}", clos);
-                    }
-                }
-                Some(Continuation::Plus1(plus_env, t)) => {
-                    if let Closure {
-                        body: Term::Num(n),
-                        env,
-                    } = clos
-                    {
-                        stack.push_cont(Continuation::Plus2(plus_env, n));
-                        clos = t;
-                    } else {
-                        panic!("Expected Num, got {:?}", clos);
-                    }
-                }
-                Some(Continuation::Plus2(plus_env, n)) => {
-                    if let Closure {
-                        body: Term::Num(n2),
-                        env,
-                    } = clos
-                    {
-                        clos = Closure {
-                            body: Term::Num(n + n2),
-                            env: plus_env,
-                        };
-                    } else {
-                        panic!("Expected Num, got {:?}", clos);
-                    }
-                }
-                _ => {
-                    panic!("Unimplemented continuation");
-                }
-            },
+            _ if 0 < stack.count_conts() => continuate(
+                stack.pop_cont().expect("Condition already checked"),
+                &mut clos,
+                &mut stack,
+            ),
             // Call
             Closure {
                 body: Term::Fun(mut xs, t),
@@ -306,4 +265,52 @@ pub fn eval(t0: Term) -> Term {
     }
 
     clos.body
+}
+
+fn continuate(cont: Continuation, clos: &mut Closure, stack: &mut Stack) {
+    match cont {
+        // If Then Else
+        Continuation::Ite(t, e) => {
+            if let Closure {
+                body: Term::Bool(b),
+                env: _,
+            } = *clos
+            {
+                *clos = if b { t } else { e };
+            } else {
+                panic!("Expected Bool, got {:?}", clos);
+            }
+        }
+        // Plus unapplied
+        Continuation::Plus0(plus_env, t) => {
+            if let Closure {
+                body: Term::Num(n),
+                env: _,
+            } = *clos
+            {
+                stack.push_cont(Continuation::Plus1(plus_env, n));
+                *clos = t;
+            } else {
+                panic!("Expected Num, got {:?}", clos);
+            }
+        }
+        // Plus partially applied
+        Continuation::Plus1(plus_env, n) => {
+            if let Closure {
+                body: Term::Num(n2),
+                env: _,
+            } = *clos
+            {
+                *clos = Closure {
+                    body: Term::Num(n + n2),
+                    env: plus_env,
+                };
+            } else {
+                panic!("Expected Num, got {:?}", clos);
+            }
+        }
+        _ => {
+            panic!("Unimplemented continuation");
+        }
+    }
 }
