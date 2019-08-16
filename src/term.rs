@@ -1,6 +1,6 @@
 use identifier::Ident;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Term {
     Var(Ident),
     Bool(bool),
