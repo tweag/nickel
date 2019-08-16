@@ -182,7 +182,7 @@ pub fn eval(t0: Term) -> Term {
             // Let
             Closure {
                 body: Term::Let(x, s, t),
-                env: mut env,
+                mut env,
             } => {
                 let thunk = Rc::new(RefCell::new(Closure {
                     body: *s,
@@ -194,7 +194,7 @@ pub fn eval(t0: Term) -> Term {
             // Ite
             Closure {
                 body: Term::Ite(b, t, e),
-                env: env,
+                env,
             } => {
                 stack.push_cont(Continuation::Ite(
                     Closure {
@@ -239,7 +239,7 @@ pub fn eval(t0: Term) -> Term {
             // Call
             Closure {
                 body: Term::Fun(mut xs, t),
-                env: mut env,
+                mut env,
             } => {
                 if xs.len() <= stack.count_args() {
                     let args = &mut stack;
@@ -308,9 +308,6 @@ fn continuate(cont: Continuation, clos: &mut Closure, stack: &mut Stack) {
             } else {
                 panic!("Expected Num, got {:?}", clos);
             }
-        }
-        _ => {
-            panic!("Unimplemented continuation");
         }
     }
 }
