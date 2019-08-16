@@ -17,10 +17,35 @@ fn numbers() {
 }
 
 #[test]
+fn plus() {
+    let parser = super::grammar::TermParser::new();
+    assert_eq!(
+        parser.parse("+ 3 4").unwrap(),
+        Plus(Box::new(Num(3.0)), Box::new(Num(4.)))
+    );
+    assert_eq!(
+        parser.parse("+ (+ true false) 4").unwrap(),
+        Plus(
+            Box::new(Plus(Box::new(Bool(true)), Box::new(Bool(false)))),
+            Box::new(Num(4.))
+        )
+    );
+}
+
+#[test]
 fn booleans() {
     let parser = super::grammar::TermParser::new();
     assert_eq!(parser.parse("true").unwrap(), Bool(true));
     assert_eq!(parser.parse("false").unwrap(), Bool(false));
+}
+
+#[test]
+fn ite() {
+    let parser = super::grammar::TermParser::new();
+    assert_eq!(
+        parser.parse("if true then 3 else 4").unwrap(),
+        Ite(Box::new(Bool(true)), Box::new(Num(3.0)), Box::new(Num(4.0)))
+    );
 }
 
 #[test]
