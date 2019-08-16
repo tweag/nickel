@@ -1,8 +1,8 @@
 use identifier::Ident;
-use term::Term;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
-use std::cell::RefCell;
+use term::Term;
 
 type Enviroment = HashMap<Ident, Rc<RefCell<Closure>>>;
 
@@ -51,7 +51,10 @@ impl Stack {
         Stack(Vec::new())
     }
 
-    fn count<P>(&self, pred: P) -> usize where P: Fn(&Marker) -> bool {
+    fn count<P>(&self, pred: P) -> usize
+    where
+        P: Fn(&Marker) -> bool,
+    {
         let mut count = 0;
         for marker in self.0.iter().rev() {
             if pred(marker) {
@@ -63,7 +66,7 @@ impl Stack {
         count
     }
 
-   /// Count the number of arguments at the top of the stack.
+    /// Count the number of arguments at the top of the stack.
     pub fn count_args(&self) -> usize {
         Stack::count(self, Marker::is_arg)
     }
@@ -71,7 +74,7 @@ impl Stack {
     pub fn count_thunks(&self) -> usize {
         Stack::count(self, Marker::is_thunk)
     }
-    
+
     pub fn push_arg(&mut self, arg: Closure) {
         self.0.push(Marker::Arg(arg))
     }
@@ -133,7 +136,10 @@ pub fn eval(t0: Term) -> Term {
                 body: Term::App(t1, t2),
                 env,
             } => {
-                stack.push_arg(Closure { body: *t2, env: env.clone() });
+                stack.push_arg(Closure {
+                    body: *t2,
+                    env: env.clone(),
+                });
                 clos = Closure { body: *t1, env };
             }
             // Let
@@ -141,14 +147,17 @@ pub fn eval(t0: Term) -> Term {
                 body: Term::Let(x, s, t),
                 env: mut env,
             } => {
-                let thunk = Rc::new(RefCell::new(Closure{ body: *s, env: env.clone()}));
+                let thunk = Rc::new(RefCell::new(Closure {
+                    body: *s,
+                    env: env.clone(),
+                }));
                 env.insert(x, Rc::clone(&thunk));
-                clos = Closure { body: *t, env: env};
+                clos = Closure { body: *t, env: env };
             }
             // Update
             _ if 0 < stack.count_thunks() => {
                 while let Some(thunk) = stack.pop_thunk() {
-                    if let Some(safe_thunk) =  Weak::upgrade(&thunk) {
+                    if let Some(safe_thunk) = Weak::upgrade(&thunk) {
                         *safe_thunk.borrow_mut() = clos.clone();
                     }
                 }
@@ -160,15 +169,12 @@ pub fn eval(t0: Term) -> Term {
             } => {
                 if xs.len() <= stack.count_args() {
                     let args = &mut stack;
-                    for x in xs.drain(..).rev(){
+                    for x in xs.drain(..).rev() {
                         let arg = args.pop_arg().expect("Condition already checked.");
                         let thunk = Rc::new(RefCell::new(arg));
                         env.insert(x, thunk);
                     }
-                    clos = Closure {
-                        body: *t,
-                        env: env,
-                    }
+                    clos = Closure { body: *t, env: env }
                 } else {
                     clos = Closure {
                         body: Term::Fun(xs, t),

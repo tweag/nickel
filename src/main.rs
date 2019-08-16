@@ -15,7 +15,9 @@ extern crate lalrpop_util;
 
 fn main() {
     let mut buffer = String::new();
-    io::stdin().read_to_string(&mut buffer).expect("This main doesnt handle Err for now.");
+    io::stdin()
+        .read_to_string(&mut buffer)
+        .expect("This main doesnt handle Err for now.");
 
     if let Ok(parsed) = parser::grammar::TermParser::new().parse(&buffer) {
         println!("Parsed term {:?}", parsed);
