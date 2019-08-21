@@ -1,4 +1,5 @@
 use identifier::Ident;
+use label::Label;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
@@ -17,6 +18,9 @@ enum Continuation {
     Ite(Closure, Closure),
     Plus0(Enviroment, Closure),
     Plus1(Enviroment, f64),
+    IsNum(),
+    IsBool(),
+    IsFun(),
 }
 
 #[derive(Debug)]
@@ -156,6 +160,8 @@ pub fn eval(t0: Term) -> Term {
     let mut stack = Stack::new();
 
     loop {
+        println!("BODY: {:?}", &clos.body);
+        println!("=======");
         match clos {
             // Var
             Closure {
@@ -222,6 +228,38 @@ pub fn eval(t0: Term) -> Term {
                 ));
                 clos = Closure { body: *t1, env };
             }
+            // isNum
+            Closure {
+                body: Term::IsNum(t1),
+                env,
+            } => {
+                stack.push_cont(Continuation::IsNum());
+                clos = Closure { body: *t1, env };
+            }
+            // isBool
+            Closure {
+                body: Term::IsBool(t1),
+                env,
+            } => {
+                stack.push_cont(Continuation::IsBool());
+                clos = Closure { body: *t1, env };
+            }
+            // isFun
+            Closure {
+                body: Term::IsFun(t1),
+                env,
+            } => {
+                stack.push_cont(Continuation::IsFun());
+                clos = Closure { body: *t1, env };
+            }
+            // Blame
+            Closure {
+                body: Term::Blame(l),
+                env: _,
+            } => {
+                blame(stack, l);
+                panic!("");
+            }
             // Update
             _ if 0 < stack.count_thunks() => {
                 while let Some(thunk) = stack.pop_thunk() {
@@ -267,6 +305,13 @@ pub fn eval(t0: Term) -> Term {
     clos.body
 }
 
+fn blame(stack: Stack, label: Label) {
+    for x in stack.into_iter() {
+        println!("{:?}", x);
+    }
+    panic!("Reached Blame: {:?}", label);
+}
+
 fn continuate(cont: Continuation, clos: &mut Closure, stack: &mut Stack) {
     match cont {
         // If Then Else
@@ -308,6 +353,53 @@ fn continuate(cont: Continuation, clos: &mut Closure, stack: &mut Stack) {
             } else {
                 panic!("Expected Num, got {:?}", clos);
             }
+        }
+        // isNum
+        Continuation::IsNum() => {
+            let mut value = false;
+            if let Closure {
+                body: Term::Num(_),
+                env: _,
+            } = *clos
+            {
+                value = true;
+            }
+            *clos = Closure {
+                body: Term::Bool(value),
+                env: HashMap::new(),
+            };
+        }
+        // isBool
+        Continuation::IsBool() => {
+            let mut value = false;
+            if let Closure {
+                body: Term::Bool(_),
+                env: _,
+            } = *clos
+            {
+                value = true;
+            }
+
+            *clos = Closure {
+                body: Term::Bool(value),
+                env: HashMap::new(),
+            };
+        }
+        // isFun
+        Continuation::IsFun() => {
+            let mut value = false;
+            if let Closure {
+                body: Term::Fun(_, _),
+                env: _,
+            } = *clos
+            {
+                value = true;
+            }
+
+            *clos = Closure {
+                body: Term::Bool(value),
+                env: HashMap::new(),
+            };
         }
     }
 }

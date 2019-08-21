@@ -1,6 +1,7 @@
 use identifier::Ident;
 use std::str::FromStr;
 use term::Term;
+use label::Label;
 
 grammar;
 
@@ -12,6 +13,10 @@ pub Term = {
     "if" <b:Term> "then" <t:Term> "else" <e:Term> =>
         Term::Ite(Box::new(b), Box::new(t), Box::new(e)),
     "+" <t1:Atom> <t2:Atom> => Term::Plus(Box::new(t1), Box::new(t2)),
+    "isNum" <Atom> => Term::IsNum(Box::new(<>)),
+    "isBool" <Atom> => Term::IsBool(Box::new(<>)),
+    "isFun" <Atom> => Term::IsFun(Box::new(<>)),
+    <l:@L> "blame" <lab:Str> <r:@R> => Term::Blame(Label{tag: lab, l: l, r: r}),
     Applicative,
 };
 
@@ -39,3 +44,5 @@ Bool: bool = {
     "true" => true,
     "false" => false,
 };
+
+Str: String = r"[[:alpha:]_][[:word:]-]*" => <>.to_string();

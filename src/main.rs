@@ -1,5 +1,6 @@
 mod eval;
 mod identifier;
+mod label;
 mod parser;
 mod term;
 
@@ -22,5 +23,7 @@ fn main() {
     if let Ok(parsed) = parser::grammar::TermParser::new().parse(&buffer) {
         println!("Parsed term {:?}", parsed);
         println!("Evaluated term {:?}", eval(parsed));
+    } else {
+        panic!("It didnt parsed correctly");
     }
 }
