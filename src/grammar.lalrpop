@@ -16,12 +16,13 @@ pub Term = {
     "isNum" <Atom> => Term::IsNum(Box::new(<>)),
     "isBool" <Atom> => Term::IsBool(Box::new(<>)),
     "isFun" <Atom> => Term::IsFun(Box::new(<>)),
-    <l:@L> "blame" <lab:Str> <r:@R> => Term::Blame(Label{tag: lab, l: l, r: r}),
+    "blame" <lab:Term> => Term::Blame(Box::new(lab)),
     Applicative,
 };
 
 Atom: Term = {
     "(" <Term> ")",
+    <l:@L> "label[" <s:Str> "]" <r:@R> => Term::Lbl(Label{tag: s, l: l, r: r}),
     Num => Term::Num(<>),
     Bool => Term::Bool(<>),
     Ident => Term::Var(<>),
@@ -46,3 +47,4 @@ Bool: bool = {
 };
 
 Str: String = r"[[:alpha:]_][[:word:]-]*" => <>.to_string();
+

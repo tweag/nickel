@@ -14,5 +14,6 @@ pub enum Term {
     IsNum(Box<Term>),
     IsBool(Box<Term>),
     IsFun(Box<Term>),
-    Blame(Label),
+    Blame(Box<Term>),
+    Lbl(Label),
 }

@@ -254,10 +254,10 @@ pub fn eval(t0: Term) -> Term {
             }
             // Blame
             Closure {
-                body: Term::Blame(l),
+                body: Term::Blame(t),
                 env: _,
             } => {
-                blame(stack, l);
+                blame(stack, *t);
                 panic!("");
             }
             // Update
@@ -305,11 +305,11 @@ pub fn eval(t0: Term) -> Term {
     clos.body
 }
 
-fn blame(stack: Stack, label: Label) {
+fn blame(stack: Stack, t: Term) {
     for x in stack.into_iter() {
         println!("{:?}", x);
     }
-    panic!("Reached Blame: {:?}", label);
+    panic!("Reached Blame: {:?}", t);
 }
 
 fn continuate(cont: Continuation, clos: &mut Closure, stack: &mut Stack) {
