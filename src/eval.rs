@@ -3,13 +3,14 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 use term::Term;
+use continuation::{Continuation, continuate};
 
-type Enviroment = HashMap<Ident, Rc<RefCell<Closure>>>;
+pub type Enviroment = HashMap<Ident, Rc<RefCell<Closure>>>;
 
 #[derive(Clone, Debug)]
-struct Closure {
-    body: Term,
-    env: Enviroment,
+pub struct Closure {
+    pub body: Term,
+    pub env: Enviroment,
 }
 
 impl Closure {
@@ -22,17 +23,7 @@ impl Closure {
 }
 
 #[derive(Debug)]
-enum Continuation {
-    Ite(Closure, Closure),
-    Plus0(Closure),
-    Plus1(f64),
-    IsNum(),
-    IsBool(),
-    IsFun(),
-}
-
-#[derive(Debug)]
-enum Marker {
+pub enum Marker {
     Arg(Closure),
     Thunk(Weak<RefCell<Closure>>),
     Cont(Continuation),
@@ -65,7 +56,7 @@ impl Marker {
 }
 
 #[derive(Debug)]
-struct Stack(Vec<Marker>);
+pub struct Stack(Vec<Marker>);
 
 impl IntoIterator for Stack {
     type Item = Marker;
@@ -312,82 +303,4 @@ fn blame(stack: Stack, t: Term) -> ! {
         println!("{:?}", x);
     }
     panic!("Reached Blame: {:?}", t);
-}
-
-fn continuate(cont: Continuation, clos: &mut Closure, stack: &mut Stack) {
-    match cont {
-        // If Then Else
-        Continuation::Ite(t, e) => {
-            if let Closure {
-                body: Term::Bool(b),
-                env: _,
-            } = *clos
-            {
-                *clos = if b { t } else { e };
-            } else {
-                panic!("Expected Bool, got {:?}", clos);
-            }
-        }
-        // Plus unapplied
-        Continuation::Plus0(t) => {
-            if let Closure {
-                body: Term::Num(n),
-                env: _,
-            } = *clos
-            {
-                stack.push_cont(Continuation::Plus1(n));
-                *clos = t;
-            } else {
-                panic!("Expected Num, got {:?}", clos);
-            }
-        }
-        // Plus partially applied
-        Continuation::Plus1(n) => {
-            if let Closure {
-                body: Term::Num(n2),
-                env: _,
-            } = *clos
-            {
-                *clos = Closure::atomic_closure(Term::Num(n + n2));
-            } else {
-                panic!("Expected Num, got {:?}", clos);
-            }
-        }
-        // isNum
-        Continuation::IsNum() => {
-            if let Closure {
-                body: Term::Num(_),
-                env: _,
-            } = *clos
-            {
-                *clos = Closure::atomic_closure(Term::Bool(true));
-            } else {
-                *clos = Closure::atomic_closure(Term::Bool(false));
-            }
-        }
-        // isBool
-        Continuation::IsBool() => {
-            if let Closure {
-                body: Term::Bool(_),
-                env: _,
-            } = *clos
-            {
-                *clos = Closure::atomic_closure(Term::Bool(true));
-            } else {
-                *clos = Closure::atomic_closure(Term::Bool(false));
-            }
-        }
-        // isFun
-        Continuation::IsFun() => {
-            if let Closure {
-                body: Term::Fun(_, _),
-                env: _,
-            } = *clos
-            {
-                *clos = Closure::atomic_closure(Term::Bool(true));
-            } else {
-                *clos = Closure::atomic_closure(Term::Bool(false));
-            }
-        }
-    }
 }

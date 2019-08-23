@@ -3,6 +3,7 @@ mod identifier;
 mod label;
 mod parser;
 mod term;
+mod continuation;
 
 use eval::eval;
 use std::io::{self, Read};
