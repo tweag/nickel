@@ -1,9 +1,9 @@
+use continuation::{continuate, Continuation};
 use identifier::Ident;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 use term::Term;
-use continuation::{Continuation, continuate};
 
 pub type Enviroment = HashMap<Ident, Rc<RefCell<Closure>>>;
 
@@ -165,11 +165,21 @@ pub fn eval(t0: Term) -> Term {
                 body: Term::Var(x),
                 env,
             } => {
-                let thunk = Rc::clone(env.get(&x).expect(&format!("Unbound variable {:?}", x)));
+                let mut thunk = Rc::clone(env.get(&x).expect(&format!("Unbound variable {:?}", x)));
+                std::mem::drop(env); // thunk may be a 1RC pointer
                 if !is_value(&thunk.borrow().body) {
                     stack.push_thunk(Rc::downgrade(&thunk));
                 }
-                clos = thunk.borrow().clone();
+                match Rc::try_unwrap(thunk) {
+                    Ok(c) => {
+                        // thunk was the only strong ref to the closure
+                        clos = c.into_inner();
+                    }
+                    Err(rc) => {
+                        // We need to clone it, there are other strong refs
+                        clos = rc.borrow().clone();
+                    }
+                }
             }
             // App
             Closure {
@@ -199,16 +209,7 @@ pub fn eval(t0: Term) -> Term {
                 body: Term::Ite(b, t, e),
                 env,
             } => {
-                stack.push_cont(Continuation::Ite(
-                    Closure {
-                        body: *t,
-                        env: env.clone(),
-                    },
-                    Closure {
-                        body: *e,
-                        env: env.clone(),
-                    },
-                ));
+                stack.push_cont(Continuation::Ite(env.clone(), *t, *e));
                 clos = Closure { body: *b, env };
             }
             // Plus
