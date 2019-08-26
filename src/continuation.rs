@@ -1,7 +1,8 @@
-use eval::{Closure, Enviroment, Stack};
+use eval::{Closure, Enviroment};
+use stack::Stack;
 use term::Term;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Continuation {
     Ite(Enviroment, Term, Term),
     Plus0(Closure),
