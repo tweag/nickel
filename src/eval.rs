@@ -196,6 +196,18 @@ mod tests {
         Term::Var(Ident(id.to_string()))
     }
 
+    fn let_in(id: &str, e: Term, t: Term) -> Term {
+        Term::Let(Ident(id.to_string()), Box::new(e), Box::new(t))
+    }
+
+    fn ite(c: Term, t: Term, e: Term) -> Term {
+        Term::Ite(Box::new(c), Box::new(t), Box::new(e))
+    }
+
+    fn plus(t0: Term, t1: Term) -> Term {
+        Term::Plus(Box::new(t0), Box::new(t1))
+    }
+
     #[test]
     fn identity_over_values() {
         let num = Term::Num(45.3);
@@ -225,5 +237,51 @@ mod tests {
     #[should_panic]
     fn lone_var_panics() {
         eval(var("unbound"));
+    }
+
+    #[test]
+    fn simple_app() {
+        let t = app(
+            Term::Fun(vec![Ident("x".to_string())], Box::new(var("x"))),
+            Term::Num(5.0),
+        );
+
+        assert_eq!(Term::Num(5.0), eval(t));
+    }
+
+    #[test]
+    fn simple_let() {
+        let t = let_in("x", Term::Num(5.0), var("x"));
+
+        assert_eq!(Term::Num(5.0), eval(t));
+    }
+
+    #[test]
+    fn simpl_ite() {
+        let t = ite(Term::Bool(true), Term::Num(5.0), Term::Bool(false));
+
+        assert_eq!(Term::Num(5.0), eval(t));
+    }
+
+    #[test]
+    fn simpl_plus() {
+        let t = plus(Term::Num(5.0), Term::Num(7.5));
+
+        assert_eq!(Term::Num(12.5), eval(t));
+    }
+
+    #[test]
+    fn asking_for_various_types() {
+        let num = Term::IsNum(Box::new(Term::Num(45.3)));
+        assert_eq!(Term::Bool(true), eval(num));
+
+        let boolean = Term::IsBool(Box::new(Term::Bool(true)));
+        assert_eq!(Term::Bool(true), eval(boolean));
+
+        let lambda = Term::IsFun(Box::new(Term::Fun(
+            vec![Ident("x".to_string()), Ident("y".to_string())],
+            Box::new(app(var("y"), var("x"))),
+        )));
+        assert_eq!(Term::Bool(true), eval(lambda));
     }
 }
