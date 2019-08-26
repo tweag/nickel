@@ -1,6 +1,5 @@
 use continuation::{continuate, Continuation};
 use identifier::Ident;
-use label::Label;
 use stack::Stack;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -187,6 +186,7 @@ fn blame(stack: Stack, t: Term) -> ! {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use label::Label;
 
     fn app(t0: Term, t1: Term) -> Term {
         Term::App(Box::new(t0), Box::new(t1))

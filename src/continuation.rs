@@ -92,3 +92,83 @@ pub fn continuate(cont: Continuation, clos: &mut Closure, stack: &mut Stack) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn some_env() -> Enviroment {
+        HashMap::new()
+    }
+
+    #[test]
+    fn ite_continuation() {
+        let cont = Continuation::Ite(some_env(), Term::Num(5.0), Term::Bool(true));
+        let mut clos = Closure {
+            body: Term::Bool(true),
+            env: some_env(),
+        };
+        let mut stack = Stack::new();
+
+        continuate(cont, &mut clos, &mut stack);
+
+        assert_eq!(
+            clos,
+            Closure {
+                body: Term::Num(5.0),
+                env: some_env()
+            }
+        );
+    }
+
+    #[test]
+    fn plus_first_term_continuation() {
+        let cont = Continuation::Plus0(Closure {
+            body: Term::Num(6.0),
+            env: some_env(),
+        });
+        let mut clos = Closure {
+            body: Term::Num(7.0),
+            env: some_env(),
+        };
+        let mut stack = Stack::new();
+
+        continuate(cont, &mut clos, &mut stack);
+
+        assert_eq!(
+            clos,
+            Closure {
+                body: Term::Num(6.0),
+                env: some_env()
+            }
+        );
+
+        assert_eq!(1, stack.count_conts());
+        assert_eq!(
+            Continuation::Plus1(7.0),
+            stack.pop_cont().expect("Condition already checked.")
+        );
+    }
+
+    #[test]
+    fn plus_second_term_continuation() {
+        let cont = Continuation::Plus1(6.0);
+        let mut clos = Closure {
+            body: Term::Num(7.0),
+            env: some_env(),
+        };
+        let mut stack = Stack::new();
+
+        continuate(cont, &mut clos, &mut stack);
+
+        assert_eq!(
+            clos,
+            Closure {
+                body: Term::Num(13.0),
+                env: some_env()
+            }
+        );
+    }
+
+}

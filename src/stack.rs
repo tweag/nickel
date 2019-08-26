@@ -1,9 +1,7 @@
 use continuation::Continuation;
 use eval::Closure;
 use std::cell::RefCell;
-use std::collections::HashMap;
-use std::rc::{Rc, Weak};
-use term::Term;
+use std::rc::Weak;
 
 #[derive(Debug)]
 pub enum Marker {
@@ -132,6 +130,9 @@ impl Stack {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
+    use std::rc::Rc;
+    use term::Term;
 
     fn some_closure() -> Closure {
         Closure {
