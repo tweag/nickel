@@ -7,7 +7,7 @@ let func = fun s => fun t => fun l => fun e => if isFun e then (fun x => t l (e 
 let const = fun x => fun y => x in
 let safeAppTwice = fun f => fun y => f (f y) in
 let ma = (func (func num num) (func dyn num) (blame label[safeAppTwice]) safeAppTwice) 
-         ((func dyn (func dyn dyn) (blame label[const]) const) (num (blame label[n1]) 1)) 
+         ((func dyn (func dyn dyn) (blame label[const]) const) (bool (blame label[n1]) 1)) 
          (bool (blame label[ltrue]) true) 
          in 
 dyn (blame label) ma
