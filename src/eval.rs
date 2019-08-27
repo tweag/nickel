@@ -27,7 +27,7 @@ impl Closure {
 pub enum EvalResult {
     Term(Term),
     BlameError(Label),
-    TypeError(String), // This shouldnt happen, EVER
+    TypeError(String),
 }
 
 fn is_value(_term: &Term) -> bool {
@@ -151,11 +151,17 @@ pub fn eval(t0: Term) -> EvalResult {
                 }
             }
             // Continuate
-            _ if 0 < stack.count_conts() => continuate(
-                stack.pop_cont().expect("Condition already checked"),
-                &mut clos,
-                &mut stack,
-            ),
+            _ if 0 < stack.count_conts() => {
+                if let Err(s) = continuate(
+                    stack.pop_cont().expect("Condition already checked"),
+                    &mut clos,
+                    &mut stack,
+                ) {
+                    // A continuation can only raise an error if it's wrongly applied
+                    // ... at least how the current implementation goes
+                    return EvalResult::TypeError(s);
+                }
+            }
             // Call
             Closure {
                 body: Term::Fun(mut xs, t),

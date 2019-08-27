@@ -167,7 +167,7 @@ mod tests {
         let res = eval_string("let g  = funky x => x in g true");
 
         if let Ok(_) = res {
-            panic!("This test should have panicked!");
+            panic!("This test should have returned Err()!");
         }
     }
 
