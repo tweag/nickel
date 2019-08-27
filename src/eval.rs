@@ -23,11 +23,18 @@ impl Closure {
     }
 }
 
+#[derive(Debug, PartialEq)]
+pub enum EvalResult {
+    Term(Term),
+    BlameError(Label),
+    TypeError(String), // This shouldnt happen, EVER
+}
+
 fn is_value(_term: &Term) -> bool {
     false
 }
 
-pub fn eval(t0: Term) -> Term {
+pub fn eval(t0: Term) -> EvalResult {
     let empty_env = HashMap::new();
     let mut clos = Closure {
         body: t0,
@@ -129,7 +136,11 @@ pub fn eval(t0: Term) -> Term {
                 body: Term::Blame(t),
                 env: _,
             } => {
-                blame(stack, *t);
+                if let Term::Lbl(l) = *t {
+                    return EvalResult::BlameError(l);
+                } else {
+                    panic!("I still don't know how to properly treat a label");
+                }
             }
             // Update
             _ if 0 < stack.count_thunks() => {
@@ -173,14 +184,7 @@ pub fn eval(t0: Term) -> Term {
         }
     }
 
-    clos.body
-}
-
-fn blame(stack: Stack, t: Term) -> ! {
-    for x in stack.into_iter() {
-        println!("{:?}", x);
-    }
-    panic!("Reached Blame: {:?}", t);
+    EvalResult::Term(clos.body)
 }
 
 #[cfg(test)]
@@ -211,26 +215,32 @@ mod tests {
     #[test]
     fn identity_over_values() {
         let num = Term::Num(45.3);
-        assert_eq!(num.clone(), eval(num));
+        assert_eq!(EvalResult::Term(num.clone()), eval(num));
 
         let boolean = Term::Bool(true);
-        assert_eq!(boolean.clone(), eval(boolean));
+        assert_eq!(EvalResult::Term(boolean.clone()), eval(boolean));
 
         let lambda = Term::Fun(
             vec![Ident("x".to_string()), Ident("y".to_string())],
             Box::new(app(var("y"), var("x"))),
         );
-        assert_eq!(lambda.clone(), eval(lambda));
+        assert_eq!(EvalResult::Term(lambda.clone()), eval(lambda));
     }
 
     #[test]
-    #[should_panic]
     fn blame_panics() {
-        eval(Term::Blame(Box::new(Term::Lbl(Label {
-            tag: "testing".to_string(),
-            l: 0,
-            r: 1,
-        }))));
+        assert_eq!(
+            EvalResult::BlameError(Label {
+                tag: "testing".to_string(),
+                l: 0,
+                r: 1,
+            }),
+            eval(Term::Blame(Box::new(Term::Lbl(Label {
+                tag: "testing".to_string(),
+                l: 0,
+                r: 1,
+            }))))
+        );
     }
 
     #[test]
@@ -246,42 +256,42 @@ mod tests {
             Term::Num(5.0),
         );
 
-        assert_eq!(Term::Num(5.0), eval(t));
+        assert_eq!(EvalResult::Term(Term::Num(5.0)), eval(t));
     }
 
     #[test]
     fn simple_let() {
         let t = let_in("x", Term::Num(5.0), var("x"));
 
-        assert_eq!(Term::Num(5.0), eval(t));
+        assert_eq!(EvalResult::Term(Term::Num(5.0)), eval(t));
     }
 
     #[test]
     fn simpl_ite() {
         let t = ite(Term::Bool(true), Term::Num(5.0), Term::Bool(false));
 
-        assert_eq!(Term::Num(5.0), eval(t));
+        assert_eq!(EvalResult::Term(Term::Num(5.0)), eval(t));
     }
 
     #[test]
     fn simpl_plus() {
         let t = plus(Term::Num(5.0), Term::Num(7.5));
 
-        assert_eq!(Term::Num(12.5), eval(t));
+        assert_eq!(EvalResult::Term(Term::Num(12.5)), eval(t));
     }
 
     #[test]
     fn asking_for_various_types() {
         let num = Term::IsNum(Box::new(Term::Num(45.3)));
-        assert_eq!(Term::Bool(true), eval(num));
+        assert_eq!(EvalResult::Term(Term::Bool(true)), eval(num));
 
         let boolean = Term::IsBool(Box::new(Term::Bool(true)));
-        assert_eq!(Term::Bool(true), eval(boolean));
+        assert_eq!(EvalResult::Term(Term::Bool(true)), eval(boolean));
 
         let lambda = Term::IsFun(Box::new(Term::Fun(
             vec![Ident("x".to_string()), Ident("y".to_string())],
             Box::new(app(var("y"), var("x"))),
         )));
-        assert_eq!(Term::Bool(true), eval(lambda));
+        assert_eq!(EvalResult::Term(Term::Bool(true)), eval(lambda));
     }
 }

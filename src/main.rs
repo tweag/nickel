@@ -3,10 +3,11 @@ mod eval;
 mod identifier;
 mod label;
 mod parser;
+mod program;
 mod stack;
 mod term;
 
-use eval::eval;
+use program::Program;
 use std::io::{self, Read};
 
 #[cfg(test)]
@@ -17,19 +18,9 @@ extern crate pretty_assertions;
 extern crate lalrpop_util;
 
 fn main() {
-    let mut buffer = String::new();
-    io::stdin()
-        .read_to_string(&mut buffer)
-        .expect("This main doesnt handle Err for now.");
-
-    match parser::grammar::TermParser::new().parse(&buffer) {
-        Ok(parsed) => {
-            println!("Parsed term {:?}", parsed);
-            println!("Evaluated term {:?}", eval(parsed));
-        }
-        Err(error) => {
-            println!("Error: {:?}", error);
-            panic!("It didnt parsed correctly");
-        }
+    let mut p = Program::new_from_stdin();
+    match p.eval() {
+        Ok(s) => println!("{:?}", s),
+        Err(s) => panic!(s),
     }
 }
