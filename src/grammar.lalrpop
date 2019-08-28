@@ -14,6 +14,7 @@ pub Term = {
         Term::Ite(Box::new(b), Box::new(t), Box::new(e)),
     // TODO make infix
     "+" <t1:Atom> <t2:Atom> => Term::Plus(Box::new(t1), Box::new(t2)),
+    "isZero" <Atom> => Term::IsZero(Box::new(<>)),
     "isNum" <Atom> => Term::IsNum(Box::new(<>)),
     "isBool" <Atom> => Term::IsBool(Box::new(<>)),
     "isFun" <Atom> => Term::IsFun(Box::new(<>)),
@@ -41,7 +42,7 @@ Pattern: Ident = {
 
 Ident: Ident = r"[[:alpha:]_][[:word:]-]*" => Ident(<>.to_string());
 
-Num: f64 = r"[0-9]+(?:\.[0-9]+)?" => f64::from_str(<>).unwrap();
+Num: f64 = r"[-+]?[0-9]*\.?[0-9]+" => f64::from_str(<>).unwrap();
 
 Bool: bool = {
     "true" => true,

@@ -1,11 +1,11 @@
 use continuation::{continuate, Continuation};
 use identifier::Ident;
+use label::Label;
 use stack::Stack;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 use term::Term;
-use label::Label;
 
 pub type Enviroment = HashMap<Ident, Rc<RefCell<Closure>>>;
 
@@ -107,6 +107,14 @@ pub fn eval(t0: Term) -> Result<Term, EvalError> {
                 }));
                 clos = Closure { body: *t1, env };
             }
+            // isZero
+            Closure {
+                body: Term::IsZero(t1),
+                env,
+            } => {
+                stack.push_cont(Continuation::IsZero());
+                clos = Closure { body: *t1, env };
+            }
             // isNum
             Closure {
                 body: Term::IsNum(t1),
@@ -196,7 +204,6 @@ pub fn eval(t0: Term) -> Result<Term, EvalError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use label::Label;
 
     fn app(t0: Term, t1: Term) -> Term {
         Term::App(Box::new(t0), Box::new(t1))
@@ -273,17 +280,24 @@ mod tests {
     }
 
     #[test]
-    fn simpl_ite() {
+    fn simple_ite() {
         let t = ite(Term::Bool(true), Term::Num(5.0), Term::Bool(false));
 
         assert_eq!(Ok(Term::Num(5.0)), eval(t));
     }
 
     #[test]
-    fn simpl_plus() {
+    fn simple_plus() {
         let t = plus(Term::Num(5.0), Term::Num(7.5));
 
         assert_eq!(Ok(Term::Num(12.5)), eval(t));
+    }
+
+    #[test]
+    fn simple_is_zero() {
+        let t = Term::IsZero(Box::new(Term::Num(7.0)));
+
+        assert_eq!(Ok(Term::Bool(false)), eval(t));
     }
 
     #[test]
