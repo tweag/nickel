@@ -52,7 +52,10 @@ fn functions() {
     );
     assert_eq!(
         parser.parse("fun x y => x").unwrap(),
-        Fun(vec![Ident("x".into()), Ident("y".into())], Box::new(Var(Ident("x".into())))),
+        Fun(
+            vec![Ident("x".into()), Ident("y".into())],
+            Box::new(Var(Ident("x".into())))
+        ),
     );
 }
 
