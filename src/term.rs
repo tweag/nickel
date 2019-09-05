@@ -8,4 +8,6 @@ pub enum Term {
     Fun(Vec<Ident>, Box<Term>),
     Let(Ident, Box<Term>, Box<Term>),
     App(Box<Term>, Box<Term>),
+    Ite(Box<Term>, Box<Term>, Box<Term>),
+    Plus(Box<Term>, Box<Term>),
 }

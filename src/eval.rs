@@ -13,9 +13,17 @@ struct Closure {
 }
 
 #[derive(Debug)]
+enum Continuation {
+    Ite(Closure, Closure),
+    Plus0(Enviroment, Closure),
+    Plus1(Enviroment, f64),
+}
+
+#[derive(Debug)]
 enum Marker {
     Arg(Closure),
     Thunk(Weak<RefCell<Closure>>),
+    Cont(Continuation),
 }
 
 impl Marker {
@@ -23,6 +31,7 @@ impl Marker {
         match *self {
             Marker::Arg(_) => true,
             Marker::Thunk(_) => false,
+            Marker::Cont(_) => false,
         }
     }
 
@@ -30,6 +39,15 @@ impl Marker {
         match *self {
             Marker::Arg(_) => false,
             Marker::Thunk(_) => true,
+            Marker::Cont(_) => false,
+        }
+    }
+
+    pub fn is_cont(&self) -> bool {
+        match *self {
+            Marker::Arg(_) => false,
+            Marker::Thunk(_) => false,
+            Marker::Cont(_) => true,
         }
     }
 }
@@ -75,12 +93,20 @@ impl Stack {
         Stack::count(self, Marker::is_thunk)
     }
 
+    pub fn count_conts(&self) -> usize {
+        Stack::count(self, Marker::is_cont)
+    }
+
     pub fn push_arg(&mut self, arg: Closure) {
         self.0.push(Marker::Arg(arg))
     }
 
     pub fn push_thunk(&mut self, thunk: Weak<RefCell<Closure>>) {
         self.0.push(Marker::Thunk(thunk))
+    }
+
+    pub fn push_cont(&mut self, cont: Continuation) {
+        self.0.push(Marker::Cont(cont))
     }
 
     pub fn pop_arg(&mut self) -> Option<Closure> {
@@ -97,6 +123,17 @@ impl Stack {
     pub fn pop_thunk(&mut self) -> Option<Weak<RefCell<Closure>>> {
         match self.0.pop() {
             Some(Marker::Thunk(thunk)) => Some(thunk),
+            Some(m) => {
+                self.0.push(m);
+                None
+            }
+            _ => None,
+        }
+    }
+
+    pub fn pop_cont(&mut self) -> Option<Continuation> {
+        match self.0.pop() {
+            Some(Marker::Cont(cont)) => Some(cont),
             Some(m) => {
                 self.0.push(m);
                 None
@@ -145,7 +182,7 @@ pub fn eval(t0: Term) -> Term {
             // Let
             Closure {
                 body: Term::Let(x, s, t),
-                env: mut env,
+                mut env,
             } => {
                 let thunk = Rc::new(RefCell::new(Closure {
                     body: *s,
@@ -153,6 +190,37 @@ pub fn eval(t0: Term) -> Term {
                 }));
                 env.insert(x, Rc::clone(&thunk));
                 clos = Closure { body: *t, env: env };
+            }
+            // Ite
+            Closure {
+                body: Term::Ite(b, t, e),
+                env,
+            } => {
+                stack.push_cont(Continuation::Ite(
+                    Closure {
+                        body: *t,
+                        env: env.clone(),
+                    },
+                    Closure {
+                        body: *e,
+                        env: env.clone(),
+                    },
+                ));
+                clos = Closure { body: *b, env };
+            }
+            // Plus
+            Closure {
+                body: Term::Plus(t1, t2),
+                env,
+            } => {
+                stack.push_cont(Continuation::Plus0(
+                    env.clone(),
+                    Closure {
+                        body: *t2,
+                        env: env.clone(),
+                    },
+                ));
+                clos = Closure { body: *t1, env };
             }
             // Update
             _ if 0 < stack.count_thunks() => {
@@ -162,10 +230,16 @@ pub fn eval(t0: Term) -> Term {
                     }
                 }
             }
+            // Continuate
+            _ if 0 < stack.count_conts() => continuate(
+                stack.pop_cont().expect("Condition already checked"),
+                &mut clos,
+                &mut stack,
+            ),
             // Call
             Closure {
                 body: Term::Fun(mut xs, t),
-                env: mut env,
+                mut env,
             } => {
                 if xs.len() <= stack.count_args() {
                     let args = &mut stack;
@@ -191,4 +265,49 @@ pub fn eval(t0: Term) -> Term {
     }
 
     clos.body
+}
+
+fn continuate(cont: Continuation, clos: &mut Closure, stack: &mut Stack) {
+    match cont {
+        // If Then Else
+        Continuation::Ite(t, e) => {
+            if let Closure {
+                body: Term::Bool(b),
+                env: _,
+            } = *clos
+            {
+                *clos = if b { t } else { e };
+            } else {
+                panic!("Expected Bool, got {:?}", clos);
+            }
+        }
+        // Plus unapplied
+        Continuation::Plus0(plus_env, t) => {
+            if let Closure {
+                body: Term::Num(n),
+                env: _,
+            } = *clos
+            {
+                stack.push_cont(Continuation::Plus1(plus_env, n));
+                *clos = t;
+            } else {
+                panic!("Expected Num, got {:?}", clos);
+            }
+        }
+        // Plus partially applied
+        Continuation::Plus1(plus_env, n) => {
+            if let Closure {
+                body: Term::Num(n2),
+                env: _,
+            } = *clos
+            {
+                *clos = Closure {
+                    body: Term::Num(n + n2),
+                    env: plus_env,
+                };
+            } else {
+                panic!("Expected Num, got {:?}", clos);
+            }
+        }
+    }
 }

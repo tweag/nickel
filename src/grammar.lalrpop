@@ -9,6 +9,10 @@ pub Term = {
         Term::Fun(ps, Box::new(t)),
     "let" <id:Ident> "=" <t1:Term> "in" <t2:Term> =>
         Term::Let(id, Box::new(t1), Box::new(t2)),
+    "if" <b:Term> "then" <t:Term> "else" <e:Term> =>
+        Term::Ite(Box::new(b), Box::new(t), Box::new(e)),
+    // TODO make infix
+    "+" <t1:Atom> <t2:Atom> => Term::Plus(Box::new(t1), Box::new(t2)),
     Applicative,
 };
 
