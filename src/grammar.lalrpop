@@ -22,6 +22,7 @@ pub Term = {
 
 Atom: Term = {
     "(" <Term> ")",
+    // label syntax is used only for debugging for now, will be deprecated
     <l:@L> "label[" <s:Str> "]" <r:@R> => Term::Lbl(Label{tag: s, l: l, r: r}),
     Num => Term::Num(<>),
     Bool => Term::Bool(<>),

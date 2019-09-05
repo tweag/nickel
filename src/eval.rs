@@ -1,5 +1,4 @@
 use identifier::Ident;
-use label::Label;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
@@ -13,11 +12,20 @@ struct Closure {
     env: Enviroment,
 }
 
+impl Closure {
+    pub fn atomic_closure(body: Term) -> Closure {
+        Closure {
+            body,
+            env: HashMap::new(),
+        }
+    }
+}
+
 #[derive(Debug)]
 enum Continuation {
     Ite(Closure, Closure),
-    Plus0(Enviroment, Closure),
-    Plus1(Enviroment, f64),
+    Plus0(Closure),
+    Plus1(f64),
     IsNum(),
     IsBool(),
     IsFun(),
@@ -160,8 +168,6 @@ pub fn eval(t0: Term) -> Term {
     let mut stack = Stack::new();
 
     loop {
-        println!("BODY: {:?}", &clos.body);
-        println!("=======");
         match clos {
             // Var
             Closure {
@@ -219,13 +225,10 @@ pub fn eval(t0: Term) -> Term {
                 body: Term::Plus(t1, t2),
                 env,
             } => {
-                stack.push_cont(Continuation::Plus0(
-                    env.clone(),
-                    Closure {
-                        body: *t2,
-                        env: env.clone(),
-                    },
-                ));
+                stack.push_cont(Continuation::Plus0(Closure {
+                    body: *t2,
+                    env: env.clone(),
+                }));
                 clos = Closure { body: *t1, env };
             }
             // isNum
@@ -258,7 +261,6 @@ pub fn eval(t0: Term) -> Term {
                 env: _,
             } => {
                 blame(stack, *t);
-                panic!("");
             }
             // Update
             _ if 0 < stack.count_thunks() => {
@@ -305,7 +307,7 @@ pub fn eval(t0: Term) -> Term {
     clos.body
 }
 
-fn blame(stack: Stack, t: Term) {
+fn blame(stack: Stack, t: Term) -> ! {
     for x in stack.into_iter() {
         println!("{:?}", x);
     }
@@ -327,79 +329,65 @@ fn continuate(cont: Continuation, clos: &mut Closure, stack: &mut Stack) {
             }
         }
         // Plus unapplied
-        Continuation::Plus0(plus_env, t) => {
+        Continuation::Plus0(t) => {
             if let Closure {
                 body: Term::Num(n),
                 env: _,
             } = *clos
             {
-                stack.push_cont(Continuation::Plus1(plus_env, n));
+                stack.push_cont(Continuation::Plus1(n));
                 *clos = t;
             } else {
                 panic!("Expected Num, got {:?}", clos);
             }
         }
         // Plus partially applied
-        Continuation::Plus1(plus_env, n) => {
+        Continuation::Plus1(n) => {
             if let Closure {
                 body: Term::Num(n2),
                 env: _,
             } = *clos
             {
-                *clos = Closure {
-                    body: Term::Num(n + n2),
-                    env: plus_env,
-                };
+                *clos = Closure::atomic_closure(Term::Num(n + n2));
             } else {
                 panic!("Expected Num, got {:?}", clos);
             }
         }
         // isNum
         Continuation::IsNum() => {
-            let mut value = false;
             if let Closure {
                 body: Term::Num(_),
                 env: _,
             } = *clos
             {
-                value = true;
+                *clos = Closure::atomic_closure(Term::Bool(true));
+            } else {
+                *clos = Closure::atomic_closure(Term::Bool(false));
             }
-            *clos = Closure {
-                body: Term::Bool(value),
-                env: HashMap::new(),
-            };
         }
         // isBool
         Continuation::IsBool() => {
-            let mut value = false;
             if let Closure {
                 body: Term::Bool(_),
                 env: _,
             } = *clos
             {
-                value = true;
+                *clos = Closure::atomic_closure(Term::Bool(true));
+            } else {
+                *clos = Closure::atomic_closure(Term::Bool(false));
             }
-
-            *clos = Closure {
-                body: Term::Bool(value),
-                env: HashMap::new(),
-            };
         }
         // isFun
         Continuation::IsFun() => {
-            let mut value = false;
             if let Closure {
                 body: Term::Fun(_, _),
                 env: _,
             } = *clos
             {
-                value = true;
+                *clos = Closure::atomic_closure(Term::Bool(true));
+            } else {
+                *clos = Closure::atomic_closure(Term::Bool(false));
             }
-
-            *clos = Closure {
-                body: Term::Bool(value),
-                env: HashMap::new(),
-            };
         }
     }
 }
