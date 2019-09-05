@@ -1,4 +1,5 @@
 use identifier::Ident;
+use label::Label;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Term {
@@ -10,4 +11,9 @@ pub enum Term {
     App(Box<Term>, Box<Term>),
     Ite(Box<Term>, Box<Term>, Box<Term>),
     Plus(Box<Term>, Box<Term>),
+    IsNum(Box<Term>),
+    IsBool(Box<Term>),
+    IsFun(Box<Term>),
+    Blame(Box<Term>),
+    Lbl(Label),
 }

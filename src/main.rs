@@ -1,5 +1,6 @@
 mod eval;
 mod identifier;
+mod label;
 mod parser;
 mod term;
 
@@ -19,8 +20,14 @@ fn main() {
         .read_to_string(&mut buffer)
         .expect("This main doesnt handle Err for now.");
 
-    if let Ok(parsed) = parser::grammar::TermParser::new().parse(&buffer) {
-        println!("Parsed term {:?}", parsed);
-        println!("Evaluated term {:?}", eval(parsed));
+    match parser::grammar::TermParser::new().parse(&buffer) {
+        Ok(parsed) => {
+            println!("Parsed term {:?}", parsed);
+            println!("Evaluated term {:?}", eval(parsed));
+        }
+        Err(error) => {
+            println!("Error: {:?}", error);
+            panic!("It didnt parsed correctly");
+        }
     }
 }

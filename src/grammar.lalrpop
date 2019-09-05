@@ -1,6 +1,7 @@
 use identifier::Ident;
 use std::str::FromStr;
 use term::Term;
+use label::Label;
 
 grammar;
 
@@ -13,11 +14,17 @@ pub Term = {
         Term::Ite(Box::new(b), Box::new(t), Box::new(e)),
     // TODO make infix
     "+" <t1:Atom> <t2:Atom> => Term::Plus(Box::new(t1), Box::new(t2)),
+    "isNum" <Atom> => Term::IsNum(Box::new(<>)),
+    "isBool" <Atom> => Term::IsBool(Box::new(<>)),
+    "isFun" <Atom> => Term::IsFun(Box::new(<>)),
+    "blame" <lab:Term> => Term::Blame(Box::new(lab)),
     Applicative,
 };
 
 Atom: Term = {
     "(" <Term> ")",
+    // label syntax is used only for debugging for now, will be deprecated
+    <l:@L> "label[" <s:Str> "]" <r:@R> => Term::Lbl(Label{tag: s, l: l, r: r}),
     Num => Term::Num(<>),
     Bool => Term::Bool(<>),
     Ident => Term::Var(<>),
@@ -40,3 +47,6 @@ Bool: bool = {
     "true" => true,
     "false" => false,
 };
+
+Str: String = r"[[:alpha:]_][[:word:]-]*" => <>.to_string();
+
