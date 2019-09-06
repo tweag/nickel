@@ -1,5 +1,6 @@
 use continuation::{continuate, Continuation};
 use identifier::Ident;
+use stack::Stack;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
@@ -7,7 +8,7 @@ use term::Term;
 
 pub type Enviroment = HashMap<Ident, Rc<RefCell<Closure>>>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Closure {
     pub body: Term,
     pub env: Enviroment,
@@ -18,130 +19,6 @@ impl Closure {
         Closure {
             body,
             env: HashMap::new(),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum Marker {
-    Arg(Closure),
-    Thunk(Weak<RefCell<Closure>>),
-    Cont(Continuation),
-}
-
-impl Marker {
-    pub fn is_arg(&self) -> bool {
-        match *self {
-            Marker::Arg(_) => true,
-            Marker::Thunk(_) => false,
-            Marker::Cont(_) => false,
-        }
-    }
-
-    pub fn is_thunk(&self) -> bool {
-        match *self {
-            Marker::Arg(_) => false,
-            Marker::Thunk(_) => true,
-            Marker::Cont(_) => false,
-        }
-    }
-
-    pub fn is_cont(&self) -> bool {
-        match *self {
-            Marker::Arg(_) => false,
-            Marker::Thunk(_) => false,
-            Marker::Cont(_) => true,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct Stack(Vec<Marker>);
-
-impl IntoIterator for Stack {
-    type Item = Marker;
-    type IntoIter = ::std::vec::IntoIter<Marker>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
-}
-
-impl Stack {
-    pub fn new() -> Stack {
-        Stack(Vec::new())
-    }
-
-    fn count<P>(&self, pred: P) -> usize
-    where
-        P: Fn(&Marker) -> bool,
-    {
-        let mut count = 0;
-        for marker in self.0.iter().rev() {
-            if pred(marker) {
-                count += 1;
-            } else {
-                break;
-            }
-        }
-        count
-    }
-
-    /// Count the number of arguments at the top of the stack.
-    pub fn count_args(&self) -> usize {
-        Stack::count(self, Marker::is_arg)
-    }
-
-    pub fn count_thunks(&self) -> usize {
-        Stack::count(self, Marker::is_thunk)
-    }
-
-    pub fn count_conts(&self) -> usize {
-        Stack::count(self, Marker::is_cont)
-    }
-
-    pub fn push_arg(&mut self, arg: Closure) {
-        self.0.push(Marker::Arg(arg))
-    }
-
-    pub fn push_thunk(&mut self, thunk: Weak<RefCell<Closure>>) {
-        self.0.push(Marker::Thunk(thunk))
-    }
-
-    pub fn push_cont(&mut self, cont: Continuation) {
-        self.0.push(Marker::Cont(cont))
-    }
-
-    pub fn pop_arg(&mut self) -> Option<Closure> {
-        match self.0.pop() {
-            Some(Marker::Arg(arg)) => Some(arg),
-            Some(m) => {
-                self.0.push(m);
-                None
-            }
-            _ => None,
-        }
-    }
-
-    pub fn pop_thunk(&mut self) -> Option<Weak<RefCell<Closure>>> {
-        match self.0.pop() {
-            Some(Marker::Thunk(thunk)) => Some(thunk),
-            Some(m) => {
-                self.0.push(m);
-                None
-            }
-            _ => None,
-        }
-    }
-
-    pub fn pop_cont(&mut self) -> Option<Continuation> {
-        match self.0.pop() {
-            Some(Marker::Cont(cont)) => Some(cont),
-            Some(m) => {
-                self.0.push(m);
-                None
-            }
-            _ => None,
         }
     }
 }
@@ -304,4 +181,107 @@ fn blame(stack: Stack, t: Term) -> ! {
         println!("{:?}", x);
     }
     panic!("Reached Blame: {:?}", t);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use label::Label;
+
+    fn app(t0: Term, t1: Term) -> Term {
+        Term::App(Box::new(t0), Box::new(t1))
+    }
+
+    fn var(id: &str) -> Term {
+        Term::Var(Ident(id.to_string()))
+    }
+
+    fn let_in(id: &str, e: Term, t: Term) -> Term {
+        Term::Let(Ident(id.to_string()), Box::new(e), Box::new(t))
+    }
+
+    fn ite(c: Term, t: Term, e: Term) -> Term {
+        Term::Ite(Box::new(c), Box::new(t), Box::new(e))
+    }
+
+    fn plus(t0: Term, t1: Term) -> Term {
+        Term::Plus(Box::new(t0), Box::new(t1))
+    }
+
+    #[test]
+    fn identity_over_values() {
+        let num = Term::Num(45.3);
+        assert_eq!(num.clone(), eval(num));
+
+        let boolean = Term::Bool(true);
+        assert_eq!(boolean.clone(), eval(boolean));
+
+        let lambda = Term::Fun(
+            vec![Ident("x".to_string()), Ident("y".to_string())],
+            Box::new(app(var("y"), var("x"))),
+        );
+        assert_eq!(lambda.clone(), eval(lambda));
+    }
+
+    #[test]
+    #[should_panic]
+    fn blame_panics() {
+        eval(Term::Blame(Box::new(Term::Lbl(Label {
+            tag: "testing".to_string(),
+            l: 0,
+            r: 1,
+        }))));
+    }
+
+    #[test]
+    #[should_panic]
+    fn lone_var_panics() {
+        eval(var("unbound"));
+    }
+
+    #[test]
+    fn simple_app() {
+        let t = app(
+            Term::Fun(vec![Ident("x".to_string())], Box::new(var("x"))),
+            Term::Num(5.0),
+        );
+
+        assert_eq!(Term::Num(5.0), eval(t));
+    }
+
+    #[test]
+    fn simple_let() {
+        let t = let_in("x", Term::Num(5.0), var("x"));
+
+        assert_eq!(Term::Num(5.0), eval(t));
+    }
+
+    #[test]
+    fn simpl_ite() {
+        let t = ite(Term::Bool(true), Term::Num(5.0), Term::Bool(false));
+
+        assert_eq!(Term::Num(5.0), eval(t));
+    }
+
+    #[test]
+    fn simpl_plus() {
+        let t = plus(Term::Num(5.0), Term::Num(7.5));
+
+        assert_eq!(Term::Num(12.5), eval(t));
+    }
+
+    #[test]
+    fn asking_for_various_types() {
+        let num = Term::IsNum(Box::new(Term::Num(45.3)));
+        assert_eq!(Term::Bool(true), eval(num));
+
+        let boolean = Term::IsBool(Box::new(Term::Bool(true)));
+        assert_eq!(Term::Bool(true), eval(boolean));
+
+        let lambda = Term::IsFun(Box::new(Term::Fun(
+            vec![Ident("x".to_string()), Ident("y".to_string())],
+            Box::new(app(var("y"), var("x"))),
+        )));
+        assert_eq!(Term::Bool(true), eval(lambda));
+    }
 }

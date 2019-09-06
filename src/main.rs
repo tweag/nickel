@@ -3,6 +3,7 @@ mod eval;
 mod identifier;
 mod label;
 mod parser;
+mod stack;
 mod term;
 
 use eval::eval;
