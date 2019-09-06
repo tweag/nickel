@@ -121,7 +121,7 @@ mod tests {
         };
         let mut stack = Stack::new();
 
-        assert_eq!(Ok(()), continuate(cont, &mut clos, &mut stack));
+        continuate(cont, &mut clos, &mut stack).unwrap();
 
         assert_eq!(
             clos,
@@ -144,7 +144,7 @@ mod tests {
         };
         let mut stack = Stack::new();
 
-        assert_eq!(Ok(()), continuate(cont, &mut clos, &mut stack));
+        continuate(cont, &mut clos, &mut stack).unwrap();
 
         assert_eq!(
             clos,
@@ -170,7 +170,7 @@ mod tests {
         };
         let mut stack = Stack::new();
 
-        assert_eq!(Ok(()), continuate(cont, &mut clos, &mut stack));
+        continuate(cont, &mut clos, &mut stack).unwrap();
 
         assert_eq!(
             clos,

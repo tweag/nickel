@@ -1,4 +1,4 @@
-use eval::{eval, EvalResult};
+use eval::{eval, EvalError};
 use label::Label;
 use parser;
 use std::fs;
@@ -40,9 +40,9 @@ impl<T: Read> Program<T> {
     pub fn eval(&mut self) -> Result<Term, String> {
         let t = self.parse()?;
         match eval(t) {
-            EvalResult::Term(t) => Ok(t),
-            EvalResult::BlameError(l) => Err(self.process_blame(l)),
-            EvalResult::TypeError(s) => Err(s),
+            Err(EvalError::BlameError(l)) => Err(self.process_blame(l)),
+            Err(EvalError::TypeError(s)) => Err(s),
+            Ok(t) => Ok(t),
         }
     }
 

@@ -5,6 +5,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 use term::Term;
+use label::Label;
 
 pub type Enviroment = HashMap<Ident, Rc<RefCell<Closure>>>;
 
@@ -24,8 +25,7 @@ impl Closure {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum EvalResult {
-    Term(Term),
+pub enum EvalError {
     BlameError(Label),
     TypeError(String),
 }
@@ -34,7 +34,7 @@ fn is_value(_term: &Term) -> bool {
     false
 }
 
-pub fn eval(t0: Term) -> EvalResult {
+pub fn eval(t0: Term) -> Result<Term, EvalError> {
     let empty_env = HashMap::new();
     let mut clos = Closure {
         body: t0,
@@ -137,7 +137,7 @@ pub fn eval(t0: Term) -> EvalResult {
                 env: _,
             } => {
                 if let Term::Lbl(l) = *t {
-                    return EvalResult::BlameError(l);
+                    return Err(EvalError::BlameError(l));
                 } else {
                     panic!("I still don't know how to properly treat a label");
                 }
@@ -159,7 +159,7 @@ pub fn eval(t0: Term) -> EvalResult {
                 ) {
                     // A continuation can only raise an error if it's wrongly applied
                     // ... at least how the current implementation goes
-                    return EvalResult::TypeError(s);
+                    return Err(EvalError::TypeError(s));
                 }
             }
             // Call
@@ -190,7 +190,7 @@ pub fn eval(t0: Term) -> EvalResult {
         }
     }
 
-    EvalResult::Term(clos.body)
+    Ok(clos.body)
 }
 
 #[cfg(test)]
@@ -221,26 +221,26 @@ mod tests {
     #[test]
     fn identity_over_values() {
         let num = Term::Num(45.3);
-        assert_eq!(EvalResult::Term(num.clone()), eval(num));
+        assert_eq!(Ok(num.clone()), eval(num));
 
         let boolean = Term::Bool(true);
-        assert_eq!(EvalResult::Term(boolean.clone()), eval(boolean));
+        assert_eq!(Ok(boolean.clone()), eval(boolean));
 
         let lambda = Term::Fun(
             vec![Ident("x".to_string()), Ident("y".to_string())],
             Box::new(app(var("y"), var("x"))),
         );
-        assert_eq!(EvalResult::Term(lambda.clone()), eval(lambda));
+        assert_eq!(Ok(lambda.clone()), eval(lambda));
     }
 
     #[test]
     fn blame_panics() {
         assert_eq!(
-            EvalResult::BlameError(Label {
+            Err(EvalError::BlameError(Label {
                 tag: "testing".to_string(),
                 l: 0,
                 r: 1,
-            }),
+            })),
             eval(Term::Blame(Box::new(Term::Lbl(Label {
                 tag: "testing".to_string(),
                 l: 0,
@@ -262,42 +262,42 @@ mod tests {
             Term::Num(5.0),
         );
 
-        assert_eq!(EvalResult::Term(Term::Num(5.0)), eval(t));
+        assert_eq!(Ok(Term::Num(5.0)), eval(t));
     }
 
     #[test]
     fn simple_let() {
         let t = let_in("x", Term::Num(5.0), var("x"));
 
-        assert_eq!(EvalResult::Term(Term::Num(5.0)), eval(t));
+        assert_eq!(Ok(Term::Num(5.0)), eval(t));
     }
 
     #[test]
     fn simpl_ite() {
         let t = ite(Term::Bool(true), Term::Num(5.0), Term::Bool(false));
 
-        assert_eq!(EvalResult::Term(Term::Num(5.0)), eval(t));
+        assert_eq!(Ok(Term::Num(5.0)), eval(t));
     }
 
     #[test]
     fn simpl_plus() {
         let t = plus(Term::Num(5.0), Term::Num(7.5));
 
-        assert_eq!(EvalResult::Term(Term::Num(12.5)), eval(t));
+        assert_eq!(Ok(Term::Num(12.5)), eval(t));
     }
 
     #[test]
     fn asking_for_various_types() {
         let num = Term::IsNum(Box::new(Term::Num(45.3)));
-        assert_eq!(EvalResult::Term(Term::Bool(true)), eval(num));
+        assert_eq!(Ok(Term::Bool(true)), eval(num));
 
         let boolean = Term::IsBool(Box::new(Term::Bool(true)));
-        assert_eq!(EvalResult::Term(Term::Bool(true)), eval(boolean));
+        assert_eq!(Ok(Term::Bool(true)), eval(boolean));
 
         let lambda = Term::IsFun(Box::new(Term::Fun(
             vec![Ident("x".to_string()), Ident("y".to_string())],
             Box::new(app(var("y"), var("x"))),
         )));
-        assert_eq!(EvalResult::Term(Term::Bool(true)), eval(lambda));
+        assert_eq!(Ok(Term::Bool(true)), eval(lambda));
     }
 }

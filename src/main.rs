@@ -8,7 +8,6 @@ mod stack;
 mod term;
 
 use program::Program;
-use std::io::{self, Read};
 
 #[cfg(test)]
 #[macro_use]
