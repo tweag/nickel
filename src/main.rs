@@ -1,3 +1,4 @@
+mod continuation;
 mod eval;
 mod identifier;
 mod label;
