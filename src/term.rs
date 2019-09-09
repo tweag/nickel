@@ -8,6 +8,7 @@ pub enum Term {
     Bool(bool),
     Num(f64),
     Fun(Vec<Ident>, Box<Term>),
+    Lbl(Label),
     // Other lambda
     Let(Ident, Box<Term>, Box<Term>),
     App(Box<Term>, Box<Term>),
@@ -15,7 +16,4 @@ pub enum Term {
     // Primitives
     Op1(UnaryOp, Box<Term>),
     Op2(BinaryOp, Box<Term>, Box<Term>),
-    // Blame
-    Blame(Box<Term>),
-    Lbl(Label),
 }

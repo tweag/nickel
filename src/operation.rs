@@ -1,4 +1,4 @@
-use eval::Closure;
+use eval::{Closure, EvalError};
 use stack::Stack;
 use term::Term;
 
@@ -16,6 +16,7 @@ pub enum UnaryOp {
     IsNum(),
     IsBool(),
     IsFun(),
+    Blame(),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -27,7 +28,7 @@ pub fn continuate_operation(
     cont: OperationCont,
     clos: &mut Closure,
     stack: &mut Stack,
-) -> Result<(), String> {
+) -> Result<(), EvalError> {
     match cont {
         OperationCont::Op1(u_op) => process_unary_operation(u_op, clos, stack),
         OperationCont::Op2First(b_op, mut snd_clos) => {
@@ -45,7 +46,7 @@ fn process_unary_operation(
     u_op: UnaryOp,
     clos: &mut Closure,
     stack: &mut Stack,
-) -> Result<(), String> {
+) -> Result<(), EvalError> {
     match u_op {
         UnaryOp::Ite() => {
             if let Closure {
@@ -60,10 +61,13 @@ fn process_unary_operation(
                     *clos = if b { fst } else { snd };
                     Ok(())
                 } else {
-                    Err("An If-Then-Else wasn't saturated".to_string())
+                    panic!("An If-Then-Else wasn't saturated")
                 }
             } else {
-                Err(format!("Expected Bool, got {:?}", clos.body))
+                Err(EvalError::TypeError(format!(
+                    "Expected Bool, got {:?}",
+                    clos.body
+                )))
             }
         }
         UnaryOp::IsZero() => {
@@ -76,7 +80,10 @@ fn process_unary_operation(
                 *clos = Closure::atomic_closure(Term::Bool(n == 0.));
                 Ok(())
             } else {
-                Err(format!("Expected Num, got {:?}", clos.body))
+                Err(EvalError::TypeError(format!(
+                    "Expected Num, got {:?}",
+                    clos.body
+                )))
             }
         }
         UnaryOp::IsNum() => {
@@ -115,6 +122,20 @@ fn process_unary_operation(
             }
             Ok(())
         }
+        UnaryOp::Blame() => {
+            if let Closure {
+                body: Term::Lbl(ref l),
+                env: _,
+            } = *clos
+            {
+                Err(EvalError::BlameError(l.clone()))
+            } else {
+                Err(EvalError::TypeError(format!(
+                    "Expected Label, got {:?}",
+                    clos.body
+                )))
+            }
+        }
     }
 }
 
@@ -123,7 +144,7 @@ fn process_binary_operation(
     fst_clos: Closure,
     clos: &mut Closure,
     _stack: &mut Stack,
-) -> Result<(), String> {
+) -> Result<(), EvalError> {
     match b_op {
         BinaryOp::Plus() => {
             if let Closure {
@@ -139,10 +160,16 @@ fn process_binary_operation(
                     *clos = Closure::atomic_closure(Term::Num(n1 + n2));
                     Ok(())
                 } else {
-                    Err(format!("Expected Num, got {:?}", clos.body))
+                    Err(EvalError::TypeError(format!(
+                        "Expected Num, got {:?}",
+                        clos.body
+                    )))
                 }
             } else {
-                Err(format!("Expected Num, got {:?}", fst_clos.body))
+                Err(EvalError::TypeError(format!(
+                    "Expected Num, got {:?}",
+                    fst_clos.body
+                )))
             }
         }
     }
