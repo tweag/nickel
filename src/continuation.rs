@@ -12,7 +12,7 @@ pub enum Continuation {
     IsFun(),
 }
 
-pub fn continuate(cont: Continuation, clos: &mut Closure, stack: &mut Stack) {
+pub fn continuate(cont: Continuation, clos: &mut Closure, stack: &mut Stack) -> Result<(), String> {
     match cont {
         // If Then Else
         Continuation::Ite(e, t1, t2) => {
@@ -25,8 +25,9 @@ pub fn continuate(cont: Continuation, clos: &mut Closure, stack: &mut Stack) {
                     body: (if b { t1 } else { t2 }),
                     env: e,
                 };
+                Ok(())
             } else {
-                panic!("Expected Bool, got {:?}", clos);
+                Err(format!("Expected Bool, got {:?}", clos))
             }
         }
         // Plus unapplied
@@ -38,8 +39,9 @@ pub fn continuate(cont: Continuation, clos: &mut Closure, stack: &mut Stack) {
             {
                 stack.push_cont(Continuation::Plus1(n));
                 *clos = t;
+                Ok(())
             } else {
-                panic!("Expected Num, got {:?}", clos);
+                Err(format!("Expected Num, got {:?}", clos))
             }
         }
         // Plus partially applied
@@ -50,8 +52,10 @@ pub fn continuate(cont: Continuation, clos: &mut Closure, stack: &mut Stack) {
             } = *clos
             {
                 *clos = Closure::atomic_closure(Term::Num(n + n2));
+                
+                Ok(())
             } else {
-                panic!("Expected Num, got {:?}", clos);
+                Err(format!("Expected Num, got {:?}", clos))
             }
         }
         // isNum
@@ -65,6 +69,8 @@ pub fn continuate(cont: Continuation, clos: &mut Closure, stack: &mut Stack) {
             } else {
                 *clos = Closure::atomic_closure(Term::Bool(false));
             }
+
+            Ok(())
         }
         // isBool
         Continuation::IsBool() => {
@@ -77,6 +83,8 @@ pub fn continuate(cont: Continuation, clos: &mut Closure, stack: &mut Stack) {
             } else {
                 *clos = Closure::atomic_closure(Term::Bool(false));
             }
+
+            Ok(())
         }
         // isFun
         Continuation::IsFun() => {
@@ -89,6 +97,8 @@ pub fn continuate(cont: Continuation, clos: &mut Closure, stack: &mut Stack) {
             } else {
                 *clos = Closure::atomic_closure(Term::Bool(false));
             }
+
+            Ok(())
         }
     }
 }
@@ -111,7 +121,7 @@ mod tests {
         };
         let mut stack = Stack::new();
 
-        continuate(cont, &mut clos, &mut stack);
+        continuate(cont, &mut clos, &mut stack).unwrap();
 
         assert_eq!(
             clos,
@@ -134,7 +144,7 @@ mod tests {
         };
         let mut stack = Stack::new();
 
-        continuate(cont, &mut clos, &mut stack);
+        continuate(cont, &mut clos, &mut stack).unwrap();
 
         assert_eq!(
             clos,
@@ -160,7 +170,7 @@ mod tests {
         };
         let mut stack = Stack::new();
 
-        continuate(cont, &mut clos, &mut stack);
+        continuate(cont, &mut clos, &mut stack).unwrap();
 
         assert_eq!(
             clos,
