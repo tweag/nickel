@@ -1,3 +1,4 @@
+use continuation::{BinaryOp, UnaryOp};
 use identifier::Ident;
 use label::Label;
 
@@ -12,13 +13,9 @@ pub enum Term {
     App(Box<Term>, Box<Term>),
     Var(Ident),
     // Primitives
-    Ite(Box<Term>, Box<Term>, Box<Term>),
-    Plus(Box<Term>, Box<Term>),
-    IsZero(Box<Term>),
-    // Type Checking
-    IsNum(Box<Term>),
-    IsBool(Box<Term>),
-    IsFun(Box<Term>),
+    Op1(UnaryOp, Box<Term>),
+    Op2(BinaryOp, Box<Term>, Box<Term>),
+    // Blame
     Blame(Box<Term>),
     Lbl(Label),
 }

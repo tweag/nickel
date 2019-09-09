@@ -1,3 +1,4 @@
+use continuation::{BinaryOp, UnaryOp};
 use identifier::Ident;
 use term::Term;
 use term::Term::*;
@@ -21,12 +22,17 @@ fn plus() {
     let parser = super::grammar::TermParser::new();
     assert_eq!(
         parser.parse("+ 3 4").unwrap(),
-        Plus(Box::new(Num(3.0)), Box::new(Num(4.)))
+        Op2(BinaryOp::Plus(), Box::new(Num(3.0)), Box::new(Num(4.)))
     );
     assert_eq!(
         parser.parse("+ (+ true false) 4").unwrap(),
-        Plus(
-            Box::new(Plus(Box::new(Bool(true)), Box::new(Bool(false)))),
+        Op2(
+            BinaryOp::Plus(),
+            Box::new(Op2(
+                BinaryOp::Plus(),
+                Box::new(Bool(true)),
+                Box::new(Bool(false))
+            )),
             Box::new(Num(4.))
         )
     );
@@ -44,7 +50,10 @@ fn ite() {
     let parser = super::grammar::TermParser::new();
     assert_eq!(
         parser.parse("if true then 3 else 4").unwrap(),
-        Ite(Box::new(Bool(true)), Box::new(Num(3.0)), Box::new(Num(4.0)))
+        app(
+            app(Op1(UnaryOp::Ite(), Box::new(Bool(true))), Num(3.0)),
+            Num(4.0)
+        )
     );
 }
 

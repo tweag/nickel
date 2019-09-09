@@ -1,81 +1,85 @@
-use eval::{Closure, Enviroment};
+use eval::Closure;
 use stack::Stack;
 use term::Term;
 
 #[derive(Debug, PartialEq)]
-pub enum Continuation {
-    Ite(Enviroment, Term, Term),
-    Plus0(Closure),
-    Plus1(f64),
+pub enum OperationCont {
+    Op1(UnaryOp),
+    Op2First(BinaryOp, Closure),
+    Op2Second(BinaryOp, Closure),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum UnaryOp {
+    Ite(),
     IsZero(),
     IsNum(),
     IsBool(),
     IsFun(),
 }
 
-pub fn continuate(cont: Continuation, clos: &mut Closure, stack: &mut Stack) -> Result<(), String> {
+#[derive(Clone, Debug, PartialEq)]
+pub enum BinaryOp {
+    Plus(),
+}
+
+pub fn continuate_operation(
+    cont: OperationCont,
+    clos: &mut Closure,
+    stack: &mut Stack,
+) -> Result<(), String> {
     match cont {
-        // If Then Else
-        Continuation::Ite(e, t1, t2) => {
+        OperationCont::Op1(u_op) => process_unary_operation(u_op, clos, stack),
+        OperationCont::Op2First(b_op, mut snd_clos) => {
+            std::mem::swap(clos, &mut snd_clos);
+            stack.push_op_cont(OperationCont::Op2Second(b_op, snd_clos));
+            Ok(())
+        }
+        OperationCont::Op2Second(b_op, fst_clos) => {
+            process_binary_operation(b_op, fst_clos, clos, stack)
+        }
+    }
+}
+
+fn process_unary_operation(
+    u_op: UnaryOp,
+    clos: &mut Closure,
+    stack: &mut Stack,
+) -> Result<(), String> {
+    match u_op {
+        UnaryOp::Ite() => {
             if let Closure {
                 body: Term::Bool(b),
                 env: _,
             } = *clos
             {
-                *clos = Closure {
-                    body: (if b { t1 } else { t2 }),
-                    env: e,
-                };
-                Ok(())
-            } else {
-                Err(format!("Expected Bool, got {:?}", clos))
-            }
-        }
-        // Plus unapplied
-        Continuation::Plus0(t) => {
-            if let Closure {
-                body: Term::Num(n),
-                env: _,
-            } = *clos
-            {
-                stack.push_cont(Continuation::Plus1(n));
-                *clos = t;
-                Ok(())
-            } else {
-                Err(format!("Expected Num, got {:?}", clos))
-            }
-        }
-        // Plus partially applied
-        Continuation::Plus1(n) => {
-            if let Closure {
-                body: Term::Num(n2),
-                env: _,
-            } = *clos
-            {
-                *clos = Closure::atomic_closure(Term::Num(n + n2));
+                if stack.count_args() >= 2 {
+                    let fst = stack.pop_arg().expect("Condition already checked.");
+                    let snd = stack.pop_arg().expect("Condition already checked.");
 
-                Ok(())
+                    *clos = if b { fst } else { snd };
+                    Ok(())
+                } else {
+                    Err("An If-Then-Else wasn't saturated".to_string())
+                }
             } else {
-                Err(format!("Expected Num, got {:?}", clos))
+                Err(format!("Expected Bool, got {:?}", clos.body))
             }
         }
-        // isZero
-        Continuation::IsZero() => {
+        UnaryOp::IsZero() => {
             if let Closure {
                 body: Term::Num(n),
                 env: _,
             } = *clos
             {
                 // TODO Discuss and decide on this comparison for 0 on f64
-                *clos = Closure::atomic_closure(Term::Bool(n == 0.0));
-
+                *clos = Closure::atomic_closure(Term::Bool(n == 0.));
                 Ok(())
             } else {
-                Err(format!("Expected Num, got {:?}", clos))
+                Err(format!("Expected Num, got {:?}", clos.body))
             }
         }
-        // isNum
-        Continuation::IsNum() => {
+        UnaryOp::IsNum() => {
             if let Closure {
                 body: Term::Num(_),
                 env: _,
@@ -85,11 +89,9 @@ pub fn continuate(cont: Continuation, clos: &mut Closure, stack: &mut Stack) -> 
             } else {
                 *clos = Closure::atomic_closure(Term::Bool(false));
             }
-
             Ok(())
         }
-        // isBool
-        Continuation::IsBool() => {
+        UnaryOp::IsBool() => {
             if let Closure {
                 body: Term::Bool(_),
                 env: _,
@@ -99,11 +101,9 @@ pub fn continuate(cont: Continuation, clos: &mut Closure, stack: &mut Stack) -> 
             } else {
                 *clos = Closure::atomic_closure(Term::Bool(false));
             }
-
             Ok(())
         }
-        // isFun
-        Continuation::IsFun() => {
+        UnaryOp::IsFun() => {
             if let Closure {
                 body: Term::Fun(_, _),
                 env: _,
@@ -113,8 +113,37 @@ pub fn continuate(cont: Continuation, clos: &mut Closure, stack: &mut Stack) -> 
             } else {
                 *clos = Closure::atomic_closure(Term::Bool(false));
             }
-
             Ok(())
+        }
+    }
+}
+
+fn process_binary_operation(
+    b_op: BinaryOp,
+    fst_clos: Closure,
+    clos: &mut Closure,
+    _stack: &mut Stack,
+) -> Result<(), String> {
+    match b_op {
+        BinaryOp::Plus() => {
+            if let Closure {
+                body: Term::Num(n1),
+                env: _,
+            } = fst_clos
+            {
+                if let Closure {
+                    body: Term::Num(n2),
+                    env: _,
+                } = *clos
+                {
+                    *clos = Closure::atomic_closure(Term::Num(n1 + n2));
+                    Ok(())
+                } else {
+                    Err(format!("Expected Num, got {:?}", clos.body))
+                }
+            } else {
+                Err(format!("Expected Num, got {:?}", fst_clos.body))
+            }
         }
     }
 }
@@ -122,6 +151,7 @@ pub fn continuate(cont: Continuation, clos: &mut Closure, stack: &mut Stack) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use eval::Enviroment;
     use std::collections::HashMap;
 
     fn some_env() -> Enviroment {
@@ -129,38 +159,46 @@ mod tests {
     }
 
     #[test]
-    fn ite_continuation() {
-        let cont = Continuation::Ite(some_env(), Term::Num(5.0), Term::Bool(true));
+    fn ite_operation() {
+        let cont = OperationCont::Op1(UnaryOp::Ite());
+        let mut stack = Stack::new();
+        stack.push_arg(Closure::atomic_closure(Term::Num(5.0)));
+        stack.push_arg(Closure::atomic_closure(Term::Num(46.0)));
+
         let mut clos = Closure {
             body: Term::Bool(true),
             env: some_env(),
         };
-        let mut stack = Stack::new();
 
-        continuate(cont, &mut clos, &mut stack).unwrap();
+        continuate_operation(cont, &mut clos, &mut stack).unwrap();
 
         assert_eq!(
             clos,
             Closure {
-                body: Term::Num(5.0),
+                body: Term::Num(46.0),
                 env: some_env()
             }
         );
+        assert_eq!(0, stack.count_args());
     }
 
     #[test]
-    fn plus_first_term_continuation() {
-        let cont = Continuation::Plus0(Closure {
-            body: Term::Num(6.0),
-            env: some_env(),
-        });
+    fn plus_first_term_operation() {
+        let cont = OperationCont::Op2First(
+            BinaryOp::Plus(),
+            Closure {
+                body: Term::Num(6.0),
+                env: some_env(),
+            },
+        );
+
         let mut clos = Closure {
             body: Term::Num(7.0),
             env: some_env(),
         };
         let mut stack = Stack::new();
 
-        continuate(cont, &mut clos, &mut stack).unwrap();
+        continuate_operation(cont, &mut clos, &mut stack).unwrap();
 
         assert_eq!(
             clos,
@@ -172,21 +210,33 @@ mod tests {
 
         assert_eq!(1, stack.count_conts());
         assert_eq!(
-            Continuation::Plus1(7.0),
-            stack.pop_cont().expect("Condition already checked.")
+            OperationCont::Op2Second(
+                BinaryOp::Plus(),
+                Closure {
+                    body: Term::Num(7.0),
+                    env: some_env(),
+                }
+            ),
+            stack.pop_op_cont().expect("Condition already checked.")
         );
     }
 
     #[test]
-    fn plus_second_term_continuation() {
-        let cont = Continuation::Plus1(6.0);
+    fn plus_second_term_operation() {
+        let cont = OperationCont::Op2Second(
+            BinaryOp::Plus(),
+            Closure {
+                body: Term::Num(7.0),
+                env: some_env(),
+            },
+        );
         let mut clos = Closure {
-            body: Term::Num(7.0),
+            body: Term::Num(6.0),
             env: some_env(),
         };
         let mut stack = Stack::new();
 
-        continuate(cont, &mut clos, &mut stack).unwrap();
+        continuate_operation(cont, &mut clos, &mut stack).unwrap();
 
         assert_eq!(
             clos,
