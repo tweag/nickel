@@ -1,6 +1,6 @@
-use continuation::{BinaryOp, UnaryOp};
 use identifier::Ident;
 use label::Label;
+use operation::{BinaryOp, UnaryOp};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Term {

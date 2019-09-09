@@ -1,5 +1,5 @@
-use continuation::{BinaryOp, UnaryOp};
 use identifier::Ident;
+use operation::{BinaryOp, UnaryOp};
 use term::Term;
 use term::Term::*;
 

@@ -1,5 +1,5 @@
-use continuation::OperationCont;
 use eval::Closure;
+use operation::OperationCont;
 use std::cell::RefCell;
 use std::rc::Weak;
 
@@ -130,7 +130,7 @@ impl Stack {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use continuation::UnaryOp;
+    use operation::UnaryOp;
     use std::rc::Rc;
     use term::Term;
 

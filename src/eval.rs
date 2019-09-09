@@ -1,6 +1,6 @@
-use continuation::{continuate_operation, OperationCont};
 use identifier::Ident;
 use label::Label;
+use operation::{continuate_operation, OperationCont};
 use stack::Stack;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -175,7 +175,7 @@ pub fn eval(t0: Term) -> Result<Term, EvalError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use continuation::{BinaryOp, UnaryOp};
+    use operation::{BinaryOp, UnaryOp};
 
     fn app(t0: Term, t1: Term) -> Term {
         Term::App(Box::new(t0), Box::new(t1))

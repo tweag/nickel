@@ -2,7 +2,7 @@ use identifier::Ident;
 use std::str::FromStr;
 use term::Term;
 use label::Label;
-use continuation::{UnaryOp, BinaryOp};
+use operation::{UnaryOp, BinaryOp};
 
 grammar;
 
