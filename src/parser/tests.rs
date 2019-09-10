@@ -21,11 +21,11 @@ fn numbers() {
 fn plus() {
     let parser = super::grammar::TermParser::new();
     assert_eq!(
-        parser.parse("+ 3 4").unwrap(),
+        parser.parse("3 + 4").unwrap(),
         Op2(BinaryOp::Plus(), Box::new(Num(3.0)), Box::new(Num(4.)))
     );
     assert_eq!(
-        parser.parse("+ (+ true false) 4").unwrap(),
+        parser.parse("(true + false) + 4").unwrap(),
         Op2(
             BinaryOp::Plus(),
             Box::new(Op2(
