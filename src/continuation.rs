@@ -7,6 +7,7 @@ pub enum Continuation {
     Ite(Enviroment, Term, Term),
     Plus0(Closure),
     Plus1(f64),
+    IsZero(),
     IsNum(),
     IsBool(),
     IsFun(),
@@ -52,7 +53,22 @@ pub fn continuate(cont: Continuation, clos: &mut Closure, stack: &mut Stack) -> 
             } = *clos
             {
                 *clos = Closure::atomic_closure(Term::Num(n + n2));
-                
+
+                Ok(())
+            } else {
+                Err(format!("Expected Num, got {:?}", clos))
+            }
+        }
+        // isZero
+        Continuation::IsZero() => {
+            if let Closure {
+                body: Term::Num(n),
+                env: _,
+            } = *clos
+            {
+                // TODO Discuss and decide on this comparison for 0 on f64
+                *clos = Closure::atomic_closure(Term::Bool(n == 0.0));
+
                 Ok(())
             } else {
                 Err(format!("Expected Num, got {:?}", clos))

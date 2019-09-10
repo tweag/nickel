@@ -14,6 +14,7 @@ pub enum Term {
     // Primitives
     Ite(Box<Term>, Box<Term>, Box<Term>),
     Plus(Box<Term>, Box<Term>),
+    IsZero(Box<Term>),
     // Type Checking
     IsNum(Box<Term>),
     IsBool(Box<Term>),
