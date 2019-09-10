@@ -19,7 +19,7 @@ extern crate lalrpop_util;
 fn main() {
     let mut p = Program::new_from_stdin();
     match p.eval() {
-        Ok(s) => println!("{:?}", s),
-        Err(s) => panic!(s),
+        Ok(t) => println!("Evaluation finished with result:\n{:?}", t),
+        Err(s) => println!("Evaluation didn't finished, found error:\n{}", s),
     }
 }
