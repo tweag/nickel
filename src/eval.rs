@@ -1,6 +1,6 @@
-use continuation::{continuate, Continuation};
 use identifier::Ident;
 use label::Label;
+use operation::{continuate_operation, OperationCont};
 use stack::Stack;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -88,56 +88,27 @@ pub fn eval(t0: Term) -> Result<Term, EvalError> {
                 env.insert(x, Rc::clone(&thunk));
                 clos = Closure { body: *t, env: env };
             }
-            // Ite
+            // Unary Operation
             Closure {
-                body: Term::Ite(b, t, e),
+                body: Term::Op1(op, t),
                 env,
             } => {
-                stack.push_cont(Continuation::Ite(env.clone(), *t, *e));
-                clos = Closure { body: *b, env };
+                stack.push_op_cont(OperationCont::Op1(op));
+                clos = Closure { body: *t, env };
             }
-            // Plus
+            // Binary Operation
             Closure {
-                body: Term::Plus(t1, t2),
+                body: Term::Op2(op, fst, snd),
                 env,
             } => {
-                stack.push_cont(Continuation::Plus0(Closure {
-                    body: *t2,
-                    env: env.clone(),
-                }));
-                clos = Closure { body: *t1, env };
-            }
-            // isZero
-            Closure {
-                body: Term::IsZero(t1),
-                env,
-            } => {
-                stack.push_cont(Continuation::IsZero());
-                clos = Closure { body: *t1, env };
-            }
-            // isNum
-            Closure {
-                body: Term::IsNum(t1),
-                env,
-            } => {
-                stack.push_cont(Continuation::IsNum());
-                clos = Closure { body: *t1, env };
-            }
-            // isBool
-            Closure {
-                body: Term::IsBool(t1),
-                env,
-            } => {
-                stack.push_cont(Continuation::IsBool());
-                clos = Closure { body: *t1, env };
-            }
-            // isFun
-            Closure {
-                body: Term::IsFun(t1),
-                env,
-            } => {
-                stack.push_cont(Continuation::IsFun());
-                clos = Closure { body: *t1, env };
+                stack.push_op_cont(OperationCont::Op2First(
+                    op,
+                    Closure {
+                        body: *snd,
+                        env: env.clone(),
+                    },
+                ));
+                clos = Closure { body: *fst, env };
             }
             // Blame
             Closure {
@@ -158,14 +129,14 @@ pub fn eval(t0: Term) -> Result<Term, EvalError> {
                     }
                 }
             }
-            // Continuate
+            // Continuate Operation
             _ if 0 < stack.count_conts() => {
-                if let Err(s) = continuate(
-                    stack.pop_cont().expect("Condition already checked"),
+                if let Err(s) = continuate_operation(
+                    stack.pop_op_cont().expect("Condition already checked"),
                     &mut clos,
                     &mut stack,
                 ) {
-                    // A continuation can only raise an error if it's wrongly applied
+                    // An operation can only raise an error if it's wrongly applied
                     // ... at least how the current implementation goes
                     return Err(EvalError::TypeError(s));
                 }
@@ -204,6 +175,7 @@ pub fn eval(t0: Term) -> Result<Term, EvalError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use operation::{BinaryOp, UnaryOp};
 
     fn app(t0: Term, t1: Term) -> Term {
         Term::App(Box::new(t0), Box::new(t1))
@@ -218,11 +190,11 @@ mod tests {
     }
 
     fn ite(c: Term, t: Term, e: Term) -> Term {
-        Term::Ite(Box::new(c), Box::new(t), Box::new(e))
+        app(app(Term::Op1(UnaryOp::Ite(), Box::new(c)), t), e)
     }
 
     fn plus(t0: Term, t1: Term) -> Term {
-        Term::Plus(Box::new(t0), Box::new(t1))
+        Term::Op2(BinaryOp::Plus(), Box::new(t0), Box::new(t1))
     }
 
     #[test]
@@ -242,17 +214,14 @@ mod tests {
 
     #[test]
     fn blame_panics() {
+        let label = Label {
+            tag: "testing".to_string(),
+            l: 0,
+            r: 1,
+        };
         assert_eq!(
-            Err(EvalError::BlameError(Label {
-                tag: "testing".to_string(),
-                l: 0,
-                r: 1,
-            })),
-            eval(Term::Blame(Box::new(Term::Lbl(Label {
-                tag: "testing".to_string(),
-                l: 0,
-                r: 1,
-            }))))
+            Err(EvalError::BlameError(label.clone())),
+            eval(Term::Blame(Box::new(Term::Lbl(label))))
         );
     }
 
@@ -295,23 +264,26 @@ mod tests {
 
     #[test]
     fn simple_is_zero() {
-        let t = Term::IsZero(Box::new(Term::Num(7.0)));
+        let t = Term::Op1(UnaryOp::IsZero(), Box::new(Term::Num(7.0)));
 
         assert_eq!(Ok(Term::Bool(false)), eval(t));
     }
 
     #[test]
     fn asking_for_various_types() {
-        let num = Term::IsNum(Box::new(Term::Num(45.3)));
+        let num = Term::Op1(UnaryOp::IsNum(), Box::new(Term::Num(45.3)));
         assert_eq!(Ok(Term::Bool(true)), eval(num));
 
-        let boolean = Term::IsBool(Box::new(Term::Bool(true)));
+        let boolean = Term::Op1(UnaryOp::IsBool(), Box::new(Term::Bool(true)));
         assert_eq!(Ok(Term::Bool(true)), eval(boolean));
 
-        let lambda = Term::IsFun(Box::new(Term::Fun(
-            vec![Ident("x".to_string()), Ident("y".to_string())],
-            Box::new(app(var("y"), var("x"))),
-        )));
+        let lambda = Term::Op1(
+            UnaryOp::IsFun(),
+            Box::new(Term::Fun(
+                vec![Ident("x".to_string()), Ident("y".to_string())],
+                Box::new(app(var("y"), var("x"))),
+            )),
+        );
         assert_eq!(Ok(Term::Bool(true)), eval(lambda));
     }
 }

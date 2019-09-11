@@ -1,5 +1,5 @@
-use continuation::Continuation;
 use eval::Closure;
+use operation::OperationCont;
 use std::cell::RefCell;
 use std::rc::Weak;
 
@@ -7,7 +7,7 @@ use std::rc::Weak;
 pub enum Marker {
     Arg(Closure),
     Thunk(Weak<RefCell<Closure>>),
-    Cont(Continuation),
+    Cont(OperationCont),
 }
 
 impl Marker {
@@ -89,7 +89,7 @@ impl Stack {
         self.0.push(Marker::Thunk(thunk))
     }
 
-    pub fn push_cont(&mut self, cont: Continuation) {
+    pub fn push_op_cont(&mut self, cont: OperationCont) {
         self.0.push(Marker::Cont(cont))
     }
 
@@ -115,7 +115,7 @@ impl Stack {
         }
     }
 
-    pub fn pop_cont(&mut self) -> Option<Continuation> {
+    pub fn pop_op_cont(&mut self) -> Option<OperationCont> {
         match self.0.pop() {
             Some(Marker::Cont(cont)) => Some(cont),
             Some(m) => {
@@ -130,19 +130,16 @@ impl Stack {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
+    use operation::UnaryOp;
     use std::rc::Rc;
     use term::Term;
 
     fn some_closure() -> Closure {
-        Closure {
-            body: Term::Bool(true),
-            env: HashMap::new(),
-        }
+        Closure::atomic_closure(Term::Bool(true))
     }
 
-    fn some_cont() -> Continuation {
-        Continuation::Plus1(4.5)
+    fn some_cont() -> OperationCont {
+        OperationCont::Op1(UnaryOp::IsZero())
     }
 
     fn some_arg_marker() -> Marker {
@@ -194,10 +191,10 @@ mod tests {
         let mut s = Stack::new();
         assert_eq!(0, s.count_conts());
 
-        s.push_cont(some_cont());
-        s.push_cont(some_cont());
+        s.push_op_cont(some_cont());
+        s.push_op_cont(some_cont());
         assert_eq!(2, s.count_conts());
-        assert_eq!(some_cont(), s.pop_cont().expect("Already checked"));
+        assert_eq!(some_cont(), s.pop_op_cont().expect("Already checked"));
         assert_eq!(1, s.count_conts());
     }
 

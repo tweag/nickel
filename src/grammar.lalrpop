@@ -2,6 +2,7 @@ use identifier::Ident;
 use std::str::FromStr;
 use term::Term;
 use label::Label;
+use operation::{UnaryOp, BinaryOp};
 
 grammar;
 
@@ -11,13 +12,10 @@ pub Term = {
     "let" <id:Ident> "=" <t1:Term> "in" <t2:Term> =>
         Term::Let(id, Box::new(t1), Box::new(t2)),
     "if" <b:Term> "then" <t:Term> "else" <e:Term> =>
-        Term::Ite(Box::new(b), Box::new(t), Box::new(e)),
+        Term::App(Box::new(Term::App(Box::new(Term::Op1(UnaryOp::Ite(), Box::new(b))), Box::new(t))), Box::new(e)),
     // TODO make infix
-    "+" <t1:Atom> <t2:Atom> => Term::Plus(Box::new(t1), Box::new(t2)),
-    "isZero" <Atom> => Term::IsZero(Box::new(<>)),
-    "isNum" <Atom> => Term::IsNum(Box::new(<>)),
-    "isBool" <Atom> => Term::IsBool(Box::new(<>)),
-    "isFun" <Atom> => Term::IsFun(Box::new(<>)),
+    <op: BOp> <t1:Atom> <t2:Atom> => Term::Op2(op, Box::new(t1), Box::new(t2)),
+    <op: UOp> <t: Atom> => Term::Op1(op, Box::new(t)),
     "blame" <lab:Term> => Term::Blame(Box::new(lab)),
     Applicative,
 };
@@ -25,7 +23,7 @@ pub Term = {
 Atom: Term = {
     "(" <Term> ")",
     // label syntax is used only for debugging for now, will be deprecated
-    <l:@L> "label[" <s:Str> "]" <r:@R> => Term::Lbl(Label{tag: s, l: l, r: r}),
+    <l:@L> "label[" <s:DbgStr> "]" <r:@R> => Term::Lbl(Label{tag: s, l: l, r: r}),
     Num => Term::Num(<>),
     Bool => Term::Bool(<>),
     Ident => Term::Var(<>),
@@ -49,5 +47,16 @@ Bool: bool = {
     "false" => false,
 };
 
-Str: String = r"[[:alpha:]_][[:word:]-]*" => <>.to_string();
+UOp: UnaryOp = {
+    "isZero" => UnaryOp::IsZero(),
+    "isNum" => UnaryOp::IsNum(),
+    "isBool" => UnaryOp::IsBool(),
+    "isFun" => UnaryOp::IsFun(),
+};
+
+BOp: BinaryOp = {
+    "+" => BinaryOp::Plus(),
+};
+
+DbgStr: String = r"[[:alpha:]_][[:word:]-]*" => <>.to_string();
 
