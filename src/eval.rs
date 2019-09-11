@@ -110,6 +110,22 @@ pub fn eval(t0: Term) -> Result<Term, EvalError> {
                 ));
                 clos = Closure { body: *fst, env };
             }
+            // Promise and Assume
+            Closure {
+                body: Term::Promise(c, l, t),
+                env,
+            }
+            | Closure {
+                body: Term::Assume(c, l, t),
+                env,
+            } => {
+                stack.push_arg(Closure {
+                    body: *t,
+                    env: env.clone(),
+                });
+                stack.push_arg(Closure::atomic_closure(Term::Lbl(l)));
+                clos = Closure { body: *c, env };
+            }
             // Update
             _ if 0 < stack.count_thunks() => {
                 while let Some(thunk) = stack.pop_thunk() {

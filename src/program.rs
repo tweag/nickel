@@ -192,11 +192,11 @@ g true",
     #[test]
     fn type_contracts() {
         let res = eval_string(
-            "let num = fun l => fun t => if isNum t then t else l in
-let func = fun s => fun t => fun l => fun e => if isFun e then (fun x => t l (e (s l x))) else l in
+            "let num = fun l => fun t => if isNum t then t else blame l in
+let func = fun s => fun t => fun l => fun e => if isFun e then (fun x => t l (e (s l x))) else blame l in
 
-let safePlus = func num (func num num) (blame label[plus]) (fun x => fun y => + x y) in
-safePlus (num (blame label[num]) 54) (num (blame label[num]) 6)",
+let safePlus = Promise(func num (func num num), fun x => fun y => + x y) in
+safePlus Promise(num, 54) Promise(num, 6)",
         );
 
         assert_eq!(Ok(Term::Num(60.)), res);
@@ -206,21 +206,35 @@ safePlus (num (blame label[num]) 54) (num (blame label[num]) 6)",
     fn fibonacci() {
         let res = eval_string(
             "let dyn = fun l => fun t => t in
-let num = fun l => fun t => if isNum t then t else l in
-let bool = fun l => fun t => if isBool t then t else  l in
-let func = fun s => fun t => fun l => fun e => if isFun e then (fun x => t l (e (s l x))) else l in
+let num = fun l => fun t => if isNum t then t else blame l in
+let bool = fun l => fun t => if isBool t then t else blame l in
+let func = fun s => fun t => fun l => fun e => if isFun e then (fun x => t l (e (s l x))) else blame l in
 
 let Y = (fun f => (fun x => f (x x)) (fun x => f (x x))) in
-let dec = func num num (blame label[dec]) (fun x => + x (-1)) in
-let or = func bool (func bool bool) (blame label[or]) (fun x => fun y => if x then x else y) in
+let dec = Promise(func num num, fun x => + x (-1)) in
+let or = Promise(func bool (func bool bool), fun x => fun y => if x then x else y) in
 
-let fibo = func num num (blame label[fibo]) (Y (fun fibo =>  
+let fibo = Promise(func num num, Y (fun fibo =>
     (fun x => if or (isZero x) (isZero (dec x)) then 1 else + (fibo (dec x)) (fibo (dec (dec x)))))) in
-let val = num (blame label[num_value]) 4 in
+let val = Promise(num, 4) in
 fibo val",
         );
 
         assert_eq!(Ok(Term::Num(5.)), res);
+    }
+
+    #[test]
+    fn promise_fail() {
+        let res = eval_string(
+            "let bool = fun l => fun t => if isBool t then t else blame l in
+
+Promise(bool, 5)
+            ",
+        );
+
+        if let Ok(_) = res {
+            panic!("This expression should return an error!.");
+        }
     }
 
 }

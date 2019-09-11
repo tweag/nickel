@@ -16,4 +16,7 @@ pub enum Term {
     // Primitives
     Op1(UnaryOp, Box<Term>),
     Op2(BinaryOp, Box<Term>, Box<Term>),
+    // Typing
+    Promise(Box<Term>, Label, Box<Term>),
+    Assume(Box<Term>, Label, Box<Term>),
 }

@@ -6,8 +6,8 @@ let func = fun s => fun t => fun l => fun e => if isFun e then (fun x => t l (e 
 
 let const = fun x => fun y => x in
 let safeAppTwice = fun f => fun y => f (f y) in
-let ma = (func (func num num) (func dyn num) label[safeAppTwice] safeAppTwice) 
-         ((func dyn (func dyn dyn) label[const] const) (bool label[n1] 1)) 
-         (bool label[ltrue] true) 
+let ma = Promise(func (func num num) (func dyn num), safeAppTwice) 
+         (Promise(func dyn (func dyn dyn), const) Promise(bool, 1)) 
+         Promise(bool, true) 
          in 
-dyn label[ma] ma
+Promise(dyn, ma)

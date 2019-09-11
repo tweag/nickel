@@ -21,8 +21,10 @@ pub Term = {
 
 Atom: Term = {
     "(" <Term> ")",
-    // label syntax is used only for debugging for now, will be deprecated
-    <l:@L> "label[" <s:DbgStr> "]" <r:@R> => Term::Lbl(Label{tag: s, l: l, r: r}),
+    <l:@L> "Promise(" <c: Term> "," <t: Term> ")" <r:@R> =>
+        Term::Promise(Box::new(c), Label{tag: "A promise".to_string(), l: l, r: r}, Box::new(t)),
+    <l:@L> "Assume(" <c: Term> "," <t: Term> ")" <r:@R> =>
+        Term::Assume(Box::new(c), Label{tag: "An assume".to_string(), l: l, r: r}, Box::new(t)), 
     Num => Term::Num(<>),
     Bool => Term::Bool(<>),
     Ident => Term::Var(<>),
@@ -58,5 +60,4 @@ BOp: BinaryOp = {
     "+" => BinaryOp::Plus(),
 };
 
-DbgStr: String = r"[[:alpha:]_][[:word:]-]*" => <>.to_string();
 
