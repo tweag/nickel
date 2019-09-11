@@ -110,17 +110,6 @@ pub fn eval(t0: Term) -> Result<Term, EvalError> {
                 ));
                 clos = Closure { body: *fst, env };
             }
-            // Blame
-            Closure {
-                body: Term::Blame(t),
-                env: _,
-            } => {
-                if let Term::Lbl(l) = *t {
-                    return Err(EvalError::BlameError(l));
-                } else {
-                    panic!("I still don't know how to properly treat a label");
-                }
-            }
             // Update
             _ if 0 < stack.count_thunks() => {
                 while let Some(thunk) = stack.pop_thunk() {
@@ -131,15 +120,11 @@ pub fn eval(t0: Term) -> Result<Term, EvalError> {
             }
             // Continuate Operation
             _ if 0 < stack.count_conts() => {
-                if let Err(s) = continuate_operation(
+                continuate_operation(
                     stack.pop_op_cont().expect("Condition already checked"),
                     &mut clos,
                     &mut stack,
-                ) {
-                    // An operation can only raise an error if it's wrongly applied
-                    // ... at least how the current implementation goes
-                    return Err(EvalError::TypeError(s));
-                }
+                )?;
             }
             // Call
             Closure {
@@ -221,7 +206,7 @@ mod tests {
         };
         assert_eq!(
             Err(EvalError::BlameError(label.clone())),
-            eval(Term::Blame(Box::new(Term::Lbl(label))))
+            eval(Term::Op1(UnaryOp::Blame(), Box::new(Term::Lbl(label))))
         );
     }
 

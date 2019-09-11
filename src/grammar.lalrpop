@@ -16,7 +16,6 @@ pub Term = {
     // TODO make infix
     <op: BOp> <t1:Atom> <t2:Atom> => Term::Op2(op, Box::new(t1), Box::new(t2)),
     <op: UOp> <t: Atom> => Term::Op1(op, Box::new(t)),
-    "blame" <lab:Term> => Term::Blame(Box::new(lab)),
     Applicative,
 };
 
@@ -52,6 +51,7 @@ UOp: UnaryOp = {
     "isNum" => UnaryOp::IsNum(),
     "isBool" => UnaryOp::IsBool(),
     "isFun" => UnaryOp::IsFun(),
+    "blame" => UnaryOp::Blame(),
 };
 
 BOp: BinaryOp = {
