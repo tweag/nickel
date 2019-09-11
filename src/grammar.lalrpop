@@ -1,5 +1,6 @@
 use identifier::Ident;
 use std::str::FromStr;
+use types::Types;
 use term::Term;
 use label::Label;
 use operation::{UnaryOp, BinaryOp};
@@ -7,8 +8,8 @@ use operation::{UnaryOp, BinaryOp};
 grammar;
 
 pub Term = {
-    "fun" <ps:Pattern+> "=>" <t:Term> =>
-        Term::Fun(ps, Box::new(t)),
+    "fun" <p:Pattern> "=>" <t:Term> =>
+        Term::Fun(p, Box::new(t)),
     "let" <id:Ident> "=" <t1:Term> "in" <t2:Term> =>
         Term::Let(id, Box::new(t1), Box::new(t2)),
     "if" <b:Term> "then" <t:Term> "else" <e:Term> =>
@@ -29,10 +30,10 @@ Applicative: Term = {
 
 Atom: Term = {
     "(" <Term> ")",
-    <l:@L> "Promise(" <c: Term> "," <t: Term> ")" <r:@R> =>
-        Term::Promise(Box::new(c), Label{tag: "A promise".to_string(), l: l, r: r}, Box::new(t)),
-    <l:@L> "Assume(" <c: Term> "," <t: Term> ")" <r:@R> =>
-        Term::Assume(Box::new(c), Label{tag: "An assume".to_string(), l: l, r: r}, Box::new(t)), 
+    <l:@L> "Promise(" <ty: Types> "," <t: Term> ")" <r:@R> =>
+        Term::Promise(ty, Label{tag: "A promise".to_string(), l: l, r: r}, Box::new(t)),
+    <l:@L> "Assume(" <ty: Types> "," <t: Term> ")" <r:@R> =>
+        Term::Assume(ty, Label{tag: "An assume".to_string(), l: l, r: r}, Box::new(t)), 
     Num => Term::Num(<>),
     Bool => Term::Bool(<>),
     Ident => Term::Var(<>),
@@ -63,4 +64,14 @@ BOp: BinaryOp = {
     "+" => BinaryOp::Plus(),
 };
 
+Types: Types = {
+    <s: subType> "->" <t:Types> => Types::Arrow(Box::new(s), Box::new(t)),
+    <subType>,
+};
 
+subType : Types = {
+    "Dyn" => Types::Dyn(),
+    "Num" => Types::Num(),
+    "Bool" => Types::Bool(),
+    "(" <Types> ")" => <>,
+};

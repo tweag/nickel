@@ -112,11 +112,11 @@ pub fn eval(t0: Term) -> Result<Term, EvalError> {
             }
             // Promise and Assume
             Closure {
-                body: Term::Promise(c, l, t),
+                body: Term::Promise(ty, l, t),
                 env,
             }
             | Closure {
-                body: Term::Assume(c, l, t),
+                body: Term::Assume(ty, l, t),
                 env,
             } => {
                 stack.push_arg(Closure {
@@ -124,7 +124,10 @@ pub fn eval(t0: Term) -> Result<Term, EvalError> {
                     env: env.clone(),
                 });
                 stack.push_arg(Closure::atomic_closure(Term::Lbl(l)));
-                clos = Closure { body: *c, env };
+                clos = Closure {
+                    body: ty.contract(),
+                    env,
+                };
             }
             // Update
             _ if 0 < stack.count_thunks() => {
@@ -144,21 +147,19 @@ pub fn eval(t0: Term) -> Result<Term, EvalError> {
             }
             // Call
             Closure {
-                body: Term::Fun(mut xs, t),
+                body: Term::Fun(x, t),
                 mut env,
             } => {
-                if xs.len() <= stack.count_args() {
-                    let args = &mut stack;
-                    for x in xs.drain(..).rev() {
-                        let arg = args.pop_arg().expect("Condition already checked.");
-                        let thunk = Rc::new(RefCell::new(arg));
-                        env.insert(x, thunk);
-                    }
-                    clos = Closure { body: *t, env: env }
+                if 0 < stack.count_args() {
+                    let thunk = Rc::new(RefCell::new(
+                        stack.pop_arg().expect("Condition already checked."),
+                    ));
+                    env.insert(x, thunk);
+                    clos = Closure { body: *t, env }
                 } else {
                     clos = Closure {
-                        body: Term::Fun(xs, t),
-                        env: env,
+                        body: Term::Fun(x, t),
+                        env,
                     };
                     break;
                 }
@@ -206,10 +207,7 @@ mod tests {
         let boolean = Term::Bool(true);
         assert_eq!(Ok(boolean.clone()), eval(boolean));
 
-        let lambda = Term::Fun(
-            vec![Ident("x".to_string()), Ident("y".to_string())],
-            Box::new(app(var("y"), var("x"))),
-        );
+        let lambda = Term::Fun(Ident("x".to_string()), Box::new(app(var("x"), var("x"))));
         assert_eq!(Ok(lambda.clone()), eval(lambda));
     }
 
@@ -235,7 +233,7 @@ mod tests {
     #[test]
     fn simple_app() {
         let t = app(
-            Term::Fun(vec![Ident("x".to_string())], Box::new(var("x"))),
+            Term::Fun(Ident("x".to_string()), Box::new(var("x"))),
             Term::Num(5.0),
         );
 
@@ -281,8 +279,8 @@ mod tests {
         let lambda = Term::Op1(
             UnaryOp::IsFun(),
             Box::new(Term::Fun(
-                vec![Ident("x".to_string()), Ident("y".to_string())],
-                Box::new(app(var("y"), var("x"))),
+                Ident("x".to_string()),
+                Box::new(app(var("x"), var("x"))),
             )),
         );
         assert_eq!(Ok(Term::Bool(true)), eval(lambda));
