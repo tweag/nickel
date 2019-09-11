@@ -1,0 +1,12 @@
+%use "ast".
+%use "syntax".
+%use "eval".
+%use "typecheck".
+
+interpreter : string -> string -> string -> prop.
+interpreter S S' STy :-
+  either (isocast S (E: expr)) (log_error S `Parse error in Nickel program`),
+  either (typecheck E T) (and (log_error E `Could not typecheck`) (failure)),
+  eval E V,
+  isocast T (STy: string),
+  isocast V (S': string).

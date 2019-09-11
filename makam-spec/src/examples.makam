@@ -1,0 +1,71 @@
+
+print "Simple example without let" ?
+
+interpreter "
+(fun x => x + x) 3
+" V T ?
+
+print "Promises are check before running, assumes after" ?
+
+interpreter "
+let ( id = fun t => t ) in
+
+Promise(Num,
+Ifte( ( Promise(Bool -> Bool, id) ) true, 3, Promise(Num, true))
+)
+" V T ?
+
+interpreter "
+let ( id = fun t => t ) in
+
+Promise(Num,
+Ifte( ( Promise(Bool -> Bool, id) ) true, 3, Assume(Num, true))
+)
+" V T ?
+
+interpreter "
+let ( id = fun t => t ) in
+
+Promise(Num,
+Ifte( ( Promise(Bool -> Bool, id) ) false, 3, Assume(Num, true))
+)
+" V T ?
+
+interpreter "
+let ( id = fun t => t ) in
+
+Promise(Num,
+Ifte( ( Promise(Bool -> Bool, id) ) false, 3, Assume(Num, 5))
+)
+" V T ?
+
+
+print " We don't have let polymorphism (any) " ?
+
+interpreter "
+let (id = fun x => x) in
+Ifte(true, Promise(Num, id 3), Promise(Bool, id true))
+" V T ?
+
+interpreter "
+let (id = fun x => x) in
+Ifte(true, Promise(Num, id 3), Assume(Bool, id true))
+" V T ?
+
+interpreter "
+let (id = fun x => x) in
+Ifte(false, Promise(Num, id 3), Assume(Bool, id true))
+" V T ?
+
+print "This is bad because order matters!!" ?
+interpreter "
+let (id = fun x => x) in
+Ifte(true, Assume(Bool, id true), Promise(Num, id 3))
+" V T ?
+
+print "We can still use Assume(...)s" ?
+
+interpreter "
+let (id = fun x => x) in
+Ifte(true, Promise( Num , id 3), Promise( Bool, Assume( Bool -> Bool , id ) true))
+" V T ?

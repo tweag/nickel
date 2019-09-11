@@ -3,3 +3,6 @@
 
 # rustfmt Backup file
 **/*.rs.bk
+
+# Makam cache
+.makam-cache/

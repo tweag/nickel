@@ -1,0 +1,108 @@
+%use "ast".
+
+%open syntax.
+
+expr_, baseexpr : syntax expr.
+expr_concrete : syntax (concrete expr).
+id : syntax (concrete.name expr).
+def : syntax (concrete.name expr * expr).
+binop, binopC : syntax binop.
+unop, unopC : syntax unop.
+typ, baseTyp: syntax typ.
+
+exprvar : concrete.namespace expr.
+
+clet : (concrete.name expr * expr) -> expr -> expr.
+
+token_ARROW : syntax unit.
+token_FATARROW : syntax unit.
+token_PROD : syntax unit.
+
+`( syntax_rules {{
+
+token_ARROW -> { <token "→"> } / { <token "->"> }
+token_FATARROW -> { <token "⇒"> } / { <token "=>"> }
+token_PROD -> { <token "×"> } / { <token "*"> }
+
+binop ->
+        (fun u => add) { <token "+"> }
+      / (fun u => sub) { <token "-"> }
+      / (fun u => mul) { <token "*"> }
+
+unop ->
+        blame { "blame" }
+      / isNum { "isNum" }
+      / isBool { "isBool" }
+      / isStr { "isStr" }
+      / isFun { "isFun" }
+
+}} ).
+
+`( syntax.def_js binopC binop ).
+`( syntax.def_js unopC unop ).
+
+`( syntax_rules {{
+
+expr_concrete -> concrete { <expr_> }
+
+expr_ -> ite 
+        { "Ifte(" <expr_> "," <expr_> "," <expr_> ")" }
+      / (fun id => fun body => lam (concrete.bindone id body))
+        { "fun" <id> token_FATARROW <expr_> }
+      / clet
+        { "let" <def> "in" <expr_> }
+      / ebinop
+        { <baseexpr> <binopC> <baseexpr> }
+      / eunop
+        { <unopC> <baseexpr> }
+      / app
+        { <baseexpr>  <expr_> }
+      / { <baseexpr> }
+
+baseexpr ->
+        promise
+        { "Promise(" <typ> "," <expr_> ")"}
+      / fun ty => assume ty (label "Assume")
+        { "Assume(" <typ> "," <expr_> ")"}
+      / ebool true { "true" }
+      / ebool false { "false" }
+      / estr { <makam.string_literal> }
+      / concrete.var
+        { <id> }
+      / eint
+        { <makam.int_literal> }
+      / { "(" <expr_> ")" }
+
+def -> tuple
+        { "(" <id> "=" <expr_> ")" }
+
+id -> concrete.name exprvar
+        { <makam.ident> }
+
+baseTyp ->  
+        tnum 
+        { "Num" }
+      / tbool
+        { "Bool" }
+      / tdyn
+        { "Dyn" }
+      / tstr
+        { "String" }
+      / { "(" <typ> ")" }
+
+typ ->  tarrow
+        { <baseTyp> "->" <typ> }
+      / { <baseTyp> }
+
+}} ).
+
+`( syntax.def_toplevel_js expr_concrete ).
+`( syntax.def_toplevel_js typ ).
+
+concrete.pick_namespace_userdef (_: expr) exprvar.
+
+concrete.handle_unresolved_name (concrete.name exprvar ID) (named ID).
+
+concrete.resolve_conversion
+    (clet (Name, Def) Body)
+    (let Def (concrete.bindone Name Body)).

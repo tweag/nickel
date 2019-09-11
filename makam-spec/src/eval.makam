@@ -1,0 +1,72 @@
+%use "ast".
+
+eval : expr -> expr -> prop.
+
+(* Lambda constructs *)
+eval (let E X_Body) V :-
+  bindone.apply X_Body E Body',
+  eval Body' V.
+
+eval (lam X_Body) (lam X_Body).
+
+eval (app E1 E2) V :-   (* Beta *)
+  eval E1 (lam X_Body),
+  bindone.apply X_Body E2 E',
+  eval E' V.
+
+(* Constants *)
+eval (eint N) (eint N).
+eval (ebool B) (ebool B).
+eval (estr S) (estr S).
+eval (label S) (label S).
+
+(* Operations *)
+eval (ite C T E) V :-
+  eval C (ebool true),
+  eval T V.
+eval (ite C T E) V :-
+  eval C (ebool false),
+  eval E V.
+
+eval_binop : binop -> expr -> expr -> expr -> prop.
+
+eval (ebinop E1 Op E2) V :-
+  map eval [E1, E2] [V1, V2],
+  eval_binop Op V1 V2 V.
+
+eval_binop add (eint N1) (eint N2) (eint N) :- plus N1 N2 N.
+eval_binop sub (eint N1) (eint N2) (eint N) :- plus N2 N N1, if (lessthan N 0 true) then (log_error _ `no negatives allowed`, failure) else success.
+eval_binop mul (eint N1) (eint N2) (eint N) :- mult N1 N2 N.
+
+eval_unop : unop -> expr -> expr -> prop.
+
+eval (eunop Op E) V :-
+  eval E E',
+  eval_unop Op E' V.
+
+eval_unop blame (label S) _ :- 
+  log_error S `Reached a blame with label ${S}`,
+  failure.
+
+eval_unop isNum (eint _) (ebool true).
+eval_unop isBool (ebool _) (ebool true).
+eval_unop isStr (estr _) (ebool true).
+eval_unop isFun (lam _) (ebool true).
+
+eval_unop isNum V (ebool false) :- not (eq V (eint _)).
+eval_unop isBool V (ebool false) :- not (eq V (ebool _)).
+eval_unop isStr V (ebool false) :- not (eq V (estr _)).
+eval_unop isFun V (ebool false) :- not (eq V (lam _)).
+
+(* Typing *)
+(* Promises don't perform any computation *)
+eval (promise _ T) V :-
+  eval T V.
+
+eval (assume Ty L T) V :-
+  contract Ty CTy,
+  eval (app (app CTy L) T) V.
+
+
+(* Variables *)
+eval (named X) _ :- log_error X `unknown variable ${X}`, failure.

@@ -1,0 +1,70 @@
+expr : type.
+typ : type.
+
+(* Lambda constructs *)
+let : expr -> bindone expr expr -> expr.
+lam : bindone expr expr -> expr.
+app : expr -> expr -> expr.
+
+(* Constants *)
+eint : int -> expr.
+ebool : bool -> expr.
+estr : string -> expr.
+
+(* Operations *)
+ite : expr -> expr -> expr -> expr.
+
+unop : type.
+eunop : unop -> expr -> expr.
+blame : unop.
+isNum : unop.
+isBool : unop.
+isStr : unop.
+isFun : unop.
+
+binop : type.
+ebinop : expr -> binop -> expr -> expr.
+add : binop.
+sub : binop.
+mul : binop.
+
+(* Typing *)
+promise : typ -> expr -> expr.
+assume : typ -> expr -> expr -> expr.
+
+(* Blaming *)
+label : string -> expr.
+
+(* Variables *)
+named : string -> expr.
+
+(* Types *)
+tdyn : typ.
+tnum : typ.
+tbool : typ.
+tstr : typ.
+tarrow : typ -> typ -> typ.
+
+(* Get the contract of a given type *)
+contract : typ -> expr -> prop.
+contract tdyn (lam (bind _ (fun l => lam (bind _ 
+  (fun t => t))))).
+contract tnum (lam (bind _ (fun l => lam (bind _ 
+  (fun t => ite (eunop isNum t) t (eunop blame l)))))).
+contract tbool (lam (bind _ (fun l => lam (bind _ 
+  (fun t => ite (eunop isBool t) t (eunop blame l)))))).
+contract tstr (lam (bind _ (fun l => lam (bind _ 
+  (fun t => ite (eunop isStr t) t (eunop blame l)))))).
+contract (tarrow S T) (lam (bind _ (fun l => lam (bind _ 
+  (fun t => ite (eunop isFun t) (lam (bind _ (fun x => app (app Ct l) (app t (app (app Cs l) x))))) (eunop blame l)))))) :-
+    contract S Cs,
+    contract T Ct.
+
+(* Other *)
+
+find : string -> list (tuple string A) -> A -> prop.
+find S [] _ :- log_error S `Not found in record ${S}`, failure.
+find S ((S, E) :: _) E.
+find S ((S', _) :: TL) E :-
+  not (eq S S'),
+  find S TL E.
