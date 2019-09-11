@@ -149,7 +149,7 @@ mod tests {
 
     #[test]
     fn plus() {
-        let res = eval_string("+ 34 (if true then 2 else 222)");
+        let res = eval_string("34 + (if true then 2 else 222)");
 
         assert_eq!(Ok(Term::Num(36.0)), res);
     }
@@ -195,7 +195,7 @@ g true",
             "let num = fun l => fun t => if isNum t then t else blame l in
 let func = fun s => fun t => fun l => fun e => if isFun e then (fun x => t l (e (s l x))) else blame l in
 
-let safePlus = Promise(func num (func num num), fun x => fun y => + x y) in
+let safePlus = Promise(func num (func num num), fun x => fun y => x + y) in
 safePlus Promise(num, 54) Promise(num, 6)",
         );
 
@@ -211,11 +211,11 @@ let bool = fun l => fun t => if isBool t then t else blame l in
 let func = fun s => fun t => fun l => fun e => if isFun e then (fun x => t l (e (s l x))) else blame l in
 
 let Y = (fun f => (fun x => f (x x)) (fun x => f (x x))) in
-let dec = Promise(func num num, fun x => + x (-1)) in
+let dec = Promise(func num num, fun x => x + (-1)) in
 let or = Promise(func bool (func bool bool), fun x => fun y => if x then x else y) in
 
 let fibo = Promise(func num num, Y (fun fibo =>
-    (fun x => if or (isZero x) (isZero (dec x)) then 1 else + (fibo (dec x)) (fibo (dec (dec x)))))) in
+    (fun x => if or (isZero x) (isZero (dec x)) then 1 else (fibo (dec x)) + (fibo (dec (dec x)))))) in
 let val = Promise(num, 4) in
 fibo val",
         );

@@ -13,10 +13,18 @@ pub Term = {
         Term::Let(id, Box::new(t1), Box::new(t2)),
     "if" <b:Term> "then" <t:Term> "else" <e:Term> =>
         Term::App(Box::new(Term::App(Box::new(Term::Op1(UnaryOp::Ite(), Box::new(b))), Box::new(t))), Box::new(e)),
-    // TODO make infix
-    <op: BOp> <t1:Atom> <t2:Atom> => Term::Op2(op, Box::new(t1), Box::new(t2)),
-    <op: UOp> <t: Atom> => Term::Op1(op, Box::new(t)),
+    Operation    
+};
+
+Operation: Term = {
+    <t1: Applicative> <op: BOp> <t2: Operation> => Term::Op2(op, Box::new(t1), Box::new(t2)),
+    <op: UOp> <t: Operation> => Term::Op1(op, Box::new(t)),
     Applicative,
+};
+
+Applicative: Term = {
+    <t1:Applicative> <t2:Atom> => Term::App(Box::new(t1), Box::new(t2)),
+    Atom,
 };
 
 Atom: Term = {
@@ -28,16 +36,11 @@ Atom: Term = {
     Num => Term::Num(<>),
     Bool => Term::Bool(<>),
     Ident => Term::Var(<>),
-}
-
-Applicative: Term = {
-    Atom,
-    <t1:Applicative> <t2:Atom> => Term::App(Box::new(t1), Box::new(t2)),
-}
+};
 
 Pattern: Ident = {
     Ident,
-}
+};
 
 Ident: Ident = r"[[:alpha:]_][[:word:]-]*" => Ident(<>.to_string());
 
