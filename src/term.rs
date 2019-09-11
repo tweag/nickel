@@ -1,13 +1,14 @@
 use identifier::Ident;
 use label::Label;
 use operation::{BinaryOp, UnaryOp};
+use types::Types;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Term {
     // Values
     Bool(bool),
     Num(f64),
-    Fun(Vec<Ident>, Box<Term>),
+    Fun(Ident, Box<Term>),
     Lbl(Label),
     // Other lambda
     Let(Ident, Box<Term>, Box<Term>),
@@ -17,6 +18,6 @@ pub enum Term {
     Op1(UnaryOp, Box<Term>),
     Op2(BinaryOp, Box<Term>, Box<Term>),
     // Typing
-    Promise(Box<Term>, Label, Box<Term>),
-    Assume(Box<Term>, Label, Box<Term>),
+    Promise(Types, Label, Box<Term>),
+    Assume(Types, Label, Box<Term>),
 }

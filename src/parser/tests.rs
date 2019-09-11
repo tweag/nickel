@@ -82,14 +82,7 @@ fn functions() {
     let parser = super::grammar::TermParser::new();
     assert_eq!(
         parser.parse("fun x => x").unwrap(),
-        Fun(vec![Ident("x".into())], Box::new(Var(Ident("x".into())))),
-    );
-    assert_eq!(
-        parser.parse("fun x y => x").unwrap(),
-        Fun(
-            vec![Ident("x".into()), Ident("y".into())],
-            Box::new(Var(Ident("x".into())))
-        ),
+        Fun(Ident("x".into()), Box::new(Var(Ident("x".into())))),
     );
 }
 

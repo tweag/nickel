@@ -6,6 +6,7 @@ mod parser;
 mod program;
 mod stack;
 mod term;
+mod types;
 
 use program::Program;
 

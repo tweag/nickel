@@ -9,7 +9,7 @@ use term::Term;
 
 pub struct Program<T: Read> {
     src: T,
-    _prelude: bool,
+    include_contracts: bool,
     read: Option<String>,
     parsed: Option<Term>,
 }
@@ -31,7 +31,7 @@ impl<T: Read> Program<T> {
     pub fn new_from_source(s: T) -> Program<T> {
         Program {
             src: s,
-            _prelude: true,
+            include_contracts: true,
             read: None,
             parsed: None,
         }
@@ -40,22 +40,23 @@ impl<T: Read> Program<T> {
     pub fn eval(&mut self) -> Result<Term, String> {
         let t = self.parse()?;
         match eval(t) {
+            Ok(t) => Ok(t),
             Err(EvalError::BlameError(l)) => Err(self.process_blame(l)),
             Err(EvalError::TypeError(s)) => Err(s),
-            Ok(t) => Ok(t),
         }
     }
 
     fn parse(&mut self) -> Result<Term, String> {
         if let None = self.parsed {
-            let buf = self.read()?;
+            let mut buf = self.read()?;
+            if self.include_contracts {
+                // TODO get rid of this once we have imports
+                buf.insert_str(0, &Self::contracts());
+            }
             match parser::grammar::TermParser::new().parse(&buf) {
                 Ok(t) => self.parsed = Some(t),
                 Err(e) => {
-                    return Err(format!(
-                        "Reached the following error while parsing: '{}'",
-                        e
-                    ));
+                    return Err(format!("Reached the following error while parsing:\n{}", e));
                 }
             };
         }
@@ -104,7 +105,7 @@ impl<T: Read> Program<T> {
 
         let mut line = 1;
         let mut col = 1;
-        let mut so_far = 0;
+        let mut so_far = Self::contracts().len();
         for byte in buffer.bytes() {
             so_far = so_far + 1;
             col = col + 1;
@@ -118,6 +119,14 @@ impl<T: Read> Program<T> {
         }
 
         (line, col)
+    }
+
+    fn contracts() -> String {
+        "let dyn = fun l => fun t => t in
+let num = fun l => fun t => if isNum t then t else blame l in
+let bool = fun l => fun t => if isBool t then t else blame l in
+let func = fun s => fun t => fun l => fun e => if isFun e then (fun x => t l (e (s l x))) else blame l in
+".to_string()
     }
 }
 
@@ -142,7 +151,7 @@ mod tests {
 
     #[test]
     fn let_binding() {
-        let res = eval_string("let f = fun f y => f (f y) in f (fun h => h) 3");
+        let res = eval_string("let f = fun f => fun y => f (f y) in f (fun h => h) 3");
 
         assert_eq!(Ok(Term::Num(3.0)), res);
     }
@@ -192,11 +201,8 @@ g true",
     #[test]
     fn type_contracts() {
         let res = eval_string(
-            "let num = fun l => fun t => if isNum t then t else blame l in
-let func = fun s => fun t => fun l => fun e => if isFun e then (fun x => t l (e (s l x))) else blame l in
-
-let safePlus = Promise(func num (func num num), fun x => fun y => x + y) in
-safePlus Promise(num, 54) Promise(num, 6)",
+            "let safePlus = Promise(Num -> Num -> Num , fun x => fun y => x + y) in
+safePlus Promise(Num , 54) Promise(Num , 6)",
         );
 
         assert_eq!(Ok(Term::Num(60.)), res);
@@ -205,18 +211,13 @@ safePlus Promise(num, 54) Promise(num, 6)",
     #[test]
     fn fibonacci() {
         let res = eval_string(
-            "let dyn = fun l => fun t => t in
-let num = fun l => fun t => if isNum t then t else blame l in
-let bool = fun l => fun t => if isBool t then t else blame l in
-let func = fun s => fun t => fun l => fun e => if isFun e then (fun x => t l (e (s l x))) else blame l in
+            "let Y = (fun f => (fun x => f (x x)) (fun x => f (x x))) in
+let dec = Promise(Num -> Num, fun x => x + (-1)) in
+let or = Promise(Bool -> Bool -> Bool, fun x => fun y => if x then x else y) in
 
-let Y = (fun f => (fun x => f (x x)) (fun x => f (x x))) in
-let dec = Promise(func num num, fun x => x + (-1)) in
-let or = Promise(func bool (func bool bool), fun x => fun y => if x then x else y) in
-
-let fibo = Promise(func num num, Y (fun fibo =>
+let fibo = Promise(Num -> Num, Y (fun fibo =>
     (fun x => if or (isZero x) (isZero (dec x)) then 1 else (fibo (dec x)) + (fibo (dec (dec x)))))) in
-let val = Promise(num, 4) in
+let val = Promise(Num, 4) in
 fibo val",
         );
 
@@ -228,7 +229,7 @@ fibo val",
         let res = eval_string(
             "let bool = fun l => fun t => if isBool t then t else blame l in
 
-Promise(bool, 5)
+Promise(Bool, 5)
             ",
         );
 
