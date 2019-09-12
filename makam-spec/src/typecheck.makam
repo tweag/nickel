@@ -1,0 +1,78 @@
+%use "ast".
+
+typecheck : expr -> typ -> prop.
+
+typecheck (let E (bind _ B)) T :-
+    typecheck E T',
+    (x: expr ->
+        typecheck x T' ->
+        typecheck (B x) T 
+    ).
+
+typecheck (lam (bind _ B)) (tarrow S T) :-
+    (x: expr ->
+        typecheck x S ->
+        typecheck (B x) T 
+    ).
+
+typecheck (app A B) T :-
+    typecheck A (tarrow S T),
+    typecheck B S.
+typecheck (app A B) tdyn :-
+    typecheck A (tarrow S _),
+    typecheck B BTy,
+    not (eq S BTy).
+typecheck (app A B) tdyn :-
+    typecheck A ATy,
+    not (eq ATy (tarrow _ _)),
+    typecheck B _.
+
+typecheck (eint _) tnum.
+typecheck (ebool _) tbool.
+typecheck (estr _) tstr.
+
+typecheck (ite C T E) Ty :-
+    typecheck C tbool,
+    typecheck T Ty,
+    typecheck E Ty.
+typecheck (ite C T E) tdyn :-
+    typecheck C tbool,
+    typecheck T TTy,
+    typecheck E ETy,
+    not (eq TTy ETy).
+typecheck (ite C T E) tdyn :-
+    typecheck C CTy,
+    not (eq Cty tbool),
+    typecheck T _,
+    typecheck E _.
+
+typecheck (eunop blame _) _.
+    
+typecheck (eunop isNum _) tbool.
+typecheck (eunop isBool _) tbool.
+typecheck (eunop isFun _) tbool.
+
+typecheck (ebinop A _ B) tnum :-
+    typecheck A tnum,
+    typecheck B tnum.
+typecheck (ebinop A _ B) tdyn :-
+    typecheck A tnum,
+    typecheck B Bty,
+    not (eq Bty tnum).
+typecheck (ebinop A _ B) tdyn :-
+    typecheck A Aty,
+    not (eq Aty tnum),
+    typecheck B _.
+
+typecheck (promise Ty E) Ty :-
+    typecheck E Ty.
+typecheck (promise Ty E) _ :-
+    not (typecheck E Ty),
+    log_error Ty `Couldnt check Promise(...)`,
+    failure.
+
+(* The type of an Assume construct doesn't depend on the term *)
+typecheck (assume Ty _ E) Ty :- 
+    typecheck E _.
+
+typecheck (label _) tdyn.

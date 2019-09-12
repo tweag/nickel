@@ -1,0 +1,81 @@
+
+print "Simple example without let" ?
+
+print "Return 6" ?
+interpreter "
+(fun x => x + x) 3
+" V T ?
+
+print "Promises are check before running, assumes after" ?
+
+print "Typecheck fail" ?
+interpreter "
+let ( id = fun t => t ) in
+
+Promise(Num,
+Ifte( ( Promise(Bool -> Bool, id) ) true, 3, Promise(Num, true))
+)
+" V T ?
+
+print "Return 3" ?
+interpreter "
+let ( id = fun t => t ) in
+
+Promise(Num,
+Ifte( ( Promise(Bool -> Bool, id) ) true, 3, Assume(Num, true))
+)
+" V T ?
+
+print "Blame" ?
+interpreter "
+let ( id = fun t => t ) in
+
+Promise(Num,
+Ifte( ( Promise(Bool -> Bool, id) ) false, 3, Assume(Num, true))
+)
+" V T ?
+
+print "Return 5" ?
+interpreter "
+let ( id = fun t => t ) in
+
+Promise(Num,
+Ifte( ( Promise(Bool -> Bool, id) ) false, 3, Assume(Num, 5))
+)
+" V T ?
+
+print " We don't have let polymorphism (any) " ?
+
+print "Typecheck fail" ?
+interpreter "
+let (id = fun x => x) in
+Ifte(true, Promise(Num, id 3), Promise(Bool, id true))
+" V T ?
+
+print "Return 3" ?
+interpreter "
+let (id = fun x => x) in
+Ifte(true, Promise(Num, id 3), Assume(Bool, id true))
+" V T ?
+
+print "Return true" ?
+interpreter "
+let (id = fun x => x) in
+Ifte(false, Promise(Num, id 3), Assume(Bool, id true))
+" V T ?
+
+print "This is bad because order matters!!" ?
+
+print "Typecheck fail" ?
+interpreter "
+let (id = fun x => x) in
+Ifte(true, Assume(Bool, id true), Promise(Num, id 3))
+" V T ?
+
+print "We can still use Assume(...)s" ?
+
+print "Return 3" ?
+interpreter "
+let (id = fun x => x) in
+Ifte(true, Promise( Num , id 3), Promise( Bool, Assume( Bool -> Bool , id ) true))
+" V T ?

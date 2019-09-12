@@ -9,9 +9,8 @@ He distributes it through [NPM](https://www.npmjs.com/package/makam), and on the
 
 We use the `node2nix` helper, there's a [PR](https://github.com/NixOS/nixpkgs/pull/67703) to add it to nixpkgs, but for now this simple config should help.
 
-Just `nix-build -A makam` and have it on `result/bin/makam`
+Just `nix-build -A makam` and then `result/bin/makam ./src/init.makam -`. Or run `result/bin/makam src/init.makam src/examples.makam` to run the examples.
 
 ###### To update it
 
 Run `node2nix --nodejs-10 -c makam-composition.nix` on the `makam-spec` directory
-
