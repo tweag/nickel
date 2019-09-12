@@ -35,7 +35,7 @@ eval (ebinop E1 Op E2) V :-
   eval_binop Op V1 V2 V.
 
 eval_binop add (eint N1) (eint N2) (eint N) :- plus N1 N2 N.
-eval_binop sub (eint N1) (eint N2) (eint N) :- plus N2 N N1, if (lessthan N 0 true) then (log_error _ `no negatives allowed`, failure) else success.
+eval_binop sub (eint N1) (eint N2) (eint N) :- plus N2 N N1.
 eval_binop mul (eint N1) (eint N2) (eint N) :- mult N1 N2 N.
 
 eval_unop : unop -> expr -> expr -> prop.
