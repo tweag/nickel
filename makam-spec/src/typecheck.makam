@@ -2,11 +2,11 @@
 
 typecheck : expr -> typ -> prop.
 
-typecheck (let E (bind _ B)) T :-
-    typecheck E T',
+typecheck (let (bind _ E) (bind _ B)) T :-
     (x: expr ->
         typecheck x T' ->
-        typecheck (B x) T 
+        (typecheck (E x) T',
+            typecheck (B x) T) 
     ).
 
 typecheck (lam (bind _ B)) (tarrow S T) :-
