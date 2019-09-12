@@ -46,7 +46,8 @@ typecheck (ite C T E) tdyn :-
     typecheck T _,
     typecheck E _.
 
-typecheck (eunop blame _) _.
+typecheck (eunop blame L) _ :-
+    typecheck L tlbl.
     
 typecheck (eunop isNum _) tbool.
 typecheck (eunop isBool _) tbool.
@@ -64,15 +65,23 @@ typecheck (ebinop A _ B) tdyn :-
     not (eq Aty tnum),
     typecheck B _.
 
-typecheck (promise Ty E) Ty :-
+typecheck (promise (fromTyp Ty) E) Ty :-
     typecheck E Ty.
-typecheck (promise Ty E) _ :-
+typecheck (promise (fromTyp Ty) E) _ :-
     not (typecheck E Ty),
     log_error Ty `Couldnt check Promise(...)`,
     failure.
+typecheck (promise (fromExpr C) _) _ :-
+    log_error C `Still cant check not type Promise(...)`,
+    failure.
 
 (* The type of an Assume construct doesn't depend on the term *)
-typecheck (assume Ty _ E) Ty :- 
+typecheck (assume (fromTyp Ty) L E) Ty :- 
+    typecheck L tlbl,
+    typecheck E _.
+typecheck (assume (fromExpr Ctr) L E) _ :-
+    typecheck L tlbl,
+    typecheck Ctr (tarrow tlbl (tarrow S S)),
     typecheck E _.
 
-typecheck (label _) tdyn.
+typecheck (label _) tlbl.

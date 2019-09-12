@@ -9,6 +9,7 @@ def : syntax (concrete.name expr * expr).
 binop, binopC : syntax binop.
 unop, unopC : syntax unop.
 typ, baseTyp: syntax typ.
+contract : syntax contract.
 
 exprvar : concrete.namespace expr.
 
@@ -61,9 +62,9 @@ expr_ -> ite
 
 baseexpr ->
         promise
-        { "Promise(" <typ> "," <expr_> ")"}
-      / fun ty => assume ty (label "Assume")
-        { "Assume(" <typ> "," <expr_> ")"}
+        { "Promise(" <contract> "," <expr_> ")"}
+      / fun c => assume c (label "Assume")
+        { "Assume(" <contract> "," <expr_> ")"}
       / ebool true { "true" }
       / ebool false { "false" }
       / estr { <makam.string_literal> }
@@ -93,6 +94,9 @@ baseTyp ->
 typ ->  tarrow
         { <baseTyp> "->" <typ> }
       / { <baseTyp> }
+
+contract -> fromExpr { <expr_> }
+          / fromTyp { <typ> }
 
 }} ).
 
