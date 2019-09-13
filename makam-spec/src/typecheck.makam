@@ -1,12 +1,12 @@
 %use "ast".
 
 typecheck : expr -> typ -> prop.
+typecheckTypes : typ -> prop.
 
-typecheck (let E (bind _ B)) T :-
+typecheck (let E (bind Name B)) T :-
     typecheck E T',
-    (x: expr ->
-        typecheck x T' ->
-        typecheck (B x) T 
+    (typecheck (named Name) T' ->
+        typecheck (B (named Name)) T 
     ).
 
 typecheck (lam (bind _ B)) (tarrow S T) :-
@@ -46,7 +46,8 @@ typecheck (ite C T E) tdyn :-
     typecheck T _,
     typecheck E _.
 
-typecheck (eunop blame _) _.
+typecheck (eunop blame L) _ :-
+    typecheck L tlbl.
     
 typecheck (eunop isNum _) tbool.
 typecheck (eunop isBool _) tbool.
@@ -65,14 +66,27 @@ typecheck (ebinop A _ B) tdyn :-
     typecheck B _.
 
 typecheck (promise Ty E) Ty :-
+    typecheckTypes Ty,
     typecheck E Ty.
 typecheck (promise Ty E) _ :-
+    typecheckTypes Ty,
     not (typecheck E Ty),
     log_error Ty `Couldnt check Promise(...)`,
     failure.
 
 (* The type of an Assume construct doesn't depend on the term *)
-typecheck (assume Ty _ E) Ty :- 
+typecheck (assume Ty L E) Ty :- 
+    typecheckTypes Ty,
+    typecheck L tlbl,
     typecheck E _.
 
-typecheck (label _) tdyn.
+typecheck (label _) tlbl.
+
+typecheckTypes (tarrow S T) :- 
+    typecheckTypes S,
+    typecheckTypes T.
+typecheckTypes (fromExpr E) :-
+    typecheck E (tarrow tlbl (tarrow S S)).
+typecheckTypes T :- 
+    not (eq T (tarrow _ _)),
+    not (eq T (fromExpr _)).

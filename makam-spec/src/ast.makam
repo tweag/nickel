@@ -43,22 +43,25 @@ tdyn : typ.
 tnum : typ.
 tbool : typ.
 tstr : typ.
+tlbl : typ.
 tarrow : typ -> typ -> typ.
+fromExpr : expr -> typ.
 
-(* Get the contract of a given type *)
-contract : typ -> expr -> prop.
-contract tdyn (lam (bind _ (fun l => lam (bind _ 
+(* Get the expression contract of a given type *)
+typToExpr : typ -> expr -> prop.
+typToExpr tdyn (lam (bind _ (fun l => lam (bind _ 
   (fun t => t))))).
-contract tnum (lam (bind _ (fun l => lam (bind _ 
+typToExpr tnum (lam (bind _ (fun l => lam (bind _ 
   (fun t => ite (eunop isNum t) t (eunop blame l)))))).
-contract tbool (lam (bind _ (fun l => lam (bind _ 
+typToExpr tbool (lam (bind _ (fun l => lam (bind _ 
   (fun t => ite (eunop isBool t) t (eunop blame l)))))).
-contract tstr (lam (bind _ (fun l => lam (bind _ 
+typToExpr tstr (lam (bind _ (fun l => lam (bind _ 
   (fun t => ite (eunop isStr t) t (eunop blame l)))))).
-contract (tarrow S T) (lam (bind _ (fun l => lam (bind _ 
+typToExpr (tarrow S T) (lam (bind _ (fun l => lam (bind _ 
   (fun t => ite (eunop isFun t) (lam (bind _ (fun x => app (app Ct l) (app t (app (app Cs l) x))))) (eunop blame l)))))) :-
-    contract S Cs,
-    contract T Ct.
+    typToExpr S Cs,
+    typToExpr T Ct.
+typToExpr (fromExpr E) E.
 
 (* Other *)
 
