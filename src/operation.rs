@@ -1,4 +1,5 @@
 use eval::{Closure, EvalError};
+use label::TyPath;
 use stack::Stack;
 use term::Term;
 
@@ -17,6 +18,10 @@ pub enum UnaryOp {
     IsBool(),
     IsFun(),
     Blame(),
+    ChangePolarity(),
+    GoDom(),
+    GoCodom(),
+    Tag(String),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -129,6 +134,67 @@ fn process_unary_operation(
             } = *clos
             {
                 Err(EvalError::BlameError(l.clone()))
+            } else {
+                Err(EvalError::TypeError(format!(
+                    "Expected Label, got {:?}",
+                    clos.body
+                )))
+            }
+        }
+        UnaryOp::ChangePolarity() => {
+            if let Closure {
+                body: Term::Lbl(ref mut l),
+                env: _,
+            } = *clos
+            {
+                l.polarity = !l.polarity;
+                Ok(())
+            } else {
+                Err(EvalError::TypeError(format!(
+                    "Expected Label, got {:?}",
+                    clos.body
+                )))
+            }
+        }
+        UnaryOp::GoDom() => {
+            if let Closure {
+                body: Term::Lbl(ref mut l),
+                env: _,
+            } = *clos
+            {
+                l.path = TyPath::Domain(Box::new(l.path.clone()));
+                Ok(())
+            } else {
+                Err(EvalError::TypeError(format!(
+                    "Expected Label, got {:?}",
+                    clos.body
+                )))
+            }
+        }
+        UnaryOp::GoCodom() => {
+            if let Closure {
+                body: Term::Lbl(ref mut l),
+                env: _,
+            } = *clos
+            {
+                l.path = TyPath::Codomain(Box::new(l.path.clone()));
+                Ok(())
+            } else {
+                Err(EvalError::TypeError(format!(
+                    "Expected Label, got {:?}",
+                    clos.body
+                )))
+            }
+        }
+        UnaryOp::Tag(s) => {
+            if let Closure {
+                body: Term::Lbl(ref mut l),
+                env: _,
+            } = *clos
+            {
+                l.tag.push_str("\n");
+                l.tag.push_str(&s);
+                Ok(())
             } else {
                 Err(EvalError::TypeError(format!(
                     "Expected Label, got {:?}",

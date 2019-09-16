@@ -2,7 +2,7 @@ use identifier::Ident;
 use std::str::FromStr;
 use types::Types;
 use term::Term;
-use label::Label;
+use label::{Label, TyPath};
 use operation::{UnaryOp, BinaryOp};
 
 grammar;
@@ -31,9 +31,9 @@ Applicative: Term = {
 Atom: Term = {
     "(" <Term> ")",
     <l:@L> "Promise(" <ty: Types> "," <t: Term> ")" <r:@R> =>
-        Term::Promise(ty, Label{tag: "A promise".to_string(), l: l, r: r}, Box::new(t)),
+        Term::Promise(ty, Label{tag: "A promise".to_string(), l: l, r: r, polarity: true, path: TyPath::Nil()}, Box::new(t)),
     <l:@L> "Assume(" <ty: Types> "," <t: Term> ")" <r:@R> =>
-        Term::Assume(ty, Label{tag: "An assume".to_string(), l: l, r: r}, Box::new(t)), 
+        Term::Assume(ty, Label{tag: "An assume".to_string(), l: l, r: r, polarity: true, path: TyPath::Nil()}, Box::new(t)), 
     Num => Term::Num(<>),
     Bool => Term::Bool(<>),
     Ident => Term::Var(<>),
@@ -58,6 +58,10 @@ UOp: UnaryOp = {
     "isBool" => UnaryOp::IsBool(),
     "isFun" => UnaryOp::IsFun(),
     "blame" => UnaryOp::Blame(),
+    "chngPol" => UnaryOp::ChangePolarity(),
+    "goDom" => UnaryOp::GoDom(),
+    "goCodom" => UnaryOp::GoCodom(),
+    "tag[" <DbgStr> "]" => UnaryOp::Tag(<>),
 };
 
 BOp: BinaryOp = {
@@ -75,3 +79,5 @@ subType : Types = {
     "Bool" => Types::Bool(),
     "(" <Types> ")" => <>,
 };
+
+DbgStr: String = r"[[:alpha:]_][[:word:]-]*" => <>.to_string();
