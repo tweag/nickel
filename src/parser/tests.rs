@@ -2,25 +2,30 @@ use identifier::Ident;
 use term::Term::*;
 use term::{BinaryOp, RichTerm, UnaryOp};
 
+fn parse_without_pos(s: &str) -> RichTerm {
+    let parser = super::grammar::TermParser::new();
+    let mut result = parser.parse(s).unwrap();
+    result.clean_pos();
+    result
+}
+
 #[test]
 fn numbers() {
-    let parser = super::grammar::TermParser::new();
-    assert_eq!(parser.parse("22").unwrap(), Num(22.0).into());
-    assert_eq!(parser.parse("22.0").unwrap(), Num(22.0).into());
-    assert_eq!(parser.parse("22.22").unwrap(), Num(22.22).into());
-    assert_eq!(parser.parse("(22)").unwrap(), Num(22.0).into());
-    assert_eq!(parser.parse("((22))").unwrap(), Num(22.0).into());
+    assert_eq!(parse_without_pos("22"), Num(22.0).into());
+    assert_eq!(parse_without_pos("22.0"), Num(22.0).into());
+    assert_eq!(parse_without_pos("22.22"), Num(22.22).into());
+    assert_eq!(parse_without_pos("(22)"), Num(22.0).into());
+    assert_eq!(parse_without_pos("((22))"), Num(22.0).into());
 }
 
 #[test]
 fn plus() {
-    let parser = super::grammar::TermParser::new();
     assert_eq!(
-        parser.parse("3 + 4").unwrap(),
+        parse_without_pos("3 + 4"),
         Op2(BinaryOp::Plus(), Num(3.0).into(), Num(4.).into()).into()
     );
     assert_eq!(
-        parser.parse("(true + false) + 4").unwrap(),
+        parse_without_pos("(true + false) + 4"),
         Op2(
             BinaryOp::Plus(),
             Op2(BinaryOp::Plus(), Bool(true).into(), Bool(false).into()).into(),
@@ -32,16 +37,14 @@ fn plus() {
 
 #[test]
 fn booleans() {
-    let parser = super::grammar::TermParser::new();
-    assert_eq!(parser.parse("true").unwrap(), Bool(true).into());
-    assert_eq!(parser.parse("false").unwrap(), Bool(false).into());
+    assert_eq!(parse_without_pos("true"), Bool(true).into());
+    assert_eq!(parse_without_pos("false"), Bool(false).into());
 }
 
 #[test]
 fn ite() {
-    let parser = super::grammar::TermParser::new();
     assert_eq!(
-        parser.parse("if true then 3 else 4").unwrap(),
+        parse_without_pos("if true then 3 else 4"),
         RichTerm::app(
             RichTerm::app(
                 Op1(UnaryOp::Ite(), Bool(true).into()).into(),
@@ -54,16 +57,15 @@ fn ite() {
 
 #[test]
 fn applications() {
-    let parser = super::grammar::TermParser::new();
     assert_eq!(
-        parser.parse("1 true 2").unwrap(),
+        parse_without_pos("1 true 2"),
         RichTerm::app(
             RichTerm::app(Num(1.0).into(), Bool(true).into()),
             Num(2.0).into()
         ),
     );
     assert_eq!(
-        parser.parse("1 (2 3) 4").unwrap(),
+        parse_without_pos("1 (2 3) 4"),
         RichTerm::app(
             RichTerm::app(
                 Num(1.0).into(),
@@ -83,9 +85,8 @@ fn variables() {
 
 #[test]
 fn functions() {
-    let parser = super::grammar::TermParser::new();
     assert_eq!(
-        parser.parse("fun x => x").unwrap(),
+        parse_without_pos("fun x => x"),
         Fun(Ident("x".into()), RichTerm::var("x".into())).into(),
     );
 }

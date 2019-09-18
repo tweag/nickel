@@ -6,32 +6,39 @@ use term::{BinaryOp, RichTerm, Term, UnaryOp};
 
 grammar;
 
-pub Term: RichTerm = {
-    "fun" <p:Pattern> "=>" <t:Term> =>
+pub Term: RichTerm = SpTerm<RichTerm>;
+
+SpTerm<Rule>: RichTerm =
+    <l: @L> <t: Rule> <r: @R> => match t {
+        RichTerm {term: t, pos: _} => RichTerm {term: t, pos: Some((l, r))}
+    };
+
+RichTerm: RichTerm = {
+    "fun" <p:Pattern> "=>" <t: SpTerm<Term>> =>
         RichTerm::new(Term::Fun(p, t)),
-    "let" <id:Ident> "=" <t1:Term> "in" <t2:Term> =>
+    "let" <id:Ident> "=" <t1:SpTerm<Term>> "in" <t2:SpTerm<Term>> =>
         RichTerm::new(Term::Let(id, t1, t2)),
-    "if" <b:Term> "then" <t:Term> "else" <e:Term> =>
+    "if" <b:SpTerm<Term>> "then" <t:SpTerm<Term>> "else" <e:SpTerm<Term>> =>
         RichTerm::app(RichTerm::app(RichTerm::new(Term::Op1(UnaryOp::Ite(), b)), t), e),
-    Operation    
+    SpTerm<Operation>    
 };
 
 Operation: RichTerm = {
-    <t1: Applicative> <op: BOp> <t2: Operation> => RichTerm::new(Term::Op2(op, t1, t2)),
-    <op: UOp> <t: Operation> => RichTerm::new(Term::Op1(op, t)),
-    Applicative,
+    <t1: SpTerm< Applicative>> <op: BOp> <t2: SpTerm<Operation>> => RichTerm::new(Term::Op2(op, t1, t2)),
+    <op: UOp> <t: SpTerm<Operation>> => RichTerm::new(Term::Op1(op, t)),
+    SpTerm< Applicative>,
 };
 
 Applicative: RichTerm = {
-    <t1:Applicative> <t2:Atom> => RichTerm::new(Term::App(t1, t2)),
-    Atom,
+    <t1:SpTerm< Applicative>> <t2: SpTerm<Atom>> => RichTerm::new(Term::App(t1, t2)),
+    SpTerm<Atom>,
 };
 
 Atom: RichTerm = {
-    "(" <Term> ")",
-    <l:@L> "Promise(" <ty: Types> "," <t: Term> ")" <r:@R> =>
+    "(" <SpTerm<Term>> ")",
+    <l:@L> "Promise(" <ty: Types> "," <t: SpTerm<Term>> ")" <r:@R> =>
         RichTerm::new(Term::Promise(ty, Label{tag: "A promise".to_string(), l: l, r: r, polarity: true, path: TyPath::Nil()}, t)),
-    <l:@L> "Assume(" <ty: Types> "," <t: Term> ")" <r:@R> =>
+    <l:@L> "Assume(" <ty: Types> "," <t: SpTerm<Term>> ")" <r:@R> =>
         RichTerm::new(Term::Assume(ty, Label{tag: "An assume".to_string(), l: l, r: r, polarity: true, path: TyPath::Nil()}, t)), 
     Num => RichTerm::new(Term::Num(<>)),
     Bool => RichTerm::new(Term::Bool(<>)),
