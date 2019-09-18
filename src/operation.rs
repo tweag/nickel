@@ -1,7 +1,7 @@
 use eval::{Closure, EvalError};
 use label::TyPath;
 use stack::Stack;
-use term::{BinaryOp, Term, UnaryOp};
+use term::{BinaryOp, RichTerm, Term, UnaryOp};
 
 #[derive(Debug, PartialEq)]
 pub enum OperationCont {
@@ -33,13 +33,13 @@ fn process_unary_operation(
     clos: Closure,
     stack: &mut Stack,
 ) -> Result<Closure, EvalError> {
+    let Closure {
+        body: RichTerm { term: t },
+        env: _env,
+    } = clos;
     match u_op {
         UnaryOp::Ite() => {
-            if let Closure {
-                body: Term::Bool(b),
-                env: _,
-            } = clos
-            {
+            if let Term::Bool(b) = *t {
                 if stack.count_args() >= 2 {
                     let fst = stack.pop_arg().expect("Condition already checked.");
                     let snd = stack.pop_arg().expect("Condition already checked.");
@@ -49,132 +49,90 @@ fn process_unary_operation(
                     panic!("An If-Then-Else wasn't saturated")
                 }
             } else {
-                Err(EvalError::TypeError(format!(
-                    "Expected Bool, got {:?}",
-                    clos.body
-                )))
+                Err(EvalError::TypeError(format!("Expected Bool, got {:?}", *t)))
             }
         }
         UnaryOp::IsZero() => {
-            if let Closure {
-                body: Term::Num(n),
-                env: _,
-            } = clos
-            {
+            if let Term::Num(n) = *t {
                 // TODO Discuss and decide on this comparison for 0 on f64
-                Ok(Closure::atomic_closure(Term::Bool(n == 0.)))
+                Ok(Closure::atomic_closure(Term::Bool(n == 0.).into()))
             } else {
-                Err(EvalError::TypeError(format!(
-                    "Expected Num, got {:?}",
-                    clos.body
-                )))
+                Err(EvalError::TypeError(format!("Expected Num, got {:?}", *t)))
             }
         }
         UnaryOp::IsNum() => {
-            if let Closure {
-                body: Term::Num(_),
-                env: _,
-            } = clos
-            {
-                Ok(Closure::atomic_closure(Term::Bool(true)))
+            if let Term::Num(_) = *t {
+                Ok(Closure::atomic_closure(Term::Bool(true).into()))
             } else {
-                Ok(Closure::atomic_closure(Term::Bool(false)))
+                Ok(Closure::atomic_closure(Term::Bool(false).into()))
             }
         }
         UnaryOp::IsBool() => {
-            if let Closure {
-                body: Term::Bool(_),
-                env: _,
-            } = clos
-            {
-                Ok(Closure::atomic_closure(Term::Bool(true)))
+            if let Term::Bool(_) = *t {
+                Ok(Closure::atomic_closure(Term::Bool(true).into()))
             } else {
-                Ok(Closure::atomic_closure(Term::Bool(false)))
+                Ok(Closure::atomic_closure(Term::Bool(false).into()))
             }
         }
         UnaryOp::IsFun() => {
-            if let Closure {
-                body: Term::Fun(_, _),
-                env: _,
-            } = clos
-            {
-                Ok(Closure::atomic_closure(Term::Bool(true)))
+            if let Term::Fun(_, _) = *t {
+                Ok(Closure::atomic_closure(Term::Bool(true).into()))
             } else {
-                Ok(Closure::atomic_closure(Term::Bool(false)))
+                Ok(Closure::atomic_closure(Term::Bool(false).into()))
             }
         }
         UnaryOp::Blame() => {
-            if let Closure {
-                body: Term::Lbl(l),
-                env: _,
-            } = clos
-            {
+            if let Term::Lbl(l) = *t {
                 Err(EvalError::BlameError(l))
             } else {
                 Err(EvalError::TypeError(format!(
                     "Expected Label, got {:?}",
-                    clos.body
+                    *t
                 )))
             }
         }
         UnaryOp::ChangePolarity() => {
-            if let Closure {
-                body: Term::Lbl(mut l),
-                env: _,
-            } = clos
-            {
+            if let Term::Lbl(mut l) = *t {
                 l.polarity = !l.polarity;
-                Ok(Closure::atomic_closure(Term::Lbl(l)))
+                Ok(Closure::atomic_closure(Term::Lbl(l).into()))
             } else {
                 Err(EvalError::TypeError(format!(
                     "Expected Label, got {:?}",
-                    clos.body
+                    *t
                 )))
             }
         }
         UnaryOp::GoDom() => {
-            if let Closure {
-                body: Term::Lbl(mut l),
-                env: _,
-            } = clos
-            {
+            if let Term::Lbl(mut l) = *t {
                 l.path = TyPath::Domain(Box::new(l.path.clone()));
-                Ok(Closure::atomic_closure(Term::Lbl(l)))
+                Ok(Closure::atomic_closure(Term::Lbl(l).into()))
             } else {
                 Err(EvalError::TypeError(format!(
                     "Expected Label, got {:?}",
-                    clos.body
+                    *t
                 )))
             }
         }
         UnaryOp::GoCodom() => {
-            if let Closure {
-                body: Term::Lbl(mut l),
-                env: _,
-            } = clos
-            {
+            if let Term::Lbl(mut l) = *t {
                 l.path = TyPath::Codomain(Box::new(l.path.clone()));
-                Ok(Closure::atomic_closure(Term::Lbl(l)))
+                Ok(Closure::atomic_closure(Term::Lbl(l).into()))
             } else {
                 Err(EvalError::TypeError(format!(
                     "Expected Label, got {:?}",
-                    clos.body
+                    *t
                 )))
             }
         }
         UnaryOp::Tag(s) => {
-            if let Closure {
-                body: Term::Lbl(mut l),
-                env: _,
-            } = clos
-            {
+            if let Term::Lbl(mut l) = *t {
                 l.tag.push_str("\n");
                 l.tag.push_str(&s);
-                Ok(Closure::atomic_closure(Term::Lbl(l)))
+                Ok(Closure::atomic_closure(Term::Lbl(l).into()))
             } else {
                 Err(EvalError::TypeError(format!(
                     "Expected Label, got {:?}",
-                    clos.body
+                    *t
                 )))
             }
         }
@@ -187,30 +145,24 @@ fn process_binary_operation(
     clos: Closure,
     _stack: &mut Stack,
 ) -> Result<Closure, EvalError> {
+    let Closure {
+        body: RichTerm { term: t1 },
+        env: _env1,
+    } = fst_clos;
+    let Closure {
+        body: RichTerm { term: t2 },
+        env: _env2,
+    } = clos;
     match b_op {
         BinaryOp::Plus() => {
-            if let Closure {
-                body: Term::Num(n1),
-                env: _,
-            } = fst_clos
-            {
-                if let Closure {
-                    body: Term::Num(n2),
-                    env: _,
-                } = clos
-                {
-                    Ok(Closure::atomic_closure(Term::Num(n1 + n2)))
+            if let Term::Num(n1) = *t1 {
+                if let Term::Num(n2) = *t2 {
+                    Ok(Closure::atomic_closure(Term::Num(n1 + n2).into()))
                 } else {
-                    Err(EvalError::TypeError(format!(
-                        "Expected Num, got {:?}",
-                        clos.body
-                    )))
+                    Err(EvalError::TypeError(format!("Expected Num, got {:?}", *t2)))
                 }
             } else {
-                Err(EvalError::TypeError(format!(
-                    "Expected Num, got {:?}",
-                    fst_clos.body
-                )))
+                Err(EvalError::TypeError(format!("Expected Num, got {:?}", *t1)))
             }
         }
     }

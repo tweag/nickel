@@ -5,18 +5,18 @@ use stack::Stack;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
-use term::Term;
+use term::{RichTerm, Term};
 
 pub type Enviroment = HashMap<Ident, Rc<RefCell<Closure>>>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Closure {
-    pub body: Term,
+    pub body: RichTerm,
     pub env: Enviroment,
 }
 
 impl Closure {
-    pub fn atomic_closure(body: Term) -> Closure {
+    pub fn atomic_closure(body: RichTerm) -> Closure {
         Closure {
             body,
             env: HashMap::new(),
@@ -34,7 +34,7 @@ fn is_value(_term: &Term) -> bool {
     false
 }
 
-pub fn eval(t0: Term) -> Result<Term, EvalError> {
+pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
     let empty_env = HashMap::new();
     let mut clos = Closure {
         body: t0,
@@ -43,15 +43,17 @@ pub fn eval(t0: Term) -> Result<Term, EvalError> {
     let mut stack = Stack::new();
 
     loop {
-        match clos {
+        let Closure {
+            body: RichTerm { term: boxed_term },
+            mut env,
+        } = clos;
+        let term = *boxed_term;
+        match term {
             // Var
-            Closure {
-                body: Term::Var(x),
-                env,
-            } => {
+            Term::Var(x) => {
                 let mut thunk = Rc::clone(env.get(&x).expect(&format!("Unbound variable {:?}", x)));
                 std::mem::drop(env); // thunk may be a 1RC pointer
-                if !is_value(&thunk.borrow().body) {
+                if !is_value(&thunk.borrow().body.term) {
                     stack.push_thunk(Rc::downgrade(&thunk));
                 }
                 match Rc::try_unwrap(thunk) {
@@ -66,112 +68,90 @@ pub fn eval(t0: Term) -> Result<Term, EvalError> {
                 }
             }
             // App
-            Closure {
-                body: Term::App(t1, t2),
-                env,
-            } => {
+            Term::App(t1, t2) => {
                 stack.push_arg(Closure {
-                    body: *t2,
+                    body: t2,
                     env: env.clone(),
                 });
-                clos = Closure { body: *t1, env };
+                clos = Closure { body: t1, env };
             }
             // Let
-            Closure {
-                body: Term::Let(x, s, t),
-                mut env,
-            } => {
+            Term::Let(x, s, t) => {
                 let thunk = Rc::new(RefCell::new(Closure {
-                    body: *s,
+                    body: s,
                     env: env.clone(),
                 }));
                 env.insert(x, Rc::clone(&thunk));
-                clos = Closure { body: *t, env: env };
+                clos = Closure { body: t, env: env };
             }
             // Unary Operation
-            Closure {
-                body: Term::Op1(op, t),
-                env,
-            } => {
+            Term::Op1(op, t) => {
                 stack.push_op_cont(OperationCont::Op1(op));
-                clos = Closure { body: *t, env };
+                clos = Closure { body: t, env };
             }
             // Binary Operation
-            Closure {
-                body: Term::Op2(op, fst, snd),
-                env,
-            } => {
+            Term::Op2(op, fst, snd) => {
                 stack.push_op_cont(OperationCont::Op2First(
                     op,
                     Closure {
-                        body: *snd,
+                        body: snd,
                         env: env.clone(),
                     },
                 ));
-                clos = Closure { body: *fst, env };
+                clos = Closure { body: fst, env };
             }
             // Promise and Assume
-            Closure {
-                body: Term::Promise(ty, l, t),
-                env,
-            }
-            | Closure {
-                body: Term::Assume(ty, l, t),
-                env,
-            } => {
+            Term::Promise(ty, l, t) | Term::Assume(ty, l, t) => {
                 stack.push_arg(Closure {
-                    body: *t,
+                    body: t,
                     env: env.clone(),
                 });
-                stack.push_arg(Closure::atomic_closure(Term::Lbl(l)));
+                stack.push_arg(Closure::atomic_closure(RichTerm::new(Term::Lbl(l))));
                 clos = Closure {
                     body: ty.contract(),
                     env,
                 };
             }
+            // Continuate Operation
             // Update
-            _ if 0 < stack.count_thunks() => {
-                while let Some(thunk) = stack.pop_thunk() {
-                    if let Some(safe_thunk) = Weak::upgrade(&thunk) {
-                        *safe_thunk.borrow_mut() = clos.clone();
+            _ if 0 < stack.count_thunks() || 0 < stack.count_conts() => {
+                clos = Closure {
+                    body: term.into(),
+                    env,
+                };
+                if 0 < stack.count_thunks() {
+                    while let Some(thunk) = stack.pop_thunk() {
+                        if let Some(safe_thunk) = Weak::upgrade(&thunk) {
+                            *safe_thunk.borrow_mut() = clos.clone();
+                        }
                     }
+                } else {
+                    clos = continuate_operation(
+                        stack.pop_op_cont().expect("Condition already checked"),
+                        clos,
+                        &mut stack,
+                    )?;
                 }
             }
-            // Continuate Operation
-            _ if 0 < stack.count_conts() => {
-                clos = continuate_operation(
-                    stack.pop_op_cont().expect("Condition already checked"),
-                    clos,
-                    &mut stack,
-                )?;
-            }
             // Call
-            Closure {
-                body: Term::Fun(x, t),
-                mut env,
-            } => {
+            Term::Fun(x, t) => {
                 if 0 < stack.count_args() {
                     let thunk = Rc::new(RefCell::new(
                         stack.pop_arg().expect("Condition already checked."),
                     ));
                     env.insert(x, thunk);
-                    clos = Closure { body: *t, env }
+                    clos = Closure { body: t, env }
                 } else {
-                    clos = Closure {
-                        body: Term::Fun(x, t),
-                        env,
-                    };
-                    break;
+                    return Ok(Term::Fun(x, t));
                 }
             }
 
             _ => {
-                break;
+                return Ok(term);
             }
         }
     }
 
-    Ok(clos.body)
 }
 
 #[cfg(test)]
