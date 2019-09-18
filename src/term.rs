@@ -51,11 +51,23 @@ impl RichTerm {
     }
 
     pub fn app(rt1: RichTerm, rt2: RichTerm) -> RichTerm {
-        Self::new(Term::App(rt1, rt2))
+        Term::App(rt1, rt2).into()
     }
 
     pub fn var(s: String) -> RichTerm {
-        Self::new(Term::Var(Ident(s)))
+        Term::Var(Ident(s)).into()
+    }
+
+    pub fn let_in(id: &str, e: RichTerm, t: RichTerm) -> RichTerm {
+        Term::Let(Ident(id.to_string()), e, t).into()
+    }
+
+    pub fn ite(c: RichTerm, t: RichTerm, e: RichTerm) -> RichTerm {
+        RichTerm::app(RichTerm::app(Term::Op1(UnaryOp::Ite(), c).into(), t), e)
+    }
+
+    pub fn plus(t0: RichTerm, t1: RichTerm) -> RichTerm {
+        Term::Op2(BinaryOp::Plus(), t0, t1).into()
     }
 }
 

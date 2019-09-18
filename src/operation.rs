@@ -182,11 +182,11 @@ mod tests {
     fn ite_operation() {
         let cont = OperationCont::Op1(UnaryOp::Ite());
         let mut stack = Stack::new();
-        stack.push_arg(Closure::atomic_closure(Term::Num(5.0)));
-        stack.push_arg(Closure::atomic_closure(Term::Num(46.0)));
+        stack.push_arg(Closure::atomic_closure(Term::Num(5.0).into()));
+        stack.push_arg(Closure::atomic_closure(Term::Num(46.0).into()));
 
         let mut clos = Closure {
-            body: Term::Bool(true),
+            body: Term::Bool(true).into(),
             env: some_env(),
         };
 
@@ -195,7 +195,7 @@ mod tests {
         assert_eq!(
             clos,
             Closure {
-                body: Term::Num(46.0),
+                body: Term::Num(46.0).into(),
                 env: some_env()
             }
         );
@@ -207,13 +207,13 @@ mod tests {
         let cont = OperationCont::Op2First(
             BinaryOp::Plus(),
             Closure {
-                body: Term::Num(6.0),
+                body: Term::Num(6.0).into(),
                 env: some_env(),
             },
         );
 
         let mut clos = Closure {
-            body: Term::Num(7.0),
+            body: Term::Num(7.0).into(),
             env: some_env(),
         };
         let mut stack = Stack::new();
@@ -223,7 +223,7 @@ mod tests {
         assert_eq!(
             clos,
             Closure {
-                body: Term::Num(6.0),
+                body: Term::Num(6.0).into(),
                 env: some_env()
             }
         );
@@ -233,7 +233,7 @@ mod tests {
             OperationCont::Op2Second(
                 BinaryOp::Plus(),
                 Closure {
-                    body: Term::Num(7.0),
+                    body: Term::Num(7.0).into(),
                     env: some_env(),
                 }
             ),
@@ -246,12 +246,12 @@ mod tests {
         let cont = OperationCont::Op2Second(
             BinaryOp::Plus(),
             Closure {
-                body: Term::Num(7.0),
+                body: Term::Num(7.0).into(),
                 env: some_env(),
             },
         );
         let mut clos = Closure {
-            body: Term::Num(6.0),
+            body: Term::Num(6.0).into(),
             env: some_env(),
         };
         let mut stack = Stack::new();
@@ -261,7 +261,7 @@ mod tests {
         assert_eq!(
             clos,
             Closure {
-                body: Term::Num(13.0),
+                body: Term::Num(13.0).into(),
                 env: some_env()
             }
         );

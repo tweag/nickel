@@ -151,45 +151,27 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
             }
         }
     }
-
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use label::TyPath;
-    use term::{BinaryOp, UnaryOp};
-
-    fn app(t0: Term, t1: Term) -> Term {
-        Term::App(Box::new(t0), Box::new(t1))
-    }
-
-    fn var(id: &str) -> Term {
-        Term::Var(Ident(id.to_string()))
-    }
-
-    fn let_in(id: &str, e: Term, t: Term) -> Term {
-        Term::Let(Ident(id.to_string()), Box::new(e), Box::new(t))
-    }
-
-    fn ite(c: Term, t: Term, e: Term) -> Term {
-        app(app(Term::Op1(UnaryOp::Ite(), Box::new(c)), t), e)
-    }
-
-    fn plus(t0: Term, t1: Term) -> Term {
-        Term::Op2(BinaryOp::Plus(), Box::new(t0), Box::new(t1))
-    }
+    use term::UnaryOp;
 
     #[test]
     fn identity_over_values() {
         let num = Term::Num(45.3);
-        assert_eq!(Ok(num.clone()), eval(num));
+        assert_eq!(Ok(num.clone()), eval(num.into()));
 
         let boolean = Term::Bool(true);
-        assert_eq!(Ok(boolean.clone()), eval(boolean));
+        assert_eq!(Ok(boolean.clone()), eval(boolean.into()));
 
-        let lambda = Term::Fun(Ident("x".to_string()), Box::new(app(var("x"), var("x"))));
-        assert_eq!(Ok(lambda.clone()), eval(lambda));
+        let lambda = Term::Fun(
+            Ident("x".to_string()),
+            RichTerm::app(RichTerm::var("x".into()), RichTerm::var("x".into())),
+        );
+        assert_eq!(Ok(lambda.clone()), eval(lambda.into()));
     }
 
     #[test]
@@ -203,21 +185,21 @@ mod tests {
         };
         assert_eq!(
             Err(EvalError::BlameError(label.clone())),
-            eval(Term::Op1(UnaryOp::Blame(), Box::new(Term::Lbl(label))))
+            eval(Term::Op1(UnaryOp::Blame(), Term::Lbl(label).into()).into())
         );
     }
 
     #[test]
     #[should_panic]
     fn lone_var_panics() {
-        eval(var("unbound"));
+        eval(RichTerm::var("unbound".into())).unwrap();
     }
 
     #[test]
     fn simple_app() {
-        let t = app(
-            Term::Fun(Ident("x".to_string()), Box::new(var("x"))),
-            Term::Num(5.0),
+        let t = RichTerm::app(
+            Term::Fun(Ident("x".to_string()), RichTerm::var("x".into())).into(),
+            Term::Num(5.0).into(),
         );
 
         assert_eq!(Ok(Term::Num(5.0)), eval(t));
@@ -225,47 +207,53 @@ mod tests {
 
     #[test]
     fn simple_let() {
-        let t = let_in("x", Term::Num(5.0), var("x"));
+        let t = RichTerm::let_in("x", Term::Num(5.0).into(), RichTerm::var("x".into()));
 
         assert_eq!(Ok(Term::Num(5.0)), eval(t));
     }
 
     #[test]
     fn simple_ite() {
-        let t = ite(Term::Bool(true), Term::Num(5.0), Term::Bool(false));
+        let t = RichTerm::ite(
+            Term::Bool(true).into(),
+            Term::Num(5.0).into(),
+            Term::Bool(false).into(),
+        );
 
         assert_eq!(Ok(Term::Num(5.0)), eval(t));
     }
 
     #[test]
     fn simple_plus() {
-        let t = plus(Term::Num(5.0), Term::Num(7.5));
+        let t = RichTerm::plus(Term::Num(5.0).into(), Term::Num(7.5).into());
 
         assert_eq!(Ok(Term::Num(12.5)), eval(t));
     }
 
     #[test]
     fn simple_is_zero() {
-        let t = Term::Op1(UnaryOp::IsZero(), Box::new(Term::Num(7.0)));
+        let t = Term::Op1(UnaryOp::IsZero(), Term::Num(7.0).into()).into();
 
         assert_eq!(Ok(Term::Bool(false)), eval(t));
     }
 
     #[test]
     fn asking_for_various_types() {
-        let num = Term::Op1(UnaryOp::IsNum(), Box::new(Term::Num(45.3)));
+        let num = Term::Op1(UnaryOp::IsNum(), Term::Num(45.3).into()).into();
         assert_eq!(Ok(Term::Bool(true)), eval(num));
 
-        let boolean = Term::Op1(UnaryOp::IsBool(), Box::new(Term::Bool(true)));
+        let boolean = Term::Op1(UnaryOp::IsBool(), Term::Bool(true).into()).into();
         assert_eq!(Ok(Term::Bool(true)), eval(boolean));
 
         let lambda = Term::Op1(
             UnaryOp::IsFun(),
-            Box::new(Term::Fun(
+            Term::Fun(
                 Ident("x".to_string()),
-                Box::new(app(var("x"), var("x"))),
-            )),
-        );
+                RichTerm::app(RichTerm::var("x".into()), RichTerm::var("x".into())),
+            )
+            .into(),
+        )
+        .into();
         assert_eq!(Ok(Term::Bool(true)), eval(lambda));
     }
 }
