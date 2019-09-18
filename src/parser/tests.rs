@@ -1,7 +1,6 @@
 use identifier::Ident;
-use operation::{BinaryOp, UnaryOp};
-use term::Term;
 use term::Term::*;
+use term::{BinaryOp, Term, UnaryOp};
 
 fn app(t1: Term, t2: Term) -> Term {
     App(Box::new(t1), Box::new(t2))

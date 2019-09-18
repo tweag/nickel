@@ -1,9 +1,8 @@
 use identifier::Ident;
 use std::str::FromStr;
 use types::Types;
-use term::Term;
 use label::{Label, TyPath};
-use operation::{UnaryOp, BinaryOp};
+use term::{BinaryOp, Term, UnaryOp};
 
 grammar;
 

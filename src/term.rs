@@ -1,6 +1,5 @@
 use identifier::Ident;
 use label::Label;
-use operation::{BinaryOp, UnaryOp};
 use types::Types;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -20,4 +19,23 @@ pub enum Term {
     // Typing
     Promise(Types, Label, Box<Term>),
     Assume(Types, Label, Box<Term>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum UnaryOp {
+    Ite(),
+    IsZero(),
+    IsNum(),
+    IsBool(),
+    IsFun(),
+    Blame(),
+    ChangePolarity(),
+    GoDom(),
+    GoCodom(),
+    Tag(String),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum BinaryOp {
+    Plus(),
 }

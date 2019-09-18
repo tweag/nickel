@@ -1,7 +1,7 @@
 use eval::{Closure, EvalError};
 use label::TyPath;
 use stack::Stack;
-use term::Term;
+use term::{BinaryOp, Term, UnaryOp};
 
 #[derive(Debug, PartialEq)]
 pub enum OperationCont {
@@ -10,36 +10,17 @@ pub enum OperationCont {
     Op2Second(BinaryOp, Closure),
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum UnaryOp {
-    Ite(),
-    IsZero(),
-    IsNum(),
-    IsBool(),
-    IsFun(),
-    Blame(),
-    ChangePolarity(),
-    GoDom(),
-    GoCodom(),
-    Tag(String),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum BinaryOp {
-    Plus(),
-}
-
 pub fn continuate_operation(
     cont: OperationCont,
-    clos: &mut Closure,
+    mut clos: Closure,
     stack: &mut Stack,
-) -> Result<(), EvalError> {
+) -> Result<Closure, EvalError> {
     match cont {
         OperationCont::Op1(u_op) => process_unary_operation(u_op, clos, stack),
         OperationCont::Op2First(b_op, mut snd_clos) => {
-            std::mem::swap(clos, &mut snd_clos);
+            std::mem::swap(&mut clos, &mut snd_clos);
             stack.push_op_cont(OperationCont::Op2Second(b_op, snd_clos));
-            Ok(())
+            Ok(clos)
         }
         OperationCont::Op2Second(b_op, fst_clos) => {
             process_binary_operation(b_op, fst_clos, clos, stack)
@@ -49,22 +30,21 @@ pub fn continuate_operation(
 
 fn process_unary_operation(
     u_op: UnaryOp,
-    clos: &mut Closure,
+    clos: Closure,
     stack: &mut Stack,
-) -> Result<(), EvalError> {
+) -> Result<Closure, EvalError> {
     match u_op {
         UnaryOp::Ite() => {
             if let Closure {
                 body: Term::Bool(b),
                 env: _,
-            } = *clos
+            } = clos
             {
                 if stack.count_args() >= 2 {
                     let fst = stack.pop_arg().expect("Condition already checked.");
                     let snd = stack.pop_arg().expect("Condition already checked.");
 
-                    *clos = if b { fst } else { snd };
-                    Ok(())
+                    Ok(if b { fst } else { snd })
                 } else {
                     panic!("An If-Then-Else wasn't saturated")
                 }
@@ -79,11 +59,10 @@ fn process_unary_operation(
             if let Closure {
                 body: Term::Num(n),
                 env: _,
-            } = *clos
+            } = clos
             {
                 // TODO Discuss and decide on this comparison for 0 on f64
-                *clos = Closure::atomic_closure(Term::Bool(n == 0.));
-                Ok(())
+                Ok(Closure::atomic_closure(Term::Bool(n == 0.)))
             } else {
                 Err(EvalError::TypeError(format!(
                     "Expected Num, got {:?}",
@@ -95,45 +74,42 @@ fn process_unary_operation(
             if let Closure {
                 body: Term::Num(_),
                 env: _,
-            } = *clos
+            } = clos
             {
-                *clos = Closure::atomic_closure(Term::Bool(true));
+                Ok(Closure::atomic_closure(Term::Bool(true)))
             } else {
-                *clos = Closure::atomic_closure(Term::Bool(false));
+                Ok(Closure::atomic_closure(Term::Bool(false)))
             }
-            Ok(())
         }
         UnaryOp::IsBool() => {
             if let Closure {
                 body: Term::Bool(_),
                 env: _,
-            } = *clos
+            } = clos
             {
-                *clos = Closure::atomic_closure(Term::Bool(true));
+                Ok(Closure::atomic_closure(Term::Bool(true)))
             } else {
-                *clos = Closure::atomic_closure(Term::Bool(false));
+                Ok(Closure::atomic_closure(Term::Bool(false)))
             }
-            Ok(())
         }
         UnaryOp::IsFun() => {
             if let Closure {
                 body: Term::Fun(_, _),
                 env: _,
-            } = *clos
+            } = clos
             {
-                *clos = Closure::atomic_closure(Term::Bool(true));
+                Ok(Closure::atomic_closure(Term::Bool(true)))
             } else {
-                *clos = Closure::atomic_closure(Term::Bool(false));
+                Ok(Closure::atomic_closure(Term::Bool(false)))
             }
-            Ok(())
         }
         UnaryOp::Blame() => {
             if let Closure {
-                body: Term::Lbl(ref l),
+                body: Term::Lbl(l),
                 env: _,
-            } = *clos
+            } = clos
             {
-                Err(EvalError::BlameError(l.clone()))
+                Err(EvalError::BlameError(l))
             } else {
                 Err(EvalError::TypeError(format!(
                     "Expected Label, got {:?}",
@@ -143,12 +119,12 @@ fn process_unary_operation(
         }
         UnaryOp::ChangePolarity() => {
             if let Closure {
-                body: Term::Lbl(ref mut l),
+                body: Term::Lbl(mut l),
                 env: _,
-            } = *clos
+            } = clos
             {
                 l.polarity = !l.polarity;
-                Ok(())
+                Ok(Closure::atomic_closure(Term::Lbl(l)))
             } else {
                 Err(EvalError::TypeError(format!(
                     "Expected Label, got {:?}",
@@ -158,12 +134,12 @@ fn process_unary_operation(
         }
         UnaryOp::GoDom() => {
             if let Closure {
-                body: Term::Lbl(ref mut l),
+                body: Term::Lbl(mut l),
                 env: _,
-            } = *clos
+            } = clos
             {
                 l.path = TyPath::Domain(Box::new(l.path.clone()));
-                Ok(())
+                Ok(Closure::atomic_closure(Term::Lbl(l)))
             } else {
                 Err(EvalError::TypeError(format!(
                     "Expected Label, got {:?}",
@@ -173,12 +149,12 @@ fn process_unary_operation(
         }
         UnaryOp::GoCodom() => {
             if let Closure {
-                body: Term::Lbl(ref mut l),
+                body: Term::Lbl(mut l),
                 env: _,
-            } = *clos
+            } = clos
             {
                 l.path = TyPath::Codomain(Box::new(l.path.clone()));
-                Ok(())
+                Ok(Closure::atomic_closure(Term::Lbl(l)))
             } else {
                 Err(EvalError::TypeError(format!(
                     "Expected Label, got {:?}",
@@ -188,13 +164,13 @@ fn process_unary_operation(
         }
         UnaryOp::Tag(s) => {
             if let Closure {
-                body: Term::Lbl(ref mut l),
+                body: Term::Lbl(mut l),
                 env: _,
-            } = *clos
+            } = clos
             {
                 l.tag.push_str("\n");
                 l.tag.push_str(&s);
-                Ok(())
+                Ok(Closure::atomic_closure(Term::Lbl(l)))
             } else {
                 Err(EvalError::TypeError(format!(
                     "Expected Label, got {:?}",
@@ -208,9 +184,9 @@ fn process_unary_operation(
 fn process_binary_operation(
     b_op: BinaryOp,
     fst_clos: Closure,
-    clos: &mut Closure,
+    clos: Closure,
     _stack: &mut Stack,
-) -> Result<(), EvalError> {
+) -> Result<Closure, EvalError> {
     match b_op {
         BinaryOp::Plus() => {
             if let Closure {
@@ -221,10 +197,9 @@ fn process_binary_operation(
                 if let Closure {
                     body: Term::Num(n2),
                     env: _,
-                } = *clos
+                } = clos
                 {
-                    *clos = Closure::atomic_closure(Term::Num(n1 + n2));
-                    Ok(())
+                    Ok(Closure::atomic_closure(Term::Num(n1 + n2)))
                 } else {
                     Err(EvalError::TypeError(format!(
                         "Expected Num, got {:?}",
@@ -263,7 +238,7 @@ mod tests {
             env: some_env(),
         };
 
-        continuate_operation(cont, &mut clos, &mut stack).unwrap();
+        clos = continuate_operation(cont, clos, &mut stack).unwrap();
 
         assert_eq!(
             clos,
@@ -291,7 +266,7 @@ mod tests {
         };
         let mut stack = Stack::new();
 
-        continuate_operation(cont, &mut clos, &mut stack).unwrap();
+        clos = continuate_operation(cont, clos, &mut stack).unwrap();
 
         assert_eq!(
             clos,
@@ -329,7 +304,7 @@ mod tests {
         };
         let mut stack = Stack::new();
 
-        continuate_operation(cont, &mut clos, &mut stack).unwrap();
+        clos = continuate_operation(cont, clos, &mut stack).unwrap();
 
         assert_eq!(
             clos,
