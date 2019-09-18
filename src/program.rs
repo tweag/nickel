@@ -1,4 +1,5 @@
-use eval::{eval, EvalError};
+use eval::{eval, CallStack, EvalError, IdentKind, StackElem};
+use identifier::Ident;
 use label::{Label, TyPath};
 use parser;
 use std::fs;
@@ -41,7 +42,7 @@ impl<T: Read> Program<T> {
         let t = self.parse()?;
         match eval(t) {
             Ok(t) => Ok(t),
-            Err(EvalError::BlameError(l)) => Err(self.process_blame(l)),
+            Err(EvalError::BlameError(l, cs)) => Err(self.process_blame(l, cs)),
             Err(EvalError::TypeError(s)) => Err(s),
         }
     }
@@ -89,23 +90,27 @@ impl<T: Read> Program<T> {
         }
     }
 
-    fn process_blame(&mut self, l: Label) -> String {
+    fn process_blame(&mut self, l: Label, mut cs_opt: Option<CallStack>) -> String {
         let mut s = String::new();
         s.push_str("Reached a blame label, some cast went terribly wrong\n");
         s.push_str("    Tag:\n");
         s.push_str(&l.tag);
         s.push_str("\n");
-        let (linef, colf) = self.get_line_and_col(l.l);
-        let (linet, colt) = self.get_line_and_col(l.r);
-        if linef == linet {
-            s.push_str(&format!(
-                "    Line: {} Columns: {} to {}\n",
-                linef, colf, colt
-            ));
-        } else {
-            s.push_str(&format!("    Line: {} Column: {}\n", linef, colf));
-            s.push_str(&format!("    to Line: {} Column: {}\n", linet, colt));
+
+        let pos_from = self.get_line_and_col(l.l);
+        let pos_to = self.get_line_and_col(l.r);
+        if let (Some((linef, colf)), Some((linet, colt))) = (pos_from, pos_to) {
+            if linef == linet {
+                s.push_str(&format!(
+                    "    Line: {} Columns: {} to {}\n",
+                    linef, colf, colt
+                ));
+            } else {
+                s.push_str(&format!("    Line: {} Column: {}\n", linef, colf));
+                s.push_str(&format!("    to Line: {} Column: {}\n", linet, colt));
+            }
         }
+
         s.push_str(&format!("    Polarity: {}\n", l.polarity));
         if l.polarity {
             s.push_str("    The blame is on the value (positive blame)\n");
@@ -115,15 +120,61 @@ impl<T: Read> Program<T> {
         if l.path != TyPath::Nil() {
             s.push_str(&format!("    Path: {:?}\n", l.path));
         }
+
+        if let Some(cs) = cs_opt {
+            s.push_str("\nCallStack:\n=========\n");
+            s = self.show_call_stack(s, cs);
+        }
         s
     }
 
-    fn get_line_and_col(&mut self, b: usize) -> (usize, usize) {
+    fn show_call_stack(&mut self, mut s: String, mut cs: CallStack) -> String {
+        for e in cs.drain(..).rev() {
+            match e {
+                StackElem::App(Some((l, r))) => {
+                    // I'm not sure this App stack is really useful,
+                    // will leave it hanging for now
+                    //
+                    // if let Some((linef, colf)) = self.get_line_and_col(l) {
+                    //     s.push_str(&format!(
+                    //         "    Applied to a term on line: {} col: {}\n",
+                    //         linef, colf
+                    //     ));
+                    // }
+                }
+                StackElem::Var(IdentKind::Let(), Ident(x), Some((l, r))) => {
+                    if let Some((linef, colf)) = self.get_line_and_col(l) {
+                        s.push_str(&format!(
+                            "On a call to {} on line: {} col: {}\n",
+                            x, linef, colf
+                        ));
+                    }
+                }
+                StackElem::Var(IdentKind::Lam(), Ident(x), Some((l, r))) => {
+                    if let Some((linef, colf)) = self.get_line_and_col(l) {
+                        s.push_str(&format!(
+                            "    Bounded to {} on line: {} col: {}\n",
+                            x, linef, colf
+                        ));
+                    }
+                }
+                _ => {}
+            }
+        }
+        s
+    }
+
+    fn get_line_and_col(&mut self, b: usize) -> Option<(usize, usize)> {
         let buffer = self.read().unwrap();
 
         let mut line = 1;
         let mut col = 1;
         let mut so_far = Self::contracts().len();
+        if b <= so_far {
+            // TODO Right now we have some stuff that is just pasted on
+            // every file, this check should change and location should be more reliable
+            return None;
+        }
         for byte in buffer.bytes() {
             so_far = so_far + 1;
             col = col + 1;
@@ -136,7 +187,7 @@ impl<T: Read> Program<T> {
             }
         }
 
-        (line, col)
+        Some((line, col))
     }
 
     fn contracts() -> String {
@@ -255,5 +306,4 @@ Promise(Bool, 5)
             panic!("This expression should return an error!.");
         }
     }
-
 }
