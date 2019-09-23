@@ -1,5 +1,5 @@
 use eval::{eval, EvalError};
-use label::Label;
+use label::{Label, TyPath};
 use parser;
 use std::fs;
 use std::io::{self, Read};
@@ -92,11 +92,29 @@ impl<T: Read> Program<T> {
     fn process_blame(&mut self, l: Label) -> String {
         let mut s = String::new();
         s.push_str("Reached a blame label, some cast went terribly wrong\n");
-        s.push_str("    Tag: ");
+        s.push_str("    Tag:\n");
         s.push_str(&l.tag);
         s.push_str("\n");
-        let (line, col) = self.get_line_and_col(l.l);
-        s.push_str(&format!("    Line: {} Column: {}\n", line, col));
+        let (linef, colf) = self.get_line_and_col(l.l);
+        let (linet, colt) = self.get_line_and_col(l.r);
+        if linef == linet {
+            s.push_str(&format!(
+                "    Line: {} Columns: {} to {}\n",
+                linef, colf, colt
+            ));
+        } else {
+            s.push_str(&format!("    Line: {} Column: {}\n", linef, colf));
+            s.push_str(&format!("    to Line: {} Column: {}\n", linet, colt));
+        }
+        s.push_str(&format!("    Polarity: {}\n", l.polarity));
+        if l.polarity {
+            s.push_str("    The blame is on the value (positive blame)\n");
+        } else {
+            s.push_str("    The blame is on the context (negative blame)\n");
+        }
+        if l.path != TyPath::Nil() {
+            s.push_str(&format!("    Path: {:?}\n", l.path));
+        }
         s
     }
 
@@ -123,9 +141,9 @@ impl<T: Read> Program<T> {
 
     fn contracts() -> String {
         "let dyn = fun l => fun t => t in
-let num = fun l => fun t => if isNum t then t else blame l in
-let bool = fun l => fun t => if isBool t then t else blame l in
-let func = fun s => fun t => fun l => fun e => if isFun e then (fun x => t l (e (s l x))) else blame l in
+let num = fun l => fun t => if isNum t then t else blame (tag[num] l) in
+let bool = fun l => fun t => if isBool t then t else blame (tag[bool] l) in
+let func = fun s => fun t => fun l => fun e => let l = tag[func] l in if isFun e then (fun x => t (goCodom l) (e (s (chngPol (goDom l)) x))) else blame l in
 ".to_string()
     }
 }

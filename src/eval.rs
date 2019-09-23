@@ -177,6 +177,7 @@ pub fn eval(t0: Term) -> Result<Term, EvalError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use label::TyPath;
     use operation::{BinaryOp, UnaryOp};
 
     fn app(t0: Term, t1: Term) -> Term {
@@ -217,6 +218,8 @@ mod tests {
             tag: "testing".to_string(),
             l: 0,
             r: 1,
+            polarity: false,
+            path: TyPath::Nil(),
         };
         assert_eq!(
             Err(EvalError::BlameError(label.clone())),
