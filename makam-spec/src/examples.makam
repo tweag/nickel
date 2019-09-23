@@ -80,6 +80,32 @@ let (id = fun x => x) in
 Ifte(true, Promise( Num , id 3), Promise( Bool, Assume( Bool -> Bool , id ) true))
 " V T ?
 
+print "Expressions can also be types!" ?
+
+print "Void type (Blame)" ?
+interpreter "
+let (void = fun l => fun t => blame l) in
+Assume(void, 3)
+" V T ?
+
+print "alwaysTrue (Blame)" ?
+interpreter "
+let (alwaysTrue = fun l => fun t => Ifte(t, t, blame l)) in
+Assume(alwaysTrue, false)
+" V T ?
+
+print "Return true" ?
+interpreter "
+let (alwaysTrue = fun l => fun t => Ifte(t, t, blame l)) in
+Assume(alwaysTrue, true)
+" V T ?
+
+print "Return function" ?
+interpreter "
+let (void = fun l => fun t => blame l) in
+Promise( void -> void, fun x => x) 
+" V T ?
+
 print "We also have nice recursive lets" ?
 
 print "Return 3" ?
@@ -97,3 +123,4 @@ let (f = (let (f = 3) in f)) in f + f
 The reason is that when evaluating the body of the let definition we introduce a fresh variable that accounts for 
 the recursive definition, and it may try to escape that context where it exists, not unifying with anything
 *)
+

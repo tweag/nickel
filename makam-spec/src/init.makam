@@ -3,10 +3,23 @@
 %use "eval".
 %use "typecheck".
 
+changeToDyn : typ -> typ -> prop.
+changeToDyn A tdyn when refl.isunif A.
+changeToDyn (tarrow S T) (tarrow CS CT) :-
+  changeToDyn S CS,
+  changeToDyn T CT.
+changeToDyn A A when not (refl.isunif A).
+
+raw_interpreter : string -> expr -> typ -> prop.
+raw_interpreter S V Ty :-
+  either (isocast S (E: expr)) (log_error S `Parse error in Nickel program`),
+  once (ifte (typecheck E Ty) (print "Typechecked!") (and (print `Could not typecheck`) (failure))),
+  eval E V,
+  print "Evaluated".
+
 interpreter : string -> string -> string -> prop.
 interpreter S S' STy :-
-  either (isocast S (E: expr)) (log_error S `Parse error in Nickel program`),
-  either (typecheck E T) (and (log_error E `Could not typecheck`) (failure)),
-  eval E V,
-  isocast T (STy: string),
-  isocast V (S': string).
+  raw_interpreter S V T',
+  once (changeToDyn T' T), (* The printer will fail if any uninstantiated variable is in the Type *)
+  isocast V (S': string),
+  isocast T (STy: string).

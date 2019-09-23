@@ -46,7 +46,7 @@ eval (eunop Op E) V :-
   eval_unop Op E' V.
 
 eval_unop blame (label S) _ :- 
-  log_error S `Reached a blame with label ${S}`,
+  print `Reached a blame with label ${S}`,
   failure.
 
 eval_unop isNum (eint _) (ebool true).
@@ -65,9 +65,8 @@ eval (promise _ T) V :-
   eval T V.
 
 eval (assume Ty L T) V :-
-  contract Ty CTy,
+  typToExpr Ty CTy,
   eval (app (app CTy L) T) V.
-
 
 (* Variables *)
 eval (named X) _ :- print `unknown variable ${X}`, failure.

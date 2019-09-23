@@ -71,6 +71,8 @@ baseexpr ->
         { <id> }
       / eint
         { <makam.int_literal> }
+      / named 
+        { <makam.ident> }
       / { "(" <expr_> ")" }
 
 def -> tuple
@@ -88,6 +90,8 @@ baseTyp ->
         { "Dyn" }
       / tstr
         { "String" }
+      / fromExpr
+        { <expr_> }
       / { "(" <typ> ")" }
 
 typ ->  tarrow
