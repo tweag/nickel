@@ -1,19 +1,15 @@
 use identifier::Ident;
 use term::Term::*;
-use term::{BinaryOp, Term, UnaryOp};
-
-fn app(t1: Term, t2: Term) -> Term {
-    App(Box::new(t1), Box::new(t2))
-}
+use term::{BinaryOp, RichTerm, UnaryOp};
 
 #[test]
 fn numbers() {
     let parser = super::grammar::TermParser::new();
-    assert_eq!(parser.parse("22").unwrap(), Num(22.0));
-    assert_eq!(parser.parse("22.0").unwrap(), Num(22.0));
-    assert_eq!(parser.parse("22.22").unwrap(), Num(22.22));
-    assert_eq!(parser.parse("(22)").unwrap(), Num(22.0));
-    assert_eq!(parser.parse("((22))").unwrap(), Num(22.0));
+    assert_eq!(parser.parse("22").unwrap(), Num(22.0).into());
+    assert_eq!(parser.parse("22.0").unwrap(), Num(22.0).into());
+    assert_eq!(parser.parse("22.22").unwrap(), Num(22.22).into());
+    assert_eq!(parser.parse("(22)").unwrap(), Num(22.0).into());
+    assert_eq!(parser.parse("((22))").unwrap(), Num(22.0).into());
 }
 
 #[test]
@@ -21,27 +17,24 @@ fn plus() {
     let parser = super::grammar::TermParser::new();
     assert_eq!(
         parser.parse("3 + 4").unwrap(),
-        Op2(BinaryOp::Plus(), Box::new(Num(3.0)), Box::new(Num(4.)))
+        Op2(BinaryOp::Plus(), Num(3.0).into(), Num(4.).into()).into()
     );
     assert_eq!(
         parser.parse("(true + false) + 4").unwrap(),
         Op2(
             BinaryOp::Plus(),
-            Box::new(Op2(
-                BinaryOp::Plus(),
-                Box::new(Bool(true)),
-                Box::new(Bool(false))
-            )),
-            Box::new(Num(4.))
+            Op2(BinaryOp::Plus(), Bool(true).into(), Bool(false).into()).into(),
+            Num(4.).into()
         )
+        .into()
     );
 }
 
 #[test]
 fn booleans() {
     let parser = super::grammar::TermParser::new();
-    assert_eq!(parser.parse("true").unwrap(), Bool(true));
-    assert_eq!(parser.parse("false").unwrap(), Bool(false));
+    assert_eq!(parser.parse("true").unwrap(), Bool(true).into());
+    assert_eq!(parser.parse("false").unwrap(), Bool(false).into());
 }
 
 #[test]
@@ -49,9 +42,12 @@ fn ite() {
     let parser = super::grammar::TermParser::new();
     assert_eq!(
         parser.parse("if true then 3 else 4").unwrap(),
-        app(
-            app(Op1(UnaryOp::Ite(), Box::new(Bool(true))), Num(3.0)),
-            Num(4.0)
+        RichTerm::app(
+            RichTerm::app(
+                Op1(UnaryOp::Ite(), Bool(true).into()).into(),
+                Num(3.0).into()
+            ),
+            Num(4.0).into()
         )
     );
 }
@@ -61,11 +57,20 @@ fn applications() {
     let parser = super::grammar::TermParser::new();
     assert_eq!(
         parser.parse("1 true 2").unwrap(),
-        app(app(Num(1.0), Bool(true)), Num(2.0)),
+        RichTerm::app(
+            RichTerm::app(Num(1.0).into(), Bool(true).into()),
+            Num(2.0).into()
+        ),
     );
     assert_eq!(
         parser.parse("1 (2 3) 4").unwrap(),
-        app(app(Num(1.0), app(Num(2.0), Num(3.0))), Num(4.0)),
+        RichTerm::app(
+            RichTerm::app(
+                Num(1.0).into(),
+                RichTerm::app(Num(2.0).into(), Num(3.0).into())
+            ),
+            Num(4.0).into()
+        ),
     );
 }
 
@@ -81,7 +86,7 @@ fn functions() {
     let parser = super::grammar::TermParser::new();
     assert_eq!(
         parser.parse("fun x => x").unwrap(),
-        Fun(Ident("x".into()), Box::new(Var(Ident("x".into())))),
+        Fun(Ident("x".into()), RichTerm::var("x".into())).into(),
     );
 }
 

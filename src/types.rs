@@ -1,5 +1,4 @@
-use identifier::Ident;
-use term::Term;
+use term::RichTerm;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Types {
@@ -10,17 +9,14 @@ pub enum Types {
 }
 
 impl Types {
-    pub fn contract(&self) -> Term {
+    pub fn contract(&self) -> RichTerm {
         match self {
-            Types::Dyn() => Term::Var(Ident("dyn".to_string())),
-            Types::Num() => Term::Var(Ident("num".to_string())),
-            Types::Bool() => Term::Var(Ident("bool".to_string())),
-            Types::Arrow(s, t) => Term::App(
-                Box::new(Term::App(
-                    Box::new(Term::Var(Ident("func".to_string()))),
-                    Box::new(s.contract()),
-                )),
-                Box::new(t.contract()),
+            Types::Dyn() => RichTerm::var("dyn".to_string()),
+            Types::Num() => RichTerm::var("num".to_string()),
+            Types::Bool() => RichTerm::var("bool".to_string()),
+            Types::Arrow(s, t) => RichTerm::app(
+                RichTerm::app(RichTerm::var("func".to_string()), s.contract()),
+                t.contract(),
             ),
         }
     }

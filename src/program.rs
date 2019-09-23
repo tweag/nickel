@@ -5,13 +5,13 @@ use std::fs;
 use std::io::{self, Read};
 use std::path::Path;
 use std::result::Result;
-use term::Term;
+use term::{RichTerm, Term};
 
 pub struct Program<T: Read> {
     src: T,
     include_contracts: bool,
     read: Option<String>,
-    parsed: Option<Term>,
+    parsed: Option<RichTerm>,
 }
 
 impl Program<io::Stdin> {
@@ -46,7 +46,7 @@ impl<T: Read> Program<T> {
         }
     }
 
-    fn parse(&mut self) -> Result<Term, String> {
+    fn parse(&mut self) -> Result<RichTerm, String> {
         if let None = self.parsed {
             let mut buf = self.read()?;
             if self.include_contracts {

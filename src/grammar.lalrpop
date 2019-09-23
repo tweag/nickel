@@ -2,40 +2,40 @@ use identifier::Ident;
 use std::str::FromStr;
 use types::Types;
 use label::{Label, TyPath};
-use term::{BinaryOp, Term, UnaryOp};
+use term::{BinaryOp, RichTerm, Term, UnaryOp};
 
 grammar;
 
-pub Term = {
+pub Term: RichTerm = {
     "fun" <p:Pattern> "=>" <t:Term> =>
-        Term::Fun(p, Box::new(t)),
+        RichTerm::new(Term::Fun(p, t)),
     "let" <id:Ident> "=" <t1:Term> "in" <t2:Term> =>
-        Term::Let(id, Box::new(t1), Box::new(t2)),
+        RichTerm::new(Term::Let(id, t1, t2)),
     "if" <b:Term> "then" <t:Term> "else" <e:Term> =>
-        Term::App(Box::new(Term::App(Box::new(Term::Op1(UnaryOp::Ite(), Box::new(b))), Box::new(t))), Box::new(e)),
+        RichTerm::app(RichTerm::app(RichTerm::new(Term::Op1(UnaryOp::Ite(), b)), t), e),
     Operation    
 };
 
-Operation: Term = {
-    <t1: Applicative> <op: BOp> <t2: Operation> => Term::Op2(op, Box::new(t1), Box::new(t2)),
-    <op: UOp> <t: Operation> => Term::Op1(op, Box::new(t)),
+Operation: RichTerm = {
+    <t1: Applicative> <op: BOp> <t2: Operation> => RichTerm::new(Term::Op2(op, t1, t2)),
+    <op: UOp> <t: Operation> => RichTerm::new(Term::Op1(op, t)),
     Applicative,
 };
 
-Applicative: Term = {
-    <t1:Applicative> <t2:Atom> => Term::App(Box::new(t1), Box::new(t2)),
+Applicative: RichTerm = {
+    <t1:Applicative> <t2:Atom> => RichTerm::new(Term::App(t1, t2)),
     Atom,
 };
 
-Atom: Term = {
+Atom: RichTerm = {
     "(" <Term> ")",
     <l:@L> "Promise(" <ty: Types> "," <t: Term> ")" <r:@R> =>
-        Term::Promise(ty, Label{tag: "A promise".to_string(), l: l, r: r, polarity: true, path: TyPath::Nil()}, Box::new(t)),
+        RichTerm::new(Term::Promise(ty, Label{tag: "A promise".to_string(), l: l, r: r, polarity: true, path: TyPath::Nil()}, t)),
     <l:@L> "Assume(" <ty: Types> "," <t: Term> ")" <r:@R> =>
-        Term::Assume(ty, Label{tag: "An assume".to_string(), l: l, r: r, polarity: true, path: TyPath::Nil()}, Box::new(t)), 
-    Num => Term::Num(<>),
-    Bool => Term::Bool(<>),
-    Ident => Term::Var(<>),
+        RichTerm::new(Term::Assume(ty, Label{tag: "An assume".to_string(), l: l, r: r, polarity: true, path: TyPath::Nil()}, t)), 
+    Num => RichTerm::new(Term::Num(<>)),
+    Bool => RichTerm::new(Term::Bool(<>)),
+    Ident => RichTerm::new(Term::Var(<>)),
 };
 
 Pattern: Ident = {

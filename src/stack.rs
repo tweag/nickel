@@ -134,7 +134,7 @@ mod tests {
     use term::{Term, UnaryOp};
 
     fn some_closure() -> Closure {
-        Closure::atomic_closure(Term::Bool(true))
+        Closure::atomic_closure(Term::Bool(true).into())
     }
 
     fn some_cont() -> OperationCont {
