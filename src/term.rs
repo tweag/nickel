@@ -21,6 +21,30 @@ pub enum Term {
     Assume(Types, Label, RichTerm),
 }
 
+impl Term {
+    pub fn apply_to_rich_terms<F>(&mut self, func: F)
+    where
+        F: Fn(&mut RichTerm),
+    {
+        use self::Term::*;
+        match self {
+            Bool(_) | Num(_) | Lbl(_) | Var(_) => {}
+            Fun(_, ref mut t)
+            | Op1(_, ref mut t)
+            | Promise(_, _, ref mut t)
+            | Assume(_, _, ref mut t) => {
+                func(t);
+            }
+            Let(_, ref mut t1, ref mut t2)
+            | App(ref mut t1, ref mut t2)
+            | Op2(_, ref mut t1, ref mut t2) => {
+                func(t1);
+                func(t2);
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum UnaryOp {
     Ite(),
@@ -43,11 +67,21 @@ pub enum BinaryOp {
 #[derive(Debug, PartialEq, Clone)]
 pub struct RichTerm {
     pub term: Box<Term>,
+    pub pos: Option<(usize, usize)>,
 }
 
 impl RichTerm {
     pub fn new(t: Term) -> RichTerm {
-        RichTerm { term: Box::new(t) }
+        RichTerm {
+            term: Box::new(t),
+            pos: None,
+        }
+    }
+
+    pub fn clean_pos(&mut self) {
+        self.pos = None;
+        self.term
+            .apply_to_rich_terms(|rt: &mut Self| rt.clean_pos());
     }
 
     pub fn app(rt1: RichTerm, rt2: RichTerm) -> RichTerm {

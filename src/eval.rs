@@ -44,7 +44,10 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
 
     loop {
         let Closure {
-            body: RichTerm { term: boxed_term },
+            body: RichTerm {
+                term: boxed_term,
+                pos: _,
+            },
             mut env,
         } = clos;
         let term = *boxed_term;
