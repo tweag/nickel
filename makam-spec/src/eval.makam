@@ -2,11 +2,17 @@
 
 eval : expr -> expr -> prop.
 
+thunk : expr -> expr -> expr.
+
+eval (thunk E V) V' when refl.isunif V :-
+  eval E V,
+  eq V V'.
+eval (thunk E V) V' when not (refl.isunif V) :-
+  eq V V'.
+
 (* Lambda constructs *)
-eval (let (bind Name E) (bind Name T)) V :-
-  ((eval (named Name) R :- eval (E (named Name)) R) ->
-    eval (T (named Name)) V
-  ).
+eval (let (bind Name E) (bind Name T)) V :-  
+  eval (T (thunk (E V') V')) V. 
 
 eval (lam X_Body) (lam X_Body).
 
