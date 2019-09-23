@@ -90,7 +90,7 @@ impl<T: Read> Program<T> {
         }
     }
 
-    fn process_blame(&mut self, l: Label, mut cs_opt: Option<CallStack>) -> String {
+    fn process_blame(&mut self, l: Label, cs_opt: Option<CallStack>) -> String {
         let mut s = String::new();
         s.push_str("Reached a blame label, some cast went terribly wrong\n");
         s.push_str("    Tag:\n");
@@ -131,7 +131,7 @@ impl<T: Read> Program<T> {
     fn show_call_stack(&mut self, mut s: String, mut cs: CallStack) -> String {
         for e in cs.drain(..).rev() {
             match e {
-                StackElem::App(Some((l, r))) => {
+                StackElem::App(Some((_l, _r))) => {
                     // I'm not sure this App stack is really useful,
                     // will leave it hanging for now
                     //
@@ -142,7 +142,7 @@ impl<T: Read> Program<T> {
                     //     ));
                     // }
                 }
-                StackElem::Var(IdentKind::Let(), Ident(x), Some((l, r))) => {
+                StackElem::Var(IdentKind::Let(), Ident(x), Some((l, _r))) => {
                     if let Some((linef, colf)) = self.get_line_and_col(l) {
                         s.push_str(&format!(
                             "On a call to {} on line: {} col: {}\n",
@@ -150,7 +150,7 @@ impl<T: Read> Program<T> {
                         ));
                     }
                 }
-                StackElem::Var(IdentKind::Lam(), Ident(x), Some((l, r))) => {
+                StackElem::Var(IdentKind::Lam(), Ident(x), Some((l, _r))) => {
                     if let Some((linef, colf)) = self.get_line_and_col(l) {
                         s.push_str(&format!(
                             "    Bounded to {} on line: {} col: {}\n",

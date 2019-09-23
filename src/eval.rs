@@ -155,7 +155,7 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                 } else {
                     let mut cont_result = continuate_operation(clos, &mut stack, &mut call_stack);
 
-                    if let Err(EvalError::BlameError(l, cs)) = cont_result {
+                    if let Err(EvalError::BlameError(l, _)) = cont_result {
                         return Err(EvalError::BlameError(l, Some(call_stack)));
                     }
                     clos = cont_result?;
