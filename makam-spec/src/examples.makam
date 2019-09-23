@@ -105,3 +105,22 @@ interpreter "
 let (void = fun l => fun t => blame l) in
 Promise( void -> void, fun x => x) 
 " V T ?
+
+print "We also have nice recursive lets" ?
+
+print "Return 3" ?
+raw_interpreter "
+let (f = fun x => Ifte(x, f false, 3)) in
+f true
+" V T ?
+
+print "No idea what happens with lets in lets" ?
+raw_interpreter "
+let (f = (let (f = 3) in f)) in f + f
+" V T ?
+
+(*
+The reason is that when evaluating the body of the let definition we introduce a fresh variable that accounts for 
+the recursive definition, and it may try to escape that context where it exists, not unifying with anything
+*)
+

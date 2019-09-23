@@ -3,9 +3,10 @@
 eval : expr -> expr -> prop.
 
 (* Lambda constructs *)
-eval (let E X_Body) V :-
-  bindone.apply X_Body E Body',
-  eval Body' V.
+eval (let (bind Name E) (bind Name T)) V :-
+  ((eval (named Name) R :- eval (E (named Name)) R) ->
+    eval (T (named Name)) V
+  ).
 
 eval (lam X_Body) (lam X_Body).
 
@@ -68,4 +69,4 @@ eval (assume Ty L T) V :-
   eval (app (app CTy L) T) V.
 
 (* Variables *)
-eval (named X) _ :- log_error X `unknown variable ${X}`, failure.
+eval (named X) _ :- print `unknown variable ${X}`, failure.

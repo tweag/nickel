@@ -2,7 +2,7 @@ expr : type.
 typ : type.
 
 (* Lambda constructs *)
-let : expr -> bindone expr expr -> expr.
+let : bindone expr expr -> bindone expr expr -> expr.
 lam : bindone expr expr -> expr.
 app : expr -> expr -> expr.
 

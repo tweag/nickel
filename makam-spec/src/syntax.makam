@@ -109,4 +109,4 @@ concrete.handle_unresolved_name (concrete.name exprvar ID) (named ID).
 
 concrete.resolve_conversion
     (clet (Name, Def) Body)
-    (let Def (concrete.bindone Name Body)).
+    (let (concrete.bindone Name Def) (concrete.bindone Name Body)).
