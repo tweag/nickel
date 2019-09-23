@@ -130,9 +130,8 @@ impl Stack {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use operation::UnaryOp;
     use std::rc::Rc;
-    use term::Term;
+    use term::{Term, UnaryOp};
 
     fn some_closure() -> Closure {
         Closure::atomic_closure(Term::Bool(true))

@@ -139,9 +139,9 @@ pub fn eval(t0: Term) -> Result<Term, EvalError> {
             }
             // Continuate Operation
             _ if 0 < stack.count_conts() => {
-                continuate_operation(
+                clos = continuate_operation(
                     stack.pop_op_cont().expect("Condition already checked"),
-                    &mut clos,
+                    clos,
                     &mut stack,
                 )?;
             }
@@ -178,7 +178,7 @@ pub fn eval(t0: Term) -> Result<Term, EvalError> {
 mod tests {
     use super::*;
     use label::TyPath;
-    use operation::{BinaryOp, UnaryOp};
+    use term::{BinaryOp, UnaryOp};
 
     fn app(t0: Term, t1: Term) -> Term {
         Term::App(Box::new(t0), Box::new(t1))
