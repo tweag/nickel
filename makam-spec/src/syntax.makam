@@ -56,7 +56,7 @@ expr_ -> ite
       / eunop
         { <unopC> <baseexpr> }
       / app
-        { <baseexpr>  <expr_> }
+        { <baseexpr>  <baseexpr> }
       / { <baseexpr> }
 
 baseexpr ->

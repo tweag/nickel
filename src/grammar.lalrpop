@@ -1,6 +1,6 @@
 use identifier::Ident;
 use std::str::FromStr;
-use types::Types;
+use types::{Types, AbsType};
 use label::{Label, TyPath};
 use term::{BinaryOp, RichTerm, Term, UnaryOp};
 
@@ -75,15 +75,15 @@ BOp: BinaryOp = {
 };
 
 Types: Types = {
-    <s: subType> "->" <t:Types> => Types::Arrow(Box::new(s), Box::new(t)),
+    <s: subType> "->" <t:Types> => Types(AbsType::Arrow(Box::new(s), Box::new(t))),
     <subType>,
 };
 
 subType : Types = {
-    "Dyn" => Types::Dyn(),
-    "Num" => Types::Num(),
-    "Bool" => Types::Bool(),
-    "#" <SpTerm<RichTerm>> => Types::Flat(<>),
+    "Dyn" => Types(AbsType::Dyn()),
+    "Num" => Types(AbsType::Num()),
+    "Bool" => Types(AbsType::Bool()),
+    "#" <SpTerm<RichTerm>> => Types(AbsType::Flat(<>)),
     "(" <Types> ")" => <>,
 };
 
