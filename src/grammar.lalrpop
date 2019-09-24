@@ -83,6 +83,7 @@ subType : Types = {
     "Dyn" => Types::Dyn(),
     "Num" => Types::Num(),
     "Bool" => Types::Bool(),
+    "#" <SpTerm<RichTerm>> => Types::Flat(<>),
     "(" <Types> ")" => <>,
 };
 

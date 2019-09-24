@@ -6,6 +6,7 @@ pub enum Types {
     Num(),
     Bool(),
     Arrow(Box<Types>, Box<Types>),
+    Flat(RichTerm),
 }
 
 impl Types {
@@ -18,6 +19,7 @@ impl Types {
                 RichTerm::app(RichTerm::var("func".to_string()), s.contract()),
                 t.contract(),
             ),
+            Types::Flat(t) => t.clone(),
         }
     }
 }
