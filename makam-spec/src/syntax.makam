@@ -73,6 +73,8 @@ baseexpr ->
         { <makam.int_literal> }
       / named 
         { <makam.ident> }
+      / label
+        {"Lbl" <makam.string_literal> }
       / { "(" <expr_> ")" }
 
 def -> tuple

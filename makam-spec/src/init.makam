@@ -2,6 +2,7 @@
 %use "syntax".
 %use "eval".
 %use "typecheck".
+%use "utils".
 
 changeToDyn : typ -> typ -> prop.
 changeToDyn A tdyn when refl.isunif A.
@@ -9,6 +10,13 @@ changeToDyn (tarrow S T) (tarrow CS CT) :-
   changeToDyn S CS,
   changeToDyn T CT.
 changeToDyn A A when not (refl.isunif A).
+
+removeThunks, removeThunks_ : dyn -> dyn -> prop.
+
+removeThunks X Y :- demand.case_otherwise (removeThunks_  X Y) (structural_rec removeThunks X Y).
+
+removeThunks_ (dyn (thunk S A B)) (dyn (named S)) .
+removeThunks_ (dyn (recThunk S A B)) (dyn (named S)) .
 
 raw_interpreter : string -> expr -> typ -> prop.
 raw_interpreter S V Ty :-
@@ -21,5 +29,6 @@ interpreter : string -> string -> string -> prop.
 interpreter S S' STy :-
   raw_interpreter S V T',
   once (changeToDyn T' T), (* The printer will fail if any uninstantiated variable is in the Type *)
-  isocast V (S': string),
+  removeThunks (dyn V) (dyn V'),
+  isocast V' (S': string),
   isocast T (STy: string).

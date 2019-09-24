@@ -3,18 +3,14 @@
 typecheck : expr -> typ -> prop.
 typecheckTypes : typ -> prop.
 
-typecheck (let (bind _ E) (bind _ B)) T :-
-    (x: expr ->
-        typecheck x T' ->
-        (typecheck (E x) T',
-            typecheck (B x) T)
-    ).
+typecheck (let (bind Name E) (bind Name B)) T :-
+    (typecheck (named Name) T' ->
+        (typecheck (E (named Name)) T',
+        typecheck (B (named Name)) T)).
 
-typecheck (lam (bind _ B)) (tarrow S T) :-
-    (x: expr ->
-        typecheck x S ->
-        typecheck (B x) T 
-    ).
+typecheck (lam (bind Name B)) (tarrow S T) :-
+    (typecheck (named Name) S ->
+    typecheck (B (named Name)) T).
 
 typecheck (app A B) T :-
     typecheck A (tarrow S T),

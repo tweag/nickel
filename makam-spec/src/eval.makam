@@ -2,24 +2,29 @@
 
 eval : expr -> expr -> prop.
 
-thunk : expr -> expr -> expr.
-
-eval (thunk E V) V' when refl.isunif V :-
+(* Lazy evaluation *)
+eval (thunk _ E V) V' when refl.isunif V :-
   eval E V,
   eq V V'.
-eval (thunk E V) V' when not (refl.isunif V) :-
+eval (thunk _ E V) V' when not (refl.isunif V) :-
+  eq V V'.
+
+eval (recThunk S E V) V' when refl.isunif V :-
+  eval (E (recThunk S E R)) V,
+  eq V V'.
+
+eval (recThunk _ E V) V' when not (refl.isunif V) :-
   eq V V'.
 
 (* Lambda constructs *)
 eval (let (bind Name E) (bind Name T)) V :-  
-  eval (T (thunk (E V') V')) V. 
+  eval (T (recThunk Name E V')) V. 
 
 eval (lam X_Body) (lam X_Body).
 
 eval (app E1 E2) V :-   (* Beta *)
-  eval E1 (lam X_Body),
-  bindone.apply X_Body E2 E',
-  eval E' V.
+  eval E1 (lam (bind Name Body)),
+  eval (Body (thunk Name E2 Shr)) V.
 
 (* Constants *)
 eval (eint N) (eint N).
