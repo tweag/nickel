@@ -153,7 +153,7 @@ impl<T: Read> Program<T> {
                 StackElem::Var(IdentKind::Lam(), Ident(x), Some((l, _r))) => {
                     if let Some((linef, colf)) = self.get_line_and_col(l) {
                         s.push_str(&format!(
-                            "    Bounded to {} on line: {} col: {}\n",
+                            "    Bound to {} on line: {} col: {}\n",
                             x, linef, colf
                         ));
                     }
