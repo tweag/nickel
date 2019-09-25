@@ -7,7 +7,20 @@ use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 use term::{RichTerm, Term};
 
-pub type Enviroment = HashMap<Ident, Rc<RefCell<Closure>>>;
+pub type Enviroment = HashMap<Ident, (Rc<RefCell<Closure>>, IdentKind)>;
+pub type CallStack = Vec<StackElem>;
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum StackElem {
+    App(Option<(usize, usize)>),
+    Var(IdentKind, Ident, Option<(usize, usize)>),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum IdentKind {
+    Let(),
+    Lam(),
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Closure {
@@ -26,7 +39,7 @@ impl Closure {
 
 #[derive(Debug, PartialEq)]
 pub enum EvalError {
-    BlameError(Label),
+    BlameError(Label, Option<CallStack>),
     TypeError(String),
 }
 
@@ -40,13 +53,14 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
         body: t0,
         env: empty_env,
     };
+    let mut call_stack = CallStack::new();
     let mut stack = Stack::new();
 
     loop {
         let Closure {
             body: RichTerm {
                 term: boxed_term,
-                pos: _,
+                pos,
             },
             mut env,
         } = clos;
@@ -54,11 +68,12 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
         match term {
             // Var
             Term::Var(x) => {
-                let mut thunk = Rc::clone(env.get(&x).expect(&format!("Unbound variable {:?}", x)));
+                let (thunk, id_kind) = env.remove(&x).expect(&format!("Unbound variable {:?}", x));
                 std::mem::drop(env); // thunk may be a 1RC pointer
                 if !is_value(&thunk.borrow().body.term) {
                     stack.push_thunk(Rc::downgrade(&thunk));
                 }
+                call_stack.push(StackElem::Var(id_kind, x, pos));
                 match Rc::try_unwrap(thunk) {
                     Ok(c) => {
                         // thunk was the only strong ref to the closure
@@ -72,10 +87,13 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
             }
             // App
             Term::App(t1, t2) => {
-                stack.push_arg(Closure {
-                    body: t2,
-                    env: env.clone(),
-                });
+                stack.push_arg(
+                    Closure {
+                        body: t2,
+                        env: env.clone(),
+                    },
+                    pos,
+                );
                 clos = Closure { body: t1, env };
             }
             // Let
@@ -84,32 +102,38 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                     body: s,
                     env: env.clone(),
                 }));
-                env.insert(x, Rc::clone(&thunk));
+                env.insert(x, (Rc::clone(&thunk), IdentKind::Let()));
                 clos = Closure { body: t, env: env };
             }
             // Unary Operation
             Term::Op1(op, t) => {
-                stack.push_op_cont(OperationCont::Op1(op));
+                stack.push_op_cont(OperationCont::Op1(op), call_stack.len());
                 clos = Closure { body: t, env };
             }
             // Binary Operation
             Term::Op2(op, fst, snd) => {
-                stack.push_op_cont(OperationCont::Op2First(
-                    op,
-                    Closure {
-                        body: snd,
-                        env: env.clone(),
-                    },
-                ));
+                stack.push_op_cont(
+                    OperationCont::Op2First(
+                        op,
+                        Closure {
+                            body: snd,
+                            env: env.clone(),
+                        },
+                    ),
+                    call_stack.len(),
+                );
                 clos = Closure { body: fst, env };
             }
             // Promise and Assume
             Term::Promise(ty, l, t) | Term::Assume(ty, l, t) => {
-                stack.push_arg(Closure {
-                    body: t,
-                    env: env.clone(),
-                });
-                stack.push_arg(Closure::atomic_closure(RichTerm::new(Term::Lbl(l))));
+                stack.push_arg(
+                    Closure {
+                        body: t,
+                        env: env.clone(),
+                    },
+                    None,
+                );
+                stack.push_arg(Closure::atomic_closure(RichTerm::new(Term::Lbl(l))), None);
                 clos = Closure {
                     body: ty.contract(),
                     env,
@@ -129,20 +153,21 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                         }
                     }
                 } else {
-                    clos = continuate_operation(
-                        stack.pop_op_cont().expect("Condition already checked"),
-                        clos,
-                        &mut stack,
-                    )?;
+                    let mut cont_result = continuate_operation(clos, &mut stack, &mut call_stack);
+
+                    if let Err(EvalError::BlameError(l, _)) = cont_result {
+                        return Err(EvalError::BlameError(l, Some(call_stack)));
+                    }
+                    clos = cont_result?;
                 }
             }
             // Call
             Term::Fun(x, t) => {
                 if 0 < stack.count_args() {
-                    let thunk = Rc::new(RefCell::new(
-                        stack.pop_arg().expect("Condition already checked."),
-                    ));
-                    env.insert(x, thunk);
+                    let (arg, pos) = stack.pop_arg().expect("Condition already checked.");
+                    call_stack.push(StackElem::App(pos));
+                    let thunk = Rc::new(RefCell::new(arg));
+                    env.insert(x, (thunk, IdentKind::Lam()));
                     clos = Closure { body: t, env }
                 } else {
                     return Ok(Term::Fun(x, t));
@@ -186,10 +211,13 @@ mod tests {
             polarity: false,
             path: TyPath::Nil(),
         };
-        assert_eq!(
-            Err(EvalError::BlameError(label.clone())),
-            eval(Term::Op1(UnaryOp::Blame(), Term::Lbl(label).into()).into())
-        );
+        if let Err(EvalError::BlameError(l, _)) =
+            eval(Term::Op1(UnaryOp::Blame(), Term::Lbl(label.clone()).into()).into())
+        {
+            assert_eq!(l, label);
+        } else {
+            panic!("This evaluation should've returned a BlameError!");
+        }
     }
 
     #[test]
