@@ -1,6 +1,6 @@
 use identifier::Ident;
 use label::Label;
-use types::Types;
+use types::{AbsType, Types};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Term {
@@ -48,20 +48,67 @@ impl Term {
 #[derive(Clone, Debug, PartialEq)]
 pub enum UnaryOp {
     Ite(),
+
     IsZero(),
+
     IsNum(),
     IsBool(),
     IsFun(),
+
     Blame(),
+
     ChangePolarity(),
     GoDom(),
     GoCodom(),
     Tag(String),
 }
 
+impl UnaryOp {
+    pub fn get_type(&self) -> Types {
+        match self {
+            UnaryOp::Ite() => {
+                println!("ITE unsupported");
+                Types(AbsType::dyn())
+            }
+            UnaryOp::IsZero() => Types(AbsType::arrow(
+                Box::new(Types(AbsType::num())),
+                Box::new(Types(AbsType::bool())),
+            )),
+            UnaryOp::IsNum() | UnaryOp::IsBool() | UnaryOp::IsFun() => Types(AbsType::arrow(
+                Box::new(Types(AbsType::dyn())),
+                Box::new(Types(AbsType::bool())),
+            )),
+            UnaryOp::Blame() => Types(AbsType::arrow(
+                Box::new(Types(AbsType::dyn())),
+                Box::new(Types(AbsType::dyn())),
+            )),
+            UnaryOp::ChangePolarity() | UnaryOp::GoDom() | UnaryOp::GoCodom() | UnaryOp::Tag(_) => {
+                Types(AbsType::arrow(
+                    Box::new(Types(AbsType::dyn())),
+                    Box::new(Types(AbsType::dyn())),
+                ))
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum BinaryOp {
     Plus(),
+}
+
+impl BinaryOp {
+    pub fn get_type(&self) -> Types {
+        match self {
+            BinaryOp::Plus() => Types(AbsType::arrow(
+                Box::new(Types(AbsType::num())),
+                Box::new(Types(AbsType::arrow(
+                    Box::new(Types(AbsType::num())),
+                    Box::new(Types(AbsType::num())),
+                ))),
+            )),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]

@@ -9,6 +9,38 @@ pub enum AbsType<Ty> {
     Arrow(Ty, Ty),
 }
 
+impl<Ty> AbsType<Ty> {
+    pub fn map<To, F: Fn(Ty) -> To>(self, f: F) -> AbsType<To> {
+        match self {
+            AbsType::Dyn() => AbsType::Dyn(),
+            AbsType::Num() => AbsType::Num(),
+            AbsType::Bool() => AbsType::Bool(),
+            AbsType::Arrow(s, t) => {
+                let fs = f(s);
+                let ft = f(t);
+
+                AbsType::Arrow(fs, ft)
+            }
+        }
+    }
+
+    pub fn bool() -> Self {
+        AbsType::Bool()
+    }
+
+    pub fn num() -> Self {
+        AbsType::Num()
+    }
+
+    pub fn dyn() -> Self {
+        AbsType::Dyn()
+    }
+
+    pub fn arrow(s: Ty, t: Ty) -> Self {
+        AbsType::Arrow(s, t)
+    }
+}
+
 #[derive(Clone, PartialEq, Debug)]
 pub struct Types(pub AbsType<Box<Types>>);
 

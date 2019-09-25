@@ -2,11 +2,13 @@ use eval::{eval, CallStack, EvalError, IdentKind, StackElem};
 use identifier::Ident;
 use label::{Label, TyPath};
 use parser;
+use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Read};
 use std::path::Path;
 use std::result::Result;
 use term::{RichTerm, Term};
+use typecheck::traverse;
 
 pub struct Program<T: Read> {
     src: T,
@@ -40,6 +42,10 @@ impl<T: Read> Program<T> {
 
     pub fn eval(&mut self) -> Result<Term, String> {
         let t = self.parse()?;
+        println!(
+            "Typechecked: {:?}",
+            traverse(HashMap::new(), t.clone().into())
+        );
         match eval(t) {
             Ok(t) => Ok(t),
             Err(EvalError::BlameError(l, cs)) => Err(self.process_blame(l, cs)),
@@ -284,7 +290,7 @@ safePlus Promise(Num , 54) Promise(Num , 6)",
 let dec = Promise(Num -> Num, fun x => x + (-1)) in
 let or = Promise(Bool -> Bool -> Bool, fun x => fun y => if x then x else y) in
 
-let fibo = Promise(Num -> Num, Y (fun fibo =>
+let fibo = Y Promise((Num -> Num) -> Num -> Num, (fun fibo =>
     (fun x => if or (isZero x) (isZero (dec x)) then 1 else (fibo (dec x)) + (fibo (dec (dec x)))))) in
 let val = Promise(Num, 4) in
 fibo val",
