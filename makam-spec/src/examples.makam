@@ -109,18 +109,36 @@ Promise( void -> void, fun x => x)
 print "We also have nice recursive lets" ?
 
 print "Return 3" ?
-raw_interpreter "
+interpreter "
 let (f = fun x => Ifte(x, f false, 3)) in
 f true
 " V T ?
 
-print "No idea what happens with lets in lets" ?
-raw_interpreter "
-let (f = (let (f = 3) in f)) in f + f
+print "Return 4 -- Shadowing works" ?
+interpreter "
+let (f = (let (f = fun x => 3 - x) in f 1)) in f + f
 " V T ?
 
-(*
-The reason is that when evaluating the body of the let definition we introduce a fresh variable that accounts for 
-the recursive definition, and it may try to escape that context where it exists, not unifying with anything
-*)
+print "Return fun -- What happens with dangling thunks?" ?
+interpreter "
+let (f = fun x => x + 1) in
+fun y => f y"
+V T ?
 
+
+print "Lets try side effects!" ?
+
+print "Return 3 -- Lets are lazy" ?
+side_effect : expr.
+eval (side_effect) (eint 1) :- 
+    print "Side Effect!!".
+
+(isocast "
+fun se => let (f = se) in (f + f) + f
+" (E: expr), eval (app E side_effect) Res) ?
+
+print "Return 2 -- functions as well" ?
+
+(isocast "
+fun se => (fun x => x + x) se
+" (E: expr), eval (app E side_effect) Res) ?

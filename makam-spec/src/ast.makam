@@ -38,6 +38,10 @@ label : string -> expr.
 (* Variables *)
 named : string -> expr.
 
+(* These are used for lazy evaluation *)
+thunk : string -> expr -> expr -> expr.
+recThunk : string -> (expr -> expr) -> expr -> expr.
+
 (* Types *)
 tdyn : typ.
 tnum : typ.
