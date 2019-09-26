@@ -1,6 +1,6 @@
 use identifier::Ident;
 use std::collections::HashMap;
-use term::Term;
+use term::{BinaryOp, Term, UnaryOp};
 use types::{AbsType, Types};
 
 #[derive(Clone, PartialEq, Debug)]
@@ -21,6 +21,63 @@ pub fn getRoot(s: &GTypes, x: usize) -> (Option<AbsType<Box<TypeWrapper>>>, usiz
     }
 }
 
+pub fn get_uop_type(s: &mut GTypes, op: UnaryOp) -> TypeWrapper {
+    match op {
+        UnaryOp::Ite() => {
+            let branches = TypeWrapper::Ptr(new_var(s));
+
+            TypeWrapper::The(AbsType::arrow(
+                Box::new(TypeWrapper::The(AbsType::bool())),
+                Box::new(TypeWrapper::The(AbsType::arrow(
+                    Box::new(branches.clone()),
+                    Box::new(TypeWrapper::The(AbsType::arrow(
+                        Box::new(branches.clone()), // These nums are here just to type fibo
+                        Box::new(branches),
+                    ))),
+                ))),
+            ))
+        }
+        UnaryOp::IsZero() => TypeWrapper::The(AbsType::arrow(
+            Box::new(TypeWrapper::The(AbsType::num())),
+            Box::new(TypeWrapper::The(AbsType::bool())),
+        )),
+        UnaryOp::IsNum() | UnaryOp::IsBool() | UnaryOp::IsFun() => {
+            let inp = TypeWrapper::Ptr(new_var(s));
+
+            TypeWrapper::The(AbsType::arrow(
+                Box::new(inp),
+                Box::new(TypeWrapper::The(AbsType::bool())),
+            ))
+        }
+        UnaryOp::Blame() => {
+            let res = TypeWrapper::Ptr(new_var(s));
+
+            TypeWrapper::The(AbsType::arrow(
+                Box::new(TypeWrapper::The(AbsType::dyn())),
+                Box::new(res),
+            ))
+        }
+        UnaryOp::ChangePolarity() | UnaryOp::GoDom() | UnaryOp::GoCodom() | UnaryOp::Tag(_) => {
+            TypeWrapper::The(AbsType::arrow(
+                Box::new(TypeWrapper::The(AbsType::dyn())),
+                Box::new(TypeWrapper::The(AbsType::dyn())),
+            ))
+        }
+    }
+}
+
+pub fn get_bop_type(s: &mut GTypes, op: BinaryOp) -> TypeWrapper {
+    match op {
+        BinaryOp::Plus() => TypeWrapper::The(AbsType::arrow(
+            Box::new(TypeWrapper::The(AbsType::num())),
+            Box::new(TypeWrapper::The(AbsType::arrow(
+                Box::new(TypeWrapper::The(AbsType::num())),
+                Box::new(TypeWrapper::The(AbsType::num())),
+            ))),
+        )),
+    }
+}
+
 pub fn unify(state: &mut GTypes, t1: TypeWrapper, t2: TypeWrapper) -> Result<(), String> {
     match (t1, t2) {
         (TypeWrapper::The(s1), TypeWrapper::The(s2)) => match (s1, s2) {
@@ -31,7 +88,7 @@ pub fn unify(state: &mut GTypes, t1: TypeWrapper, t2: TypeWrapper) -> Result<(),
                 unify(state, *s1s, *s2s)?;
                 unify(state, *s1t, *s2t)
             }
-            (_, _) => Err("typechecking a fn".into()),
+            (a, b) => Err(format!("The following types dont match {:?} -- {:?}", a, b)),
         },
         (TypeWrapper::Ptr(p1), TypeWrapper::Ptr(p2)) => {
             let (ty1, r1) = getRoot(&state, p1);
@@ -136,7 +193,7 @@ pub fn typeCheck(
         }
         // Annoying Ops
         Term::Op1(op, rt) => {
-            let ty_op = op.get_type();
+            let ty_op = get_uop_type(s, op);
             let t = rt.into();
 
             let src = TypeWrapper::Ptr(new_var(s));
@@ -144,12 +201,12 @@ pub fn typeCheck(
             let arr =
                 TypeWrapper::The(AbsType::arrow(Box::new(src.clone()), Box::new(trg.clone())));
 
-            unify(s, arr, to_typewrapper(ty_op))?;
+            unify(s, arr, ty_op)?;
             unify(s, trg, ty)?;
             typeCheck(bound_vars, typed_vars, s, t, src)
         }
         Term::Op2(op, re, rt) => {
-            let ty_op = op.get_type();
+            let ty_op = get_bop_type(s, op);
             let t = rt.into();
             let e = re.into();
 
@@ -164,7 +221,7 @@ pub fn typeCheck(
                 ))),
             ));
 
-            unify(s, arr, to_typewrapper(ty_op))?;
+            unify(s, arr, ty_op)?;
             unify(s, trg, ty)?;
             typeCheck(bound_vars, typed_vars.clone(), s, e, src1)?;
             typeCheck(bound_vars, typed_vars, s, t, src2)
