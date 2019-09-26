@@ -32,6 +32,30 @@ eval (ebool B) (ebool B).
 eval (estr S) (estr S).
 eval (label S) (label S).
 
+eval (neg (neg E)) V :-
+  eval E V.
+eval (neg E) (neg V) when not (eq E (neg _)) :-
+  eval E V.
+
+eval (inter_label B (neg E)) V :-
+  eval (inter_label B E) V',
+  eval (neg V') V.
+eval (fun_dom_label B (neg E)) V :-
+  eval (fun_dom_label B E) V',
+  eval (neg V') V.
+eval (fun_codom_label B (neg E)) V :-
+  eval (fun_codom_label B E) V',
+  eval (neg V') V.
+
+eval (inter_label B E) (inter_label B V) when not (eq E (neg _)) :-
+  eval E V.
+eval (fun_dom_label B E) (fun_dom_label B V) when not (eq E (neg _)) :-
+  eval E V.
+eval (fun_codom_label B E) (fun_codom_label B V) when not (eq E (neg _)) :-
+  eval E V.
+
+
+
 (* Operations *)
 eval (ite C T E) V :-
   eval C (ebool true),
@@ -56,9 +80,38 @@ eval (eunop Op E) V :-
   eval E E',
   eval_unop Op E' V.
 
-eval_unop blame (label S) _ :- 
-  print `Reached a blame with label ${S}`,
+eval_unop (blame _) (label S) _ :- 
+  print `Reached a positive blame with label ${S}`,
   failure.
+eval_unop (blame _) (neg (label S)) _ :- 
+  print `Reached a negative blame with label ${S}`,
+  failure.
+
+eval_unop (blame T) (inter_label _ A) V :- 
+  eval_unop (blame T) A V.
+eval_unop (blame T) (neg (inter_label B A)) V :-
+  if refl.isunif B then
+    (and (eq B true) (eval T V))
+  else
+    (if (eq B true) then (eval_unop (blame T) (neg A) V) else (print "who knows?") ).
+
+eval_unop (blame T) (fun_dom_label Z A) V :- 
+  eq Z true,
+  eval_unop (blame T) A V.
+eval_unop (blame T) (neg (fun_dom_label B A)) V :-
+  (* eq Z true, *)
+  eval_unop (blame T) (neg A) V.
+ 
+eval_unop (blame T) (fun_codom_label B A) V :- 
+  if refl.isunif B then (* domain wasnt blamed *)
+    (eval T V)
+  else
+    (eval_unop (blame T) A V).
+eval_unop (blame T) (neg (fun_codom_label B A)) V :-
+  if refl.isunif B then
+    (eval T V)
+  else
+    (eval_unop (blame T) A V).
 
 eval_unop isNum (eint _) (ebool true).
 eval_unop isBool (ebool _) (ebool true).

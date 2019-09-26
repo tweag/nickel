@@ -1,0 +1,46 @@
+print "Intersection types" ?
+
+raw_interpreter "
+Assume(/\( Num, Num), 45)
+" V T ?
+
+
+raw_interpreter "
+Assume(/\( Bool, Num), 45)
+" V T ?
+
+raw_interpreter "
+Assume(/\( Num, Num), true)
+" V T ?
+
+raw_interpreter "
+Assume(/\( (Num -> Num), (Num -> Num)), fun x => x) 43
+" V T ?
+
+
+
+raw_interpreter "
+Assume(/\( (Num -> Num), (Bool -> Bool)), fun x => x) true
+" V T ?
+
+
+
+raw_interpreter "
+Assume(/\( (Num -> Num), (Bool -> Num)), fun x => Ifte( isNum x, x, 23)) true
+" V T ?
+
+
+
+raw_interpreter "
+let (f = Assume(/\( (Num -> Num), (Bool -> Num)), fun x => Ifte( isNum x, x, 23))) in
+let (g = Assume(/\( (Num -> Num), (Bool -> Num)), fun x => Ifte( isNum x, x, 23))) in
+(f true) + (g 2)
+" V T ?
+
+
+raw_interpreter "
+let (f = Assume(/\( (Num -> Num), (Bool -> Num)), fun x => Ifte( isNum x, x, 23))) in
+(f true) + (f 2)
+" V T ?
+
+

@@ -30,7 +30,7 @@ binop ->
       / (fun u => mul) { <token "*"> }
 
 unop ->
-        blame { "blame" }
+        blame { "blame" <expr_> }
       / isNum { "isNum" }
       / isBool { "isBool" }
       / isStr { "isStr" }
@@ -98,6 +98,8 @@ baseTyp ->
 
 typ ->  tarrow
         { <baseTyp> "->" <typ> }
+      / tinter
+        { "/\(" <baseTyp> ","  <baseTyp> ")" }
       / { <baseTyp> }
 
 }} ).

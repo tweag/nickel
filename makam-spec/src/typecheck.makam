@@ -44,7 +44,7 @@ typecheck (ite C T E) tdyn :-
     typecheck T _,
     typecheck E _.
 
-typecheck (eunop blame L) _ :-
+typecheck (eunop (blame _) L) _ :-
     typecheck L tlbl.
     
 typecheck (eunop isNum _) tbool.
