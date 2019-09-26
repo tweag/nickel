@@ -30,7 +30,7 @@ binop ->
       / (fun u => mul) { <token "*"> }
 
 unop ->
-        blame { "blame" <expr_> }
+        blame { "blame" <baseexpr>  }
       / isNum { "isNum" }
       / isBool { "isBool" }
       / isStr { "isStr" }
@@ -54,7 +54,7 @@ expr_ -> ite
       / ebinop
         { <baseexpr> <binopC> <baseexpr> }
       / eunop
-        { <unopC> <baseexpr> }
+        { <unop> <baseexpr> }
       / app
         { <baseexpr>  <expr_> }
       / { <baseexpr> }

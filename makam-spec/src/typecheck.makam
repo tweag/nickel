@@ -79,6 +79,9 @@ typecheck (assume Ty L E) Ty :-
     typecheck E _.
 
 typecheck (label _) tlbl.
+typecheck (inter_label _ _) tlbl.
+typecheck (fun_dom_label _ _) tlbl.
+typecheck (fun_codom_label _ _) tlbl.
 
 typecheckTypes_ : dyn -> prop.
 

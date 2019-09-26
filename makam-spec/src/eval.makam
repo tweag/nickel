@@ -111,7 +111,7 @@ eval_unop (blame T) (neg (fun_codom_label B A)) V :-
   if refl.isunif B then
     (eval T V)
   else
-    (eval_unop (blame T) A V).
+    (eval_unop (blame T) (neg A) V).
 
 eval_unop isNum (eint _) (ebool true).
 eval_unop isBool (ebool _) (ebool true).
