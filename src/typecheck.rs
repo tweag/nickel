@@ -12,7 +12,7 @@ pub enum TypeWrapper {
 // Global types, where unification happens
 pub type GTypes = HashMap<usize, Option<TypeWrapper>>;
 
-// This should be a union find ~like~ algorithm
+// This should be a union find like algorithm
 pub fn getRoot(s: &GTypes, x: usize) -> (Option<AbsType<Box<TypeWrapper>>>, usize) {
     match s.get(&x).expect("Unbound type variable!") {
         None => (None, x),
@@ -31,7 +31,7 @@ pub fn get_uop_type(s: &mut GTypes, op: UnaryOp) -> TypeWrapper {
                 Box::new(TypeWrapper::The(AbsType::arrow(
                     Box::new(branches.clone()),
                     Box::new(TypeWrapper::The(AbsType::arrow(
-                        Box::new(branches.clone()), // These nums are here just to type fibo
+                        Box::new(branches.clone()),
                         Box::new(branches),
                     ))),
                 ))),
@@ -81,13 +81,24 @@ pub fn get_bop_type(s: &mut GTypes, op: BinaryOp) -> TypeWrapper {
 pub fn unify(state: &mut GTypes, t1: TypeWrapper, t2: TypeWrapper) -> Result<(), String> {
     match (t1, t2) {
         (TypeWrapper::The(s1), TypeWrapper::The(s2)) => match (s1, s2) {
-            (AbsType::Dyn(), AbsType::Dyn()) => Ok(()),
+            (AbsType::Dyn(), _) => Ok(()),
+            (_, AbsType::Dyn()) => Ok(()),
             (AbsType::Num(), AbsType::Num()) => Ok(()),
             (AbsType::Bool(), AbsType::Bool()) => Ok(()),
             (AbsType::Arrow(s1s, s1t), AbsType::Arrow(s2s, s2t)) => {
                 unify(state, *s1s, *s2s)?;
                 unify(state, *s1t, *s2t)
             }
+            (AbsType::Flat(s), AbsType::Flat(t)) => {
+                if let Term::Var(s) = s.clone().into() {
+                    if let Term::Var(t) = t.clone().into() {
+                        if s == t {
+                            return Ok(());
+                        }
+                    }
+                }
+                Err(format!("Two expressions didn't match {:?} - {:?}", s, t))
+            } // Right now it only unifies equally named variables
             (a, b) => Err(format!("The following types dont match {:?} -- {:?}", a, b)),
         },
         (TypeWrapper::Ptr(p1), TypeWrapper::Ptr(p2)) => {
@@ -191,7 +202,6 @@ pub fn typeCheck(
                 unify(s, ty, TypeWrapper::The(AbsType::dyn()))
             }
         }
-        // Annoying Ops
         Term::Op1(op, rt) => {
             let ty_op = get_uop_type(s, op);
             let t = rt.into();

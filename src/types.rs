@@ -15,6 +15,7 @@ impl<Ty> AbsType<Ty> {
             AbsType::Dyn() => AbsType::Dyn(),
             AbsType::Num() => AbsType::Num(),
             AbsType::Bool() => AbsType::Bool(),
+            AbsType::Flat(t) => AbsType::Flat(t),
             AbsType::Arrow(s, t) => {
                 let fs = f(s);
                 let ft = f(t);
@@ -54,7 +55,7 @@ impl Types {
                 RichTerm::app(RichTerm::var("func".to_string()), s.contract()),
                 t.contract(),
             ),
-            Types::Flat(t) => t.clone(),
+            AbsType::Flat(ref t) => t.clone(),
         }
     }
 }
