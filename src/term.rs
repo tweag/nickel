@@ -1,6 +1,6 @@
 use identifier::Ident;
 use label::Label;
-use types::{AbsType, Types};
+use types::Types;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Term {
@@ -112,6 +112,12 @@ impl RichTerm {
 impl From<RichTerm> for Term {
     fn from(rt: RichTerm) -> Self {
         *rt.term
+    }
+}
+
+impl AsRef<Term> for RichTerm {
+    fn as_ref(&self) -> &Term {
+        &self.term
     }
 }
 
