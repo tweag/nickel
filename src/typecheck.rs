@@ -18,14 +18,14 @@ fn type_check_(
     strict: bool,
 ) -> Result<(), String> {
     match t {
-        Term::Bool(_) => unify(s, ty, TypeWrapper::Concrete(AbsType::bool()), strict),
-        Term::Num(_) => unify(s, ty, TypeWrapper::Concrete(AbsType::num()), strict),
+        Term::Bool(_) => unify(s, ty, TypeWrapper::Concrete(AbsType::Bool()), strict),
+        Term::Num(_) => unify(s, ty, TypeWrapper::Concrete(AbsType::Num()), strict),
         Term::Fun(x, rt) => {
             let t = rt.into();
             let src = TypeWrapper::Ptr(new_var(s));
             // TODO what to do here, this makes more sense to me, but it means let x = foo in bar
             // behaves quite different to (\x.bar) foo, worth considering if it's ok to type these two differently
-            // let src = TypeWrapper::The(AbsType::dyn());
+            // let src = TypeWrapper::The(AbsType::Dyn());
             let trg = TypeWrapper::Ptr(new_var(s));
             let arr =
                 TypeWrapper::Concrete(AbsType::arrow(Box::new(src.clone()), Box::new(trg.clone())));
@@ -37,7 +37,7 @@ fn type_check_(
         }
         Term::Lbl(_) => {
             // TODO implement lbl type
-            unify(s, ty, TypeWrapper::Concrete(AbsType::dyn()), strict)
+            unify(s, ty, TypeWrapper::Concrete(AbsType::Dyn()), strict)
         }
         Term::Let(x, re, rt) => {
             let e = re.into();
@@ -47,7 +47,7 @@ fn type_check_(
             // type annotation otherwise, x gets type Dyn
             let exp = match &e {
                 Term::Assume(ty, _, _) | Term::Promise(ty, _, _) => to_typewrapper(ty.clone()),
-                _ => TypeWrapper::Concrete(AbsType::dyn()),
+                _ => TypeWrapper::Concrete(AbsType::Dyn()),
             };
 
             type_check_(typed_vars.clone(), s, e, exp.clone(), strict)?;
@@ -148,23 +148,9 @@ pub fn unify(
                         }
                     }
                 }
-                if strict {
-                    Err(format!("Two expressions didn't match {:?} - {:?}", s, t))
-                } else {
-                    Ok(())
-                }
+                Err(format!("Two expressions didn't match {:?} - {:?}", s, t))
             } // Right now it only unifies equally named variables
-            (a, b) => {
-                if strict {
-                    Err(format!("The following types dont match {:?} -- {:?}", a, b))
-                } else {
-                    println!(
-                        "Found two not matching types on non strict mode: {:?} -- {:?}",
-                        a, b
-                    );
-                    Ok(())
-                }
-            }
+            (a, b) => Err(format!("The following types dont match {:?} -- {:?}", a, b)),
         },
         (TypeWrapper::Ptr(p1), TypeWrapper::Ptr(p2)) => {
             let (ty1, r1) = get_root(&state, p1)?;
@@ -226,7 +212,7 @@ pub fn get_uop_type(s: &mut GTypes, op: UnaryOp) -> TypeWrapper {
             let branches = TypeWrapper::Ptr(new_var(s));
 
             TypeWrapper::Concrete(AbsType::arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::bool())),
+                Box::new(TypeWrapper::Concrete(AbsType::Bool())),
                 Box::new(TypeWrapper::Concrete(AbsType::arrow(
                     Box::new(branches.clone()),
                     Box::new(TypeWrapper::Concrete(AbsType::arrow(
@@ -237,29 +223,29 @@ pub fn get_uop_type(s: &mut GTypes, op: UnaryOp) -> TypeWrapper {
             ))
         }
         UnaryOp::IsZero() => TypeWrapper::Concrete(AbsType::arrow(
-            Box::new(TypeWrapper::Concrete(AbsType::num())),
-            Box::new(TypeWrapper::Concrete(AbsType::bool())),
+            Box::new(TypeWrapper::Concrete(AbsType::Num())),
+            Box::new(TypeWrapper::Concrete(AbsType::Bool())),
         )),
         UnaryOp::IsNum() | UnaryOp::IsBool() | UnaryOp::IsFun() => {
             let inp = TypeWrapper::Ptr(new_var(s));
 
             TypeWrapper::Concrete(AbsType::arrow(
                 Box::new(inp),
-                Box::new(TypeWrapper::Concrete(AbsType::bool())),
+                Box::new(TypeWrapper::Concrete(AbsType::Bool())),
             ))
         }
         UnaryOp::Blame() => {
             let res = TypeWrapper::Ptr(new_var(s));
 
             TypeWrapper::Concrete(AbsType::arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::dyn())),
+                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
                 Box::new(res),
             ))
         }
         UnaryOp::ChangePolarity() | UnaryOp::GoDom() | UnaryOp::GoCodom() | UnaryOp::Tag(_) => {
             TypeWrapper::Concrete(AbsType::arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::dyn())),
-                Box::new(TypeWrapper::Concrete(AbsType::dyn())),
+                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
+                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
             ))
         }
     }
@@ -268,10 +254,10 @@ pub fn get_uop_type(s: &mut GTypes, op: UnaryOp) -> TypeWrapper {
 pub fn get_bop_type(_s: &mut GTypes, op: BinaryOp) -> TypeWrapper {
     match op {
         BinaryOp::Plus() => TypeWrapper::Concrete(AbsType::arrow(
-            Box::new(TypeWrapper::Concrete(AbsType::num())),
+            Box::new(TypeWrapper::Concrete(AbsType::Num())),
             Box::new(TypeWrapper::Concrete(AbsType::arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::num())),
-                Box::new(TypeWrapper::Concrete(AbsType::num())),
+                Box::new(TypeWrapper::Concrete(AbsType::Num())),
+                Box::new(TypeWrapper::Concrete(AbsType::Num())),
             ))),
         )),
     }
@@ -343,41 +329,41 @@ mod tests {
     #[test]
     fn promise_simple_checks() {
         type_check(Term::Promise(
-            Types(AbsType::bool()),
+            Types(AbsType::Bool()),
             label(),
             Term::Bool(true).into(),
         ))
         .unwrap();
         type_check(Term::Promise(
-            Types(AbsType::num()),
+            Types(AbsType::Num()),
             label(),
             Term::Bool(true).into(),
         ))
         .unwrap_err();
 
         type_check(Term::Promise(
-            Types(AbsType::num()),
+            Types(AbsType::Num()),
             label(),
             Term::Num(34.5).into(),
         ))
         .unwrap();
         type_check(Term::Promise(
-            Types(AbsType::bool()),
+            Types(AbsType::Bool()),
             label(),
             Term::Num(34.5).into(),
         ))
         .unwrap_err();
 
         type_check(Term::Promise(
-            Types(AbsType::num()),
+            Types(AbsType::Num()),
             label(),
-            Term::Assume(Types(AbsType::num()), label(), Term::Bool(true).into()).into(),
+            Term::Assume(Types(AbsType::Num()), label(), Term::Bool(true).into()).into(),
         ))
         .unwrap();
         type_check(Term::Promise(
-            Types(AbsType::num()),
+            Types(AbsType::Num()),
             label(),
-            Term::Assume(Types(AbsType::bool()), label(), Term::Num(34.).into()).into(),
+            Term::Assume(Types(AbsType::Bool()), label(), Term::Num(34.).into()).into(),
         ))
         .unwrap_err();
     }
