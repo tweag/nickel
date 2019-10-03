@@ -1,9 +1,8 @@
-print "Intersection types" ?
+print "===== INTERSECTION TYPES =====" ?
 
 raw_interpreter "
 Assume(/\( Num, Num), 45)
 " V T ?
-
 
 raw_interpreter "
 Assume(/\( Bool, Num), 45)
@@ -54,4 +53,65 @@ let (f = Assume(/\( (Num -> Num), (Bool -> Num)), fun x => Ifte( isNum x, x, 23)
 (f true) + (f 2)
 " V T ?
 
+raw_interpreter "
+let (f = Assume(/\( (Num -> Num), (Bool -> Num)), fun x => Ifte( isNum x, x, 23))) in
+(f true) + (f true)
+" V T ?
 
+
+print "===== UNION TYPES =====" ?
+
+raw_interpreter "
+Assume(\/( Num, Num), 45)
+" V T ?
+
+
+raw_interpreter "
+Assume(\/( Bool, Num), 45)
+" V T ?
+
+raw_interpreter "
+Assume(\/( Num, String), true)
+" V T ?
+
+raw_interpreter "
+Assume(\/(Num -> Num, \/(Num -> Bool, Num -> String)), fun x => x + 2) 45
+" V T ?
+
+raw_interpreter "
+let (alwaysTrue = fun l => fun t => Ifte(t, t, blame t l)) in
+Assume(\/(alwaysTrue -> Num, Bool -> \/(Num, Bool)), fun x => Ifte(x, 42, x)) false
+" V T ?
+
+
+raw_interpreter "
+let (alwaysTrue = fun l => fun t => Ifte(t, t, blame t l)) in
+Assume(\/(alwaysTrue -> Num, Bool -> \/(Num, Bool)), fun x => Ifte(x, 42, x)) true
+" V T ?
+
+
+
+raw_interpreter "
+let (zero = fun l => fun t => Ifte(isZero t, t, blame t l)) in
+let (one = fun l => fun t => Ifte(1 =n t, t, blame t l)) in
+let (two = fun l => fun t => Ifte(2 =n t, t, blame t l)) in
+let (three = fun l => fun t => Ifte(3 =n t, t, blame t l)) in
+
+Assume(\/(\/(zero, two), one), 1 )
+" V T ?
+
+
+raw_interpreter "
+let (alwaysTrue = fun l => fun t => Ifte(t, t, blame t l)) in
+let (alwaysFalse = fun l => fun t => Ifte(t, blame t l, t)) in
+
+let (zero = fun l => fun t => Ifte(isZero t, t, blame t l)) in
+let (one = fun l => fun t => Ifte(1 =n t, t, blame t l)) in
+let (two = fun l => fun t => Ifte(2 =n t, t, blame t l)) in
+let (three = fun l => fun t => Ifte(3 =n t, t, blame t l)) in
+
+let (or = fun a => fun b => Ifte(a, true, b)) in
+
+let (f = Assume(\/((\/(zero, one)) -> alwaysTrue, (\/(\/(zero, one), three)) -> alwaysFalse), fun x => Ifte(isZero x, true, false))) in
+(or (f 1)) (f 1)
+" V T ?

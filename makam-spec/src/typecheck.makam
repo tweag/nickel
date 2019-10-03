@@ -50,8 +50,14 @@ typecheck (eunop (blame _) L) _ :-
 typecheck (eunop isNum _) tbool.
 typecheck (eunop isBool _) tbool.
 typecheck (eunop isFun _) tbool.
+typecheck (eunop isZero A) tbool :-
+    typecheck A tnum.
 
-typecheck (ebinop A _ B) tnum :-
+typecheck (ebinop A Op B) tnum :-
+    not (eq Op eqNum),
+    typecheck A tnum,
+    typecheck B tnum.
+typecheck (ebinop A eqNum B) tbool :-
     typecheck A tnum,
     typecheck B tnum.
 typecheck (ebinop A _ B) tdyn :-
@@ -82,6 +88,14 @@ typecheck (label _) tlbl.
 typecheck (inter_label _ _) tlbl.
 typecheck (fun_dom_label _ _) tlbl.
 typecheck (fun_codom_label _ _) tlbl.
+
+(* Intersection and union are not typechecked still *)
+typecheck _ A when not (refl.isunif A), eq A (tinter _ _) :-
+    log_error _ `Cannot typecheck intersection for now`,
+    failure.
+typecheck _ A when not (refl.isunif A), eq A (tunion _ _) :-
+    log_error _ `Cannot typecheck union for now`,
+    failure.
 
 typecheckTypes_ : dyn -> prop.
 

@@ -28,6 +28,7 @@ binop ->
         (fun u => add) { <token "+"> }
       / (fun u => sub) { <token "-"> }
       / (fun u => mul) { <token "*"> }
+      / (fun u => eqNum) { <token "=n"> }
 
 unop ->
         blame { "blame" <baseexpr>  }
@@ -35,6 +36,7 @@ unop ->
       / isBool { "isBool" }
       / isStr { "isStr" }
       / isFun { "isFun" }
+      / isZero { "isZero" }
 
 }} ).
 
@@ -99,7 +101,9 @@ baseTyp ->
 typ ->  tarrow
         { <baseTyp> "->" <typ> }
       / tinter
-        { "/\(" <baseTyp> ","  <baseTyp> ")" }
+        { "/\(" <typ> ","  <typ> ")" }
+      / tunion
+        { "\/(" <typ> ","  <typ> ")" }
       / { <baseTyp> }
 
 }} ).

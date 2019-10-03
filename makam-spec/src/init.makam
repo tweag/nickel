@@ -20,9 +20,9 @@ removeThunks_ (dyn (recThunk S A B)) (dyn (named S)) .
 
 raw_interpreter : string -> expr -> typ -> prop.
 raw_interpreter S V Ty :-
-  either (isocast S (E: expr)) (log_error S `Parse error in Nickel program`),
+  either (once (isocast S (E: expr))) (log_error S `Parse error in Nickel program`),
   once (ifte (typecheck E Ty) (print "Typechecked!") (and (print `Could not typecheck`) (failure))),
-  eval E V,
+  once (eval E V),
   print "Evaluated".
 
 interpreter : string -> string -> string -> prop.

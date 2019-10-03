@@ -142,6 +142,3 @@ print "Return 2 -- functions as well" ?
 (isocast "
 fun se => (fun x => x + x) se
 " (E: expr), eval (app E side_effect) Res) ?
-
-
-

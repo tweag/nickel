@@ -40,6 +40,9 @@ eval (neg E) (neg V) when not (eq E (neg _)) :-
 eval (inter_label B (neg E)) V :-
   eval (inter_label B E) V',
   eval (neg V') V.
+eval (union_label B (neg E)) V :-
+  eval (union_label B E) V',
+  eval (neg V') V.
 eval (fun_dom_label B (neg E)) V :-
   eval (fun_dom_label B E) V',
   eval (neg V') V.
@@ -48,6 +51,8 @@ eval (fun_codom_label B (neg E)) V :-
   eval (neg V') V.
 
 eval (inter_label B E) (inter_label B V) when not (eq E (neg _)) :-
+  eval E V.
+eval (union_label B E) (union_label B V) when not (eq E (neg _)) :-
   eval E V.
 eval (fun_dom_label B E) (fun_dom_label B V) when not (eq E (neg _)) :-
   eval E V.
@@ -73,6 +78,7 @@ eval (ebinop E1 Op E2) V :-
 eval_binop add (eint N1) (eint N2) (eint N) :- plus N1 N2 N.
 eval_binop sub (eint N1) (eint N2) (eint N) :- plus N2 N N1.
 eval_binop mul (eint N1) (eint N2) (eint N) :- mult N1 N2 N.
+eval_binop eqNum (eint N1) (eint N2) (ebool B) :- if eq N1 N2 then eq B true else eq B false.
 
 eval_unop : unop -> expr -> expr -> prop.
 
@@ -94,6 +100,14 @@ eval_unop (blame T) (neg (inter_label B A)) V :-
     (and (eq B true) (eval T V))
   else
     (if (eq B true) then (eval_unop (blame T) (neg A) V) else (print "who knows?") ).
+
+eval_unop (blame T) (neg (union_label _ A)) V :- 
+  eval_unop (blame T) (neg A) V.
+eval_unop (blame T) (union_label B A) V :-
+  if refl.isunif B then
+    (and (eq B true) (eval T V))
+  else
+    (if (eq B true) then (eval_unop (blame T) A V) else (print "who knows?") ).
 
 eval_unop (blame T) (fun_dom_label Z A) V :- 
   eq Z true,
@@ -117,11 +131,13 @@ eval_unop isNum (eint _) (ebool true).
 eval_unop isBool (ebool _) (ebool true).
 eval_unop isStr (estr _) (ebool true).
 eval_unop isFun (lam _) (ebool true).
+eval_unop isZero (eint 0) (ebool true).
 
 eval_unop isNum V (ebool false) :- not (eq V (eint _)).
 eval_unop isBool V (ebool false) :- not (eq V (ebool _)).
 eval_unop isStr V (ebool false) :- not (eq V (estr _)).
 eval_unop isFun V (ebool false) :- not (eq V (lam _)).
+eval_unop isZero (eint V) (ebool false) :- not (eq V 0).
 
 (* Typing *)
 (* Promises don't perform any computation *)

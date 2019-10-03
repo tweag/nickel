@@ -21,12 +21,14 @@ isNum : unop.
 isBool : unop.
 isStr : unop.
 isFun : unop.
+isZero : unop.
 
 binop : type.
 ebinop : expr -> binop -> expr -> expr.
 add : binop.
 sub : binop.
 mul : binop.
+eqNum : binop.
 
 (* Typing *)
 promise : typ -> expr -> expr.
@@ -38,6 +40,7 @@ neg : expr -> expr.
 
 (* special dependency labels *)
 inter_label : bool -> expr -> expr.
+union_label : bool -> expr -> expr.
 fun_dom_label : bool -> expr -> expr.
 fun_codom_label : bool -> expr -> expr.
 
@@ -56,6 +59,7 @@ tstr : typ.
 tlbl : typ.
 tarrow : typ -> typ -> typ.
 tinter : typ -> typ -> typ.
+tunion : typ -> typ -> typ.
 fromExpr : expr -> typ.
 
 (* Get the expression contract of a given type *)
@@ -75,7 +79,11 @@ typToExpr (tarrow S T) (lam (bind _ (fun l => lam (bind _
 
 typToExpr (tinter A B) (lam (bind _ (fun l => lam (bind _ (fun t => 
   app (app Ca (inter_label Z l)) (app (app Cb (inter_label Z l)) t)
-  
+))))) :-
+  typToExpr A Ca,
+  typToExpr B Cb.
+typToExpr (tunion A B) (lam (bind _ (fun l => lam (bind _ (fun t => 
+  app (app Ca (union_label Z l)) (app (app Cb (union_label Z l)) t)
 ))))) :-
   typToExpr A Ca,
   typToExpr B Cb.
