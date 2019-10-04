@@ -174,8 +174,16 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                 }
             }
 
-            _ => {
-                return Ok(term);
+            t => {
+                if 0 < stack.count_args() {
+                    let (arg, _) = stack.pop_arg().expect("Condition already checked.");
+                    return Err(EvalError::TypeError(format!(
+                        "The term {:?} was applied to {:?}",
+                        t, arg.body
+                    )));
+                } else {
+                    return Ok(t);
+                }
             }
         }
     }
@@ -224,6 +232,11 @@ mod tests {
     #[should_panic]
     fn lone_var_panics() {
         eval(RichTerm::var("unbound".into())).unwrap();
+    }
+
+    #[test]
+    fn only_fun_are_applicable() {
+        eval(RichTerm::app(Term::Bool(true).into(), Term::Num(45.).into()).into()).unwrap_err();
     }
 
     #[test]
