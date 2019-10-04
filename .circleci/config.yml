@@ -44,8 +44,52 @@ jobs:
           command: |
             rustup component add rustfmt
             cargo fmt --all -- --check
+  makam-tests:
+    docker: 
+      - image: circleci/node:10.15.3 # Same version as nixos-19.03
+    environment:
+      CACHE_VERSION:
+        "2019-09-27"
+    steps:
+      - checkout
+      - run:
+          name: Load cache version
+          command: echo "$CACHE_VERSION" > _cache_v
+      - run:
+          name: Node version
+          command: |
+            node -v
+            npm -v
+      - run: 
+        # TODO cache makam, I think Circle is doing this automatically
+          name: Install Makam
+          command: |
+            npm install makam
+            echo " `./node_modules/.bin/makam --version ` " > _makam_v
+            ./node_modules/.bin/makam --version
+      - restore_cache:
+          keys:
+            - v{{ checksum "_cache_v" }}-m{{ checksum "_makam_v" }}-nickel-makam-build-cache-{{ arch }}
+      - run:
+          name: Makam Warm up
+          command: |
+            cd makam-spec/src
+            # For some reason (bug) the first time I use makam here it doesn't generate any output
+            # That's why I'm "building" before testing
+            ../../node_modules/.bin/makam init.makam
+      - run:
+          name: Run Tests
+          command: |
+            cd makam-spec/src
+            ../../node_modules/.bin/makam --run-tests testnickel.makam 
+      - save_cache:
+          paths:
+            - makam-spec/src/.makam-cache
+          key: v{{ checksum "_cache_v" }}-m{{ checksum "_makam_v" }}-nickel-makam-build-cache-{{ arch }}
+
 workflows:
   version: 2
   test:
     jobs:
       - test
+      - makam-tests

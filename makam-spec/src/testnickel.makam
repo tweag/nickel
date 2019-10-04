@@ -1,0 +1,8 @@
+%use "init".
+nickel : testsuite. %testsuite nickel.
+
+>> interpreter "(fun x => x + x) 3" V T ?
+
+>> Yes:
+>> V := "6 ",
+>> T := "Num ".
