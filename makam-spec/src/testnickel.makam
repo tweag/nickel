@@ -1,8 +1,143 @@
 %use "init".
 nickel : testsuite. %testsuite nickel.
 
->> interpreter "(fun x => x + x) 3" V T ?
+(* This file defines a bunch of tests across many features
+of the Makam implementation of the Nickel language.
 
+They don't follow any particular organization and should be treated
+as a minimal set of expected behaviour. Also as examples. *)
+
+>> interpreter "(fun x => x + x) 3" V T ?
 >> Yes:
 >> V := "6 ",
 >> T := "Num ".
+
+>> interpreter "let (x = true) in Ifte(x, 34, false)" V T ?
+>> Yes:
+>> V := "34 ",
+>> T := "Dyn ".
+
+>> interpreter "
+let ( id = fun t => t ) in
+Promise(Num,
+    Ifte( ( Promise(Bool -> Bool, id) ) true, 3, Promise(Num, true)) 
+) " V T ?
+>> Impossible.
+
+>> interpreter "
+let ( id = fun t => t ) in
+
+Promise(Num,
+Ifte( ( Promise(Bool -> Bool, id) ) true, 3, Assume(Num, true))
+)
+" V T ?
+>> Yes:
+>> V := "3 ",
+>> T := "Num ".
+
+>> interpreter "
+let ( id = fun t => t ) in
+
+Promise(Num,
+Ifte( ( Promise(Bool -> Bool, id) ) false, 3, Assume(Num, true))
+)
+" V T ?
+>> Impossible.
+
+>> interpreter "
+let ( id = fun t => t ) in
+
+Promise(Num,
+Ifte( ( Promise(Bool -> Bool, id) ) false, 3, Assume(Num, 5))
+)
+" V T ?
+>> Yes:
+>> V := "5 ",
+>> T := "Num ".
+
+>> interpreter "
+let (id = fun x => x) in
+Ifte(true, Promise(Num, id 3), Promise(Bool, id true))
+" V T ?
+>> Impossible.
+
+>> interpreter "
+let (id = fun x => x) in
+Ifte(true, Promise(Num, id 3), Assume(Bool, id true))
+" V T ?
+>> Yes:
+>> V := "3 ",
+>> T := "Dyn ".
+
+>> interpreter "
+let (id = fun x => x) in
+Ifte(false, Promise(Num, id 3), Assume(Bool, id true))
+" V T ?
+>> Yes:
+>> V := "true ",
+>> T := "Dyn ".
+
+>> interpreter "
+let (id = fun x => x) in
+Ifte(true, Assume(Bool, id true), Promise(Num, id 3))
+" V T ?
+>> Impossible.
+
+>> interpreter "
+let (id = fun x => x) in
+Ifte(true, Promise( Num , id 3), Promise( Bool, Assume( Bool -> Bool , id ) true))
+" V T ?
+>> Yes:
+>> V := "3 ",
+>> T := "Dyn ".
+
+>> interpreter "
+let (void = fun l => fun t => blame l) in
+Assume(void, 3)
+" V T ?
+>> Impossible.
+
+>> interpreter "
+let (alwaysTrue = fun l => fun t => Ifte(t, t, blame l)) in
+Assume(alwaysTrue, false)
+" V T ?
+>> Impossible.
+
+>> interpreter "
+let (alwaysTrue = fun l => fun t => Ifte(t, t, blame l)) in
+Assume(alwaysTrue, true)
+" V T ?
+>> Yes:
+>> V := "true ",
+>> T := "alwaysTrue ".
+
+>> interpreter "
+let (void = fun l => fun t => blame l) in
+Promise( void -> void, fun x => x) 
+" V T ?
+>> Yes:
+>> V := "fun x ⇒ x ",
+>> T := "void -> void ".
+
+>> interpreter "
+let (f = fun x => Ifte(x, f false, 3)) in
+f true
+" V T ?
+>> Yes:
+>> V := "3 ",
+>> T := "Num ".
+
+>> interpreter "
+let (f = (let (f = fun x => 3 - x) in f 1)) in f + f
+" V T ?
+>> Yes:
+>> V := "4 ",
+>> T := "Num ".
+
+>> interpreter "
+let (f = fun x => x + 1) in
+fun y => f y"
+V T ?
+>> Yes:
+>> V := "fun y ⇒ f y ",
+>> T := "Num -> Num ".
