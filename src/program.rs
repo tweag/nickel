@@ -7,6 +7,7 @@ use std::io::{self, Read};
 use std::path::Path;
 use std::result::Result;
 use term::{RichTerm, Term};
+use typecheck::type_check;
 
 pub struct Program<T: Read> {
     src: T,
@@ -40,6 +41,7 @@ impl<T: Read> Program<T> {
 
     pub fn eval(&mut self) -> Result<Term, String> {
         let t = self.parse()?;
+        println!("Typechecked: {:?}", type_check(t.as_ref()));
         match eval(t) {
             Ok(t) => Ok(t),
             Err(EvalError::BlameError(l, cs)) => Err(self.process_blame(l, cs)),
@@ -280,7 +282,7 @@ safePlus Promise(Num , 54) Promise(Num , 6)",
     #[test]
     fn fibonacci() {
         let res = eval_string(
-            "let Y = (fun f => (fun x => f (x x)) (fun x => f (x x))) in
+            "let Y = Assume(((Num -> Num) -> Num -> Num) -> Num -> Num, fun f => (fun x => f (x x)) (fun x => f (x x))) in
 let dec = Promise(Num -> Num, fun x => x + (-1)) in
 let or = Promise(Bool -> Bool -> Bool, fun x => fun y => if x then x else y) in
 
