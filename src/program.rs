@@ -41,7 +41,7 @@ impl<T: Read> Program<T> {
 
     pub fn eval(&mut self) -> Result<Term, String> {
         let t = self.parse()?;
-        println!("Typechecked: {:?}", type_check(t.clone().into()));
+        println!("Typechecked: {:?}", type_check(t.as_ref()));
         match eval(t) {
             Ok(t) => Ok(t),
             Err(EvalError::BlameError(l, cs)) => Err(self.process_blame(l, cs)),

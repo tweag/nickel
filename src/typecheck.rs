@@ -4,7 +4,7 @@ use term::{BinaryOp, Term, UnaryOp};
 use types::{AbsType, Types};
 
 // Type checking
-pub fn type_check(t: Term) -> Result<(), String> {
+pub fn type_check(t: &Term) -> Result<(), String> {
     let mut s = GTypes::new();
     let ty = TypeWrapper::Ptr(new_var(&mut s));
     type_check_(HashMap::new(), &mut s, t, ty, false)
@@ -13,7 +13,7 @@ pub fn type_check(t: Term) -> Result<(), String> {
 fn type_check_(
     mut typed_vars: HashMap<Ident, TypeWrapper>,
     s: &mut GTypes,
-    t: Term,
+    t: &Term,
     ty: TypeWrapper,
     strict: bool,
 ) -> Result<(), String> {
@@ -21,7 +21,6 @@ fn type_check_(
         Term::Bool(_) => unify(s, ty, TypeWrapper::Concrete(AbsType::Bool()), strict),
         Term::Num(_) => unify(s, ty, TypeWrapper::Concrete(AbsType::Num()), strict),
         Term::Fun(x, rt) => {
-            let t = rt.into();
             let src = TypeWrapper::Ptr(new_var(s));
             // TODO what to do here, this makes more sense to me, but it means let x = foo in bar
             // behaves quite different to (\x.bar) foo, worth considering if it's ok to type these two differently
@@ -32,38 +31,34 @@ fn type_check_(
 
             unify(s, ty, arr, strict)?;
 
-            typed_vars.insert(x, src);
-            type_check_(typed_vars, s, t, trg, strict)
+            typed_vars.insert(x.clone(), src);
+            type_check_(typed_vars, s, rt.as_ref(), trg, strict)
         }
         Term::Lbl(_) => {
             // TODO implement lbl type
             unify(s, ty, TypeWrapper::Concrete(AbsType::Dyn()), strict)
         }
         Term::Let(x, re, rt) => {
-            let e = re.into();
-            let t = rt.into();
+            let e = re.as_ref();
 
             // If the right hand side has a Promise or Assume, we use it as a
             // type annotation otherwise, x gets type Dyn
-            let exp = match &e {
+            let exp = match e {
                 Term::Assume(ty, _, _) | Term::Promise(ty, _, _) => to_typewrapper(ty.clone()),
                 _ => TypeWrapper::Concrete(AbsType::Dyn()),
             };
 
             type_check_(typed_vars.clone(), s, e, exp.clone(), strict)?;
             // TODO move this up once lets are rec
-            typed_vars.insert(x, exp);
-            type_check_(typed_vars, s, t, ty, strict)
+            typed_vars.insert(x.clone(), exp);
+            type_check_(typed_vars, s, rt.as_ref(), ty, strict)
         }
         Term::App(re, rt) => {
-            let e = re.into();
-            let t = rt.into();
-
             let src = TypeWrapper::Ptr(new_var(s));
             let arr = TypeWrapper::Concrete(AbsType::arrow(Box::new(src.clone()), Box::new(ty)));
 
-            type_check_(typed_vars.clone(), s, e, arr, strict)?;
-            type_check_(typed_vars, s, t, src, strict)
+            type_check_(typed_vars.clone(), s, re.as_ref(), arr, strict)?;
+            type_check_(typed_vars, s, rt.as_ref(), src, strict)
         }
         Term::Var(x) => {
             let x_ty = typed_vars
@@ -73,18 +68,15 @@ fn type_check_(
         }
         Term::Op1(op, rt) => {
             let ty_op = get_uop_type(s, op);
-            let t = rt.into();
 
             let src = TypeWrapper::Ptr(new_var(s));
             let arr = TypeWrapper::Concrete(AbsType::arrow(Box::new(src.clone()), Box::new(ty)));
 
             unify(s, arr, ty_op, strict)?;
-            type_check_(typed_vars, s, t, src, strict)
+            type_check_(typed_vars, s, rt.as_ref(), src, strict)
         }
         Term::Op2(op, re, rt) => {
             let ty_op = get_bop_type(s, op);
-            let t = rt.into();
-            let e = re.into();
 
             let src1 = TypeWrapper::Ptr(new_var(s));
             let src2 = TypeWrapper::Ptr(new_var(s));
@@ -97,17 +89,23 @@ fn type_check_(
             ));
 
             unify(s, arr, ty_op, strict)?;
-            type_check_(typed_vars.clone(), s, e, src1, strict)?;
-            type_check_(typed_vars, s, t, src2, strict)
+            type_check_(typed_vars.clone(), s, re.as_ref(), src1, strict)?;
+            type_check_(typed_vars, s, rt.as_ref(), src2, strict)
         }
         Term::Promise(ty2, _, rt) => {
             unify(s, ty.clone(), to_typewrapper(ty2.clone()), strict)?;
-            type_check_(typed_vars, s, rt.into(), to_typewrapper(ty2.clone()), true)
+            type_check_(
+                typed_vars,
+                s,
+                rt.as_ref(),
+                to_typewrapper(ty2.clone()),
+                true,
+            )
         }
         Term::Assume(ty2, _, rt) => {
-            unify(s, ty.clone(), to_typewrapper(ty2), strict)?;
+            unify(s, ty.clone(), to_typewrapper(ty2.clone()), strict)?;
             let new_ty = TypeWrapper::Ptr(new_var(s));
-            type_check_(typed_vars, s, rt.into(), new_ty, false)
+            type_check_(typed_vars, s, rt.as_ref(), new_ty, false)
         }
     }
 }
@@ -206,7 +204,7 @@ fn to_typewrapper(t: Types) -> TypeWrapper {
     TypeWrapper::Concrete(t3)
 }
 
-pub fn get_uop_type(s: &mut GTypes, op: UnaryOp) -> TypeWrapper {
+pub fn get_uop_type(s: &mut GTypes, op: &UnaryOp) -> TypeWrapper {
     match op {
         UnaryOp::Ite() => {
             let branches = TypeWrapper::Ptr(new_var(s));
@@ -251,7 +249,7 @@ pub fn get_uop_type(s: &mut GTypes, op: UnaryOp) -> TypeWrapper {
     }
 }
 
-pub fn get_bop_type(_s: &mut GTypes, op: BinaryOp) -> TypeWrapper {
+pub fn get_bop_type(_s: &mut GTypes, op: &BinaryOp) -> TypeWrapper {
     match op {
         BinaryOp::Plus() => TypeWrapper::Concrete(AbsType::arrow(
             Box::new(TypeWrapper::Concrete(AbsType::Num())),
@@ -305,62 +303,62 @@ mod tests {
     fn simple_no_promises() -> Result<(), String> {
         // It's easy to check these will never fail, that's why we keep them all together
 
-        type_check(Term::Bool(true))?;
-        type_check(Term::Num(45.))?;
+        type_check(&Term::Bool(true))?;
+        type_check(&Term::Num(45.))?;
 
-        type_check(Term::Fun(Ident("x".into()), RichTerm::var("x".into())))?;
-        type_check(Term::Let(
+        type_check(&Term::Fun(Ident("x".into()), RichTerm::var("x".into())))?;
+        type_check(&Term::Let(
             Ident("x".into()),
             Term::Num(3.).into(),
             RichTerm::var("x".into()),
         ))?;
 
-        type_check(Term::App(Term::Num(5.).into(), Term::Bool(true).into()))?;
-        type_check(RichTerm::plus(Term::Num(4.).into(), Term::Bool(false).into()).into())?;
+        type_check(&Term::App(Term::Num(5.).into(), Term::Bool(true).into()))?;
+        type_check(RichTerm::plus(Term::Num(4.).into(), Term::Bool(false).into()).as_ref())?;
 
         Ok(())
     }
 
     #[test]
     fn unbound_variable_always_throws() {
-        type_check(Term::Var(Ident("x".into()))).unwrap_err();
+        type_check(&Term::Var(Ident("x".into()))).unwrap_err();
     }
 
     #[test]
     fn promise_simple_checks() {
-        type_check(Term::Promise(
+        type_check(&Term::Promise(
             Types(AbsType::Bool()),
             label(),
             Term::Bool(true).into(),
         ))
         .unwrap();
-        type_check(Term::Promise(
+        type_check(&Term::Promise(
             Types(AbsType::Num()),
             label(),
             Term::Bool(true).into(),
         ))
         .unwrap_err();
 
-        type_check(Term::Promise(
+        type_check(&Term::Promise(
             Types(AbsType::Num()),
             label(),
             Term::Num(34.5).into(),
         ))
         .unwrap();
-        type_check(Term::Promise(
+        type_check(&Term::Promise(
             Types(AbsType::Bool()),
             label(),
             Term::Num(34.5).into(),
         ))
         .unwrap_err();
 
-        type_check(Term::Promise(
+        type_check(&Term::Promise(
             Types(AbsType::Num()),
             label(),
             Term::Assume(Types(AbsType::Num()), label(), Term::Bool(true).into()).into(),
         ))
         .unwrap();
-        type_check(Term::Promise(
+        type_check(&Term::Promise(
             Types(AbsType::Num()),
             label(),
             Term::Assume(Types(AbsType::Bool()), label(), Term::Num(34.).into()).into(),
@@ -374,7 +372,7 @@ mod tests {
 
         fn parse_and_typecheck(s: &str) -> Result<(), String> {
             if let Ok(p) = parser::grammar::TermParser::new().parse(s) {
-                type_check(p.into())
+                type_check(p.as_ref())
             } else {
                 panic!("Couldn't parse")
             }
