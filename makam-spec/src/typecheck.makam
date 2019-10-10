@@ -1,4 +1,5 @@
 %use "ast".
+%use "utils".
 
 typecheck : expr -> typ -> prop.
 typecheckTypes : typ -> prop.
@@ -79,11 +80,12 @@ typecheck (assume Ty L E) Ty :-
 
 typecheck (label _) tlbl.
 
-typecheckTypes (tarrow S T) :- 
-    typecheckTypes S,
-    typecheckTypes T.
-typecheckTypes (fromExpr E) :-
-    typecheck E (tarrow tlbl (tarrow S S)).
-typecheckTypes T :- 
-    not (eq T (tarrow _ _)),
-    not (eq T (fromExpr _)).
+typecheckTypes_ : dyn -> prop.
+
+typecheckTypes A :- typecheckTypes_ (dyn A).
+
+typecheckTypes_ (dyn A) :-
+    case A [
+        (fromExpr E, typecheck E (tarrow tlbl (tarrow S S))),
+        (Other, structural_map0 typecheckTypes_ (dyn Other))
+    ].

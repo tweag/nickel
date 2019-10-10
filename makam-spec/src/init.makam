@@ -13,7 +13,7 @@ changeToDyn A A when not (refl.isunif A).
 
 removeThunks, removeThunks_ : dyn -> dyn -> prop.
 
-removeThunks X Y :- demand.case_otherwise (removeThunks_  X Y) (structural_rec removeThunks X Y).
+removeThunks X Y :- demand.case_otherwise (removeThunks_  X Y) (structural_map removeThunks X Y).
 
 removeThunks_ (dyn (thunk S A B)) (dyn (named S)) .
 removeThunks_ (dyn (recThunk S A B)) (dyn (named S)) .

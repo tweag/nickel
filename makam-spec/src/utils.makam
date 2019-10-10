@@ -1,34 +1,60 @@
+typeq : [B] A -> B -> prop.
+typeq (X : A) (Y : A).
+
+map0 : (A -> prop) -> list A -> prop.
+map0 P nil.
+map0 P (cons HD TL) <- P HD, map0 P TL.
+
 (* TODO: For some reason I can't make the stdlib structural work.
 I tried finding the error, but I couldn't, copying this implementation
 solves the problem for now, but eventually it would make sense to do it with th builtin one.
 *)
-
-typeq : [B] A -> B -> prop.
-typeq (X : A) (Y : A).
-
-structural_rec : (dyn -> dyn -> prop) -> dyn -> dyn -> prop.
+structural_map : (dyn -> dyn -> prop) -> dyn -> dyn -> prop.
 
 (* defer if both input and output are uninstantiated metavariables *)
-(structural_rec Rec (dyn (X : A)) (dyn (Y : A))) when refl.isunif X, refl.isunif Y <-
+(structural_map Rec (dyn (X : A)) (dyn (Y : A))) when refl.isunif X, refl.isunif Y <-
   guardmany [ dyn X , dyn Y ] (Rec (dyn X) (dyn Y)).
 
 (* deal with built-in types *)
-structural_rec Rec (dyn (X : string)) (dyn (X : string)).
-structural_rec Rec (dyn (X : int)) (dyn (X : int)).
-structural_rec Rec (dyn (X : A -> B)) (dyn (Y : A -> B)) <-
+structural_map Rec (dyn (X : string)) (dyn (X : string)).
+structural_map Rec (dyn (X : int)) (dyn (X : int)).
+structural_map Rec (dyn (X : A -> B)) (dyn (Y : A -> B)) <-
   (x:A -> Rec (dyn (X x)) (dyn (Y x))).
 
 (* the essence: forward and backward destructuring *)
 
-(structural_rec Rec (dyn (X : A)) (dyn (Y : A)))
+(structural_map Rec (dyn (X : A)) (dyn (Y : A)))
 when not(typeq X (B : C -> D)), not(refl.isunif X) <-
   refl.headargs X Hd Args,
   map Rec Args Args',
   refl.headargs Y Hd Args'.
 
-(structural_rec Rec (dyn (X : A)) (dyn (Y : A)))
+(structural_map Rec (dyn (X : A)) (dyn (Y : A)))
 when not(typeq X (B : C -> D)), refl.isunif X, not(refl.isunif Y) <-
   refl.headargs Y Hd Args',
   map Rec Args Args',
   refl.headargs X Hd Args.
 
+
+structural_map0 : (dyn -> prop) -> dyn -> prop.
+
+(* defer if both input and output are uninstantiated metavariables *)
+(structural_map0 Rec (dyn (X : A))) when refl.isunif X <-
+  guard X (Rec (dyn X)).
+
+(* deal with built-in types *)
+structural_map0 Rec (dyn (X : string)).
+structural_map0 Rec (dyn (X : int)).
+structural_map0 Rec (dyn (X : A -> B)) <-
+  (x:A -> Rec (dyn (X x))).
+
+(* the essence: forward and backward destructuring *)
+
+(structural_map0 Rec (dyn (X : A)))
+when not(typeq X (B : C -> D)), not(refl.isunif X) <-
+  refl.headargs X Hd Args,
+  map0 Rec Args.
+
+case : A -> (list (tuple A prop)) -> prop.
+case Scrutinee ( (Pattern, Body) :: Rest ) <-
+  if eq Scrutinee Pattern then Body else case Scrutinee Rest.
