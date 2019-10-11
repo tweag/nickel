@@ -36,11 +36,10 @@ assume : typ -> expr -> expr -> expr.
 
 (* Blaming *)
 label : string -> expr.
-neg : expr -> expr.
 
 (* special dependency labels *)
-inter_label : bool -> expr -> expr.
-union_label : bool -> expr -> expr.
+inter_label : bool -> bool -> expr -> expr.
+union_label : bool -> bool -> expr -> expr.
 fun_dom_label : bool -> expr -> expr.
 fun_codom_label : bool -> expr -> expr.
 
@@ -72,21 +71,23 @@ typToExpr tbool (lam (bind _ (fun l => lam (bind _
   (fun t => ite (eunop isBool t) t (eunop (blame t) l)))))).
 typToExpr tstr (lam (bind _ (fun l => lam (bind _ 
   (fun t => ite (eunop isStr t) t (eunop (blame t) l)))))).
-typToExpr (tarrow S T) (lam (bind _ (fun l => lam (bind _ 
-  (fun t => ite (eunop isFun t) (lam (bind _ (fun x => app (app Ct (fun_codom_label Z l)) (app t (app (app Cs (neg (fun_dom_label Z l))) x))))) (eunop (blame t) l)))))) :-
-    typToExpr S Cs,
-    typToExpr T Ct.
+
+typToExpr (tarrow S T) (lam (bind _ (fun l => lam (bind _ (fun t => 
+  ite (eunop isFun t) 
+    (lam (bind _ (fun x => app (app Ct (fun_codom_label Z l)) (app t (app (app Cs (fun_dom_label Z l)) x))))) 
+    (eunop (blame t) l)))))) :-
+      typToExpr S Cs,
+      typToExpr T Ct.
 
 typToExpr (tinter A B) (lam (bind _ (fun l => lam (bind _ (fun t => 
-  app (app Ca (inter_label Z l)) (app (app Cb (inter_label Z l)) t)
-))))) :-
-  typToExpr A Ca,
-  typToExpr B Cb.
+  app (app Ca (inter_label Z Y l)) (app (app Cb (inter_label Y Z l)) t)))))) :-
+    typToExpr A Ca,
+    typToExpr B Cb.
+
 typToExpr (tunion A B) (lam (bind _ (fun l => lam (bind _ (fun t => 
-  app (app Ca (union_label Z l)) (app (app Cb (union_label Z l)) t)
-))))) :-
-  typToExpr A Ca,
-  typToExpr B Cb.
+  app (app Ca (union_label Z Y l)) (app (app Cb (union_label Y Z l)) t)))))) :-
+    typToExpr A Ca,
+    typToExpr B Cb.
 
 typToExpr (fromExpr E) E.
 
