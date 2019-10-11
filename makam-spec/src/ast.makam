@@ -46,9 +46,6 @@ fun_codom_label : bool -> expr -> expr.
 (* Variables *)
 named : string -> expr.
 
-(* These are used for lazy evaluation *)
-thunk : string -> expr -> expr -> expr.
-recThunk : string -> (expr -> expr) -> expr -> expr.
 
 (* Types *)
 tdyn : typ.
