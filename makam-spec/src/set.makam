@@ -1,0 +1,30 @@
+set : type -> type.
+
+empty_set : set A.
+insert : A -> set A -> set A.
+
+member : A -> set A -> prop.
+member X (insert X _).
+member X (insert Y Z) :-
+    not (eq X Y),
+    member X Z.
+
+strict_member : A -> set A -> prop.
+strict_member X Z when refl.isunif Z :-
+    failure.
+strict_member X Z when not (refl.isunif Z), eq Z (insert Y Z') :-
+    refl.isunif Y,
+    refl.sameunif X Y.
+strict_member X Z when not (refl.isunif Z), eq Z (insert Y Z') :-
+    refl.isunif Y,
+    not (refl.sameunif X Y),
+    strict_member X Z'.
+strict_member X Z when not (refl.isunif Z), eq Z (insert Y Z') :-
+    not (refl.isunif Y),
+    eq X Y.
+strict_member X Z when not (refl.isunif Z), eq Z (insert Y Z') :-
+    not (refl.isunif Y),
+    not (eq X Y),
+    strict_member X Z'.
+
+(member X S, strict_member X S) ?

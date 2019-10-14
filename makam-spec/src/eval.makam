@@ -1,11 +1,16 @@
 %use "ast".
+%use "set".
 
-ctx : type.
 eval : expr -> expr -> prop.
 eval_ctx : ctx -> expr -> expr -> prop.
 
 eval E V :-
-  eval_ctx Z E V.
+  ([Z] eval_ctx Z E V).
+
+eval_ctx Z (get_ctxt F) V :-
+  print "getting context",
+  eval_ctx Z (F Z) V,
+  print " context got".
 
 (* Lazy evaluation *)
 thunk : string -> ctx -> expr -> expr -> expr.
@@ -27,13 +32,17 @@ eval_ctx _ (recThunk _ _ E V) V' when not (refl.isunif V) :-
 
 (* Lambda constructs *)
 eval_ctx Z (let (bind Name E) (bind Name T)) V :-  
-  eval_ctx Z (T (recThunk Name Y E V')) V. 
+  eval_ctx Z (T (recThunk Name Z E V')) V. 
 
 eval_ctx Z (lam X_Body) (lam X_Body).
 
 eval_ctx Z (app E1 E2) V :-   (* Beta *)
-  eval_ctx Y E1 (lam (bind Name Body)),
-  eval_ctx Z (Body (thunk Name R E2 Shr)) V.
+  ([R] eval_ctx R E1 (lam (bind Name Body))),
+  ([Y] eval_ctx Z (Body (thunk Name Y E2 Shr)) V).
+
+eval_ctx Z (app2 E1 E2) V :-   (* Beta *)
+  ([R] eval_ctx R E1 (lam (bind Name Body))),
+  ([Y] eval_ctx Z (Body (thunk Name Z E2 Shr)) V).
 
 (* Constants *)
 eval_ctx _ (eint N) (eint N).
@@ -45,7 +54,7 @@ eval_ctx C (inter_label Z Y E) (inter_label Z Y V) :-
   eval_ctx C E V.
 eval_ctx C (union_label Z Y E) (union_label Z Y V) :-
   eval_ctx C E V.
-eval_ctx C (fun_dom_label Z E) (fun_dom_label Z V) :-
+eval_ctx C (fun_dom_label R Z E) (fun_dom_label R Z V) :-
   eval_ctx C E V.
 eval_ctx C (fun_codom_label Z E) (fun_codom_label Z V) :-
   eval_ctx C E V.
@@ -53,17 +62,17 @@ eval_ctx C (fun_codom_label Z E) (fun_codom_label Z V) :-
 
 (* Operations *)
 eval_ctx Z (ite C T E) V :-
-  eval_ctx Y C (ebool true),
+  ([Y] eval_ctx Y C (ebool true)),
   eval_ctx  Z T V.
 eval_ctx Z (ite C T E) V :-
-  eval_ctx Y C (ebool false),
+  ([Y] eval_ctx Y C (ebool false)),
   eval_ctx Z E V.
 
 eval_binop : binop -> expr -> expr -> expr -> prop.
 
 eval_ctx Z (ebinop E1 Op E2) V :-
-  eval_ctx R E1 V1,
-  eval_ctx Y E2 V2,
+  ([Y] eval_ctx Y E1 V1),
+  ([R] eval_ctx R E2 V2),
   eval_binop Op V1 V2 V.
 
 eval_binop add (eint N1) (eint N2) (eint N) :- plus N1 N2 N.
@@ -74,9 +83,9 @@ eval_binop eqNum (eint N1) (eint N2) (ebool B) :- if eq N1 N2 then eq B true els
 eval_unop : unop -> expr -> expr -> prop.
 
 eval_ctx Z (eunop Op E) V :-
-  eval_ctx Z E E',
+  ([Y R] (eval_ctx Y E E',
   eval_unop Op E' V',
-  eval_ctx Z V' V.
+  eval_ctx R V' V)). (* ?? *)
 
 (* Blame *)
 pol : type.
@@ -88,37 +97,40 @@ solve_blame : pol -> expr -> expr -> prop.
 solve_blame pos _ (label S) :-
   print `Reached a positive blame with label ${S}`,
   failure.
-solve_blame false _ (label S) :-
+solve_blame (neg _) _ (label S) :-
   print `Reached a negative blame with label ${S}`,
   failure.
 
 solve_blame pos T (inter_label _ _ L) :-
   solve_blame pos T L.
-solve_blame false T (inter_label Y Z L) when refl.isunif Y :-
-  eq Z pos.
-solve_blame false T (inter_label Y Z L) when not (refl.isunif Y) :-
-  eq Z pos,
-  solve_blame false T L.
+solve_blame (neg C) T (inter_label Y Z L) when not (strict_member C Y) :-
+  member C Z. 
+
+
+solve_blame (neg C) T (inter_label Y Z L) :-
+  strict_member C Y,
+  member C Z,
+  solve_blame (neg C) T L.
+
 
 solve_blame pos T (union_label Y Z L) when refl.isunif Y :-
-  eq Z pos.
+  eq Z true.
 solve_blame pos T (union_label Y Z L) when not (refl.isunif Y) :-
-  eq Z pos,
+  eq Z true,
   solve_blame pos T L.
-solve_blame false T (union_label _ _ L) :-
-  solve_blame false T L.
+solve_blame (neg C) T (union_label _ _ L) :-
+  solve_blame (neg C) T L.
 
-solve_blame pos T (fun_dom_label Z L) :-
-  eq Z pos,
-  solve_blame false T L.
-solve_blame false T (fun_dom_label Z L) :-
-  (* eq Z pos, *)
+solve_blame pos T (fun_dom_label Z C L) :-
+  eq Z true,
+  solve_blame (neg C) T L.
+solve_blame (neg _) T (fun_dom_label Z C L) :-
+  (* eq Z true, *)
   solve_blame pos T L.
 
 solve_blame B T (fun_codom_label Z L) when refl.isunif Z :-
   solve_blame B T L.
 solve_blame _ T (fun_codom_label Z L) when not (refl.isunif Z).
-
 
 eval_unop (blame T) L T :-
   solve_blame pos T L.
@@ -142,7 +154,7 @@ eval_ctx Z (promise _ T) V :-
 
 eval_ctx Z (assume Ty L T) V :-
   typToExpr Ty CTy,
-  eval_ctx Z (app (app CTy L) T) V.
+  eval_ctx Z (app2 (app CTy L) T) V.
 
 (* Variables *)
 eval_ctx Z (named X) _ :- print `unknown variable ${X}`, failure.

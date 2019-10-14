@@ -55,6 +55,20 @@ let (f = Assume(/\( (Num -> Num), (Bool -> Num)), fun x => Ifte( isNum x, x, 23)
 
 raw_interpreter "
 let (f = Assume(/\( (Num -> Num), (Bool -> Num)), fun x => Ifte( isNum x, x, 23))) in
+(f true) + (f (fun x => x))
+" V T ?
+
+(x: A -> y: A -> eq x x ) ?
+
+
+raw_interpreter "
+let (f = Assume(/\( (Num -> Num), (Bool -> Num)), fun x => Ifte( isNum x, x, 23))) in
+f (f true)
+" V T ?
+
+
+raw_interpreter "
+let (f = Assume(/\( (Num -> Num), (Bool -> Num)), fun x => Ifte( isNum x, x, 23))) in
 (f true) + (f true)
 " V T ?
 

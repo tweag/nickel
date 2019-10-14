@@ -1,10 +1,15 @@
+%use "set".
+
 expr : type.
 typ : type.
+ctx : type.
+
 
 (* Lambda constructs *)
 let : bindone expr expr -> bindone expr expr -> expr.
 lam : bindone expr expr -> expr.
 app : expr -> expr -> expr.
+app2 : expr -> expr -> expr.
 
 (* Constants *)
 eint : int -> expr.
@@ -38,10 +43,13 @@ assume : typ -> expr -> expr -> expr.
 label : string -> expr.
 
 (* special dependency labels *)
-inter_label : bool -> bool -> expr -> expr.
+inter_label : (set ctx) -> (set ctx) -> expr -> expr.
 union_label : bool -> bool -> expr -> expr.
-fun_dom_label : bool -> expr -> expr.
+fun_dom_label : bool -> ctx -> expr -> expr.
 fun_codom_label : bool -> expr -> expr.
+
+(* context getting *)
+get_ctxt : (ctx -> expr) -> expr.
 
 (* Variables *)
 named : string -> expr.
@@ -71,18 +79,19 @@ typToExpr tstr (lam (bind _ (fun l => lam (bind _
 
 typToExpr (tarrow S T) (lam (bind _ (fun l => lam (bind _ (fun t => 
   ite (eunop isFun t) 
-    (lam (bind _ (fun x => app (app Ct (fun_codom_label Z l)) (app t (app (app Cs (fun_dom_label Z l)) x))))) 
+    (lam (bind _ (fun x => 
+      get_ctxt (fun c => app2 (app Ct (fun_codom_label Z l)) (app t (app2 (app Cs (fun_dom_label Z c l)) x)))))) 
     (eunop (blame t) l)))))) :-
       typToExpr S Cs,
       typToExpr T Ct.
 
 typToExpr (tinter A B) (lam (bind _ (fun l => lam (bind _ (fun t => 
-  app (app Ca (inter_label Z Y l)) (app (app Cb (inter_label Y Z l)) t)))))) :-
+  app2 (app Ca (inter_label Z Y l)) (app2 (app Cb (inter_label Y Z l)) t)))))) :-
     typToExpr A Ca,
     typToExpr B Cb.
 
 typToExpr (tunion A B) (lam (bind _ (fun l => lam (bind _ (fun t => 
-  app (app Ca (union_label Z Y l)) (app (app Cb (union_label Y Z l)) t)))))) :-
+  app2 (app Ca (union_label Z Y l)) (app2 (app Cb (union_label Y Z l)) t)))))) :-
     typToExpr A Ca,
     typToExpr B Cb.
 

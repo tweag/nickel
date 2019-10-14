@@ -25,6 +25,18 @@ typecheck (app A B) tdyn :-
     not (eq ATy (tarrow _ _)),
     typecheck B _.
 
+typecheck (app2 A B) T :-
+    typecheck A (tarrow S T),
+    typecheck B S.
+typecheck (app2 A B) tdyn :-
+    typecheck A (tarrow S _),
+    typecheck B BTy,
+    not (eq S BTy).
+typecheck (app2 A B) tdyn :-
+    typecheck A ATy,
+    not (eq ATy (tarrow _ _)),
+    typecheck B _.
+
 typecheck (eint _) tnum.
 typecheck (ebool _) tbool.
 typecheck (estr _) tstr.
@@ -87,8 +99,12 @@ typecheck (assume Ty L E) Ty :-
 typecheck (label _) tlbl.
 typecheck (inter_label _ _ _) tlbl.
 typecheck (union_label _ _ _) tlbl.
-typecheck (fun_dom_label _ _) tlbl.
+typecheck (fun_dom_label _ _ _) tlbl.
 typecheck (fun_codom_label _ _) tlbl.
+
+typecheck (get_ctxt F) T :-
+    (x: ctx ->
+        typecheck (F x) T).
 
 (* Intersection and union are not typechecked still *)
 typecheck _ A when not (refl.isunif A), eq A (tinter _ _) :-
