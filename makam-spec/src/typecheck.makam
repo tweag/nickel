@@ -78,7 +78,7 @@ typecheck (assume Ty L E) Ty :-
     typecheck L tlbl,
     typecheck E _.
 
-typecheck (label _) tlbl.
+typecheck (label _ _) tlbl.
 
 typecheckTypes_ : dyn -> prop.
 
