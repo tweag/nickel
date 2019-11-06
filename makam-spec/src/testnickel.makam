@@ -1,6 +1,8 @@
 %use "init".
 
 
+verbose_run_tests.
+
 (* This file defines a bunch of tests across many features
  * of the Makam implementation of the Nickel language.
  *

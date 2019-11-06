@@ -5,12 +5,16 @@
 expr_, baseexpr : syntax expr.
 expr_concrete : syntax (concrete expr).
 id : syntax (concrete.name expr).
+idTy : syntax (concrete.name typ).
 def : syntax (concrete.name expr * expr).
 binop, binopC : syntax binop.
 unop, unopC : syntax unop.
-typ, baseTyp: syntax typ.
+
+typ, typC, baseTyp: syntax typ.
+typ_concrete : syntax (concrete typ).
 
 exprvar : concrete.namespace expr.
+typvar : concrete.namespace typ.
 
 clet : (concrete.name expr * expr) -> expr -> expr.
 
@@ -81,7 +85,14 @@ def -> tuple
 id -> concrete.name exprvar
         { <makam.ident> }
 
-typ ->  tarrow
+idTy -> concrete.name typvar
+        { <makam.ident> }
+
+typ_concrete -> concrete { <typ> }
+
+typ -> (fun idT => fun body => forall (concrete.bindone idT body))
+        { "forall" <idTy> "." <typ> }
+      / tarrow
         { <baseTyp> "->" <typ> }
       / { <baseTyp> }
 
@@ -94,16 +105,19 @@ baseTyp ->
         { "Dyn" }
       / tstr
         { "String" }
+      / concrete.var
+        { <idTy> }
       / fromExpr
-        { <expr_> }
+        { "#" <expr_> }
       / { "(" <typ> ")" }
 
 }} ).
 
+`( syntax.def_toplevel_js typ_concrete ).
 `( syntax.def_toplevel_js expr_concrete ).
-`( syntax.def_toplevel_js typ ).
 
 concrete.pick_namespace_userdef (_: expr) exprvar.
+concrete.pick_namespace_userdef (_: typ) typvar.
 
 concrete.handle_unresolved_name (concrete.name exprvar ID) (named ID).
 

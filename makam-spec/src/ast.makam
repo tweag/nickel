@@ -50,4 +50,5 @@ tbool : typ.
 tstr : typ.
 tlbl : typ.
 tarrow : typ -> typ -> typ.
+forall : (bindone typ typ) -> typ.
 fromExpr : expr -> typ.
