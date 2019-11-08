@@ -2,10 +2,11 @@
 
 
 (* This file defines a bunch of tests across many features
-of the Makam implementation of the Nickel language.
-
-They don't follow any particular organization and should be treated
-as a minimal set of expected behaviour. Also as examples. *)
+ * of the Makam implementation of the Nickel language.
+ *
+ * They don't follow any particular organization and should be treated
+ * as a minimal set of expected behaviour. Also as examples.
+ *)
 
 nickel : testsuite. 
 

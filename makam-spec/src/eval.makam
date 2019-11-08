@@ -1,6 +1,40 @@
 %use "ast".
 
+(* We extend the AST to terms related to the execution,
+ * and add some operations on them
+ *)
+
+(* Negation of the label *)
+neg : expr -> expr.
+
+(* Used for lazy evaluation *)
+thunk : string -> expr -> expr -> expr.
+recThunk : string -> (expr -> expr) -> expr -> expr.
+
+(* Get the expression contract of a given type *)
+typToExpr : typ -> expr -> prop.
+typToExpr tdyn (lam (bind _ (fun l => lam (bind _ 
+  (fun t => t))))).
+typToExpr tnum (lam (bind _ (fun l => lam (bind _ 
+  (fun t => ite (eunop isNum t) t (eunop blame l)))))).
+typToExpr tbool (lam (bind _ (fun l => lam (bind _ 
+  (fun t => ite (eunop isBool t) t (eunop blame l)))))).
+typToExpr tstr (lam (bind _ (fun l => lam (bind _ 
+  (fun t => ite (eunop isStr t) t (eunop blame l)))))).
+typToExpr (tarrow S T) (lam (bind _ (fun l => lam (bind _ 
+  (fun t => ite (eunop isFun t) (lam (bind _ (fun x => app (app Ct l) (app t (app (app Cs (neg l)) x))))) (eunop blame l)))))) :-
+    typToExpr S Cs,
+    typToExpr T Ct.
+typToExpr (fromExpr E) E.
+
 eval : expr -> expr -> prop.
+
+(* label *)
+eval (neg L) (label true S) :-
+  eval L (label false S).
+eval (neg L) (label false S) :-
+  eval L (label true S).
+
 
 (* Lazy evaluation *)
 eval (thunk _ E V) V' when refl.isunif V :-
@@ -12,9 +46,9 @@ eval (thunk _ E V) V' when not (refl.isunif V) :-
 eval (recThunk S E V) V' when refl.isunif V :-
   eval (E (recThunk S E R)) V,
   eq V V'.
-
 eval (recThunk _ E V) V' when not (refl.isunif V) :-
   eq V V'.
+
 
 (* Lambda constructs *)
 eval (let (bind Name E) (bind Name T)) V :-  
@@ -22,7 +56,7 @@ eval (let (bind Name E) (bind Name T)) V :-
 
 eval (lam X_Body) (lam X_Body).
 
-eval (app E1 E2) V :-   (* Beta *)
+eval (app E1 E2) V :-
   eval E1 (lam (bind Name Body)),
   eval (Body (thunk Name E2 Shr)) V.
 
@@ -30,7 +64,7 @@ eval (app E1 E2) V :-   (* Beta *)
 eval (eint N) (eint N).
 eval (ebool B) (ebool B).
 eval (estr S) (estr S).
-eval (label S) (label S).
+eval (label P S) (label P S).
 
 (* Operations *)
 eval (ite C T E) V :-
@@ -56,8 +90,11 @@ eval (eunop Op E) V :-
   eval E E',
   eval_unop Op E' V.
 
-eval_unop blame (label S) _ :- 
-  print `Reached a blame with label ${S}`,
+eval_unop blame (label true S) _ :- 
+  print `Reached a positive blame with label ${S}`,
+  failure.
+eval_unop blame (label false S) _ :- 
+  print `Reached a negative blame with label ${S}`,
   failure.
 
 eval_unop isNum (eint _) (ebool true).

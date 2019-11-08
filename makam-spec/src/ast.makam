@@ -1,3 +1,8 @@
+(* The AST expressed here is a subset of the whole AST, 
+ * this is what the result of parsing can be as well as
+ * what the typechecker can type. On eval we extend it.
+ *)
+
 expr : type.
 typ : type.
 
@@ -33,14 +38,10 @@ promise : typ -> expr -> expr.
 assume : typ -> expr -> expr -> expr.
 
 (* Blaming *)
-label : string -> expr.
+label : bool -> string -> expr.
 
 (* Variables *)
 named : string -> expr.
-
-(* These are used for lazy evaluation *)
-thunk : string -> expr -> expr -> expr.
-recThunk : string -> (expr -> expr) -> expr -> expr.
 
 (* Types *)
 tdyn : typ.
@@ -50,28 +51,3 @@ tstr : typ.
 tlbl : typ.
 tarrow : typ -> typ -> typ.
 fromExpr : expr -> typ.
-
-(* Get the expression contract of a given type *)
-typToExpr : typ -> expr -> prop.
-typToExpr tdyn (lam (bind _ (fun l => lam (bind _ 
-  (fun t => t))))).
-typToExpr tnum (lam (bind _ (fun l => lam (bind _ 
-  (fun t => ite (eunop isNum t) t (eunop blame l)))))).
-typToExpr tbool (lam (bind _ (fun l => lam (bind _ 
-  (fun t => ite (eunop isBool t) t (eunop blame l)))))).
-typToExpr tstr (lam (bind _ (fun l => lam (bind _ 
-  (fun t => ite (eunop isStr t) t (eunop blame l)))))).
-typToExpr (tarrow S T) (lam (bind _ (fun l => lam (bind _ 
-  (fun t => ite (eunop isFun t) (lam (bind _ (fun x => app (app Ct l) (app t (app (app Cs l) x))))) (eunop blame l)))))) :-
-    typToExpr S Cs,
-    typToExpr T Ct.
-typToExpr (fromExpr E) E.
-
-(* Other *)
-
-find : string -> list (tuple string A) -> A -> prop.
-find S [] _ :- log_error S `Not found in record ${S}`, failure.
-find S ((S, E) :: _) E.
-find S ((S', _) :: TL) E :-
-  not (eq S S'),
-  find S TL E.

@@ -62,7 +62,7 @@ expr_ -> ite
 baseexpr ->
         promise
         { "Promise(" <typ> "," <expr_> ")"}
-      / fun ty => assume ty (label "Assume")
+      / fun ty => assume ty (label true "Assume")
         { "Assume(" <typ> "," <expr_> ")"}
       / ebool true { "true" }
       / ebool false { "false" }
@@ -73,8 +73,6 @@ baseexpr ->
         { <makam.int_literal> }
       / named 
         { <makam.ident> }
-      / label
-        {"Lbl" <makam.string_literal> }
       / { "(" <expr_> ")" }
 
 def -> tuple
@@ -82,6 +80,10 @@ def -> tuple
 
 id -> concrete.name exprvar
         { <makam.ident> }
+
+typ ->  tarrow
+        { <baseTyp> "->" <typ> }
+      / { <baseTyp> }
 
 baseTyp ->  
         tnum 
@@ -95,10 +97,6 @@ baseTyp ->
       / fromExpr
         { <expr_> }
       / { "(" <typ> ")" }
-
-typ ->  tarrow
-        { <baseTyp> "->" <typ> }
-      / { <baseTyp> }
 
 }} ).
 
