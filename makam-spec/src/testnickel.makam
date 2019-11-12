@@ -274,3 +274,20 @@ testcase nickel :-
         "(Assume(Num -> (forall a. a -> a) -> Num, fun n => fun f => f n) 34) (fun x => 2)"
         _ _
     ).
+(isocast "{ hello : 3 ; chau : \"4\" ; $(Ifte(true, \"hello\", \"chau\")) : 5 ; $(Ifte(true, \"hello\", \"chau\")) : 4 }" (E: expr),
+typecheck E T) ?
+
+isocast "Promise({ _:Bool, hello: Num}, 3)" (E: expr) ?
+
+(isocast "{$(Ifte(true, \"hello\", \"chau\")) : false; $(\"bla\"): true; blop : true }.$blap" (E: expr), typecheck E T)?
+(isocast "{$(Ifte(true, \"hello\", \"chau\")) : false; $(\"bla\"): true; blop : true }" (E: expr), typecheck E (open_rec T []))?
+(isocast "{$(Ifte(true, \"hello\", \"chau\")) : false; $(\"bla\"): true; blop : true }" (E: expr), typecheck E T)?
+
+(isocast "{$(\"bla\"): 5 }" (E: expr), typecheck E T)?
+
+raw_interpreter "{$(\"bla\"): 5 }" E T ?
+
+raw_interpreter "{$(Ifte(true, \"hello\", \"chau\")) : false; $(\"bla\"): true; blop : true }" E T ?
+raw_interpreter "{$(Ifte(true, \"hello\", \"chau\")) : false; $(\"bla\"): true; blop : true }.blop" E T ?
+
+

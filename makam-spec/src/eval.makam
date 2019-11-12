@@ -109,6 +109,32 @@ eval (ebool B) (ebool B).
 eval (estr S) (estr S).
 eval (label P S) (label P S).
 
+(* Records *)
+(* TODO check there are no repeated fields *)
+
+eval (erec []) (erec []).
+eval (erec ((static_field S E) :: TL)) (erec ((static_field S E) :: TL')) :-
+  eval (erec TL) (erec TL').
+eval (erec ((dyn_field S E) :: TL)) (erec ((static_field S' E) :: TL')) :-
+  eval S (estr S'),
+  eval (erec TL) (erec TL').
+
+find_field : (list rec_field) -> string -> expr -> prop.
+find_field ((static_field S E) :: TL) S E.
+find_field ((static_field S' _) :: TL) S E :-
+  not (eq S' S),
+  find_field TL S E.
+
+eval (static_access E S) V :-
+  eval E (erec L),
+  find_field L S F,
+  eval F V.
+
+eval (dyn_access E S) V :-
+  eval S (estr S'),
+  eval (static_access E S') V.
+
+
 (* Operations *)
 eval (ite C T E) V :-
   eval C (ebool true),
@@ -143,11 +169,13 @@ eval_unop blame (label false S) _ :-
 eval_unop isNum (eint _) (ebool true).
 eval_unop isBool (ebool _) (ebool true).
 eval_unop isStr (estr _) (ebool true).
+eval_unop isRec (erec _) (ebool true). 
 eval_unop isFun (lam _) (ebool true).
 
 eval_unop isNum V (ebool false) :- not (eq V (eint _)).
 eval_unop isBool V (ebool false) :- not (eq V (ebool _)).
 eval_unop isStr V (ebool false) :- not (eq V (estr _)).
+eval_unop isRec V (ebool false) :- not (eq V (erec _)).
 eval_unop isFun V (ebool false) :- not (eq V (lam _)).
 
 (* Typing *)

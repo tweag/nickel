@@ -13,6 +13,9 @@ unop, unopC : syntax unop.
 typ, typC, baseTyp: syntax typ.
 typ_concrete : syntax (concrete typ).
 
+rec_field : syntax rec_field.
+rec_field_typ : syntax (tuple string typ).
+
 exprvar : concrete.namespace expr.
 typvar : concrete.namespace typ.
 
@@ -38,6 +41,7 @@ unop ->
       / isNum { "isNum" }
       / isBool { "isBool" }
       / isStr { "isStr" }
+      / isRec { "isRec" }
       / isFun { "isFun" }
 
 }} ).
@@ -59,6 +63,10 @@ expr_ -> ite
         { <baseexpr> <binopC> <baseexpr> }
       / eunop
         { <unopC> <baseexpr> }
+      / static_access
+        { <baseexpr> "." <makam.ident> }
+      / dyn_access
+        { <baseexpr> ".$" <baseexpr> }
       / app
         { <baseexpr>  <expr_> }
       / { <baseexpr> }
@@ -70,6 +78,8 @@ baseexpr ->
         { "Assume(" <typ> "," <expr_> ")"}
       / ebool true { "true" }
       / ebool false { "false" }
+      / erec 
+        {"{" <list_sep (token ";") rec_field> "}"}
       / estr { <makam.string_literal> }
       / concrete.var
         { <id> }
@@ -78,6 +88,12 @@ baseexpr ->
       / named 
         { <makam.ident> }
       / { "(" <expr_> ")" }
+
+rec_field ->
+        static_field
+        { <makam.ident> ":" <expr_>}
+      / dyn_field
+        { "$" <expr_> ":" <expr_>}
 
 def -> tuple
         { "(" <id> "=" <expr_> ")" }
@@ -107,9 +123,17 @@ baseTyp ->
         { "String" }
       / concrete.var
         { <idTy> }
+      / open_rec
+        {"{" "_" ":" <typ> "," <list_sep (token ",") rec_field_typ> "}"}
+      / clos_rec
+        {"{" <list_sep (token ",") rec_field_typ> "}"}
       / fromExpr
         { "#" <expr_> }
       / { "(" <typ> ")" }
+
+rec_field_typ ->
+        tuple
+        {<makam.ident> ":" <typ>}
 
 }} ).
 

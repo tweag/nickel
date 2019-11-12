@@ -21,6 +21,39 @@ typecheck (eint _) tnum.
 typecheck (ebool _) tbool.
 typecheck (estr _) tstr.
 
+(* I'm not checking for uniqueness still *)
+typecheck (erec []) (clos_rec []).
+typecheck (erec ((static_field K V) :: TL)) (clos_rec L) :-
+    find L K (TyV, L'),
+    typecheck V TyV,
+    typecheck (erec TL) (clos_rec L').
+
+
+typecheck (erec []) (open_rec _ []).
+typecheck (erec ((static_field K V) :: TL)) (open_rec DT L) :-
+    find L K (TyV, L'),
+    typecheck V TyV,
+    typecheck (erec TL) (open_rec DT L').
+typecheck (erec ((static_field K V) :: TL)) (open_rec DT L) :-
+    not (find L K _),
+    typecheck V DT,
+    typecheck (erec TL) (open_rec DT L).
+typecheck (erec ((dyn_field K V) :: TL)) (open_rec DT L) :-
+    typecheck K tstr,
+    typecheck V DT,
+    typecheck (erec TL) (open_rec DT L).
+
+typecheck (static_access E S) T :-
+    typecheck E (open_rec _ L),
+    find L S (T, _).
+typecheck (static_access E S) T :-
+    typecheck E (open_rec T L),
+    not (find L S _).
+
+typecheck (dyn_access E _) T :-
+    typecheck E (open_rec T []).
+
+
 typecheck (ite C T E) Ty :-
     typecheck C tbool,
     typecheck T Ty,
@@ -31,6 +64,8 @@ typecheck (eunop blame L) _ :-
     
 typecheck (eunop isNum _) tbool.
 typecheck (eunop isBool _) tbool.
+typecheck (eunop isStr _) tbool.
+typecheck (eunop isRec _) tbool.
 typecheck (eunop isFun _) tbool.
 
 typecheck (ebinop A _ B) tnum :-
