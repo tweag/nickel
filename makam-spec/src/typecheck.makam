@@ -47,11 +47,13 @@ typecheck (static_access E S) T :-
     typecheck E (open_rec _ L),
     find L S (T, _).
 typecheck (static_access E S) T :-
-    typecheck E (open_rec T L),
-    not (find L S _).
+    typecheck E (open_rec T L).
+typecheck (static_access E S) T :-
+    typecheck E (clos_rec L),
+    find L S (T, _).
 
 typecheck (dyn_access E _) T :-
-    typecheck E (open_rec T []).
+    typecheck E (open_rec T _).
 
 
 typecheck (ite C T E) Ty :-
