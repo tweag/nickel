@@ -280,11 +280,6 @@ typecheck E T) ?
 (* Records *)
 
 testcase nickel :-
-    raw_interpreter "{$(\"bla\"): 5 }"
-    (rec_catcher [ (tuple "bla" (eint 5)) ] (fun s => eunop blame (label false "Wrong record field ${s}")))
-    (open_rec tnum []).
-
-testcase nickel :-
     isocast 
     "{ hello : 3 ; chau : \"4\" ; $(Ifte(true, \"hello\", \"chau\")) : 5 ; $(Ifte(true, \"hello\", \"chau\")) : 4 }" 
     (E: expr),
@@ -296,28 +291,73 @@ testcase nickel :-
     (E: expr), 
     not (typecheck E _).
 
-(isocast "{$(Ifte(true, \"hello\", \"chau\")) : false; $(\"bla\"): true; blop : true }.$blap" (E: expr), typecheck E T)?
-(isocast "{$(Ifte(true, \"hello\", \"chau\")) : false; $(\"bla\"): true; blop : true }" (E: expr), typecheck E (open_rec T []))?
-(isocast "{$(Ifte(true, \"hello\", \"chau\")) : false; $(\"bla\"): true; blop : true }" (E: expr), typecheck E T)?
+testcase nickel :-
+    raw_interpreter "{$(\"bla\"): 5 }"
+    (rec_catcher [ (tuple "bla" (eint 5)) ] (fun s => eunop blame (label false "Wrong record field ${s}")))
+    (open_rec tnum []).
 
-(isocast "{$(\"bla\"): 5 }" (E: expr), typecheck E T)?
+testcase nickel :-
+    raw_interpreter 
+    "{$(Ifte(true, \"hello\", \"chau\")) : false; $(\"bla\"): true; blop : true }.blop"
+    (ebool true)
+    tbool.
 
-raw_interpreter "{$(\"bla\"): 5 }" E T ?
+testcase nickel :-
+    raw_interpreter 
+    "{$(Ifte(true, \"hello\", \"chau\")) : false; $(\"bla\"): true; blop : true }.hello"
+    (ebool false)
+    tbool.
 
-raw_interpreter "{$(Ifte(true, \"hello\", \"chau\")) : false; $(\"bla\"): true; blop : true }" E T ?
-raw_interpreter "{$(Ifte(true, \"hello\", \"chau\")) : false; $(\"bla\"): true; blop : true }.blop" E T ?
-raw_interpreter "{$(Ifte(true, \"hello\", \"chau\")) : false; $(\"bla\"): true; blop : 3 }.blop" E T ?
+testcase nickel :-
+    raw_interpreter 
+    "{$(Ifte(true, \"hello\", \"chau\")) : false; $(\"bla\"): 3; blop : true }.hello"
+    (ebool false)
+    tdyn.
 
+(* TODO: Still not checking that there are no extra fields *)
+testcase nickel :-
+    raw_interpreter
+    "let (f = Assume({hello: Bool} -> Bool, fun x => (x).hello)) in
+    f {hello: false ; chau : 3}"
+    (ebool false)
+    tdyn.
 
-isocast " fun x => (x).hello" (E: expr) ?
-raw_interpreter " fun x => (x).hello" (E: expr) T ?
-raw_interpreter "(fun x => ((x).hello) + ((x).$\"chau\")) " E T ?
-raw_interpreter "(fun x => ((x).hello) + ((x).chau)) { hello: 3; $\"chau\" : 4 }" E T ?
-(isocast "(fun x => ((x).hello) + ((x).chau)) { hello: 3; chaup : 4; $\"dope\": 5 }" (E: expr), typecheck E T )?
-(isocast "(fun x => ((x).hello) + ((x).$\"chau\")) { hello: 3; chaup : 4; $\"dope\": false }" (E: expr), typecheck E T )?
+testcase nickel :-
+    raw_interpreter
+    "let (f = Assume({hello: Bool} -> Bool, fun x => (x).hello)) in
+    f {$\"hello\": true; $\"hola\": 42 ; chau : 3}"
+    (ebool true)
+    tdyn.
 
-(isocast "(Assume( { hello : Bool } , {$\"hello\": true; chau: 3}))" (E:expr), typecheck E T) ?
-raw_interpreter "Assume({ hello : Bool }, {$\"hello\": true; chau: 3}).hello" E T ?
-raw_interpreter "(Assume({ hello : (Bool -> Bool) }, {$\"hello\": (fun x => Ifte(x, false, true)); chau: 3}).hello) 4" E T ?
-raw_interpreter "(Assume({ _: Bool , hello : (Bool -> Bool) }, {$\"hello\": (fun x => Ifte(x, false, true)); chau: 3}).hello) false" E T ?
-raw_interpreter "(Assume({ _: Bool , hello : (Bool -> Bool) }, {$\"hello\": (fun x => Ifte(x, false, true)); chau: false}).chau)" E T ?
+testcase nickel :-
+    not (
+        raw_interpreter
+        "let (f = Assume({hello: Bool} -> Bool, fun x => (x).hello)) in
+        f {hola: false ; chau : 3}"
+        _ _
+    ).
+
+testcase nickel :-
+    raw_interpreter
+    "let (f = Promise({hello: Bool} -> Bool, fun x => (x).hello)) in
+    f {hello: false ; chau : 3}"
+    (ebool false)
+    tdyn.
+
+testcase nickel :-
+    p_typecheck
+    "Promise({hello: Bool} -> Bool, fun x => (x).hello)"
+    (tarrow (clos_rec [("hello", tbool)]) tbool).
+
+testcase nickel :-
+    not(
+        raw_interpreter
+        "Assume( { _ : Bool , } , {blop : 3; blip : false}).blop"
+        _ _
+    ).
+
+testcase nickel :-
+    raw_interpreter
+    "Assume({_: Bool ,}, {blop : 3; blip : false}).blip"
+    (ebool false)
+    tbool.
