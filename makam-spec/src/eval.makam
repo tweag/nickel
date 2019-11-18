@@ -6,10 +6,15 @@
 
 (* Negation of the label *)
 neg : expr -> expr.
+pos : expr -> expr.
 
 (* Used for lazy evaluation *)
 thunk : string -> expr -> expr -> expr.
 recThunk : string -> (expr -> expr) -> expr -> expr.
+
+(* wrapping of values *)
+wrapper : expr -> A -> expr.
+unwrap : expr -> A -> expr -> expr.
 
 (* Get the expression contract of a given type *)
 typToExpr : typ -> expr -> prop.
@@ -25,6 +30,28 @@ typToExpr (tarrow S T) (lam (bind _ (fun l => lam (bind _
   (fun t => ite (eunop isFun t) (lam (bind _ (fun x => app (app Ct l) (app t (app (app Cs (neg l)) x))))) (eunop blame l)))))) :-
     typToExpr S Cs,
     typToExpr T Ct.
+
+(* forall contract
+ * We have two versions of the contract, TyTrue and TyFalse, which one is used
+ * depends on the polarity relative to the polarity at the point the forall is at.
+ * They do the opposite of the other, unwrap or wrap the value depending whether the
+ * polarity has changed or not.
+ * Keep in mind TyTrue and TyFalse is not the instantiation of the variable a to a contract,
+ * but the body of the forall applied to different instantiation, and then converted to a contract.
+ * A simpler implementation should be possible at the expense of extending Nickel,
+ * for now this is the simplest way to proceed.
+ *)
+typToExpr (forall (bind _ F)) (lam (bind _ (fun l => ite (pos l) (app TyTrue l) (app TyFalse l))))   :-
+  typToExpr (F (fromExpr (lam (bind _ (fun lp => lam (bind _ (fun t => 
+    ite (pos lp) 
+      (unwrap t X (eunop blame lp))
+      (wrapper t X)
+  ))))))) TyTrue,
+  typToExpr (F (fromExpr (lam (bind _ (fun lp => lam (bind _ (fun t => 
+    ite (pos lp)
+      (wrapper t X)
+      (unwrap t X (eunop blame lp))
+  ))))))) TyFalse.
 typToExpr (fromExpr E) E.
 
 eval : expr -> expr -> prop.
@@ -35,6 +62,8 @@ eval (neg L) (label true S) :-
 eval (neg L) (label false S) :-
   eval L (label true S).
 
+eval (pos L) (ebool P) :-
+  eval L (label P _).
 
 (* Lazy evaluation *)
 eval (thunk _ E V) V' when refl.isunif V :-
@@ -49,6 +78,20 @@ eval (recThunk S E V) V' when refl.isunif V :-
 eval (recThunk _ E V) V' when not (refl.isunif V) :-
   eq V V'.
 
+(* wrapping *)
+eval (wrapper E A) (wrapper E A).
+
+eval (unwrap X B _) V :-
+  eval X (wrapper E A),
+  refl.sameunif A B,
+  eval E V.
+eval (unwrap X B E) V :-
+  eval X (wrapper _ A),
+  not (refl.sameunif A B),
+  eval E V.
+eval (unwrap X B E) V :-
+  not (eval X (wrapper _ A)),
+  eval E V.
 
 (* Lambda constructs *)
 eval (let (bind Name E) (bind Name T)) V :-  

@@ -37,6 +37,12 @@ typecheck (ebinop A _ B) tnum :-
     typecheck A tnum,
     typecheck B tnum.
 
+typecheck E Ty :-
+    not (refl.isunif Ty),
+    eq Ty (forall (bind _ F)),
+    (x: typ ->
+        typecheck E (F x)).
+
 typecheck (promise Ty E) Ty :-
     typecheckTypes Ty,
     typecheck E Ty.
@@ -75,3 +81,6 @@ typecheckTypes_ (dyn A) :-
         (fromExpr E, typecheck E (tarrow tlbl (tarrow S S))),
         (Other, structural_map0 typecheckTypes_ (dyn Other))
     ].
+typecheckTypes_ (dyn B) :-
+    not (typeq B (X: typ)),
+    structural_map0 typecheckTypes_ (dyn B).

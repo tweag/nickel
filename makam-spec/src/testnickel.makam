@@ -1,6 +1,5 @@
 %use "init".
 
-
 (* This file defines a bunch of tests across many features
  * of the Makam implementation of the Nickel language.
  *
@@ -97,7 +96,7 @@ testcase nickel :-
     not (
         raw_interpreter "
         let (void = fun l => fun t => blame l) in
-        Assume(void, 3)
+        Assume(#void, 3)
         " _ _
     ).
 
@@ -105,20 +104,20 @@ testcase nickel :-
     not (
         raw_interpreter "
         let (alwaysTrue = fun l => fun t => Ifte(t, t, blame l)) in
-        Assume(alwaysTrue, false)
+        Assume(#alwaysTrue, false)
         " _ _
     ).
 
 testcase nickel :-
     raw_interpreter "
     let (alwaysTrue = fun l => fun t => Ifte(t, t, blame l)) in
-    Assume(alwaysTrue, true)
+    Assume(#alwaysTrue, true)
     " (ebool true) (fromExpr (named "alwaysTrue")).
 
 testcase nickel :-
     raw_interpreter "
     let (void = fun l => fun t => blame l) in
-    Promise( void -> void, fun x => x)" V T,
+    Promise( #void -> #void, fun x => x)" V T,
     eq V (lam (bind "x" (fun x => x))),
     eq T (tarrow (fromExpr (named "void")) (fromExpr (named "void"))).
 
@@ -202,4 +201,76 @@ testcase nickel_typing :-
     not (p_typecheck
         "Promise(Num -> Bool, fun x => x) 3"
         _
+    ).
+(* forall *)
+
+testcase nickel :-
+    raw_interpreter "
+    Promise(forall a . a -> a, fun x => x) "
+    (lam (bind "x" (fun x => x)))
+    (forall (bind "a" (fun a => tarrow a a))).
+
+testcase nickel :-
+    raw_interpreter "
+    Promise(forall a . a -> a, fun x => x) 3 "
+    (eint 3)
+    (tdyn).
+
+testcase nickel :-
+    raw_interpreter "
+    Assume(forall a . a -> a, fun x => x) 3 "
+    (eint 3) tdyn.
+
+testcase nickel :-
+    not (raw_interpreter "
+    Assume(forall a . a -> a, fun x => 2) 3 "
+    _ _).
+
+testcase nickel :-
+    raw_interpreter 
+    "(Assume(forall a . a -> (a -> a) ->  a, fun x => fun f => f x) 3) (fun y => 2 + y)"
+    (eint 5)
+    tdyn.
+
+testcase nickel :-
+    raw_interpreter
+    "(Assume(forall a . a -> (a -> a) ->  a, fun x => fun f => f (f x)) 3) (fun y => 2 + y)"
+    (eint 7)
+    tdyn.
+
+testcase nickel :-
+    not (raw_interpreter
+        "(Assume(forall a . a -> (a -> a) ->  a, fun x => fun f => f 2) 34) (fun y => 25 + y)"
+        _ _
+    ).
+
+testcase nickel :-
+    raw_interpreter
+    "(Assume(forall a . a -> (a -> Num) ->  Num, fun x => fun f => f x) 3) (fun y => Ifte(isNum y, y, 0))"
+    (eint 3)
+    tdyn.
+
+testcase nickel :-
+    raw_interpreter
+    "(Assume(forall a . a -> (a -> Num) ->  Num, fun x => fun f => f x) true) (fun y => Ifte(isNum y, y, 0))"
+    (eint 0)
+    tdyn.
+
+testcase nickel :-
+    raw_interpreter
+    "(Assume(forall a . forall b . (a -> b) -> a -> b, fun f => f) (fun x => 34)) true"
+    (eint 34)
+    tdyn.
+
+testcase nickel :-
+    raw_interpreter
+    "(Assume(Num -> (forall a. a -> a) -> Num, fun n => fun f => f n) 34) (fun x => x)"
+    (eint 34)
+    tnum.
+
+
+testcase nickel :-
+    not (raw_interpreter
+        "(Assume(Num -> (forall a. a -> a) -> Num, fun n => fun f => f n) 34) (fun x => 2)"
+        _ _
     ).
