@@ -80,11 +80,12 @@ testcase nickel :-
     " (ebool true) tdyn.
 
 testcase nickel :-
-    not (
-        raw_interpreter "
-        let (id = fun x => x) in
-        Ifte(true, Assume(Bool, id true), Promise(Num, id 3))
-        " _ _ ).
+    raw_interpreter "
+    let (id = fun x => x) in
+    Ifte(true, Assume(Bool, id true), Promise(Num, id 3))
+    "
+    (ebool true)
+    tdyn.
 
 testcase nickel :-
     raw_interpreter "
@@ -138,3 +139,67 @@ testcase nickel :-
     fun y => f y" 
     (lam (bind "y" (fun y => app (recThunk "f" (fun f => lam (bind "x" (fun x => ebinop x add (eint 1)))) V') y))) 
     (tarrow tnum tnum).
+
+
+nickel_typing : testsuite.
+
+testcase nickel_typing :-
+    p_typecheck
+    "true"
+    tbool.
+
+testcase nickel_typing :-
+    p_typecheck
+    "34"
+    tnum.
+
+testcase nickel_typing :-
+    p_typecheck
+    "34"
+    tdyn.
+
+testcase nickel_typing :-
+    p_typecheck
+    "\"hola\""
+    tstr.
+
+testcase nickel_typing :-
+    p_typecheck
+    "fun x => x"
+    (tarrow A A).
+
+testcase nickel_typing :-
+    p_typecheck
+    "fun x => x"
+    (tarrow tdyn tdyn).
+
+testcase nickel_typing :-
+    p_typecheck
+    "fun x => x"
+    tdyn.
+
+testcase nickel_typing :-
+    p_typecheck
+    "let (x = 34) in x + 2"
+    tnum.
+
+testcase nickel_typing :-
+    p_typecheck
+    "(fun x => x) 3"
+    tnum.
+
+testcase nickel_typing :-
+    p_typecheck
+    "Promise(Bool -> Bool, fun x => x) 3"
+    tdyn.
+
+testcase nickel_typing :-
+    p_typecheck
+    "Promise(Num -> Num, fun x => x) 3"
+    tnum.
+
+testcase nickel_typing :-
+    not (p_typecheck
+        "Promise(Num -> Bool, fun x => x) 3"
+        _
+    ).

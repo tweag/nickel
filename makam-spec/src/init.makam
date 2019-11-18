@@ -18,6 +18,7 @@ removeThunks X Y :- demand.case_otherwise (removeThunks_  X Y) (structural_map r
 removeThunks_ (dyn (thunk S A B)) (dyn (named S)) .
 removeThunks_ (dyn (recThunk S A B)) (dyn (named S)) .
 
+(* Parse, typecheck and interpret *)
 raw_interpreter : string -> expr -> typ -> prop.
 raw_interpreter S V Ty :-
   either (isocast S (E: expr)) (log_error S `Parse error in Nickel program`),
@@ -25,6 +26,7 @@ raw_interpreter S V Ty :-
   eval E V,
   print "Evaluated".
 
+(* Parse, typecheck, interpret and pretty print *)
 interpreter : string -> string -> string -> prop.
 interpreter S S' STy :-
   raw_interpreter S V T',
@@ -32,3 +34,9 @@ interpreter S S' STy :-
   removeThunks (dyn V) (dyn V'),
   isocast V' (S': string),
   isocast T (STy: string).
+
+(* Parse and typecheck *)
+p_typecheck : string -> typ -> prop.
+p_typecheck S Ty :-
+  either (isocast S (E: expr)) (log_error S `Parse error in Nickel program`),
+  once (ifte (typecheck E Ty) (print "Typechecked!") (and (print `Could not typecheck`) (failure))).
