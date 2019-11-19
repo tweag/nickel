@@ -3,7 +3,7 @@ version: 2
 jobs:
   test:
     docker:
-      - image: rust:1.32 # Same version as nixos-19.03
+      - image: rust:1.37 # Same version as nixos-19.09
     environment:
       CACHE_VERSION:
         "2019-09-09"
