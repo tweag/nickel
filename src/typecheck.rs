@@ -253,6 +253,13 @@ pub fn get_uop_type(s: &mut GTypes, op: &UnaryOp) -> TypeWrapper {
                 Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
             ))
         }
+        UnaryOp::Wrap() => TypeWrapper::Concrete(AbsType::arrow(
+            Box::new(TypeWrapper::Concrete(AbsType::Sym())),
+            Box::new(TypeWrapper::Concrete(AbsType::arrow(
+                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
+                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
+            ))),
+        )),
     }
 }
 
@@ -263,13 +270,6 @@ pub fn get_bop_type(_s: &mut GTypes, op: &BinaryOp) -> TypeWrapper {
             Box::new(TypeWrapper::Concrete(AbsType::arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::Num())),
                 Box::new(TypeWrapper::Concrete(AbsType::Num())),
-            ))),
-        )),
-        BinaryOp::Wrap() => TypeWrapper::Concrete(AbsType::arrow(
-            Box::new(TypeWrapper::Concrete(AbsType::Sym())),
-            Box::new(TypeWrapper::Concrete(AbsType::arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
-                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
             ))),
         )),
         BinaryOp::Unwrap() => TypeWrapper::Concrete(AbsType::arrow(

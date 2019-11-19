@@ -149,6 +149,19 @@ fn process_unary_operation(
                 )))
             }
         }
+        UnaryOp::Wrap() => {
+            if let Term::Sym(s) = *t {
+                Ok(Closure::atomic_closure(
+                    Term::Fun(
+                        Ident("x".to_string()),
+                        Term::Wrapped(s, RichTerm::var("x".to_string())).into(),
+                    )
+                    .into(),
+                ))
+            } else {
+                Err(EvalError::TypeError(format!("Expected Sym, got {:?}", *t)))
+            }
+        }
     }
 }
 
@@ -164,7 +177,7 @@ fn process_binary_operation(
     } = fst_clos;
     let Closure {
         body: RichTerm { term: t2, pos: _ },
-        env: _env2,
+        env: env2,
     } = clos;
     match b_op {
         BinaryOp::Plus() => {
@@ -178,29 +191,28 @@ fn process_binary_operation(
                 Err(EvalError::TypeError(format!("Expected Num, got {:?}", *t1)))
             }
         }
-        BinaryOp::Wrap() => {
-            if let Term::Sym(s) = *t1 {
-                Ok(Closure::atomic_closure(
-                    Term::Wrapped(s, (*t2).into()).into(),
-                ))
-            } else {
-                Err(EvalError::TypeError(format!("Expected Sym, got {:?}", *t1)))
-            }
-        }
         BinaryOp::Unwrap() => {
             if let Term::Sym(s1) = *t1 {
                 // Return a function that either behaves like the identity or
                 // const unwrapped_term
-                let f = if let Term::Wrapped(s2, t) = *t2 {
+
+                Ok(if let Term::Wrapped(s2, t) = *t2 {
                     if s1 == s2 {
-                        Term::Fun(Ident("x".to_string()), t)
+                        Closure {
+                            body: Term::Fun(Ident("-invld".to_string()), t).into(),
+                            env: env2,
+                        }
                     } else {
-                        Term::Fun(Ident("x".to_string()), RichTerm::var("x".to_string()))
+                        Closure::atomic_closure(
+                            Term::Fun(Ident("x".to_string()), RichTerm::var("x".to_string()))
+                                .into(),
+                        )
                     }
                 } else {
-                    Term::Fun(Ident("x".to_string()), RichTerm::var("x".to_string()))
-                };
-                Ok(Closure::atomic_closure(f.into()))
+                    Closure::atomic_closure(
+                        Term::Fun(Ident("x".to_string()), RichTerm::var("x".to_string())).into(),
+                    )
+                })
             } else {
                 Err(EvalError::TypeError(format!("Expected Sym, got {:?}", *t1)))
             }

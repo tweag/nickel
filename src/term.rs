@@ -65,12 +65,13 @@ pub enum UnaryOp {
     GoDom(),
     GoCodom(),
     Tag(String),
+
+    Wrap(),
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum BinaryOp {
     Plus(),
-    Wrap(),
     Unwrap(),
     EqBool(),
 }

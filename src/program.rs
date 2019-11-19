@@ -200,7 +200,7 @@ let func = fun s => fun t => fun l => fun e =>
   let l = tag[func] l in if isFun e then (fun x => t (goCodom l) (e (s (chngPol (goDom l)) x))) else blame l in
 let forall_var = fun sy => fun pol => fun l => fun t => let lPol = polarity l in 
 if pol =b lPol then
-  unwrap sy t (blame l)
+  unwrap sy t (blame (tag[unwrp] l))
 else
   wrap sy t
 in
