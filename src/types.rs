@@ -47,10 +47,16 @@ pub struct Types(pub AbsType<Box<Types>>);
 
 impl Types {
     pub fn contract(&self) -> RichTerm {
-        self.contract_open(HashMap::new(), true, 0)
+        let mut sy = 0;
+        self.contract_open(HashMap::new(), true, &mut sy)
     }
 
-    pub fn contract_open(&self, mut h: HashMap<Ident, RichTerm>, pol: bool, sy: i32) -> RichTerm {
+    pub fn contract_open(
+        &self,
+        mut h: HashMap<Ident, RichTerm>,
+        pol: bool,
+        sy: &mut i32,
+    ) -> RichTerm {
         match self.0 {
             AbsType::Dyn() => RichTerm::var("dyn".to_string()),
             AbsType::Num() => RichTerm::var("num".to_string()),
@@ -72,14 +78,14 @@ impl Types {
                 let inst_var = RichTerm::app(
                     RichTerm::app(
                         RichTerm::var("forall_var".to_string()),
-                        Term::Sym(sy).into(),
+                        Term::Sym(*sy).into(),
                     ),
                     Term::Bool(pol).into(),
                 );
 
                 h.insert(i.clone(), inst_var);
-
-                t.contract_open(h, pol, sy + 1)
+                *sy = *sy + 1;
+                t.contract_open(h, pol, sy)
             }
         }
     }

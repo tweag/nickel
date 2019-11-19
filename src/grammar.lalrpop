@@ -83,7 +83,12 @@ BOpPre: BinaryOp = {
 }
 
 Types: Types = {
-    <s: subType> "->" <t:Types> => Types(AbsType::Arrow(Box::new(s), Box::new(t))),
+    "forall" <id: Ident> "." <ty: Arrows> => Types(AbsType::Forall(id, Box::new(ty))),
+    <Arrows>
+}
+
+Arrows: Types = {
+    <s: subType> "->" <t:Arrows> => Types(AbsType::Arrow(Box::new(s), Box::new(t))),
     <subType>,
 };
 
@@ -91,6 +96,7 @@ subType : Types = {
     "Dyn" => Types(AbsType::Dyn()),
     "Num" => Types(AbsType::Num()),
     "Bool" => Types(AbsType::Bool()),
+    <Ident> => Types(AbsType::Var(<>)),
     "#" <SpTerm<RichTerm>> => Types(AbsType::Flat(<>)),
     "(" <Types> ")" => <>,
 };
