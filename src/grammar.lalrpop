@@ -24,13 +24,14 @@ RichTerm: RichTerm = {
 };
 
 Operation: RichTerm = {
-    <t1: SpTerm< Applicative>> <op: BOp> <t2: SpTerm<Operation>> => RichTerm::new(Term::Op2(op, t1, t2)),
+    <t1: SpTerm< Applicative>> <op: BOpIn> <t2: SpTerm<Operation>> => RichTerm::new(Term::Op2(op, t1, t2)),
+    <op: UOp> <t: SpTerm<Operation>> => RichTerm::new(Term::Op1(op, t)),
     SpTerm< Applicative>,
 };
 
 Applicative: RichTerm = {
     <t1:SpTerm< Applicative>> <t2: SpTerm<Atom>> => RichTerm::new(Term::App(t1, t2)),
-    <op: UOp> <t: SpTerm<Atom>> => RichTerm::new(Term::Op1(op, t)),
+    <op: BOpPre> <t1: SpTerm<Atom>> <t2: SpTerm<Atom>> => RichTerm::new(Term::Op2(op, t1, t2)),
     SpTerm<Atom>,
 };
 
@@ -65,14 +66,21 @@ UOp: UnaryOp = {
     "isFun" => UnaryOp::IsFun(),
     "blame" => UnaryOp::Blame(),
     "chngPol" => UnaryOp::ChangePolarity(),
+    "polarity" => UnaryOp::Pol(),
     "goDom" => UnaryOp::GoDom(),
     "goCodom" => UnaryOp::GoCodom(),
     "tag[" <DbgStr> "]" => UnaryOp::Tag(<>),
 };
 
-BOp: BinaryOp = {
+BOpIn: BinaryOp = {
     "+" => BinaryOp::Plus(),
+    "=b" => BinaryOp::EqBool(),
 };
+
+BOpPre: BinaryOp = {
+    "wrap" => BinaryOp::Wrap(),
+    "unwrap" => BinaryOp::Unwrap(),
+}
 
 Types: Types = {
     <s: subType> "->" <t:Types> => Types(AbsType::Arrow(Box::new(s), Box::new(t))),

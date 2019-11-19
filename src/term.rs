@@ -19,6 +19,8 @@ pub enum Term {
     // Typing
     Promise(Types, Label, RichTerm),
     Assume(Types, Label, RichTerm),
+    Sym(i32),
+    Wrapped(i32, RichTerm),
 }
 
 impl Term {
@@ -28,11 +30,12 @@ impl Term {
     {
         use self::Term::*;
         match self {
-            Bool(_) | Num(_) | Lbl(_) | Var(_) => {}
+            Bool(_) | Num(_) | Lbl(_) | Var(_) | Sym(_) => {}
             Fun(_, ref mut t)
             | Op1(_, ref mut t)
             | Promise(_, _, ref mut t)
-            | Assume(_, _, ref mut t) => {
+            | Assume(_, _, ref mut t)
+            | Wrapped(_, ref mut t) => {
                 func(t);
             }
             Let(_, ref mut t1, ref mut t2)
@@ -58,6 +61,7 @@ pub enum UnaryOp {
     Blame(),
 
     ChangePolarity(),
+    Pol(),
     GoDom(),
     GoCodom(),
     Tag(String),
@@ -66,6 +70,9 @@ pub enum UnaryOp {
 #[derive(Clone, Debug, PartialEq)]
 pub enum BinaryOp {
     Plus(),
+    Wrap(),
+    Unwrap(),
+    EqBool(),
 }
 
 #[derive(Debug, PartialEq, Clone)]

@@ -1,4 +1,5 @@
 use eval::{CallStack, Closure, EvalError};
+use identifier::Ident;
 use label::TyPath;
 use stack::Stack;
 use term::{BinaryOp, RichTerm, Term, UnaryOp};
@@ -104,6 +105,16 @@ fn process_unary_operation(
                 )))
             }
         }
+        UnaryOp::Pol() => {
+            if let Term::Lbl(l) = *t {
+                Ok(Closure::atomic_closure(Term::Bool(l.polarity).into()))
+            } else {
+                Err(EvalError::TypeError(format!(
+                    "Expected Label, got {:?}",
+                    *t
+                )))
+            }
+        }
         UnaryOp::GoDom() => {
             if let Term::Lbl(mut l) = *t {
                 l.path = TyPath::Domain(Box::new(l.path.clone()));
@@ -165,6 +176,50 @@ fn process_binary_operation(
                 }
             } else {
                 Err(EvalError::TypeError(format!("Expected Num, got {:?}", *t1)))
+            }
+        }
+        BinaryOp::Wrap() => {
+            if let Term::Sym(s) = *t1 {
+                Ok(Closure::atomic_closure(
+                    Term::Wrapped(s, (*t2).into()).into(),
+                ))
+            } else {
+                Err(EvalError::TypeError(format!("Expected Sym, got {:?}", *t1)))
+            }
+        }
+        BinaryOp::Unwrap() => {
+            if let Term::Sym(s1) = *t1 {
+                // Return a function that either behaves like the identity or
+                // const unwrapped_term
+                let f = if let Term::Wrapped(s2, t) = *t2 {
+                    if s1 == s2 {
+                        Term::Fun(Ident("x".to_string()), t)
+                    } else {
+                        Term::Fun(Ident("x".to_string()), RichTerm::var("x".to_string()))
+                    }
+                } else {
+                    Term::Fun(Ident("x".to_string()), RichTerm::var("x".to_string()))
+                };
+                Ok(Closure::atomic_closure(f.into()))
+            } else {
+                Err(EvalError::TypeError(format!("Expected Sym, got {:?}", *t1)))
+            }
+        }
+        BinaryOp::EqBool() => {
+            if let Term::Bool(b1) = *t1 {
+                if let Term::Bool(b2) = *t2 {
+                    Ok(Closure::atomic_closure(Term::Bool(b1 == b2).into()))
+                } else {
+                    Err(EvalError::TypeError(format!(
+                        "Expected Bool, got {:?}",
+                        *t2
+                    )))
+                }
+            } else {
+                Err(EvalError::TypeError(format!(
+                    "Expected Bool, got {:?}",
+                    *t1
+                )))
             }
         }
     }
