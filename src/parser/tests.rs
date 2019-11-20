@@ -97,3 +97,18 @@ fn lets() {
     assert!(parser.parse("let x1 = x2 in x3").is_ok());
     assert!(parser.parse("x (let x1 = x2 in x3) y").is_ok());
 }
+
+#[test]
+fn unary_op() {
+    assert_eq!(
+        parse_without_pos("isZero x"),
+        Op1(UnaryOp::IsZero(), RichTerm::var("x".to_string())).into()
+    );
+    assert_eq!(
+        parse_without_pos("isZero x y"),
+        RichTerm::app(
+            Op1(UnaryOp::IsZero(), RichTerm::var("x".to_string())).into(),
+            RichTerm::var("y".to_string())
+        )
+    );
+}

@@ -25,12 +25,12 @@ RichTerm: RichTerm = {
 
 Operation: RichTerm = {
     <t1: SpTerm< Applicative>> <op: BOp> <t2: SpTerm<Operation>> => RichTerm::new(Term::Op2(op, t1, t2)),
-    <op: UOp> <t: SpTerm<Operation>> => RichTerm::new(Term::Op1(op, t)),
     SpTerm< Applicative>,
 };
 
 Applicative: RichTerm = {
     <t1:SpTerm< Applicative>> <t2: SpTerm<Atom>> => RichTerm::new(Term::App(t1, t2)),
+    <op: UOp> <t: SpTerm<Atom>> => RichTerm::new(Term::Op1(op, t)),
     SpTerm<Atom>,
 };
 
