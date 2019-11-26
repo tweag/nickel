@@ -318,16 +318,17 @@ testcase nickel :-
 testcase nickel :-
     raw_interpreter
     "let (f = Assume({hello: Bool} -> Bool, fun x => (x).hello)) in
-    f {hello: false ; chau : 3}"
+    f {hello: false }"
     (ebool false)
     tdyn.
 
 testcase nickel :-
-    raw_interpreter
-    "let (f = Assume({hello: Bool} -> Bool, fun x => (x).hello)) in
-    f {$\"hello\": true; $\"hola\": 42 ; chau : 3}"
-    (ebool true)
-    tdyn.
+    not (
+        raw_interpreter
+        "let (f = Assume({hello: Bool} -> Bool, fun x => (x).hello)) in
+        f {$\"hello\": true; $\"hola\": 42 ; chau : 3}"
+        _ _
+    ).
 
 testcase nickel :-
     not (

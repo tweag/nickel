@@ -14,7 +14,8 @@ pos : expr -> expr.
  * case. All records are translated to this.
  *)
 rec_catcher : (list (tuple string expr)) -> (string -> expr) -> expr.
-has_fields : (list string) -> expr -> expr.
+open_rec_contr : expr -> (list (tuple string expr)) -> expr -> expr -> expr.
+clos_rec_contr : (list (tuple string expr)) -> expr -> expr -> expr.
 
 (* Used for lazy evaluation *)
 thunk : string -> expr -> expr -> expr.
@@ -60,35 +61,18 @@ typToExpr (forall (bind _ F)) (lam (bind _ (fun l => ite (pos l) (app TyTrue l) 
       (wrapper t X)
       (unwrap t X (eunop blame lp))
   ))))))) TyFalse.
-typToExpr (clos_rec L) (lam (bind _ (fun l => lam (bind _ (fun t =>
-  ite (eunop isRec t)
-    (ite (has_fields LTags t)
-      (rec_catcher (L' l t) (F l))
-      (eunop blame l)
-    )
-    (eunop blame l)
-  ))))) :-
-    eq F (fun l s => eunop blame (neg l)),
-    map (pfun (X, Y) X => success) L LTags,
-    (lbl : expr ->
-    term : expr ->
-      map (pfun (X, Y) (X, (app (app Cy lbl) (static_access term X))) => typToExpr Y Cy) L (L' lbl term)
-    ).
+
+typToExpr (clos_rec L) (lam (bind _ (fun lp => lam (bind _ (fun t =>
+  clos_rec_contr Lc t lp
+))))) :-
+  map (pfun (Tag, Type) (Tag', TypeC) => typToExpr Type TypeC, eq Tag Tag') L Lc.
+
 typToExpr (open_rec D L) (lam (bind _ (fun l => lam (bind _ (fun t =>
-  ite (eunop isRec t)
-    (ite (has_fields LTags t)
-      (rec_catcher (L' l t) (F t l))
-      (eunop blame l)
-    )
-    (eunop blame l)
-  ))))) :-
-    typToExpr D Cd,
-    eq F (fun term lbl s => app (app Cd lbl) (static_access term s) ),
-    map (pfun (X, Y) X => success) L LTags,
-    (lbl : expr ->
-    term : expr ->
-      map (pfun (X, Y) (X, (app (app Cy lbl) (static_access term X))) => typToExpr Y Cy) L (L' lbl term)
-    ).
+  open_rec_contr Dc Lc t l
+))))) :-
+  typToExpr D Dc,
+  map (pfun (Tag, Type) (Tag', TypeC) => typToExpr Type TypeC, eq Tag Tag') L Lc.
+
 typToExpr (fromExpr E) E.
 
 eval : expr -> expr -> prop.
@@ -151,14 +135,38 @@ eval (label P S) (label P S).
  * catch all function should check that as well.
  *)
 eval (rec_catcher L C) (rec_catcher L C).
-eval (has_fields [] E) (ebool true).
-eval (has_fields (HD :: TL) E) R :-
-  eval E (rec_catcher L _),
-  find L HD _,
-  eval (has_fields TL E) R.
-eval (has_fields (HD :: _) E) (ebool false) :-
-  eval E (rec_catcher L _),
-  not (find L HD _).
+
+eval (open_rec_contr D Lt R Lbl) (rec_catcher Lv' C) :-
+eval Lbl (label _ S),
+  eval R (rec_catcher Lv C),
+  map (pfun (Tag, Type) => find Lv Tag _) Lt,
+  map (pfun (Tag, Value) (Tag, (app (app Contract Lbl') Value)) => 
+    eq Lbl' Lbl,
+    ifte (find Lt Tag (Contr, _))
+      (eq Contract Contr)
+      (eq Contract D)
+  ) Lv Lv'.
+eval (open_rec_contr D Lt R Lbl) V :-
+  or
+  (not (eval R (rec_catcher _ _)))
+  (not (map (pfun (Tag, Type) => find Lv Tag _) Lt)),
+  eval (eunop blame Lbl) V.
+
+eval (clos_rec_contr Lt R Lbl) (rec_catcher Lv' (fun s => eunop blame (neg Lbl))) :-
+  eval R (rec_catcher Lv C),
+  map (pfun (Tag, Type) => find Lv Tag _) Lt,
+  map (pfun (Tag, Value) (Tag, (app (app Contr Lbl') Value)) => 
+    eq Lbl' Lbl,
+    find Lt Tag (Contr, _)
+  ) Lv Lv'.
+eval (clos_rec_contr Lt R Lbl) V :-
+  or
+  (not (eval R (rec_catcher _ _)))
+  (or
+  (not (map (pfun (Tag, Type) => find Lv Tag _) Lt))
+  (not (map (pfun (Tag, Type) => find Lt Tag _) Lv))  
+  ),
+  eval (eunop blame Lbl) V.
 
 eval (erec []) (rec_catcher [] (fun s => eunop blame (label false "Wrong record field ${s}"))).
 eval (erec ((static_field S E) :: TL)) (rec_catcher ((tuple S E) :: TL') F) :-
