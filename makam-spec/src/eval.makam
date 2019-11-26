@@ -170,7 +170,8 @@ eval (clos_rec_contr Lt R Lbl) V :-
 
 eval (erec []) (rec_catcher [] (fun s => eunop blame (label false "Wrong record field ${s}"))).
 eval (erec ((static_field S E) :: TL)) (rec_catcher ((tuple S E) :: TL') F) :-
-  eval (erec TL) (rec_catcher TL' F).
+  eval (erec TL) (rec_catcher TL' F),
+  not (find TL' S _).
 eval (erec ((dyn_field S E) :: TL)) V :-
   eval S (estr S'),
   eval (erec ((static_field S' E) :: TL)) V.

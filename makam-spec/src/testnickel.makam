@@ -362,3 +362,8 @@ testcase nickel :-
     "Assume({_: Bool ,}, {blop : 3; blip : false}).blip"
     (ebool false)
     tbool.
+
+testcase nickel :-
+    not (raw_interpreter
+    "{blop: 3; blop: false}"
+    _ _).
