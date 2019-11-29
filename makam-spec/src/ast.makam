@@ -16,6 +16,24 @@ eint : int -> expr.
 ebool : bool -> expr.
 estr : string -> expr.
 
+(* Records *)
+
+(* The type of record fields 
+ * They can be either static or dynamic.
+ *)
+rec_field : type.
+static_field : string -> expr -> rec_field.
+dyn_field : expr -> expr -> rec_field.
+
+(* The constructor of a record (just a list of fields) *)
+erec : (list rec_field) -> expr.
+
+(* The different accesses for records.
+ * They can be either static or dynamic.
+ *)
+static_access : expr -> string -> expr.
+dyn_access : expr -> expr -> expr.
+
 (* Operations *)
 ite : expr -> expr -> expr -> expr.
 
@@ -25,6 +43,7 @@ blame : unop.
 isNum : unop.
 isBool : unop.
 isStr : unop.
+isRec : unop.
 isFun : unop.
 
 binop : type.
@@ -52,3 +71,5 @@ tlbl : typ.
 tarrow : typ -> typ -> typ.
 forall : (bindone typ typ) -> typ.
 fromExpr : expr -> typ.
+open_rec : typ -> (list (tuple string typ)) -> typ.
+clos_rec : (list (tuple string typ)) -> typ.

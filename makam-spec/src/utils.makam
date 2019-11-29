@@ -58,3 +58,11 @@ when not(typeq X (B : C -> D)), not(refl.isunif X) <-
 case : A -> (list (tuple A prop)) -> prop.
 case Scrutinee ( (Pattern, Body) :: Rest ) <-
   if eq Scrutinee Pattern then Body else case Scrutinee Rest.
+
+(* List *)
+
+find : (list (tuple A B)) -> A -> (tuple B (list (tuple A B))) -> prop.
+find ((K, V) :: TL) K (V, TL).
+find ((K, V) :: TL) K' (V', (K, V) :: TL') :-
+  not (eq K K'),
+  find TL K' (V', TL').
