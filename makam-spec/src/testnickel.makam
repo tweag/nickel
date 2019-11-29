@@ -274,8 +274,6 @@ testcase nickel :-
         "(Assume(Num -> (forall a. a -> a) -> Num, fun n => fun f => f n) 34) (fun x => 2)"
         _ _
     ).
-(isocast "{ hello : 3 ; chau : \"4\" ; $(Ifte(true, \"hello\", \"chau\")) : 5 ; $(Ifte(true, \"hello\", \"chau\")) : 4 }" (E: expr),
-typecheck E T) ?
 
 (* Records *)
 
@@ -293,7 +291,7 @@ testcase nickel :-
 
 testcase nickel :-
     raw_interpreter "{$(\"bla\"): 5 }"
-    (rec_catcher [ (tuple "bla" (eint 5)) ] (fun s => eunop blame (label false "Wrong record field ${s}")))
+    (rec_val [ (tuple "bla" (eint 5)) ] (fun s => eunop blame (label false "Wrong record field ${s}")))
     (open_rec tnum []).
 
 testcase nickel :-
