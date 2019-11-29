@@ -56,8 +56,11 @@ mul : binop.
 promise : typ -> expr -> expr.
 assume : typ -> expr -> expr -> expr.
 
-(* Blaming *)
-label : bool -> string -> expr.
+(* Blame label
+ * It has a boolean to indicate the polarity and 3 different
+ * actual labels: Positive, Negative and Contract.
+ *)
+label : bool -> string -> string -> string -> expr.
 
 (* Variables *)
 named : string -> expr.

@@ -291,7 +291,7 @@ testcase nickel :-
 
 testcase nickel :-
     raw_interpreter "{$(\"bla\"): 5 }"
-    (rec_val [ (tuple "bla" (eint 5)) ] (fun s => eunop blame (label false "Wrong record field ${s}")))
+    (rec_val [ (tuple "bla" (eint 5)) ] (fun s => eunop blame (label false _ _ _)))
     (open_rec tnum []).
 
 testcase nickel :-
