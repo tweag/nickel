@@ -484,3 +484,32 @@ testcase nickel :-
     (case ([bla]ble) of bla {bli => 1, blo => 34})"
     (eint 1)
     _).
+
+testcase nickel :-
+    p_typecheck
+    "bla [ble]
+    [bla]ble"
+    (tenum "bla").
+
+testcase nickel :-
+    p_typecheck
+    "[bla]ble"
+    tdyn.
+
+testcase nickel :-
+    p_typecheck
+    "bla [ble, bli, blo]
+    (case ([bla]ble) of bla {ble => 1, bli => 2, blo => 3})"
+    tnum.
+
+testcase nickel :-
+    p_typecheck
+    "bla [ble, bli, blo]
+    (case ([bla]ble) of bla {ble => 1, blo => 3})"
+    tdyn.
+
+testcase nickel :-
+    p_typecheck
+    "bla [ ]
+     (bla [ ] 0)"
+    tdyn.

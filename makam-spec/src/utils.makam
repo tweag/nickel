@@ -66,3 +66,16 @@ find ((K, V) :: TL) K (V, TL).
 find ((K, V) :: TL) K' (V', (K, V) :: TL') :-
   not (eq K K'),
   find TL K' (V', TL').
+
+member : (list A) -> A -> prop.
+member L X :-
+  find (eq X) L _.
+
+keys : (list (tuple A B)) -> (list A) -> prop.
+keys L K :-
+  map (pfun (X, Y) X => success) L K.
+
+eq_unord : (list A) -> (list A) -> prop.
+eq_unord X Y :-
+  map (fun e => find (eq e) Y _) X,
+  map (fun e => find (eq e) X _) Y.

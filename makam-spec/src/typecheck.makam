@@ -78,6 +78,27 @@ typecheck (static_access E S) T :-
 typecheck (dyn_access E _) T :-
     typecheck E (open_rec T _).
 
+(* Enumerations *)
+
+isEnumOF : (list string) -> string -> prop.
+
+typecheck (enum_def N L E) Ty :-
+    not (isEnumOF _ N),
+    (isEnumOF L N ->
+     typecheck E Ty).
+
+typecheck (enum_var N S) (tenum N) :-
+    isEnumOF L N,
+    member L S.
+
+typecheck (enum_case E N L) Ty :-
+    (* Is every pattern covered? *)
+    keys L LK,
+    isEnumOF LN N,
+    eq_unord LK LN,
+    (* and check the types *)
+    map (pfun (T, E) => typecheck E Ty) L.
+
 
 typecheck (ite C T E) Ty :-
     typecheck C tbool,
@@ -92,6 +113,7 @@ typecheck (eunop isBool _) tbool.
 typecheck (eunop isStr _) tbool.
 typecheck (eunop isRec _) tbool.
 typecheck (eunop isFun _) tbool.
+typecheck (eunop (isEnum _) _) tbool.
 
 typecheck (ebinop A _ B) tnum :-
     typecheck A tnum,
