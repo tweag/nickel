@@ -442,3 +442,45 @@ testcase nickel :-
     isocast
         "Assume([bla], 2)"
         (assume (tenum "bla") _ (eint 2)).
+
+testcase nickel :-
+    raw_interpreter
+        "bla [ble, blo, bli]
+        Assume([bla], [bla]ble)"
+        (enum_var "bla" "ble")
+        _.
+
+testcase nickel :-
+    not(raw_interpreter
+        "bla [blo, bli]
+        Assume([bla], [bla]ble)"
+        (enum_var "bla" "ble")
+        _).
+
+testcase nickel :-
+    not(raw_interpreter
+        "bla [ ]
+        Assume([bla], [bla]ble)"
+        (enum_var "bla" "ble")
+        _).
+
+testcase nickel :-
+    raw_interpreter
+    "bla [ble]
+    (case ([bla]ble) of bla {bli => 0, ble => 1, blo => 34})"
+    (eint 1)
+    _.
+
+testcase nickel :-
+    not(raw_interpreter
+    "bla []
+    (case ([bla]ble) of bla {ble => 1, blo => 34})"
+    (eint 1)
+    _).
+
+testcase nickel :-
+    not(raw_interpreter
+    "bla [ble]
+    (case ([bla]ble) of bla {bli => 1, blo => 34})"
+    (eint 1)
+    _).

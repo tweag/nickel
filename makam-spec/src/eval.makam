@@ -42,6 +42,9 @@ typToExpr tbool (lam (bind _ (fun l => lam (bind _
   (fun t => ite (eunop isBool t) t (eunop blame l)))))).
 typToExpr tstr (lam (bind _ (fun l => lam (bind _ 
   (fun t => ite (eunop isStr t) t (eunop blame l)))))).
+typToExpr (tenum S) (lam (bind _ (fun l => lam (bind _ 
+  (fun t => ite (eunop (isEnum S) t) t (eunop blame l)))))).
+
 typToExpr (tarrow S T) (lam (bind _ (fun l => lam (bind _ 
   (fun t => ite (eunop isFun t) (lam (bind _ (fun x => app (app Ct l) (app t (app (app Cs (neg l)) x))))) (eunop blame l)))))) :-
     typToExpr S Cs,
@@ -207,6 +210,25 @@ eval (dyn_access E S) V :-
   eval S (estr S'),
   eval (static_access E S') V.
 
+(* Enumerations *)
+
+isEnumOf : string -> string -> prop.
+
+eval (enum_def _ [] E) V :-
+  eval E V.
+eval (enum_def N (HD :: TL) E) V :-
+  (isEnumOf HD N ->
+   eval (enum_def N TL E) V).
+
+eval (enum_var N S) (enum_var N S) :-
+  isEnumOf S N.
+
+eval (enum_case E N L) V :-
+  eval E (enum_var N S),
+  isEnumOf S N,
+  find L S (R, _),
+  eval R V.
+
 
 (* Operations *)
 eval (ite C T E) V :-
@@ -244,12 +266,15 @@ eval_unop isBool (ebool _) (ebool true).
 eval_unop isStr (estr _) (ebool true).
 eval_unop isRec (rec_val _ _) (ebool true). 
 eval_unop isFun (lam _) (ebool true).
+eval_unop (isEnum N) (enum_var N S) (ebool true) :- isEnumOf S N.
 
 eval_unop isNum V (ebool false) :- not (eq V (eint _)).
 eval_unop isBool V (ebool false) :- not (eq V (ebool _)).
 eval_unop isStr V (ebool false) :- not (eq V (estr _)).
 eval_unop isRec V (ebool false) :- not (eq V (rec_val _ _)).
 eval_unop isFun V (ebool false) :- not (eq V (lam _)).
+eval_unop (isEnum N) (enum_var N S) (ebool false) :- not (isEnumOf S N).
+eval_unop (isEnum S) V (ebool false) :- not (eq V (enum_var S _)).
 
 (* Typing *)
 (* Promises don't perform any computation *)
