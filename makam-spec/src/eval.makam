@@ -212,20 +212,21 @@ eval (dyn_access E S) V :-
 
 (* Enumerations *)
 
-isEnumOf : string -> string -> prop.
+isEnumOf : (list string) -> string -> prop.
 
-eval (enum_def _ [] E) V :-
-  eval E V.
-eval (enum_def N (HD :: TL) E) V :-
-  (isEnumOf HD N ->
-   eval (enum_def N TL E) V).
+eval (enum_def N L E) V :-
+  not (isEnumOf _ N),
+  (isEnumOf L N ->
+   eval E V).
 
 eval (enum_var N S) (enum_var N S) :-
-  isEnumOf S N.
+  isEnumOf L N,
+  member L S.
 
 eval (enum_case E N L) V :-
   eval E (enum_var N S),
-  isEnumOf S N,
+  isEnumOf L' N,
+  member L' S,
   find L S (R, _),
   eval R V.
 
@@ -266,14 +267,15 @@ eval_unop isBool (ebool _) (ebool true).
 eval_unop isStr (estr _) (ebool true).
 eval_unop isRec (rec_val _ _) (ebool true). 
 eval_unop isFun (lam _) (ebool true).
-eval_unop (isEnum N) (enum_var N S) (ebool true) :- isEnumOf S N.
+eval_unop (isEnum N) (enum_var N S) (ebool true) :- isEnumOf L N, member L S.
 
 eval_unop isNum V (ebool false) :- not (eq V (eint _)).
 eval_unop isBool V (ebool false) :- not (eq V (ebool _)).
 eval_unop isStr V (ebool false) :- not (eq V (estr _)).
 eval_unop isRec V (ebool false) :- not (eq V (rec_val _ _)).
 eval_unop isFun V (ebool false) :- not (eq V (lam _)).
-eval_unop (isEnum N) (enum_var N S) (ebool false) :- not (isEnumOf S N).
+eval_unop (isEnum N) (enum_var N S) (ebool false) :- not (isEnumOf _ N).
+eval_unop (isEnum N) (enum_var N S) (ebool false) :- isEnumOf L N, not (member L S).
 eval_unop (isEnum S) V (ebool false) :- not (eq V (enum_var S _)).
 
 (* Typing *)

@@ -451,6 +451,12 @@ testcase nickel :-
         _.
 
 testcase nickel :-
+    not (raw_interpreter
+        "bla [ble]
+        (bla [bli] 2)"
+        _ _).
+
+testcase nickel :-
     not(raw_interpreter
         "bla [blo, bli]
         Assume([bla], [bla]ble)"
