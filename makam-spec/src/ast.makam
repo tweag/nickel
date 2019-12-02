@@ -34,6 +34,11 @@ erec : (list rec_field) -> expr.
 static_access : expr -> string -> expr.
 dyn_access : expr -> expr -> expr.
 
+(* Enumerations *)
+enum_def : string -> (list string) -> expr -> expr.
+enum_var : string -> string -> expr.
+enum_case : expr -> string -> (list (tuple string expr)) -> expr.
+
 (* Operations *)
 ite : expr -> expr -> expr -> expr.
 
@@ -45,6 +50,7 @@ isBool : unop.
 isStr : unop.
 isRec : unop.
 isFun : unop.
+isEnum : string -> unop.
 
 binop : type.
 ebinop : expr -> binop -> expr -> expr.
@@ -70,9 +76,14 @@ tdyn : typ.
 tnum : typ.
 tbool : typ.
 tstr : typ.
-tlbl : typ.
+
 tarrow : typ -> typ -> typ.
 forall : (bindone typ typ) -> typ.
+
+tlbl : typ.
 fromExpr : expr -> typ.
+
 open_rec : typ -> (list (tuple string typ)) -> typ.
 clos_rec : (list (tuple string typ)) -> typ.
+
+tenum : string -> typ.

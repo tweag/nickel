@@ -413,3 +413,32 @@ testcase nickel :-
 
 testcase nickel :-
     row.fromList [1,2 ,3] R, row.fromList [1,2] RR, row.close RR, not(eqv RR R).
+
+(* Enums *)
+
+testcase nickel :-
+    isocast "[bla]ble" (enum_var "bla" "ble").
+
+
+testcase nickel :-
+    isocast "bla [ ble, blu] 2" (enum_def "bla" ["ble", "blu"] (eint 2)).
+
+
+testcase nickel :-
+    isocast 
+        "case ([bla]ble) of bla { blu => 2 , ble => 0}"
+        (enum_case
+            (enum_var "bla" "ble")
+            "bla"
+            [("blu", eint 2), ("ble", eint 0)]
+        ).
+
+testcase nickel :-
+    isocast
+        "is[blop] 3"
+        (eunop (isEnum "blop") (eint 3)).
+
+testcase nickel :-
+    isocast
+        "Assume([bla], 2)"
+        (assume (tenum "bla") _ (eint 2)).
