@@ -1,0 +1,83 @@
+%use "../init".
+%use "testsuites".
+
+(**********)
+(* Simple *)
+(**********)
+
+testcase nickel_simple :-
+    isocast
+    "Ifte(3, 4, 5)"
+    (ite (eint 3) (eint 4) (eint 5)).
+
+testcase nickel_simple :-
+    isocast
+    "fun x => fun y => x"
+    (lam (bind "x" (fun x => lam (bind "y" (fun y => x))))).
+
+testcase nickel_simple :-
+    isocast
+    "let (y = 1) in y"
+    (let (bind "y" (fun _ => eint 1)) (bind "y" (fun y => y))).
+
+testcase nickel_simple :-
+    isocast
+    "true * false"
+    (ebinop (ebool true) mul (ebool false)).
+
+testcase nickel_simple :-
+    isocast "true false" (app (ebool true) (ebool false)).
+
+testcase nickel_simple :-
+    isocast "Promise(forall a. a -> Num, 3)"
+    (promise (forall (bind "a" (fun a => tarrow a tnum))) (eint 3)).
+
+testcase nickel_simple :-
+    isocast "Promise(#Ifte(true, 3, 4), 5)"
+    (promise (fromExpr (ite (ebool true) (eint 3) (eint 4))) (eint 5)).
+
+    
+(*************)
+(* Contracts *)
+(*************)
+
+testcase nickel_contract :-
+    isocast
+    "Promise(Num, true)"
+    (promise tnum (ebool true)).
+
+testcase nickel_contract :-
+    isocast
+    "Assume(Num -> Bool, 3)"
+    (assume (tarrow tnum tbool) (label true "Assume") (eint 3)).
+    
+
+(**********)
+(* Record *)
+(**********)
+
+testcase nickel_record :-
+    isocast "true.a" (static_access (ebool true) "a").
+
+testcase nickel_record :-
+    isocast "true.$false" (dyn_access (ebool true) (ebool false)).
+
+testcase nickel_record :-
+    isocast
+    "{hello : 3; chau : \"4\"; $(3) : true}"
+    (erec [
+        static_field "hello" (eint 3),
+        static_field "chau" (estr "4"),
+        dyn_field (eint 3) (ebool true)]).
+
+
+testcase nickel_record :-
+    isocast
+    "Promise({ a : Bool, b: Num}, 3)"
+    (promise (clos_rec [("a", tbool), ("b", tnum)]) (eint 3)).
+
+
+testcase nickel_record :-
+    isocast
+    "Promise({ _ : Bool, b: Num}, 3)"
+    (promise (open_rec tbool [("b", tnum)]) (eint 3)).
