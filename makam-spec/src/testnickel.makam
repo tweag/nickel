@@ -365,3 +365,25 @@ testcase nickel :-
     not (raw_interpreter
     "{blop: 3; blop: false}"
     _ _).
+
+(* Dependent type *)
+
+testcase nickel :-
+    isocast
+    "Promise(x:Num => Bool, 3)"
+    (promise (tdep tnum (bind "x" (fun x => tbool))) (eint 3)).
+
+testcase nickel :-
+    isocast
+    "Promise(x: Num => #(Ifte(x, 5, 4)), 3)"
+    (promise (tdep tnum (bind "x" (fun x => fromExpr (ite x (eint 5) (eint 4))))) (eint 3)).
+
+testcase nickel :-
+    raw_interpreter
+    "let (alwaysTrue = fun l => fun t => Ifte(t, t, blame l)) in
+    let (alwaysFalse = fun l => fun t => Ifte(t, blame l, t)) in
+    
+    Assume(x: Bool => #(Ifte( x, alwaysTrue, alwaysFalse)), fun y =>  y) true"
+    (ebool true)
+    (fromExpr (ite (ebool true) (named "alwaysTrue") (named "alwaysFalse"))).
+

@@ -72,6 +72,7 @@ tbool : typ.
 tstr : typ.
 tlbl : typ.
 tarrow : typ -> typ -> typ.
+tdep : typ -> (bindone expr typ) -> typ.
 forall : (bindone typ typ) -> typ.
 fromExpr : expr -> typ.
 open_rec : typ -> (list (tuple string typ)) -> typ.

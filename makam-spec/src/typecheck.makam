@@ -13,8 +13,26 @@ typecheck (lam (bind Name B)) (tarrow S T) :-
     (typecheck (named Name) S ->
     typecheck (B (named Name)) T).
 
+typecheck (lam (bind Name B)) Ty :-
+    not (refl.isunif Ty),
+    eq Ty (tdep S (bind _ T)),
+    (* Here we'd like to say that S can only be an enum *)
+    (* Or that T cant contain fromExpr *)
+    (typecheck (named Name) S ->
+    typecheck (B (named Name)) (T (named Name))).
+
+sourceType : typ -> typ -> prop.
+sourceType (tarrow S _) S.
+sourceType (tdep S _) S.
+
+targetType : typ -> expr -> typ -> prop.
+targetType (tarrow _ T) _ T.
+targetType (tdep _ (bind _ T)) A (T A). (* This should normalize *)
+
 typecheck (app A B) T :-
-    typecheck A (tarrow S T),
+    typecheck A Ty,
+    sourceType Ty S,
+    targetType Ty B T,
     typecheck B S.
 
 typecheck (eint _) tnum.
@@ -110,14 +128,22 @@ typecheck A tdyn :-
     structural_map0 typecheck_dyn (dyn A).
 
 typecheckTypes_ : dyn -> prop.
+typecheck_tdep : typ -> (expr -> typ) -> prop.
 
 typecheckTypes A :- typecheckTypes_ (dyn A).
 
 typecheckTypes_ (dyn A) :-
     case A [
         (fromExpr E, typecheck E (tarrow tlbl (tarrow S S))),
+        (tdep S (bind _ T), typecheck_tdep S T), 
         (Other, structural_map0 typecheckTypes_ (dyn Other))
     ].
 typecheckTypes_ (dyn B) :-
     not (typeq B (X: typ)),
     structural_map0 typecheckTypes_ (dyn B).
+
+typecheck_tdep S T :-
+    typecheckTypes S,
+    (x: expr ->
+     typecheck x S ->
+     typecheckTypes (T x)).

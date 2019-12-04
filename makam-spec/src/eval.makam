@@ -47,6 +47,17 @@ typToExpr (tarrow S T) (lam (bind _ (fun l => lam (bind _
     typToExpr S Cs,
     typToExpr T Ct.
 
+typToExpr (tdep S (bind _ T)) (lam (bind _ (fun l => lam (bind _ (fun t => 
+  ite 
+    (eunop isFun t) 
+    (lam (bind _ (fun x => 
+      app (app (Ct (app (app Cs (contractify (neg l))) x)) l)
+        (app t (app (app Cs (neg l)) x)))))
+    (eunop blame l)))))) :-
+      typToExpr S Cs,
+      (x: expr ->
+       typToExpr (T x) (Ct x)).
+
 (* forall contract
  * We have two versions of the contract, TyTrue and TyFalse, which one is used
  * depends on the polarity relative to the polarity at the point the forall is at.

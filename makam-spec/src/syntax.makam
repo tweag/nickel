@@ -101,6 +101,8 @@ idTy -> concrete.name typvar
 
 typ -> (fun idT => fun body => forall (concrete.bindone idT body))
         { "forall" <idTy> "." <typ> }
+      / (fun idT => fun left => fun body => tdep left (concrete.bindone idT body))
+        { <id> ":" <baseTyp> "=>" <typ> }
       / tarrow
         { <baseTyp> "->" <typ> }
       / { <baseTyp> }
