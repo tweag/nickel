@@ -1,3 +1,4 @@
 nickel_simple : testsuite. 
+nickel_complex : testsuite.
 nickel_record : testsuite. 
 nickel_contract : testsuite. 

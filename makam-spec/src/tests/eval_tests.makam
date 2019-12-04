@@ -1,0 +1,78 @@
+%use "../init".
+%use "testsuites".
+
+(**********)
+(* Simple *)
+(**********)
+
+testcase nickel_simple :-
+    p_eval "(fun x => x + x) 3" (eint 6).
+
+testcase nickel_simple :-
+    p_eval "let (x = true) in Ifte(x, 34, false)" (eint 34).
+
+testcase nickel_simple :-
+    p_eval "isNum true" (ebool false).
+
+testcase nickel_simple :-
+    p_eval "isFun (fun x => x)" (ebool true).
+
+(***********)
+(* Complex *)
+(***********)
+
+testcase nickel_complex :-
+    p_eval
+    "let (x = true) in
+    let (y = Ifte(Assume(Bool, x), 45, y)) in
+    Assume(Num, y + 3)"
+    (eint 48).
+
+(*************)
+(* Contracts *)
+(*************)
+
+testcase nickel_contract :-
+    p_eval "Assume(Num, 3)" (eint 3).
+
+testcase nickel_contract :-
+    p_eval "(Assume(Num -> Num -> Num, fun x => fun y => x + y) 3) 4"
+    (eint 7).
+
+testcase nickel_contract :-
+    not(p_eval 
+    "(Assume(Num -> Num -> Num, fun x => fun y => x + y) 3) true"
+    _).
+
+(**********)
+(* Record *)
+(**********)
+
+testcase nickel_record :-
+    p_eval "{hello : 3}.hello" (eint 3).
+
+testcase nickel_record :-
+    p_eval "{hello : 3}.$(Ifte(true, \"hello\", 4))" (eint 3).
+
+testcase nickel_record :-
+    p_eval "{$(Ifte(true, \"hello\", 4)) : 3}.hello" (eint 3).
+
+testcase nickel_record :-
+    p_eval
+    "Assume({a:Num, b:Bool}, {a:3; b:true}).b"
+    (ebool true).
+
+testcase nickel_record :-
+    not(p_eval
+    "Assume({a:Num, b:Bool}, {a:3; b:true; c:false}).b"
+    _).
+
+testcase nickel_record :-
+    p_eval
+    "Assume({_:Bool, a:Num, b:Bool}, {a:3; b:true; c:false}).c"
+    (ebool false).
+
+testcase nickel_record :-
+    not(p_eval
+    "Assume({_:Num, a:Num, b:Bool}, {a:3; b:true; c:false}).b"
+    _).

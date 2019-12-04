@@ -36,7 +36,23 @@ testcase nickel_simple :-
     isocast "Promise(#Ifte(true, 3, 4), 5)"
     (promise (fromExpr (ite (ebool true) (eint 3) (eint 4))) (eint 5)).
 
-    
+(***********)
+(* Complex *)
+(***********)
+
+testcase nickel_complex :-
+    isocast
+    "let (x = true) in
+    let (y = Ifte(Assume(Bool -> Bool, x), 45, y)) in
+    y + 3"
+    (let 
+    (bind "x" (fun x => ebool true)) 
+    (bind "x" (fun x => 
+        let 
+        (bind "y" (fun y1 => 
+            ite (assume (tarrow tbool tbool) (label true "Assume") x) (eint 45) y1)) 
+        (bind "y" (fun y2 => ebinop y2 add (eint 3)))))).
+
 (*************)
 (* Contracts *)
 (*************)

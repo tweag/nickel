@@ -35,6 +35,12 @@ interpreter S S' STy :-
   isocast V' (S': string),
   isocast T (STy: string).
 
+(* Parse and interpret *)
+p_eval : string -> expr -> prop.
+p_eval S V :-
+  either (isocast S (E: expr)) (log_error S `Parse error in Nickel program`),
+  eval E V.
+
 (* Parse and typecheck *)
 p_typecheck : string -> typ -> prop.
 p_typecheck S Ty :-
