@@ -7,6 +7,7 @@
 
 (* Negation of the label *)
 neg : expr -> expr.
+contractify : expr -> expr.
 pos : expr -> expr.
 
 (* Record value
@@ -84,13 +85,24 @@ typToExpr (fromExpr E) E.
 eval : expr -> expr -> prop.
 
 (* label *)
-eval (neg L) (label true S) :-
-  eval L (label false S).
-eval (neg L) (label false S) :-
-  eval L (label true S).
+(* The negation and contract labeling are non standard, we keep
+ * track of the polarity, without switching, so the forall contract
+ * keeps working. This means the contractify function will change
+ * whichever label is supposed to be the context. This corresponds
+ * to the indy strategy presented by Dimoulas et al., just a
+ * different implementation.
+ *)
+eval (neg L) (label false N P C) :-
+  eval L (label true N P C).
+eval (neg L) (label true N P C) :-
+  eval L (label false N P C).
+eval (contractify L) (label true P C C) :-
+  eval L (label true P _ C).
+eval (contractify L) (label false C N C) :-
+  eval L (label false _ N C).
 
 eval (pos L) (ebool P) :-
-  eval L (label P _).
+  eval L (label P _ _ _).
 
 (* Lazy evaluation *)
 eval (thunk _ E V) V' when refl.isunif V :-
@@ -134,7 +146,7 @@ eval (app E1 E2) V :-
 eval (eint N) (eint N).
 eval (ebool B) (ebool B).
 eval (estr S) (estr S).
-eval (label P S) (label P S).
+eval (label P Pos N C) (label P Pos N C).
 
 (* Records *)
 (* TODO check there are no repeated fields and the 
@@ -143,7 +155,6 @@ eval (label P S) (label P S).
 eval (rec_val L C) (rec_val L C).
 
 eval (open_rec_contr D Lt R Lbl) (rec_val Lv' C) :-
-eval Lbl (label _ S),
   eval R (rec_val Lv C),
   map (pfun (Tag, Type) => find Lv Tag _) Lt,
   map (pfun (Tag, Value) (Tag, (app (app Contract Lbl') Value)) => 
@@ -174,7 +185,8 @@ eval (clos_rec_contr Lt R Lbl) V :-
   ),
   eval (eunop blame Lbl) V.
 
-eval (erec []) (rec_val [] (fun s => eunop blame (label false "Wrong record field ${s}"))).
+eval (erec []) 
+  (rec_val [] (pfun S => eunop blame (label false _ "Attempted to access a non existent field." _))).
 eval (erec ((static_field S E) :: TL)) (rec_val ((tuple S E) :: TL') F) :-
   eval (erec TL) (rec_val TL' F),
   not (find TL' S _).
@@ -220,11 +232,11 @@ eval (eunop Op E) V :-
   eval E E',
   eval_unop Op E' V.
 
-eval_unop blame (label true S) _ :- 
-  print `Reached a positive blame with label ${S}`,
+eval_unop blame (label true S _ _) _ :- 
+  print S,
   failure.
-eval_unop blame (label false S) _ :- 
-  print `Reached a negative blame with label ${S}`,
+eval_unop blame (label false _ S _) _ :- 
+  print S,
   failure.
 
 eval_unop isNum (eint _) (ebool true).

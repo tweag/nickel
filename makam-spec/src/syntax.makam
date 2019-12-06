@@ -71,7 +71,7 @@ expr_ -> ite
 baseexpr ->
         promise
         { "Promise(" <typ> "," <expr_> ")"}
-      / fun ty => assume ty (label true "Assume")
+      / fun ty => assume ty (label true "Assume Positive" "Assume Negative" "The contract itself (Negative)")
         { "Assume(" <typ> "," <expr_> ")"}
       / ebool true { "true" }
       / ebool false { "false" }
