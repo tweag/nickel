@@ -85,6 +85,13 @@ typToExpr (fromExpr E) E.
 eval : expr -> expr -> prop.
 
 (* label *)
+(* The negation and contract labeling are non standard, we keep
+ * track of the polarity, without switching, so the forall contract
+ * keeps working. This means the contractify function will change
+ * whichever label is supposed to be the context. This corresponds
+ * to the indy strategy presented by Dimoulas et al., just a
+ * different implementation.
+ *)
 eval (neg L) (label false N P C) :-
   eval L (label true N P C).
 eval (neg L) (label true N P C) :-
