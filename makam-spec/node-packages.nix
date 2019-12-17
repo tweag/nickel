@@ -9,10 +9,10 @@ in
   makam = nodeEnv.buildNodePackage {
     name = "makam";
     packageName = "makam";
-    version = "0.7.20";
+    version = "0.7.22";
     src = fetchurl {
-      url = "https://registry.npmjs.org/makam/-/makam-0.7.20.tgz";
-      sha512 = "93bvr4v+KBpa3NY49m3hKUw1Qdf3wFQR3z80ZiqGvEAKPtgnxIcosLde2kYFM6hQ9g18lxKAAgOpGkCXPCRR5A==";
+      url = "https://registry.npmjs.org/makam/-/makam-0.7.22.tgz";
+      sha512 = "2SxKkoOcUGwXTZ4cWTjUmauJ1iKUr02d6p1JXSE7nXgu4ddURBvV9DztUsornut/GBv7XsNBpc0/EnCm0TKkCg==";
     };
     buildInputs = globalBuildInputs;
     meta = {
