@@ -1,4 +1,5 @@
 %use "ast".
+%use "row".
 %use "utils".
 
 (* We extend the AST to terms related to the execution,
@@ -42,8 +43,14 @@ typToExpr tbool (lam (bind _ (fun l => lam (bind _
   (fun t => ite (eunop isBool t) t (eunop blame l)))))).
 typToExpr tstr (lam (bind _ (fun l => lam (bind _ 
   (fun t => ite (eunop isStr t) t (eunop blame l)))))).
-typToExpr (tenum S) (lam (bind _ (fun l => lam (bind _ 
-  (fun t => ite (eunop (isEnum S) t) t (eunop blame l)))))).
+
+(* TODO Simple implementation
+ * On positive positions this is ok, but if it's an open enum, it
+ * shouldn't fail negatively
+ *)
+typToExpr (tenum R) (lam (bind _ (fun l => lam (bind _ (fun t => 
+  ite (eunop (isEnumIn L) t) t (eunop blame l)))))) :-
+    row.toList R L.
 
 typToExpr (tarrow S T) (lam (bind _ (fun l => lam (bind _ 
   (fun t => ite (eunop isFun t) (lam (bind _ (fun x => app (app Ct l) (app t (app (app Cs (neg l)) x))))) (eunop blame l)))))) :-
@@ -212,23 +219,16 @@ eval (dyn_access E S) V :-
 
 (* Enumerations *)
 
-isEnumOf : (list string) -> string -> prop.
+eval (enum_var S) (enum_var S).
 
-eval (enum_def N L E) V :-
-  not (isEnumOf _ N),
-  (isEnumOf L N ->
-   eval E V).
-
-eval (enum_var N S) (enum_var N S) :-
-  isEnumOf L N,
-  member L S.
-
-eval (enum_case E N L) V :-
-  eval E (enum_var N S),
-  isEnumOf L' N,
-  member L' S,
+eval (enum_case E L _) V :-
+  eval E (enum_var S),
   find L S (R, _),
   eval R V.
+eval (enum_case E L (some D)) V :-
+  eval E (enum_var S),
+  not (find L S _),
+  eval D V.
 
 
 (* Operations *)
@@ -267,16 +267,15 @@ eval_unop isBool (ebool _) (ebool true).
 eval_unop isStr (estr _) (ebool true).
 eval_unop isRec (rec_val _ _) (ebool true). 
 eval_unop isFun (lam _) (ebool true).
-eval_unop (isEnum N) (enum_var N S) (ebool true) :- isEnumOf L N, member L S.
+eval_unop (isEnumIn L) (enum_var S) (ebool true) :- member L S.
 
 eval_unop isNum V (ebool false) :- not (eq V (eint _)).
 eval_unop isBool V (ebool false) :- not (eq V (ebool _)).
 eval_unop isStr V (ebool false) :- not (eq V (estr _)).
 eval_unop isRec V (ebool false) :- not (eq V (rec_val _ _)).
 eval_unop isFun V (ebool false) :- not (eq V (lam _)).
-eval_unop (isEnum N) (enum_var N S) (ebool false) :- not (isEnumOf _ N).
-eval_unop (isEnum N) (enum_var N S) (ebool false) :- isEnumOf L N, not (member L S).
-eval_unop (isEnum S) V (ebool false) :- not (eq V (enum_var S _)).
+eval_unop (isEnumIn L) (enum_var S) (ebool false) :- not (member L S).
+eval_unop (isEnumIn _) V (ebool false) :- not (eq V (enum_var _)).
 
 (* Typing *)
 (* Promises don't perform any computation *)

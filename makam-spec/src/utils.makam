@@ -24,7 +24,7 @@ structural_map Rec (dyn (X : A -> B)) (dyn (Y : A -> B)) <-
 (* the essence: forward and backward destructuring *)
 
 (structural_map Rec (dyn (X : A)) (dyn (Y : A)))
-when not(typeq X (B : C -> D)), not(refl.isunif X) <-
+when not(typeq X (B : C -> D)), not(refl.isunif X), refl.isunif Y <-
   refl.headargs X Hd Args,
   map Rec Args Args',
   refl.headargs Y Hd Args'.
@@ -35,6 +35,11 @@ when not(typeq X (B : C -> D)), refl.isunif X, not(refl.isunif Y) <-
   map Rec Args Args',
   refl.headargs X Hd Args.
 
+(structural_map Rec (dyn (X : A)) (dyn (Y : A)))
+when not(typeq X (B : C -> D)), not(refl.isunif X), not(refl.isunif Y) <-
+  refl.headargs X Hd Args,
+  refl.headargs Y Hd Args',
+  map Rec Args Args'.
 
 structural_map0 : (dyn -> prop) -> dyn -> prop.
 
@@ -68,8 +73,9 @@ find ((K, V) :: TL) K' (V', (K, V) :: TL') :-
   find TL K' (V', TL').
 
 member : (list A) -> A -> prop.
-member L X :-
-  find (eq X) L _.
+member (X :: _) X.
+member (X :: TL) Y :-
+  not (eq X Y), member TL Y.
 
 keys : (list (tuple A B)) -> (list A) -> prop.
 keys L K :-

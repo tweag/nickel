@@ -1,3 +1,6 @@
+%use "row".
+%use "utils".
+
 (* The AST expressed here is a subset of the whole AST, 
  * this is what the result of parsing can be as well as
  * what the typechecker can type. On eval we extend it.
@@ -35,9 +38,8 @@ static_access : expr -> string -> expr.
 dyn_access : expr -> expr -> expr.
 
 (* Enumerations *)
-enum_def : string -> (list string) -> expr -> expr.
-enum_var : string -> string -> expr.
-enum_case : expr -> string -> (list (tuple string expr)) -> expr.
+enum_var : string -> expr.
+enum_case : expr -> (list (tuple string expr)) -> option expr -> expr.
 
 (* Operations *)
 ite : expr -> expr -> expr -> expr.
@@ -50,7 +52,7 @@ isBool : unop.
 isStr : unop.
 isRec : unop.
 isFun : unop.
-isEnum : string -> unop.
+isEnumIn : (list string) -> unop.
 
 binop : type.
 ebinop : expr -> binop -> expr -> expr.
@@ -86,4 +88,4 @@ fromExpr : expr -> typ.
 open_rec : typ -> (list (tuple string typ)) -> typ.
 clos_rec : (list (tuple string typ)) -> typ.
 
-tenum : string -> typ.
+tenum : row string -> typ.
