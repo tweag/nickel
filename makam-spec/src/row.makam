@@ -7,17 +7,17 @@ extend : A -> row A -> row A.
 closed : row A.
 
 %extend row.
-(* This map doesn't eagerly instantiate the back of the row *)
-map : (A -> prop) -> row A -> prop.
-map F R :-
-    guard R (ifte (eq (extend X R') R) (and (F X) (map F R')) (eq closed R)).
+(* This forall doesn't eagerly instantiate the back of the row *)
+forall : (A -> prop) -> row A -> prop.
+forall F R :-
+    guard R (ifte (eq (extend X R') R) (and (F X) (forall F R')) (eq closed R)).
 
 
 (* An empty, extendable, row *)
 empty : row A -> prop.
 empty A :- refl.isunif A.
 
-(* To close a row, can't use map, must be eager *)
+(* To close a row, can't use forall, must be eager *)
 close : row A -> prop.
 close closed.
 close R :-
@@ -27,7 +27,7 @@ close R :-
 
 lacks : A -> row A -> prop.
 lacks A R :-
-    map (pfun X => not (eqv X A)) R.
+    forall (pfun X => not (eqv X A)) R.
 
 (* Notice that member and add are not the same *)
 member : row A -> A -> prop.
