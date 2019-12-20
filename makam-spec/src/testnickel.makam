@@ -1,4 +1,5 @@
 %use "init".
+%use "row".
 
 (* This file defines a bunch of tests across many features
  * of the Makam implementation of the Nickel language.
@@ -365,3 +366,32 @@ testcase nickel :-
     not (raw_interpreter
     "{blop: 3; blop: false}"
     _ _).
+
+(* Rows *)
+
+testcase nickel :-
+    row.empty A, row.add 2 A, row.add 3 A,
+    row.member A 2, row.member A 3, not(row.member A 1).
+
+testcase nickel :-
+    row.empty A, row.add 2 A, row.add 3 A, row.add 2 A,
+    row.toList A [2, 3].
+
+testcase nickel :-
+    row.fromList [1, 2, 3, 1] R,
+    row.member R 1, row.member R 2, row.member R 3,
+    row.remove 1 R A, not(row.member A 1).
+
+testcase nickel :-
+    row.empty A, row.add 2 A, row.remove 2 A R,
+    not (row.add 2 R).
+
+testcase nickel :-
+    row.empty A, row.add 2 A, row.close A,
+    row.member A 2, not(row.add 3 A), row.add 2 A.
+
+testcase nickel :-
+    row.fromList [1,2 ,3] R, row.close R, row.fromList [1,2] RR, eqv RR R.
+
+testcase nickel :-
+    row.fromList [1,2 ,3] R, row.fromList [1,2] RR, row.close RR, not(eqv RR R).
