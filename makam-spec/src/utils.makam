@@ -13,7 +13,7 @@ structural_map : (dyn -> dyn -> prop) -> dyn -> dyn -> prop.
 
 (* defer if both input and output are uninstantiated metavariables *)
 (structural_map Rec (dyn (X : A)) (dyn (Y : A))) when refl.isunif X, refl.isunif Y <-
-  guardmany [ dyn X , dyn Y ] (Rec (dyn X) (dyn Y)).
+  guardmany [ X , Y ] (Rec (dyn X) (dyn Y)).
 
 (* deal with built-in types *)
 structural_map Rec (dyn (X : string)) (dyn (X : string)).

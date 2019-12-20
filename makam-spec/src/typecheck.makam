@@ -4,14 +4,24 @@
 typecheck : expr -> typ -> prop.
 typecheckTypes : typ -> prop.
 
+(* This is hack to quickly fix 
+ * https://github.com/astampoulis/makam/issues/66
+ * The idea is to introduce a new kind of expr (typedName : string -> typ -> expr)
+ * that stores the type given to a particular bound variable, rather than introducing
+ * new rules to the program context.
+ *)
+typedName : string -> typ -> expr.
+
+typecheck (typedName _ Ty) Ty.
+
+(* End of hack *)
+
 typecheck (let (bind Name E) (bind Name B)) T :-
-    (typecheck (named Name) T' ->
-        (typecheck (E (named Name)) T',
-        typecheck (B (named Name)) T)).
+    typecheck (E (typedName Name T')) T',
+    typecheck (B (typedName Name T')) T.
 
 typecheck (lam (bind Name B)) (tarrow S T) :-
-    (typecheck (named Name) S ->
-    typecheck (B (named Name)) T).
+    typecheck (B (typedName Name S)) T.
 
 typecheck (app A B) T :-
     typecheck A (tarrow S T),
