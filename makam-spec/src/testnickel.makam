@@ -18,7 +18,7 @@ testcase nickel :-
 
 testcase nickel :-
     not (
-        interpreter "
+        raw_interpreter "
         let ( id = fun t => t ) in
         Promise(Num,
             Ifte( ( Promise(Bool -> Bool, id) ) true, 3, Promise(Num, true)) 
@@ -269,6 +269,24 @@ testcase nickel :-
     (eint 34)
     tnum.
 
+testcase nickel :-
+    raw_interpreter
+        "let (f = Promise(forall a . a -> a, fun x => x)) in
+        Promise((Num -> Num) -> Num, fun f => f 2) f"
+        (eint 2) tnum.
+
+testcase nickel :-
+    not (raw_interpreter
+        "let (f = Promise(forall a . a -> a, fun x => x)) in
+        Promise(Num, Promise((Bool -> Num) -> Num, fun f => f true) f)"
+        _ _ ).
+
+
+testcase nickel :-
+    raw_interpreter
+        "let (f = Promise(forall a . a -> a, fun x => x)) in
+        (Promise((Bool -> Num) -> Num, fun f => f true) f)"
+        (ebool true) tdyn.
 
 testcase nickel :-
     not (raw_interpreter
