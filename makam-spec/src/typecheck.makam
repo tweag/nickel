@@ -6,6 +6,9 @@ typecheckTypes : typ -> prop.
 
 (* This is hack to quickly fix 
  * https://github.com/astampoulis/makam/issues/66
+ * The idea is to introduce a new kind of expr (typedName : string -> typ -> expr)
+ * that stores the type given to a particular bound variable, rather than introducing
+ * new rules to the program context.
  *)
 typedName : string -> typ -> expr.
 
