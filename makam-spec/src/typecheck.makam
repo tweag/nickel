@@ -4,6 +4,18 @@
 typecheck : expr -> typ -> prop.
 typecheckTypes : typ -> prop.
 
+(* instantiates all the head forall *)
+instantiate : typ -> typ -> prop.
+
+instantiate Ty Ty' :-
+    not (refl.isunif Ty),
+    eq Ty (forall (bind _ F)),
+    instantiate (F X) Ty'.
+instantiate Ty Ty :-
+    or 
+        (refl.isunif Ty)
+        (not (eq Ty (forall _))).
+
 (* This is hack to quickly fix 
  * https://github.com/astampoulis/makam/issues/66
  * The idea is to introduce a new kind of expr (typedName : string -> typ -> expr)
@@ -12,7 +24,8 @@ typecheckTypes : typ -> prop.
  *)
 typedName : string -> typ -> expr.
 
-typecheck (typedName _ Ty) Ty.
+typecheck (typedName _ Ty) Ty' :-
+    instantiate Ty Ty'.
 
 (* End of hack *)
 
