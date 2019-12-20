@@ -1,6 +1,6 @@
 {pkgs ? import <nixpkgs> {
     inherit system;
-  }, system ? builtins.currentSystem, nodejs ? pkgs."nodejs-10_x"}:
+  }, system ? builtins.currentSystem, nodejs ? pkgs."nodejs-12_x"}:
 
 let
   nodePackages = import ./makam-composition.nix {
