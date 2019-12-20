@@ -13,4 +13,4 @@ Just `nix-build -A makam` and then `result/bin/makam ./src/init.makam -`. Or run
 
 ###### To update it
 
-Run `node2nix --nodejs-10 -c makam-composition.nix` on the `makam-spec` directory
+Run `node2nix --nodejs-12 -c makam-composition.nix` on the `makam-spec` directory
