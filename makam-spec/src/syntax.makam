@@ -1,4 +1,5 @@
 %use "ast".
+%use "row".
 
 %open syntax.
 
@@ -10,9 +11,12 @@ binop, binopC : syntax binop.
 unop, unopC : syntax unop.
 
 typ, typC, baseTyp: syntax typ.
+ctenum : (list string) -> typ.
 
 rec_field : syntax rec_field.
 rec_field_typ : syntax (tuple string typ).
+
+switch_def : syntax (tuple string expr).
 
 exprvar : concrete.namespace expr.
 typvar : concrete.namespace typ.
@@ -39,6 +43,7 @@ unop ->
       / isStr { "isStr" }
       / isRec { "isRec" }
       / isFun { "isFun" }
+      / isEnumIn { "is<" <list_sep (token ",") makam.ident> ">" }
 
 }} ).
 
@@ -64,6 +69,10 @@ expr_ -> ite
         { <baseexpr> "." <makam.ident> }
       / dyn_access
         { <baseexpr> ".$" <baseexpr> }
+      / fun e => fun defs => enum_case e defs none
+        { "switch" <baseexpr> "{" <list_sep (token ",") switch_def> "}"}
+      / fun e => fun defs => fun default => enum_case e defs (some default)
+        { "switch" <baseexpr> "{" <list_sep (token ",") switch_def> "," "@" "=>" <baseexpr> "}"}
       / app
         { <baseexpr>  <expr_> }
       / { <baseexpr> }
@@ -80,6 +89,8 @@ baseexpr ->
       / estr { <makam.string_literal> }
       / concrete.var
         { <id> }
+      / enum_var
+        { "`" <makam.ident> }
       / eint
         { <makam.int_literal> }
       / named 
@@ -91,6 +102,9 @@ rec_field ->
         { <makam.ident> ":" <expr_>}
       / dyn_field
         { "$" <expr_> ":" <expr_>}
+
+switch_def -> tuple
+            { <makam.ident> "=>" <baseexpr>}
 
 id -> concrete.name exprvar
         { <makam.ident> }
@@ -114,6 +128,8 @@ baseTyp ->
         { "Dyn" }
       / tstr
         { "String" }
+      / ctenum 
+        { "<" <list_sep (token ",") makam.ident> ">" }
       / concrete.var
         { <idTy> }
       / open_rec
@@ -136,3 +152,6 @@ concrete.pick_namespace_userdef (_: expr) exprvar.
 concrete.pick_namespace_userdef (_: typ) typvar.
 
 concrete.handle_unresolved_name (concrete.name exprvar ID) (named ID).
+
+concrete.resolve_conversion (ctenum L) (tenum R) :-
+    row.fromList L R, row.close R.

@@ -264,10 +264,11 @@ testcase nickel :-
     tdyn.
 
 testcase nickel :-
+(* No impredicative polymorphism, no matter how bad you want it *)
     raw_interpreter
     "(Assume(Num -> (forall a. a -> a) -> Num, fun n => fun f => f n) 34) (fun x => x)"
     (eint 34)
-    tnum.
+    tdyn.
 
 testcase nickel :-
     raw_interpreter
@@ -280,7 +281,6 @@ testcase nickel :-
         "let (f = Promise(forall a . a -> a, fun x => x)) in
         Promise(Num, Promise((Bool -> Num) -> Num, fun f => f true) f)"
         _ _ ).
-
 
 testcase nickel :-
     raw_interpreter
@@ -337,7 +337,7 @@ testcase nickel :-
     "let (f = Assume({hello: Bool} -> Bool, fun x => (x).hello)) in
     f {hello: false }"
     (ebool false)
-    tdyn.
+    tbool.
 
 testcase nickel :-
     not (
@@ -413,3 +413,77 @@ testcase nickel :-
 
 testcase nickel :-
     row.fromList [1,2 ,3] R, row.fromList [1,2] RR, row.close RR, not(eqv RR R).
+
+
+(* Enums *)
+
+testcase nickel :-
+    isocast "`ble" (enum_var "ble").
+
+testcase nickel :-
+    isocast 
+        "switch (`ble) { blu => 2 , ble => 0}"
+        (enum_case
+            (enum_var "ble")
+            [("blu", eint 2), ("ble", eint 0)]
+            none
+        ).
+
+testcase nickel :-
+    isocast 
+        "switch (`ble) { blu => 2 , ble => 0 , @ => 4}"
+        (enum_case
+            (enum_var "ble")
+            [("blu", eint 2), ("ble", eint 0)]
+            (some (eint 4))
+        ).
+
+testcase nickel :-
+    isocast
+        "is<blop, blap> 3"
+        (eunop (isEnumIn ["blop", "blap"]) (eint 3)).
+
+testcase nickel :-
+    isocast
+        "Assume(<bla>, 2)"
+        (assume (tenum R) _ (eint 2)),
+    row.fromList ["bla"] R', row.close R', eqv R R'.
+
+testcase nickel :-
+    raw_interpreter
+        "Assume(<bla>, `bla)"
+        (enum_var "bla")
+        _.
+
+testcase nickel :-
+    not(raw_interpreter
+        "Assume(<bla>, `ble)"
+        _ _).
+
+testcase nickel :-
+    raw_interpreter
+    "switch (`ble) {bli => 0, ble => 1, blo => 34}"
+    (eint 1)
+    tnum.
+
+testcase nickel :-
+    not(raw_interpreter
+    "switch (`ble) {bli => 1, blo => 34}"
+    _ _).
+
+testcase nickel :-
+    p_typecheck
+    "`ble"
+    (tenum R),
+    row.fromList ["ble"] R', eqv R R'.
+
+testcase nickel :-
+    p_typecheck 
+    "fun x => switch x {bla => 2, ble => 1}"
+    (tarrow (tenum (extend "bla" (extend "ble" closed))) tnum).
+
+(*
+This is why ocaml has upper/lower bounds
+p_typecheck
+"fun x => (switch x {bla => 2, ble => 1}) + (switch x {bla => 3})" (`bla) ?
+*)
