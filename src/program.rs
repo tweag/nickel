@@ -196,7 +196,14 @@ impl<T: Read> Program<T> {
         "let dyn = fun l => fun t => t in
 let num = fun l => fun t => if isNum t then t else blame (tag[num] l) in
 let bool = fun l => fun t => if isBool t then t else blame (tag[bool] l) in
-let func = fun s => fun t => fun l => fun e => let l = tag[func] l in if isFun e then (fun x => t (goCodom l) (e (s (chngPol (goDom l)) x))) else blame l in
+let func = fun s => fun t => fun l => fun e => 
+  let l = tag[func] l in if isFun e then (fun x => t (goCodom l) (e (s (chngPol (goDom l)) x))) else blame l in
+let forall_var = fun sy => fun pol => fun l => fun t => let lPol = polarity l in 
+if pol =b lPol then
+  unwrap sy t (blame (tag[unwrp] l))
+else
+  wrap sy t
+in
 ".to_string()
     }
 }
@@ -335,6 +342,46 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         );
 
         assert_eq!(Ok(Term::Bool(false)), res);
+    }
+
+    #[test]
+    fn safe_id() {
+        let res = eval_string(
+            "let id = Assume(forall a . a -> a, fun x => x) in
+            id false",
+        );
+        assert_eq!(Ok(Term::Bool(false)), res);
+    }
+
+    #[test]
+    fn id_fail() {
+        let res = eval_string(
+            "let id = Assume(forall a . a -> a, fun x => false) in
+            id false",
+        );
+        if let Ok(_) = res {
+            panic!("This expression should return an error!");
+        }
+    }
+
+    #[test]
+    fn safe_higher_order() {
+        let res = eval_string(
+            "let to_bool = Assume(forall a . (a -> Bool) -> a -> Bool,
+            fun f => fun x => f x) in
+            to_bool (fun x => true) 4 ",
+        );
+        assert_eq!(Ok(Term::Bool(true)), res);
+    }
+
+    #[test]
+    fn apply_twice() {
+        let res = eval_string(
+            "let twice = Assume(forall a . (a -> a) -> a -> a,
+            fun f => fun x => f (f x)) in
+            twice (fun x => x + 1) 3",
+        );
+        assert_eq!(Ok(Term::Num(5.)), res);
     }
 
 }

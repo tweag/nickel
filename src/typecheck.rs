@@ -107,6 +107,8 @@ fn type_check_(
             let new_ty = TypeWrapper::Ptr(new_var(s));
             type_check_(typed_vars, s, rt.as_ref(), new_ty, false)
         }
+        Term::Sym(_) => unify(s, ty, TypeWrapper::Concrete(AbsType::Sym()), strict),
+        Term::Wrapped(_, rt) => type_check_(typed_vars, s, rt.as_ref(), ty, strict),
     }
 }
 
@@ -134,6 +136,7 @@ pub fn unify(
             (AbsType::Dyn(), AbsType::Dyn()) => Ok(()),
             (AbsType::Num(), AbsType::Num()) => Ok(()),
             (AbsType::Bool(), AbsType::Bool()) => Ok(()),
+            (AbsType::Sym(), AbsType::Sym()) => Ok(()),
             (AbsType::Arrow(s1s, s1t), AbsType::Arrow(s2s, s2t)) => {
                 unify(state, *s1s, *s2s, strict)?;
                 unify(state, *s1t, *s2t, strict)
@@ -240,12 +243,23 @@ pub fn get_uop_type(s: &mut GTypes, op: &UnaryOp) -> TypeWrapper {
                 Box::new(res),
             ))
         }
+        UnaryOp::Pol() => TypeWrapper::Concrete(AbsType::arrow(
+            Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
+            Box::new(TypeWrapper::Concrete(AbsType::Bool())),
+        )),
         UnaryOp::ChangePolarity() | UnaryOp::GoDom() | UnaryOp::GoCodom() | UnaryOp::Tag(_) => {
             TypeWrapper::Concrete(AbsType::arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
                 Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
             ))
         }
+        UnaryOp::Wrap() => TypeWrapper::Concrete(AbsType::arrow(
+            Box::new(TypeWrapper::Concrete(AbsType::Sym())),
+            Box::new(TypeWrapper::Concrete(AbsType::arrow(
+                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
+                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
+            ))),
+        )),
     }
 }
 
@@ -256,6 +270,23 @@ pub fn get_bop_type(_s: &mut GTypes, op: &BinaryOp) -> TypeWrapper {
             Box::new(TypeWrapper::Concrete(AbsType::arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::Num())),
                 Box::new(TypeWrapper::Concrete(AbsType::Num())),
+            ))),
+        )),
+        BinaryOp::Unwrap() => TypeWrapper::Concrete(AbsType::arrow(
+            Box::new(TypeWrapper::Concrete(AbsType::Sym())),
+            Box::new(TypeWrapper::Concrete(AbsType::arrow(
+                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
+                Box::new(TypeWrapper::Concrete(AbsType::arrow(
+                    Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
+                    Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
+                ))),
+            ))),
+        )),
+        BinaryOp::EqBool() => TypeWrapper::Concrete(AbsType::arrow(
+            Box::new(TypeWrapper::Concrete(AbsType::Bool())),
+            Box::new(TypeWrapper::Concrete(AbsType::arrow(
+                Box::new(TypeWrapper::Concrete(AbsType::Bool())),
+                Box::new(TypeWrapper::Concrete(AbsType::Bool())),
             ))),
         )),
     }
