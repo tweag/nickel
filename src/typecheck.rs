@@ -1,3 +1,4 @@
+use either::*;
 use identifier::Ident;
 use std::collections::HashMap;
 use term::{BinaryOp, Term, UnaryOp};
@@ -6,8 +7,8 @@ use types::{AbsType, Types};
 // Type checking
 pub fn type_check(t: &Term) -> Result<(), String> {
     let mut s = GTypes::new();
-    let ty = TypeWrapper::Ptr(new_var(&mut s));
-    type_check_(HashMap::new(), &mut s, t, ty, false)
+    let ty = TypeWrapper::Ptr(new_var(&mut s, 0));
+    type_check_(HashMap::new(), &mut s, t, ty, false, 0)
 }
 
 fn type_check_(
@@ -16,23 +17,24 @@ fn type_check_(
     t: &Term,
     ty: TypeWrapper,
     strict: bool,
+    level: usize,
 ) -> Result<(), String> {
     match t {
         Term::Bool(_) => unify(s, ty, TypeWrapper::Concrete(AbsType::Bool()), strict),
         Term::Num(_) => unify(s, ty, TypeWrapper::Concrete(AbsType::Num()), strict),
         Term::Fun(x, rt) => {
-            let src = TypeWrapper::Ptr(new_var(s));
+            let src = TypeWrapper::Ptr(new_var(s, level));
             // TODO what to do here, this makes more sense to me, but it means let x = foo in bar
             // behaves quite different to (\x.bar) foo, worth considering if it's ok to type these two differently
             // let src = TypeWrapper::The(AbsType::Dyn());
-            let trg = TypeWrapper::Ptr(new_var(s));
+            let trg = TypeWrapper::Ptr(new_var(s, level));
             let arr =
                 TypeWrapper::Concrete(AbsType::arrow(Box::new(src.clone()), Box::new(trg.clone())));
 
             unify(s, ty, arr, strict)?;
 
             typed_vars.insert(x.clone(), src);
-            type_check_(typed_vars, s, rt.as_ref(), trg, strict)
+            type_check_(typed_vars, s, rt.as_ref(), trg, strict, level)
         }
         Term::Lbl(_) => {
             // TODO implement lbl type
@@ -45,41 +47,44 @@ fn type_check_(
             // type annotation otherwise, x gets type Dyn
             let exp = match e {
                 Term::Assume(ty, _, _) | Term::Promise(ty, _, _) => to_typewrapper(ty.clone()),
+                // [FORALL] Check ty has rank 1
                 _ => TypeWrapper::Concrete(AbsType::Dyn()),
             };
-
-            type_check_(typed_vars.clone(), s, e, exp.clone(), strict)?;
+            // [FORALL] Instantiate variables with higher level
+            type_check_(typed_vars.clone(), s, e, exp.clone(), strict, level)?;
+            // [FORALL] Check variables are unconstrained with lower levels
             // TODO move this up once lets are rec
             typed_vars.insert(x.clone(), exp);
-            type_check_(typed_vars, s, rt.as_ref(), ty, strict)
+            type_check_(typed_vars, s, rt.as_ref(), ty, strict, level)
         }
         Term::App(re, rt) => {
-            let src = TypeWrapper::Ptr(new_var(s));
+            let src = TypeWrapper::Ptr(new_var(s, level));
             let arr = TypeWrapper::Concrete(AbsType::arrow(Box::new(src.clone()), Box::new(ty)));
 
-            type_check_(typed_vars.clone(), s, re.as_ref(), arr, strict)?;
-            type_check_(typed_vars, s, rt.as_ref(), src, strict)
+            type_check_(typed_vars.clone(), s, re.as_ref(), arr, strict, level)?;
+            type_check_(typed_vars, s, rt.as_ref(), src, strict, level)
         }
         Term::Var(x) => {
             let x_ty = typed_vars
                 .get(&x)
                 .ok_or(format!("Found an unbound var {:?}", x))?;
+            // [FORALL] Instantiate
             unify(s, ty, x_ty.clone(), strict)
         }
         Term::Op1(op, rt) => {
-            let ty_op = get_uop_type(s, op);
+            let ty_op = get_uop_type(s, op, level);
 
-            let src = TypeWrapper::Ptr(new_var(s));
+            let src = TypeWrapper::Ptr(new_var(s, level));
             let arr = TypeWrapper::Concrete(AbsType::arrow(Box::new(src.clone()), Box::new(ty)));
 
             unify(s, arr, ty_op, strict)?;
-            type_check_(typed_vars, s, rt.as_ref(), src, strict)
+            type_check_(typed_vars, s, rt.as_ref(), src, strict, level)
         }
         Term::Op2(op, re, rt) => {
             let ty_op = get_bop_type(s, op);
 
-            let src1 = TypeWrapper::Ptr(new_var(s));
-            let src2 = TypeWrapper::Ptr(new_var(s));
+            let src1 = TypeWrapper::Ptr(new_var(s, level));
+            let src2 = TypeWrapper::Ptr(new_var(s, level));
             let arr = TypeWrapper::Concrete(AbsType::arrow(
                 Box::new(src1.clone()),
                 Box::new(TypeWrapper::Concrete(AbsType::arrow(
@@ -89,8 +94,8 @@ fn type_check_(
             ));
 
             unify(s, arr, ty_op, strict)?;
-            type_check_(typed_vars.clone(), s, re.as_ref(), src1, strict)?;
-            type_check_(typed_vars, s, rt.as_ref(), src2, strict)
+            type_check_(typed_vars.clone(), s, re.as_ref(), src1, strict, level)?;
+            type_check_(typed_vars, s, rt.as_ref(), src2, strict, level)
         }
         Term::Promise(ty2, _, rt) => {
             unify(s, ty.clone(), to_typewrapper(ty2.clone()), strict)?;
@@ -100,15 +105,16 @@ fn type_check_(
                 rt.as_ref(),
                 to_typewrapper(ty2.clone()),
                 true,
+                level,
             )
         }
         Term::Assume(ty2, _, rt) => {
             unify(s, ty.clone(), to_typewrapper(ty2.clone()), strict)?;
-            let new_ty = TypeWrapper::Ptr(new_var(s));
-            type_check_(typed_vars, s, rt.as_ref(), new_ty, false)
+            let new_ty = TypeWrapper::Ptr(new_var(s, level));
+            type_check_(typed_vars, s, rt.as_ref(), new_ty, false, level)
         }
         Term::Sym(_) => unify(s, ty, TypeWrapper::Concrete(AbsType::Sym()), strict),
-        Term::Wrapped(_, rt) => type_check_(typed_vars, s, rt.as_ref(), ty, strict),
+        Term::Wrapped(_, rt) => type_check_(typed_vars, s, rt.as_ref(), ty, strict, level),
     }
 }
 
@@ -119,6 +125,42 @@ fn type_check_(
 pub enum TypeWrapper {
     Concrete(AbsType<Box<TypeWrapper>>),
     Ptr(usize),
+}
+
+impl TypeWrapper {
+    pub fn subst(self, id: Ident, to: TypeWrapper) -> TypeWrapper {
+        use self::TypeWrapper::*;
+        match self {
+            Concrete(AbsType::Var(i)) => {
+                if i == id {
+                    to
+                } else {
+                    Concrete(AbsType::Var(i))
+                }
+            }
+            Concrete(AbsType::Forall(i, t)) => {
+                if i == id {
+                    Concrete(AbsType::Forall(i, t))
+                } else {
+                    let tt = *t;
+                    Concrete(AbsType::Forall(i, Box::new(tt.subst(id, to))))
+                }
+            }
+            // Trivial recursion
+            Concrete(AbsType::Dyn()) => Concrete(AbsType::Dyn()),
+            Concrete(AbsType::Num()) => Concrete(AbsType::Num()),
+            Concrete(AbsType::Bool()) => Concrete(AbsType::Bool()),
+            Concrete(AbsType::Sym()) => Concrete(AbsType::Sym()),
+            Concrete(AbsType::Flat(t)) => Concrete(AbsType::Flat(t)),
+            Concrete(AbsType::Arrow(s, t)) => {
+                let fs = s.subst(id.clone(), to.clone());
+                let ft = t.subst(id, to);
+
+                Concrete(AbsType::Arrow(Box::new(fs), Box::new(ft)))
+            }
+            Ptr(x) => Ptr(x),
+        }
+    }
 }
 
 pub fn unify(
@@ -158,21 +200,25 @@ pub fn unify(
             let (ty2, r2) = get_root(&state, p2)?;
 
             match (ty1, ty2) {
-                (None, None) => {
+                (Either::Right(l1), Either::Right(l2)) => {
                     if r1 != r2 {
-                        state.insert(r1, Some(TypeWrapper::Ptr(r2)));
+                        if l1 < l2 {
+                            state.insert(r2, Constraint::Type(TypeWrapper::Ptr(r1)));
+                        } else {
+                            state.insert(r1, Constraint::Type(TypeWrapper::Ptr(r2)));
+                        }
                     }
                     Ok(())
                 }
-                (Some(_), None) => {
-                    state.insert(r2, Some(TypeWrapper::Ptr(r1)));
+                (Either::Left(_), Either::Right(_)) => {
+                    state.insert(r2, Constraint::Type(TypeWrapper::Ptr(r1)));
                     Ok(())
                 }
-                (None, Some(_)) => {
-                    state.insert(r1, Some(TypeWrapper::Ptr(r2)));
+                (Either::Right(_), Either::Left(_)) => {
+                    state.insert(r1, Constraint::Type(TypeWrapper::Ptr(r2)));
                     Ok(())
                 }
-                (Some(ty1), Some(ty2)) => unify(
+                (Either::Left(ty1), Either::Left(ty2)) => unify(
                     state,
                     TypeWrapper::Concrete(ty1),
                     TypeWrapper::Concrete(ty2),
@@ -184,7 +230,7 @@ pub fn unify(
         | (TypeWrapper::Concrete(s), TypeWrapper::Ptr(p)) => {
             let (p_ty_opt, root) = get_root(&state, p)?;
 
-            if let Some(p_ty) = p_ty_opt {
+            if let Either::Left(p_ty) = p_ty_opt {
                 unify(
                     state,
                     TypeWrapper::Concrete(p_ty),
@@ -192,7 +238,7 @@ pub fn unify(
                     strict,
                 )
             } else {
-                state.insert(root, Some(TypeWrapper::Concrete(s)));
+                state.insert(root, Constraint::Type(TypeWrapper::Concrete(s)));
                 Ok(())
             }
         }
@@ -207,10 +253,10 @@ fn to_typewrapper(t: Types) -> TypeWrapper {
     TypeWrapper::Concrete(t3)
 }
 
-pub fn get_uop_type(s: &mut GTypes, op: &UnaryOp) -> TypeWrapper {
+pub fn get_uop_type(s: &mut GTypes, op: &UnaryOp, level: usize) -> TypeWrapper {
     match op {
         UnaryOp::Ite() => {
-            let branches = TypeWrapper::Ptr(new_var(s));
+            let branches = TypeWrapper::Ptr(new_var(s, level));
 
             TypeWrapper::Concrete(AbsType::arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::Bool())),
@@ -228,7 +274,7 @@ pub fn get_uop_type(s: &mut GTypes, op: &UnaryOp) -> TypeWrapper {
             Box::new(TypeWrapper::Concrete(AbsType::Bool())),
         )),
         UnaryOp::IsNum() | UnaryOp::IsBool() | UnaryOp::IsFun() => {
-            let inp = TypeWrapper::Ptr(new_var(s));
+            let inp = TypeWrapper::Ptr(new_var(s, level));
 
             TypeWrapper::Concrete(AbsType::arrow(
                 Box::new(inp),
@@ -236,7 +282,7 @@ pub fn get_uop_type(s: &mut GTypes, op: &UnaryOp) -> TypeWrapper {
             ))
         }
         UnaryOp::Blame() => {
-            let res = TypeWrapper::Ptr(new_var(s));
+            let res = TypeWrapper::Ptr(new_var(s, level));
 
             TypeWrapper::Concrete(AbsType::arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
@@ -294,11 +340,18 @@ pub fn get_bop_type(_s: &mut GTypes, op: &BinaryOp) -> TypeWrapper {
 
 // Global types, where unification happens
 
-pub type GTypes = HashMap<usize, Option<TypeWrapper>>;
+// A constraint can be a type, or the smallest leve at which
+// the type variable can be generalized
+pub enum Constraint {
+    Type(TypeWrapper),
+    LeveledVar(usize),
+}
 
-fn new_var(state: &mut GTypes) -> usize {
+pub type GTypes = HashMap<usize, Constraint>;
+
+fn new_var(state: &mut GTypes, level: usize) -> usize {
     let nxt = state.len();
-    state.insert(nxt, None);
+    state.insert(nxt, Constraint::LeveledVar(level));
     nxt
 }
 
@@ -306,11 +359,11 @@ fn new_var(state: &mut GTypes) -> usize {
 pub fn get_root(
     s: &GTypes,
     x: usize,
-) -> Result<(Option<AbsType<Box<TypeWrapper>>>, usize), String> {
+) -> Result<(Either<AbsType<Box<TypeWrapper>>, usize>, usize), String> {
     match s.get(&x).ok_or(format!("Unbound type variable {}!", x))? {
-        None => Ok((None, x)),
-        Some(TypeWrapper::Ptr(y)) => get_root(s, *y),
-        Some(TypeWrapper::Concrete(ty)) => Ok((Some(ty.clone()), x)),
+        Constraint::LeveledVar(l) => Ok((Either::Right(*l), x)),
+        Constraint::Type(TypeWrapper::Ptr(y)) => get_root(s, *y),
+        Constraint::Type(TypeWrapper::Concrete(ty)) => Ok((Either::Left(ty.clone()), x)),
     }
 }
 

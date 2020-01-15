@@ -18,6 +18,8 @@ extern crate pretty_assertions;
 #[macro_use]
 extern crate lalrpop_util;
 
+extern crate either;
+
 fn main() {
     let mut p = Program::new_from_stdin();
     match p.eval() {

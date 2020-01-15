@@ -249,6 +249,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "nickel"
 version = "0.1.0"
 dependencies = [
+ "either 1.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "lalrpop 0.16.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "lalrpop-util 0.16.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "pretty_assertions 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
