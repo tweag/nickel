@@ -47,17 +47,36 @@ fn type_check_(
             // type annotation otherwise, x gets type Dyn
             let exp = match e {
                 Term::Assume(ty, _, _) | Term::Promise(ty, _, _) => to_typewrapper(ty.clone()),
-                // [FORALL] Check ty has rank 1
                 _ => TypeWrapper::Concrete(AbsType::Dyn()),
             };
-            // [FORALL] Instantiate variables with higher level
-            type_check_(typed_vars.clone(), s, e, exp.clone(), strict, level)?;
-            // [FORALL] Check variables are unconstrained with lower levels
+
+            let mut new_level = level;
+            let (instantiated, vars) = instantiate_foralls(s, exp.clone(), &mut new_level)?;
+
+            type_check_(typed_vars.clone(), s, e, instantiated, strict, new_level)?;
+
+            let mut cur_level = level;
+            for v in vars {
+                cur_level = cur_level + 1;
+                if let (Either::Right(l), v_root) = get_root(s, v)? {
+                    if l < cur_level {
+                        return Err(format!("Couldn't type {:?} :: {:?}, since the variable depended on another variable.", e, ty));
+                    }
+                } else {
+                    return Err(format!(
+                        "Couldn't type {:?} :: {:?}, since a type variable had a fixed constraint.",
+                        e, ty
+                    ));
+                }
+            }
             // TODO move this up once lets are rec
             typed_vars.insert(x.clone(), exp);
             type_check_(typed_vars, s, rt.as_ref(), ty, strict, level)
         }
         Term::App(re, rt) => {
+            if let TypeWrapper::Ptr(p) = ty {
+                println!("Checking app ({:?} {:?}) {:?}", re, rt, get_root(s, p));
+            }
             let src = TypeWrapper::Ptr(new_var(s, level));
             let arr = TypeWrapper::Concrete(AbsType::arrow(Box::new(src.clone()), Box::new(ty)));
 
@@ -65,11 +84,15 @@ fn type_check_(
             type_check_(typed_vars, s, rt.as_ref(), src, strict, level)
         }
         Term::Var(x) => {
-            let x_ty = typed_vars
+            let mut x_ty = typed_vars
                 .get(&x)
-                .ok_or(format!("Found an unbound var {:?}", x))?;
+                .ok_or(format!("Found an unbound var {:?}", x))?
+                .clone();
             // [FORALL] Instantiate
-            unify(s, ty, x_ty.clone(), strict)
+
+            let (instantiated, _) = instantiate_foralls(s, x_ty, &mut level.clone())?;
+
+            unify(s, ty, instantiated, strict)
         }
         Term::Op1(op, rt) => {
             let ty_op = get_uop_type(s, op, level);
@@ -98,15 +121,32 @@ fn type_check_(
             type_check_(typed_vars, s, rt.as_ref(), src2, strict, level)
         }
         Term::Promise(ty2, _, rt) => {
+            let mut tyw2 = to_typewrapper(ty2.clone());
+            // [FORALL] Instantiate any prenex forall and check that it doesnt have any constraints
+            let mut new_level = level;
+
+            let (tyw2, vars) = instantiate_foralls(s, tyw2, &mut new_level)?;
+
             unify(s, ty.clone(), to_typewrapper(ty2.clone()), strict)?;
-            type_check_(
-                typed_vars,
-                s,
-                rt.as_ref(),
-                to_typewrapper(ty2.clone()),
-                true,
-                level,
-            )
+
+            type_check_(typed_vars, s, rt.as_ref(), tyw2, true, new_level)?;
+
+            let mut cur_level = level;
+            for v in vars {
+                cur_level = cur_level + 1;
+                if let (Either::Right(l), v_root) = get_root(s, v)? {
+                    if l < cur_level {
+                        return Err(format!("Couldn't type {:?} :: {:?}, since the variable depended on another variable.", rt, ty));
+                    }
+                } else {
+                    return Err(format!(
+                        "Couldn't type {:?} :: {:?}, since a type variable had a fixed constraint.",
+                        rt, ty
+                    ));
+                }
+            }
+
+            Ok(())
         }
         Term::Assume(ty2, _, rt) => {
             unify(s, ty.clone(), to_typewrapper(ty2.clone()), strict)?;
@@ -179,10 +219,6 @@ pub fn unify(
             (AbsType::Num(), AbsType::Num()) => Ok(()),
             (AbsType::Bool(), AbsType::Bool()) => Ok(()),
             (AbsType::Sym(), AbsType::Sym()) => Ok(()),
-            (AbsType::Arrow(s1s, s1t), AbsType::Arrow(s2s, s2t)) => {
-                unify(state, *s1s, *s2s, strict)?;
-                unify(state, *s1t, *s2t, strict)
-            }
             (AbsType::Flat(s), AbsType::Flat(t)) => {
                 if let Term::Var(s) = s.clone().into() {
                     if let Term::Var(t) = t.clone().into() {
@@ -193,6 +229,21 @@ pub fn unify(
                 }
                 Err(format!("Two expressions didn't match {:?} - {:?}", s, t))
             } // Right now it only unifies equally named variables
+            (AbsType::Arrow(s1s, s1t), AbsType::Arrow(s2s, s2t)) => {
+                unify(state, *s1s, *s2s, strict)?;
+                unify(state, *s1t, *s2t, strict)
+            }
+            (AbsType::Var(ref i1), AbsType::Var(ref i2)) if i1 == i2 => Ok(()),
+            (AbsType::Forall(i1, t1t), AbsType::Forall(i2, t2t)) => {
+                // Very stupid (slow) implementation
+                // TODO!! Check no variable capture annoyance, or just substitute both
+                unify(
+                    state,
+                    *t1t,
+                    t2t.subst(i2, TypeWrapper::Concrete(AbsType::Var(i1))),
+                    strict,
+                )
+            }
             (a, b) => Err(format!("The following types dont match {:?} -- {:?}", a, b)),
         },
         (TypeWrapper::Ptr(p1), TypeWrapper::Ptr(p2)) => {
@@ -251,6 +302,29 @@ fn to_typewrapper(t: Types) -> TypeWrapper {
     let t3 = t2.map(|x| Box::new(to_typewrapper(*x)));
 
     TypeWrapper::Concrete(t3)
+}
+
+fn instantiate_foralls(
+    s: &mut GTypes,
+    mut ty: TypeWrapper,
+    level: &mut usize,
+) -> Result<(TypeWrapper, Vec<usize>), String> {
+    if let TypeWrapper::Ptr(p) = ty {
+        if let (Either::Left(root_ty), _) = get_root(s, p)? {
+            ty = TypeWrapper::Concrete(root_ty);
+        }
+    }
+
+    let mut vars = Vec::new();
+
+    while let TypeWrapper::Concrete(AbsType::Forall(id, forall_ty)) = ty {
+        *level = *level + 1;
+        let var_num = new_var(s, *level);
+        let var = TypeWrapper::Ptr(var_num);
+        vars.push(var_num);
+        ty = forall_ty.subst(id, var);
+    }
+    Ok((ty, vars))
 }
 
 pub fn get_uop_type(s: &mut GTypes, op: &UnaryOp, level: usize) -> TypeWrapper {
@@ -373,6 +447,16 @@ mod tests {
     use label::{Label, TyPath};
     use term::RichTerm;
 
+    use parser;
+
+    fn parse_and_typecheck(s: &str) -> Result<(), String> {
+        if let Ok(p) = parser::grammar::TermParser::new().parse(s) {
+            type_check(p.as_ref())
+        } else {
+            panic!("Couldn't parse")
+        }
+    }
+
     fn label() -> Label {
         Label {
             tag: "".into(),
@@ -452,16 +536,6 @@ mod tests {
 
     #[test]
     fn promise_complicated() {
-        use parser;
-
-        fn parse_and_typecheck(s: &str) -> Result<(), String> {
-            if let Ok(p) = parser::grammar::TermParser::new().parse(s) {
-                type_check(p.as_ref())
-            } else {
-                panic!("Couldn't parse")
-            }
-        }
-
         // Inside Promises we typecheck strictly
         parse_and_typecheck("(fun x => if x then x + 1 else 34) false").unwrap();
         parse_and_typecheck("Promise(Bool -> Num, fun x => if x then x + 1 else 34) false")
@@ -498,6 +572,48 @@ mod tests {
         // Only if they're named the same way
         parse_and_typecheck(
             "Promise(#(fun l => fun t => t) -> #(fun l => fun t => t), fun x => x)",
+        )
+        .unwrap_err();
+    }
+
+    #[test]
+    fn simple_forall() {
+        parse_and_typecheck(
+            "let f = Promise(forall a. a -> a, fun x => x) in
+        Promise(Num, if (f true) then (f 2) else 3)",
+        )
+        .unwrap();
+
+        parse_and_typecheck(
+            "let f = Promise(forall a. (forall b. a -> b -> a), fun x => fun y => x) in
+        Promise(Num, if (f true 3) then (f 2 false) else 3)",
+        )
+        .unwrap();
+
+        parse_and_typecheck(
+            "let f = Promise(forall a. (forall b. b -> b) -> a -> a, fun f => fun x => f x) in
+            f",
+        )
+        .unwrap();
+
+        parse_and_typecheck(
+            "let f = Promise(forall a. (forall b. a -> b -> a), fun x => fun y => y) in
+            f",
+        )
+        .unwrap_err();
+
+        parse_and_typecheck(
+            "Promise(
+                ((forall a. a -> a) -> Num) -> Num,
+                fun f => let g = Promise(forall b. b -> b, fun y => y) in f g)
+            (fun x => 3)",
+        )
+        .unwrap_err();
+
+        parse_and_typecheck(
+            "let g = Promise(Num -> Num, fun x => x) in
+        let f = Promise(forall a. a -> a, fun x =>  g x) in
+        f",
         )
         .unwrap_err();
     }
