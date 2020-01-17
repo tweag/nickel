@@ -48,7 +48,9 @@ fn type_check_(
                 _ => TypeWrapper::Concrete(AbsType::Dyn()),
             };
 
-            type_check_(typed_vars.clone(), s, e, exp.clone(), strict)?;
+            let instantiated = instantiate_foralls_with(s, exp.clone(), TypeWrapper::Constant)?;
+            type_check_(typed_vars.clone(), s, e, instantiated, strict)?;
+
             // TODO move this up once lets are rec
             typed_vars.insert(x.clone(), exp);
             type_check_(typed_vars, s, rt.as_ref(), ty, strict)
@@ -64,7 +66,9 @@ fn type_check_(
             let x_ty = typed_vars
                 .get(&x)
                 .ok_or(format!("Found an unbound var {:?}", x))?;
-            unify(s, ty, x_ty.clone(), strict)
+
+            let instantiated = instantiate_foralls_with(s, x_ty.clone(), TypeWrapper::Ptr)?;
+            unify(s, ty, instantiated, strict)
         }
         Term::Op1(op, rt) => {
             let ty_op = get_uop_type(s, op);
@@ -93,14 +97,12 @@ fn type_check_(
             type_check_(typed_vars, s, rt.as_ref(), src2, strict)
         }
         Term::Promise(ty2, _, rt) => {
+            let tyw2 = to_typewrapper(ty2.clone());
+
+            let instantiated = instantiate_foralls_with(s, tyw2, TypeWrapper::Constant)?;
+
             unify(s, ty.clone(), to_typewrapper(ty2.clone()), strict)?;
-            type_check_(
-                typed_vars,
-                s,
-                rt.as_ref(),
-                to_typewrapper(ty2.clone()),
-                true,
-            )
+            type_check_(typed_vars, s, rt.as_ref(), instantiated, true)
         }
         Term::Assume(ty2, _, rt) => {
             unify(s, ty.clone(), to_typewrapper(ty2.clone()), strict)?;
@@ -118,29 +120,66 @@ fn type_check_(
 #[derive(Clone, PartialEq, Debug)]
 pub enum TypeWrapper {
     Concrete(AbsType<Box<TypeWrapper>>),
+    Constant(usize),
     Ptr(usize),
+}
+
+impl TypeWrapper {
+    pub fn subst(self, id: Ident, to: TypeWrapper) -> TypeWrapper {
+        use self::TypeWrapper::*;
+        match self {
+            Concrete(AbsType::Var(ref i)) if *i == id => to,
+            Concrete(AbsType::Var(i)) => Concrete(AbsType::Var(i)),
+            Concrete(AbsType::Forall(i, t)) => {
+                if i == id {
+                    Concrete(AbsType::Forall(i, t))
+                } else {
+                    let tt = *t;
+                    Concrete(AbsType::Forall(i, Box::new(tt.subst(id, to))))
+                }
+            }
+            // Trivial recursion
+            Concrete(AbsType::Dyn()) => Concrete(AbsType::Dyn()),
+            Concrete(AbsType::Num()) => Concrete(AbsType::Num()),
+            Concrete(AbsType::Bool()) => Concrete(AbsType::Bool()),
+            Concrete(AbsType::Sym()) => Concrete(AbsType::Sym()),
+            Concrete(AbsType::Flat(t)) => Concrete(AbsType::Flat(t)),
+            Concrete(AbsType::Arrow(s, t)) => {
+                let fs = s.subst(id.clone(), to.clone());
+                let ft = t.subst(id, to);
+
+                Concrete(AbsType::Arrow(Box::new(fs), Box::new(ft)))
+            }
+            Constant(x) => Constant(x),
+            Ptr(x) => Ptr(x),
+        }
+    }
 }
 
 pub fn unify(
     state: &mut GTypes,
-    t1: TypeWrapper,
-    t2: TypeWrapper,
+    mut t1: TypeWrapper,
+    mut t2: TypeWrapper,
     strict: bool,
 ) -> Result<(), String> {
     if !strict {
         // TODO think whether this makes sense, without this we can't write the Y combinator
         return Ok(());
     }
+    if let TypeWrapper::Ptr(pt1) = t1 {
+        t1 = get_root(state, pt1)?;
+    }
+    if let TypeWrapper::Ptr(pt2) = t2 {
+        t2 = get_root(state, pt2)?;
+    }
+
+    // t1 and t2 are roots of the type
     match (t1, t2) {
         (TypeWrapper::Concrete(s1), TypeWrapper::Concrete(s2)) => match (s1, s2) {
             (AbsType::Dyn(), AbsType::Dyn()) => Ok(()),
             (AbsType::Num(), AbsType::Num()) => Ok(()),
             (AbsType::Bool(), AbsType::Bool()) => Ok(()),
             (AbsType::Sym(), AbsType::Sym()) => Ok(()),
-            (AbsType::Arrow(s1s, s1t), AbsType::Arrow(s2s, s2t)) => {
-                unify(state, *s1s, *s2s, strict)?;
-                unify(state, *s1t, *s2t, strict)
-            }
             (AbsType::Flat(s), AbsType::Flat(t)) => {
                 if let Term::Var(s) = s.clone().into() {
                     if let Term::Var(t) = t.clone().into() {
@@ -151,51 +190,40 @@ pub fn unify(
                 }
                 Err(format!("Two expressions didn't match {:?} - {:?}", s, t))
             } // Right now it only unifies equally named variables
-            (a, b) => Err(format!("The following types dont match {:?} -- {:?}", a, b)),
-        },
-        (TypeWrapper::Ptr(p1), TypeWrapper::Ptr(p2)) => {
-            let (ty1, r1) = get_root(&state, p1)?;
-            let (ty2, r2) = get_root(&state, p2)?;
-
-            match (ty1, ty2) {
-                (None, None) => {
-                    if r1 != r2 {
-                        state.insert(r1, Some(TypeWrapper::Ptr(r2)));
-                    }
-                    Ok(())
-                }
-                (Some(_), None) => {
-                    state.insert(r2, Some(TypeWrapper::Ptr(r1)));
-                    Ok(())
-                }
-                (None, Some(_)) => {
-                    state.insert(r1, Some(TypeWrapper::Ptr(r2)));
-                    Ok(())
-                }
-                (Some(ty1), Some(ty2)) => unify(
-                    state,
-                    TypeWrapper::Concrete(ty1),
-                    TypeWrapper::Concrete(ty2),
-                    strict,
-                ),
+            (AbsType::Arrow(s1s, s1t), AbsType::Arrow(s2s, s2t)) => {
+                unify(state, *s1s, *s2s, strict)?;
+                unify(state, *s1t, *s2t, strict)
             }
-        }
-        (TypeWrapper::Ptr(p), TypeWrapper::Concrete(s))
-        | (TypeWrapper::Concrete(s), TypeWrapper::Ptr(p)) => {
-            let (p_ty_opt, root) = get_root(&state, p)?;
+            (AbsType::Var(ref i1), AbsType::Var(ref i2)) if i1 == i2 => Ok(()),
+            (AbsType::Forall(i1, t1t), AbsType::Forall(i2, t2t)) => {
+                // Very stupid (slow) implementation
+                let constant_type = TypeWrapper::Constant(new_var(state));
 
-            if let Some(p_ty) = p_ty_opt {
                 unify(
                     state,
-                    TypeWrapper::Concrete(p_ty),
-                    TypeWrapper::Concrete(s),
+                    t1t.subst(i1, constant_type.clone()),
+                    t2t.subst(i2, constant_type),
                     strict,
                 )
-            } else {
-                state.insert(root, Some(TypeWrapper::Concrete(s)));
-                Ok(())
             }
+            (a, b) => Err(format!("The following types dont match {:?} -- {:?}", a, b)),
+        },
+        (TypeWrapper::Ptr(r1), TypeWrapper::Ptr(r2)) => {
+            if r1 != r2 {
+                state.insert(r1, Some(TypeWrapper::Ptr(r2)));
+            }
+            Ok(())
         }
+
+        (TypeWrapper::Ptr(p), s @ TypeWrapper::Concrete(_))
+        | (TypeWrapper::Ptr(p), s @ TypeWrapper::Constant(_))
+        | (s @ TypeWrapper::Concrete(_), TypeWrapper::Ptr(p))
+        | (s @ TypeWrapper::Constant(_), TypeWrapper::Ptr(p)) => {
+            state.insert(p, Some(s));
+            Ok(())
+        }
+        (TypeWrapper::Constant(i1), TypeWrapper::Constant(i2)) if i1 == i2 => Ok(()),
+        (a, b) => Err(format!("Couldn't unify {:?} and {:?}", a, b)),
     }
 }
 
@@ -205,6 +233,25 @@ fn to_typewrapper(t: Types) -> TypeWrapper {
     let t3 = t2.map(|x| Box::new(to_typewrapper(*x)));
 
     TypeWrapper::Concrete(t3)
+}
+
+fn instantiate_foralls_with<F>(
+    s: &mut GTypes,
+    mut ty: TypeWrapper,
+    f: F,
+) -> Result<TypeWrapper, String>
+where
+    F: Fn(usize) -> TypeWrapper,
+{
+    if let TypeWrapper::Ptr(p) = ty {
+        ty = get_root(s, p)?;
+    }
+
+    while let TypeWrapper::Concrete(AbsType::Forall(id, forall_ty)) = ty {
+        let var = f(new_var(s));
+        ty = forall_ty.subst(id, var);
+    }
+    Ok(ty)
 }
 
 pub fn get_uop_type(s: &mut GTypes, op: &UnaryOp) -> TypeWrapper {
@@ -303,14 +350,12 @@ fn new_var(state: &mut GTypes) -> usize {
 }
 
 // TODO This should be a union find like algorithm
-pub fn get_root(
-    s: &GTypes,
-    x: usize,
-) -> Result<(Option<AbsType<Box<TypeWrapper>>>, usize), String> {
+pub fn get_root(s: &GTypes, x: usize) -> Result<TypeWrapper, String> {
     match s.get(&x).ok_or(format!("Unbound type variable {}!", x))? {
-        None => Ok((None, x)),
+        None => Ok(TypeWrapper::Ptr(x)),
         Some(TypeWrapper::Ptr(y)) => get_root(s, *y),
-        Some(TypeWrapper::Concrete(ty)) => Ok((Some(ty.clone()), x)),
+        Some(ty @ TypeWrapper::Concrete(_)) => Ok(ty.clone()),
+        Some(k @ TypeWrapper::Constant(_)) => Ok(k.clone()),
     }
 }
 
@@ -319,6 +364,16 @@ mod tests {
     use super::*;
     use label::{Label, TyPath};
     use term::RichTerm;
+
+    use parser;
+
+    fn parse_and_typecheck(s: &str) -> Result<(), String> {
+        if let Ok(p) = parser::grammar::TermParser::new().parse(s) {
+            type_check(p.as_ref())
+        } else {
+            panic!("Couldn't parse")
+        }
+    }
 
     fn label() -> Label {
         Label {
@@ -399,16 +454,6 @@ mod tests {
 
     #[test]
     fn promise_complicated() {
-        use parser;
-
-        fn parse_and_typecheck(s: &str) -> Result<(), String> {
-            if let Ok(p) = parser::grammar::TermParser::new().parse(s) {
-                type_check(p.as_ref())
-            } else {
-                panic!("Couldn't parse")
-            }
-        }
-
         // Inside Promises we typecheck strictly
         parse_and_typecheck("(fun x => if x then x + 1 else 34) false").unwrap();
         parse_and_typecheck("Promise(Bool -> Num, fun x => if x then x + 1 else 34) false")
@@ -445,6 +490,48 @@ mod tests {
         // Only if they're named the same way
         parse_and_typecheck(
             "Promise(#(fun l => fun t => t) -> #(fun l => fun t => t), fun x => x)",
+        )
+        .unwrap_err();
+    }
+
+    #[test]
+    fn simple_forall() {
+        parse_and_typecheck(
+            "let f = Promise(forall a. a -> a, fun x => x) in
+        Promise(Num, if (f true) then (f 2) else 3)",
+        )
+        .unwrap();
+
+        parse_and_typecheck(
+            "let f = Promise(forall a. (forall b. a -> b -> a), fun x => fun y => x) in
+        Promise(Num, if (f true 3) then (f 2 false) else 3)",
+        )
+        .unwrap();
+
+        parse_and_typecheck(
+            "let f = Promise(forall a. (forall b. b -> b) -> a -> a, fun f => fun x => f x) in
+            f Promise(forall y. y -> y, fun z => z)",
+        )
+        .unwrap();
+
+        parse_and_typecheck(
+            "let f = Promise(forall a. (forall b. a -> b -> a), fun x => fun y => y) in
+            f",
+        )
+        .unwrap_err();
+
+        parse_and_typecheck(
+            "Promise(
+                ((forall a. a -> a) -> Num) -> Num,
+                fun f => let g = Promise(forall b. b -> b, fun y => y) in f g)
+            (fun x => 3)",
+        )
+        .unwrap_err();
+
+        parse_and_typecheck(
+            "let g = Promise(Num -> Num, fun x => x) in
+        let f = Promise(forall a. a -> a, fun x =>  g x) in
+        f",
         )
         .unwrap_err();
     }
