@@ -99,7 +99,7 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                     env: env.clone(),
                 }));
                 env.insert(x, (Rc::clone(&thunk), IdentKind::Let()));
-                Closure { body: t, env: env }
+                Closure { body: t, env }
             }
             // Unary Operation
             Term::Op1(op, t) => {

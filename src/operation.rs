@@ -37,7 +37,7 @@ fn process_unary_operation(
     stack: &mut Stack,
 ) -> Result<Closure, EvalError> {
     let Closure {
-        body: RichTerm { term: t, pos: _ },
+        body: RichTerm { term: t, .. },
         env: _env,
     } = clos;
     match u_op {
@@ -172,11 +172,11 @@ fn process_binary_operation(
     _stack: &mut Stack,
 ) -> Result<Closure, EvalError> {
     let Closure {
-        body: RichTerm { term: t1, pos: _ },
+        body: RichTerm { term: t1, .. },
         env: _env1,
     } = fst_clos;
     let Closure {
-        body: RichTerm { term: t2, pos: _ },
+        body: RichTerm { term: t2, .. },
         env: env2,
     } = clos;
     match b_op {
