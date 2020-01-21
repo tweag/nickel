@@ -9,7 +9,7 @@ mod term;
 mod typecheck;
 mod types;
 
-use program::Program;
+use crate::program::Program;
 
 #[cfg(test)]
 #[macro_use]

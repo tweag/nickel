@@ -5,6 +5,7 @@ authors = ["Nicl team"]
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 description = "Programmable configuration files."
+edition = "2018"
 
 [build-dependencies] # <-- We added this and everything after!
 lalrpop = "0.16.2"

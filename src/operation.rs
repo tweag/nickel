@@ -1,8 +1,8 @@
-use eval::{CallStack, Closure, EvalError};
-use identifier::Ident;
-use label::TyPath;
-use stack::Stack;
-use term::{BinaryOp, RichTerm, Term, UnaryOp};
+use crate::eval::{CallStack, Closure, EvalError};
+use crate::identifier::Ident;
+use crate::label::TyPath;
+use crate::stack::Stack;
+use crate::term::{BinaryOp, RichTerm, Term, UnaryOp};
 
 #[derive(Debug, PartialEq)]
 pub enum OperationCont {
@@ -240,7 +240,7 @@ fn process_binary_operation(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use eval::{CallStack, Enviroment};
+    use crate::eval::{CallStack, Enviroment};
     use std::collections::HashMap;
 
     fn some_env() -> Enviroment {

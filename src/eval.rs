@@ -1,11 +1,11 @@
-use identifier::Ident;
-use label::Label;
-use operation::{continuate_operation, OperationCont};
-use stack::Stack;
+use crate::identifier::Ident;
+use crate::label::Label;
+use crate::operation::{continuate_operation, OperationCont};
+use crate::stack::Stack;
+use crate::term::{RichTerm, Term};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
-use term::{RichTerm, Term};
 
 pub type Enviroment = HashMap<Ident, (Rc<RefCell<Closure>>, IdentKind)>;
 pub type CallStack = Vec<StackElem>;
@@ -153,7 +153,7 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                         }
                     }
                 } else {
-                    let mut cont_result = continuate_operation(clos, &mut stack, &mut call_stack);
+                    let cont_result = continuate_operation(clos, &mut stack, &mut call_stack);
 
                     if let Err(EvalError::BlameError(l, _)) = cont_result {
                         return Err(EvalError::BlameError(l, Some(call_stack)));
@@ -192,8 +192,8 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use label::TyPath;
-    use term::UnaryOp;
+    use crate::label::TyPath;
+    use crate::term::UnaryOp;
 
     #[test]
     fn identity_over_values() {

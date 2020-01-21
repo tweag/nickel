@@ -1,13 +1,13 @@
-use eval::{eval, CallStack, EvalError, IdentKind, StackElem};
-use identifier::Ident;
-use label::{Label, TyPath};
-use parser;
+use crate::eval::{eval, CallStack, EvalError, IdentKind, StackElem};
+use crate::identifier::Ident;
+use crate::label::{Label, TyPath};
+use crate::parser;
+use crate::term::{RichTerm, Term};
+use crate::typecheck::type_check;
 use std::fs;
 use std::io::{self, Read};
 use std::path::Path;
 use std::result::Result;
-use term::{RichTerm, Term};
-use typecheck::type_check;
 
 pub struct Program<T: Read> {
     src: T,

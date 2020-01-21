@@ -1,6 +1,6 @@
-use identifier::Ident;
-use label::Label;
-use types::Types;
+use crate::identifier::Ident;
+use crate::label::Label;
+use crate::types::Types;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Term {
