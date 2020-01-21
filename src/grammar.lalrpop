@@ -1,8 +1,8 @@
-use identifier::Ident;
+use crate::identifier::Ident;
+use crate::label::{Label, TyPath};
+use crate::term::{BinaryOp, RichTerm, Term, UnaryOp};
+use crate::types::{Types, AbsType};
 use std::str::FromStr;
-use types::{Types, AbsType};
-use label::{Label, TyPath};
-use term::{BinaryOp, RichTerm, Term, UnaryOp};
 
 grammar;
 
