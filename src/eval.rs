@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
-pub type Enviroment = HashMap<Ident, (Rc<RefCell<Closure>>, IdentKind)>;
+pub type Environment = HashMap<Ident, (Rc<RefCell<Closure>>, IdentKind)>;
 pub type CallStack = Vec<StackElem>;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -25,7 +25,7 @@ pub enum IdentKind {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Closure {
     pub body: RichTerm,
-    pub env: Enviroment,
+    pub env: Environment,
 }
 
 impl Closure {

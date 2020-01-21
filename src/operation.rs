@@ -240,10 +240,10 @@ fn process_binary_operation(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::eval::{CallStack, Enviroment};
+    use crate::eval::{CallStack, Environment};
     use std::collections::HashMap;
 
-    fn some_env() -> Enviroment {
+    fn some_env() -> Environment {
         HashMap::new()
     }
 
