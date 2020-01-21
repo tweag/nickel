@@ -1,5 +1,5 @@
 use crate::identifier::Ident;
-use crate::term::{RichTerm, Term};
+use crate::term::{RichTerm, Term, UnaryOp};
 use std::collections::HashMap;
 
 #[derive(Clone, PartialEq, Debug)]
@@ -13,6 +13,11 @@ pub enum AbsType<Ty> {
     Arrow(Ty, Ty),
     Var(Ident),
     Forall(Ident, Ty),
+
+    // A kind system would be nice
+    RowEmpty(),
+    RowExtend(Ident, Ty /* Row */),
+    Enum(Ty /* Row */),
 }
 
 impl<Ty> AbsType<Ty> {
@@ -36,6 +41,9 @@ impl<Ty> AbsType<Ty> {
 
                 AbsType::Forall(i, ft)
             }
+            AbsType::RowEmpty() => AbsType::RowEmpty(),
+            AbsType::RowExtend(id, t) => AbsType::RowExtend(id, f(t)),
+            AbsType::Enum(t) => AbsType::Enum(f(t)),
         }
     }
 
@@ -89,6 +97,44 @@ impl Types {
                 h.insert(i.clone(), inst_var);
                 *sy += 1;
                 t.contract_open(h, pol, sy)
+            }
+            AbsType::RowEmpty() | AbsType::RowExtend(_, _) => {
+                panic!("These types should not be checked at runtime!")
+            }
+            AbsType::Enum(ref r) => {
+                fn form(ty: Types, h: HashMap<Ident, RichTerm>) -> RichTerm {
+                    match ty.0 {
+                        AbsType::RowEmpty() => RichTerm::var("fail".to_string()),
+                        AbsType::RowExtend(id, rest) => {
+                            let rest_contract = form(*rest, h);
+                            let mut map = HashMap::new();
+                            map.insert(id, Term::Bool(true).into());
+
+                            RichTerm::app(
+                                RichTerm::app(
+                                    RichTerm::var("row_extend".to_string()),
+                                    rest_contract,
+                                ),
+                                Term::Fun(
+                                    Ident("x".to_string()),
+                                    Term::Op1(
+                                        UnaryOp::Switch(map, Some(Term::Bool(false).into())),
+                                        Term::Var(Ident("x".to_string())).into(),
+                                    )
+                                    .into(),
+                                )
+                                .into(),
+                            )
+                        }
+                        AbsType::Var(ref i) => {
+                            let rt = h.get(i).expect(&format!("Unbound type variable {:?}", i));
+                            rt.clone()
+                        }
+                        not_row => panic!("It should be a row!! {:?}", not_row),
+                    }
+                }
+
+                form(*r.clone(), h)
             }
         }
     }

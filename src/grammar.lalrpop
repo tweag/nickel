@@ -3,6 +3,7 @@ use crate::label::{Label, TyPath};
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp};
 use crate::types::{Types, AbsType};
 use std::str::FromStr;
+use either::*;
 
 grammar;
 
@@ -45,6 +46,7 @@ Atom: RichTerm = {
     Bool => RichTerm::new(Term::Bool(<>)),
     Str => RichTerm::new(Term::Str(<>)),
     Ident => RichTerm::new(Term::Var(<>)),
+    "`" <Ident> => RichTerm::new(Term::Enum(<>)),
 };
 
 Pattern: Ident = {
@@ -77,7 +79,21 @@ UOp: UnaryOp = {
     "goCodom" => UnaryOp::GoCodom(),
     "tag[" <DbgStr> "]" => UnaryOp::Tag(<>),
     "wrap" => UnaryOp::Wrap(),
+    "embed" <Ident> => UnaryOp::Embed(<>),
+    "switch" "{" <ds: (switch_def ",")*> "}" => 
+        UnaryOp::Switch(
+            ds.clone().into_iter().map(|x| x.0).filter_map(
+                |x| match x {Left(y) => Some(y), Right(_) => None}
+            ).collect(),
+            ds.into_iter().map(|x| x.0).find_map(
+                |x| match x {Left(_) => None, Right(y) => Some(y)})
+            ),
 };
+
+switch_def: Either<(Ident, RichTerm), RichTerm> = {
+    <id: Ident> "=>" <t: SpTerm<Atom> > => Left((id, t)),
+    "_" "=>" <SpTerm<Atom>> => Right(<>),
+}
 
 BOpIn: BinaryOp = {
     "+" => BinaryOp::Plus(),
@@ -107,6 +123,16 @@ subType : Types = {
     <Ident> => Types(AbsType::Var(<>)),
     "#" <SpTerm<RichTerm>> => Types(AbsType::Flat(<>)),
     "(" <Types> ")" => <>,
+    "(|" <r:(<Ident> ",")*> "|" <rest: Ident?> ")" => 
+        r.iter().fold(
+            Types(
+                match rest {
+                    Some(id) => AbsType::Var(id),
+                    None => AbsType::RowEmpty(),
+                }
+            ),
+            |t, i| Types(AbsType::RowExtend(i.clone(), Box::new(t)))), 
+    "<" <subType> ">" => Types(AbsType::Enum(Box::new(<>))),
 };
 
 DbgStr: String = r"[[:alpha:]_][[:word:]-]*" => <>.to_string();

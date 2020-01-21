@@ -194,16 +194,27 @@ impl<T: Read> Program<T> {
 
     fn contracts() -> String {
         "let dyn = fun l => fun t => t in
-let num = fun l => fun t => if isNum t then t else blame (tag[num] l) in
-let bool = fun l => fun t => if isBool t then t else blame (tag[bool] l) in
-let string = fun l => fun t => if isStr t then t else blame (tag[str] l) in
-let func = fun s => fun t => fun l => fun e => 
+
+        let num = fun l => fun t => if isNum t then t else blame (tag[num] l) in
+
+        let bool = fun l => fun t => if isBool t then t else blame (tag[bool] l) in
+
+        let string = fun l => fun t => if isStr t then t else blame (tag[str] l) in
+
+        let func = fun s => fun t => fun l => fun e => 
   let l = tag[func] l in if isFun e then (fun x => t (goCodom l) (e (s (chngPol (goDom l)) x))) else blame l in
-let forall_var = fun sy => fun pol => fun l => fun t => let lPol = polarity l in 
+
+  let forall_var = fun sy => fun pol => fun l => fun t => let lPol = polarity l in 
 if pol =b lPol then
   unwrap sy t (blame (tag[unwrp] l))
 else
   wrap sy t
+in
+
+let fail = fun l => fun t => blame (tag[fail] l) in
+
+let row_extend = fun contr => fun case => fun l => fun t => 
+        if (case t) then t else contr (tag[NotRowExt] l) t
 in
 ".to_string()
     }

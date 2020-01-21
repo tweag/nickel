@@ -11,6 +11,8 @@ mod types;
 
 use crate::program::Program;
 
+extern crate either;
+
 fn main() {
     let mut p = Program::new_from_stdin();
     match p.eval() {

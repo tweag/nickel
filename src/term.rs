@@ -1,6 +1,7 @@
 use crate::identifier::Ident;
 use crate::label::Label;
 use crate::types::Types;
+use std::collections::HashMap;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Term {
@@ -14,6 +15,8 @@ pub enum Term {
     Let(Ident, RichTerm, RichTerm),
     App(RichTerm, RichTerm),
     Var(Ident),
+    // Enums
+    Enum(Ident),
     // Primitives
     Op1(UnaryOp, RichTerm),
     Op2(BinaryOp, RichTerm, RichTerm),
@@ -31,7 +34,7 @@ impl Term {
     {
         use self::Term::*;
         match self {
-            Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | Sym(_) => {}
+            Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | Sym(_) | Enum(_) => {}
             Fun(_, ref mut t)
             | Op1(_, ref mut t)
             | Promise(_, _, ref mut t)
@@ -61,6 +64,9 @@ pub enum UnaryOp {
     IsFun(),
 
     Blame(),
+
+    Embed(Ident),
+    Switch(HashMap<Ident, RichTerm>, Option<RichTerm>),
 
     ChangePolarity(),
     Pol(),
