@@ -1,6 +1,6 @@
-use identifier::Ident;
+use crate::identifier::Ident;
+use crate::term::{RichTerm, Term};
 use std::collections::HashMap;
-use term::{RichTerm, Term};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum AbsType<Ty> {

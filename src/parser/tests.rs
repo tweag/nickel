@@ -1,6 +1,6 @@
-use identifier::Ident;
-use term::Term::*;
-use term::{BinaryOp, RichTerm, UnaryOp};
+use crate::identifier::Ident;
+use crate::term::Term::*;
+use crate::term::{BinaryOp, RichTerm, UnaryOp};
 
 fn parse_without_pos(s: &str) -> RichTerm {
     let parser = super::grammar::TermParser::new();

@@ -1,5 +1,5 @@
-use eval::Closure;
-use operation::OperationCont;
+use crate::eval::Closure;
+use crate::operation::OperationCont;
 use std::cell::RefCell;
 use std::rc::Weak;
 
@@ -130,8 +130,8 @@ impl Stack {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::term::{Term, UnaryOp};
     use std::rc::Rc;
-    use term::{Term, UnaryOp};
 
     fn some_closure() -> Closure {
         Closure::atomic_closure(Term::Bool(true).into())

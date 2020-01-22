@@ -9,14 +9,7 @@ mod term;
 mod typecheck;
 mod types;
 
-use program::Program;
-
-#[cfg(test)]
-#[macro_use]
-extern crate pretty_assertions;
-
-#[macro_use]
-extern crate lalrpop_util;
+use crate::program::Program;
 
 fn main() {
     let mut p = Program::new_from_stdin();

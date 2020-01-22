@@ -1,7 +1,7 @@
-{ pkgs ? import (builtins.fetchTarball "channel:nixos-19.03") {} }:
+{ pkgs ? import (builtins.fetchTarball "channel:nixos-19.09") {} }:
 pkgs.mkShell {
   buildInputs = with pkgs; [
-    rust.cargo
-    rust.rustc
+    rustPackages.cargo
+    rustPackages.rustc
   ];
 }

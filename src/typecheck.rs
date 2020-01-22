@@ -1,7 +1,7 @@
-use identifier::Ident;
+use crate::identifier::Ident;
+use crate::term::{BinaryOp, Term, UnaryOp};
+use crate::types::{AbsType, Types};
 use std::collections::HashMap;
-use term::{BinaryOp, Term, UnaryOp};
-use types::{AbsType, Types};
 
 // Type checking
 pub fn type_check(t: &Term) -> Result<(), String> {
@@ -362,10 +362,10 @@ pub fn get_root(s: &GTypes, x: usize) -> Result<TypeWrapper, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use label::{Label, TyPath};
-    use term::RichTerm;
+    use crate::label::{Label, TyPath};
+    use crate::term::RichTerm;
 
-    use parser;
+    use crate::parser;
 
     fn parse_and_typecheck(s: &str) -> Result<(), String> {
         if let Ok(p) = parser::grammar::TermParser::new().parse(s) {
