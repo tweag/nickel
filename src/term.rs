@@ -35,6 +35,16 @@ impl Term {
         use self::Term::*;
         match self {
             Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | Sym(_) | Enum(_) => {}
+            Op1(UnaryOp::Switch(ref mut map, ref mut def), ref mut t) => {
+                map.iter_mut().for_each(|e| {
+                    let (_, t) = e;
+                    func(t);
+                });
+                func(t);
+                if let Some(def) = def {
+                    func(def)
+                }
+            }
             Fun(_, ref mut t)
             | Op1(_, ref mut t)
             | Promise(_, _, ref mut t)

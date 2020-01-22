@@ -405,4 +405,39 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         assert_eq!(res, Ok(Term::Str("hello world!".to_string())));
     }
 
+    #[test]
+    fn enum_simple() {
+        let res = eval_string("Promise(< (| foo, bar, |) >, `foo)");
+        assert_eq!(res, Ok(Term::Enum(Ident("foo".to_string()))));
+
+        let res = eval_string("Promise(forall r. (< (| foo, bar, | r ) >), `bar)");
+        assert_eq!(res, Ok(Term::Enum(Ident("bar".to_string()))));
+
+        eval_string("Promise(< (| foo, bar, |) >, `far)").unwrap_err();
+    }
+
+    #[test]
+    fn enum_complex() {
+        let res = eval_string(
+            "let f = Promise(forall r. < (| foo, bar, | r ) > -> Num,
+        fun x => switch { foo => 1, bar => 2, _ => 3, } x) in
+        f `bar",
+        );
+        assert_eq!(res, Ok(Term::Num(2.)));
+
+        let res = eval_string(
+            "let f = Promise(forall r. < (| foo, bar, | r ) > -> Num,
+        fun x => switch { foo => 1, bar => 2, _ => 3, } x) in
+        f `boo",
+        );
+        assert_eq!(res, Ok(Term::Num(3.)));
+
+        eval_string(
+            "let f = Promise(< (| foo, bar, |) > -> Num,
+        fun x => switch { foo => 1, bar => 2, } x) in
+        f `boo",
+        )
+        .unwrap_err();
+    }
+
 }
