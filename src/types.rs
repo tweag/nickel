@@ -82,7 +82,9 @@ impl Types {
             ),
             AbsType::Flat(ref t) => t.clone(),
             AbsType::Var(ref i) => {
-                let rt = h.get(i).expect(&format!("Unbound type variable {:?}", i));
+                let rt = h
+                    .get(i)
+                    .unwrap_or_else(|| panic!("Unbound type variable {:?}", i));
                 rt.clone()
             }
             AbsType::Forall(ref i, ref t) => {
@@ -127,7 +129,9 @@ impl Types {
                             )
                         }
                         AbsType::Var(ref i) => {
-                            let rt = h.get(i).expect(&format!("Unbound type variable {:?}", i));
+                            let rt = h
+                                .get(i)
+                                .unwrap_or_else(|| panic!("Unbound type variable {:?}", i));
                             rt.clone()
                         }
                         not_row => panic!("It should be a row!! {:?}", not_row),

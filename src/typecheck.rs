@@ -421,7 +421,7 @@ pub fn get_uop_type(
             // taking ANY enum, since it's more permissive and there's not a loss of information
             let res = TypeWrapper::Ptr(new_var(s));
 
-            for (_, exp) in l {
+            for exp in l.values() {
                 type_check_(typed_vars.clone(), s, c, exp.as_ref(), res.clone(), strict)?;
             }
 
@@ -430,7 +430,7 @@ pub fn get_uop_type(
                     type_check_(typed_vars.clone(), s, c, e.as_ref(), res.clone(), strict)?;
                     TypeWrapper::Ptr(new_var(s))
                 }
-                None => l.into_iter().try_fold(
+                None => l.iter().try_fold(
                     TypeWrapper::Concrete(AbsType::RowEmpty()),
                     |acc, x| -> Result<TypeWrapper, String> {
                         constraint(s, c, acc.clone(), x.0.clone())?;

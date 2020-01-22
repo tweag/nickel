@@ -111,9 +111,9 @@ fn process_unary_operation(
         UnaryOp::Switch(mut m, d) => {
             if let Term::Enum(en) = *t {
                 match m.remove(&en) {
-                    Some(ex) => Ok(Closure { body: ex, env: env }),
+                    Some(ex) => Ok(Closure { body: ex, env }),
                     None => match d {
-                        Some(ex) => Ok(Closure { body: ex, env: env }),
+                        Some(ex) => Ok(Closure { body: ex, env }),
                         None => Err(EvalError::TypeError(format!(
                             "Expected Enum in {:?}, got {:?}",
                             m, en
@@ -122,7 +122,7 @@ fn process_unary_operation(
                 }
             } else {
                 match d {
-                    Some(ex) => Ok(Closure { body: ex, env: env }),
+                    Some(ex) => Ok(Closure { body: ex, env }),
                     None => Err(EvalError::TypeError(format!("Expected Enum, got {:?}", *t))),
                 }
             }
