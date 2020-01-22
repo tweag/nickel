@@ -130,7 +130,7 @@ subType : Types = {
                     None => AbsType::RowEmpty(),
                 }
             ),
-            |t, i| Types(AbsType::RowExtend(i.clone(), Box::new(t)))), 
+            |t, i| Types(AbsType::RowExtend(i.clone(), None, Box::new(t)))), 
     "<" <subType> ">" => Types(AbsType::Enum(Box::new(<>))),
 };
 

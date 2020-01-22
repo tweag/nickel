@@ -116,7 +116,7 @@ fn type_check_(
                 constr,
                 ty,
                 TypeWrapper::Concrete(AbsType::Enum(Box::new(TypeWrapper::Concrete(
-                    AbsType::RowExtend(id.clone(), Box::new(row)),
+                    AbsType::RowExtend(id.clone(), None, Box::new(row)),
                 )))),
                 strict,
             )
@@ -221,9 +221,11 @@ impl TypeWrapper {
                 Concrete(AbsType::Arrow(Box::new(fs), Box::new(ft)))
             }
             Concrete(AbsType::RowEmpty()) => Concrete(AbsType::RowEmpty()),
-            Concrete(AbsType::RowExtend(tag, rest)) => {
-                Concrete(AbsType::RowExtend(tag, Box::new(rest.subst(id, to))))
-            }
+            Concrete(AbsType::RowExtend(tag, ty, rest)) => Concrete(AbsType::RowExtend(
+                tag,
+                ty.map(|x| Box::new(x.subst(id.clone(), to.clone()))),
+                Box::new(rest.subst(id, to)),
+            )),
             Concrete(AbsType::Enum(row)) => Concrete(AbsType::Enum(Box::new(row.subst(id, to)))),
 
             Constant(x) => Constant(x),
@@ -234,31 +236,34 @@ impl TypeWrapper {
 
 /// Add an identifier to a row.
 ///
-/// If the id is not there, and the row is open, it will add it.
+/// If the id is not there, and the row is open, it will add it with the passed type `ty`.
 ///
 /// # Returns
 ///
-/// The row without the added id.
+/// The type bound with the id and the row without the id.
 fn row_add(
     state: &mut GTypes,
     constr: &mut GConstr,
     id: Ident,
+    ty: Option<Box<TypeWrapper>>,
     mut r: TypeWrapper,
-) -> Result<TypeWrapper, String> {
+) -> Result<(Option<Box<TypeWrapper>>, TypeWrapper), String> {
     if let TypeWrapper::Ptr(p) = r {
         r = get_root(state, p)?;
     }
     match r {
-        TypeWrapper::Concrete(AbsType::RowEmpty()) => Err("The row didn't have the id".to_string()),
-        TypeWrapper::Concrete(AbsType::RowExtend(id2, r2)) => {
+        TypeWrapper::Concrete(AbsType::RowEmpty()) => {
+            Err("The row didn't have the id and it wasn't open".to_string())
+        }
+        TypeWrapper::Concrete(AbsType::RowExtend(id2, ty2, r2)) => {
             if id == id2 {
-                Ok(*r2)
+                Ok((ty2, *r2))
             } else {
-                let subrow = row_add(state, constr, id, *r2)?;
-                Ok(TypeWrapper::Concrete(AbsType::RowExtend(
-                    id2,
-                    Box::new(subrow),
-                )))
+                let (extracted_type, subrow) = row_add(state, constr, id, ty, *r2)?;
+                Ok((
+                    extracted_type,
+                    TypeWrapper::Concrete(AbsType::RowExtend(id2, ty2, Box::new(subrow))),
+                ))
             }
         }
         TypeWrapper::Concrete(not_row) => Err(format!("Expected a row, got {:?}", not_row)),
@@ -277,10 +282,11 @@ fn row_add(
                 root,
                 Some(TypeWrapper::Concrete(AbsType::RowExtend(
                     id,
+                    ty.clone(),
                     Box::new(new_row.clone()),
                 ))),
             );
-            Ok(new_row)
+            Ok((ty, new_row))
         }
         TypeWrapper::Constant(_) => Err("Expected a row, got a constant".to_string()),
     }
@@ -330,8 +336,14 @@ pub fn unify(
                 ))
             } // Right now it only unifies equally named variables
             (AbsType::RowEmpty(), AbsType::RowEmpty()) => Ok(()),
-            (AbsType::RowExtend(id, t), r2 @ AbsType::RowExtend(_, _)) => {
-                let r2 = row_add(state, constr, id, TypeWrapper::Concrete(r2))?;
+            (AbsType::RowExtend(id, ty, t), r2 @ AbsType::RowExtend(_, _, _)) => {
+                let (ty2, r2) = row_add(state, constr, id, ty.clone(), TypeWrapper::Concrete(r2))?;
+
+                match (ty, ty2) {
+                    (None, None) => Ok(()),
+                    (Some(ty), Some(ty2)) => unify(state, constr, *ty, *ty2, strict),
+                    _ => Err("Couldn't unify two types from a row!".to_string()),
+                }?;
                 unify(state, constr, *t, r2, strict)
             }
             (AbsType::Enum(r), AbsType::Enum(r2)) => unify(state, constr, *r, *r2, strict),
@@ -352,6 +364,10 @@ pub fn unify(
         },
         (TypeWrapper::Ptr(r1), TypeWrapper::Ptr(r2)) => {
             if r1 != r2 {
+                let mut r1_constr = constr.remove(&r1).unwrap_or(HashSet::new());
+                let mut r2_constr = constr.remove(&r2).unwrap_or(HashSet::new());
+                constr.insert(r1, r1_constr.drain().chain(r2_constr.drain()).collect());
+
                 state.insert(r1, Some(TypeWrapper::Ptr(r2)));
             }
             Ok(())
@@ -464,7 +480,7 @@ pub fn get_uop_type(
             TypeWrapper::Concrete(AbsType::Arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::Enum(Box::new(row.clone())))),
                 Box::new(TypeWrapper::Concrete(AbsType::Enum(Box::new(
-                    TypeWrapper::Concrete(AbsType::RowExtend(id.clone(), Box::new(row))),
+                    TypeWrapper::Concrete(AbsType::RowExtend(id.clone(), None, Box::new(row))),
                 )))),
             ))
         }
@@ -502,6 +518,7 @@ pub fn get_uop_type(
                         constraint(state, constr, acc.clone(), x.0.clone())?;
                         Ok(TypeWrapper::Concrete(AbsType::RowExtend(
                             x.0.clone(),
+                            None,
                             Box::new(acc),
                         )))
                     },
@@ -600,7 +617,7 @@ fn constraint(
             }
         }
         TypeWrapper::Concrete(AbsType::RowEmpty()) => Ok(()),
-        TypeWrapper::Concrete(AbsType::RowExtend(id2, t)) => {
+        TypeWrapper::Concrete(AbsType::RowExtend(id2, _, t)) => {
             if id2 == id {
                 Err(format!("The id {:?} was present on the row", id))
             } else {
