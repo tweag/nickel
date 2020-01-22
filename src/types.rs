@@ -84,7 +84,7 @@ impl Types {
                 );
 
                 h.insert(i.clone(), inst_var);
-                *sy = *sy + 1;
+                *sy += 1;
                 t.contract_open(h, pol, sy)
             }
         }

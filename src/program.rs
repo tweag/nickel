@@ -50,7 +50,7 @@ impl<T: Read> Program<T> {
     }
 
     fn parse(&mut self) -> Result<RichTerm, String> {
-        if let None = self.parsed {
+        if self.parsed.is_none() {
             let mut buf = self.read()?;
             if self.include_contracts {
                 // TODO get rid of this once we have imports
@@ -72,7 +72,7 @@ impl<T: Read> Program<T> {
     }
 
     fn read(&mut self) -> Result<String, String> {
-        if let None = self.read {
+        if self.read.is_none() {
             let mut buffer = String::new();
             match self.src.read_to_string(&mut buffer) {
                 Ok(_) => self.read = Some(buffer),
@@ -178,10 +178,10 @@ impl<T: Read> Program<T> {
             return None;
         }
         for byte in buffer.bytes() {
-            so_far = so_far + 1;
-            col = col + 1;
+            so_far += 1;
+            col += 1;
             if byte == b'\n' {
-                line = line + 1;
+                line += 1;
                 col = 1;
             }
             if so_far == b {

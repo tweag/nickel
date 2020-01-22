@@ -65,7 +65,7 @@ fn type_check_(
         Term::Var(x) => {
             let x_ty = typed_vars
                 .get(&x)
-                .ok_or(format!("Found an unbound var {:?}", x))?;
+                .ok_or_else(|| format!("Found an unbound var {:?}", x))?;
 
             let instantiated = instantiate_foralls_with(s, x_ty.clone(), TypeWrapper::Ptr)?;
             unify(s, ty, instantiated, strict)
@@ -351,7 +351,10 @@ fn new_var(state: &mut GTypes) -> usize {
 
 // TODO This should be a union find like algorithm
 pub fn get_root(s: &GTypes, x: usize) -> Result<TypeWrapper, String> {
-    match s.get(&x).ok_or(format!("Unbound type variable {}!", x))? {
+    match s
+        .get(&x)
+        .ok_or_else(|| format!("Unbound type variable {}!", x))?
+    {
         None => Ok(TypeWrapper::Ptr(x)),
         Some(TypeWrapper::Ptr(y)) => get_root(s, *y),
         Some(ty @ TypeWrapper::Concrete(_)) => Ok(ty.clone()),

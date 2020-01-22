@@ -2,6 +2,8 @@
 pkgs.mkShell {
   buildInputs = with pkgs; [
     rustPackages.cargo
+    rustPackages.clippy
     rustPackages.rustc
+    rustPackages.rustfmt
   ];
 }

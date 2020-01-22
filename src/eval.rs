@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
-pub type Enviroment = HashMap<Ident, (Rc<RefCell<Closure>>, IdentKind)>;
+pub type Environment = HashMap<Ident, (Rc<RefCell<Closure>>, IdentKind)>;
 pub type CallStack = Vec<StackElem>;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -25,7 +25,7 @@ pub enum IdentKind {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Closure {
     pub body: RichTerm,
-    pub env: Enviroment,
+    pub env: Environment,
 }
 
 impl Closure {
@@ -48,11 +48,7 @@ fn is_value(_term: &Term) -> bool {
 }
 
 pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
-    let empty_env = HashMap::new();
-    let mut clos = Closure {
-        body: t0,
-        env: empty_env,
-    };
+    let mut clos = Closure::atomic_closure(t0);
     let mut call_stack = CallStack::new();
     let mut stack = Stack::new();
 
@@ -65,7 +61,7 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
             mut env,
         } = clos;
         let term = *boxed_term;
-        match term {
+        clos = match term {
             // Var
             Term::Var(x) => {
                 let (thunk, id_kind) = env.remove(&x).expect(&format!("Unbound variable {:?}", x));
@@ -77,11 +73,11 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                 match Rc::try_unwrap(thunk) {
                     Ok(c) => {
                         // thunk was the only strong ref to the closure
-                        clos = c.into_inner();
+                        c.into_inner()
                     }
                     Err(rc) => {
                         // We need to clone it, there are other strong refs
-                        clos = rc.borrow().clone();
+                        rc.borrow().clone()
                     }
                 }
             }
@@ -94,7 +90,7 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                     },
                     pos,
                 );
-                clos = Closure { body: t1, env };
+                Closure { body: t1, env }
             }
             // Let
             Term::Let(x, s, t) => {
@@ -103,12 +99,12 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                     env: env.clone(),
                 }));
                 env.insert(x, (Rc::clone(&thunk), IdentKind::Let()));
-                clos = Closure { body: t, env: env };
+                Closure { body: t, env }
             }
             // Unary Operation
             Term::Op1(op, t) => {
                 stack.push_op_cont(OperationCont::Op1(op), call_stack.len());
-                clos = Closure { body: t, env };
+                Closure { body: t, env }
             }
             // Binary Operation
             Term::Op2(op, fst, snd) => {
@@ -122,7 +118,7 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                     ),
                     call_stack.len(),
                 );
-                clos = Closure { body: fst, env };
+                Closure { body: fst, env }
             }
             // Promise and Assume
             Term::Promise(ty, l, t) | Term::Assume(ty, l, t) => {
@@ -134,10 +130,10 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                     None,
                 );
                 stack.push_arg(Closure::atomic_closure(RichTerm::new(Term::Lbl(l))), None);
-                clos = Closure {
+                Closure {
                     body: ty.contract(),
                     env,
-                };
+                }
             }
             // Continuate Operation
             // Update
@@ -152,13 +148,14 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                             *safe_thunk.borrow_mut() = clos.clone();
                         }
                     }
+                    clos
                 } else {
                     let cont_result = continuate_operation(clos, &mut stack, &mut call_stack);
 
                     if let Err(EvalError::BlameError(l, _)) = cont_result {
                         return Err(EvalError::BlameError(l, Some(call_stack)));
                     }
-                    clos = cont_result?;
+                    cont_result?
                 }
             }
             // Call
@@ -168,7 +165,7 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                     call_stack.push(StackElem::App(pos));
                     let thunk = Rc::new(RefCell::new(arg));
                     env.insert(x, (thunk, IdentKind::Lam()));
-                    clos = Closure { body: t, env }
+                    Closure { body: t, env }
                 } else {
                     return Ok(Term::Fun(x, t));
                 }
