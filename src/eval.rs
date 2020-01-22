@@ -64,7 +64,9 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
         clos = match term {
             // Var
             Term::Var(x) => {
-                let (thunk, id_kind) = env.remove(&x).expect(&format!("Unbound variable {:?}", x));
+                let (thunk, id_kind) = env
+                    .remove(&x)
+                    .unwrap_or_else(|| panic!("Unbound variable {:?}", x));
                 std::mem::drop(env); // thunk may be a 1RC pointer
                 if !is_value(&thunk.borrow().body.term) {
                     stack.push_thunk(Rc::downgrade(&thunk));

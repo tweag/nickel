@@ -5,43 +5,74 @@ use std::collections::{HashMap, HashSet};
 
 // Type checking
 pub fn type_check(t: &Term) -> Result<Types, String> {
-    let mut s = GTypes::new();
-    let mut c = GConstr::new();
-    let ty = TypeWrapper::Ptr(new_var(&mut s));
-    type_check_(HashMap::new(), &mut s, &mut c, t, ty.clone(), false)?;
+    let mut state = GTypes::new();
+    let mut constr = GConstr::new();
+    let ty = TypeWrapper::Ptr(new_var(&mut state));
+    type_check_(
+        HashMap::new(),
+        &mut state,
+        &mut constr,
+        t,
+        ty.clone(),
+        false,
+    )?;
 
-    Ok(to_type(&s, ty)?)
+    Ok(to_type(&state, ty)?)
 }
 
 fn type_check_(
     mut typed_vars: HashMap<Ident, TypeWrapper>,
-    s: &mut GTypes,
-    c: &mut GConstr,
+    state: &mut GTypes,
+    constr: &mut GConstr,
     t: &Term,
     ty: TypeWrapper,
     strict: bool,
 ) -> Result<(), String> {
     match t {
-        Term::Bool(_) => unify(s, c, ty, TypeWrapper::Concrete(AbsType::Bool()), strict),
-        Term::Num(_) => unify(s, c, ty, TypeWrapper::Concrete(AbsType::Num()), strict),
-        Term::Str(_) => unify(s, c, ty, TypeWrapper::Concrete(AbsType::Str()), strict),
+        Term::Bool(_) => unify(
+            state,
+            constr,
+            ty,
+            TypeWrapper::Concrete(AbsType::Bool()),
+            strict,
+        ),
+        Term::Num(_) => unify(
+            state,
+            constr,
+            ty,
+            TypeWrapper::Concrete(AbsType::Num()),
+            strict,
+        ),
+        Term::Str(_) => unify(
+            state,
+            constr,
+            ty,
+            TypeWrapper::Concrete(AbsType::Str()),
+            strict,
+        ),
         Term::Fun(x, rt) => {
-            let src = TypeWrapper::Ptr(new_var(s));
+            let src = TypeWrapper::Ptr(new_var(state));
             // TODO what to do here, this makes more sense to me, but it means let x = foo in bar
             // behaves quite different to (\x.bar) foo, worth considering if it's ok to type these two differently
             // let src = TypeWrapper::The(AbsType::Dyn());
-            let trg = TypeWrapper::Ptr(new_var(s));
+            let trg = TypeWrapper::Ptr(new_var(state));
             let arr =
                 TypeWrapper::Concrete(AbsType::arrow(Box::new(src.clone()), Box::new(trg.clone())));
 
-            unify(s, c, ty, arr, strict)?;
+            unify(state, constr, ty, arr, strict)?;
 
             typed_vars.insert(x.clone(), src);
-            type_check_(typed_vars, s, c, rt.as_ref(), trg, strict)
+            type_check_(typed_vars, state, constr, rt.as_ref(), trg, strict)
         }
         Term::Lbl(_) => {
             // TODO implement lbl type
-            unify(s, c, ty, TypeWrapper::Concrete(AbsType::Dyn()), strict)
+            unify(
+                state,
+                constr,
+                ty,
+                TypeWrapper::Concrete(AbsType::Dyn()),
+                strict,
+            )
         }
         Term::Let(x, re, rt) => {
             let e = re.as_ref();
@@ -53,36 +84,36 @@ fn type_check_(
                 _ => TypeWrapper::Concrete(AbsType::Dyn()),
             };
 
-            let instantiated = instantiate_foralls_with(s, exp.clone(), TypeWrapper::Constant)?;
-            type_check_(typed_vars.clone(), s, c, e, instantiated, strict)?;
+            let instantiated = instantiate_foralls_with(state, exp.clone(), TypeWrapper::Constant)?;
+            type_check_(typed_vars.clone(), state, constr, e, instantiated, strict)?;
 
             // TODO move this up once lets are rec
             typed_vars.insert(x.clone(), exp);
-            type_check_(typed_vars, s, c, rt.as_ref(), ty, strict)
+            type_check_(typed_vars, state, constr, rt.as_ref(), ty, strict)
         }
         Term::App(re, rt) => {
-            let src = TypeWrapper::Ptr(new_var(s));
+            let src = TypeWrapper::Ptr(new_var(state));
             let arr = TypeWrapper::Concrete(AbsType::arrow(Box::new(src.clone()), Box::new(ty)));
 
-            type_check_(typed_vars.clone(), s, c, re.as_ref(), arr, strict)?;
-            type_check_(typed_vars, s, c, rt.as_ref(), src, strict)
+            type_check_(typed_vars.clone(), state, constr, re.as_ref(), arr, strict)?;
+            type_check_(typed_vars, state, constr, rt.as_ref(), src, strict)
         }
         Term::Var(x) => {
             let x_ty = typed_vars
                 .get(&x)
                 .ok_or_else(|| format!("Found an unbound var {:?}", x))?;
 
-            let instantiated = instantiate_foralls_with(s, x_ty.clone(), TypeWrapper::Ptr)?;
-            unify(s, c, ty, instantiated, strict)
+            let instantiated = instantiate_foralls_with(state, x_ty.clone(), TypeWrapper::Ptr)?;
+            unify(state, constr, ty, instantiated, strict)
         }
         Term::Enum(id) => {
-            let row = TypeWrapper::Ptr(new_var(s));
+            let row = TypeWrapper::Ptr(new_var(state));
             // Do we really need to constraint on enums?
             // What's the meaning of this?
-            constraint(s, c, row.clone(), id.clone())?;
+            constraint(state, constr, row.clone(), id.clone())?;
             unify(
-                s,
-                c,
+                state,
+                constr,
                 ty,
                 TypeWrapper::Concrete(AbsType::Enum(Box::new(TypeWrapper::Concrete(
                     AbsType::RowExtend(id.clone(), Box::new(row)),
@@ -91,19 +122,19 @@ fn type_check_(
             )
         }
         Term::Op1(op, rt) => {
-            let ty_op = get_uop_type(typed_vars.clone(), s, c, op, strict)?;
+            let ty_op = get_uop_type(typed_vars.clone(), state, constr, op, strict)?;
 
-            let src = TypeWrapper::Ptr(new_var(s));
+            let src = TypeWrapper::Ptr(new_var(state));
             let arr = TypeWrapper::Concrete(AbsType::arrow(Box::new(src.clone()), Box::new(ty)));
 
-            unify(s, c, arr, ty_op, strict)?;
-            type_check_(typed_vars, s, c, rt.as_ref(), src, strict)
+            unify(state, constr, arr, ty_op, strict)?;
+            type_check_(typed_vars, state, constr, rt.as_ref(), src, strict)
         }
         Term::Op2(op, re, rt) => {
-            let ty_op = get_bop_type(s, op);
+            let ty_op = get_bop_type(state, op);
 
-            let src1 = TypeWrapper::Ptr(new_var(s));
-            let src2 = TypeWrapper::Ptr(new_var(s));
+            let src1 = TypeWrapper::Ptr(new_var(state));
+            let src2 = TypeWrapper::Ptr(new_var(state));
             let arr = TypeWrapper::Concrete(AbsType::arrow(
                 Box::new(src1.clone()),
                 Box::new(TypeWrapper::Concrete(AbsType::arrow(
@@ -112,25 +143,43 @@ fn type_check_(
                 ))),
             ));
 
-            unify(s, c, arr, ty_op, strict)?;
-            type_check_(typed_vars.clone(), s, c, re.as_ref(), src1, strict)?;
-            type_check_(typed_vars, s, c, rt.as_ref(), src2, strict)
+            unify(state, constr, arr, ty_op, strict)?;
+            type_check_(typed_vars.clone(), state, constr, re.as_ref(), src1, strict)?;
+            type_check_(typed_vars, state, constr, rt.as_ref(), src2, strict)
         }
         Term::Promise(ty2, _, rt) => {
             let tyw2 = to_typewrapper(ty2.clone());
 
-            let instantiated = instantiate_foralls_with(s, tyw2, TypeWrapper::Constant)?;
+            let instantiated = instantiate_foralls_with(state, tyw2, TypeWrapper::Constant)?;
 
-            unify(s, c, ty.clone(), to_typewrapper(ty2.clone()), strict)?;
-            type_check_(typed_vars, s, c, rt.as_ref(), instantiated, true)
+            unify(
+                state,
+                constr,
+                ty.clone(),
+                to_typewrapper(ty2.clone()),
+                strict,
+            )?;
+            type_check_(typed_vars, state, constr, rt.as_ref(), instantiated, true)
         }
         Term::Assume(ty2, _, rt) => {
-            unify(s, c, ty.clone(), to_typewrapper(ty2.clone()), strict)?;
-            let new_ty = TypeWrapper::Ptr(new_var(s));
-            type_check_(typed_vars, s, c, rt.as_ref(), new_ty, false)
+            unify(
+                state,
+                constr,
+                ty.clone(),
+                to_typewrapper(ty2.clone()),
+                strict,
+            )?;
+            let new_ty = TypeWrapper::Ptr(new_var(state));
+            type_check_(typed_vars, state, constr, rt.as_ref(), new_ty, false)
         }
-        Term::Sym(_) => unify(s, c, ty, TypeWrapper::Concrete(AbsType::Sym()), strict),
-        Term::Wrapped(_, rt) => type_check_(typed_vars, s, c, rt.as_ref(), ty, strict),
+        Term::Sym(_) => unify(
+            state,
+            constr,
+            ty,
+            TypeWrapper::Concrete(AbsType::Sym()),
+            strict,
+        ),
+        Term::Wrapped(_, rt) => type_check_(typed_vars, state, constr, rt.as_ref(), ty, strict),
     }
 }
 
@@ -192,7 +241,7 @@ impl TypeWrapper {
 /// The row without the added id.
 fn row_add(
     state: &mut GTypes,
-    c: &mut GConstr,
+    constr: &mut GConstr,
     id: Ident,
     mut r: TypeWrapper,
 ) -> Result<TypeWrapper, String> {
@@ -205,7 +254,7 @@ fn row_add(
             if id == id2 {
                 Ok(*r2)
             } else {
-                let subrow = row_add(state, c, id, *r2)?;
+                let subrow = row_add(state, constr, id, *r2)?;
                 Ok(TypeWrapper::Concrete(AbsType::RowExtend(
                     id2,
                     Box::new(subrow),
@@ -214,7 +263,7 @@ fn row_add(
         }
         TypeWrapper::Concrete(not_row) => Err(format!("Expected a row, got {:?}", not_row)),
         TypeWrapper::Ptr(root) => {
-            if let Some(set) = c.get(&root) {
+            if let Some(set) = constr.get(&root) {
                 if set.contains(&id) {
                     return Err(format!(
                         "Tried to add {:?} to the row, but it was constrained.",
@@ -223,7 +272,7 @@ fn row_add(
                 }
             }
             let new_row = TypeWrapper::Ptr(new_var(state));
-            constraint(state, c, new_row.clone(), id.clone())?;
+            constraint(state, constr, new_row.clone(), id.clone())?;
             state.insert(
                 root,
                 Some(TypeWrapper::Concrete(AbsType::RowExtend(
@@ -239,7 +288,7 @@ fn row_add(
 
 pub fn unify(
     state: &mut GTypes,
-    c: &mut GConstr,
+    constr: &mut GConstr,
     mut t1: TypeWrapper,
     mut t2: TypeWrapper,
     strict: bool,
@@ -264,8 +313,8 @@ pub fn unify(
             (AbsType::Str(), AbsType::Str()) => Ok(()),
             (AbsType::Sym(), AbsType::Sym()) => Ok(()),
             (AbsType::Arrow(s1s, s1t), AbsType::Arrow(s2s, s2t)) => {
-                unify(state, c, *s1s, *s2s, strict)?;
-                unify(state, c, *s1t, *s2t, strict)
+                unify(state, constr, *s1s, *s2s, strict)?;
+                unify(state, constr, *s1t, *s2t, strict)
             }
             (AbsType::Flat(s), AbsType::Flat(t)) => {
                 if let Term::Var(s) = s.clone().into() {
@@ -275,14 +324,17 @@ pub fn unify(
                         }
                     }
                 }
-                Err(format!("Two expressions didn't match {:?} - {:?}", s, t))
+                Err(format!(
+                    "Two expressions didn't match {:?} - {:?}",
+                    state, t
+                ))
             } // Right now it only unifies equally named variables
             (AbsType::RowEmpty(), AbsType::RowEmpty()) => Ok(()),
             (AbsType::RowExtend(id, t), r2 @ AbsType::RowExtend(_, _)) => {
-                let r2 = row_add(state, c, id, TypeWrapper::Concrete(r2))?;
-                unify(state, c, *t, r2, strict)
+                let r2 = row_add(state, constr, id, TypeWrapper::Concrete(r2))?;
+                unify(state, constr, *t, r2, strict)
             }
-            (AbsType::Enum(r), AbsType::Enum(r2)) => unify(state, c, *r, *r2, strict),
+            (AbsType::Enum(r), AbsType::Enum(r2)) => unify(state, constr, *r, *r2, strict),
             (AbsType::Var(ref i1), AbsType::Var(ref i2)) if i1 == i2 => Ok(()),
             (AbsType::Forall(i1, t1t), AbsType::Forall(i2, t2t)) => {
                 // Very stupid (slow) implementation
@@ -290,7 +342,7 @@ pub fn unify(
 
                 unify(
                     state,
-                    c,
+                    constr,
                     t1t.subst(i1, constant_type.clone()),
                     t2t.subst(i2, constant_type),
                     strict,
@@ -325,22 +377,22 @@ fn to_typewrapper(t: Types) -> TypeWrapper {
     TypeWrapper::Concrete(t3)
 }
 
-fn to_type(s: &GTypes, ty: TypeWrapper) -> Result<Types, String> {
+fn to_type(state: &GTypes, ty: TypeWrapper) -> Result<Types, String> {
     Ok(match ty {
-        TypeWrapper::Ptr(p) => match get_root(s, p)? {
-            t @ TypeWrapper::Concrete(_) => to_type(s, t)?,
+        TypeWrapper::Ptr(p) => match get_root(state, p)? {
+            t @ TypeWrapper::Concrete(_) => to_type(state, t)?,
             _ => Types(AbsType::Dyn()),
         },
         TypeWrapper::Constant(_) => Types(AbsType::Dyn()),
         TypeWrapper::Concrete(t) => {
-            let mapped = t.map(|btyp| Box::new(to_type(s, *btyp).unwrap()));
+            let mapped = t.map(|btyp| Box::new(to_type(state, *btyp).unwrap()));
             Types(mapped)
         }
     })
 }
 
 fn instantiate_foralls_with<F>(
-    s: &mut GTypes,
+    state: &mut GTypes,
     mut ty: TypeWrapper,
     f: F,
 ) -> Result<TypeWrapper, String>
@@ -348,11 +400,11 @@ where
     F: Fn(usize) -> TypeWrapper,
 {
     if let TypeWrapper::Ptr(p) = ty {
-        ty = get_root(s, p)?;
+        ty = get_root(state, p)?;
     }
 
     while let TypeWrapper::Concrete(AbsType::Forall(id, forall_ty)) = ty {
-        let var = f(new_var(s));
+        let var = f(new_var(state));
         ty = forall_ty.subst(id, var);
     }
     Ok(ty)
@@ -360,14 +412,14 @@ where
 
 pub fn get_uop_type(
     typed_vars: HashMap<Ident, TypeWrapper>,
-    s: &mut GTypes,
-    c: &mut GConstr,
+    state: &mut GTypes,
+    constr: &mut GConstr,
     op: &UnaryOp,
     strict: bool,
 ) -> Result<TypeWrapper, String> {
     Ok(match op {
         UnaryOp::Ite() => {
-            let branches = TypeWrapper::Ptr(new_var(s));
+            let branches = TypeWrapper::Ptr(new_var(state));
 
             TypeWrapper::Concrete(AbsType::arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::Bool())),
@@ -385,7 +437,7 @@ pub fn get_uop_type(
             Box::new(TypeWrapper::Concrete(AbsType::Bool())),
         )),
         UnaryOp::IsNum() | UnaryOp::IsBool() | UnaryOp::IsStr() | UnaryOp::IsFun() => {
-            let inp = TypeWrapper::Ptr(new_var(s));
+            let inp = TypeWrapper::Ptr(new_var(state));
 
             TypeWrapper::Concrete(AbsType::arrow(
                 Box::new(inp),
@@ -393,7 +445,7 @@ pub fn get_uop_type(
             ))
         }
         UnaryOp::Blame() => {
-            let res = TypeWrapper::Ptr(new_var(s));
+            let res = TypeWrapper::Ptr(new_var(state));
 
             TypeWrapper::Concrete(AbsType::arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
@@ -406,8 +458,8 @@ pub fn get_uop_type(
         )),
 
         UnaryOp::Embed(id) => {
-            let row = TypeWrapper::Ptr(new_var(s));
-            constraint(s, c, row.clone(), id.clone())?;
+            let row = TypeWrapper::Ptr(new_var(state));
+            constraint(state, constr, row.clone(), id.clone())?;
 
             TypeWrapper::Concrete(AbsType::Arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::Enum(Box::new(row.clone())))),
@@ -419,21 +471,35 @@ pub fn get_uop_type(
         UnaryOp::Switch(l, d) => {
             // Currently, if it has a default value, we typecheck the whole thing as
             // taking ANY enum, since it's more permissive and there's not a loss of information
-            let res = TypeWrapper::Ptr(new_var(s));
+            let res = TypeWrapper::Ptr(new_var(state));
 
             for exp in l.values() {
-                type_check_(typed_vars.clone(), s, c, exp.as_ref(), res.clone(), strict)?;
+                type_check_(
+                    typed_vars.clone(),
+                    state,
+                    constr,
+                    exp.as_ref(),
+                    res.clone(),
+                    strict,
+                )?;
             }
 
             let row = match d {
                 Some(e) => {
-                    type_check_(typed_vars.clone(), s, c, e.as_ref(), res.clone(), strict)?;
-                    TypeWrapper::Ptr(new_var(s))
+                    type_check_(
+                        typed_vars.clone(),
+                        state,
+                        constr,
+                        e.as_ref(),
+                        res.clone(),
+                        strict,
+                    )?;
+                    TypeWrapper::Ptr(new_var(state))
                 }
                 None => l.iter().try_fold(
                     TypeWrapper::Concrete(AbsType::RowEmpty()),
                     |acc, x| -> Result<TypeWrapper, String> {
-                        constraint(s, c, acc.clone(), x.0.clone())?;
+                        constraint(state, constr, acc.clone(), x.0.clone())?;
                         Ok(TypeWrapper::Concrete(AbsType::RowExtend(
                             x.0.clone(),
                             Box::new(acc),
@@ -511,17 +577,22 @@ fn new_var(state: &mut GTypes) -> usize {
     nxt
 }
 
-fn constraint(s: &mut GTypes, cons: &mut GConstr, x: TypeWrapper, id: Ident) -> Result<(), String> {
+fn constraint(
+    state: &mut GTypes,
+    constr: &mut GConstr,
+    x: TypeWrapper,
+    id: Ident,
+) -> Result<(), String> {
     match x {
         TypeWrapper::Ptr(p) => {
-            let ty = get_root(s, p)?;
+            let ty = get_root(state, p)?;
             match ty {
-                ty @ TypeWrapper::Concrete(_) => constraint(s, cons, ty, id),
+                ty @ TypeWrapper::Concrete(_) => constraint(state, constr, ty, id),
                 TypeWrapper::Ptr(root) => {
-                    if let Some(v) = cons.get_mut(&root) {
+                    if let Some(v) = constr.get_mut(&root) {
                         v.insert(id);
                     } else {
-                        cons.insert(root, vec![id].into_iter().collect());
+                        constr.insert(root, vec![id].into_iter().collect());
                     }
                     Ok(())
                 }
@@ -533,7 +604,7 @@ fn constraint(s: &mut GTypes, cons: &mut GConstr, x: TypeWrapper, id: Ident) -> 
             if id2 == id {
                 Err(format!("The id {:?} was present on the row", id))
             } else {
-                constraint(s, cons, *t, id)
+                constraint(state, constr, *t, id)
             }
         }
         _ => Err(format!("Can't constraint a {:?}", x)),
@@ -541,13 +612,13 @@ fn constraint(s: &mut GTypes, cons: &mut GConstr, x: TypeWrapper, id: Ident) -> 
 }
 
 // TODO This should be a union find like algorithm
-pub fn get_root(s: &GTypes, x: usize) -> Result<TypeWrapper, String> {
-    match s
+pub fn get_root(state: &GTypes, x: usize) -> Result<TypeWrapper, String> {
+    match state
         .get(&x)
         .ok_or_else(|| format!("Unbound type variable {}!", x))?
     {
         None => Ok(TypeWrapper::Ptr(x)),
-        Some(TypeWrapper::Ptr(y)) => get_root(s, *y),
+        Some(TypeWrapper::Ptr(y)) => get_root(state, *y),
         Some(ty @ TypeWrapper::Concrete(_)) => Ok(ty.clone()),
         Some(k @ TypeWrapper::Constant(_)) => Ok(k.clone()),
     }
