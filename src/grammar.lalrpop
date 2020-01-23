@@ -46,7 +46,22 @@ Atom: RichTerm = {
     Str => RichTerm::new(Term::Str(<>)),
     Ident => RichTerm::new(Term::Var(<>)),
     "`" <Ident> => RichTerm::new(Term::Enum(<>)),
+    "{" <fields: (RecordField ";")*> "}" => RichTerm::new(Term::Record(
+        fields.clone().into_iter().map(|x| x.0).filter_map(
+            |x| match x {Left(y) => Some(y), Right(_) => None}
+        ).collect(),
+        fields.into_iter().map(|x| x.0).filter_map(
+            |x| match x {Left(_) => None, Right(y) => Some(y)}
+        ).collect()
+    ))
 };
+
+RecordField: Either<(Ident, RichTerm), (RichTerm, RichTerm)> = {
+    <id: Ident> "=" <t: SpTerm<Atom>> => 
+        Either::Left((id, t)),
+    "$" <id: SpTerm<Term>> "=" <t: SpTerm<Atom>> => 
+        Either::Right((id, t)),
+}
 
 Pattern: Ident = {
     Ident,
@@ -131,7 +146,21 @@ subType : Types = {
                 }
             ),
             |t, i| Types(AbsType::RowExtend(i.clone(), None, Box::new(t)))), 
+    "{|" <r:(<Ident> ":" <Types> ",")*> "|" <rest: Ident?> "}" => 
+        r.iter().fold(
+            Types(
+                match rest {
+                    Some(id) => AbsType::Var(id),
+                    None => AbsType::RowEmpty(),
+                }
+            ),
+            |t, i_ty| {
+                let (i, ty) = i_ty;
+                Types(AbsType::RowExtend(i.clone(), Some(Box::new(ty.clone())), Box::new(t)))
+            }), 
     "<" <subType> ">" => Types(AbsType::Enum(Box::new(<>))),
+    "{" <subType> "}" => Types(AbsType::ClosedRecord(Box::new(<>))),
+    "{" "_" ":" <subType> "}" => Types(AbsType::OpenRecord(Box::new(<>))),
 };
 
 DbgStr: String = r"[[:alpha:]_][[:word:]-]*" => <>.to_string();

@@ -121,6 +121,7 @@ fn type_check_(
                 strict,
             )
         }
+        Term::Record(_, _) => panic!("TODO"),
         Term::Op1(op, rt) => {
             let ty_op = get_uop_type(typed_vars.clone(), state, constr, op, strict)?;
 
@@ -227,6 +228,12 @@ impl TypeWrapper {
                 Box::new(rest.subst(id, to)),
             )),
             Concrete(AbsType::Enum(row)) => Concrete(AbsType::Enum(Box::new(row.subst(id, to)))),
+            Concrete(AbsType::ClosedRecord(row)) => {
+                Concrete(AbsType::ClosedRecord(Box::new(row.subst(id, to))))
+            }
+            Concrete(AbsType::OpenRecord(def_ty)) => {
+                Concrete(AbsType::OpenRecord(Box::new(def_ty.subst(id, to))))
+            }
 
             Constant(x) => Constant(x),
             Ptr(x) => Ptr(x),
@@ -347,6 +354,12 @@ pub fn unify(
                 unify(state, constr, *t, r2, strict)
             }
             (AbsType::Enum(r), AbsType::Enum(r2)) => unify(state, constr, *r, *r2, strict),
+            (AbsType::ClosedRecord(r), AbsType::ClosedRecord(r2)) => {
+                unify(state, constr, *r, *r2, strict)
+            }
+            (AbsType::OpenRecord(t), AbsType::OpenRecord(t2)) => {
+                unify(state, constr, *t, *t2, strict)
+            }
             (AbsType::Var(ref i1), AbsType::Var(ref i2)) if i1 == i2 => Ok(()),
             (AbsType::Forall(i1, t1t), AbsType::Forall(i2, t2t)) => {
                 // Very stupid (slow) implementation
@@ -364,8 +377,8 @@ pub fn unify(
         },
         (TypeWrapper::Ptr(r1), TypeWrapper::Ptr(r2)) => {
             if r1 != r2 {
-                let mut r1_constr = constr.remove(&r1).unwrap_or(HashSet::new());
-                let mut r2_constr = constr.remove(&r2).unwrap_or(HashSet::new());
+                let mut r1_constr = constr.remove(&r1).unwrap_or_default();
+                let mut r2_constr = constr.remove(&r2).unwrap_or_default();
                 constr.insert(r1, r1_constr.drain().chain(r2_constr.drain()).collect());
 
                 state.insert(r1, Some(TypeWrapper::Ptr(r2)));
