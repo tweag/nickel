@@ -77,6 +77,13 @@ fn process_unary_operation(
                 Ok(Closure::atomic_closure(Term::Bool(false).into()))
             }
         }
+        UnaryOp::IsStr() => {
+            if let Term::Str(_) = *t {
+                Ok(Closure::atomic_closure(Term::Bool(true).into()))
+            } else {
+                Ok(Closure::atomic_closure(Term::Bool(false).into()))
+            }
+        }
         UnaryOp::IsFun() => {
             if let Term::Fun(_, _) = *t {
                 Ok(Closure::atomic_closure(Term::Bool(true).into()))
@@ -189,6 +196,17 @@ fn process_binary_operation(
                 }
             } else {
                 Err(EvalError::TypeError(format!("Expected Num, got {:?}", *t1)))
+            }
+        }
+        BinaryOp::PlusStr() => {
+            if let Term::Str(s1) = *t1 {
+                if let Term::Str(s2) = *t2 {
+                    Ok(Closure::atomic_closure(Term::Str(s1 + &s2).into()))
+                } else {
+                    Err(EvalError::TypeError(format!("Expected Str, got {:?}", *t2)))
+                }
+            } else {
+                Err(EvalError::TypeError(format!("Expected Str, got {:?}", *t1)))
             }
         }
         BinaryOp::Unwrap() => {

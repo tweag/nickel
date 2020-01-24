@@ -7,6 +7,7 @@ pub enum Term {
     // Values
     Bool(bool),
     Num(f64),
+    Str(String),
     Fun(Ident, RichTerm),
     Lbl(Label),
     // Other lambda
@@ -30,7 +31,7 @@ impl Term {
     {
         use self::Term::*;
         match self {
-            Bool(_) | Num(_) | Lbl(_) | Var(_) | Sym(_) => {}
+            Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | Sym(_) => {}
             Fun(_, ref mut t)
             | Op1(_, ref mut t)
             | Promise(_, _, ref mut t)
@@ -56,6 +57,7 @@ pub enum UnaryOp {
 
     IsNum(),
     IsBool(),
+    IsStr(),
     IsFun(),
 
     Blame(),
@@ -72,6 +74,7 @@ pub enum UnaryOp {
 #[derive(Clone, Debug, PartialEq)]
 pub enum BinaryOp {
     Plus(),
+    PlusStr(),
     Unwrap(),
     EqBool(),
 }

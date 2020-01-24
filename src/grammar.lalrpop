@@ -43,6 +43,7 @@ Atom: RichTerm = {
         RichTerm::new(Term::Assume(ty, Label{tag: "An assume".to_string(), l: l, r: r, polarity: true, path: TyPath::Nil()}, t)), 
     Num => RichTerm::new(Term::Num(<>)),
     Bool => RichTerm::new(Term::Bool(<>)),
+    Str => RichTerm::new(Term::Str(<>)),
     Ident => RichTerm::new(Term::Var(<>)),
 };
 
@@ -59,10 +60,15 @@ Bool: bool = {
     "false" => false,
 };
 
+Str: String = {
+    <x:r#""(([^\\"]|\\.)*)""#> => x[1..(x.len() - 1)].to_string(),
+}
+
 UOp: UnaryOp = {
     "isZero" => UnaryOp::IsZero(),
     "isNum" => UnaryOp::IsNum(),
     "isBool" => UnaryOp::IsBool(),
+    "isStr" => UnaryOp::IsStr(),
     "isFun" => UnaryOp::IsFun(),
     "blame" => UnaryOp::Blame(),
     "chngPol" => UnaryOp::ChangePolarity(),
@@ -75,6 +81,7 @@ UOp: UnaryOp = {
 
 BOpIn: BinaryOp = {
     "+" => BinaryOp::Plus(),
+    "++" => BinaryOp::PlusStr(),
     "=b" => BinaryOp::EqBool(),
 };
 
@@ -96,6 +103,7 @@ subType : Types = {
     "Dyn" => Types(AbsType::Dyn()),
     "Num" => Types(AbsType::Num()),
     "Bool" => Types(AbsType::Bool()),
+    "Str" => Types(AbsType::Str()),
     <Ident> => Types(AbsType::Var(<>)),
     "#" <SpTerm<RichTerm>> => Types(AbsType::Flat(<>)),
     "(" <Types> ")" => <>,

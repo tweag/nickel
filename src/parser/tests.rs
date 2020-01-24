@@ -19,6 +19,37 @@ fn numbers() {
 }
 
 #[test]
+fn strings() {
+    assert_eq!(
+        parse_without_pos("\"hello world\""),
+        Str("hello world".to_string()).into()
+    );
+    assert_eq!(
+        parse_without_pos("\"hello \nworld\""),
+        Str("hello \nworld".to_string()).into()
+    );
+    assert_eq!(
+        parse_without_pos("\"hello Dimension C-132!\""),
+        Str("hello Dimension C-132!".to_string()).into()
+    );
+
+    assert_eq!(
+        parse_without_pos("\"hello\" ++ \"World\" ++ \"!!\" "),
+        Op2(
+            BinaryOp::PlusStr(),
+            Str("hello".to_string()).into(),
+            Op2(
+                BinaryOp::PlusStr(),
+                Str("World".to_string()).into(),
+                Str("!!".to_string()).into()
+            )
+            .into()
+        )
+        .into()
+    )
+}
+
+#[test]
 fn plus() {
     assert_eq!(
         parse_without_pos("3 + 4"),
