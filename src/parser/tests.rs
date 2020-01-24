@@ -143,3 +143,28 @@ fn unary_op() {
         )
     );
 }
+
+#[test]
+fn enum_terms() {
+    assert_eq!(
+        parse_without_pos("`foo"),
+        Enum(Ident("foo".to_string())).into(),
+    );
+
+    assert_eq!(
+        parse_without_pos("switch { foo => true, bar => false, _ => 456, } 123"),
+        Op1(
+            UnaryOp::Switch(
+                vec![
+                    (Ident("foo".to_string()), Bool(true).into()),
+                    (Ident("bar".to_string()), Bool(false).into())
+                ]
+                .into_iter()
+                .collect(),
+                Some(Num(456.).into())
+            ),
+            Num(123.).into()
+        )
+        .into()
+    )
+}

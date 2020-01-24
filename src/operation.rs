@@ -38,7 +38,7 @@ fn process_unary_operation(
 ) -> Result<Closure, EvalError> {
     let Closure {
         body: RichTerm { term: t, .. },
-        env: _env,
+        env,
     } = clos;
     match u_op {
         UnaryOp::Ite() => {
@@ -99,6 +99,32 @@ fn process_unary_operation(
                     "Expected Label, got {:?}",
                     *t
                 )))
+            }
+        }
+        UnaryOp::Embed(_id) => {
+            if let en @ Term::Enum(_) = *t {
+                Ok(Closure::atomic_closure(en.into()))
+            } else {
+                Err(EvalError::TypeError(format!("Expected Enum, got {:?}", *t)))
+            }
+        }
+        UnaryOp::Switch(mut m, d) => {
+            if let Term::Enum(en) = *t {
+                match m.remove(&en) {
+                    Some(ex) => Ok(Closure { body: ex, env }),
+                    None => match d {
+                        Some(ex) => Ok(Closure { body: ex, env }),
+                        None => Err(EvalError::TypeError(format!(
+                            "Expected Enum in {:?}, got {:?}",
+                            m, en
+                        ))),
+                    },
+                }
+            } else {
+                match d {
+                    Some(ex) => Ok(Closure { body: ex, env }),
+                    None => Err(EvalError::TypeError(format!("Expected Enum, got {:?}", *t))),
+                }
             }
         }
         UnaryOp::ChangePolarity() => {

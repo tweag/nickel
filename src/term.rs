@@ -1,6 +1,7 @@
 use crate::identifier::Ident;
 use crate::label::Label;
 use crate::types::Types;
+use std::collections::HashMap;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Term {
@@ -14,6 +15,8 @@ pub enum Term {
     Let(Ident, RichTerm, RichTerm),
     App(RichTerm, RichTerm),
     Var(Ident),
+    // Enums
+    Enum(Ident),
     // Primitives
     Op1(UnaryOp, RichTerm),
     Op2(BinaryOp, RichTerm, RichTerm),
@@ -31,7 +34,17 @@ impl Term {
     {
         use self::Term::*;
         match self {
-            Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | Sym(_) => {}
+            Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | Sym(_) | Enum(_) => {}
+            Op1(UnaryOp::Switch(ref mut map, ref mut def), ref mut t) => {
+                map.iter_mut().for_each(|e| {
+                    let (_, t) = e;
+                    func(t);
+                });
+                func(t);
+                if let Some(def) = def {
+                    func(def)
+                }
+            }
             Fun(_, ref mut t)
             | Op1(_, ref mut t)
             | Promise(_, _, ref mut t)
@@ -61,6 +74,13 @@ pub enum UnaryOp {
     IsFun(),
 
     Blame(),
+
+    Embed(Ident),
+    /// This is a hacky way to deal with this for now.
+    ///
+    /// Ideally it should change to eliminate the dependency with RichTerm
+    /// in the future.
+    Switch(HashMap<Ident, RichTerm>, Option<RichTerm>),
 
     ChangePolarity(),
     Pol(),

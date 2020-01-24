@@ -45,6 +45,7 @@ Atom: RichTerm = {
     Bool => RichTerm::new(Term::Bool(<>)),
     Str => RichTerm::new(Term::Str(<>)),
     Ident => RichTerm::new(Term::Var(<>)),
+    "`" <Ident> => RichTerm::new(Term::Enum(<>)),
 };
 
 Pattern: Ident = {
@@ -77,7 +78,21 @@ UOp: UnaryOp = {
     "goCodom" => UnaryOp::GoCodom(),
     "tag[" <DbgStr> "]" => UnaryOp::Tag(<>),
     "wrap" => UnaryOp::Wrap(),
+    "embed" <Ident> => UnaryOp::Embed(<>),
+    "switch" "{" <ds: (switch_case ",")*> <default: switch_default?> "}" => 
+        UnaryOp::Switch(
+            ds.into_iter().map(|x| x.0).collect(),
+            default,
+        ),
 };
+
+switch_case: (Ident, RichTerm) = {
+    <id: Ident> "=>" <t: SpTerm<Atom> > => (id, t),
+}
+
+switch_default: RichTerm = {
+    "_" "=>" <SpTerm<Atom>> "," => <>,
+}
 
 BOpIn: BinaryOp = {
     "+" => BinaryOp::Plus(),
@@ -107,6 +122,16 @@ subType : Types = {
     <Ident> => Types(AbsType::Var(<>)),
     "#" <SpTerm<RichTerm>> => Types(AbsType::Flat(<>)),
     "(" <Types> ")" => <>,
+    "(|" <r:(<Ident> ",")*> "|" <rest: Ident?> ")" => 
+        r.iter().fold(
+            Types(
+                match rest {
+                    Some(id) => AbsType::Var(id),
+                    None => AbsType::RowEmpty(),
+                }
+            ),
+            |t, i| Types(AbsType::RowExtend(i.clone(), Box::new(t)))), 
+    "<" <subType> ">" => Types(AbsType::Enum(Box::new(<>))),
 };
 
 DbgStr: String = r"[[:alpha:]_][[:word:]-]*" => <>.to_string();
