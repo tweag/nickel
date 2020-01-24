@@ -100,9 +100,7 @@ impl Types {
                 *sy += 1;
                 t.contract_open(h, pol, sy)
             }
-            AbsType::RowEmpty() | AbsType::RowExtend(_, _) => {
-                panic!("These types should not be checked at runtime!")
-            }
+            AbsType::RowEmpty() | AbsType::RowExtend(_, _) => RichTerm::var("fail".to_string()),
             AbsType::Enum(ref r) => {
                 fn form(ty: Types, h: HashMap<Ident, RichTerm>) -> RichTerm {
                     match ty.0 {

@@ -76,6 +76,10 @@ pub enum UnaryOp {
     Blame(),
 
     Embed(Ident),
+    /// This is a hacky way to deal with this for now.
+    ///
+    /// Ideally it should change to eliminate the dependency with RichTerm
+    /// in the future.
     Switch(HashMap<Ident, RichTerm>, Option<RichTerm>),
 
     ChangePolarity(),

@@ -440,4 +440,9 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         .unwrap_err();
     }
 
+    #[test]
+    fn row_types() {
+        eval_string("Assume((| |), 123)").unwrap_err();
+    }
+
 }

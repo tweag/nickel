@@ -3,7 +3,6 @@ use crate::label::{Label, TyPath};
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp};
 use crate::types::{Types, AbsType};
 use std::str::FromStr;
-use either::*;
 
 grammar;
 
@@ -80,19 +79,19 @@ UOp: UnaryOp = {
     "tag[" <DbgStr> "]" => UnaryOp::Tag(<>),
     "wrap" => UnaryOp::Wrap(),
     "embed" <Ident> => UnaryOp::Embed(<>),
-    "switch" "{" <ds: (switch_def ",")*> "}" => 
+    "switch" "{" <ds: (switch_case ",")*> <default: switch_default?> "}" => 
         UnaryOp::Switch(
-            ds.clone().into_iter().map(|x| x.0).filter_map(
-                |x| match x {Left(y) => Some(y), Right(_) => None}
-            ).collect(),
-            ds.into_iter().map(|x| x.0).find_map(
-                |x| match x {Left(_) => None, Right(y) => Some(y)})
-            ),
+            ds.into_iter().map(|x| x.0).collect(),
+            default,
+        ),
 };
 
-switch_def: Either<(Ident, RichTerm), RichTerm> = {
-    <id: Ident> "=>" <t: SpTerm<Atom> > => Left((id, t)),
-    "_" "=>" <SpTerm<Atom>> => Right(<>),
+switch_case: (Ident, RichTerm) = {
+    <id: Ident> "=>" <t: SpTerm<Atom> > => (id, t),
+}
+
+switch_default: RichTerm = {
+    "_" "=>" <SpTerm<Atom>> "," => <>,
 }
 
 BOpIn: BinaryOp = {
