@@ -20,6 +20,7 @@ fn type_check_(
     match t {
         Term::Bool(_) => unify(s, ty, TypeWrapper::Concrete(AbsType::Bool()), strict),
         Term::Num(_) => unify(s, ty, TypeWrapper::Concrete(AbsType::Num()), strict),
+        Term::Str(_) => unify(s, ty, TypeWrapper::Concrete(AbsType::Str()), strict),
         Term::Fun(x, rt) => {
             let src = TypeWrapper::Ptr(new_var(s));
             // TODO what to do here, this makes more sense to me, but it means let x = foo in bar
@@ -142,6 +143,7 @@ impl TypeWrapper {
             Concrete(AbsType::Dyn()) => Concrete(AbsType::Dyn()),
             Concrete(AbsType::Num()) => Concrete(AbsType::Num()),
             Concrete(AbsType::Bool()) => Concrete(AbsType::Bool()),
+            Concrete(AbsType::Str()) => Concrete(AbsType::Str()),
             Concrete(AbsType::Sym()) => Concrete(AbsType::Sym()),
             Concrete(AbsType::Flat(t)) => Concrete(AbsType::Flat(t)),
             Concrete(AbsType::Arrow(s, t)) => {
@@ -179,6 +181,7 @@ pub fn unify(
             (AbsType::Dyn(), AbsType::Dyn()) => Ok(()),
             (AbsType::Num(), AbsType::Num()) => Ok(()),
             (AbsType::Bool(), AbsType::Bool()) => Ok(()),
+            (AbsType::Str(), AbsType::Str()) => Ok(()),
             (AbsType::Sym(), AbsType::Sym()) => Ok(()),
             (AbsType::Flat(s), AbsType::Flat(t)) => {
                 if let Term::Var(s) = s.clone().into() {
@@ -274,7 +277,7 @@ pub fn get_uop_type(s: &mut GTypes, op: &UnaryOp) -> TypeWrapper {
             Box::new(TypeWrapper::Concrete(AbsType::Num())),
             Box::new(TypeWrapper::Concrete(AbsType::Bool())),
         )),
-        UnaryOp::IsNum() | UnaryOp::IsBool() | UnaryOp::IsFun() => {
+        UnaryOp::IsNum() | UnaryOp::IsBool() | UnaryOp::IsStr() | UnaryOp::IsFun() => {
             let inp = TypeWrapper::Ptr(new_var(s));
 
             TypeWrapper::Concrete(AbsType::arrow(
@@ -317,6 +320,13 @@ pub fn get_bop_type(_s: &mut GTypes, op: &BinaryOp) -> TypeWrapper {
             Box::new(TypeWrapper::Concrete(AbsType::arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::Num())),
                 Box::new(TypeWrapper::Concrete(AbsType::Num())),
+            ))),
+        )),
+        BinaryOp::PlusStr() => TypeWrapper::Concrete(AbsType::arrow(
+            Box::new(TypeWrapper::Concrete(AbsType::Str())),
+            Box::new(TypeWrapper::Concrete(AbsType::arrow(
+                Box::new(TypeWrapper::Concrete(AbsType::Str())),
+                Box::new(TypeWrapper::Concrete(AbsType::Str())),
             ))),
         )),
         BinaryOp::Unwrap() => TypeWrapper::Concrete(AbsType::arrow(
@@ -453,6 +463,9 @@ mod tests {
             Term::Assume(Types(AbsType::Bool()), label(), Term::Num(34.).into()).into(),
         ))
         .unwrap_err();
+
+        parse_and_typecheck("Promise(Str, \"hello\")").unwrap();
+        parse_and_typecheck("Promise(Num, \"hello\")").unwrap_err();
     }
 
     #[test]

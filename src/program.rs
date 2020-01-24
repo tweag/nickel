@@ -196,6 +196,7 @@ impl<T: Read> Program<T> {
         "let dyn = fun l => fun t => t in
 let num = fun l => fun t => if isNum t then t else blame (tag[num] l) in
 let bool = fun l => fun t => if isBool t then t else blame (tag[bool] l) in
+let string = fun l => fun t => if isStr t then t else blame (tag[str] l) in
 let func = fun s => fun t => fun l => fun e => 
   let l = tag[func] l in if isFun e then (fun x => t (goCodom l) (e (s (chngPol (goDom l)) x))) else blame l in
 let forall_var = fun sy => fun pol => fun l => fun t => let lPol = polarity l in 
@@ -382,6 +383,15 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
             twice (fun x => x + 1) 3",
         );
         assert_eq!(Ok(Term::Num(5.)), res);
+    }
+
+    #[test]
+    fn string_contracts() {
+        let res = eval_string("Assume(Str, \"hello\")");
+        assert_eq!(res, Ok(Term::Str("hello".to_string())));
+
+        let res = eval_string("Assume(Str, \"hello\" ++ \" world!\")");
+        assert_eq!(res, Ok(Term::Str("hello world!".to_string())));
     }
 
 }

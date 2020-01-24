@@ -7,6 +7,7 @@ pub enum AbsType<Ty> {
     Dyn(),
     Num(),
     Bool(),
+    Str(),
     Sym(),
     Flat(RichTerm),
     Arrow(Ty, Ty),
@@ -20,6 +21,7 @@ impl<Ty> AbsType<Ty> {
             AbsType::Dyn() => AbsType::Dyn(),
             AbsType::Num() => AbsType::Num(),
             AbsType::Bool() => AbsType::Bool(),
+            AbsType::Str() => AbsType::Str(),
             AbsType::Sym() => AbsType::Sym(),
             AbsType::Flat(t) => AbsType::Flat(t),
             AbsType::Arrow(s, t) => {
@@ -61,6 +63,7 @@ impl Types {
             AbsType::Dyn() => RichTerm::var("dyn".to_string()),
             AbsType::Num() => RichTerm::var("num".to_string()),
             AbsType::Bool() => RichTerm::var("bool".to_string()),
+            AbsType::Str() => RichTerm::var("string".to_string()),
             AbsType::Sym() => panic!("Are you trying to check a Sym at runtime?"),
             AbsType::Arrow(ref s, ref t) => RichTerm::app(
                 RichTerm::app(
