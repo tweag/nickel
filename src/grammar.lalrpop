@@ -174,8 +174,8 @@ subType : Types = {
                 Types(AbsType::RowExtend(i.clone(), Some(Box::new(ty.clone())), Box::new(t)))
             }), 
     "<" <subType> ">" => Types(AbsType::Enum(Box::new(<>))),
-    "{" <subType> "}" => Types(AbsType::ClosedRecord(Box::new(<>))),
-    "{" "_" ":" <subType> "}" => Types(AbsType::OpenRecord(Box::new(<>))),
+    "{" <subType> "}" => Types(AbsType::StaticRecord(Box::new(<>))),
+    "{" "_" ":" <subType> "}" => Types(AbsType::DynRecord(Box::new(<>))),
 };
 
 DbgStr: String = r"[[:alpha:]_][[:word:]-]*" => <>.to_string();

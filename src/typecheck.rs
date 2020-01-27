@@ -96,7 +96,7 @@ fn type_check_(
             let arr = TypeWrapper::Concrete(AbsType::arrow(Box::new(src.clone()), Box::new(ty)));
 
             // This order shouldn't be changed, since applying a function to a record
-            // may change how it's typed (open or closed)
+            // may change how it's typed (static or dynamic)
             // This is good hint a bidirectional algorithm would make sense...
             type_check_(typed_vars.clone(), state, constr, re.as_ref(), arr, strict)?;
             type_check_(typed_vars, state, constr, rt.as_ref(), src, strict)
@@ -131,8 +131,8 @@ fn type_check_(
                 ty.clone()
             };
 
-            if let TypeWrapper::Concrete(AbsType::OpenRecord(rec_ty)) = root_ty.clone() {
-                // Checking for an openrecord
+            if let TypeWrapper::Concrete(AbsType::DynRecord(rec_ty)) = root_ty.clone() {
+                // Checking for an dynamic record
                 stat_map
                     .into_iter()
                     .try_for_each(|e| -> Result<(), String> {
@@ -147,7 +147,7 @@ fn type_check_(
                         )
                     })
             } else {
-                // infering closed record
+                // infering static record
                 let row = stat_map.into_iter().try_fold(
                     TypeWrapper::Concrete(AbsType::RowEmpty()),
                     |acc, e| -> Result<TypeWrapper, String> {
@@ -177,7 +177,7 @@ fn type_check_(
                     state,
                     constr,
                     ty,
-                    TypeWrapper::Concrete(AbsType::ClosedRecord(Box::new(row))),
+                    TypeWrapper::Concrete(AbsType::StaticRecord(Box::new(row))),
                     strict,
                 )
             }
@@ -288,11 +288,11 @@ impl TypeWrapper {
                 Box::new(rest.subst(id, to)),
             )),
             Concrete(AbsType::Enum(row)) => Concrete(AbsType::Enum(Box::new(row.subst(id, to)))),
-            Concrete(AbsType::ClosedRecord(row)) => {
-                Concrete(AbsType::ClosedRecord(Box::new(row.subst(id, to))))
+            Concrete(AbsType::StaticRecord(row)) => {
+                Concrete(AbsType::StaticRecord(Box::new(row.subst(id, to))))
             }
-            Concrete(AbsType::OpenRecord(def_ty)) => {
-                Concrete(AbsType::OpenRecord(Box::new(def_ty.subst(id, to))))
+            Concrete(AbsType::DynRecord(def_ty)) => {
+                Concrete(AbsType::DynRecord(Box::new(def_ty.subst(id, to))))
             }
 
             Constant(x) => Constant(x),
@@ -414,10 +414,10 @@ pub fn unify(
                 unify(state, constr, *t, r2, strict)
             }
             (AbsType::Enum(r), AbsType::Enum(r2)) => unify(state, constr, *r, *r2, strict),
-            (AbsType::ClosedRecord(r), AbsType::ClosedRecord(r2)) => {
+            (AbsType::StaticRecord(r), AbsType::StaticRecord(r2)) => {
                 unify(state, constr, *r, *r2, strict)
             }
-            (AbsType::OpenRecord(t), AbsType::OpenRecord(t2)) => {
+            (AbsType::DynRecord(t), AbsType::DynRecord(t2)) => {
                 unify(state, constr, *t, *t2, strict)
             }
             (AbsType::Var(ref i1), AbsType::Var(ref i2)) if i1 == i2 => Ok(()),
@@ -622,7 +622,7 @@ pub fn get_uop_type(
             let res = TypeWrapper::Ptr(new_var(state));
 
             TypeWrapper::Concrete(AbsType::arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::ClosedRecord(Box::new(
+                Box::new(TypeWrapper::Concrete(AbsType::StaticRecord(Box::new(
                     TypeWrapper::Concrete(AbsType::RowExtend(
                         id.clone(),
                         Some(Box::new(res.clone())),
@@ -680,7 +680,7 @@ pub fn get_bop_type(
             Ok(TypeWrapper::Concrete(AbsType::arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::Str())),
                 Box::new(TypeWrapper::Concrete(AbsType::arrow(
-                    Box::new(TypeWrapper::Concrete(AbsType::OpenRecord(Box::new(
+                    Box::new(TypeWrapper::Concrete(AbsType::DynRecord(Box::new(
                         res.clone(),
                     )))),
                     Box::new(res),
@@ -702,10 +702,10 @@ pub fn get_bop_type(
             Ok(TypeWrapper::Concrete(AbsType::arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::Str())),
                 Box::new(TypeWrapper::Concrete(AbsType::arrow(
-                    Box::new(TypeWrapper::Concrete(AbsType::OpenRecord(Box::new(
+                    Box::new(TypeWrapper::Concrete(AbsType::DynRecord(Box::new(
                         res.clone(),
                     )))),
-                    Box::new(TypeWrapper::Concrete(AbsType::OpenRecord(Box::new(
+                    Box::new(TypeWrapper::Concrete(AbsType::DynRecord(Box::new(
                         res.clone(),
                     )))),
                 ))),
@@ -1033,7 +1033,7 @@ mod tests {
     }
 
     #[test]
-    fn closed_record_simple() {
+    fn static_record_simple() {
         parse_and_typecheck("Promise({ {| bla : Num, |} }, { bla = 1; })").unwrap();
         parse_and_typecheck("Promise({ {| bla : Num, |} }, { bla = true; })").unwrap_err();
         parse_and_typecheck("Promise({ {| bla : Num, |} }, { blo = 1; })").unwrap_err();
@@ -1088,7 +1088,7 @@ mod tests {
     }
 
     #[test]
-    fn open_record_simple() {
+    fn dynamic_record_simple() {
         parse_and_typecheck("Promise({ _ : Num }, { $(if true then \"foo\" else \"bar\") = 2; } )")
             .unwrap();
 

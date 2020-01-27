@@ -18,9 +18,9 @@ pub enum AbsType<Ty> {
     RowEmpty(),
     RowExtend(Ident, Option<Ty>, Ty /* Row */),
     Enum(Ty /* Row */),
-    ClosedRecord(Ty /* Row */),
-    // OpenRecord will only have a default type, this is simpler for now, I don't think we lose much
-    OpenRecord(Ty /*, Ty  Row */),
+    StaticRecord(Ty /* Row */),
+    // DynRecord will only have a default type, this is simpler for now, I don't think we lose much
+    DynRecord(Ty /*, Ty  Row */),
 }
 
 impl<Ty> AbsType<Ty> {
@@ -47,8 +47,8 @@ impl<Ty> AbsType<Ty> {
             AbsType::RowEmpty() => AbsType::RowEmpty(),
             AbsType::RowExtend(id, t1, t2) => AbsType::RowExtend(id, t1.map(&f), f(t2)),
             AbsType::Enum(t) => AbsType::Enum(f(t)),
-            AbsType::ClosedRecord(t) => AbsType::ClosedRecord(f(t)),
-            AbsType::OpenRecord(t) => AbsType::OpenRecord(f(t)),
+            AbsType::StaticRecord(t) => AbsType::StaticRecord(f(t)),
+            AbsType::DynRecord(t) => AbsType::DynRecord(f(t)),
         }
     }
 
@@ -146,8 +146,8 @@ impl Types {
 
                 form(*r.clone(), h)
             }
-            AbsType::ClosedRecord(_) => panic!("TODO implement"),
-            AbsType::OpenRecord(_) => panic!("TODO implement"),
+            AbsType::StaticRecord(_) => panic!("TODO implement"),
+            AbsType::DynRecord(_) => panic!("TODO implement"),
         }
     }
 }
