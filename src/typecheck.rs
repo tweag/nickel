@@ -95,6 +95,9 @@ fn type_check_(
             let src = TypeWrapper::Ptr(new_var(state));
             let arr = TypeWrapper::Concrete(AbsType::arrow(Box::new(src.clone()), Box::new(ty)));
 
+            // This order shouldn't be changed, since applying a function to a record
+            // may change how it's typed (open or closed)
+            // This is good hint a bidirectional algorithm would make sense...
             type_check_(typed_vars.clone(), state, constr, re.as_ref(), arr, strict)?;
             type_check_(typed_vars, state, constr, rt.as_ref(), src, strict)
         }
@@ -121,7 +124,64 @@ fn type_check_(
                 strict,
             )
         }
-        Term::Record(_, _) => panic!("TODO"),
+        Term::Record(stat_map) => {
+            let root_ty = if let TypeWrapper::Ptr(p) = ty {
+                get_root(state, p)?
+            } else {
+                ty.clone()
+            };
+
+            if let TypeWrapper::Concrete(AbsType::OpenRecord(rec_ty)) = root_ty.clone() {
+                // Checking for an openrecord
+                stat_map
+                    .into_iter()
+                    .try_for_each(|e| -> Result<(), String> {
+                        let (_, t) = e;
+                        type_check_(
+                            typed_vars.clone(),
+                            state,
+                            constr,
+                            t.as_ref(),
+                            (*rec_ty).clone(),
+                            strict,
+                        )
+                    })
+            } else {
+                // infering closed record
+                let row = stat_map.into_iter().try_fold(
+                    TypeWrapper::Concrete(AbsType::RowEmpty()),
+                    |acc, e| -> Result<TypeWrapper, String> {
+                        let (id, t) = e;
+
+                        let ty = TypeWrapper::Ptr(new_var(state));
+                        type_check_(
+                            typed_vars.clone(),
+                            state,
+                            constr,
+                            t.as_ref(),
+                            ty.clone(),
+                            strict,
+                        )?;
+
+                        constraint(state, constr, acc.clone(), id.clone())?;
+
+                        Ok(TypeWrapper::Concrete(AbsType::RowExtend(
+                            id.clone(),
+                            Some(Box::new(ty)),
+                            Box::new(acc),
+                        )))
+                    },
+                )?;
+
+                unify(
+                    state,
+                    constr,
+                    ty,
+                    TypeWrapper::Concrete(AbsType::ClosedRecord(Box::new(row))),
+                    strict,
+                )
+            }
+        }
         Term::Op1(op, rt) => {
             let ty_op = get_uop_type(typed_vars.clone(), state, constr, op, strict)?;
 
@@ -132,7 +192,7 @@ fn type_check_(
             type_check_(typed_vars, state, constr, rt.as_ref(), src, strict)
         }
         Term::Op2(op, re, rt) => {
-            let ty_op = get_bop_type(state, op);
+            let ty_op = get_bop_type(typed_vars.clone(), state, constr, op, strict)?;
 
             let src1 = TypeWrapper::Ptr(new_var(state));
             let src2 = TypeWrapper::Ptr(new_var(state));
@@ -557,26 +617,47 @@ pub fn get_uop_type(
                 Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
             ))),
         )),
+        UnaryOp::StaticAccess(id) => {
+            let row = TypeWrapper::Ptr(new_var(state));
+            let res = TypeWrapper::Ptr(new_var(state));
+
+            TypeWrapper::Concrete(AbsType::arrow(
+                Box::new(TypeWrapper::Concrete(AbsType::ClosedRecord(Box::new(
+                    TypeWrapper::Concrete(AbsType::RowExtend(
+                        id.clone(),
+                        Some(Box::new(res.clone())),
+                        Box::new(row),
+                    )),
+                )))),
+                Box::new(res),
+            ))
+        }
     })
 }
 
-pub fn get_bop_type(_s: &mut GTypes, op: &BinaryOp) -> TypeWrapper {
+pub fn get_bop_type(
+    typed_vars: HashMap<Ident, TypeWrapper>,
+    state: &mut GTypes,
+    constr: &mut GConstr,
+    op: &BinaryOp,
+    strict: bool,
+) -> Result<TypeWrapper, String> {
     match op {
-        BinaryOp::Plus() => TypeWrapper::Concrete(AbsType::arrow(
+        BinaryOp::Plus() => Ok(TypeWrapper::Concrete(AbsType::arrow(
             Box::new(TypeWrapper::Concrete(AbsType::Num())),
             Box::new(TypeWrapper::Concrete(AbsType::arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::Num())),
                 Box::new(TypeWrapper::Concrete(AbsType::Num())),
             ))),
-        )),
-        BinaryOp::PlusStr() => TypeWrapper::Concrete(AbsType::arrow(
+        ))),
+        BinaryOp::PlusStr() => Ok(TypeWrapper::Concrete(AbsType::arrow(
             Box::new(TypeWrapper::Concrete(AbsType::Str())),
             Box::new(TypeWrapper::Concrete(AbsType::arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::Str())),
                 Box::new(TypeWrapper::Concrete(AbsType::Str())),
             ))),
-        )),
-        BinaryOp::Unwrap() => TypeWrapper::Concrete(AbsType::arrow(
+        ))),
+        BinaryOp::Unwrap() => Ok(TypeWrapper::Concrete(AbsType::arrow(
             Box::new(TypeWrapper::Concrete(AbsType::Sym())),
             Box::new(TypeWrapper::Concrete(AbsType::arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
@@ -585,14 +666,51 @@ pub fn get_bop_type(_s: &mut GTypes, op: &BinaryOp) -> TypeWrapper {
                     Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
                 ))),
             ))),
-        )),
-        BinaryOp::EqBool() => TypeWrapper::Concrete(AbsType::arrow(
+        ))),
+        BinaryOp::EqBool() => Ok(TypeWrapper::Concrete(AbsType::arrow(
             Box::new(TypeWrapper::Concrete(AbsType::Bool())),
             Box::new(TypeWrapper::Concrete(AbsType::arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::Bool())),
                 Box::new(TypeWrapper::Concrete(AbsType::Bool())),
             ))),
-        )),
+        ))),
+        BinaryOp::DynAccess() => {
+            let res = TypeWrapper::Ptr(new_var(state));
+
+            Ok(TypeWrapper::Concrete(AbsType::arrow(
+                Box::new(TypeWrapper::Concrete(AbsType::Str())),
+                Box::new(TypeWrapper::Concrete(AbsType::arrow(
+                    Box::new(TypeWrapper::Concrete(AbsType::OpenRecord(Box::new(
+                        res.clone(),
+                    )))),
+                    Box::new(res),
+                ))),
+            )))
+        }
+        BinaryOp::DynExtend(t) => {
+            let res = TypeWrapper::Ptr(new_var(state));
+
+            type_check_(
+                typed_vars.clone(),
+                state,
+                constr,
+                t.as_ref(),
+                res.clone(),
+                strict,
+            )?;
+
+            Ok(TypeWrapper::Concrete(AbsType::arrow(
+                Box::new(TypeWrapper::Concrete(AbsType::Str())),
+                Box::new(TypeWrapper::Concrete(AbsType::arrow(
+                    Box::new(TypeWrapper::Concrete(AbsType::OpenRecord(Box::new(
+                        res.clone(),
+                    )))),
+                    Box::new(TypeWrapper::Concrete(AbsType::OpenRecord(Box::new(
+                        res.clone(),
+                    )))),
+                ))),
+            )))
+        }
     }
 }
 
@@ -912,5 +1030,80 @@ mod tests {
             f `bli",
         )
         .unwrap_err();
+    }
+
+    #[test]
+    fn closed_record_simple() {
+        parse_and_typecheck("Promise({ {| bla : Num, |} }, { bla = 1; })").unwrap();
+        parse_and_typecheck("Promise({ {| bla : Num, |} }, { bla = true; })").unwrap_err();
+        parse_and_typecheck("Promise({ {| bla : Num, |} }, { blo = 1; })").unwrap_err();
+
+        parse_and_typecheck("Promise({ {| bla : Num, blo : Bool, |} }, { blo = true; bla = 1; })")
+            .unwrap();
+
+        parse_and_typecheck("Promise(Num, { blo = 1; }.blo)").unwrap();
+        parse_and_typecheck("Promise(Num, { bla = true; blo = 1; }.blo)").unwrap();
+        parse_and_typecheck("Promise(Bool, { blo = 1; }.blo)").unwrap_err();
+
+        parse_and_typecheck(
+            "let r = Promise({ {| bla : Bool, blo : Num, |} }, {blo = 1; bla = true; }) in
+        Promise(Num, if r.bla then r.blo else 2)",
+        )
+        .unwrap();
+
+        // It worked at first try :O
+        parse_and_typecheck(
+            "let f = Promise(
+                forall a. (forall r. { {| bla : Bool, blo : a, ble : a, | r } } -> a),
+                fun r => if r.bla then r.blo else r.ble) 
+            in
+            Promise(Num, 
+                if (f {bla = true; blo = false; ble = true; blip = 1; }) then
+                    (f {bla = true; blo = 1; ble = 2; blip = `blip; })
+                else
+                    (f {bla = true; blo = 3; ble = 4; bloppo = `bloppop; }))",
+        )
+        .unwrap();
+
+        parse_and_typecheck(
+            "let f = Promise(
+                forall a. (forall r. { {| bla : Bool, blo : a, ble : a, | r } } -> a),
+                fun r => if r.bla then r.blo else r.ble) 
+            in
+            Promise(Num, 
+                    f {bla = true; blo = 1; ble = true; blip = `blip; })
+                ",
+        )
+        .unwrap_err();
+        parse_and_typecheck(
+            "let f = Promise(
+                forall a. (forall r. { {| bla : Bool, blo : a, ble : a, | r } } -> a),
+                fun r => if r.bla then (r.blo + 1) else r.ble) 
+            in
+            Promise(Num, 
+                    f {bla = true; blo = 1; ble = 2; blip = `blip; })
+                ",
+        )
+        .unwrap_err();
+    }
+
+    #[test]
+    fn open_record_simple() {
+        parse_and_typecheck("Promise({ _ : Num }, { $(if true then \"foo\" else \"bar\") = 2; } )")
+            .unwrap();
+
+        parse_and_typecheck(
+            "Promise(Num, { $(if true then \"foo\" else \"bar\") = 2; }.$(\"bla\"))",
+        )
+        .unwrap();
+
+        parse_and_typecheck(
+            "Promise(
+                Num, 
+                { $(if true then \"foo\" else \"bar\") = 2; $(\"foo\") = true; }.$(\"bla\"))",
+        )
+        .unwrap_err();
+
+        parse_and_typecheck("Promise( { _ : Num}, { foo = 3; bar = 4; })").unwrap();
     }
 }

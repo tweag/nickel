@@ -105,7 +105,7 @@ impl Types {
                 *sy += 1;
                 t.contract_open(h, pol, sy)
             }
-            AbsType::RowEmpty() | AbsType::RowExtend(_, _) => RichTerm::var("fail".to_string()),
+            AbsType::RowEmpty() | AbsType::RowExtend(_, _, _) => RichTerm::var("fail".to_string()),
             AbsType::Enum(ref r) => {
                 fn form(ty: Types, h: HashMap<Ident, RichTerm>) -> RichTerm {
                     match ty.0 {
@@ -146,8 +146,8 @@ impl Types {
 
                 form(*r.clone(), h)
             }
-            AbsType::ClosedRecord(_) => panic!("TODO"),
-            AbsType::OpenRecord(_) => panic!("TODO"),
+            AbsType::ClosedRecord(_) => panic!("TODO implement"),
+            AbsType::OpenRecord(_) => panic!("TODO implement"),
         }
     }
 }
