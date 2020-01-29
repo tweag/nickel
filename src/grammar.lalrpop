@@ -114,6 +114,7 @@ UOp: UnaryOp<RichTerm> = {
             ds.into_iter().map(|x| x.0).collect(),
             default,
         ),
+    "mapRec" <Atom> => UnaryOp::MapRec(<>),
 };
 
 switch_case: (Ident, RichTerm) = {
@@ -132,6 +133,7 @@ BOpIn: BinaryOp<RichTerm> = {
 
 BOpPre: BinaryOp<RichTerm> = {
     "unwrap" => BinaryOp::Unwrap(),
+    "hasField" => BinaryOp::HasField(),
 }
 
 Types: Types = {

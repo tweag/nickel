@@ -632,6 +632,35 @@ pub fn get_uop_type(
                 Box::new(res),
             ))
         }
+        UnaryOp::MapRec(f) => {
+            // Assuming f has type Str -> a -> b,
+            // this has type DynRecord(a) -> DynRecord(b)
+
+            let a = TypeWrapper::Ptr(new_var(state));
+            let b = TypeWrapper::Ptr(new_var(state));
+
+            let f_type = TypeWrapper::Concrete(AbsType::Arrow(
+                Box::new(TypeWrapper::Concrete(AbsType::Str())),
+                Box::new(TypeWrapper::Concrete(AbsType::Arrow(
+                    Box::new(a.clone()),
+                    Box::new(b.clone()),
+                ))),
+            ));
+
+            type_check_(
+                typed_vars.clone(),
+                state,
+                constr,
+                f.as_ref(),
+                f_type,
+                strict,
+            )?;
+
+            TypeWrapper::Concrete(AbsType::Arrow(
+                Box::new(TypeWrapper::Concrete(AbsType::DynRecord(Box::new(a)))),
+                Box::new(TypeWrapper::Concrete(AbsType::DynRecord(Box::new(b)))),
+            ))
+        }
     })
 }
 
@@ -711,6 +740,13 @@ pub fn get_bop_type(
                 ))),
             )))
         }
+        BinaryOp::HasField() => Ok(TypeWrapper::Concrete(AbsType::Arrow(
+            Box::new(TypeWrapper::Concrete(AbsType::Arrow(
+                Box::new(TypeWrapper::Concrete(AbsType::Str())),
+                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
+            ))),
+            Box::new(TypeWrapper::Concrete(AbsType::Bool())),
+        ))),
     }
 }
 

@@ -43,7 +43,7 @@ fn process_unary_operation(
 ) -> Result<Closure, EvalError> {
     let Closure {
         body: RichTerm { term: t, .. },
-        env,
+        mut env,
     } = clos;
     match u_op {
         UnaryOp::Ite() => {
@@ -216,6 +216,45 @@ fn process_unary_operation(
                 )))
             }
         }
+        UnaryOp::MapRec(f) => {
+            if let Term::Record(rec) = *t {
+                let fresh_var = format!("_{}", env.len());
+
+                env.insert(
+                    Ident(fresh_var.clone()),
+                    (Rc::new(RefCell::new(f)), IdentKind::Record()),
+                );
+
+                let rec = rec
+                    .into_iter()
+                    .map(|e| {
+                        let (Ident(s), t) = e;
+                        (
+                            Ident(s.clone()),
+                            Term::App(
+                                Term::App(
+                                    Term::Var(Ident(fresh_var.clone())).into(),
+                                    Term::Str(s.clone()).into(),
+                                )
+                                .into(),
+                                t.clone(),
+                            )
+                            .into(),
+                        )
+                    })
+                    .collect();
+
+                Ok(Closure {
+                    body: Term::Record(rec).into(),
+                    env,
+                })
+            } else {
+                Err(EvalError::TypeError(format!(
+                    "Expected Record, got {:?}",
+                    *t
+                )))
+            }
+        }
     }
 }
 
@@ -340,6 +379,22 @@ fn process_binary_operation(
                             env: env2,
                         }),
                     }
+                } else {
+                    Err(EvalError::TypeError(format!(
+                        "Expected Record, got {:?}",
+                        *t2
+                    )))
+                }
+            } else {
+                Err(EvalError::TypeError(format!("Expected Str, got {:?}", *t1)))
+            }
+        }
+        BinaryOp::HasField() => {
+            if let Term::Str(id) = *t1 {
+                if let Term::Record(static_map) = *t2 {
+                    Ok(Closure::atomic_closure(
+                        Term::Bool(static_map.contains_key(&Ident(id))).into(),
+                    ))
                 } else {
                     Err(EvalError::TypeError(format!(
                         "Expected Record, got {:?}",

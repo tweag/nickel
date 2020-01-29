@@ -97,6 +97,7 @@ pub enum UnaryOp<CapturedTerm> {
     Switch(HashMap<Ident, CapturedTerm>, Option<CapturedTerm>),
 
     StaticAccess(Ident),
+    MapRec(CapturedTerm),
 
     ChangePolarity(),
     Pol(),
@@ -121,6 +122,7 @@ impl<Ty> UnaryOp<Ty> {
                     .collect(),
                 op.map(f),
             ),
+            MapRec(t) => MapRec(f(t)),
 
             Ite() => Ite(),
 
@@ -156,6 +158,7 @@ pub enum BinaryOp<CapturedTerm> {
     EqBool(),
     DynExtend(CapturedTerm),
     DynAccess(),
+    HasField(),
 }
 
 impl<Ty> BinaryOp<Ty> {
@@ -170,6 +173,7 @@ impl<Ty> BinaryOp<Ty> {
             Unwrap() => Unwrap(),
             EqBool() => EqBool(),
             DynAccess() => DynAccess(),
+            HasField() => HasField(),
         }
     }
 }

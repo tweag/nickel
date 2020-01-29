@@ -482,4 +482,31 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
             .unwrap_err();
     }
 
+    #[test]
+    fn records_prims() {
+        assert_eq!(
+            eval_string("hasField \"foo\" { foo = 1; bar = 2; }"),
+            Ok(Term::Bool(true))
+        );
+        assert_eq!(
+            eval_string("hasField \"fop\" { foo = 1; bar = 2; }"),
+            Ok(Term::Bool(false))
+        );
+
+        assert_eq!(
+            eval_string("(mapRec (fun y => fun x => x + 1) { foo = 1; bar = \"it's lazy\"; }).foo"),
+            Ok(Term::Num(2.)),
+        );
+
+        assert_eq!(
+            eval_string(
+                "let r = mapRec 
+                    (fun y => fun x => if isNum x then x + 1 else 0) 
+                    { foo = 1; bar = \"it's lazy\"; }
+                in
+                (r.foo) + (r.bar)"
+            ),
+            Ok(Term::Num(2.)),
+        );
+    }
 }
