@@ -20,8 +20,8 @@ pub enum Term {
     // Record
     Record(HashMap<Ident, RichTerm>),
     // Primitives
-    Op1(UnaryOp, RichTerm),
-    Op2(BinaryOp, RichTerm, RichTerm),
+    Op1(UnaryOp<RichTerm>, RichTerm),
+    Op2(BinaryOp<RichTerm>, RichTerm, RichTerm),
     // Typing
     Promise(Types, Label, RichTerm),
     Assume(Types, Label, RichTerm),
@@ -77,7 +77,7 @@ impl Term {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum UnaryOp {
+pub enum UnaryOp<CapturedTerm> {
     Ite(),
 
     IsZero(),
@@ -94,7 +94,7 @@ pub enum UnaryOp {
     ///
     /// Ideally it should change to eliminate the dependency with RichTerm
     /// in the future.
-    Switch(HashMap<Ident, RichTerm>, Option<RichTerm>),
+    Switch(HashMap<Ident, CapturedTerm>, Option<CapturedTerm>),
 
     StaticAccess(Ident),
 
@@ -107,14 +107,71 @@ pub enum UnaryOp {
     Wrap(),
 }
 
+impl<Ty> UnaryOp<Ty> {
+    pub fn map<To, F: Fn(Ty) -> To>(self, f: F) -> UnaryOp<To> {
+        use UnaryOp::*;
+
+        match self {
+            Switch(m, op) => Switch(
+                m.into_iter()
+                    .map(|e| {
+                        let (id, t) = e;
+                        (id, f(t))
+                    })
+                    .collect(),
+                op.map(f),
+            ),
+
+            Ite() => Ite(),
+
+            IsZero() => IsZero(),
+
+            IsNum() => IsNum(),
+            IsBool() => IsBool(),
+            IsStr() => IsStr(),
+            IsFun() => IsFun(),
+
+            Blame() => Blame(),
+
+            Embed(id) => Embed(id),
+
+            StaticAccess(id) => StaticAccess(id),
+
+            ChangePolarity() => ChangePolarity(),
+            Pol() => Pol(),
+            GoDom() => GoDom(),
+            GoCodom() => GoCodom(),
+            Tag(s) => Tag(s),
+
+            Wrap() => Wrap(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
-pub enum BinaryOp {
+pub enum BinaryOp<CapturedTerm> {
     Plus(),
     PlusStr(),
     Unwrap(),
     EqBool(),
-    DynExtend(RichTerm),
+    DynExtend(CapturedTerm),
     DynAccess(),
+}
+
+impl<Ty> BinaryOp<Ty> {
+    pub fn map<To, F: Fn(Ty) -> To>(self, f: F) -> BinaryOp<To> {
+        use BinaryOp::*;
+
+        match self {
+            DynExtend(t) => DynExtend(f(t)),
+
+            Plus() => Plus(),
+            PlusStr() => PlusStr(),
+            Unwrap() => Unwrap(),
+            EqBool() => EqBool(),
+            DynAccess() => DynAccess(),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
