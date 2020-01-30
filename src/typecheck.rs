@@ -740,6 +740,21 @@ pub fn get_bop_type(
                 ))),
             )))
         }
+        BinaryOp::DynRemove() => {
+            let res = TypeWrapper::Ptr(new_var(state));
+
+            Ok(TypeWrapper::Concrete(AbsType::arrow(
+                Box::new(TypeWrapper::Concrete(AbsType::Str())),
+                Box::new(TypeWrapper::Concrete(AbsType::arrow(
+                    Box::new(TypeWrapper::Concrete(AbsType::DynRecord(Box::new(
+                        res.clone(),
+                    )))),
+                    Box::new(TypeWrapper::Concrete(AbsType::DynRecord(Box::new(
+                        res.clone(),
+                    )))),
+                ))),
+            )))
+        }
         BinaryOp::HasField() => Ok(TypeWrapper::Concrete(AbsType::Arrow(
             Box::new(TypeWrapper::Concrete(AbsType::Arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::Str())),

@@ -35,6 +35,8 @@ Applicative: RichTerm = {
     <op: BOpPre> <t1: SpTerm<Atom>> <t2: SpTerm<Atom>> => RichTerm::new(Term::Op2(op, t1, t2)),
     <t: SpTerm<Atom>> "." <id: Ident> => RichTerm::new(Term::Op1(UnaryOp::StaticAccess(id), t)),
     <t: SpTerm<Atom>> ".$" <t_id: SpTerm<Atom>> => RichTerm::new(Term::Op2(BinaryOp::DynAccess(), t_id, t)),
+    <r: SpTerm<Atom>> "[" <id: SpTerm<Atom>> "=" <t: SpTerm<Atom>> "]" =>
+        RichTerm::new(Term::Op2(BinaryOp::DynExtend(t), id, r)),
     SpTerm<Atom>,
 };
 
@@ -129,6 +131,7 @@ BOpIn: BinaryOp<RichTerm> = {
     "+" => BinaryOp::Plus(),
     "++" => BinaryOp::PlusStr(),
     "=b" => BinaryOp::EqBool(),
+    "-$" => BinaryOp::DynRemove(),
 };
 
 BOpPre: BinaryOp<RichTerm> = {

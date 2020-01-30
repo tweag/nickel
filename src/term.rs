@@ -157,6 +157,7 @@ pub enum BinaryOp<CapturedTerm> {
     Unwrap(),
     EqBool(),
     DynExtend(CapturedTerm),
+    DynRemove(),
     DynAccess(),
     HasField(),
 }
@@ -172,6 +173,7 @@ impl<Ty> BinaryOp<Ty> {
             PlusStr() => PlusStr(),
             Unwrap() => Unwrap(),
             EqBool() => EqBool(),
+            DynRemove() => DynRemove(),
             DynAccess() => DynAccess(),
             HasField() => HasField(),
         }

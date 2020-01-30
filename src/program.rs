@@ -497,7 +497,6 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
             eval_string("(mapRec (fun y => fun x => x + 1) { foo = 1; bar = \"it's lazy\"; }).foo"),
             Ok(Term::Num(2.)),
         );
-
         assert_eq!(
             eval_string(
                 "let r = mapRec 
@@ -507,6 +506,20 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
                 (r.foo) + (r.bar)"
             ),
             Ok(Term::Num(2.)),
+        );
+
+        assert_eq!(
+            eval_string("hasField \"foo\" ( { foo = 2; bar = 3; }-$(\"foo\"))"),
+            Ok(Term::Bool(false))
+        );
+
+        assert_eq!(
+            eval_string("hasField \"foo\" ( { bar = 3; }[\"foo\" = 1])"),
+            Ok(Term::Bool(true))
+        );
+        assert_eq!(
+            eval_string("( { bar = 3; }[\"foo\" = true]).foo"),
+            Ok(Term::Bool(true))
         );
     }
 }

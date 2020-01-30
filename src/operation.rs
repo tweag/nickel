@@ -266,7 +266,7 @@ fn process_binary_operation(
 ) -> Result<Closure, EvalError> {
     let Closure {
         body: RichTerm { term: t1, .. },
-        env: _env1,
+        env: env1,
     } = fst_clos;
     let Closure {
         body: RichTerm { term: t2, .. },
@@ -387,6 +387,29 @@ fn process_binary_operation(
                 }
             } else {
                 Err(EvalError::TypeError(format!("Expected Str, got {:?}", *t1)))
+            }
+        }
+        BinaryOp::DynRemove() => {
+            if let Term::Record(mut static_map) = *t1 {
+                if let Term::Str(id) = *t2 {
+                    match static_map.remove(&Ident(id.clone())) {
+                        None => Err(EvalError::TypeError(format!(
+                            "The record didn't had id {:?}, can't remove.",
+                            id
+                        ))),
+                        Some(_) => Ok(Closure {
+                            body: Term::Record(static_map).into(),
+                            env: env1,
+                        }),
+                    }
+                } else {
+                    Err(EvalError::TypeError(format!("Expected Str, got {:?}", *t2)))
+                }
+            } else {
+                Err(EvalError::TypeError(format!(
+                    "Expected Record, got {:?}",
+                    *t1
+                )))
             }
         }
         BinaryOp::HasField() => {
