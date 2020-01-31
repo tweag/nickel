@@ -3,8 +3,11 @@ use crate::identifier::Ident;
 use crate::label::TyPath;
 use crate::stack::Stack;
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp};
+use simple_counter::*;
 use std::cell::RefCell;
 use std::rc::Rc;
+
+generate_counter!(FreshVariableCounter, usize);
 
 #[derive(Debug, PartialEq)]
 pub enum OperationCont {
@@ -320,7 +323,7 @@ fn process_binary_operation(
             if let Term::Str(id) = *t1 {
                 if let Term::Record(mut static_map) = *t2 {
                     // Arnauds trick, make the closure into a fresh variable
-                    let fresh_var = format!("_{}", env2.len());
+                    let fresh_var = format!("_{}", FreshVariableCounter::next());
 
                     env2.insert(
                         Ident(fresh_var.clone()),
