@@ -1,5 +1,5 @@
 use crate::identifier::Ident;
-use crate::term::{BinaryOp, Term, UnaryOp};
+use crate::term::{BinaryOp, RichTerm, Term, UnaryOp};
 use crate::types::{AbsType, Types};
 use std::collections::{HashMap, HashSet};
 
@@ -503,7 +503,7 @@ pub fn get_uop_type(
     typed_vars: HashMap<Ident, TypeWrapper>,
     state: &mut GTypes,
     constr: &mut GConstr,
-    op: &UnaryOp,
+    op: &UnaryOp<RichTerm>,
     strict: bool,
 ) -> Result<TypeWrapper, String> {
     Ok(match op {
@@ -639,7 +639,7 @@ pub fn get_bop_type(
     typed_vars: HashMap<Ident, TypeWrapper>,
     state: &mut GTypes,
     constr: &mut GConstr,
-    op: &BinaryOp,
+    op: &BinaryOp<RichTerm>,
     strict: bool,
 ) -> Result<TypeWrapper, String> {
     match op {
@@ -776,7 +776,6 @@ pub fn get_root(state: &GTypes, x: usize) -> Result<TypeWrapper, String> {
 mod tests {
     use super::*;
     use crate::label::{Label, TyPath};
-    use crate::term::RichTerm;
 
     use crate::parser;
 

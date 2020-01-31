@@ -1,14 +1,19 @@
-use crate::eval::{CallStack, Closure, EvalError};
+use crate::eval::{CallStack, Closure, EvalError, IdentKind};
 use crate::identifier::Ident;
 use crate::label::TyPath;
 use crate::stack::Stack;
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp};
+use simple_counter::*;
+use std::cell::RefCell;
+use std::rc::Rc;
+
+generate_counter!(FreshVariableCounter, usize);
 
 #[derive(Debug, PartialEq)]
 pub enum OperationCont {
-    Op1(UnaryOp),
-    Op2First(BinaryOp, Closure),
-    Op2Second(BinaryOp, Closure),
+    Op1(UnaryOp<Closure>),
+    Op2First(BinaryOp<Closure>, Closure),
+    Op2Second(BinaryOp<Closure>, Closure),
 }
 
 pub fn continuate_operation(
@@ -32,7 +37,7 @@ pub fn continuate_operation(
 }
 
 fn process_unary_operation(
-    u_op: UnaryOp,
+    u_op: UnaryOp<Closure>,
     clos: Closure,
     stack: &mut Stack,
 ) -> Result<Closure, EvalError> {
@@ -111,9 +116,9 @@ fn process_unary_operation(
         UnaryOp::Switch(mut m, d) => {
             if let Term::Enum(en) = *t {
                 match m.remove(&en) {
-                    Some(ex) => Ok(Closure { body: ex, env }),
+                    Some(clos) => Ok(clos),
                     None => match d {
-                        Some(ex) => Ok(Closure { body: ex, env }),
+                        Some(clos) => Ok(clos),
                         None => Err(EvalError::TypeError(format!(
                             "Expected Enum in {:?}, got {:?}",
                             m, en
@@ -122,7 +127,7 @@ fn process_unary_operation(
                 }
             } else {
                 match d {
-                    Some(ex) => Ok(Closure { body: ex, env }),
+                    Some(clos) => Ok(clos),
                     None => Err(EvalError::TypeError(format!("Expected Enum, got {:?}", *t))),
                 }
             }
@@ -215,7 +220,7 @@ fn process_unary_operation(
 }
 
 fn process_binary_operation(
-    b_op: BinaryOp,
+    b_op: BinaryOp<Closure>,
     fst_clos: Closure,
     clos: Closure,
     _stack: &mut Stack,
@@ -226,7 +231,7 @@ fn process_binary_operation(
     } = fst_clos;
     let Closure {
         body: RichTerm { term: t2, .. },
-        env: env2,
+        env: mut env2,
     } = clos;
     match b_op {
         BinaryOp::Plus() => {
@@ -314,10 +319,18 @@ fn process_binary_operation(
                 Err(EvalError::TypeError(format!("Expected Str, got {:?}", *t1)))
             }
         }
-        BinaryOp::DynExtend(t) => {
+        BinaryOp::DynExtend(clos) => {
             if let Term::Str(id) = *t1 {
                 if let Term::Record(mut static_map) = *t2 {
-                    match static_map.insert(Ident(id.clone()), t) {
+                    // Arnauds trick, make the closure into a fresh variable
+                    let fresh_var = format!("_{}", FreshVariableCounter::next());
+
+                    env2.insert(
+                        Ident(fresh_var.clone()),
+                        (Rc::new(RefCell::new(clos)), IdentKind::Record()),
+                    );
+
+                    match static_map.insert(Ident(id.clone()), Term::Var(Ident(fresh_var)).into()) {
                         Some(_) => Err(EvalError::TypeError(format!(
                             "The record already had id {:?}, can't extend.",
                             id

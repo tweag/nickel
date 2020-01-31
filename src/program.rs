@@ -438,6 +438,15 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         f `boo",
         )
         .unwrap_err();
+
+        // This test checks that the terms of a switch are closured
+        assert_eq!(
+            eval_string(
+                "let x = 3 in
+            switch { foo => 1, _ => x, } (3 + 2)"
+            ),
+            Ok(Term::Num(3.))
+        );
     }
 
     #[test]

@@ -95,7 +95,7 @@ Str: String = {
     <x:r#""(([^\\"]|\\.)*)""#> => x[1..(x.len() - 1)].to_string(),
 }
 
-UOp: UnaryOp = {
+UOp: UnaryOp<RichTerm> = {
     "isZero" => UnaryOp::IsZero(),
     "isNum" => UnaryOp::IsNum(),
     "isBool" => UnaryOp::IsBool(),
@@ -124,13 +124,13 @@ switch_default: RichTerm = {
     "_" "=>" <SpTerm<Atom>> "," => <>,
 }
 
-BOpIn: BinaryOp = {
+BOpIn: BinaryOp<RichTerm> = {
     "+" => BinaryOp::Plus(),
     "++" => BinaryOp::PlusStr(),
     "=b" => BinaryOp::EqBool(),
 };
 
-BOpPre: BinaryOp = {
+BOpPre: BinaryOp<RichTerm> = {
     "unwrap" => BinaryOp::Unwrap(),
 }
 

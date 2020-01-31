@@ -20,6 +20,7 @@ pub enum StackElem {
 pub enum IdentKind {
     Let(),
     Lam(),
+    Record(),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -105,11 +106,21 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
             }
             // Unary Operation
             Term::Op1(op, t) => {
+                let op = op.map(|t| Closure {
+                    body: t,
+                    env: env.clone(),
+                });
+
                 stack.push_op_cont(OperationCont::Op1(op), call_stack.len());
                 Closure { body: t, env }
             }
             // Binary Operation
             Term::Op2(op, fst, snd) => {
+                let op = op.map(|t| Closure {
+                    body: t,
+                    env: env.clone(),
+                });
+
                 stack.push_op_cont(
                     OperationCont::Op2First(
                         op,
