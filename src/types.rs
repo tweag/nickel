@@ -16,8 +16,11 @@ pub enum AbsType<Ty> {
 
     // A kind system would be nice
     RowEmpty(),
-    RowExtend(Ident, Ty /* Row */),
+    RowExtend(Ident, Option<Ty>, Ty /* Row */),
     Enum(Ty /* Row */),
+    StaticRecord(Ty /* Row */),
+    // DynRecord will only have a default type, this is simpler for now, I don't think we lose much
+    DynRecord(Ty /*, Ty  Row */),
 }
 
 impl<Ty> AbsType<Ty> {
@@ -42,8 +45,10 @@ impl<Ty> AbsType<Ty> {
                 AbsType::Forall(i, ft)
             }
             AbsType::RowEmpty() => AbsType::RowEmpty(),
-            AbsType::RowExtend(id, t) => AbsType::RowExtend(id, f(t)),
+            AbsType::RowExtend(id, t1, t2) => AbsType::RowExtend(id, t1.map(&f), f(t2)),
             AbsType::Enum(t) => AbsType::Enum(f(t)),
+            AbsType::StaticRecord(t) => AbsType::StaticRecord(f(t)),
+            AbsType::DynRecord(t) => AbsType::DynRecord(f(t)),
         }
     }
 
@@ -100,12 +105,15 @@ impl Types {
                 *sy += 1;
                 t.contract_open(h, pol, sy)
             }
-            AbsType::RowEmpty() | AbsType::RowExtend(_, _) => RichTerm::var("fail".to_string()),
+            AbsType::RowEmpty() | AbsType::RowExtend(_, _, _) => RichTerm::var("fail".to_string()),
             AbsType::Enum(ref r) => {
                 fn form(ty: Types, h: HashMap<Ident, RichTerm>) -> RichTerm {
                     match ty.0 {
                         AbsType::RowEmpty() => RichTerm::var("fail".to_string()),
-                        AbsType::RowExtend(id, rest) => {
+                        AbsType::RowExtend(_, Some(_), _) => {
+                            panic!("It should be a row without type")
+                        }
+                        AbsType::RowExtend(id, None, rest) => {
                             let rest_contract = form(*rest, h);
                             let mut map = HashMap::new();
                             map.insert(id, Term::Bool(true).into());
@@ -138,6 +146,8 @@ impl Types {
 
                 form(*r.clone(), h)
             }
+            AbsType::StaticRecord(_) => panic!("TODO implement"),
+            AbsType::DynRecord(_) => panic!("TODO implement"),
         }
     }
 }

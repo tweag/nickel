@@ -95,6 +95,9 @@ fn type_check_(
             let src = TypeWrapper::Ptr(new_var(state));
             let arr = TypeWrapper::Concrete(AbsType::arrow(Box::new(src.clone()), Box::new(ty)));
 
+            // This order shouldn't be changed, since applying a function to a record
+            // may change how it's typed (static or dynamic)
+            // This is good hint a bidirectional algorithm would make sense...
             type_check_(typed_vars.clone(), state, constr, re.as_ref(), arr, strict)?;
             type_check_(typed_vars, state, constr, rt.as_ref(), src, strict)
         }
@@ -116,10 +119,68 @@ fn type_check_(
                 constr,
                 ty,
                 TypeWrapper::Concrete(AbsType::Enum(Box::new(TypeWrapper::Concrete(
-                    AbsType::RowExtend(id.clone(), Box::new(row)),
+                    AbsType::RowExtend(id.clone(), None, Box::new(row)),
                 )))),
                 strict,
             )
+        }
+        Term::Record(stat_map) => {
+            let root_ty = if let TypeWrapper::Ptr(p) = ty {
+                get_root(state, p)?
+            } else {
+                ty.clone()
+            };
+
+            if let TypeWrapper::Concrete(AbsType::DynRecord(rec_ty)) = root_ty.clone() {
+                // Checking for an dynamic record
+                stat_map
+                    .into_iter()
+                    .try_for_each(|e| -> Result<(), String> {
+                        let (_, t) = e;
+                        type_check_(
+                            typed_vars.clone(),
+                            state,
+                            constr,
+                            t.as_ref(),
+                            (*rec_ty).clone(),
+                            strict,
+                        )
+                    })
+            } else {
+                // infering static record
+                let row = stat_map.into_iter().try_fold(
+                    TypeWrapper::Concrete(AbsType::RowEmpty()),
+                    |acc, e| -> Result<TypeWrapper, String> {
+                        let (id, t) = e;
+
+                        let ty = TypeWrapper::Ptr(new_var(state));
+                        type_check_(
+                            typed_vars.clone(),
+                            state,
+                            constr,
+                            t.as_ref(),
+                            ty.clone(),
+                            strict,
+                        )?;
+
+                        constraint(state, constr, acc.clone(), id.clone())?;
+
+                        Ok(TypeWrapper::Concrete(AbsType::RowExtend(
+                            id.clone(),
+                            Some(Box::new(ty)),
+                            Box::new(acc),
+                        )))
+                    },
+                )?;
+
+                unify(
+                    state,
+                    constr,
+                    ty,
+                    TypeWrapper::Concrete(AbsType::StaticRecord(Box::new(row))),
+                    strict,
+                )
+            }
         }
         Term::Op1(op, rt) => {
             let ty_op = get_uop_type(typed_vars.clone(), state, constr, op, strict)?;
@@ -131,7 +192,7 @@ fn type_check_(
             type_check_(typed_vars, state, constr, rt.as_ref(), src, strict)
         }
         Term::Op2(op, re, rt) => {
-            let ty_op = get_bop_type(state, op);
+            let ty_op = get_bop_type(typed_vars.clone(), state, constr, op, strict)?;
 
             let src1 = TypeWrapper::Ptr(new_var(state));
             let src2 = TypeWrapper::Ptr(new_var(state));
@@ -221,10 +282,18 @@ impl TypeWrapper {
                 Concrete(AbsType::Arrow(Box::new(fs), Box::new(ft)))
             }
             Concrete(AbsType::RowEmpty()) => Concrete(AbsType::RowEmpty()),
-            Concrete(AbsType::RowExtend(tag, rest)) => {
-                Concrete(AbsType::RowExtend(tag, Box::new(rest.subst(id, to))))
-            }
+            Concrete(AbsType::RowExtend(tag, ty, rest)) => Concrete(AbsType::RowExtend(
+                tag,
+                ty.map(|x| Box::new(x.subst(id.clone(), to.clone()))),
+                Box::new(rest.subst(id, to)),
+            )),
             Concrete(AbsType::Enum(row)) => Concrete(AbsType::Enum(Box::new(row.subst(id, to)))),
+            Concrete(AbsType::StaticRecord(row)) => {
+                Concrete(AbsType::StaticRecord(Box::new(row.subst(id, to))))
+            }
+            Concrete(AbsType::DynRecord(def_ty)) => {
+                Concrete(AbsType::DynRecord(Box::new(def_ty.subst(id, to))))
+            }
 
             Constant(x) => Constant(x),
             Ptr(x) => Ptr(x),
@@ -234,31 +303,34 @@ impl TypeWrapper {
 
 /// Add an identifier to a row.
 ///
-/// If the id is not there, and the row is open, it will add it.
+/// If the id is not there, and the row is open, it will add it with the passed type `ty`.
 ///
 /// # Returns
 ///
-/// The row without the added id.
+/// The type bound with the id and the row without the id.
 fn row_add(
     state: &mut GTypes,
     constr: &mut GConstr,
     id: Ident,
+    ty: Option<Box<TypeWrapper>>,
     mut r: TypeWrapper,
-) -> Result<TypeWrapper, String> {
+) -> Result<(Option<Box<TypeWrapper>>, TypeWrapper), String> {
     if let TypeWrapper::Ptr(p) = r {
         r = get_root(state, p)?;
     }
     match r {
-        TypeWrapper::Concrete(AbsType::RowEmpty()) => Err("The row didn't have the id".to_string()),
-        TypeWrapper::Concrete(AbsType::RowExtend(id2, r2)) => {
+        TypeWrapper::Concrete(AbsType::RowEmpty()) => {
+            Err("The row didn't have the id and it wasn't open".to_string())
+        }
+        TypeWrapper::Concrete(AbsType::RowExtend(id2, ty2, r2)) => {
             if id == id2 {
-                Ok(*r2)
+                Ok((ty2, *r2))
             } else {
-                let subrow = row_add(state, constr, id, *r2)?;
-                Ok(TypeWrapper::Concrete(AbsType::RowExtend(
-                    id2,
-                    Box::new(subrow),
-                )))
+                let (extracted_type, subrow) = row_add(state, constr, id, ty, *r2)?;
+                Ok((
+                    extracted_type,
+                    TypeWrapper::Concrete(AbsType::RowExtend(id2, ty2, Box::new(subrow))),
+                ))
             }
         }
         TypeWrapper::Concrete(not_row) => Err(format!("Expected a row, got {:?}", not_row)),
@@ -277,10 +349,11 @@ fn row_add(
                 root,
                 Some(TypeWrapper::Concrete(AbsType::RowExtend(
                     id,
+                    ty.clone(),
                     Box::new(new_row.clone()),
                 ))),
             );
-            Ok(new_row)
+            Ok((ty, new_row))
         }
         TypeWrapper::Constant(_) => Err("Expected a row, got a constant".to_string()),
     }
@@ -330,11 +403,23 @@ pub fn unify(
                 ))
             } // Right now it only unifies equally named variables
             (AbsType::RowEmpty(), AbsType::RowEmpty()) => Ok(()),
-            (AbsType::RowExtend(id, t), r2 @ AbsType::RowExtend(_, _)) => {
-                let r2 = row_add(state, constr, id, TypeWrapper::Concrete(r2))?;
+            (AbsType::RowExtend(id, ty, t), r2 @ AbsType::RowExtend(_, _, _)) => {
+                let (ty2, r2) = row_add(state, constr, id, ty.clone(), TypeWrapper::Concrete(r2))?;
+
+                match (ty, ty2) {
+                    (None, None) => Ok(()),
+                    (Some(ty), Some(ty2)) => unify(state, constr, *ty, *ty2, strict),
+                    _ => Err("Couldn't unify two types from a row!".to_string()),
+                }?;
                 unify(state, constr, *t, r2, strict)
             }
             (AbsType::Enum(r), AbsType::Enum(r2)) => unify(state, constr, *r, *r2, strict),
+            (AbsType::StaticRecord(r), AbsType::StaticRecord(r2)) => {
+                unify(state, constr, *r, *r2, strict)
+            }
+            (AbsType::DynRecord(t), AbsType::DynRecord(t2)) => {
+                unify(state, constr, *t, *t2, strict)
+            }
             (AbsType::Var(ref i1), AbsType::Var(ref i2)) if i1 == i2 => Ok(()),
             (AbsType::Forall(i1, t1t), AbsType::Forall(i2, t2t)) => {
                 // Very stupid (slow) implementation
@@ -352,6 +437,10 @@ pub fn unify(
         },
         (TypeWrapper::Ptr(r1), TypeWrapper::Ptr(r2)) => {
             if r1 != r2 {
+                let mut r1_constr = constr.remove(&r1).unwrap_or_default();
+                let mut r2_constr = constr.remove(&r2).unwrap_or_default();
+                constr.insert(r1, r1_constr.drain().chain(r2_constr.drain()).collect());
+
                 state.insert(r1, Some(TypeWrapper::Ptr(r2)));
             }
             Ok(())
@@ -464,7 +553,7 @@ pub fn get_uop_type(
             TypeWrapper::Concrete(AbsType::Arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::Enum(Box::new(row.clone())))),
                 Box::new(TypeWrapper::Concrete(AbsType::Enum(Box::new(
-                    TypeWrapper::Concrete(AbsType::RowExtend(id.clone(), Box::new(row))),
+                    TypeWrapper::Concrete(AbsType::RowExtend(id.clone(), None, Box::new(row))),
                 )))),
             ))
         }
@@ -502,6 +591,7 @@ pub fn get_uop_type(
                         constraint(state, constr, acc.clone(), x.0.clone())?;
                         Ok(TypeWrapper::Concrete(AbsType::RowExtend(
                             x.0.clone(),
+                            None,
                             Box::new(acc),
                         )))
                     },
@@ -527,26 +617,47 @@ pub fn get_uop_type(
                 Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
             ))),
         )),
+        UnaryOp::StaticAccess(id) => {
+            let row = TypeWrapper::Ptr(new_var(state));
+            let res = TypeWrapper::Ptr(new_var(state));
+
+            TypeWrapper::Concrete(AbsType::arrow(
+                Box::new(TypeWrapper::Concrete(AbsType::StaticRecord(Box::new(
+                    TypeWrapper::Concrete(AbsType::RowExtend(
+                        id.clone(),
+                        Some(Box::new(res.clone())),
+                        Box::new(row),
+                    )),
+                )))),
+                Box::new(res),
+            ))
+        }
     })
 }
 
-pub fn get_bop_type(_s: &mut GTypes, op: &BinaryOp) -> TypeWrapper {
+pub fn get_bop_type(
+    typed_vars: HashMap<Ident, TypeWrapper>,
+    state: &mut GTypes,
+    constr: &mut GConstr,
+    op: &BinaryOp,
+    strict: bool,
+) -> Result<TypeWrapper, String> {
     match op {
-        BinaryOp::Plus() => TypeWrapper::Concrete(AbsType::arrow(
+        BinaryOp::Plus() => Ok(TypeWrapper::Concrete(AbsType::arrow(
             Box::new(TypeWrapper::Concrete(AbsType::Num())),
             Box::new(TypeWrapper::Concrete(AbsType::arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::Num())),
                 Box::new(TypeWrapper::Concrete(AbsType::Num())),
             ))),
-        )),
-        BinaryOp::PlusStr() => TypeWrapper::Concrete(AbsType::arrow(
+        ))),
+        BinaryOp::PlusStr() => Ok(TypeWrapper::Concrete(AbsType::arrow(
             Box::new(TypeWrapper::Concrete(AbsType::Str())),
             Box::new(TypeWrapper::Concrete(AbsType::arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::Str())),
                 Box::new(TypeWrapper::Concrete(AbsType::Str())),
             ))),
-        )),
-        BinaryOp::Unwrap() => TypeWrapper::Concrete(AbsType::arrow(
+        ))),
+        BinaryOp::Unwrap() => Ok(TypeWrapper::Concrete(AbsType::arrow(
             Box::new(TypeWrapper::Concrete(AbsType::Sym())),
             Box::new(TypeWrapper::Concrete(AbsType::arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
@@ -555,14 +666,51 @@ pub fn get_bop_type(_s: &mut GTypes, op: &BinaryOp) -> TypeWrapper {
                     Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
                 ))),
             ))),
-        )),
-        BinaryOp::EqBool() => TypeWrapper::Concrete(AbsType::arrow(
+        ))),
+        BinaryOp::EqBool() => Ok(TypeWrapper::Concrete(AbsType::arrow(
             Box::new(TypeWrapper::Concrete(AbsType::Bool())),
             Box::new(TypeWrapper::Concrete(AbsType::arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::Bool())),
                 Box::new(TypeWrapper::Concrete(AbsType::Bool())),
             ))),
-        )),
+        ))),
+        BinaryOp::DynAccess() => {
+            let res = TypeWrapper::Ptr(new_var(state));
+
+            Ok(TypeWrapper::Concrete(AbsType::arrow(
+                Box::new(TypeWrapper::Concrete(AbsType::Str())),
+                Box::new(TypeWrapper::Concrete(AbsType::arrow(
+                    Box::new(TypeWrapper::Concrete(AbsType::DynRecord(Box::new(
+                        res.clone(),
+                    )))),
+                    Box::new(res),
+                ))),
+            )))
+        }
+        BinaryOp::DynExtend(t) => {
+            let res = TypeWrapper::Ptr(new_var(state));
+
+            type_check_(
+                typed_vars.clone(),
+                state,
+                constr,
+                t.as_ref(),
+                res.clone(),
+                strict,
+            )?;
+
+            Ok(TypeWrapper::Concrete(AbsType::arrow(
+                Box::new(TypeWrapper::Concrete(AbsType::Str())),
+                Box::new(TypeWrapper::Concrete(AbsType::arrow(
+                    Box::new(TypeWrapper::Concrete(AbsType::DynRecord(Box::new(
+                        res.clone(),
+                    )))),
+                    Box::new(TypeWrapper::Concrete(AbsType::DynRecord(Box::new(
+                        res.clone(),
+                    )))),
+                ))),
+            )))
+        }
     }
 }
 
@@ -600,7 +748,7 @@ fn constraint(
             }
         }
         TypeWrapper::Concrete(AbsType::RowEmpty()) => Ok(()),
-        TypeWrapper::Concrete(AbsType::RowExtend(id2, t)) => {
+        TypeWrapper::Concrete(AbsType::RowExtend(id2, _, t)) => {
             if id2 == id {
                 Err(format!("The id {:?} was present on the row", id))
             } else {
@@ -882,5 +1030,80 @@ mod tests {
             f `bli",
         )
         .unwrap_err();
+    }
+
+    #[test]
+    fn static_record_simple() {
+        parse_and_typecheck("Promise({ {| bla : Num, |} }, { bla = 1; })").unwrap();
+        parse_and_typecheck("Promise({ {| bla : Num, |} }, { bla = true; })").unwrap_err();
+        parse_and_typecheck("Promise({ {| bla : Num, |} }, { blo = 1; })").unwrap_err();
+
+        parse_and_typecheck("Promise({ {| bla : Num, blo : Bool, |} }, { blo = true; bla = 1; })")
+            .unwrap();
+
+        parse_and_typecheck("Promise(Num, { blo = 1; }.blo)").unwrap();
+        parse_and_typecheck("Promise(Num, { bla = true; blo = 1; }.blo)").unwrap();
+        parse_and_typecheck("Promise(Bool, { blo = 1; }.blo)").unwrap_err();
+
+        parse_and_typecheck(
+            "let r = Promise({ {| bla : Bool, blo : Num, |} }, {blo = 1; bla = true; }) in
+        Promise(Num, if r.bla then r.blo else 2)",
+        )
+        .unwrap();
+
+        // It worked at first try :O
+        parse_and_typecheck(
+            "let f = Promise(
+                forall a. (forall r. { {| bla : Bool, blo : a, ble : a, | r } } -> a),
+                fun r => if r.bla then r.blo else r.ble) 
+            in
+            Promise(Num, 
+                if (f {bla = true; blo = false; ble = true; blip = 1; }) then
+                    (f {bla = true; blo = 1; ble = 2; blip = `blip; })
+                else
+                    (f {bla = true; blo = 3; ble = 4; bloppo = `bloppop; }))",
+        )
+        .unwrap();
+
+        parse_and_typecheck(
+            "let f = Promise(
+                forall a. (forall r. { {| bla : Bool, blo : a, ble : a, | r } } -> a),
+                fun r => if r.bla then r.blo else r.ble) 
+            in
+            Promise(Num, 
+                    f {bla = true; blo = 1; ble = true; blip = `blip; })
+                ",
+        )
+        .unwrap_err();
+        parse_and_typecheck(
+            "let f = Promise(
+                forall a. (forall r. { {| bla : Bool, blo : a, ble : a, | r } } -> a),
+                fun r => if r.bla then (r.blo + 1) else r.ble) 
+            in
+            Promise(Num, 
+                    f {bla = true; blo = 1; ble = 2; blip = `blip; })
+                ",
+        )
+        .unwrap_err();
+    }
+
+    #[test]
+    fn dynamic_record_simple() {
+        parse_and_typecheck("Promise({ _ : Num }, { $(if true then \"foo\" else \"bar\") = 2; } )")
+            .unwrap();
+
+        parse_and_typecheck(
+            "Promise(Num, { $(if true then \"foo\" else \"bar\") = 2; }.$(\"bla\"))",
+        )
+        .unwrap();
+
+        parse_and_typecheck(
+            "Promise(
+                Num, 
+                { $(if true then \"foo\" else \"bar\") = 2; $(\"foo\") = true; }.$(\"bla\"))",
+        )
+        .unwrap_err();
+
+        parse_and_typecheck("Promise( { _ : Num}, { foo = 3; bar = 4; })").unwrap();
     }
 }

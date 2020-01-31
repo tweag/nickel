@@ -17,6 +17,8 @@ pub enum Term {
     Var(Ident),
     // Enums
     Enum(Ident),
+    // Record
+    Record(HashMap<Ident, RichTerm>),
     // Primitives
     Op1(UnaryOp, RichTerm),
     Op2(BinaryOp, RichTerm, RichTerm),
@@ -34,7 +36,6 @@ impl Term {
     {
         use self::Term::*;
         match self {
-            Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | Sym(_) | Enum(_) => {}
             Op1(UnaryOp::Switch(ref mut map, ref mut def), ref mut t) => {
                 map.iter_mut().for_each(|e| {
                     let (_, t) = e;
@@ -45,6 +46,19 @@ impl Term {
                     func(def)
                 }
             }
+            Record(ref mut static_map) => {
+                static_map.iter_mut().for_each(|e| {
+                    let (_, t) = e;
+                    func(t);
+                });
+            }
+            Op2(BinaryOp::DynExtend(ref mut t), ref mut t1, ref mut t2) => {
+                func(t);
+                func(t1);
+                func(t2)
+            }
+
+            Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | Sym(_) | Enum(_) => {}
             Fun(_, ref mut t)
             | Op1(_, ref mut t)
             | Promise(_, _, ref mut t)
@@ -82,6 +96,8 @@ pub enum UnaryOp {
     /// in the future.
     Switch(HashMap<Ident, RichTerm>, Option<RichTerm>),
 
+    StaticAccess(Ident),
+
     ChangePolarity(),
     Pol(),
     GoDom(),
@@ -97,6 +113,8 @@ pub enum BinaryOp {
     PlusStr(),
     Unwrap(),
     EqBool(),
+    DynExtend(RichTerm),
+    DynAccess(),
 }
 
 #[derive(Debug, PartialEq, Clone)]

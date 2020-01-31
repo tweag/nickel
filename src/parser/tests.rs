@@ -168,3 +168,44 @@ fn enum_terms() {
         .into()
     )
 }
+
+#[test]
+fn record_terms() {
+    assert_eq!(
+        parse_without_pos("{ a = 1; b = 2; c = 3;}"),
+        Record(
+            vec![
+                (Ident("a".to_string()), Num(1.).into()),
+                (Ident("b".to_string()), Num(2.).into()),
+                (Ident("c".to_string()), Num(3.).into())
+            ]
+            .into_iter()
+            .collect()
+        )
+        .into()
+    );
+
+    assert_eq!(
+        parse_without_pos("{ a = 1; $123 = (if 4 then 5 else 6); d = 42;}"),
+        Op2(
+            BinaryOp::DynExtend(
+                App(
+                    App(Op1(UnaryOp::Ite(), Num(4.).into()).into(), Num(5.).into()).into(),
+                    Num(6.).into()
+                )
+                .into()
+            ),
+            Num(123.).into(),
+            Record(
+                vec![
+                    (Ident("a".to_string()), Num(1.).into()),
+                    (Ident("d".to_string()), Num(42.).into()),
+                ]
+                .into_iter()
+                .collect()
+            )
+            .into()
+        )
+        .into()
+    );
+}

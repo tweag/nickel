@@ -2,6 +2,7 @@ use crate::identifier::Ident;
 use crate::label::{Label, TyPath};
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp};
 use crate::types::{Types, AbsType};
+use either::*;
 use std::str::FromStr;
 
 grammar;
@@ -32,6 +33,8 @@ Applicative: RichTerm = {
     <t1:SpTerm< Applicative>> <t2: SpTerm<Atom>> => RichTerm::new(Term::App(t1, t2)),
     <op: UOp> <t: SpTerm<Atom>> => RichTerm::new(Term::Op1(op, t)),
     <op: BOpPre> <t1: SpTerm<Atom>> <t2: SpTerm<Atom>> => RichTerm::new(Term::Op2(op, t1, t2)),
+    <t: SpTerm<Atom>> "." <id: Ident> => RichTerm::new(Term::Op1(UnaryOp::StaticAccess(id), t)),
+    <t: SpTerm<Atom>> ".$" <t_id: SpTerm<Atom>> => RichTerm::new(Term::Op2(BinaryOp::DynAccess(), t_id, t)),
     SpTerm<Atom>,
 };
 
@@ -46,7 +49,34 @@ Atom: RichTerm = {
     Str => RichTerm::new(Term::Str(<>)),
     Ident => RichTerm::new(Term::Var(<>)),
     "`" <Ident> => RichTerm::new(Term::Enum(<>)),
+    "{" <fields: (RecordField ";")*> "}" => 
+    fields.clone().into_iter().map(|x| x.0).filter_map(
+        |x| match x {Left(_) => None, Right(y) => Some(y)}
+    ).fold(
+        RichTerm::new(Term::Record(
+            fields.clone().into_iter().map(|x| x.0).filter_map(
+                |x| match x {Left(y) => Some(y), Right(_) => None}
+            ).collect()
+        )),
+        | acc, e | {
+            let (id_t, t) = e;
+            RichTerm::new(Term::Op2(
+                BinaryOp::DynExtend(t),
+                id_t,
+                acc
+            ))
+        }
+    )
+    
+    
 };
+
+RecordField: Either<(Ident, RichTerm), (RichTerm, RichTerm)> = {
+    <id: Ident> "=" <t: SpTerm<Atom>> => 
+        Either::Left((id, t)),
+    "$" <id: SpTerm<Term>> "=" <t: SpTerm<Atom>> => 
+        Either::Right((id, t)),
+}
 
 Pattern: Ident = {
     Ident,
@@ -130,8 +160,22 @@ subType : Types = {
                     None => AbsType::RowEmpty(),
                 }
             ),
-            |t, i| Types(AbsType::RowExtend(i.clone(), Box::new(t)))), 
+            |t, i| Types(AbsType::RowExtend(i.clone(), None, Box::new(t)))), 
+    "{|" <r:(<Ident> ":" <Types> ",")*> "|" <rest: Ident?> "}" => 
+        r.iter().fold(
+            Types(
+                match rest {
+                    Some(id) => AbsType::Var(id),
+                    None => AbsType::RowEmpty(),
+                }
+            ),
+            |t, i_ty| {
+                let (i, ty) = i_ty;
+                Types(AbsType::RowExtend(i.clone(), Some(Box::new(ty.clone())), Box::new(t)))
+            }), 
     "<" <subType> ">" => Types(AbsType::Enum(Box::new(<>))),
+    "{" <subType> "}" => Types(AbsType::StaticRecord(Box::new(<>))),
+    "{" "_" ":" <subType> "}" => Types(AbsType::DynRecord(Box::new(<>))),
 };
 
 DbgStr: String = r"[[:alpha:]_][[:word:]-]*" => <>.to_string();

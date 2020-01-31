@@ -445,4 +445,32 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         eval_string("Assume((| |), 123)").unwrap_err();
     }
 
+    #[test]
+    fn records_accessing() {
+        assert_eq!(
+            eval_string("({ foo = 3; bar = true; }).bar"),
+            Ok(Term::Bool(true)),
+        );
+
+        assert_eq!(
+            eval_string("({ $(if true then \"foo\" else \"bar\") = false; bar = true; }).foo"),
+            Ok(Term::Bool(false)),
+        );
+
+        assert_eq!(
+            eval_string("({ foo = 3; bar = true; }).$(\"bar\")"),
+            Ok(Term::Bool(true)),
+        );
+
+        assert_eq!(
+            eval_string(
+                "({ $(if true then \"foo\" else \"bar\") = false; bar = true; }).$(\"foo\")"
+            ),
+            Ok(Term::Bool(false)),
+        );
+
+        eval_string("({ $(if false then \"foo\" else \"bar\") = false; bar = true; }).foo")
+            .unwrap_err();
+    }
+
 }

@@ -195,6 +195,22 @@ fn process_unary_operation(
                 Err(EvalError::TypeError(format!("Expected Sym, got {:?}", *t)))
             }
         }
+        UnaryOp::StaticAccess(id) => {
+            if let Term::Record(mut static_map) = *t {
+                match static_map.remove(&id) {
+                    Some(e) => Ok(Closure { body: e, env }),
+                    None => Err(EvalError::TypeError(format!(
+                        "Record didn't have field {:?}",
+                        id
+                    ))),
+                }
+            } else {
+                Err(EvalError::TypeError(format!(
+                    "Expected Record, got {:?}",
+                    *t
+                )))
+            }
+        }
     }
 }
 
@@ -276,6 +292,49 @@ fn process_binary_operation(
                     "Expected Bool, got {:?}",
                     *t1
                 )))
+            }
+        }
+        BinaryOp::DynAccess() => {
+            if let Term::Str(id) = *t1 {
+                if let Term::Record(mut static_map) = *t2 {
+                    match static_map.remove(&Ident(id.clone())) {
+                        Some(e) => Ok(Closure { body: e, env: env2 }),
+                        None => Err(EvalError::TypeError(format!(
+                            "Record didn't have field {:?}",
+                            id
+                        ))),
+                    }
+                } else {
+                    Err(EvalError::TypeError(format!(
+                        "Expected Record, got {:?}",
+                        *t2
+                    )))
+                }
+            } else {
+                Err(EvalError::TypeError(format!("Expected Str, got {:?}", *t1)))
+            }
+        }
+        BinaryOp::DynExtend(t) => {
+            if let Term::Str(id) = *t1 {
+                if let Term::Record(mut static_map) = *t2 {
+                    match static_map.insert(Ident(id.clone()), t) {
+                        Some(_) => Err(EvalError::TypeError(format!(
+                            "The record already had id {:?}, can't extend.",
+                            id
+                        ))),
+                        None => Ok(Closure {
+                            body: Term::Record(static_map).into(),
+                            env: env2,
+                        }),
+                    }
+                } else {
+                    Err(EvalError::TypeError(format!(
+                        "Expected Record, got {:?}",
+                        *t2
+                    )))
+                }
+            } else {
+                Err(EvalError::TypeError(format!("Expected Str, got {:?}", *t1)))
             }
         }
     }
