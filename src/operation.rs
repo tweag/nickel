@@ -2,6 +2,7 @@ use crate::eval::Environment;
 use crate::eval::{CallStack, Closure, EvalError, IdentKind};
 use crate::identifier::Ident;
 use crate::label::TyPath;
+use crate::merge::merge;
 use crate::stack::Stack;
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp};
 use simple_counter::*;
@@ -609,6 +610,7 @@ fn process_binary_operation(
                 ))),
             }
         }
+        BinaryOp::Merge() => merge(*t1, env1, *t2, env2),
     }
 }
 

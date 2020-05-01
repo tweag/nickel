@@ -838,6 +838,13 @@ pub fn get_bop_type(
                 Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
             ))),
         ))),
+        BinaryOp::Merge() => Ok(TypeWrapper::Concrete(AbsType::arrow(
+            Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
+            Box::new(TypeWrapper::Concrete(AbsType::arrow(
+                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
+                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
+            ))),
+        ))),
     }
 }
 
