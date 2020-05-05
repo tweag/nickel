@@ -220,6 +220,13 @@ impl<Ty> BinaryOp<Ty> {
             Merge() => Merge(),
         }
     }
+
+    pub fn is_strict(&self) -> bool {
+        match self {
+            BinaryOp::Merge() => false,
+            _ => true,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -248,6 +255,10 @@ impl RichTerm {
 
     pub fn var(s: String) -> RichTerm {
         Term::Var(Ident(s)).into()
+    }
+
+    pub fn fun(s: String, rt: RichTerm) -> RichTerm {
+        Term::Fun(Ident(s), rt).into()
     }
 
     pub fn let_in(id: &str, e: RichTerm, t: RichTerm) -> RichTerm {

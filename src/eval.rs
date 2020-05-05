@@ -52,7 +52,7 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
     let mut clos = Closure::atomic_closure(t0);
     let mut call_stack = CallStack::new();
     let mut stack = Stack::new();
-    let enriched_strict = true;
+    let mut enriched_strict = true;
 
     loop {
         let Closure {
@@ -122,6 +122,8 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                     env: env.clone(),
                 });
 
+                let prev_strict = enriched_strict;
+                enriched_strict = op.is_strict();
                 stack.push_op_cont(
                     OperationCont::Op2First(
                         op,
@@ -129,6 +131,7 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                             body: snd,
                             env: env.clone(),
                         },
+                        prev_strict,
                     ),
                     call_stack.len(),
                 );
@@ -190,7 +193,12 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                     }
                     clos
                 } else {
-                    let cont_result = continuate_operation(clos, &mut stack, &mut call_stack);
+                    let cont_result = continuate_operation(
+                        clos,
+                        &mut stack,
+                        &mut call_stack,
+                        &mut enriched_strict,
+                    );
 
                     if let Err(EvalError::BlameError(l, _)) = cont_result {
                         return Err(EvalError::BlameError(l, Some(call_stack)));
@@ -229,7 +237,8 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::term::UnaryOp;
+    use crate::term::{BinaryOp, UnaryOp};
+    use crate::types::{AbsType, Types};
 
     #[test]
     fn identity_over_values() {
@@ -345,5 +354,37 @@ mod tests {
         )
         .into();
         assert_eq!(Ok(Term::Bool(false)), eval(t));
+    }
+
+    #[test]
+    fn merge_enriched_default() {
+        let t = Term::Op2(
+            BinaryOp::Merge(),
+            Term::Num(1.0).into(),
+            Term::DefaultValue(Term::Num(2.0).into()).into(),
+        )
+        .into();
+        assert_eq!(Ok(Term::Num(1.0)), eval(t));
+    }
+
+    #[test]
+    fn merge_multiple_defaults() {
+        let t = Term::Op2(
+            BinaryOp::Merge(),
+            Term::DefaultValue(Term::Num(1.0).into()).into(),
+            Term::DefaultValue(Term::Num(2.0).into()).into(),
+        )
+        .into();
+
+        eval(t).unwrap_err();
+
+        let t = Term::Op2(
+            BinaryOp::Merge(),
+            Term::ContractWithDefault(Types(AbsType::Num()), Term::Num(1.0).into()).into(),
+            Term::DefaultValue(Term::Num(2.0).into()).into(),
+        )
+        .into();
+
+        eval(t).unwrap_err();
     }
 }

@@ -654,11 +654,6 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
     }
 
     #[test]
-    fn enriched_terms_contract_default() {
-        assert_eq!(eval_string("ContractDefault(Num, 10)"), Ok(Term::Num(10.0)));
-    }
-
-    #[test]
     #[should_panic]
     fn merge_record_failure() {
         eval_string("merge {a=1} {a=2}").unwrap();
@@ -717,5 +712,78 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
     #[should_panic]
     fn enriched_terms_contract_default_fail() {
         eval_string("ContractDefault(Num, true)").unwrap();
+    }
+
+    #[test]
+    fn enriched_terms_contract_default() {
+        assert_eq!(eval_string("ContractDefault(Num, 10)"), Ok(Term::Num(10.0)));
+    }
+
+    #[test]
+    fn merge_default() {
+        assert_eval_to_record(
+            "merge {a=2;} {a=Default(0);b=Default(true);}",
+            vec![("a", Term::Num(2.0)), ("b", Term::Bool(true))],
+        );
+    }
+
+    #[test]
+    fn merge_contract() {
+        assert_eval_to_record(
+            "merge {a=2;b=Contract(Bool);} {a=Contract(Num);b=Default(true);}",
+            vec![("a", Term::Num(2.0)), ("b", Term::Bool(true))],
+        );
+
+        eval_string("let r = merge {a=2;} {a=Contract(Bool)} in r.a").unwrap_err();
+    }
+
+    fn make_composed_contract(value: &str) -> Result<Term, String> {
+        let s = format!(
+            "let Y = fun f => (fun x => f (x x)) (fun x => f (x x)) in
+             let dec = fun x => x + (-1) in
+             let or = fun x => fun y => if x then x else y in
+             let isEven_ = Y (fun f =>
+                 (fun x =>
+                     if (isZero x) then true
+                     else (
+                         if (isZero (dec x)) then false
+                         else (f (dec (dec x)))
+                     )
+                 )
+             ) in
+             let isDivBy3_ = Y (fun f =>
+                 (fun x =>
+                     if (isZero x) then true
+                     else (
+                         if or (isZero (dec (dec x))) (isZero (dec x)) then false
+                         else (f (dec (dec (dec x))))
+                     )
+                 )
+             ) in
+             let toCtr = fun f => fun l => fun x => (
+               if (isNum x) then (
+                 if (f x) then x else blame l)
+               else blame l
+             ) in
+             let isEven = toCtr isEven_ in
+             let isDivBy3 = toCtr isDivBy3_ in
+             let composed = merge {{a=Contract(#isEven);}} {{a=Contract(#isDivBy3);}} in
+             (merge {{a={};}} composed).a",
+            value
+        );
+
+        eval_string(s.as_str())
+    }
+
+    #[test]
+    fn merge_compose_contract() {
+        assert_eq!(make_composed_contract("6"), Ok(Term::Num(6.0)));
+        assert_eq!(make_composed_contract("12"), Ok(Term::Num(12.0)));
+
+        make_composed_contract("1").unwrap_err();
+        make_composed_contract("14").unwrap_err();
+        make_composed_contract("27").unwrap_err();
+        make_composed_contract("10").unwrap_err();
+        make_composed_contract("35").unwrap_err();
     }
 }
