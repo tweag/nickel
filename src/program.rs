@@ -654,6 +654,11 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
     }
 
     #[test]
+    fn enriched_terms_contract_default() {
+        assert_eq!(eval_string("ContractDefault(Num, 10)"), Ok(Term::Num(10.0)));
+    }
+
+    #[test]
     #[should_panic]
     fn merge_record_failure() {
         eval_string("merge {a=1} {a=2}").unwrap();
@@ -706,5 +711,11 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
             ),
             Ok(Term::Num(10.0))
         );
+    }
+
+    #[test]
+    #[should_panic]
+    fn enriched_terms_contract_default_fail() {
+        eval_string("ContractDefault(Num, true)").unwrap();
     }
 }

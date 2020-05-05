@@ -1,5 +1,5 @@
 use crate::identifier::Ident;
-use crate::label::Label;
+use crate::label::{Label, TyPath};
 use crate::operation::{continuate_operation, OperationCont};
 use crate::stack::Stack;
 use crate::term::{RichTerm, Term};
@@ -52,6 +52,7 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
     let mut clos = Closure::atomic_closure(t0);
     let mut call_stack = CallStack::new();
     let mut stack = Stack::new();
+    let enriched_strict = true;
 
     loop {
         let Closure {
@@ -148,6 +149,32 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                     env,
                 }
             }
+            // Unwrap enriched terms
+            Term::Contract(_) if enriched_strict => {
+                return Err(EvalError::TypeError(String::from(
+                    "Expected a simple term, got a Contract. Contracts cannot be evaluated",
+                )))
+            }
+            Term::DefaultValue(t) | Term::Docstring(_, t) if enriched_strict => {
+                Closure { body: t, env }
+            }
+            Term::ContractWithDefault(ty, t) if enriched_strict => {
+                // We will probably want something more informative than (0,0)
+                // if pos is None()
+                let (l, r) = pos.unwrap_or((0, 0));
+                let label = Label {
+                    tag: "ContractWithDefault".to_string(),
+                    l,
+                    r,
+                    polarity: true,
+                    path: TyPath::Nil(),
+                };
+
+                Closure {
+                    body: Term::Assume(ty, label, t).into(),
+                    env,
+                }
+            }
             // Continuate Operation
             // Update
             _ if 0 < stack.count_thunks() || 0 < stack.count_conts() => {
@@ -183,7 +210,7 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                     return Ok(Term::Fun(x, t));
                 }
             }
-
+            // Otherwise, this is either an ill-formed application, or we are done
             t => {
                 if 0 < stack.count_args() {
                     let (arg, _) = stack.pop_arg().expect("Condition already checked.");
@@ -202,7 +229,6 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::label::TyPath;
     use crate::term::UnaryOp;
 
     #[test]
@@ -309,5 +335,15 @@ mod tests {
         )
         .into();
         assert_eq!(Ok(Term::Bool(true)), eval(lambda));
+    }
+
+    #[test]
+    fn enriched_terms_unwrapping() {
+        let t = Term::DefaultValue(
+            Term::DefaultValue(Term::Docstring("a".to_string(), Term::Bool(false).into()).into())
+                .into(),
+        )
+        .into();
+        assert_eq!(Ok(Term::Bool(false)), eval(t));
     }
 }

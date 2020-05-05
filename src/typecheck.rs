@@ -259,7 +259,11 @@ fn type_check_(
             TypeWrapper::Concrete(AbsType::Sym()),
             strict,
         ),
-        Term::Wrapped(_, rt) => type_check_(typed_vars, state, constr, rt.as_ref(), ty, strict),
+        Term::Wrapped(_, rt)
+        | Term::DefaultValue(rt)
+        | Term::ContractWithDefault(_, rt)
+        | Term::Docstring(_, rt) => type_check_(typed_vars, state, constr, rt.as_ref(), ty, strict),
+        Term::Contract(_) => Ok(()),
     }
 }
 

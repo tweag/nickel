@@ -46,6 +46,10 @@ Atom: RichTerm = {
         RichTerm::new(Term::Promise(ty, Label{tag: "A promise".to_string(), l: l, r: r, polarity: true, path: TyPath::Nil()}, t)),
     <l:@L> "Assume(" <ty: Types> "," <t: SpTerm<Term>> ")" <r:@R> =>
         RichTerm::new(Term::Assume(ty, Label{tag: "An assume".to_string(), l: l, r: r, polarity: true, path: TyPath::Nil()}, t)), 
+    "Contract(" <ty: Types> ")" => RichTerm::new(Term::Contract(ty)),
+    "Default(" <t: SpTerm<Term>> ")" => RichTerm::new(Term::DefaultValue(t)),
+    "ContractDefault(" <ty: Types> "," <t: SpTerm<Term>> ")" => RichTerm::new(Term::ContractWithDefault(ty, t)),
+    "Docstring(" <s: Str> "," <t: SpTerm<Term>> ")" => RichTerm::new(Term::Docstring(s, t)),
     Num => RichTerm::new(Term::Num(<>)),
     Bool => RichTerm::new(Term::Bool(<>)),
     Str => RichTerm::new(Term::Str(<>)),
