@@ -84,8 +84,7 @@ fn type_check_(
                 _ => TypeWrapper::Concrete(AbsType::Dyn()),
             };
 
-            let instantiated = instantiate_foralls_with(state, exp.clone(), TypeWrapper::Constant)?;
-            type_check_(typed_vars.clone(), state, constr, e, instantiated, strict)?;
+            type_check_(typed_vars.clone(), state, constr, e, exp.clone(), strict)?;
 
             // TODO move this up once lets are rec
             typed_vars.insert(x.clone(), exp);
