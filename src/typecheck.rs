@@ -1002,6 +1002,27 @@ mod tests {
     }
 
     #[test]
+    fn forall_nested() {
+        parse_and_typecheck(
+            "let f = Promise(forall a. a -> a, let g = Assume(forall a. (a -> a), fun x => x) in g) in
+            Promise(Num, if (f true) then (f 2) else 3)",
+        )
+        .unwrap();
+
+        parse_and_typecheck(
+            "let f = Promise(forall a. a -> a, let g = Promise(forall a. (a -> a), fun x => x) in g g) in
+            Promise(Num, if (f true) then (f 2) else 3)",
+        )
+        .unwrap();
+
+        parse_and_typecheck(
+            "let f = Promise(forall a. a -> a, let g = Promise(forall a. (forall b. (b -> (a -> a))), fun y => fun x => x) in g 0) in
+            Promise(Num, if (f true) then (f 2) else 3)",
+        )
+        .unwrap();
+    }
+
+    #[test]
     fn enum_simple() {
         parse_and_typecheck("Promise(< (| bla, |) >, `bla)").unwrap();
         parse_and_typecheck("Promise(< (| bla, |) >, `blo)").unwrap_err();
