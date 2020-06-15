@@ -21,6 +21,7 @@ pub enum AbsType<Ty> {
     StaticRecord(Ty /* Row */),
     // DynRecord will only have a default type, this is simpler for now, I don't think we lose much
     DynRecord(Ty /*, Ty  Row */),
+    List(),
 }
 
 impl<Ty> AbsType<Ty> {
@@ -49,6 +50,7 @@ impl<Ty> AbsType<Ty> {
             AbsType::Enum(t) => AbsType::Enum(f(t)),
             AbsType::StaticRecord(t) => AbsType::StaticRecord(f(t)),
             AbsType::DynRecord(t) => AbsType::DynRecord(f(t)),
+            AbsType::List() => AbsType::List(),
         }
     }
 
@@ -77,6 +79,7 @@ impl Types {
             AbsType::Num() => RichTerm::var("num".to_string()),
             AbsType::Bool() => RichTerm::var("bool".to_string()),
             AbsType::Str() => RichTerm::var("string".to_string()),
+            AbsType::List() => RichTerm::var("list".to_string()),
             AbsType::Sym() => panic!("Are you trying to check a Sym at runtime?"),
             AbsType::Arrow(ref s, ref t) => RichTerm::app(
                 RichTerm::app(

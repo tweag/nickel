@@ -203,6 +203,8 @@ impl<T: Read> Program<T> {
 
         let string = fun l => fun t => if isStr t then t else blame (tag[str] l) in
 
+        let list = fun l => fun t => if isList t then t else blame (tag[list] l) in
+
         let func = fun s => fun t => fun l => fun e => 
   let l = tag[func] l in if isFun e then (fun x => t (goCodom l) (e (s (chngPol (goDom l)) x))) else blame l in
 
@@ -516,11 +518,11 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         );
 
         assert_eq!(
-            eval_string("hasField \"foo\" ( { bar = 3; }[\"foo\" = 1])"),
+            eval_string("hasField \"foo\" ( { bar = 3; }$[\"foo\" = 1])"),
             Ok(Term::Bool(true))
         );
         assert_eq!(
-            eval_string("( { bar = 3; }[\"foo\" = true]).foo"),
+            eval_string("( { bar = 3; }$[\"foo\" = true]).foo"),
             Ok(Term::Bool(true))
         );
     }
@@ -556,5 +558,63 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
             ),
             Ok(Term::Num(3.0))
         )
+    }
+
+    #[test]
+    fn lists() {
+        assert_eq!(eval_string("elemAt [1,2,3] 1"), Ok(Term::Num(2.0)));
+        assert_eq!(
+            eval_string("elemAt (map (fun x => x + 1) [1,2,3]) 1"),
+            Ok(Term::Num(3.0))
+        );
+
+        eval_string("elemAt [1,2,3] (-1)").unwrap_err();
+        eval_string("elemAt [1,2,3] 4").unwrap_err();
+
+        assert_eq!(eval_string("length []"), Ok(Term::Num(0.0)));
+        assert_eq!(eval_string("length [1,2,3]"), Ok(Term::Num(3.0)));
+
+        assert_eq!(
+            eval_string("length ([] @ [1,2] @ [3,4] @ [])"),
+            Ok(Term::Num(4.0))
+        );
+
+        assert_eq!(
+            eval_string("head [\"a\",\"b\",\"c\"]"),
+            Ok(Term::Str(String::from("a")))
+        );
+        eval_string("head []").unwrap_err();
+
+        assert_eq!(
+            eval_string("length (tail [true,false,1])"),
+            Ok(Term::Num(2.0))
+        );
+        eval_string("tail []").unwrap_err();
+
+        assert_eq!(
+            eval_string(
+                "let Y = fun f => (fun x => f (x x)) (fun x => f (x x)) in
+                let foldr_ =
+                    fun self => fun f => fun acc => fun l =>
+                        if isZero (length l) then acc
+                        else
+                            let h = head l in
+                            let t = tail l in
+                            let next_acc = self f acc t in
+                            f next_acc h
+                in
+                let foldr = Y foldr_ in
+                let and = Promise(Bool -> Bool -> Bool,
+                    fun x => fun y =>
+                        if x then
+                            if y then true else false
+                        else false)
+                in
+                let all = fun pred => fun l => foldr and true (map pred l) in
+                let isZ = fun x => isZero x in
+                all isZ [0, 0, 0, 1]"
+            ),
+            Ok(Term::Bool(false))
+        );
     }
 }

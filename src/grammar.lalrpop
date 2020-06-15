@@ -35,7 +35,7 @@ Applicative: RichTerm = {
     <op: BOpPre> <t1: SpTerm<Atom>> <t2: SpTerm<Atom>> => RichTerm::new(Term::Op2(op, t1, t2)),
     <t: SpTerm<Atom>> "." <id: Ident> => RichTerm::new(Term::Op1(UnaryOp::StaticAccess(id), t)),
     <t: SpTerm<Atom>> ".$" <t_id: SpTerm<Atom>> => RichTerm::new(Term::Op2(BinaryOp::DynAccess(), t_id, t)),
-    <r: SpTerm<Atom>> "[" <id: SpTerm<Atom>> "=" <t: SpTerm<Atom>> "]" =>
+    <r: SpTerm<Atom>> "$[" <id: SpTerm<Atom>> "=" <t: SpTerm<Atom>> "]" =>
         RichTerm::new(Term::Op2(BinaryOp::DynExtend(t), id, r)),
     SpTerm<Atom>,
 };
@@ -68,9 +68,15 @@ Atom: RichTerm = {
                 acc
             ))
         }
-    )
-    
-    
+    ),
+    "[" <terms: (SpTerm<Atom> ",")*> <last: SpTerm<Atom>?> "]" => {
+        let mut terms : Vec<RichTerm> = terms.clone().into_iter().map(|x| x.0).collect();
+        if let Some(t) = last {
+            terms.push(t);
+        }
+
+        RichTerm::new(Term::List(terms))
+    }
 };
 
 RecordField: Either<(Ident, RichTerm), (RichTerm, RichTerm)> = {
@@ -103,6 +109,7 @@ UOp: UnaryOp<RichTerm> = {
     "isBool" => UnaryOp::IsBool(),
     "isStr" => UnaryOp::IsStr(),
     "isFun" => UnaryOp::IsFun(),
+    "isList" => UnaryOp::IsList(),
     "blame" => UnaryOp::Blame(),
     "chngPol" => UnaryOp::ChangePolarity(),
     "polarity" => UnaryOp::Pol(),
@@ -119,6 +126,9 @@ UOp: UnaryOp<RichTerm> = {
     "mapRec" <Atom> => UnaryOp::MapRec(<>),
     "seq" => UnaryOp::Seq(),
     "deepSeq" => UnaryOp::DeepSeq(),
+    "head" => UnaryOp::ListHead(),
+    "tail" => UnaryOp::ListTail(),
+    "length" => UnaryOp::ListLength(),
 };
 
 switch_case: (Ident, RichTerm) = {
@@ -134,11 +144,15 @@ BOpIn: BinaryOp<RichTerm> = {
     "++" => BinaryOp::PlusStr(),
     "=b" => BinaryOp::EqBool(),
     "-$" => BinaryOp::DynRemove(),
+    "@" => BinaryOp::ListConcat(),
+
 };
 
 BOpPre: BinaryOp<RichTerm> = {
     "unwrap" => BinaryOp::Unwrap(),
     "hasField" => BinaryOp::HasField(),
+    "map" => BinaryOp::ListMap(),
+    "elemAt" => BinaryOp::ListElemAt(),
 }
 
 Types: Types = {
@@ -156,6 +170,7 @@ subType : Types = {
     "Num" => Types(AbsType::Num()),
     "Bool" => Types(AbsType::Bool()),
     "Str" => Types(AbsType::Str()),
+    "List" => Types(AbsType::List()),
     <Ident> => Types(AbsType::Var(<>)),
     "#" <SpTerm<RichTerm>> => Types(AbsType::Flat(<>)),
     "(" <Types> ")" => <>,

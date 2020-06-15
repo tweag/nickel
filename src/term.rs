@@ -11,17 +11,25 @@ pub enum Term {
     Str(String),
     Fun(Ident, RichTerm),
     Lbl(Label),
+
     // Other lambda
     Let(Ident, RichTerm, RichTerm),
     App(RichTerm, RichTerm),
     Var(Ident),
+
     // Enums
     Enum(Ident),
-    // Record
+
+    // Records
     Record(HashMap<Ident, RichTerm>),
+
+    // Lists
+    List(Vec<RichTerm>),
+
     // Primitives
     Op1(UnaryOp<RichTerm>, RichTerm),
     Op2(BinaryOp<RichTerm>, RichTerm, RichTerm),
+
     // Typing
     Promise(Types, Label, RichTerm),
     Assume(Types, Label, RichTerm),
@@ -72,6 +80,9 @@ impl Term {
                 func(t1);
                 func(t2);
             }
+            List(ref mut terms) => terms.iter_mut().for_each(|t| {
+                func(t);
+            }),
         }
     }
 }
@@ -86,6 +97,7 @@ pub enum UnaryOp<CapturedTerm> {
     IsBool(),
     IsStr(),
     IsFun(),
+    IsList(),
 
     Blame(),
 
@@ -109,6 +121,10 @@ pub enum UnaryOp<CapturedTerm> {
 
     Seq(),
     DeepSeq(),
+
+    ListHead(),
+    ListTail(),
+    ListLength(),
 }
 
 impl<Ty> UnaryOp<Ty> {
@@ -135,6 +151,7 @@ impl<Ty> UnaryOp<Ty> {
             IsBool() => IsBool(),
             IsStr() => IsStr(),
             IsFun() => IsFun(),
+            IsList() => IsList(),
 
             Blame() => Blame(),
 
@@ -152,6 +169,10 @@ impl<Ty> UnaryOp<Ty> {
 
             Seq() => Seq(),
             DeepSeq() => DeepSeq(),
+
+            ListHead() => ListHead(),
+            ListTail() => ListTail(),
+            ListLength() => ListLength(),
         }
     }
 }
@@ -166,6 +187,9 @@ pub enum BinaryOp<CapturedTerm> {
     DynRemove(),
     DynAccess(),
     HasField(),
+    ListConcat(),
+    ListMap(),
+    ListElemAt(),
 }
 
 impl<Ty> BinaryOp<Ty> {
@@ -182,6 +206,9 @@ impl<Ty> BinaryOp<Ty> {
             DynRemove() => DynRemove(),
             DynAccess() => DynAccess(),
             HasField() => HasField(),
+            ListConcat() => ListConcat(),
+            ListMap() => ListMap(),
+            ListElemAt() => ListElemAt(),
         }
     }
 }

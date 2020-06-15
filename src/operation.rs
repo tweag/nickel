@@ -1,3 +1,4 @@
+use crate::eval::Environment;
 use crate::eval::{CallStack, Closure, EvalError, IdentKind};
 use crate::identifier::Ident;
 use crate::label::TyPath;
@@ -5,6 +6,7 @@ use crate::stack::Stack;
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp};
 use simple_counter::*;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 generate_counter!(FreshVariableCounter, usize);
@@ -91,6 +93,13 @@ fn process_unary_operation(
         }
         UnaryOp::IsFun() => {
             if let Term::Fun(_, _) = *t {
+                Ok(Closure::atomic_closure(Term::Bool(true).into()))
+            } else {
+                Ok(Closure::atomic_closure(Term::Bool(false).into()))
+            }
+        }
+        UnaryOp::IsList() => {
+            if let Term::List(_) = *t {
                 Ok(Closure::atomic_closure(Term::Bool(true).into()))
             } else {
                 Ok(Closure::atomic_closure(Term::Bool(false).into()))
@@ -265,28 +274,89 @@ fn process_unary_operation(
                 )))
             }
         }
-        UnaryOp::DeepSeq() => match *t {
-            Term::Record(map) if !map.is_empty() => {
-                let mut fields = map.into_iter().map(|(_, t)| t);
-
-                let first = fields.next().expect("Condition already checked.");
-                let body = fields.fold(Term::Op1(UnaryOp::DeepSeq(), first).into(), |acc, t| {
+        UnaryOp::DeepSeq() => {
+            /// Build a closure that forces a given list of terms, and at the end resumes the
+            /// evaluation of the argument on the top of the stack.
+            /// Requires its first argument to be non-empty
+            fn seq_terms<I>(mut terms: I, env: Environment) -> Result<Closure, EvalError>
+            where
+                I: Iterator<Item = RichTerm>,
+            {
+                let first = terms
+                    .next()
+                    .expect("expected the argument to be a non-empty iterator");
+                let body = terms.fold(Term::Op1(UnaryOp::DeepSeq(), first).into(), |acc, t| {
                     Term::App(Term::Op1(UnaryOp::DeepSeq(), t).into(), acc).into()
                 });
 
                 Ok(Closure { body, env })
-            }
-            _ => {
-                if stack.count_args() >= 1 {
-                    let (next, _) = stack.pop_arg().expect("Condition already checked.");
-                    Ok(next)
-                } else {
-                    Err(EvalError::TypeError(String::from(
-                        "deepSeq: expected two arguments, got only one",
-                    )))
+            };
+
+            match *t {
+                Term::Record(map) if !map.is_empty() => {
+                    let terms = map.into_iter().map(|(_, t)| t);
+                    seq_terms(terms, env)
+                }
+                Term::List(ts) if !ts.is_empty() => seq_terms(ts.into_iter(), env),
+                _ => {
+                    if stack.count_args() >= 1 {
+                        let (next, _) = stack.pop_arg().expect("Condition already checked.");
+                        Ok(next)
+                    } else {
+                        Err(EvalError::TypeError(String::from(
+                            "deepSeq: expected two arguments, got only one",
+                        )))
+                    }
                 }
             }
-        },
+        }
+        UnaryOp::ListHead() => {
+            if let Term::List(ts) = *t {
+                let mut ts_it = ts.into_iter();
+                if let Some(head) = ts_it.next() {
+                    Ok(Closure { body: head, env })
+                } else {
+                    Err(EvalError::TypeError(String::from("head: empty list")))
+                }
+            } else {
+                Err(EvalError::TypeError(format!(
+                    "head: expected List, found {:?} instead",
+                    *t
+                )))
+            }
+        }
+        UnaryOp::ListTail() => {
+            if let Term::List(ts) = *t {
+                let mut ts_it = ts.into_iter();
+                if let Some(_) = ts_it.next() {
+                    Ok(Closure {
+                        body: Term::List(ts_it.collect()).into(),
+                        env,
+                    })
+                } else {
+                    Err(EvalError::TypeError(String::from("tail: empty list")))
+                }
+            } else {
+                Err(EvalError::TypeError(format!(
+                    "tail: expected List, found {:?} instead",
+                    *t
+                )))
+            }
+        }
+        UnaryOp::ListLength() => {
+            if let Term::List(ts) = *t {
+                // A num does not have any free variable so we can drop the environment
+                Ok(Closure {
+                    body: Term::Num(ts.len() as f64).into(),
+                    env: HashMap::new(),
+                })
+            } else {
+                Err(EvalError::TypeError(format!(
+                    "tail: expected List, found {:?} instead",
+                    *t
+                )))
+            }
+        }
     }
 }
 
@@ -297,7 +367,10 @@ fn process_binary_operation(
     _stack: &mut Stack,
 ) -> Result<Closure, EvalError> {
     let Closure {
-        body: RichTerm { term: t1, .. },
+        body: RichTerm {
+            term: t1,
+            pos: pos1,
+        },
         env: env1,
     } = fst_clos;
     let Closure {
@@ -394,6 +467,7 @@ fn process_binary_operation(
             if let Term::Str(id) = *t1 {
                 if let Term::Record(mut static_map) = *t2 {
                     // Arnauds trick, make the closure into a fresh variable
+                    // TODO: refactor via closurize() once the PR on merge has landed
                     let fresh_var = format!("_{}", FreshVariableCounter::next());
 
                     env2.insert(
@@ -460,6 +534,81 @@ fn process_binary_operation(
                 Err(EvalError::TypeError(format!("Expected Str, got {:?}", *t1)))
             }
         }
+        BinaryOp::ListConcat() => match (*t1, *t2) {
+            (Term::List(mut ts1), Term::List(ts2)) => {
+                ts1.extend(ts2);
+                Ok(Closure::atomic_closure(Term::List(ts1).into()))
+            }
+            (Term::List(_), t2) => Err(EvalError::TypeError(format!(
+                "List concatenation: expected the second argument to be a List, got {:?} instead",
+                t2
+            ))),
+            (t1, _) => Err(EvalError::TypeError(format!(
+                "List concatenation: expected the first argument to be a List, got {:?} instead",
+                t1
+            ))),
+        },
+        // This one should not be strict in the first argument (f)
+        BinaryOp::ListMap() => {
+            if let Term::List(mut ts) = *t2 {
+                // TODO: refactor via closurize() once the PR on merge has landed
+                let fresh_var = format!("_{}", FreshVariableCounter::next());
+
+                let f_closure = Closure {
+                    body: RichTerm {
+                        term: t1,
+                        pos: pos1,
+                    },
+                    env: env1,
+                };
+                let f_as_var: RichTerm = Term::Var(Ident(fresh_var.clone())).into();
+
+                env2.insert(
+                    Ident(fresh_var.clone()),
+                    (Rc::new(RefCell::new(f_closure)), IdentKind::Record()),
+                );
+
+                let ts = ts
+                    .into_iter()
+                    .map(|t| Term::App(f_as_var.clone(), t).into())
+                    .collect();
+
+                Ok(Closure {
+                    body: Term::List(ts).into(),
+                    env: env2,
+                })
+            } else {
+                Err(EvalError::TypeError(format!(
+                    "map: expected the second argument to be a List, got {:?} instead",
+                    *t1
+                )))
+            }
+        }
+        BinaryOp::ListElemAt() => {
+            match (*t1, *t2) {
+                (Term::List(mut ts), Term::Num(n)) => {
+                    let n_int = n as usize;
+                    if n.fract() != 0.0 {
+                        Err(EvalError::TypeError(format!("elemAt: expected the second agument to be an integer, got the floating-point value {}", n)))
+                    } else if n_int >= ts.len() {
+                        Err(EvalError::TypeError(format!("elemAt: index out of bounds. Expected a value between 0 and {}, got {})", ts.len(), n_int)))
+                    } else {
+                        Ok(Closure {
+                            body: ts.swap_remove(n_int),
+                            env: env1,
+                        })
+                    }
+                }
+                (Term::List(_), t2) => Err(EvalError::TypeError(format!(
+                    "elemAt: expected the second argument to be an integer, got {:?} instead",
+                    t2
+                ))),
+                (t1, _) => Err(EvalError::TypeError(format!(
+                    "elemAt: expected the first argument to be a List, got {:?} instead",
+                    t1
+                ))),
+            }
+        }
     }
 }
 
@@ -467,7 +616,6 @@ fn process_binary_operation(
 mod tests {
     use super::*;
     use crate::eval::{CallStack, Environment};
-    use std::collections::HashMap;
 
     fn some_env() -> Environment {
         HashMap::new()
