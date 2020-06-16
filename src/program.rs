@@ -4,6 +4,7 @@ use crate::label::{Label, TyPath};
 use crate::parser;
 use crate::term::{RichTerm, Term};
 use crate::typecheck::type_check;
+use crate::transformations;
 use std::fs;
 use std::io::{self, Read};
 use std::path::Path;
@@ -42,6 +43,7 @@ impl<T: Read> Program<T> {
     pub fn eval(&mut self) -> Result<Term, String> {
         let t = self.parse()?;
         println!("Typechecked: {:?}", type_check(t.as_ref()));
+        let t = transformations::share_normal_form::transform(&t);
         match eval(t) {
             Ok(t) => Ok(t),
             Err(EvalError::BlameError(l, cs)) => Err(self.process_blame(l, cs)),

@@ -8,6 +8,7 @@ mod stack;
 mod term;
 mod typecheck;
 mod types;
+mod transformations;
 
 use crate::program::Program;
 
