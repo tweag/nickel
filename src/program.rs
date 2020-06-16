@@ -524,4 +524,40 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
             Ok(Term::Bool(true))
         );
     }
+
+    /// This currently do not check that subexpressions are actually forced,
+    /// just that the evaluation succeeds
+    #[test]
+    fn seq_expressions() {
+        assert_eq!(
+            eval_string("seq 1 true"),
+            Ok(Term::Bool(true))
+        );
+        assert_eq!(
+            eval_string("let x = (1 + 1) in seq x x"),
+            Ok(Term::Num(2.0))
+        );
+
+        assert_eq!(
+            eval_string("let r = {a=(1 + 1);} in deepSeq r (r.a)"),
+            Ok(Term::Num(2.0))
+        );
+        assert_eq!(
+            eval_string("let r = {a=(1 + 1);b=(\"a\" ++ \"b\");} in deepSeq r (r.b)"),
+            Ok(Term::Str(String::from("ab")))
+        );
+        assert_eq!(
+            eval_string("let r = {a={b=(1 + 1);};} in deepSeq r ((r.a).b)"),
+            Ok(Term::Num(2.0))
+        );
+
+        assert_eq!(
+            eval_string(
+                "let inj = fun x => {b=(x + 2);} in
+                let cat = fun x => fun y => x ++ y in
+                let r = {a=(inj 1);b=(cat \"a\" \"b\");} in deepSeq r ((r.a).b)"
+            ),
+            Ok(Term::Num(3.0))
+        )
+    }
 }

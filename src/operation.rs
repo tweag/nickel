@@ -255,6 +255,41 @@ fn process_unary_operation(
                 )))
             }
         }
+        UnaryOp::Seq() => {
+            if stack.count_args() >= 1 {
+                let (next, _) = stack.pop_arg().expect("Condition already checked.");
+                Ok(next)
+            } else {
+                Err(EvalError::TypeError(String::from("seq: expected two arguments, got only one")))
+            }
+        }
+        UnaryOp::DeepSeq() => {
+            match *t {
+                Term::Record(map) if !map.is_empty() => {
+                    let mut fields = map.into_iter().map(|(_, t)| t);
+
+                    let first = fields.next().expect("Condition already checked.");
+                    let body = fields.fold(
+                        Term::Op1(UnaryOp::DeepSeq(), first).into(),
+                        |acc, t|
+                            Term::App(
+                                Term::Op1(UnaryOp::DeepSeq(), t).into(),
+                                acc
+                            ).into()
+                    );
+
+                    Ok(Closure { body, env })
+                }
+                _ => {
+                    if stack.count_args() >= 1 {
+                        let (next, _) = stack.pop_arg().expect("Condition already checked.");
+                        Ok(next)
+                    } else {
+                        Err(EvalError::TypeError(String::from("deepSeq: expected two arguments, got only one")))
+                    }
+                }
+            }
+        }
     }
 }
 

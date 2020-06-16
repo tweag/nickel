@@ -117,6 +117,8 @@ UOp: UnaryOp<RichTerm> = {
             default,
         ),
     "mapRec" <Atom> => UnaryOp::MapRec(<>),
+    "seq" => UnaryOp::Seq(),
+    "deepSeq" => UnaryOp::DeepSeq(),
 };
 
 switch_case: (Ident, RichTerm) = {

@@ -661,6 +661,20 @@ pub fn get_uop_type(
                 Box::new(TypeWrapper::Concrete(AbsType::DynRecord(Box::new(b)))),
             ))
         }
+        UnaryOp::Seq()
+        | UnaryOp::DeepSeq() => {
+            // forall a b. a -> b -> b
+            let fst = TypeWrapper::Ptr(new_var(state));
+            let snd = TypeWrapper::Ptr(new_var(state));
+
+            TypeWrapper::Concrete(AbsType::Arrow(
+                Box::new(fst),
+                Box::new(TypeWrapper::Concrete(AbsType::Arrow(
+                    Box::new(snd.clone()),
+                    Box::new(snd)
+                )))
+            ))
+        }
     })
 }
 
@@ -1155,5 +1169,12 @@ mod tests {
         .unwrap_err();
 
         parse_and_typecheck("Promise( { _ : Num}, { foo = 3; bar = 4; })").unwrap();
+    }
+
+    #[test]
+    fn seq() {
+        parse_and_typecheck("Promise(Num, seq false 1)").unwrap();
+        parse_and_typecheck("Promise(forall a. (forall b. a -> b -> b), fun x => fun y => seq x y)").unwrap();
+        parse_and_typecheck("let xDyn = false in let yDyn = 1 in Promise(Dyn, seq xDyn yDyn)").unwrap();
     }
 }
