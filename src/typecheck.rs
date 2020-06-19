@@ -84,8 +84,7 @@ fn type_check_(
                 _ => TypeWrapper::Concrete(AbsType::Dyn()),
             };
 
-            let instantiated = instantiate_foralls_with(state, exp.clone(), TypeWrapper::Constant)?;
-            type_check_(typed_vars.clone(), state, constr, e, instantiated, strict)?;
+            type_check_(typed_vars.clone(), state, constr, e, exp.clone(), strict)?;
 
             // TODO move this up once lets are rec
             typed_vars.insert(x.clone(), exp);
@@ -1000,6 +999,27 @@ mod tests {
         f",
         )
         .unwrap_err();
+    }
+
+    #[test]
+    fn forall_nested() {
+        parse_and_typecheck(
+            "let f = Promise(forall a. a -> a, let g = Assume(forall a. (a -> a), fun x => x) in g) in
+            Promise(Num, if (f true) then (f 2) else 3)",
+        )
+        .unwrap();
+
+        parse_and_typecheck(
+            "let f = Promise(forall a. a -> a, let g = Promise(forall a. (a -> a), fun x => x) in g g) in
+            Promise(Num, if (f true) then (f 2) else 3)",
+        )
+        .unwrap();
+
+        parse_and_typecheck(
+            "let f = Promise(forall a. a -> a, let g = Promise(forall a. (forall b. (b -> (a -> a))), fun y => fun x => x) in g 0) in
+            Promise(Num, if (f true) then (f 2) else 3)",
+        )
+        .unwrap();
     }
 
     #[test]
