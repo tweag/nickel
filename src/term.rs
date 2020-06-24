@@ -106,6 +106,9 @@ pub enum UnaryOp<CapturedTerm> {
     Tag(String),
 
     Wrap(),
+
+    Seq(),
+    DeepSeq(),
 }
 
 impl<Ty> UnaryOp<Ty> {
@@ -146,6 +149,9 @@ impl<Ty> UnaryOp<Ty> {
             Tag(s) => Tag(s),
 
             Wrap() => Wrap(),
+
+            Seq() => Seq(),
+            DeepSeq() => DeepSeq(),
         }
     }
 }

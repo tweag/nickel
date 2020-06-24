@@ -4,6 +4,7 @@ use crate::label::{Label, TyPath};
 use crate::parser;
 use crate::term::{RichTerm, Term};
 use crate::typecheck::type_check;
+use crate::transformations;
 use std::fs;
 use std::io::{self, Read};
 use std::path::Path;
@@ -42,6 +43,7 @@ impl<T: Read> Program<T> {
     pub fn eval(&mut self) -> Result<Term, String> {
         let t = self.parse()?;
         println!("Typechecked: {:?}", type_check(t.as_ref()));
+        let t = transformations::share_normal_form::transform(&t);
         match eval(t) {
             Ok(t) => Ok(t),
             Err(EvalError::BlameError(l, cs)) => Err(self.process_blame(l, cs)),
@@ -521,5 +523,41 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
             eval_string("( { bar = 3; }[\"foo\" = true]).foo"),
             Ok(Term::Bool(true))
         );
+    }
+
+    /// This currently do not check that subexpressions are actually forced,
+    /// just that the evaluation succeeds
+    #[test]
+    fn seq_expressions() {
+        assert_eq!(
+            eval_string("seq 1 true"),
+            Ok(Term::Bool(true))
+        );
+        assert_eq!(
+            eval_string("let x = (1 + 1) in seq x x"),
+            Ok(Term::Num(2.0))
+        );
+
+        assert_eq!(
+            eval_string("let r = {a=(1 + 1);} in deepSeq r (r.a)"),
+            Ok(Term::Num(2.0))
+        );
+        assert_eq!(
+            eval_string("let r = {a=(1 + 1);b=(\"a\" ++ \"b\");} in deepSeq r (r.b)"),
+            Ok(Term::Str(String::from("ab")))
+        );
+        assert_eq!(
+            eval_string("let r = {a={b=(1 + 1);};} in deepSeq r ((r.a).b)"),
+            Ok(Term::Num(2.0))
+        );
+
+        assert_eq!(
+            eval_string(
+                "let inj = fun x => {b=(x + 2);} in
+                let cat = fun x => fun y => x ++ y in
+                let r = {a=(inj 1);b=(cat \"a\" \"b\");} in deepSeq r ((r.a).b)"
+            ),
+            Ok(Term::Num(3.0))
+        )
     }
 }
