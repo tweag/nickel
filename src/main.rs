@@ -6,9 +6,9 @@ mod parser;
 mod program;
 mod stack;
 mod term;
+mod transformations;
 mod typecheck;
 mod types;
-mod transformations;
 
 use crate::program::Program;
 

@@ -38,7 +38,7 @@ pub mod share_normal_form {
     generate_counter!(FreshVariableCounter, usize);
 
     pub fn transform(term: &RichTerm) -> RichTerm {
-        let RichTerm {term, pos} = term;
+        let RichTerm { term, pos } = term;
         let pos = pos.clone();
         match &**term {
             v @ &Term::Bool(_)
@@ -47,66 +47,54 @@ pub mod share_normal_form {
             | v @ &Term::Lbl(_)
             | v @ &Term::Sym(_)
             | v @ &Term::Var(_)
-            | v @ &Term::Enum(_) => RichTerm { term: Box::new(v.clone()), pos},
-            &Term::Fun(ref id, ref t) => {
-                RichTerm {
-                    term: Box::new(Term::Fun(id.clone(), transform(t))),
-                    pos
-                }
-            }
-            &Term::Let(ref id, ref t1, ref t2) => {
-                RichTerm {
-                    term: Box::new(Term::Let(id.clone(), transform(t1), transform(t2))),
-                    pos
-                }
-            }
-            &Term::App(ref t1, ref t2) => {
-                RichTerm {
-                    term: Box::new(Term::App(transform(t1), transform(t2))),
-                    pos
-                }
-            }
+            | v @ &Term::Enum(_) => RichTerm {
+                term: Box::new(v.clone()),
+                pos,
+            },
+            &Term::Fun(ref id, ref t) => RichTerm {
+                term: Box::new(Term::Fun(id.clone(), transform(t))),
+                pos,
+            },
+            &Term::Let(ref id, ref t1, ref t2) => RichTerm {
+                term: Box::new(Term::Let(id.clone(), transform(t1), transform(t2))),
+                pos,
+            },
+            &Term::App(ref t1, ref t2) => RichTerm {
+                term: Box::new(Term::App(transform(t1), transform(t2))),
+                pos,
+            },
             &Term::Op1(UnaryOp::Switch(ref cases, ref default), ref t) => {
-                let cases = cases.iter()
+                let cases = cases
+                    .iter()
                     .map(|(id, t)| (id.clone(), transform(t)))
                     .collect();
                 let default = default.as_ref().map(|t| transform(t));
 
                 RichTerm {
                     term: Box::new(Term::Op1(UnaryOp::Switch(cases, default), transform(t))),
-                    pos
+                    pos,
                 }
             }
-            &Term::Op1(ref op, ref t) => {
-                RichTerm {
-                    term: Box::new(Term::Op1(op.clone(), transform(t))),
-                    pos
-                }
-            }
-            &Term::Op2(ref op, ref t1, ref t2) => {
-                RichTerm {
-                    term: Box::new(Term::Op2(op.clone(), transform(t1), transform(t2))),
-                    pos
-                }
-            }
-            &Term::Promise(ref ty, ref l, ref t) => {
-                RichTerm {
-                    term: Box::new(Term::Promise(ty.clone(), l.clone(), transform(t))),
-                    pos
-                }
-            }
-            &Term::Assume(ref ty, ref l, ref t) => {
-                RichTerm {
-                    term: Box::new(Term::Assume(ty.clone(), l.clone(), transform(t))),
-                    pos
-                }
-            }
-            &Term::Wrapped(i, ref t) => {
-                RichTerm {
-                    term: Box::new(Term::Wrapped(i, transform(t))),
-                    pos
-                }
-            }
+            &Term::Op1(ref op, ref t) => RichTerm {
+                term: Box::new(Term::Op1(op.clone(), transform(t))),
+                pos,
+            },
+            &Term::Op2(ref op, ref t1, ref t2) => RichTerm {
+                term: Box::new(Term::Op2(op.clone(), transform(t1), transform(t2))),
+                pos,
+            },
+            &Term::Promise(ref ty, ref l, ref t) => RichTerm {
+                term: Box::new(Term::Promise(ty.clone(), l.clone(), transform(t))),
+                pos,
+            },
+            &Term::Assume(ref ty, ref l, ref t) => RichTerm {
+                term: Box::new(Term::Assume(ty.clone(), l.clone(), transform(t))),
+                pos,
+            },
+            &Term::Wrapped(i, ref t) => RichTerm {
+                term: Box::new(Term::Wrapped(i, transform(t))),
+                pos,
+            },
             &Term::Record(ref map) => {
                 let mut bindings = Vec::with_capacity(map.len());
                 let mut new_map = HashMap::with_capacity(map.len());
@@ -116,15 +104,17 @@ pub mod share_normal_form {
                         let fresh_var = Ident(format!("%{}", FreshVariableCounter::next()));
                         bindings.push((fresh_var.clone(), transform(t)));
                         new_map.insert(id.clone(), Term::Var(fresh_var).into());
-                    }
-                    else {
+                    } else {
                         new_map.insert(id.clone(), transform(t));
                     }
                 }
 
                 let result = bindings.into_iter().fold(
-                    RichTerm { term: Box::new(Term::Record(new_map)), pos },
-                    |acc, (id, t) | Term::Let(id,t,acc).into()
+                    RichTerm {
+                        term: Box::new(Term::Record(new_map)),
+                        pos,
+                    },
+                    |acc, (id, t)| Term::Let(id, t, acc).into(),
                 );
 
                 result.into()
@@ -146,7 +136,7 @@ pub mod share_normal_form {
             | Term::Var(_)
             | Term::Enum(_)
             | Term::Fun(_, _) => false,
-            _ => true
+            _ => true,
         }
     }
 }
