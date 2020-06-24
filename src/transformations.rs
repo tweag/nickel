@@ -119,6 +119,30 @@ pub mod share_normal_form {
 
                 result.into()
             }
+            &Term::List(ref ts) => {
+                let mut bindings = Vec::with_capacity(ts.len());
+                let mut new_list = Vec::with_capacity(ts.len());
+
+                for t in ts.iter() {
+                    if should_share(&*t.term) {
+                        let fresh_var = Ident(format!("%{}", FreshVariableCounter::next()));
+                        bindings.push((fresh_var.clone(), transform(t)));
+                        new_list.push(Term::Var(fresh_var).into());
+                    } else {
+                        new_list.push(transform(t));
+                    }
+                }
+
+                let result = bindings.into_iter().fold(
+                    RichTerm {
+                        term: Box::new(Term::List(new_list)),
+                        pos,
+                    },
+                    |acc, (id, t)| Term::Let(id, t, acc).into(),
+                );
+
+                result.into()
+            }
         }
     }
 

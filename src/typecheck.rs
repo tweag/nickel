@@ -64,6 +64,26 @@ fn type_check_(
             typed_vars.insert(x.clone(), src);
             type_check_(typed_vars, state, constr, rt.as_ref(), trg, strict)
         }
+        Term::List(terms) => {
+            unify(
+                state,
+                constr,
+                ty,
+                TypeWrapper::Concrete(AbsType::List()),
+                strict,
+            )?;
+
+            terms.iter().try_for_each(|t| -> Result<(), String> {
+                type_check_(
+                    typed_vars.clone(),
+                    state,
+                    constr,
+                    t.as_ref(),
+                    TypeWrapper::Concrete(AbsType::Dyn()),
+                    false,
+                )
+            })
+        }
         Term::Lbl(_) => {
             // TODO implement lbl type
             unify(
@@ -293,7 +313,7 @@ impl TypeWrapper {
             Concrete(AbsType::DynRecord(def_ty)) => {
                 Concrete(AbsType::DynRecord(Box::new(def_ty.subst(id, to))))
             }
-
+            Concrete(AbsType::List()) => Concrete(AbsType::List()),
             Constant(x) => Constant(x),
             Ptr(x) => Ptr(x),
         }
@@ -383,6 +403,7 @@ pub fn unify(
             (AbsType::Num(), AbsType::Num()) => Ok(()),
             (AbsType::Bool(), AbsType::Bool()) => Ok(()),
             (AbsType::Str(), AbsType::Str()) => Ok(()),
+            (AbsType::List(), AbsType::List()) => Ok(()),
             (AbsType::Sym(), AbsType::Sym()) => Ok(()),
             (AbsType::Arrow(s1s, s1t), AbsType::Arrow(s2s, s2t)) => {
                 unify(state, constr, *s1s, *s2s, strict)?;
@@ -524,7 +545,11 @@ pub fn get_uop_type(
             Box::new(TypeWrapper::Concrete(AbsType::Num())),
             Box::new(TypeWrapper::Concrete(AbsType::Bool())),
         )),
-        UnaryOp::IsNum() | UnaryOp::IsBool() | UnaryOp::IsStr() | UnaryOp::IsFun() => {
+        UnaryOp::IsNum()
+        | UnaryOp::IsBool()
+        | UnaryOp::IsStr()
+        | UnaryOp::IsFun()
+        | UnaryOp::IsList() => {
             let inp = TypeWrapper::Ptr(new_var(state));
 
             TypeWrapper::Concrete(AbsType::arrow(
@@ -673,6 +698,18 @@ pub fn get_uop_type(
                 ))),
             ))
         }
+        UnaryOp::ListHead() => TypeWrapper::Concrete(AbsType::Arrow(
+            Box::new(TypeWrapper::Concrete(AbsType::List())),
+            Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
+        )),
+        UnaryOp::ListTail() => TypeWrapper::Concrete(AbsType::Arrow(
+            Box::new(TypeWrapper::Concrete(AbsType::List())),
+            Box::new(TypeWrapper::Concrete(AbsType::List())),
+        )),
+        UnaryOp::ListLength() => TypeWrapper::Concrete(AbsType::Arrow(
+            Box::new(TypeWrapper::Concrete(AbsType::List())),
+            Box::new(TypeWrapper::Concrete(AbsType::Num())),
+        )),
     })
 }
 
@@ -774,6 +811,33 @@ pub fn get_bop_type(
             ))),
             Box::new(TypeWrapper::Concrete(AbsType::Bool())),
         ))),
+        BinaryOp::ListConcat() => Ok(TypeWrapper::Concrete(AbsType::Arrow(
+            Box::new(TypeWrapper::Concrete(AbsType::List())),
+            Box::new(TypeWrapper::Concrete(AbsType::Arrow(
+                Box::new(TypeWrapper::Concrete(AbsType::List())),
+                Box::new(TypeWrapper::Concrete(AbsType::List())),
+            ))),
+        ))),
+        BinaryOp::ListMap() => {
+            let src = TypeWrapper::Ptr(new_var(state));
+            let tgt = TypeWrapper::Ptr(new_var(state));
+            let arrow = TypeWrapper::Concrete(AbsType::Arrow(Box::new(src), Box::new(tgt)));
+
+            Ok(TypeWrapper::Concrete(AbsType::Arrow(
+                Box::new(arrow),
+                Box::new(TypeWrapper::Concrete(AbsType::Arrow(
+                    Box::new(TypeWrapper::Concrete(AbsType::List())),
+                    Box::new(TypeWrapper::Concrete(AbsType::List())),
+                ))),
+            )))
+        }
+        BinaryOp::ListElemAt() => Ok(TypeWrapper::Concrete(AbsType::Arrow(
+            Box::new(TypeWrapper::Concrete(AbsType::List())),
+            Box::new(TypeWrapper::Concrete(AbsType::Arrow(
+                Box::new(TypeWrapper::Concrete(AbsType::Num())),
+                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
+            ))),
+        ))),
     }
 }
 
@@ -846,7 +910,7 @@ mod tests {
         if let Ok(p) = parser::grammar::TermParser::new().parse(s) {
             type_check(p.as_ref())
         } else {
-            panic!("Couldn't parse")
+            panic!("Couldn't parse {}", s)
         }
     }
 
@@ -1199,5 +1263,33 @@ mod tests {
         .unwrap();
         parse_and_typecheck("let xDyn = false in let yDyn = 1 in Promise(Dyn, seq xDyn yDyn)")
             .unwrap();
+    }
+
+    #[test]
+    fn simple_list() {
+        parse_and_typecheck("[1, \"2\", false]").unwrap();
+        parse_and_typecheck("Promise(List, [\"a\", 3, true])").unwrap();
+        parse_and_typecheck("Promise(List, [Promise(forall a. a -> a, fun x => x), 3, true])")
+            .unwrap();
+        parse_and_typecheck("Promise(forall a. a -> List, fun x => [x])").unwrap();
+
+        parse_and_typecheck("[1, Promise(Num, \"2\"), false]").unwrap_err();
+        parse_and_typecheck("Promise(List, [Promise(String,1), true, \"b\"])").unwrap_err();
+        parse_and_typecheck("Promise(Num, [1, 2, \"3\"])").unwrap_err();
+    }
+
+    #[test]
+    fn lists_operations() {
+        parse_and_typecheck("Promise(List -> List, fun l => tail l)").unwrap();
+        parse_and_typecheck("Promise(List -> Dyn, fun l => head l)").unwrap();
+        parse_and_typecheck(
+            "Promise(forall a. (forall b. (a -> b) -> List -> List), fun f => fun l => map f l)",
+        )
+        .unwrap();
+        parse_and_typecheck("Promise(List -> List -> List, fun l1 => fun l2 => l1 @ l2)").unwrap();
+        parse_and_typecheck("Promise(Num -> List -> Dyn , fun i => fun l => elemAt l i)").unwrap();
+
+        parse_and_typecheck("Promise(forall a. (List -> a), fun l => head l)").unwrap_err();
+        parse_and_typecheck("Promise(forall a. (forall b. (a -> b) -> List -> b), fun f => fun l => elemAt (map f l) 0)").unwrap_err();
     }
 }
