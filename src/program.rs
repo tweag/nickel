@@ -236,6 +236,33 @@ mod tests {
         p.eval()
     }
 
+    /// Assert if a given Nickel expression evaluates to a record, given as a vector of bindings
+    /// Records are lazy, thus we need to force the evaluation of each field. Since `merge`
+    /// replaces subterms with dummy fresh variables, we have to re-evaluate the whole expression
+    /// to verify each field
+    fn assert_eval_to_record(s: &str, res: Vec<(&str, Term)>) {
+        let mut term = eval_string(s);
+
+        //Check that the record does not contain extra keys
+        if let Ok(Term::Record(ref mut m)) = term {
+            for (i, t) in res {
+                m.remove(&Ident(String::from(i)))
+                    .unwrap_or_else(|| panic!(format!("Could not find field {} in result", i)));
+
+                let proj = format!("({}).{}", s, i);
+                if let Ok(proj_res) = eval_string(&proj) {
+                    assert_eq!(proj_res, t);
+                } else {
+                    panic!(format!("evaluation of the projection on {} failed", i));
+                }
+            }
+
+            assert!(m.is_empty());
+        } else {
+            panic!("evaluation failed");
+        }
+    }
+
     #[test]
     fn function_app() {
         let res = eval_string("(fun h => h) 3");
@@ -615,6 +642,69 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
                 all isZ [0, 0, 0, 1]"
             ),
             Ok(Term::Bool(false))
+        );
+    }
+
+    #[test]
+    fn merge_record_simple() {
+        assert_eval_to_record(
+            "merge {a=1;} {b=true;}",
+            vec![("a", Term::Num(1.0)), ("b", Term::Bool(true))],
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn merge_record_failure() {
+        eval_string("merge {a=1} {a=2}").unwrap();
+    }
+
+    #[test]
+    fn merge_record_intersection() {
+        assert_eval_to_record(
+            "merge {a=1;b=2;} {b=2;c=3;}",
+            vec![
+                ("a", Term::Num(1.0)),
+                ("b", Term::Num(2.0)),
+                ("c", Term::Num(3.0)),
+            ],
+        );
+    }
+
+    #[test]
+    fn merge_record_nested() {
+        assert_eval_to_record(
+            "(merge {a={b=1;};} {a={c=true;};}).a ",
+            vec![("b", Term::Num(1.0)), ("c", Term::Bool(true))],
+        );
+    }
+
+    #[test]
+    fn merge_record_complex() {
+        assert_eval_to_record(
+            "let rec1 = {a=false;b=(if true then (1 + 1) else (2 + 0)); c=(((fun x => x) (fun y => y)) 2);} in
+             let rec2 = {b=(((fun x => x) (fun y => y)) 2); c=(if true then (1 + 1) else (2 + 0)); d=true;} in
+             merge rec1 rec2",
+             vec![("a", Term::Bool(false)), ("b", Term::Num(2.0)), ("c", Term::Num(2.0)), ("d", Term::Bool(true))]
+         );
+    }
+
+    #[test]
+    fn merge_record_with_env() {
+        assert_eq!(
+            eval_string("((fun y => merge ((fun x => {a=y;}) 1) ({b=false;})) 2).a"),
+            Ok(Term::Num(2.0))
+        );
+    }
+
+    #[test]
+    fn merge_record_with_env_nested() {
+        assert_eq!(
+            eval_string(
+                "let rec = merge ({b={c=10;};}) ((fun x => {a=x; b={c=x;};}) 10) in
+                         (rec.b).c"
+            ),
+            Ok(Term::Num(10.0))
         );
     }
 }

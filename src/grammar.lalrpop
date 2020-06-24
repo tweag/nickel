@@ -153,6 +153,7 @@ BOpPre: BinaryOp<RichTerm> = {
     "hasField" => BinaryOp::HasField(),
     "map" => BinaryOp::ListMap(),
     "elemAt" => BinaryOp::ListElemAt(),
+    "merge" => BinaryOp::Merge(),
 }
 
 Types: Types = {

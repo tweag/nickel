@@ -190,6 +190,7 @@ pub enum BinaryOp<CapturedTerm> {
     ListConcat(),
     ListMap(),
     ListElemAt(),
+    Merge(),
 }
 
 impl<Ty> BinaryOp<Ty> {
@@ -198,7 +199,6 @@ impl<Ty> BinaryOp<Ty> {
 
         match self {
             DynExtend(t) => DynExtend(f(t)),
-
             Plus() => Plus(),
             PlusStr() => PlusStr(),
             Unwrap() => Unwrap(),
@@ -209,6 +209,7 @@ impl<Ty> BinaryOp<Ty> {
             ListConcat() => ListConcat(),
             ListMap() => ListMap(),
             ListElemAt() => ListElemAt(),
+            Merge() => Merge(),
         }
     }
 }

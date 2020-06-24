@@ -1,6 +1,7 @@
 mod eval;
 mod identifier;
 mod label;
+mod merge;
 mod operation;
 mod parser;
 mod program;
