@@ -196,5 +196,4 @@ mod tests {
         assert_eq!((some_cont(), 4), s.pop_op_cont().expect("Already checked"));
         assert_eq!(1, s.count_conts());
     }
-
 }

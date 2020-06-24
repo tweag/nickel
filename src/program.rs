@@ -3,8 +3,8 @@ use crate::identifier::Ident;
 use crate::label::{Label, TyPath};
 use crate::parser;
 use crate::term::{RichTerm, Term};
-use crate::typecheck::type_check;
 use crate::transformations;
+use crate::typecheck::type_check;
 use std::fs;
 use std::io::{self, Read};
 use std::path::Path;
@@ -529,10 +529,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
     /// just that the evaluation succeeds
     #[test]
     fn seq_expressions() {
-        assert_eq!(
-            eval_string("seq 1 true"),
-            Ok(Term::Bool(true))
-        );
+        assert_eq!(eval_string("seq 1 true"), Ok(Term::Bool(true)));
         assert_eq!(
             eval_string("let x = (1 + 1) in seq x x"),
             Ok(Term::Num(2.0))
