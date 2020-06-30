@@ -2,6 +2,7 @@ use crate::eval::{eval, CallStack, EvalError, IdentKind, StackElem};
 use crate::identifier::Ident;
 use crate::label::{Label, TyPath};
 use crate::parser;
+use crate::position::SourceMapper;
 use crate::term::{RichTerm, Term};
 use crate::transformations;
 use crate::typecheck::type_check;
@@ -15,28 +16,38 @@ pub struct Program<T: Read> {
     include_contracts: bool,
     read: Option<String>,
     parsed: Option<RichTerm>,
+    source_name: Option<String>,
 }
 
 impl Program<io::Stdin> {
     pub fn new_from_stdin() -> Program<io::Stdin> {
-        Program::new_from_source(io::stdin())
+        Program::new_from_source(io::stdin(), Some(String::from("<stdin>")))
     }
 }
 
 impl Program<fs::File> {
     pub fn new_from_file<P: AsRef<Path>>(path: P) -> io::Result<Program<fs::File>> {
+        let filename = path
+            .as_ref()
+            .to_str()
+            .unwrap_or_else(|| {
+                panic!("Program::new_from_file: the given path is not valid unicode")
+            })
+            .to_string();
+
         let file = fs::File::open(path)?;
-        Ok(Program::new_from_source(file))
+        Ok(Program::new_from_source(file, Some(filename)))
     }
 }
 
 impl<T: Read> Program<T> {
-    pub fn new_from_source(s: T) -> Program<T> {
+    fn new_from_source(s: T, source_name: Option<String>) -> Program<T> {
         Program {
             src: s,
             include_contracts: true,
             read: None,
             parsed: None,
+            source_name,
         }
     }
 
@@ -58,6 +69,7 @@ impl<T: Read> Program<T> {
                 // TODO get rid of this once we have imports
                 buf.insert_str(0, &Self::contracts());
             }
+
             match parser::grammar::TermParser::new().parse(&buf) {
                 Ok(t) => self.parsed = Some(t),
                 Err(e) => {
@@ -95,23 +107,42 @@ impl<T: Read> Program<T> {
     }
 
     fn process_blame(&mut self, l: Label, cs_opt: Option<CallStack>) -> String {
+        let source_name = self
+            .source_name
+            .clone()
+            .unwrap_or(String::from("<unknown>"));
+        let mapper = SourceMapper::new_with_offset(
+            source_name,
+            self.read
+                .as_ref()
+                .unwrap_or_else(|| {
+                    panic!("Program::process_blame: expected program buffer (read) to be loaded")
+                })
+                .as_str(),
+            Self::contracts().len(),
+        );
+
         let mut s = String::new();
         s.push_str("Reached a blame label, some cast went terribly wrong\n");
         s.push_str("    Tag:\n");
         s.push_str(&l.tag);
         s.push_str("\n");
 
-        let pos_from = self.get_line_and_col(l.l);
-        let pos_to = self.get_line_and_col(l.r);
-        if let (Some((linef, colf)), Some((linet, colt))) = (pos_from, pos_to) {
-            if linef == linet {
+        if let Some((left, right)) = mapper.map_span(l.l, l.r) {
+            if left.line == right.line {
                 s.push_str(&format!(
                     "    Line: {} Columns: {} to {}\n",
-                    linef, colf, colt
+                    left.line, left.column, right.column
                 ));
             } else {
-                s.push_str(&format!("    Line: {} Column: {}\n", linef, colf));
-                s.push_str(&format!("    to Line: {} Column: {}\n", linet, colt));
+                s.push_str(&format!(
+                    "    Line: {} Column: {}\n",
+                    left.line, left.column
+                ));
+                s.push_str(&format!(
+                    "    to Line: {} Column: {}\n",
+                    right.line, right.column
+                ));
             }
         }
 
@@ -127,12 +158,12 @@ impl<T: Read> Program<T> {
 
         if let Some(cs) = cs_opt {
             s.push_str("\nCallStack:\n=========\n");
-            s = self.show_call_stack(s, cs);
+            s = Program::<T>::show_call_stack(&mapper, s, cs);
         }
         s
     }
 
-    fn show_call_stack(&mut self, mut s: String, mut cs: CallStack) -> String {
+    fn show_call_stack(mapper: &SourceMapper, mut s: String, mut cs: CallStack) -> String {
         for e in cs.drain(..).rev() {
             match e {
                 StackElem::App(Some((_l, _r))) => {
@@ -146,19 +177,19 @@ impl<T: Read> Program<T> {
                     //     ));
                     // }
                 }
-                StackElem::Var(IdentKind::Let(), Ident(x), Some((l, _r))) => {
-                    if let Some((linef, colf)) = self.get_line_and_col(l) {
+                StackElem::Var(IdentKind::Let(), Ident(x), Some((left, _))) => {
+                    if let Some(left) = mapper.map_pos(left) {
                         s.push_str(&format!(
                             "On a call to {} on line: {} col: {}\n",
-                            x, linef, colf
+                            x, left.line, left.column
                         ));
                     }
                 }
-                StackElem::Var(IdentKind::Lam(), Ident(x), Some((l, _r))) => {
-                    if let Some((linef, colf)) = self.get_line_and_col(l) {
+                StackElem::Var(IdentKind::Lam(), Ident(x), Some((left, _))) => {
+                    if let Some(left) = mapper.map_pos(left) {
                         s.push_str(&format!(
                             "    Bound to {} on line: {} col: {}\n",
-                            x, linef, colf
+                            x, left.line, left.column
                         ));
                     }
                 }
@@ -166,32 +197,6 @@ impl<T: Read> Program<T> {
             }
         }
         s
-    }
-
-    fn get_line_and_col(&mut self, b: usize) -> Option<(usize, usize)> {
-        let buffer = self.read().unwrap();
-
-        let mut line = 1;
-        let mut col = 1;
-        let mut so_far = Self::contracts().len();
-        if b <= so_far {
-            // TODO Right now we have some stuff that is just pasted on
-            // every file, this check should change and location should be more reliable
-            return None;
-        }
-        for byte in buffer.bytes() {
-            so_far += 1;
-            col += 1;
-            if byte == b'\n' {
-                line += 1;
-                col = 1;
-            }
-            if so_far == b {
-                break;
-            }
-        }
-
-        Some((line, col))
     }
 
     fn contracts() -> String {
@@ -232,7 +237,7 @@ mod tests {
     fn eval_string(s: &str) -> Result<Term, String> {
         let src = Cursor::new(s);
 
-        let mut p = Program::new_from_source(src);
+        let mut p = Program::new_from_source(src, None);
         p.eval()
     }
 

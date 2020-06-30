@@ -4,6 +4,7 @@ mod label;
 mod merge;
 mod operation;
 mod parser;
+mod position;
 mod program;
 mod stack;
 mod term;
