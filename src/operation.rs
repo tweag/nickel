@@ -39,9 +39,7 @@ pub fn continuate_operation(
             Ok(clos)
         }
         OperationCont::Op2Second(b_op, fst_clos, prev_strict) => {
-            let res = process_binary_operation(b_op, fst_clos, clos, stack);
-            *enriched_strict = prev_strict;
-            res
+            process_binary_operation(b_op, fst_clos, clos, stack)
         }
     }
 }

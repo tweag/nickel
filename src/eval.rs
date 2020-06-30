@@ -112,7 +112,7 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                     env: env.clone(),
                 });
 
-                stack.push_op_cont(OperationCont::Op1(op), call_stack.len());
+                stack.push_op_cont(OperationCont::Op1(op), call_stack.len(), pos);
                 Closure { body: t, env }
             }
             // Binary Operation
@@ -134,6 +134,7 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                         prev_strict,
                     ),
                     call_stack.len(),
+                    pos,
                 );
                 Closure { body: fst, env }
             }
@@ -162,8 +163,6 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                 Closure { body: t, env }
             }
             Term::ContractWithDefault(ty, t) if enriched_strict => {
-                // We will probably want something more informative than (0,0)
-                // if pos is None()
                 let (l, r) = pos.unwrap_or((0, 0));
                 let label = Label {
                     tag: "ContractWithDefault".to_string(),
@@ -182,7 +181,10 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
             // Update
             _ if 0 < stack.count_thunks() || 0 < stack.count_conts() => {
                 clos = Closure {
-                    body: term.into(),
+                    body: RichTerm {
+                        term: Box::new(term),
+                        pos,
+                    },
                     env,
                 };
                 if 0 < stack.count_thunks() {
@@ -221,11 +223,15 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
             // Otherwise, this is either an ill-formed application, or we are done
             t => {
                 if 0 < stack.count_args() {
-                    let (arg, _) = stack.pop_arg().expect("Condition already checked.");
-                    return Err(EvalError::TypeError(format!(
-                        "The term {:?} was applied to {:?}",
-                        t, arg.body
-                    )));
+                    let (arg, pos_app) = stack.pop_arg().expect("Condition already checked.");
+                    return Err(EvalError::NotAFunc(
+                        RichTerm {
+                            term: Box::new(t),
+                            pos,
+                        },
+                        arg.body,
+                        pos_app,
+                    ));
                 } else {
                     return Ok(t);
                 }
@@ -237,6 +243,7 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::label::{Label, TyPath};
     use crate::term::{BinaryOp, UnaryOp};
     use crate::types::{AbsType, Types};
 

@@ -21,7 +21,6 @@ pub fn merge(fst: Closure, snd: Closure) -> Result<Closure, EvalError> {
         body: RichTerm { term: t2, pos: p2 },
         env: env2,
     } = snd;
-
     match (*t1, *t2) {
         // Merge is idempotent on basic terms
         (Term::Bool(b1), Term::Bool(b2)) => {
