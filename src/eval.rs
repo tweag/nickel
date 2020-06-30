@@ -1,6 +1,7 @@
 use crate::identifier::Ident;
-use crate::label::Label;
+use crate::label::{Label, TyPath};
 use crate::operation::{continuate_operation, OperationCont};
+use crate::position::{ShowWithSource, SourceMapper};
 use crate::stack::Stack;
 use crate::term::{RichTerm, Term};
 use std::cell::RefCell;
@@ -42,6 +43,78 @@ impl Closure {
 pub enum EvalError {
     BlameError(Label, Option<CallStack>),
     TypeError(String),
+}
+
+impl ShowWithSource for CallStack {
+    fn show_append(&self, s: &mut String, mapper: &SourceMapper) {
+        self.into_iter().rev().for_each(|e| {
+            match e {
+                // StackElem::App(Some((_l, _r))) => {
+                //     // I'm not sure this App stack is really useful,
+                //     // will leave it hanging for now
+                //     //
+                //     // if let Some((linef, colf)) = self.get_line_and_col(l) {
+                //     //     s.push_str(&format!(
+                //     //         "    Applied to a term on line: {} col: {}\n",
+                //     //         linef, colf
+                //     //     ));
+                //     // }
+                // }
+                StackElem::Var(IdentKind::Let(), Ident(x), Some((left, _))) => {
+                    if let Some(left) = mapper.map_pos(*left) {
+                        s.push_str(&format!("On a call to {} at ", x));
+                        left.show_append(s, mapper);
+                        s.push('\n');
+                    }
+                }
+                StackElem::Var(IdentKind::Lam(), Ident(x), Some((left, _))) => {
+                    if let Some(left) = mapper.map_pos(*left) {
+                        s.push_str(&format!("  Bound to {} at ", x));
+                        left.show_append(s, mapper);
+                        s.push('\n');
+                    }
+                }
+                _ => {}
+            }
+        });
+    }
+}
+
+impl ShowWithSource for EvalError {
+    fn show_append(&self, s: &mut String, mapper: &SourceMapper) {
+        match self {
+            EvalError::BlameError(l, cs_opt) => {
+                s.push_str("Reached a blame label, some cast went terribly wrong\n");
+                s.push_str("  Tag: ");
+                s.push_str(&l.tag);
+                s.push('\n');
+
+                if let Some(span) = mapper.map_span(l.l, l.r) {
+                    s.push_str("  At ");
+                    span.show_append(s, mapper);
+                }
+
+                s.push_str(&format!("\n  Polarity: {}\n", l.polarity));
+                if l.polarity {
+                    s.push_str("  The blame is on the value (positive blame)\n");
+                } else {
+                    s.push_str("  The blame is on the context (negative blame)\n");
+                }
+                if l.path != TyPath::Nil() {
+                    l.path.show_append(s, mapper);
+                    s.push('\n');
+                }
+
+                if let Some(cs) = cs_opt {
+                    s.push_str("\nCallstack:\n=========\n");
+                    cs.show_append(s, mapper);
+                }
+            }
+            EvalError::TypeError(msg) => {
+                s.push_str(msg);
+            }
+        }
+    }
 }
 
 fn is_value(_term: &Term) -> bool {

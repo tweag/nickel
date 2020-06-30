@@ -1,8 +1,6 @@
-use crate::eval::{eval, CallStack, EvalError, IdentKind, StackElem};
-use crate::identifier::Ident;
-use crate::label::{Label, TyPath};
+use crate::eval::eval;
 use crate::parser;
-use crate::position::SourceMapper;
+use crate::position::{ShowWithSource, SourceMapper};
 use crate::term::{RichTerm, Term};
 use crate::transformations;
 use crate::typecheck::type_check;
@@ -57,8 +55,24 @@ impl<T: Read> Program<T> {
         let t = transformations::share_normal_form::transform(&t);
         match eval(t) {
             Ok(t) => Ok(t),
-            Err(EvalError::BlameError(l, cs)) => Err(self.process_blame(l, cs)),
-            Err(EvalError::TypeError(s)) => Err(s),
+            Err(e) => {
+                let source_name = self
+                    .source_name
+                    .clone()
+                    .unwrap_or(String::from("<unknown>"));
+                let mapper = SourceMapper::new_with_offset(
+                    source_name,
+                    self.read
+                    .as_ref()
+                    .unwrap_or_else(|| {
+                        panic!("Program::process_blame: expected program buffer (read) to be loaded")
+                    })
+                    .as_str(),
+                    if self.include_contracts { Self::contracts().len() } else { 0 },
+                    );
+
+                Err(e.show(&mapper))
+            }
         }
     }
 
@@ -106,99 +120,6 @@ impl<T: Read> Program<T> {
         }
     }
 
-    fn process_blame(&mut self, l: Label, cs_opt: Option<CallStack>) -> String {
-        let source_name = self
-            .source_name
-            .clone()
-            .unwrap_or(String::from("<unknown>"));
-        let mapper = SourceMapper::new_with_offset(
-            source_name,
-            self.read
-                .as_ref()
-                .unwrap_or_else(|| {
-                    panic!("Program::process_blame: expected program buffer (read) to be loaded")
-                })
-                .as_str(),
-            Self::contracts().len(),
-        );
-
-        let mut s = String::new();
-        s.push_str("Reached a blame label, some cast went terribly wrong\n");
-        s.push_str("    Tag:\n");
-        s.push_str(&l.tag);
-        s.push_str("\n");
-
-        if let Some((left, right)) = mapper.map_span(l.l, l.r) {
-            if left.line == right.line {
-                s.push_str(&format!(
-                    "    Line: {} Columns: {} to {}\n",
-                    left.line, left.column, right.column
-                ));
-            } else {
-                s.push_str(&format!(
-                    "    Line: {} Column: {}\n",
-                    left.line, left.column
-                ));
-                s.push_str(&format!(
-                    "    to Line: {} Column: {}\n",
-                    right.line, right.column
-                ));
-            }
-        }
-
-        s.push_str(&format!("    Polarity: {}\n", l.polarity));
-        if l.polarity {
-            s.push_str("    The blame is on the value (positive blame)\n");
-        } else {
-            s.push_str("    The blame is on the context (negative blame)\n");
-        }
-        if l.path != TyPath::Nil() {
-            s.push_str(&format!("    Path: {:?}\n", l.path));
-        }
-
-        if let Some(cs) = cs_opt {
-            s.push_str("\nCallStack:\n=========\n");
-            s = Program::<T>::show_call_stack(&mapper, s, cs);
-        }
-        s
-    }
-
-    fn show_call_stack(mapper: &SourceMapper, mut s: String, mut cs: CallStack) -> String {
-        for e in cs.drain(..).rev() {
-            match e {
-                StackElem::App(Some((_l, _r))) => {
-                    // I'm not sure this App stack is really useful,
-                    // will leave it hanging for now
-                    //
-                    // if let Some((linef, colf)) = self.get_line_and_col(l) {
-                    //     s.push_str(&format!(
-                    //         "    Applied to a term on line: {} col: {}\n",
-                    //         linef, colf
-                    //     ));
-                    // }
-                }
-                StackElem::Var(IdentKind::Let(), Ident(x), Some((left, _))) => {
-                    if let Some(left) = mapper.map_pos(left) {
-                        s.push_str(&format!(
-                            "On a call to {} on line: {} col: {}\n",
-                            x, left.line, left.column
-                        ));
-                    }
-                }
-                StackElem::Var(IdentKind::Lam(), Ident(x), Some((left, _))) => {
-                    if let Some(left) = mapper.map_pos(left) {
-                        s.push_str(&format!(
-                            "    Bound to {} on line: {} col: {}\n",
-                            x, left.line, left.column
-                        ));
-                    }
-                }
-                _ => {}
-            }
-        }
-        s
-    }
-
     fn contracts() -> String {
         "let dyn = fun l => fun t => t in
 
@@ -232,6 +153,7 @@ in
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::identifier::Ident;
     use std::io::Cursor;
 
     fn eval_string(s: &str) -> Result<Term, String> {

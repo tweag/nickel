@@ -10,6 +10,56 @@ pub struct Position {
     pub column: usize,
 }
 
+/// Types including position information that can be converted to a human-readable string, given a
+/// source mapper to convert offsets to positions. This is typically implemented for error
+/// messages.
+pub trait ShowWithSource {
+    /// Append the representation to the string buffer `s`
+    fn show_append(&self, s: &mut String, mapper: &SourceMapper);
+
+    /// Create a fresh representation
+    fn show(&self, mapper: &SourceMapper) -> String {
+        let mut s = String::new();
+        self.show_append(&mut s, mapper);
+        s
+    }
+}
+
+impl ShowWithSource for Position {
+    fn show_append(&self, s: &mut String, mapper: &SourceMapper) {
+        s.push_str(&format!(
+            "{} line {}, column {}",
+            mapper.source_name(),
+            self.line,
+            self.column
+        ));
+    }
+}
+
+/// A pair of positions models a span
+impl ShowWithSource for (Position, Position) {
+    fn show_append(&self, s: &mut String, mapper: &SourceMapper) {
+        let (ref left, ref right) = self;
+        if left.line == right.line {
+            s.push_str(&format!(
+                "{} line {}, columns {}-{}",
+                mapper.source_name(),
+                left.line,
+                left.column,
+                right.column
+            ));
+        } else {
+            s.push_str(&format!(
+                "{} line {}, column {}",
+                mapper.source_name(),
+                left.line,
+                left.column
+            ));
+            s.push_str(&format!(" to line {}, column {}", right.line, right.column));
+        }
+    }
+}
+
 /// A data structure to convert from an absolute offset to a line and a column index in a source
 pub struct SourceMapper {
     source_name: String,
