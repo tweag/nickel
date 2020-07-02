@@ -27,39 +27,68 @@ pub fn merge(fst: Closure, snd: Closure) -> Result<Closure, EvalError> {
             if b1 == b2 {
                 Ok(Closure::atomic_closure(Term::Bool(b1).into()))
             } else {
-                Err(EvalError::TypeError(String::from(
-                    "Trying to merge two distinct booleans",
-                )))
+                Err(EvalError::MergeIncompatibleArgs(
+                    RichTerm {
+                        term: Box::new(Term::Bool(b1)),
+                        pos: pos1,
+                    },
+                    RichTerm {
+                        term: Box::new(Term::Bool(b2)),
+                        pos: pos2,
+                    },
+                    pos_op,
+                ))
             }
         }
         (Term::Num(n1), Term::Num(n2)) => {
             if n1 == n2 {
                 Ok(Closure::atomic_closure(Term::Num(n1).into()))
             } else {
-                Err(EvalError::TypeError(format!(
-                    "Trying to merge two distinct numbers {} and {}",
-                    n1, n2
-                )))
+                Err(EvalError::MergeIncompatibleArgs(
+                    RichTerm {
+                        term: Box::new(Term::Num(n1)),
+                        pos: pos1,
+                    },
+                    RichTerm {
+                        term: Box::new(Term::Num(n2)),
+                        pos: pos2,
+                    },
+                    pos_op,
+                ))
             }
         }
         (Term::Str(s1), Term::Str(s2)) => {
             if s1 == s2 {
                 Ok(Closure::atomic_closure(Term::Str(s1).into()))
             } else {
-                Err(EvalError::TypeError(format!(
-                    "Trying to merge two distinct strings \"{}\" and \"{}\"",
-                    s1, s2
-                )))
+                Err(EvalError::MergeIncompatibleArgs(
+                    RichTerm {
+                        term: Box::new(Term::Str(s1)),
+                        pos: pos1,
+                    },
+                    RichTerm {
+                        term: Box::new(Term::Str(s2)),
+                        pos: pos2,
+                    },
+                    pos_op,
+                ))
             }
         }
         (Term::Lbl(l1), Term::Lbl(l2)) => {
             if l1 == l2 {
                 Ok(Closure::atomic_closure(Term::Lbl(l1).into()))
             } else {
-                Err(EvalError::TypeError(format!(
-                    "Trying to merge two distinct labels \"{:?}\" and \"{:?}\"",
-                    l1, l2
-                )))
+                Err(EvalError::MergeIncompatibleArgs(
+                    RichTerm {
+                        term: Box::new(Term::Lbl(l1)),
+                        pos: pos1,
+                    },
+                    RichTerm {
+                        term: Box::new(Term::Lbl(l2)),
+                        pos: pos2,
+                    },
+                    pos_op,
+                ))
             }
         }
         // Right-biased: when merging two docstrings (s1,t2) and (s2,t2), the right one will end up
@@ -68,7 +97,7 @@ pub fn merge(fst: Closure, snd: Closure) -> Result<Closure, EvalError> {
             let Closure { body, env } = mk_merge_closure(
                 RichTerm {
                     term: Box::new(t1),
-                    pos: p1,
+                    pos: pos1,
                 },
                 env1,
                 t2,
@@ -83,7 +112,7 @@ pub fn merge(fst: Closure, snd: Closure) -> Result<Closure, EvalError> {
                 env1,
                 RichTerm {
                     term: Box::new(t2),
-                    pos: p2,
+                    pos: pos2,
                 },
                 env2,
             );
@@ -109,14 +138,14 @@ pub fn merge(fst: Closure, snd: Closure) -> Result<Closure, EvalError> {
         (Term::DefaultValue(_), t) => {
             let t = RichTerm {
                 term: Box::new(t),
-                pos: p2,
+                pos: pos2,
             };
             Ok(Closure { body: t, env: env2 })
         }
         (t, Term::DefaultValue(_)) => {
             let t = RichTerm {
                 term: Box::new(t),
-                pos: p1,
+                pos: pos1,
             };
             Ok(Closure { body: t, env: env1 })
         }
@@ -137,7 +166,7 @@ pub fn merge(fst: Closure, snd: Closure) -> Result<Closure, EvalError> {
         (Term::Contract(ty), t) | (Term::ContractWithDefault(ty, _), t) => {
             let t = RichTerm {
                 term: Box::new(t),
-                pos: p2,
+                pos: pos2,
             };
             let t = Term::Assume(ty, mk_merge_lbl(), t).into();
             Ok(Closure { body: t, env: env2 })
@@ -145,7 +174,7 @@ pub fn merge(fst: Closure, snd: Closure) -> Result<Closure, EvalError> {
         (t, Term::Contract(ty)) | (t, Term::ContractWithDefault(ty, _)) => {
             let t = RichTerm {
                 term: Box::new(t),
-                pos: p1,
+                pos: pos1,
             };
             let t = Term::Assume(ty, mk_merge_lbl(), t).into();
             Ok(Closure { body: t, env: env1 })
@@ -188,10 +217,17 @@ pub fn merge(fst: Closure, snd: Closure) -> Result<Closure, EvalError> {
             })
         }
         //The following cases are either errors or not yet implemented
-        (ref t1, ref t2) => Err(EvalError::TypeError(format!(
-            "Could not merge {:?} and {:?}",
-            *t1, *t2
-        ))),
+        (t1_, t2_) => Err(EvalError::MergeIncompatibleArgs(
+            RichTerm {
+                term: Box::new(t1_),
+                pos: pos1,
+            },
+            RichTerm {
+                term: Box::new(t2_),
+                pos: pos2,
+            },
+            pos_op,
+        )),
     }
 }
 
