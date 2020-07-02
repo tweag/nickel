@@ -39,10 +39,43 @@ impl Closure {
     }
 }
 
+type Span = (usize, usize);
+
 #[derive(Debug, PartialEq)]
 pub enum EvalError {
+    /// A blame occurred
     BlameError(Label, Option<CallStack>),
-    TypeError(String),
+    /// A mismatch between the expected type of an expression and its actual type
+    TypeError(
+        /* expected type */ String,
+        /* operation */ String,
+        RichTerm,
+    ),
+    /// A term which is not a function is applied to an argument
+    NotAFunc(
+        /* term */ RichTerm,
+        /* arg */ RichTerm,
+        /* app position */ Option<Span>,
+    ),
+    /// Access (or another record operation requiring the existence of a field) on a missing field
+    FieldMissing(
+        /* field identifier */ String,
+        /* operator */ String,
+        RichTerm,
+        Option<Span>,
+    ),
+    /// Too few args were provided to a builtin function
+    NotEnoughArgs(
+        /* required arg count */ usize,
+        /* primitive */ String,
+        Option<Span>,
+    ),
+    MergeIncompatibleArgs(
+        /* left operand */ RichTerm,
+        /* right operand */ RichTerm,
+        /* original merge */ Option<(usize, usize)>,
+    ),
+    Other(String, Option<Span>),
 }
 
 impl ShowWithSource for CallStack {
@@ -80,11 +113,27 @@ impl ShowWithSource for CallStack {
     }
 }
 
+impl EvalError {
+    fn append_span(s: &mut String, mapper: &SourceMapper, span_opt: &Option<Span>) {
+        span_opt
+            .and_then(|(left, right)| mapper.map_span(left, right))
+            .map(|span| span.show_append(s, mapper))
+            .or_else(|| Some(s.push_str("<unknown location>")));
+    }
+
+    fn hding_span(s: &mut String, mapper: &SourceMapper, span_opt: &Option<Span>) {
+        s.push_str("At ");
+        EvalError::append_span(s, mapper, span_opt);
+        s.push_str(": ");
+    }
+}
+
 impl ShowWithSource for EvalError {
     fn show_append(&self, s: &mut String, mapper: &SourceMapper) {
+        s.push_str("Error: ");
         match self {
             EvalError::BlameError(l, cs_opt) => {
-                s.push_str("Reached a blame label, some cast went terribly wrong\n");
+                s.push_str("reached a blame label, some cast went terribly wrong\n");
                 s.push_str("  Tag: ");
                 s.push_str(&l.tag);
                 s.push('\n');
@@ -110,7 +159,62 @@ impl ShowWithSource for EvalError {
                     cs.show_append(s, mapper);
                 }
             }
-            EvalError::TypeError(msg) => {
+            EvalError::TypeError(expd, msg, t) => {
+                EvalError::hding_span(s, mapper, &t.pos);
+
+                s.push_str(&format!(
+                    "expected {}, got {} ({})",
+                    expd,
+                    t.term.type_of().unwrap_or(String::from("<unevaluated>")),
+                    msg
+                ));
+            }
+            EvalError::NotAFunc(t, arg, pos_opt) => {
+                EvalError::hding_span(s, mapper, &pos_opt);
+
+                s.push_str(&format!("tried to apply {} (from ", t.term.shallow_repr()));
+                EvalError::append_span(s, mapper, &t.pos);
+                s.push_str(&format!(") to {} (from ", arg.term.shallow_repr()));
+                EvalError::append_span(s, mapper, &arg.pos);
+                s.push_str("), but this is not a function.")
+            }
+            EvalError::FieldMissing(field, op, t, span_opt) => {
+                EvalError::hding_span(s, mapper, span_opt);
+
+                s.push_str(&format!(
+                    "field \"{}\" is required by {}, but was not found in the record at ",
+                    field, op
+                ));
+                EvalError::append_span(s, mapper, &t.pos);
+            }
+            EvalError::NotEnoughArgs(count, op, span_opt) => {
+                EvalError::hding_span(s, mapper, span_opt);
+
+                s.push_str(&format!(
+                    "{} expects {} argument(s), but not enough were provided.",
+                    op, count
+                ));
+            }
+            EvalError::MergeIncompatibleArgs(t1, t2, span_opt) => {
+                EvalError::hding_span(s, mapper, span_opt);
+
+                let RichTerm {
+                    term: t1,
+                    pos: pos1,
+                } = t1;
+                let RichTerm {
+                    term: t2,
+                    pos: pos2,
+                } = t2;
+
+                s.push_str(&format!("could not merge {} (from ", (*t1).shallow_repr()));
+                EvalError::append_span(s, mapper, pos1);
+                s.push_str(&format!(") with {} (from ", (*t2).shallow_repr()));
+                EvalError::append_span(s, mapper, pos2);
+                s.push(')');
+            }
+            EvalError::Other(msg, span_opt) => {
+                EvalError::hding_span(s, mapper, span_opt);
                 s.push_str(msg);
             }
         }
@@ -184,7 +288,7 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                     env: env.clone(),
                 });
 
-                stack.push_op_cont(OperationCont::Op1(op), call_stack.len());
+                stack.push_op_cont(OperationCont::Op1(op), call_stack.len(), pos);
                 Closure { body: t, env }
             }
             // Binary Operation
@@ -203,6 +307,7 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                         },
                     ),
                     call_stack.len(),
+                    pos,
                 );
                 Closure { body: fst, env }
             }
@@ -225,7 +330,10 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
             // Update
             _ if 0 < stack.count_thunks() || 0 < stack.count_conts() => {
                 clos = Closure {
-                    body: term.into(),
+                    body: RichTerm {
+                        term: Box::new(term),
+                        pos,
+                    },
                     env,
                 };
                 if 0 < stack.count_thunks() {
@@ -259,11 +367,15 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
 
             t => {
                 if 0 < stack.count_args() {
-                    let (arg, _) = stack.pop_arg().expect("Condition already checked.");
-                    return Err(EvalError::TypeError(format!(
-                        "The term {:?} was applied to {:?}",
-                        t, arg.body
-                    )));
+                    let (arg, pos_app) = stack.pop_arg().expect("Condition already checked.");
+                    return Err(EvalError::NotAFunc(
+                        RichTerm {
+                            term: Box::new(t),
+                            pos,
+                        },
+                        arg.body,
+                        pos_app,
+                    ));
                 } else {
                     return Ok(t);
                 }

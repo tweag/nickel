@@ -19,7 +19,7 @@ extern crate either;
 fn main() {
     let mut p = Program::new_from_stdin();
     match p.eval() {
-        Ok(t) => println!("Evaluation finished with result:\n{:?}", t),
-        Err(s) => println!("Evaluation didn't finished, found error:\n{}", s),
+        Ok(t) => println!("Ok: {:?}", t),
+        Err(s) => print!("{}", s),
     }
 }
