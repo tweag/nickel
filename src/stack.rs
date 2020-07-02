@@ -15,7 +15,7 @@ impl Marker {
         match *self {
             Marker::Arg(_, _) => true,
             Marker::Thunk(_) => false,
-            Marker::Cont(_, _) => false,
+            Marker::Cont(_, _, _) => false,
         }
     }
 
@@ -23,7 +23,7 @@ impl Marker {
         match *self {
             Marker::Arg(_, _) => false,
             Marker::Thunk(_) => true,
-            Marker::Cont(_, _) => false,
+            Marker::Cont(_, _, _) => false,
         }
     }
 
@@ -31,7 +31,7 @@ impl Marker {
         match *self {
             Marker::Arg(_, _) => false,
             Marker::Thunk(_) => false,
-            Marker::Cont(_, _) => true,
+            Marker::Cont(_, _, _) => true,
         }
     }
 }
@@ -117,7 +117,7 @@ impl Stack {
 
     pub fn pop_op_cont(&mut self) -> Option<(OperationCont, usize)> {
         match self.0.pop() {
-            Some(Marker::Cont(cont, len)) => Some((cont, len)),
+            Some(Marker::Cont(cont, len, pos)) => Some((cont, len, pos)),
             Some(m) => {
                 self.0.push(m);
                 None
@@ -151,7 +151,7 @@ mod tests {
     }
 
     fn some_cont_marker() -> Marker {
-        Marker::Cont(some_cont(), 42)
+        Marker::Cont(some_cont(), 42, None)
     }
 
     #[test]
@@ -190,10 +190,13 @@ mod tests {
         let mut s = Stack::new();
         assert_eq!(0, s.count_conts());
 
-        s.push_op_cont(some_cont(), 3);
-        s.push_op_cont(some_cont(), 4);
+        s.push_op_cont(some_cont(), 3, None);
+        s.push_op_cont(some_cont(), 4, None);
         assert_eq!(2, s.count_conts());
-        assert_eq!((some_cont(), 4), s.pop_op_cont().expect("Already checked"));
+        assert_eq!(
+            (some_cont(), 4, None),
+            s.pop_op_cont().expect("Already checked")
+        );
         assert_eq!(1, s.count_conts());
     }
 }
