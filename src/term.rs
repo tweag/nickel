@@ -93,6 +93,55 @@ impl Term {
             }),
         }
     }
+
+    /// Return the apparent type of an expression. If the term is not a WHNF, `None` is
+    /// returned.
+    pub fn type_of(&self) -> Option<String> {
+        match self {
+            Term::Bool(_) => Some("Bool"),
+            Term::Num(_) => Some("Num"),
+            Term::Str(_) => Some("Str"),
+            Term::Fun(_, _) => Some("Fun"),
+            Term::Lbl(_) => Some("Label"),
+            Term::Enum(_) => Some("Enum"),
+            Term::Record(_) => Some("Record"),
+            Term::List(_) => Some("List"),
+            Term::Sym(_) => Some("Sym"),
+            Term::Wrapped(_, _) => Some("Wrapped"),
+            Term::Let(_, _, _)
+            | Term::App(_, _)
+            | Term::Var(_)
+            | Term::Op1(_, _)
+            | Term::Op2(_, _, _)
+            | Term::Promise(_, _, _)
+            | Term::Assume(_, _, _) => None,
+        }
+        .map(|s| String::from(s))
+    }
+
+    /// Return a shallow string representation of a term, used for pretty printing in error message
+    pub fn shallow_repr(&self) -> String {
+        match self {
+            Term::Bool(true) => String::from("true"),
+            Term::Bool(false) => String::from("false"),
+            Term::Num(n) => format!("{}", n),
+            Term::Str(s) => format!("\"{}\"", s),
+            Term::Fun(_, _) => String::from("<func>"),
+            Term::Lbl(_) => String::from("<label>"),
+            Term::Enum(Ident(s)) => format!("`{}", s),
+            Term::Record(_) => String::from("{ ... }"),
+            Term::List(_) => String::from("[ ... ]"),
+            Term::Sym(_) => String::from("<sym>"),
+            Term::Wrapped(_, _) => String::from("<wrapped>"),
+            Term::Let(_, _, _)
+            | Term::App(_, _)
+            | Term::Var(_)
+            | Term::Op1(_, _)
+            | Term::Op2(_, _, _)
+            | Term::Promise(_, _, _)
+            | Term::Assume(_, _, _) => String::from("<unevaluated>"),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
