@@ -7,7 +7,11 @@ use std::rc::Weak;
 pub enum Marker {
     Arg(Closure, Option<(usize, usize)>),
     Thunk(Weak<RefCell<Closure>>),
-    Cont(OperationCont, usize /*callStack size*/),
+    Cont(
+        OperationCont,
+        usize,                  /*callStack size*/
+        Option<(usize, usize)>, /*position span of the operation*/
+    ),
 }
 
 impl Marker {
@@ -15,7 +19,7 @@ impl Marker {
         match *self {
             Marker::Arg(_, _) => true,
             Marker::Thunk(_) => false,
-            Marker::Cont(_, _) => false,
+            Marker::Cont(_, _, _) => false,
         }
     }
 
@@ -23,7 +27,7 @@ impl Marker {
         match *self {
             Marker::Arg(_, _) => false,
             Marker::Thunk(_) => true,
-            Marker::Cont(_, _) => false,
+            Marker::Cont(_, _, _) => false,
         }
     }
 
@@ -31,7 +35,7 @@ impl Marker {
         match *self {
             Marker::Arg(_, _) => false,
             Marker::Thunk(_) => false,
-            Marker::Cont(_, _) => true,
+            Marker::Cont(_, _, _) => true,
         }
     }
 }
@@ -89,8 +93,8 @@ impl Stack {
         self.0.push(Marker::Thunk(thunk))
     }
 
-    pub fn push_op_cont(&mut self, cont: OperationCont, len: usize) {
-        self.0.push(Marker::Cont(cont, len))
+    pub fn push_op_cont(&mut self, cont: OperationCont, len: usize, pos: Option<(usize, usize)>) {
+        self.0.push(Marker::Cont(cont, len, pos))
     }
 
     pub fn pop_arg(&mut self) -> Option<(Closure, Option<(usize, usize)>)> {
@@ -115,9 +119,9 @@ impl Stack {
         }
     }
 
-    pub fn pop_op_cont(&mut self) -> Option<(OperationCont, usize)> {
+    pub fn pop_op_cont(&mut self) -> Option<(OperationCont, usize, Option<(usize, usize)>)> {
         match self.0.pop() {
-            Some(Marker::Cont(cont, len)) => Some((cont, len)),
+            Some(Marker::Cont(cont, len, pos)) => Some((cont, len, pos)),
             Some(m) => {
                 self.0.push(m);
                 None
@@ -151,7 +155,7 @@ mod tests {
     }
 
     fn some_cont_marker() -> Marker {
-        Marker::Cont(some_cont(), 42)
+        Marker::Cont(some_cont(), 42, None)
     }
 
     #[test]
@@ -190,10 +194,13 @@ mod tests {
         let mut s = Stack::new();
         assert_eq!(0, s.count_conts());
 
-        s.push_op_cont(some_cont(), 3);
-        s.push_op_cont(some_cont(), 4);
+        s.push_op_cont(some_cont(), 3, None);
+        s.push_op_cont(some_cont(), 4, None);
         assert_eq!(2, s.count_conts());
-        assert_eq!((some_cont(), 4), s.pop_op_cont().expect("Already checked"));
+        assert_eq!(
+            (some_cont(), 4, None),
+            s.pop_op_cont().expect("Already checked")
+        );
         assert_eq!(1, s.count_conts());
     }
 }
