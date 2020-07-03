@@ -14,9 +14,9 @@
         buildInputs =
           [ rustc
             cargo
-            clippy
           ] ++ (if isShell then [
             rustfmt
+            clippy
           ] else [
             (import-cargo.builders.importCargo {
               lockFile = ./Cargo.lock;
