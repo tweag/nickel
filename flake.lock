@@ -1,0 +1,42 @@
+{
+  "nodes": {
+    "import-cargo": {
+      "locked": {
+        "lastModified": 1567183309,
+        "narHash": "sha256-wIXWOpX9rRjK5NDsL6WzuuBJl2R0kUCnlpZUrASykSc=",
+        "owner": "edolstra",
+        "repo": "import-cargo",
+        "rev": "8abf7b3a8cbe1c8a885391f826357a74d382a422",
+        "type": "github"
+      },
+      "original": {
+        "owner": "edolstra",
+        "repo": "import-cargo",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1593635868,
+        "narHash": "sha256-hIC5nOtp42OLGZsIrpzC399fNQzaFO1YFOZegoVS8ys=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "9a3e34ae60130c63b93809eecf555b0d796f001c",
+        "type": "github"
+      },
+      "original": {
+        "id": "nixpkgs",
+        "ref": "nixos-20.03",
+        "type": "indirect"
+      }
+    },
+    "root": {
+      "inputs": {
+        "import-cargo": "import-cargo",
+        "nixpkgs": "nixpkgs"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
