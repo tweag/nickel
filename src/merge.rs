@@ -1,6 +1,7 @@
 //! Evaluation of the merge operator
 use crate::eval::{Closure, Environment, EvalError, IdentKind};
 use crate::identifier::Ident;
+use crate::position::Span;
 use crate::term::{BinaryOp, RichTerm, Term};
 use simple_counter::*;
 use std::cell::RefCell;
@@ -15,7 +16,7 @@ pub fn merge(
     env1: Environment,
     t2: RichTerm,
     env2: Environment,
-    pos_op: Option<(usize, usize)>,
+    pos_op: Option<Span>,
 ) -> Result<Closure, EvalError> {
     let RichTerm {
         term: t1,

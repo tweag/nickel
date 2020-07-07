@@ -1,7 +1,7 @@
 use crate::identifier::Ident;
 use crate::label::{Label, TyPath};
 use crate::operation::{continuate_operation, OperationCont};
-use crate::position::{ShowWithSource, SourceMapper};
+use crate::position::{ShowWithSource, SourceMapper, Span};
 use crate::stack::Stack;
 use crate::term::{RichTerm, Term};
 use std::cell::RefCell;
@@ -13,8 +13,8 @@ pub type CallStack = Vec<StackElem>;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum StackElem {
-    App(Option<(usize, usize)>),
-    Var(IdentKind, Ident, Option<(usize, usize)>),
+    App(Option<Span>),
+    Var(IdentKind, Ident, Option<Span>),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -38,8 +38,6 @@ impl Closure {
         }
     }
 }
-
-type Span = (usize, usize);
 
 #[derive(Debug, PartialEq)]
 pub enum EvalError {
@@ -73,7 +71,7 @@ pub enum EvalError {
     MergeIncompatibleArgs(
         /* left operand */ RichTerm,
         /* right operand */ RichTerm,
-        /* original merge */ Option<(usize, usize)>,
+        /* original merge */ Option<Span>,
     ),
     Other(String, Option<Span>),
 }

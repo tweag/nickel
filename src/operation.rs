@@ -3,6 +3,7 @@ use crate::eval::{CallStack, Closure, EvalError, IdentKind};
 use crate::identifier::Ident;
 use crate::label::TyPath;
 use crate::merge::merge;
+use crate::position::Span;
 use crate::stack::Stack;
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp};
 use simple_counter::*;
@@ -43,7 +44,7 @@ fn process_unary_operation(
     u_op: UnaryOp<Closure>,
     clos: Closure,
     stack: &mut Stack,
-    pos_op: Option<(usize, usize)>,
+    pos_op: Option<Span>,
 ) -> Result<Closure, EvalError> {
     let Closure {
         body: RichTerm { term: t, pos },
@@ -404,7 +405,7 @@ fn process_binary_operation(
     fst_clos: Closure,
     clos: Closure,
     _stack: &mut Stack,
-    pos_op: Option<(usize, usize)>,
+    pos_op: Option<Span>,
 ) -> Result<Closure, EvalError> {
     let Closure {
         body: RichTerm {

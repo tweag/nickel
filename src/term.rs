@@ -1,5 +1,6 @@
 use crate::identifier::Ident;
 use crate::label::Label;
+use crate::position::Span;
 use crate::types::Types;
 use std::collections::HashMap;
 
@@ -266,7 +267,7 @@ impl<Ty> BinaryOp<Ty> {
 #[derive(Debug, PartialEq, Clone)]
 pub struct RichTerm {
     pub term: Box<Term>,
-    pub pos: Option<(usize, usize)>,
+    pub pos: Option<Span>,
 }
 
 impl RichTerm {

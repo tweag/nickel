@@ -10,6 +10,11 @@ pub struct Position {
     pub column: usize,
 }
 
+/// A span represented by the left and right offsets which delimit it
+pub type Span = (usize, usize);
+/// A span represented by the left and right positions which delimit it
+pub type PosSpan = (Position, Position);
+
 /// Types including position information that can be converted to a human-readable string, given a
 /// source mapper to convert offsets to positions. This is typically implemented for error
 /// messages.
@@ -77,7 +82,7 @@ impl SourceMapper {
     /// Currently, builtin contracts are simply pasted at the beginning of the source buffer. This
     /// creates a shift, as the first character of the actual input starts at offset
     /// `contracts.len()`, instead of `0`. The `start_offset` parameters specifies this offset,
-    /// that will be substracted from offsets before resolution.
+    /// that will be subtracted from offsets before resolution.
     pub fn new_with_offset(source_name: String, buffer: &str, start_offset: usize) -> SourceMapper {
         let bytes = buffer.as_bytes();
 
@@ -147,7 +152,7 @@ impl SourceMapper {
 
     /// Try to map a span of absolute offsets to a pair of positions. Succeed only if both offsets
     /// map to valid positions.
-    pub fn map_span(&self, left: usize, right: usize) -> Option<(Position, Position)> {
+    pub fn map_span(&self, left: usize, right: usize) -> Option<PosSpan> {
         match (self.map_pos(left), self.map_pos(right)) {
             (Some(l), Some(r)) => Some((l, r)),
             _ => None,
