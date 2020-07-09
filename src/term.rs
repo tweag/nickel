@@ -574,13 +574,13 @@ pub enum BinaryOp<CapturedTerm> {
     ///
     /// See `Wrap` in [`UnaryOp`](enum.UnaryOp.html).
     Unwrap(),
-    /// Equality on booleans.
-    EqBool(),
+    /// Polymorphic equality.
+    Eq(),
     /// Extend a record with a dynamic field.
     ///
-    /// Dynamic means that the field name may be an expression and not a statically known string.
-    /// `DynExtend` tries to evaluate this name to a string, and in case of success, add a field
-    /// with this name to the given record with the `CapturedTerm` as content.
+    /// Dynamic means that the field name may be an expression instead of a statically known
+    /// string.  `DynExtend` tries to evaluate this name to a string, and in case of success, add a
+    /// field with this name to the given record with the `CapturedTerm` as content.
     DynExtend(CapturedTerm),
     /// Remove a field from a record. The field name is given as an arbitrary Nickel expression.
     DynRemove(),
@@ -607,7 +607,7 @@ impl<Ty> BinaryOp<Ty> {
             Plus() => Plus(),
             PlusStr() => PlusStr(),
             Unwrap() => Unwrap(),
-            EqBool() => EqBool(),
+            Eq() => Eq(),
             DynRemove() => DynRemove(),
             DynAccess() => DynAccess(),
             HasField() => HasField(),

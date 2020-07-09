@@ -196,7 +196,7 @@ BOpIn: BinaryOp<RichTerm> = {
         match <> {
             "+" => BinaryOp::Plus(),
             "++" => BinaryOp::PlusStr(),
-            "==" => BinaryOp::EqBool(),
+            "==" => BinaryOp::Eq(),
             "@" => BinaryOp::ListConcat(),
             op => panic!("Unkown operator {}", op)
         }
