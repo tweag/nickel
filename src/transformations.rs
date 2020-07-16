@@ -37,8 +37,8 @@ pub mod share_normal_form {
 
     generate_counter!(FreshVariableCounter, usize);
 
-    pub fn transform(term: &RichTerm) -> RichTerm {
-        let RichTerm { term, pos } = term;
+    pub fn transform(rt: &RichTerm) -> RichTerm {
+        let RichTerm { term, pos } = rt;
         let pos = pos.clone();
         match &**term {
             v @ &Term::Bool(_)
@@ -101,7 +101,7 @@ pub mod share_normal_form {
 
                 for (id, ref t) in map.iter() {
                     if should_share(&*t.term) {
-                        let fresh_var = Ident(format!("%{}", FreshVariableCounter::next()));
+                        let fresh_var = fresh_var();
                         bindings.push((fresh_var.clone(), transform(t)));
                         new_map.insert(id.clone(), Term::Var(fresh_var).into());
                     } else {
@@ -125,7 +125,7 @@ pub mod share_normal_form {
 
                 for t in ts.iter() {
                     if should_share(&*t.term) {
-                        let fresh_var = Ident(format!("%{}", FreshVariableCounter::next()));
+                        let fresh_var = fresh_var();
                         bindings.push((fresh_var.clone(), transform(t)));
                         new_list.push(Term::Var(fresh_var).into());
                     } else {
@@ -143,7 +143,63 @@ pub mod share_normal_form {
 
                 result.into()
             }
+            &Term::Contract(_) => rt.clone(),
+            &Term::DefaultValue(ref t) => {
+                if should_share(&*t.term) {
+                    let fresh_var = fresh_var();
+                    let inner = RichTerm {
+                        term: Box::new(Term::DefaultValue(Term::Var(fresh_var.clone()).into())),
+                        pos,
+                    };
+                    Term::Let(fresh_var, transform(t), inner).into()
+                } else {
+                    RichTerm {
+                        term: Box::new(Term::DefaultValue(transform(t))),
+                        pos,
+                    }
+                }
+            }
+            &Term::ContractWithDefault(ref ty, ref t) => {
+                if should_share(&*t.term) {
+                    let fresh_var = fresh_var();
+                    let inner = RichTerm {
+                        term: Box::new(Term::ContractWithDefault(
+                            ty.clone(),
+                            Term::Var(fresh_var.clone()).into(),
+                        )),
+                        pos,
+                    };
+                    Term::Let(fresh_var, transform(t), inner).into()
+                } else {
+                    RichTerm {
+                        term: Box::new(Term::ContractWithDefault(ty.clone(), transform(t))),
+                        pos,
+                    }
+                }
+            }
+            &Term::Docstring(ref s, ref t) => {
+                if should_share(&*t.term) {
+                    let fresh_var = fresh_var();
+                    let inner = RichTerm {
+                        term: Box::new(Term::Docstring(
+                            s.clone(),
+                            Term::Var(fresh_var.clone()).into(),
+                        )),
+                        pos,
+                    };
+                    Term::Let(fresh_var, transform(t), inner).into()
+                } else {
+                    RichTerm {
+                        term: Box::new(Term::Docstring(s.clone(), transform(t))),
+                        pos,
+                    }
+                }
+            }
         }
+    }
+
+    fn fresh_var() -> Ident {
+        Ident(format!("%{}", FreshVariableCounter::next()))
     }
 
     /// Determine if a subterm of a WHNF should be wrapped in a thunk in order to be shared.  This is
