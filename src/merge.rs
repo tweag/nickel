@@ -1,7 +1,9 @@
 //! Evaluation of the merge operator
 use crate::eval::{Closure, Environment, EvalError, IdentKind};
 use crate::identifier::Ident;
+use crate::label::{Label, TyPath};
 use crate::term::{BinaryOp, RichTerm, Term};
+use crate::types::{AbsType, Types};
 use simple_counter::*;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -10,13 +12,17 @@ use std::rc::Rc;
 generate_counter!(FreshVariableCounter, usize);
 
 /// Compute the merge of the two operands once they have been evaluated
-pub fn merge(
-    t1: Term,
-    env1: Environment,
-    t2: Term,
-    env2: Environment,
-) -> Result<Closure, EvalError> {
-    match (t1, t2) {
+pub fn merge(fst: Closure, snd: Closure) -> Result<Closure, EvalError> {
+    let Closure {
+        body: RichTerm { term: t1, pos: p1 },
+        env: env1,
+    } = fst;
+    let Closure {
+        body: RichTerm { term: t2, pos: p2 },
+        env: env2,
+    } = snd;
+
+    match (*t1, *t2) {
         // Merge is idempotent on basic terms
         (Term::Bool(b1), Term::Bool(b2)) => {
             if b1 == b2 {
@@ -56,6 +62,94 @@ pub fn merge(
                     l1, l2
                 )))
             }
+        }
+        // Right-biased: when merging two docstrings (s1,t2) and (s2,t2), the right one will end up
+        // as the outermost position in the resulting term (s2,(s1,merge t1 t2))
+        (t1, Term::Docstring(s, t2)) => {
+            let Closure { body, env } = mk_merge_closure(
+                RichTerm {
+                    term: Box::new(t1),
+                    pos: p1,
+                },
+                env1,
+                t2,
+                env2,
+            );
+            let body = Term::Docstring(s, body).into();
+            Ok(Closure { body, env })
+        }
+        (Term::Docstring(s, t1), t2) => {
+            let Closure { body, env } = mk_merge_closure(
+                t1,
+                env1,
+                RichTerm {
+                    term: Box::new(t2),
+                    pos: p2,
+                },
+                env2,
+            );
+            let body = Term::Docstring(s, body).into();
+            Ok(Closure { body, env })
+        }
+        // Default merging
+        (Term::DefaultValue(_), Term::DefaultValue(_))
+        | (Term::DefaultValue(_), Term::ContractWithDefault(_, _))
+        | (Term::ContractWithDefault(_, _), Term::DefaultValue(_))
+        | (Term::ContractWithDefault(_, _), Term::ContractWithDefault(_, _)) => Err(
+            EvalError::TypeError("Trying to merge two default values".to_string()),
+        ),
+        // Should we keep the environment of contracts ?
+        (Term::DefaultValue(t), Term::Contract(ty)) => Ok(Closure {
+            body: Term::ContractWithDefault(ty, t).into(),
+            env: env1,
+        }),
+        (Term::Contract(ty), Term::DefaultValue(t)) => Ok(Closure {
+            body: Term::ContractWithDefault(ty, t).into(),
+            env: env2,
+        }),
+        (Term::DefaultValue(_), t) => {
+            let t = RichTerm {
+                term: Box::new(t),
+                pos: p2,
+            };
+            Ok(Closure { body: t, env: env2 })
+        }
+        (t, Term::DefaultValue(_)) => {
+            let t = RichTerm {
+                term: Box::new(t),
+                pos: p1,
+            };
+            Ok(Closure { body: t, env: env1 })
+        }
+        // Contracts merging
+        (Term::Contract(ty1), Term::Contract(ty2)) => Ok(Closure {
+            body: Term::Contract(compose_contracts(ty1, ty2)).into(),
+            env: HashMap::new(),
+        }),
+        (Term::Contract(ty1), Term::ContractWithDefault(ty2, t)) => Ok(Closure {
+            body: Term::ContractWithDefault(compose_contracts(ty1, ty2), t).into(),
+            env: HashMap::new(),
+        }),
+        (Term::ContractWithDefault(ty1, t), Term::Contract(ty2)) => {
+            let ty = compose_contracts(ty1, ty2);
+            let t = Term::ContractWithDefault(ty, t).into();
+            Ok(Closure { body: t, env: env1 })
+        }
+        (Term::Contract(ty), t) | (Term::ContractWithDefault(ty, _), t) => {
+            let t = RichTerm {
+                term: Box::new(t),
+                pos: p2,
+            };
+            let t = Term::Assume(ty, mk_merge_lbl(), t).into();
+            Ok(Closure { body: t, env: env2 })
+        }
+        (t, Term::Contract(ty)) | (t, Term::ContractWithDefault(ty, _)) => {
+            let t = RichTerm {
+                term: Box::new(t),
+                pos: p1,
+            };
+            let t = Term::Assume(ty, mk_merge_lbl(), t).into();
+            Ok(Closure { body: t, env: env1 })
         }
         // Merge put together the fields of records, and recursively merge
         // fields that are present in both terms
@@ -106,7 +200,7 @@ pub fn merge(
 /// It generates a fresh variable, binds it to the corresponding closure `(t,with_env)` in env,
 /// and returns this new variable as a term
 fn closurize(env: &mut Environment, t: RichTerm, with_env: Environment) -> RichTerm {
-    //To avoid clashing with fresh variables introduced by DynExtend, we add an 'm' in the prefix
+    // To avoid clashing with fresh variables introduced by DynExtend, we add an 'm' in the prefix
     let var = format!("_m{}", FreshVariableCounter::next());
     let c = Closure {
         body: t,
@@ -119,6 +213,56 @@ fn closurize(env: &mut Environment, t: RichTerm, with_env: Environment) -> RichT
     );
 
     Term::Var(Ident(var)).into()
+}
+
+/// Take two terms together with their environment, and return a closure representing their merge
+fn mk_merge_closure(t1: RichTerm, env1: Environment, t2: RichTerm, env2: Environment) -> Closure {
+    let mut env = HashMap::new();
+
+    let t = Term::Op2(
+        BinaryOp::Merge(),
+        closurize(&mut env, t1, env1),
+        closurize(&mut env, t2, env2),
+    )
+    .into();
+
+    Closure { body: t, env }
+}
+
+/// Generate a fresh label with an appropriate tag for a cast introduced by merge. Positional
+/// information is ignored for now, but should be encoded in the label at some point
+fn mk_merge_lbl() -> Label {
+    Label {
+        tag: "Merged with contract".to_string(),
+        l: 0,
+        r: 0,
+        polarity: true,
+        path: TyPath::Nil(),
+    }
+}
+
+/// Return a type which contract is the composed of the contracts of `ty1` and `ty2`.
+/// This type corresponds to the intersection of `ty1` and `ty2`
+fn compose_contracts(ty1: Types, ty2: Types) -> Types {
+    let c1 = ty1.contract();
+    let c2 = ty2.contract();
+
+    // composed = fun l => fun x => c1 l (c2 l x)
+    let composed = RichTerm::fun(
+        "_l".to_string(),
+        RichTerm::fun(
+            "_x".to_string(),
+            RichTerm::app(
+                RichTerm::app(c1, RichTerm::var("_l".to_string())),
+                RichTerm::app(
+                    RichTerm::app(c2, RichTerm::var("_l".to_string())),
+                    RichTerm::var("_x".to_string()),
+                ),
+            ),
+        ),
+    );
+
+    Types(AbsType::Flat(composed))
 }
 
 pub mod hashmap {

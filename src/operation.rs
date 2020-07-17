@@ -15,26 +15,33 @@ generate_counter!(FreshVariableCounter, usize);
 #[derive(Debug, PartialEq)]
 pub enum OperationCont {
     Op1(UnaryOp<Closure>),
-    Op2First(BinaryOp<Closure>, Closure),
-    Op2Second(BinaryOp<Closure>, Closure),
+    // The last parameter saves the strictness mode before the evaluation of the operator
+    Op2First(BinaryOp<Closure>, Closure, bool),
+    Op2Second(BinaryOp<Closure>, Closure, bool),
 }
 
 pub fn continuate_operation(
     mut clos: Closure,
     stack: &mut Stack,
     call_stack: &mut CallStack,
+    enriched_strict: &mut bool,
 ) -> Result<Closure, EvalError> {
     let (cont, cs_len) = stack.pop_op_cont().expect("Condition already checked");
     call_stack.truncate(cs_len);
     match cont {
         OperationCont::Op1(u_op) => process_unary_operation(u_op, clos, stack),
-        OperationCont::Op2First(b_op, mut snd_clos) => {
+        OperationCont::Op2First(b_op, mut snd_clos, prev_strict) => {
             std::mem::swap(&mut clos, &mut snd_clos);
-            stack.push_op_cont(OperationCont::Op2Second(b_op, snd_clos), cs_len);
+            stack.push_op_cont(
+                OperationCont::Op2Second(b_op, snd_clos, prev_strict),
+                cs_len,
+            );
             Ok(clos)
         }
-        OperationCont::Op2Second(b_op, fst_clos) => {
-            process_binary_operation(b_op, fst_clos, clos, stack)
+        OperationCont::Op2Second(b_op, fst_clos, prev_strict) => {
+            let res = process_binary_operation(b_op, fst_clos, clos, stack);
+            *enriched_strict = prev_strict;
+            res
         }
     }
 }
@@ -375,9 +382,13 @@ fn process_binary_operation(
         env: env1,
     } = fst_clos;
     let Closure {
-        body: RichTerm { term: t2, .. },
+        body: RichTerm {
+            term: t2,
+            pos: pos2,
+        },
         env: mut env2,
     } = clos;
+
     match b_op {
         BinaryOp::Plus() => {
             if let Term::Num(n1) = *t1 {
@@ -610,7 +621,23 @@ fn process_binary_operation(
                 ))),
             }
         }
-        BinaryOp::Merge() => merge(*t1, env1, *t2, env2),
+        BinaryOp::Merge() => {
+            let c1 = Closure {
+                body: RichTerm {
+                    term: t1,
+                    pos: pos1,
+                },
+                env: env1,
+            };
+            let c2 = Closure {
+                body: RichTerm {
+                    term: t2,
+                    pos: pos2,
+                },
+                env: env2,
+            };
+            merge(c1, c2)
+        }
     }
 }
 
@@ -637,8 +664,9 @@ mod tests {
 
         stack.push_op_cont(cont, 0);
         let mut call_stack = CallStack::new();
+        let mut strict = true;
 
-        clos = continuate_operation(clos, &mut stack, &mut call_stack).unwrap();
+        clos = continuate_operation(clos, &mut stack, &mut call_stack, &mut strict).unwrap();
 
         assert_eq!(
             clos,
@@ -658,6 +686,7 @@ mod tests {
                 body: Term::Num(6.0).into(),
                 env: some_env(),
             },
+            true,
         );
 
         let mut clos = Closure {
@@ -667,8 +696,9 @@ mod tests {
         let mut stack = Stack::new();
         stack.push_op_cont(cont, 0);
         let mut call_stack = CallStack::new();
+        let mut strict = true;
 
-        clos = continuate_operation(clos, &mut stack, &mut call_stack).unwrap();
+        clos = continuate_operation(clos, &mut stack, &mut call_stack, &mut strict).unwrap();
 
         assert_eq!(
             clos,
@@ -686,7 +716,8 @@ mod tests {
                     Closure {
                         body: Term::Num(7.0).into(),
                         env: some_env(),
-                    }
+                    },
+                    true
                 ),
                 0
             ),
@@ -702,6 +733,7 @@ mod tests {
                 body: Term::Num(7.0).into(),
                 env: some_env(),
             },
+            true,
         );
         let mut clos = Closure {
             body: Term::Num(6.0).into(),
@@ -710,8 +742,9 @@ mod tests {
         let mut stack = Stack::new();
         stack.push_op_cont(cont, 0);
         let mut call_stack = CallStack::new();
+        let mut strict = false;
 
-        clos = continuate_operation(clos, &mut stack, &mut call_stack).unwrap();
+        clos = continuate_operation(clos, &mut stack, &mut call_stack, &mut strict).unwrap();
 
         assert_eq!(
             clos,
