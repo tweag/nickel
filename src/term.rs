@@ -35,6 +35,11 @@ pub enum Term {
     Assume(Types, Label, RichTerm),
     Sym(i32),
     Wrapped(i32, RichTerm),
+    // Enriched terms
+    Contract(Types),
+    DefaultValue(RichTerm),
+    ContractWithDefault(Types, RichTerm),
+    Docstring(String, RichTerm),
 }
 
 impl Term {
@@ -66,12 +71,15 @@ impl Term {
                 func(t2)
             }
 
-            Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | Sym(_) | Enum(_) => {}
+            Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | Sym(_) | Enum(_) | Contract(_) => {}
             Fun(_, ref mut t)
             | Op1(_, ref mut t)
             | Promise(_, _, ref mut t)
             | Assume(_, _, ref mut t)
-            | Wrapped(_, ref mut t) => {
+            | Wrapped(_, ref mut t)
+            | DefaultValue(ref mut t)
+            | Docstring(_, ref mut t)
+            | ContractWithDefault(_, ref mut t) => {
                 func(t);
             }
             Let(_, ref mut t1, ref mut t2)
