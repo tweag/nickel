@@ -1,8 +1,10 @@
+use crate::error::EvalError;
 use crate::eval::Environment;
-use crate::eval::{CallStack, Closure, EvalError, IdentKind};
+use crate::eval::{CallStack, Closure, IdentKind};
 use crate::identifier::Ident;
 use crate::label::TyPath;
 use crate::merge::merge;
+use crate::position::RawSpan;
 use crate::stack::Stack;
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp};
 use simple_counter::*;
@@ -32,7 +34,11 @@ pub fn continuate_operation(
         OperationCont::Op1(u_op) => process_unary_operation(u_op, clos, stack, pos),
         OperationCont::Op2First(b_op, mut snd_clos, prev_strict) => {
             std::mem::swap(&mut clos, &mut snd_clos);
-            stack.push_op_cont(OperationCont::Op2Second(b_op, snd_clos, prev_strict), cs_len, pos);
+            stack.push_op_cont(
+                OperationCont::Op2Second(b_op, snd_clos, prev_strict),
+                cs_len,
+                pos,
+            );
             Ok(clos)
         }
         OperationCont::Op2Second(b_op, fst_clos, prev_strict) => {
@@ -47,6 +53,7 @@ fn process_unary_operation(
     u_op: UnaryOp<Closure>,
     clos: Closure,
     stack: &mut Stack,
+    pos_op: Option<RawSpan>,
 ) -> Result<Closure, EvalError> {
     let Closure {
         body: RichTerm { term: t, pos },
@@ -407,6 +414,7 @@ fn process_binary_operation(
     fst_clos: Closure,
     clos: Closure,
     _stack: &mut Stack,
+    pos_op: Option<RawSpan>,
 ) -> Result<Closure, EvalError> {
     let Closure {
         body: RichTerm {

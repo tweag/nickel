@@ -173,7 +173,7 @@ impl ToDiagnostic<FileId> for Error {
 impl ToDiagnostic<FileId> for EvalError {
     fn to_diagnostic(&self, files: &mut Files<String>) -> Diagnostic<FileId> {
         match self {
-            EvalError::BlameError(l, cs_opt) => {
+            EvalError::BlameError(l, _cs_opt) => {
                 let mut msg = format!("Blame error: [{}].", &l.tag);
 
                 if l.polarity {

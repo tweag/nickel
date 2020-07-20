@@ -1,3 +1,4 @@
+mod error;
 mod eval;
 mod identifier;
 mod label;
@@ -17,9 +18,11 @@ use crate::program::Program;
 extern crate either;
 
 fn main() {
-    let p = Program::new_from_stdin();
-    match p.and_then(|mut p_| p_.eval()) {
-        Ok(t) => println!("Ok: {:?}", t),
-        Err(s) => print!("{}", s),
-    }
+    match Program::new_from_stdin() {
+        Ok(mut p) => match p.eval() {
+            Ok(t) => println!("Done: {:?}", t),
+            Err(err) => p.report(&err),
+        },
+        Err(msg) => eprintln!("Error when reading the source: {}", msg),
+    };
 }

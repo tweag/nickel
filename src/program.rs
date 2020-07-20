@@ -1,10 +1,11 @@
-use crate::eval::eval;
-use crate::eval::EvalError;
+use crate::error::{Error, ToDiagnostic};
+use crate::eval;
 use crate::parser;
 use crate::term::{RichTerm, Term};
 use crate::transformations;
 use crate::typecheck::type_check;
 use codespan::{FileId, Files};
+use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fs;
@@ -54,18 +55,11 @@ impl Program {
     }
 
     /// Parse if necessary, typecheck and then evaluate the program
-    pub fn eval(&mut self) -> Result<Term, String> {
-        let t = self.parse()?;
+    pub fn eval(&mut self) -> Result<Term, Error> {
+        let t = self.parse().map_err(|msg| Error::ParseError(msg))?;
         println!("Typechecked: {:?}", type_check(t.as_ref()));
         let t = transformations::share_normal_form::transform(&t);
-        match eval(t) {
-            Ok(t) => Ok(t),
-            Err(EvalError::BlameError(l, cs)) => {
-                // Will be corrected in the next commit
-                Err(/* self.process_blame(l, cs) */ String::new())
-            }
-            Err(EvalError::TypeError(s)) => Err(s),
-        }
+        eval::eval(t).map_err(|e| e.into())
     }
 
     fn parse(&mut self) -> Result<RichTerm, String> {
@@ -76,10 +70,10 @@ impl Program {
                 buf.insert_str(0, &Self::contracts());
             }
 
-            match parser::grammar::TermParser::new().parse(&buf) {
+            match parser::grammar::TermParser::new().parse(&self.main_id, &buf) {
                 Ok(t) => self.parsed.insert(self.main_id, t),
                 Err(e) => {
-                    return Err(format!("Reached the following error while parsing:\n{}", e));
+                    return Err(format!("{}", e));
                 }
             };
         }
@@ -89,6 +83,25 @@ impl Program {
             .get(&self.main_id)
             .expect("Program::parse: the term should be parsed at this point")
             .clone())
+    }
+
+    /// Pretty-print an error on stderr
+    pub fn report(&mut self, error: &Error) {
+        let writer = StandardStream::stderr(ColorChoice::Always);
+        let config = codespan_reporting::term::Config::default();
+        let diagnostic = error.to_diagnostic(&mut self.files);
+        match codespan_reporting::term::emit(
+            &mut writer.lock(),
+            &config,
+            &mut self.files,
+            &diagnostic,
+        ) {
+            Ok(()) => (),
+            Err(err) => panic!(
+                "Program::report: could not print an error on stderr: {}",
+                err
+            ),
+        };
     }
 
     /// Built-in contracts to be included in programs
@@ -126,13 +139,16 @@ in
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::EvalError;
     use crate::identifier::Ident;
     use std::io::Cursor;
 
-    fn eval_string(s: &str) -> Result<Term, String> {
+    fn eval_string(s: &str) -> Result<Term, Error> {
         let src = Cursor::new(s);
 
-        let mut p = Program::new_from_source(src, "<test>").map_err(|io_err| io_err.to_string())?;
+        let mut p = Program::new_from_source(src, "<test>").map_err(|io_err| {
+            Error::EvalError(EvalError::Other(format!("IO error: {}", io_err), None))
+        })?;
         p.eval()
     }
 
@@ -637,7 +653,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         eval_string("let r = merge {a=2;} {a=Contract(Bool)} in r.a").unwrap_err();
     }
 
-    fn make_composed_contract(value: &str) -> Result<Term, String> {
+    fn make_composed_contract(value: &str) -> Result<Term, Error> {
         let s = format!(
             "let Y = fun f => (fun x => f (x x)) (fun x => f (x x)) in
              let dec = fun x => x + (-1) in

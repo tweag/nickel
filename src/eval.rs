@@ -1,6 +1,7 @@
+use crate::error::EvalError;
 use crate::identifier::Ident;
-use crate::label::{Label, TyPath};
 use crate::operation::{continuate_operation, OperationCont};
+use crate::position::RawSpan;
 use crate::stack::Stack;
 use crate::term::{RichTerm, Term};
 use std::cell::RefCell;
@@ -12,8 +13,8 @@ pub type CallStack = Vec<StackElem>;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum StackElem {
-    App(Option<(usize, usize)>),
-    Var(IdentKind, Ident, Option<(usize, usize)>),
+    App(Option<RawSpan>),
+    Var(IdentKind, Ident, Option<RawSpan>),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -36,12 +37,6 @@ impl Closure {
             env: HashMap::new(),
         }
     }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum EvalError {
-    BlameError(Label, Option<CallStack>),
-    TypeError(String),
 }
 
 fn is_value(_term: &Term) -> bool {
@@ -154,29 +149,21 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                 }
             }
             // Unwrap enriched terms
-            Term::Contract(_) if enriched_strict => {
-                return Err(EvalError::TypeError(String::from(
-                    "Expected a simple term, got a Contract. Contracts cannot be evaluated",
-                )))
+            Term::Contract(_, _) if enriched_strict => {
+                return Err(EvalError::Other(
+                    String::from(
+                        "Expected a simple term, got a Contract. Contracts cannot be evaluated",
+                    ),
+                    pos,
+                ));
             }
             Term::DefaultValue(t) | Term::Docstring(_, t) if enriched_strict => {
                 Closure { body: t, env }
             }
-            Term::ContractWithDefault(ty, t) if enriched_strict => {
-                let (l, r) = pos.unwrap_or((0, 0));
-                let label = Label {
-                    tag: "ContractWithDefault".to_string(),
-                    l,
-                    r,
-                    polarity: true,
-                    path: TyPath::Nil(),
-                };
-
-                Closure {
-                    body: Term::Assume(ty, label, t).into(),
-                    env,
-                }
-            }
+            Term::ContractWithDefault(ty, label, t) if enriched_strict => Closure {
+                body: Term::Assume(ty, label, t).into(),
+                env,
+            },
             // Continuate Operation
             // Update
             _ if 0 < stack.count_thunks() || 0 < stack.count_conts() => {
@@ -246,6 +233,20 @@ mod tests {
     use crate::label::{Label, TyPath};
     use crate::term::{BinaryOp, UnaryOp};
     use crate::types::{AbsType, Types};
+    use codespan::Files;
+
+    fn mk_label() -> Label {
+        Label {
+            tag: "testing".to_string(),
+            span: RawSpan {
+                src_id: Files::new().add("<test>", String::from("empty")),
+                start: 0.into(),
+                end: 1.into(),
+            },
+            polarity: false,
+            path: TyPath::Nil(),
+        }
+    }
 
     #[test]
     fn identity_over_values() {
@@ -264,13 +265,7 @@ mod tests {
 
     #[test]
     fn blame_panics() {
-        let label = Label {
-            tag: "testing".to_string(),
-            l: 0,
-            r: 1,
-            polarity: false,
-            path: TyPath::Nil(),
-        };
+        let label = mk_label();
         if let Err(EvalError::BlameError(l, _)) =
             eval(Term::Op1(UnaryOp::Blame(), Term::Lbl(label.clone()).into()).into())
         {
@@ -387,7 +382,8 @@ mod tests {
 
         let t = Term::Op2(
             BinaryOp::Merge(),
-            Term::ContractWithDefault(Types(AbsType::Num()), Term::Num(1.0).into()).into(),
+            Term::ContractWithDefault(Types(AbsType::Num()), mk_label(), Term::Num(1.0).into())
+                .into(),
             Term::DefaultValue(Term::Num(2.0).into()).into(),
         )
         .into();

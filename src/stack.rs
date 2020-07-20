@@ -1,13 +1,18 @@
 use crate::eval::Closure;
 use crate::operation::OperationCont;
+use crate::position::RawSpan;
 use std::cell::RefCell;
 use std::rc::Weak;
 
 #[derive(Debug)]
 pub enum Marker {
-    Arg(Closure, Option<(usize, usize)>),
+    Arg(Closure, Option<RawSpan>),
     Thunk(Weak<RefCell<Closure>>),
-    Cont(OperationCont, usize /*callStack size*/),
+    Cont(
+        OperationCont,
+        usize,           /*callStack size*/
+        Option<RawSpan>, /*position span of the operation*/
+    ),
 }
 
 impl Marker {
@@ -81,7 +86,7 @@ impl Stack {
         Stack::count(self, Marker::is_cont)
     }
 
-    pub fn push_arg(&mut self, arg: Closure, pos: Option<(usize, usize)>) {
+    pub fn push_arg(&mut self, arg: Closure, pos: Option<RawSpan>) {
         self.0.push(Marker::Arg(arg, pos))
     }
 
@@ -89,11 +94,11 @@ impl Stack {
         self.0.push(Marker::Thunk(thunk))
     }
 
-    pub fn push_op_cont(&mut self, cont: OperationCont, len: usize) {
-        self.0.push(Marker::Cont(cont, len))
+    pub fn push_op_cont(&mut self, cont: OperationCont, len: usize, pos: Option<RawSpan>) {
+        self.0.push(Marker::Cont(cont, len, pos))
     }
 
-    pub fn pop_arg(&mut self) -> Option<(Closure, Option<(usize, usize)>)> {
+    pub fn pop_arg(&mut self) -> Option<(Closure, Option<RawSpan>)> {
         match self.0.pop() {
             Some(Marker::Arg(arg, pos)) => Some((arg, pos)),
             Some(m) => {
@@ -115,7 +120,7 @@ impl Stack {
         }
     }
 
-    pub fn pop_op_cont(&mut self) -> Option<(OperationCont, usize)> {
+    pub fn pop_op_cont(&mut self) -> Option<(OperationCont, usize, Option<RawSpan>)> {
         match self.0.pop() {
             Some(Marker::Cont(cont, len, pos)) => Some((cont, len, pos)),
             Some(m) => {

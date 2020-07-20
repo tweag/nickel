@@ -1,10 +1,15 @@
 use crate::identifier::Ident;
 use crate::term::Term::*;
 use crate::term::{BinaryOp, RichTerm, UnaryOp};
+use codespan::Files;
+
+fn parse(s: &str) -> Option<RichTerm> {
+    let id = Files::new().add("<test>", String::from(s));
+    super::grammar::TermParser::new().parse(&id, s).ok()
+}
 
 fn parse_without_pos(s: &str) -> RichTerm {
-    let parser = super::grammar::TermParser::new();
-    let mut result = parser.parse(s).unwrap();
+    let mut result = parse(s).unwrap();
     result.clean_pos();
     result
 }
@@ -109,9 +114,8 @@ fn applications() {
 
 #[test]
 fn variables() {
-    let parser = super::grammar::TermParser::new();
-    assert!(parser.parse("x1-x-").is_ok()); // TODO controversial
-    assert!(parser.parse("x1_x_").is_ok());
+    assert!(parse("x1-x-").is_some()); // TODO controversial
+    assert!(parse("x1_x_").is_some());
 }
 
 #[test]
@@ -124,9 +128,8 @@ fn functions() {
 
 #[test]
 fn lets() {
-    let parser = super::grammar::TermParser::new();
-    assert!(parser.parse("let x1 = x2 in x3").is_ok());
-    assert!(parser.parse("x (let x1 = x2 in x3) y").is_ok());
+    assert!(parse("let x1 = x2 in x3").is_some());
+    assert!(parse("x (let x1 = x2 in x3) y").is_some());
 }
 
 #[test]
