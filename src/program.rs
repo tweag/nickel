@@ -70,7 +70,12 @@ impl Program {
                 buf.insert_str(0, &Self::contracts());
             }
 
-            match parser::grammar::TermParser::new().parse(&self.main_id, &buf) {
+            let offset = if self.include_contracts {
+                Self::contracts().len()
+            } else {
+                0
+            };
+            match parser::grammar::TermParser::new().parse(&self.main_id, offset, &buf) {
                 Ok(t) => self.parsed.insert(self.main_id, t),
                 Err(e) => {
                     return Err(format!("{}", e));

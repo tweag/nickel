@@ -922,7 +922,7 @@ mod tests {
     fn parse_and_typecheck(s: &str) -> Result<Types, String> {
         let id = Files::new().add("<test>", s);
 
-        if let Ok(p) = parser::grammar::TermParser::new().parse(&id, s) {
+        if let Ok(p) = parser::grammar::TermParser::new().parse(&id, 0, s) {
             type_check(p.as_ref())
         } else {
             panic!("Couldn't parse {}", s)

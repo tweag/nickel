@@ -5,7 +5,7 @@ use codespan::Files;
 
 fn parse(s: &str) -> Option<RichTerm> {
     let id = Files::new().add("<test>", String::from(s));
-    super::grammar::TermParser::new().parse(&id, s).ok()
+    super::grammar::TermParser::new().parse(&id, 0, s).ok()
 }
 
 fn parse_without_pos(s: &str) -> RichTerm {
