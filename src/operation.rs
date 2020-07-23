@@ -1,3 +1,10 @@
+//! Implementation of primitive operations
+//!
+//! Define functions which perform the evaluation of primitive operators. The machinery required
+//! for the strict evaluating the operands is mainly handled by [`eval`](../eval/index.html), and
+//! a bit in [`continuate_operation`](fn.continuate_operation.html). On the other hand, the functions
+//! `process_unary_operation` and `process_binary_operation` receive evaluated operands and
+//! implement the actual semantics of operators.
 use crate::error::EvalError;
 use crate::eval::Environment;
 use crate::eval::{CallStack, Closure, IdentKind};
@@ -14,6 +21,7 @@ use std::rc::Rc;
 
 generate_counter!(FreshVariableCounter, usize);
 
+/// An operation continuation as stored on the stack
 #[derive(Debug, PartialEq)]
 pub enum OperationCont {
     Op1(UnaryOp<Closure>),
@@ -22,6 +30,11 @@ pub enum OperationCont {
     Op2Second(BinaryOp<Closure>, Closure, bool),
 }
 
+/// Process to the next step of the evaluation of an operation
+///
+/// Depending on the content of the stack, it either starts the evaluation of the first argument,
+/// starts the evaluation of the second argument, or finally process with the operation if both
+/// arguments are evaluated (for binary operators).
 pub fn continuate_operation(
     mut clos: Closure,
     stack: &mut Stack,
@@ -49,6 +62,10 @@ pub fn continuate_operation(
     }
 }
 
+/// Perform the evaluation of a unary operation
+///
+/// The argument is expected to be evaluated (in WHNF). `pos_op` corresponds to the whole
+/// operation position, that may be needed for error reporting
 fn process_unary_operation(
     u_op: UnaryOp<Closure>,
     clos: Closure,
@@ -409,6 +426,10 @@ fn process_unary_operation(
     }
 }
 
+/// Perform the evaluation of a binary operation
+///
+/// Both arguments are expected to be evaluated (in WHNF). `pos_op` corresponds to the whole
+/// operation position, that may be needed for error reporting
 fn process_binary_operation(
     b_op: BinaryOp<Closure>,
     fst_clos: Closure,

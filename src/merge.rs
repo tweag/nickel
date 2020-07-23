@@ -1,4 +1,51 @@
 //! Evaluation of the merge operator
+//!
+//! Merge is a primitive operation of Nickel, which recursively combines records. Together with
+//! enriched values, it allows to write and mix contracts with standard records.
+//!
+//! # Operational semantics
+//!
+//! ## On records
+//!
+//! When records `r1` and `r2` are merged, the result is a new record with the following fields:
+//! - all the fields of `r1` that are not in `r2`
+//! - all the fields of `r2` that are not in `r1`
+//! - fields that are both in `r1` and `r2` are recursively merged: for a field `f`, the result
+//! contains the binding `f = merge r1.f r2.f`
+//!
+//! As fields are recursively merged, merge need to operate on any value, not only on records.
+//!
+//! ## On simple values
+//!
+//! Simple values are terms are not enriched values.
+//!
+//! - *Function*: merging a function with anything else fails
+//! - *Values*: merging any other values succeeds if and only if these two values are equals, in which case it evaluates to
+//! this common value.
+//!
+//! Note that merging of lists is not yet implemented.
+//!
+//! ## On enriched values
+//!
+//! Enriched values (currently `Contract`, `Default`, `ContractDefault` or `Docstring`) get their
+//! special powers from their interaction with the merge operator.
+//!
+//! ### Enriched/Enriched
+//!
+//! - *Contract/contract*: merging two contracts evaluates to a contract which is the composition of the two
+//! - *Default/default*: merging two terms with default (either `Default` or `ContractDefault`) fails, as there cannot
+//! be two default values for the same field
+//! - *Contract/default*: merging a `Default` with a `Contract` evaluates to a `ContractDefault`
+//!
+//! ### Enriched/Simple
+//!
+//! - *Docstring*: merging a docstring (with inner term `inner`) with another term `t` recursively merges
+//! `inner` and `t`, and evaluates to this result wrapped in the original docstring (`t` may be a simple value or an
+//! enriched one here)
+//! - *Default erasure*: merging a `Default` with a simple value drops the default value and
+//! evaluates to the simple value
+//! - *Contract check*: merging a `Contract` or a `ContractDefault` with a simple value `t`
+//! evaluates to a contract check, that is an `Assume(..., t)`
 use crate::error::EvalError;
 use crate::eval::{Closure, Environment, IdentKind};
 use crate::identifier::Ident;
@@ -246,9 +293,10 @@ pub fn merge(
     }
 }
 
-/// Create a RichTerm that represents the term `t` together with an environment `with_env`.
-/// It generates a fresh variable, binds it to the corresponding closure `(t,with_env)` in env,
-/// and returns this new variable as a term
+/// Pack a term together with an environment as a closure
+///
+/// Generate a fresh variable, bind it to the corresponding closure `(t,with_env)` in `env`,
+/// and return this new variable as a term
 fn closurize(env: &mut Environment, t: RichTerm, with_env: Environment) -> RichTerm {
     // To avoid clashing with fresh variables introduced by DynExtend, we add an 'm' in the prefix
     let var = format!("_m{}", FreshVariableCounter::next());
@@ -279,7 +327,8 @@ fn mk_merge_closure(t1: RichTerm, env1: Environment, t2: RichTerm, env2: Environ
     Closure { body: t, env }
 }
 
-/// Return a type which contract is the composed of the contracts of `ty1` and `ty2`.
+/// Return a type which contract is the composed of the contracts of `ty1` and `ty2`
+///
 /// This type corresponds to the intersection of `ty1` and `ty2`
 fn compose_contracts(ty1: Types, ty2: Types) -> Types {
     let c1 = ty1.contract();

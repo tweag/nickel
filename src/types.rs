@@ -1,3 +1,20 @@
+//! Define the Nickel type system
+//!
+//! # Base types
+//! - Num: a floating-point number
+//! - Bool: a boolean
+//! - Str: a string literal
+//! - Sym: a symbol, used by contracts when checking polymorphic types
+//! - List: an (heterogeneous) list
+//!
+//! # Higher-order types
+//! - `->`: the function type
+//! - `forall a. type`: polymorphic type
+//! - `#customContract`: an opaque type, defined from an user-defined contract
+//!
+//! # Record type
+//! The type systems feature structural records with row-polymorphism
+//!
 use crate::identifier::Ident;
 use crate::term::{RichTerm, Term, UnaryOp};
 use std::collections::HashMap;

@@ -1,3 +1,12 @@
+//! Define a complete Nickel program
+//!
+//! A program is a source code loaded from some input. This module offer an interface to load the
+//! program from a file or another input, parsing it and evaluating it.
+//!
+//! # Builtin contracts
+//! Builtins contracts are the essential contracts, writtin in pure Nickel, which are required by
+//! the Nickel abstract machine. They are currently just being pasted at the beginning of the
+//! input, which is bad, but this will be corrected once we have settle on and implemented imports.
 use crate::error::{Error, ToDiagnostic};
 use crate::eval;
 use crate::parser;
@@ -13,6 +22,11 @@ use std::io::{self, Read};
 use std::path::Path;
 use std::result::Result;
 
+/// A Nickel program
+///
+/// Store the source code of the program, itself included in a larger file database
+/// that will contain potentail imports in the future, and the result of parsing these sources, if
+/// it has been done yet.
 pub struct Program {
     /// Control if the built-in contract are included (pasted at the beginning of the source)
     include_contracts: bool,
@@ -26,10 +40,12 @@ pub struct Program {
 }
 
 impl Program {
+    /// Create a program from the standard input
     pub fn new_from_stdin() -> std::io::Result<Program> {
         Program::new_from_source(io::stdin(), "<stdin>")
     }
 
+    /// Create a program from a file
     pub fn new_from_file<P: AsRef<Path>>(path: P) -> std::io::Result<Program> {
         let file = fs::File::open(&path)?;
         Program::new_from_source(file, path.as_ref())
@@ -62,6 +78,7 @@ impl Program {
         eval::eval(t).map_err(|e| e.into())
     }
 
+    /// Parse the program source, or just return it if has already been done
     fn parse(&mut self) -> Result<RichTerm, String> {
         if self.parsed.get(&self.main_id).is_none() {
             let mut buf = self.files.source(self.main_id).clone();
@@ -110,7 +127,7 @@ impl Program {
     }
 
     /// Built-in contracts to be included in programs
-    /// TODO: move this to a Nickel stand-alone file once we have imports
+    // TODO: move this to a Nickel stand-alone file once we have imports
     fn contracts() -> String {
         "let dyn = fun l => fun t => t in
 

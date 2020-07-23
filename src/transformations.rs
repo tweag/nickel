@@ -1,6 +1,6 @@
 //! Program transformations
 
-/// #Share normal form
+/// Share normal form
 ///
 /// Replace the subexpressions of WHNFs that are not functions by thunks, such that they can be
 /// shared. It is similar to the behavior of other lazy languages with respect to data

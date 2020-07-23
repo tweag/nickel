@@ -1,9 +1,14 @@
+//! Define the AST of a Nickel term
 use crate::identifier::Ident;
 use crate::label::Label;
 use crate::position::RawSpan;
 use crate::types::Types;
 use std::collections::HashMap;
 
+/// The AST of a Nickel term
+///
+/// In practice, parsed terms need to store additional information, mainly their position in the
+/// source. This is why this type is entangled with [`RichTerm`](type.RichTerm.html)
 #[derive(Debug, PartialEq, Clone)]
 pub enum Term {
     // Values
@@ -36,6 +41,7 @@ pub enum Term {
     Assume(Types, Label, RichTerm),
     Sym(i32),
     Wrapped(i32, RichTerm),
+
     // Enriched terms
     Contract(Types, Label),
     DefaultValue(RichTerm),
@@ -44,6 +50,7 @@ pub enum Term {
 }
 
 impl Term {
+    /// Apply a function on all sub terms contained in a `RichTerm`
     pub fn apply_to_rich_terms<F>(&mut self, func: F)
     where
         F: Fn(&mut RichTerm),
@@ -95,8 +102,9 @@ impl Term {
         }
     }
 
-    /// Return the apparent type of an expression. If the term is not a WHNF, `None` is
-    /// returned.
+    /// Return the apparent type of an expression.
+    ///
+    /// If the term is not a WHNF, `None` is returned.
     pub fn type_of(&self) -> Option<String> {
         match self {
             Term::Bool(_) => Some("Bool"),
@@ -124,7 +132,8 @@ impl Term {
         .map(|s| String::from(s))
     }
 
-    /// Return a shallow string representation of a term, used for pretty printing in error message
+    /// Return a shallow string representation of a term, used for pretty printing in error
+    /// message.
     pub fn shallow_repr(&self) -> String {
         match self {
             Term::Bool(true) => String::from("true"),
@@ -172,10 +181,10 @@ pub enum UnaryOp<CapturedTerm> {
     Blame(),
 
     Embed(Ident),
-    /// This is a hacky way to deal with this for now.
-    ///
-    /// Ideally it should change to eliminate the dependency with RichTerm
-    /// in the future.
+    // This is a hacky way to deal with this for now.
+    //
+    // Ideally it should change to eliminate the dependency with RichTerm
+    // in the future.
     Switch(HashMap<Ident, CapturedTerm>, Option<CapturedTerm>),
 
     StaticAccess(Ident),

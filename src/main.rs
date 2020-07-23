@@ -1,3 +1,4 @@
+//! Entry point of the program
 mod error;
 mod eval;
 mod identifier;

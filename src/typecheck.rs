@@ -1,9 +1,32 @@
+//! Implementation of the typechecker
+//!
+//! Typechecking in Nickel is divided into two modes:
+//! - Strict, which correspond to traditional typechecking in strongly, statically typed
+//! languages. In Nickel, this happens inside a `Promise`
+//! - Non strict, which does not actually enforce any typing, but records how bound terms are
+//! annotated and look for other `Promise` to check inside every branch of the AST
+//!
+//! This uses a standard unification algorithm.
+//!
+//! # Type generalization
+//! Variables in polymorphic types are not automatically generalized: that is, writing `let f = fun x => x in
+//! somFunc (f 1) (f "a")` in strict mode won't work. The user needs to explicitly annotate types
+//! it want to be polymorphic: `let f = Assume(forall a. a -> a) in someFunc (f 1) (f "a")`
+//!
+//! # Typed variables
+//! As any variable may be used in a typed context (i.e. in strict mode), we need to associate a
+//! type to every binding that is encountered during typechecking. The current policy is: if a let
+//! binding is annotated by an `Assume` or a `Promise`, the type of the annotation is used.
+//! Otherwise, it gets the type Dyn.
 use crate::identifier::Ident;
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp};
 use crate::types::{AbsType, Types};
 use std::collections::{HashMap, HashSet};
 
-// Type checking
+/// Typecheck a term
+///
+/// Return the inferred type in case of success. This is just a wrapper that calls
+/// [`type_check_`](fn.type_check_.html) with a fresh type variable as goal
 pub fn type_check(t: &Term) -> Result<Types, String> {
     let mut state = GTypes::new();
     let mut constr = GConstr::new();
@@ -20,6 +43,14 @@ pub fn type_check(t: &Term) -> Result<Types, String> {
     Ok(to_type(&state, ty)?)
 }
 
+/// Typecheck a term against a specific type
+///
+/// # Arguments
+/// - `typed_vars`: maps variable of the environment to a type
+/// - `state` and `constr`: the unification state
+/// - `t`: the term to check
+/// - `ty`: the type to check the term against
+/// - `strict`: the typechecking mode
 fn type_check_(
     mut typed_vars: HashMap<Ident, TypeWrapper>,
     state: &mut GTypes,
@@ -267,12 +298,14 @@ fn type_check_(
     }
 }
 
-// TypeWrapper
-//   A type can be a concrete type, a constant or a type variable
+/// The types on which the unification algorithm operates
 #[derive(Clone, PartialEq, Debug)]
 pub enum TypeWrapper {
+    /// A concrete type (like `Num` or `Str -> Str`)
     Concrete(AbsType<Box<TypeWrapper>>),
+    /// A rigid type constant: it cannot be unified with anything but itself
     Constant(usize),
+    /// A unification variable
     Ptr(usize),
 }
 
@@ -382,6 +415,7 @@ fn row_add(
     }
 }
 
+/// Try to unify two given types
 pub fn unify(
     state: &mut GTypes,
     constr: &mut GConstr,
@@ -482,6 +516,7 @@ pub fn unify(
     }
 }
 
+/// Convert a vanilla Nickel type to a `TypeWrapper`
 fn to_typewrapper(t: Types) -> TypeWrapper {
     let Types(t2) = t;
 
@@ -490,6 +525,7 @@ fn to_typewrapper(t: Types) -> TypeWrapper {
     TypeWrapper::Concrete(t3)
 }
 
+/// Extract the concrete type (if any) corresponding a `TypeWrapper`
 fn to_type(state: &GTypes, ty: TypeWrapper) -> Result<Types, String> {
     Ok(match ty {
         TypeWrapper::Ptr(p) => match get_root(state, p)? {
@@ -504,6 +540,11 @@ fn to_type(state: &GTypes, ty: TypeWrapper) -> Result<Types, String> {
     })
 }
 
+/// Instantiate type variable with type constants
+///
+/// This is used when typechecking a forall: all type variables are replaced by rigid type
+/// constants, and then the term is typechecked. As they cannot be unified with anything, this
+/// forces all these occurrences to have the same type.
 fn instantiate_foralls_with<F>(
     state: &mut GTypes,
     mut ty: TypeWrapper,
@@ -523,6 +564,7 @@ where
     Ok(ty)
 }
 
+/// Return the type of a unary operation
 pub fn get_uop_type(
     typed_vars: HashMap<Ident, TypeWrapper>,
     state: &mut GTypes,
@@ -717,6 +759,7 @@ pub fn get_uop_type(
     })
 }
 
+/// Return the type of a binary operation
 pub fn get_bop_type(
     typed_vars: HashMap<Ident, TypeWrapper>,
     state: &mut GTypes,
@@ -857,6 +900,7 @@ pub fn get_bop_type(
 pub type GTypes = HashMap<usize, Option<TypeWrapper>>;
 pub type GConstr = HashMap<usize, HashSet<Ident>>;
 
+/// Create a new fresh unification variable
 fn new_var(state: &mut GTypes) -> usize {
     let nxt = state.len();
     state.insert(nxt, None);

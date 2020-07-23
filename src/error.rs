@@ -1,4 +1,7 @@
-//! Regroup error types and pretty printing
+//! Error types and error reporting
+//!
+//! Define error types for different phases of the execution, together with functions to generate a
+//! [codespan](https://crates.io/crates/codespan-reporting) diagnostic from them.
 use crate::eval::CallStack;
 use crate::label;
 use crate::position::RawSpan;
@@ -6,18 +9,19 @@ use crate::term::RichTerm;
 use codespan::{FileId, Files};
 use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 
-/// The most general error type that can occur from parsing to evaluation
+/// A general error occurring during either parsing or evaluation
 #[derive(Debug, PartialEq)]
 pub enum Error {
     EvalError(EvalError),
     ParseError(String),
 }
 
+/// Error occurring during evaluation
 #[derive(Debug, PartialEq)]
 pub enum EvalError {
-    /// A blame occurred
+    /// A blame occurred: a contract have been broken somewhere
     BlameError(label::Label, Option<CallStack>),
-    /// A mismatch between the expected type of an expression and its actual type
+    /// Mismatch between the expected type and the actual type of an expression
     TypeError(
         /* expected type */ String,
         /* operation */ String,
@@ -29,24 +33,28 @@ pub enum EvalError {
         /* arg */ RichTerm,
         /* app position */ Option<RawSpan>,
     ),
-    /// Access (or another record operation requiring the existence of a field) on a missing field
+    /// An access, or another record operation requiring the existence of a specific field, has been
+    /// done on a record missing that field
     FieldMissing(
         /* field identifier */ String,
         /* operator */ String,
         RichTerm,
         Option<RawSpan>,
     ),
-    /// Too few args were provided to a builtin function
+    /// Too few arguments were provided to a builtin function
     NotEnoughArgs(
         /* required arg count */ usize,
         /* primitive */ String,
         Option<RawSpan>,
     ),
+    /// Failed attempt to merge incompatible values: for example, tried to merge two distinct
+    /// default values into one record field
     MergeIncompatibleArgs(
         /* left operand */ RichTerm,
         /* right operand */ RichTerm,
         /* original merge */ Option<RawSpan>,
     ),
+    /// Other errors occurring rarely enough to not deserve a dedicated variant
     Other(String, Option<RawSpan>),
 }
 
@@ -56,26 +64,31 @@ impl From<EvalError> for Error {
     }
 }
 
-/// Define a trait for errors to provide a representation as a codespan diagnostic for
-/// pretty-printing.
+/// A trait for converting an error to a diagnostic
 pub trait ToDiagnostic<FileId> {
+    /// Convert an error to a printable, formatted diagnostic.
+    ///
+    /// To know why it takes a mutable reference to `Files<String>`, see [`label_alt`](fn.label_alt.html)
     fn to_diagnostic(&self, files: &mut Files<String>) -> Diagnostic<FileId>;
 }
 
-/// Helpers for the creation of codespan `Label`s
+// Helpers for the creation of codespan `Label`s
 
 /// Create a primary label from a span
 fn primary(span: &RawSpan) -> Label<FileId> {
     Label::primary(span.src_id, span.start.to_usize()..span.end.to_usize())
 }
 
-/// As `primary`, but for a secondary label
+/// Create a secondary label from a span
 fn secondary(span: &RawSpan) -> Label<FileId> {
     Label::secondary(span.src_id, span.start.to_usize()..span.end.to_usize())
 }
 
-/// Try to create a label from an `Option<RawSpan>`. If this span is `None`, then the code snippet
-/// contained in `alt_term` is added to `files` under a special name, and is annotated instead.
+/// Create a label from an optional span, or fallback to annotating the alternative snippet
+/// `alt_term` if the span is `None`.
+///
+/// When `span_opt` is `None`, the code snippet `alt_term` is added to `files` under a special
+/// name and is referred to instead.
 ///
 /// This is useful because during evaluation, some terms are the results of computations. They
 /// correspond to nothing in the original source, and thus have a position set to `None`(e.g. the
@@ -139,8 +152,10 @@ fn label_alt(
     }
 }
 
-/// As `label_at`, try to create a label from the position of a `RichTerm`. If its position is
-/// `None`, a new code snippet with its shallow representation is used instead.
+/// Create a label from a term, or fallback to annotating the shallow representation of this term
+/// if its span is `None`.
+///
+/// See [`label_alt`](fn.label_alt.html)
 fn primary_term(term: &RichTerm, files: &mut Files<String>) -> Label<FileId> {
     label_alt(
         &term.pos,
@@ -150,7 +165,10 @@ fn primary_term(term: &RichTerm, files: &mut Files<String>) -> Label<FileId> {
     )
 }
 
-/// Quick way of creating a label from `label_alt` with secondary style
+/// Create a secondary label from an optional span, or fallback to annotating the alternative snippet
+/// `alt_term` if the span is `None`.
+///
+/// See [`label_alt`](fn.label_alt.html)
 fn secondary_alt(
     span_opt: &Option<RawSpan>,
     alt_term: String,
