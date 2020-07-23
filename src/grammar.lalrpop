@@ -1,17 +1,18 @@
 use crate::identifier::Ident;
-use crate::label::{Label, TyPath};
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp};
 use crate::types::{Types, AbsType};
+use crate::parser::utils::{mk_span, mk_label};
 use either::*;
 use std::str::FromStr;
+use codespan::FileId;
 
-grammar;
+grammar(src_id: &FileId, offset: usize);
 
 pub Term: RichTerm = SpTerm<RichTerm>;
 
 SpTerm<Rule>: RichTerm =
     <l: @L> <t: Rule> <r: @R> => match t {
-        RichTerm {term: t, pos: _} => RichTerm {term: t, pos: Some((l, r))}
+        RichTerm {term: t, pos: _} => RichTerm {term: t, pos: mk_span(src_id, l, r, offset)}
     };
 
 RichTerm: RichTerm = {
@@ -42,13 +43,15 @@ Applicative: RichTerm = {
 
 Atom: RichTerm = {
     "(" <SpTerm<Term>> ")",
-    <l:@L> "Promise(" <ty: Types> "," <t: SpTerm<Term>> ")" <r:@R> =>
-        RichTerm::new(Term::Promise(ty, Label{tag: "A promise".to_string(), l: l, r: r, polarity: true, path: TyPath::Nil()}, t)),
-    <l:@L> "Assume(" <ty: Types> "," <t: SpTerm<Term>> ")" <r:@R> =>
-        RichTerm::new(Term::Assume(ty, Label{tag: "An assume".to_string(), l: l, r: r, polarity: true, path: TyPath::Nil()}, t)), 
-    "Contract(" <ty: Types> ")" => RichTerm::new(Term::Contract(ty)),
+    <l: @L> "Promise(" <ty: Types> "," <t: SpTerm<Term>> ")" <r: @R> =>
+        RichTerm::new(Term::Promise(ty, mk_label("A promise", src_id, l, r, offset), t)),
+    <l: @L> "Assume(" <ty: Types> "," <t: SpTerm<Term>> ")" <r: @R> =>
+        RichTerm::new(Term::Assume(ty, mk_label("An assume", src_id, l, r, offset), t)),
+    <l: @L> "Contract(" <ty: Types> ")" <r: @R> =>
+        RichTerm::new(Term::Contract(ty, mk_label("Contract", src_id, l, r, offset))),
     "Default(" <t: SpTerm<Term>> ")" => RichTerm::new(Term::DefaultValue(t)),
-    "ContractDefault(" <ty: Types> "," <t: SpTerm<Term>> ")" => RichTerm::new(Term::ContractWithDefault(ty, t)),
+    <l: @L> "ContractDefault(" <ty: Types> "," <t: SpTerm<Term>> ")" <r: @R> =>
+        RichTerm::new(Term::ContractWithDefault(ty, mk_label("Contract", src_id, l, r, offset), t)),
     "Docstring(" <s: Str> "," <t: SpTerm<Term>> ")" => RichTerm::new(Term::Docstring(s, t)),
     Num => RichTerm::new(Term::Num(<>)),
     Bool => RichTerm::new(Term::Bool(<>)),

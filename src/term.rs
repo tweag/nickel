@@ -1,5 +1,6 @@
 use crate::identifier::Ident;
 use crate::label::Label;
+use crate::position::RawSpan;
 use crate::types::Types;
 use std::collections::HashMap;
 
@@ -36,9 +37,9 @@ pub enum Term {
     Sym(i32),
     Wrapped(i32, RichTerm),
     // Enriched terms
-    Contract(Types),
+    Contract(Types, Label),
     DefaultValue(RichTerm),
-    ContractWithDefault(Types, RichTerm),
+    ContractWithDefault(Types, Label, RichTerm),
     Docstring(String, RichTerm),
 }
 
@@ -71,7 +72,7 @@ impl Term {
                 func(t2)
             }
 
-            Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | Sym(_) | Enum(_) | Contract(_) => {}
+            Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | Sym(_) | Enum(_) | Contract(_, _) => {}
             Fun(_, ref mut t)
             | Op1(_, ref mut t)
             | Promise(_, _, ref mut t)
@@ -79,7 +80,7 @@ impl Term {
             | Wrapped(_, ref mut t)
             | DefaultValue(ref mut t)
             | Docstring(_, ref mut t)
-            | ContractWithDefault(_, ref mut t) => {
+            | ContractWithDefault(_, _, ref mut t) => {
                 func(t);
             }
             Let(_, ref mut t1, ref mut t2)
@@ -91,6 +92,67 @@ impl Term {
             List(ref mut terms) => terms.iter_mut().for_each(|t| {
                 func(t);
             }),
+        }
+    }
+
+    /// Return the apparent type of an expression. If the term is not a WHNF, `None` is
+    /// returned.
+    pub fn type_of(&self) -> Option<String> {
+        match self {
+            Term::Bool(_) => Some("Bool"),
+            Term::Num(_) => Some("Num"),
+            Term::Str(_) => Some("Str"),
+            Term::Fun(_, _) => Some("Fun"),
+            Term::Lbl(_) => Some("Label"),
+            Term::Enum(_) => Some("Enum"),
+            Term::Record(_) => Some("Record"),
+            Term::List(_) => Some("List"),
+            Term::Sym(_) => Some("Sym"),
+            Term::Wrapped(_, _) => Some("Wrapped"),
+            Term::Contract(_, _)
+            | Term::ContractWithDefault(_, _, _)
+            | Term::Docstring(_, _)
+            | Term::DefaultValue(_) => Some("EnrichedValue"),
+            Term::Let(_, _, _)
+            | Term::App(_, _)
+            | Term::Var(_)
+            | Term::Op1(_, _)
+            | Term::Op2(_, _, _)
+            | Term::Promise(_, _, _)
+            | Term::Assume(_, _, _) => None,
+        }
+        .map(|s| String::from(s))
+    }
+
+    /// Return a shallow string representation of a term, used for pretty printing in error message
+    pub fn shallow_repr(&self) -> String {
+        match self {
+            Term::Bool(true) => String::from("true"),
+            Term::Bool(false) => String::from("false"),
+            Term::Num(n) => format!("{}", n),
+            Term::Str(s) => format!("\"{}\"", s),
+            Term::Fun(_, _) => String::from("<func>"),
+            Term::Lbl(_) => String::from("<label>"),
+            Term::Enum(Ident(s)) => format!("`{}", s),
+            Term::Record(_) => String::from("{ ... }"),
+            Term::List(_) => String::from("[ ... ]"),
+            Term::Sym(_) => String::from("<sym>"),
+            Term::Wrapped(_, _) => String::from("<wrapped>"),
+            Term::Contract(_, _) => String::from("<enriched:contract>"),
+            Term::ContractWithDefault(_, _, ref t) => {
+                format!("<enriched:contract,default={}>", (*t.term).shallow_repr())
+            }
+            Term::Docstring(_, ref t) => {
+                format!("<enriched:doc,term={}>", (*t.term).shallow_repr())
+            }
+            Term::DefaultValue(ref t) => format!("<enriched:default={}", (*t.term).shallow_repr()),
+            Term::Let(_, _, _)
+            | Term::App(_, _)
+            | Term::Var(_)
+            | Term::Op1(_, _)
+            | Term::Op2(_, _, _)
+            | Term::Promise(_, _, _)
+            | Term::Assume(_, _, _) => String::from("<unevaluated>"),
         }
     }
 }
@@ -232,7 +294,7 @@ impl<Ty> BinaryOp<Ty> {
 #[derive(Debug, PartialEq, Clone)]
 pub struct RichTerm {
     pub term: Box<Term>,
-    pub pos: Option<(usize, usize)>,
+    pub pos: Option<RawSpan>,
 }
 
 impl RichTerm {

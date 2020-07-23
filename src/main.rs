@@ -1,9 +1,11 @@
+mod error;
 mod eval;
 mod identifier;
 mod label;
 mod merge;
 mod operation;
 mod parser;
+mod position;
 mod program;
 mod stack;
 mod term;
@@ -16,9 +18,11 @@ use crate::program::Program;
 extern crate either;
 
 fn main() {
-    let mut p = Program::new_from_stdin();
-    match p.eval() {
-        Ok(t) => println!("Evaluation finished with result:\n{:?}", t),
-        Err(s) => println!("Evaluation didn't finished, found error:\n{}", s),
-    }
+    match Program::new_from_stdin() {
+        Ok(mut p) => match p.eval() {
+            Ok(t) => println!("Done: {:?}", t),
+            Err(err) => p.report(&err),
+        },
+        Err(msg) => eprintln!("Error when reading the source: {}", msg),
+    };
 }

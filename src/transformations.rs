@@ -143,7 +143,7 @@ pub mod share_normal_form {
 
                 result.into()
             }
-            &Term::Contract(_) => rt.clone(),
+            &Term::Contract(_, _) => rt.clone(),
             &Term::DefaultValue(ref t) => {
                 if should_share(&*t.term) {
                     let fresh_var = fresh_var();
@@ -159,12 +159,13 @@ pub mod share_normal_form {
                     }
                 }
             }
-            &Term::ContractWithDefault(ref ty, ref t) => {
+            &Term::ContractWithDefault(ref ty, ref lbl, ref t) => {
                 if should_share(&*t.term) {
                     let fresh_var = fresh_var();
                     let inner = RichTerm {
                         term: Box::new(Term::ContractWithDefault(
                             ty.clone(),
+                            lbl.clone(),
                             Term::Var(fresh_var.clone()).into(),
                         )),
                         pos,
@@ -172,7 +173,11 @@ pub mod share_normal_form {
                     Term::Let(fresh_var, transform(t), inner).into()
                 } else {
                     RichTerm {
-                        term: Box::new(Term::ContractWithDefault(ty.clone(), transform(t))),
+                        term: Box::new(Term::ContractWithDefault(
+                            ty.clone(),
+                            lbl.clone(),
+                            transform(t),
+                        )),
                         pos,
                     }
                 }

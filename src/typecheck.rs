@@ -261,9 +261,9 @@ fn type_check_(
         ),
         Term::Wrapped(_, rt)
         | Term::DefaultValue(rt)
-        | Term::ContractWithDefault(_, rt)
+        | Term::ContractWithDefault(_, _, rt)
         | Term::Docstring(_, rt) => type_check_(typed_vars, state, constr, rt.as_ref(), ty, strict),
-        Term::Contract(_) => Ok(()),
+        Term::Contract(_, _) => Ok(()),
     }
 }
 
@@ -914,11 +914,15 @@ pub fn get_root(state: &GTypes, x: usize) -> Result<TypeWrapper, String> {
 mod tests {
     use super::*;
     use crate::label::{Label, TyPath};
+    use crate::position::RawSpan;
+    use codespan::Files;
 
     use crate::parser;
 
     fn parse_and_typecheck(s: &str) -> Result<Types, String> {
-        if let Ok(p) = parser::grammar::TermParser::new().parse(s) {
+        let id = Files::new().add("<test>", s);
+
+        if let Ok(p) = parser::grammar::TermParser::new().parse(&id, 0, s) {
             type_check(p.as_ref())
         } else {
             panic!("Couldn't parse {}", s)
@@ -926,10 +930,15 @@ mod tests {
     }
 
     fn label() -> Label {
+        let id = Files::new().add("<test>", "empty");
+
         Label {
             tag: "".into(),
-            l: 0,
-            r: 0,
+            span: RawSpan {
+                src_id: id,
+                start: 0.into(),
+                end: 1.into(),
+            },
             polarity: true,
             path: TyPath::Nil(),
         }

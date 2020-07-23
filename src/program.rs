@@ -1,199 +1,116 @@
-use crate::eval::{eval, CallStack, EvalError, IdentKind, StackElem};
-use crate::identifier::Ident;
-use crate::label::{Label, TyPath};
+use crate::error::{Error, ToDiagnostic};
+use crate::eval;
 use crate::parser;
 use crate::term::{RichTerm, Term};
 use crate::transformations;
 use crate::typecheck::type_check;
+use codespan::{FileId, Files};
+use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
+use std::collections::HashMap;
+use std::ffi::OsString;
 use std::fs;
 use std::io::{self, Read};
 use std::path::Path;
 use std::result::Result;
 
-pub struct Program<T: Read> {
-    src: T,
+pub struct Program {
+    /// Control if the built-in contract are included (pasted at the beginning of the source)
     include_contracts: bool,
-    read: Option<String>,
-    parsed: Option<RichTerm>,
+    /// The id of the program source in the file database
+    main_id: FileId,
+    /// The file database holding the content of the program source plus potential imports
+    /// made by the program (imports will be supported in a near future)
+    files: Files<String>,
+    /// Parsed terms corresponding to the entries of the file database
+    parsed: HashMap<FileId, RichTerm>,
 }
 
-impl Program<io::Stdin> {
-    pub fn new_from_stdin() -> Program<io::Stdin> {
-        Program::new_from_source(io::stdin())
+impl Program {
+    pub fn new_from_stdin() -> std::io::Result<Program> {
+        Program::new_from_source(io::stdin(), "<stdin>")
     }
-}
 
-impl Program<fs::File> {
-    pub fn new_from_file<P: AsRef<Path>>(path: P) -> io::Result<Program<fs::File>> {
-        let file = fs::File::open(path)?;
-        Ok(Program::new_from_source(file))
+    pub fn new_from_file<P: AsRef<Path>>(path: P) -> std::io::Result<Program> {
+        let file = fs::File::open(&path)?;
+        Program::new_from_source(file, path.as_ref())
     }
-}
 
-impl<T: Read> Program<T> {
-    pub fn new_from_source(s: T) -> Program<T> {
-        Program {
-            src: s,
+    /// Create a new program from a generic source, and load its content in the file database
+    fn new_from_source<T: Read>(
+        mut source: T,
+        source_name: impl Into<OsString>,
+    ) -> std::io::Result<Program> {
+        let mut buffer = String::new();
+        let mut files = Files::<String>::new();
+
+        source.read_to_string(&mut buffer)?;
+        let main_id = files.add(source_name, buffer);
+
+        Ok(Program {
             include_contracts: true,
-            read: None,
-            parsed: None,
-        }
+            main_id,
+            files,
+            parsed: HashMap::new(),
+        })
     }
 
-    pub fn eval(&mut self) -> Result<Term, String> {
-        let t = self.parse()?;
+    /// Parse if necessary, typecheck and then evaluate the program
+    pub fn eval(&mut self) -> Result<Term, Error> {
+        let t = self.parse().map_err(|msg| Error::ParseError(msg))?;
         println!("Typechecked: {:?}", type_check(t.as_ref()));
         let t = transformations::share_normal_form::transform(&t);
-        match eval(t) {
-            Ok(t) => Ok(t),
-            Err(EvalError::BlameError(l, cs)) => Err(self.process_blame(l, cs)),
-            Err(EvalError::TypeError(s)) => Err(s),
-        }
+        eval::eval(t).map_err(|e| e.into())
     }
 
     fn parse(&mut self) -> Result<RichTerm, String> {
-        if self.parsed.is_none() {
-            let mut buf = self.read()?;
+        if self.parsed.get(&self.main_id).is_none() {
+            let mut buf = self.files.source(self.main_id).clone();
             if self.include_contracts {
                 // TODO get rid of this once we have imports
                 buf.insert_str(0, &Self::contracts());
             }
-            match parser::grammar::TermParser::new().parse(&buf) {
-                Ok(t) => self.parsed = Some(t),
+
+            let offset = if self.include_contracts {
+                Self::contracts().len()
+            } else {
+                0
+            };
+            match parser::grammar::TermParser::new().parse(&self.main_id, offset, &buf) {
+                Ok(t) => self.parsed.insert(self.main_id, t),
                 Err(e) => {
-                    return Err(format!("Reached the following error while parsing:\n{}", e));
+                    return Err(format!("{}", e));
                 }
             };
         }
 
-        if let Some(t) = self.parsed.clone() {
-            Ok(t)
-        } else {
-            Err("Couldn't get the parsed term back.".to_string())
-        }
+        Ok(self
+            .parsed
+            .get(&self.main_id)
+            .expect("Program::parse: the term should be parsed at this point")
+            .clone())
     }
 
-    fn read(&mut self) -> Result<String, String> {
-        if self.read.is_none() {
-            let mut buffer = String::new();
-            match self.src.read_to_string(&mut buffer) {
-                Ok(_) => self.read = Some(buffer),
-                Err(e) => {
-                    return Err(format!(
-                        "Reached the following error while reading the file: '{}'",
-                        e
-                    ));
-                }
-            }
-        }
-
-        if let Some(b) = self.read.clone() {
-            Ok(b)
-        } else {
-            Err("Couldn't get the file back.".to_string())
-        }
+    /// Pretty-print an error on stderr
+    pub fn report(&mut self, error: &Error) {
+        let writer = StandardStream::stderr(ColorChoice::Always);
+        let config = codespan_reporting::term::Config::default();
+        let diagnostic = error.to_diagnostic(&mut self.files);
+        match codespan_reporting::term::emit(
+            &mut writer.lock(),
+            &config,
+            &mut self.files,
+            &diagnostic,
+        ) {
+            Ok(()) => (),
+            Err(err) => panic!(
+                "Program::report: could not print an error on stderr: {}",
+                err
+            ),
+        };
     }
 
-    fn process_blame(&mut self, l: Label, cs_opt: Option<CallStack>) -> String {
-        let mut s = String::new();
-        s.push_str("Reached a blame label, some cast went terribly wrong\n");
-        s.push_str("    Tag:\n");
-        s.push_str(&l.tag);
-        s.push_str("\n");
-
-        let pos_from = self.get_line_and_col(l.l);
-        let pos_to = self.get_line_and_col(l.r);
-        if let (Some((linef, colf)), Some((linet, colt))) = (pos_from, pos_to) {
-            if linef == linet {
-                s.push_str(&format!(
-                    "    Line: {} Columns: {} to {}\n",
-                    linef, colf, colt
-                ));
-            } else {
-                s.push_str(&format!("    Line: {} Column: {}\n", linef, colf));
-                s.push_str(&format!("    to Line: {} Column: {}\n", linet, colt));
-            }
-        }
-
-        s.push_str(&format!("    Polarity: {}\n", l.polarity));
-        if l.polarity {
-            s.push_str("    The blame is on the value (positive blame)\n");
-        } else {
-            s.push_str("    The blame is on the context (negative blame)\n");
-        }
-        if l.path != TyPath::Nil() {
-            s.push_str(&format!("    Path: {:?}\n", l.path));
-        }
-
-        if let Some(cs) = cs_opt {
-            s.push_str("\nCallStack:\n=========\n");
-            s = self.show_call_stack(s, cs);
-        }
-        s
-    }
-
-    fn show_call_stack(&mut self, mut s: String, mut cs: CallStack) -> String {
-        for e in cs.drain(..).rev() {
-            match e {
-                StackElem::App(Some((_l, _r))) => {
-                    // I'm not sure this App stack is really useful,
-                    // will leave it hanging for now
-                    //
-                    // if let Some((linef, colf)) = self.get_line_and_col(l) {
-                    //     s.push_str(&format!(
-                    //         "    Applied to a term on line: {} col: {}\n",
-                    //         linef, colf
-                    //     ));
-                    // }
-                }
-                StackElem::Var(IdentKind::Let(), Ident(x), Some((l, _r))) => {
-                    if let Some((linef, colf)) = self.get_line_and_col(l) {
-                        s.push_str(&format!(
-                            "On a call to {} on line: {} col: {}\n",
-                            x, linef, colf
-                        ));
-                    }
-                }
-                StackElem::Var(IdentKind::Lam(), Ident(x), Some((l, _r))) => {
-                    if let Some((linef, colf)) = self.get_line_and_col(l) {
-                        s.push_str(&format!(
-                            "    Bound to {} on line: {} col: {}\n",
-                            x, linef, colf
-                        ));
-                    }
-                }
-                _ => {}
-            }
-        }
-        s
-    }
-
-    fn get_line_and_col(&mut self, b: usize) -> Option<(usize, usize)> {
-        let buffer = self.read().unwrap();
-
-        let mut line = 1;
-        let mut col = 1;
-        let mut so_far = Self::contracts().len();
-        if b <= so_far {
-            // TODO Right now we have some stuff that is just pasted on
-            // every file, this check should change and location should be more reliable
-            return None;
-        }
-        for byte in buffer.bytes() {
-            so_far += 1;
-            col += 1;
-            if byte == b'\n' {
-                line += 1;
-                col = 1;
-            }
-            if so_far == b {
-                break;
-            }
-        }
-
-        Some((line, col))
-    }
-
+    /// Built-in contracts to be included in programs
+    /// TODO: move this to a Nickel stand-alone file once we have imports
     fn contracts() -> String {
         "let dyn = fun l => fun t => t in
 
@@ -227,12 +144,16 @@ in
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::EvalError;
+    use crate::identifier::Ident;
     use std::io::Cursor;
 
-    fn eval_string(s: &str) -> Result<Term, String> {
+    fn eval_string(s: &str) -> Result<Term, Error> {
         let src = Cursor::new(s);
 
-        let mut p = Program::new_from_source(src);
+        let mut p = Program::new_from_source(src, "<test>").map_err(|io_err| {
+            Error::EvalError(EvalError::Other(format!("IO error: {}", io_err), None))
+        })?;
         p.eval()
     }
 
@@ -737,7 +658,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         eval_string("let r = merge {a=2;} {a=Contract(Bool)} in r.a").unwrap_err();
     }
 
-    fn make_composed_contract(value: &str) -> Result<Term, String> {
+    fn make_composed_contract(value: &str) -> Result<Term, Error> {
         let s = format!(
             "let Y = fun f => (fun x => f (x x)) (fun x => f (x x)) in
              let dec = fun x => x + (-1) in

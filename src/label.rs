@@ -1,3 +1,5 @@
+use crate::position::RawSpan;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum TyPath {
     Nil(),
@@ -8,8 +10,7 @@ pub enum TyPath {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Label {
     pub tag: String,
-    pub l: usize,
-    pub r: usize,
+    pub span: RawSpan,
     pub polarity: bool,
     pub path: TyPath,
 }
