@@ -1,3 +1,85 @@
+//! Evaluation of a Nickel term.
+//!
+//! The implementation of the Nickel abstract machine which evaluates a term. Note that this
+//! machine is not currently formalized somewhere and is just a convenient name to designate the
+//! current implementation.
+//!
+//! # The Nickel Abstract Machine
+//! The abstract machine is a stack machine composed of the following elements:
+//! - The term being currently evaluated
+//! - The main stack, storing arguments, thunks and pending computations
+//! - An [environment](type.Environment.html), mapping identifiers to [closures](type.Closure.html)
+//! - A [callstack](type.CallStack.html), mainly for error reporting purpose
+//!
+//! Depending on the shape of the current term, the following actions are preformed:
+//!
+//! ## Core calculus
+//! - **Var(id)**: the term bound to `id` in the environment is fetched, and an update thunk is
+//! pushed on the stack to indicate that once this term has been evaluated, the content of the
+//! variable must be updated
+//! - **App(func, arg)**: a closure containing the argument and the current environment is pushed
+//! on the stack, and the applied term `func` is evaluated
+//! - **Let(id, term, body)**: `term` is bound to `id` in the environment, and the machine proceeds with the evaluation of the body
+//! - **Fun(id, body)**: Try to pop an argument from the stack. If there is some, we bound it to
+//! `id` in the environment, and proceed with the body of the function. Otherwise, we are done: the
+//! end result is an unapplied function
+//! - **Thunk on stack**: If the evaluation of the current term is done, and there is one (or
+//! several) thunk on the stack, this means we have to perform an update. Consecutive thunks are
+//! popped from the stack and are updated to point to the current evaluated term.
+//!
+//! ## Contracts
+//!
+//! - **`Assume(type, label, term)`** (or `Promise(type, label, term)`): replace the current term
+//! with the contract corresponding to `types`, applied to label and term (`contract label term`).
+//!
+//! ## Operators
+//!
+//! Operators are strict by definition. To evaluate say `exp1 + exp2`, the following steps
+//! have to be performed:
+//! - `exp1` needs to be evaluated. The result must be saved somewhere, together with the resulting
+//! environment
+//! - `exp2`: same thing for `exp2`
+//! - Finally, the implementation of `+` can proceed with the computation
+//!
+//! We detail the case of binary operators, as the case of unary ones is similar and simpler.
+//!
+//! - **Op(op, first, second)**: push an `OpFirst` element on the stack, which saves the operator
+//! `op`, the second argument `second` and the current environment, and proceed with the evaluation
+//! of `first`
+//! - **OpFirst on stack**: if the evaluation of the current term is done and there is an `OpFirst`
+//! marker on the stack, then:
+//!     1. Extract the saved operator, the second argument and the environment `env2` from the marker
+//!     2. Push an `OpSecond` marker, saving the operator and the evaluated form of the first
+//!        argument with its environment
+//!     3. Proceed with the evaluation of the second argument in environment `env2`
+//! - **OpSecond on stack**: once the second term is evaluated, we can get back the operator and
+//! the first term evaluated, and forward all both arguments evaluated and their respective
+//! environment to the specific implementation of the operator (located in
+//! [operation](../operation/index.html), or in [merge](../merge/index.html) for `merge`).
+//!
+//! ## Enriched values
+//!
+//! The evaluation of enriched values is controlled by the parameter `enriched_strict`. If it is
+//! set to true (which is usually the case), the machine tries to extract a simple value from it:
+//!  - **Contract**: raise an error. This usually means that an access to a field was attempted,
+//!  and that this field had a contract to satisfy, but it was never defined.
+//!  - **Default(value)**: an access to a field which has a default value. Proceed with the
+//!  evaluation of this value
+//!  - **ContractDefault(type, label, value)**: same as above, but the field also has an attached
+//!  contract.  Proceed with the evaluation of `Assume(type, label, value)` to ensure that the
+//!  default value satisfies this contract.
+//!
+//!  If `enriched_strict` is set to false, as it is when evaluating `merge`, the machine does not
+//!  evaluate enriched values further, and consider the term evaluated.
+//!
+//! # Garbage collection
+//!
+//! Currently the machine relies on Rust's reference counting to manage memory. Precisely, the
+//! environment stores `Rc<RefCell<Closure>>` objects, which are reference-counted pointers to a
+//! mutable memory cell. This means that we do not deep copy everything everywhere, but this is
+//! probably suboptimal for a functional language and is unable to collect cyclic data, which may
+//! appear inside recursive records in the future. An adapted garbage collector is probably
+//! something to consider at some point.
 use crate::error::EvalError;
 use crate::identifier::Ident;
 use crate::operation::{continuate_operation, OperationCont};
@@ -8,15 +90,25 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
+/// An environment, which is a mapping from identifiers to closures.
 pub type Environment = HashMap<Ident, (Rc<RefCell<Closure>>, IdentKind)>;
+
+/// A call stack, saving the history of function calls.
+///
+/// In a lazy language as Nickel, there are no well delimited stack frames due to how function
+/// application is evaluated. This can make things hard to debug for the user, hence additional
+/// information about the history of function calls is stored in the call stack, for error
+/// reporting and debugging purposes.
 pub type CallStack = Vec<StackElem>;
 
+/// A call stack element.
 #[derive(Debug, PartialEq, Clone)]
 pub enum StackElem {
     App(Option<RawSpan>),
     Var(IdentKind, Ident, Option<RawSpan>),
 }
 
+/// Kind of an identifier.
 #[derive(Debug, PartialEq, Clone)]
 pub enum IdentKind {
     Let(),
@@ -24,6 +116,7 @@ pub enum IdentKind {
     Record(),
 }
 
+/// A closure, a term together with an environment.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Closure {
     pub body: RichTerm,
@@ -39,10 +132,22 @@ impl Closure {
     }
 }
 
+/// Return true if a term is in evaluated form (WHNF).
+///
+/// Used by [eval](fn.eval.html) to decide if a thunk requires an update: indeed, if the content of
+/// a variable is already an evaluated term, it is useless to update it, and we do not need to put
+/// the corresponding thunk on the stack.
 fn is_value(_term: &Term) -> bool {
+    //TODO
     false
 }
 
+/// The main loop of evaluation.
+///
+/// Implement the evaluation of the core language, which includes application, thunk update,
+/// evaluation of the arguments of operations, and a few others. The specific implementations of
+/// primitive operations is delegated to the modules [operation](../operation/index.html) and
+/// [merge](../merge/index.html).
 pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
     let mut clos = Closure::atomic_closure(t0);
     let mut call_stack = CallStack::new();
@@ -59,7 +164,6 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
         } = clos;
         let term = *boxed_term;
         clos = match term {
-            // Var
             Term::Var(x) => {
                 let (thunk, id_kind) = env
                     .remove(&x)
@@ -80,7 +184,6 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                     }
                 }
             }
-            // App
             Term::App(t1, t2) => {
                 stack.push_arg(
                     Closure {
@@ -91,7 +194,6 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                 );
                 Closure { body: t1, env }
             }
-            // Let
             Term::Let(x, s, t) => {
                 let thunk = Rc::new(RefCell::new(Closure {
                     body: s,
@@ -100,7 +202,6 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                 env.insert(x, (Rc::clone(&thunk), IdentKind::Let()));
                 Closure { body: t, env }
             }
-            // Unary Operation
             Term::Op1(op, t) => {
                 let op = op.map(|t| Closure {
                     body: t,
@@ -110,7 +211,6 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                 stack.push_op_cont(OperationCont::Op1(op), call_stack.len(), pos);
                 Closure { body: t, env }
             }
-            // Binary Operation
             Term::Op2(op, fst, snd) => {
                 let op = op.map(|t| Closure {
                     body: t,
@@ -133,7 +233,6 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                 );
                 Closure { body: fst, env }
             }
-            // Promise and Assume
             Term::Promise(ty, l, t) | Term::Assume(ty, l, t) => {
                 stack.push_arg(
                     Closure {
@@ -148,7 +247,7 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                     env,
                 }
             }
-            // Unwrap enriched terms
+            // Unwrapping of enriched terms
             Term::Contract(_, _) if enriched_strict => {
                 return Err(EvalError::Other(
                     String::from(
@@ -164,8 +263,7 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                 body: Term::Assume(ty, label, t).into(),
                 env,
             },
-            // Continuate Operation
-            // Update
+            // Continuation of operations and thunk update
             _ if 0 < stack.count_thunks() || 0 < stack.count_conts() => {
                 clos = Closure {
                     body: RichTerm {
@@ -195,7 +293,7 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                     cont_result?
                 }
             }
-            // Call
+            // Function call
             Term::Fun(x, t) => {
                 if 0 < stack.count_args() {
                     let (arg, pos) = stack.pop_arg().expect("Condition already checked.");
