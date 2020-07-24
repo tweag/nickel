@@ -1,4 +1,51 @@
-//! Evaluation of the merge operator
+//! Evaluation of the merge operator.
+//!
+//! Merge is a primitive operation of Nickel, which recursively combines records. Together with
+//! enriched values, it allows to write and mix contracts with standard records.
+//!
+//! # Operational semantics
+//!
+//! ## On records
+//!
+//! When records `r1` and `r2` are merged, the result is a new record with the following fields:
+//! - All the fields of `r1` that are not in `r2`
+//! - All the fields of `r2` that are not in `r1`
+//! - Fields that are both in `r1` and `r2` are recursively merged: for a field `f`, the result
+//! contains the binding `f = merge r1.f r2.f`
+//!
+//! As fields are recursively merged, merge needs to operate on any value, not only on records.
+//!
+//! ## On simple values
+//!
+//! Simple values are terms which are not enriched values.
+//!
+//! - *Function*: merging a function with anything else fails
+//! - *Values*: merging any other values succeeds if and only if these two values are equals, in which case it evaluates to
+//! this common value.
+//!
+//! Note that merging of lists is not yet implemented.
+//!
+//! ## On enriched values
+//!
+//! Enriched values (currently `Contract`, `Default`, `ContractDefault` or `Docstring`) get their
+//! special powers from their interaction with the merge operator.
+//!
+//! ### Enriched/Enriched
+//!
+//! - *Contract/contract*: merging two contracts evaluates to a contract which is the composition of the two
+//! - *Default/default*: merging two terms with default (either `Default` or `ContractDefault`) fails, as there cannot
+//! be two default values for the same field
+//! - *Contract/default*: merging a `Default` with a `Contract` evaluates to a `ContractDefault`
+//!
+//! ### Enriched/Simple
+//!
+//! - *Docstring*: merging a docstring (with inner term `inner`) with another term `t` recursively merges
+//! `inner` and `t`, and evaluates to this result wrapped in the original docstring (`t` may be a simple value or an
+//! enriched one here)
+//! - *Default erasure*: merging a `Default` with a simple value drops the default value and
+//! evaluates to the simple value
+//! - *Contract check*: merging a `Contract` or a `ContractDefault` with a simple value `t`
+//! evaluates to a contract check, that is an `Assume(..., t)`
 use crate::error::EvalError;
 use crate::eval::{Closure, Environment, IdentKind};
 use crate::identifier::Ident;
@@ -12,7 +59,7 @@ use std::rc::Rc;
 
 generate_counter!(FreshVariableCounter, usize);
 
-/// Compute the merge of the two operands once they have been evaluated
+/// Compute the merge of two evaluated operands.
 pub fn merge(
     t1: RichTerm,
     env1: Environment,
@@ -246,9 +293,10 @@ pub fn merge(
     }
 }
 
-/// Create a RichTerm that represents the term `t` together with an environment `with_env`.
-/// It generates a fresh variable, binds it to the corresponding closure `(t,with_env)` in env,
-/// and returns this new variable as a term
+/// Pack a term together with an environment as a closure.
+///
+/// Generate a fresh variable, bind it to the corresponding closure `(t,with_env)` in `env`,
+/// and return this variable as a fresh term.
 fn closurize(env: &mut Environment, t: RichTerm, with_env: Environment) -> RichTerm {
     // To avoid clashing with fresh variables introduced by DynExtend, we add an 'm' in the prefix
     let var = format!("_m{}", FreshVariableCounter::next());
@@ -265,7 +313,7 @@ fn closurize(env: &mut Environment, t: RichTerm, with_env: Environment) -> RichT
     Term::Var(Ident(var)).into()
 }
 
-/// Take two terms together with their environment, and return a closure representing their merge
+/// Take two terms together with their environment, and return a closure representing their merge.
 fn mk_merge_closure(t1: RichTerm, env1: Environment, t2: RichTerm, env2: Environment) -> Closure {
     let mut env = HashMap::new();
 
@@ -280,7 +328,11 @@ fn mk_merge_closure(t1: RichTerm, env1: Environment, t2: RichTerm, env2: Environ
 }
 
 /// Return a type which contract is the composed of the contracts of `ty1` and `ty2`.
-/// This type corresponds to the intersection of `ty1` and `ty2`
+///
+/// This type corresponds to the intersection of `ty1` and `ty2` for base types. This function is
+/// not correct for the intersection of higher-order contracts, which is way more involved (see the
+/// [corresponding notes](https://github.com/tweag/nickel/blob/master/notes/intersection-and-union-types.md)
+/// in the repository).
 fn compose_contracts(ty1: Types, ty2: Types) -> Types {
     let c1 = ty1.contract();
     let c2 = ty2.contract();
@@ -307,8 +359,8 @@ pub mod hashmap {
     use std::collections::HashMap;
 
     /// Split two hashmaps m1 and m2 in three parts (left,center,right), where left holds bindings
-    /// `(key,value)` where key is not in `m2.keys()`, right is the dual (keys of m2 that are not in m1),
-    /// and center holds bindings for keys that are both in m1 and m2
+    /// `(key,value)` where key is not in `m2.keys()`, right is the dual (keys of m2 that are not
+    /// in m1), and center holds bindings for keys that are both in m1 and m2.
     pub fn split<K, V1, V2>(
         m1: HashMap<K, V1>,
         m2: HashMap<K, V2>,
