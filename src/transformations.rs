@@ -1,34 +1,34 @@
-//! Program transformations
+//! Program transformations.
 
-/// #Share normal form
+/// Share normal form.
 ///
 /// Replace the subexpressions of WHNFs that are not functions by thunks, such that they can be
 /// shared. It is similar to the behavior of other lazy languages with respect to data
-/// constructors.  To do so, subexpressions are replaced by fresh variables, introduced by new
-/// let bindings put at the beginning of the WHNF.
+/// constructors.  To do so, subexpressions are replaced by fresh variables, introduced by new let
+/// bindings put at the beginning of the WHNF.
 ///
 /// For example, take the expression
 /// ```
-/// let x = {a =(1 + 1);} in x.a + x.a
+/// let x = {a = (1 + 1);} in x.a + x.a
 /// ```
 ///
-/// The term `{a = 1 + 1;}` is a record, and hence a WHNF.  The thunk allocated to x is thus
-/// never updated. Without additional machinery, a will be recomputed each time is it used, two
-/// times here.
+/// The term `{a = 1 + 1;}` is a record, and hence a WHNF. In consequence, the thunk allocated to x
+/// is never updated. Without additional machinery, `a` will be recomputed each time is it used,
+/// two times here.
 ///
-/// [`to_share_normal_form`] replaces the subexpressions, namely the content of the fields of
-/// records and lists in the future - `(1 + 1)` in our example - with fresh variables, introduced by `let`, added at the
-/// head of the term:
+/// [`transform`](fn.transform.html) replaces such subexpressions, namely the content of the fields
+/// of records and the elements of lists - `(1 + 1)` in our example -, with fresh variables
+/// introduced by `let`  added at the head of the term:
+///
 /// ```
 /// let x = (let var = 1 + 1 in {a = var;}) in x.a + x.a
 /// ```
 ///
 /// Now, the field `a` points to the thunk introduced by `var`: at the evaluation of the first
-/// occurrence of `x.a`, this thunk is updated with `2`, and is not recomputed the second
-/// time.
+/// occurrence of `x.a`, this thunk is updated with `2`, and is not recomputed the second time.
 ///
-/// In practice, the introduced variables begin with a special character to avoid clashing with
-/// user-defined variables.
+/// Newly introduced variables begin with a special character to avoid clashing with user-defined
+/// variables.
 pub mod share_normal_form {
     use crate::identifier::Ident;
     use crate::term::{RichTerm, Term, UnaryOp};
@@ -37,6 +37,7 @@ pub mod share_normal_form {
 
     generate_counter!(FreshVariableCounter, usize);
 
+    /// Transform a term to a share normal form.
     pub fn transform(rt: &RichTerm) -> RichTerm {
         let RichTerm { term, pos } = rt;
         let pos = pos.clone();
@@ -203,14 +204,16 @@ pub mod share_normal_form {
         }
     }
 
+    /// Generate a new fresh variable which do not clash with user-defined variables.
     fn fresh_var() -> Ident {
         Ident(format!("%{}", FreshVariableCounter::next()))
     }
 
-    /// Determine if a subterm of a WHNF should be wrapped in a thunk in order to be shared.  This is
-    /// typically useless if the subterm is itself already a WHNF which can be copied without
-    /// duplicating any work. On the other hand, a WHNF which can contain other shareable subexpressions,
-    /// such as a record, should be shared.
+    /// Determine if a subterm of a WHNF should be wrapped in a thunk in order to be shared.
+    ///
+    /// Sharing is typically useless if the subterm is already a WHNF which can be copied without
+    /// duplicating any work. On the other hand, a WHNF which can contain other shareable
+    /// subexpressions, such as a record, should be shared.
     fn should_share(t: &Term) -> bool {
         match t {
             Term::Bool(_)
