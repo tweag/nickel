@@ -29,7 +29,7 @@ use std::result::Result;
 /// Manage a file database, which stores the original source code of the program and eventually the
 /// code of imported expressions, and a dictionary which stores corresponding parsed terms.
 pub struct Program {
-    /// Control if the built-in contract are included (pasted at the beginning of the source).
+    /// Control if the built-in contracts are included (pasted at the beginning of the source).
     include_contracts: bool,
     /// The id of the program source in the file database.
     main_id: FileId,
@@ -52,7 +52,7 @@ impl Program {
         Program::new_from_source(file, path.as_ref())
     }
 
-    /// Create a new program by reading it from a generic source.
+    /// Create a program by reading it from a generic source.
     fn new_from_source<T: Read>(
         mut source: T,
         source_name: impl Into<OsString>,
@@ -111,7 +111,7 @@ impl Program {
 
     /// Pretty-print an error.
     ///
-    /// This function is located in here in `Program` because errors need a reference to `files` in
+    /// This function is located here in `Program` because errors need a reference to `files` in
     /// order to produce a diagnostic (see [`label_alt`](../error/fn.label_alt.html)).
     pub fn report(&mut self, error: &Error) {
         let writer = StandardStream::stderr(ColorChoice::Always);
