@@ -32,10 +32,15 @@
 //!
 //! ### Enriched/Enriched
 //!
-//! - *Contract/contract*: merging two contracts evaluates to a contract which is the composition of the two
-//! - *Default/default*: merging two terms with default (either `Default` or `ContractDefault`) fails, as there cannot
-//! be two default values for the same field
+//! - *Contract/contract*: merging two contracts evaluates to a contract which is the composition
+//! of the two
+//! - *Default/default*: merging two default values evaluates to a default which value is the merge
+//! of the two
 //! - *Contract/default*: merging a `Default` with a `Contract` evaluates to a `ContractDefault`
+//! - *ContractDefault/_*: Merging `ContractDefault` is done component-wise: with another
+//! `ContractDefault`, it evaluates to a `ContractDefault` where the two contracts as well as the
+//! two default values are respectively merged together. With either just a `Contract` or a
+//! `Default`, it simply merges the corresponding component and let the other unchanged.
 //!
 //! ### Enriched/Simple
 //!
@@ -174,12 +179,25 @@ pub fn merge(
             Ok(Closure { body, env })
         }
         // Default merging
-        (Term::DefaultValue(_), Term::DefaultValue(_))
-        | (Term::DefaultValue(_), Term::ContractWithDefault(_, _, _))
-        | (Term::ContractWithDefault(_, _, _), Term::DefaultValue(_))
-        | (Term::ContractWithDefault(_, _, _), Term::ContractWithDefault(_, _, _)) => Err(
-            EvalError::Other("Trying to merge two default values".to_string(), pos_op),
-        ),
+        (Term::DefaultValue(t1), Term::DefaultValue(t2)) => {
+            let Closure { body, env } = mk_merge_closure(t1, env1, t2, env2);
+            let body = Term::DefaultValue(body).into();
+            Ok(Closure { body, env })
+        }
+        (Term::DefaultValue(t1), Term::ContractWithDefault(ty, lbl, t2))
+        | (Term::ContractWithDefault(ty, lbl, t2), Term::DefaultValue(t1)) => {
+            let Closure { body, env } = mk_merge_closure(t1, env1, t2, env2);
+            let body = Term::ContractWithDefault(ty, lbl, body).into();
+            Ok(Closure { body, env })
+        }
+        (Term::ContractWithDefault(ty1, lbl1, t1), Term::ContractWithDefault(ty2, _lbl2, t2)) => {
+            //FIXME: The choice of lbl1 is totally arbitrary, to please the compiler. Ideally
+            //labels should also be mergeable, but the current PR is already getting too big, and
+            //this is left for future work
+            let Closure { body, env } = mk_merge_closure(t1, env1, t2, env2);
+            let body = Term::ContractWithDefault(compose_contracts(ty1, ty2), lbl1, body).into();
+            Ok(Closure { body, env })
+        }
         // Should we keep the environment of contracts ?
         (Term::DefaultValue(t), Term::Contract(ty, lbl)) => Ok(Closure {
             body: Term::ContractWithDefault(ty, lbl, t).into(),
@@ -190,18 +208,18 @@ pub fn merge(
             env: env2,
         }),
         (Term::DefaultValue(_), t) => {
-            let t = RichTerm {
+            let body = RichTerm {
                 term: Box::new(t),
                 pos: pos2,
             };
-            Ok(Closure { body: t, env: env2 })
+            Ok(Closure { body, env: env2 })
         }
         (t, Term::DefaultValue(_)) => {
-            let t = RichTerm {
+            let body = RichTerm {
                 term: Box::new(t),
                 pos: pos1,
             };
-            Ok(Closure { body: t, env: env1 })
+            Ok(Closure { body, env: env1 })
         }
         // Contracts merging
         (Term::Contract(ty1, lbl1), Term::Contract(ty2, _lbl2)) => Ok(Closure {
@@ -211,35 +229,35 @@ pub fn merge(
             body: Term::Contract(compose_contracts(ty1, ty2), lbl1).into(),
             env: HashMap::new(),
         }),
-        (Term::Contract(ty1, lbl1), Term::ContractWithDefault(ty2, _lbl2, t)) => Ok(Closure {
+        (Term::Contract(ty1, lbl1), Term::ContractWithDefault(ty2, _lbl2, t)) => {
             //FIXME: The choice of lbl1 is totally arbitrary, to please the compiler. Ideally
             //labels should also be mergeable, but the current PR is already getting too big, and
             //this is left for future work
-            body: Term::ContractWithDefault(compose_contracts(ty1, ty2), lbl1, t).into(),
-            env: HashMap::new(),
-        }),
+            let body = Term::ContractWithDefault(compose_contracts(ty1, ty2), lbl1, t).into();
+            Ok(Closure { body, env: env2 })
+        }
         (Term::ContractWithDefault(ty1, lbl1, t), Term::Contract(ty2, _lbl2)) => {
             //FIXME: The choice of lbl1 is totally arbitrary, to please the compiler. Ideally
             //labels should also be mergeable, but the current PR is already getting too big, and
             //this is left for future work
-            let t = Term::ContractWithDefault(compose_contracts(ty1, ty2), lbl1, t).into();
-            Ok(Closure { body: t, env: env1 })
+            let body = Term::ContractWithDefault(compose_contracts(ty1, ty2), lbl1, t).into();
+            Ok(Closure { body, env: env1 })
         }
         (Term::Contract(ty, lbl), t) | (Term::ContractWithDefault(ty, lbl, _), t) => {
             let t = RichTerm {
                 term: Box::new(t),
                 pos: pos2,
             };
-            let t = Term::Assume(ty, lbl, t).into();
-            Ok(Closure { body: t, env: env2 })
+            let body = Term::Assume(ty, lbl, t).into();
+            Ok(Closure { body, env: env2 })
         }
         (t, Term::Contract(ty, lbl)) | (t, Term::ContractWithDefault(ty, lbl, _)) => {
             let t = RichTerm {
                 term: Box::new(t),
                 pos: pos1,
             };
-            let t = Term::Assume(ty, lbl, t).into();
-            Ok(Closure { body: t, env: env1 })
+            let body = Term::Assume(ty, lbl, t).into();
+            Ok(Closure { body, env: env1 })
         }
         // Merge put together the fields of records, and recursively merge
         // fields that are present in both terms

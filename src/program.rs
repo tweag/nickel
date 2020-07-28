@@ -668,6 +668,13 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
             "merge {a=2;} {a=Default(0);b=Default(true);}",
             vec![("a", Term::Num(2.0)), ("b", Term::Bool(true))],
         );
+
+        assert_eval_to_record(
+            "(merge {a=Default({x=1;});} {a=Default({y=\"y\";});}).a",
+            vec![("x", Term::Num(1.0)), ("y", Term::Str(String::from("y")))],
+        );
+
+        eval_string("(merge {a=Default(1);} {a=Default(2);}).a").unwrap_err();
     }
 
     #[test]
@@ -678,6 +685,31 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         );
 
         eval_string("let r = merge {a=2;} {a=Contract(Bool)} in r.a").unwrap_err();
+    }
+
+    #[test]
+    fn merge_default_contract() {
+        assert_eval_to_record(
+            "merge {a=2;} {a=ContractDefault(Num, 0);b=Default(true);}",
+            vec![("a", Term::Num(2.0)), ("b", Term::Bool(true))],
+        );
+
+        assert_eval_to_record(
+            "merge (merge {a=2;} {a=Contract(Num);}) {a=Default(3);}",
+            vec![("a", Term::Num(2.0))],
+        );
+
+        assert_eq!(
+            eval_string("(merge (merge {a=2;} {b=Contract(Num);}) {b=Default(3);}).b"),
+            Ok(Term::Num(3.0)),
+        );
+
+        assert_eq!(
+            eval_string("(merge (merge {a=Default(1);} {b=Contract(Num);}) {a=Default(1);}).a"),
+            Ok(Term::Num(1.0)),
+        );
+
+        eval_string("(merge (merge {a=2;} {b=Contract(Num);}) {b=Default(true);}).b").unwrap_err();
     }
 
     fn make_composed_contract(value: &str) -> Result<Term, Error> {

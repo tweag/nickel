@@ -468,20 +468,10 @@ mod tests {
     }
 
     #[test]
-    fn merge_multiple_defaults() {
+    fn merge_incompatible_defaults() {
         let t = Term::Op2(
             BinaryOp::Merge(),
             Term::DefaultValue(Term::Num(1.0).into()).into(),
-            Term::DefaultValue(Term::Num(2.0).into()).into(),
-        )
-        .into();
-
-        eval(t).unwrap_err();
-
-        let t = Term::Op2(
-            BinaryOp::Merge(),
-            Term::ContractWithDefault(Types(AbsType::Num()), mk_label(), Term::Num(1.0).into())
-                .into(),
             Term::DefaultValue(Term::Num(2.0).into()).into(),
         )
         .into();
