@@ -1,13 +1,20 @@
+//! Define the main evaluation stack of the Nickel abstract machine and related operations.
+//!
+//! See [eval](../eval/index.html).
 use crate::eval::Closure;
 use crate::operation::OperationCont;
 use crate::position::RawSpan;
 use std::cell::RefCell;
 use std::rc::Weak;
 
+/// An element of the stack.
 #[derive(Debug)]
 pub enum Marker {
+    /// An argument of an application.
     Arg(Closure, Option<RawSpan>),
+    /// A thunk, which is pointer to a mutable memory cell to be updated.
     Thunk(Weak<RefCell<Closure>>),
+    /// The continuation of a primitive operation.
     Cont(
         OperationCont,
         usize,           /*callStack size*/
@@ -41,6 +48,7 @@ impl Marker {
     }
 }
 
+/// The evaluation stack.
 #[derive(Debug)]
 pub struct Stack(Vec<Marker>);
 
@@ -58,6 +66,7 @@ impl Stack {
         Stack(Vec::new())
     }
 
+    /// Count the number of consecutive elements satisfying `pred` from the top of the stack.
     fn count<P>(&self, pred: P) -> usize
     where
         P: Fn(&Marker) -> bool,
@@ -78,10 +87,12 @@ impl Stack {
         Stack::count(self, Marker::is_arg)
     }
 
+    /// Count the number of thunks at the top of the stack.
     pub fn count_thunks(&self) -> usize {
         Stack::count(self, Marker::is_thunk)
     }
 
+    /// Count the number of operation continuation at the top of the stack.
     pub fn count_conts(&self) -> usize {
         Stack::count(self, Marker::is_cont)
     }

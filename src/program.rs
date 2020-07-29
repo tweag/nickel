@@ -1,3 +1,14 @@
+//! Program handling, from file reading to evaluation.
+//!
+//! A program is Nickel source code loaded from an input. This module offers an interface to load a
+//! program source, parse it, evaluate it and report errors.
+//!
+//! # Builtin contracts
+//!
+//! Builtins contracts are the essential contracts, written in pure Nickel, which are required by
+//! the Nickel abstract machine. They are automatically inserted when evaluating terms like
+//! `Assume(type, term)`. They are currently just being pasted at the beginning of the input, which
+//! is bad, but this will be corrected once we have settled on and implemented imports.
 use crate::error::{Error, ToDiagnostic};
 use crate::eval;
 use crate::parser;
@@ -13,29 +24,35 @@ use std::io::{self, Read};
 use std::path::Path;
 use std::result::Result;
 
+/// A Nickel program.
+///
+/// Manage a file database, which stores the original source code of the program and eventually the
+/// code of imported expressions, and a dictionary which stores corresponding parsed terms.
 pub struct Program {
-    /// Control if the built-in contract are included (pasted at the beginning of the source)
+    /// Control if the built-in contract are included (pasted at the beginning of the source).
     include_contracts: bool,
-    /// The id of the program source in the file database
+    /// The id of the program source in the file database.
     main_id: FileId,
     /// The file database holding the content of the program source plus potential imports
-    /// made by the program (imports will be supported in a near future)
+    /// made by the program (imports will be supported in a near future).
     files: Files<String>,
-    /// Parsed terms corresponding to the entries of the file database
+    /// Parsed terms corresponding to the entries of the file database.
     parsed: HashMap<FileId, RichTerm>,
 }
 
 impl Program {
+    /// Create a program by reading it from the standard input.
     pub fn new_from_stdin() -> std::io::Result<Program> {
         Program::new_from_source(io::stdin(), "<stdin>")
     }
 
+    /// Create a program by reading from a file.
     pub fn new_from_file<P: AsRef<Path>>(path: P) -> std::io::Result<Program> {
         let file = fs::File::open(&path)?;
         Program::new_from_source(file, path.as_ref())
     }
 
-    /// Create a new program from a generic source, and load its content in the file database
+    /// Create a new program by reading it from a generic source.
     fn new_from_source<T: Read>(
         mut source: T,
         source_name: impl Into<OsString>,
@@ -54,7 +71,7 @@ impl Program {
         })
     }
 
-    /// Parse if necessary, typecheck and then evaluate the program
+    /// Parse if necessary, typecheck and then evaluate the program.
     pub fn eval(&mut self) -> Result<Term, Error> {
         let t = self.parse().map_err(|msg| Error::ParseError(msg))?;
         println!("Typechecked: {:?}", type_check(t.as_ref()));
@@ -62,6 +79,8 @@ impl Program {
         eval::eval(t).map_err(|e| e.into())
     }
 
+    /// Parse the program source, or just retrieve it from the dictionary it if has already been
+    /// parsed.
     fn parse(&mut self) -> Result<RichTerm, String> {
         if self.parsed.get(&self.main_id).is_none() {
             let mut buf = self.files.source(self.main_id).clone();
@@ -90,7 +109,10 @@ impl Program {
             .clone())
     }
 
-    /// Pretty-print an error on stderr
+    /// Pretty-print an error.
+    ///
+    /// This function is located in here in `Program` because errors need a reference to `files` in
+    /// order to produce a diagnostic (see [`label_alt`](../error/fn.label_alt.html)).
     pub fn report(&mut self, error: &Error) {
         let writer = StandardStream::stderr(ColorChoice::Always);
         let config = codespan_reporting::term::Config::default();
@@ -109,8 +131,8 @@ impl Program {
         };
     }
 
-    /// Built-in contracts to be included in programs
-    /// TODO: move this to a Nickel stand-alone file once we have imports
+    /// Built-in contracts to be included in programs.
+    // TODO: move this to a Nickel stand-alone file once we have imports
     fn contracts() -> String {
         "let dyn = fun l => fun t => t in
 

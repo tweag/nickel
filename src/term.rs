@@ -1,49 +1,127 @@
+//! AST of a Nickel expression.
+//!
+//! # Core language
+//!
+//! At its core, Nickel is a lazy JSON with higher-order functions. It includes:
+//! - Basic values: booleans, numerals, string
+//! - Data structures: lists and records
+//! - Binders: functions and let bindings
+//!
+//! It also features type annotations (promise and assume), and other typechecking related
+//! constructs (label, symbols, etc.).
+//!
+//! # Enriched values
+//!
+//! Enriched values are special terms used to represent metadata about record fields: types or
+//! contracts, default values, documentation, etc. They bring such usually external object down to
+//! the term level, and together with [merge](../merge/index.html), they allow for flexible and
+//! modular definitions of contracts, record and metadata all together.
 use crate::identifier::Ident;
 use crate::label::Label;
 use crate::position::RawSpan;
 use crate::types::Types;
 use std::collections::HashMap;
 
+/// The AST of a Nickel expression.
+///
+/// Parsed terms also need to store their position in the source for error reporting.  This is why
+/// this type is nested with [`RichTerm`](type.RichTerm.html).
+///
 #[derive(Debug, PartialEq, Clone)]
 pub enum Term {
-    // Values
+    /// A boolean value.
     Bool(bool),
+    /// A floating-point value.
     Num(f64),
+    /// A literal string.
     Str(String),
+    /// A function.
     Fun(Ident, RichTerm),
+    /// A blame label.
     Lbl(Label),
 
-    // Other lambda
+    /// A let binding.
     Let(Ident, RichTerm, RichTerm),
+    /// An application.
     App(RichTerm, RichTerm),
+    /// A variable.
     Var(Ident),
 
-    // Enums
+    /// An enum variant.
     Enum(Ident),
 
-    // Records
+    /// A record, mapping identifiers to terms.
     Record(HashMap<Ident, RichTerm>),
 
-    // Lists
+    /// A list.
     List(Vec<RichTerm>),
 
-    // Primitives
+    /// A primitive unary operator.
     Op1(UnaryOp<RichTerm>, RichTerm),
+    /// A primitive binary operator.
     Op2(BinaryOp<RichTerm>, RichTerm, RichTerm),
 
-    // Typing
+    /// A promise.
+    ///
+    /// Represent a subterm which is to be statically typechecked.
     Promise(Types, Label, RichTerm),
+
+    /// An assume.
+    ///
+    /// Represent a subterm which is to be dynamically typechecked (dynamic types are also called.
+    /// It ensures at runtime that the term satisfies the contract corresponding to the type, or it
+    /// will blame the label instead.
     Assume(Types, Label, RichTerm),
+
+    /// A symbol.
+    ///
+    /// A unique tag corresponding to a type variable. See `Wrapped` below.
     Sym(i32),
+
+    /// A wrapped term.
+    ///
+    /// Wrapped terms are introduced by contracts on polymorphic types. Take the following example:
+    ///
+    /// ```
+    /// let f = Assume(forall a. forall b. a -> b -> a, fun x => fun y => y) in
+    /// f true "a"
+    /// ```
+    ///
+    /// This function is ill-typed. To check that, a polymorphic contract will:
+    /// - Assign a unique identifier to each type variable: say `a => 1`, `b => 2`
+    /// - For each cast on a negative occurrence of a type variable `a` or `b` (corresponding to an
+    /// argument position), tag the argument with the associated identifier. In our example, `f
+    /// true "a"` will push `Wrapped(1, true)` then `Wrapped(2, "a")` on the stack.
+    /// - For each cast on a positive occurrence of a type variable, this contract check that the
+    /// term is of the form `Wrapped(id, term)` where `id` corresponds to the identifier of the
+    /// type variable. In our example, the last cast to `a` finds `Wrapped(2, "a")`, while it
+    /// expected `Wrapped(1, _)`, hence it raises a positive blame.
     Wrapped(i32, RichTerm),
-    // Enriched terms
+
+    /// A contract. Enriched value.
+    ///
+    /// A contract at the term level. This contract is enforced when merged with a value.
     Contract(Types, Label),
+
+    /// A default value. Enriched value.
+    ///
+    /// An enriched term representing a default value. It is dropped as soon as it is merged with a
+    /// concrete value. Otherwise, if it lives long enough to be accessed, it evaluates to the
+    /// underlying term.
     DefaultValue(RichTerm),
+
+    /// A contract with combined with default value. Enriched value.
+    ///
+    /// This is a combination generated during evaluation, when merging a contract and a default
+    /// value, as both need to be remembered.
     ContractWithDefault(Types, Label, RichTerm),
+
+    /// A term together with its documentation string. Enriched value.
     Docstring(String, RichTerm),
 }
 
 impl Term {
+    /// Recursively apply a function to all `Term`s contained in a `RichTerm`.
     pub fn apply_to_rich_terms<F>(&mut self, func: F)
     where
         F: Fn(&mut RichTerm),
@@ -95,8 +173,12 @@ impl Term {
         }
     }
 
-    /// Return the apparent type of an expression. If the term is not a WHNF, `None` is
-    /// returned.
+    /// Return the class of an expression in WHNF.
+    ///
+    /// The class of an expression is an approximation of its type used in error reporting. Class
+    /// and type coincide for constants (numbers, strings and booleans) and lists. Otherwise the
+    /// class is less precise than the type and indicates the general shape of the term: `"Record"`
+    /// for records, `"Fun`" for functions, etc. If the term is not a WHNF, `None` is returned.
     pub fn type_of(&self) -> Option<String> {
         match self {
             Term::Bool(_) => Some("Bool"),
@@ -124,7 +206,7 @@ impl Term {
         .map(|s| String::from(s))
     }
 
-    /// Return a shallow string representation of a term, used for pretty printing in error message
+    /// Return a shallow string representation of a term, used for error reporting.
     pub fn shallow_repr(&self) -> String {
         match self {
             Term::Bool(true) => String::from("true"),
@@ -157,43 +239,110 @@ impl Term {
     }
 }
 
+/// Primitive unary operators.
+///
+/// Some operators, such as if-then-else or `seq`, actually take several arguments but are only
+/// strict in one (the tested boolean for example, in the case of if-then-else). They are encoded
+/// as unary operators of this argument: indeed, in an expression `if-then-else boolean thenBlock
+/// elseBlock`, `if-then-else` can be seen as a unary operator taking a `Bool` argument and
+/// evaluating to either the first projection `fun x y => x` or the second projection `fun x y =>
+/// y`.
 #[derive(Clone, Debug, PartialEq)]
 pub enum UnaryOp<CapturedTerm> {
+    /// If-then-else.
     Ite(),
 
+    /// Test if a number is zero.
+    ///
+    /// Will be removed once there is a reasonable equality.
     IsZero(),
 
+    /// Test if a term is a numeral.
     IsNum(),
+    /// Test if a term is a boolean.
     IsBool(),
+    /// Test if a term is string literal.
     IsStr(),
+    /// Test if a term is a function.
     IsFun(),
+    /// Test if a term is a list.
     IsList(),
 
+    /// Raise a blame, which stops the execution and prints an error according to the label argument.
     Blame(),
 
-    Embed(Ident),
-    /// This is a hacky way to deal with this for now.
+    /// Typecast an enum to a larger enum type.
     ///
-    /// Ideally it should change to eliminate the dependency with RichTerm
-    /// in the future.
+    /// `Embed` is used to upcast enums. For example, if a value `x` has enum type `a | b`, then
+    /// `embed c x` will have enum type `a | b | c`. It only affects typechecking as at runtime
+    /// `embed someId` act like the identity.
+    Embed(Ident),
+    // This is a hacky way to deal with this for now.
+    //
+    // Ideally it should change to eliminate the dependency with RichTerm
+    // in the future.
+    /// A switch block. Used to match on a enumeration.
     Switch(HashMap<Ident, CapturedTerm>, Option<CapturedTerm>),
 
+    /// Static access to a record field.
+    ///
+    /// Static means that the field identifier is a statically known string inside the source.
     StaticAccess(Ident),
+
+    /// Map a function on a record.
+    ///
+    /// The mapped function must take two arguments, the name of the field as a string, and the
+    /// content of the field. `MapRec` then replaces the content of each field by the result of the
+    /// function: i.e., `mapRec f {a=2;}` evaluates to `{a=(f "a" 2);}`.
     MapRec(CapturedTerm),
 
+    /// Inverse the polarity of a label.
     ChangePolarity(),
+
+    /// Get the polarity of a label.
     Pol(),
+    /// Go to the domain in the type path of a label.
+    ///
+    /// If the argument is a label with a [type path](../label/enum.TyPath.html) representing some
+    /// subtype of the type of the original contract, as in:
+    ///
+    /// ```
+    /// (Num -> Num) -> Num
+    ///  ^^^^^^^^^^ type path
+    /// ------------------- original type
+    /// ```
+    ///
+    /// Then `GoDom` evaluates to a copy of this label, where the path has gone forward into the domain:
+    ///
+    /// ```
+    /// (Num -> Num) -> Num
+    ///  ^^^ new type path
+    /// ------------------- original type
+    /// ```
     GoDom(),
+    /// Go to the codomain in the type path of a label.
+    ///
+    /// See `GoDom`.
     GoCodom(),
+    /// Append text to the tag of a label.
     Tag(String),
 
+    /// Wrap a term with a type tag (see `Wrapped` in [`Term`](enum.Term.html)).
     Wrap(),
 
+    /// Force the evaluation of its argument and proceed with the second.
     Seq(),
+    /// Recursively force the evaluation of its first argument then returns the second.
+    ///
+    /// Recursive here means that the evaluation does not stop at a WHNF, but the content of lists
+    /// and records is also recursively forced.
     DeepSeq(),
 
+    /// Return the head of a list.
     ListHead(),
+    /// Return the tail of a list.
     ListTail(),
+    /// Return the length of a list.
     ListLength(),
 }
 
@@ -247,19 +396,38 @@ impl<Ty> UnaryOp<Ty> {
     }
 }
 
+/// Primitive binary operators
 #[derive(Clone, Debug, PartialEq)]
 pub enum BinaryOp<CapturedTerm> {
+    /// Addition of numerals.
     Plus(),
+    /// Concatenation of strings.
     PlusStr(),
+    /// Unwrap a tagged term.
+    ///
+    /// See `Wrap` in [`UnaryOp`](enum.UnaryOp.html).
     Unwrap(),
+    /// Equality on booleans.
     EqBool(),
+    /// Extend a record with a dynamic field.
+    ///
+    /// Dynamic means that the field name may be an expression and not a statically known string.
+    /// `DynExtend` tries to evaluate this name to a string, and in case of success, add a field
+    /// with this name to the given record with the `CapturedTerm` as content.
     DynExtend(CapturedTerm),
+    /// Remove a field from a record. The field name is given as an arbitrary Nickel expression.
     DynRemove(),
+    /// Access the field of record. The field name is given as an arbitrary Nickel expression.
     DynAccess(),
+    /// Test if a record has a specific field.
     HasField(),
+    /// Concatenate two lists.
     ListConcat(),
+    /// Map a function on each element of a list.
     ListMap(),
+    /// Access the n-th element of a list.
     ListElemAt(),
+    /// The merge operator (see the [merge module](../merge/index.html)).
     Merge(),
 }
 
@@ -291,6 +459,7 @@ impl<Ty> BinaryOp<Ty> {
     }
 }
 
+/// Wrap [terms](type.Term.html) with positional information.
 #[derive(Debug, PartialEq, Clone)]
 pub struct RichTerm {
     pub term: Box<Term>,
@@ -305,6 +474,9 @@ impl RichTerm {
         }
     }
 
+    /// Erase recursively the positional information.
+    ///
+    /// It allows to use rust `Eq` trait to compare the values of the underlying terms.
     pub fn clean_pos(&mut self) {
         self.pos = None;
         self.term
