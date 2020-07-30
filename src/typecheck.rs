@@ -1,9 +1,34 @@
+//! Implementation of the typechecker.
+//!
+//! # Mode
+//!
+//! Typechecking can be made in to different modes:
+//! - **Strict**: correspond to traditional typechecking in strongly, statically typed languages.
+//! This happens inside a `Promise` block.
+//! - **Non strict**: do not enforce any typing, but still store the annotations of let bindings in
+//! the environment, and continue to traverse the AST looking for other `Promise` blocks to
+//! typecheck.
+//!
+//! The algorithm starts in non strict mode. It is switched to strict mode when entering a
+//! `Promise` block, and is switched to non-strict mode when entering an `Assume` block.  `Promise`
+//! and `Assume` thus serve both two purposes: annotate a term with a type, and set the
+//! typechecking mode.
+//!
+//! # Type inference
+//!
+//! Type inference is done via a standard unification algorithm. Inference is limited, since the type
+//! of a let binding is currently never inferred (let alone generalized): it must be annotated via
+//! a `Promise` or an `Assume`, or it is given the type `Dyn`, no matter what is the typechecking
+//! mode.
 use crate::identifier::Ident;
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp};
 use crate::types::{AbsType, Types};
 use std::collections::{HashMap, HashSet};
 
-// Type checking
+/// Typecheck a term.
+///
+/// Return the inferred type in case of success. This is just a wrapper that calls
+/// [`type_check_`](fn.type_check_.html) with a fresh unification variable as goal.
 pub fn type_check(t: &Term) -> Result<Types, String> {
     let mut state = GTypes::new();
     let mut constr = GConstr::new();
@@ -20,6 +45,16 @@ pub fn type_check(t: &Term) -> Result<Types, String> {
     Ok(to_type(&state, ty)?)
 }
 
+/// Typecheck a term against a specific type.
+///
+/// # Arguments
+///
+/// - `typed_vars`: maps variable of the environment to a type.
+/// - `state` : the unification table (see [`GTypes`](type.GTypes.html)).
+/// - `constr`: row constraints (see [`GConstr`](type.GConstr.html)).
+/// - `t`: the term to check.
+/// - `ty`: the type to check the term against.
+/// - `strict`: the typechecking mode.
 fn type_check_(
     mut typed_vars: HashMap<Ident, TypeWrapper>,
     state: &mut GTypes,
@@ -166,7 +201,7 @@ fn type_check_(
                         )
                     })
             } else {
-                // infering static record
+                // inferring static record
                 let row = stat_map.into_iter().try_fold(
                     TypeWrapper::Concrete(AbsType::RowEmpty()),
                     |acc, e| -> Result<TypeWrapper, String> {
@@ -267,12 +302,15 @@ fn type_check_(
     }
 }
 
-// TypeWrapper
-//   A type can be a concrete type, a constant or a type variable
+/// The types on which the unification algorithm operates, which may be either a concrete type, a
+/// type constant or a unification variable.
 #[derive(Clone, PartialEq, Debug)]
 pub enum TypeWrapper {
+    /// A concrete type (like `Num` or `Str -> Str`).
     Concrete(AbsType<Box<TypeWrapper>>),
+    /// A rigid type constant which cannot be unified with anything but itself.
     Constant(usize),
+    /// A unification variable.
     Ptr(usize),
 }
 
@@ -324,13 +362,16 @@ impl TypeWrapper {
     }
 }
 
-/// Add an identifier to a row.
+/// Look for a binding in a row, or add a new one if it is not present and if allowed by [row
+/// constraints](type.GConstr.html).
 ///
-/// If the id is not there, and the row is open, it will add it with the passed type `ty`.
+/// The row may be given as a concrete type or as a unification variable.
 ///
-/// # Returns
+/// # Return
 ///
-/// The type bound with the id and the row without the id.
+/// The type newly bound to `id` in the row together with the tail of the new row. If `id` was
+/// already in `r`, it does not change the binding and return the corresponding type instead as a
+/// first component.
 fn row_add(
     state: &mut GTypes,
     constr: &mut GConstr,
@@ -382,6 +423,7 @@ fn row_add(
     }
 }
 
+/// Try to unify two types.
 pub fn unify(
     state: &mut GTypes,
     constr: &mut GConstr,
@@ -482,6 +524,7 @@ pub fn unify(
     }
 }
 
+/// Convert a vanilla Nickel type to a type wrapper.
 fn to_typewrapper(t: Types) -> TypeWrapper {
     let Types(t2) = t;
 
@@ -490,6 +533,7 @@ fn to_typewrapper(t: Types) -> TypeWrapper {
     TypeWrapper::Concrete(t3)
 }
 
+/// Extract the concrete type (if any) corresponding to a type wrapper.
 fn to_type(state: &GTypes, ty: TypeWrapper) -> Result<Types, String> {
     Ok(match ty {
         TypeWrapper::Ptr(p) => match get_root(state, p)? {
@@ -504,6 +548,13 @@ fn to_type(state: &GTypes, ty: TypeWrapper) -> Result<Types, String> {
     })
 }
 
+/// Instantiate the type variables which are quantified in head position with type constants.
+///
+/// For example, `forall a. forall b. a -> (forall c. b -> c)` is transformed to `cst1 -> (forall
+/// c. cst2 -> c)` where `cst1` and `cst2` are fresh type constants.  This is used when
+/// typechecking `forall`s: all quantified type variables in head position are replaced by rigid
+/// type constants, and the term is then typechecked normally. As these constants cannot be unified
+/// with anything, this forces all the occurrences of a type variable to be the same type.
 fn instantiate_foralls_with<F>(
     state: &mut GTypes,
     mut ty: TypeWrapper,
@@ -523,6 +574,7 @@ where
     Ok(ty)
 }
 
+/// Type of unary operations.
 pub fn get_uop_type(
     typed_vars: HashMap<Ident, TypeWrapper>,
     state: &mut GTypes,
@@ -531,6 +583,7 @@ pub fn get_uop_type(
     strict: bool,
 ) -> Result<TypeWrapper, String> {
     Ok(match op {
+        // forall a. bool -> a -> a -> a
         UnaryOp::Ite() => {
             let branches = TypeWrapper::Ptr(new_var(state));
 
@@ -545,10 +598,12 @@ pub fn get_uop_type(
                 ))),
             ))
         }
+        // Num -> Bool
         UnaryOp::IsZero() => TypeWrapper::Concrete(AbsType::arrow(
             Box::new(TypeWrapper::Concrete(AbsType::Num())),
             Box::new(TypeWrapper::Concrete(AbsType::Bool())),
         )),
+        // forall a. a -> Bool
         UnaryOp::IsNum()
         | UnaryOp::IsBool()
         | UnaryOp::IsStr()
@@ -561,6 +616,7 @@ pub fn get_uop_type(
                 Box::new(TypeWrapper::Concrete(AbsType::Bool())),
             ))
         }
+        // forall a. Dyn -> a
         UnaryOp::Blame() => {
             let res = TypeWrapper::Ptr(new_var(state));
 
@@ -569,11 +625,12 @@ pub fn get_uop_type(
                 Box::new(res),
             ))
         }
+        // Dyn -> Bool
         UnaryOp::Pol() => TypeWrapper::Concrete(AbsType::arrow(
             Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
             Box::new(TypeWrapper::Concrete(AbsType::Bool())),
         )),
-
+        // forall rows. ( rows ) -> ( `id, rows )
         UnaryOp::Embed(id) => {
             let row = TypeWrapper::Ptr(new_var(state));
             constraint(state, constr, row.clone(), id.clone())?;
@@ -585,6 +642,11 @@ pub fn get_uop_type(
                 )))),
             ))
         }
+        // 1. rows -> a
+        // 2. forall b. b -> a
+        // Rows is ( `label1, .., `labeln ) for label in l.keys().
+        // Unify each branch in l.values() with a.
+        // If the switch has a default case, the more general type 2. is used.
         UnaryOp::Switch(l, d) => {
             // Currently, if it has a default value, we typecheck the whole thing as
             // taking ANY enum, since it's more permissive and there's not a loss of information
@@ -631,13 +693,14 @@ pub fn get_uop_type(
                 Box::new(res),
             ))
         }
-
+        // Dyn -> Dyn
         UnaryOp::ChangePolarity() | UnaryOp::GoDom() | UnaryOp::GoCodom() | UnaryOp::Tag(_) => {
             TypeWrapper::Concrete(AbsType::arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
                 Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
             ))
         }
+        // Sym -> Dyn -> Dyn
         UnaryOp::Wrap() => TypeWrapper::Concrete(AbsType::arrow(
             Box::new(TypeWrapper::Concrete(AbsType::Sym())),
             Box::new(TypeWrapper::Concrete(AbsType::arrow(
@@ -645,6 +708,7 @@ pub fn get_uop_type(
                 Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
             ))),
         )),
+        // forall rows a. { rows, id: a } -> a
         UnaryOp::StaticAccess(id) => {
             let row = TypeWrapper::Ptr(new_var(state));
             let res = TypeWrapper::Ptr(new_var(state));
@@ -660,6 +724,8 @@ pub fn get_uop_type(
                 Box::new(res),
             ))
         }
+        // { _ : a} -> { _ : b }
+        // Unify f with Str -> a -> b.
         UnaryOp::MapRec(f) => {
             // Assuming f has type Str -> a -> b,
             // this has type DynRecord(a) -> DynRecord(b)
@@ -689,8 +755,8 @@ pub fn get_uop_type(
                 Box::new(TypeWrapper::Concrete(AbsType::DynRecord(Box::new(b)))),
             ))
         }
+        // forall a b. a -> b -> b
         UnaryOp::Seq() | UnaryOp::DeepSeq() => {
-            // forall a b. a -> b -> b
             let fst = TypeWrapper::Ptr(new_var(state));
             let snd = TypeWrapper::Ptr(new_var(state));
 
@@ -702,14 +768,17 @@ pub fn get_uop_type(
                 ))),
             ))
         }
+        // List -> Dyn
         UnaryOp::ListHead() => TypeWrapper::Concrete(AbsType::Arrow(
             Box::new(TypeWrapper::Concrete(AbsType::List())),
             Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
         )),
+        // List -> List
         UnaryOp::ListTail() => TypeWrapper::Concrete(AbsType::Arrow(
             Box::new(TypeWrapper::Concrete(AbsType::List())),
             Box::new(TypeWrapper::Concrete(AbsType::List())),
         )),
+        // List -> Num
         UnaryOp::ListLength() => TypeWrapper::Concrete(AbsType::Arrow(
             Box::new(TypeWrapper::Concrete(AbsType::List())),
             Box::new(TypeWrapper::Concrete(AbsType::Num())),
@@ -717,6 +786,7 @@ pub fn get_uop_type(
     })
 }
 
+/// Type of a binary operation.
 pub fn get_bop_type(
     typed_vars: HashMap<Ident, TypeWrapper>,
     state: &mut GTypes,
@@ -725,6 +795,7 @@ pub fn get_bop_type(
     strict: bool,
 ) -> Result<TypeWrapper, String> {
     match op {
+        // Num -> Num -> Num
         BinaryOp::Plus() => Ok(TypeWrapper::Concrete(AbsType::arrow(
             Box::new(TypeWrapper::Concrete(AbsType::Num())),
             Box::new(TypeWrapper::Concrete(AbsType::arrow(
@@ -732,6 +803,7 @@ pub fn get_bop_type(
                 Box::new(TypeWrapper::Concrete(AbsType::Num())),
             ))),
         ))),
+        // Str -> Str -> Str
         BinaryOp::PlusStr() => Ok(TypeWrapper::Concrete(AbsType::arrow(
             Box::new(TypeWrapper::Concrete(AbsType::Str())),
             Box::new(TypeWrapper::Concrete(AbsType::arrow(
@@ -739,6 +811,7 @@ pub fn get_bop_type(
                 Box::new(TypeWrapper::Concrete(AbsType::Str())),
             ))),
         ))),
+        // Sym -> Dyn -> Dyn -> Dyn
         BinaryOp::Unwrap() => Ok(TypeWrapper::Concrete(AbsType::arrow(
             Box::new(TypeWrapper::Concrete(AbsType::Sym())),
             Box::new(TypeWrapper::Concrete(AbsType::arrow(
@@ -749,6 +822,7 @@ pub fn get_bop_type(
                 ))),
             ))),
         ))),
+        // Bool -> Bool -> Bool
         BinaryOp::EqBool() => Ok(TypeWrapper::Concrete(AbsType::arrow(
             Box::new(TypeWrapper::Concrete(AbsType::Bool())),
             Box::new(TypeWrapper::Concrete(AbsType::arrow(
@@ -756,6 +830,7 @@ pub fn get_bop_type(
                 Box::new(TypeWrapper::Concrete(AbsType::Bool())),
             ))),
         ))),
+        // forall a. Str -> { _ : a} -> a
         BinaryOp::DynAccess() => {
             let res = TypeWrapper::Ptr(new_var(state));
 
@@ -769,6 +844,8 @@ pub fn get_bop_type(
                 ))),
             )))
         }
+        // Str -> { _ : a } -> { _ : a }
+        // Unify t with a.
         BinaryOp::DynExtend(t) => {
             let res = TypeWrapper::Ptr(new_var(state));
 
@@ -793,6 +870,7 @@ pub fn get_bop_type(
                 ))),
             )))
         }
+        // forall a. Str -> { _ : a } -> { _ : a}
         BinaryOp::DynRemove() => {
             let res = TypeWrapper::Ptr(new_var(state));
 
@@ -808,6 +886,7 @@ pub fn get_bop_type(
                 ))),
             )))
         }
+        // Str -> Dyn -> Bool
         BinaryOp::HasField() => Ok(TypeWrapper::Concrete(AbsType::Arrow(
             Box::new(TypeWrapper::Concrete(AbsType::Arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::Str())),
@@ -815,6 +894,7 @@ pub fn get_bop_type(
             ))),
             Box::new(TypeWrapper::Concrete(AbsType::Bool())),
         ))),
+        // List -> List -> List
         BinaryOp::ListConcat() => Ok(TypeWrapper::Concrete(AbsType::Arrow(
             Box::new(TypeWrapper::Concrete(AbsType::List())),
             Box::new(TypeWrapper::Concrete(AbsType::Arrow(
@@ -822,6 +902,7 @@ pub fn get_bop_type(
                 Box::new(TypeWrapper::Concrete(AbsType::List())),
             ))),
         ))),
+        // forall a b. (a -> b) -> List -> List
         BinaryOp::ListMap() => {
             let src = TypeWrapper::Ptr(new_var(state));
             let tgt = TypeWrapper::Ptr(new_var(state));
@@ -835,6 +916,7 @@ pub fn get_bop_type(
                 ))),
             )))
         }
+        // List -> Num -> Dyn
         BinaryOp::ListElemAt() => Ok(TypeWrapper::Concrete(AbsType::Arrow(
             Box::new(TypeWrapper::Concrete(AbsType::List())),
             Box::new(TypeWrapper::Concrete(AbsType::Arrow(
@@ -842,6 +924,7 @@ pub fn get_bop_type(
                 Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
             ))),
         ))),
+        // Dyn -> Dyn -> Dyn
         BinaryOp::Merge() => Ok(TypeWrapper::Concrete(AbsType::arrow(
             Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
             Box::new(TypeWrapper::Concrete(AbsType::arrow(
@@ -852,17 +935,31 @@ pub fn get_bop_type(
     }
 }
 
-// Global types, where unification happens
-
+/// The unification table.
+///
+/// Map each unification variable to either another type variable or a concrete type it has been
+/// unified with. Each binding `(ty, var)` in this map should be thought of an edge in a
+/// unification graph.
 pub type GTypes = HashMap<usize, Option<TypeWrapper>>;
+
+/// Row constraints.
+///
+/// A row constraint applies to a unification variable appearing inside a row type (such as `r` in
+/// `{ someId: SomeType, r }`). It is a set of identifiers that said row must NOT contain, to
+/// forbid ill-formed types with multiple declaration of the same id, for example `{ a: Num, a:
+/// String}`.
 pub type GConstr = HashMap<usize, HashSet<Ident>>;
 
+/// Create a fresh unification variable.
 fn new_var(state: &mut GTypes) -> usize {
     let nxt = state.len();
     state.insert(nxt, None);
     nxt
 }
 
+/// Add a row constraint on a type.
+///
+/// See [`GConstr`](type.GConstr.html).
 fn constraint(
     state: &mut GTypes,
     constr: &mut GConstr,
@@ -897,6 +994,10 @@ fn constraint(
     }
 }
 
+/// Follow the links in the unification table to find the representative of the equivalence class
+/// of unification variable `x`.
+///
+/// This corresponds to the find in union-find.
 // TODO This should be a union find like algorithm
 pub fn get_root(state: &GTypes, x: usize) -> Result<TypeWrapper, String> {
     match state
