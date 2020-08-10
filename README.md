@@ -1,13 +1,12 @@
 Nickel - Cheap configuration language
 =====================================
 
-Nickel is a lightweight configuration language written in
-[Rust](https://www.rust-lang.org/). Its purpose is to automate the generation of
-static configuration files - think JSON, YAML, XML, or your favorite data
-representation language - that are then fed to another system. It is designed to
-have a simple, well-understood core: at its heart, it is JSON with functions. It
-adds other features on top of it to improve expressivity and modularity, but you
-can do just fine without using it.
+Nickel is a lightweight configuration language. Its purpose is to automate the
+generation of static configuration files - think JSON, YAML, XML, or your
+favorite data representation language - that are then fed to another system. It
+is designed to have a simple, well-understood core: at its heart, it is JSON
+with functions. It adds other features on top of it to improve expressivity and
+modularity, but you can do just fine without using it.
 
 Nickel's important traits are:
 
@@ -29,7 +28,6 @@ Nickel's important traits are:
     interpreter to insert guards at the boundary between typed and untyped
     chunks.  Nickel makes them available to the programmer as well, to give them
     the ability to enforce type assertions at runtime in a simple way.
-- **Lazy**: only evaluate the values you actually use.
 - **Merge system**: while the basic computational blocks are functions, the
     basic data blocks are records (called objects in JSON). Nickel features a
     merge operation which lets you combine together such records modularly, but
