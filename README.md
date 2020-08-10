@@ -27,8 +27,8 @@ Nickel's important traits are:
 - **Contracts**: complementary to the type system, contracts are a principled
     approach to dynamic type checking. They are used internally by the
     interpreter to insert guards at the boundary between typed and untyped
-    chunks.  Nickel makes them available to the programmer as well, to give her
-    or him the ability to enforce type assertions at runtime in a simple way.
+    chunks.  Nickel makes them available to the programmer as well, to give them
+    the ability to enforce type assertions at runtime in a simple way.
 - **Lazy**: only evaluate the values you actually use.
 - **Merge system**: while the basic computational blocks are functions, the
     basic data blocks are records (called objects in JSON). Nickel features a
