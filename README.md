@@ -187,5 +187,6 @@ next points to deal with are:
    forbidden, making it not Turing-complete.
 
 ## License
+[MIT License](https://github.com/tweag/nickel/blob/master/LICENSE).
 
-Apache 2.0
+Copyright (c) Tweag Holding and its affiliates.
