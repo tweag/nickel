@@ -32,7 +32,7 @@ Nickel's important traits are:
 - **Lazy**: only evaluate the values you actually use.
 - **Merge system**: while the basic computational blocks are functions, the
     basic data blocks are records (called objects in JSON). Nickel features a
-    merge operation which allows to combine together such records modularly, but
+    merge operation which lets you combine together such records modularly, but
     also to specify meta-data about the content of these records (documentation,
     default values, type contracts, etc.), called *enriched values*.
 
