@@ -173,7 +173,7 @@ next points to deal with are:
     package manager.
 - [Dhall](https://dhall-lang.org/) is a statically typed configuration language.
     It is also inspired by Nix, to which it adds a powerful static type system.
-    However, this forces the programmer to annotate all of his code with types.
+    However, this forces the programmer to annotate all of their code with types.
 - [Jsonnet](https://jsonnet.org/) is another language which could be dubbed as
     "JSON with functions" (and others things as well). It is a lazy functional
     language with object oriented features, among which inheritance is similar
