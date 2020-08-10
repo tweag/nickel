@@ -16,11 +16,14 @@ Nickel's important traits are:
     callable from various programming languages.
 - **Functional**: the basic building blocks are functions. They are first-class
     citizens, which can be passed around, called and composed.
-- **Gradual typing**: static types improve the code quality, serve as a
-    documentation and eliminate bugs early. However, they come at the cost of
-    complexity and verbosity, which may be prohibitive, especially in an
-    interpreted language where there is no real distinction between compile-time
-    and runtime. Also, some JSON can be hard to type. Nickel has types, but you
+- **Gradual typing**: static types improve code quality, serve as a
+    documentation and eliminate bugs early. On one hand, code specific to a
+    particular configuration does not depend on external inputs and will always
+    be evaluated to the same value, thus any type error will show up at run time
+    anyway. Also, some JSON can be hard to type.  There, types are only a
+    burden.  On the other hand, reusable code - that is, *functions* - is
+    evaluated on potentially infinitely many different inputs, and is impossible
+    to test exhaustively: there, types are precious.  Nickel has types, but you
     get to chose when you want it or not, and it handles safely the interaction
     between the typed and the untyped world.
 - **Contracts**: complementary to the type system, contracts are a principled
