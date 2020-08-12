@@ -251,10 +251,10 @@ and as opposed to Nickel, Dhall forbids recursion and side-effects.
 CUE is quite a different beast. It focuses on data validation rather than
 boilerplate removal. To do so, it sacrifices flexibility by not supporting not
 only general recursion, but even general functions, in exchange of a
-particularly well-behaved system. In CUE, everything is basically a type (more
-precisely the type of a record, called objects in JSON): concrete values are
-just types so constrained that they only have one inhabitant. These types forms
-a lattice, which means they come with a union and an intersection operation.
+particularly well-behaved system. In CUE, everything is basically a type:
+concrete values are just types so constrained that they only have one
+inhabitant. These types forms a lattice, which means they come with a union and
+an intersection operation.
 
 This provides:
 - Merging: combine mixed schemas and values together in a well behaved way
@@ -270,7 +270,7 @@ differently.
 CUE is an outsider. While it produces elegant code, is backed by a solid theory
 and is excellent at data validation, it seems less adapted to generating
 configuration in general. It is also heavily constrained, which might be
-limiting for specific use-cases. 
+limiting for specific use-cases.
 
 ### Jsonnet: JSON, functions and inheritance
 In this list, Jsonnet is arguably the closest language to Nickel. As Nickel, it
