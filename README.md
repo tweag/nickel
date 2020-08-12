@@ -189,6 +189,9 @@ next points to deal with are:
    [Python](https://www.python.org/). It does not have types and recursion is
    forbidden, making it not Turing-complete.
 
+See [RATIONALE.md](./RATIONALE.md) for the design rationale and a more detailed
+comparison with a selection of these languages.
+
 ## License
 [MIT License](https://github.com/tweag/nickel/blob/master/LICENSE).
 
