@@ -253,7 +253,7 @@ boilerplate removal. To do so, it sacrifices flexibility by not supporting not
 only general recursion, but even general functions, in exchange of a
 particularly well-behaved system. In CUE, everything is basically a type:
 concrete values are just types so constrained that they only have one
-inhabitant. These types forms a lattice, which means they come with a union and
+inhabitant. These types form a lattice, which means they come with a union and
 an intersection operation.
 
 This provides:
