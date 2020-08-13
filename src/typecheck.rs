@@ -1146,15 +1146,12 @@ mod tests {
 
         // We can typecheck any contract
         parse_and_typecheck(
-            "let alwaysTrue = fun l => fun t => if t then t else blame l in
+            "let alwaysTrue = fun l t => if t then t else blame l in
         Promise(#alwaysTrue -> #alwaysTrue, fun x => x)",
         )
         .unwrap();
         // Only if they're named the same way
-        parse_and_typecheck(
-            "Promise(#(fun l => fun t => t) -> #(fun l => fun t => t), fun x => x)",
-        )
-        .unwrap_err();
+        parse_and_typecheck("Promise(#(fun l t => t) -> #(fun l t => t), fun x => x)").unwrap_err();
     }
 
     #[test]
@@ -1166,19 +1163,19 @@ mod tests {
         .unwrap();
 
         parse_and_typecheck(
-            "let f = Promise(forall a. (forall b. a -> b -> a), fun x => fun y => x) in
+            "let f = Promise(forall a. (forall b. a -> b -> a), fun x y => x) in
         Promise(Num, if (f true 3) then (f 2 false) else 3)",
         )
         .unwrap();
 
         parse_and_typecheck(
-            "let f = Promise(forall a. (forall b. b -> b) -> a -> a, fun f => fun x => f x) in
+            "let f = Promise(forall a. (forall b. b -> b) -> a -> a, fun f x => f x) in
             f Promise(forall y. y -> y, fun z => z)",
         )
         .unwrap();
 
         parse_and_typecheck(
-            "let f = Promise(forall a. (forall b. a -> b -> a), fun x => fun y => y) in
+            "let f = Promise(forall a. (forall b. a -> b -> a), fun x y => y) in
             f",
         )
         .unwrap_err();
@@ -1214,7 +1211,7 @@ mod tests {
         .unwrap();
 
         parse_and_typecheck(
-            "let f = Promise(forall a. a -> a, let g = Promise(forall a. (forall b. (b -> (a -> a))), fun y => fun x => x) in g 0) in
+            "let f = Promise(forall a. a -> a, let g = Promise(forall a. (forall b. (b -> (a -> a))), fun y x => x) in g 0) in
             Promise(Num, if (f true) then (f 2) else 3)",
         )
         .unwrap();
@@ -1378,10 +1375,8 @@ mod tests {
     #[test]
     fn seq() {
         parse_and_typecheck("Promise(Num, seq false 1)").unwrap();
-        parse_and_typecheck(
-            "Promise(forall a. (forall b. a -> b -> b), fun x => fun y => seq x y)",
-        )
-        .unwrap();
+        parse_and_typecheck("Promise(forall a. (forall b. a -> b -> b), fun x y => seq x y)")
+            .unwrap();
         parse_and_typecheck("let xDyn = false in let yDyn = 1 in Promise(Dyn, seq xDyn yDyn)")
             .unwrap();
     }
@@ -1404,13 +1399,16 @@ mod tests {
         parse_and_typecheck("Promise(List -> List, fun l => tail l)").unwrap();
         parse_and_typecheck("Promise(List -> Dyn, fun l => head l)").unwrap();
         parse_and_typecheck(
-            "Promise(forall a. (forall b. (a -> b) -> List -> List), fun f => fun l => map f l)",
+            "Promise(forall a. (forall b. (a -> b) -> List -> List), fun f l => map f l)",
         )
         .unwrap();
         parse_and_typecheck("Promise(List -> List -> List, fun l1 => fun l2 => l1 @ l2)").unwrap();
-        parse_and_typecheck("Promise(Num -> List -> Dyn , fun i => fun l => elemAt l i)").unwrap();
+        parse_and_typecheck("Promise(Num -> List -> Dyn , fun i l => elemAt l i)").unwrap();
 
         parse_and_typecheck("Promise(forall a. (List -> a), fun l => head l)").unwrap_err();
-        parse_and_typecheck("Promise(forall a. (forall b. (a -> b) -> List -> b), fun f => fun l => elemAt (map f l) 0)").unwrap_err();
+        parse_and_typecheck(
+            "Promise(forall a. (forall b. (a -> b) -> List -> b), fun f l => elemAt (map f l) 0)",
+        )
+        .unwrap_err();
     }
 }

@@ -83,7 +83,7 @@ pub enum Term {
     /// Wrapped terms are introduced by contracts on polymorphic types. Take the following example:
     ///
     /// ```
-    /// let f = Assume(forall a. forall b. a -> b -> a, fun x => fun y => y) in
+    /// let f = Assume(forall a. forall b. a -> b -> a, fun x y => y) in
     /// f true "a"
     /// ```
     ///

@@ -134,32 +134,32 @@ impl Program {
     /// Built-in contracts to be included in programs.
     // TODO: move this to a Nickel stand-alone file once we have imports
     fn contracts() -> String {
-        "let dyn = fun l => fun t => t in
+        "let dyn = fun l t => t in
 
-        let num = fun l => fun t => if isNum t then t else blame (tag[num] l) in
+        let num = fun l t => if isNum t then t else blame (tag[num] l) in
 
-        let bool = fun l => fun t => if isBool t then t else blame (tag[bool] l) in
+        let bool = fun l t => if isBool t then t else blame (tag[bool] l) in
 
-        let string = fun l => fun t => if isStr t then t else blame (tag[str] l) in
+        let string = fun l t => if isStr t then t else blame (tag[str] l) in
 
-        let list = fun l => fun t => if isList t then t else blame (tag[list] l) in
+        let list = fun l t => if isList t then t else blame (tag[list] l) in
 
-        let func = fun s => fun t => fun l => fun e => 
-  let l = tag[func] l in if isFun e then (fun x => t (goCodom l) (e (s (chngPol (goDom l)) x))) else blame l in
+        let func = fun s t l e =>
+            let l = tag[func] l in
+            if isFun e then (fun x => t (goCodom l) (e (s (chngPol (goDom l)) x)))
+            else blame l in
 
-  let forall_var = fun sy => fun pol => fun l => fun t => let lPol = polarity l in 
-if pol =b lPol then
-  unwrap sy t (blame (tag[unwrp] l))
-else
-  wrap sy t
-in
+        let forall_var = fun sy pol l t =>
+            let lPol = polarity l in
+            if pol =b lPol then unwrap sy t (blame (tag[unwrp] l))
+            else wrap sy t in
 
-let fail = fun l => fun t => blame (tag[fail] l) in
+        let fail = fun l t => blame (tag[fail] l) in
 
-let row_extend = fun contr => fun case => fun l => fun t => 
-        if (case t) then t else contr (tag[NotRowExt] l) t
-in
-".to_string()
+        let row_extend = fun contr case l t =>
+            if (case t) then t else contr (tag[NotRowExt] l) t in
+        "
+        .to_string()
     }
 }
 
@@ -291,7 +291,7 @@ fibo val",
     #[test]
     fn promise_fail() {
         let res = eval_string(
-            "let bool = fun l => fun t => if isBool t then t else blame l in
+            "let bool = fun l t => if isBool t then t else blame l in
 
 Promise(Bool, 5)
             ",
@@ -305,7 +305,7 @@ Promise(Bool, 5)
     #[test]
     fn flat_contract_fail() {
         let res = eval_string(
-            "let alwaysTrue = fun l => fun t => let boolT = Assume(Bool, t) in 
+            "let alwaysTrue = fun l t => let boolT = Assume(Bool, t) in
     if boolT then boolT else blame l in
 Assume(#alwaysTrue, false)
 ",
@@ -318,9 +318,9 @@ Assume(#alwaysTrue, false)
     #[test]
     fn flat_higher_order_contract() {
         let res = eval_string(
-            "let alwaysTrue = fun l => fun t => let boolT = Assume(Bool, t) in 
+            "let alwaysTrue = fun l t => let boolT = Assume(Bool, t) in
     if boolT then boolT else blame l in
-let alwaysFalse = fun l => fun t => let boolT = Assume(Bool, t) in 
+let alwaysFalse = fun l t => let boolT = Assume(Bool, t) in
     if boolT then  blame l else boolT in
 let not = fun b => if b then false else true in
 Assume(#alwaysTrue -> #alwaysFalse, not ) true
@@ -473,8 +473,8 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         );
         assert_eq!(
             eval_string(
-                "let r = mapRec 
-                    (fun y => fun x => if isNum x then x + 1 else 0) 
+                "let r = mapRec
+                    (fun y x => if isNum x then x + 1 else 0)
                     { foo = 1; bar = \"it's lazy\"; }
                 in
                 (r.foo) + (r.bar)"
