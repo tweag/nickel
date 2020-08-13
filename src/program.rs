@@ -599,7 +599,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
     #[test]
     #[should_panic]
     fn merge_record_failure() {
-        eval_string("merge {a=1} {a=2}").unwrap();
+        eval_string("(merge {a=1} {a=2}).a").unwrap();
     }
 
     #[test]
