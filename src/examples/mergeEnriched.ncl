@@ -1,8 +1,8 @@
-let or = Promise(Bool -> Bool -> Bool, fun a => fun b =>
+let or = Promise(Bool -> Bool -> Bool, fun a b =>
     if a then true else b) in
-let and = Promise(Bool -> Bool -> Bool, fun a => fun b =>
+let and = Promise(Bool -> Bool -> Bool, fun a b =>
     if a then (if b then true else false) else false) in
-let oneOrTwo = fun l => fun x =>
+let oneOrTwo = fun l x =>
     if and (isNum x)
            (or (isZero (x + (-1))) (isZero (x + (-2)))) then
         x
