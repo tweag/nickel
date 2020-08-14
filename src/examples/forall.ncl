@@ -1,2 +1,2 @@
-let f = Promise(forall a. (forall b. a -> b ->  a), fun x => fun y => x) in
+let f = Promise(forall a. (forall b. a -> b ->  a), fun x y => x) in
 f

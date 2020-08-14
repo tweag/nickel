@@ -2,6 +2,7 @@ use crate::identifier::Ident;
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp};
 use crate::types::{Types, AbsType};
 use crate::parser::utils::{mk_span, mk_label};
+use std::collections::HashMap;
 use either::*;
 use std::str::FromStr;
 use codespan::FileId;
@@ -16,8 +17,13 @@ SpTerm<Rule>: RichTerm =
     };
 
 RichTerm: RichTerm = {
-    "fun" <p:Pattern> "=>" <t: SpTerm<Term>> =>
-        RichTerm::new(Term::Fun(p, t)),
+    <l: @L> "fun" <ps:Pattern+> "=>" <t: SpTerm<Term>> <r: @R> => {
+        let pos = mk_span(src_id, l, r, offset);
+        ps.into_iter().rev().fold(t, |t, p| RichTerm {
+            term: Box::new(Term::Fun(p, t)),
+            pos: pos.clone() 
+        })
+    },
     "let" <id:Ident> "=" <t1:SpTerm<Term>> "in" <t2:SpTerm<Term>> =>
         RichTerm::new(Term::Let(id, t1, t2)),
     "if" <b:SpTerm<Term>> "then" <t:SpTerm<Term>> "else" <e:SpTerm<Term>> =>
@@ -34,11 +40,20 @@ Applicative: RichTerm = {
     <t1:SpTerm< Applicative>> <t2: SpTerm<Atom>> => RichTerm::new(Term::App(t1, t2)),
     <op: UOp> <t: SpTerm<Atom>> => RichTerm::new(Term::Op1(op, t)),
     <op: BOpPre> <t1: SpTerm<Atom>> <t2: SpTerm<Atom>> => RichTerm::new(Term::Op2(op, t1, t2)),
-    <t: SpTerm<Atom>> "." <id: Ident> => RichTerm::new(Term::Op1(UnaryOp::StaticAccess(id), t)),
-    <t: SpTerm<Atom>> ".$" <t_id: SpTerm<Atom>> => RichTerm::new(Term::Op2(BinaryOp::DynAccess(), t_id, t)),
-    <r: SpTerm<Atom>> "$[" <id: SpTerm<Atom>> "=" <t: SpTerm<Atom>> "]" =>
-        RichTerm::new(Term::Op2(BinaryOp::DynExtend(t), id, r)),
+    SpTerm<RecordOperationChain>,
     SpTerm<Atom>,
+};
+
+RecordOperand: RichTerm = {
+    SpTerm<Atom>,
+    SpTerm<RecordOperationChain>,
+}
+
+RecordOperationChain: RichTerm = {
+    <t: SpTerm<RecordOperand>> "." <id: Ident> => RichTerm::new(Term::Op1(UnaryOp::StaticAccess(id), t)),
+    <t: SpTerm<RecordOperand>> ".$" <t_id: SpTerm<Atom>> => RichTerm::new(Term::Op2(BinaryOp::DynAccess(), t_id, t)),
+    <r: SpTerm<RecordOperand>> "$[" <id: SpTerm<Term>> "=" <t: SpTerm<Term>> "]" =>
+        RichTerm::new(Term::Op2(BinaryOp::DynExtend(t), id, r)),
 };
 
 Atom: RichTerm = {
@@ -58,38 +73,38 @@ Atom: RichTerm = {
     Str => RichTerm::new(Term::Str(<>)),
     Ident => RichTerm::new(Term::Var(<>)),
     "`" <Ident> => RichTerm::new(Term::Enum(<>)),
-    "{" <fields: (RecordField ";")*> "}" => 
-    fields.clone().into_iter().map(|x| x.0).filter_map(
-        |x| match x {Left(_) => None, Right(y) => Some(y)}
-    ).fold(
-        RichTerm::new(Term::Record(
-            fields.clone().into_iter().map(|x| x.0).filter_map(
-                |x| match x {Left(y) => Some(y), Right(_) => None}
-            ).collect()
-        )),
-        | acc, e | {
-            let (id_t, t) = e;
-            RichTerm::new(Term::Op2(
-                BinaryOp::DynExtend(t),
-                id_t,
-                acc
-            ))
-        }
-    ),
-    "[" <terms: (SpTerm<Atom> ",")*> <last: SpTerm<Atom>?> "]" => {
-        let mut terms : Vec<RichTerm> = terms.clone().into_iter().map(|x| x.0).collect();
-        if let Some(t) = last {
-            terms.push(t);
-        }
+    "{" <fields: (RecordField ";")*> <last: RecordField?> "}" => {
+        let mut static_map = HashMap::new();
+        let mut dynamic_fields = Vec::new();
 
+        fields
+            .into_iter()
+            .map(|x| x.0)
+            .chain(last.into_iter())
+            .for_each(|field| match field {
+                Left((id, t)) => { static_map.insert(id, t) ;}
+                Right(t) => dynamic_fields.push(t),
+            });
+
+        let static_rec = RichTerm::new(Term::Record(static_map));
+
+        dynamic_fields.into_iter().fold(static_rec, |rec, field| {
+            let (id_t, t) = field;
+            RichTerm::new(Term::Op2(BinaryOp::DynExtend(t), id_t, rec))
+        })
+    },
+    "[" <terms: (SpTerm<Atom> ",")*> <last: SpTerm<Term>?> "]" => {
+        let terms : Vec<RichTerm> = terms.into_iter()
+            .map(|x| x.0)
+            .chain(last.into_iter()).collect();
         RichTerm::new(Term::List(terms))
     }
 };
 
 RecordField: Either<(Ident, RichTerm), (RichTerm, RichTerm)> = {
-    <id: Ident> "=" <t: SpTerm<Atom>> => 
+    <id: Ident> "=" <t: SpTerm<Term>> => 
         Either::Left((id, t)),
-    "$" <id: SpTerm<Term>> "=" <t: SpTerm<Atom>> => 
+    "$" <id: SpTerm<Term>> "=" <t: SpTerm<Term>> => 
         Either::Right((id, t)),
 }
 

@@ -355,7 +355,7 @@ fn compose_contracts(ty1: Types, ty2: Types) -> Types {
     let c1 = ty1.contract();
     let c2 = ty2.contract();
 
-    // composed = fun l => fun x => c1 l (c2 l x)
+    // composed = fun l x => c1 l (c2 l x)
     let composed = RichTerm::fun(
         "_l".to_string(),
         RichTerm::fun(

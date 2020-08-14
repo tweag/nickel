@@ -1,6 +1,6 @@
 let Y = fun f => (fun x => f (x x)) (fun x => f (x x)) in
 let dec = fun x => x + (-1) in
-let or = fun x => fun y => if x then x else y in
+let or = fun x y => if x then x else y in
 let isEven_ = Y (fun f =>
     (fun x =>
         if (isZero x) then true
@@ -19,7 +19,7 @@ let isDivBy3_ = Y (fun f =>
         )
     )
 ) in
-let toCtr = fun f => fun l => fun x => (
+let toCtr = fun f l x => (
   if (isNum x) then (
     if (f x) then x else blame l)
   else blame l
