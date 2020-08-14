@@ -8,17 +8,16 @@
 //! implement the actual semantics of operators.
 use crate::error::EvalError;
 use crate::eval::Environment;
-use crate::eval::{CallStack, Closure, IdentKind};
+use crate::eval::{CallStack, Closure};
 use crate::identifier::Ident;
 use crate::label::TyPath;
 use crate::merge::merge;
 use crate::position::RawSpan;
 use crate::stack::Stack;
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp};
+use crate::transformations::closurize;
 use simple_counter::*;
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
 
 generate_counter!(FreshVariableCounter, usize);
 
@@ -294,12 +293,7 @@ fn process_unary_operation(
         }
         UnaryOp::MapRec(f) => {
             if let Term::Record(rec) = *t {
-                let fresh_var = format!("_{}", env.len());
-
-                env.insert(
-                    Ident(fresh_var.clone()),
-                    (Rc::new(RefCell::new(f)), IdentKind::Record()),
-                );
+                let f_as_var = closurize(&mut env, f.body, f.env);
 
                 let rec = rec
                     .into_iter()
@@ -308,11 +302,7 @@ fn process_unary_operation(
                         (
                             Ident(s.clone()),
                             Term::App(
-                                Term::App(
-                                    Term::Var(Ident(fresh_var.clone())).into(),
-                                    Term::Str(s.clone()).into(),
-                                )
-                                .into(),
+                                Term::App(f_as_var.clone(), Term::Str(s.clone()).into()).into(),
                                 t.clone(),
                             )
                             .into(),
@@ -602,16 +592,8 @@ fn process_binary_operation(
         BinaryOp::DynExtend(clos) => {
             if let Term::Str(id) = *t1 {
                 if let Term::Record(mut static_map) = *t2 {
-                    // Arnauds trick, make the closure into a fresh variable
-                    // TODO: refactor via closurize() once the PR on merge has landed
-                    let fresh_var = format!("_{}", FreshVariableCounter::next());
-
-                    env2.insert(
-                        Ident(fresh_var.clone()),
-                        (Rc::new(RefCell::new(clos)), IdentKind::Record()),
-                    );
-
-                    match static_map.insert(Ident(id.clone()), Term::Var(Ident(fresh_var)).into()) {
+                    let as_var = closurize(&mut env2, clos.body, clos.env);
+                    match static_map.insert(Ident(id.clone()), as_var) {
                         Some(_) => Err(EvalError::Other(format!("$[ .. ]: tried to extend record with the field {}, but it already exists", id), pos_op)),
                         None => Ok(Closure {
                             body: Term::Record(static_map).into(),
@@ -729,22 +711,14 @@ fn process_binary_operation(
         },
         // This one should not be strict in the first argument (f)
         BinaryOp::ListMap() => {
-            if let Term::List(mut ts) = *t2 {
-                // TODO: refactor via closurize() once the PR on merge has landed
-                let fresh_var = format!("_{}", FreshVariableCounter::next());
-
-                let f_closure = Closure {
-                    body: RichTerm {
+            if let Term::List(ts) = *t2 {
+                let f_as_var = closurize(
+                    &mut env2,
+                    RichTerm {
                         term: t1,
                         pos: pos1,
                     },
-                    env: env1,
-                };
-                let f_as_var: RichTerm = Term::Var(Ident(fresh_var.clone())).into();
-
-                env2.insert(
-                    Ident(fresh_var.clone()),
-                    (Rc::new(RefCell::new(f_closure)), IdentKind::Record()),
+                    env1,
                 );
 
                 let ts = ts

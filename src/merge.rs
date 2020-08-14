@@ -52,15 +52,13 @@
 //! - *Contract check*: merging a `Contract` or a `ContractDefault` with a simple value `t`
 //! evaluates to a contract check, that is an `Assume(..., t)`
 use crate::error::EvalError;
-use crate::eval::{Closure, Environment, IdentKind};
-use crate::identifier::Ident;
+use crate::eval::{Closure, Environment};
 use crate::position::RawSpan;
 use crate::term::{BinaryOp, RichTerm, Term};
+use crate::transformations::closurize;
 use crate::types::{AbsType, Types};
 use simple_counter::*;
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
 
 generate_counter!(FreshVariableCounter, usize);
 
@@ -309,26 +307,6 @@ pub fn merge(
             pos_op,
         )),
     }
-}
-
-/// Pack a term together with an environment as a closure.
-///
-/// Generate a fresh variable, bind it to the corresponding closure `(t,with_env)` in `env`,
-/// and return this variable as a fresh term.
-fn closurize(env: &mut Environment, t: RichTerm, with_env: Environment) -> RichTerm {
-    // To avoid clashing with fresh variables introduced by DynExtend, we add an 'm' in the prefix
-    let var = format!("_m{}", FreshVariableCounter::next());
-    let c = Closure {
-        body: t,
-        env: with_env,
-    };
-
-    env.insert(
-        Ident(var.clone()),
-        (Rc::new(RefCell::new(c)), IdentKind::Record()),
-    );
-
-    Term::Var(Ident(var)).into()
 }
 
 /// Take two terms together with their environment, and return a closure representing their merge.

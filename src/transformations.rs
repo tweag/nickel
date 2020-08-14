@@ -1,5 +1,14 @@
 //! Program transformations.
 
+use crate::eval::{Closure, Environment, IdentKind};
+use crate::identifier::Ident;
+use crate::term::{RichTerm, Term};
+use simple_counter::*;
+use std::cell::RefCell;
+use std::rc::Rc;
+
+generate_counter!(FreshVarCounter, usize);
+
 /// Share normal form.
 ///
 /// Replace the subexpressions of WHNFs that are not functions by thunks, such that they can be
@@ -30,12 +39,9 @@
 /// Newly introduced variables begin with a special character to avoid clashing with user-defined
 /// variables.
 pub mod share_normal_form {
-    use crate::identifier::Ident;
+    use super::fresh_var;
     use crate::term::{RichTerm, Term, UnaryOp};
-    use simple_counter::*;
     use std::collections::HashMap;
-
-    generate_counter!(FreshVariableCounter, usize);
 
     /// Transform a term to a share normal form.
     pub fn transform(rt: &RichTerm) -> RichTerm {
@@ -204,11 +210,6 @@ pub mod share_normal_form {
         }
     }
 
-    /// Generate a new fresh variable which do not clash with user-defined variables.
-    fn fresh_var() -> Ident {
-        Ident(format!("%{}", FreshVariableCounter::next()))
-    }
-
     /// Determine if a subterm of a WHNF should be wrapped in a thunk in order to be shared.
     ///
     /// Sharing is typically useless if the subterm is already a WHNF which can be copied without
@@ -227,4 +228,25 @@ pub mod share_normal_form {
             _ => true,
         }
     }
+}
+
+/// Generate a new fresh variable which do not clash with user-defined variables.
+fn fresh_var() -> Ident {
+    Ident(format!("%{}", FreshVarCounter::next()))
+}
+
+/// Pack a term together with an environment as a closure.
+///
+/// Generate a fresh variable, bind it to the corresponding closure `(t,with_env)` in `env`,
+/// and return this variable as a fresh term.
+pub fn closurize(env: &mut Environment, t: RichTerm, with_env: Environment) -> RichTerm {
+    let var = fresh_var();
+    let c = Closure {
+        body: t,
+        env: with_env,
+    };
+
+    env.insert(var.clone(), (Rc::new(RefCell::new(c)), IdentKind::Record()));
+
+    Term::Var(var).into()
 }
