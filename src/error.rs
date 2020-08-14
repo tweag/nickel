@@ -3,6 +3,7 @@
 //! Define error types for different phases of the execution, together with functions to generate a
 //! [codespan](https://crates.io/crates/codespan-reporting) diagnostic from them.
 use crate::eval::CallStack;
+use crate::identifier::Ident;
 use crate::label;
 use crate::position::RawSpan;
 use crate::term::RichTerm;
@@ -54,6 +55,8 @@ pub enum EvalError {
         /* right operand */ RichTerm,
         /* original merge */ Option<RawSpan>,
     ),
+    /// An unbound identifier was referenced.
+    UnboundIdentifier(Ident, Option<RawSpan>),
     /// Errors occurring rarely enough to not deserve a dedicated variant.
     Other(String, Option<RawSpan>),
 }
@@ -152,17 +155,24 @@ fn label_alt(
     }
 }
 
-/// Create a label from a term, or fallback to annotating the shallow representation of this term
+/// Create a secondary label from an optional span, or fallback to annotating the alternative snippet
+/// `alt_term` if the span is `None`.
+///
+/// See [`label_alt`](fn.label_alt.html).
+fn primary_alt(
+    span_opt: &Option<RawSpan>,
+    alt_term: String,
+    files: &mut Files<String>,
+) -> Label<FileId> {
+    label_alt(span_opt, alt_term, LabelStyle::Primary, files)
+}
+
+/// Create a primary label from a term, or fallback to annotating the shallow representation of this term
 /// if its span is `None`.
 ///
 /// See [`label_alt`](fn.label_alt.html).
 fn primary_term(term: &RichTerm, files: &mut Files<String>) -> Label<FileId> {
-    label_alt(
-        &term.pos,
-        (*term.term).shallow_repr(),
-        LabelStyle::Primary,
-        files,
-    )
+    primary_alt(&term.pos, term.as_ref().shallow_repr(), files)
 }
 
 /// Create a secondary label from an optional span, or fallback to annotating the alternative snippet
@@ -302,6 +312,10 @@ impl ToDiagnostic<FileId> for EvalError {
                     .with_message("Non mergeable terms")
                     .with_labels(labels)
             }
+            EvalError::UnboundIdentifier(Ident(ident), span_opt) => Diagnostic::error()
+                .with_message("Unbound identifier")
+                .with_labels(vec![primary_alt(span_opt, String::from(ident), files)
+                    .with_message("this identifier is unbound")]),
             EvalError::Other(msg, span_opt) => {
                 let labels = span_opt
                     .as_ref()
