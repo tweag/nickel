@@ -54,7 +54,7 @@ The motivating use cases are in particular:
 - The [Nix package manager](https://nixos.org/): Nix is a declarative package
     manager using its own language for specifying packages. Nickel is inspired
     in part by the Nix language, while trying to overcome some of its
-    limitation. It could be used instead of the Nix language.
+    limitations. It could be used instead of the Nix language.
 - (Cloud) infrastructure as code: infrastructure is becoming increasingly
     complex, requiring a rigorous approach to deployment, modification and
     configuration. This is where a declarative approach also shines, as adopted
