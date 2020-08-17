@@ -17,7 +17,7 @@ Nickel's important traits are:
 - **Functional**: the basic building blocks are functions. They are first-class
     citizens, which can be passed around, called and composed.
 - **Gradual typing**: static types improve code quality, serve as a
-    documentation and eliminate bugs early. On one hand, code specific to a
+    documentation and eliminate bugs early. On the one hand, code specific to a
     particular configuration does not depend on external inputs and will always
     be evaluated to the same value, thus any type error will show up at run time
     anyway. Also, some JSON can be hard to type.  There, types are only a
