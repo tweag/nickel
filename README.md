@@ -10,7 +10,7 @@ modularity, but you can do just fine without using it.
 
 Nickel's important traits are:
 
-- **Lightweight**: Nickel aims at being embeddable in a bigger software. As
+- **Lightweight**: Nickel aims at being embeddable into other projects. As
     such, a simple and lightweight minimal interpreter should be reasonably
     simple to implement.  The reference interpreter should also be easily
     callable from various programming languages.
