@@ -46,7 +46,7 @@ usual to solve a hard specific problem.
 
 ## Use cases
 
-Nickel should fit any situation when you need to generate a complex
+Nickel should fit any situation where you need to generate a complex
 configuration, be it for a software, a machine, a whole infrastructure, or a
 build system.
 
