@@ -15,7 +15,7 @@ use crate::merge::merge;
 use crate::position::RawSpan;
 use crate::stack::Stack;
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp};
-use crate::transformations::closurize;
+use crate::transformations::Closurizable;
 use simple_counter::*;
 use std::collections::HashMap;
 
@@ -293,7 +293,7 @@ fn process_unary_operation(
         }
         UnaryOp::MapRec(f) => {
             if let Term::Record(rec) = *t {
-                let f_as_var = closurize(&mut env, f.body, f.env);
+                let f_as_var = f.body.closurize(&mut env, f.env);
 
                 let rec = rec
                     .into_iter()
@@ -592,7 +592,7 @@ fn process_binary_operation(
         BinaryOp::DynExtend(clos) => {
             if let Term::Str(id) = *t1 {
                 if let Term::Record(mut static_map) = *t2 {
-                    let as_var = closurize(&mut env2, clos.body, clos.env);
+                    let as_var = clos.body.closurize(&mut env2, clos.env);
                     match static_map.insert(Ident(id.clone()), as_var) {
                         Some(_) => Err(EvalError::Other(format!("$[ .. ]: tried to extend record with the field {}, but it already exists", id), pos_op)),
                         None => Ok(Closure {
@@ -712,14 +712,11 @@ fn process_binary_operation(
         // This one should not be strict in the first argument (f)
         BinaryOp::ListMap() => {
             if let Term::List(ts) = *t2 {
-                let f_as_var = closurize(
-                    &mut env2,
-                    RichTerm {
-                        term: t1,
-                        pos: pos1,
-                    },
-                    env1,
-                );
+                let f = RichTerm {
+                    term: t1,
+                    pos: pos1,
+                };
+                let f_as_var = f.closurize(&mut env2, env1);
 
                 let ts = ts
                     .into_iter()

@@ -3,6 +3,7 @@
 use crate::eval::{Closure, Environment, IdentKind};
 use crate::identifier::Ident;
 use crate::term::{RichTerm, Term};
+use crate::types::{AbsType, Types};
 use simple_counter::*;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -235,18 +236,41 @@ fn fresh_var() -> Ident {
     Ident(format!("%{}", FreshVarCounter::next()))
 }
 
-/// Pack a term together with an environment as a closure.
+/// Structures which can be packed together with their environment as a closure.
 ///
-/// Generate a fresh variable, bind it to the corresponding closure `(t,with_env)` in `env`,
-/// and return this variable as a fresh term.
-pub fn closurize(env: &mut Environment, t: RichTerm, with_env: Environment) -> RichTerm {
-    let var = fresh_var();
-    let c = Closure {
-        body: t,
-        env: with_env,
-    };
+/// The typical implementer is [`RichTerm`](../term/enum.RichTerm.html), but structures containing
+/// terms can also be closurizable, such as the contract in a [`Types`](../types/typ.Types.html).
+/// In this case, the inner term is closurized.
+pub trait Closurizable {
+    /// Pack a closurizable together with its environment `with_env` as a closure in the main
+    /// environment `env`.
+    fn closurize(self, env: &mut Environment, with_env: Environment) -> Self;
+}
 
-    env.insert(var.clone(), (Rc::new(RefCell::new(c)), IdentKind::Record()));
+impl Closurizable for RichTerm {
+    /// Pack a term together with an environment as a closure.
+    ///
+    /// Generate a fresh variable, bind it to the corresponding closure `(t,with_env)` in `env`,
+    /// and return this variable as a fresh term.
+    fn closurize(self, env: &mut Environment, with_env: Environment) -> RichTerm {
+        let var = fresh_var();
+        let c = Closure {
+            body: self,
+            env: with_env,
+        };
 
-    Term::Var(var).into()
+        env.insert(var.clone(), (Rc::new(RefCell::new(c)), IdentKind::Record()));
+
+        Term::Var(var).into()
+    }
+}
+
+impl Closurizable for Types {
+    /// Pack the contract of a type together with an environment as a closure.
+    ///
+    /// Extract the underlying contract, closurize it and wrap it back as a flat type (an opaque
+    /// type defined by a custom contract).
+    fn closurize(self, env: &mut Environment, with_env: Environment) -> Types {
+        Types(AbsType::Flat(self.contract().closurize(env, with_env)))
+    }
 }

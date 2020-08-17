@@ -55,7 +55,7 @@ use crate::error::EvalError;
 use crate::eval::{Closure, Environment};
 use crate::position::RawSpan;
 use crate::term::{BinaryOp, RichTerm, Term};
-use crate::transformations::closurize;
+use crate::transformations::Closurizable;
 use crate::types::{AbsType, Types};
 use simple_counter::*;
 use std::collections::HashMap;
@@ -184,27 +184,41 @@ pub fn merge(
         }
         (Term::DefaultValue(t1), Term::ContractWithDefault(ty, lbl, t2))
         | (Term::ContractWithDefault(ty, lbl, t2), Term::DefaultValue(t1)) => {
-            let Closure { body, env } = mk_merge_closure(t1, env1, t2, env2);
-            let body = Term::ContractWithDefault(ty, lbl, body).into();
+            let Closure { body, mut env } = mk_merge_closure(t1, env1, t2, env2.clone());
+            let ty_closure = ty.closurize(&mut env, env2);
+            let body = Term::ContractWithDefault(ty_closure, lbl, body).into();
             Ok(Closure { body, env })
         }
         (Term::ContractWithDefault(ty1, lbl1, t1), Term::ContractWithDefault(ty2, _lbl2, t2)) => {
             //FIXME: The choice of lbl1 is totally arbitrary, to please the compiler. Ideally
             //labels should also be mergeable, but the current PR is already getting too big, and
             //this is left for future work
-            let Closure { body, env } = mk_merge_closure(t1, env1, t2, env2);
-            let body = Term::ContractWithDefault(compose_contracts(ty1, ty2), lbl1, body).into();
+            let Closure { body, mut env } = mk_merge_closure(t1, env1.clone(), t2, env2.clone());
+            let body = Term::ContractWithDefault(
+                merge_types_closure(&mut env, ty1, env1, ty2, env2),
+                lbl1,
+                body,
+            )
+            .into();
             Ok(Closure { body, env })
         }
-        // Should we keep the environment of contracts ?
-        (Term::DefaultValue(t), Term::Contract(ty, lbl)) => Ok(Closure {
-            body: Term::ContractWithDefault(ty, lbl, t).into(),
-            env: env1,
-        }),
-        (Term::Contract(ty, lbl), Term::DefaultValue(t)) => Ok(Closure {
-            body: Term::ContractWithDefault(ty, lbl, t).into(),
-            env: env2,
-        }),
+        // We need to keep the environment of contracts as well: custom contracts may use variables
+        // from the environment, and even standard contracts need access to builtins contracts (see
+        // issue https://github.com/tweag/nickel/issues/117)
+        (Term::DefaultValue(t), Term::Contract(ty, lbl)) => {
+            let mut env = HashMap::new();
+            let t_closure = t.closurize(&mut env, env1);
+            let ty_closure = ty.closurize(&mut env, env2);
+            let body = Term::ContractWithDefault(ty_closure, lbl, t_closure).into();
+            Ok(Closure { body, env })
+        }
+        (Term::Contract(ty, lbl), Term::DefaultValue(t)) => {
+            let mut env = HashMap::new();
+            let ty_closure = ty.closurize(&mut env, env1);
+            let t_closure = t.closurize(&mut env, env2);
+            let body = Term::ContractWithDefault(ty_closure, lbl, t_closure).into();
+            Ok(Closure { body, env })
+        }
         (Term::DefaultValue(_), t) => {
             let body = RichTerm {
                 term: Box::new(t),
@@ -220,42 +234,56 @@ pub fn merge(
             Ok(Closure { body, env: env1 })
         }
         // Contracts merging
-        (Term::Contract(ty1, lbl1), Term::Contract(ty2, _lbl2)) => Ok(Closure {
+        (Term::Contract(ty1, lbl1), Term::Contract(ty2, _lbl2)) => {
             //FIXME: The choice of lbl1 is totally arbitrary, to please the compiler. Ideally
             //labels should also be mergeable, but the current PR is already getting too big, and
             //this is left for future work
-            body: Term::Contract(compose_contracts(ty1, ty2), lbl1).into(),
-            env: HashMap::new(),
-        }),
+            let mut env = HashMap::new();
+            let body =
+                Term::Contract(merge_types_closure(&mut env, ty1, env1, ty2, env2), lbl1).into();
+            Ok(Closure { body, env })
+        }
         (Term::Contract(ty1, lbl1), Term::ContractWithDefault(ty2, _lbl2, t)) => {
             //FIXME: The choice of lbl1 is totally arbitrary, to please the compiler. Ideally
             //labels should also be mergeable, but the current PR is already getting too big, and
             //this is left for future work
-            let body = Term::ContractWithDefault(compose_contracts(ty1, ty2), lbl1, t).into();
-            Ok(Closure { body, env: env2 })
+            let mut env = HashMap::new();
+            let ty_closure = merge_types_closure(&mut env, ty1, env1, ty2, env2.clone());
+            let t_closure = t.closurize(&mut env, env2);
+            let body = Term::ContractWithDefault(ty_closure, lbl1, t_closure).into();
+            Ok(Closure { body, env })
         }
         (Term::ContractWithDefault(ty1, lbl1, t), Term::Contract(ty2, _lbl2)) => {
             //FIXME: The choice of lbl1 is totally arbitrary, to please the compiler. Ideally
             //labels should also be mergeable, but the current PR is already getting too big, and
             //this is left for future work
-            let body = Term::ContractWithDefault(compose_contracts(ty1, ty2), lbl1, t).into();
-            Ok(Closure { body, env: env1 })
+            let mut env = HashMap::new();
+            let ty_closure = merge_types_closure(&mut env, ty1, env1.clone(), ty2, env2);
+            let t_closure = t.closurize(&mut env, env1);
+            let body = Term::ContractWithDefault(ty_closure, lbl1, t_closure).into();
+            Ok(Closure { body, env })
         }
         (Term::Contract(ty, lbl), t) | (Term::ContractWithDefault(ty, lbl, _), t) => {
+            let mut env = HashMap::new();
             let t = RichTerm {
                 term: Box::new(t),
                 pos: pos2,
             };
-            let body = Term::Assume(ty, lbl, t).into();
-            Ok(Closure { body, env: env2 })
+            let ty_closure = ty.closurize(&mut env, env1);
+            let t_closure = t.closurize(&mut env, env2);
+            let body = Term::Assume(ty_closure, lbl, t_closure).into();
+            Ok(Closure { body, env })
         }
         (t, Term::Contract(ty, lbl)) | (t, Term::ContractWithDefault(ty, lbl, _)) => {
+            let mut env = HashMap::new();
             let t = RichTerm {
                 term: Box::new(t),
                 pos: pos1,
             };
-            let body = Term::Assume(ty, lbl, t).into();
-            Ok(Closure { body, env: env1 })
+            let t_closure = t.closurize(&mut env, env1);
+            let ty_closure = ty.closurize(&mut env, env2);
+            let body = Term::Assume(ty_closure, lbl, t_closure).into();
+            Ok(Closure { body, env })
         }
         // Merge put together the fields of records, and recursively merge
         // fields that are present in both terms
@@ -270,11 +298,11 @@ pub fn merge(
             let (mut left, mut center, mut right) = hashmap::split(m1, m2);
 
             for (field, t) in left.drain() {
-                m.insert(field, closurize(&mut env, t, env1.clone()));
+                m.insert(field, t.closurize(&mut env, env1.clone()));
             }
 
             for (field, t) in right.drain() {
-                m.insert(field, closurize(&mut env, t, env2.clone()));
+                m.insert(field, t.closurize(&mut env, env2.clone()));
             }
 
             for (field, (t1, t2)) in center.drain() {
@@ -282,8 +310,8 @@ pub fn merge(
                     field,
                     Term::Op2(
                         BinaryOp::Merge(),
-                        closurize(&mut env, t1, env1.clone()),
-                        closurize(&mut env, t2, env2.clone()),
+                        t1.closurize(&mut env, env1.clone()),
+                        t2.closurize(&mut env, env2.clone()),
                     )
                     .into(),
                 );
@@ -313,42 +341,56 @@ pub fn merge(
 fn mk_merge_closure(t1: RichTerm, env1: Environment, t2: RichTerm, env2: Environment) -> Closure {
     let mut env = HashMap::new();
 
-    let t = Term::Op2(
+    let body = Term::Op2(
         BinaryOp::Merge(),
-        closurize(&mut env, t1, env1),
-        closurize(&mut env, t2, env2),
+        t1.closurize(&mut env, env1),
+        t2.closurize(&mut env, env2),
     )
     .into();
 
-    Closure { body: t, env }
+    Closure { body, env }
 }
 
-/// Return a type which contract is the composed of the contracts of `ty1` and `ty2`.
+/// Compose the contract (as terms) `c1` and `c2`, that is construct the term `fun l x => c1 l (c2
+/// l x)`, and return the corresponding type.
 ///
-/// This type corresponds to the intersection of `ty1` and `ty2` for base types. This function is
-/// not correct for the intersection of higher-order contracts, which is way more involved (see the
-/// [corresponding notes](https://github.com/tweag/nickel/blob/master/notes/intersection-and-union-types.md)
-/// in the repository).
-fn compose_contracts(ty1: Types, ty2: Types) -> Types {
-    let c1 = ty1.contract();
-    let c2 = ty2.contract();
-
-    // composed = fun l x => c1 l (c2 l x)
-    let composed = RichTerm::fun(
-        "_l".to_string(),
+/// This type corresponds to the intersection of the types associated to `c1` and `c2`.  This
+/// function is not correct for the intersection of higher-order contracts, which is way more
+/// involved (see the [corresponding
+/// notes](https://github.com/tweag/nickel/blob/master/notes/intersection-and-union-types.md) in
+/// the repository).
+fn merge_contracts(c1: RichTerm, c2: RichTerm) -> Types {
+    let contract = RichTerm::fun(
+        "l".to_string(),
         RichTerm::fun(
-            "_x".to_string(),
+            "x".to_string(),
             RichTerm::app(
-                RichTerm::app(c1, RichTerm::var("_l".to_string())),
+                RichTerm::app(c1, RichTerm::var("l".to_string())),
                 RichTerm::app(
-                    RichTerm::app(c2, RichTerm::var("_l".to_string())),
-                    RichTerm::var("_x".to_string()),
+                    RichTerm::app(c2, RichTerm::var("l".to_string())),
+                    RichTerm::var("x".to_string()),
                 ),
             ),
         ),
     );
 
-    Types(AbsType::Flat(composed))
+    Types(AbsType::Flat(contract.into()))
+}
+
+/// [Closurize](../transformations/trait.Closurizable.html) two types with their respective
+/// environment and merge them by composing their underlying contracts.
+///
+/// See [`merge_contracts`](./fn.merge_contracts.html).
+fn merge_types_closure(
+    env: &mut Environment,
+    ty1: Types,
+    env1: Environment,
+    ty2: Types,
+    env2: Environment,
+) -> Types {
+    let c1 = ty1.contract().closurize(env, env1);
+    let c2 = ty2.contract().closurize(env, env2);
+    merge_contracts(c1, c2)
 }
 
 pub mod hashmap {
