@@ -93,7 +93,7 @@ perks:
 The second motivation for a non fully static type system is that some code may
 be hard to type. JSON is a de-facto standard format for configuration and Nickel
 aims at being straightforwardly convertible to and from JSON. If it were to be
-fully statically typed, it would have to type things like heterogenuous lists:
+fully statically typed, it would have to type things like heterogeneous lists:
 `[{ field: 1 }, { differentField: 2}]`, which is doable but not trivial (see the
 [comparison with Dhall](#Dhall:-powerful-type-system)). Nickel made the choice
 of offering typing capabilities for common idioms, but when the type system
