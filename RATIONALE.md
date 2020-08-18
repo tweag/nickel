@@ -14,7 +14,7 @@ yet expressive language which is particularly well fitted to build programmable
 configurations, and that although other good solutions existed, no one was
 entirely satisfying for our use-cases (mainly Nix, cloud infrastructure and
 build systems). Let's review the design choices of Nickel, why they were made,
-and how do they compare with the choices of the four aforementioned
+and how they compare with the choices of the four aforementioned
 alternatives.
 
 ## Table of contents
