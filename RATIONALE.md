@@ -117,7 +117,7 @@ In the following example,
 the configuration language has no reason to suspect that `id` and `baseURL`
 contents have been mistakingly swapped. It would need to be aware of the fact
 that `id` should be an integer and `baseURL` a string. Surely, an error will
-eventually pop up downstream in the pipeline, but how and when ? Will the bug be
+eventually pop up downstream in the pipeline, but how and when? Will the bug be
 easy to track down if the data has gone through several transformations, inside
 the program itself or later in the pipeline ?  Using types, the generating
 language is no more oblivious to these external schemas and can model them
