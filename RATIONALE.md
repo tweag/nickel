@@ -50,7 +50,7 @@ and called at will.
 ### Typing
 One recurring difference between Nickel and other configuration languages is
 that Nickel has a static type system. The trade-offs of static typing for
-configurations are different that in the case of a general purpose programming
+configurations are different than in the case of a general purpose programming
 language.
 
 #### Reusable versus specific code
