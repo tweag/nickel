@@ -86,7 +86,7 @@ perks:
 - You can start with a totally untyped codebase and gradually (hence the
     name) type it parts by parts.
 - Nickel automatically insert checks at the boundary between the typed and the
-    untyped world to early report type mismatches.
+    untyped world to report type mismatches early.
 
 #### Typing JSON
 
