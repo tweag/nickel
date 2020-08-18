@@ -231,7 +231,7 @@ used as temporary values in such code, for example the anonymous function in
 `map (fun x => x ++ ".jpg") baseFilesList`, require type annotations in Dhall.
 
 Another point is that code is sometimes difficult to type, as raised in [typing
-JSON](#typing-json). Typically, Dhall lists must be homogenuous: all elements
+JSON](#typing-json). Typically, Dhall lists must be homogeneous: all elements
 must have the same type. In particular, you can't represent directly the
 following list of objects with different structure, which is valid JSON `[{a:
 1}, {b: 2}]`. One has to write:
