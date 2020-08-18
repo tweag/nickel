@@ -1,7 +1,7 @@
 Why Nickel ?
 ============
 
-There already exists quite a few languages with a similar purpose to Nickel:
+There already exist quite a few languages with a similar purpose to Nickel:
 [CUE](https://cuelang.org/), [Dhall](https://dhall-lang.org/),
 [Jsonnet](https://jsonnet.org/),
 [Starlark](https://docs.bazel.build/versions/master/skylark/language.html), to
