@@ -87,16 +87,6 @@ impl Stack {
         Stack::count(self, Marker::is_arg)
     }
 
-    /// Count the number of thunks at the top of the stack.
-    pub fn count_thunks(&self) -> usize {
-        Stack::count(self, Marker::is_thunk)
-    }
-
-    /// Count the number of operation continuation at the top of the stack.
-    pub fn count_conts(&self) -> usize {
-        Stack::count(self, Marker::is_cont)
-    }
-
     pub fn push_arg(&mut self, arg: Closure, pos: Option<RawSpan>) {
         self.0.push(Marker::Arg(arg, pos))
     }
@@ -141,6 +131,16 @@ impl Stack {
             _ => None,
         }
     }
+
+    /// Check if the top element is an argument.
+    pub fn is_top_thunk(&self) -> bool {
+        self.0.last().map(Marker::is_thunk).unwrap_or(false)
+    }
+
+    /// Check if the top element is an operation continuation.
+    pub fn is_top_cont(&self) -> bool {
+        self.0.last().map(Marker::is_cont).unwrap_or(false)
+    }
 }
 
 #[cfg(test)]
@@ -148,6 +148,18 @@ mod tests {
     use super::*;
     use crate::term::{Term, UnaryOp};
     use std::rc::Rc;
+
+    impl Stack {
+        /// Count the number of thunks at the top of the stack.
+        pub fn count_thunks(&self) -> usize {
+            Stack::count(self, Marker::is_thunk)
+        }
+
+        /// Count the number of operation continuation at the top of the stack.
+        pub fn count_conts(&self) -> usize {
+            Stack::count(self, Marker::is_cont)
+        }
+    }
 
     fn some_closure() -> Closure {
         Closure::atomic_closure(Term::Bool(true).into())
