@@ -237,6 +237,60 @@ impl Term {
             | Term::Assume(_, _, _) => String::from("<unevaluated>"),
         }
     }
+
+    /// Determine if a term is in evaluated from, called weak head normal form (WHNF).
+    pub fn is_whnf(&self) -> bool {
+        match self {
+            Term::Bool(_)
+            | Term::Num(_)
+            | Term::Str(_)
+            | Term::Fun(_, _)
+            | Term::Lbl(_)
+            | Term::Enum(_)
+            | Term::Record(_)
+            | Term::List(_)
+            | Term::Sym(_) => true,
+            Term::Let(_, _, _)
+            | Term::App(_, _)
+            | Term::Var(_)
+            | Term::Op1(_, _)
+            | Term::Op2(_, _, _)
+            | Term::Promise(_, _, _)
+            | Term::Assume(_, _, _)
+            | Term::Wrapped(_, _)
+            | Term::Contract(_, _)
+            | Term::DefaultValue(_)
+            | Term::ContractWithDefault(_, _, _)
+            | Term::Docstring(_, _) => false,
+        }
+    }
+
+    /// Determine if a term is an enriched value.
+    pub fn is_enriched(&self) -> bool {
+        match self {
+            Term::Contract(_, _)
+            | Term::DefaultValue(_)
+            | Term::ContractWithDefault(_, _, _)
+            | Term::Docstring(_, _) => true,
+            Term::Bool(_)
+            | Term::Num(_)
+            | Term::Str(_)
+            | Term::Fun(_, _)
+            | Term::Lbl(_)
+            | Term::Enum(_)
+            | Term::Record(_)
+            | Term::List(_)
+            | Term::Sym(_)
+            | Term::Wrapped(_, _)
+            | Term::Let(_, _, _)
+            | Term::App(_, _)
+            | Term::Var(_)
+            | Term::Op1(_, _)
+            | Term::Op2(_, _, _)
+            | Term::Promise(_, _, _)
+            | Term::Assume(_, _, _) => false,
+        }
+    }
 }
 
 /// Primitive unary operators.

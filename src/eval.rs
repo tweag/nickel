@@ -132,14 +132,12 @@ impl Closure {
     }
 }
 
-/// Return true if a term is in evaluated form (WHNF).
+/// Determine if a thunk is worth being put on the stack for future update.
 ///
-/// Used by [eval](fn.eval.html) to decide if a thunk requires an update: indeed, if the content of
-/// a variable is already an evaluated term, it is useless to update it, and we do not need to put
-/// the corresponding thunk on the stack.
-fn is_value(_term: &Term) -> bool {
-    //TODO
-    false
+/// Typically, WHNFs and enriched values will not be evaluated to a simpler expression and are not
+/// worth updating.
+fn should_update(t: &Term) -> bool {
+    !t.is_whnf() && !t.is_enriched()
 }
 
 /// The main loop of evaluation.
@@ -169,7 +167,7 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                     .remove(&x)
                     .ok_or(EvalError::UnboundIdentifier(x.clone(), pos.clone()))?;
                 std::mem::drop(env); // thunk may be a 1RC pointer
-                if !is_value(&thunk.borrow().body.term) {
+                if should_update(&thunk.borrow().body.term) {
                     stack.push_thunk(Rc::downgrade(&thunk));
                 }
                 call_stack.push(StackElem::Var(id_kind, x, pos));
@@ -330,7 +328,6 @@ mod tests {
     use super::*;
     use crate::label::{Label, TyPath};
     use crate::term::{BinaryOp, UnaryOp};
-    use crate::types::{AbsType, Types};
     use codespan::Files;
 
     fn mk_label() -> Label {
