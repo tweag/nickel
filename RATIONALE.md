@@ -72,7 +72,7 @@ On the other hand, reusable code may be called on infinitely many different inpu
 ```
 let f x = fun x => if x < 1000 then x + 1 else x ++ 2
 ```
-In this contrived but illustrative example, `f` can work fine on thousand
+In this contrived but illustrative example, `f` can work fine on a thousand
 inputs, but fails on the next one. Functions in general can never be tested
 exhaustively.  Meanwhile, static typing would catch the typo `x ++ 2` even
 before the first usage.
