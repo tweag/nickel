@@ -19,7 +19,8 @@
 use crate::identifier::Ident;
 use crate::label::Label;
 use crate::position::RawSpan;
-use crate::types::Types;
+use crate::types::{AbsType, Types};
+use codespan::FileId;
 use std::collections::HashMap;
 
 /// The AST of a Nickel expression.
@@ -118,6 +119,11 @@ pub enum Term {
 
     /// A term together with its documentation string. Enriched value.
     Docstring(String, RichTerm),
+
+    /// An unresolved import.
+    Import(String),
+    /// A resolved import (which has already been loaded and parsed).
+    ResolvedImport(FileId),
 }
 
 impl Term {
@@ -150,7 +156,16 @@ impl Term {
                 func(t2)
             }
 
-            Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | Sym(_) | Enum(_) | Contract(_, _) => {}
+            Bool(_)
+            | Num(_)
+            | Str(_)
+            | Lbl(_)
+            | Var(_)
+            | Sym(_)
+            | Enum(_)
+            | Contract(_, _)
+            | Import(_)
+            | ResolvedImport(_) => {}
             Fun(_, ref mut t)
             | Op1(_, ref mut t)
             | Promise(_, _, ref mut t)
@@ -201,7 +216,9 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::Promise(_, _, _)
-            | Term::Assume(_, _, _) => None,
+            | Term::Assume(_, _, _)
+            | Term::Import(_)
+            | Term::ResolvedImport(_) => None,
         }
         .map(|s| String::from(s))
     }
@@ -234,7 +251,9 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::Promise(_, _, _)
-            | Term::Assume(_, _, _) => String::from("<unevaluated>"),
+            | Term::Assume(_, _, _)
+            | Term::Import(_)
+            | Term::ResolvedImport(_) => String::from("<unevaluated>"),
         }
     }
 
@@ -261,7 +280,9 @@ impl Term {
             | Term::Contract(_, _)
             | Term::DefaultValue(_)
             | Term::ContractWithDefault(_, _, _)
-            | Term::Docstring(_, _) => false,
+            | Term::Docstring(_, _)
+            | Term::Import(_)
+            | Term::ResolvedImport(_) => false,
         }
     }
 
@@ -288,7 +309,9 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::Promise(_, _, _)
-            | Term::Assume(_, _, _) => false,
+            | Term::Assume(_, _, _)
+            | Term::Import(_)
+            | Term::ResolvedImport(_) => false,
         }
     }
 }

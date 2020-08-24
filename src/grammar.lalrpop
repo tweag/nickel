@@ -28,6 +28,7 @@ RichTerm: RichTerm = {
         RichTerm::new(Term::Let(id, t1, t2)),
     "if" <b:SpTerm<Term>> "then" <t:SpTerm<Term>> "else" <e:SpTerm<Term>> =>
         RichTerm::app(RichTerm::app(RichTerm::new(Term::Op1(UnaryOp::Ite(), b)), t), e),
+    "import" <s: Str> => RichTerm::new(Term::Import(s)),
     SpTerm<Operation>    
 };
 
