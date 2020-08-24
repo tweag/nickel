@@ -9,9 +9,10 @@
 //! the Nickel abstract machine. They are automatically inserted when evaluating terms like
 //! `Assume(type, term)`. They are currently just being pasted at the beginning of the input, which
 //! is bad, but this will be corrected once we have settled on and implemented imports.
-use crate::error::{Error, ToDiagnostic};
+use crate::error::{Error, ImportError, ToDiagnostic};
 use crate::eval;
 use crate::parser;
+use crate::position::RawSpan;
 use crate::term::{RichTerm, Term};
 use crate::transformations;
 use crate::typecheck::type_check;
@@ -36,8 +37,60 @@ pub struct Program {
     /// The file database holding the content of the program source plus potential imports
     /// made by the program (imports will be supported in a near future).
     files: Files<String>,
-    /// Parsed terms corresponding to the entries of the file database.
-    parsed: HashMap<FileId, RichTerm>,
+    /// Cache storing the id of files that are already stored in the database.
+    file_cache: HashMap<String, FileId>,
+    /// Cache storing parsed terms corresponding to the entries of the file database.
+    term_cache: HashMap<FileId, RichTerm>,
+}
+
+/// Return status indicating if an import has been resolved from a file (first encounter), or was
+/// retrieved from the cache.
+///
+/// See [`resolve`](./fn.resolve.html).
+#[derive(Debug, PartialEq)]
+pub enum ResolvedTerm {
+    FromFile(RichTerm),
+    FromCache(),
+}
+
+/// Abstract the access to imported files and the import cache. Used by the evaluator, the
+/// typechecker and at [import resolution](../transformations/mod.import_resolution.html) phase.
+///
+/// The standard implementation use 2 caches, the file cache for raw contents and the term cache
+/// for parsed contents, mirroring the 2 steps when resolving an import:
+/// 1. When an import is encountered for the first time, the content of the corresponding file is
+///    read and stored in the file cache (consisting of the file database plus a map between paths
+///    and ids in the database). The content is parsed, and this term is queued somewhere so that
+///    it can undergo the standard [transformations](../transformations/index.html) first, but is
+///    not stored in the term cache yet.
+/// 2. When it is finally processed, the term cache is updated with the transformed term.
+pub trait ImportResolver {
+    /// Resolve an import.
+    ///
+    /// Read and store the content of an import, put it in the file cache (or get it from there if
+    /// it is cached), then parse it and return the corresponding term and file id.
+    ///
+    /// The term and the path are provided only if the import is processed for the first time.
+    /// Indeed, at import resolution phase, the term of an import encountered for the first time is
+    /// queued to be processed (e.g. having its own imports resolved). The path is needed to
+    /// resolve nested imports relatively to this parent. Only after this processing the term is
+    /// inserted back in the cache via [`insert`](#tymethod.insert). On the other hand, if it has
+    /// been resolved before, it is already transformed in the cache and do not need further
+    /// processing.
+    fn resolve(
+        &mut self,
+        path: &String,
+        pos: &Option<RawSpan>,
+    ) -> Result<(ResolvedTerm, FileId), ImportError>;
+
+    /// Insert an entry in the term cache after transformation.
+    fn insert(&mut self, file_id: FileId, term: RichTerm);
+
+    /// Get a resolved import from the term cache.
+    fn get(&self, file_id: FileId) -> Option<RichTerm>;
+
+    /// Get a file id from the file cache.
+    fn get_id(&self, path: &String) -> Option<FileId>;
 }
 
 impl Program {
@@ -67,46 +120,51 @@ impl Program {
             include_contracts: true,
             main_id,
             files,
-            parsed: HashMap::new(),
+            file_cache: HashMap::new(),
+            term_cache: HashMap::new(),
         })
     }
 
     /// Parse if necessary, typecheck and then evaluate the program.
     pub fn eval(&mut self) -> Result<Term, Error> {
-        let t = self.parse().map_err(|msg| Error::ParseError(msg))?;
-        println!("Typechecked: {:?}", type_check(t.as_ref()));
-        let t = transformations::share_normal_form::transform(&t);
-        eval::eval(t).map_err(|e| e.into())
+        let t = self
+            .parse_with_cache(self.main_id)
+            .map_err(|msg| Error::ParseError(msg))?;
+        let t = transformations::transform(t, self).map_err(|err| Error::ImportError(err))?;
+        println!("Typechecked: {:?}", type_check(t.as_ref(), self));
+        eval::eval(t, self).map_err(|e| e.into())
     }
 
-    /// Parse the program source, or just retrieve it from the dictionary it if has already been
-    /// parsed.
-    fn parse(&mut self) -> Result<RichTerm, String> {
-        if self.parsed.get(&self.main_id).is_none() {
-            let mut buf = self.files.source(self.main_id).clone();
-            if self.include_contracts {
-                // TODO get rid of this once we have imports
-                buf.insert_str(0, &Self::contracts());
-            }
-
-            let offset = if self.include_contracts {
-                Self::contracts().len()
-            } else {
-                0
-            };
-            match parser::grammar::TermParser::new().parse(&self.main_id, offset, &buf) {
-                Ok(t) => self.parsed.insert(self.main_id, t),
-                Err(e) => {
-                    return Err(format!("{}", e));
-                }
-            };
+    /// Parse a source file. Do not try to get it from the cache, and do not populate the cache at
+    /// the end either.
+    fn parse(&mut self, file_id: FileId) -> Result<RichTerm, String> {
+        let mut buf = self.files.source(file_id).clone();
+        if self.include_contracts {
+            // TODO get rid of this once we have imports
+            buf.insert_str(0, &Self::contracts());
         }
 
-        Ok(self
-            .parsed
-            .get(&self.main_id)
-            .expect("Program::parse: the term should be parsed at this point")
-            .clone())
+        let offset = if self.include_contracts {
+            Self::contracts().len()
+        } else {
+            0
+        };
+        parser::grammar::TermParser::new()
+            .parse(&file_id, offset, &buf)
+            .map_err(|err| format!("{}", err))
+    }
+
+    /// Parse a source file and populate the corresponding entry in the cache, or just get it from
+    /// the term cache if it is there. Return a copy of the cached term.
+    fn parse_with_cache(&mut self, file_id: FileId) -> Result<RichTerm, String> {
+        Ok(match self.term_cache.get(&file_id) {
+            Some(t) => t.clone(),
+            None => {
+                let t = self.parse(file_id)?;
+                self.term_cache.insert(file_id, t.clone());
+                t
+            }
+        })
     }
 
     /// Pretty-print an error.
@@ -117,12 +175,8 @@ impl Program {
         let writer = StandardStream::stderr(ColorChoice::Always);
         let config = codespan_reporting::term::Config::default();
         let diagnostic = error.to_diagnostic(&mut self.files);
-        match codespan_reporting::term::emit(
-            &mut writer.lock(),
-            &config,
-            &mut self.files,
-            &diagnostic,
-        ) {
+        match codespan_reporting::term::emit(&mut writer.lock(), &config, &self.files, &diagnostic)
+        {
             Ok(()) => (),
             Err(err) => panic!(
                 "Program::report: could not print an error on stderr: {}",
@@ -160,6 +214,159 @@ impl Program {
             if (case t) then t else contr (tag[NotRowExt] l) t in
         "
         .to_string()
+    }
+}
+
+impl ImportResolver for Program {
+    fn resolve(
+        &mut self,
+        path: &String,
+        pos: &Option<RawSpan>,
+    ) -> Result<(ResolvedTerm, FileId), ImportError> {
+        let normalized = normalize_path(path);
+
+        if let Some(file_id) = self.file_cache.get(&normalized) {
+            return Ok((ResolvedTerm::FromCache(), *file_id));
+        }
+
+        let mut buffer = String::new();
+        let file_id = fs::File::open(path)
+            .and_then(|mut file| file.read_to_string(&mut buffer))
+            .map(|_| self.files.add(path, buffer))
+            .map_err(|err| ImportError::IOError(path.clone(), format!("{}", err), pos.clone()))?;
+        self.file_cache
+            .insert(normalize_path(path), file_id.clone());
+
+        let t = self.parse(file_id).map_err(|err| {
+            ImportError::ParseError(path.clone(), format!("{}", err), pos.clone())
+        })?;
+        Ok((ResolvedTerm::FromFile(t), file_id))
+    }
+
+    fn get(&self, file_id: FileId) -> Option<RichTerm> {
+        self.term_cache.get(&file_id).cloned()
+    }
+
+    fn get_id(&self, path: &String) -> Option<FileId> {
+        self.file_cache.get(&normalize_path(path)).cloned()
+    }
+
+    fn insert(&mut self, file_id: FileId, term: RichTerm) {
+        self.term_cache.insert(file_id, term);
+    }
+}
+
+/// Normalize the path of a file to uniquely identify names in the cache.
+///
+/// If an IO error occurs here, it is silently ignored and the path is returned as it is.
+fn normalize_path(path: &String) -> String {
+    let p = Path::new(path);
+    p.canonicalize()
+        .ok()
+        .map(|p_| p_.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.clone())
+}
+
+/// Provide mockup import resolvers for testing purpose.
+#[cfg(test)]
+pub mod resolvers {
+    use super::*;
+
+    /// A dummy resolver that panics when asked to do something. Used to test code that contains no
+    /// import.
+    pub struct DummyResolver {}
+
+    impl ImportResolver for DummyResolver {
+        fn resolve(
+            &mut self,
+            _path: &String,
+            _pos: &Option<RawSpan>,
+        ) -> Result<(ResolvedTerm, FileId), ImportError> {
+            panic!("program::resolvers: dummy resolver should not have been invoked");
+        }
+
+        fn insert(&mut self, _file_id: FileId, _term: RichTerm) {
+            panic!("program::resolvers: dummy resolver should not have been invoked");
+        }
+
+        fn get(&self, _file_id: FileId) -> Option<RichTerm> {
+            panic!("program::resolvers: dummy resolver should not have been invoked");
+        }
+
+        fn get_id(&self, _path: &String) -> Option<FileId> {
+            panic!("program::resolvers: dummy resolver should not have been invoked");
+        }
+    }
+
+    /// Resolve imports from a mockup file database. Used to test imports without accessing the
+    /// file system.
+    pub struct SimpleResolver {
+        files: Files<String>,
+        file_cache: HashMap<String, FileId>,
+        term_cache: HashMap<FileId, Option<RichTerm>>,
+    }
+
+    impl SimpleResolver {
+        pub fn new() -> SimpleResolver {
+            SimpleResolver {
+                files: Files::new(),
+                file_cache: HashMap::new(),
+                term_cache: HashMap::new(),
+            }
+        }
+
+        /// Add a mockup file to available imports.
+        pub fn add_source(&mut self, name: String, source: String) {
+            let id = self.files.add(&name, source);
+            self.file_cache.insert(name, id);
+        }
+    }
+
+    impl ImportResolver for SimpleResolver {
+        fn resolve(
+            &mut self,
+            path: &String,
+            pos: &Option<RawSpan>,
+        ) -> Result<(ResolvedTerm, FileId), ImportError> {
+            let file_id =
+                self.file_cache
+                    .get(path)
+                    .map(|id| id.clone())
+                    .ok_or(ImportError::IOError(
+                        path.clone(),
+                        String::from("Import not found by the mockup resolver."),
+                        pos.clone(),
+                    ))?;
+
+            if self.term_cache.contains_key(&file_id) {
+                Ok((ResolvedTerm::FromCache(), file_id))
+            } else {
+                self.term_cache.insert(file_id, None);
+                let buf = self.files.source(file_id);
+                let t = parser::grammar::TermParser::new()
+                    .parse(&file_id, 0, &buf)
+                    .map_err(|e| {
+                        ImportError::ParseError(path.clone(), format!("{}", e), pos.clone())
+                    })?;
+                Ok((ResolvedTerm::FromFile(t), file_id))
+            }
+        }
+
+        fn insert(&mut self, file_id: FileId, term: RichTerm) {
+            self.term_cache.insert(file_id, Some(term));
+        }
+
+        fn get(&self, file_id: FileId) -> Option<RichTerm> {
+            self.term_cache
+                .get(&file_id)
+                .map(|opt| opt.as_ref())
+                .flatten()
+                .cloned()
+        }
+
+        fn get_id(&self, path: &String) -> Option<FileId> {
+            self.file_cache.get(path).copied()
+        }
     }
 }
 

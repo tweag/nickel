@@ -1,9 +1,12 @@
 //! Program transformations.
 
+use crate::error::ImportError;
 use crate::eval::{Closure, Environment, IdentKind};
 use crate::identifier::Ident;
+use crate::program::ImportResolver;
 use crate::term::{RichTerm, Term};
 use crate::types::{AbsType, Types};
+use codespan::FileId;
 use simple_counter::*;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -26,7 +29,7 @@ generate_counter!(FreshVarCounter, usize);
 /// is never updated. Without additional machinery, `a` will be recomputed each time is it used,
 /// two times here.
 ///
-/// [`transform`](fn.transform.html) replaces such subexpressions, namely the content of the fields
+/// The transformation replaces such subexpressions, namely the content of the fields
 /// of records and the elements of lists - `(1 + 1)` in our example -, with fresh variables
 /// introduced by `let`  added at the head of the term:
 ///
@@ -41,85 +44,39 @@ generate_counter!(FreshVarCounter, usize);
 /// variables.
 pub mod share_normal_form {
     use super::fresh_var;
-    use crate::term::{RichTerm, Term, UnaryOp};
-    use std::collections::HashMap;
+    use crate::term::{RichTerm, Term};
 
-    /// Transform a term to a share normal form.
-    pub fn transform(rt: &RichTerm) -> RichTerm {
+    /// Transform the top-level term of an AST to a share normal form, if it can.
+    ///
+    /// This function is not recursive: it just tries to apply one step of the transformation to
+    /// the top-level node of the AST. For example, it transforms `[1 + 1, [1 + 2]]` to `let %0 = 1
+    /// + 1 in [%0, [1 + 2]]`: the nested subterm `[1 + 2]` is left as it was. If the term is
+    /// neither a record, a list nor an enriched value, it is returned the same.  In other words,
+    /// the transformation is implemented as a *recursion scheme*, and must be used in conjunction
+    /// a traversal to obtain a full transformation.
+    pub fn transform_one(rt: RichTerm) -> RichTerm {
         let RichTerm { term, pos } = rt;
         let pos = pos.clone();
-        match &**term {
-            v @ &Term::Bool(_)
-            | v @ &Term::Num(_)
-            | v @ &Term::Str(_)
-            | v @ &Term::Lbl(_)
-            | v @ &Term::Sym(_)
-            | v @ &Term::Var(_)
-            | v @ &Term::Enum(_) => RichTerm {
-                term: Box::new(v.clone()),
-                pos,
-            },
-            &Term::Fun(ref id, ref t) => RichTerm {
-                term: Box::new(Term::Fun(id.clone(), transform(t))),
-                pos,
-            },
-            &Term::Let(ref id, ref t1, ref t2) => RichTerm {
-                term: Box::new(Term::Let(id.clone(), transform(t1), transform(t2))),
-                pos,
-            },
-            &Term::App(ref t1, ref t2) => RichTerm {
-                term: Box::new(Term::App(transform(t1), transform(t2))),
-                pos,
-            },
-            &Term::Op1(UnaryOp::Switch(ref cases, ref default), ref t) => {
-                let cases = cases
-                    .iter()
-                    .map(|(id, t)| (id.clone(), transform(t)))
-                    .collect();
-                let default = default.as_ref().map(|t| transform(t));
-
-                RichTerm {
-                    term: Box::new(Term::Op1(UnaryOp::Switch(cases, default), transform(t))),
-                    pos,
-                }
-            }
-            &Term::Op1(ref op, ref t) => RichTerm {
-                term: Box::new(Term::Op1(op.clone(), transform(t))),
-                pos,
-            },
-            &Term::Op2(ref op, ref t1, ref t2) => RichTerm {
-                term: Box::new(Term::Op2(op.clone(), transform(t1), transform(t2))),
-                pos,
-            },
-            &Term::Promise(ref ty, ref l, ref t) => RichTerm {
-                term: Box::new(Term::Promise(ty.clone(), l.clone(), transform(t))),
-                pos,
-            },
-            &Term::Assume(ref ty, ref l, ref t) => RichTerm {
-                term: Box::new(Term::Assume(ty.clone(), l.clone(), transform(t))),
-                pos,
-            },
-            &Term::Wrapped(i, ref t) => RichTerm {
-                term: Box::new(Term::Wrapped(i, transform(t))),
-                pos,
-            },
-            &Term::Record(ref map) => {
+        match *term {
+            Term::Record(map) => {
                 let mut bindings = Vec::with_capacity(map.len());
-                let mut new_map = HashMap::with_capacity(map.len());
 
-                for (id, ref t) in map.iter() {
-                    if should_share(&*t.term) {
-                        let fresh_var = fresh_var();
-                        bindings.push((fresh_var.clone(), transform(t)));
-                        new_map.insert(id.clone(), Term::Var(fresh_var).into());
-                    } else {
-                        new_map.insert(id.clone(), transform(t));
-                    }
-                }
+                let map = map
+                    .into_iter()
+                    .map(|(id, t)| {
+                        if should_share(&t.term) {
+                            let fresh_var = fresh_var();
+                            bindings.push((fresh_var.clone(), t));
+                            (id, Term::Var(fresh_var).into())
+                        } else {
+                            (id, t)
+                        }
+                    })
+                    .collect();
 
                 let result = bindings.into_iter().fold(
                     RichTerm {
-                        term: Box::new(Term::Record(new_map)),
+                        term: Box::new(Term::Record(map)),
                         pos,
                     },
                     |acc, (id, t)| Term::Let(id, t, acc).into(),
@@ -127,23 +84,25 @@ pub mod share_normal_form {
 
                 result.into()
             }
-            &Term::List(ref ts) => {
+            Term::List(ts) => {
                 let mut bindings = Vec::with_capacity(ts.len());
-                let mut new_list = Vec::with_capacity(ts.len());
 
-                for t in ts.iter() {
-                    if should_share(&*t.term) {
-                        let fresh_var = fresh_var();
-                        bindings.push((fresh_var.clone(), transform(t)));
-                        new_list.push(Term::Var(fresh_var).into());
-                    } else {
-                        new_list.push(transform(t));
-                    }
-                }
+                let ts = ts
+                    .into_iter()
+                    .map(|t| {
+                        if should_share(&t.term) {
+                            let fresh_var = fresh_var();
+                            bindings.push((fresh_var.clone(), t));
+                            Term::Var(fresh_var).into()
+                        } else {
+                            t
+                        }
+                    })
+                    .collect();
 
                 let result = bindings.into_iter().fold(
                     RichTerm {
-                        term: Box::new(Term::List(new_list)),
+                        term: Box::new(Term::List(ts)),
                         pos,
                     },
                     |acc, (id, t)| Term::Let(id, t, acc).into(),
@@ -151,63 +110,59 @@ pub mod share_normal_form {
 
                 result.into()
             }
-            &Term::Contract(_, _) => rt.clone(),
-            &Term::DefaultValue(ref t) => {
-                if should_share(&*t.term) {
+            Term::DefaultValue(t) => {
+                if should_share(&t.term) {
                     let fresh_var = fresh_var();
                     let inner = RichTerm {
                         term: Box::new(Term::DefaultValue(Term::Var(fresh_var.clone()).into())),
                         pos,
                     };
-                    Term::Let(fresh_var, transform(t), inner).into()
+                    Term::Let(fresh_var, t, inner).into()
                 } else {
                     RichTerm {
-                        term: Box::new(Term::DefaultValue(transform(t))),
+                        term: Box::new(Term::DefaultValue(t)),
                         pos,
                     }
                 }
             }
-            &Term::ContractWithDefault(ref ty, ref lbl, ref t) => {
-                if should_share(&*t.term) {
+            Term::ContractWithDefault(ty, lbl, t) => {
+                if should_share(&t.term) {
                     let fresh_var = fresh_var();
                     let inner = RichTerm {
                         term: Box::new(Term::ContractWithDefault(
-                            ty.clone(),
-                            lbl.clone(),
+                            ty,
+                            lbl,
                             Term::Var(fresh_var.clone()).into(),
                         )),
                         pos,
                     };
-                    Term::Let(fresh_var, transform(t), inner).into()
+                    Term::Let(fresh_var, t, inner).into()
                 } else {
                     RichTerm {
-                        term: Box::new(Term::ContractWithDefault(
-                            ty.clone(),
-                            lbl.clone(),
-                            transform(t),
-                        )),
+                        term: Box::new(Term::ContractWithDefault(ty, lbl, t)),
                         pos,
                     }
                 }
             }
-            &Term::Docstring(ref s, ref t) => {
-                if should_share(&*t.term) {
+            Term::Docstring(s, t) => {
+                if should_share(&t.term) {
                     let fresh_var = fresh_var();
                     let inner = RichTerm {
-                        term: Box::new(Term::Docstring(
-                            s.clone(),
-                            Term::Var(fresh_var.clone()).into(),
-                        )),
+                        term: Box::new(Term::Docstring(s, Term::Var(fresh_var.clone()).into())),
                         pos,
                     };
-                    Term::Let(fresh_var, transform(t), inner).into()
+                    Term::Let(fresh_var, t, inner).into()
                 } else {
                     RichTerm {
-                        term: Box::new(Term::Docstring(s.clone(), transform(t))),
+                        term: Box::new(Term::Docstring(s, t)),
                         pos,
                     }
                 }
             }
+            t => RichTerm {
+                term: Box::new(t),
+                pos,
+            },
         }
     }
 
@@ -229,6 +184,109 @@ pub mod share_normal_form {
             _ => true,
         }
     }
+}
+
+pub mod import_resolution {
+    use super::{FileId, ImportResolver, RichTerm, Term};
+    use crate::error::ImportError;
+    use crate::program::ResolvedTerm;
+
+    /// Resolve the import if the term is an unresolved import, or return the term unchanged.
+    ///
+    /// If an import was resolved, the corresponding `FileId` is returned in the second component
+    /// of the result. It the import has been already resolved, or if the term was not an import,
+    /// `None` is returned. As [`share_normal_form::transform_one`](./mod.?), this function is not
+    /// recursive.
+    pub fn transform_one<R>(
+        rt: RichTerm,
+        resolver: &mut R,
+    ) -> Result<(RichTerm, Option<(RichTerm, FileId)>), ImportError>
+    where
+        R: ImportResolver,
+    {
+        let RichTerm { term, pos } = rt;
+        match *term {
+            Term::Import(path) => {
+                let (res_term, file_id) = resolver.resolve(&path, &pos)?;
+                let ret = match res_term {
+                    ResolvedTerm::FromCache() => None,
+                    ResolvedTerm::FromFile(t) => Some((t, file_id)),
+                };
+
+                Ok((
+                    RichTerm {
+                        term: Box::new(Term::ResolvedImport(file_id)),
+                        pos,
+                    },
+                    ret,
+                ))
+            }
+            t => Ok((
+                RichTerm {
+                    term: Box::new(t),
+                    pos,
+                },
+                None,
+            )),
+        }
+    }
+}
+
+/// The state passed around during the program transformation. It holds a reference to the import
+/// resolver and to a stack of pending imported term to be transformed.
+struct TransformState<'a, R> {
+    resolver: &'a mut R,
+    stack: &'a mut Vec<(RichTerm, FileId)>,
+}
+
+/// Apply all program transformations, which are currently the share normal form transformation and
+/// import resolution.
+///
+/// All resolved imports are stacked during the transformation. Once the term has been traversed,
+/// the elements of this stack are processed (and so on, if these elements also have non resolved
+/// imports).
+pub fn transform<R>(rt: RichTerm, resolver: &mut R) -> Result<RichTerm, ImportError>
+where
+    R: ImportResolver,
+{
+    let mut stack = Vec::new();
+
+    let result = transform_pass(rt, resolver, &mut stack);
+
+    while let Some((t, file_id)) = stack.pop() {
+        let result = transform_pass(t, resolver, &mut stack)?;
+        resolver.insert(file_id, result);
+    }
+
+    result
+}
+
+/// Perform one full transformation pass. Put all imports encountered for the first time in
+/// `stack`, but do not process them.
+fn transform_pass<R>(
+    rt: RichTerm,
+    resolver: &mut R,
+    stack: &mut Vec<(RichTerm, FileId)>,
+) -> Result<RichTerm, ImportError>
+where
+    R: ImportResolver,
+{
+    let mut state = TransformState { resolver, stack };
+
+    // Apply one step of each transformation. If an import is resolved, then stack it.
+    rt.traverse(
+        &mut |rt: RichTerm, state: &mut TransformState<R>| -> Result<RichTerm, ImportError> {
+            let rt = share_normal_form::transform_one(rt);
+            let (rt, to_queue) = import_resolution::transform_one(rt, state.resolver)?;
+
+            if let Some((t, file_id)) = to_queue {
+                state.stack.push((t, file_id));
+            }
+
+            Ok(rt)
+        },
+        &mut state,
+    )
 }
 
 /// Generate a new fresh variable which do not clash with user-defined variables.
