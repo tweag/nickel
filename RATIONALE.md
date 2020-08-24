@@ -102,7 +102,7 @@ falls short of expressivity, you can still write your code without types.
 #### Data validation
 
 Another peculiarity is that there is an external tool which will consume the
-configuration at the end. The generated configuration have to conform to a
+configuration at the end. The generated configuration has to conform to a
 specification dictated by this tool, which is a priori alien to the generating
 program.
 
