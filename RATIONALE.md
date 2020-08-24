@@ -40,7 +40,7 @@ codebase, making them hard to maintain and to extend.  Abstraction is achievable
 by several means: for example, a pure object oriented language like Java uses
 objects as a primary structuring block.
 
-Nickel (and other languages of the list, for that matter) use *functions* as a
+Nickel (and other languages of the list, for that matter) uses *functions* as a
 basic computational block. Functions are simple and well understood (some inputs
 give an output), pervasive (as macros, procedure, methods, etc.), and
 composable.  Nickel is *functional*, in the sense that functions are moreover
