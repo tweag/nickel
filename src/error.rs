@@ -15,6 +15,7 @@ use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 pub enum Error {
     EvalError(EvalError),
     ParseError(String),
+    ImportError(ImportError),
 }
 
 /// An error occurring during evaluation.
@@ -58,8 +59,27 @@ pub enum EvalError {
     ),
     /// An unbound identifier was referenced.
     UnboundIdentifier(Ident, Option<RawSpan>),
+    /// An unexpected internal error.
+    InternalError(String, Option<RawSpan>),
     /// Errors occurring rarely enough to not deserve a dedicated variant.
     Other(String, Option<RawSpan>),
+}
+
+/// An error occuring during the resolution of an import.
+#[derive(Debug, PartialEq)]
+pub enum ImportError {
+    /// An IO error occurred during an import.
+    IOError(
+        /* imported file */ String,
+        /* error message */ String,
+        /* import position */ Option<RawSpan>,
+    ),
+    /// A parse error occured during an import.
+    ParseError(
+        /* imported file */ String,
+        /* error message */ String,
+        /* import position */ Option<RawSpan>,
+    ),
 }
 
 impl From<EvalError> for Error {
@@ -203,6 +223,7 @@ impl ToDiagnostic<FileId> for Error {
                 Diagnostic::error().with_message(format!("While parsing: {}", msg.clone()))
             }
             Error::EvalError(err) => err.to_diagnostic(files),
+            Error::ImportError(err) => err.to_diagnostic(files),
         }
     }
 }
@@ -340,6 +361,48 @@ impl ToDiagnostic<FileId> for EvalError {
                     .unwrap_or(Vec::new());
 
                 Diagnostic::error().with_message(msg).with_labels(labels)
+            }
+            EvalError::InternalError(msg, span_opt) => {
+                let labels = span_opt
+                    .as_ref()
+                    .map(|span| vec![primary(span).with_message("here")])
+                    .unwrap_or(Vec::new());
+
+                Diagnostic::error()
+                    .with_message(format!("Internal error ({})", msg))
+                    .with_labels(labels)
+                    .with_notes(vec![String::from(
+                        "This error should not happen. This is likely a bug in the Nickel\
+                    interpreter. Please consider reporting it at\
+                    https://github.com/tweag/nickel/issues with the above error message.",
+                    )])
+            }
+        }
+    }
+}
+
+impl ToDiagnostic<FileId> for ImportError {
+    fn to_diagnostic(&self, _files: &mut Files<String>) -> Diagnostic<FileId> {
+        match self {
+            ImportError::IOError(path, error, span_opt) => {
+                let labels = span_opt
+                    .as_ref()
+                    .map(|span| vec![secondary(span).with_message("imported here")])
+                    .unwrap_or(Vec::new());
+
+                Diagnostic::error()
+                    .with_message(format!("Import of {} failed: {}", path, error))
+                    .with_labels(labels)
+            }
+            ImportError::ParseError(path, msg, span_opt) => {
+                let labels = span_opt
+                    .as_ref()
+                    .map(|span| vec![secondary(span).with_message("imported here")])
+                    .unwrap_or(Vec::new());
+
+                Diagnostic::error()
+                    .with_message(format!("While parsing {}: {}", path, msg))
+                    .with_labels(labels)
             }
         }
     }
