@@ -9,6 +9,7 @@ use crate::types::{AbsType, Types};
 use codespan::FileId;
 use simple_counter::*;
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 generate_counter!(FreshVarCounter, usize);
@@ -186,31 +187,38 @@ pub mod share_normal_form {
     }
 }
 
+/// A pending import to be processed, consisting of
+/// - The parsed term.
+/// - The id of the file in the database.
+/// - The path of the file, to resolve relative imports.
+type PendingImport = (RichTerm, FileId, PathBuf);
+
 pub mod import_resolution {
-    use super::{FileId, ImportResolver, RichTerm, Term};
+    use super::{ImportResolver, PathBuf, PendingImport, RichTerm, Term};
     use crate::error::ImportError;
     use crate::program::ResolvedTerm;
 
     /// Resolve the import if the term is an unresolved import, or return the term unchanged.
     ///
     /// If an import was resolved, the corresponding `FileId` is returned in the second component
-    /// of the result. It the import has been already resolved, or if the term was not an import,
-    /// `None` is returned. As [`share_normal_form::transform_one`](./mod.?), this function is not
-    /// recursive.
+    /// of the result, and the file path as the third. It the import has been already resolved, or
+    /// if the term was not an import, `None` is returned. As
+    /// [`share_normal_form::transform_one`](../share_normal_form/fn.transform_one.html), this function is not recursive.
     pub fn transform_one<R>(
         rt: RichTerm,
         resolver: &mut R,
-    ) -> Result<(RichTerm, Option<(RichTerm, FileId)>), ImportError>
+        parent: &Option<PathBuf>,
+    ) -> Result<(RichTerm, Option<PendingImport>), ImportError>
     where
         R: ImportResolver,
     {
         let RichTerm { term, pos } = rt;
         match *term {
             Term::Import(path) => {
-                let (res_term, file_id) = resolver.resolve(&path, &pos)?;
+                let (res_term, file_id) = resolver.resolve(&path, parent.clone(), &pos)?;
                 let ret = match res_term {
                     ResolvedTerm::FromCache() => None,
-                    ResolvedTerm::FromFile(t) => Some((t, file_id)),
+                    ResolvedTerm::FromFile(t, p) => Some((t, file_id, p)),
                 };
 
                 Ok((
@@ -233,10 +241,12 @@ pub mod import_resolution {
 }
 
 /// The state passed around during the program transformation. It holds a reference to the import
-/// resolver and to a stack of pending imported term to be transformed.
+/// resolver, to a stack of pending imported term to be transformed and the path of the import
+/// currently being processed, if any.
 struct TransformState<'a, R> {
     resolver: &'a mut R,
-    stack: &'a mut Vec<(RichTerm, FileId)>,
+    stack: &'a mut Vec<PendingImport>,
+    parent: Option<PathBuf>,
 }
 
 /// Apply all program transformations, which are currently the share normal form transformation and
@@ -251,10 +261,10 @@ where
 {
     let mut stack = Vec::new();
 
-    let result = transform_pass(rt, resolver, &mut stack);
+    let result = transform_pass(rt, resolver, &mut stack, None);
 
-    while let Some((t, file_id)) = stack.pop() {
-        let result = transform_pass(t, resolver, &mut stack)?;
+    while let Some((t, file_id, parent)) = stack.pop() {
+        let result = transform_pass(t, resolver, &mut stack, Some(parent))?;
         resolver.insert(file_id, result);
     }
 
@@ -266,21 +276,27 @@ where
 fn transform_pass<R>(
     rt: RichTerm,
     resolver: &mut R,
-    stack: &mut Vec<(RichTerm, FileId)>,
+    stack: &mut Vec<PendingImport>,
+    parent: Option<PathBuf>,
 ) -> Result<RichTerm, ImportError>
 where
     R: ImportResolver,
 {
-    let mut state = TransformState { resolver, stack };
+    let mut state = TransformState {
+        resolver,
+        stack,
+        parent,
+    };
 
     // Apply one step of each transformation. If an import is resolved, then stack it.
     rt.traverse(
         &mut |rt: RichTerm, state: &mut TransformState<R>| -> Result<RichTerm, ImportError> {
             let rt = share_normal_form::transform_one(rt);
-            let (rt, to_queue) = import_resolution::transform_one(rt, state.resolver)?;
+            let (rt, pending) =
+                import_resolution::transform_one(rt, state.resolver, &state.parent)?;
 
-            if let Some((t, file_id)) = to_queue {
-                state.stack.push((t, file_id));
+            if let Some((t, file_id, p)) = pending {
+                state.stack.push((t, file_id, p));
             }
 
             Ok(rt)

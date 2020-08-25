@@ -22,7 +22,7 @@ use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fs;
 use std::io::{self, Read};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::result::Result;
 
 /// A Nickel program.
@@ -49,12 +49,15 @@ pub struct Program {
 /// See [`resolve`](./fn.resolve.html).
 #[derive(Debug, PartialEq)]
 pub enum ResolvedTerm {
-    FromFile(RichTerm),
+    FromFile(
+        /* the parsed term */ RichTerm,
+        /* the path of the loaded file */ PathBuf,
+    ),
     FromCache(),
 }
 
 /// Abstract the access to imported files and the import cache. Used by the evaluator, the
-/// typechecker and at [import resolution](../transformations/mod.import_resolution.html) phase.
+/// typechecker and at [import resolution](../transformations/import_resolution/index.html) phase.
 ///
 /// The standard implementation use 2 caches, the file cache for raw contents and the term cache
 /// for parsed contents, mirroring the 2 steps when resolving an import:
@@ -80,6 +83,7 @@ pub trait ImportResolver {
     fn resolve(
         &mut self,
         path: &String,
+        parent: Option<PathBuf>,
         pos: &Option<RawSpan>,
     ) -> Result<(ResolvedTerm, FileId), ImportError>;
 
@@ -90,7 +94,7 @@ pub trait ImportResolver {
     fn get(&self, file_id: FileId) -> Option<RichTerm>;
 
     /// Get a file id from the file cache.
-    fn get_id(&self, path: &String) -> Option<FileId>;
+    fn get_id(&self, path: &String, parent: Option<PathBuf>) -> Option<FileId>;
 }
 
 impl Program {
@@ -221,34 +225,40 @@ impl ImportResolver for Program {
     fn resolve(
         &mut self,
         path: &String,
+        parent: Option<PathBuf>,
         pos: &Option<RawSpan>,
     ) -> Result<(ResolvedTerm, FileId), ImportError> {
-        let normalized = normalize_path(path);
+        let (path_buf, normalized) = with_parent(path, parent);
 
         if let Some(file_id) = self.file_cache.get(&normalized) {
+            println!("Resolved {} from cache ({})", path, normalized);
             return Ok((ResolvedTerm::FromCache(), *file_id));
         }
+        println!("Resolved {} from file ({})", path, normalized);
 
         let mut buffer = String::new();
-        let file_id = fs::File::open(path)
+        let file_id = fs::File::open(path_buf)
             .and_then(|mut file| file.read_to_string(&mut buffer))
             .map(|_| self.files.add(path, buffer))
             .map_err(|err| ImportError::IOError(path.clone(), format!("{}", err), pos.clone()))?;
-        self.file_cache
-            .insert(normalize_path(path), file_id.clone());
+        self.file_cache.insert(normalized, file_id.clone());
 
         let t = self.parse(file_id).map_err(|err| {
             ImportError::ParseError(path.clone(), format!("{}", err), pos.clone())
         })?;
-        Ok((ResolvedTerm::FromFile(t), file_id))
+        Ok((
+            ResolvedTerm::FromFile(t, Path::new(path).to_path_buf()),
+            file_id,
+        ))
     }
 
     fn get(&self, file_id: FileId) -> Option<RichTerm> {
         self.term_cache.get(&file_id).cloned()
     }
 
-    fn get_id(&self, path: &String) -> Option<FileId> {
-        self.file_cache.get(&normalize_path(path)).cloned()
+    fn get_id(&self, path: &String, parent: Option<PathBuf>) -> Option<FileId> {
+        let (_, normalized) = with_parent(path, parent);
+        self.file_cache.get(&normalized).cloned()
     }
 
     fn insert(&mut self, file_id: FileId, term: RichTerm) {
@@ -256,15 +266,25 @@ impl ImportResolver for Program {
     }
 }
 
+/// Compute the path of a file relatively to a parent, and a string representation of the
+/// normalized full path (see [`normalize_path`](./fn.normalize_path.html). If the path is absolute
+/// or if the parent is `None`, the first component is the same as `Path::new(path).to_path_buf()`.
+fn with_parent(path: &String, parent: Option<PathBuf>) -> (PathBuf, String) {
+    let mut path_buf = parent.unwrap_or(PathBuf::new());
+    path_buf.pop();
+    path_buf.push(Path::new(path));
+    let normalized = normalize_path(path_buf.as_path()).unwrap_or_else(|| path.clone());
+
+    (path_buf, normalized)
+}
+
 /// Normalize the path of a file to uniquely identify names in the cache.
 ///
-/// If an IO error occurs here, it is silently ignored and the path is returned as it is.
-fn normalize_path(path: &String) -> String {
-    let p = Path::new(path);
-    p.canonicalize()
+/// If an IO error occurs here, `None` is returned.
+fn normalize_path(path: &Path) -> Option<String> {
+    path.canonicalize()
         .ok()
         .map(|p_| p_.to_string_lossy().into_owned())
-        .unwrap_or_else(|| path.clone())
 }
 
 /// Provide mockup import resolvers for testing purpose.
@@ -280,6 +300,7 @@ pub mod resolvers {
         fn resolve(
             &mut self,
             _path: &String,
+            _parent: Option<PathBuf>,
             _pos: &Option<RawSpan>,
         ) -> Result<(ResolvedTerm, FileId), ImportError> {
             panic!("program::resolvers: dummy resolver should not have been invoked");
@@ -293,7 +314,7 @@ pub mod resolvers {
             panic!("program::resolvers: dummy resolver should not have been invoked");
         }
 
-        fn get_id(&self, _path: &String) -> Option<FileId> {
+        fn get_id(&self, _path: &String, _parent: Option<PathBuf>) -> Option<FileId> {
             panic!("program::resolvers: dummy resolver should not have been invoked");
         }
     }
@@ -326,6 +347,7 @@ pub mod resolvers {
         fn resolve(
             &mut self,
             path: &String,
+            _parent: Option<PathBuf>,
             pos: &Option<RawSpan>,
         ) -> Result<(ResolvedTerm, FileId), ImportError> {
             let file_id =
@@ -348,7 +370,7 @@ pub mod resolvers {
                     .map_err(|e| {
                         ImportError::ParseError(path.clone(), format!("{}", e), pos.clone())
                     })?;
-                Ok((ResolvedTerm::FromFile(t), file_id))
+                Ok((ResolvedTerm::FromFile(t, PathBuf::new()), file_id))
             }
         }
 
@@ -364,7 +386,7 @@ pub mod resolvers {
                 .cloned()
         }
 
-        fn get_id(&self, path: &String) -> Option<FileId> {
+        fn get_id(&self, path: &String, _parent: Option<PathBuf>) -> Option<FileId> {
             self.file_cache.get(path).copied()
         }
     }
