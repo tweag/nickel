@@ -9,7 +9,7 @@
 //! the Nickel abstract machine. They are automatically inserted when evaluating terms like
 //! `Assume(type, term)`. They are currently just being pasted at the beginning of the input, which
 //! is bad, but this will be corrected once we have settled on and implemented imports.
-use crate::error::{Error, ImportError, ToDiagnostic};
+use crate::error::{Error, ImportError, ParseError, ToDiagnostic};
 use crate::eval;
 use crate::parser;
 use crate::position::RawSpan;
@@ -133,7 +133,7 @@ impl Program {
     pub fn eval(&mut self) -> Result<Term, Error> {
         let t = self
             .parse_with_cache(self.main_id)
-            .map_err(|msg| Error::ParseError(msg))?;
+            .map_err(|e| Error::from(e))?;
         let t = transformations::transform(t, self).map_err(|err| Error::ImportError(err))?;
         println!("Typechecked: {:?}", type_check(t.as_ref(), self));
         eval::eval(t, self).map_err(|e| e.into())
@@ -141,7 +141,7 @@ impl Program {
 
     /// Parse a source file. Do not try to get it from the cache, and do not populate the cache at
     /// the end either.
-    fn parse(&mut self, file_id: FileId) -> Result<RichTerm, String> {
+    fn parse(&mut self, file_id: FileId) -> Result<RichTerm, ParseError> {
         let mut buf = self.files.source(file_id).clone();
         if self.include_contracts {
             // TODO get rid of this once we have imports
@@ -155,12 +155,12 @@ impl Program {
         };
         parser::grammar::TermParser::new()
             .parse(&file_id, offset, &buf)
-            .map_err(|err| format!("{}", err))
+            .map_err(|err| ParseError::from_lalrpop(err, file_id, offset))
     }
 
     /// Parse a source file and populate the corresponding entry in the cache, or just get it from
     /// the term cache if it is there. Return a copy of the cached term.
-    fn parse_with_cache(&mut self, file_id: FileId) -> Result<RichTerm, String> {
+    fn parse_with_cache(&mut self, file_id: FileId) -> Result<RichTerm, ParseError> {
         Ok(match self.term_cache.get(&file_id) {
             Some(t) => t.clone(),
             None => {
@@ -241,9 +241,9 @@ impl ImportResolver for Program {
             .map_err(|err| ImportError::IOError(path.clone(), format!("{}", err), pos.clone()))?;
         self.file_cache.insert(normalized, file_id.clone());
 
-        let t = self.parse(file_id).map_err(|err| {
-            ImportError::ParseError(path.clone(), format!("{}", err), pos.clone())
-        })?;
+        let t = self
+            .parse(file_id)
+            .map_err(|err| ImportError::ParseError(err, pos.clone()))?;
         Ok((
             ResolvedTerm::FromFile(t, Path::new(path).to_path_buf()),
             file_id,
@@ -365,9 +365,8 @@ pub mod resolvers {
                 let buf = self.files.source(file_id);
                 let t = parser::grammar::TermParser::new()
                     .parse(&file_id, 0, &buf)
-                    .map_err(|e| {
-                        ImportError::ParseError(path.clone(), format!("{}", e), pos.clone())
-                    })?;
+                    .map_err(|e| ParseError::from_lalrpop(e, file_id, 0))
+                    .map_err(|e| ImportError::ParseError(e, pos.clone()))?;
                 Ok((ResolvedTerm::FromFile(t, PathBuf::new()), file_id))
             }
         }
