@@ -559,7 +559,7 @@ mod tests {
 
         // let x = import "bad" in x
         match mk_import("x", "bad", RichTerm::var(String::from("x")), &mut resolver).unwrap_err() {
-            ImportError::ParseError(_, _, _) => (),
+            ImportError::ParseError(_, _) => (),
             _ => assert!(false),
         };
 
