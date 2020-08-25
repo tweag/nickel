@@ -24,10 +24,24 @@ generate_counter!(FreshVariableCounter, usize);
 /// An operation continuation as stored on the stack.
 #[derive(Debug, PartialEq)]
 pub enum OperationCont {
-    Op1(UnaryOp<Closure>),
+    Op1(
+        /* unary operation */ UnaryOp<Closure>,
+        /* position of the whole original expression */ Option<RawSpan>,
+    ),
     // The last parameter saves the strictness mode before the evaluation of the operator
-    Op2First(BinaryOp<Closure>, Closure, bool),
-    Op2Second(BinaryOp<Closure>, Closure, bool),
+    Op2First(
+        /* the binary operation */ BinaryOp<Closure>,
+        /* second argument, to evaluate next */ Closure,
+        /* original position of the first argument */ Option<RawSpan>,
+        /* previous value of enriched_strict */ bool,
+    ),
+    Op2Second(
+        /* binary operation */ BinaryOp<Closure>,
+        /* first argument, evaluated */ Closure,
+        /* original position of the first argument before evaluation */ Option<RawSpan>,
+        /* original position of the second argument before evaluation */ Option<RawSpan>,
+        /* previous value of enriched_strict */ bool,
+    ),
 }
 
 /// Process to the next step of the evaluation of an operation.
@@ -44,18 +58,27 @@ pub fn continuate_operation(
     let (cont, cs_len, pos) = stack.pop_op_cont().expect("Condition already checked");
     call_stack.truncate(cs_len);
     match cont {
-        OperationCont::Op1(u_op) => process_unary_operation(u_op, clos, stack, pos),
-        OperationCont::Op2First(b_op, mut snd_clos, prev_strict) => {
+        OperationCont::Op1(u_op, arg_pos) => {
+            process_unary_operation(u_op, clos, arg_pos, stack, pos)
+        }
+        OperationCont::Op2First(b_op, mut snd_clos, fst_pos, prev_strict) => {
             std::mem::swap(&mut clos, &mut snd_clos);
             stack.push_op_cont(
-                OperationCont::Op2Second(b_op, snd_clos, prev_strict),
+                OperationCont::Op2Second(
+                    b_op,
+                    snd_clos,
+                    fst_pos,
+                    clos.body.pos.clone(),
+                    prev_strict,
+                ),
                 cs_len,
                 pos,
             );
             Ok(clos)
         }
-        OperationCont::Op2Second(b_op, fst_clos, prev_strict) => {
-            let result = process_binary_operation(b_op, fst_clos, clos, stack, pos);
+        OperationCont::Op2Second(b_op, fst_clos, fst_pos, snd_pos, prev_strict) => {
+            let result =
+                process_binary_operation(b_op, fst_clos, fst_pos, clos, snd_pos, stack, pos);
             *enriched_strict = prev_strict;
             result
         }
@@ -69,6 +92,7 @@ pub fn continuate_operation(
 fn process_unary_operation(
     u_op: UnaryOp<Closure>,
     clos: Closure,
+    arg_pos: Option<RawSpan>,
     stack: &mut Stack,
     pos_op: Option<RawSpan>,
 ) -> Result<Closure, EvalError> {
@@ -91,6 +115,7 @@ fn process_unary_operation(
                 Err(EvalError::TypeError(
                     String::from("Bool"),
                     String::from("if"),
+                    arg_pos,
                     RichTerm { term: t, pos },
                 ))
             }
@@ -103,6 +128,7 @@ fn process_unary_operation(
                 Err(EvalError::TypeError(
                     String::from("Num"),
                     String::from("isZero"),
+                    arg_pos,
                     RichTerm { term: t, pos },
                 ))
             }
@@ -149,6 +175,7 @@ fn process_unary_operation(
                 Err(EvalError::TypeError(
                     String::from("Label"),
                     String::from("blame"),
+                    arg_pos,
                     RichTerm { term: t, pos },
                 ))
             }
@@ -160,6 +187,7 @@ fn process_unary_operation(
                 Err(EvalError::TypeError(
                     String::from("Enum"),
                     String::from("embed"),
+                    arg_pos,
                     RichTerm { term: t, pos },
                 ))
             }
@@ -173,6 +201,7 @@ fn process_unary_operation(
                         None => Err(EvalError::TypeError(
                             String::from("Enum"),
                             String::from("switch"),
+                            arg_pos,
                             RichTerm {
                                 term: Box::new(Term::Enum(en)),
                                 pos,
@@ -186,6 +215,7 @@ fn process_unary_operation(
                     None => Err(EvalError::TypeError(
                         String::from("Enum"),
                         String::from("switch"),
+                        arg_pos,
                         RichTerm { term: t, pos },
                     )),
                 }
@@ -199,6 +229,7 @@ fn process_unary_operation(
                 Err(EvalError::TypeError(
                     String::from("Label"),
                     String::from("changePolarity"),
+                    arg_pos,
                     RichTerm { term: t, pos },
                 ))
             }
@@ -210,6 +241,7 @@ fn process_unary_operation(
                 Err(EvalError::TypeError(
                     String::from("Label"),
                     String::from("polarity"),
+                    arg_pos,
                     RichTerm { term: t, pos },
                 ))
             }
@@ -222,6 +254,7 @@ fn process_unary_operation(
                 Err(EvalError::TypeError(
                     String::from("Label"),
                     String::from("goDom"),
+                    arg_pos,
                     RichTerm { term: t, pos },
                 ))
             }
@@ -234,6 +267,7 @@ fn process_unary_operation(
                 Err(EvalError::TypeError(
                     String::from("Label"),
                     String::from("goCodom"),
+                    arg_pos,
                     RichTerm { term: t, pos },
                 ))
             }
@@ -247,6 +281,7 @@ fn process_unary_operation(
                 Err(EvalError::TypeError(
                     String::from("Label"),
                     String::from("tag"),
+                    arg_pos,
                     RichTerm { term: t, pos },
                 ))
             }
@@ -264,6 +299,7 @@ fn process_unary_operation(
                 Err(EvalError::TypeError(
                     String::from("Sym"),
                     String::from("wrap"),
+                    arg_pos,
                     RichTerm { term: t, pos },
                 ))
             }
@@ -287,6 +323,7 @@ fn process_unary_operation(
                 Err(EvalError::TypeError(
                     String::from("Record"),
                     String::from("field access"),
+                    arg_pos,
                     RichTerm { term: t, pos },
                 ))
             }
@@ -318,6 +355,7 @@ fn process_unary_operation(
                 Err(EvalError::TypeError(
                     String::from("Record"),
                     String::from("map on record"),
+                    arg_pos,
                     RichTerm { term: t, pos },
                 ))
             }
@@ -377,6 +415,7 @@ fn process_unary_operation(
                 Err(EvalError::TypeError(
                     String::from("List"),
                     String::from("head"),
+                    arg_pos,
                     RichTerm { term: t, pos },
                 ))
             }
@@ -396,6 +435,7 @@ fn process_unary_operation(
                 Err(EvalError::TypeError(
                     String::from("List"),
                     String::from("tail"),
+                    arg_pos,
                     RichTerm { term: t, pos },
                 ))
             }
@@ -411,6 +451,7 @@ fn process_unary_operation(
                 Err(EvalError::TypeError(
                     String::from("List"),
                     String::from("length"),
+                    arg_pos,
                     RichTerm { term: t, pos },
                 ))
             }
@@ -425,7 +466,9 @@ fn process_unary_operation(
 fn process_binary_operation(
     b_op: BinaryOp<Closure>,
     fst_clos: Closure,
+    fst_pos: Option<RawSpan>,
     clos: Closure,
+    snd_pos: Option<RawSpan>,
     _stack: &mut Stack,
     pos_op: Option<RawSpan>,
 ) -> Result<Closure, EvalError> {
@@ -453,6 +496,7 @@ fn process_binary_operation(
                     Err(EvalError::TypeError(
                         String::from("Num"),
                         String::from("+, 2nd argument"),
+                        snd_pos,
                         RichTerm {
                             term: t2,
                             pos: pos2,
@@ -463,6 +507,7 @@ fn process_binary_operation(
                 Err(EvalError::TypeError(
                     String::from("Num"),
                     String::from("+, 1st argument"),
+                    fst_pos,
                     RichTerm {
                         term: t1,
                         pos: pos1,
@@ -478,6 +523,7 @@ fn process_binary_operation(
                     Err(EvalError::TypeError(
                         String::from("Str"),
                         String::from("++, 2nd argument"),
+                        snd_pos,
                         RichTerm {
                             term: t2,
                             pos: pos2,
@@ -488,6 +534,7 @@ fn process_binary_operation(
                 Err(EvalError::TypeError(
                     String::from("Str"),
                     String::from("++, 1st argument"),
+                    fst_pos,
                     RichTerm {
                         term: t1,
                         pos: pos1,
@@ -521,6 +568,7 @@ fn process_binary_operation(
                 Err(EvalError::TypeError(
                     String::from("Sym"),
                     String::from("unwrap, 1st argument"),
+                    fst_pos,
                     RichTerm {
                         term: t1,
                         pos: pos1,
@@ -536,6 +584,7 @@ fn process_binary_operation(
                     Err(EvalError::TypeError(
                         String::from("Bool"),
                         String::from("== [bool], 2nd argument"),
+                        snd_pos,
                         RichTerm {
                             term: t2,
                             pos: pos2,
@@ -546,6 +595,7 @@ fn process_binary_operation(
                 Err(EvalError::TypeError(
                     String::from("Bool"),
                     String::from("== [bool], 1st argument"),
+                    fst_pos,
                     RichTerm {
                         term: t1,
                         pos: pos1,
@@ -572,6 +622,7 @@ fn process_binary_operation(
                     Err(EvalError::TypeError(
                         String::from("Record"),
                         String::from(".$"),
+                        snd_pos,
                         RichTerm {
                             term: t2,
                             pos: pos2,
@@ -582,6 +633,7 @@ fn process_binary_operation(
                 Err(EvalError::TypeError(
                     String::from("Str"),
                     String::from(".$"),
+                    fst_pos,
                     RichTerm {
                         term: t1,
                         pos: pos1,
@@ -604,6 +656,7 @@ fn process_binary_operation(
                     Err(EvalError::TypeError(
                         String::from("Record"),
                         String::from("$[ .. ]"),
+                        snd_pos,
                         RichTerm {
                             term: t2,
                             pos: pos2,
@@ -614,6 +667,7 @@ fn process_binary_operation(
                 Err(EvalError::TypeError(
                     String::from("Str"),
                     String::from("$[ .. ]"),
+                    fst_pos,
                     RichTerm {
                         term: t1,
                         pos: pos1,
@@ -643,6 +697,7 @@ fn process_binary_operation(
                     Err(EvalError::TypeError(
                         String::from("Str"),
                         String::from("-$"),
+                        snd_pos,
                         RichTerm {
                             term: t2,
                             pos: pos2,
@@ -653,6 +708,7 @@ fn process_binary_operation(
                 Err(EvalError::TypeError(
                     String::from("Record"),
                     String::from("-$"),
+                    fst_pos,
                     RichTerm {
                         term: t1,
                         pos: pos1,
@@ -670,6 +726,7 @@ fn process_binary_operation(
                     Err(EvalError::TypeError(
                         String::from("Record"),
                         String::from("hasField, 2nd argument"),
+                        snd_pos,
                         RichTerm {
                             term: t2,
                             pos: pos2,
@@ -680,6 +737,7 @@ fn process_binary_operation(
                 Err(EvalError::TypeError(
                     String::from("Str"),
                     String::from("hasField, 1st argument"),
+                    fst_pos,
                     RichTerm {
                         term: t1,
                         pos: pos1,
@@ -695,6 +753,7 @@ fn process_binary_operation(
             (Term::List(_), t2) => Err(EvalError::TypeError(
                 String::from("List"),
                 String::from("@, 2nd operand"),
+                snd_pos,
                 RichTerm {
                     term: Box::new(t2),
                     pos: pos2,
@@ -703,6 +762,7 @@ fn process_binary_operation(
             (t1, _) => Err(EvalError::TypeError(
                 String::from("List"),
                 String::from("@, 1st operand"),
+                fst_pos,
                 RichTerm {
                     term: Box::new(t1),
                     pos: pos1,
@@ -734,6 +794,7 @@ fn process_binary_operation(
                 Err(EvalError::TypeError(
                     String::from("List"),
                     String::from("map, 2nd argument"),
+                    snd_pos,
                     RichTerm {
                         term: t2,
                         pos: pos2,
@@ -758,6 +819,7 @@ fn process_binary_operation(
             (Term::List(_), t2) => Err(EvalError::TypeError(
                 String::from("Num"),
                 String::from("elemAt, 2nd argument"),
+                snd_pos,
                 RichTerm {
                     term: Box::new(t2),
                     pos: pos2,
@@ -766,6 +828,7 @@ fn process_binary_operation(
             (t1, _) => Err(EvalError::TypeError(
                 String::from("List"),
                 String::from("elemAt, 1st argument"),
+                fst_pos,
                 RichTerm {
                     term: Box::new(t1),
                     pos: pos1,
@@ -799,7 +862,7 @@ mod tests {
 
     #[test]
     fn ite_operation() {
-        let cont = OperationCont::Op1(UnaryOp::Ite());
+        let cont = OperationCont::Op1(UnaryOp::Ite(), None);
         let mut stack = Stack::new();
         stack.push_arg(Closure::atomic_closure(Term::Num(5.0).into()), None);
         stack.push_arg(Closure::atomic_closure(Term::Num(46.0).into()), None);
@@ -833,6 +896,7 @@ mod tests {
                 body: Term::Num(6.0).into(),
                 env: some_env(),
             },
+            None,
             true,
         );
 
@@ -864,6 +928,8 @@ mod tests {
                         body: Term::Num(7.0).into(),
                         env: some_env(),
                     },
+                    None,
+                    None,
                     true
                 ),
                 0,
@@ -881,6 +947,8 @@ mod tests {
                 body: Term::Num(7.0).into(),
                 env: some_env(),
             },
+            None,
+            None,
             true,
         );
         let mut clos = Closure {

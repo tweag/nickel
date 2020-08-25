@@ -206,7 +206,7 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                     env: env.clone(),
                 });
 
-                stack.push_op_cont(OperationCont::Op1(op), call_stack.len(), pos);
+                stack.push_op_cont(OperationCont::Op1(op, t.pos.clone()), call_stack.len(), pos);
                 Closure { body: t, env }
             }
             Term::Op2(op, fst, snd) => {
@@ -224,6 +224,7 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                             body: snd,
                             env: env.clone(),
                         },
+                        fst.pos.clone(),
                         prev_strict,
                     ),
                     call_stack.len(),
