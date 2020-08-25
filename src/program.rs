@@ -231,10 +231,8 @@ impl ImportResolver for Program {
         let (path_buf, normalized) = with_parent(path, parent);
 
         if let Some(file_id) = self.file_cache.get(&normalized) {
-            println!("Resolved {} from cache ({})", path, normalized);
             return Ok((ResolvedTerm::FromCache(), *file_id));
         }
-        println!("Resolved {} from file ({})", path, normalized);
 
         let mut buffer = String::new();
         let file_id = fs::File::open(path_buf)
