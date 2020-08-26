@@ -26,7 +26,7 @@ generate_counter!(FreshVariableCounter, usize);
 pub enum OperationCont {
     Op1(
         /* unary operation */ UnaryOp<Closure>,
-        /* position of the whole original expression */ Option<RawSpan>,
+        /* original position of the argument before evaluation */ Option<RawSpan>,
     ),
     // The last parameter saves the strictness mode before the evaluation of the operator
     Op2First(
