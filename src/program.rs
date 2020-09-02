@@ -13,6 +13,7 @@ use crate::error::{Error, ImportError, ParseError, ToDiagnostic};
 use crate::eval;
 use crate::parser;
 use crate::position::RawSpan;
+use crate::parser::lexer::Lexer;
 use crate::term::{RichTerm, Term};
 use crate::transformations;
 use crate::typecheck::type_check;
@@ -153,8 +154,9 @@ impl Program {
         } else {
             0
         };
+        let lexer = Lexer::new(&buf);
         parser::grammar::TermParser::new()
-            .parse(&file_id, offset, &buf)
+            .parse(&file_id, offset, &lexer)
             .map_err(|err| ParseError::from_lalrpop(err, file_id, offset))
     }
 
@@ -209,7 +211,7 @@ impl Program {
 
         let forall_var = fun sy pol l t =>
             let lPol = polarity l in
-            if pol =b lPol then unwrap sy t (blame (tag[unwrp] l))
+            if pol == lPol then unwrap sy t (blame (tag[unwrp] l))
             else wrap sy t in
 
         let fail = fun l t => blame (tag[fail] l) in
@@ -427,8 +429,8 @@ mod tests {
             }
 
             assert!(m.is_empty());
-        } else {
-            panic!("evaluation failed");
+        } else if let Err(err) = term {
+            panic!("evaluation failed: {:?}", err);
         }
     }
 
@@ -1039,5 +1041,35 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
             merge_elts(vec!["val", "merge ctr_num def"]),
             Ok(Term::Num(1.0))
         );
+    }
+
+    #[test]
+    fn string_chunks() {
+        fn assert_eval_str(term: &str, result: &str) {
+            assert_eq!(eval_string(term), Ok(Term::Str(String::from(result))));
+        }
+
+        assert_eval_str(
+            r#""simple ${"interp" ++ "olation"} here""#,
+            "simple interpolation here",
+        );
+        assert_eval_str(r#""${"alone"}""#, "alone");
+        assert_eval_str(
+            r#""nested ${ "${(fun x => "${x}") "expression"}" }""#,
+            "nested expression",
+        );
+        assert_eval_str(
+            r#""${"some"}${" " ++ "se" ++ "qu"}${"${"ence"}"}""#,
+            "some sequence",
+        );
+        assert_eval_str(
+            r#""nested ${ {str = {a = "braces"}.a}.str } !""#,
+            "nested braces !",
+        );
+
+        match eval_string(r#""bad type ${1 + 1}""#) {
+            Err(Error::EvalError(EvalError::TypeError(_, _, _, _))) => (),
+            _ => assert!(false),
+        };
     }
 }
