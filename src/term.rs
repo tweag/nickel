@@ -36,6 +36,15 @@ pub enum Term {
     Num(f64),
     /// A literal string.
     Str(String),
+    /// A string containing interpolated expressions, represented as a list of either literals or
+    /// expressions.
+    ///
+    /// /|\ CHUNKS ARE STORED IN REVERSE ORDER. As they will be only popped one by one from the
+    /// head of the list during evaluation, doing so on a `Vec` is costly, and using a more complex
+    /// data structure is not really necessary, as once created, no other than popping is ever
+    /// done.  In consequence, we just reverse the vector at parsing time, so that we can then pop
+    /// efficiently from the back of it.
+    StrChunks(Vec<StrChunk<RichTerm>>),
     /// A function.
     Fun(Ident, RichTerm),
     /// A blame label.
@@ -126,6 +135,14 @@ pub enum Term {
     ResolvedImport(FileId),
 }
 
+/// A chunk of a string with interpolated expressions inside. Same as `Either<String,
+/// RichTerm>` but with explicit constructor names.
+#[derive(Debug, PartialEq, Clone)]
+pub enum StrChunk<E> {
+    Literal(String),
+    Expr(E),
+}
+
 impl Term {
     /// Recursively apply a function to all `Term`s contained in a `RichTerm`.
     pub fn apply_to_rich_terms<F>(&mut self, func: F)
@@ -185,6 +202,10 @@ impl Term {
             List(ref mut terms) => terms.iter_mut().for_each(|t| {
                 func(t);
             }),
+            StrChunks(chunks) => chunks.iter_mut().for_each(|chunk| match chunk {
+                StrChunk::Literal(_) => (),
+                StrChunk::Expr(e) => func(e),
+            }),
         }
     }
 
@@ -218,7 +239,8 @@ impl Term {
             | Term::Promise(_, _, _)
             | Term::Assume(_, _, _)
             | Term::Import(_)
-            | Term::ResolvedImport(_) => None,
+            | Term::ResolvedImport(_)
+            | Term::StrChunks(_) => None,
         }
         .map(|s| String::from(s))
     }
@@ -230,6 +252,18 @@ impl Term {
             Term::Bool(false) => String::from("false"),
             Term::Num(n) => format!("{}", n),
             Term::Str(s) => format!("\"{}\"", s),
+            Term::StrChunks(chunks) => {
+                let chunks_str: Vec<String> = chunks
+                    .into_iter()
+                    .map(|chunk| match chunk {
+                        StrChunk::Literal(s) => s,
+                        StrChunk::Expr(_) => "${ ... }",
+                    })
+                    .map(String::from)
+                    .collect();
+
+                format!("\"{}\"", chunks_str.join(""))
+            }
             Term::Fun(_, _) => String::from("<func>"),
             Term::Lbl(_) => String::from("<label>"),
             Term::Enum(Ident(s)) => format!("`{}", s),
@@ -282,7 +316,8 @@ impl Term {
             | Term::ContractWithDefault(_, _, _)
             | Term::Docstring(_, _)
             | Term::Import(_)
-            | Term::ResolvedImport(_) => false,
+            | Term::ResolvedImport(_)
+            | Term::StrChunks(_) => false,
         }
     }
 
@@ -296,6 +331,7 @@ impl Term {
             Term::Bool(_)
             | Term::Num(_)
             | Term::Str(_)
+            | Term::StrChunks(_)
             | Term::Fun(_, _)
             | Term::Lbl(_)
             | Term::Enum(_)
@@ -421,6 +457,11 @@ pub enum UnaryOp<CapturedTerm> {
     ListTail(),
     /// Return the length of a list.
     ListLength(),
+
+    /// Only generated during the evaluation of a string with interpolated expressions. It holds a
+    /// string accumulator, the remaining chunks to be evaluated, and is applied to the current
+    /// chunk being evaluated.
+    ChunksConcat(String, Vec<StrChunk<CapturedTerm>>),
 }
 
 impl<Ty> UnaryOp<Ty> {
@@ -469,6 +510,17 @@ impl<Ty> UnaryOp<Ty> {
             ListHead() => ListHead(),
             ListTail() => ListTail(),
             ListLength() => ListLength(),
+
+            ChunksConcat(s, chunks) => ChunksConcat(
+                s,
+                chunks
+                    .into_iter()
+                    .map(|chunk| match chunk {
+                        StrChunk::Literal(s) => StrChunk::Literal(s),
+                        StrChunk::Expr(e) => StrChunk::Expr(f(e)),
+                    })
+                    .collect(),
+            ),
         }
     }
 }
