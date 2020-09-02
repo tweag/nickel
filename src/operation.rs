@@ -14,7 +14,7 @@ use crate::label::TyPath;
 use crate::merge::merge;
 use crate::position::RawSpan;
 use crate::stack::Stack;
-use crate::term::{BinaryOp, RichTerm, Term, UnaryOp};
+use crate::term::{BinaryOp, RichTerm, StrChunk, Term, UnaryOp};
 use crate::transformations::Closurizable;
 use simple_counter::*;
 use std::collections::HashMap;
@@ -452,6 +452,51 @@ fn process_unary_operation(
                     String::from("List"),
                     String::from("length"),
                     arg_pos,
+                    RichTerm { term: t, pos },
+                ))
+            }
+        }
+        UnaryOp::ChunksConcat(mut acc, mut tail) => {
+            if let Term::Str(s) = *t {
+                acc.push_str(&s);
+                if let Some(next) = tail.pop() {
+                    let arg = match next {
+                        StrChunk::Literal(s) => Closure::atomic_closure(Term::Str(s).into()),
+                        StrChunk::Expr(e) => e,
+                    };
+                    let arg_closure = arg.body.closurize(&mut env, arg.env);
+                    let tail_closure = tail
+                        .into_iter()
+                        .map(|chunk| match chunk {
+                            StrChunk::Literal(s) => StrChunk::Literal(s),
+                            StrChunk::Expr(c) => StrChunk::Expr(c.body.closurize(&mut env, c.env)),
+                        })
+                        .collect();
+
+                    Ok(Closure {
+                        body: RichTerm {
+                            term: Box::new(Term::Op1(
+                                UnaryOp::ChunksConcat(acc, tail_closure),
+                                arg_closure,
+                            )),
+                            pos: pos_op,
+                        },
+                        env,
+                    })
+                } else {
+                    Ok(Closure {
+                        body: RichTerm {
+                            term: Box::new(Term::Str(acc)),
+                            pos: pos_op,
+                        },
+                        env: HashMap::new(),
+                    })
+                }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("String"),
+                    String::from("interpolated string"),
+                    pos_op,
                     RichTerm { term: t, pos },
                 ))
             }
