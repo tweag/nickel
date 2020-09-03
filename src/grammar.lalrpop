@@ -1,13 +1,13 @@
 use crate::identifier::Ident;
-use crate::term::{BinaryOp, RichTerm, Term, UnaryOp};
+use crate::term::{BinaryOp, RichTerm, Term, UnaryOp, StrChunk};
 use crate::types::{Types, AbsType};
-use crate::parser::utils::{mk_span, mk_label};
+use super::utils::{mk_span, mk_label};
+use super::lexer::{Token, LexicalError};
 use std::collections::HashMap;
 use either::*;
-use std::str::FromStr;
 use codespan::FileId;
 
-grammar(src_id: &FileId, offset: usize);
+grammar<'input>(src_id: &FileId, offset: usize);
 
 pub Term: RichTerm = SpTerm<RichTerm>;
 
@@ -21,7 +21,7 @@ RichTerm: RichTerm = {
         let pos = mk_span(src_id, l, r, offset);
         ps.into_iter().rev().fold(t, |t, p| RichTerm {
             term: Box::new(Term::Fun(p, t)),
-            pos: pos.clone() 
+            pos: pos.clone()
         })
     },
     "let" <id:Ident> "=" <t1:SpTerm<Term>> "in" <t2:SpTerm<Term>> =>
@@ -71,7 +71,7 @@ Atom: RichTerm = {
     "Docstring(" <s: Str> "," <t: SpTerm<Term>> ")" => RichTerm::new(Term::Docstring(s, t)),
     Num => RichTerm::new(Term::Num(<>)),
     Bool => RichTerm::new(Term::Bool(<>)),
-    Str => RichTerm::new(Term::Str(<>)),
+    <StrChunks>,
     Ident => RichTerm::new(Term::Var(<>)),
     "`" <Ident> => RichTerm::new(Term::Enum(<>)),
     "{" <fields: (RecordField ";")*> <last: RecordField?> "}" => {
@@ -103,9 +103,9 @@ Atom: RichTerm = {
 };
 
 RecordField: Either<(Ident, RichTerm), (RichTerm, RichTerm)> = {
-    <id: Ident> "=" <t: SpTerm<Term>> => 
+    <id: Ident> "=" <t: SpTerm<Term>> =>
         Either::Left((id, t)),
-    "$" <id: SpTerm<Term>> "=" <t: SpTerm<Term>> => 
+    "$" <id: SpTerm<Term>> "=" <t: SpTerm<Term>> =>
         Either::Right((id, t)),
 }
 
@@ -113,18 +113,42 @@ Pattern: Ident = {
     Ident,
 };
 
-Ident: Ident = r"[[:alpha:]_][[:word:]-]*" => Ident(<>.to_string());
+Ident: Ident = "identifier" => Ident(<>.to_string());
 
-Num: f64 = r"[-+]?[0-9]*\.?[0-9]+" => f64::from_str(<>).unwrap();
+Num: f64 = "num literal" => <>;
 
 Bool: bool = {
     "true" => true,
     "false" => false,
 };
 
-Str: String = {
-    <x:r#""(([^\\"]|\\.)*)""#> => x[1..(x.len() - 1)].to_string(),
-}
+StrChunks : RichTerm = "\"" <chunks: StrChunk+> "\"" => {
+    // We transform generic string chunks to a simple string literal if
+    // possible, as this should be a fairly common case, and evaluating a string
+    // as chunks do incur a small overhead.
+    if chunks.len() == 1 {
+        match chunks.into_iter().next().unwrap() {
+            StrChunk::Literal(s) => RichTerm::new(Term::Str(s)),
+            chunk => RichTerm::new(Term::StrChunks(vec![chunk])),
+        }
+    }
+    else {
+        // Chunks are stored in reverse order (see the comment at the definition
+        // of Term::StrChunks).
+        // LALRPOP does not let us declare chunks as mutable, so we move it
+        // first.
+        let mut chunks_mut = chunks;
+        chunks_mut.reverse();
+        RichTerm::new(Term::StrChunks(chunks_mut))
+    }
+};
+
+StrChunk : StrChunk<RichTerm> = {
+    "str literal" => StrChunk::Literal(<>),
+    "${" <t: SpTerm<RichTerm>> "}" => StrChunk::Expr(t),
+};
+
+Str: String = "\"" <s: "str literal"> "\"" => s;
 
 UOp: UnaryOp<RichTerm> = {
     "isZero" => UnaryOp::IsZero(),
@@ -138,10 +162,10 @@ UOp: UnaryOp<RichTerm> = {
     "polarity" => UnaryOp::Pol(),
     "goDom" => UnaryOp::GoDom(),
     "goCodom" => UnaryOp::GoCodom(),
-    "tag[" <DbgStr> "]" => UnaryOp::Tag(<>),
+    "tag[" <txt: "identifier"> "]" => UnaryOp::Tag(txt.to_string()),
     "wrap" => UnaryOp::Wrap(),
     "embed" <Ident> => UnaryOp::Embed(<>),
-    "switch" "{" <ds: (switch_case ",")*> <default: switch_default?> "}" => 
+    "switch" "{" <ds: (switch_case ",")*> <default: switch_default?> "}" =>
         UnaryOp::Switch(
             ds.into_iter().map(|x| x.0).collect(),
             default,
@@ -163,12 +187,16 @@ switch_default: RichTerm = {
 }
 
 BOpIn: BinaryOp<RichTerm> = {
-    "+" => BinaryOp::Plus(),
-    "++" => BinaryOp::PlusStr(),
-    "=b" => BinaryOp::EqBool(),
+    "operator" => {
+        match <> {
+            "+" => BinaryOp::Plus(),
+            "++" => BinaryOp::PlusStr(),
+            "==" => BinaryOp::EqBool(),
+            "@" => BinaryOp::ListConcat(),
+            op => panic!("Unkown operator {}", op)
+        }
+    },
     "-$" => BinaryOp::DynRemove(),
-    "@" => BinaryOp::ListConcat(),
-
 };
 
 BOpPre: BinaryOp<RichTerm> = {
@@ -189,16 +217,25 @@ Arrows: Types = {
     <subType>,
 };
 
+BaseType: Types = {
+    "type" => {
+        match <> {
+            "Dyn" => Types(AbsType::Dyn()),
+            "Num" => Types(AbsType::Num()),
+            "Bool" => Types(AbsType::Bool()),
+            "Str" => Types(AbsType::Str()),
+            "List" => Types(AbsType::List()),
+            _ => panic!()
+        }
+    }
+}
+
 subType : Types = {
-    "Dyn" => Types(AbsType::Dyn()),
-    "Num" => Types(AbsType::Num()),
-    "Bool" => Types(AbsType::Bool()),
-    "Str" => Types(AbsType::Str()),
-    "List" => Types(AbsType::List()),
+    <BaseType>,
     <Ident> => Types(AbsType::Var(<>)),
     "#" <SpTerm<RichTerm>> => Types(AbsType::Flat(<>)),
     "(" <Types> ")" => <>,
-    "(|" <r:(<Ident> ",")*> "|" <rest: Ident?> ")" => 
+    "(" "|" <r:(<Ident> ",")*> "|" <rest: Ident?> ")" =>
         r.iter().fold(
             Types(
                 match rest {
@@ -206,8 +243,8 @@ subType : Types = {
                     None => AbsType::RowEmpty(),
                 }
             ),
-            |t, i| Types(AbsType::RowExtend(i.clone(), None, Box::new(t)))), 
-    "{|" <r:(<Ident> ":" <Types> ",")*> "|" <rest: Ident?> "}" => 
+            |t, i| Types(AbsType::RowExtend(i.clone(), None, Box::new(t)))),
+    "{" "|" <r:(<Ident> ":" <Types> ",")*> "|" <rest: Ident?> "}" =>
         r.iter().fold(
             Types(
                 match rest {
@@ -218,10 +255,96 @@ subType : Types = {
             |t, i_ty| {
                 let (i, ty) = i_ty;
                 Types(AbsType::RowExtend(i.clone(), Some(Box::new(ty.clone())), Box::new(t)))
-            }), 
+            }),
     "<" <subType> ">" => Types(AbsType::Enum(Box::new(<>))),
     "{" <subType> "}" => Types(AbsType::StaticRecord(Box::new(<>))),
     "{" "_" ":" <subType> "}" => Types(AbsType::DynRecord(Box::new(<>))),
 };
 
-DbgStr: String = r"[[:alpha:]_][[:word:]-]*" => <>.to_string();
+extern {
+    type Location = usize;
+    type Error = LexicalError;
+
+    enum Token<'input> {
+        "identifier" => Token::Identifier(<&'input str>),
+        "operator" => Token::BinaryOp(<&'input str>),
+        "type" => Token::Type(<&'input str>),
+        "str literal" => Token::StrLiteral(<String>),
+        "num literal" => Token::NumLiteral(<f64>),
+
+        "if" => Token::If,
+        "then" => Token::Then,
+        "else" => Token::Else,
+        "forall" => Token::Forall,
+        "in" => Token::In,
+        "let" => Token::Let,
+        "switch" => Token::Switch,
+
+        "true" => Token::True,
+        "false" => Token::False,
+
+        "," => Token::Comma,
+        ":" => Token::Colon,
+        "$" => Token::Dollar,
+        "=" => Token::Equals,
+        ";" => Token::SemiCol,
+        "." => Token::Dot,
+        ".$" => Token::DotDollar,
+        "$[" => Token::DollarBracket,
+        "${" => Token::DollarBrace,
+        "-$" => Token::MinusDollar,
+        "$=" => Token::DollarEquals,
+        "fun" => Token::Fun,
+        "import" => Token::Import,
+        "|" => Token::Pipe,
+        "->" => Token::SimpleArrow,
+        "=>" => Token::DoubleArrow,
+        "#" => Token::Hash,
+        "`" => Token::Backtick,
+        "_" => Token::Underscore,
+        "\"" => Token::DoubleQuote,
+
+        "tag[" => Token::Tag,
+        "Assume(" => Token::Assume,
+        "Promise(" => Token::Promise,
+        "Default(" => Token::Deflt,
+        "Contract(" => Token::Contract,
+        "ContractDefault(" => Token::ContractDeflt,
+        "Docstring(" => Token::Docstring,
+
+        "isZero" => Token::IsZero,
+        "isNum" => Token::IsNum,
+        "isBool" => Token::IsBool,
+        "isStr" => Token::IsStr,
+        "isFun" => Token::IsFun,
+        "isList" => Token::IsList,
+        "blame" => Token::Blame,
+        "chngPol" => Token::ChangePol,
+        "polarity" => Token::Polarity,
+        "goDom" => Token::GoDom,
+        "goCodom" => Token::GoCodom,
+        "wrap" => Token::Wrap,
+        "unwrap" => Token::Unwrap,
+        "embed" => Token::Embed,
+        "mapRec" => Token::MapRec,
+        "seq" => Token::Seq,
+        "deepSeq" => Token::DeepSeq,
+        "head" => Token::Head,
+        "tail" => Token::Tail,
+        "length" => Token::Length,
+
+        "hasField" => Token::HasField,
+        "map" => Token::Map,
+        "elemAt" => Token::ElemAt,
+        "merge" => Token::Merge,
+
+        "{" => Token::LBrace,
+        "}" => Token::RBrace,
+        "[" => Token::LBracket,
+        "]" => Token::RBracket,
+        "(" => Token::LParen,
+        ")" => Token::RParen,
+        "<" => Token::LAngleBracket,
+        ">" => Token::RAngleBracket,
+    }
+}

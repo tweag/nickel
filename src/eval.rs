@@ -89,7 +89,7 @@ use crate::operation::{continuate_operation, OperationCont};
 use crate::position::RawSpan;
 use crate::program::ImportResolver;
 use crate::stack::Stack;
-use crate::term::{RichTerm, Term};
+use crate::term::{RichTerm, StrChunk, Term, UnaryOp};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
@@ -239,6 +239,27 @@ where
                 );
                 Closure { body: fst, env }
             }
+            Term::StrChunks(mut chunks) => match chunks.pop() {
+                None => Closure {
+                    body: Term::Str(String::new()).into(),
+                    env: HashMap::new(),
+                },
+                Some(StrChunk::Literal(s)) => Closure {
+                    body: Term::Op1(
+                        UnaryOp::ChunksConcat(String::new(), chunks),
+                        Term::Str(s).into(),
+                    )
+                    .into(),
+                    env: HashMap::new(),
+                },
+                Some(StrChunk::Expr(e)) => Closure {
+                    body: RichTerm {
+                        term: Box::new(Term::Op1(UnaryOp::ChunksConcat(String::new(), chunks), e)),
+                        pos,
+                    },
+                    env,
+                },
+            },
             Term::Promise(ty, l, t) | Term::Assume(ty, l, t) => {
                 stack.push_arg(
                     Closure {
@@ -353,6 +374,7 @@ mod tests {
     use crate::error::ImportError;
     use crate::label::{Label, TyPath};
     use crate::program::resolvers::{DummyResolver, SimpleResolver};
+    use crate::term::StrChunk;
     use crate::term::{BinaryOp, UnaryOp};
     use crate::transformations::transform;
     use codespan::Files;
@@ -627,6 +649,69 @@ mod tests {
             )
             .unwrap(),
             Term::Num(1.0)
+        );
+    }
+
+    #[test]
+    fn interpolation_simple() {
+        let mut chunks = vec![
+            StrChunk::Literal(String::from("Hello")),
+            StrChunk::Expr(
+                Term::Op2(
+                    BinaryOp::PlusStr(),
+                    Term::Str(String::from(", ")).into(),
+                    Term::Str(String::from("World!")).into(),
+                )
+                .into(),
+            ),
+            StrChunk::Literal(String::from(" How")),
+            StrChunk::Expr(RichTerm::ite(
+                Term::Bool(true).into(),
+                Term::Str(String::from(" are")).into(),
+                Term::Str(String::from(" is")).into(),
+            )),
+            StrChunk::Literal(String::from(" you?")),
+        ];
+        chunks.reverse();
+
+        let t: RichTerm = Term::StrChunks(chunks).into();
+        assert_eq!(
+            eval_no_import(t),
+            Ok(Term::Str(String::from("Hello, World! How are you?")))
+        );
+    }
+
+    #[test]
+    fn interpolation_nested() {
+        let mut inner_chunks = vec![
+            StrChunk::Literal(String::from(" How")),
+            StrChunk::Expr(
+                Term::Op2(
+                    BinaryOp::PlusStr(),
+                    Term::Str(String::from(" ar")).into(),
+                    Term::Str(String::from("e")).into(),
+                )
+                .into(),
+            ),
+            StrChunk::Expr(RichTerm::ite(
+                Term::Bool(true).into(),
+                Term::Str(String::from(" you")).into(),
+                Term::Str(String::from(" me")).into(),
+            )),
+        ];
+        inner_chunks.reverse();
+
+        let mut chunks = vec![
+            StrChunk::Literal(String::from("Hello, World!")),
+            StrChunk::Expr(Term::StrChunks(inner_chunks).into()),
+            StrChunk::Literal(String::from("?")),
+        ];
+        chunks.reverse();
+
+        let t: RichTerm = Term::StrChunks(chunks).into();
+        assert_eq!(
+            eval_no_import(t),
+            Ok(Term::Str(String::from("Hello, World! How are you?")))
         );
     }
 }

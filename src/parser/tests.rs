@@ -1,3 +1,4 @@
+use super::lexer::{Lexer, LexicalError, Token};
 use crate::identifier::Ident;
 use crate::term::Term::*;
 use crate::term::{BinaryOp, RichTerm, UnaryOp};
@@ -5,13 +6,24 @@ use codespan::Files;
 
 fn parse(s: &str) -> Option<RichTerm> {
     let id = Files::new().add("<test>", String::from(s));
-    super::grammar::TermParser::new().parse(&id, 0, s).ok()
+
+    super::grammar::TermParser::new()
+        .parse(&id, 0, Lexer::new(&s))
+        .ok()
 }
 
 fn parse_without_pos(s: &str) -> RichTerm {
     let mut result = parse(s).unwrap();
     result.clean_pos();
     result
+}
+
+fn lex(s: &str) -> Result<Vec<(usize, Token, usize)>, LexicalError> {
+    Lexer::new(s).collect()
+}
+
+fn lex_without_pos(s: &str) -> Result<Vec<Token>, LexicalError> {
+    lex(s).map(|v| v.into_iter().map(|(_, tok, _)| tok).collect())
 }
 
 #[test]
@@ -93,6 +105,8 @@ fn ite() {
 
 #[test]
 fn applications() {
+    println!("1 true 2: {:?}", parse_without_pos("1 true 2"));
+
     assert_eq!(
         parse_without_pos("1 true 2"),
         RichTerm::app(
@@ -210,5 +224,72 @@ fn record_terms() {
             .into()
         )
         .into()
+    );
+}
+
+#[test]
+fn string_lexing() {
+    assert_eq!(
+        lex_without_pos("\"Good\" \"strings\""),
+        Ok(vec![
+            Token::DoubleQuote,
+            Token::StrLiteral(String::from("Good")),
+            Token::DoubleQuote,
+            Token::DoubleQuote,
+            Token::StrLiteral(String::from("strings")),
+            Token::DoubleQuote,
+        ])
+    );
+
+    assert_eq!(
+        lex_without_pos("\"Good\\nEscape\\t\\\"\""),
+        Ok(vec![
+            Token::DoubleQuote,
+            Token::StrLiteral(String::from("Good\nEscape\t\"")),
+            Token::DoubleQuote,
+        ])
+    );
+
+    assert_eq!(
+        lex_without_pos("\"1 + ${ 1 } + 2\""),
+        Ok(vec![
+            Token::DoubleQuote,
+            Token::StrLiteral(String::from("1 + ")),
+            Token::DollarBrace,
+            Token::NumLiteral(1.0),
+            Token::RBrace,
+            Token::StrLiteral(String::from(" + 2")),
+            Token::DoubleQuote,
+        ])
+    );
+
+    assert_eq!(
+        lex_without_pos("\"1 + ${ \"${ 1 }\" } + 2\""),
+        Ok(vec![
+            Token::DoubleQuote,
+            Token::StrLiteral(String::from("1 + ")),
+            Token::DollarBrace,
+            Token::DoubleQuote,
+            Token::DollarBrace,
+            Token::NumLiteral(1.0),
+            Token::RBrace,
+            Token::DoubleQuote,
+            Token::RBrace,
+            Token::StrLiteral(String::from(" + 2")),
+            Token::DoubleQuote,
+        ])
+    );
+}
+
+#[test]
+fn str_escape() {
+    assert!(parse("\"bad escape \\g\"").is_none());
+    assert_eq!(
+        parse_without_pos(r#""str\twith\nescapes""#),
+        Str(String::from("str\twith\nescapes")).into(),
+    );
+    assert_eq!(
+        parse_without_pos(r#""\$\${ }$""#),
+        Str(String::from("$${ }$")).into(),
     );
 }

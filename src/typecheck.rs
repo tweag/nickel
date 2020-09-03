@@ -22,7 +22,7 @@
 //! mode.
 use crate::identifier::Ident;
 use crate::program::ImportResolver;
-use crate::term::{BinaryOp, RichTerm, Term, UnaryOp};
+use crate::term::{BinaryOp, RichTerm, StrChunk, Term, UnaryOp};
 use crate::types::{AbsType, Types};
 use std::collections::{HashMap, HashSet};
 
@@ -95,6 +95,30 @@ where
             TypeWrapper::Concrete(AbsType::Str()),
             strict,
         ),
+        Term::StrChunks(chunks) => {
+            unify(
+                state,
+                constr,
+                ty,
+                TypeWrapper::Concrete(AbsType::Str()),
+                strict,
+            )?;
+
+            chunks.iter().try_for_each(|chunk| -> Result<(), String> {
+                match chunk {
+                    StrChunk::Literal(_) => Ok(()),
+                    StrChunk::Expr(t) => type_check_(
+                        typed_vars.clone(),
+                        state,
+                        constr,
+                        resolver,
+                        t.as_ref(),
+                        TypeWrapper::Concrete(AbsType::Dyn()),
+                        strict,
+                    ),
+                }
+            })
+        }
         Term::Fun(x, rt) => {
             let src = TypeWrapper::Ptr(new_var(state));
             // TODO what to do here, this makes more sense to me, but it means let x = foo in bar
@@ -890,6 +914,8 @@ where
             Box::new(TypeWrapper::Concrete(AbsType::List())),
             Box::new(TypeWrapper::Concrete(AbsType::Num())),
         )),
+        // This should not happen, as ChunksConcat() is only produced during evaluation.
+        UnaryOp::ChunksConcat(_, _) => panic!("cannot type ChunksConcat()"),
     })
 }
 
@@ -1128,6 +1154,7 @@ mod tests {
     use super::*;
     use crate::error::ImportError;
     use crate::label::{Label, TyPath};
+    use crate::parser::lexer;
     use crate::position::RawSpan;
     use crate::program::resolvers::{DummyResolver, SimpleResolver};
     use crate::transformations::transform;
@@ -1142,7 +1169,7 @@ mod tests {
     fn parse_and_typecheck(s: &str) -> Result<Types, String> {
         let id = Files::new().add("<test>", s);
 
-        if let Ok(p) = parser::grammar::TermParser::new().parse(&id, 0, s) {
+        if let Ok(p) = parser::grammar::TermParser::new().parse(&id, 0, lexer::Lexer::new(&s)) {
             type_check_no_import(p.as_ref())
         } else {
             panic!("Couldn't parse {}", s)
