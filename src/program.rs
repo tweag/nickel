@@ -12,8 +12,8 @@
 use crate::error::{Error, ImportError, ParseError, ToDiagnostic};
 use crate::eval;
 use crate::parser;
-use crate::position::RawSpan;
 use crate::parser::lexer::Lexer;
+use crate::position::RawSpan;
 use crate::term::{RichTerm, Term};
 use crate::transformations;
 use crate::typecheck::type_check;
@@ -154,9 +154,8 @@ impl Program {
         } else {
             0
         };
-        let lexer = Lexer::new(&buf);
         parser::grammar::TermParser::new()
-            .parse(&file_id, offset, &lexer)
+            .parse(&file_id, offset, Lexer::new(&buf))
             .map_err(|err| ParseError::from_lalrpop(err, file_id, offset))
     }
 
@@ -366,7 +365,7 @@ pub mod resolvers {
                 self.term_cache.insert(file_id, None);
                 let buf = self.files.source(file_id);
                 let t = parser::grammar::TermParser::new()
-                    .parse(&file_id, 0, &buf)
+                    .parse(&file_id, 0, Lexer::new(&buf))
                     .map_err(|e| ParseError::from_lalrpop(e, file_id, 0))
                     .map_err(|e| ImportError::ParseError(e, pos.clone()))?;
                 Ok((ResolvedTerm::FromFile(t, PathBuf::new()), file_id))

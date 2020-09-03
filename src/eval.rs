@@ -676,7 +676,7 @@ mod tests {
 
         let t: RichTerm = Term::StrChunks(chunks).into();
         assert_eq!(
-            eval(t),
+            eval_no_import(t),
             Ok(Term::Str(String::from("Hello, World! How are you?")))
         );
     }
@@ -710,7 +710,7 @@ mod tests {
 
         let t: RichTerm = Term::StrChunks(chunks).into();
         assert_eq!(
-            eval(t),
+            eval_no_import(t),
             Ok(Term::Str(String::from("Hello, World! How are you?")))
         );
     }

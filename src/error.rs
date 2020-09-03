@@ -5,6 +5,7 @@
 use crate::eval::CallStack;
 use crate::identifier::Ident;
 use crate::label;
+use crate::parser::lexer::LexicalError;
 use crate::parser::utils::mk_span;
 use crate::position::RawSpan;
 use crate::term::RichTerm;
@@ -115,8 +116,8 @@ impl From<ImportError> for Error {
 }
 
 impl ParseError {
-    pub fn from_lalrpop<T, E>(
-        error: lalrpop_util::ParseError<usize, T, E>,
+    pub fn from_lalrpop<T>(
+        error: lalrpop_util::ParseError<usize, T, LexicalError>,
         file_id: FileId,
         offset: usize,
     ) -> ParseError {
@@ -139,10 +140,14 @@ impl ParseError {
             lalrpop_util::ParseError::ExtraToken {
                 token: (start, _, end),
             } => ParseError::ExtraToken(mk_span(&file_id, start, end, offset).unwrap()),
-            lalrpop_util::ParseError::User { error: _ } => panic!(
-                "The parser should not generate custom errors. {}",
-                INTERNAL_ERROR_MSG
-            ),
+            // FIXME: The implementation of the custom lexer in #131
+            // (https://github.com/tweag/nickel/pull/131) introduced custom parse errors. To
+            // make tests works, we map the all to an arbitrary existing ParseError. In the short
+            // term, lexical errors should have their counterpart in parse error, and be reported
+            // with appropriate messages.
+            lalrpop_util::ParseError::User { error: _ } => {
+                ParseError::UnexpectedEOF(file_id, Vec::new())
+            }
         }
     }
 }

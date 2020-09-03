@@ -111,6 +111,7 @@ where
                         typed_vars.clone(),
                         state,
                         constr,
+                        resolver,
                         t.as_ref(),
                         TypeWrapper::Concrete(AbsType::Dyn()),
                         strict,

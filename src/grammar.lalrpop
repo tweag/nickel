@@ -295,6 +295,7 @@ extern {
         "-$" => Token::MinusDollar,
         "$=" => Token::DollarEquals,
         "fun" => Token::Fun,
+        "import" => Token::Import,
         "|" => Token::Pipe,
         "->" => Token::SimpleArrow,
         "=>" => Token::DoubleArrow,

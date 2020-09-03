@@ -796,6 +796,23 @@ impl RichTerm {
                     state,
                 )
             }
+            Term::StrChunks(chunks) => {
+                let chunks_res: Result<Vec<StrChunk<RichTerm>>, E> = chunks
+                    .into_iter()
+                    .map(|chunk| match chunk {
+                        chunk @ StrChunk::Literal(_) => Ok(chunk),
+                        StrChunk::Expr(t) => Ok(StrChunk::Expr(t.traverse(f, state)?)),
+                    })
+                    .collect();
+
+                f(
+                    RichTerm {
+                        term: Box::new(Term::StrChunks(chunks_res?)),
+                        pos,
+                    },
+                    state,
+                )
+            }
             Term::Contract(ty, label) => {
                 let ty = match ty {
                     Types(AbsType::Flat(t)) => Types(AbsType::Flat(t.traverse(f, state)?)),
