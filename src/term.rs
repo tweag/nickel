@@ -585,7 +585,7 @@ impl RichTerm {
     }
 
     /// Apply a transformation on a whole term by mapping a function `f` on each node in a
-    /// depth-first manner. `f` may return a generic error `E` and use the state `S` which is
+    /// bottom-up manner. `f` may return a generic error `E` and use the state `S` which is
     /// passed around.
     pub fn traverse<F, S, E>(self, f: &mut F, state: &mut S) -> Result<RichTerm, E>
     where
