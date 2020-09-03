@@ -26,6 +26,9 @@
 //! - **Thunk on stack**: If the evaluation of the current term is done, and there is one (or
 //! several) thunk on the stack, this means we have to perform an update. Consecutive thunks are
 //! popped from the stack and are updated to point to the current evaluated term.
+//! - **Import**: Import must have been resolved before the evaluation starts. An unresolved import
+//! causes an [`InternalError`](../error/enum.EvalError.html#variant.InternalError). A resolved
+//! import, identified by a `FileId`, is retrieved from the import resolver and evaluation proceeds.
 //!
 //! ## Contracts
 //!
@@ -84,6 +87,7 @@ use crate::error::EvalError;
 use crate::identifier::Ident;
 use crate::operation::{continuate_operation, OperationCont};
 use crate::position::RawSpan;
+use crate::program::ImportResolver;
 use crate::stack::Stack;
 use crate::term::{RichTerm, Term};
 use std::cell::RefCell;
@@ -146,7 +150,10 @@ fn should_update(t: &Term) -> bool {
 /// evaluation of the arguments of operations, and a few others. The specific implementations of
 /// primitive operations is delegated to the modules [operation](../operation/index.html) and
 /// [merge](../merge/index.html).
-pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
+pub fn eval<R>(t0: RichTerm, resolver: &mut R) -> Result<Term, EvalError>
+where
+    R: ImportResolver,
+{
     let mut clos = Closure::atomic_closure(t0);
     let mut call_stack = CallStack::new();
     let mut stack = Stack::new();
@@ -262,6 +269,22 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                 body: Term::Assume(ty, label, t).into(),
                 env,
             },
+            Term::ResolvedImport(id) => {
+                if let Some(t) = resolver.get(id) {
+                    Closure::atomic_closure(t)
+                } else {
+                    return Err(EvalError::InternalError(
+                        format!("Resolved import not found ({:?})", id),
+                        pos,
+                    ));
+                }
+            }
+            Term::Import(path) => {
+                return Err(EvalError::InternalError(
+                    format!("Unresolved import ({})", path),
+                    pos,
+                ))
+            }
             // Continuation of operations and thunk update
             _ if 0 < stack.count_thunks() || 0 < stack.count_conts() => {
                 clos = Closure {
@@ -327,10 +350,19 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::ImportError;
     use crate::label::{Label, TyPath};
+    use crate::program::resolvers::{DummyResolver, SimpleResolver};
     use crate::term::{BinaryOp, UnaryOp};
+    use crate::transformations::transform;
     use codespan::Files;
 
+    /// Evaluate a term without import support.
+    fn eval_no_import(t: RichTerm) -> Result<Term, EvalError> {
+        eval(t, &mut DummyResolver {})
+    }
+
+    /// Generate a dummy label.
     fn mk_label() -> Label {
         Label {
             tag: "testing".to_string(),
@@ -347,23 +379,23 @@ mod tests {
     #[test]
     fn identity_over_values() {
         let num = Term::Num(45.3);
-        assert_eq!(Ok(num.clone()), eval(num.into()));
+        assert_eq!(Ok(num.clone()), eval_no_import(num.into()));
 
         let boolean = Term::Bool(true);
-        assert_eq!(Ok(boolean.clone()), eval(boolean.into()));
+        assert_eq!(Ok(boolean.clone()), eval_no_import(boolean.into()));
 
         let lambda = Term::Fun(
             Ident("x".to_string()),
             RichTerm::app(RichTerm::var("x".into()), RichTerm::var("x".into())),
         );
-        assert_eq!(Ok(lambda.clone()), eval(lambda.into()));
+        assert_eq!(Ok(lambda.clone()), eval_no_import(lambda.into()));
     }
 
     #[test]
     fn blame_panics() {
         let label = mk_label();
         if let Err(EvalError::BlameError(l, _)) =
-            eval(Term::Op1(UnaryOp::Blame(), Term::Lbl(label.clone()).into()).into())
+            eval_no_import(Term::Op1(UnaryOp::Blame(), Term::Lbl(label.clone()).into()).into())
         {
             assert_eq!(l, label);
         } else {
@@ -374,12 +406,13 @@ mod tests {
     #[test]
     #[should_panic]
     fn lone_var_panics() {
-        eval(RichTerm::var("unbound".into())).unwrap();
+        eval_no_import(RichTerm::var("unbound".into())).unwrap();
     }
 
     #[test]
     fn only_fun_are_applicable() {
-        eval(RichTerm::app(Term::Bool(true).into(), Term::Num(45.).into()).into()).unwrap_err();
+        eval_no_import(RichTerm::app(Term::Bool(true).into(), Term::Num(45.).into()).into())
+            .unwrap_err();
     }
 
     #[test]
@@ -389,14 +422,14 @@ mod tests {
             Term::Num(5.0).into(),
         );
 
-        assert_eq!(Ok(Term::Num(5.0)), eval(t));
+        assert_eq!(Ok(Term::Num(5.0)), eval_no_import(t));
     }
 
     #[test]
     fn simple_let() {
         let t = RichTerm::let_in("x", Term::Num(5.0).into(), RichTerm::var("x".into()));
 
-        assert_eq!(Ok(Term::Num(5.0)), eval(t));
+        assert_eq!(Ok(Term::Num(5.0)), eval_no_import(t));
     }
 
     #[test]
@@ -407,30 +440,30 @@ mod tests {
             Term::Bool(false).into(),
         );
 
-        assert_eq!(Ok(Term::Num(5.0)), eval(t));
+        assert_eq!(Ok(Term::Num(5.0)), eval_no_import(t));
     }
 
     #[test]
     fn simple_plus() {
         let t = RichTerm::plus(Term::Num(5.0).into(), Term::Num(7.5).into());
 
-        assert_eq!(Ok(Term::Num(12.5)), eval(t));
+        assert_eq!(Ok(Term::Num(12.5)), eval_no_import(t));
     }
 
     #[test]
     fn simple_is_zero() {
         let t = Term::Op1(UnaryOp::IsZero(), Term::Num(7.0).into()).into();
 
-        assert_eq!(Ok(Term::Bool(false)), eval(t));
+        assert_eq!(Ok(Term::Bool(false)), eval_no_import(t));
     }
 
     #[test]
     fn asking_for_various_types() {
         let num = Term::Op1(UnaryOp::IsNum(), Term::Num(45.3).into()).into();
-        assert_eq!(Ok(Term::Bool(true)), eval(num));
+        assert_eq!(Ok(Term::Bool(true)), eval_no_import(num));
 
         let boolean = Term::Op1(UnaryOp::IsBool(), Term::Bool(true).into()).into();
-        assert_eq!(Ok(Term::Bool(true)), eval(boolean));
+        assert_eq!(Ok(Term::Bool(true)), eval_no_import(boolean));
 
         let lambda = Term::Op1(
             UnaryOp::IsFun(),
@@ -441,7 +474,7 @@ mod tests {
             .into(),
         )
         .into();
-        assert_eq!(Ok(Term::Bool(true)), eval(lambda));
+        assert_eq!(Ok(Term::Bool(true)), eval_no_import(lambda));
     }
 
     #[test]
@@ -451,7 +484,7 @@ mod tests {
                 .into(),
         )
         .into();
-        assert_eq!(Ok(Term::Bool(false)), eval(t));
+        assert_eq!(Ok(Term::Bool(false)), eval_no_import(t));
     }
 
     #[test]
@@ -462,7 +495,7 @@ mod tests {
             Term::DefaultValue(Term::Num(2.0).into()).into(),
         )
         .into();
-        assert_eq!(Ok(Term::Num(1.0)), eval(t));
+        assert_eq!(Ok(Term::Num(1.0)), eval_no_import(t));
     }
 
     #[test]
@@ -474,6 +507,126 @@ mod tests {
         )
         .into();
 
-        eval(t).unwrap_err();
+        eval_no_import(t).unwrap_err();
+    }
+
+    #[test]
+    fn imports() {
+        let mut resolver = SimpleResolver::new();
+        resolver.add_source(String::from("two"), String::from("1 + 1"));
+        resolver.add_source(String::from("lib"), String::from("{ f = true }"));
+        resolver.add_source(String::from("bad"), String::from("^$*/.23ab 0°@"));
+        resolver.add_source(
+            String::from("nested"),
+            String::from("let x = import \"two\" in x + 1"),
+        );
+        resolver.add_source(
+            String::from("cycle"),
+            String::from("let x = import \"cycle_b\" in {a = 1; b = x.a}"),
+        );
+        resolver.add_source(
+            String::from("cycle_b"),
+            String::from("let x = import \"cycle\" in {a = x.a}"),
+        );
+
+        fn mk_import<R>(
+            var: &str,
+            import: &str,
+            body: RichTerm,
+            resolver: &mut R,
+        ) -> Result<RichTerm, ImportError>
+        where
+            R: ImportResolver,
+        {
+            transform(
+                RichTerm::let_in(var, Term::Import(String::from(import)).into(), body),
+                resolver,
+            )
+        };
+
+        // let x = import "does_not_exist" in x
+        match mk_import(
+            "x",
+            "does_not_exist",
+            RichTerm::var(String::from("x")),
+            &mut resolver,
+        )
+        .unwrap_err()
+        {
+            ImportError::IOError(_, _, _) => (),
+            _ => assert!(false),
+        };
+
+        // let x = import "bad" in x
+        match mk_import("x", "bad", RichTerm::var(String::from("x")), &mut resolver).unwrap_err() {
+            ImportError::ParseError(_, _, _) => (),
+            _ => assert!(false),
+        };
+
+        // let x = import "two" in x
+        assert_eq!(
+            eval(
+                mk_import("x", "two", RichTerm::var(String::from("x")), &mut resolver).unwrap(),
+                &mut resolver
+            )
+            .unwrap(),
+            Term::Num(2.0)
+        );
+
+        // let x = import "nested" in x
+        assert_eq!(
+            eval(
+                mk_import(
+                    "x",
+                    "nested",
+                    RichTerm::var(String::from("x")),
+                    &mut resolver
+                )
+                .unwrap(),
+                &mut resolver
+            )
+            .unwrap(),
+            Term::Num(3.0)
+        );
+
+        // let x = import "lib" in x.f
+        assert_eq!(
+            eval(
+                mk_import(
+                    "x",
+                    "lib",
+                    Term::Op1(
+                        UnaryOp::StaticAccess(Ident(String::from("f"))),
+                        RichTerm::var(String::from("x"))
+                    )
+                    .into(),
+                    &mut resolver,
+                )
+                .unwrap(),
+                &mut resolver
+            )
+            .unwrap(),
+            Term::Bool(true)
+        );
+
+        // let x = import "cycle" in x.b
+        assert_eq!(
+            eval(
+                mk_import(
+                    "x",
+                    "cycle",
+                    Term::Op1(
+                        UnaryOp::StaticAccess(Ident(String::from("b"))),
+                        RichTerm::var(String::from("x"))
+                    )
+                    .into(),
+                    &mut resolver,
+                )
+                .unwrap(),
+                &mut resolver
+            )
+            .unwrap(),
+            Term::Num(1.0)
+        );
     }
 }

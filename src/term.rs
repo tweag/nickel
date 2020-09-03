@@ -19,7 +19,8 @@
 use crate::identifier::Ident;
 use crate::label::Label;
 use crate::position::RawSpan;
-use crate::types::Types;
+use crate::types::{AbsType, Types};
+use codespan::FileId;
 use std::collections::HashMap;
 
 /// The AST of a Nickel expression.
@@ -118,6 +119,11 @@ pub enum Term {
 
     /// A term together with its documentation string. Enriched value.
     Docstring(String, RichTerm),
+
+    /// An unresolved import.
+    Import(String),
+    /// A resolved import (which has already been loaded and parsed).
+    ResolvedImport(FileId),
 }
 
 impl Term {
@@ -150,7 +156,16 @@ impl Term {
                 func(t2)
             }
 
-            Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | Sym(_) | Enum(_) | Contract(_, _) => {}
+            Bool(_)
+            | Num(_)
+            | Str(_)
+            | Lbl(_)
+            | Var(_)
+            | Sym(_)
+            | Enum(_)
+            | Contract(_, _)
+            | Import(_)
+            | ResolvedImport(_) => {}
             Fun(_, ref mut t)
             | Op1(_, ref mut t)
             | Promise(_, _, ref mut t)
@@ -201,7 +216,9 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::Promise(_, _, _)
-            | Term::Assume(_, _, _) => None,
+            | Term::Assume(_, _, _)
+            | Term::Import(_)
+            | Term::ResolvedImport(_) => None,
         }
         .map(|s| String::from(s))
     }
@@ -234,7 +251,9 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::Promise(_, _, _)
-            | Term::Assume(_, _, _) => String::from("<unevaluated>"),
+            | Term::Assume(_, _, _)
+            | Term::Import(_)
+            | Term::ResolvedImport(_) => String::from("<unevaluated>"),
         }
     }
 
@@ -261,7 +280,9 @@ impl Term {
             | Term::Contract(_, _)
             | Term::DefaultValue(_)
             | Term::ContractWithDefault(_, _, _)
-            | Term::Docstring(_, _) => false,
+            | Term::Docstring(_, _)
+            | Term::Import(_)
+            | Term::ResolvedImport(_) => false,
         }
     }
 
@@ -288,7 +309,9 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::Promise(_, _, _)
-            | Term::Assume(_, _, _) => false,
+            | Term::Assume(_, _, _)
+            | Term::Import(_)
+            | Term::ResolvedImport(_) => false,
         }
     }
 }
@@ -559,6 +582,215 @@ impl RichTerm {
 
     pub fn plus(t0: RichTerm, t1: RichTerm) -> RichTerm {
         Term::Op2(BinaryOp::Plus(), t0, t1).into()
+    }
+
+    /// Apply a transformation on a whole term by mapping a function `f` on each node in a
+    /// bottom-up manner. `f` may return a generic error `E` and use the state `S` which is
+    /// passed around.
+    pub fn traverse<F, S, E>(self, f: &mut F, state: &mut S) -> Result<RichTerm, E>
+    where
+        F: FnMut(RichTerm, &mut S) -> Result<RichTerm, E>,
+    {
+        let RichTerm { term, pos } = self;
+        match *term {
+            v @ Term::Bool(_)
+            | v @ Term::Num(_)
+            | v @ Term::Str(_)
+            | v @ Term::Lbl(_)
+            | v @ Term::Sym(_)
+            | v @ Term::Var(_)
+            | v @ Term::Enum(_)
+            | v @ Term::Import(_)
+            | v @ Term::ResolvedImport(_) => f(
+                RichTerm {
+                    term: Box::new(v),
+                    pos,
+                },
+                state,
+            ),
+            Term::Fun(id, t) => {
+                let t = t.traverse(f, state)?;
+                f(
+                    RichTerm {
+                        term: Box::new(Term::Fun(id, t)),
+                        pos,
+                    },
+                    state,
+                )
+            }
+            Term::Let(id, t1, t2) => {
+                let t1 = t1.traverse(f, state)?;
+                let t2 = t2.traverse(f, state)?;
+                f(
+                    RichTerm {
+                        term: Box::new(Term::Let(id, t1, t2)),
+                        pos,
+                    },
+                    state,
+                )
+            }
+            Term::App(t1, t2) => {
+                let t1 = t1.traverse(f, state)?;
+                let t2 = t2.traverse(f, state)?;
+                f(
+                    RichTerm {
+                        term: Box::new(Term::App(t1, t2)),
+                        pos,
+                    },
+                    state,
+                )
+            }
+            Term::Op1(UnaryOp::Switch(cases, default), t) => {
+                // This annotation use Result's corresponding trait to convert from
+                // Iterator<Result> to a Result<Iterator>
+                let cases_res: Result<HashMap<Ident, RichTerm>, E> = cases
+                    .into_iter()
+                    // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
+                    .map(|(id, t)| t.traverse(f, state).map(|t_ok| (id.clone(), t_ok)))
+                    .collect();
+
+                let default = default
+                    .map(|t| t.traverse(f, state))
+                    // Transpose from Option<Result> to Result<Option>. There is a `transpose`
+                    // method in Rust, but it has currently not make it to the stable version yet
+                    .map_or(Ok(None), |res| res.map(Some))?;
+
+                let t = t.traverse(f, state)?;
+
+                f(
+                    RichTerm {
+                        term: Box::new(Term::Op1(UnaryOp::Switch(cases_res?, default), t)),
+                        pos,
+                    },
+                    state,
+                )
+            }
+            Term::Op1(op, t) => {
+                let t = t.traverse(f, state)?;
+                f(
+                    RichTerm {
+                        term: Box::new(Term::Op1(op, t)),
+                        pos,
+                    },
+                    state,
+                )
+            }
+            Term::Op2(op, t1, t2) => {
+                let t1 = t1.traverse(f, state)?;
+                let t2 = t2.traverse(f, state)?;
+                f(
+                    RichTerm {
+                        term: Box::new(Term::Op2(op, t1, t2)),
+                        pos,
+                    },
+                    state,
+                )
+            }
+            Term::Promise(ty, l, t) => {
+                let t = t.traverse(f, state)?;
+                f(
+                    RichTerm {
+                        term: Box::new(Term::Promise(ty, l, t)),
+                        pos,
+                    },
+                    state,
+                )
+            }
+            Term::Assume(ty, l, t) => {
+                let t = t.traverse(f, state)?;
+                f(
+                    RichTerm {
+                        term: Box::new(Term::Assume(ty, l, t)),
+                        pos,
+                    },
+                    state,
+                )
+            }
+            Term::Wrapped(i, t) => {
+                let t = t.traverse(f, state)?;
+                f(
+                    RichTerm {
+                        term: Box::new(Term::Wrapped(i, t)),
+                        pos,
+                    },
+                    state,
+                )
+            }
+            Term::Record(map) => {
+                // This annotation use Result's corresponding trait to convert from
+                // Iterator<Result> to a Result<Iterator>
+                let map_res: Result<HashMap<Ident, RichTerm>, E> = map
+                    .into_iter()
+                    // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
+                    .map(|(id, t)| t.traverse(f, state).map(|t_ok| (id.clone(), t_ok)))
+                    .collect();
+                f(
+                    RichTerm {
+                        term: Box::new(Term::Record(map_res?)),
+                        pos,
+                    },
+                    state,
+                )
+            }
+            Term::List(ts) => {
+                let ts_res: Result<Vec<RichTerm>, E> =
+                    ts.into_iter().map(|t| t.traverse(f, state)).collect();
+
+                f(
+                    RichTerm {
+                        term: Box::new(Term::List(ts_res?)),
+                        pos,
+                    },
+                    state,
+                )
+            }
+            Term::Contract(ty, label) => {
+                let ty = match ty {
+                    Types(AbsType::Flat(t)) => Types(AbsType::Flat(t.traverse(f, state)?)),
+                    ty => ty,
+                };
+
+                Ok(RichTerm {
+                    term: Box::new(Term::Contract(ty, label)),
+                    pos,
+                })
+            }
+            Term::DefaultValue(t) => {
+                let t = t.traverse(f, state)?;
+                f(
+                    RichTerm {
+                        term: Box::new(Term::DefaultValue(t)),
+                        pos,
+                    },
+                    state,
+                )
+            }
+            Term::ContractWithDefault(ty, lbl, t) => {
+                let ty = match ty {
+                    Types(AbsType::Flat(t)) => Types(AbsType::Flat(t.traverse(f, state)?)),
+                    ty => ty,
+                };
+
+                let t = t.traverse(f, state)?;
+                f(
+                    RichTerm {
+                        term: Box::new(Term::ContractWithDefault(ty, lbl, t)),
+                        pos,
+                    },
+                    state,
+                )
+            }
+            Term::Docstring(s, t) => {
+                let t = t.traverse(f, state)?;
+                f(
+                    RichTerm {
+                        term: Box::new(Term::Docstring(s, t)),
+                        pos,
+                    },
+                    state,
+                )
+            }
+        }
     }
 }
 
