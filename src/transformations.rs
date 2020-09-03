@@ -53,8 +53,8 @@ pub mod share_normal_form {
     /// the top-level node of the AST. For example, it transforms `[1 + 1, [1 + 2]]` to `let %0 = 1
     /// + 1 in [%0, [1 + 2]]`: the nested subterm `[1 + 2]` is left as it was. If the term is
     /// neither a record, a list nor an enriched value, it is returned the same.  In other words,
-    /// the transformation is implemented as a *recursion scheme*, and must be used in conjunction
-    /// a traversal to obtain a full transformation.
+    /// the transformation is implemented as rewrite rules, and must be used in conjunction a
+    /// traversal to obtain a full transformation.
     pub fn transform_one(rt: RichTerm) -> RichTerm {
         let RichTerm { term, pos } = rt;
         let pos = pos.clone();
