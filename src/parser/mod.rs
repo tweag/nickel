@@ -7,4 +7,4 @@ lalrpop_mod!(
 
 #[cfg(test)]
 mod tests;
-mod utils;
+pub mod utils;

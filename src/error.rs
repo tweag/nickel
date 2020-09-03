@@ -5,6 +5,7 @@
 use crate::eval::CallStack;
 use crate::identifier::Ident;
 use crate::label;
+use crate::parser::utils::mk_span;
 use crate::position::RawSpan;
 use crate::term::RichTerm;
 use codespan::{FileId, Files};
@@ -14,7 +15,7 @@ use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 #[derive(Debug, PartialEq)]
 pub enum Error {
     EvalError(EvalError),
-    ParseError(String),
+    ParseError(ParseError),
     ImportError(ImportError),
 }
 
@@ -65,6 +66,20 @@ pub enum EvalError {
     Other(String, Option<RawSpan>),
 }
 
+/// An error occurring during parsing.
+#[derive(Debug, PartialEq)]
+pub enum ParseError {
+    /// Unexpected end of file.
+    UnexpectedEOF(FileId, /* tokens expected by the parser */ Vec<String>),
+    /// Unexpected token.
+    UnexpectedToken(
+        RawSpan,
+        /* tokens expected by the parser */ Vec<String>,
+    ),
+    /// Superfluous, unexpected token.
+    ExtraToken(RawSpan),
+}
+
 /// An error occuring during the resolution of an import.
 #[derive(Debug, PartialEq)]
 pub enum ImportError {
@@ -76,8 +91,7 @@ pub enum ImportError {
     ),
     /// A parse error occured during an import.
     ParseError(
-        /* imported file */ String,
-        /* error message */ String,
+        /* error */ ParseError,
         /* import position */ Option<RawSpan>,
     ),
 }
@@ -87,6 +101,55 @@ impl From<EvalError> for Error {
         Error::EvalError(error)
     }
 }
+
+impl From<ParseError> for Error {
+    fn from(error: ParseError) -> Error {
+        Error::ParseError(error)
+    }
+}
+
+impl From<ImportError> for Error {
+    fn from(error: ImportError) -> Error {
+        Error::ImportError(error)
+    }
+}
+
+impl ParseError {
+    pub fn from_lalrpop<T, E>(
+        error: lalrpop_util::ParseError<usize, T, E>,
+        file_id: FileId,
+        offset: usize,
+    ) -> ParseError {
+        match error {
+            lalrpop_util::ParseError::InvalidToken { location } => ParseError::UnexpectedToken(
+                mk_span(&file_id, location, location + 1, offset).unwrap(),
+                Vec::new(),
+            ),
+            lalrpop_util::ParseError::UnrecognizedToken {
+                token: Some((start, _, end)),
+                expected,
+            } => ParseError::UnexpectedToken(
+                mk_span(&file_id, start, end, offset).unwrap(),
+                expected,
+            ),
+            lalrpop_util::ParseError::UnrecognizedToken {
+                token: None,
+                expected,
+            } => ParseError::UnexpectedEOF(file_id, expected),
+            lalrpop_util::ParseError::ExtraToken {
+                token: (start, _, end),
+            } => ParseError::ExtraToken(mk_span(&file_id, start, end, offset).unwrap()),
+            lalrpop_util::ParseError::User { error: _ } => panic!(
+                "The parser should not generate custom errors. {}",
+                INTERNAL_ERROR_MSG
+            ),
+        }
+    }
+}
+
+const INTERNAL_ERROR_MSG: &str =
+    "This error should not happen. This is likely a bug in the Nickel interpreter. Please consider\
+    reporting it at https://github.com/tweag/nickel/issues with the above error message.";
 
 /// A trait for converting an error to a diagnostic.
 pub trait ToDiagnostic<FileId> {
@@ -219,9 +282,7 @@ fn secondary_term(term: &RichTerm, files: &mut Files<String>) -> Label<FileId> {
 impl ToDiagnostic<FileId> for Error {
     fn to_diagnostic(&self, files: &mut Files<String>) -> Diagnostic<FileId> {
         match self {
-            Error::ParseError(msg) => {
-                Diagnostic::error().with_message(format!("While parsing: {}", msg.clone()))
-            }
+            Error::ParseError(err) => err.to_diagnostic(files),
             Error::EvalError(err) => err.to_diagnostic(files),
             Error::ImportError(err) => err.to_diagnostic(files),
         }
@@ -371,18 +432,33 @@ impl ToDiagnostic<FileId> for EvalError {
                 Diagnostic::error()
                     .with_message(format!("Internal error ({})", msg))
                     .with_labels(labels)
-                    .with_notes(vec![String::from(
-                        "This error should not happen. This is likely a bug in the Nickel\
-                    interpreter. Please consider reporting it at\
-                    https://github.com/tweag/nickel/issues with the above error message.",
-                    )])
+                    .with_notes(vec![String::from(INTERNAL_ERROR_MSG)])
             }
         }
     }
 }
 
+impl ToDiagnostic<FileId> for ParseError {
+    fn to_diagnostic(&self, files: &mut Files<String>) -> Diagnostic<FileId> {
+        match self {
+            ParseError::UnexpectedEOF(file_id, _expected) => {
+                Diagnostic::error().with_message(format!(
+                    "Unexpected end of file when parsing {}",
+                    files.name(file_id.clone()).to_string_lossy()
+                ))
+            }
+            ParseError::UnexpectedToken(span, _expected) => Diagnostic::error()
+                .with_message("Unexpected token")
+                .with_labels(vec![primary(span)]),
+            ParseError::ExtraToken(span) => Diagnostic::error()
+                .with_message("Superfluous unexpected token")
+                .with_labels(vec![primary(span)]),
+        }
+    }
+}
+
 impl ToDiagnostic<FileId> for ImportError {
-    fn to_diagnostic(&self, _files: &mut Files<String>) -> Diagnostic<FileId> {
+    fn to_diagnostic(&self, files: &mut Files<String>) -> Diagnostic<FileId> {
         match self {
             ImportError::IOError(path, error, span_opt) => {
                 let labels = span_opt
@@ -394,15 +470,16 @@ impl ToDiagnostic<FileId> for ImportError {
                     .with_message(format!("Import of {} failed: {}", path, error))
                     .with_labels(labels)
             }
-            ImportError::ParseError(path, msg, span_opt) => {
-                let labels = span_opt
-                    .as_ref()
-                    .map(|span| vec![secondary(span).with_message("imported here")])
-                    .unwrap_or(Vec::new());
+            ImportError::ParseError(error, span_opt) => {
+                let mut diagnostic = error.to_diagnostic(files);
 
-                Diagnostic::error()
-                    .with_message(format!("While parsing {}: {}", path, msg))
-                    .with_labels(labels)
+                if let Some(span) = span_opt {
+                    diagnostic
+                        .labels
+                        .push(secondary(span).with_message("imported here"));
+                }
+
+                diagnostic
             }
         }
     }
