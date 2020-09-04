@@ -8,7 +8,11 @@
 //! The abstract machine is a stack machine composed of the following elements:
 //! - The term being currently evaluated
 //! - The main stack, storing arguments, thunks and pending computations
-//! - An [environment](type.Environment.html), mapping identifiers to [closures](type.Closure.html)
+//! - A pair of [environments](type.Environment.html), mapping identifiers to [closures](type.Closure.html):
+//!     * The global environment contains builtin functions accessible from anywhere, and alive
+//!     during the whole evaluation
+//!     * The local environment contains the variables in scope of the current term and is subject
+//!     to garbage collection (currently reference counting based)
 //! - A [callstack](type.CallStack.html), mainly for error reporting purpose
 //!
 //! Depending on the shape of the current term, the following actions are preformed:
@@ -150,7 +154,14 @@ fn should_update(t: &Term) -> bool {
 /// evaluation of the arguments of operations, and a few others. The specific implementations of
 /// primitive operations is delegated to the modules [operation](../operation/index.html) and
 /// [merge](../merge/index.html).
-pub fn eval<R>(t0: RichTerm, resolver: &mut R) -> Result<Term, EvalError>
+///
+/// # Arguments
+///
+/// - `t0`: the term to evaluate
+/// - `global_env`: the global environment containing the builtin functions of the language. Accessible from anywhere in the
+/// program.
+/// - `resolver`: the interface to fetch imports.
+pub fn eval<R>(t0: RichTerm, global_env: Environment, resolver: &mut R) -> Result<Term, EvalError>
 where
     R: ImportResolver,
 {
@@ -172,6 +183,11 @@ where
             Term::Var(x) => {
                 let (thunk, id_kind) = env
                     .remove(&x)
+                    .or_else(|| {
+                        global_env
+                            .get(&x)
+                            .map(|(rc, id_kind)| (rc.clone(), id_kind.clone()))
+                    })
                     .ok_or(EvalError::UnboundIdentifier(x.clone(), pos.clone()))?;
                 std::mem::drop(env); // thunk may be a 1RC pointer
                 if should_update(&thunk.borrow().body.term) {
@@ -416,7 +432,7 @@ mod tests {
 
     /// Evaluate a term without import support.
     fn eval_no_import(t: RichTerm) -> Result<Term, EvalError> {
-        eval(t, &mut DummyResolver {})
+        eval(t, HashMap::new(), &mut DummyResolver {})
     }
 
     /// Generate a dummy label.
@@ -624,6 +640,7 @@ mod tests {
         assert_eq!(
             eval(
                 mk_import("x", "two", RichTerm::var(String::from("x")), &mut resolver).unwrap(),
+                HashMap::new(),
                 &mut resolver
             )
             .unwrap(),
@@ -640,6 +657,7 @@ mod tests {
                     &mut resolver
                 )
                 .unwrap(),
+                HashMap::new(),
                 &mut resolver
             )
             .unwrap(),
@@ -660,6 +678,7 @@ mod tests {
                     &mut resolver,
                 )
                 .unwrap(),
+                HashMap::new(),
                 &mut resolver
             )
             .unwrap(),
@@ -680,6 +699,7 @@ mod tests {
                     &mut resolver,
                 )
                 .unwrap(),
+                HashMap::new(),
                 &mut resolver
             )
             .unwrap(),
@@ -747,6 +767,51 @@ mod tests {
         assert_eq!(
             eval_no_import(t),
             Ok(Term::Str(String::from("Hello, World! How are you?")))
+        );
+    }
+
+    #[test]
+    fn global_env() {
+        let mut global_env = HashMap::new();
+        let mut resolver = DummyResolver {};
+        let thunk = Rc::new(RefCell::new(Closure {
+            body: Term::Num(1.0).into(),
+            env: HashMap::new(),
+        }));
+        global_env.insert(
+            Ident(String::from("g")),
+            (Rc::clone(&thunk), IdentKind::Let()),
+        );
+
+        let t = RichTerm::let_in(
+            "x",
+            Term::Num(2.0).into(),
+            Term::Var(Ident(String::from("x"))).into(),
+        );
+        assert_eq!(
+            eval(t, global_env.clone(), &mut resolver),
+            Ok(Term::Num(2.0))
+        );
+
+        let t = RichTerm::let_in(
+            "x",
+            Term::Num(2.0).into(),
+            Term::Var(Ident(String::from("g"))).into(),
+        );
+        assert_eq!(
+            eval(t, global_env.clone(), &mut resolver),
+            Ok(Term::Num(1.0))
+        );
+
+        // Shadowing of global environment
+        let t = RichTerm::let_in(
+            "g",
+            Term::Num(2.0).into(),
+            Term::Var(Ident(String::from("g"))).into(),
+        );
+        assert_eq!(
+            eval(t, global_env.clone(), &mut resolver),
+            Ok(Term::Num(2.0))
         );
     }
 }
