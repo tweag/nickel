@@ -889,6 +889,16 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         assert_eq!(eval_string("ContractDefault(Num, 10)"), Ok(Term::Num(10.0)));
     }
 
+    // Check the correct handling of the update of thunks containing enriched values (see issue
+    // https://github.com/tweag/nickel/issues/123)
+    #[test]
+    fn enriched_terms_thunk_update() {
+        assert_eq!(
+            eval_string("let x = {a=(fun x => Default(1)) 1} in seq (x.a) ((merge x {a=2}).a)"),
+            Ok(Term::Num(2.0))
+        );
+    }
+
     #[test]
     fn merge_default() {
         assert_eval_to_record(

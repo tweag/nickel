@@ -283,7 +283,37 @@ where
                     pos,
                 ));
             }
-            Term::DefaultValue(t) | Term::Docstring(_, t) if enriched_strict => {
+            enriched @ Term::DefaultValue(_) | enriched @ Term::Docstring(_, _)
+                if enriched_strict =>
+            {
+                /* Since we are forcing an enriched value, we are morally breaking subject
+                 * reduction (i.e., the type of the current term changes from `enriched something`
+                 * to just `something`). Updating a thunk after having performed this forcing may
+                 * alter the semantics of the program in an unexpected way (see issue
+                 * https://github.com/tweag/nickel/issues/123): we update potential thunks now so
+                 * that their content remains an enriched value.
+                 */
+                let update_closure = Closure {
+                    body: RichTerm {
+                        term: Box::new(enriched),
+                        pos,
+                    },
+                    env,
+                };
+                update_thunks(&mut stack, &update_closure);
+
+                let Closure {
+                    body:
+                        RichTerm {
+                            term: enriched_box,
+                            pos: _,
+                        },
+                    env,
+                } = update_closure;
+                let t = match *enriched_box {
+                    Term::DefaultValue(t) | Term::Docstring(_, t) => t,
+                    _ => panic!("eval::eval(): previous match enforced that a term is a default or a docstring, but matched something else")
+                };
                 Closure { body: t, env }
             }
             Term::ContractWithDefault(ty, label, t) if enriched_strict => Closure {
@@ -307,7 +337,7 @@ where
                 ))
             }
             // Continuation of operations and thunk update
-            _ if 0 < stack.count_thunks() || 0 < stack.count_conts() => {
+            _ if stack.is_top_thunk() || stack.is_top_cont() => {
                 clos = Closure {
                     body: RichTerm {
                         term: Box::new(term),
@@ -315,12 +345,8 @@ where
                     },
                     env,
                 };
-                if 0 < stack.count_thunks() {
-                    while let Some(thunk) = stack.pop_thunk() {
-                        if let Some(safe_thunk) = Weak::upgrade(&thunk) {
-                            *safe_thunk.borrow_mut() = clos.clone();
-                        }
-                    }
+                if stack.is_top_thunk() {
+                    update_thunks(&mut stack, &clos);
                     clos
                 } else {
                     let cont_result = continuate_operation(
@@ -364,6 +390,15 @@ where
                     return Ok(t);
                 }
             }
+        }
+    }
+}
+
+/// Pop and update all the thunks on the top of the stack with the given closure.
+fn update_thunks(stack: &mut Stack, closure: &Closure) {
+    while let Some(thunk) = stack.pop_thunk() {
+        if let Some(safe_thunk) = Weak::upgrade(&thunk) {
+            *safe_thunk.borrow_mut() = closure.clone();
         }
     }
 }
