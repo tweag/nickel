@@ -136,12 +136,17 @@ pub enum Mode {
 
 /// Lexing error.
 #[derive(Clone, PartialEq, Debug)]
-pub struct LexicalError(String);
-
-impl fmt::Display for LexicalError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
+pub enum LexicalError {
+    /// A closing brace '}' does not match an opening brace '{'.
+    UnmatchedCloseBrace(usize),
+    /// A character does not match the beginning of any token.
+    UnexpectedChar(usize),
+    /// An alphanumeric character directly follows a number literal.
+    NumThenIdent(usize),
+    /// Invalid escape sequence in a string literal.
+    InvalidEscapeSequence(usize),
+    /// Unexpected end of input.
+    UnexpectedEOF(Vec<String>),
 }
 
 /// User for error reporting.
@@ -377,7 +382,7 @@ impl<'input> Iterator for Lexer<'input> {
                 }
                 '}' => {
                     if !self.pop_mode() {
-                        Err(LexicalError(String::from("Unmatched closing '}'")))
+                        Err(LexicalError::UnmatchedCloseBrace(index))
                     } else {
                         Ok((index, Token::RBrace, index + 1))
                     }
@@ -402,7 +407,7 @@ impl<'input> Iterator for Lexer<'input> {
                 chr if is_op_char(chr) => self.operator(index),
                 // Ignore whitespaces
                 chr if is_whitespace(chr) => continue,
-                chr => Err(LexicalError(format!("Unexpected character {}", chr))),
+                _ => Err(LexicalError::UnexpectedChar(index)),
             };
 
             return Some(token);
@@ -585,9 +590,7 @@ impl<'input> Lexer<'input> {
 
         match self.look_ahead {
             // Number literals must not be followed directly by an identifier character
-            Some((_, chr)) if is_ident_char(chr) => Err(LexicalError(String::from(
-                "An identifier must not directly follow a number literal",
-            ))),
+            Some((index, chr)) if is_ident_char(chr) => Err(LexicalError::NumThenIdent(index)),
             _ => Ok((start, Token::NumLiteral(num.parse().unwrap()), end)),
         }
     }
@@ -637,12 +640,12 @@ impl<'input> Lexer<'input> {
                 eof = index + 1;
                 match chr {
                     '\\' => {
-                        let (_, c) = self.consume().ok_or(LexicalError(String::from(
-                            "Unexpected EOF: expected escape sequence",
-                        )))?;
-                        acc.push(escape_char(c).ok_or_else(|| {
-                            LexicalError(format!("Unknown escape sequence '\\{}'", c))
-                        })?);
+                        let (i, c) = self.consume().ok_or(LexicalError::UnexpectedEOF(vec![
+                            String::from("escape sequence"),
+                        ]))?;
+                        acc.push(
+                            escape_char(c).ok_or_else(|| LexicalError::InvalidEscapeSequence(i))?,
+                        );
                     }
                     '$' => {
                         if self.look_ahead_is('{') {
