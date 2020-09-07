@@ -87,7 +87,7 @@ Atom: RichTerm = {
                 Right(t) => dynamic_fields.push(t),
             });
 
-        let static_rec = RichTerm::new(Term::Record(static_map));
+        let static_rec = RichTerm::new(Term::RecRecord(static_map));
 
         dynamic_fields.into_iter().fold(static_rec, |rec, field| {
             let (id_t, t) = field;
