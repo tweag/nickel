@@ -9,6 +9,7 @@ mod parser;
 mod position;
 mod program;
 mod stack;
+mod stdlib;
 mod term;
 mod transformations;
 mod typecheck;
