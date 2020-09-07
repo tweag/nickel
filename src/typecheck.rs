@@ -1390,4 +1390,21 @@ mod tests {
         )
         .unwrap_err();
     }
+
+    #[test]
+    fn recursive_records() {
+        parse_and_typecheck(
+            "Promise({ {| a : Num, b : Num, |} }, { a = Promise(Num,1); b = a + 1})",
+        )
+        .unwrap();
+        parse_and_typecheck(
+            "Promise({ {| a : Num, b : Num, |} }, { a = Promise(Num,true); b = a + 1})",
+        )
+        .unwrap_err();
+        parse_and_typecheck(
+            "Promise({ {| a : Num, b : Bool, |} }, { a = 1; b = Promise(Bool,a) } )",
+        )
+        .unwrap_err();
+        parse_and_typecheck("Promise({ {| a : Num, |} }, { a = Promise(Num, 1 + a) })").unwrap();
+    }
 }
