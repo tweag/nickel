@@ -190,7 +190,7 @@ fn enum_terms() {
 fn record_terms() {
     assert_eq!(
         parse_without_pos("{ a = 1; b = 2; c = 3;}"),
-        Record(
+        RecRecord(
             vec![
                 (Ident("a".to_string()), Num(1.).into()),
                 (Ident("b".to_string()), Num(2.).into()),
@@ -213,7 +213,7 @@ fn record_terms() {
                 .into()
             ),
             Num(123.).into(),
-            Record(
+            RecRecord(
                 vec![
                     (Ident("a".to_string()), Num(1.).into()),
                     (Ident("d".to_string()), Num(42.).into()),
