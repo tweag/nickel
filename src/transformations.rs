@@ -45,6 +45,8 @@ generate_counter!(FreshVarCounter, usize);
 /// variables.
 pub mod share_normal_form {
     use super::fresh_var;
+    use crate::identifier::Ident;
+    use crate::position::RawSpan;
     use crate::term::{RichTerm, Term};
 
     /// Transform the top-level term of an AST to a share normal form, if it can.
@@ -75,15 +77,31 @@ pub mod share_normal_form {
                     })
                     .collect();
 
-                let result = bindings.into_iter().fold(
-                    RichTerm {
-                        term: Box::new(Term::Record(map)),
-                        pos,
-                    },
-                    |acc, (id, t)| Term::Let(id, t, acc).into(),
-                );
+                with_bindings(Term::Record(map), bindings, pos)
+            }
+            Term::RecRecord(map) => {
+                // When a recursive record is evaluated, all fields need to be turned to closures
+                // anyway (see the corresponding case in `eval::eval()`), which is what the share
+                // normal form transformation does. This is why the test is more lax here than for
+                // other constructors: it is not only about sharing, but also about the future
+                // evaluation of recursive records. Only constant are not required to be
+                // closurized.
+                let mut bindings = Vec::with_capacity(map.len());
 
-                result.into()
+                let map = map
+                    .into_iter()
+                    .map(|(id, t)| {
+                        if !t.as_ref().is_constant() {
+                            let fresh_var = fresh_var();
+                            bindings.push((fresh_var.clone(), t));
+                            (id, Term::Var(fresh_var).into())
+                        } else {
+                            (id, t)
+                        }
+                    })
+                    .collect();
+
+                with_bindings(Term::RecRecord(map), bindings, pos)
             }
             Term::List(ts) => {
                 let mut bindings = Vec::with_capacity(ts.len());
@@ -101,15 +119,7 @@ pub mod share_normal_form {
                     })
                     .collect();
 
-                let result = bindings.into_iter().fold(
-                    RichTerm {
-                        term: Box::new(Term::List(ts)),
-                        pos,
-                    },
-                    |acc, (id, t)| Term::Let(id, t, acc).into(),
-                );
-
-                result.into()
+                with_bindings(Term::List(ts), bindings, pos)
             }
             Term::DefaultValue(t) => {
                 if should_share(&t.term) {
@@ -184,6 +194,27 @@ pub mod share_normal_form {
             | Term::Fun(_, _) => false,
             _ => true,
         }
+    }
+
+    /// Bind a list of pairs `(identifier, term)` in a term.
+    ///
+    /// Given the term `body` and bindings of identifiers to terms represented as a list of pairs
+    /// `(id_1, term_1), .., (id_n, term_n)`, return the new term `let id_n = term_n in ... let
+    /// id_1 = term_1 in body`.
+    fn with_bindings(
+        body: Term,
+        bindings: Vec<(Ident, RichTerm)>,
+        pos: Option<RawSpan>,
+    ) -> RichTerm {
+        let result = bindings.into_iter().fold(
+            RichTerm {
+                term: Box::new(body),
+                pos,
+            },
+            |acc, (id, t)| Term::Let(id, t, acc).into(),
+        );
+
+        result.into()
     }
 }
 

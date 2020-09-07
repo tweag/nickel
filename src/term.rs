@@ -62,6 +62,8 @@ pub enum Term {
 
     /// A record, mapping identifiers to terms.
     Record(HashMap<Ident, RichTerm>),
+    /// A recursive record, where the fields can reference each others.
+    RecRecord(HashMap<Ident, RichTerm>),
 
     /// A list.
     List(Vec<RichTerm>),
@@ -161,7 +163,7 @@ impl Term {
                     func(def)
                 }
             }
-            Record(ref mut static_map) => {
+            Record(ref mut static_map) | RecRecord(ref mut static_map) => {
                 static_map.iter_mut().for_each(|e| {
                     let (_, t) = e;
                     func(t);
@@ -223,7 +225,7 @@ impl Term {
             Term::Fun(_, _) => Some("Fun"),
             Term::Lbl(_) => Some("Label"),
             Term::Enum(_) => Some("Enum"),
-            Term::Record(_) => Some("Record"),
+            Term::Record(_) | Term::RecRecord(_) => Some("Record"),
             Term::List(_) => Some("List"),
             Term::Sym(_) => Some("Sym"),
             Term::Wrapped(_, _) => Some("Wrapped"),
@@ -267,7 +269,7 @@ impl Term {
             Term::Fun(_, _) => String::from("<func>"),
             Term::Lbl(_) => String::from("<label>"),
             Term::Enum(Ident(s)) => format!("`{}", s),
-            Term::Record(_) => String::from("{ ... }"),
+            Term::Record(_) | Term::RecRecord(_) => String::from("{ ... }"),
             Term::List(_) => String::from("[ ... ]"),
             Term::Sym(_) => String::from("<sym>"),
             Term::Wrapped(_, _) => String::from("<wrapped>"),
@@ -317,7 +319,8 @@ impl Term {
             | Term::Docstring(_, _)
             | Term::Import(_)
             | Term::ResolvedImport(_)
-            | Term::StrChunks(_) => false,
+            | Term::StrChunks(_)
+            | Term::RecRecord(_) => false,
         }
     }
 
@@ -336,6 +339,7 @@ impl Term {
             | Term::Lbl(_)
             | Term::Enum(_)
             | Term::Record(_)
+            | Term::RecRecord(_)
             | Term::List(_)
             | Term::Sym(_)
             | Term::Wrapped(_, _)
@@ -348,6 +352,37 @@ impl Term {
             | Term::Assume(_, _, _)
             | Term::Import(_)
             | Term::ResolvedImport(_) => false,
+        }
+    }
+
+    /// Determine if a term is a constant.
+    pub fn is_constant(&self) -> bool {
+        match self {
+            Term::Bool(_)
+            | Term::Num(_)
+            | Term::Str(_)
+            | Term::Lbl(_)
+            | Term::Enum(_)
+            | Term::Sym(_) => true,
+            Term::Let(_, _, _)
+            | Term::Record(_)
+            | Term::List(_)
+            | Term::Fun(_, _)
+            | Term::App(_, _)
+            | Term::Var(_)
+            | Term::Op1(_, _)
+            | Term::Op2(_, _, _)
+            | Term::Promise(_, _, _)
+            | Term::Assume(_, _, _)
+            | Term::Wrapped(_, _)
+            | Term::Contract(_, _)
+            | Term::DefaultValue(_)
+            | Term::ContractWithDefault(_, _, _)
+            | Term::Docstring(_, _)
+            | Term::Import(_)
+            | Term::ResolvedImport(_)
+            | Term::StrChunks(_)
+            | Term::RecRecord(_) => false,
         }
     }
 }
@@ -779,6 +814,22 @@ impl RichTerm {
                 f(
                     RichTerm {
                         term: Box::new(Term::Record(map_res?)),
+                        pos,
+                    },
+                    state,
+                )
+            }
+            Term::RecRecord(map) => {
+                // This annotation use Result's corresponding trait to convert from
+                // Iterator<Result> to a Result<Iterator>
+                let map_res: Result<HashMap<Ident, RichTerm>, E> = map
+                    .into_iter()
+                    // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
+                    .map(|(id, t)| t.traverse(f, state).map(|t_ok| (id.clone(), t_ok)))
+                    .collect();
+                f(
+                    RichTerm {
+                        term: Box::new(Term::RecRecord(map_res?)),
                         pos,
                     },
                     state,
