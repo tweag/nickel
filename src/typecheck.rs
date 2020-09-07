@@ -124,18 +124,11 @@ fn type_check_(
         }
         Term::Let(x, re, rt) => {
             let e = re.as_ref();
-
-            // If the right hand side has a Promise or Assume, we use it as a
-            // type annotation otherwise, x gets type Dyn
-            let exp = match e {
-                Term::Assume(ty, _, _) | Term::Promise(ty, _, _) => to_typewrapper(ty.clone()),
-                _ => TypeWrapper::Concrete(AbsType::Dyn()),
-            };
-
-            type_check_(state, env.clone(), strict, e, exp.clone())?;
+            let ty_app = apparent_type(e);
+            type_check_(state, env.clone(), strict, e, ty_app.clone())?;
 
             // TODO move this up once lets are rec
-            env.insert(x.clone(), exp);
+            env.insert(x.clone(), ty_app);
             type_check_(state, env, strict, rt.as_ref(), ty)
         }
         Term::App(re, rt) => {
@@ -168,7 +161,17 @@ fn type_check_(
                 )))),
             )
         }
-        Term::Record(stat_map) => {
+        Term::Record(stat_map) | Term::RecRecord(stat_map) => {
+            // For recursive records, we look at the apparent type of each field and bind it in
+            // typed_vars before actually typechecking the content of fields
+            if let Term::RecRecord(_) = t {
+                env.extend(
+                    stat_map
+                        .iter()
+                        .map(|(id, rt)| (id.clone(), apparent_type(rt.as_ref()))),
+                );
+            }
+
             let root_ty = if let TypeWrapper::Ptr(p) = ty {
                 get_root(state.table, p)
             } else {
@@ -262,6 +265,15 @@ fn type_check_(
                 .expect("Internal error: resolved import not found ({:?}) during typechecking.");
             type_check(t.as_ref(), state.resolver).map(|_ty| ())
         }
+    }
+}
+
+/// Determine the apparent type of an expression: if the term is annotated by an `Assume` or a
+/// `Promise`, return the corresponding type, or return `Dyn` otherwise.
+fn apparent_type(t: &Term) -> TypeWrapper {
+    match t {
+        Term::Assume(ty, _, _) | Term::Promise(ty, _, _) => to_typewrapper(ty.clone()),
+        _ => TypeWrapper::Concrete(AbsType::Dyn()),
     }
 }
 
