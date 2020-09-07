@@ -126,20 +126,15 @@ impl ParseError {
     pub fn from_lalrpop<T>(
         error: lalrpop_util::ParseError<usize, T, LexicalError>,
         file_id: FileId,
-        offset: usize,
     ) -> ParseError {
         match error {
-            lalrpop_util::ParseError::InvalidToken { location } => ParseError::UnexpectedToken(
-                mk_span(&file_id, location, location + 1, offset).unwrap(),
-                Vec::new(),
-            ),
+            lalrpop_util::ParseError::InvalidToken { location } => {
+                ParseError::UnexpectedToken(mk_span(file_id, location, location + 1), Vec::new())
+            }
             lalrpop_util::ParseError::UnrecognizedToken {
                 token: Some((start, _, end)),
                 expected,
-            } => ParseError::UnexpectedToken(
-                mk_span(&file_id, start, end, offset).unwrap(),
-                expected,
-            ),
+            } => ParseError::UnexpectedToken(mk_span(file_id, start, end), expected),
             lalrpop_util::ParseError::UnrecognizedToken {
                 token: None,
                 expected,

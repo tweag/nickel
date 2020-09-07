@@ -7,18 +7,21 @@ use std::collections::HashMap;
 use either::*;
 use codespan::FileId;
 
-grammar<'input>(src_id: &FileId, offset: usize);
+grammar<'input>(src_id: FileId);
 
 pub Term: RichTerm = SpTerm<RichTerm>;
 
 SpTerm<Rule>: RichTerm =
     <l: @L> <t: Rule> <r: @R> => match t {
-        RichTerm {term: t, pos: _} => RichTerm {term: t, pos: mk_span(src_id, l, r, offset)}
+        RichTerm {term: t, pos: _} => RichTerm {
+            term: t,
+            pos: Some(mk_span(src_id, l, r))
+        }
     };
 
 RichTerm: RichTerm = {
     <l: @L> "fun" <ps:Pattern+> "=>" <t: SpTerm<Term>> <r: @R> => {
-        let pos = mk_span(src_id, l, r, offset);
+        let pos = Some(mk_span(src_id, l, r));
         ps.into_iter().rev().fold(t, |t, p| RichTerm {
             term: Box::new(Term::Fun(p, t)),
             pos: pos.clone()
@@ -29,7 +32,7 @@ RichTerm: RichTerm = {
     "if" <b:SpTerm<Term>> "then" <t:SpTerm<Term>> "else" <e:SpTerm<Term>> =>
         RichTerm::app(RichTerm::app(RichTerm::new(Term::Op1(UnaryOp::Ite(), b)), t), e),
     "import" <s: Str> => RichTerm::new(Term::Import(s)),
-    SpTerm<Operation>    
+    SpTerm<Operation>
 };
 
 Operation: RichTerm = {
@@ -60,14 +63,14 @@ RecordOperationChain: RichTerm = {
 Atom: RichTerm = {
     "(" <SpTerm<Term>> ")",
     <l: @L> "Promise(" <ty: Types> "," <t: SpTerm<Term>> ")" <r: @R> =>
-        RichTerm::new(Term::Promise(ty, mk_label("A promise", src_id, l, r, offset), t)),
+        RichTerm::new(Term::Promise(ty, mk_label("A promise", src_id, l, r), t)),
     <l: @L> "Assume(" <ty: Types> "," <t: SpTerm<Term>> ")" <r: @R> =>
-        RichTerm::new(Term::Assume(ty, mk_label("An assume", src_id, l, r, offset), t)),
+        RichTerm::new(Term::Assume(ty, mk_label("An assume", src_id, l, r), t)),
     <l: @L> "Contract(" <ty: Types> ")" <r: @R> =>
-        RichTerm::new(Term::Contract(ty, mk_label("Contract", src_id, l, r, offset))),
+        RichTerm::new(Term::Contract(ty, mk_label("Contract", src_id, l, r))),
     "Default(" <t: SpTerm<Term>> ")" => RichTerm::new(Term::DefaultValue(t)),
     <l: @L> "ContractDefault(" <ty: Types> "," <t: SpTerm<Term>> ")" <r: @R> =>
-        RichTerm::new(Term::ContractWithDefault(ty, mk_label("Contract", src_id, l, r, offset), t)),
+        RichTerm::new(Term::ContractWithDefault(ty, mk_label("Contract", src_id, l, r), t)),
     "Docstring(" <s: Str> "," <t: SpTerm<Term>> ")" => RichTerm::new(Term::Docstring(s, t)),
     Num => RichTerm::new(Term::Num(<>)),
     Bool => RichTerm::new(Term::Bool(<>)),

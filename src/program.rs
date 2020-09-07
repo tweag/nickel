@@ -3,12 +3,20 @@
 //! A program is Nickel source code loaded from an input. This module offers an interface to load a
 //! program source, parse it, evaluate it and report errors.
 //!
-//! # Builtin contracts
+//! # Standard library
 //!
-//! Builtins contracts are the essential contracts, written in pure Nickel, which are required by
-//! the Nickel abstract machine. They are automatically inserted when evaluating terms like
-//! `Assume(type, term)`. They are currently just being pasted at the beginning of the input, which
-//! is bad, but this will be corrected once we have settled on and implemented imports.
+//! Some essential functions required for evaluation, such as builtin contracts, are written in
+//! pure Nickel. They are located in the `stdlib` directory, and embedded in the [stdlib
+//! module](../stdlib/index.html) at compile-time. Stdlib files contains top-level records:
+//!
+//! ```
+//! {
+//!     val1 = ...
+//!     val2 = ...
+//! }
+//! ```
+//!
+//! Each such value is added to the global environment before the evaluation of the program.
 use crate::error::{Error, ImportError, ParseError, ToDiagnostic};
 use crate::eval;
 use crate::parser;
@@ -19,11 +27,13 @@ use crate::transformations;
 use crate::typecheck::type_check;
 use codespan::{FileId, Files};
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fs;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::result::Result;
 
 /// A Nickel program.
@@ -31,8 +41,6 @@ use std::result::Result;
 /// Manage a file database, which stores the original source code of the program and eventually the
 /// code of imported expressions, and a dictionary which stores corresponding parsed terms.
 pub struct Program {
-    /// Control if the built-in contracts are included (pasted at the beginning of the source).
-    include_contracts: bool,
     /// The id of the program source in the file database.
     main_id: FileId,
     /// The file database holding the content of the program source plus potential imports
@@ -122,12 +130,63 @@ impl Program {
         let main_id = files.add(source_name, buffer);
 
         Ok(Program {
-            include_contracts: true,
             main_id,
             files,
             file_cache: HashMap::new(),
             term_cache: HashMap::new(),
         })
+    }
+
+    /// Load a part of the Nickel standard library in the given global environment.
+    ///
+    /// The source must be a string representing a record. Each binding of this record is then
+    /// inserted in `global_env`.
+    fn load_stdlib(
+        &mut self,
+        name: &str,
+        source: &str,
+        global_env: &mut eval::Environment,
+    ) -> Result<(), ParseError> {
+        let src_id = self.file_cache.get(name).copied().unwrap_or_else(|| {
+            let id = self.files.add(String::from(name), String::from(source));
+            self.file_cache.insert(String::from(name), id);
+            id
+        });
+        let rt = self.parse_with_cache(src_id)?;
+
+        match *rt.term {
+            Term::Record(bindings) => {
+                let ext = bindings.into_iter().map(|(id, t)| {
+                    let closure = eval::Closure {
+                        body: t,
+                        env: HashMap::new(),
+                    };
+                    (
+                        id,
+                        (Rc::new(RefCell::new(closure)), eval::IdentKind::Record()),
+                    )
+                });
+                global_env.extend(ext);
+            }
+            _ => panic!(
+                "program::load_stdlib(): the builtin {} must be a record.",
+                name
+            ),
+        };
+
+        Ok(())
+    }
+
+    /// Generate a global environment with values from the standard library parts.
+    fn mk_global_env(&mut self) -> Result<eval::Environment, Error> {
+        let mut global_env = HashMap::new();
+        self.load_stdlib(
+            "<stdlib/contracts.ncl>",
+            crate::stdlib::CONTRACTS,
+            &mut global_env,
+        )
+        .map_err(|e| Error::from(e))?;
+        Ok(global_env)
     }
 
     /// Parse if necessary, typecheck and then evaluate the program.
@@ -137,26 +196,16 @@ impl Program {
             .map_err(|e| Error::from(e))?;
         let t = transformations::transform(t, self).map_err(|err| Error::ImportError(err))?;
         println!("Typechecked: {:?}", type_check(t.as_ref(), self));
-        eval::eval(t, HashMap::new(), self).map_err(|e| e.into())
+        eval::eval(t, self.mk_global_env()?, self).map_err(|e| e.into())
     }
 
     /// Parse a source file. Do not try to get it from the cache, and do not populate the cache at
     /// the end either.
     fn parse(&mut self, file_id: FileId) -> Result<RichTerm, ParseError> {
-        let mut buf = self.files.source(file_id).clone();
-        if self.include_contracts {
-            // TODO get rid of this once we have imports
-            buf.insert_str(0, &Self::contracts());
-        }
-
-        let offset = if self.include_contracts {
-            Self::contracts().len()
-        } else {
-            0
-        };
+        let buf = self.files.source(file_id).clone();
         parser::grammar::TermParser::new()
-            .parse(&file_id, offset, Lexer::new(&buf))
-            .map_err(|err| ParseError::from_lalrpop(err, file_id, offset))
+            .parse(file_id, Lexer::new(&buf))
+            .map_err(|err| ParseError::from_lalrpop(err, file_id))
     }
 
     /// Parse a source file and populate the corresponding entry in the cache, or just get it from
@@ -188,37 +237,6 @@ impl Program {
                 err
             ),
         };
-    }
-
-    /// Built-in contracts to be included in programs.
-    // TODO: move this to a Nickel stand-alone file once we have imports
-    fn contracts() -> String {
-        "let dyn = fun l t => t in
-
-        let num = fun l t => if isNum t then t else blame (tag[num] l) in
-
-        let bool = fun l t => if isBool t then t else blame (tag[bool] l) in
-
-        let string = fun l t => if isStr t then t else blame (tag[str] l) in
-
-        let list = fun l t => if isList t then t else blame (tag[list] l) in
-
-        let func = fun s t l e =>
-            let l = tag[func] l in
-            if isFun e then (fun x => t (goCodom l) (e (s (chngPol (goDom l)) x)))
-            else blame l in
-
-        let forall_var = fun sy pol l t =>
-            let lPol = polarity l in
-            if pol == lPol then unwrap sy t (blame (tag[unwrp] l))
-            else wrap sy t in
-
-        let fail = fun l t => blame (tag[fail] l) in
-
-        let row_extend = fun contr case l t =>
-            if (case t) then t else contr (tag[NotRowExt] l) t in
-        "
-        .to_string()
     }
 }
 
@@ -365,8 +383,8 @@ pub mod resolvers {
                 self.term_cache.insert(file_id, None);
                 let buf = self.files.source(file_id);
                 let t = parser::grammar::TermParser::new()
-                    .parse(&file_id, 0, Lexer::new(&buf))
-                    .map_err(|e| ParseError::from_lalrpop(e, file_id, 0))
+                    .parse(file_id, Lexer::new(&buf))
+                    .map_err(|e| ParseError::from_lalrpop(e, file_id))
                     .map_err(|e| ImportError::ParseError(e, pos.clone()))?;
                 Ok((ResolvedTerm::FromFile(t, PathBuf::new()), file_id))
             }
