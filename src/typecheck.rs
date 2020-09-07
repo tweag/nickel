@@ -174,26 +174,19 @@ where
         }
         Term::Let(x, re, rt) => {
             let e = re.as_ref();
-
-            // If the right hand side has a Promise or Assume, we use it as a
-            // type annotation otherwise, x gets type Dyn
-            let exp = match e {
-                Term::Assume(ty, _, _) | Term::Promise(ty, _, _) => to_typewrapper(ty.clone()),
-                _ => TypeWrapper::Concrete(AbsType::Dyn()),
-            };
-
+            let ty_app = apparent_type(e);
             type_check_(
                 typed_vars.clone(),
                 state,
                 constr,
                 resolver,
                 e,
-                exp.clone(),
+                ty_app.clone(),
                 strict,
             )?;
 
             // TODO move this up once lets are rec
-            typed_vars.insert(x.clone(), exp);
+            typed_vars.insert(x.clone(), ty_app);
             type_check_(typed_vars, state, constr, resolver, rt.as_ref(), ty, strict)
         }
         Term::App(re, rt) => {
@@ -245,7 +238,17 @@ where
                 strict,
             )
         }
-        Term::Record(stat_map) => {
+        Term::Record(stat_map) | Term::RecRecord(stat_map) => {
+            // For recursive records, we look at the apparent type of each field and bind it in
+            // typed_vars before actually typechecking the content of fields
+            if let Term::RecRecord(_) = t {
+                typed_vars.extend(
+                    stat_map
+                        .iter()
+                        .map(|(id, rt)| (id.clone(), apparent_type(rt.as_ref()))),
+                );
+            }
+
             let root_ty = if let TypeWrapper::Ptr(p) = ty {
                 get_root(state, p)?
             } else {
@@ -423,6 +426,15 @@ where
                 .expect("Internal error: resolved import not found ({:?}) during typechecking.");
             type_check(t.term.as_ref(), resolver).map(|_ty| ())
         }
+    }
+}
+
+/// Determine the apparent type of an expression: if the term is annotated by an `Assume` or a
+/// `Promise`, return the corresponding type, or return `Dyn` otherwise.
+fn apparent_type(t: &Term) -> TypeWrapper {
+    match t {
+        Term::Assume(ty, _, _) | Term::Promise(ty, _, _) => to_typewrapper(ty.clone()),
+        _ => TypeWrapper::Concrete(AbsType::Dyn()),
     }
 }
 
