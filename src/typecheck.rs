@@ -1658,4 +1658,21 @@ mod tests {
         .unwrap_err();
         parse_and_typecheck("Promise({ {| a : Num, |} }, { a = Promise(Num, 1 + a) })").unwrap();
     }
+
+    #[test]
+    fn let_inference() {
+        parse_and_typecheck("Promise(Num, let x = 1 + 2 in let f = fun x => x + 1 in f x)")
+            .unwrap();
+        parse_and_typecheck("Promise(Num, let x = 1 + 2 in let f = fun x => x ++ \"a\" in f x)")
+            .unwrap_err();
+
+        // Fields in recursive records are treated in the type environment in the same way as let-bound expressions
+        parse_and_typecheck("Promise({ {| a : Num, b : Num, |} }, { a = 1; b = 1 + a })").unwrap();
+        parse_and_typecheck(
+            "Promise({ {| f : Num -> Num, |} }, { f = fun x => if isZero x then 1 else 1 + (f (x + (-1)));})"
+        ).unwrap();
+        parse_and_typecheck(
+            "Promise({ {| f : Num -> Num, |} }, { f = fun x => if isZero x then false else 1 + (f (x + (-1)))})"
+        ).unwrap_err();
+    }
 }
