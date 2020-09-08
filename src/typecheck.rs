@@ -331,10 +331,18 @@ fn type_check_(
                 let row = stat_map.into_iter().try_fold(
                     TypeWrapper::Concrete(AbsType::RowEmpty()),
                     |acc, e| -> Result<TypeWrapper, String> {
-                        let (id, t) = e;
+                        let (id, field) = e;
 
-                        let ty = TypeWrapper::Ptr(new_var(state.table));
-                        type_check_(state, env.clone(), strict, t.as_ref(), ty.clone())?;
+                        // In the case of a recursive record, new types (either type variables or
+                        // annotations) have already be determined and put in the typing
+                        // environment, and we need to use the same.
+                        let ty = if let Term::RecRecord(_) = t {
+                            env.get(&id).unwrap().clone()
+                        } else {
+                            TypeWrapper::Ptr(new_var(state.table))
+                        };
+
+                        type_check_(state, env.clone(), strict, field.as_ref(), ty.clone())?;
 
                         Ok(TypeWrapper::Concrete(AbsType::RowExtend(
                             id.clone(),
