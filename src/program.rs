@@ -137,7 +137,7 @@ impl Program {
             .map_err(|e| Error::from(e))?;
         let t = transformations::transform(t, self).map_err(|err| Error::ImportError(err))?;
         println!("Typechecked: {:?}", type_check(t.as_ref(), self));
-        eval::eval(t, self).map_err(|e| e.into())
+        eval::eval(t, HashMap::new(), self).map_err(|e| e.into())
     }
 
     /// Parse a source file. Do not try to get it from the cache, and do not populate the cache at
