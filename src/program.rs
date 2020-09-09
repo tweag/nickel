@@ -7,7 +7,7 @@
 //!
 //! Some essential functions required for evaluation, such as builtin contracts, are written in
 //! pure Nickel. They are located in the `stdlib` directory, and embedded in the [stdlib
-//! module](../stdlib/index.html) at compile-time. Stdlib files contains top-level records:
+//! module](../stdlib/index.html) at compile-time. Standard library files must be record literals:
 //!
 //! ```
 //! {
