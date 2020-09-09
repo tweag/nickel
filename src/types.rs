@@ -54,6 +54,7 @@
 use crate::identifier::Ident;
 use crate::term::{RichTerm, Term, UnaryOp};
 use std::collections::HashMap;
+use std::fmt;
 
 /// A Nickel type.
 #[derive(Clone, PartialEq, Debug)]
@@ -239,6 +240,50 @@ impl Types {
             }
             AbsType::StaticRecord(_) => panic!("TODO implement"),
             AbsType::DynRecord(_) => panic!("TODO implement"),
+        }
+    }
+}
+
+impl fmt::Display for Types {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self.0 {
+            AbsType::Dyn() => write!(f, "Dyn"),
+            AbsType::Num() => write!(f, "Num"),
+            AbsType::Bool() => write!(f, "Bool"),
+            AbsType::Str() => write!(f, "Str"),
+            AbsType::List() => write!(f, "List"),
+            AbsType::Sym() => write!(f, "Sym"),
+            AbsType::Flat(ref t) => write!(f, "#{:?}", t),
+            AbsType::Var(Ident(ref var)) => write!(f, "{}", var),
+            AbsType::Forall(Ident(ref i), ref ty) => {
+                let mut curr: &Types = ty.as_ref();
+                write!(f, "forall {}", i)?;
+                while let Types(AbsType::Forall(Ident(ref i), ref ty)) = curr {
+                    write!(f, " {}", i)?;
+                    curr = ty;
+                }
+                write!(f, ". {}", curr)
+            }
+            AbsType::Enum(row) => write!(f, "(| {})", row),
+            AbsType::StaticRecord(row) => write!(f, "{{| {}}}", row),
+            AbsType::DynRecord(ty) => write!(f, "{{ _ : {}}}", ty),
+            AbsType::RowEmpty() => write!(f, "|"),
+            AbsType::RowExtend(Ident(id), ty_opt, tail) => {
+                write!(f, "{}", id)?;
+
+                if let Some(ty) = ty_opt {
+                    write!(f, ": {}", ty)?;
+                }
+
+                match tail.0 {
+                    AbsType::RowEmpty() => write!(f, "{}", tail),
+                    _ => write!(f, ", {}", tail),
+                }
+            }
+            AbsType::Arrow(dom, codom) => match dom.0 {
+                AbsType::Arrow(_, _) => write!(f, "({}) -> {}", dom, codom),
+                _ => write!(f, "{} -> {}", dom, codom),
+            },
         }
     }
 }

@@ -5,12 +5,14 @@
 use crate::eval::CallStack;
 use crate::identifier::Ident;
 use crate::label;
+use crate::label::ty_path;
 use crate::parser::lexer::LexicalError;
 use crate::parser::utils::mk_span;
 use crate::position::RawSpan;
 use crate::term::RichTerm;
 use codespan::{FileId, Files};
 use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
+use std::fmt::Write;
 
 /// A general error occurring during either parsing or evaluation.
 #[derive(Debug, PartialEq)]
@@ -161,9 +163,9 @@ impl ParseError {
     }
 }
 
-const INTERNAL_ERROR_MSG: &str =
+pub const INTERNAL_ERROR_MSG: &str =
     "This error should not happen. This is likely a bug in the Nickel interpreter. Please consider\
-    reporting it at https://github.com/tweag/nickel/issues with the above error message.";
+reporting it at https://github.com/tweag/nickel/issues with the above error message.";
 
 /// A trait for converting an error to a diagnostic.
 pub trait ToDiagnostic<FileId> {
@@ -293,6 +295,90 @@ fn secondary_term(term: &RichTerm, files: &mut Files<String>) -> Label<FileId> {
     secondary_alt(&term.pos, term.as_ref().shallow_repr(), files)
 }
 
+/// Generate a codespan label that describes the [type path](../label/enum.TyPath.html) of a
+/// (Nickel) label, and notes to hint at the situation that may have caused the corresponding
+/// error.
+fn report_ty_path(l: &label::Label, files: &mut Files<String>) -> (Label<FileId>, Vec<String>) {
+    let end_note = String::from("Note: this is an illustrative example. The actual error may involve deeper nested functions calls.");
+
+    let (msg, notes) = if l.path.is_empty() {
+        (String::from("expected type"), Vec::new())
+    }
+    // If the path is only composed of codomains, polarity is necessarily true and the cause of the
+    // blame is the return value of the function
+    else if ty_path::is_only_codom(&l.path) {
+        (
+            String::from("expected return type"),
+            vec![
+                String::from(
+                    "This error may happen in the following situation:
+1. A function `f` is bound by a contract: e.g. `Bool -> Num`.
+2. `f` returns a value of the wrong type: e.g. `f = fun c => \"string\"` while `Num` is expected.",
+                ),
+                String::from(
+                    "Either change the contract accordingly, or change the return value of `f`",
+                ),
+            ],
+        )
+    } else {
+        match l.path.last().unwrap() {
+                ty_path::Elem::Domain if l.polarity => {
+                    (String::from("expected type of an argument of an inner call"),
+                    vec![
+                        String::from("This error may happen in the following situation:
+1. A function `f` is bound by a contract: e.g. `(Str -> Str) -> Str)`.
+2. `f` takes another function `g` as an argument: e.g. `f = fun g => g 0`.
+3. `f` calls `g` with an argument that does not respect the contract: e.g. `g 0` while `Str -> Str` is expected."),
+                        String::from("Either change the contract accordingly, or call `g` with a `Str` argument."),
+                        end_note,
+                    ])
+                }
+                ty_path::Elem::Codomain if l.polarity => {
+                    (String::from("expected return type of a sub-function passed as an argument of an inner call"),
+                    vec![
+                        String::from("This error may happen in the following situation:
+1. A function `f` is bound by a contract: e.g. `((Num -> Num) -> Num) -> Num)`.
+2. `f` take another function `g` as an argument: e.g. `f = fun g => g (fun x => true)`.
+3. `g` itself takes a function as an argument.
+4. `f` passes a function that does not respect the contract to `g`: e.g. `g (fun x => true)` (expected to be of type `Num -> Num`)."),
+                        String::from("Either change the contract accordingly, or call `g` with a function that returns a value of type `Num`."),
+                        end_note,
+                    ])
+                }
+                ty_path::Elem::Domain => {
+                    (String::from("expected type of the argument provided by the caller"),
+                    vec![
+                        String::from("This error may happen in the following situation:
+1. A function `f` is bound by a contract: e.g. `Num -> Num`.
+2. `f` is called with an argument of the wrong type: e.g. `f false`."),
+                        String::from("Either change the contract accordingly, or call `f` with an argument of the right type."),
+                        end_note,
+                    ])
+                }
+                ty_path::Elem::Codomain => {
+                    (String::from("expected return type of a function provided by the caller"),
+                    vec![
+                        String::from("This error may happen in the following situation:
+1. A function `f` is bound by a contract: e.g. `(Num -> Num) -> Num`.
+2. `f` takes another function `g` as an argument: e.g. `f = fun g => g 0`.
+3. `f` is called by with an argument `g` that does not respect the contract: e.g. `f (fun x => false)`."),
+                        String::from("Either change the contract accordingly, or call `f` with a function that returns a value of the right type."),
+                        end_note,
+                    ])
+                }
+            }
+    };
+
+    let (start, end) = ty_path::span(l.path.iter(), &l.types);
+    let label = Label::new(
+        LabelStyle::Secondary,
+        files.add("", format!("{}", l.types)),
+        start..end,
+    )
+    .with_message(msg);
+    (label, notes)
+}
+
 impl ToDiagnostic<FileId> for Error {
     fn to_diagnostic(&self, files: &mut Files<String>) -> Diagnostic<FileId> {
         match self {
@@ -307,25 +393,34 @@ impl ToDiagnostic<FileId> for EvalError {
     fn to_diagnostic(&self, files: &mut Files<String>) -> Diagnostic<FileId> {
         match self {
             EvalError::BlameError(l, _cs_opt) => {
-                let mut msg = format!("Blame error: [{}].", &l.tag);
+                let mut msg = String::from("Blame error: ");
 
-                if l.polarity {
-                    msg.push_str("  The blame is on the value (positive blame)\n");
-                } else {
-                    msg.push_str("  The blame is on the context (negative blame)\n");
-                }
-
+                // Writing in a string should not raise an error, whence the fearless `unwrap()`
                 if l.path.is_empty() {
-                    msg.push_str(&format!("{:?}", l.path));
+                    // An empty path necessarily corresponds to a positive blame
+                    assert!(l.polarity);
+                    write!(&mut msg, "contract broken by a value.").unwrap();
+                } else {
+                    if l.polarity {
+                        write!(&mut msg, "contract broken by a function.").unwrap();
+                    } else {
+                        write!(&mut msg, "contract broken by the caller.").unwrap();
+                    }
                 }
+
+                let (path_label, notes) = report_ty_path(&l, files);
 
                 Diagnostic::error()
                     .with_message(msg)
-                    .with_labels(vec![Label::primary(
-                        l.span.src_id,
-                        l.span.start.to_usize()..l.span.end.to_usize(),
-                    )
-                    .with_message("bound here")])
+                    .with_labels(vec![
+                        path_label,
+                        Label::primary(
+                            l.span.src_id,
+                            l.span.start.to_usize()..l.span.end.to_usize(),
+                        )
+                        .with_message("bound here"),
+                    ])
+                    .with_notes(notes)
             }
             EvalError::TypeError(expd, msg, orig_pos_opt, t) => {
                 let label = format!(
