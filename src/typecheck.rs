@@ -18,7 +18,7 @@
 //!
 //! Type inference is done via a standard unification algorithm. The type of unannotated let-bound
 //! expressions (the type of `bound_exp` in `let x = bound_exp in body`) is inferred in strict
-//! mode, but it is currently not generalized. For example, the following program is rejected:
+//! mode, but it is never implicitly generalized. For example, the following program is rejected:
 //!
 //! ```
 //! // Rejected
