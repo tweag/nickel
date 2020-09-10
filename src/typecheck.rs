@@ -38,8 +38,6 @@
 //! Promise(Num, let id = Promise(forall a. a -> a, fun x => x) in seq (id "a") (id 5))
 //! ```
 //!
-//! This restriction is on purpose
-//!
 //! In non-strict mode, all let-bound expressions are given type `Dyn`, unless annotated.
 use crate::error::TypecheckError;
 use crate::identifier::Ident;
