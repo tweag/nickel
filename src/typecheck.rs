@@ -27,18 +27,18 @@
 //!
 //! Indeed, `id` is given the type `_a -> _a`, where `_a` is a unification variable, but is not
 //! generalized to `forall a. a -> a`. At the first call site, `_a` is unified with `Str`, and at the second
-//! call site the typechecker complains that `5` is not of type `Str`. A polymorphic annotation simply solves the
-//! problem:
+//! call site the typechecker complains that `5` is not of type `Str`.
+//!
+//! This restriction is on purpose, as generalization is not trivial to implement efficiently and
+//! can interact with other parts of type inference. If polymorphism is required, a simple
+//! annotation is sufficient:
 //!
 //! ```
 //! // Accepted
 //! Promise(Num, let id = Promise(forall a. a -> a, fun x => x) in seq (id "a") (id 5))
 //! ```
 //!
-//! Note that this restriction is not motivated by soundness, as can be various limitations on
-//! polymorphism in other languages (e.g the value restriction). It is rather that efficient
-//! generalization is not trivial and is not currently implemented, but it could be very well be
-//! the case in the future.
+//! This restriction is on purpose
 //!
 //! In non-strict mode, all let-bound expressions are given type `Dyn`, unless annotated.
 use crate::error::TypecheckError;
