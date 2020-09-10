@@ -6,8 +6,7 @@
 //! # Standard library
 //!
 //! Some essential functions required for evaluation, such as builtin contracts, are written in
-//! pure Nickel. They are located in the `stdlib` directory, and embedded in the [stdlib
-//! module](../stdlib/index.html) at compile-time. Standard library files must be record literals:
+//! pure Nickel. Standard library files must be record literals:
 //!
 //! ```
 //! {
@@ -16,7 +15,12 @@
 //! }
 //! ```
 //!
-//! Each such value is added to the global environment before the evaluation of the program.
+//! These .ncl file are not actually distributed as files, instead they are embedded, as plain
+//! text, in the Nickel executable. The embedding is done by way of the [stdlib
+//! module](../stdlib/index.html), which exposes the standard library files as strings. The
+//! embedded strings are then parsed by the functions in this module (see
+//! [`mk_global_env`](./struct.Program.html#method.mk_global_env)).  Each such value is added to
+//! the global environment before the evaluation of the program.
 use crate::error::{Error, ImportError, ParseError, ToDiagnostic};
 use crate::eval;
 use crate::parser;
@@ -139,8 +143,8 @@ impl Program {
 
     /// Load a part of the Nickel standard library in the given global environment.
     ///
-    /// The source must be a string representing a record. Each binding of this record is then
-    /// inserted in `global_env`.
+    /// The source must be a string representing a record literal. Each binding of this record is
+    /// then inserted in `global_env`.
     fn load_stdlib(
         &mut self,
         name: &str,
