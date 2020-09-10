@@ -144,28 +144,19 @@ impl ParseError {
             } => ParseError::UnexpectedEOF(file_id, expected),
             lalrpop_util::ParseError::ExtraToken {
                 token: (start, _, end),
-            } => ParseError::ExtraToken(mk_span(&file_id, start, end, offset).unwrap()),
+            } => ParseError::ExtraToken(mk_span(file_id, start, end)),
             lalrpop_util::ParseError::User {
                 error: LexicalError::UnmatchedCloseBrace(location),
-            } => ParseError::UnmatchedCloseBrace(
-                mk_span(&file_id, location, location + 1, offset).unwrap(),
-            ),
+            } => ParseError::UnmatchedCloseBrace(mk_span(file_id, location, location + 1)),
             lalrpop_util::ParseError::User {
                 error: LexicalError::UnexpectedChar(location),
-            } => ParseError::UnexpectedToken(
-                mk_span(&file_id, location, location + 1, offset).unwrap(),
-                Vec::new(),
-            ),
+            } => ParseError::UnexpectedToken(mk_span(file_id, location, location + 1), Vec::new()),
             lalrpop_util::ParseError::User {
                 error: LexicalError::NumThenIdent(location),
-            } => {
-                ParseError::NumThenIdent(mk_span(&file_id, location, location + 1, offset).unwrap())
-            }
+            } => ParseError::NumThenIdent(mk_span(file_id, location, location + 1)),
             lalrpop_util::ParseError::User {
                 error: LexicalError::InvalidEscapeSequence(location),
-            } => ParseError::InvalidEscapeSequence(
-                mk_span(&file_id, location, location + 1, offset).unwrap(),
-            ),
+            } => ParseError::InvalidEscapeSequence(mk_span(file_id, location, location + 1)),
         }
     }
 }
