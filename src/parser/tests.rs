@@ -8,7 +8,7 @@ fn parse(s: &str) -> Option<RichTerm> {
     let id = Files::new().add("<test>", String::from(s));
 
     super::grammar::TermParser::new()
-        .parse(&id, 0, Lexer::new(&s))
+        .parse(id, Lexer::new(&s))
         .ok()
 }
 
