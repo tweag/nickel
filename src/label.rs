@@ -6,35 +6,42 @@ use crate::position::RawSpan;
 use crate::types::Types;
 use std::fmt;
 
-/// A type path element.
-///
-/// Checking higher-order contracts can involve a good share of intermediate contract checking.
-/// Take the following example:
-/// ```
-/// Assume((Num -> Num) -> Num) -> Num -> Num, fun ev => fun cst => ev (fun x => cst))
-/// ```
-/// Once called, various checks will be performed on the arguments of functions and their return
-/// values:
-/// 1. Check that `ev` provides a `Num` to `(fun x => cst)`
-/// 2. Check that `(fun x => cst)` returns a `Num`
-/// 3. Check that `ev (fun x => cst)` return a `Num`
-/// 4. etc.
-///
-/// Each check can be linked to a base type occurrence (here, a `Num`) in the original type:
-/// ```
-/// (Num -> Num) -> Num) -> Num -> Num
-///  ^^^1   ^^^2    ^^^3    etc.
-/// ```
-///
-/// This is the information encoded by a type path: what part of the original type is currently
-/// being checked by this label. It is then reported to the user in case of a blame.
-#[derive(Debug, Clone, PartialEq)]
-pub enum TyPathElem {
-    Domain,
-    Codomain,
-}
+pub mod ty_path {
+    //! Type paths.
+    //!
+    //! Checking higher-order contracts can involve a good share of intermediate contract checking.
+    //! Take the following example:
+    //! ```
+    //! Assume((Num -> Num) -> Num) -> Num -> Num, fun ev => fun cst => ev (fun x => cst))
+    //! ```
+    //! Once called, various checks will be performed on the arguments of functions and their return
+    //! values:
+    //! 1. Check that `ev` provides a `Num` to `(fun x => cst)`
+    //! 2. Check that `(fun x => cst)` returns a `Num`
+    //! 3. Check that `ev (fun x => cst)` return a `Num`
+    //! 4. etc.
+    //!
+    //! Each check can be linked to a base type occurrence (here, a `Num`) in the original type:
+    //! ```
+    //! (Num -> Num) -> Num) -> Num -> Num
+    //!  ^^^1   ^^^2    ^^^3    etc.
+    //! ```
+    //!
+    //! This is the information encoded by a type path: what part of the original type is currently
+    //! being checked by this label. It is then reported to the user in case of a blame.
+    //!
+    //! Paths are encoded as lists of elements, specifying if the next step is either to go to the **domain**
+    //! or to the **codomain**.
 
-pub type TyPath = Vec<TyPathElem>;
+    /// An element of a path type.
+    #[derive(Debug, Clone, PartialEq)]
+    pub enum Elem {
+        Domain,
+        Codomain,
+    }
+
+    pub type Path = Vec<Elem>;
+}
 
 /// The construct from where a label originates.
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -95,7 +102,7 @@ pub struct Label {
     /// on the environment (ex, the argument of a function) or on the term.
     pub polarity: bool,
     /// The path of the type being currently checked in the original type.
-    pub path: TyPath,
+    pub path: ty_path::Path,
 }
 
 impl fmt::Display for ContractKind {
