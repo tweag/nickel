@@ -3,6 +3,8 @@
 //! A label is a value holding metadata relative to contract checking. It gives the user useful
 //! information about the context of a contract failure.
 use crate::position::RawSpan;
+use crate::types::Types;
+use std::fmt;
 
 /// A type path.
 ///
@@ -31,6 +33,14 @@ pub enum TyPath {
     Nil(),
     Domain(Box<TyPath>),
     Codomain(Box<TyPath>),
+}
+
+/// The construct from where a label originates.
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum ContractKind {
+    Assume,
+    Promise,
+    Contract,
 }
 
 /// A blame label.
@@ -72,6 +82,10 @@ pub enum TyPath {
 /// -> Num` where the polarity alternates each time.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Label {
+    /// The type checked by the original contract.
+    pub types: Types,
+    /// The construct which introduced the orignal contract.
+    pub kind: ContractKind,
     /// A string tag to be printed together with the error message.
     pub tag: String,
     /// The position of the original contract.
@@ -81,4 +95,38 @@ pub struct Label {
     pub polarity: bool,
     /// The path of the type being currently checked in the original type.
     pub path: TyPath,
+}
+
+impl fmt::Display for ContractKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ContractKind::Assume => write!(f, "Assume"),
+            ContractKind::Promise => write!(f, "Promise"),
+            ContractKind::Contract => write!(f, "Contract"),
+        }
+    }
+}
+
+#[cfg(test)]
+use crate::types::AbsType;
+#[cfg(test)]
+use codespan::Files;
+
+#[cfg(test)]
+impl Label {
+    /// Generate a dummy label for testing purpose.
+    pub fn dummy() -> Label {
+        Label {
+            types: Types(AbsType::Num()),
+            kind: ContractKind::Contract,
+            tag: "testing".to_string(),
+            span: RawSpan {
+                src_id: Files::new().add("<test>", String::from("empty")),
+                start: 0.into(),
+                end: 1.into(),
+            },
+            polarity: false,
+            path: TyPath::Nil(),
+        }
+    }
 }
