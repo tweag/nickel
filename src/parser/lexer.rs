@@ -191,7 +191,7 @@ impl<'input> fmt::Display for Token<'input> {
             Token::Underscore => "_",
             Token::DoubleQuote => "\"",
 
-            Token::Tag => "tag[",
+            Token::Tag => "tag",
             Token::Assume => "Assume(",
             Token::Promise => "Promise(",
             Token::Deflt => "Default(",
@@ -491,12 +491,7 @@ impl<'input> Lexer<'input> {
         let (mut end, slice) = self.take_while(start, is_ident_char);
 
         // Reserved keywords are just special identifiers.
-        let (is_next_lparen, is_next_lbrack) = match self.look_ahead {
-            Some((_, '(')) => (true, false),
-            Some((_, '[')) => (false, true),
-            _ => (false, false),
-        };
-
+        let is_next_lparen = self.look_ahead_is('(');
         let token = match slice {
             "if" => Token::If,
             "then" => Token::Then,
@@ -505,11 +500,7 @@ impl<'input> Lexer<'input> {
             "in" => Token::In,
             "let" => Token::Let,
             "switch" => Token::Switch,
-            "tag" if is_next_lbrack => {
-                self.consume();
-                end += 1;
-                Token::Tag
-            }
+            "tag" => Token::Tag,
             "fun" => Token::Fun,
             "import" => Token::Import,
             "true" => Token::True,
