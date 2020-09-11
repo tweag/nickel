@@ -6,7 +6,7 @@ use crate::position::RawSpan;
 use crate::types::Types;
 use std::fmt;
 
-/// A type path.
+/// A type path element.
 ///
 /// Checking higher-order contracts can involve a good share of intermediate contract checking.
 /// Take the following example:
@@ -29,11 +29,12 @@ use std::fmt;
 /// This is the information encoded by a type path: what part of the original type is currently
 /// being checked by this label. It is then reported to the user in case of a blame.
 #[derive(Debug, Clone, PartialEq)]
-pub enum TyPath {
-    Nil(),
-    Domain(Box<TyPath>),
-    Codomain(Box<TyPath>),
+pub enum TyPathElem {
+    Domain,
+    Codomain,
 }
+
+pub type TyPath = Vec<TyPathElem>;
 
 /// The construct from where a label originates.
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -126,7 +127,7 @@ impl Label {
                 end: 1.into(),
             },
             polarity: false,
-            path: TyPath::Nil(),
+            path: Vec::new(),
         }
     }
 }
