@@ -264,10 +264,10 @@ impl fmt::Display for Types {
                 }
                 write!(f, ". {}", curr)
             }
-            AbsType::Enum(row) => write!(f, "(| {})", row),
-            AbsType::StaticRecord(row) => write!(f, "{{| {}}}", row),
-            AbsType::DynRecord(ty) => write!(f, "{{ _ : {}}}", ty),
-            AbsType::RowEmpty() => write!(f, "|"),
+            AbsType::Enum(row) => write!(f, "< (| {}) >", row),
+            AbsType::StaticRecord(row) => write!(f, "{{ {{| {}}} }}", row),
+            AbsType::DynRecord(ty) => write!(f, "{{_: {}}}", ty),
+            AbsType::RowEmpty() => write!(f, " |"),
             AbsType::RowExtend(Ident(id), ty_opt, tail) => {
                 write!(f, "{}", id)?;
 
@@ -277,6 +277,7 @@ impl fmt::Display for Types {
 
                 match tail.0 {
                     AbsType::RowEmpty() => write!(f, "{}", tail),
+                    AbsType::Var(_) => write!(f, " | {}", tail),
                     _ => write!(f, ", {}", tail),
                 }
             }
@@ -285,5 +286,57 @@ impl fmt::Display for Types {
                 _ => write!(f, "{} -> {}", dom, codom),
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::Types;
+    use crate::parser::grammar::TermParser;
+    use crate::parser::lexer::Lexer;
+    use crate::term::Term;
+    use codespan::Files;
+
+    /// Parse a type represented as a string.
+    fn parse_type(s: &str) -> Types {
+        // Wrap the type in a contract to have it accepted by the parser.
+        let wrapper = format!("Contract({})", s);
+        let id = Files::new().add("<test>", wrapper.clone());
+        println!("wrapper: {}", wrapper);
+
+        let rt = TermParser::new().parse(id, Lexer::new(&wrapper)).unwrap();
+
+        match *rt.term {
+            Term::Contract(ty, _) => ty,
+            _ => panic!("types::test::parse_type(): expected contract"),
+        }
+    }
+
+    /// Take a string representation of a type, parse it, and assert that formatting it gives the
+    /// same string as the original argument.
+    ///
+    /// Note that their are infintely many string representations of the same type since, for
+    /// example, spaces are ignored: for the outcome of this function to be meaningful, the
+    /// original type must be written in the same way as types are formatted.
+    fn assert_format_eq(s: &str) {
+        let ty = parse_type(s);
+        assert_eq!(s, &format!("{}", ty));
+    }
+
+    #[test]
+    fn types_pretty_printing() {
+        assert_format_eq("Num");
+        assert_format_eq("Num -> Num");
+        assert_format_eq("(Num -> Num) -> (Num -> Num) -> Num -> Num");
+        assert_format_eq("((Num -> Num) -> Num) -> Num");
+
+        assert_format_eq("{_: Str}");
+        assert_format_eq("{_: (Str -> Str) -> Str}");
+
+        assert_format_eq("{ {| x: (Bool -> Bool) -> Bool, y: Bool |} }");
+        assert_format_eq("{ {| x: Bool, y: Bool, z: Bool | r} }");
+
+        assert_format_eq("< (| a, b, c, d |) >");
+        assert_format_eq("< (| tag1, tag2, tag3 | r) >");
     }
 }
