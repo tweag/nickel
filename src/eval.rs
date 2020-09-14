@@ -437,8 +437,8 @@ where
             // Function call
             Term::Fun(x, t) => {
                 if 0 < stack.count_args() {
-                    let (arg, pos) = stack.pop_arg().expect("Condition already checked.");
-                    call_stack.push(StackElem::App(pos));
+                    let (arg, pos_app) = stack.pop_arg().expect("Condition already checked.");
+                    call_stack.push(StackElem::App(pos_app));
                     let thunk = Rc::new(RefCell::new(arg));
                     env.insert(x, (thunk, IdentKind::Lam()));
                     Closure { body: t, env }

@@ -2,7 +2,7 @@
 //!
 //! Define error types for different phases of the execution, together with functions to generate a
 //! [codespan](https://crates.io/crates/codespan-reporting) diagnostic from them.
-use crate::eval::CallStack;
+use crate::eval::{CallStack, StackElem};
 use crate::identifier::Ident;
 use crate::label;
 use crate::label::ty_path;
@@ -231,8 +231,10 @@ reporting it at https://github.com/tweag/nickel/issues with the above error mess
 pub trait ToDiagnostic<FileId> {
     /// Convert an error to a printable, formatted diagnostic.
     ///
-    /// To know why it takes a mutable reference to `Files<String>`, see [`label_alt`](fn.label_alt.html).
-    fn to_diagnostic(&self, files: &mut Files<String>) -> Diagnostic<FileId>;
+    /// To know why it takes a mutable reference to `Files<String>`, see
+    /// [`label_alt`](fn.label_alt.html). `contract_id` is required to format the callstack, see
+    /// [`process_callstack`](fn.process_callstack.html).
+    fn to_diagnostic(&self, files: &mut Files<String>, contract_id: FileId) -> Diagnostic<FileId>;
 }
 
 // Helpers for the creation of codespan `Label`s
@@ -439,21 +441,160 @@ fn report_ty_path(l: &label::Label, files: &mut Files<String>) -> (Label<FileId>
     (label, notes)
 }
 
+/// Process a raw callstack by grouping elements belonging to the same call and getting rid of
+/// elements that are not associated to a call.
+///
+/// Recall that when a call `f arg` is evaluated, the following events happen:
+/// 1. `arg` is pushed on the evaluation stack.
+/// 2. `f` is evaluated.
+/// 3. Hopefully, the result of this evaluation is a function `Func(id, body)`. `arg` is popped
+///    from the stack, bound to `id` in the environment, and `body is entered`.
+///
+/// For error reporting purpose, we want to be able to determine the chain of nested calls leading
+/// to the current code path at any moment. To do so, the Nickel abstract machine maintains a
+/// callstack via this basic mechanism:
+/// 1. When a function body is entered, push the position of the original application on the
+///    callstack.
+/// 2. When a variable is evaluated, put its name and position on the callstack. The goal is to
+///    have an easy access to the name of a called function for calls of the form `f arg1
+///    .. argn`.
+///
+/// The resulting stack is not suited to be reported to the user for the following reasons:
+///
+/// 1. Some variable evaluations do not correspond to a call. The typical example is `let x = exp
+///    in x`, which pushes an orphan `x` on the callstack. We want to get rid of these.
+/// 2. Because of currying, multiple arguments applications span several objects on the callstack.
+///    Typically, `(fun x y => x + y) arg1 arg2` spans two `App` elements, where the position span
+///    of the latter includes the position span of the former. We want to group them as one call.
+/// 3. The callstack includes calls to builtin contracts. These calls are inserted implicitely by
+///    the abstract machine and are not written explicitly by the user. Showing them is confusing
+///    and clutters the call chain, so we get rid of them too.
+///
+/// This is the role of `process_callstack`, which filters out unwanted elements and groups
+/// callstack elements into atomic call elements represented as `(Option<Ident>, RawSpan)` tuples:
+///
+///  - The first element is the name of the function called, if there is any (anonymous functions don't have one).
+///  - The second is the position span of the whole application.
+///
+/// # Arguments
+///
+/// - `cs`: the raw callstack to process.
+/// - `contract_id`: the `FileId` of the source containing standard contracts, to filter their
+///   calls out.
+pub fn process_callstack(cs: &CallStack, contract_id: FileId) -> Vec<(Option<Ident>, RawSpan)> {
+    // Create a call element from a callstack element.
+    fn from_elem(elem: &StackElem) -> (Option<Ident>, RawSpan) {
+        match elem {
+            StackElem::Var(_, id, Some(pos)) => (Some(id.clone()), pos.clone()),
+            StackElem::App(Some(pos)) => (None, pos.clone()),
+            _ => panic!(),
+        }
+    }
+
+    let it = cs.iter().filter(|elem| match elem {
+        StackElem::Var(_, _, Some(RawSpan { src_id, .. }))
+        | StackElem::App(Some(RawSpan { src_id, .. }))
+            if *src_id != contract_id =>
+        {
+            true
+        }
+        _ => false,
+    });
+
+    // To decide how to fuse calls, we need to see two successive elements of the callstack at each
+    // iteration. To do so, we create a zipper of the original iterator with a copy of the iterator
+    // shifted by one element, which returns options to be able to iter until the very last element
+    // (it is padded with an ending `None`).
+    let shifted = it.clone().skip(1).map(|elem| Some(elem)).chain(Some(None));
+    let mut it = it.peekable();
+
+    // The call element being currently built.
+    let mut pending = if let Some(first) = it.peek() {
+        from_elem(first)
+    } else {
+        return Vec::new();
+    };
+
+    let mut acc = Vec::new();
+
+    for (prev, next) in it.zip(shifted) {
+        match (prev, next) {
+            // If a `Var` is immediately followed by another `Var`, it does not correspond to a
+            // call: we just drop `pending` and replace it with a fresh call element. This
+            // corresponds to the case 1 mentioned in the description of this function.
+            (StackElem::Var(_, _, _), Some(StackElem::Var(_, id, Some(pos)))) => {
+                pending = (Some(id.clone()), pos.clone())
+            }
+            // If an `App` is followed by a `Var`, then `Var` necessarily belongs to a different
+            // call (or to no call at all): we push the pending call and replace it with a fresh
+            // call element.
+            (StackElem::App(Some(_)), Some(StackElem::Var(_, id, Some(pos)))) => {
+                let old = std::mem::replace(&mut pending, (Some(id.clone()), pos.clone()));
+                acc.push(old);
+            }
+            // If a `Var` is followed by an `App`, they belong to the same call iff the position
+            // span of the `Var` is included in the position span of the following `App`. In this
+            // case, we fuse them. Otherwise, `Var` again does not correspond to any call, and we
+            // just drop the old `pending`.
+            (StackElem::Var(_, _, _), Some(StackElem::App(Some(pos_app)))) => {
+                let id_opt = match &pending {
+                    (id_opt, pos) if *pos <= *pos_app => id_opt.as_ref().cloned(),
+                    _ => None,
+                };
+                pending = (id_opt, pos_app.clone());
+            }
+            // Same thing with two `App`: we test for the containment of position spans. If this
+            // fails, however, we still push `pending`, since as opposed to `Var`, an `App` always
+            // corresponds to an actual call.
+            (StackElem::App(_), Some(StackElem::App(Some(pos_app)))) => {
+                let (contained, id_opt) = match &pending {
+                    (id_opt, pos) if *pos <= *pos_app => (true, id_opt.as_ref().cloned()),
+                    _ => (false, None),
+                };
+                if contained {
+                    pending = (id_opt, pos_app.clone());
+                } else {
+                    let old = std::mem::replace(&mut pending, (None, pos_app.clone()));
+                    acc.push(old);
+                };
+            }
+            // We save the last `pending` element at the end of the iterator if the last stack
+            // element was an `App`.
+            (StackElem::App(_), None) => {
+                acc.push(pending);
+                // The `break` is useless at first sight, but if omit it the compiler complains
+                // that we will use a moved `pending`
+                break;
+            }
+            // Otherwise it is again an orphan `Var` that can be ignored.
+            (StackElem::Var(_, _, _), None) => (),
+            // We should have tested all possible legal configurations of a callstack.
+            _ => panic!(
+                "error::format_callstack(): unexpected consecutive elements of the\
+callstack ({:?}, {:?})",
+                prev, next
+            ),
+        };
+    }
+
+    acc
+}
+
 impl ToDiagnostic<FileId> for Error {
-    fn to_diagnostic(&self, files: &mut Files<String>) -> Diagnostic<FileId> {
+    fn to_diagnostic(&self, files: &mut Files<String>, contract_id: FileId) -> Diagnostic<FileId> {
         match self {
-            Error::ParseError(err) => err.to_diagnostic(files),
-            Error::TypecheckError(err) => err.to_diagnostic(files),
-            Error::EvalError(err) => err.to_diagnostic(files),
-            Error::ImportError(err) => err.to_diagnostic(files),
+            Error::ParseError(err) => err.to_diagnostic(files, contract_id),
+            Error::TypecheckError(err) => err.to_diagnostic(files, contract_id),
+            Error::EvalError(err) => err.to_diagnostic(files, contract_id),
+            Error::ImportError(err) => err.to_diagnostic(files, contract_id),
         }
     }
 }
 
 impl ToDiagnostic<FileId> for EvalError {
-    fn to_diagnostic(&self, files: &mut Files<String>) -> Diagnostic<FileId> {
+    fn to_diagnostic(&self, files: &mut Files<String>, contract_id: FileId) -> Diagnostic<FileId> {
         match self {
-            EvalError::BlameError(l, _cs_opt) => {
+            EvalError::BlameError(l, cs_opt) => {
                 let mut msg = String::from("Blame error: ");
 
                 // Writing in a string should not raise an error, whence the fearless `unwrap()`
@@ -470,17 +611,40 @@ impl ToDiagnostic<FileId> for EvalError {
                 }
 
                 let (path_label, notes) = report_ty_path(&l, files);
+                let mut labels = vec![
+                    path_label,
+                    Label::primary(
+                        l.span.src_id,
+                        l.span.start.to_usize()..l.span.end.to_usize(),
+                    )
+                    .with_message("bound here"),
+                ];
+
+                if !ty_path::is_only_codom(&l.path) {
+                    let calls_lbl_opt = cs_opt
+                        .as_ref()
+                        .map(|cs| process_callstack(cs, contract_id))
+                        .map(|calls| {
+                            calls.into_iter().enumerate().map(|(i, (id_opt, pos))| {
+                                let name = id_opt
+                                    .map(|Ident(id)| id.clone())
+                                    .unwrap_or(String::from("<func>"));
+                                secondary(&pos).with_message(format!(
+                                    "({}) calling {}",
+                                    i + 1,
+                                    name
+                                ))
+                            })
+                        });
+
+                    if let Some(calls_lbl) = calls_lbl_opt {
+                        labels.extend(calls_lbl);
+                    }
+                }
 
                 Diagnostic::error()
                     .with_message(msg)
-                    .with_labels(vec![
-                        path_label,
-                        Label::primary(
-                            l.span.src_id,
-                            l.span.start.to_usize()..l.span.end.to_usize(),
-                        )
-                        .with_message("bound here"),
-                    ])
+                    .with_labels(labels)
                     .with_notes(notes)
             }
             EvalError::TypeError(expd, msg, orig_pos_opt, t) => {
@@ -583,7 +747,7 @@ impl ToDiagnostic<FileId> for EvalError {
             }
             EvalError::UnboundIdentifier(Ident(ident), span_opt) => Diagnostic::error()
                 .with_message("Unbound identifier")
-                .with_labels(vec![primary_alt(span_opt, String::from(ident), files)
+                .with_labels(vec![primary_alt(span_opt, ident.clone(), files)
                     .with_message("this identifier is unbound")]),
             EvalError::Other(msg, span_opt) => {
                 let labels = span_opt
@@ -609,7 +773,7 @@ impl ToDiagnostic<FileId> for EvalError {
 }
 
 impl ToDiagnostic<FileId> for ParseError {
-    fn to_diagnostic(&self, files: &mut Files<String>) -> Diagnostic<FileId> {
+    fn to_diagnostic(&self, files: &mut Files<String>, _contract_id: FileId) -> Diagnostic<FileId> {
         match self {
             ParseError::UnexpectedEOF(file_id, _expected) => {
                 Diagnostic::error().with_message(format!(
@@ -637,7 +801,11 @@ impl ToDiagnostic<FileId> for ParseError {
 }
 
 impl ToDiagnostic<FileId> for TypecheckError {
-    fn to_diagnostic(&self, _files: &mut Files<String>) -> Diagnostic<FileId> {
+    fn to_diagnostic(
+        &self,
+        _files: &mut Files<String>,
+        _contract_id: FileId,
+    ) -> Diagnostic<FileId> {
         match self {
             _ => Diagnostic::error()
                 .with_message("Typechecking failed [WIP].")
@@ -647,7 +815,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
 }
 
 impl ToDiagnostic<FileId> for ImportError {
-    fn to_diagnostic(&self, files: &mut Files<String>) -> Diagnostic<FileId> {
+    fn to_diagnostic(&self, files: &mut Files<String>, contract_id: FileId) -> Diagnostic<FileId> {
         match self {
             ImportError::IOError(path, error, span_opt) => {
                 let labels = span_opt
@@ -660,7 +828,7 @@ impl ToDiagnostic<FileId> for ImportError {
                     .with_labels(labels)
             }
             ImportError::ParseError(error, span_opt) => {
-                let mut diagnostic = error.to_diagnostic(files);
+                let mut diagnostic = error.to_diagnostic(files, contract_id);
 
                 if let Some(span) = span_opt {
                     diagnostic

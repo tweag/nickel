@@ -229,10 +229,14 @@ impl Program {
     ///
     /// This function is located here in `Program` because errors need a reference to `files` in
     /// order to produce a diagnostic (see [`label_alt`](../error/fn.label_alt.html)).
-    pub fn report(&mut self, error: &Error) {
+    pub fn report(&mut self, error: Error) {
         let writer = StandardStream::stderr(ColorChoice::Always);
         let config = codespan_reporting::term::Config::default();
-        let diagnostic = error.to_diagnostic(&mut self.files);
+        let diagnostic = error.to_diagnostic(
+            &mut self.files,
+            *self.file_cache.get("<stdlib/contracts.ncl>").unwrap(),
+        );
+
         match codespan_reporting::term::emit(&mut writer.lock(), &config, &self.files, &diagnostic)
         {
             Ok(()) => (),
