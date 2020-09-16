@@ -232,13 +232,15 @@ impl Program {
     pub fn report(&mut self, error: Error) {
         let writer = StandardStream::stderr(ColorChoice::Always);
         let config = codespan_reporting::term::Config::default();
-        let diagnostic = error.to_diagnostic(
+        let diagnostics = error.to_diagnostic(
             &mut self.files,
             *self.file_cache.get("<stdlib/contracts.ncl>").unwrap(),
         );
 
-        match codespan_reporting::term::emit(&mut writer.lock(), &config, &self.files, &diagnostic)
-        {
+        let result = diagnostics.iter().try_for_each(|d| {
+            codespan_reporting::term::emit(&mut writer.lock(), &config, &self.files, &d)
+        });
+        match result {
             Ok(()) => (),
             Err(err) => panic!(
                 "Program::report: could not print an error on stderr: {}",

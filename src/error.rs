@@ -229,12 +229,16 @@ reporting it at https://github.com/tweag/nickel/issues with the above error mess
 
 /// A trait for converting an error to a diagnostic.
 pub trait ToDiagnostic<FileId> {
-    /// Convert an error to a printable, formatted diagnostic.
+    /// Convert an error to a list of printable formatted diagnostic.
     ///
     /// To know why it takes a mutable reference to `Files<String>`, see
     /// [`label_alt`](fn.label_alt.html). `contract_id` is required to format the callstack, see
     /// [`process_callstack`](fn.process_callstack.html).
-    fn to_diagnostic(&self, files: &mut Files<String>, contract_id: FileId) -> Diagnostic<FileId>;
+    fn to_diagnostic(
+        &self,
+        files: &mut Files<String>,
+        contract_id: FileId,
+    ) -> Vec<Diagnostic<FileId>>;
 }
 
 // Helpers for the creation of codespan `Label`s
@@ -581,7 +585,11 @@ callstack ({:?}, {:?})",
 }
 
 impl ToDiagnostic<FileId> for Error {
-    fn to_diagnostic(&self, files: &mut Files<String>, contract_id: FileId) -> Diagnostic<FileId> {
+    fn to_diagnostic(
+        &self,
+        files: &mut Files<String>,
+        contract_id: FileId,
+    ) -> Vec<Diagnostic<FileId>> {
         match self {
             Error::ParseError(err) => err.to_diagnostic(files, contract_id),
             Error::TypecheckError(err) => err.to_diagnostic(files, contract_id),
@@ -592,7 +600,11 @@ impl ToDiagnostic<FileId> for Error {
 }
 
 impl ToDiagnostic<FileId> for EvalError {
-    fn to_diagnostic(&self, files: &mut Files<String>, contract_id: FileId) -> Diagnostic<FileId> {
+    fn to_diagnostic(
+        &self,
+        files: &mut Files<String>,
+        contract_id: FileId,
+    ) -> Vec<Diagnostic<FileId>> {
         match self {
             EvalError::BlameError(l, cs_opt) => {
                 let mut msg = String::from("Blame error: ");
@@ -611,7 +623,7 @@ impl ToDiagnostic<FileId> for EvalError {
                 }
 
                 let (path_label, notes) = report_ty_path(&l, files);
-                let mut labels = vec![
+                let labels = vec![
                     path_label,
                     Label::primary(
                         l.span.src_id,
@@ -620,8 +632,13 @@ impl ToDiagnostic<FileId> for EvalError {
                     .with_message("bound here"),
                 ];
 
+                let mut diagnostics = vec![Diagnostic::error()
+                    .with_message(msg)
+                    .with_labels(labels)
+                    .with_notes(notes)];
+
                 if !ty_path::is_only_codom(&l.path) {
-                    let calls_lbl_opt = cs_opt
+                    let diags_opt = cs_opt
                         .as_ref()
                         .map(|cs| process_callstack(cs, contract_id))
                         .map(|calls| {
@@ -629,23 +646,17 @@ impl ToDiagnostic<FileId> for EvalError {
                                 let name = id_opt
                                     .map(|Ident(id)| id.clone())
                                     .unwrap_or(String::from("<func>"));
-                                secondary(&pos).with_message(format!(
-                                    "({}) calling {}",
-                                    i + 1,
-                                    name
-                                ))
+                                Diagnostic::note().with_labels(vec![secondary(&pos)
+                                    .with_message(format!("({}) calling {}", i + 1, name))])
                             })
                         });
 
-                    if let Some(calls_lbl) = calls_lbl_opt {
-                        labels.extend(calls_lbl);
+                    if let Some(diags) = diags_opt {
+                        diagnostics.extend(diags);
                     }
                 }
 
-                Diagnostic::error()
-                    .with_message(msg)
-                    .with_labels(labels)
-                    .with_notes(notes)
+                diagnostics
             }
             EvalError::TypeError(expd, msg, orig_pos_opt, t) => {
                 let label = format!(
@@ -662,12 +673,12 @@ impl ToDiagnostic<FileId> for EvalError {
                     _ => vec![primary_term(&t, files).with_message(label)],
                 };
 
-                Diagnostic::error()
+                vec![Diagnostic::error()
                     .with_message("Type error")
                     .with_labels(labels)
-                    .with_notes(vec![msg.clone()])
+                    .with_notes(vec![msg.clone()])]
             }
-            EvalError::NotAFunc(t, arg, pos_opt) => Diagnostic::error()
+            EvalError::NotAFunc(t, arg, pos_opt) => vec![Diagnostic::error()
                 .with_message("Not a function")
                 .with_labels(vec![
                     primary_term(&t, files)
@@ -682,7 +693,7 @@ impl ToDiagnostic<FileId> for EvalError {
                         files,
                     )
                     .with_message("applied here"),
-                ]),
+                ])],
             EvalError::FieldMissing(field, op, t, span_opt) => {
                 let mut labels = Vec::new();
                 let mut notes = Vec::new();
@@ -705,9 +716,9 @@ impl ToDiagnostic<FileId> for EvalError {
                     );
                 }
 
-                Diagnostic::error()
+                vec![Diagnostic::error()
                     .with_message("Missing field")
-                    .with_labels(labels)
+                    .with_labels(labels)]
             }
             EvalError::NotEnoughArgs(count, op, span_opt) => {
                 let mut labels = Vec::new();
@@ -726,10 +737,10 @@ impl ToDiagnostic<FileId> for EvalError {
                     notes.push(msg);
                 }
 
-                Diagnostic::error()
+                vec![Diagnostic::error()
                     .with_message("Not enough arguments")
                     .with_labels(labels)
-                    .with_notes(notes)
+                    .with_notes(notes)]
             }
             EvalError::MergeIncompatibleArgs(t1, t2, span_opt) => {
                 let mut labels = vec![
@@ -741,21 +752,21 @@ impl ToDiagnostic<FileId> for EvalError {
                     labels.push(secondary(&span).with_message("merged here"));
                 }
 
-                Diagnostic::error()
+                vec![Diagnostic::error()
                     .with_message("Non mergeable terms")
-                    .with_labels(labels)
+                    .with_labels(labels)]
             }
-            EvalError::UnboundIdentifier(Ident(ident), span_opt) => Diagnostic::error()
+            EvalError::UnboundIdentifier(Ident(ident), span_opt) => vec![Diagnostic::error()
                 .with_message("Unbound identifier")
                 .with_labels(vec![primary_alt(span_opt, ident.clone(), files)
-                    .with_message("this identifier is unbound")]),
+                    .with_message("this identifier is unbound")])],
             EvalError::Other(msg, span_opt) => {
                 let labels = span_opt
                     .as_ref()
                     .map(|span| vec![primary(span).with_message("here")])
                     .unwrap_or(Vec::new());
 
-                Diagnostic::error().with_message(msg).with_labels(labels)
+                vec![Diagnostic::error().with_message(msg).with_labels(labels)]
             }
             EvalError::InternalError(msg, span_opt) => {
                 let labels = span_opt
@@ -763,18 +774,22 @@ impl ToDiagnostic<FileId> for EvalError {
                     .map(|span| vec![primary(span).with_message("here")])
                     .unwrap_or(Vec::new());
 
-                Diagnostic::error()
+                vec![Diagnostic::error()
                     .with_message(format!("Internal error ({})", msg))
                     .with_labels(labels)
-                    .with_notes(vec![String::from(INTERNAL_ERROR_MSG)])
+                    .with_notes(vec![String::from(INTERNAL_ERROR_MSG)])]
             }
         }
     }
 }
 
 impl ToDiagnostic<FileId> for ParseError {
-    fn to_diagnostic(&self, files: &mut Files<String>, _contract_id: FileId) -> Diagnostic<FileId> {
-        match self {
+    fn to_diagnostic(
+        &self,
+        files: &mut Files<String>,
+        _contract_id: FileId,
+    ) -> Vec<Diagnostic<FileId>> {
+        let diagnostic = match self {
             ParseError::UnexpectedEOF(file_id, _expected) => {
                 Diagnostic::error().with_message(format!(
                     "Unexpected end of file when parsing {}",
@@ -796,7 +811,9 @@ impl ToDiagnostic<FileId> for ParseError {
             ParseError::InvalidEscapeSequence(span) => Diagnostic::error()
                 .with_message("Invalid escape sequence")
                 .with_labels(vec![primary(span)]),
-        }
+        };
+
+        vec![diagnostic]
     }
 }
 
@@ -815,7 +832,11 @@ impl ToDiagnostic<FileId> for TypecheckError {
 }
 
 impl ToDiagnostic<FileId> for ImportError {
-    fn to_diagnostic(&self, files: &mut Files<String>, contract_id: FileId) -> Diagnostic<FileId> {
+    fn to_diagnostic(
+        &self,
+        files: &mut Files<String>,
+        contract_id: FileId,
+    ) -> Vec<Diagnostic<FileId>> {
         match self {
             ImportError::IOError(path, error, span_opt) => {
                 let labels = span_opt
@@ -823,15 +844,15 @@ impl ToDiagnostic<FileId> for ImportError {
                     .map(|span| vec![secondary(span).with_message("imported here")])
                     .unwrap_or(Vec::new());
 
-                Diagnostic::error()
+                vec![Diagnostic::error()
                     .with_message(format!("Import of {} failed: {}", path, error))
-                    .with_labels(labels)
+                    .with_labels(labels)]
             }
             ImportError::ParseError(error, span_opt) => {
                 let mut diagnostic = error.to_diagnostic(files, contract_id);
 
                 if let Some(span) = span_opt {
-                    diagnostic
+                    diagnostic[0]
                         .labels
                         .push(secondary(span).with_message("imported here"));
                 }
