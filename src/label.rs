@@ -3,7 +3,7 @@
 //! A label is a value holding metadata relative to contract checking. It gives the user useful
 //! information about the context of a contract failure.
 use crate::position::RawSpan;
-use crate::types::Types;
+use crate::types::{AbsType, Types};
 use std::fmt;
 
 pub mod ty_path {
@@ -33,14 +33,77 @@ pub mod ty_path {
     //! Paths are encoded as lists of elements, specifying if the next step is either to go to the **domain**
     //! or to the **codomain**.
 
+    use super::{AbsType, Types};
+
     /// An element of a path type.
-    #[derive(Debug, Clone, PartialEq)]
+    #[derive(Debug, Clone, Copy, PartialEq)]
     pub enum Elem {
         Domain,
         Codomain,
     }
 
     pub type Path = Vec<Elem>;
+
+    /// Determine if the path has only `Codomain` components.
+    pub fn is_only_codom(p: &Path) -> bool {
+        p.iter().all(|elt| *elt == Elem::Codomain)
+    }
+
+    /// Return the position span encoded by a type path in the string representation of the
+    /// corresponding type.
+    ///
+    /// Used in the error reporting of blame errors (see
+    /// [report_ty_paht](../error/fn.report_ty_path.html)).
+    ///
+    /// # Example
+    ///
+    /// - Type path: `Codomain(Domain(Nil()))`
+    /// - Type : `Num -> Num -> Num`
+    /// - Return: `(7, 10)`, which corresponds to the second `Num` occurrence.
+    pub fn span<'a, I>(mut path_it: I, ty: &Types) -> (usize, usize)
+    where
+        I: Iterator<Item = &'a Elem>,
+        I: std::clone::Clone,
+    {
+        match (&ty.0, path_it.next()) {
+            (_, None) => {
+                let repr = format!("{}", ty);
+                (0, repr.len())
+            }
+            (AbsType::Arrow(ref dom, ref codom), Some(next)) => {
+                // The potential shift of the start position of the domain introduced by the couple
+                // of parentheses around the domain. Parentheses are added when printing a function
+                // type whose domain is itself a function.
+                // For example, `Arrow(Arrow(Num, Num), Num)` is rendered as "(Num -> Num) -> Num".
+                // In this case, the position of the sub-type "Num -> Num" starts at 1 instead of
+                // 0.
+                let mut offset = match dom.0 {
+                    AbsType::Arrow(_, _) => 1,
+                    _ => 0,
+                };
+
+                match next {
+                    Elem::Domain => {
+                        let (dom_start, dom_end) = span(path_it, dom.as_ref());
+                        (dom_start + offset, dom_end + offset)
+                    }
+                    Elem::Codomain => {
+                        let (_, dom_end) = span(Vec::new().iter(), dom.as_ref());
+                        let (codom_start, codom_end) = span(path_it, codom.as_ref());
+                        // At this point, offset is:
+                        // (a) `1` if there is a couple of parentheses around the domain
+                        // (b) `0` otherwise
+                        // In case (a), we need to shift the beginning of the codomain by two,
+                        // to also take into account the closing ')' character, whence the `offset*2`.
+                        // `4` constant corresponds to the characters " -> "
+                        offset = (offset * 2) + 4 + dom_end;
+                        (codom_start + offset, codom_end + offset)
+                    }
+                }
+            }
+            _ => panic!(),
+        }
+    }
 }
 
 /// The construct from where a label originates.
@@ -115,8 +178,6 @@ impl fmt::Display for ContractKind {
     }
 }
 
-#[cfg(test)]
-use crate::types::AbsType;
 #[cfg(test)]
 use codespan::Files;
 
