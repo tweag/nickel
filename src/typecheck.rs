@@ -1153,9 +1153,8 @@ pub fn get_root(state: &GTypes, x: usize) -> Result<TypeWrapper, String> {
 mod tests {
     use super::*;
     use crate::error::ImportError;
-    use crate::label::{Label, TyPath};
+    use crate::label::Label;
     use crate::parser::lexer;
-    use crate::position::RawSpan;
     use crate::program::resolvers::{DummyResolver, SimpleResolver};
     use crate::transformations::transform;
     use codespan::Files;
@@ -1173,21 +1172,6 @@ mod tests {
             type_check_no_import(p.as_ref())
         } else {
             panic!("Couldn't parse {}", s)
-        }
-    }
-
-    fn label() -> Label {
-        let id = Files::new().add("<test>", "empty");
-
-        Label {
-            tag: "".into(),
-            span: RawSpan {
-                src_id: id,
-                start: 0.into(),
-                end: 1.into(),
-            },
-            polarity: true,
-            path: TyPath::Nil(),
         }
     }
 
@@ -1222,40 +1206,50 @@ mod tests {
     fn promise_simple_checks() {
         type_check_no_import(&Term::Promise(
             Types(AbsType::Bool()),
-            label(),
+            Label::dummy(),
             Term::Bool(true).into(),
         ))
         .unwrap();
         type_check_no_import(&Term::Promise(
             Types(AbsType::Num()),
-            label(),
+            Label::dummy(),
             Term::Bool(true).into(),
         ))
         .unwrap_err();
 
         type_check_no_import(&Term::Promise(
             Types(AbsType::Num()),
-            label(),
+            Label::dummy(),
             Term::Num(34.5).into(),
         ))
         .unwrap();
         type_check_no_import(&Term::Promise(
             Types(AbsType::Bool()),
-            label(),
+            Label::dummy(),
             Term::Num(34.5).into(),
         ))
         .unwrap_err();
 
         type_check_no_import(&Term::Promise(
             Types(AbsType::Num()),
-            label(),
-            Term::Assume(Types(AbsType::Num()), label(), Term::Bool(true).into()).into(),
+            Label::dummy(),
+            Term::Assume(
+                Types(AbsType::Num()),
+                Label::dummy(),
+                Term::Bool(true).into(),
+            )
+            .into(),
         ))
         .unwrap();
         type_check_no_import(&Term::Promise(
             Types(AbsType::Num()),
-            label(),
-            Term::Assume(Types(AbsType::Bool()), label(), Term::Num(34.).into()).into(),
+            Label::dummy(),
+            Term::Assume(
+                Types(AbsType::Bool()),
+                Label::dummy(),
+                Term::Num(34.).into(),
+            )
+            .into(),
         ))
         .unwrap_err();
 

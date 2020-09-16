@@ -10,7 +10,7 @@ use crate::error::EvalError;
 use crate::eval::Environment;
 use crate::eval::{CallStack, Closure};
 use crate::identifier::Ident;
-use crate::label::TyPath;
+use crate::label::ty_path;
 use crate::merge::merge;
 use crate::position::RawSpan;
 use crate::stack::Stack;
@@ -248,7 +248,7 @@ fn process_unary_operation(
         }
         UnaryOp::GoDom() => {
             if let Term::Lbl(mut l) = *t {
-                l.path = TyPath::Domain(Box::new(l.path.clone()));
+                l.path.push(ty_path::Elem::Domain);
                 Ok(Closure::atomic_closure(Term::Lbl(l).into()))
             } else {
                 Err(EvalError::TypeError(
@@ -261,7 +261,7 @@ fn process_unary_operation(
         }
         UnaryOp::GoCodom() => {
             if let Term::Lbl(mut l) = *t {
-                l.path = TyPath::Codomain(Box::new(l.path.clone()));
+                l.path.push(ty_path::Elem::Codomain);
                 Ok(Closure::atomic_closure(Term::Lbl(l).into()))
             } else {
                 Err(EvalError::TypeError(

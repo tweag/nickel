@@ -1,6 +1,7 @@
 /// A few helpers to generate position spans and labels easily during parsing
-use crate::label::{Label, TyPath};
+use crate::label::{ContractKind, Label};
 use crate::position::RawSpan;
+use crate::types::Types;
 use codespan::FileId;
 
 /// Make a span from parser byte offsets.
@@ -13,11 +14,13 @@ pub fn mk_span(src_id: FileId, l: usize, r: usize) -> RawSpan {
 }
 
 /// Same as `mk_span`, but for labels
-pub fn mk_label(tag: &str, src_id: FileId, l: usize, r: usize) -> Label {
+pub fn mk_label(kind: ContractKind, types: Types, src_id: FileId, l: usize, r: usize) -> Label {
     Label {
-        tag: String::from(tag),
+        kind,
+        types,
+        tag: String::new(),
         span: mk_span(src_id, l, r),
         polarity: true,
-        path: TyPath::Nil(),
+        path: Vec::new(),
     }
 }

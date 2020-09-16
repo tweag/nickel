@@ -423,30 +423,15 @@ fn update_thunks(stack: &mut Stack, closure: &Closure) {
 mod tests {
     use super::*;
     use crate::error::ImportError;
-    use crate::label::{Label, TyPath};
+    use crate::label::Label;
     use crate::program::resolvers::{DummyResolver, SimpleResolver};
     use crate::term::StrChunk;
     use crate::term::{BinaryOp, UnaryOp};
     use crate::transformations::transform;
-    use codespan::Files;
 
     /// Evaluate a term without import support.
     fn eval_no_import(t: RichTerm) -> Result<Term, EvalError> {
         eval(t, HashMap::new(), &mut DummyResolver {})
-    }
-
-    /// Generate a dummy label.
-    fn mk_label() -> Label {
-        Label {
-            tag: "testing".to_string(),
-            span: RawSpan {
-                src_id: Files::new().add("<test>", String::from("empty")),
-                start: 0.into(),
-                end: 1.into(),
-            },
-            polarity: false,
-            path: TyPath::Nil(),
-        }
     }
 
     #[test]
@@ -466,7 +451,7 @@ mod tests {
 
     #[test]
     fn blame_panics() {
-        let label = mk_label();
+        let label = Label::dummy();
         if let Err(EvalError::BlameError(l, _)) =
             eval_no_import(Term::Op1(UnaryOp::Blame(), Term::Lbl(label.clone()).into()).into())
         {

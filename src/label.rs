@@ -3,34 +3,52 @@
 //! A label is a value holding metadata relative to contract checking. It gives the user useful
 //! information about the context of a contract failure.
 use crate::position::RawSpan;
+use crate::types::Types;
+use std::fmt;
 
-/// A type path.
-///
-/// Checking higher-order contracts can involve a good share of intermediate contract checking.
-/// Take the following example:
-/// ```
-/// Assume((Num -> Num) -> Num) -> Num -> Num, fun ev => fun cst => ev (fun x => cst))
-/// ```
-/// Once called, various checks will be performed on the arguments of functions and their return
-/// values:
-/// 1. Check that `ev` provides a `Num` to `(fun x => cst)`
-/// 2. Check that `(fun x => cst)` returns a `Num`
-/// 3. Check that `ev (fun x => cst)` return a `Num`
-/// 4. etc.
-///
-/// Each check can be linked to a base type occurrence (here, a `Num`) in the original type:
-/// ```
-/// (Num -> Num) -> Num) -> Num -> Num
-///  ^^^1   ^^^2    ^^^3    etc.
-/// ```
-///
-/// This is the information encoded by a type path: what part of the original type is currently
-/// being checked by this label. It is then reported to the user in case of a blame.
-#[derive(Debug, Clone, PartialEq)]
-pub enum TyPath {
-    Nil(),
-    Domain(Box<TyPath>),
-    Codomain(Box<TyPath>),
+pub mod ty_path {
+    //! Type paths.
+    //!
+    //! Checking higher-order contracts can involve a good share of intermediate contract checking.
+    //! Take the following example:
+    //! ```
+    //! Assume((Num -> Num) -> Num) -> Num -> Num, fun ev => fun cst => ev (fun x => cst))
+    //! ```
+    //! Once called, various checks will be performed on the arguments of functions and their return
+    //! values:
+    //! 1. Check that `ev` provides a `Num` to `(fun x => cst)`
+    //! 2. Check that `(fun x => cst)` returns a `Num`
+    //! 3. Check that `ev (fun x => cst)` return a `Num`
+    //! 4. etc.
+    //!
+    //! Each check can be linked to a base type occurrence (here, a `Num`) in the original type:
+    //! ```
+    //! (Num -> Num) -> Num) -> Num -> Num
+    //!  ^^^1   ^^^2    ^^^3    etc.
+    //! ```
+    //!
+    //! This is the information encoded by a type path: what part of the original type is currently
+    //! being checked by this label. It is then reported to the user in case of a blame.
+    //!
+    //! Paths are encoded as lists of elements, specifying if the next step is either to go to the **domain**
+    //! or to the **codomain**.
+
+    /// An element of a path type.
+    #[derive(Debug, Clone, PartialEq)]
+    pub enum Elem {
+        Domain,
+        Codomain,
+    }
+
+    pub type Path = Vec<Elem>;
+}
+
+/// The construct from where a label originates.
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum ContractKind {
+    Assume,
+    Promise,
+    Contract,
 }
 
 /// A blame label.
@@ -72,6 +90,10 @@ pub enum TyPath {
 /// -> Num` where the polarity alternates each time.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Label {
+    /// The type checked by the original contract.
+    pub types: Types,
+    /// The construct which introduced the orignal contract.
+    pub kind: ContractKind,
     /// A string tag to be printed together with the error message.
     pub tag: String,
     /// The position of the original contract.
@@ -80,5 +102,39 @@ pub struct Label {
     /// on the environment (ex, the argument of a function) or on the term.
     pub polarity: bool,
     /// The path of the type being currently checked in the original type.
-    pub path: TyPath,
+    pub path: ty_path::Path,
+}
+
+impl fmt::Display for ContractKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ContractKind::Assume => write!(f, "Assume"),
+            ContractKind::Promise => write!(f, "Promise"),
+            ContractKind::Contract => write!(f, "Contract"),
+        }
+    }
+}
+
+#[cfg(test)]
+use crate::types::AbsType;
+#[cfg(test)]
+use codespan::Files;
+
+#[cfg(test)]
+impl Label {
+    /// Generate a dummy label for testing purpose.
+    pub fn dummy() -> Label {
+        Label {
+            types: Types(AbsType::Num()),
+            kind: ContractKind::Contract,
+            tag: "testing".to_string(),
+            span: RawSpan {
+                src_id: Files::new().add("<test>", String::from("empty")),
+                start: 0.into(),
+                end: 1.into(),
+            },
+            polarity: false,
+            path: Vec::new(),
+        }
+    }
 }

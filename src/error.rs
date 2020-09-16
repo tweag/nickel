@@ -315,7 +315,7 @@ impl ToDiagnostic<FileId> for EvalError {
                     msg.push_str("  The blame is on the context (negative blame)\n");
                 }
 
-                if l.path != label::TyPath::Nil() {
+                if l.path.is_empty() {
                     msg.push_str(&format!("{:?}", l.path));
                 }
 
