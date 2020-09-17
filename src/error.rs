@@ -491,6 +491,9 @@ fn report_ty_path(l: &label::Label, files: &mut Files<String>) -> (Label<FileId>
 ///  - The first element is the name of the function called, if there is any (anonymous functions don't have one).
 ///  - The second is the position span of the whole application.
 ///
+/// The callstack is also reversed such that the most nested calls, which are usually the most
+/// relevant to understand the error, are printed first.
+///
 /// # Arguments
 ///
 /// - `cs`: the raw callstack to process.
@@ -585,13 +588,14 @@ pub fn process_callstack(cs: &CallStack, contract_id: FileId) -> Vec<(Option<Ide
             (StackElem::Var(_, _, _), None) => (),
             // We should have tested all possible legal configurations of a callstack.
             _ => panic!(
-                "error::format_callstack(): unexpected consecutive elements of the\
+                "error::process_callstack(): unexpected consecutive elements of the\
 callstack ({:?}, {:?})",
                 prev, next
             ),
         };
     }
 
+    acc.reverse();
     acc
 }
 
