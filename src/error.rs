@@ -446,7 +446,7 @@ fn report_ty_path(l: &label::Label, files: &mut Files<String>) -> (Label<FileId>
             }
     };
 
-    let (start, end) = ty_path::span(l.path.iter(), &l.types);
+    let (start, end) = ty_path::span(l.path.iter().peekable(), &l.types);
     let label = Label::new(
         LabelStyle::Secondary,
         files.add("", format!("{}", l.types)),
@@ -624,13 +624,19 @@ impl ToDiagnostic<FileId> for EvalError {
                 if l.path.is_empty() {
                     // An empty path necessarily corresponds to a positive blame
                     assert!(l.polarity);
-                    write!(&mut msg, "contract broken by a value.").unwrap();
+                    write!(&mut msg, "contract broken by a value").unwrap();
                 } else {
                     if l.polarity {
-                        write!(&mut msg, "contract broken by a function.").unwrap();
+                        write!(&mut msg, "contract broken by a function").unwrap();
                     } else {
-                        write!(&mut msg, "contract broken by the caller.").unwrap();
+                        write!(&mut msg, "contract broken by the caller").unwrap();
                     }
+                }
+
+                if !l.tag.is_empty() {
+                    write!(&mut msg, " [{}].", l.tag).unwrap();
+                } else {
+                    write!(&mut msg, ".").unwrap();
                 }
 
                 let (path_label, notes) = report_ty_path(&l, files);
