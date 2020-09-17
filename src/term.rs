@@ -281,9 +281,9 @@ impl Term {
                 format!("<enriched:doc,term={}>", (*t.term).shallow_repr())
             }
             Term::DefaultValue(ref t) => format!("<enriched:default={}", (*t.term).shallow_repr()),
+            Term::Var(Ident(id)) => id.clone(),
             Term::Let(_, _, _)
             | Term::App(_, _)
-            | Term::Var(_)
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::Promise(_, _, _)
