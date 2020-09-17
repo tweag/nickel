@@ -253,7 +253,7 @@ impl fmt::Display for Types {
             AbsType::Str() => write!(f, "Str"),
             AbsType::List() => write!(f, "List"),
             AbsType::Sym() => write!(f, "Sym"),
-            AbsType::Flat(ref t) => write!(f, "#{:?}", t),
+            AbsType::Flat(ref t) => write!(f, "#{}", t.as_ref().shallow_repr()),
             AbsType::Var(Ident(ref var)) => write!(f, "{}", var),
             AbsType::Forall(Ident(ref i), ref ty) => {
                 let mut curr: &Types = ty.as_ref();
