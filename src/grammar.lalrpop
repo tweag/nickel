@@ -1,6 +1,5 @@
 use crate::identifier::Ident;
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp, StrChunk};
-use crate::label::ContractKind;
 use crate::types::{Types, AbsType};
 use super::utils::{mk_span, mk_label};
 use super::lexer::{Token, LexicalError};
@@ -64,17 +63,16 @@ RecordOperationChain: RichTerm = {
 Atom: RichTerm = {
     "(" <SpTerm<Term>> ")",
     <l: @L> "Promise(" <ty: Types> "," <t: SpTerm<Term>> ")" <r: @R> =>
-        RichTerm::new(Term::Promise(ty.clone(), mk_label(ContractKind::Promise,
-        ty, src_id, l, r), t)),
+        RichTerm::new(Term::Promise(ty.clone(), mk_label(ty, src_id, l, r), t)),
     <l: @L> "Assume(" <ty: Types> "," <t: SpTerm<Term>> ")" <r: @R> =>
-        RichTerm::new(Term::Assume(ty.clone(), mk_label(ContractKind::Assume, ty, src_id, l, r), t)),
+        RichTerm::new(Term::Assume(ty.clone(), mk_label(ty, src_id, l, r), t)),
     <l: @L> "Contract(" <ty: Types> ")" <r: @R> =>
-        RichTerm::new(Term::Contract(ty.clone(), mk_label(ContractKind::Contract,
-        ty, src_id, l, r))),
+        RichTerm::new(Term::Contract(ty.clone(), mk_label(ty, src_id, l, r))),
     "Default(" <t: SpTerm<Term>> ")" => RichTerm::new(Term::DefaultValue(t)),
     <l: @L> "ContractDefault(" <ty: Types> "," <t: SpTerm<Term>> ")" <r: @R> =>
         RichTerm::new(Term::ContractWithDefault(ty.clone(),
-        mk_label(ContractKind::Contract, ty, src_id, l, r), t)),
+            mk_label(ty, src_id, l, r), t)
+        ),
     "Docstring(" <s: Str> "," <t: SpTerm<Term>> ")" => RichTerm::new(Term::Docstring(s, t)),
     Num => RichTerm::new(Term::Num(<>)),
     Bool => RichTerm::new(Term::Bool(<>)),

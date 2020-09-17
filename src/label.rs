@@ -4,7 +4,6 @@
 //! information about the context of a contract failure.
 use crate::position::RawSpan;
 use crate::types::{AbsType, Types};
-use std::fmt;
 
 pub mod ty_path {
     //! Type paths.
@@ -128,14 +127,6 @@ pub mod ty_path {
     }
 }
 
-/// The construct from where a label originates.
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub enum ContractKind {
-    Assume,
-    Promise,
-    Contract,
-}
-
 /// A blame label.
 ///
 /// A label is associated to a contract check (an assume, a promise or a contract as an enriched
@@ -177,8 +168,6 @@ pub enum ContractKind {
 pub struct Label {
     /// The type checked by the original contract.
     pub types: Types,
-    /// The construct which introduced the orignal contract.
-    pub kind: ContractKind,
     /// A string tag to be printed together with the error message.
     pub tag: String,
     /// The position of the original contract.
@@ -190,16 +179,6 @@ pub struct Label {
     pub path: ty_path::Path,
 }
 
-impl fmt::Display for ContractKind {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            ContractKind::Assume => write!(f, "Assume"),
-            ContractKind::Promise => write!(f, "Promise"),
-            ContractKind::Contract => write!(f, "Contract"),
-        }
-    }
-}
-
 #[cfg(test)]
 use codespan::Files;
 
@@ -209,7 +188,6 @@ impl Label {
     pub fn dummy() -> Label {
         Label {
             types: Types(AbsType::Num()),
-            kind: ContractKind::Contract,
             tag: "testing".to_string(),
             span: RawSpan {
                 src_id: Files::new().add("<test>", String::from("empty")),
