@@ -1,16 +1,15 @@
 {
     dyn = fun l t => t;
 
-    num = fun l t => if isNum t then t else blame (tag "Number" l);
+    num = fun l t => if isNum t then t else blame l;
 
-    bool = fun l t => if isBool t then t else blame (tag "Boolean" l);
+    bool = fun l t => if isBool t then t else blame l;
 
-    string = fun l t => if isStr t then t else blame (tag "String" l);
+    string = fun l t => if isStr t then t else blame l;
 
-    list = fun l t => if isList t then t else blame (tag "List" l);
+    list = fun l t => if isList t then t else blame l;
 
     func = fun s t l e =>
-        let l = tag "Func" l in
         if isFun e then
             (fun x => t (goCodom l) (e (s (chngPol (goDom l)) x)))
         else
@@ -19,7 +18,7 @@
     forall_var = fun sy pol l t =>
         let lPol = polarity l in
         if pol == lPol then
-            unwrap sy t (blame (tag "Unwrap" l))
+            unwrap sy t (blame l)
         else
             wrap sy t;
 
