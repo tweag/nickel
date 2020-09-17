@@ -60,24 +60,43 @@ pub mod ty_path {
     /// - Type path: `Codomain(Domain(Nil()))`
     /// - Type : `Num -> Num -> Num`
     /// - Return: `(7, 10)`, which corresponds to the second `Num` occurrence.
-    pub fn span<'a, I>(mut path_it: I, ty: &Types) -> (usize, usize)
+    pub fn span<'a, I>(mut path_it: std::iter::Peekable<I>, mut ty: &Types) -> (usize, usize)
     where
         I: Iterator<Item = &'a Elem>,
         I: std::clone::Clone,
     {
-        match (&ty.0, path_it.next()) {
+        // peek() returns a reference, and hence keeps a mutable borrow of `path_it` which forbids
+        // to call to next() in the same region. This is why we need to split the match in two
+        // different block.
+        let forall_offset = match (&ty.0, path_it.peek()) {
             (_, None) => {
                 let repr = format!("{}", ty);
-                (0, repr.len())
+                return (0, repr.len());
             }
-            (AbsType::Arrow(ref dom, ref codom), Some(next)) => {
+            (AbsType::Forall(_, _), Some(_)) => {
+                // The length of "forall" plus the final separating dot and whitespace ". "
+                let mut result = 8;
+                while let AbsType::Forall(crate::identifier::Ident(id), body) = &ty.0 {
+                    // The length of the identifier plus the preceding whitespace
+                    result += id.len() + 1;
+                    ty = body.as_ref();
+                }
+
+                result
+            }
+            _ => 0,
+        };
+
+        match (&ty.0, path_it.next()) {
+            (AbsType::Arrow(dom, codom), Some(next)) => {
+                path_it.next();
                 // The potential shift of the start position of the domain introduced by the couple
                 // of parentheses around the domain. Parentheses are added when printing a function
                 // type whose domain is itself a function.
                 // For example, `Arrow(Arrow(Num, Num), Num)` is rendered as "(Num -> Num) -> Num".
                 // In this case, the position of the sub-type "Num -> Num" starts at 1 instead of
                 // 0.
-                let mut offset = match dom.0 {
+                let paren_offset = match dom.0 {
                     AbsType::Arrow(_, _) => 1,
                     _ => 0,
                 };
@@ -85,18 +104,21 @@ pub mod ty_path {
                 match next {
                     Elem::Domain => {
                         let (dom_start, dom_end) = span(path_it, dom.as_ref());
-                        (dom_start + offset, dom_end + offset)
+                        (
+                            dom_start + paren_offset + forall_offset,
+                            dom_end + paren_offset + forall_offset,
+                        )
                     }
                     Elem::Codomain => {
-                        let (_, dom_end) = span(Vec::new().iter(), dom.as_ref());
+                        let (_, dom_end) = span(Vec::new().iter().peekable(), dom.as_ref());
                         let (codom_start, codom_end) = span(path_it, codom.as_ref());
-                        // At this point, offset is:
+                        // At this point, paren_offset is:
                         // (a) `1` if there is a couple of parentheses around the domain
                         // (b) `0` otherwise
                         // In case (a), we need to shift the beginning of the codomain by two,
                         // to also take into account the closing ')' character, whence the `offset*2`.
-                        // `4` constant corresponds to the characters " -> "
-                        offset = (offset * 2) + 4 + dom_end;
+                        // The `4` corresponds to the arrow " -> ".
+                        let offset = (paren_offset * 2) + 4 + dom_end + forall_offset;
                         (codom_start + offset, codom_end + offset)
                     }
                 }
