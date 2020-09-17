@@ -231,13 +231,24 @@ reporting it at https://github.com/tweag/nickel/issues with the above error mess
 pub trait ToDiagnostic<FileId> {
     /// Convert an error to a list of printable formatted diagnostic.
     ///
-    /// To know why it takes a mutable reference to `Files<String>`, see
-    /// [`label_alt`](fn.label_alt.html). `contract_id` is required to format the callstack, see
-    /// [`process_callstack`](fn.process_callstack.html).
+    /// # Arguments
+    ///
+    /// - `files`: to know why it takes a mutable reference to `Files<String>`, see
+    ///   [`label_alt`](fn.label_alt.html).
+    /// - `contract_id` is required to format the callstack when reporting blame errors. For some
+    ///   errors (such as [`ParseError`](./enum.ParseError.html)), contracts may not have been loaded
+    ///   yet, hence the optional. See also [`process_callstack`](fn.process_callstack.html).
+    ///
+    /// # Return
+    ///
+    /// Return a list of diagnostics. Most errors generate only one, but showing the callstack
+    /// ordered requires to sidestep a limitation of codespan. The current solution is to generate
+    /// one diagnostic per callstack element. See [this
+    /// issue](https://github.com/brendanzab/codespan/issues/285).
     fn to_diagnostic(
         &self,
         files: &mut Files<String>,
-        contract_id: FileId,
+        contract_id: Option<FileId>,
     ) -> Vec<Diagnostic<FileId>>;
 }
 
@@ -588,7 +599,7 @@ impl ToDiagnostic<FileId> for Error {
     fn to_diagnostic(
         &self,
         files: &mut Files<String>,
-        contract_id: FileId,
+        contract_id: Option<FileId>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
             Error::ParseError(err) => err.to_diagnostic(files, contract_id),
@@ -603,7 +614,7 @@ impl ToDiagnostic<FileId> for EvalError {
     fn to_diagnostic(
         &self,
         files: &mut Files<String>,
-        contract_id: FileId,
+        contract_id: Option<FileId>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
             EvalError::BlameError(l, cs_opt) => {
@@ -637,23 +648,27 @@ impl ToDiagnostic<FileId> for EvalError {
                     .with_labels(labels)
                     .with_notes(notes)];
 
-                if !ty_path::is_only_codom(&l.path) {
-                    let diags_opt = cs_opt
-                        .as_ref()
-                        .map(|cs| process_callstack(cs, contract_id))
-                        .map(|calls| {
-                            calls.into_iter().enumerate().map(|(i, (id_opt, pos))| {
-                                let name = id_opt
-                                    .map(|Ident(id)| id.clone())
-                                    .unwrap_or(String::from("<func>"));
-                                Diagnostic::note().with_labels(vec![secondary(&pos)
-                                    .with_message(format!("({}) calling {}", i + 1, name))])
-                            })
-                        });
+                match contract_id {
+                    Some(id) if !ty_path::is_only_codom(&l.path) => {
+                        let diags_opt =
+                            cs_opt
+                                .as_ref()
+                                .map(|cs| process_callstack(cs, id))
+                                .map(|calls| {
+                                    calls.into_iter().enumerate().map(|(i, (id_opt, pos))| {
+                                        let name = id_opt
+                                            .map(|Ident(id)| id.clone())
+                                            .unwrap_or(String::from("<func>"));
+                                        Diagnostic::note().with_labels(vec![secondary(&pos)
+                                            .with_message(format!("({}) calling {}", i + 1, name))])
+                                    })
+                                });
 
-                    if let Some(diags) = diags_opt {
-                        diagnostics.extend(diags);
+                        if let Some(diags) = diags_opt {
+                            diagnostics.extend(diags);
+                        }
                     }
+                    _ => (),
                 }
 
                 diagnostics
@@ -787,7 +802,7 @@ impl ToDiagnostic<FileId> for ParseError {
     fn to_diagnostic(
         &self,
         files: &mut Files<String>,
-        _contract_id: FileId,
+        _contract_id: Option<FileId>,
     ) -> Vec<Diagnostic<FileId>> {
         let diagnostic = match self {
             ParseError::UnexpectedEOF(file_id, _expected) => {
@@ -835,7 +850,7 @@ impl ToDiagnostic<FileId> for ImportError {
     fn to_diagnostic(
         &self,
         files: &mut Files<String>,
-        contract_id: FileId,
+        contract_id: Option<FileId>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
             ImportError::IOError(path, error, span_opt) => {

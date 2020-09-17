@@ -234,7 +234,7 @@ impl Program {
         let config = codespan_reporting::term::Config::default();
         let diagnostics = error.to_diagnostic(
             &mut self.files,
-            *self.file_cache.get("<stdlib/contracts.ncl>").unwrap(),
+            self.file_cache.get("<stdlib/contracts.ncl>").copied(),
         );
 
         let result = diagnostics.iter().try_for_each(|d| {
