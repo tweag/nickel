@@ -274,8 +274,7 @@ fn process_unary_operation(
         }
         UnaryOp::Tag(s) => {
             if let Term::Lbl(mut l) = *t {
-                l.tag.push_str("\n");
-                l.tag.push_str(&s);
+                l.tag = String::from(&s);
                 Ok(Closure::atomic_closure(Term::Lbl(l).into()))
             } else {
                 Err(EvalError::TypeError(
