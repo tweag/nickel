@@ -59,10 +59,11 @@ pub fn type_check(t: &Term, resolver: &mut dyn ImportResolver) -> Result<Types, 
 ///
 /// # Arguments
 ///
-/// - `state` : the unification state (see [`State`](struct.State.html)).
+/// - `state`: the unification state (see [`State`](struct.State.html)).
+/// - `env`: the typing environment, mapping free variable to types.
+/// - `strict`: the typechecking mode.
 /// - `t`: the term to check.
 /// - `ty`: the type to check the term against.
-/// - `strict`: the typechecking mode.
 fn type_check_(
     state: &mut State,
     mut env: Environment,
@@ -490,8 +491,8 @@ fn to_typewrapper(t: Types) -> TypeWrapper {
     TypeWrapper::Concrete(t3)
 }
 
-/// Extract the concrete type (if any) corresponding to a type wrapper. Free unification variable
-/// are replaced with type `Dyn`.
+/// Extract the concrete type (if any) corresponding to a type wrapper. Free unification variables
+/// are replaced with the type `Dyn`.
 fn to_type(table: &UnifTable, ty: TypeWrapper) -> Types {
     match ty {
         TypeWrapper::Ptr(p) => match get_root(table, p) {
@@ -925,8 +926,9 @@ fn constraint(state: &mut State, x: TypeWrapper, id: Ident) -> Result<(), String
 /// This corresponds to the find in union-find.
 // TODO This should be a union find like algorithm
 pub fn get_root(table: &UnifTable, x: usize) -> TypeWrapper {
-    // All queried variable must have been introduced by `new_var` and thus a corresponding must
-    // always exist in `state`. If not, the typechecking algorithm is not correct, and we panic.
+    // All queried variable must have been introduced by `new_var` and thus a corresponding entry
+    // must always exist in `state`. If not, the typechecking algorithm is not correct, and we
+    // panic.
     match table.get(&x).unwrap() {
         None => TypeWrapper::Ptr(x),
         Some(TypeWrapper::Ptr(y)) => get_root(table, *y),
