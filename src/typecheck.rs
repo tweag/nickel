@@ -20,11 +20,130 @@
 //! of a let binding is currently never inferred (let alone generalized): it must be annotated via
 //! a `Promise` or an `Assume`, or it is given the type `Dyn`, no matter what is the typechecking
 //! mode.
+use crate::error::TypecheckError;
 use crate::identifier::Ident;
+use crate::position::RawSpan;
 use crate::program::ImportResolver;
 use crate::term::{BinaryOp, RichTerm, StrChunk, Term, UnaryOp};
 use crate::types::{AbsType, Types};
 use std::collections::{HashMap, HashSet};
+
+/// Error during the unification of two row types.
+#[derive(Debug, PartialEq)]
+pub enum RowUnifError {
+    /// The LHS had a binding that was missing in the RHS.
+    MissingRow(Ident),
+    /// One of the row was ill-formed (typically, a tail was neither a row nor a variable).
+    ///
+    /// This should probably not happen with proper restrictions on the parser and a correct
+    /// typechecking algorithm. We let it as an error for now, but it could be removed and turned
+    /// into a panic! in the future.
+    IllformedRow(TypeWrapper),
+    /// A [row constraint](./type.RowConstr.html) was violated.
+    IncompatibleConstraints(Ident, Option<TypeWrapper>),
+}
+
+impl RowUnifError {
+    /// Convert a row unification error to a unification error.
+    ///
+    /// There is a hierarchy between error types, from the most local/specific to the most high-level:
+    /// - [`RowUnifError`](./enum.RowUnifError.html)
+    /// - [`UnifError`](./enum.UnifError.html)
+    /// - [`TypecheckError`](../errors/enum.TypecheckError.html)
+    ///
+    /// Each level usually adds information (such as types or positions) and group different
+    /// specific errors into most general ones.
+    pub fn to_unif_err(self, left: TypeWrapper, right: TypeWrapper) -> UnifError {
+        match self {
+            RowUnifError::MissingRow(id) => UnifError::MissingRow(id, left, right),
+            RowUnifError::IllformedRow(tyw) => UnifError::IllformedRow(tyw),
+            RowUnifError::IncompatibleConstraints(id, tyw) => {
+                UnifError::RowConflict(id, tyw, left, right)
+            }
+        }
+    }
+}
+
+/// Error during the unification of two types.
+#[derive(Debug, PartialEq)]
+pub enum UnifError {
+    /// Tried to unify two incompatible types.
+    IncompatibleTypes(TypeWrapper, TypeWrapper),
+    /// Tried to unify an enum row and a record row.
+    IncompatibleRows(Ident, Option<TypeWrapper>, Option<TypeWrapper>),
+    /// Tried to unify two distinct type constants.
+    IncompatibleConst(usize, usize),
+    /// Tried to unify two rows, but an identifier of the LHS was absent from the RHS.
+    MissingRow(Ident, TypeWrapper, TypeWrapper),
+    /// A row was ill-formed (see []()).
+    IllformedRow(TypeWrapper),
+    /// Tried to unify a unification variable with a row type violating the [row
+    /// constraints](./type.RowConstr.html) of the variable.
+    RowConflict(Ident, Option<TypeWrapper>, TypeWrapper, TypeWrapper),
+    /// Tried to unify a type constant with another different type.
+    WithConst(usize, TypeWrapper),
+    /// A flat type, which is an opaque type corresponding to custom contracts, contains a Nickel
+    /// term different from a variable. Only a variables is a legal inner term of a flat type.
+    IllformedFlatType(RichTerm),
+    /// An unbound type variable was referenced.
+    UnboundTypeVariable(Ident),
+}
+
+impl UnifError {
+    /// Convert a unification error to a typechecking error.
+    ///
+    /// There is a hierarchy between error types, from the most local/specific to the most high-level:
+    /// - [`RowUnifError`](./enum.RowUnifError.html)
+    /// - [`UnifError`](./enum.UnifError.html)
+    /// - [`TypecheckError`](../errors/enum.TypecheckError.html)
+    ///
+    /// Each level usually adds information (such as types or positions) and group different
+    /// specific errors into most general ones.
+    pub fn to_typecheck_err(self, table: &UnifTable, pos_opt: &Option<RawSpan>) -> TypecheckError {
+        let pos_opt = pos_opt.as_ref().cloned();
+        match self {
+            UnifError::IncompatibleTypes(ty1, ty2) => {
+                TypecheckError::TypeMismatch(to_type(table, ty1), to_type(table, ty2), pos_opt)
+            }
+            UnifError::IncompatibleRows(id, ty1, ty2) => TypecheckError::RowMismatch(
+                id,
+                ty1.map(|tw| to_type(table, tw)),
+                ty2.map(|tw| to_type(table, tw)),
+                pos_opt,
+            ),
+            // FIXME: For now we give arbitrary names (a or b) to quantified type variables. In the
+            // future, we may want to remember their original name and create a specific variant in
+            // `TypecheckError` for better error reporting.
+            UnifError::IncompatibleConst(_c1, _c2) => TypecheckError::TypeMismatch(
+                Types(AbsType::Var(Ident(String::from("a")))),
+                Types(AbsType::Var(Ident(String::from("b")))),
+                pos_opt,
+            ),
+            UnifError::WithConst(_c, ty) => TypecheckError::TypeMismatch(
+                Types(AbsType::Var(Ident(String::from("a")))),
+                to_type(table, ty),
+                pos_opt,
+            ),
+            UnifError::IllformedFlatType(rt) => {
+                TypecheckError::IllformedType(Types(AbsType::Flat(rt)))
+            }
+            UnifError::MissingRow(id, tyw1, tyw2) => {
+                TypecheckError::MissingRow(id, to_type(table, tyw1), to_type(table, tyw2), pos_opt)
+            }
+            UnifError::IllformedRow(tyw) => TypecheckError::IllformedType(to_type(table, tyw)),
+            UnifError::RowConflict(id, tyw, left, right) => TypecheckError::RowConflict(
+                id,
+                tyw.map(|tyw| to_type(table, tyw)),
+                to_type(table, left),
+                to_type(table, right),
+                pos_opt,
+            ),
+            UnifError::UnboundTypeVariable(ident) => {
+                TypecheckError::UnboundTypeVariable(ident, pos_opt)
+            }
+        }
+    }
+}
 
 /// The typing environment.
 type Environment = HashMap<Ident, TypeWrapper>;

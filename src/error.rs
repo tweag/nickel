@@ -10,6 +10,7 @@ use crate::parser::lexer::LexicalError;
 use crate::parser::utils::mk_span;
 use crate::position::RawSpan;
 use crate::term::RichTerm;
+use crate::types::Types;
 use codespan::{FileId, Files};
 use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 use std::fmt::Write;
@@ -18,6 +19,7 @@ use std::fmt::Write;
 #[derive(Debug, PartialEq)]
 pub enum Error {
     EvalError(EvalError),
+    TypecheckError(TypecheckError),
     ParseError(ParseError),
     ImportError(ImportError),
 }
@@ -69,6 +71,58 @@ pub enum EvalError {
     Other(String, Option<RawSpan>),
 }
 
+/// An error occurring during the static typechecking phase.
+#[derive(Debug, PartialEq)]
+pub enum TypecheckError {
+    /// An unbound identifier was referenced.
+    UnboundIdentifier(Ident, Option<RawSpan>),
+    /// An ill-formed type, such as a non-row type appearing in a row.
+    IllformedType(Types),
+    /// A specific row was expected to be in the type of an expression, but was not.
+    MissingRow(
+        Ident,
+        /* the expected type */ Types,
+        /* the inferred/annotated type */ Types,
+        Option<RawSpan>,
+    ),
+    /// An unbound type variable was referenced.
+    UnboundTypeVariable(Ident, Option<RawSpan>),
+    /// The actual (inferred or annotated) type of an expression is incompatible with its expected
+    /// type.
+    TypeMismatch(
+        /* the expected type */ Types,
+        /* the inferred or annotated type */ Types,
+        Option<RawSpan>,
+    ),
+    /// Two incompatible types have been deduced for the same identifier of a row type.
+    RowMismatch(
+        Ident,
+        /* expected */ Option<Types>,
+        /* actual/inferred/annotated */ Option<Types>,
+        Option<RawSpan>,
+    ),
+    /// Two incompatible types have been deduced for the same identifier of a row type.
+    ///
+    /// This is similar to `RowMismatch` but occurs in a slightly different situation. Consider a a
+    /// unification variable `t`, which is a placeholder to be filled by a concrete type later in
+    /// the typechecking phase.  If `t` appears as the tail of a row type, i.e. the type of some
+    /// expression is inferred to be `{| field: Type | t}`, then `t` must not be unified later with
+    /// a type including a different declaration for field, such as `field: Type2`.
+    ///
+    /// A [constraint](../typecheck/type.RowConstr.html) is added accordingly, and if this
+    /// constraint is violated (that is if `t` does end up being unified with a type of the form
+    /// `{| .., field: Type2, .. }`), `RowConflict` is raised.  We do not have access to the
+    /// original `field: Type` declaration, as opposed to `RowMismatch`, which corresponds to the
+    /// direct failure to unify `{| .. , x: T1, .. }` and `{| .., x: T2, .. }`.
+    RowConflict(
+        Ident,
+        /* the second type assignment which violates the constraint */ Option<Types>,
+        /* the expected type of the subexpression */ Types,
+        /* the actual type of the subexpression */ Types,
+        Option<RawSpan>,
+    ),
+}
+
 /// An error occurring during parsing.
 #[derive(Debug, PartialEq)]
 pub enum ParseError {
@@ -115,6 +169,12 @@ impl From<EvalError> for Error {
 impl From<ParseError> for Error {
     fn from(error: ParseError) -> Error {
         Error::ParseError(error)
+    }
+}
+
+impl From<TypecheckError> for Error {
+    fn from(error: TypecheckError) -> Error {
+        Error::TypecheckError(error)
     }
 }
 
@@ -383,6 +443,7 @@ impl ToDiagnostic<FileId> for Error {
     fn to_diagnostic(&self, files: &mut Files<String>) -> Diagnostic<FileId> {
         match self {
             Error::ParseError(err) => err.to_diagnostic(files),
+            Error::TypecheckError(err) => err.to_diagnostic(files),
             Error::EvalError(err) => err.to_diagnostic(files),
             Error::ImportError(err) => err.to_diagnostic(files),
         }
@@ -571,6 +632,16 @@ impl ToDiagnostic<FileId> for ParseError {
             ParseError::InvalidEscapeSequence(span) => Diagnostic::error()
                 .with_message("Invalid escape sequence")
                 .with_labels(vec![primary(span)]),
+        }
+    }
+}
+
+impl ToDiagnostic<FileId> for TypecheckError {
+    fn to_diagnostic(&self, _files: &mut Files<String>) -> Diagnostic<FileId> {
+        match self {
+            _ => Diagnostic::error()
+                .with_message("Typechecking failed [WIP].")
+                .with_notes(vec![format!("{:?}", self)]),
         }
     }
 }
