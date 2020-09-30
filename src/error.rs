@@ -836,12 +836,12 @@ impl ToDiagnostic<FileId> for TypecheckError {
     fn to_diagnostic(
         &self,
         _files: &mut Files<String>,
-        _contract_id: FileId,
-    ) -> Diagnostic<FileId> {
+        _contract_id: Option<FileId>,
+    ) -> Vec<Diagnostic<FileId>> {
         match self {
-            _ => Diagnostic::error()
+            _ => vec![Diagnostic::error()
                 .with_message("Typechecking failed [WIP].")
-                .with_notes(vec![format!("{:?}", self)]),
+                .with_notes(vec![format!("{:?}", self)])],
         }
     }
 }
