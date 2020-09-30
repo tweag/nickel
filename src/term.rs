@@ -807,7 +807,7 @@ impl RichTerm {
                 )
             }
             Term::Record(map) => {
-                // This annotation use Result's corresponding trait to convert from
+                // The annotation on `map_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
                 let map_res: Result<HashMap<Ident, RichTerm>, E> = map
                     .into_iter()
@@ -823,7 +823,7 @@ impl RichTerm {
                 )
             }
             Term::RecRecord(map) => {
-                // This annotation use Result's corresponding trait to convert from
+                // The annotation on `map_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
                 let map_res: Result<HashMap<Ident, RichTerm>, E> = map
                     .into_iter()
