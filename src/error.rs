@@ -446,7 +446,7 @@ fn report_ty_path(l: &label::Label, files: &mut Files<String>) -> (Label<FileId>
             }
     };
 
-    let (start, end) = ty_path::span(l.path.iter(), &l.types);
+    let (start, end) = ty_path::span(l.path.iter().peekable(), &l.types);
     let label = Label::new(
         LabelStyle::Secondary,
         files.add("", format!("{}", l.types)),
@@ -490,6 +490,9 @@ fn report_ty_path(l: &label::Label, files: &mut Files<String>) -> (Label<FileId>
 ///
 ///  - The first element is the name of the function called, if there is any (anonymous functions don't have one).
 ///  - The second is the position span of the whole application.
+///
+/// The callstack is also reversed such that the most nested calls, which are usually the most
+/// relevant to understand the error, are printed first.
 ///
 /// # Arguments
 ///
@@ -585,13 +588,14 @@ pub fn process_callstack(cs: &CallStack, contract_id: FileId) -> Vec<(Option<Ide
             (StackElem::Var(_, _, _), None) => (),
             // We should have tested all possible legal configurations of a callstack.
             _ => panic!(
-                "error::format_callstack(): unexpected consecutive elements of the\
+                "error::process_callstack(): unexpected consecutive elements of the\
 callstack ({:?}, {:?})",
                 prev, next
             ),
         };
     }
 
+    acc.reverse();
     acc
 }
 
@@ -624,13 +628,19 @@ impl ToDiagnostic<FileId> for EvalError {
                 if l.path.is_empty() {
                     // An empty path necessarily corresponds to a positive blame
                     assert!(l.polarity);
-                    write!(&mut msg, "contract broken by a value.").unwrap();
+                    write!(&mut msg, "contract broken by a value").unwrap();
                 } else {
                     if l.polarity {
-                        write!(&mut msg, "contract broken by a function.").unwrap();
+                        write!(&mut msg, "contract broken by a function").unwrap();
                     } else {
-                        write!(&mut msg, "contract broken by the caller.").unwrap();
+                        write!(&mut msg, "contract broken by the caller").unwrap();
                     }
+                }
+
+                if !l.tag.is_empty() {
+                    write!(&mut msg, " [{}].", l.tag).unwrap();
+                } else {
+                    write!(&mut msg, ".").unwrap();
                 }
 
                 let (path_label, notes) = report_ty_path(&l, files);
