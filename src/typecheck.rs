@@ -16,10 +16,29 @@
 //!
 //! # Type inference
 //!
-//! Type inference is done via a standard unification algorithm. Inference is limited, since the type
-//! of a let binding is currently never inferred (let alone generalized): it must be annotated via
-//! a `Promise` or an `Assume`, or it is given the type `Dyn`, no matter what is the typechecking
-//! mode.
+//! Type inference is done via a standard unification algorithm. The type of unannotated let-bound
+//! expressions (the type of `bound_exp` in `let x = bound_exp in body`) is inferred in strict
+//! mode, but it is never implicitly generalized. For example, the following program is rejected:
+//!
+//! ```
+//! // Rejected
+//! Promise(Num, let id = fun x => x in seq (id "a") (id 5))
+//! ```
+//!
+//! Indeed, `id` is given the type `_a -> _a`, where `_a` is a unification variable, but is not
+//! generalized to `forall a. a -> a`. At the first call site, `_a` is unified with `Str`, and at the second
+//! call site the typechecker complains that `5` is not of type `Str`.
+//!
+//! This restriction is on purpose, as generalization is not trivial to implement efficiently and
+//! can interact with other parts of type inference. If polymorphism is required, a simple
+//! annotation is sufficient:
+//!
+//! ```
+//! // Accepted
+//! Promise(Num, let id = Promise(forall a. a -> a, fun x => x) in seq (id "a") (id 5))
+//! ```
+//!
+//! In non-strict mode, all let-bound expressions are given type `Dyn`, unless annotated.
 use crate::error::TypecheckError;
 use crate::identifier::Ident;
 use crate::position::RawSpan;
@@ -243,11 +262,11 @@ fn type_check_(
         }
         Term::Let(x, re, rt) => {
             let e = re.as_ref();
-            let ty_app = apparent_type(e);
-            type_check_(state, env.clone(), strict, e, ty_app.clone())?;
+            let ty_let = apparent_type(e, state.table, strict);
+            type_check_(state, env.clone(), strict, e, ty_let.clone())?;
 
             // TODO move this up once lets are rec
-            env.insert(x.clone(), ty_app);
+            env.insert(x.clone(), ty_let);
             type_check_(state, env, strict, rt.as_ref(), ty)
         }
         Term::App(re, rt) => {
@@ -285,9 +304,9 @@ fn type_check_(
             // typed_vars before actually typechecking the content of fields
             if let Term::RecRecord(_) = t {
                 env.extend(
-                    stat_map
-                        .iter()
-                        .map(|(id, rt)| (id.clone(), apparent_type(rt.as_ref()))),
+                    stat_map.iter().map(|(id, rt)| {
+                        (id.clone(), apparent_type(rt.as_ref(), state.table, strict))
+                    }),
                 );
             }
 
@@ -310,10 +329,18 @@ fn type_check_(
                 let row = stat_map.into_iter().try_fold(
                     TypeWrapper::Concrete(AbsType::RowEmpty()),
                     |acc, e| -> Result<TypeWrapper, String> {
-                        let (id, t) = e;
+                        let (id, field) = e;
 
-                        let ty = TypeWrapper::Ptr(new_var(state.table));
-                        type_check_(state, env.clone(), strict, t.as_ref(), ty.clone())?;
+                        // In the case of a recursive record, new types (either type variables or
+                        // annotations) have already be determined and put in the typing
+                        // environment, and we need to use the same.
+                        let ty = if let Term::RecRecord(_) = t {
+                            env.get(&id).unwrap().clone()
+                        } else {
+                            TypeWrapper::Ptr(new_var(state.table))
+                        };
+
+                        type_check_(state, env.clone(), strict, field.as_ref(), ty.clone())?;
 
                         Ok(TypeWrapper::Concrete(AbsType::RowExtend(
                             id.clone(),
@@ -387,11 +414,23 @@ fn type_check_(
     }
 }
 
-/// Determine the apparent type of an expression: if the term is annotated by an `Assume` or a
-/// `Promise`, return the corresponding type, or return `Dyn` otherwise.
-fn apparent_type(t: &Term) -> TypeWrapper {
+/// Determine the apparent type of a let-bound expression.
+///
+/// When a let-binding `let x = bound_exp in body` is processed, the type of `bound_exp` must be
+/// determined to be associated to the bound variable `x` in the typing environment (`typed_vars`).
+/// Then, future occurrences of `x` can be given this type when used in a `Promise` block.
+///
+/// The role of `apparent_type` is precisely to determine the type of `bound_exp`:
+/// - if `bound_exp` is annotated by an `Assume` or a `Promise`, use the user-provided type.
+/// - Otherwise:
+///     * in non strict mode, we won't (and possibly can't) infer the type of `bound_exp`: just
+///       return `Dyn`.
+///     * in strict mode, we will typecheck `bound_exp`: return a new unification variable to be
+///       associated to `bound_exp`.
+fn apparent_type(t: &Term, table: &mut UnifTable, strict: bool) -> TypeWrapper {
     match t {
         Term::Assume(ty, _, _) | Term::Promise(ty, _, _) => to_typewrapper(ty.clone()),
+        _ if strict => TypeWrapper::Ptr(new_var(table)),
         _ => TypeWrapper::Concrete(AbsType::Dyn()),
     }
 }
@@ -1521,9 +1560,26 @@ mod tests {
         )
         .unwrap_err();
         parse_and_typecheck(
-            "Promise({ {| a : Num, b : Bool, |} }, { a = 1; b = Promise(Bool,a) } )",
+            "Promise({ {| a : Num, b : Bool, |} }, { a = 1; b = Promise(Bool, a) } )",
         )
         .unwrap_err();
         parse_and_typecheck("Promise({ {| a : Num, |} }, { a = Promise(Num, 1 + a) })").unwrap();
+    }
+
+    #[test]
+    fn let_inference() {
+        parse_and_typecheck("Promise(Num, let x = 1 + 2 in let f = fun x => x + 1 in f x)")
+            .unwrap();
+        parse_and_typecheck("Promise(Num, let x = 1 + 2 in let f = fun x => x ++ \"a\" in f x)")
+            .unwrap_err();
+
+        // Fields in recursive records are treated in the type environment in the same way as let-bound expressions
+        parse_and_typecheck("Promise({ {| a : Num, b : Num, |} }, { a = 1; b = 1 + a })").unwrap();
+        parse_and_typecheck(
+            "Promise({ {| f : Num -> Num, |} }, { f = fun x => if isZero x then 1 else 1 + (f (x + (-1)));})"
+        ).unwrap();
+        parse_and_typecheck(
+            "Promise({ {| f : Num -> Num, |} }, { f = fun x => if isZero x then false else 1 + (f (x + (-1)))})"
+        ).unwrap_err();
     }
 }
