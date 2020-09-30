@@ -159,7 +159,7 @@ impl Program {
         let rt = self.parse_with_cache(src_id)?;
 
         match *rt.term {
-            Term::Record(bindings) => {
+            Term::Record(bindings) | Term::RecRecord(bindings) => {
                 let ext = bindings.into_iter().map(|(id, t)| {
                     let closure = eval::Closure {
                         body: t,
