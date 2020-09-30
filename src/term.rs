@@ -728,7 +728,7 @@ impl RichTerm {
                 )
             }
             Term::Op1(UnaryOp::Switch(cases, default), t) => {
-                // This annotation use Result's corresponding trait to convert from
+                // The annotation on `map_res` use Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
                 let cases_res: Result<HashMap<Ident, RichTerm>, E> = cases
                     .into_iter()
