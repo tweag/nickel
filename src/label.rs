@@ -33,6 +33,7 @@ pub mod ty_path {
     //! or to the **codomain**.
 
     use super::{AbsType, Types};
+    use crate::identifier::Ident;
 
     /// An element of a path type.
     #[derive(Debug, Clone, Copy, PartialEq)]
@@ -75,7 +76,7 @@ pub mod ty_path {
             (AbsType::Forall(_, _), Some(_)) => {
                 // The length of "forall" plus the final separating dot and whitespace ". "
                 let mut result = 8;
-                while let AbsType::Forall(crate::identifier::Ident(id), body) = &ty.0 {
+                while let AbsType::Forall(Ident(id), body) = &ty.0 {
                     // The length of the identifier plus the preceding whitespace
                     result += id.len() + 1;
                     ty = body.as_ref();
@@ -88,7 +89,6 @@ pub mod ty_path {
 
         match (&ty.0, path_it.next()) {
             (AbsType::Arrow(dom, codom), Some(next)) => {
-                path_it.next();
                 // The potential shift of the start position of the domain introduced by the couple
                 // of parentheses around the domain. Parentheses are added when printing a function
                 // type whose domain is itself a function.
