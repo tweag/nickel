@@ -159,7 +159,7 @@ impl Program {
         let rt = self.parse_with_cache(src_id)?;
 
         match *rt.term {
-            Term::Record(bindings) => {
+            Term::Record(bindings) | Term::RecRecord(bindings) => {
                 let ext = bindings.into_iter().map(|(id, t)| {
                     let closure = eval::Closure {
                         body: t,
@@ -198,8 +198,8 @@ impl Program {
         let t = self
             .parse_with_cache(self.main_id)
             .map_err(|e| Error::from(e))?;
-        let t = transformations::transform(t, self).map_err(|err| Error::ImportError(err))?;
         println!("Typechecked: {:?}", type_check(t.as_ref(), self));
+        let t = transformations::transform(t, self).map_err(|err| Error::ImportError(err))?;
         eval::eval(t, self.mk_global_env()?, self).map_err(|e| e.into())
     }
 
@@ -1102,5 +1102,23 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
             Err(Error::EvalError(EvalError::TypeError(_, _, _, _))) => (),
             _ => assert!(false),
         };
+    }
+
+    #[test]
+    fn recursive_records() {
+        assert_eq!(
+            eval_string("{a = 1; b = a + 1; c = b + a}.c"),
+            Ok(Term::Num(3.0))
+        );
+        assert_eq!(
+            eval_string("{f = fun x y => if isZero x then y else f (x + (-1)) (y + 1)}.f 5 5"),
+            Ok(Term::Num(10.0))
+        );
+        assert_eq!(
+            eval_string("
+                let with_res = fun res => { f = fun x => if isZero x then res else g x; g = fun y => f (y + (-1)) }.f 10 in
+                with_res \"done\""),
+            Ok(Term::Str(String::from("done")))
+        );
     }
 }
