@@ -356,6 +356,9 @@ impl Term {
     }
 
     /// Determine if a term is a constant.
+    ///
+    /// In this context, a constant is an atomic literal of the language: a boolean, a number, a
+    /// string, a label, an enum tag or a symbol.
     pub fn is_constant(&self) -> bool {
         match self {
             Term::Bool(_)
