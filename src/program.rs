@@ -198,8 +198,8 @@ impl Program {
         let t = self
             .parse_with_cache(self.main_id)
             .map_err(|e| Error::from(e))?;
-        let t = transformations::transform(t, self).map_err(|err| Error::ImportError(err))?;
         type_check(&t, self).map_err(|err| Error::from(err))?;
+        let t = transformations::transform(t, self).map_err(|err| Error::ImportError(err))?;
         eval::eval(t, self.mk_global_env()?, self).map_err(|e| e.into())
     }
 
