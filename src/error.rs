@@ -16,7 +16,7 @@ use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 use std::fmt::Write;
 
 /// A general error occurring during either parsing or evaluation.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Error {
     EvalError(EvalError),
     TypecheckError(TypecheckError),
@@ -25,7 +25,7 @@ pub enum Error {
 }
 
 /// An error occurring during evaluation.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum EvalError {
     /// A blame occurred: a contract have been broken somewhere.
     BlameError(label::Label, Option<CallStack>),
@@ -72,7 +72,7 @@ pub enum EvalError {
 }
 
 /// An error occurring during the static typechecking phase.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum TypecheckError {
     /// An unbound identifier was referenced.
     UnboundIdentifier(Ident, Option<RawSpan>),
@@ -85,25 +85,40 @@ pub enum TypecheckError {
         /* the inferred/annotated type */ Types,
         Option<RawSpan>,
     ),
+    /// A specific row was not expected to be in the type of an expression.
+    ExtraRow(
+        Ident,
+        /* the expected type */ Types,
+        /* the inferred/annotated type */ Types,
+        Option<RawSpan>,
+    ),
     /// An unbound type variable was referenced.
     UnboundTypeVariable(Ident, Option<RawSpan>),
     /// The actual (inferred or annotated) type of an expression is incompatible with its expected
     /// type.
     TypeMismatch(
         /* the expected type */ Types,
-        /* the inferred or annotated type */ Types,
+        /* the actual type */ Types,
         Option<RawSpan>,
     ),
-    /// Two incompatible types have been deduced for the same identifier of a row type.
+    /// Two incompatible kind (enum vs record) have been deduced for the same identifier of a row type.
+    RowKindMismatch(
+        Ident,
+        /* the expected type */ Option<Types>,
+        /* the actual type */ Option<Types>,
+        Option<RawSpan>,
+    ),
+    /// Two incompatible types have been deduced for the same identifier in a row type.
     RowMismatch(
         Ident,
-        /* expected */ Option<Types>,
-        /* actual/inferred/annotated */ Option<Types>,
+        /* the expected row type (whole) */ Types,
+        /* the actual row type (whole) */ Types,
+        /* error at the given row */ Box<TypecheckError>,
         Option<RawSpan>,
     ),
     /// Two incompatible types have been deduced for the same identifier of a row type.
     ///
-    /// This is similar to `RowMismatch` but occurs in a slightly different situation. Consider a a
+    /// This is similar to `RowKindMismatch` but occurs in a slightly different situation. Consider a a
     /// unification variable `t`, which is a placeholder to be filled by a concrete type later in
     /// the typechecking phase.  If `t` appears as the tail of a row type, i.e. the type of some
     /// expression is inferred to be `{| field: Type | t}`, then `t` must not be unified later with
@@ -112,7 +127,7 @@ pub enum TypecheckError {
     /// A [constraint](../typecheck/type.RowConstr.html) is added accordingly, and if this
     /// constraint is violated (that is if `t` does end up being unified with a type of the form
     /// `{| .., field: Type2, .. }`), `RowConflict` is raised.  We do not have access to the
-    /// original `field: Type` declaration, as opposed to `RowMismatch`, which corresponds to the
+    /// original `field: Type` declaration, as opposed to `RowKindMismatch`, which corresponds to the
     /// direct failure to unify `{| .. , x: T1, .. }` and `{| .., x: T2, .. }`.
     RowConflict(
         Ident,
@@ -121,10 +136,32 @@ pub enum TypecheckError {
         /* the actual type of the subexpression */ Types,
         Option<RawSpan>,
     ),
+    /// Type mismatch on a subtype of an an arrow type.
+    ///
+    /// The unification of two arrow types requires the unification of the domain and the codomain
+    /// (and recursively so, if they are themselves arrow types). When the unification of a subtype
+    /// fails, we want to report which part of the arrow types is problematic, and why, rather than
+    /// a generic `TypeMismatch`. Indeed, failing to unify two arrow types is a common type error
+    /// which deserves a good reporting, that can be caused e.g. by applying a function to an
+    /// argument of a wrong type in some cases:
+    ///
+    /// ```
+    /// Promise(Num, let id_mono = fun x => x in let _ign = id_mono true in id_mono 0)
+    /// ```
+    ///
+    /// This specific error stores additionally the [type path](../label/ty_path/index.html) that
+    /// identifies the subtype where unification failed and the corresponding error.
+    ArrowTypeMismatch(
+        /* the expected arrow type */ Types,
+        /* the actual arrow type */ Types,
+        /* the path to the incompatible subtypes */ ty_path::Path,
+        /* the error on the subtype unification */ Box<TypecheckError>,
+        Option<RawSpan>,
+    ),
 }
 
 /// An error occurring during parsing.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum ParseError {
     /// Unexpected end of file.
     UnexpectedEOF(FileId, /* tokens expected by the parser */ Vec<String>),
@@ -144,8 +181,8 @@ pub enum ParseError {
     InvalidEscapeSequence(RawSpan),
 }
 
-/// An error occuring during the resolution of an import.
-#[derive(Debug, PartialEq)]
+/// An error occurring during the resolution of an import.
+#[derive(Debug, PartialEq, Clone)]
 pub enum ImportError {
     /// An IO error occurred during an import.
     IOError(
@@ -153,7 +190,7 @@ pub enum ImportError {
         /* error message */ String,
         /* import position */ Option<RawSpan>,
     ),
-    /// A parse error occured during an import.
+    /// A parse error occurred during an import.
     ParseError(
         /* error */ ParseError,
         /* import position */ Option<RawSpan>,
@@ -225,7 +262,7 @@ impl ParseError {
 
 pub const INTERNAL_ERROR_MSG: &str =
     "This error should not happen. This is likely a bug in the Nickel interpreter. Please consider\
-reporting it at https://github.com/tweag/nickel/issues with the above error message.";
+ reporting it at https://github.com/tweag/nickel/issues with the above error message.";
 
 /// A trait for converting an error to a diagnostic.
 pub trait ToDiagnostic<FileId> {
@@ -274,7 +311,7 @@ fn secondary(span: &RawSpan) -> Label<FileId> {
 /// correspond to nothing in the original source, and thus have a position set to `None`(e.g. the
 /// result of `let x = 1 + 1 in x`).  In such cases it may still be valuable to print the term (or
 /// a terse representation) in the error diagnostic rather than nothing, because if you have let `x
-/// = 1 + 1 in` and then 100 lines later, `x arg` - causing an `NotAFunc` error - it may be helpful
+/// = 1 + 1 in` and then 100 lines later, `x arg` - causing a `NotAFunc` error - it may be helpful
 /// to know that `x` holds the value `2`.
 ///
 /// For example, if one wants to report an error on a record, `alt_term` may be defined to `{ ...  }`.
