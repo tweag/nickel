@@ -261,9 +261,9 @@ impl Types {
         }
     }
 
-    /// Find a nested binding in a record row type given as a list of successive fields, that is, a
-    /// path. Return `None` if there is no such binding, if the type is not a row type, or if the
-    /// final row is a num row.
+    /// Find a nested binding in a record row type. The nested field is given as a list of
+    /// successive fields, that is, as a path. Return `None` if there is no such binding, if the
+    /// type is not a row type, or if the final row is an enum row.
     ///
     /// # Example
     ///
