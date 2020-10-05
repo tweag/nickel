@@ -850,7 +850,7 @@ pub fn unify_(
     }
 }
 
-/// Try to unify two row types. Return an [`IllformedRow`](./enum.?) error if one of the given type
+/// Try to unify two row types. Return an [`IllformedRow`](./enum.RowUnifError.html#variant.IllformedRow) error if one of the given type
 /// is not a row type.
 pub fn unify_rows(
     state: &mut State,
