@@ -1035,8 +1035,6 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
 
     /// Check that the environments of contracts are correctly saved and restored when merging. See
     /// issue [#117](https://github.com/tweag/nickel/issues/117).
-    // FIXME: restore this test once standard contracts correctly populate the typing
-    // environment during typechecking. See #145 (https://github.com/tweag/nickel/issues/145).
     #[test]
     fn merge_contracts_with_env() {
         let definitions = "
