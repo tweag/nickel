@@ -100,7 +100,7 @@ pub enum AbsType<Ty> {
 }
 
 impl<Ty> AbsType<Ty> {
-    pub fn map<To, F: Fn(Ty) -> To>(self, f: F) -> AbsType<To> {
+    pub fn map<To, F: FnMut(Ty) -> To>(self, mut f: F) -> AbsType<To> {
         match self {
             AbsType::Dyn() => AbsType::Dyn(),
             AbsType::Num() => AbsType::Num(),
@@ -121,7 +121,10 @@ impl<Ty> AbsType<Ty> {
                 AbsType::Forall(i, ft)
             }
             AbsType::RowEmpty() => AbsType::RowEmpty(),
-            AbsType::RowExtend(id, t1, t2) => AbsType::RowExtend(id, t1.map(&f), f(t2)),
+            AbsType::RowExtend(id, t1, t2) => {
+                let t2_mapped = f(t2);
+                AbsType::RowExtend(id, t1.map(f), t2_mapped)
+            }
             AbsType::Enum(t) => AbsType::Enum(f(t)),
             AbsType::StaticRecord(t) => AbsType::StaticRecord(f(t)),
             AbsType::DynRecord(t) => AbsType::DynRecord(f(t)),
