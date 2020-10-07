@@ -790,9 +790,18 @@ fn process_binary_operation(
             }
         }
         BinaryOp::ListConcat() => match (*t1, *t2) {
-            (Term::List(mut ts1), Term::List(ts2)) => {
-                ts1.extend(ts2);
-                Ok(Closure::atomic_closure(Term::List(ts1).into()))
+            (Term::List(ts1), Term::List(ts2)) => {
+                let mut env = Environment::new();
+                let mut ts: Vec<RichTerm> = ts1
+                    .into_iter()
+                    .map(|t| t.closurize(&mut env, env1.clone()))
+                    .collect();
+                ts.extend(ts2.into_iter().map(|t| t.closurize(&mut env, env2.clone())));
+
+                Ok(Closure {
+                    body: Term::List(ts).into(),
+                    env,
+                })
             }
             (Term::List(_), t2) => Err(EvalError::TypeError(
                 String::from("List"),
