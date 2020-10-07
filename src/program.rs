@@ -803,6 +803,11 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
             eval_string("length ([] @ [1,2] @ [3,4] @ [])"),
             Ok(Term::Num(4.0))
         );
+        // Test case added after https://github.com/tweag/nickel/issues/154
+        assert_eq!(
+            eval_string("let x = 1 in let l = [x] @ [2] in head l"),
+            Ok(Term::Num(1.0))
+        );
 
         assert_eq!(
             eval_string("head [\"a\",\"b\",\"c\"]"),
