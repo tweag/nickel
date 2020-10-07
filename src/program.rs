@@ -190,6 +190,9 @@ impl Program {
             &mut global_env,
         )
         .map_err(|e| Error::from(e))?;
+        self.load_stdlib("<stdlib/lists.ncl>", crate::stdlib::LISTS, &mut global_env)
+        .map_err(Error::from)?;
+
         Ok(global_env)
     }
 
