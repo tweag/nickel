@@ -150,13 +150,15 @@ impl Program {
         name: &str,
         source: &str,
         global_env: &mut eval::Environment,
-    ) -> Result<(), ParseError> {
+    ) -> Result<(), ImportError> {
         let src_id = self.file_cache.get(name).copied().unwrap_or_else(|| {
             let id = self.files.add(String::from(name), String::from(source));
             self.file_cache.insert(String::from(name), id);
             id
         });
-        let rt = self.parse_with_cache(src_id)?;
+        let rt = self
+            .parse_with_cache(src_id)
+            .map_err(|err| ImportError::ParseError(err, None))?;
 
         match *rt.term {
             Term::Record(bindings) | Term::RecRecord(bindings) => {
@@ -184,6 +186,7 @@ impl Program {
     /// Generate a global environment with values from the standard library parts.
     fn mk_global_env(&mut self) -> Result<eval::Environment, Error> {
         let mut global_env = HashMap::new();
+
         self.load_stdlib(
             "<stdlib/contracts.ncl>",
             crate::stdlib::CONTRACTS,
@@ -191,7 +194,34 @@ impl Program {
         )
         .map_err(|e| Error::from(e))?;
         self.load_stdlib("<stdlib/lists.ncl>", crate::stdlib::LISTS, &mut global_env)
-        .map_err(Error::from)?;
+            .map_err(Error::from)?;
+
+        // Typecheck each entry of the global environment (may be removed later, but as long as the
+        // standard library is unstable, this is useful for debugging purpose)
+        global_env
+            .values()
+            .try_for_each(|(rc, _)| type_check(&rc.borrow().body, &global_env, self).map(|_| ()))?;
+
+        // After typechecking, we have to apply standard tranformations as well
+        global_env.values_mut().try_for_each(|(rc, _)| -> Result<(), ImportError> {
+            match Rc::get_mut(rc) {
+                Some(c) => {
+                    // Temporarily replacing with a dummy closure to pass the term to transform()
+                    let mut clos = c.replace(eval::Closure::atomic_closure(Term::Bool(false).into()));
+                    let t = transformations::transform(clos.body, self)?;// thunk was the only strong ref to the closure
+                    clos.body = t;
+
+                    // Put back the transformed term
+                    c.replace(clos);
+                    Ok(())
+                }
+                None => {
+                    // This should not happen, since at this point there should only one rc pointer
+                    // to each entry of the global environment.
+                    panic!("program::mk_global_env(): unexpected multiple borrows to an entry of the global environment")
+                }
+            }
+        }).map_err(Error::from)?;
 
         Ok(global_env)
     }
