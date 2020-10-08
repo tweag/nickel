@@ -1379,6 +1379,13 @@ pub fn get_uop_type(
         )),
         // This should not happen, as ChunksConcat() is only produced during evaluation.
         UnaryOp::ChunksConcat(_, _) => panic!("cannot type ChunksConcat()"),
+        // forall rows. { rows } -> List
+        UnaryOp::FieldsOf() => TypeWrapper::Concrete(AbsType::arrow(
+            Box::new(TypeWrapper::Concrete(AbsType::StaticRecord(Box::new(
+                TypeWrapper::Ptr(new_var(state.table)),
+            )))),
+            Box::new(TypeWrapper::Concrete(AbsType::List())),
+        )),
     })
 }
 
