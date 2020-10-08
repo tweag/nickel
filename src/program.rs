@@ -1166,4 +1166,91 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
             Ok(Term::Str(String::from("done")))
         );
     }
+
+    /// Assert that the polymorphic equality between two terms, given as strings, evaluates to the
+    /// term `true`.
+    ///
+    /// This is made as a macro such that a failure points directly at the failing test line.  With
+    /// a standard function, a failing assertion would always point at this function's body,
+    /// instead of the callsite.
+    macro_rules! assert_peq {
+        ($t1:expr, $t2:expr) => {
+            assert_eq!(
+                eval_string(&format!("({}) == ({})", $t1, $t2)),
+                Ok(Term::Bool(true)),
+            );
+        };
+    }
+
+    /// Same as `assert_peq!`, but succeeds if terms are **not** equal.
+    macro_rules! assert_npeq {
+        ($t1:expr, $t2:expr) => {
+            assert_eq!(
+                eval_string(&format!("({}) == ({})", $t1, $t2)),
+                Ok(Term::Bool(false)),
+            );
+        };
+    }
+
+    #[test]
+    fn poly_eq() {
+        assert_peq!("0", "0 + 0 + 0");
+        assert_peq!("true", "if true then true else false");
+        assert_peq!("\"a\" ++ \"b\" ++ \"c\"", "\"${\"a\" ++ \"b\"}\" ++ \"c\"");
+
+        assert_npeq!("1 + 1", "0");
+        assert_npeq!("true", "if true then false else true");
+        assert_npeq!("\"a\"", "\"a\" ++ \" \"");
+        assert_npeq!("1", "true");
+        assert_npeq!("\"1\"", "1");
+        assert_npeq!("\"true\"", "true");
+    }
+
+    #[test]
+    fn poly_eq_lists() {
+        assert_peq!("[]", "[]");
+        assert_peq!("[(1 + 0), (1 + 1), (1 + 1 + 1)]", "[1, 2, 3]");
+        assert_peq!(
+            "[(1 + 0), (\"a\" ++ \"b\"), (if true then true else false)]",
+            "[1, \"ab\", true]"
+        );
+
+        assert_peq!("[[[]]]", "[[[]]]");
+        assert_peq!("[[1], [[2]]]", "[[2 + (-1)], [[1 + 1]]]");
+        assert_peq!("[[true, false]]", "lists.flatten [[[true, false]]]");
+
+        assert_npeq!("[]", "[1]");
+        assert_npeq!("[]", "1");
+        assert_npeq!("[]", "{}");
+        assert_npeq!("[1, \"a\", true]", "[1, \"a\", false]");
+        assert_npeq!("[[true]]", "[[[true]]]");
+    }
+
+    #[test]
+    fn poly_eq_records() {
+        assert_peq!("{}", "{}");
+        assert_peq!("{}$[\"a\" = 1]$[\"b\" = true]", "{a = 1; b = true}");
+        assert_peq!(
+            "{a = 1 + 0; b = 1 + 1; c = 1 + 1 + 1}",
+            "{ a = 1; b = 2; c = 3 }"
+        );
+        assert_peq!(
+            "{ foo = 1 + 0; bar = \"a\" ++ \"b\"; baz = if true then true else false }",
+            "{ foo = 1; bar = \"ab\"; baz = true}"
+        );
+
+        assert_peq!(
+            "{}$[\"a\" = { a = { a = {} } }]",
+            "{ a = { a = { a = {} } } }"
+        );
+        assert_peq!(
+            "{ foo = { bar = 2 + (-1) }; baz = { foo = { bar = 1 + 1 } } }",
+            "{ foo = { bar = 1 }; baz = { foo = { bar = 2 } } }"
+        );
+
+        assert_npeq!("{}", "{a = true}");
+        assert_npeq!("{a = 1}", "{a = 2}");
+        assert_npeq!("{ a = \"a\"; b = true }", "{ a = true; b = \"a\"}");
+        assert_npeq!("{ a = { a = true } }", "{a = { a = { a = true } } }");
+    }
 }
