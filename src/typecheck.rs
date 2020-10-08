@@ -140,6 +140,14 @@ pub enum UnifError {
 impl UnifError {
     /// Convert a unification error to a typechecking error.
     ///
+    /// Wrapper that calls [`to_typecheck_err_`](./fn.to_typecheck_err_.html) with an empty [name
+    /// registry](./reporting/struct.NameReg.html).
+    pub fn to_typecheck_err(self, state: &State, pos_opt: &Option<RawSpan>) -> TypecheckError {
+        self.to_typecheck_err_(state, &mut reporting::NameReg::new(), pos_opt)
+    }
+
+    /// Convert a unification error to a typechecking error.
+    ///
     /// There is a hierarchy between error types, from the most local/specific to the most high-level:
     /// - [`RowUnifError`](./enum.RowUnifError.html)
     /// - [`UnifError`](./enum.UnifError.html)
@@ -147,54 +155,79 @@ impl UnifError {
     ///
     /// Each level usually adds information (such as types or positions) and group different
     /// specific errors into most general ones.
-    pub fn to_typecheck_err(self, table: &UnifTable, pos_opt: &Option<RawSpan>) -> TypecheckError {
+    ///
+    /// # Parameters
+    ///
+    /// - `state`: the state of unification. Used to access the unification table, and the original
+    /// names of of unification variable or type constant.
+    /// - `names`: a [name registry](./reporting/struct.NameReg.html), structure used to assign
+    /// unique a humain-readable names to unification variables and type constants.
+    /// - `pos_opt`: the position span of the expression that failed to typecheck.
+    pub fn to_typecheck_err_(
+        self,
+        state: &State,
+        names: &mut reporting::NameReg,
+        pos_opt: &Option<RawSpan>,
+    ) -> TypecheckError {
         let pos_opt = pos_opt.as_ref().cloned();
         match self {
-            UnifError::TypeMismatch(ty1, ty2) => {
-                TypecheckError::TypeMismatch(to_type(table, ty1), to_type(table, ty2), pos_opt)
-            }
+            UnifError::TypeMismatch(ty1, ty2) => TypecheckError::TypeMismatch(
+                reporting::to_type(state, names, ty1),
+                reporting::to_type(state, names, ty2),
+                pos_opt,
+            ),
             UnifError::RowMismatch(ident, tyw1, tyw2, err) => TypecheckError::RowMismatch(
                 ident,
-                to_type(table, tyw1),
-                to_type(table, tyw2),
-                Box::new((*err).to_typecheck_err(table, &None)),
+                reporting::to_type(state, names, tyw1),
+                reporting::to_type(state, names, tyw2),
+                Box::new((*err).to_typecheck_err_(state, names, &None)),
                 pos_opt,
             ),
             UnifError::RowKindMismatch(id, ty1, ty2) => TypecheckError::RowKindMismatch(
                 id,
-                ty1.map(|tw| to_type(table, tw)),
-                ty2.map(|tw| to_type(table, tw)),
+                ty1.map(|tw| reporting::to_type(state, names, tw)),
+                ty2.map(|tw| reporting::to_type(state, names, tw)),
                 pos_opt,
             ),
-            // FIXME: For now we give arbitrary names (a or b) to quantified type variables. In the
-            // future, we may want to remember their original name and create a specific variant in
-            // `TypecheckError` for better error reporting.
-            UnifError::ConstMismatch(_c1, _c2) => TypecheckError::TypeMismatch(
-                Types(AbsType::Var(Ident(String::from("a")))),
-                Types(AbsType::Var(Ident(String::from("b")))),
+            // TODO: for now, failure to unify with a type constant causes the same error as a
+            // usual type mismatch. It could be nice to have a specific error message in the
+            // future.
+            UnifError::ConstMismatch(c1, c2) => TypecheckError::TypeMismatch(
+                reporting::to_type(state, names, TypeWrapper::Constant(c1)),
+                reporting::to_type(state, names, TypeWrapper::Constant(c2)),
                 pos_opt,
             ),
-            UnifError::WithConst(_c, ty) => TypecheckError::TypeMismatch(
-                Types(AbsType::Var(Ident(String::from("a")))),
-                to_type(table, ty),
+            UnifError::WithConst(c, ty) => TypecheckError::TypeMismatch(
+                reporting::to_type(state, names, TypeWrapper::Constant(c)),
+                reporting::to_type(state, names, ty),
                 pos_opt,
             ),
             UnifError::IllformedFlatType(rt) => {
                 TypecheckError::IllformedType(Types(AbsType::Flat(rt)))
             }
-            UnifError::IllformedType(tyw) => TypecheckError::IllformedType(to_type(table, tyw)),
-            UnifError::MissingRow(id, tyw1, tyw2) => {
-                TypecheckError::MissingRow(id, to_type(table, tyw1), to_type(table, tyw2), pos_opt)
+            UnifError::IllformedType(tyw) => {
+                TypecheckError::IllformedType(reporting::to_type(state, names, tyw))
             }
-            UnifError::ExtraRow(id, tyw1, tyw2) => {
-                TypecheckError::ExtraRow(id, to_type(table, tyw1), to_type(table, tyw2), pos_opt)
+            UnifError::MissingRow(id, tyw1, tyw2) => TypecheckError::MissingRow(
+                id,
+                reporting::to_type(state, names, tyw1),
+                reporting::to_type(state, names, tyw2),
+                pos_opt,
+            ),
+            UnifError::ExtraRow(id, tyw1, tyw2) => TypecheckError::ExtraRow(
+                id,
+                reporting::to_type(state, names, tyw1),
+                reporting::to_type(state, names, tyw2),
+                pos_opt,
+            ),
+            UnifError::IllformedRow(tyw) => {
+                TypecheckError::IllformedType(reporting::to_type(state, names, tyw))
             }
-            UnifError::IllformedRow(tyw) => TypecheckError::IllformedType(to_type(table, tyw)),
             UnifError::RowConflict(id, tyw, left, right) => TypecheckError::RowConflict(
                 id,
-                tyw.map(|tyw| to_type(table, tyw)),
-                to_type(table, left),
-                to_type(table, right),
+                tyw.map(|tyw| reporting::to_type(state, names, tyw)),
+                reporting::to_type(state, names, left),
+                reporting::to_type(state, names, right),
                 pos_opt,
             ),
             UnifError::UnboundTypeVariable(ident) => {
@@ -204,10 +237,10 @@ impl UnifError {
             | err @ UnifError::DomainMismatch(_, _, _) => {
                 let (expd, actual, path, err_final) = err.to_type_path().unwrap();
                 TypecheckError::ArrowTypeMismatch(
-                    to_type(table, expd),
-                    to_type(table, actual),
+                    reporting::to_type(state, names, expd),
+                    reporting::to_type(state, names, actual),
                     path,
-                    Box::new(err_final.to_typecheck_err(table, &None)),
+                    Box::new(err_final.to_typecheck_err_(state, names, &None)),
                     pos_opt,
                 )
             }
@@ -285,6 +318,11 @@ pub struct State<'a> {
     table: &'a mut UnifTable,
     /// Row constraints.
     constr: &'a mut RowConstr,
+    /// A mapping from unification variable or constants to the name of the corresponding type
+    /// variable which introduced it, if any.
+    ///
+    /// Used for error reporting.
+    names: &'a mut HashMap<usize, Ident>,
 }
 
 /// Typecheck a term.
@@ -299,6 +337,7 @@ pub fn type_check(
         resolver,
         table: &mut UnifTable::new(),
         constr: &mut RowConstr::new(),
+        names: &mut HashMap::new(),
     };
     let ty = TypeWrapper::Ptr(new_var(state.table));
     type_check_(&mut state, Environment::new(), false, t, ty.clone())?;
@@ -326,14 +365,14 @@ fn type_check_(
 
     match t.as_ref() {
         Term::Bool(_) => unify(state, strict, ty, TypeWrapper::Concrete(AbsType::Bool()))
-            .map_err(|err| err.to_typecheck_err(state.table, &rt.pos)),
+            .map_err(|err| err.to_typecheck_err(state, &rt.pos)),
         Term::Num(_) => unify(state, strict, ty, TypeWrapper::Concrete(AbsType::Num()))
-            .map_err(|err| err.to_typecheck_err(state.table, &rt.pos)),
+            .map_err(|err| err.to_typecheck_err(state, &rt.pos)),
         Term::Str(_) => unify(state, strict, ty, TypeWrapper::Concrete(AbsType::Str()))
-            .map_err(|err| err.to_typecheck_err(state.table, &rt.pos)),
+            .map_err(|err| err.to_typecheck_err(state, &rt.pos)),
         Term::StrChunks(chunks) => {
             unify(state, strict, ty, TypeWrapper::Concrete(AbsType::Str()))
-                .map_err(|err| err.to_typecheck_err(state.table, &rt.pos))?;
+                .map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
 
             chunks
                 .iter()
@@ -350,7 +389,7 @@ fn type_check_(
                     }
                 })
         }
-        Term::Fun(x, rt) => {
+        Term::Fun(x, t) => {
             let src = TypeWrapper::Ptr(new_var(state.table));
             // TODO what to do here, this makes more sense to me, but it means let x = foo in bar
             // behaves quite different to (\x.bar) foo, worth considering if it's ok to type these two differently
@@ -359,15 +398,14 @@ fn type_check_(
             let arr =
                 TypeWrapper::Concrete(AbsType::arrow(Box::new(src.clone()), Box::new(trg.clone())));
 
-            unify(state, strict, ty, arr)
-                .map_err(|err| err.to_typecheck_err(state.table, &rt.pos))?;
+            unify(state, strict, ty, arr).map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
 
             env.insert(x.clone(), src);
-            type_check_(state, env, strict, rt, trg)
+            type_check_(state, env, strict, t, trg)
         }
         Term::List(terms) => {
             unify(state, strict, ty, TypeWrapper::Concrete(AbsType::List()))
-                .map_err(|err| err.to_typecheck_err(state.table, &rt.pos))?;
+                .map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
 
             terms
                 .iter()
@@ -387,7 +425,7 @@ fn type_check_(
         Term::Lbl(_) => {
             // TODO implement lbl type
             unify(state, strict, ty, TypeWrapper::Concrete(AbsType::Dyn()))
-                .map_err(|err| err.to_typecheck_err(state.table, &rt.pos))
+                .map_err(|err| err.to_typecheck_err(state, &rt.pos))
         }
         Term::Let(x, re, rt) => {
             let ty_let = apparent_type(re.as_ref(), state.table, strict);
@@ -412,10 +450,9 @@ fn type_check_(
                 .get(&x)
                 .ok_or_else(|| TypecheckError::UnboundIdentifier(x.clone(), pos.clone()))?;
 
-            let instantiated =
-                instantiate_foralls_with(state.table, x_ty.clone(), TypeWrapper::Ptr);
+            let instantiated = instantiate_foralls_with(state, x_ty.clone(), TypeWrapper::Ptr);
             unify(state, strict, ty, instantiated)
-                .map_err(|err| err.to_typecheck_err(state.table, &rt.pos))
+                .map_err(|err| err.to_typecheck_err(state, &rt.pos))
         }
         Term::Enum(id) => {
             let row = TypeWrapper::Ptr(new_var(state.table));
@@ -427,7 +464,7 @@ fn type_check_(
                     AbsType::RowExtend(id.clone(), None, Box::new(row)),
                 )))),
             )
-            .map_err(|err| err.to_typecheck_err(state.table, &rt.pos))
+            .map_err(|err| err.to_typecheck_err(state, &rt.pos))
         }
         Term::Record(stat_map) | Term::RecRecord(stat_map) => {
             // For recursive records, we look at the apparent type of each field and bind it in
@@ -482,7 +519,7 @@ fn type_check_(
                     ty,
                     TypeWrapper::Concrete(AbsType::StaticRecord(Box::new(row))),
                 )
-                .map_err(|err| err.to_typecheck_err(state.table, &rt.pos))
+                .map_err(|err| err.to_typecheck_err(state, &rt.pos))
             }
         }
         Term::Op1(op, t) => {
@@ -491,8 +528,7 @@ fn type_check_(
             let src = TypeWrapper::Ptr(new_var(state.table));
             let arr = TypeWrapper::Concrete(AbsType::arrow(Box::new(src.clone()), Box::new(ty)));
 
-            unify(state, strict, arr, ty_op)
-                .map_err(|err| err.to_typecheck_err(state.table, &rt.pos))?;
+            unify(state, strict, arr, ty_op).map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
             type_check_(state, env.clone(), strict, t, src)
         }
         Term::Op2(op, e, t) => {
@@ -508,35 +544,34 @@ fn type_check_(
                 ))),
             ));
 
-            unify(state, strict, arr, ty_op)
-                .map_err(|err| err.to_typecheck_err(state.table, &rt.pos))?;
+            unify(state, strict, arr, ty_op).map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
             type_check_(state, env.clone(), strict, e, src1)?;
             type_check_(state, env, strict, t, src2)
         }
         Term::Promise(ty2, _, t) => {
             let tyw2 = to_typewrapper(ty2.clone());
 
-            let instantiated = instantiate_foralls_with(state.table, tyw2, TypeWrapper::Constant);
+            let instantiated = instantiate_foralls_with(state, tyw2, TypeWrapper::Constant);
 
             unify(state, strict, ty.clone(), to_typewrapper(ty2.clone()))
-                .map_err(|err| err.to_typecheck_err(state.table, &rt.pos))?;
+                .map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
             type_check_(state, env, true, t, instantiated)
         }
         Term::Assume(ty2, _, t) => {
             unify(state, strict, ty.clone(), to_typewrapper(ty2.clone()))
-                .map_err(|err| err.to_typecheck_err(state.table, &rt.pos))?;
+                .map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
             let new_ty = TypeWrapper::Ptr(new_var(state.table));
             type_check_(state, env, false, t, new_ty)
         }
         Term::Sym(_) => unify(state, strict, ty, TypeWrapper::Concrete(AbsType::Sym()))
-            .map_err(|err| err.to_typecheck_err(state.table, &rt.pos)),
+            .map_err(|err| err.to_typecheck_err(state, &rt.pos)),
         Term::Wrapped(_, t)
         | Term::DefaultValue(t)
         | Term::ContractWithDefault(_, _, t)
         | Term::Docstring(_, t) => type_check_(state, env, strict, t, ty),
         Term::Contract(_, _) => Ok(()),
         Term::Import(_) => unify(state, strict, ty, TypeWrapper::Concrete(AbsType::Dyn()))
-            .map_err(|err| err.to_typecheck_err(state.table, &rt.pos)),
+            .map_err(|err| err.to_typecheck_err(state, &rt.pos)),
         Term::ResolvedImport(file_id) => {
             let t = state
                 .resolver
@@ -911,8 +946,8 @@ fn to_typewrapper(t: Types) -> TypeWrapper {
     TypeWrapper::Concrete(t3)
 }
 
-/// Extract the concrete type (if any) corresponding to a type wrapper. Free unification variables
-/// are replaced with the type `Dyn`.
+/// Extract the concrete type corresponding to a type wrapper. Free unification variables as well
+/// as type constants are replaced with the type `Dyn`.
 fn to_type(table: &UnifTable, ty: TypeWrapper) -> Types {
     match ty {
         TypeWrapper::Ptr(p) => match get_root(table, p) {
@@ -927,6 +962,132 @@ fn to_type(table: &UnifTable, ty: TypeWrapper) -> Types {
     }
 }
 
+/// Helpers to convert a `TypeWrapper` to a human-readable `Types` representation for error
+/// reporting purpose.
+mod reporting {
+    use super::*;
+    use std::collections::HashSet;
+
+    /// A name registry used to replace unification variables and type constants with human-readable
+    /// and distinct names when reporting errors.
+    pub struct NameReg {
+        reg: HashMap<usize, Ident>,
+        taken: HashSet<String>,
+        var_count: usize,
+        cst_count: usize,
+    }
+
+    impl NameReg {
+        pub fn new() -> Self {
+            NameReg {
+                reg: HashMap::new(),
+                taken: HashSet::new(),
+                var_count: 0,
+                cst_count: 0,
+            }
+        }
+    }
+
+    /// Create a fresh name candidate for a type variable or a type constant.
+    ///
+    /// Used by [`to_type_report`](./fn.to_type_report.html) and subfunctions
+    /// [`var_to_type`](./fn.var_to_type) and [`cst_to_type`](./fn.cst_to_type) when converting a type
+    /// wrapper to a human-readable representation.
+    ///
+    /// To select a candidate, first check in `names` if the variable or the constant corresponds to a
+    /// type variable written by the user. If it is, return the name of the variable. Otherwise, use
+    /// the given counter to generate a new single letter.
+    ///
+    /// Generated name is clearly not necessarily unique. This is handled by
+    /// [`select_uniq`](./fn.select_uniq.html).
+    fn mk_name(names: &HashMap<usize, Ident>, counter: &mut usize, id: usize) -> String {
+        match names.get(&id) {
+            // First check if that constant or variable was introduced by a forall. If it was, try
+            // to use the same name.
+            Some(orig) => format!("{}", orig),
+            None => {
+                //Otherwise, generate a new character
+                let next = *counter;
+                *counter += 1;
+                std::char::from_u32(('a' as u32) + ((next % 26) as u32))
+                    .unwrap()
+                    .to_string()
+            }
+        }
+    }
+
+    /// Select a name distinct from all the others, starting from a candidate name for a type
+    /// variable or a type constant.
+    ///
+    /// If the name is already taken, it just iterates by adding a numeric suffix `1`, `2`, .., and
+    /// so on until a free name is found. See [`var_to_type`](./fn.var_to_type.html) and
+    /// [`cst_to_type`](./fn.cst_to_type.html).
+    fn select_uniq(name_reg: &mut NameReg, mut name: String, id: usize) -> Ident {
+        // To avoid clashing with already picked names, we add a numeric suffix to the picked
+        // letter.
+        if name_reg.taken.contains(&name) {
+            let mut suffix = 1;
+
+            while name_reg.taken.contains(&format!("{}{}", name, suffix)) {
+                suffix += 1;
+            }
+
+            name = format!("{}{}", name, suffix);
+        }
+
+        let ident = Ident(name);
+        name_reg.reg.insert(id, ident.clone());
+        ident
+    }
+
+    /// Either retrieve or generate a new fresh name for a unification variable for error reporting,
+    /// and wrap it as a type variable. Constant are named `_a`, `_b`, .., `_a1`, `_b1`, .. and so on.
+    fn var_to_type(names: &HashMap<usize, Ident>, name_reg: &mut NameReg, p: usize) -> Types {
+        let ident = name_reg.reg.get(&p).cloned().unwrap_or_else(|| {
+            // Select a candidate name and add a "_" prefix
+            let name = format!("_{}", mk_name(names, &mut name_reg.var_count, p));
+            // Add a suffix to make it unique if it has already been picked
+            select_uniq(name_reg, name, p)
+        });
+
+        Types(AbsType::Var(ident))
+    }
+
+    /// Either retrieve or generate a new fresh name for a constant for error reporting, and wrap it as
+    /// type variable. Constant are named `a`, `b`, .., `a1`, `b1`, .. and so on.
+    fn cst_to_type(names: &HashMap<usize, Ident>, name_reg: &mut NameReg, c: usize) -> Types {
+        let ident = name_reg.reg.get(&c).cloned().unwrap_or_else(|| {
+            // Select a candidate name
+            let name = mk_name(names, &mut name_reg.cst_count, c);
+            // Add a suffix to make it unique if it has already been picked
+            select_uniq(name_reg, name, c)
+        });
+
+        Types(AbsType::Var(ident))
+    }
+
+    /// Extract a concrete type corresponding to a type wrapper for error reporting.
+    ///
+    /// Similar to [`to_type`](./fn.to_type.html), excepted that free unification variables and
+    /// type constants are replaced by type variables which names are determined by the
+    /// [`var_to_type`](./fn.var_to_type.html) and [`cst_to_type`](./fn.cst_tot_type.html).
+    /// Distinguishing occurrences of unification variables and type constants is more informative
+    /// than having `Dyn` everywhere.
+    pub fn to_type(state: &State, names: &mut NameReg, ty: TypeWrapper) -> Types {
+        match ty {
+            TypeWrapper::Ptr(p) => match get_root(state.table, p) {
+                TypeWrapper::Ptr(p) => var_to_type(state.names, names, p),
+                tyw => to_type(state, names, tyw),
+            },
+            TypeWrapper::Constant(c) => cst_to_type(state.names, names, c),
+            TypeWrapper::Concrete(t) => {
+                let mapped = t.map(|btyp| Box::new(to_type(state, names, *btyp)));
+                Types(mapped)
+            }
+        }
+    }
+}
+
 /// Instantiate the type variables which are quantified in head position with type constants.
 ///
 /// For example, `forall a. forall b. a -> (forall c. b -> c)` is transformed to `cst1 -> (forall
@@ -934,16 +1095,18 @@ fn to_type(table: &UnifTable, ty: TypeWrapper) -> Types {
 /// typechecking `forall`s: all quantified type variables in head position are replaced by rigid
 /// type constants, and the term is then typechecked normally. As these constants cannot be unified
 /// with anything, this forces all the occurrences of a type variable to be the same type.
-fn instantiate_foralls_with<F>(table: &mut UnifTable, mut ty: TypeWrapper, f: F) -> TypeWrapper
+fn instantiate_foralls_with<F>(state: &mut State, mut ty: TypeWrapper, f: F) -> TypeWrapper
 where
     F: Fn(usize) -> TypeWrapper,
 {
     if let TypeWrapper::Ptr(p) = ty {
-        ty = get_root(table, p);
+        ty = get_root(state.table, p);
     }
 
     while let TypeWrapper::Concrete(AbsType::Forall(id, forall_ty)) = ty {
-        let var = f(new_var(table));
+        let fresh_id = new_var(state.table);
+        let var = f(fresh_id);
+        state.names.insert(fresh_id, id.clone());
         ty = forall_ty.subst(id, var);
     }
 
@@ -1298,10 +1461,10 @@ pub type UnifTable = HashMap<usize, Option<TypeWrapper>>;
 pub type RowConstr = HashMap<usize, HashSet<Ident>>;
 
 /// Create a fresh unification variable.
-fn new_var(state: &mut UnifTable) -> usize {
-    let nxt = state.len();
-    state.insert(nxt, None);
-    nxt
+fn new_var(table: &mut UnifTable) -> usize {
+    let next = table.len();
+    table.insert(next, None);
+    next
 }
 
 /// Add a row constraint on a type.

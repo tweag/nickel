@@ -882,13 +882,193 @@ impl ToDiagnostic<FileId> for ParseError {
 impl ToDiagnostic<FileId> for TypecheckError {
     fn to_diagnostic(
         &self,
-        _files: &mut Files<String>,
-        _contract_id: Option<FileId>,
+        files: &mut Files<String>,
+        contract_id: Option<FileId>,
     ) -> Vec<Diagnostic<FileId>> {
+        fn mk_expr_label(span_opt: &Option<RawSpan>) -> Vec<Label<FileId>> {
+            span_opt
+                .as_ref()
+                .map(|span| vec![primary(span).with_message("this expression")])
+                .unwrap_or(Vec::new())
+        }
+
         match self {
-            _ => vec![Diagnostic::error()
-                .with_message("Typechecking failed [WIP].")
-                .with_notes(vec![format!("{:?}", self)])],
+            TypecheckError::UnboundIdentifier(ident, pos_opt) =>
+            // Use the same diagnostic as `EvalError::UnboundIdentifier` for consistency.
+            {
+                EvalError::UnboundIdentifier(ident.clone(), pos_opt.clone())
+                    .to_diagnostic(files, contract_id)
+            }
+            TypecheckError::IllformedType(ty) => {
+                let ty_fmted = format!("{}", ty);
+                let len = ty_fmted.len();
+
+                let label = Label::new(LabelStyle::Secondary, files.add("", ty_fmted), 0..len)
+                    .with_message("ill-formed type");
+
+                vec![Diagnostic::error()
+                    .with_message("Ill-formed type")
+                    .with_labels(vec![label])]
+            }
+            TypecheckError::MissingRow(Ident(ident), expd, actual, span_opt) =>
+                vec![Diagnostic::error()
+                    .with_message(format!("Type error: missing row `{}`", ident))
+                    .with_labels(mk_expr_label(span_opt))
+                    .with_notes(vec![
+                        format!("The type of the expression was expected to be `{}` which contains the field `{}`", expd, ident),
+                        format!("The type of the expression was inferred to be `{}`, which does not contain the field `{}`", actual,  ident),
+                    ])]
+            ,
+            TypecheckError::ExtraRow(Ident(ident), expd, actual, span_opt) =>
+                vec![Diagnostic::error()
+                    .with_message(format!("Type error: extra row `{}`", ident))
+                    .with_labels(mk_expr_label(span_opt))
+                    .with_notes(vec![
+                        format!("The type of the expression was expected to be `{}`, which does not contain the field `{}`", expd, ident),
+                        format!("Tye type of the expression was inferred to be `{}`, which contains the extra field `{}`", actual,  ident),
+                    ])]
+            ,
+            TypecheckError::UnboundTypeVariable(Ident(ident), span_opt) =>
+               vec![Diagnostic::error()
+                    .with_message(String::from("Unbound type variable"))
+                    .with_labels(vec![primary_alt(span_opt, ident.clone(), files).with_message("this type variable is unbound")])
+                    .with_notes(vec![
+                        format!("Maybe you forgot to put a `forall {}.` somewhere in the enclosing type ?", ident),
+                    ])]
+            ,
+            TypecheckError::TypeMismatch(expd, actual, span_opt) =>
+                vec![
+                    Diagnostic::error()
+                        .with_message("Incompatible types")
+                        .with_labels(mk_expr_label(span_opt))
+                        .with_notes(vec![
+                        format!("The type of the expression was expected to be `{}`", expd),
+                        format!("The type of the expression was inferred to be `{}`", actual),
+                        String::from("These types are not compatible"),
+                    ])]
+            ,
+            TypecheckError::RowKindMismatch(Ident(ident), expd, actual, span_opt) => {
+                let (expd_str, actual_str) = match (expd, actual) {
+                    (Some(_), None) => ("an enum type", "a record type"),
+                    (None, Some(_)) => ("a record type", "an enum type"),
+                    _ => panic!("error::to_diagnostic()::RowKindMismatch: unexpected configuration for `expd` and `actual`"),
+                };
+
+               vec![
+                    Diagnostic::error()
+                        .with_message("Incompatible row kinds.")
+                        .with_labels(mk_expr_label(span_opt))
+                        .with_notes(vec![
+                        format!("The row type of `{}` was expected to be `{}`, but was inferred to be `{}`", ident, expd_str, actual_str),
+                        String::from("Enum row types and record row types are not compatible"),
+                    ])]
+
+            }
+            TypecheckError::RowMismatch(ident, expd, actual, err_, span_opt) => {
+                // If the unification error is on a nested field, we will have a succession of
+                // `RowMismatch` errors wrapping the underlying error. In this case, instead of
+                // showing a cascade of similar error messages, we determine the full path of the
+                // nested field (e.g. `pkg.subpkg1.meta.url`) and only show once the row mismatch
+                // error followed by the underlying error.
+                let mut err = (*err_).clone();
+                let mut path = vec![ident.clone()];
+
+                while let TypecheckError::RowMismatch(id_next, _, _, next, _) = *err {
+                    path.push(id_next);
+                    err = next;
+                }
+
+                let path_str: Vec<String> = path.clone().into_iter().map(|ident| format!("{}", ident)).collect();
+                let field = path_str.join(".");
+
+                let note1 = match expd.row_find_path(path.as_slice()) {
+                    Some(ty) => format!("The type of the expression was expected to have the row `{}: {}`", field, ty),
+                    None => format!("The type of the expression was expected to be `{}`", expd)
+                };
+
+                let note2 = match actual.row_find_path(path.as_slice()) {
+                    Some(ty) => format!("The type of the expression was inferred to have the row `{}: {}`", field, ty),
+                    None => format!("The type of the expression was inferred to be `{}`", actual)
+                };
+
+                let mut diags = vec![Diagnostic::error()
+                        .with_message("Incompatible rows declaration")
+                        .with_labels(mk_expr_label(span_opt))
+                        .with_notes(vec![
+                            note1,
+                            note2,
+                            format!("Could not match the two declaration of `{}`", field),
+                    ])
+                    ];
+
+                // We generate a diagnostic for the underlying error, but append a prefix to the
+                // error message to make it clear that this is not a separated error but a more
+                // precise description of why the unification of a row failed.
+                diags.extend((*err).to_diagnostic(files, contract_id).into_iter()
+                    .map(|mut diag| {
+                        diag.message = format!("While typing field `{}`: {}", field, diag.message);
+                        diag
+                    }));
+                diags
+            }
+            TypecheckError::RowConflict(Ident(ident), conflict, _expd, _actual, span_opt) => {
+vec![
+                    Diagnostic::error()
+                        .with_message("Incompatible rows declaration in a type")
+                        .with_labels(mk_expr_label(span_opt))
+                        .with_notes(vec![
+                        format!("The type of the expression was inferred to have the row `{}: {}`", ident, conflict.as_ref().cloned().unwrap()),
+                        String::from("But this type appears inside another bigger row type which already had a declaration for the field `{}`"),
+                        String::from("A type cannot have two conflicting declaration for the same row")
+                    ])]
+
+            },
+            TypecheckError::ArrowTypeMismatch(expd, actual, path, err, span_opt) => {
+                let (expd_start, expd_end) = ty_path::span(path.iter().peekable(), expd);
+                let (actual_start, actual_end) = ty_path::span(path.iter().peekable(), actual);
+
+                let mut labels = vec![
+                  Label::secondary(
+                        files.add("", format!("{}", expd)),
+                        expd_start..expd_end,
+                    )
+                    .with_message("This part of the expected type"),
+                  Label::secondary(
+                        files.add("", format!("{}", actual)),
+                        actual_start..actual_end,
+                    )
+                    .with_message("does not match this part of the inferred type")
+                ];
+                labels.extend(mk_expr_label(span_opt));
+
+                let mut diags = vec![Diagnostic::error()
+                    .with_message("Function types mismatch")
+                    .with_labels(labels)
+                    .with_notes(vec![
+                        format!("The type of the expression was expected to be `{}`", expd),
+                        format!("The type of the expression was inferred to be `{}`", actual),
+                        String::from("Could not match the two function types"),
+                    ])
+                ];
+
+                // We generate a diagnostic for the underlying error, but append a prefix to the
+                // error message to make it clear that this is not a separated error but a more
+                // precise description of why the unification of the row failed.
+                match err.as_ref() {
+                    // If the underlying error is a type mismatch, printing won't add any useful
+                    // information, so we just ignore it.
+                    TypecheckError::TypeMismatch(_, _, _) => (),
+                    err => {
+                        diags.extend(err.to_diagnostic(files, contract_id).into_iter()
+                           .map(|mut diag| {
+                               diag.message = format!("While matching function types: {}", diag.message);
+                               diag
+                           }));
+                    }
+                }
+
+                diags
+            }
         }
     }
 }

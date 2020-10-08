@@ -57,10 +57,7 @@ use crate::position::RawSpan;
 use crate::term::{BinaryOp, RichTerm, Term};
 use crate::transformations::Closurizable;
 use crate::types::{AbsType, Types};
-use simple_counter::*;
 use std::collections::HashMap;
-
-generate_counter!(FreshVariableCounter, usize);
 
 /// Compute the merge of two evaluated operands.
 pub fn merge(
