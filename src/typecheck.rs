@@ -41,6 +41,7 @@
 //! In non-strict mode, all let-bound expressions are given type `Dyn`, unless annotated.
 use crate::error::TypecheckError;
 use crate::identifier::Ident;
+use crate::label::ty_path;
 use crate::position::RawSpan;
 use crate::program::ImportResolver;
 use crate::term::{BinaryOp, RichTerm, StrChunk, Term, UnaryOp};
@@ -52,6 +53,12 @@ use std::collections::{HashMap, HashSet};
 pub enum RowUnifError {
     /// The LHS had a binding that was missing in the RHS.
     MissingRow(Ident),
+    /// The RHS had a binding that was not in the LHS.
+    ExtraRow(Ident),
+    /// There were two incompatible definitions for the same row.
+    RowMismatch(Ident, UnifError),
+    /// Tried to unify an enum row and a record row.
+    RowKindMismatch(Ident, Option<TypeWrapper>, Option<TypeWrapper>),
     /// One of the row was ill-formed (typically, a tail was neither a row nor a variable).
     ///
     /// This should probably not happen with proper restrictions on the parser and a correct
@@ -59,7 +66,11 @@ pub enum RowUnifError {
     /// into a panic! in the future.
     IllformedRow(TypeWrapper),
     /// A [row constraint](./type.RowConstr.html) was violated.
-    IncompatibleConstraints(Ident, Option<TypeWrapper>),
+    UnsatConstr(Ident, Option<TypeWrapper>),
+    /// Tried to unify a type constant with another different type.
+    WithConst(usize, TypeWrapper),
+    /// Tried to unify two distinct type constants.
+    ConstMismatch(usize, usize),
 }
 
 impl RowUnifError {
@@ -75,10 +86,17 @@ impl RowUnifError {
     pub fn to_unif_err(self, left: TypeWrapper, right: TypeWrapper) -> UnifError {
         match self {
             RowUnifError::MissingRow(id) => UnifError::MissingRow(id, left, right),
-            RowUnifError::IllformedRow(tyw) => UnifError::IllformedRow(tyw),
-            RowUnifError::IncompatibleConstraints(id, tyw) => {
-                UnifError::RowConflict(id, tyw, left, right)
+            RowUnifError::ExtraRow(id) => UnifError::ExtraRow(id, left, right),
+            RowUnifError::RowKindMismatch(id, tyw1, tyw2) => {
+                UnifError::RowKindMismatch(id, tyw1, tyw2)
             }
+            RowUnifError::RowMismatch(id, err) => {
+                UnifError::RowMismatch(id, left, right, Box::new(err))
+            }
+            RowUnifError::IllformedRow(tyw) => UnifError::IllformedRow(tyw),
+            RowUnifError::UnsatConstr(id, tyw) => UnifError::RowConflict(id, tyw, left, right),
+            RowUnifError::WithConst(c, tyw) => UnifError::WithConst(c, tyw),
+            RowUnifError::ConstMismatch(c1, c2) => UnifError::ConstMismatch(c1, c2),
         }
     }
 }
@@ -87,25 +105,36 @@ impl RowUnifError {
 #[derive(Debug, PartialEq)]
 pub enum UnifError {
     /// Tried to unify two incompatible types.
-    IncompatibleTypes(TypeWrapper, TypeWrapper),
+    TypeMismatch(TypeWrapper, TypeWrapper),
+    /// There are two incompatible definitions for the same row.
+    RowMismatch(Ident, TypeWrapper, TypeWrapper, Box<UnifError>),
     /// Tried to unify an enum row and a record row.
-    IncompatibleRows(Ident, Option<TypeWrapper>, Option<TypeWrapper>),
+    RowKindMismatch(Ident, Option<TypeWrapper>, Option<TypeWrapper>),
     /// Tried to unify two distinct type constants.
-    IncompatibleConst(usize, usize),
+    ConstMismatch(usize, usize),
     /// Tried to unify two rows, but an identifier of the LHS was absent from the RHS.
     MissingRow(Ident, TypeWrapper, TypeWrapper),
-    /// A row was ill-formed (see []()).
+    /// Tried to unify two rows, but an identifier of the RHS was absent from the LHS.
+    ExtraRow(Ident, TypeWrapper, TypeWrapper),
+    /// A row was ill-formed.
     IllformedRow(TypeWrapper),
     /// Tried to unify a unification variable with a row type violating the [row
     /// constraints](./type.RowConstr.html) of the variable.
     RowConflict(Ident, Option<TypeWrapper>, TypeWrapper, TypeWrapper),
     /// Tried to unify a type constant with another different type.
     WithConst(usize, TypeWrapper),
-    /// A flat type, which is an opaque type corresponding to custom contracts, contains a Nickel
+    /// A flat type, which is an opaque type corresponding to custom contracts, contained a Nickel
     /// term different from a variable. Only a variables is a legal inner term of a flat type.
     IllformedFlatType(RichTerm),
+    /// A generic type was ill-formed. Currently, this happens if a `StatRecord` or `Enum` type
+    /// does not contain a row type.
+    IllformedType(TypeWrapper),
     /// An unbound type variable was referenced.
     UnboundTypeVariable(Ident),
+    /// An error occurred when unifying the domains of two arrows.
+    DomainMismatch(TypeWrapper, TypeWrapper, Box<UnifError>),
+    /// An error occurred when unifying the codomains of two arrows.
+    CodomainMismatch(TypeWrapper, TypeWrapper, Box<UnifError>),
 }
 
 impl UnifError {
@@ -121,10 +150,17 @@ impl UnifError {
     pub fn to_typecheck_err(self, table: &UnifTable, pos_opt: &Option<RawSpan>) -> TypecheckError {
         let pos_opt = pos_opt.as_ref().cloned();
         match self {
-            UnifError::IncompatibleTypes(ty1, ty2) => {
+            UnifError::TypeMismatch(ty1, ty2) => {
                 TypecheckError::TypeMismatch(to_type(table, ty1), to_type(table, ty2), pos_opt)
             }
-            UnifError::IncompatibleRows(id, ty1, ty2) => TypecheckError::RowMismatch(
+            UnifError::RowMismatch(ident, tyw1, tyw2, err) => TypecheckError::RowMismatch(
+                ident,
+                to_type(table, tyw1),
+                to_type(table, tyw2),
+                Box::new((*err).to_typecheck_err(table, &None)),
+                pos_opt,
+            ),
+            UnifError::RowKindMismatch(id, ty1, ty2) => TypecheckError::RowKindMismatch(
                 id,
                 ty1.map(|tw| to_type(table, tw)),
                 ty2.map(|tw| to_type(table, tw)),
@@ -133,7 +169,7 @@ impl UnifError {
             // FIXME: For now we give arbitrary names (a or b) to quantified type variables. In the
             // future, we may want to remember their original name and create a specific variant in
             // `TypecheckError` for better error reporting.
-            UnifError::IncompatibleConst(_c1, _c2) => TypecheckError::TypeMismatch(
+            UnifError::ConstMismatch(_c1, _c2) => TypecheckError::TypeMismatch(
                 Types(AbsType::Var(Ident(String::from("a")))),
                 Types(AbsType::Var(Ident(String::from("b")))),
                 pos_opt,
@@ -146,8 +182,12 @@ impl UnifError {
             UnifError::IllformedFlatType(rt) => {
                 TypecheckError::IllformedType(Types(AbsType::Flat(rt)))
             }
+            UnifError::IllformedType(tyw) => TypecheckError::IllformedType(to_type(table, tyw)),
             UnifError::MissingRow(id, tyw1, tyw2) => {
                 TypecheckError::MissingRow(id, to_type(table, tyw1), to_type(table, tyw2), pos_opt)
+            }
+            UnifError::ExtraRow(id, tyw1, tyw2) => {
+                TypecheckError::ExtraRow(id, to_type(table, tyw1), to_type(table, tyw2), pos_opt)
             }
             UnifError::IllformedRow(tyw) => TypecheckError::IllformedType(to_type(table, tyw)),
             UnifError::RowConflict(id, tyw, left, right) => TypecheckError::RowConflict(
@@ -159,6 +199,76 @@ impl UnifError {
             ),
             UnifError::UnboundTypeVariable(ident) => {
                 TypecheckError::UnboundTypeVariable(ident, pos_opt)
+            }
+            err @ UnifError::CodomainMismatch(_, _, _)
+            | err @ UnifError::DomainMismatch(_, _, _) => {
+                let (expd, actual, path, err_final) = err.to_type_path().unwrap();
+                TypecheckError::ArrowTypeMismatch(
+                    to_type(table, expd),
+                    to_type(table, actual),
+                    path,
+                    Box::new(err_final.to_typecheck_err(table, &None)),
+                    pos_opt,
+                )
+            }
+        }
+    }
+
+    /// Transform a `(Co)DomainMismatch` into a type path and other data.
+    ///
+    /// `(Co)DomainMismatch` can be nested: when unifying `Num -> Num -> Num` with `Num -> Bool ->
+    /// Num`, the resulting error is of the form `CodomainMismatch(.., DomainMismatch(..,
+    /// TypeMismatch(..)))`. The heading sequence of `(Co)DomainMismatch` is better represented as
+    /// a type path, here `[Codomain, Domain]`, while the last error of the chain -- which thus
+    /// cannot be a `(Co)DomainMismatch` -- is the actual cause of the unification failure.
+    ///
+    /// This function breaks down a `(Co)Domain` mismatch into a more convenient representation.
+    ///
+    /// # Return
+    ///
+    /// Return `None` if `self` is not a `DomainMismatch` nor a `CodomainMismatch`.
+    ///
+    /// Otherwise, return the following tuple:
+    ///  - the original expected type.
+    ///  - the original actual type.
+    ///  - a type path pointing at the subtypes which failed to be unified.
+    ///  - the final error, which is the actual cause of that failure.
+    pub fn to_type_path(self) -> Option<(TypeWrapper, TypeWrapper, ty_path::Path, Self)> {
+        let mut curr: Self = self;
+        let mut path = ty_path::Path::new();
+        // The original expected and actual type. They are just updated once, in the first
+        // iteration of the loop below.
+        let mut tyws: Option<(TypeWrapper, TypeWrapper)> = None;
+
+        loop {
+            match curr {
+                UnifError::DomainMismatch(
+                    tyw1 @ TypeWrapper::Concrete(AbsType::Arrow(_, _)),
+                    tyw2 @ TypeWrapper::Concrete(AbsType::Arrow(_, _)),
+                    err,
+                ) => {
+                    tyws = tyws.or(Some((tyw1, tyw2)));
+                    path.push(ty_path::Elem::Domain);
+                    curr = *err;
+                }
+                UnifError::DomainMismatch(_, _, _) => panic!(
+                    "typechecking::to_type_path(): domain mismatch error on a non arrow type"
+                ),
+                UnifError::CodomainMismatch(
+                    tyw1 @ TypeWrapper::Concrete(AbsType::Arrow(_, _)),
+                    tyw2 @ TypeWrapper::Concrete(AbsType::Arrow(_, _)),
+                    err,
+                ) => {
+                    tyws = tyws.or(Some((tyw1, tyw2)));
+                    path.push(ty_path::Elem::Codomain);
+                    curr = *err;
+                }
+                UnifError::CodomainMismatch(_, _, _) => panic!(
+                    "typechecking::to_type_path(): codomain mismatch error on a non arrow type"
+                ),
+                // tyws equals to `None` iff we did not even enter the case above once, i.e. if
+                // `self` was indeed neither a `DomainMismatch` nor a `CodomainMismatch`
+                _ => break tyws.map(|(expd, actual)| (expd, actual, path, curr)),
             }
         }
     }
@@ -213,6 +323,7 @@ fn type_check_(
     ty: TypeWrapper,
 ) -> Result<(), TypecheckError> {
     let RichTerm { term: t, pos } = rt;
+
     match t.as_ref() {
         Term::Bool(_) => unify(state, strict, ty, TypeWrapper::Concrete(AbsType::Bool()))
             .map_err(|err| err.to_typecheck_err(state.table, &rt.pos)),
@@ -320,7 +431,7 @@ fn type_check_(
         }
         Term::Record(stat_map) | Term::RecRecord(stat_map) => {
             // For recursive records, we look at the apparent type of each field and bind it in
-            // typed_vars before actually typechecking the content of fields
+            // env before actually typechecking the content of fields
             if let Term::RecRecord(_) = t.as_ref() {
                 env.extend(
                     stat_map.iter().map(|(id, rt)| {
@@ -343,12 +454,9 @@ fn type_check_(
                         type_check_(state, env.clone(), strict, t, (*rec_ty).clone())
                     })
             } else {
-                // inferring static record
                 let row = stat_map.into_iter().try_fold(
                     TypeWrapper::Concrete(AbsType::RowEmpty()),
-                    |acc, e| -> Result<TypeWrapper, TypecheckError> {
-                        let (id, field) = e;
-
+                    |acc, (id, field)| -> Result<TypeWrapper, TypecheckError> {
                         // In the case of a recursive record, new types (either type variables or
                         // annotations) have already be determined and put in the typing
                         // environment, and we need to use the same.
@@ -555,10 +663,7 @@ fn row_add(
         TypeWrapper::Ptr(root) => {
             if let Some(set) = state.constr.get(&root) {
                 if set.contains(&id) {
-                    return Err(RowUnifError::IncompatibleConstraints(
-                        id.clone(),
-                        ty.map(|tyw| *tyw),
-                    ));
+                    return Err(RowUnifError::UnsatConstr(id.clone(), ty.map(|tyw| *tyw)));
                 }
             }
             let new_row = TypeWrapper::Ptr(new_var(state.table));
@@ -578,16 +683,28 @@ fn row_add(
 }
 
 /// Try to unify two types.
+///
+/// A wrapper around `unify_` which just checks if `strict` is set to true. If not, it directly
+/// returns `Ok(())` without unifying anything.
 pub fn unify(
     state: &mut State,
     strict: bool,
+    t1: TypeWrapper,
+    t2: TypeWrapper,
+) -> Result<(), UnifError> {
+    if strict {
+        unify_(state, t1, t2)
+    } else {
+        Ok(())
+    }
+}
+
+/// Try to unify two types.
+pub fn unify_(
+    state: &mut State,
     mut t1: TypeWrapper,
     mut t2: TypeWrapper,
 ) -> Result<(), UnifError> {
-    if !strict {
-        // TODO think whether this makes sense, without this we can't write the Y combinator
-        return Ok(());
-    }
     if let TypeWrapper::Ptr(pt1) = t1 {
         t1 = get_root(state.table, pt1);
     }
@@ -605,53 +722,92 @@ pub fn unify(
             (AbsType::List(), AbsType::List()) => Ok(()),
             (AbsType::Sym(), AbsType::Sym()) => Ok(()),
             (AbsType::Arrow(s1s, s1t), AbsType::Arrow(s2s, s2t)) => {
-                unify(state, strict, *s1s, *s2s)?;
-                unify(state, strict, *s1t, *s2t)
+                unify_(state, (*s1s).clone(), (*s2s).clone()).map_err(|err| {
+                    UnifError::DomainMismatch(
+                        TypeWrapper::Concrete(AbsType::Arrow(s1s.clone(), s1t.clone())),
+                        TypeWrapper::Concrete(AbsType::Arrow(s2s.clone(), s2t.clone())),
+                        Box::new(err),
+                    )
+                })?;
+                unify_(state, (*s1t).clone(), (*s2t).clone()).map_err(|err| {
+                    UnifError::CodomainMismatch(
+                        TypeWrapper::Concrete(AbsType::Arrow(s1s, s1t)),
+                        TypeWrapper::Concrete(AbsType::Arrow(s2s, s2t)),
+                        Box::new(err),
+                    )
+                })
             }
             (AbsType::Flat(s), AbsType::Flat(t)) => match (s.as_ref(), t.as_ref()) {
                 (Term::Var(vs), Term::Var(ts)) if vs == ts => Ok(()),
-                (Term::Var(_), Term::Var(_)) => Err(UnifError::IncompatibleTypes(
+                (Term::Var(_), Term::Var(_)) => Err(UnifError::TypeMismatch(
                     TypeWrapper::Concrete(AbsType::Flat(s)),
                     TypeWrapper::Concrete(AbsType::Flat(t)),
                 )),
                 (Term::Var(_), _) => Err(UnifError::IllformedFlatType(t)),
                 _ => Err(UnifError::IllformedFlatType(s)),
             },
-            (AbsType::RowEmpty(), AbsType::RowEmpty()) => Ok(()),
-            (AbsType::RowExtend(id, ty, t), r2 @ AbsType::RowExtend(_, _, _)) => {
-                let (ty2, r2) = row_add(state, &id, ty.clone(), TypeWrapper::Concrete(r2.clone()))
-                    .map_err(|err| {
-                        err.to_unif_err(
-                            TypeWrapper::Concrete(AbsType::RowExtend(
-                                id.clone(),
-                                ty.clone(),
-                                t.clone(),
-                            )),
-                            TypeWrapper::Concrete(r2),
-                        )
-                    })?;
-
-                match (ty, ty2) {
-                    (None, None) => Ok(()),
-                    (Some(ty), Some(ty2)) => unify(state, strict, *ty, *ty2),
-                    (ty1, ty2) => Err(UnifError::IncompatibleRows(
-                        id,
-                        ty1.map(|t| *t),
-                        ty2.map(|t| *t),
-                    )),
-                }?;
-                unify(state, strict, *t, r2)
+            (r1, r2) if r1.is_row_type() && r2.is_row_type() => {
+                unify_rows(state, r1.clone(), r2.clone()).map_err(|err| {
+                    err.to_unif_err(TypeWrapper::Concrete(r1), TypeWrapper::Concrete(r2))
+                })
             }
-            (AbsType::Enum(r), AbsType::Enum(r2)) => unify(state, strict, *r, *r2),
-            (AbsType::StaticRecord(r), AbsType::StaticRecord(r2)) => unify(state, strict, *r, *r2),
-            (AbsType::DynRecord(t), AbsType::DynRecord(t2)) => unify(state, strict, *t, *t2),
+            (AbsType::Enum(tyw1), AbsType::Enum(tyw2)) => match (*tyw1, *tyw2) {
+                (TypeWrapper::Concrete(r1), TypeWrapper::Concrete(r2))
+                    if r1.is_row_type() && r2.is_row_type() =>
+                {
+                    unify_rows(state, r1.clone(), r2.clone()).map_err(|err| {
+                        err.to_unif_err(
+                            TypeWrapper::Concrete(AbsType::Enum(Box::new(TypeWrapper::Concrete(
+                                r1,
+                            )))),
+                            TypeWrapper::Concrete(AbsType::Enum(Box::new(TypeWrapper::Concrete(
+                                r2,
+                            )))),
+                        )
+                    })
+                }
+                (TypeWrapper::Concrete(r), _) if !r.is_row_type() => Err(UnifError::IllformedType(
+                    TypeWrapper::Concrete(AbsType::Enum(Box::new(TypeWrapper::Concrete(r)))),
+                )),
+                (_, TypeWrapper::Concrete(r)) if !r.is_row_type() => Err(UnifError::IllformedType(
+                    TypeWrapper::Concrete(AbsType::Enum(Box::new(TypeWrapper::Concrete(r)))),
+                )),
+                (tyw1, tyw2) => unify_(state, tyw1, tyw2),
+            },
+            (AbsType::StaticRecord(tyw1), AbsType::StaticRecord(tyw2)) => match (*tyw1, *tyw2) {
+                (TypeWrapper::Concrete(r1), TypeWrapper::Concrete(r2))
+                    if r1.is_row_type() && r2.is_row_type() =>
+                {
+                    unify_rows(state, r1.clone(), r2.clone()).map_err(|err| {
+                        err.to_unif_err(
+                            TypeWrapper::Concrete(AbsType::StaticRecord(Box::new(
+                                TypeWrapper::Concrete(r1),
+                            ))),
+                            TypeWrapper::Concrete(AbsType::StaticRecord(Box::new(
+                                TypeWrapper::Concrete(r2),
+                            ))),
+                        )
+                    })
+                }
+                (TypeWrapper::Concrete(r), _) if !r.is_row_type() => {
+                    Err(UnifError::IllformedType(TypeWrapper::Concrete(
+                        AbsType::StaticRecord(Box::new(TypeWrapper::Concrete(r))),
+                    )))
+                }
+                (_, TypeWrapper::Concrete(r)) if !r.is_row_type() => {
+                    Err(UnifError::IllformedType(TypeWrapper::Concrete(
+                        AbsType::StaticRecord(Box::new(TypeWrapper::Concrete(r))),
+                    )))
+                }
+                (tyw1, tyw2) => unify_(state, tyw1, tyw2),
+            },
+            (AbsType::DynRecord(t), AbsType::DynRecord(t2)) => unify_(state, *t, *t2),
             (AbsType::Forall(i1, t1t), AbsType::Forall(i2, t2t)) => {
                 // Very stupid (slow) implementation
                 let constant_type = TypeWrapper::Constant(new_var(state.table));
 
-                unify(
+                unify_(
                     state,
-                    strict,
                     t1t.subst(i1, constant_type.clone()),
                     t2t.subst(i2, constant_type),
                 )
@@ -659,7 +815,7 @@ pub fn unify(
             (AbsType::Var(ident), _) | (_, AbsType::Var(ident)) => {
                 Err(UnifError::UnboundTypeVariable(ident))
             }
-            (ty1, ty2) => Err(UnifError::IncompatibleTypes(
+            (ty1, ty2) => Err(UnifError::TypeMismatch(
                 TypeWrapper::Concrete(ty1),
                 TypeWrapper::Concrete(ty2),
             )),
@@ -685,13 +841,64 @@ pub fn unify(
             Ok(())
         }
         (TypeWrapper::Constant(i1), TypeWrapper::Constant(i2)) if i1 == i2 => Ok(()),
-        //FIXME: proper error (general type mismatch)
         (TypeWrapper::Constant(i1), TypeWrapper::Constant(i2)) => {
-            Err(UnifError::IncompatibleConst(i1, i2))
+            Err(UnifError::ConstMismatch(i1, i2))
         }
         (ty, TypeWrapper::Constant(i)) | (TypeWrapper::Constant(i), ty) => {
             Err(UnifError::WithConst(i, ty))
         }
+    }
+}
+
+/// Try to unify two row types. Return an [`IllformedRow`](./enum.RowUnifError.html#variant.IllformedRow) error if one of the given type
+/// is not a row type.
+pub fn unify_rows(
+    state: &mut State,
+    t1: AbsType<Box<TypeWrapper>>,
+    t2: AbsType<Box<TypeWrapper>>,
+) -> Result<(), RowUnifError> {
+    match (t1, t2) {
+        (AbsType::RowEmpty(), AbsType::RowEmpty()) => Ok(()),
+        (AbsType::RowEmpty(), AbsType::RowExtend(ident, _, _))
+        | (AbsType::RowExtend(ident, _, _), AbsType::RowEmpty()) => {
+            Err(RowUnifError::ExtraRow(ident))
+        }
+        (AbsType::RowExtend(id, ty, t), r2 @ AbsType::RowExtend(_, _, _)) => {
+            let (ty2, t2_tail) =
+                row_add(state, &id, ty.clone(), TypeWrapper::Concrete(r2.clone()))?;
+            match (ty, ty2) {
+                (None, None) => Ok(()),
+                (Some(ty), Some(ty2)) => unify_(state, *ty, *ty2)
+                    .map_err(|err| RowUnifError::RowMismatch(id.clone(), err)),
+                (ty1, ty2) => Err(RowUnifError::RowKindMismatch(
+                    id,
+                    ty1.map(|t| *t),
+                    ty2.map(|t| *t),
+                )),
+            }?;
+
+            match (*t, t2_tail) {
+                (TypeWrapper::Concrete(r1_tail), TypeWrapper::Concrete(r2_tail)) => {
+                    unify_rows(state, r1_tail, r2_tail)
+                }
+                // If one of the tail is not a concrete type, it is either a unification variable
+                // or a constant (rigid type variable). `unify` already knows how to treat these
+                // cases, so we delegate the work. However it returns `UnifError` instead of
+                // `RowUnifError`, hence we have a bit of wrapping and unwrapping to do. Note that
+                // since we are unifying types with a constant or a unification variable somewhere,
+                // the only unification errors that should be possible are related to constants.
+                (t1_tail, t2_tail) => unify_(state, t1_tail, t2_tail).map_err(|err| match err {
+                    UnifError::ConstMismatch(c1, c2) => RowUnifError::ConstMismatch(c1, c2),
+                    UnifError::WithConst(c1, tyw) => RowUnifError::WithConst(c1, tyw),
+                    err => panic!(
+                        "typechecker::unify_rows(): unexpected error while unifying row tails {:?}",
+                        err
+                    ),
+                }),
+            }
+        }
+        (ty, _) if !ty.is_row_type() => Err(RowUnifError::IllformedRow(TypeWrapper::Concrete(ty))),
+        (_, ty) => Err(RowUnifError::IllformedRow(TypeWrapper::Concrete(ty))),
     }
 }
 
@@ -1117,10 +1324,7 @@ fn constraint(state: &mut State, x: TypeWrapper, id: Ident) -> Result<(), RowUni
         TypeWrapper::Concrete(AbsType::RowEmpty()) => Ok(()),
         TypeWrapper::Concrete(AbsType::RowExtend(id2, tyw, t)) => {
             if id2 == id {
-                Err(RowUnifError::IncompatibleConstraints(
-                    id,
-                    tyw.map(|tyw| *tyw),
-                ))
+                Err(RowUnifError::UnsatConstr(id, tyw.map(|tyw| *tyw)))
             } else {
                 constraint(state, *t, id)
             }

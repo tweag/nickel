@@ -132,6 +132,14 @@ impl<Ty> AbsType<Ty> {
     pub fn arrow(s: Ty, t: Ty) -> Self {
         AbsType::Arrow(s, t)
     }
+
+    /// Determine if a type is a row type.
+    pub fn is_row_type(&self) -> bool {
+        match self {
+            AbsType::RowExtend(_, _, _) | AbsType::RowEmpty() => true,
+            _ => false,
+        }
+    }
 }
 
 /// Concrete, recursive type for a Nickel type.
@@ -240,6 +248,42 @@ impl Types {
             }
             AbsType::StaticRecord(_) => panic!("TODO implement"),
             AbsType::DynRecord(_) => panic!("TODO implement"),
+        }
+    }
+
+    /// Find a binding in a record row type. Return `None` if there is no such binding, if the type
+    /// is not a row type, or if the row is an enum row.
+    pub fn row_find(&self, ident: &Ident) -> Option<Self> {
+        match &self.0 {
+            AbsType::RowExtend(id, Some(ty), _) if *id == *ident => Some((**ty).clone()),
+            AbsType::RowExtend(_, _, tail) => tail.row_find(ident),
+            _ => None,
+        }
+    }
+
+    /// Find a nested binding in a record row type. The nested field is given as a list of
+    /// successive fields, that is, as a path. Return `None` if there is no such binding, if the
+    /// type is not a row type, or if the final row is an enum row.
+    ///
+    /// # Example
+    ///
+    /// - self: ` { {| a : { {| b : Num |} } |} }`
+    /// - path: `["a", "b"]`
+    /// - result: `Some(Num)`
+    pub fn row_find_path(&self, path: &[Ident]) -> Option<Self> {
+        if path.is_empty() {
+            return None;
+        }
+
+        let next = self.row_find(&path[0]);
+
+        if path.len() == 1 {
+            return next;
+        } else {
+            match next {
+                Some(ty) => ty.row_find_path(&path[1..]),
+                _ => None,
+            }
         }
     }
 }
