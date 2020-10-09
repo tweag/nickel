@@ -198,9 +198,10 @@ impl Program {
         let t = self
             .parse_with_cache(self.main_id)
             .map_err(|e| Error::from(e))?;
-        type_check(&t, self).map_err(|err| Error::from(err))?;
+        let global_env = self.mk_global_env()?;
+        type_check(&t, &global_env, self).map_err(|err| Error::from(err))?;
         let t = transformations::transform(t, self).map_err(|err| Error::ImportError(err))?;
-        eval::eval(t, self.mk_global_env()?, self).map_err(|e| e.into())
+        eval::eval(t, global_env, self).map_err(|e| e.into())
     }
 
     /// Parse a source file. Do not try to get it from the cache, and do not populate the cache at
@@ -1034,58 +1035,56 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
 
     /// Check that the environments of contracts are correctly saved and restored when merging. See
     /// issue [#117](https://github.com/tweag/nickel/issues/117).
-    //FIXME: restore this test once standard contracts correctly populate the typing
-    //environment during typechecking. See #145 (https://github.com/tweag/nickel/issues/145).
-    // #[test]
-    // fn merge_contracts_with_env() {
-    //     let definitions = "
-    //         let ctr_num = let x = num in {a = Contract(#x)} in
-    //         let ctr_id = let x = fun l x => x in {a = Contract(#x)} in
-    //         let val = let x = 1 in {a = x} in
-    //         let def = let x = 2 in {a = Default(x)} in
-    //         let def2 = let x = (1 + 1) in {a = Default(x)} in
-    //         ";
-    //
-    //     // Build a term which recursively merges the elements of `elts` in the environment set by
-    //     // `definitions`, and then access the `a` field
-    //     let merge_elts = |elts: Vec<&str>| -> Result<Term, Error> {
-    //         let term = elts.into_iter().fold(String::from("{}"), |term, op| {
-    //             format!("merge ({}) ({})", op, term)
-    //         });
-    //         eval_string(&format!("{} ({}).a", definitions, term))
-    //     };
-    //
-    //     // contract/contract -> contract/value -> value/default
-    //     assert_eq!(
-    //         merge_elts(vec!["ctr_num", "ctr_id", "val", "def"]),
-    //         Ok(Term::Num(1.0))
-    //     );
-    //     // default/value <- value/contract
-    //     assert_eq!(
-    //         merge_elts(vec!["def", "merge val ctr_num"]),
-    //         Ok(Term::Num(1.0))
-    //     );
-    //     // default/contract-> contract-default/contract-default <- contract/default
-    //     assert_eq!(
-    //         merge_elts(vec!["merge def ctr_num", "merge ctr_id def2"]),
-    //         Ok(Term::Num(2.0))
-    //     );
-    //     // default/contract -> contract-default/contract -> contract-default/value
-    //     assert_eq!(
-    //         merge_elts(vec!["def", "ctr_num", "ctr_id", "val"]),
-    //         Ok(Term::Num(1.0))
-    //     );
-    //     // default/contract -> contract-default/default
-    //     assert_eq!(
-    //         merge_elts(vec!["def", "ctr_num", "def2"]),
-    //         Ok(Term::Num(2.0))
-    //     );
-    //     // value/contract-default <- contract/contract-default
-    //     assert_eq!(
-    //         merge_elts(vec!["val", "merge ctr_num def"]),
-    //         Ok(Term::Num(1.0))
-    //     );
-    // }
+    #[test]
+    fn merge_contracts_with_env() {
+        let definitions = "
+            let ctr_num = let x = num in {a = Contract(#x)} in
+            let ctr_id = let x = fun l x => x in {a = Contract(#x)} in
+            let val = let x = 1 in {a = x} in
+            let def = let x = 2 in {a = Default(x)} in
+            let def2 = let x = (1 + 1) in {a = Default(x)} in
+            ";
+
+        // Build a term which recursively merges the elements of `elts` in the environment set by
+        // `definitions`, and then access the `a` field
+        let merge_elts = |elts: Vec<&str>| -> Result<Term, Error> {
+            let term = elts.into_iter().fold(String::from("{}"), |term, op| {
+                format!("merge ({}) ({})", op, term)
+            });
+            eval_string(&format!("{} ({}).a", definitions, term))
+        };
+
+        // contract/contract -> contract/value -> value/default
+        assert_eq!(
+            merge_elts(vec!["ctr_num", "ctr_id", "val", "def"]),
+            Ok(Term::Num(1.0))
+        );
+        // default/value <- value/contract
+        assert_eq!(
+            merge_elts(vec!["def", "merge val ctr_num"]),
+            Ok(Term::Num(1.0))
+        );
+        // default/contract-> contract-default/contract-default <- contract/default
+        assert_eq!(
+            merge_elts(vec!["merge def ctr_num", "merge ctr_id def2"]),
+            Ok(Term::Num(2.0))
+        );
+        // default/contract -> contract-default/contract -> contract-default/value
+        assert_eq!(
+            merge_elts(vec!["def", "ctr_num", "ctr_id", "val"]),
+            Ok(Term::Num(1.0))
+        );
+        // default/contract -> contract-default/default
+        assert_eq!(
+            merge_elts(vec!["def", "ctr_num", "def2"]),
+            Ok(Term::Num(2.0))
+        );
+        // value/contract-default <- contract/contract-default
+        assert_eq!(
+            merge_elts(vec!["val", "merge ctr_num def"]),
+            Ok(Term::Num(1.0))
+        );
+    }
 
     #[test]
     fn string_chunks() {

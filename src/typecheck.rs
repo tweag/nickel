@@ -40,6 +40,7 @@
 //!
 //! In non-strict mode, all let-bound expressions are given type `Dyn`, unless annotated.
 use crate::error::TypecheckError;
+use crate::eval;
 use crate::identifier::Ident;
 use crate::label::ty_path;
 use crate::position::RawSpan;
@@ -308,7 +309,55 @@ impl UnifError {
 }
 
 /// The typing environment.
-type Environment = HashMap<Ident, TypeWrapper>;
+pub type Environment = HashMap<Ident, TypeWrapper>;
+
+/// A structure holding the two typing environments, the global and the local.
+///
+/// The global typing environment is constructed from the global term environment (see
+/// [`eval`](../eval/fn.eval.html)) which holds the Nickel builtin functions. It is a read-only
+/// shared environment used to retrieve the type of such functions.
+#[derive(Debug, PartialEq, Clone)]
+pub struct Envs<'a> {
+    global: &'a Environment,
+    local: Environment,
+}
+
+impl<'a> Envs<'a> {
+    /// Create an `Envs` value with an empty local environment from a global environment.
+    pub fn from_global(global: &'a Environment) -> Self {
+        Envs {
+            global,
+            local: Environment::new(),
+        }
+    }
+
+    /// Populate a new global typing environment from a global term environment.
+    pub fn mk_global(eval_env: &eval::Environment, table: &mut UnifTable) -> Environment {
+        eval_env
+            .iter()
+            .map(|(id, (rc, _))| {
+                (
+                    id.clone(),
+                    apparent_type(rc.borrow().body.as_ref(), table, false),
+                )
+            })
+            .collect()
+    }
+
+    /// Fetch a binding from the environment. Try first in the local environment, and then in the
+    /// global.
+    pub fn get(&self, ident: &Ident) -> Option<TypeWrapper> {
+        self.local
+            .get(ident)
+            .or_else(|| self.global.get(ident))
+            .cloned()
+    }
+
+    /// Wrapper to insert a new binding in the local environment.
+    pub fn insert(&mut self, ident: Ident, tyw: TypeWrapper) -> Option<TypeWrapper> {
+        self.local.insert(ident, tyw)
+    }
+}
 
 /// The shared state of unification.
 pub struct State<'a> {
@@ -331,6 +380,7 @@ pub struct State<'a> {
 /// [`type_check_`](fn.type_check_.html) with a fresh unification variable as goal.
 pub fn type_check(
     t: &RichTerm,
+    global_eval_env: &eval::Environment,
     resolver: &mut dyn ImportResolver,
 ) -> Result<Types, TypecheckError> {
     let mut state = State {
@@ -340,7 +390,35 @@ pub fn type_check(
         names: &mut HashMap::new(),
     };
     let ty = TypeWrapper::Ptr(new_var(state.table));
-    type_check_(&mut state, Environment::new(), false, t, ty.clone())?;
+    let global = Envs::mk_global(global_eval_env, state.table);
+    type_check_(&mut state, Envs::from_global(&global), false, t, ty.clone())?;
+
+    Ok(to_type(&state.table, ty))
+}
+
+/// Typecheck a term using the given global typing environment. Same as
+/// [`type_check`](./fun.type_check.html), but it directly takes a global typing environment,
+/// instead of building one from a term environment as `type_check` does.
+///
+/// This function is used to typecheck an import in a clean environment, when we don't have access
+/// to the original term environment anymore, and hence cannot call `type_check` directly, but we
+/// already have built a global typing environment.
+///
+/// Return the inferred type in case of success. This is just a wrapper that calls
+/// [`type_check_`](fn.type_check_.html) with a fresh unification variable as goal.
+pub fn type_check_in_env(
+    t: &RichTerm,
+    global: &Environment,
+    resolver: &mut dyn ImportResolver,
+) -> Result<Types, TypecheckError> {
+    let mut state = State {
+        resolver,
+        table: &mut UnifTable::new(),
+        constr: &mut RowConstr::new(),
+        names: &mut HashMap::new(),
+    };
+    let ty = TypeWrapper::Ptr(new_var(state.table));
+    type_check_(&mut state, Envs::from_global(global), false, t, ty.clone())?;
 
     Ok(to_type(&state.table, ty))
 }
@@ -356,7 +434,7 @@ pub fn type_check(
 /// - `ty`: the type to check the term against.
 fn type_check_(
     state: &mut State,
-    mut env: Environment,
+    mut envs: Envs,
     strict: bool,
     rt: &RichTerm,
     ty: TypeWrapper,
@@ -381,7 +459,7 @@ fn type_check_(
                         StrChunk::Literal(_) => Ok(()),
                         StrChunk::Expr(t) => type_check_(
                             state,
-                            env.clone(),
+                            envs.clone(),
                             strict,
                             t,
                             TypeWrapper::Concrete(AbsType::Dyn()),
@@ -400,8 +478,8 @@ fn type_check_(
 
             unify(state, strict, ty, arr).map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
 
-            env.insert(x.clone(), src);
-            type_check_(state, env, strict, t, trg)
+            envs.insert(x.clone(), src);
+            type_check_(state, envs, strict, t, trg)
         }
         Term::List(terms) => {
             unify(state, strict, ty, TypeWrapper::Concrete(AbsType::List()))
@@ -415,7 +493,7 @@ fn type_check_(
                     // are annotated with an `Assume(Dyn, ..)`, which will always succeed.
                     type_check_(
                         state,
-                        env.clone(),
+                        envs.clone(),
                         false,
                         t,
                         TypeWrapper::Concrete(AbsType::Dyn()),
@@ -429,11 +507,11 @@ fn type_check_(
         }
         Term::Let(x, re, rt) => {
             let ty_let = apparent_type(re.as_ref(), state.table, strict);
-            type_check_(state, env.clone(), strict, re, ty_let.clone())?;
+            type_check_(state, envs.clone(), strict, re, ty_let.clone())?;
 
             // TODO move this up once lets are rec
-            env.insert(x.clone(), ty_let);
-            type_check_(state, env, strict, rt, ty)
+            envs.insert(x.clone(), ty_let);
+            type_check_(state, envs, strict, rt, ty)
         }
         Term::App(e, t) => {
             let src = TypeWrapper::Ptr(new_var(state.table));
@@ -442,11 +520,11 @@ fn type_check_(
             // This order shouldn't be changed, since applying a function to a record
             // may change how it's typed (static or dynamic)
             // This is good hint a bidirectional algorithm would make sense...
-            type_check_(state, env.clone(), strict, e, arr)?;
-            type_check_(state, env, strict, t, src)
+            type_check_(state, envs.clone(), strict, e, arr)?;
+            type_check_(state, envs, strict, t, src)
         }
         Term::Var(x) => {
-            let x_ty = env
+            let x_ty = envs
                 .get(&x)
                 .ok_or_else(|| TypecheckError::UnboundIdentifier(x.clone(), pos.clone()))?;
 
@@ -470,7 +548,7 @@ fn type_check_(
             // For recursive records, we look at the apparent type of each field and bind it in
             // env before actually typechecking the content of fields
             if let Term::RecRecord(_) = t.as_ref() {
-                env.extend(
+                envs.local.extend(
                     stat_map.iter().map(|(id, rt)| {
                         (id.clone(), apparent_type(rt.as_ref(), state.table, strict))
                     }),
@@ -488,7 +566,7 @@ fn type_check_(
                 stat_map
                     .into_iter()
                     .try_for_each(|(_, t)| -> Result<(), TypecheckError> {
-                        type_check_(state, env.clone(), strict, t, (*rec_ty).clone())
+                        type_check_(state, envs.clone(), strict, t, (*rec_ty).clone())
                     })
             } else {
                 let row = stat_map.into_iter().try_fold(
@@ -498,12 +576,12 @@ fn type_check_(
                         // annotations) have already be determined and put in the typing
                         // environment, and we need to use the same.
                         let ty = if let Term::RecRecord(_) = t.as_ref() {
-                            env.get(&id).unwrap().clone()
+                            envs.get(&id).unwrap().clone()
                         } else {
                             TypeWrapper::Ptr(new_var(state.table))
                         };
 
-                        type_check_(state, env.clone(), strict, field, ty.clone())?;
+                        type_check_(state, envs.clone(), strict, field, ty.clone())?;
 
                         Ok(TypeWrapper::Concrete(AbsType::RowExtend(
                             id.clone(),
@@ -523,16 +601,16 @@ fn type_check_(
             }
         }
         Term::Op1(op, t) => {
-            let ty_op = get_uop_type(state, env.clone(), strict, op)?;
+            let ty_op = get_uop_type(state, envs.clone(), strict, op)?;
 
             let src = TypeWrapper::Ptr(new_var(state.table));
             let arr = TypeWrapper::Concrete(AbsType::arrow(Box::new(src.clone()), Box::new(ty)));
 
             unify(state, strict, arr, ty_op).map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
-            type_check_(state, env.clone(), strict, t, src)
+            type_check_(state, envs.clone(), strict, t, src)
         }
         Term::Op2(op, e, t) => {
-            let ty_op = get_bop_type(state, env.clone(), strict, op)?;
+            let ty_op = get_bop_type(state, envs.clone(), strict, op)?;
 
             let src1 = TypeWrapper::Ptr(new_var(state.table));
             let src2 = TypeWrapper::Ptr(new_var(state.table));
@@ -545,8 +623,8 @@ fn type_check_(
             ));
 
             unify(state, strict, arr, ty_op).map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
-            type_check_(state, env.clone(), strict, e, src1)?;
-            type_check_(state, env, strict, t, src2)
+            type_check_(state, envs.clone(), strict, e, src1)?;
+            type_check_(state, envs, strict, t, src2)
         }
         Term::Promise(ty2, _, t) => {
             let tyw2 = to_typewrapper(ty2.clone());
@@ -555,20 +633,20 @@ fn type_check_(
 
             unify(state, strict, ty.clone(), to_typewrapper(ty2.clone()))
                 .map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
-            type_check_(state, env, true, t, instantiated)
+            type_check_(state, envs, true, t, instantiated)
         }
         Term::Assume(ty2, _, t) => {
             unify(state, strict, ty.clone(), to_typewrapper(ty2.clone()))
                 .map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
             let new_ty = TypeWrapper::Ptr(new_var(state.table));
-            type_check_(state, env, false, t, new_ty)
+            type_check_(state, envs, false, t, new_ty)
         }
         Term::Sym(_) => unify(state, strict, ty, TypeWrapper::Concrete(AbsType::Sym()))
             .map_err(|err| err.to_typecheck_err(state, &rt.pos)),
         Term::Wrapped(_, t)
         | Term::DefaultValue(t)
         | Term::ContractWithDefault(_, _, t)
-        | Term::Docstring(_, t) => type_check_(state, env, strict, t, ty),
+        | Term::Docstring(_, t) => type_check_(state, envs, strict, t, ty),
         Term::Contract(_, _) => Ok(()),
         Term::Import(_) => unify(state, strict, ty, TypeWrapper::Concrete(AbsType::Dyn()))
             .map_err(|err| err.to_typecheck_err(state, &rt.pos)),
@@ -577,7 +655,7 @@ fn type_check_(
                 .resolver
                 .get(file_id.clone())
                 .expect("Internal error: resolved import not found ({:?}) during typechecking.");
-            type_check(&t, state.resolver).map(|_ty| ())
+            type_check_in_env(&t, envs.global, state.resolver).map(|_ty| ())
         }
     }
 }
@@ -1116,7 +1194,7 @@ where
 /// Type of unary operations.
 pub fn get_uop_type(
     state: &mut State,
-    env: Environment,
+    envs: Envs,
     strict: bool,
     op: &UnaryOp<RichTerm>,
 ) -> Result<TypeWrapper, TypecheckError> {
@@ -1191,12 +1269,12 @@ pub fn get_uop_type(
             let res = TypeWrapper::Ptr(new_var(state.table));
 
             for exp in l.values() {
-                type_check_(state, env.clone(), strict, exp, res.clone())?;
+                type_check_(state, envs.clone(), strict, exp, res.clone())?;
             }
 
             let row = match d {
                 Some(e) => {
-                    type_check_(state, env.clone(), strict, e, res.clone())?;
+                    type_check_(state, envs.clone(), strict, e, res.clone())?;
                     TypeWrapper::Ptr(new_var(state.table))
                 }
                 None => l.iter().try_fold(
@@ -1264,7 +1342,7 @@ pub fn get_uop_type(
                 ))),
             ));
 
-            type_check_(state, env.clone(), strict, f, f_type)?;
+            type_check_(state, envs.clone(), strict, f, f_type)?;
 
             TypeWrapper::Concrete(AbsType::Arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::DynRecord(Box::new(a)))),
@@ -1307,7 +1385,7 @@ pub fn get_uop_type(
 /// Type of a binary operation.
 pub fn get_bop_type(
     state: &mut State,
-    env: Environment,
+    envs: Envs,
     strict: bool,
     op: &BinaryOp<RichTerm>,
 ) -> Result<TypeWrapper, TypecheckError> {
@@ -1366,7 +1444,7 @@ pub fn get_bop_type(
         BinaryOp::DynExtend(t) => {
             let res = TypeWrapper::Ptr(new_var(state.table));
 
-            type_check_(state, env.clone(), strict, t, res.clone())?;
+            type_check_(state, envs.clone(), strict, t, res.clone())?;
 
             Ok(TypeWrapper::Concrete(AbsType::arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::Str())),
@@ -1526,7 +1604,7 @@ mod tests {
     use crate::parser;
 
     fn type_check_no_import(rt: &RichTerm) -> Result<Types, TypecheckError> {
-        type_check(rt, &mut DummyResolver {})
+        type_check_in_env(rt, &Environment::new(), &mut DummyResolver {})
     }
 
     fn parse_and_typecheck(s: &str) -> Result<Types, TypecheckError> {
@@ -1963,8 +2041,18 @@ mod tests {
             )
         };
 
-        type_check(&mk_import("good", &mut resolver).unwrap(), &mut resolver).unwrap();
-        type_check(&mk_import("proxy", &mut resolver).unwrap(), &mut resolver).unwrap_err();
+        type_check_in_env(
+            &mk_import("good", &mut resolver).unwrap(),
+            &Environment::new(),
+            &mut resolver,
+        )
+        .unwrap();
+        type_check_in_env(
+            &mk_import("proxy", &mut resolver).unwrap(),
+            &Environment::new(),
+            &mut resolver,
+        )
+        .unwrap_err();
     }
 
     #[test]
