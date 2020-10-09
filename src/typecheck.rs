@@ -387,6 +387,7 @@ pub fn type_check(
         resolver,
         table: &mut UnifTable::new(),
         constr: &mut RowConstr::new(),
+        names: &mut HashMap::new(),
     };
     let ty = TypeWrapper::Ptr(new_var(state.table));
     let global = Envs::mk_global(global_eval_env, state.table);
