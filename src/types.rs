@@ -170,7 +170,7 @@ impl Types {
     /// [terms](../term/enum.Term.html).
     pub fn contract_open(
         &self,
-        mut h: HashMap<Ident, RichTerm>,
+        mut h: HashMap<Ident, (RichTerm, RichTerm)>,
         pol: bool,
         sy: &mut i32,
     ) -> RichTerm {
@@ -190,7 +190,7 @@ impl Types {
             ),
             AbsType::Flat(ref t) => t.clone(),
             AbsType::Var(ref i) => {
-                let rt = h
+                let (rt, _) = h
                     .get(i)
                     .unwrap_or_else(|| panic!("Unbound type variable {:?}", i));
                 rt.clone()
@@ -204,13 +204,21 @@ impl Types {
                     Term::Bool(pol).into(),
                 );
 
-                h.insert(i.clone(), inst_var);
+                let inst_tail = RichTerm::app(
+                    RichTerm::app(
+                        RichTerm::var("forall_tail".to_string()),
+                        Term::Sym(*sy).into(),
+                    ),
+                    Term::Bool(pol).into(),
+                );
+
+                h.insert(i.clone(), (inst_var, inst_tail));
                 *sy += 1;
                 t.contract_open(h, pol, sy)
             }
             AbsType::RowEmpty() | AbsType::RowExtend(_, _, _) => RichTerm::var("fail".to_string()),
             AbsType::Enum(ref r) => {
-                fn form(ty: Types, h: HashMap<Ident, RichTerm>) -> RichTerm {
+                fn form(ty: Types, h: HashMap<Ident, (RichTerm, RichTerm)>) -> RichTerm {
                     match ty.0 {
                         AbsType::RowEmpty() => RichTerm::var("fail".to_string()),
                         AbsType::RowExtend(_, Some(_), _) => {
@@ -238,7 +246,7 @@ impl Types {
                             )
                         }
                         AbsType::Var(ref i) => {
-                            let rt = h
+                            let (rt, _) = h
                                 .get(i)
                                 .unwrap_or_else(|| panic!("Unbound type variable {:?}", i));
                             rt.clone()
@@ -249,7 +257,45 @@ impl Types {
 
                 form(*r.clone(), h)
             }
-            AbsType::StaticRecord(_) => panic!("TODO implement"),
+            AbsType::StaticRecord(ref ty) => {
+                fn form(
+                    sy: &mut i32,
+                    pol: bool,
+                    ty: &Types,
+                    h: HashMap<Ident, (RichTerm, RichTerm)>,
+                ) -> RichTerm {
+                    match &ty.0 {
+                        AbsType::RowEmpty() => RichTerm::var(String::from("empty_tail")),
+                        AbsType::Dyn() => RichTerm::var(String::from("dyn_tail")),
+                        AbsType::Var(id) => {
+                            let (_, rt) = h
+                                .get(&id)
+                                .unwrap_or_else(|| panic!("Unbound type variable {:?}", id));
+                            rt.clone()
+                        }
+                        AbsType::RowExtend(id, Some(ty), rest) => {
+                            let cont = form(sy, pol, rest.as_ref(), h.clone());
+                            let row_contr = ty.contract_open(h, pol, sy);
+                            RichTerm::app(
+                                RichTerm::app(
+                                    RichTerm::app(
+                                        RichTerm::var(String::from("rec_extend")),
+                                        Term::Str(format!("{}", id)).into(),
+                                    ),
+                                    row_contr,
+                                ),
+                                cont,
+                            )
+                        }
+                        not_row => panic!("It should be a row :/ {}", Types(not_row.clone())),
+                    }
+                }
+
+                RichTerm::app(
+                    Term::Var(Ident(String::from("record"))).into(),
+                    form(sy, pol, ty, h),
+                )
+            }
             AbsType::DynRecord(_) => panic!("TODO implement"),
         }
     }
