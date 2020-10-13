@@ -58,7 +58,10 @@ pub mod ty_path {
 
     /// Determine if the path has only `Field` components.
     pub fn is_only_field(p: &Path) -> bool {
-        p.iter().all(|elt| match *elt { Elem::Field(_) => true, _ => false })
+        p.iter().all(|elt| match *elt {
+            Elem::Field(_) => true,
+            _ => false,
+        })
     }
 
     /// Return the position span encoded by a type path in the string representation of the
