@@ -418,6 +418,8 @@ pub enum UnaryOp<CapturedTerm> {
     IsFun(),
     /// Test if a term is a list.
     IsList(),
+    /// Test if a term is a record.
+    IsRec(),
 
     /// Raise a blame, which stops the execution and prints an error according to the label argument.
     Blame(),
@@ -527,6 +529,7 @@ impl<Ty> UnaryOp<Ty> {
             IsStr() => IsStr(),
             IsFun() => IsFun(),
             IsList() => IsList(),
+            IsRec() => IsRec(),
 
             Blame() => Blame(),
 
