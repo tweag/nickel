@@ -1295,14 +1295,12 @@ pub fn get_uop_type(
             ))
         }
         // Dyn -> Dyn
-        UnaryOp::ChangePolarity()
-        | UnaryOp::GoDom()
-        | UnaryOp::GoCodom()
-        | UnaryOp::GoField(_)
-        | UnaryOp::Tag(_) => TypeWrapper::Concrete(AbsType::arrow(
-            Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
-            Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
-        )),
+        UnaryOp::ChangePolarity() | UnaryOp::GoDom() | UnaryOp::GoCodom() | UnaryOp::Tag(_) => {
+            TypeWrapper::Concrete(AbsType::arrow(
+                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
+                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
+            ))
+        }
         // Sym -> Dyn -> Dyn
         UnaryOp::Wrap() => TypeWrapper::Concrete(AbsType::arrow(
             Box::new(TypeWrapper::Concrete(AbsType::Sym())),
@@ -1426,17 +1424,22 @@ pub fn get_bop_type(
                 ))),
             ))),
         ))),
-        BinaryOp::Eq() =>
         // forall a b. a -> b -> Bool
-        {
-            Ok(TypeWrapper::Concrete(AbsType::arrow(
+        BinaryOp::Eq() => Ok(TypeWrapper::Concrete(AbsType::arrow(
+            Box::new(TypeWrapper::Ptr(new_var(state.table))),
+            Box::new(TypeWrapper::Concrete(AbsType::arrow(
                 Box::new(TypeWrapper::Ptr(new_var(state.table))),
-                Box::new(TypeWrapper::Concrete(AbsType::arrow(
-                    Box::new(TypeWrapper::Ptr(new_var(state.table))),
-                    Box::new(TypeWrapper::Concrete(AbsType::Bool())),
-                ))),
-            )))
-        }
+                Box::new(TypeWrapper::Concrete(AbsType::Bool())),
+            ))),
+        ))),
+        // Str -> Dyn -> Dyn
+        BinaryOp::GoField() => Ok(TypeWrapper::Concrete(AbsType::arrow(
+            Box::new(TypeWrapper::Concrete(AbsType::Str())),
+            Box::new(TypeWrapper::Concrete(AbsType::arrow(
+                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
+                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
+            ))),
+        ))),
         // forall a. Str -> { _ : a} -> a
         BinaryOp::DynAccess() => {
             let res = TypeWrapper::Ptr(new_var(state.table));

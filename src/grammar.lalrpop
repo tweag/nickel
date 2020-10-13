@@ -168,7 +168,6 @@ UOp: UnaryOp<RichTerm> = {
     "polarity" => UnaryOp::Pol(),
     "goDom" => UnaryOp::GoDom(),
     "goCodom" => UnaryOp::GoCodom(),
-    "goField" <Ident> => UnaryOp::GoField(<>),
     "tag" <s: Str> => UnaryOp::Tag(s),
     "wrap" => UnaryOp::Wrap(),
     "embed" <Ident> => UnaryOp::Embed(<>),
@@ -208,6 +207,7 @@ BOpIn: BinaryOp<RichTerm> = {
 
 BOpPre: BinaryOp<RichTerm> = {
     "unwrap" => BinaryOp::Unwrap(),
+    "goField" => BinaryOp::GoField(),
     "hasField" => BinaryOp::HasField(),
     "map" => BinaryOp::ListMap(),
     "elemAt" => BinaryOp::ListElemAt(),
