@@ -273,6 +273,19 @@ fn process_unary_operation(
                 ))
             }
         }
+        UnaryOp::GoField(ident) => {
+            if let Term::Lbl(mut l) = *t {
+                l.path.push(ty_path::Elem::Field(ident));
+                Ok(Closure::atomic_closure(Term::Lbl(l).into()))
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Label"),
+                    String::from("goField"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
+            }
+        }
         UnaryOp::Tag(s) => {
             if let Term::Lbl(mut l) = *t {
                 l.tag = String::from(&s);
