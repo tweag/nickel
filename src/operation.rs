@@ -720,26 +720,26 @@ fn process_binary_operation(
             }
         }
         BinaryOp::DynRemove() => {
-            if let Term::Record(mut static_map) = *t1 {
-                if let Term::Str(id) = *t2 {
+            if let Term::Str(id) = *t1 {
+                if let Term::Record(mut static_map) = *t2 {
                     match static_map.remove(&Ident(id.clone())) {
                         None => Err(EvalError::FieldMissing(
                             format!("{}", id),
                             String::from("(-$)"),
                             RichTerm {
                                 term: Box::new(Term::Record(static_map)),
-                                pos: pos1,
+                                pos: pos2,
                             },
                             pos_op,
                         )),
                         Some(_) => Ok(Closure {
                             body: Term::Record(static_map).into(),
-                            env: env1,
+                            env: env2,
                         }),
                     }
                 } else {
                     Err(EvalError::TypeError(
-                        String::from("Str"),
+                        String::from("Record"),
                         String::from("-$"),
                         snd_pos,
                         RichTerm {
@@ -750,7 +750,7 @@ fn process_binary_operation(
                 }
             } else {
                 Err(EvalError::TypeError(
-                    String::from("Record"),
+                    String::from("Str"),
                     String::from("-$"),
                     fst_pos,
                     RichTerm {
