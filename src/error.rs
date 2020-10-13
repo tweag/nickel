@@ -417,8 +417,7 @@ fn report_ty_path(l: &label::Label, files: &mut Files<String>) -> (Label<FileId>
 
     let (msg, notes) = if l.path.is_empty() {
         (String::from("expected type"), Vec::new())
-    }
-    else if ty_path::is_only_field(&l.path) {
+    } else if ty_path::is_only_field(&l.path) {
         (String::from("expected field type"), Vec::new())
     }
     // If the path is only composed of codomains, polarity is necessarily true and the cause of the
@@ -438,8 +437,18 @@ fn report_ty_path(l: &label::Label, files: &mut Files<String>) -> (Label<FileId>
             ],
         )
     } else {
-        let last_ign_fld = l.path.iter().filter(|elt| match *elt { ty_path::Elem::Field(_) => false, _ => true}).last().unwrap();
-        match last_ign_fld {
+        // We ignore `Field` elements of the path, since it do not impact polarity, and keep only
+        // "higher-order" elements to customize error messages.
+        let last = l
+            .path
+            .iter()
+            .filter(|elt| match *elt {
+                ty_path::Elem::Field(_) => false,
+                _ => true,
+            })
+            .last()
+            .unwrap();
+        match last {
                 ty_path::Elem::Domain if l.polarity => {
                     (String::from("expected type of an argument of an inner call"),
                     vec![
