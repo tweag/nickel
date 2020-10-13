@@ -1295,12 +1295,14 @@ pub fn get_uop_type(
             ))
         }
         // Dyn -> Dyn
-        UnaryOp::ChangePolarity() | UnaryOp::GoDom() | UnaryOp::GoCodom() | UnaryOp::Tag(_) => {
-            TypeWrapper::Concrete(AbsType::arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
-                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
-            ))
-        }
+        UnaryOp::ChangePolarity()
+        | UnaryOp::GoDom()
+        | UnaryOp::GoCodom()
+        | UnaryOp::GoField(_)
+        | UnaryOp::Tag(_) => TypeWrapper::Concrete(AbsType::arrow(
+            Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
+            Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
+        )),
         // Sym -> Dyn -> Dyn
         UnaryOp::Wrap() => TypeWrapper::Concrete(AbsType::arrow(
             Box::new(TypeWrapper::Concrete(AbsType::Sym())),
