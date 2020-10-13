@@ -475,6 +475,10 @@ pub enum UnaryOp<CapturedTerm> {
     ///
     /// See `GoDom`.
     GoCodom(),
+    /// Go to a specific field in the type path of a label.
+    ///
+    /// See `GoDom`.
+    GoField(Ident),
     /// Append text to the tag of a label.
     Tag(String),
 
@@ -541,6 +545,7 @@ impl<Ty> UnaryOp<Ty> {
             Pol() => Pol(),
             GoDom() => GoDom(),
             GoCodom() => GoCodom(),
+            GoField(id) => GoField(id),
             Tag(s) => Tag(s),
 
             Wrap() => Wrap(),
