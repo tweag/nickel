@@ -31,15 +31,22 @@ pub mod ty_path {
     //!
     //! Paths are encoded as lists of elements, specifying if the next step is either to go to the **domain**
     //! or to the **codomain**.
+    //!
+    //! Type paths have been extended later with record fields: when reporting a blame error on a
+    //! record type, one faces the same situation as with higher-order functions: the precise cause
+    //! of an error can correspond to a small subtype of the original record type. Thus, type path
+    //! elements can now also consist of a record field, indicating that the path leading to the
+    //! subtype of interest goes through a record via a particular field.
 
     use super::{AbsType, Types};
     use crate::identifier::Ident;
 
     /// An element of a path type.
-    #[derive(Debug, Clone, Copy, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub enum Elem {
         Domain,
         Codomain,
+        Field(Ident),
     }
 
     pub type Path = Vec<Elem>;
@@ -53,7 +60,7 @@ pub mod ty_path {
     /// corresponding type.
     ///
     /// Used in the error reporting of blame errors (see
-    /// [report_ty_paht](../error/fn.report_ty_path.html)).
+    /// [report_ty_path](../error/fn.report_ty_path.html)).
     ///
     /// # Example
     ///
@@ -119,6 +126,35 @@ pub mod ty_path {
                         // The `4` corresponds to the arrow " -> ".
                         let offset = (paren_offset * 2) + 4 + dom_end + forall_offset;
                         (codom_start + offset, codom_end + offset)
+                    }
+                    _ => panic!(),
+                }
+            }
+            (AbsType::StaticRecord(rows), Some(Elem::Field(ident))) => {
+                // initial "{ {| "
+                let mut start_offset = 5;
+                // middle ": " between the field name and the type
+                let id_offset = 2;
+                // The ", " between two fields
+                let end_offset = 2;
+
+                let mut row = &rows.0;
+                loop {
+                    match row {
+                        AbsType::RowExtend(id, Some(ty), _) if id == ident => {
+                            let (sub_start, sub_end) = span(path_it, ty);
+                            let full_offset = start_offset + format!("{}", id).len() + id_offset;
+                            break (full_offset + sub_start, full_offset + sub_end);
+                        }
+                        AbsType::RowExtend(id, Some(ty), tail) => {
+                            // The last +1 is for the
+                            start_offset += format!("{}", id).len()
+                                + id_offset
+                                + format!("{}", ty).len()
+                                + end_offset;
+                            row = &tail.0;
+                        }
+                        _ => panic!(),
                     }
                 }
             }
