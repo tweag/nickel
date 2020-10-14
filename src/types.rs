@@ -296,7 +296,10 @@ impl Types {
                     form(sy, pol, ty, h),
                 )
             }
-            AbsType::DynRecord(_) => panic!("TODO implement"),
+            AbsType::DynRecord(ref ty) => RichTerm::app(
+                RichTerm::var(String::from("dyn_record")),
+                ty.contract_open(h, pol, sy),
+            ),
         }
     }
 
