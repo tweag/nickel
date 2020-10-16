@@ -11,6 +11,7 @@ use crate::eval::Environment;
 use crate::eval::{CallStack, Closure};
 use crate::identifier::Ident;
 use crate::label::ty_path;
+use crate::merge;
 use crate::merge::merge;
 use crate::position::RawSpan;
 use crate::stack::Stack;
@@ -620,32 +621,74 @@ fn process_binary_operation(
                 ))
             }
         }
-        BinaryOp::EqBool() => {
-            if let Term::Bool(b1) = *t1 {
-                if let Term::Bool(b2) = *t2 {
-                    Ok(Closure::atomic_closure(Term::Bool(b1 == b2).into()))
-                } else {
-                    Err(EvalError::TypeError(
-                        String::from("Bool"),
-                        String::from("== [bool], 2nd argument"),
-                        snd_pos,
-                        RichTerm {
-                            term: t2,
-                            pos: pos2,
-                        },
-                    ))
-                }
-            } else {
-                Err(EvalError::TypeError(
-                    String::from("Bool"),
-                    String::from("== [bool], 1st argument"),
-                    fst_pos,
-                    RichTerm {
-                        term: t1,
-                        pos: pos1,
-                    },
-                ))
+        BinaryOp::Eq() => {
+            /// Take an iterator of pairs of RichTerm, the common environments of all left
+            /// components of these pairs and all right components, the final environment,
+            /// and build a Term which evaluates to `Bool(true)` if and only if all the pairs are
+            /// equals
+            fn eq_all<T>(
+                it: T,
+                env1: &Environment,
+                env2: &Environment,
+                env: &mut Environment,
+            ) -> Term
+            where
+                T: Iterator<Item = (RichTerm, RichTerm)>,
+            {
+                let subeqs: Vec<RichTerm> = it
+                    .map(|(t1, t2)| {
+                        let t1_var = t1.closurize(env, env1.clone());
+                        let t2_var = t2.closurize(env, env2.clone());
+                        Term::Op2(BinaryOp::Eq(), t1_var, t2_var).into()
+                    })
+                    .collect();
+                // lists.all (fun x => x) subeqs
+                Term::App(
+                    RichTerm::app(
+                        // lists.all
+                        Term::Op1(
+                            UnaryOp::StaticAccess(Ident::from("all")),
+                            RichTerm::var(String::from("lists")),
+                        )
+                        .into(),
+                        // identity (we should probably have it in the stdlib at some point)
+                        RichTerm::fun(String::from("x"), RichTerm::var(String::from("x"))),
+                    ),
+                    Term::List(subeqs).into(),
+                )
             }
+
+            let mut env: Environment = HashMap::new();
+            let res = match (*t1, *t2) {
+                (Term::Bool(b1), Term::Bool(b2)) => Term::Bool(b1 == b2),
+                (Term::Num(n1), Term::Num(n2)) => Term::Bool(n1 == n2),
+                (Term::Str(s1), Term::Str(s2)) => Term::Bool(s1 == s2),
+                (Term::Lbl(l1), Term::Lbl(l2)) => Term::Bool(l1 == l2),
+                (Term::Sym(s1), Term::Sym(s2)) => Term::Bool(s1 == s2),
+                (Term::Record(m1), Term::Record(m2)) => {
+                    let (left, center, right) = merge::hashmap::split(m1, m2);
+
+                    if !left.is_empty() || !right.is_empty() {
+                        Term::Bool(false)
+                    } else {
+                        eq_all(
+                            center.into_iter().map(|(_, (t1, t2))| (t1, t2)),
+                            &env1,
+                            &env2,
+                            &mut env,
+                        )
+                    }
+                }
+                (Term::List(l1), Term::List(l2)) if l1.len() == l2.len() => {
+                    eq_all(l1.into_iter().zip(l2.into_iter()), &env1, &env2, &mut env)
+                }
+                (_, _) => Term::Bool(false),
+            };
+
+            Ok(Closure {
+                body: res.into(),
+                env,
+            })
         }
         BinaryOp::DynAccess() => {
             if let Term::Str(id) = *t1 {

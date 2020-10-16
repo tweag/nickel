@@ -1417,14 +1417,17 @@ pub fn get_bop_type(
                 ))),
             ))),
         ))),
-        // Bool -> Bool -> Bool
-        BinaryOp::EqBool() => Ok(TypeWrapper::Concrete(AbsType::arrow(
-            Box::new(TypeWrapper::Concrete(AbsType::Bool())),
-            Box::new(TypeWrapper::Concrete(AbsType::arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::Bool())),
-                Box::new(TypeWrapper::Concrete(AbsType::Bool())),
-            ))),
-        ))),
+        BinaryOp::Eq() =>
+        // forall a b. a -> b -> Bool
+        {
+            Ok(TypeWrapper::Concrete(AbsType::arrow(
+                Box::new(TypeWrapper::Ptr(new_var(state.table))),
+                Box::new(TypeWrapper::Concrete(AbsType::arrow(
+                    Box::new(TypeWrapper::Ptr(new_var(state.table))),
+                    Box::new(TypeWrapper::Concrete(AbsType::Bool())),
+                ))),
+            )))
+        }
         // forall a. Str -> { _ : a} -> a
         BinaryOp::DynAccess() => {
             let res = TypeWrapper::Ptr(new_var(state.table));

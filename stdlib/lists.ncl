@@ -4,7 +4,7 @@
 
     foldl = Promise(forall a. (a -> Dyn -> a) -> a -> List -> a,
       fun f fst l =>
-        if isZero (length l) then
+        if length l == 0 then
           fst
         else
           let rest = foldl f fst (tail l) in
@@ -12,7 +12,7 @@
 
     fold = Promise(forall a. (Dyn -> a -> a) -> List -> a -> a,
       fun f l fst =>
-        if isZero (length l) then
+        if length l == 0 then
           fst
         else
           f (head l) (fold f (tail l) fst));
