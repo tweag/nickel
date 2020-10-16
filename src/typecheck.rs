@@ -528,7 +528,7 @@ fn type_check_(
                 .get(&x)
                 .ok_or_else(|| TypecheckError::UnboundIdentifier(x.clone(), pos.clone()))?;
 
-            let instantiated = instantiate_foralls_with(state, x_ty.clone(), TypeWrapper::Ptr);
+            let instantiated = instantiate_foralls(state, x_ty.clone(), ForallInst::Ptr);
             unify(state, strict, ty, instantiated)
                 .map_err(|err| err.to_typecheck_err(state, &rt.pos))
         }
@@ -629,7 +629,7 @@ fn type_check_(
         Term::Promise(ty2, _, t) => {
             let tyw2 = to_typewrapper(ty2.clone());
 
-            let instantiated = instantiate_foralls_with(state, tyw2, TypeWrapper::Constant);
+            let instantiated = instantiate_foralls(state, tyw2, ForallInst::Constant);
 
             unify(state, strict, ty.clone(), to_typewrapper(ty2.clone()))
                 .map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
@@ -694,6 +694,7 @@ pub enum TypeWrapper {
 }
 
 impl TypeWrapper {
+    /// Substitute all the occurrences of a type variable for a typewrapper.
     pub fn subst(self, id: Ident, to: TypeWrapper) -> TypeWrapper {
         use self::TypeWrapper::*;
         match self {
@@ -1166,26 +1167,46 @@ mod reporting {
     }
 }
 
-/// Instantiate the type variables which are quantified in head position with type constants.
+/// Type of the parameter controlling instantiation of foralls.
 ///
-/// For example, `forall a. forall b. a -> (forall c. b -> c)` is transformed to `cst1 -> (forall
-/// c. cst2 -> c)` where `cst1` and `cst2` are fresh type constants.  This is used when
-/// typechecking `forall`s: all quantified type variables in head position are replaced by rigid
-/// type constants, and the term is then typechecked normally. As these constants cannot be unified
-/// with anything, this forces all the occurrences of a type variable to be the same type.
-fn instantiate_foralls_with<F>(state: &mut State, mut ty: TypeWrapper, f: F) -> TypeWrapper
-where
-    F: Fn(usize) -> TypeWrapper,
-{
+/// See [`instantiate_foralls`](./fn.instantiate_foralls.html).
+#[derive(Copy, Clone, Debug, PartialEq)]
+enum ForallInst {
+    Constant,
+    Ptr,
+}
+
+/// Instantiate the type variables which are quantified in head position with either unification
+/// variable or type constants.
+///
+/// For example, if `inst` is `Constant`, `forall a. forall b. a -> (forall c. b -> c)` is
+/// transformed to `cst1 -> (forall c. cst2 -> c)` where `cst1` and `cst2` are fresh type
+/// constants.  This is used when typechecking `forall`s: all quantified type variables in head
+/// position are replaced by rigid type constants, and the term is then typechecked normally. As
+/// these constants cannot be unified with anything, this forces all the occurrences of a type
+/// variable to be the same type.
+///
+/// # Parameters
+/// - `state`: the unification state
+/// - `ty`: the polymorphic type to instantiate
+/// - `inst`: the type of instantiation, either by a type constant or by a unification variable
+fn instantiate_foralls(state: &mut State, mut ty: TypeWrapper, inst: ForallInst) -> TypeWrapper {
     if let TypeWrapper::Ptr(p) = ty {
         ty = get_root(state.table, p);
     }
 
     while let TypeWrapper::Concrete(AbsType::Forall(id, forall_ty)) = ty {
         let fresh_id = new_var(state.table);
-        let var = f(fresh_id);
+        let var = match inst {
+            ForallInst::Constant => TypeWrapper::Constant(fresh_id),
+            ForallInst::Ptr => TypeWrapper::Ptr(fresh_id),
+        };
         state.names.insert(fresh_id, id.clone());
         ty = forall_ty.subst(id, var);
+
+        if inst == ForallInst::Ptr {
+            constraint_var(state, &ty, fresh_id)
+        }
     }
 
     ty
@@ -1574,6 +1595,65 @@ fn constraint(state: &mut State, x: TypeWrapper, id: Ident) -> Result<(), RowUni
             }
         }
         other => Err(RowUnifError::IllformedRow(other)),
+    }
+}
+
+/// Add required row constraints for a freshly instantiated type variable.
+///
+/// Wrapper around [`constraint_var`](./fn.constraint_var_.html) starting with an empty constraint
+/// set.
+fn constraint_var(state: &mut State, tyw: &TypeWrapper, p: usize) {
+    constraint_var_(state, HashSet::new(), tyw, p);
+}
+
+/// Add required row constraints for a freshly instantiated type variable.
+///
+/// When instantiating a quantified type variable, some row constraints may apply to the newly
+/// created unification variable. For example, if we instantiate `forall a. {x: Num | a} -> Num` by
+/// replacing `a` with a unification variable `Ptr(p)`, the unification variable must not be
+/// constrained: it must not be unified with another row type containing a declaration for the
+/// field `x`.
+///
+/// # Preconditions
+///
+/// `constraint_var_` assumes that `p` is a fresh unification variable, and in particular
+/// - `get_root(state.table, p) == p`
+/// - `state.constr.get(&p) == None`
+fn constraint_var_(state: &mut State, mut constr: HashSet<Ident>, tyw: &TypeWrapper, p: usize) {
+    match tyw {
+        TypeWrapper::Ptr(u) if p == *u && !constr.is_empty() => {
+            state.constr.insert(p, constr);
+        }
+        TypeWrapper::Ptr(u) => match get_root(state.table, *u) {
+            TypeWrapper::Ptr(_) => (),
+            tyw => constraint_var_(state, constr, &tyw, p),
+        },
+        TypeWrapper::Concrete(ty) => match ty {
+            AbsType::Arrow(tyw1, tyw2) => {
+                constraint_var_(state, HashSet::new(), tyw1.as_ref(), p);
+                constraint_var_(state, HashSet::new(), tyw2.as_ref(), p);
+            }
+            AbsType::Forall(_, tyw) => constraint_var_(state, HashSet::new(), tyw.as_ref(), p),
+            AbsType::Dyn()
+            | AbsType::Num()
+            | AbsType::Bool()
+            | AbsType::Str()
+            | AbsType::Sym()
+            | AbsType::Flat(_)
+            | AbsType::RowEmpty()
+            | AbsType::Var(_)
+            | AbsType::List() => (),
+            AbsType::RowExtend(id, tyw, rest) => {
+                constr.insert(id.clone());
+                tyw.iter()
+                    .for_each(|tyw| constraint_var_(state, HashSet::new(), tyw.as_ref(), p));
+                constraint_var_(state, constr, rest, p)
+            }
+            AbsType::Enum(row) => constraint_var_(state, constr, row, p),
+            AbsType::StaticRecord(row) => constraint_var_(state, constr, row, p),
+            AbsType::DynRecord(tyw) => constraint_var_(state, constr, tyw, p),
+        },
+        TypeWrapper::Constant(_) => (),
     }
 }
 
