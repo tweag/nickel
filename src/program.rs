@@ -1253,4 +1253,15 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         assert_npeq!("{ a = \"a\"; b = true }", "{ a = true; b = \"a\"}");
         assert_npeq!("{ a = { a = true } }", "{a = { a = { a = true } } }");
     }
+
+    #[test]
+    fn fields_of() {
+        assert_peq!("fieldsOf {}", "[]");
+        assert_peq!("fieldsOf {a = 1; b = 2; c = 3}", "[\"a\", \"b\", \"c\"]");
+        assert_peq!("fieldsOf {aAa = 1; Zzz = 2;}", "[\"Zzz\", \"aAa\"]");
+        assert_peq!(
+            "fieldsOf {foo = {bar = 0}; baz = Default(true)}",
+            "[\"baz\", \"foo\"]"
+        );
+    }
 }
