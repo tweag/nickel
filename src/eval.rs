@@ -712,7 +712,7 @@ mod tests {
                     "x",
                     "lib",
                     Term::Op1(
-                        UnaryOp::StaticAccess(Ident(String::from("f"))),
+                        UnaryOp::StaticAccess(Ident::from("f")),
                         RichTerm::var(String::from("x"))
                     )
                     .into(),
@@ -733,7 +733,7 @@ mod tests {
                     "x",
                     "cycle",
                     Term::Op1(
-                        UnaryOp::StaticAccess(Ident(String::from("b"))),
+                        UnaryOp::StaticAccess(Ident::from("b")),
                         RichTerm::var(String::from("x"))
                     )
                     .into(),
@@ -819,15 +819,12 @@ mod tests {
             body: Term::Num(1.0).into(),
             env: HashMap::new(),
         }));
-        global_env.insert(
-            Ident(String::from("g")),
-            (Rc::clone(&thunk), IdentKind::Let()),
-        );
+        global_env.insert(Ident::from("g"), (Rc::clone(&thunk), IdentKind::Let()));
 
         let t = RichTerm::let_in(
             "x",
             Term::Num(2.0).into(),
-            Term::Var(Ident(String::from("x"))).into(),
+            Term::Var(Ident::from("x")).into(),
         );
         assert_eq!(
             eval(t, global_env.clone(), &mut resolver),
@@ -837,7 +834,7 @@ mod tests {
         let t = RichTerm::let_in(
             "x",
             Term::Num(2.0).into(),
-            Term::Var(Ident(String::from("g"))).into(),
+            Term::Var(Ident::from("g")).into(),
         );
         assert_eq!(
             eval(t, global_env.clone(), &mut resolver),
@@ -848,7 +845,7 @@ mod tests {
         let t = RichTerm::let_in(
             "g",
             Term::Num(2.0).into(),
-            Term::Var(Ident(String::from("g"))).into(),
+            Term::Var(Ident::from("g")).into(),
         );
         assert_eq!(
             eval(t, global_env.clone(), &mut resolver),

@@ -478,7 +478,7 @@ mod tests {
         //Check that the record does not contain extra keys
         if let Ok(Term::Record(ref mut m)) = term {
             for (i, t) in res {
-                m.remove(&Ident(String::from(i)))
+                m.remove(&Ident::from(i))
                     .unwrap_or_else(|| panic!(format!("Could not find field {} in result", i)));
 
                 let proj = format!("({}).{}", s, i);

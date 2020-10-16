@@ -10,3 +10,12 @@ impl fmt::Display for Ident {
         write!(f, "{}", ident)
     }
 }
+
+impl<F> From<F> for Ident
+where
+    String: From<F>,
+{
+    fn from(val: F) -> Self {
+        Ident(String::from(val))
+    }
+}
