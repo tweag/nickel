@@ -934,24 +934,19 @@ pub fn unify_(
                 TypeWrapper::Concrete(ty2),
             )),
         },
-        (TypeWrapper::Ptr(r1), TypeWrapper::Ptr(r2)) => {
-            if r1 != r2 {
-                let mut r1_constr = state.constr.remove(&r1).unwrap_or_default();
-                let mut r2_constr = state.constr.remove(&r2).unwrap_or_default();
-                state
-                    .constr
-                    .insert(r1, r1_constr.drain().chain(r2_constr.drain()).collect());
-
-                state.table.insert(r1, Some(TypeWrapper::Ptr(r2)));
-            }
+        // The two following cases are not merged just to correctly distinguish between the
+        // expected type (first component of the tuple) and the inferred type when reporting a row
+        // unification error.
+        (TypeWrapper::Ptr(p), tyw) => {
+            constr_unify(state.constr, p, &tyw)
+                .map_err(|err| err.to_unif_err(TypeWrapper::Ptr(p), tyw.clone()))?;
+            state.table.insert(p, Some(tyw));
             Ok(())
         }
-
-        (TypeWrapper::Ptr(p), s @ TypeWrapper::Concrete(_))
-        | (TypeWrapper::Ptr(p), s @ TypeWrapper::Constant(_))
-        | (s @ TypeWrapper::Concrete(_), TypeWrapper::Ptr(p))
-        | (s @ TypeWrapper::Constant(_), TypeWrapper::Ptr(p)) => {
-            state.table.insert(p, Some(s));
+        (tyw, TypeWrapper::Ptr(p)) => {
+            constr_unify(state.constr, p, &tyw)
+                .map_err(|err| err.to_unif_err(tyw.clone(), TypeWrapper::Ptr(p)))?;
+            state.table.insert(p, Some(tyw));
             Ok(())
         }
         (TypeWrapper::Constant(i1), TypeWrapper::Constant(i2)) if i1 == i2 => Ok(()),
@@ -1000,10 +995,14 @@ pub fn unify_rows(
                 // cases, so we delegate the work. However it returns `UnifError` instead of
                 // `RowUnifError`, hence we have a bit of wrapping and unwrapping to do. Note that
                 // since we are unifying types with a constant or a unification variable somewhere,
-                // the only unification errors that should be possible are related to constants.
+                // the only unification errors that should be possible are related to constants or
+                // row constraints.
                 (t1_tail, t2_tail) => unify_(state, t1_tail, t2_tail).map_err(|err| match err {
                     UnifError::ConstMismatch(c1, c2) => RowUnifError::ConstMismatch(c1, c2),
                     UnifError::WithConst(c1, tyw) => RowUnifError::WithConst(c1, tyw),
+                    UnifError::RowConflict(id, tyw_opt, _, _) => {
+                        RowUnifError::UnsatConstr(id, tyw_opt)
+                    }
                     err => panic!(
                         "typechecker::unify_rows(): unexpected error while unifying row tails {:?}",
                         err
@@ -1205,7 +1204,7 @@ fn instantiate_foralls(state: &mut State, mut ty: TypeWrapper, inst: ForallInst)
         ty = forall_ty.subst(id, var);
 
         if inst == ForallInst::Ptr {
-            constraint_var(state, &ty, fresh_id)
+            constrain_var(state, &ty, fresh_id)
         }
     }
 
@@ -1598,62 +1597,112 @@ fn constraint(state: &mut State, x: TypeWrapper, id: Ident) -> Result<(), RowUni
     }
 }
 
-/// Add required row constraints for a freshly instantiated type variable.
+/// Add row constraints on a freshly instantiated type variable.
 ///
-/// Wrapper around [`constraint_var`](./fn.constraint_var_.html) starting with an empty constraint
-/// set.
-fn constraint_var(state: &mut State, tyw: &TypeWrapper, p: usize) {
-    constraint_var_(state, HashSet::new(), tyw, p);
-}
-
-/// Add required row constraints for a freshly instantiated type variable.
-///
-/// When instantiating a quantified type variable, some row constraints may apply to the newly
-/// created unification variable. For example, if we instantiate `forall a. {x: Num | a} -> Num` by
-/// replacing `a` with a unification variable `Ptr(p)`, the unification variable must not be
-/// constrained: it must not be unified with another row type containing a declaration for the
-/// field `x`.
+/// When instantiating a quantified type variable with a unification variable, row constraints may
+/// apply. For example, if we instantiate `forall a. {x: Num | a} -> Num` by replacing `a` with a
+/// unification variable `Ptr(p)`, this unification variable requires a constraint to avoid being
+/// unified with a row type containing another declaration for the field `x`.
 ///
 /// # Preconditions
 ///
-/// `constraint_var_` assumes that `p` is a fresh unification variable, and in particular
+/// Because `constraint_var` should be called on a fresh unification variable `p`, the following is
+/// asusmed:
 /// - `get_root(state.table, p) == p`
 /// - `state.constr.get(&p) == None`
-fn constraint_var_(state: &mut State, mut constr: HashSet<Ident>, tyw: &TypeWrapper, p: usize) {
-    match tyw {
-        TypeWrapper::Ptr(u) if p == *u && !constr.is_empty() => {
-            state.constr.insert(p, constr);
+fn constrain_var(state: &mut State, tyw: &TypeWrapper, p: usize) {
+    fn constrain_var_(state: &mut State, mut constr: HashSet<Ident>, tyw: &TypeWrapper, p: usize) {
+        match tyw {
+            TypeWrapper::Ptr(u) if p == *u && !constr.is_empty() => {
+                state.constr.insert(p, constr);
+            }
+            TypeWrapper::Ptr(u) => match get_root(state.table, *u) {
+                TypeWrapper::Ptr(_) => (),
+                tyw => constrain_var_(state, constr, &tyw, p),
+            },
+            TypeWrapper::Concrete(ty) => match ty {
+                AbsType::Arrow(tyw1, tyw2) => {
+                    constrain_var_(state, HashSet::new(), tyw1.as_ref(), p);
+                    constrain_var_(state, HashSet::new(), tyw2.as_ref(), p);
+                }
+                AbsType::Forall(_, tyw) => constrain_var_(state, HashSet::new(), tyw.as_ref(), p),
+                AbsType::Dyn()
+                | AbsType::Num()
+                | AbsType::Bool()
+                | AbsType::Str()
+                | AbsType::Sym()
+                | AbsType::Flat(_)
+                | AbsType::RowEmpty()
+                | AbsType::Var(_)
+                | AbsType::List() => (),
+                AbsType::RowExtend(id, tyw, rest) => {
+                    constr.insert(id.clone());
+                    tyw.iter()
+                        .for_each(|tyw| constrain_var_(state, HashSet::new(), tyw.as_ref(), p));
+                    constrain_var_(state, constr, rest, p)
+                }
+                AbsType::Enum(row) => constrain_var_(state, constr, row, p),
+                AbsType::StaticRecord(row) => constrain_var_(state, constr, row, p),
+                AbsType::DynRecord(tyw) => constrain_var_(state, constr, tyw, p),
+            },
+            TypeWrapper::Constant(_) => (),
         }
-        TypeWrapper::Ptr(u) => match get_root(state.table, *u) {
-            TypeWrapper::Ptr(_) => (),
-            tyw => constraint_var_(state, constr, &tyw, p),
-        },
-        TypeWrapper::Concrete(ty) => match ty {
-            AbsType::Arrow(tyw1, tyw2) => {
-                constraint_var_(state, HashSet::new(), tyw1.as_ref(), p);
-                constraint_var_(state, HashSet::new(), tyw2.as_ref(), p);
+    }
+
+    constrain_var_(state, HashSet::new(), tyw, p);
+}
+
+
+
+/// Check that unifying a variable with a type doesn't violate row constraints, and update the row
+/// constraints of the unified type accordingly if needed.
+///
+/// When a unification variable `Ptr(p)` is unified with a type `tyw` which is either a row type or
+/// another unification variable which could be later unified with a row type itself, the following
+/// operations are required:
+///
+/// 1. If `tyw` is a concrete row, check that it doesn't contain an identifier which is forbidden
+///    by a row constraint on `p`.
+/// 2. If the type is either a unification variable or a row type ending with a unification
+///    variable `Ptr(u)`, we must add the constraints of `p` to the constraints of `u`. Indeed,
+///    take the following situation: `p` appears in a row type `{a: Num | p}`, hence has a
+///    constraint that it must not contain a field `a`. Then `p` is unified with a fresh type
+///    variable `u`. If we don't constrain `u`, `u` could be unified later with a row type `{a :
+///    Str}` which violates the original constraint on `p`. Thus, when unifying `p` with `u` or a
+///    row ending with `u`, `u` must inherit all the constraints of `p`.
+///
+/// If `tyw` is neither a row or a unification variable, `constr_unify` immediately returns `Ok(())`.
+pub fn constr_unify(
+    constr: &mut RowConstr,
+    p: usize,
+    mut tyw: &TypeWrapper,
+) -> Result<(), RowUnifError> {
+    if let Some(p_constr) = constr.remove(&p) {
+        loop {
+            match tyw {
+                TypeWrapper::Concrete(AbsType::RowExtend(ident, ty, _))
+                    if p_constr.contains(ident) =>
+                {
+                    break Err(RowUnifError::UnsatConstr(
+                        ident.clone(),
+                        ty.as_ref().map(|boxed| (**boxed).clone()),
+                    ))
+                }
+                TypeWrapper::Concrete(AbsType::RowExtend(_, _, tail)) => tyw = tail,
+                TypeWrapper::Ptr(u) if *u != p => {
+                    if let Some(u_constr) = constr.get_mut(&u) {
+                        u_constr.extend(p_constr.into_iter());
+                    } else {
+                        constr.insert(*u, p_constr);
+                    }
+
+                    break Ok(());
+                }
+                _ => break Ok(()),
             }
-            AbsType::Forall(_, tyw) => constraint_var_(state, HashSet::new(), tyw.as_ref(), p),
-            AbsType::Dyn()
-            | AbsType::Num()
-            | AbsType::Bool()
-            | AbsType::Str()
-            | AbsType::Sym()
-            | AbsType::Flat(_)
-            | AbsType::RowEmpty()
-            | AbsType::Var(_)
-            | AbsType::List() => (),
-            AbsType::RowExtend(id, tyw, rest) => {
-                constr.insert(id.clone());
-                tyw.iter()
-                    .for_each(|tyw| constraint_var_(state, HashSet::new(), tyw.as_ref(), p));
-                constraint_var_(state, constr, rest, p)
-            }
-            AbsType::Enum(row) => constraint_var_(state, constr, row, p),
-            AbsType::StaticRecord(row) => constraint_var_(state, constr, row, p),
-            AbsType::DynRecord(tyw) => constraint_var_(state, constr, tyw, p),
-        },
-        TypeWrapper::Constant(_) => (),
+        }
+    } else {
+        Ok(())
     }
 }
 
