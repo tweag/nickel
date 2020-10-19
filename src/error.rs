@@ -1014,11 +1014,11 @@ impl ToDiagnostic<FileId> for TypecheckError {
             TypecheckError::RowConflict(Ident(ident), conflict, _expd, _actual, span_opt) => {
 vec![
                     Diagnostic::error()
-                        .with_message("Incompatible rows declaration in a type")
+                        .with_message("Multiple rows declaration")
                         .with_labels(mk_expr_label(span_opt))
                         .with_notes(vec![
                         format!("The type of the expression was inferred to have the row `{}: {}`", ident, conflict.as_ref().cloned().unwrap()),
-                        String::from("But this type appears inside another bigger row type which already had a declaration for the field `{}`"),
+                        format!("But this type appears inside another row type, which already has a declaration for the field `{}`", ident),
                         String::from("A type cannot have two conflicting declaration for the same row")
                     ])]
 
