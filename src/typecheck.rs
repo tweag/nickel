@@ -1652,8 +1652,6 @@ fn constrain_var(state: &mut State, tyw: &TypeWrapper, p: usize) {
     constrain_var_(state, HashSet::new(), tyw, p);
 }
 
-
-
 /// Check that unifying a variable with a type doesn't violate row constraints, and update the row
 /// constraints of the unified type accordingly if needed.
 ///
@@ -1742,10 +1740,9 @@ mod tests {
     fn parse_and_typecheck(s: &str) -> Result<Types, TypecheckError> {
         let id = Files::new().add("<test>", s);
 
-        if let Ok(p) = parser::grammar::TermParser::new().parse(id, lexer::Lexer::new(&s)) {
-            type_check_no_import(&p)
-        } else {
-            panic!("Couldn't parse {}", s)
+        match parser::grammar::TermParser::new().parse(id, lexer::Lexer::new(&s)) {
+            Ok(p) => type_check_no_import(&p),
+            Err(e) => panic!("Couldn't parse {}: {:?}", s, e),
         }
     }
 
@@ -2219,5 +2216,45 @@ mod tests {
         parse_and_typecheck(
             "Promise({ {| f : Num -> Num, |} }, { f = fun x => if isZero x then false else 1 + (f (x + (-1)))})"
         ).unwrap_err();
+    }
+
+    /// Regression test following [#144](https://github.com/tweag/nickel/issues/144). Check that
+    /// polymorphic type variables appearing inside a row type are correctly constrained at
+    /// instantiation.
+    #[test]
+    fn polymorphic_row_constraints() {
+        // Assert that the result of evaluation is either directly a `RowConflict` error, or a
+        // `RowConflict` wrapped in an `ArrowTypeMismatch`.
+        fn assert_row_conflict(res: Result<Types, TypecheckError>) {
+            assert!(match res.unwrap_err() {
+                TypecheckError::RowConflict(_, _, _, _, _) => true,
+                TypecheckError::ArrowTypeMismatch(_, _, _, err_boxed, _) => {
+                    if let TypecheckError::RowConflict(_, _, _, _, _) = err_boxed.as_ref() {
+                        true
+                    } else {
+                        false
+                    }
+                }
+                _ => true,
+            })
+        }
+
+        let mut res = parse_and_typecheck(
+            "let extend = Assume(forall c. ({{| | c} }) -> ({ {| a: Str, | c } }), 0) in
+           Promise(Num, let bad = extend {a = 1;} in 0)",
+        );
+        assert_row_conflict(res);
+
+        parse_and_typecheck(
+            "let extend = Assume(forall c. ({{| | c} }) -> ({ {| a: Str, | c } }), 0) in
+           let remove = Assume(forall c. ({{|a: Str, | c} }) -> ({ {| | c } }), 0) in
+           Promise(Num, let good = remove (extend {}) in 0)",
+        )
+        .unwrap();
+        res = parse_and_typecheck(
+            "let remove = Assume(forall c. ({{|a: Str, | c} }) -> ({ {| | c } }), 0) in
+           Promise(Num, let bad = remove (remove {a = \"a\"}) in 0)",
+        );
+        assert_row_conflict(res);
     }
 }
