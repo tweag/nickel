@@ -1176,7 +1176,7 @@ enum ForallInst {
 }
 
 /// Instantiate the type variables which are quantified in head position with either unification
-/// variable or type constants.
+/// variables or type constants.
 ///
 /// For example, if `inst` is `Constant`, `forall a. forall b. a -> (forall c. b -> c)` is
 /// transformed to `cst1 -> (forall c. cst2 -> c)` where `cst1` and `cst2` are fresh type
@@ -1607,7 +1607,7 @@ fn constraint(state: &mut State, x: TypeWrapper, id: Ident) -> Result<(), RowUni
 /// # Preconditions
 ///
 /// Because `constraint_var` should be called on a fresh unification variable `p`, the following is
-/// asusmed:
+/// assumed:
 /// - `get_root(state.table, p) == p`
 /// - `state.constr.get(&p) == None`
 fn constrain_var(state: &mut State, tyw: &TypeWrapper, p: usize) {
@@ -1669,7 +1669,7 @@ fn constrain_var(state: &mut State, tyw: &TypeWrapper, p: usize) {
 ///    Str}` which violates the original constraint on `p`. Thus, when unifying `p` with `u` or a
 ///    row ending with `u`, `u` must inherit all the constraints of `p`.
 ///
-/// If `tyw` is neither a row or a unification variable, `constr_unify` immediately returns `Ok(())`.
+/// If `tyw` is neither a row nor a unification variable, `constr_unify` immediately returns `Ok(())`.
 pub fn constr_unify(
     constr: &mut RowConstr,
     p: usize,
