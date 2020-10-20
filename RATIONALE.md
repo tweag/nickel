@@ -225,7 +225,7 @@ let filterOptional
 in  filterOptional
 ```
 
-As stated in the [reusable vs specific](#reusable-versus-specific-code] section,
+As stated in the [reusable vs specific](#reusable-versus-specific-code) section,
 configuration-specific code does not benefit much from static typing. Functions
 used as temporary values in such code, for example the anonymous function in
 `map (fun x => x ++ ".jpg") baseFilesList`, require type annotations in Dhall.
