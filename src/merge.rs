@@ -53,6 +53,7 @@
 //! evaluates to a contract check, that is an `Assume(..., t)`
 use crate::error::EvalError;
 use crate::eval::{Closure, Environment};
+use crate::label::Label;
 use crate::position::RawSpan;
 use crate::term::{BinaryOp, RichTerm, Term};
 use crate::transformations::Closurizable;
@@ -186,13 +187,17 @@ pub fn merge(
             let body = Term::ContractWithDefault(ty_closure, lbl, body).into();
             Ok(Closure { body, env })
         }
-        (Term::ContractWithDefault(ty1, lbl1, t1), Term::ContractWithDefault(ty2, _lbl2, t2)) => {
-            //FIXME: The choice of lbl1 is totally arbitrary, to please the compiler. Ideally
-            //labels should also be mergeable, but the current PR is already getting too big, and
-            //this is left for future work
+        // Composing two contracts creates a new one which applies these contracts successively.
+        // This composite contract requires its own label, but its components already had their
+        // own, hence they will ignore this label. We make the arbitrary choice of passing the
+        // first label `lbl1` in each such situation: because it will be ignored, it doesn't
+        // matter.
+        (Term::ContractWithDefault(ty1, lbl1, t1), Term::ContractWithDefault(ty2, lbl2, t2)) => {
             let Closure { body, mut env } = mk_merge_closure(t1, env1.clone(), t2, env2.clone());
             let body = Term::ContractWithDefault(
-                merge_types_closure(&mut env, ty1, env1, ty2, env2),
+                merge_types_closure(&mut env, ty1, lbl1.clone(), env1, ty2, lbl2, env2),
+                // Using lbl1 here is arbitrary, but it will be ignored anyway, and we need to
+                // provide one.
                 lbl1,
                 body,
             )
@@ -231,31 +236,27 @@ pub fn merge(
             Ok(Closure { body, env: env1 })
         }
         // Contracts merging
-        (Term::Contract(ty1, lbl1), Term::Contract(ty2, _lbl2)) => {
-            //FIXME: The choice of lbl1 is totally arbitrary, to please the compiler. Ideally
-            //labels should also be mergeable, but the current PR is already getting too big, and
-            //this is left for future work
+        (Term::Contract(ty1, lbl1), Term::Contract(ty2, lbl2)) => {
             let mut env = HashMap::new();
-            let body =
-                Term::Contract(merge_types_closure(&mut env, ty1, env1, ty2, env2), lbl1).into();
+            let body = Term::Contract(
+                merge_types_closure(&mut env, ty1, lbl1.clone(), env1, ty2, lbl2, env2),
+                lbl1,
+            )
+            .into();
             Ok(Closure { body, env })
         }
-        (Term::Contract(ty1, lbl1), Term::ContractWithDefault(ty2, _lbl2, t)) => {
-            //FIXME: The choice of lbl1 is totally arbitrary, to please the compiler. Ideally
-            //labels should also be mergeable, but the current PR is already getting too big, and
-            //this is left for future work
+        (Term::Contract(ty1, lbl1), Term::ContractWithDefault(ty2, lbl2, t)) => {
             let mut env = HashMap::new();
-            let ty_closure = merge_types_closure(&mut env, ty1, env1, ty2, env2.clone());
+            let ty_closure =
+                merge_types_closure(&mut env, ty1, lbl1.clone(), env1, ty2, lbl2, env2.clone());
             let t_closure = t.closurize(&mut env, env2);
             let body = Term::ContractWithDefault(ty_closure, lbl1, t_closure).into();
             Ok(Closure { body, env })
         }
-        (Term::ContractWithDefault(ty1, lbl1, t), Term::Contract(ty2, _lbl2)) => {
-            //FIXME: The choice of lbl1 is totally arbitrary, to please the compiler. Ideally
-            //labels should also be mergeable, but the current PR is already getting too big, and
-            //this is left for future work
+        (Term::ContractWithDefault(ty1, lbl1, t), Term::Contract(ty2, lbl2)) => {
             let mut env = HashMap::new();
-            let ty_closure = merge_types_closure(&mut env, ty1, env1.clone(), ty2, env2);
+            let ty_closure =
+                merge_types_closure(&mut env, ty1, lbl1.clone(), env1.clone(), ty2, lbl2, env2);
             let t_closure = t.closurize(&mut env, env1);
             let body = Term::ContractWithDefault(ty_closure, lbl1, t_closure).into();
             Ok(Closure { body, env })
@@ -348,23 +349,26 @@ fn mk_merge_closure(t1: RichTerm, env1: Environment, t2: RichTerm, env2: Environ
     Closure { body, env }
 }
 
-/// Compose the contract (as terms) `c1` and `c2`, that is construct the term `fun l x => c1 l (c2
-/// l x)`, and return the corresponding type.
+/// Compose two contracts, given as terms.
+///
+/// To compose contracts `c1` and `c2`, construct the term `fun _l x => c1 l1 (c2 l2 x)`, where
+/// `l1` and `l2` are the original respective labels of `c1` and `c2`, and return the corresponding
+/// flat type.
 ///
 /// This type corresponds to the intersection of the types associated to `c1` and `c2`.  This
 /// function is not correct for the intersection of higher-order contracts, which is way more
 /// involved (see the [corresponding
 /// notes](https://github.com/tweag/nickel/blob/master/notes/intersection-and-union-types.md) in
 /// the repository).
-fn merge_contracts(c1: RichTerm, c2: RichTerm) -> Types {
+fn merge_contracts(c1: RichTerm, l1: Label, c2: RichTerm, l2: Label) -> Types {
     let contract = RichTerm::fun(
-        "l".to_string(),
+        "_l".to_string(),
         RichTerm::fun(
             "x".to_string(),
             RichTerm::app(
-                RichTerm::app(c1, RichTerm::var("l".to_string())),
+                RichTerm::app(c1, Term::Lbl(l1).into()),
                 RichTerm::app(
-                    RichTerm::app(c2, RichTerm::var("l".to_string())),
+                    RichTerm::app(c2, Term::Lbl(l2).into()),
                     RichTerm::var("x".to_string()),
                 ),
             ),
@@ -381,13 +385,15 @@ fn merge_contracts(c1: RichTerm, c2: RichTerm) -> Types {
 fn merge_types_closure(
     env: &mut Environment,
     ty1: Types,
+    l1: Label,
     env1: Environment,
     ty2: Types,
+    l2: Label,
     env2: Environment,
 ) -> Types {
     let c1 = ty1.contract().closurize(env, env1);
     let c2 = ty2.contract().closurize(env, env2);
-    merge_contracts(c1, c2)
+    merge_contracts(c1, l1, c2, l2)
 }
 
 pub mod hashmap {
