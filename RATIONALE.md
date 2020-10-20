@@ -286,8 +286,8 @@ code and has no principled approach to data validation.
 ### Summary
 | Language | Typing                        | Recursion | Evaluation | Side-effects                                      |
 |----------|-------------------------------|-----------|------------|---------------------------------------------------|
-| Nickel   | Gradual (dynamic + static)    | No        | Lazy       | Yes (constrained)                                 |
-| Starlark | Dynamic                       | Yes       | Strict     | No                                                |
+| Nickel   | Gradual (dynamic + static)    | Yes       | Lazy       | Yes (constrained)                                 |
+| Starlark | Dynamic                       | No        | Strict     | No                                                |
 | Dhall    | Static (requires annotations) | No        | Lazy       | No                                                |
 | CUE      | Static (everything is a type) | No        | ?          | No, but allowed in the separated scripting layer  |
 | Jsonnet  | Dynamic                       | Yes       | Lazy       | No                                                |
