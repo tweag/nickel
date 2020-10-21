@@ -128,7 +128,6 @@ fn applications() {
 
 #[test]
 fn variables() {
-    assert!(parse("x1-x-").is_some()); // TODO controversial
     assert!(parse("x1_x_").is_some());
 }
 

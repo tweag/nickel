@@ -276,7 +276,7 @@ fn is_ident_start(chr: char, look_ahead: Option<char>) -> bool {
 
 fn is_ident_char(chr: char) -> bool {
     match chr {
-        '0'..='9' | '-' | '_' => true,
+        '0'..='9' | '_' => true,
         chr => is_ident_start(chr, None),
     }
 }
