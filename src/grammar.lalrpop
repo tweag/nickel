@@ -56,6 +56,7 @@ RecordOperand: RichTerm = {
 RecordOperationChain: RichTerm = {
     <t: SpTerm<RecordOperand>> "." <id: Ident> => RichTerm::new(Term::Op1(UnaryOp::StaticAccess(id), t)),
     <t: SpTerm<RecordOperand>> ".$" <t_id: SpTerm<Atom>> => RichTerm::new(Term::Op2(BinaryOp::DynAccess(), t_id, t)),
+    <t: SpTerm<RecordOperand>> "-$" <t_id: SpTerm<Atom>> => RichTerm::new(Term::Op2(BinaryOp::DynRemove(), t_id, t)),
     <r: SpTerm<RecordOperand>> "$[" <id: SpTerm<Term>> "=" <t: SpTerm<Term>> "]" =>
         RichTerm::new(Term::Op2(BinaryOp::DynExtend(t), id, r)),
 };
@@ -202,7 +203,6 @@ BOpIn: BinaryOp<RichTerm> = {
             op => panic!("Unkown operator {}", op)
         }
     },
-    "-$" => BinaryOp::DynRemove(),
 };
 
 BOpPre: BinaryOp<RichTerm> = {
