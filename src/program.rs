@@ -1142,6 +1142,10 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
             r#""nested ${ {str = {a = "braces"}.a}.str } !""#,
             "nested braces !",
         );
+        assert_eval_str(
+            r#"let x = "world" in "Hello, ${x}! Welcome in ${let y = "universe" in "the ${x}-${y}"}""#,
+            "Hello, world! Welcome in the world-universe",
+        );
 
         match eval_string(r#""bad type ${1 + 1}""#) {
             Err(Error::EvalError(EvalError::TypeError(_, _, _, _))) => (),

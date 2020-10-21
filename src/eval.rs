@@ -260,21 +260,23 @@ where
                     body: Term::Str(String::new()).into(),
                     env: HashMap::new(),
                 },
-                Some(StrChunk::Literal(s)) => Closure {
-                    body: Term::Op1(
-                        UnaryOp::ChunksConcat(String::new(), chunks),
-                        Term::Str(s).into(),
-                    )
-                    .into(),
-                    env: HashMap::new(),
-                },
-                Some(StrChunk::Expr(e)) => Closure {
-                    body: RichTerm {
-                        term: Box::new(Term::Op1(UnaryOp::ChunksConcat(String::new(), chunks), e)),
-                        pos,
-                    },
-                    env,
-                },
+                Some(chunk) => {
+                    let arg = match chunk {
+                        StrChunk::Literal(s) => Term::Str(s).into(),
+                        StrChunk::Expr(e) => e,
+                    };
+
+                    Closure {
+                        body: RichTerm {
+                            term: Box::new(Term::Op1(
+                                UnaryOp::ChunksConcat(String::new(), chunks),
+                                arg,
+                            )),
+                            pos,
+                        },
+                        env,
+                    }
+                }
             },
             Term::Promise(ty, l, t) | Term::Assume(ty, l, t) => {
                 stack.push_arg(

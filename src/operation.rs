@@ -474,12 +474,16 @@ fn process_unary_operation(
         UnaryOp::ChunksConcat(mut acc, mut tail) => {
             if let Term::Str(s) = *t {
                 acc.push_str(&s);
-                if let Some(next) = tail.pop() {
-                    let arg = match next {
-                        StrChunk::Literal(s) => Closure::atomic_closure(Term::Str(s).into()),
-                        StrChunk::Expr(e) => e,
-                    };
-                    let arg_closure = arg.body.closurize(&mut env, arg.env);
+                let mut next_opt = tail.pop();
+
+                // Pop consecutive string literals to find the next expression to evaluate
+                while let Some(StrChunk::Literal(s)) = next_opt {
+                    acc.push_str(&s);
+                    next_opt = tail.pop();
+                }
+
+                if let Some(StrChunk::Expr(e)) = next_opt {
+                    let arg_closure = e.body.closurize(&mut env, e.env);
                     let tail_closure = tail
                         .into_iter()
                         .map(|chunk| match chunk {
