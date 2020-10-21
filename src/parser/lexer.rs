@@ -107,6 +107,7 @@ pub enum Token<'input> {
     Head,
     Tail,
     Length,
+    FieldsOf,
 
     Unwrap,
     HasField,
@@ -219,6 +220,7 @@ impl<'input> fmt::Display for Token<'input> {
             Token::Head => "head",
             Token::Tail => "tail",
             Token::Length => "length",
+            Token::FieldsOf => "fieldsOf",
 
             Token::HasField => "hasField",
             Token::Map => "map",
@@ -559,6 +561,7 @@ impl<'input> Lexer<'input> {
             "map" => Token::Map,
             "elemAt" => Token::ElemAt,
             "merge" => Token::Merge,
+            "fieldsOf" => Token::FieldsOf,
             ty @ "Dyn" | ty @ "Num" | ty @ "Bool" | ty @ "Str" | ty @ "List" => Token::Type(ty),
             id => Token::Identifier(id),
         };

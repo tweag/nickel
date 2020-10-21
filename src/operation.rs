@@ -328,6 +328,21 @@ fn process_unary_operation(
                 ))
             }
         }
+        UnaryOp::FieldsOf() => {
+            if let Term::Record(map) = *t {
+                let mut fields: Vec<String> = map.keys().map(|Ident(id)| id.clone()).collect();
+                fields.sort();
+                let terms = fields.into_iter().map(|id| Term::Str(id).into()).collect();
+                Ok(Closure::atomic_closure(Term::List(terms).into()))
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Record"),
+                    String::from("fieldsOf"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
+            }
+        }
         UnaryOp::MapRec(f) => {
             if let Term::Record(rec) = *t {
                 let f_as_var = f.body.closurize(&mut env, f.env);

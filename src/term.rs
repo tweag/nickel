@@ -500,6 +500,9 @@ pub enum UnaryOp<CapturedTerm> {
     /// string accumulator, the remaining chunks to be evaluated, and is applied to the current
     /// chunk being evaluated.
     ChunksConcat(String, Vec<StrChunk<CapturedTerm>>),
+
+    /// Return the names of the fields of a record as a string list.
+    FieldsOf(),
 }
 
 impl<Ty> UnaryOp<Ty> {
@@ -559,6 +562,8 @@ impl<Ty> UnaryOp<Ty> {
                     })
                     .collect(),
             ),
+
+            FieldsOf() => FieldsOf(),
         }
     }
 }

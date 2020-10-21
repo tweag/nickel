@@ -181,6 +181,7 @@ UOp: UnaryOp<RichTerm> = {
     "head" => UnaryOp::ListHead(),
     "tail" => UnaryOp::ListTail(),
     "length" => UnaryOp::ListLength(),
+    "fieldsOf" => UnaryOp::FieldsOf(),
 };
 
 switch_case: (Ident, RichTerm) = {
@@ -354,6 +355,7 @@ extern {
         "head" => Token::Head,
         "tail" => Token::Tail,
         "length" => Token::Length,
+        "fieldsOf" => Token::FieldsOf,
 
         "hasField" => Token::HasField,
         "map" => Token::Map,
