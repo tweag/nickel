@@ -1225,7 +1225,7 @@ pub fn get_uop_type(
         | UnaryOp::IsStr()
         | UnaryOp::IsFun()
         | UnaryOp::IsList()
-        | UnaryOp::IsRec() => {
+        | UnaryOp::IsRecord() => {
             let inp = TypeWrapper::Ptr(new_var(state.table));
 
             TypeWrapper::Concrete(AbsType::arrow(
