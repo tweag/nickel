@@ -266,7 +266,6 @@ impl Types {
                 ) -> RichTerm {
                     match &ty.0 {
                         AbsType::RowEmpty() => RichTerm::var(String::from("empty_tail")),
-                        AbsType::Dyn() => RichTerm::var(String::from("dyn_tail")),
                         AbsType::Var(id) => {
                             let (_, rt) = h
                                 .get(&id)
@@ -279,7 +278,7 @@ impl Types {
                             RichTerm::app(
                                 RichTerm::app(
                                     RichTerm::app(
-                                        RichTerm::var(String::from("rec_extend")),
+                                        RichTerm::var(String::from("record_extend")),
                                         Term::Str(format!("{}", id)).into(),
                                     ),
                                     row_contr,
@@ -287,7 +286,10 @@ impl Types {
                                 cont,
                             )
                         }
-                        not_row => panic!("It should be a row :/ {}", Types(not_row.clone())),
+                        ty => panic!(
+                            "types::contract_open(): invalid row type {}",
+                            Types(ty.clone())
+                        ),
                     }
                 }
 

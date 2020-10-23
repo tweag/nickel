@@ -42,32 +42,30 @@
         else
             blame (tag "not a record" l);
 
-    rec_extend = fun field contr cont acc l t =>
+    record_extend = fun field contr cont acc l t =>
         if hasField field t then
             let acc = acc$[field = contr (goField field l) (t.$field)] in
-            let rest = t -$ field in
-            cont acc l rest
+            let t = t -$ field in
+            cont acc l t
         else
             blame (tag "missing field" l);
 
-    forall_tail = fun sy pol acc l rest =>
+    forall_tail = fun sy pol acc l t =>
         let magic_fld = "_%wrapped" in
         if pol == (polarity l) then
-            if rest == {} then
-                if hasField magic_fld t then
+            if hasField magic_fld t then
+                if (t -$ magic_fld) == {} then
                     let fail = blame (tag "polymorphic tail mismatch" l) in
                     let inner = unwrap sy (t.$magic_fld) fail in
-                    merge t inner
+                    merge acc inner
                 else
-                    blame (tag "missing polymorphic part" l)
+                    blame (tag "extra field" l)
             else
-                blame (tag "extra field" l)
+                blame (tag "missing polymorphic part" l)
         else
-            t$[magic_fld = wrap sy rest];
+            acc$[magic_fld = wrap sy t];
 
-    dyn_tail = fun acc l rest => merge acc rest;
-
-    empty_tail = fun acc l rest =>
-        if rest == {} then t
-        else blame (tag "extra field" l)
+    empty_tail = fun acc l t =>
+        if t == {} then acc
+        else blame (tag "extra field" l);
 }
