@@ -715,6 +715,34 @@ fn process_binary_operation(
                 env,
             })
         }
+        BinaryOp::GoField() => {
+            if let Term::Str(field) = *t1 {
+                if let Term::Lbl(mut l) = *t2 {
+                    l.path.push(ty_path::Elem::Field(Ident(field)));
+                    Ok(Closure::atomic_closure(Term::Lbl(l).into()))
+                } else {
+                    Err(EvalError::TypeError(
+                        String::from("Label"),
+                        String::from("goField, 2nd argument"),
+                        snd_pos,
+                        RichTerm {
+                            term: t2,
+                            pos: pos2,
+                        },
+                    ))
+                }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("goField, 1st argument"),
+                    fst_pos,
+                    RichTerm {
+                        term: t1,
+                        pos: pos1,
+                    },
+                ))
+            }
+        }
         BinaryOp::DynAccess() => {
             if let Term::Str(id) = *t1 {
                 if let Term::Record(mut static_map) = *t2 {

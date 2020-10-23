@@ -584,6 +584,10 @@ pub enum BinaryOp<CapturedTerm> {
     Unwrap(),
     /// Polymorphic equality.
     Eq(),
+    /// Go to a specific field in the type path of a label.
+    ///
+    /// See `GoDom`.
+    GoField(),
     /// Extend a record with a dynamic field.
     ///
     /// Dynamic means that the field name may be an expression instead of a statically known
@@ -615,6 +619,7 @@ impl<Ty> BinaryOp<Ty> {
             Plus() => Plus(),
             PlusStr() => PlusStr(),
             Unwrap() => Unwrap(),
+            GoField() => GoField(),
             Eq() => Eq(),
             DynRemove() => DynRemove(),
             DynAccess() => DynAccess(),
