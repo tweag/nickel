@@ -437,8 +437,8 @@ fn report_ty_path(l: &label::Label, files: &mut Files<String>) -> (Label<FileId>
             ],
         )
     } else {
-        // We ignore `Field` elements of the path, since it do not impact polarity, and keep only
-        // "higher-order" elements to customize error messages.
+        // We ignore the `Field` elements of the path, since they do not impact polarity, and only
+        // consider "higher-order" elements to customize error messages.
         let last = l
             .path
             .iter()

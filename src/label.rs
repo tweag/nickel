@@ -32,11 +32,11 @@ pub mod ty_path {
     //! Paths are encoded as lists of elements, specifying if the next step is either to go to the **domain**
     //! or to the **codomain**.
     //!
-    //! Type paths have been extended later with record fields: when reporting a blame error on a
-    //! record type, one faces the same situation as with higher-order functions: the precise cause
-    //! of an error can correspond to a small subtype of the original record type. Thus, type path
-    //! elements can now also consist of a record field, indicating that the path leading to the
-    //! subtype of interest goes through a record via a particular field.
+    //! When reporting a blame error on a record type, one faces the same situation as with
+    //! higher-order functions: the precise cause of an error can correspond to a small subtype of
+    //! the original record type. Type path elements can thus also consist of a record field,
+    //! indicating that the path leading to the subtype of interest goes through a record via a
+    //! particular field.
 
     use super::{AbsType, Types};
     use crate::identifier::Ident;
