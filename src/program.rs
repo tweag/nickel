@@ -1398,6 +1398,14 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         assert_peq!(format!("{} ({} {{}})", remv, extd), "{}");
         assert_peq!(format!("{} ({} {{foo = 2}})", extd, remv), "{foo = 1}");
 
+        assert_peq!("
+            let f = Assume(
+                forall a .(forall b. { {| f: a -> a, arg: a | b} } -> a),
+                fun rec => rec.f (rec.arg)) in
+            f { f = fun x => x ++ \" suffix\"; arg = \"blouh\" }",
+            "\"blouh suffix\"");
+
+        
         let bad_cst = "let f = Assume(forall a. {{| |a}} -> {{| |a}}, fun x => {a=1}) in f";
         let bad_acc = "let f = Assume(forall a. {{| |a}} -> {{| |a}}, fun x => seq (x.a) x) in f";
         let bad_extd =
@@ -1409,5 +1417,15 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         eval_string(&format!("{} {{a=1}}", bad_acc)).unwrap_err();
         eval_string(&format!("{} {{foo=1}}", bad_extd)).unwrap_err();
         eval_string(&format!("{} {{}}", bad_rmv)).unwrap_err();
+        eval_string("
+            let f = Assume(
+                forall a. ((forall b. ({ {| a: Num, b: Num, |b} }) 
+                    -> ({{| a: Num, |b} }))
+                    -> { {| a: Num | a}}
+                    -> { {| |a} }),
+                fun f rec => (f rec) -$ \"a\" -$ \"b\") in
+            f (fun x => x) {a = 1; b = bool; c = 3}").unwrap_err();
+
+
     }
 }
