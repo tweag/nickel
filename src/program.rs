@@ -622,7 +622,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
     #[test]
     fn safe_id() {
         let res = eval_string(
-            "let id = Assume(forall a . a -> a, fun x => x) in
+            "let id = Assume(forall a. a -> a, fun x => x) in
             id false",
         );
         assert_eq!(Ok(Term::Bool(false)), res);
@@ -631,7 +631,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
     #[test]
     fn id_fail() {
         let res = eval_string(
-            "let id = Assume(forall a . a -> a, fun x => false) in
+            "let id = Assume(forall a. a -> a, fun x => false) in
             id false",
         );
         if let Ok(_) = res {
@@ -642,7 +642,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
     #[test]
     fn safe_higher_order() {
         let res = eval_string(
-            "let to_bool = Assume(forall a . (a -> Bool) -> a -> Bool,
+            "let to_bool = Assume(forall a. (a -> Bool) -> a -> Bool,
             fun f => fun x => f x) in
             to_bool (fun x => true) 4 ",
         );
@@ -652,7 +652,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
     #[test]
     fn apply_twice() {
         let res = eval_string(
-            "let twice = Assume(forall a . (a -> a) -> a -> a,
+            "let twice = Assume(forall a. (a -> a) -> a -> a,
             fun f => fun x => f (f x)) in
             twice (fun x => x + 1) 3",
         );
@@ -670,33 +670,33 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
 
     #[test]
     fn enum_simple() {
-        let res = eval_string("Promise(< (| foo, bar, |) >, `foo)");
+        let res = eval_string("Promise(<foo, bar>, `foo)");
         assert_eq!(res, Ok(Term::Enum(Ident("foo".to_string()))));
 
-        let res = eval_string("Promise(forall r. (< (| foo, bar, | r ) >), `bar)");
+        let res = eval_string("Promise(forall r. <foo, bar | r>, `bar)");
         assert_eq!(res, Ok(Term::Enum(Ident("bar".to_string()))));
 
-        eval_string("Promise(< (| foo, bar, |) >, `far)").unwrap_err();
+        eval_string("Promise(<foo, bar>, `far)").unwrap_err();
     }
 
     #[test]
     fn enum_complex() {
         let res = eval_string(
-            "let f = Promise(forall r. < (| foo, bar, | r ) > -> Num,
+            "let f = Promise(forall r. <foo, bar | r> -> Num,
         fun x => switch { foo => 1, bar => 2, _ => 3, } x) in
         f `bar",
         );
         assert_eq!(res, Ok(Term::Num(2.)));
 
         let res = eval_string(
-            "let f = Promise(forall r. < (| foo, bar, | r ) > -> Num,
+            "let f = Promise(forall r. <foo, bar | r> -> Num,
         fun x => switch { foo => 1, bar => 2, _ => 3, } x) in
         f `boo",
         );
         assert_eq!(res, Ok(Term::Num(3.)));
 
         eval_string(
-            "let f = Promise(< (| foo, bar, |) > -> Num,
+            "let f = Promise(<foo, bar> -> Num,
         fun x => switch { foo => 1, bar => 2, } x) in
         f `boo",
         )
@@ -714,7 +714,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
 
     #[test]
     fn row_types() {
-        eval_string("Assume((| |), 123)").unwrap_err();
+        eval_string("Assume(< >, 123)").unwrap_err();
     }
 
     #[test]
