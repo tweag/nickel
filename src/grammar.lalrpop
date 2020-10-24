@@ -251,8 +251,8 @@ subType : Types = {
     <Ident> => Types(AbsType::Var(<>)),
     "#" <SpTerm<RichTerm>> => Types(AbsType::Flat(<>)),
     "(" <Types> ")" => <>,
-    "(" "|" <r:(<Ident> ",")*> <last: (<Ident>)?>"|" <rest: Ident?> ")" =>
-        r.into_iter()
+    "<" <rows:(<Ident> ",")*> <last: (<Ident>)?> <tail: ("|" <Ident>)?> ">" => {
+        let ty = rows.into_iter()
             .chain(last.into_iter())
             // As we build row types as a linked list via a fold on the original
             // iterator, the order of identifiers is reversed. This not a big deal
@@ -261,16 +261,19 @@ subType : Types = {
             .rev()
             .fold(
                 Types(
-                    match rest {
+                    match tail {
                         Some(id) => AbsType::Var(id),
                         None => AbsType::RowEmpty(),
                     }
                 ),
                 |t, i| Types(AbsType::RowExtend(i, None, Box::new(t)))
-            ),
-    "{" "|" <r:(<Ident> ":" <Types> ",")*> <last:(<Ident> ":" <Types>)?> "|"
-    <rest: Ident?> "}" =>
-        r.into_iter()
+            );
+        Types(AbsType::Enum(Box::new(ty)))
+    },
+    "{" <rows:(<Ident> ":" <Types> ",")*>
+        <last:(<Ident> ":" <Types>)?>
+        <tail: ("|" <Ident>)?> "}" => {
+        let ty = rows.into_iter()
             .chain(last.into_iter())
             // As we build row types as a linked list via a fold on the original
             // iterator, the order of identifiers is reversed. This not a big deal
@@ -279,7 +282,7 @@ subType : Types = {
             .rev()
             .fold(
                 Types(
-                    match rest {
+                    match tail {
                         Some(id) => AbsType::Var(id),
                         None => AbsType::RowEmpty(),
                     }
@@ -288,9 +291,9 @@ subType : Types = {
                     let (i, ty) = i_ty;
                     Types(AbsType::RowExtend(i, Some(Box::new(ty)), Box::new(t)))
                 }
-            ),
-    "<" <subType> ">" => Types(AbsType::Enum(Box::new(<>))),
-    "{" <subType> "}" => Types(AbsType::StaticRecord(Box::new(<>))),
+            );
+        Types(AbsType::StaticRecord(Box::new(ty)))
+    },
     "{" "_" ":" <Types> "}" => Types(AbsType::DynRecord(Box::new(<>))),
 };
 
