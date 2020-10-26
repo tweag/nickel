@@ -175,8 +175,6 @@ pub enum ParseError {
     /// A closing brace '}' does not match an opening brace '{'. This rather precise error is detected by the because
     /// of how interpolated strings are lexed.
     UnmatchedCloseBrace(RawSpan),
-    /// An alphanumeric character directly follows a number literal.
-    NumThenIdent(RawSpan),
     /// Invalid escape sequence in a string literal.
     InvalidEscapeSequence(RawSpan),
 }
@@ -234,12 +232,12 @@ impl ParseError {
                 token: Some((start, _, end)),
                 expected,
             } => ParseError::UnexpectedToken(mk_span(file_id, start, end), expected),
+            lalrpop_util::ParseError::User {
+                error: LexicalError::Generic(start, end),
+            } => ParseError::UnexpectedToken(mk_span(file_id, start, end), Vec::new()),
             lalrpop_util::ParseError::UnrecognizedToken {
                 token: None,
                 expected,
-            }
-            | lalrpop_util::ParseError::User {
-                error: LexicalError::UnexpectedEOF(expected),
             } => ParseError::UnexpectedEOF(file_id, expected),
             lalrpop_util::ParseError::ExtraToken {
                 token: (start, _, end),
@@ -247,12 +245,6 @@ impl ParseError {
             lalrpop_util::ParseError::User {
                 error: LexicalError::UnmatchedCloseBrace(location),
             } => ParseError::UnmatchedCloseBrace(mk_span(file_id, location, location + 1)),
-            lalrpop_util::ParseError::User {
-                error: LexicalError::UnexpectedChar(location),
-            } => ParseError::UnexpectedToken(mk_span(file_id, location, location + 1), Vec::new()),
-            lalrpop_util::ParseError::User {
-                error: LexicalError::NumThenIdent(location),
-            } => ParseError::NumThenIdent(mk_span(file_id, location, location + 1)),
             lalrpop_util::ParseError::User {
                 error: LexicalError::InvalidEscapeSequence(location),
             } => ParseError::InvalidEscapeSequence(mk_span(file_id, location, location + 1)),
@@ -880,9 +872,6 @@ impl ToDiagnostic<FileId> for ParseError {
                 .with_labels(vec![primary(span)]),
             ParseError::UnmatchedCloseBrace(span) => Diagnostic::error()
                 .with_message("Unmatched closing brace \'}\'")
-                .with_labels(vec![primary(span)]),
-            ParseError::NumThenIdent(span) => Diagnostic::error()
-                .with_message("Invalid character in a number literal")
                 .with_labels(vec![primary(span)]),
             ParseError::InvalidEscapeSequence(span) => Diagnostic::error()
                 .with_message("Invalid escape sequence")
