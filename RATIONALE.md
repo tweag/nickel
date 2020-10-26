@@ -289,7 +289,7 @@ code and has no principled approach to data validation.
 | Nickel   | Gradual (dynamic + static)    | Yes       | Lazy       | Yes (constrained)                                 |
 | Starlark | Dynamic                       | No        | Strict     | No                                                |
 | Dhall    | Static (requires annotations) | No        | Lazy       | No                                                |
-| CUE      | Static (everything is a type) | No        | ?          | No, but allowed in the separated scripting layer  |
+| CUE      | Static (everything is a type) | No        | Lazy       | No, but allowed in the separated scripting layer  |
 | Jsonnet  | Dynamic                       | Yes       | Lazy       | No                                                |
 
 ## Conclusion
