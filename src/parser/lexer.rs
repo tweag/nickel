@@ -381,7 +381,7 @@ impl<'input> Iterator for Lexer<'input> {
                 if let Some(esc) = escape_char(*c) {
                     token = Some(Str(StringToken::EscapedChar(esc)));
                 } else {
-                    return Some(Err(LexicalError::InvalidEscapeSequence(span.end)));
+                    return Some(Err(LexicalError::InvalidEscapeSequence(span.start + 1)));
                 }
             }
             // Early report errors for now. This could change in the future
