@@ -2,7 +2,7 @@ use crate::identifier::Ident;
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp, StrChunk};
 use crate::types::{Types, AbsType};
 use super::utils::{mk_span, mk_label};
-use super::lexer::{Token, LexicalError};
+use super::lexer::{Token, NormalToken, StringToken, LexicalError};
 use std::collections::HashMap;
 use either::*;
 use codespan::FileId;
@@ -75,7 +75,7 @@ Atom: RichTerm = {
             mk_label(ty, src_id, l, r), t)
         ),
     "Docstring(" <s: Str> "," <t: SpTerm<Term>> ")" => RichTerm::new(Term::Docstring(s, t)),
-    Num => RichTerm::new(Term::Num(<>)),
+    "num literal" => RichTerm::new(Term::Num(<>)),
     Bool => RichTerm::new(Term::Bool(<>)),
     <StrChunks>,
     Ident => RichTerm::new(Term::Var(<>)),
@@ -121,40 +121,49 @@ Pattern: Ident = {
 
 Ident: Ident = "identifier" => Ident(<>.to_string());
 
-Num: f64 = "num literal" => <>;
-
 Bool: bool = {
     "true" => true,
     "false" => false,
 };
 
-StrChunks : RichTerm = "\"" <chunks: StrChunk+> "\"" => {
-    // We transform generic string chunks to a simple string literal if
-    // possible, as this should be a fairly common case, and evaluating a string
-    // as chunks do incur a small overhead.
-    if chunks.len() == 1 {
-        match chunks.into_iter().next().unwrap() {
-            StrChunk::Literal(s) => RichTerm::new(Term::Str(s)),
-            chunk => RichTerm::new(Term::StrChunks(vec![chunk])),
-        }
-    }
-    else {
-        // Chunks are stored in reverse order (see the comment at the definition
-        // of Term::StrChunks).
-        // LALRPOP does not let us declare chunks as mutable, so we move it
-        // first.
-        let mut chunks_mut = chunks;
-        chunks_mut.reverse();
-        RichTerm::new(Term::StrChunks(chunks_mut))
-    }
-};
+StrChunks : RichTerm =
+  "\"" <fst: ChunkLiteral?> <chunks: (ChunkExpr+ChunkLiteral)*> <lasts:
+    ChunkExpr*> "\"" => {
+        let chunks: Vec<StrChunk<RichTerm>> = fst.into_iter()
+            .map(StrChunk::Literal)
+            .chain(chunks.into_iter()
+                .map(|(mut es, s)| {
+                    es.push(StrChunk::Literal(s));
+                    es
+                })
+                .flatten())
+            .chain(lasts.into_iter())
+            .rev()
+            .collect();
 
-StrChunk : StrChunk<RichTerm> = {
-    "str literal" => StrChunk::Literal(<>),
-    "${" <t: SpTerm<RichTerm>> "}" => StrChunk::Expr(t),
-};
+        RichTerm::new(Term::StrChunks(chunks))
+    };
 
-Str: String = "\"" <s: "str literal"> "\"" => s;
+ChunkLiteral: String = 
+    <parts: ChunkLiteralPart+> => {
+        parts.into_iter().fold(String::new(), |mut acc, part| {
+            match part {
+                Either::Left(s) => acc.push_str(s),
+                Either::Right(c) => acc.push(c),
+            };
+
+            acc
+        })
+    };
+
+ChunkExpr: StrChunk<RichTerm> = "${" <t: SpTerm<RichTerm>> "}" => StrChunk::Expr(t);
+
+Str: String = "\"" <s: ChunkLiteral> "\"" => s;
+
+ChunkLiteralPart: Either<&'input str, char> = {
+    "str literal" => Either::Left(<>),
+    "escaped char" => Either::Right(<>),
+};
 
 UOp: UnaryOp<RichTerm> = {
     "isZero" => UnaryOp::IsZero(),
@@ -226,17 +235,12 @@ Arrows: Types = {
 };
 
 BaseType: Types = {
-    "type" => {
-        match <> {
-            "Dyn" => Types(AbsType::Dyn()),
-            "Num" => Types(AbsType::Num()),
-            "Bool" => Types(AbsType::Bool()),
-            "Str" => Types(AbsType::Str()),
-            "List" => Types(AbsType::List()),
-            _ => panic!()
-        }
-    }
-}
+    "Dyn" => Types(AbsType::Dyn()),
+    "Num" => Types(AbsType::Num()),
+    "Bool" => Types(AbsType::Bool()),
+    "Str" => Types(AbsType::Str()),
+    "List" => Types(AbsType::List()),
+};
 
 subType : Types = {
     <BaseType>,
@@ -291,88 +295,94 @@ extern {
     type Error = LexicalError;
 
     enum Token<'input> {
-        "identifier" => Token::Identifier(<&'input str>),
-        "operator" => Token::BinaryOp(<&'input str>),
-        "type" => Token::Type(<&'input str>),
-        "str literal" => Token::StrLiteral(<String>),
-        "num literal" => Token::NumLiteral(<f64>),
+        "identifier" => Token::Normal(NormalToken::Identifier(<&'input str>)),
+        "operator" => Token::Normal(NormalToken::BinaryOp(<&'input str>)),
+        "str literal" => Token::Str(StringToken::Literal(<&'input str>)),
+        "escaped char" => Token::Str(StringToken::EscapedChar(<char>)),
+        "num literal" => Token::Normal(NormalToken::NumLiteral(<f64>)),
 
-        "if" => Token::If,
-        "then" => Token::Then,
-        "else" => Token::Else,
-        "forall" => Token::Forall,
-        "in" => Token::In,
-        "let" => Token::Let,
-        "switch" => Token::Switch,
+        "if" => Token::Normal(NormalToken::If),
+        "then" => Token::Normal(NormalToken::Then),
+        "else" => Token::Normal(NormalToken::Else),
+        "forall" => Token::Normal(NormalToken::Forall),
+        "in" => Token::Normal(NormalToken::In),
+        "let" => Token::Normal(NormalToken::Let),
+        "switch" => Token::Normal(NormalToken::Switch),
 
-        "true" => Token::True,
-        "false" => Token::False,
+        "true" => Token::Normal(NormalToken::True),
+        "false" => Token::Normal(NormalToken::False),
 
-        "," => Token::Comma,
-        ":" => Token::Colon,
-        "$" => Token::Dollar,
-        "=" => Token::Equals,
-        ";" => Token::SemiCol,
-        "." => Token::Dot,
-        ".$" => Token::DotDollar,
-        "$[" => Token::DollarBracket,
-        "${" => Token::DollarBrace,
-        "-$" => Token::MinusDollar,
-        "$=" => Token::DollarEquals,
-        "fun" => Token::Fun,
-        "import" => Token::Import,
-        "|" => Token::Pipe,
-        "->" => Token::SimpleArrow,
-        "=>" => Token::DoubleArrow,
-        "#" => Token::Hash,
-        "`" => Token::Backtick,
-        "_" => Token::Underscore,
-        "\"" => Token::DoubleQuote,
+        "," => Token::Normal(NormalToken::Comma),
+        ":" => Token::Normal(NormalToken::Colon),
+        "$" => Token::Normal(NormalToken::Dollar),
+        "=" => Token::Normal(NormalToken::Equals),
+        ";" => Token::Normal(NormalToken::SemiCol),
+        "." => Token::Normal(NormalToken::Dot),
+        ".$" => Token::Normal(NormalToken::DotDollar),
+        "$[" => Token::Normal(NormalToken::DollarBracket),
+        "${" => Token::Str(StringToken::DollarBrace),
+        "-$" => Token::Normal(NormalToken::MinusDollar),
+        "$=" => Token::Normal(NormalToken::DollarEquals),
+        "fun" => Token::Normal(NormalToken::Fun),
+        "import" => Token::Normal(NormalToken::Import),
+        "|" => Token::Normal(NormalToken::Pipe),
+        "->" => Token::Normal(NormalToken::SimpleArrow),
+        "=>" => Token::Normal(NormalToken::DoubleArrow),
+        "#" => Token::Normal(NormalToken::Hash),
+        "`" => Token::Normal(NormalToken::Backtick),
+        "_" => Token::Normal(NormalToken::Underscore),
+        "\"" => Token::Normal(NormalToken::DoubleQuote),
 
-        "tag" => Token::Tag,
-        "Assume(" => Token::Assume,
-        "Promise(" => Token::Promise,
-        "Default(" => Token::Deflt,
-        "Contract(" => Token::Contract,
-        "ContractDefault(" => Token::ContractDeflt,
-        "Docstring(" => Token::Docstring,
+        "Num" => Token::Normal(NormalToken::Num),
+        "Dyn" => Token::Normal(NormalToken::Dyn),
+        "Str" => Token::Normal(NormalToken::Str),
+        "Bool" => Token::Normal(NormalToken::Bool),
+        "List" => Token::Normal(NormalToken::List),
 
-        "isZero" => Token::IsZero,
-        "isNum" => Token::IsNum,
-        "isBool" => Token::IsBool,
-        "isStr" => Token::IsStr,
-        "isFun" => Token::IsFun,
-        "isList" => Token::IsList,
-        "isRecord" => Token::IsRecord,
-        "blame" => Token::Blame,
-        "chngPol" => Token::ChangePol,
-        "polarity" => Token::Polarity,
-        "goDom" => Token::GoDom,
-        "goCodom" => Token::GoCodom,
-        "goField" => Token::GoField,
-        "wrap" => Token::Wrap,
-        "unwrap" => Token::Unwrap,
-        "embed" => Token::Embed,
-        "mapRec" => Token::MapRec,
-        "seq" => Token::Seq,
-        "deepSeq" => Token::DeepSeq,
-        "head" => Token::Head,
-        "tail" => Token::Tail,
-        "length" => Token::Length,
-        "fieldsOf" => Token::FieldsOf,
+        "tag" => Token::Normal(NormalToken::Tag),
+        "Assume(" => Token::Normal(NormalToken::Assume),
+        "Promise(" => Token::Normal(NormalToken::Promise),
+        "Default(" => Token::Normal(NormalToken::Deflt),
+        "Contract(" => Token::Normal(NormalToken::Contract),
+        "ContractDefault(" => Token::Normal(NormalToken::ContractDeflt),
+        "Docstring(" => Token::Normal(NormalToken::Docstring),
 
-        "hasField" => Token::HasField,
-        "map" => Token::Map,
-        "elemAt" => Token::ElemAt,
-        "merge" => Token::Merge,
+        "isZero" => Token::Normal(NormalToken::IsZero),
+        "isNum" => Token::Normal(NormalToken::IsNum),
+        "isBool" => Token::Normal(NormalToken::IsBool),
+        "isStr" => Token::Normal(NormalToken::IsStr),
+        "isFun" => Token::Normal(NormalToken::IsFun),
+        "isList" => Token::Normal(NormalToken::IsList),
+        "isRecord" => Token::Normal(NormalToken::IsRecord),
+        "blame" => Token::Normal(NormalToken::Blame),
+        "chngPol" => Token::Normal(NormalToken::ChangePol),
+        "polarity" => Token::Normal(NormalToken::Polarity),
+        "goDom" => Token::Normal(NormalToken::GoDom),
+        "goCodom" => Token::Normal(NormalToken::GoCodom),
+        "goField" => Token::Normal(NormalToken::GoField),
+        "wrap" => Token::Normal(NormalToken::Wrap),
+        "unwrap" => Token::Normal(NormalToken::Unwrap),
+        "embed" => Token::Normal(NormalToken::Embed),
+        "mapRec" => Token::Normal(NormalToken::MapRec),
+        "seq" => Token::Normal(NormalToken::Seq),
+        "deepSeq" => Token::Normal(NormalToken::DeepSeq),
+        "head" => Token::Normal(NormalToken::Head),
+        "tail" => Token::Normal(NormalToken::Tail),
+        "length" => Token::Normal(NormalToken::Length),
+        "fieldsOf" => Token::Normal(NormalToken::FieldsOf),
 
-        "{" => Token::LBrace,
-        "}" => Token::RBrace,
-        "[" => Token::LBracket,
-        "]" => Token::RBracket,
-        "(" => Token::LParen,
-        ")" => Token::RParen,
-        "<" => Token::LAngleBracket,
-        ">" => Token::RAngleBracket,
+        "hasField" => Token::Normal(NormalToken::HasField),
+        "map" => Token::Normal(NormalToken::Map),
+        "elemAt" => Token::Normal(NormalToken::ElemAt),
+        "merge" => Token::Normal(NormalToken::Merge),
+
+        "{" => Token::Normal(NormalToken::LBrace),
+        "}" => Token::Normal(NormalToken::RBrace),
+        "[" => Token::Normal(NormalToken::LBracket),
+        "]" => Token::Normal(NormalToken::RBracket),
+        "(" => Token::Normal(NormalToken::LParen),
+        ")" => Token::Normal(NormalToken::RParen),
+        "<" => Token::Normal(NormalToken::LAngleBracket),
+        ">" => Token::Normal(NormalToken::RAngleBracket),
     }
 }
