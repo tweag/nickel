@@ -1,5 +1,5 @@
 {
-  inputs.nixpkgs.url = "nixpkgs/nixos-20.03";
+  inputs.nixpkgs.url = "nixpkgs/nixos-20.09";
   inputs.import-cargo.url = "github:edolstra/import-cargo";
 
   outputs = { self, nixpkgs, import-cargo }:
