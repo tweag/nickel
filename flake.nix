@@ -3,12 +3,16 @@
   inputs.import-cargo.url = "github:edolstra/import-cargo";
 
   outputs = { self, nixpkgs, import-cargo }:
-    with import nixpkgs { system = "x86_64-linux"; };
-    with pkgs;
-
     let
 
-      buildPackage = { isShell }: stdenv.mkDerivation {
+      systems = [ "x86_64-linux" "x86_64-darwin" ];
+
+      forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f system);
+
+      # Memoize nixpkgs for different platforms for efficiency.
+      nixpkgsFor = forAllSystems (system: import nixpkgs { inherit system; });
+
+      buildPackage = { isShell, system }: with nixpkgsFor.${system}; stdenv.mkDerivation {
         name = "nickel-${lib.substring 0 8 self.lastModifiedDate}-${self.shortRev or "dirty"}";
 
         buildInputs =
@@ -42,11 +46,13 @@
 
     in {
 
-      defaultPackage.x86_64-linux = buildPackage { isShell = false; };
+      defaultPackage = forAllSystems (system: buildPackage { inherit system; isShell = false; });
 
-      checks.x86_64-linux.build = self.defaultPackage.x86_64-linux;
+      checks = forAllSystems (system: {
+        build = self.defaultPackage.${system};
+      });
 
-      devShell.x86_64-linux = buildPackage { isShell = true; };
+      devShell = forAllSystems (system: buildPackage { inherit system; isShell = true; });
 
     };
 }
