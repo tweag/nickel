@@ -953,8 +953,8 @@ fn process_binary_operation(
                 let n_int = n as usize;
                 if n.fract() != 0.0 {
                     Err(EvalError::Other(format!("elemAt: expected the 2nd agument to be an integer, got the floating-point value {}", n), pos_op))
-                } else if n_int >= ts.len() {
-                    Err(EvalError::Other(format!("elemAt: index out of bounds. Expected a value between 0 and {}, got {})", ts.len(), n_int), pos_op))
+                } else if n < 0.0 || n_int >= ts.len() {
+                    Err(EvalError::Other(format!("elemAt: index out of bounds. Expected a value between 0 and {}, got {}", ts.len(), n), pos_op))
                 } else {
                     Ok(Closure {
                         body: ts.swap_remove(n_int),
