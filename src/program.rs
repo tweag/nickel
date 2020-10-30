@@ -1268,4 +1268,16 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
             "[\"baz\", \"foo\"]"
         );
     }
+
+    #[test]
+    fn arithmetic_expr() {
+        assert_peq!("1+1", "2");
+        assert_peq!("1-2+3-4", "-2");
+        assert_peq!("2-3-4", "-5");
+        assert_peq!("-1-2", "-3");
+        assert_peq!("2*2 + 2*3 - 2*4", "2");
+        assert_peq!("1/2 + 1/4 - 1/8", "0.625");
+        assert_peq!("(10 + 1/4) % 3", "1.25");
+        assert_peq!("10 + 1/4 % 3", "10.25");
+    }
 }
