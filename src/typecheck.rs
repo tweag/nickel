@@ -1399,7 +1399,11 @@ pub fn get_bop_type(
 ) -> Result<TypeWrapper, TypecheckError> {
     match op {
         // Num -> Num -> Num
-        BinaryOp::Plus() => Ok(TypeWrapper::Concrete(AbsType::arrow(
+        BinaryOp::Plus()
+        | BinaryOp::Sub()
+        | BinaryOp::Mult()
+        | BinaryOp::Div()
+        | BinaryOp::Modulo() => Ok(TypeWrapper::Concrete(AbsType::arrow(
             Box::new(TypeWrapper::Concrete(AbsType::Num())),
             Box::new(TypeWrapper::Concrete(AbsType::arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::Num())),
