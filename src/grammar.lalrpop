@@ -19,6 +19,10 @@ SpTerm<Rule>: RichTerm =
         }
     };
 
+LeftOp<Op, Current, Previous>: RichTerm =
+    <t1: Current> <op: Op> <t2: Previous> => RichTerm::new(Term::Op2(op, t1,
+    t2));
+
 RichTerm: RichTerm = {
     <l: @L> "fun" <ps:Pattern+> "=>" <t: SpTerm<Term>> <r: @R> => {
         let pos = Some(mk_span(src_id, l, r));
@@ -32,12 +36,7 @@ RichTerm: RichTerm = {
     "if" <b:SpTerm<Term>> "then" <t:SpTerm<Term>> "else" <e:SpTerm<Term>> =>
         RichTerm::app(RichTerm::app(RichTerm::new(Term::Op1(UnaryOp::Ite(), b)), t), e),
     "import" <s: Str> => RichTerm::new(Term::Import(s)),
-    SpTerm<Operation>
-};
-
-Operation: RichTerm = {
-    <t1: SpTerm< Applicative>> <op: BOpIn> <t2: SpTerm<Operation>> => RichTerm::new(Term::Op2(op, t1, t2)),
-    SpTerm< Applicative>,
+    SpTerm<InfixExpr>,
 };
 
 Applicative: RichTerm = {
@@ -203,12 +202,58 @@ switch_default: RichTerm = {
     "_" "=>" <SpTerm<Atom>> "," => <>,
 }
 
-BOpIn: BinaryOp<RichTerm> = {
-    "+" => BinaryOp::Plus(),
+BinOp1: BinaryOp<RichTerm> = {
     "++" => BinaryOp::PlusStr(),
-    "==" => BinaryOp::Eq(),
     "@" => BinaryOp::ListConcat(),
-};
+}
+
+
+// TODO: convenience for messing with precedence levels during development. Once
+// operators are fixed, we can inline `InfixExpr0` into `InfixExpr1`
+InfixExpr0: RichTerm = {
+    SpTerm<Applicative>,
+}
+
+InfixExpr1: RichTerm = {
+    InfixExpr0,
+    LeftOp<BinOp1, InfixExpr1, InfixExpr0> => <>,
+}
+
+BinOp2: BinaryOp<RichTerm> = {
+    "*" => BinaryOp::Mult(),
+    "/" => BinaryOp::Div(),
+    "%" => BinaryOp::Modulo(),
+}
+
+InfixExpr2: RichTerm = {
+    InfixExpr1,
+    LeftOp<BinOp2, InfixExpr2, InfixExpr1> => <>,
+}
+
+BinOp3: BinaryOp<RichTerm> = {
+    "+" => BinaryOp::Plus(),
+    "-" => BinaryOp::Sub(),
+}
+
+InfixExpr3: RichTerm = {
+    InfixExpr2,
+    LeftOp<BinOp3, InfixExpr3, InfixExpr2> => <>,
+}
+
+BinOp4: BinaryOp<RichTerm> = {
+    "==" => BinaryOp::Eq(),
+}
+
+InfixExpr4: RichTerm = {
+    InfixExpr3,
+    LeftOp<BinOp4, InfixExpr4, InfixExpr3> => <>,
+}
+
+// TODO: convenience for adding precedence levels during development. Once
+// operators are fixed, we should turn the last level into `InfixExpr` directly
+InfixExpr: RichTerm = {
+    InfixExpr4,
+}
 
 BOpPre: BinaryOp<RichTerm> = {
     "unwrap" => BinaryOp::Unwrap(),
@@ -318,6 +363,10 @@ extern {
         "-$" => Token::Normal(NormalToken::MinusDollar),
 
         "+" => Token::Normal(NormalToken::Plus),
+        "-" => Token::Normal(NormalToken::Minus),
+        "*" => Token::Normal(NormalToken::Times),
+        "/" => Token::Normal(NormalToken::Div),
+        "%" => Token::Normal(NormalToken::Percent),
         "++" => Token::Normal(NormalToken::DoublePlus),
         "==" => Token::Normal(NormalToken::DoubleEq),
         "@" => Token::Normal(NormalToken::At),

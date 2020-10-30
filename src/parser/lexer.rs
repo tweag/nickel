@@ -101,6 +101,14 @@ pub enum NormalToken<'input> {
 
     #[token("+")]
     Plus,
+    #[token("-")]
+    Minus,
+    #[token("*")]
+    Times,
+    #[token("/")]
+    Div,
+    #[token("%")]
+    Percent,
     #[token("++")]
     DoublePlus,
     #[token("==")]
