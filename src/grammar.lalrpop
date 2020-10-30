@@ -202,10 +202,6 @@ switch_default: RichTerm = {
     "_" "=>" <SpTerm<Atom>> "," => <>,
 }
 
-BinOp1: BinaryOp<RichTerm> = {
-    "++" => BinaryOp::PlusStr(),
-    "@" => BinaryOp::ListConcat(),
-}
 
 
 // TODO: convenience for messing with precedence levels during development. Once
@@ -216,23 +212,24 @@ InfixExpr0: RichTerm = {
 
 InfixExpr1: RichTerm = {
     InfixExpr0,
-    LeftOp<BinOp1, InfixExpr1, InfixExpr0> => <>,
+    "-" <t: InfixExpr1> =>
+        RichTerm::new(Term::Op2(BinaryOp::Sub(), Term::Num(0.0).into(), t)),
 }
 
 BinOp2: BinaryOp<RichTerm> = {
-    "*" => BinaryOp::Mult(),
-    "/" => BinaryOp::Div(),
-    "%" => BinaryOp::Modulo(),
+    "++" => BinaryOp::PlusStr(),
+    "@" => BinaryOp::ListConcat(),
 }
 
 InfixExpr2: RichTerm = {
-    InfixExpr1,
+    SpTerm<InfixExpr1>,
     LeftOp<BinOp2, InfixExpr2, InfixExpr1> => <>,
 }
 
 BinOp3: BinaryOp<RichTerm> = {
-    "+" => BinaryOp::Plus(),
-    "-" => BinaryOp::Sub(),
+    "*" => BinaryOp::Mult(),
+    "/" => BinaryOp::Div(),
+    "%" => BinaryOp::Modulo(),
 }
 
 InfixExpr3: RichTerm = {
@@ -241,7 +238,8 @@ InfixExpr3: RichTerm = {
 }
 
 BinOp4: BinaryOp<RichTerm> = {
-    "==" => BinaryOp::Eq(),
+    "+" => BinaryOp::Plus(),
+    "-" => BinaryOp::Sub(),
 }
 
 InfixExpr4: RichTerm = {
@@ -249,10 +247,19 @@ InfixExpr4: RichTerm = {
     LeftOp<BinOp4, InfixExpr4, InfixExpr3> => <>,
 }
 
+BinOp5: BinaryOp<RichTerm> = {
+    "==" => BinaryOp::Eq(),
+}
+
+InfixExpr5: RichTerm = {
+    InfixExpr4,
+    LeftOp<BinOp5, InfixExpr5, InfixExpr4> => <>,
+}
+
 // TODO: convenience for adding precedence levels during development. Once
 // operators are fixed, we should turn the last level into `InfixExpr` directly
 InfixExpr: RichTerm = {
-    InfixExpr4,
+    InfixExpr5,
 }
 
 BOpPre: BinaryOp<RichTerm> = {
