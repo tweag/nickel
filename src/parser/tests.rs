@@ -61,13 +61,13 @@ fn strings() {
         parse_without_pos("\"hello\" ++ \"World\" ++ \"!!\" "),
         Op2(
             BinaryOp::PlusStr(),
-            mk_single_chunk("hello"),
             Op2(
                 BinaryOp::PlusStr(),
+                mk_single_chunk("hello"),
                 mk_single_chunk("World"),
-                mk_single_chunk("!!")
             )
-            .into()
+            .into(),
+            mk_single_chunk("!!")
         )
         .into()
     )
