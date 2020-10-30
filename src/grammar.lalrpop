@@ -204,15 +204,10 @@ switch_default: RichTerm = {
 }
 
 BOpIn: BinaryOp<RichTerm> = {
-    "operator" => {
-        match <> {
-            "+" => BinaryOp::Plus(),
-            "++" => BinaryOp::PlusStr(),
-            "==" => BinaryOp::Eq(),
-            "@" => BinaryOp::ListConcat(),
-            op => panic!("Unkown operator {}", op)
-        }
-    },
+    "+" => BinaryOp::Plus(),
+    "++" => BinaryOp::PlusStr(),
+    "==" => BinaryOp::Eq(),
+    "@" => BinaryOp::ListConcat(),
 };
 
 BOpPre: BinaryOp<RichTerm> = {
@@ -296,7 +291,6 @@ extern {
 
     enum Token<'input> {
         "identifier" => Token::Normal(NormalToken::Identifier(<&'input str>)),
-        "operator" => Token::Normal(NormalToken::BinaryOp(<&'input str>)),
         "str literal" => Token::Str(StringToken::Literal(<&'input str>)),
         "escaped char" => Token::Str(StringToken::EscapedChar(<char>)),
         "num literal" => Token::Normal(NormalToken::NumLiteral(<f64>)),
@@ -322,6 +316,12 @@ extern {
         "$[" => Token::Normal(NormalToken::DollarBracket),
         "${" => Token::Str(StringToken::DollarBrace),
         "-$" => Token::Normal(NormalToken::MinusDollar),
+
+        "+" => Token::Normal(NormalToken::Plus),
+        "++" => Token::Normal(NormalToken::DoublePlus),
+        "==" => Token::Normal(NormalToken::DoubleEq),
+        "@" => Token::Normal(NormalToken::At),
+
         "$=" => Token::Normal(NormalToken::DollarEquals),
         "fun" => Token::Normal(NormalToken::Fun),
         "import" => Token::Normal(NormalToken::Import),

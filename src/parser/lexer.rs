@@ -42,8 +42,6 @@ pub enum NormalToken<'input> {
     Identifier(&'input str),
     #[regex("-?[0-9]*\\.?[0-9]+", |lex| lex.slice().parse())]
     NumLiteral(f64),
-    #[regex("[+@=\\-<>\\.|#]+")]
-    BinaryOp(&'input str),
 
     #[token("Dyn")]
     Dyn,
@@ -100,6 +98,15 @@ pub enum NormalToken<'input> {
     DoubleQuote,
     #[token("-$")]
     MinusDollar,
+
+    #[token("+")]
+    Plus,
+    #[token("++")]
+    DoublePlus,
+    #[token("==")]
+    DoubleEq,
+    #[token("@")]
+    At,
 
     #[token("fun")]
     Fun,
