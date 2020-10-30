@@ -1279,5 +1279,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         assert_peq!("1/2 + 1/4 - 1/8", "0.625");
         assert_peq!("(10 + 1/4) % 3", "1.25");
         assert_peq!("10 + 1/4 % 3", "10.25");
+
+        eval_string("1 + 1 / (1 - 1)").unwrap_err();
     }
 }
