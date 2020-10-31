@@ -175,6 +175,62 @@ fn process_unary_operation(
             }
             _ => Ok(Closure::atomic_closure(Term::Bool(false).into())),
         },
+        UnaryOp::BoolAnd() =>
+        // The syntax should not allow partially applied boolean operators.
+        {
+            if let Some((next, _)) = stack.pop_arg() {
+                match *t {
+                    Term::Bool(true) => Ok(next),
+                    // FIXME: this does not check that the second argument is actually a boolean.
+                    // This means `true && 2` silently evaluates to `2`. This is simpler and more
+                    // efficient, but can make debugging harder. In any case, it should be solved
+                    // only once primary operators have better support for laziness in some
+                    // arguments.
+                    b @ Term::Bool(false) => Ok(Closure::atomic_closure(b.into())),
+                    _ => Err(EvalError::TypeError(
+                        String::from("Bool"),
+                        String::from("&&"),
+                        arg_pos,
+                        RichTerm { term: t, pos },
+                    )),
+                }
+            } else {
+                Err(EvalError::NotEnoughArgs(2, String::from("&&"), pos_op))
+            }
+        }
+        UnaryOp::BoolOr() => {
+            if let Some((next, _)) = stack.pop_arg() {
+                match *t {
+                    b @ Term::Bool(true) => Ok(Closure::atomic_closure(b.into())),
+                    // FIXME: this does not check that the second argument is actually a boolean.
+                    // This means `false || 2` silently evaluates to `2`. This is simpler and more
+                    // efficient, but can make debugging harder. In any case, it should be solved
+                    // only once primary operators have better support for laziness in some
+                    // arguments.
+                    Term::Bool(false) => Ok(next),
+                    _ => Err(EvalError::TypeError(
+                        String::from("Bool"),
+                        String::from("||"),
+                        arg_pos,
+                        RichTerm { term: t, pos },
+                    )),
+                }
+            } else {
+                Err(EvalError::NotEnoughArgs(2, String::from("||"), pos_op))
+            }
+        }
+        UnaryOp::BoolNot() => {
+            if let Term::Bool(b) = *t {
+                Ok(Closure::atomic_closure(Term::Bool(!b).into()))
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Bool"),
+                    String::from("!"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
+            }
+        }
         UnaryOp::Blame() => {
             if let Term::Lbl(l) = *t {
                 Err(EvalError::BlameError(l, None))
