@@ -421,6 +421,15 @@ pub enum UnaryOp<CapturedTerm> {
     /// Test if a term is a record.
     IsRecord(),
 
+    // Boolean AND and OR operator are encoded as unary operators so that they can be lazy in their
+    // second argument.
+    /// Boolean AND operator.
+    BoolAnd(),
+    /// Boolean OR operator.
+    BoolOr(),
+    /// Boolean NOT operator.
+    BoolNot(),
+
     /// Raise a blame, which stops the execution and prints an error according to the label argument.
     Blame(),
 
@@ -533,6 +542,10 @@ impl<Ty> UnaryOp<Ty> {
             IsFun() => IsFun(),
             IsList() => IsList(),
             IsRecord() => IsRecord(),
+
+            BoolAnd() => BoolAnd(),
+            BoolOr() => BoolOr(),
+            BoolNot() => BoolNot(),
 
             Blame() => Blame(),
 
