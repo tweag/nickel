@@ -1309,4 +1309,33 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         eval_string("\"a\" > \"b\"").unwrap_err();
         eval_string("\"a\" >= \"b\"").unwrap_err();
     }
+
+    #[test]
+    fn boolean_op() {
+        assert_peq!("1+1>1 && isStr 0", "false");
+        assert_peq!("-1 < -2 && isFun (fun x => x)", "false");
+        assert_peq!("isNum 0 && isFun (fun x => x) || 1 == 0 && true", "true");
+        assert_peq!(
+            "isNum 0 && isFun false || 1 == 0 && false || 1 > 2 && 2 < 1",
+            "false"
+        );
+        assert_peq!("!(isNum true) && !(isFun 0) && !(isBool \"a\")", "true");
+        assert_peq!(
+            "!(isNum (fun x => x) || isBool (fun x => x) || isFun (fun x => x))",
+            "false"
+        );
+
+        // Test laziness
+        assert_peq!(
+            "let throw = Assume(#fail, 0) in true || false || throw",
+            "true"
+        );
+        assert_peq!(
+            "let throw = Assume(#fail, 0) in true && false && throw",
+            "false"
+        );
+        eval_string("let throw = Assume(#fail, 0) in false || true && throw").unwrap_err();
+        eval_string("0 && true").unwrap_err();
+        eval_string("\"a\" || false").unwrap_err();
+    }
 }
