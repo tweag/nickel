@@ -827,6 +827,114 @@ fn process_binary_operation(
                 env,
             })
         }
+        BinaryOp::LessThan() => {
+            if let Term::Num(n1) = *t1 {
+                if let Term::Num(n2) = *t2 {
+                    Ok(Closure::atomic_closure(Term::Bool(n1 < n2).into()))
+                } else {
+                    Err(EvalError::TypeError(
+                        String::from("Num"),
+                        String::from("<, 2nd argument"),
+                        snd_pos,
+                        RichTerm {
+                            term: t2,
+                            pos: pos2,
+                        },
+                    ))
+                }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Num"),
+                    String::from("<, 1st argument"),
+                    fst_pos,
+                    RichTerm {
+                        term: t1,
+                        pos: pos1,
+                    },
+                ))
+            }
+        }
+        BinaryOp::LessOrEq() => {
+            if let Term::Num(n1) = *t1 {
+                if let Term::Num(n2) = *t2 {
+                    Ok(Closure::atomic_closure(Term::Bool(n1 <= n2).into()))
+                } else {
+                    Err(EvalError::TypeError(
+                        String::from("Num"),
+                        String::from("<, 2nd argument"),
+                        snd_pos,
+                        RichTerm {
+                            term: t2,
+                            pos: pos2,
+                        },
+                    ))
+                }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Num"),
+                    String::from("<, 1st argument"),
+                    fst_pos,
+                    RichTerm {
+                        term: t1,
+                        pos: pos1,
+                    },
+                ))
+            }
+        }
+        BinaryOp::GreaterThan() => {
+            if let Term::Num(n1) = *t1 {
+                if let Term::Num(n2) = *t2 {
+                    Ok(Closure::atomic_closure(Term::Bool(n1 > n2).into()))
+                } else {
+                    Err(EvalError::TypeError(
+                        String::from("Num"),
+                        String::from(">, 2nd argument"),
+                        snd_pos,
+                        RichTerm {
+                            term: t2,
+                            pos: pos2,
+                        },
+                    ))
+                }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Num"),
+                    String::from(">, 1st argument"),
+                    fst_pos,
+                    RichTerm {
+                        term: t1,
+                        pos: pos1,
+                    },
+                ))
+            }
+        }
+        BinaryOp::GreaterOrEq() => {
+            if let Term::Num(n1) = *t1 {
+                if let Term::Num(n2) = *t2 {
+                    Ok(Closure::atomic_closure(Term::Bool(n1 >= n2).into()))
+                } else {
+                    Err(EvalError::TypeError(
+                        String::from("Num"),
+                        String::from(">=, 2nd argument"),
+                        snd_pos,
+                        RichTerm {
+                            term: t2,
+                            pos: pos2,
+                        },
+                    ))
+                }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Num"),
+                    String::from(">=, 1st argument"),
+                    fst_pos,
+                    RichTerm {
+                        term: t1,
+                        pos: pos1,
+                    },
+                ))
+            }
+        }
         BinaryOp::GoField() => {
             if let Term::Str(field) = *t1 {
                 if let Term::Lbl(mut l) = *t2 {
