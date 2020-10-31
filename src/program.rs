@@ -1282,4 +1282,31 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
 
         eval_string("1 + 1 / (1 - 1)").unwrap_err();
     }
+
+    #[test]
+    fn comparisons() {
+        assert_peq!("1 < 1", "false");
+        assert_peq!("1 <= 1", "true");
+        assert_peq!("1 > 1", "false");
+        assert_peq!("1 >= 1", "true");
+        assert_peq!("1 + 1/2 > 1 + 1/4", "true");
+        assert_peq!("1 + 1/2 < 1 + 1/4", "false");
+        assert_peq!("1 + 1/2 + 1/8 > 1 + 1/4 + 1/4", "true");
+        assert_peq!("1 + 1/2 + 1/8 < 1 + 1/4 + 1/4", "false");
+        assert_peq!("-1 - 2 < 3 - 10", "false");
+        assert_peq!("-1 - 2 > 3 - 10", "true");
+        assert_peq!("-1*2 > 1*2", "false");
+        assert_peq!("-1*2 < 1*2", "true");
+        assert_peq!("1/4 + 1/4 - 1/4 + 1/4 <= 1/2", "true");
+        assert_peq!("1/4 + 1/4 - 1/4 + 1/4 < 1/2", "false");
+        assert_peq!("1/4 + 1/4 - 1/4 + 1/4 >= 1/2", "true");
+        assert_peq!("1/4 + 1/4 - 1/4 + 1/4 < 1/2", "false");
+
+        eval_string("1 < 2 < 3").unwrap_err();
+        eval_string("1 < 2 > 3").unwrap_err();
+        eval_string("\"a\" < 2").unwrap_err();
+        eval_string("true <= []").unwrap_err();
+        eval_string("\"a\" > \"b\"").unwrap_err();
+        eval_string("\"a\" >= \"b\"").unwrap_err();
+    }
 }
