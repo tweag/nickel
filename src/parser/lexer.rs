@@ -115,6 +115,12 @@ pub enum NormalToken<'input> {
     DoubleEq,
     #[token("@")]
     At,
+    #[token("&&")]
+    DoubleAnd,
+    #[token("||")]
+    DoublePipe,
+    #[token("!")]
+    Bang,
 
     #[token("fun")]
     Fun,

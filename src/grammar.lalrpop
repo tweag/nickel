@@ -23,6 +23,10 @@ LeftOp<Op, Current, Previous>: RichTerm =
     <t1: Current> <op: Op> <t2: Previous> => RichTerm::new(Term::Op2(op, t1,
     t2));
 
+LeftOpLazy<Op, Current, Previous>: RichTerm =
+    <t1: Current> <op: Op> <t2: Previous> =>
+        RichTerm::app(RichTerm::new(Term::Op1(op, t1)), t2);
+
 RichTerm: RichTerm = {
     <l: @L> "fun" <ps:Pattern+> "=>" <t: SpTerm<Term>> <r: @R> => {
         let pos = Some(mk_span(src_id, l, r));
@@ -202,17 +206,15 @@ switch_default: RichTerm = {
     "_" "=>" <SpTerm<Atom>> "," => <>,
 }
 
-
-
 // TODO: convenience for messing with precedence levels during development. Once
 // operators are fixed, we can inline `InfixExpr0` into `InfixExpr1`
 InfixExpr0: RichTerm = {
-    SpTerm<Applicative>,
+    Applicative,
 }
 
-InfixExpr1: RichTerm = {
+PrefixExpr1: RichTerm = {
     InfixExpr0,
-    "-" <t: InfixExpr1> =>
+    "-" <t: PrefixExpr1> =>
         RichTerm::new(Term::Op2(BinaryOp::Sub(), Term::Num(0.0).into(), t)),
 }
 
@@ -222,8 +224,8 @@ BinOp2: BinaryOp<RichTerm> = {
 }
 
 InfixExpr2: RichTerm = {
-    SpTerm<InfixExpr1>,
-    LeftOp<BinOp2, InfixExpr2, InfixExpr1> => <>,
+    PrefixExpr1,
+    LeftOp<BinOp2, InfixExpr2, PrefixExpr1> => <>,
 }
 
 BinOp3: BinaryOp<RichTerm> = {
@@ -247,13 +249,9 @@ InfixExpr4: RichTerm = {
     LeftOp<BinOp4, InfixExpr4, InfixExpr3> => <>,
 }
 
-BinOp5: BinaryOp<RichTerm> = {
-    "==" => BinaryOp::Eq(),
-}
-
-InfixExpr5: RichTerm = {
+PrefixExpr5: RichTerm = {
     InfixExpr4,
-    LeftOp<BinOp5, InfixExpr5, InfixExpr4> => <>,
+    "!" <PrefixExpr5> => RichTerm::new(Term::Op1(UnaryOp::BoolNot(), <>)), 
 }
 
 BinOp6: BinaryOp<RichTerm> = {
@@ -264,14 +262,41 @@ BinOp6: BinaryOp<RichTerm> = {
 }
 
 InfixExpr6: RichTerm = {
-    InfixExpr5,
-    LeftOp<BinOp6, InfixExpr6, InfixExpr5> => <>,
+    PrefixExpr5,
+    LeftOp<BinOp6, InfixExpr6, PrefixExpr5> => <>,
+}
+
+BinOp7: BinaryOp<RichTerm> = {
+    "==" => BinaryOp::Eq(),
+}
+
+InfixExpr7: RichTerm = {
+    InfixExpr6,
+    LeftOp<BinOp7, InfixExpr7, InfixExpr6> => <>,
+}
+
+LazyBinOp8: UnaryOp<RichTerm> = {
+    "&&" => UnaryOp::BoolAnd(),
+}
+
+InfixExpr8: RichTerm = {
+    InfixExpr7,
+    LeftOpLazy<LazyBinOp8, InfixExpr8, InfixExpr7> => <>
+}
+
+LazyBinOp9: UnaryOp<RichTerm> = {
+    "||" => UnaryOp::BoolOr(),
+}
+
+InfixExpr9: RichTerm = {
+    InfixExpr8,
+    LeftOpLazy<LazyBinOp9, InfixExpr9, InfixExpr8> => <>
 }
 
 // TODO: convenience for adding precedence levels during development. Once
 // operators are fixed, we should turn the last level into `InfixExpr` directly
 InfixExpr: RichTerm = {
-    InfixExpr6,
+    InfixExpr9,
 }
 
 BOpPre: BinaryOp<RichTerm> = {
@@ -389,6 +414,9 @@ extern {
         "++" => Token::Normal(NormalToken::DoublePlus),
         "==" => Token::Normal(NormalToken::DoubleEq),
         "@" => Token::Normal(NormalToken::At),
+        "&&" => Token::Normal(NormalToken::DoubleAnd),
+        "||" => Token::Normal(NormalToken::DoublePipe),
+        "!" => Token::Normal(NormalToken::Bang),
 
         "$=" => Token::Normal(NormalToken::DollarEquals),
         "fun" => Token::Normal(NormalToken::Fun),

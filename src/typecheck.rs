@@ -1233,6 +1233,19 @@ pub fn get_uop_type(
                 Box::new(TypeWrapper::Concrete(AbsType::Bool())),
             ))
         }
+        // Bool -> Bool -> Bool
+        UnaryOp::BoolAnd() | UnaryOp::BoolOr() => TypeWrapper::Concrete(AbsType::arrow(
+            Box::new(TypeWrapper::Concrete(AbsType::Bool())),
+            Box::new(TypeWrapper::Concrete(AbsType::arrow(
+                Box::new(TypeWrapper::Concrete(AbsType::Bool())),
+                Box::new(TypeWrapper::Concrete(AbsType::Bool())),
+            ))),
+        )),
+        // Bool -> Bool
+        UnaryOp::BoolNot() => TypeWrapper::Concrete(AbsType::arrow(
+            Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
+            Box::new(TypeWrapper::Concrete(AbsType::Bool())),
+        )),
         // forall a. Dyn -> a
         UnaryOp::Blame() => {
             let res = TypeWrapper::Ptr(new_var(state.table));
