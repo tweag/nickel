@@ -585,6 +585,118 @@ fn process_binary_operation(
                 ))
             }
         }
+        BinaryOp::Sub() => {
+            if let Term::Num(n1) = *t1 {
+                if let Term::Num(n2) = *t2 {
+                    Ok(Closure::atomic_closure(Term::Num(n1 - n2).into()))
+                } else {
+                    Err(EvalError::TypeError(
+                        String::from("Num"),
+                        String::from("-, 2nd argument"),
+                        snd_pos,
+                        RichTerm {
+                            term: t2,
+                            pos: pos2,
+                        },
+                    ))
+                }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Num"),
+                    String::from("-, 1st argument"),
+                    fst_pos,
+                    RichTerm {
+                        term: t1,
+                        pos: pos1,
+                    },
+                ))
+            }
+        }
+        BinaryOp::Mult() => {
+            if let Term::Num(n1) = *t1 {
+                if let Term::Num(n2) = *t2 {
+                    Ok(Closure::atomic_closure(Term::Num(n1 * n2).into()))
+                } else {
+                    Err(EvalError::TypeError(
+                        String::from("Num"),
+                        String::from("*, 2nd argument"),
+                        snd_pos,
+                        RichTerm {
+                            term: t2,
+                            pos: pos2,
+                        },
+                    ))
+                }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Num"),
+                    String::from("*, 1st argument"),
+                    fst_pos,
+                    RichTerm {
+                        term: t1,
+                        pos: pos1,
+                    },
+                ))
+            }
+        }
+        BinaryOp::Div() => {
+            if let Term::Num(n1) = *t1 {
+                if let Term::Num(n2) = *t2 {
+                    if n2 == 0.0 {
+                        Err(EvalError::Other(String::from("division by zero"), pos_op))
+                    } else {
+                        Ok(Closure::atomic_closure(Term::Num(n1 / n2).into()))
+                    }
+                } else {
+                    Err(EvalError::TypeError(
+                        String::from("Num"),
+                        String::from("/, 2nd argument"),
+                        snd_pos,
+                        RichTerm {
+                            term: t2,
+                            pos: pos2,
+                        },
+                    ))
+                }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Num"),
+                    String::from("/, 1st argument"),
+                    fst_pos,
+                    RichTerm {
+                        term: t1,
+                        pos: pos1,
+                    },
+                ))
+            }
+        }
+        BinaryOp::Modulo() => {
+            if let Term::Num(n1) = *t1 {
+                if let Term::Num(n2) = *t2 {
+                    Ok(Closure::atomic_closure(Term::Num(n1 % n2).into()))
+                } else {
+                    Err(EvalError::TypeError(
+                        String::from("Num"),
+                        String::from("%, 2nd argument"),
+                        snd_pos,
+                        RichTerm {
+                            term: t2,
+                            pos: pos2,
+                        },
+                    ))
+                }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Num"),
+                    String::from("%, 1st argument"),
+                    fst_pos,
+                    RichTerm {
+                        term: t1,
+                        pos: pos1,
+                    },
+                ))
+            }
+        }
         BinaryOp::PlusStr() => {
             if let Term::Str(s1) = *t1 {
                 if let Term::Str(s2) = *t2 {

@@ -576,6 +576,14 @@ impl<Ty> UnaryOp<Ty> {
 pub enum BinaryOp<CapturedTerm> {
     /// Addition of numerals.
     Plus(),
+    /// Substraction of numerals.
+    Sub(),
+    /// Multiplication of numerals.
+    Mult(),
+    /// Floating-point division of numerals.
+    Div(),
+    /// Modulo of numerals.
+    Modulo(),
     /// Concatenation of strings.
     PlusStr(),
     /// Unwrap a tagged term.
@@ -617,6 +625,10 @@ impl<Ty> BinaryOp<Ty> {
         match self {
             DynExtend(t) => DynExtend(f(t)),
             Plus() => Plus(),
+            Sub() => Sub(),
+            Div() => Div(),
+            Mult() => Mult(),
+            Modulo() => Modulo(),
             PlusStr() => PlusStr(),
             Unwrap() => Unwrap(),
             GoField() => GoField(),
