@@ -3,8 +3,8 @@ use crate::term::{BinaryOp, RichTerm, Term, UnaryOp, StrChunk};
 use crate::term::make as mk_term;
 use crate::mk_app;
 use crate::types::{Types, AbsType};
-use super::utils::{mk_span, mk_label};
-use super::lexer::{Token, NormalToken, StringToken, LexicalError};
+use super::utils::{StringKind, mk_span, mk_label, strip_indent};
+use super::lexer::{Token, NormalToken, StringToken, IndStringToken, LexicalError};
 use std::collections::HashMap;
 use either::*;
 use codespan::FileId;
@@ -131,9 +131,11 @@ Bool: bool = {
     "false" => false,
 };
 
-StrChunks : RichTerm =
-  "\"" <fst: ChunkLiteral?> <chunks: (ChunkExpr+ChunkLiteral)*> <lasts:
-    ChunkExpr*> "\"" => {
+StrChunks : RichTerm = {
+  <start: StringStart> <fst: ChunkLiteral?> <chunks: (ChunkExpr+ChunkLiteral)*> <lasts:
+    ChunkExpr*> <end: StringEnd> => {
+        assert_eq!(start, end);
+
         let chunks: Vec<StrChunk<RichTerm>> = fst.into_iter()
             .map(StrChunk::Literal)
             .chain(chunks.into_iter()
@@ -143,13 +145,31 @@ StrChunks : RichTerm =
                 })
                 .flatten())
             .chain(lasts.into_iter())
-            .rev()
             .collect();
 
-        RichTerm::from(Term::StrChunks(chunks))
-    };
+        let mut chunks = if start == StringKind::Multiline {
+            strip_indent(chunks)
+        }
+        else {
+            chunks
+        };
+        chunks.reverse();
 
-ChunkLiteral: String =
+        RichTerm::new(Term::StrChunks(chunks))
+    },
+};
+
+StringStart : StringKind = {
+    "\"" => StringKind::Standard,
+    "m#\"" => StringKind::Multiline,
+};
+
+StringEnd : StringKind = {
+    "\"" => StringKind::Standard,
+    "\"#m" => StringKind::Multiline,
+};
+
+ChunkLiteral : String =
     <parts: ChunkLiteralPart+> => {
         parts.into_iter().fold(String::new(), |mut acc, part| {
             match part {
@@ -161,13 +181,18 @@ ChunkLiteral: String =
         })
     };
 
-ChunkExpr: StrChunk<RichTerm> = "${" <t: SpTerm<RichTerm>> "}" => StrChunk::Expr(t);
+ChunkExpr: StrChunk<RichTerm> = DollarBrace <t: SpTerm<RichTerm>> "}" => StrChunk::Expr(t);
+
+DollarBrace = { "${", "${ bis" };
 
 Str: String = "\"" <s: ChunkLiteral> "\"" => s;
 
 ChunkLiteralPart: Either<&'input str, char> = {
     "str literal" => Either::Left(<>),
-    "escaped char" => Either::Right(<>),
+    "indstr literal" => Either::Left(<>),
+    "false end" => Either::Left(<>),
+    "str esc char" => Either::Right(<>),
+    "indstr esc char" => Either::Right(<>),
 };
 
 UOp: UnaryOp<RichTerm> = {
@@ -390,7 +415,10 @@ extern {
     enum Token<'input> {
         "identifier" => Token::Normal(NormalToken::Identifier(<&'input str>)),
         "str literal" => Token::Str(StringToken::Literal(<&'input str>)),
-        "escaped char" => Token::Str(StringToken::EscapedChar(<char>)),
+        "indstr literal" => Token::IndStr(IndStringToken::Literal(<&'input str>)),
+        "str esc char" => Token::Str(StringToken::EscapedChar(<char>)),
+        "indstr esc char" => Token::IndStr(IndStringToken::EscapedChar(<char>)),
+        "false end" => Token::IndStr(IndStringToken::FalseEnd(<&'input str>)),
         "num literal" => Token::Normal(NormalToken::NumLiteral(<f64>)),
 
         "if" => Token::Normal(NormalToken::If),
@@ -413,6 +441,10 @@ extern {
         ".$" => Token::Normal(NormalToken::DotDollar),
         "$[" => Token::Normal(NormalToken::DollarBracket),
         "${" => Token::Str(StringToken::DollarBrace),
+        // `${` and `${ bis` are morally the same token used in the same places,
+        // but they correspond to two different modes, so we need to have two
+        // distinct token
+        "${ bis" => Token::IndStr(IndStringToken::DollarBrace),
         "-$" => Token::Normal(NormalToken::MinusDollar),
 
         "+" => Token::Normal(NormalToken::Plus),
@@ -437,6 +469,8 @@ extern {
         "`" => Token::Normal(NormalToken::Backtick),
         "_" => Token::Normal(NormalToken::Underscore),
         "\"" => Token::Normal(NormalToken::DoubleQuote),
+        "\"#m" => Token::IndStr(IndStringToken::End),
+        "m#\"" => Token::Normal(NormalToken::StartMultiline),
 
         "Num" => Token::Normal(NormalToken::Num),
         "Dyn" => Token::Normal(NormalToken::Dyn),

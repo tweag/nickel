@@ -138,6 +138,8 @@ pub enum NormalToken<'input> {
     Backtick,
     #[token("_")]
     Underscore,
+    #[token("m#\"")]
+    StartMultiline,
 
     #[token("tag")]
     Tag,
@@ -251,16 +253,43 @@ pub enum StringToken<'input> {
     EscapedChar(char),
 }
 
+/// The tokens in indented multiline string mode.
+#[derive(Logos, Debug, PartialEq, Clone)]
+pub enum IndStringToken<'input> {
+    #[error]
+    Error,
+
+    #[regex("[^\"$\\\\]+")]
+    Literal(&'input str),
+
+    // This has lowest matching priority according to Logo's rules, so it is matched only if `End`
+    // cannot be
+    #[regex("\"(#|(#[^m]))?")]
+    FalseEnd(&'input str),
+    #[token("\"#m")]
+    End,
+    #[token("${")]
+    DollarBrace,
+    #[regex("\\\\.", |lex| lex.slice().chars().nth(1))]
+    EscapedChar(char),
+}
+
 /// The tokens of the modal lexer.
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token<'input> {
     Normal(NormalToken<'input>),
     Str(StringToken<'input>),
+    IndStr(IndStringToken<'input>),
 }
 
+type NormalLexer<'input> = logos::Lexer<'input, NormalToken<'input>>;
+type StrLexer<'input> = logos::Lexer<'input, StringToken<'input>>;
+type IndStrLexer<'input> = logos::Lexer<'input, IndStringToken<'input>>;
+
 pub enum ModalLexer<'input> {
-    Normal(logos::Lexer<'input, NormalToken<'input>>),
-    Str(logos::Lexer<'input, StringToken<'input>>),
+    Normal(NormalLexer<'input>),
+    Str(StrLexer<'input>),
+    IndStr(IndStrLexer<'input>),
 }
 
 // Wrap the `next()` function of the underlying lexer.
@@ -271,6 +300,7 @@ impl<'input> Iterator for ModalLexer<'input> {
         match self {
             ModalLexer::Normal(lexer) => lexer.next().map(Token::Normal),
             ModalLexer::Str(lexer) => lexer.next().map(Token::Str),
+            ModalLexer::IndStr(lexer) => lexer.next().map(Token::IndStr),
         }
     }
 }
@@ -281,6 +311,7 @@ impl<'input> ModalLexer<'input> {
         match self {
             ModalLexer::Normal(lexer) => lexer.span(),
             ModalLexer::Str(lexer) => lexer.span(),
+            ModalLexer::IndStr(lexer) => lexer.span(),
         }
     }
 }
@@ -295,6 +326,13 @@ pub enum LexicalError {
     Generic(usize, usize),
 }
 
+#[derive(Clone, PartialEq, Eq, Debug, Copy)]
+pub enum ModeElt {
+    Str,
+    IndStr,
+    Normal(usize),
+}
+
 pub struct Lexer<'input> {
     // We are forced to use an `Option` in order to be able to switch mode without cloning the
     // underlying lexer. Logos offers a `morph()` function for a in-place conversion between
@@ -304,7 +342,6 @@ pub struct Lexer<'input> {
     // excepted in an non observable intermediate state during mode switching.
     /// The modal lexer.
     pub lexer: Option<ModalLexer<'input>>,
-    /// The current brace counter used to determine if a closing brace is the end of an
     /// interpolated expression.
     ///
     /// This is always `0` in string mode.
@@ -314,34 +351,52 @@ pub struct Lexer<'input> {
     /// As interpolated strings can be nested, we can start to lex a new string while we were
     /// already inside an interpolated expression. In this case, once this string ends, we must
     /// restore the original brace counter, which is what this stack is used for.
-    pub brace_stack: Vec<usize>,
+    pub stack: Vec<ModeElt>,
 }
 
 impl<'input> Lexer<'input> {
     pub fn new(s: &'input str) -> Self {
         Lexer {
             lexer: Some(ModalLexer::Normal(NormalToken::lexer(s))),
-            brace_stack: Vec::new(),
+            stack: Vec::new(),
             brace_count: 0,
         }
     }
 
-    fn enter_str(&mut self) {
+    fn enter_strlike<F>(&mut self, morph: F)
+    where
+        F: FnOnce(NormalLexer<'input>) -> ModalLexer<'input>,
+    {
         match self.lexer.take() {
+            // Cannot transition from a string mode to another one, so the current mode must be
+            //  `Normal`
             Some(ModalLexer::Normal(lexer)) => {
-                self.brace_stack.push(self.brace_count);
+                self.stack.push(ModeElt::Normal(self.brace_count));
                 self.brace_count = 0;
-                self.lexer.replace(ModalLexer::Str(lexer.morph()));
+                self.lexer.replace(morph(lexer));
             }
-            _ => panic!("lexer::enter_str"),
+            _ => panic!("lexer::enter_strlike"),
         }
+    }
+
+    fn enter_str(&mut self) {
+        self.enter_strlike(|lexer| ModalLexer::Str(lexer.morph()));
+    }
+
+    fn enter_indstr(&mut self) {
+        self.enter_strlike(|lexer| ModalLexer::IndStr(lexer.morph()));
     }
 
     fn enter_normal(&mut self) {
         match self.lexer.take() {
+            //brace_count must be zero, and we do not push it on the stack
             Some(ModalLexer::Str(lexer)) => {
-                //brace_count must be zero, and we do not push it on the stack
                 self.lexer.replace(ModalLexer::Normal(lexer.morph()));
+                self.stack.push(ModeElt::Str);
+            }
+            Some(ModalLexer::IndStr(lexer)) => {
+                self.lexer.replace(ModalLexer::Normal(lexer.morph()));
+                self.stack.push(ModeElt::IndStr);
             }
             _ => panic!("lexer::enter_normal"),
         }
@@ -350,9 +405,27 @@ impl<'input> Lexer<'input> {
     fn leave_str(&mut self) {
         match self.lexer.take() {
             Some(ModalLexer::Str(lexer)) => {
-                // We can only enter string mode from normal mode, so the brace stack should not be
-                // empty
-                self.brace_count = self.brace_stack.pop().unwrap();
+                // We can only enter string mode from normal mode
+                self.brace_count = match self.stack.pop() {
+                    Some(ModeElt::Normal(count)) => count,
+                    mode => panic!("lexer::leave_str (popped mode {:?})", mode),
+                };
+
+                self.lexer.replace(ModalLexer::Normal(lexer.morph()));
+            }
+            _ => panic!("lexer::leave_str"),
+        }
+    }
+
+    fn leave_indstr(&mut self) {
+        match self.lexer.take() {
+            Some(ModalLexer::IndStr(lexer)) => {
+                // We can only enter string mode from normal mode
+                self.brace_count = match self.stack.pop() {
+                    Some(ModeElt::Normal(count)) => count,
+                    mode => panic!("lexer::leave_str (popped mode {:?})", mode),
+                };
+
                 self.lexer.replace(ModalLexer::Normal(lexer.morph()));
             }
             _ => panic!("lexer::leave_str"),
@@ -363,7 +436,11 @@ impl<'input> Lexer<'input> {
         match self.lexer.take() {
             Some(ModalLexer::Normal(lexer)) => {
                 // brace_count must be 0
-                self.lexer.replace(ModalLexer::Str(lexer.morph()));
+                match self.stack.pop() {
+                    Some(ModeElt::Str) => self.lexer.replace(ModalLexer::Str(lexer.morph())),
+                    Some(ModeElt::IndStr) => self.lexer.replace(ModalLexer::IndStr(lexer.morph())),
+                    mode => panic!("lexer::leave_normal (popped mode {:?})", mode),
+                };
             }
             _ => panic!("lexer::leave_normal"),
         }
@@ -382,10 +459,11 @@ impl<'input> Iterator for Lexer<'input> {
 
         match token.as_ref() {
             Some(Normal(NormalToken::DoubleQuote)) => self.enter_str(),
+            Some(Normal(NormalToken::StartMultiline)) => self.enter_indstr(),
             Some(Normal(NormalToken::LBrace)) => self.brace_count += 1,
             Some(Normal(NormalToken::RBrace)) => {
                 if self.brace_count == 0 {
-                    if self.brace_stack.is_empty() {
+                    if self.stack.is_empty() {
                         return Some(Err(LexicalError::UnmatchedCloseBrace(span.start)));
                     }
 
@@ -400,17 +478,27 @@ impl<'input> Iterator for Lexer<'input> {
                 // `DoubleQuote`, namely the the normal one.
                 token = Some(Normal(NormalToken::DoubleQuote));
             }
-            Some(Str(StringToken::DollarBrace)) => self.enter_normal(),
+            Some(Str(StringToken::DollarBrace)) | Some(IndStr(IndStringToken::DollarBrace)) => {
+                self.enter_normal()
+            }
             // Convert escape sequences to the corresponding character.
-            Some(Str(StringToken::EscapedChar(c))) => {
+            Some(Str(StringToken::EscapedChar(c)))
+            | Some(IndStr(IndStringToken::EscapedChar(c))) => {
                 if let Some(esc) = escape_char(*c) {
-                    token = Some(Str(StringToken::EscapedChar(esc)));
+                    if let Some(Str(_)) = &token {
+                        token = Some(Str(StringToken::EscapedChar(esc)));
+                    } else {
+                        token = Some(IndStr(IndStringToken::EscapedChar(esc)));
+                    }
                 } else {
                     return Some(Err(LexicalError::InvalidEscapeSequence(span.start + 1)));
                 }
             }
+            Some(IndStr(IndStringToken::End)) => self.leave_indstr(),
             // Early report errors for now. This could change in the future
-            Some(Str(StringToken::Error)) | Some(Normal(NormalToken::Error)) => {
+            Some(Normal(NormalToken::Error))
+            | Some(Str(StringToken::Error))
+            | Some(IndStr(IndStringToken::Error)) => {
                 return Some(Err(LexicalError::Generic(span.start, span.end)))
             }
             _ => (),
