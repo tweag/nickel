@@ -1,8 +1,17 @@
 /// A few helpers to generate position spans and labels easily during parsing
 use crate::label::Label;
 use crate::position::RawSpan;
+use crate::term::{RichTerm, StrChunk};
 use crate::types::Types;
 use codespan::FileId;
+
+/// Distinguish between the standard string separators `"`/`"` and the multi-line string separators
+/// `m#"`/`"#m` in the parser.
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum StringKind {
+    Standard,
+    Multiline,
+}
 
 /// Make a span from parser byte offsets.
 pub fn mk_span(src_id: FileId, l: usize, r: usize) -> RawSpan {
@@ -22,4 +31,103 @@ pub fn mk_label(types: Types, src_id: FileId, l: usize, r: usize) -> Label {
         polarity: true,
         path: Vec::new(),
     }
+}
+
+/// Determine the minimal level of indentation of a multi-line string.
+///
+/// The result is determined by computing the minimum indentation level among all lines, where the
+/// indentation level of a line is the number of consecutive whitespace characters, which are
+/// either a space or a, counted from the beginning of the line. If a line is empty or consist only
+/// of whitespace characters, it is ignored.
+pub fn min_indent(chunks: &Vec<StrChunk<RichTerm>>) -> u32 {
+    let mut min: u32 = std::u32::MAX;
+    let mut current = 0;
+    let mut start_line = true;
+
+    for chunk in chunks.iter() {
+        match chunk {
+            StrChunk::Expr(_) if start_line => {
+                if current < min {
+                    min = current;
+                }
+                start_line = false;
+            }
+            StrChunk::Expr(_) => (),
+            StrChunk::Literal(s) => {
+                for c in s.chars() {
+                    match c {
+                        ' ' | '\t' if start_line => current += 1,
+                        '\n' => {
+                            current = 0;
+                            start_line = true;
+                        }
+                        _ if start_line => {
+                            if current < min {
+                                min = current;
+                            }
+                            start_line = false;
+                        }
+                        _ => (),
+                    }
+                }
+            }
+        }
+    }
+
+    min
+}
+
+/// Strip the common indentation prefix from a multi-line string.
+///
+/// Determine the minimum indentation level of a multi-line string via
+/// [`min_indent`](./fn.min_indent.html), and strip an equal number of whitespace characters (` `
+/// or `\t`) from the beginning of each line. If the last line is empty or consist only of
+/// whitespace characters, it is filtered out.
+pub fn strip_indent(mut chunks: Vec<StrChunk<RichTerm>>) -> Vec<StrChunk<RichTerm>> {
+    if chunks.is_empty() {
+        return chunks;
+    }
+
+    let min = min_indent(&chunks);
+    let mut current = 0;
+    let mut start_line = true;
+
+    for chunk in &mut chunks {
+        match chunk {
+            StrChunk::Literal(ref mut s) => {
+                let mut buffer = String::new();
+                for c in s.chars() {
+                    match c {
+                        ' ' | '\t' if start_line && current < min => current += 1,
+                        '\n' => {
+                            current = 0;
+                            start_line = true;
+                            buffer.push(c);
+                        }
+                        c if start_line => {
+                            start_line = false;
+                            buffer.push(c);
+                        }
+
+                        c => buffer.push(c),
+                    }
+                }
+
+                if let Some(last_index) = buffer.rfind('\n') {
+                    if last_index == buffer.len() - 1
+                        || buffer.as_bytes()[(last_index + 1)..]
+                            .iter()
+                            .all(|c| *c == b' ' || *c == b'\t')
+                    {
+                        buffer.truncate(last_index);
+                    }
+                }
+
+                std::mem::replace(s, buffer);
+            }
+            StrChunk::Expr(_) => (),
+        }
+    }
+
+    chunks
 }
