@@ -586,12 +586,20 @@ pub enum BinaryOp<CapturedTerm> {
     Modulo(),
     /// Concatenation of strings.
     PlusStr(),
+    /// Polymorphic equality.
+    Eq(),
+    /// Stricty less than comparison operator.
+    LessThan(),
+    /// Less than or equal comparison operator.
+    LessOrEq(),
+    /// Stricty greater than comparison operator.
+    GreaterThan(),
+    /// Greater than or equal comparison operator.
+    GreaterOrEq(),
     /// Unwrap a tagged term.
     ///
     /// See `Wrap` in [`UnaryOp`](enum.UnaryOp.html).
     Unwrap(),
-    /// Polymorphic equality.
-    Eq(),
     /// Go to a specific field in the type path of a label.
     ///
     /// See `GoDom`.
@@ -630,9 +638,13 @@ impl<Ty> BinaryOp<Ty> {
             Mult() => Mult(),
             Modulo() => Modulo(),
             PlusStr() => PlusStr(),
+            Eq() => Eq(),
+            LessThan() => LessThan(),
+            LessOrEq() => LessOrEq(),
+            GreaterThan() => GreaterThan(),
+            GreaterOrEq() => GreaterOrEq(),
             Unwrap() => Unwrap(),
             GoField() => GoField(),
-            Eq() => Eq(),
             DynRemove() => DynRemove(),
             DynAccess() => DynAccess(),
             HasField() => HasField(),

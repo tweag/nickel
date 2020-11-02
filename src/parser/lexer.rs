@@ -220,8 +220,12 @@ pub enum NormalToken<'input> {
     RParen,
     #[token("<")]
     LAngleBracket,
+    #[token("<=")]
+    LessOrEq,
     #[token(">")]
     RAngleBracket,
+    #[token(">=")]
+    GreaterOrEq,
 }
 
 /// The tokens in string mode.

@@ -1437,6 +1437,17 @@ pub fn get_bop_type(
                 Box::new(TypeWrapper::Concrete(AbsType::Bool())),
             ))),
         ))),
+        // Num -> Num -> Bool
+        BinaryOp::LessThan()
+        | BinaryOp::LessOrEq()
+        | BinaryOp::GreaterThan()
+        | BinaryOp::GreaterOrEq() => Ok(TypeWrapper::Concrete(AbsType::arrow(
+            Box::new(TypeWrapper::Concrete(AbsType::Num())),
+            Box::new(TypeWrapper::Concrete(AbsType::arrow(
+                Box::new(TypeWrapper::Concrete(AbsType::Num())),
+                Box::new(TypeWrapper::Concrete(AbsType::Bool())),
+            ))),
+        ))),
         // Str -> Dyn -> Dyn
         BinaryOp::GoField() => Ok(TypeWrapper::Concrete(AbsType::arrow(
             Box::new(TypeWrapper::Concrete(AbsType::Str())),
