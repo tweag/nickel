@@ -529,9 +529,19 @@ fn process_unary_operation(
                 ))
             }
         }
-        UnaryOp::ChunksConcat(mut acc, mut tail) => {
+        UnaryOp::ChunksConcat(indent, mut acc, mut tail) => {
             if let Term::Str(s) = *t {
+                let s = if indent != 0 {
+                    let indent_str: String = std::iter::once('\n')
+                        .chain((0..indent).map(|_| ' '))
+                        .collect();
+                    s.replace("\n", &indent_str)
+                } else {
+                    s
+                };
+
                 acc.push_str(&s);
+
                 let mut next_opt = tail.pop();
 
                 // Pop consecutive string literals to find the next expression to evaluate
@@ -540,20 +550,22 @@ fn process_unary_operation(
                     next_opt = tail.pop();
                 }
 
-                if let Some(StrChunk::Expr(e)) = next_opt {
+                if let Some(StrChunk::Expr(e, indent)) = next_opt {
                     let arg_closure = e.body.closurize(&mut env, e.env);
                     let tail_closure = tail
                         .into_iter()
                         .map(|chunk| match chunk {
                             StrChunk::Literal(s) => StrChunk::Literal(s),
-                            StrChunk::Expr(c) => StrChunk::Expr(c.body.closurize(&mut env, c.env)),
+                            StrChunk::Expr(c, indent) => {
+                                StrChunk::Expr(c.body.closurize(&mut env, c.env), indent)
+                            }
                         })
                         .collect();
 
                     Ok(Closure {
                         body: RichTerm {
                             term: Box::new(Term::Op1(
-                                UnaryOp::ChunksConcat(acc, tail_closure),
+                                UnaryOp::ChunksConcat(indent, acc, tail_closure),
                                 arg_closure,
                             )),
                             pos: pos_op,

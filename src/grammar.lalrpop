@@ -181,7 +181,7 @@ ChunkLiteral : String =
         })
     };
 
-ChunkExpr: StrChunk<RichTerm> = DollarBrace <t: SpTerm<RichTerm>> "}" => StrChunk::Expr(t);
+ChunkExpr: StrChunk<RichTerm> = DollarBrace <t: SpTerm<RichTerm>> "}" => StrChunk::Expr(t, 0);
 
 DollarBrace = { "${", "${ bis" };
 

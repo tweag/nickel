@@ -39,20 +39,20 @@ pub fn mk_label(types: Types, src_id: FileId, l: usize, r: usize) -> Label {
 /// indentation level of a line is the number of consecutive whitespace characters, which are
 /// either a space or a, counted from the beginning of the line. If a line is empty or consist only
 /// of whitespace characters, it is ignored.
-pub fn min_indent(chunks: &Vec<StrChunk<RichTerm>>) -> u32 {
-    let mut min: u32 = std::u32::MAX;
+pub fn min_indent(chunks: &Vec<StrChunk<RichTerm>>) -> usize {
+    let mut min: usize = std::usize::MAX;
     let mut current = 0;
     let mut start_line = true;
 
     for chunk in chunks.iter() {
         match chunk {
-            StrChunk::Expr(_) if start_line => {
+            StrChunk::Expr(_, _) if start_line => {
                 if current < min {
                     min = current;
                 }
                 start_line = false;
             }
-            StrChunk::Expr(_) => (),
+            StrChunk::Expr(_, _) => (),
             StrChunk::Literal(s) => {
                 for c in s.chars() {
                     match c {
@@ -100,6 +100,10 @@ pub fn strip_indent(mut chunks: Vec<StrChunk<RichTerm>>) -> Vec<StrChunk<RichTer
                 for c in s.chars() {
                     match c {
                         ' ' | '\t' if start_line && current < min => current += 1,
+                        ' ' | '\t' if start_line => {
+                            current += 1;
+                            buffer.push(c);
+                        }
                         '\n' => {
                             current = 0;
                             start_line = true;
@@ -109,19 +113,15 @@ pub fn strip_indent(mut chunks: Vec<StrChunk<RichTerm>>) -> Vec<StrChunk<RichTer
                             start_line = false;
                             buffer.push(c);
                         }
-
                         c => buffer.push(c),
                     }
                 }
 
                 // Strip the first line, if it is only whitespace characters
                 if index == 0 {
-                    println!("First chunk");
                     if let Some(first_index) = buffer.find('\n') {
-                        println!("Found newline char: {}", first_index);
-                        println!("substring tested: {}", &buffer[0..(first_index + 1)]);
                         if first_index == 0
-                           || buffer.as_bytes()[..first_index]
+                            || buffer.as_bytes()[..first_index]
                                 .iter()
                                 .all(|c| *c == b' ' || *c == b'\t')
                         {
@@ -131,7 +131,7 @@ pub fn strip_indent(mut chunks: Vec<StrChunk<RichTerm>>) -> Vec<StrChunk<RichTer
                 }
 
                 // Strip the last line, if it is only whitespace characters.
-                if index == chunks_len-1 {
+                if index == chunks_len - 1 {
                     if let Some(last_index) = buffer.rfind('\n') {
                         if last_index == buffer.len() - 1
                             || buffer.as_bytes()[(last_index + 1)..]
@@ -145,7 +145,11 @@ pub fn strip_indent(mut chunks: Vec<StrChunk<RichTerm>>) -> Vec<StrChunk<RichTer
 
                 std::mem::replace(s, buffer);
             }
-            StrChunk::Expr(_) => (),
+            StrChunk::Expr(_, ref mut indent) if start_line => {
+                debug_assert!(current >= min);
+                *indent = current - min;
+            }
+            StrChunk::Expr(_, _) => (),
         }
     }
 

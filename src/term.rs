@@ -141,8 +141,26 @@ pub enum Term {
 /// RichTerm>` but with explicit constructor names.
 #[derive(Debug, PartialEq, Clone)]
 pub enum StrChunk<E> {
+    /// A string literal.
     Literal(String),
-    Expr(E),
+    /// An interpolated expression.
+    Expr(
+        E,     /* the expression */
+        usize, /* the indentation level (see parser::utils::strip_indent) */
+    ),
+}
+
+impl<E> StrChunk<E> {
+    pub fn literal<S>(s: S) -> Self
+    where
+        S: Into<String>,
+    {
+        StrChunk::Literal(s.into())
+    }
+
+    pub fn expr(e: E) -> Self {
+        StrChunk::Expr(e, 0)
+    }
 }
 
 impl Term {
@@ -207,7 +225,7 @@ impl Term {
             }),
             StrChunks(chunks) => chunks.iter_mut().for_each(|chunk| match chunk {
                 StrChunk::Literal(_) => (),
-                StrChunk::Expr(e) => func(e),
+                StrChunk::Expr(e, _) => func(e),
             }),
         }
     }
@@ -260,7 +278,7 @@ impl Term {
                     .into_iter()
                     .map(|chunk| match chunk {
                         StrChunk::Literal(s) => s,
-                        StrChunk::Expr(_) => "${ ... }",
+                        StrChunk::Expr(_, _) => "${ ... }",
                     })
                     .map(String::from)
                     .collect();
@@ -511,7 +529,11 @@ pub enum UnaryOp<CapturedTerm> {
     /// Only generated during the evaluation of a string with interpolated expressions. It holds a
     /// string accumulator, the remaining chunks to be evaluated, and is applied to the current
     /// chunk being evaluated.
-    ChunksConcat(String, Vec<StrChunk<CapturedTerm>>),
+    ChunksConcat(
+        usize,                       /* the indentation level of the chunk argument */
+        String,                      /* the string being built */
+        Vec<StrChunk<CapturedTerm>>, /* the remaining chunks */
+    ),
 
     /// Return the names of the fields of a record as a string list.
     FieldsOf(),
@@ -569,13 +591,14 @@ impl<Ty> UnaryOp<Ty> {
             ListTail() => ListTail(),
             ListLength() => ListLength(),
 
-            ChunksConcat(s, chunks) => ChunksConcat(
+            ChunksConcat(indent, s, chunks) => ChunksConcat(
+                indent,
                 s,
                 chunks
                     .into_iter()
                     .map(|chunk| match chunk {
                         StrChunk::Literal(s) => StrChunk::Literal(s),
-                        StrChunk::Expr(e) => StrChunk::Expr(f(e)),
+                        StrChunk::Expr(e, indent) => StrChunk::Expr(f(e), indent),
                     })
                     .collect(),
             ),
@@ -876,7 +899,9 @@ impl RichTerm {
                     .into_iter()
                     .map(|chunk| match chunk {
                         chunk @ StrChunk::Literal(_) => Ok(chunk),
-                        StrChunk::Expr(t) => Ok(StrChunk::Expr(t.traverse(f, state)?)),
+                        StrChunk::Expr(t, indent) => {
+                            Ok(StrChunk::Expr(t.traverse(f, state)?, indent))
+                        }
                     })
                     .collect();
 
