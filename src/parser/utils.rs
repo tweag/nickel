@@ -92,7 +92,8 @@ pub fn strip_indent(mut chunks: Vec<StrChunk<RichTerm>>) -> Vec<StrChunk<RichTer
     let mut current = 0;
     let mut start_line = true;
 
-    for chunk in &mut chunks {
+    let chunks_len = chunks.len();
+    for (index, chunk) in chunks.iter_mut().enumerate() {
         match chunk {
             StrChunk::Literal(ref mut s) => {
                 let mut buffer = String::new();
@@ -113,13 +114,32 @@ pub fn strip_indent(mut chunks: Vec<StrChunk<RichTerm>>) -> Vec<StrChunk<RichTer
                     }
                 }
 
-                if let Some(last_index) = buffer.rfind('\n') {
-                    if last_index == buffer.len() - 1
-                        || buffer.as_bytes()[(last_index + 1)..]
-                            .iter()
-                            .all(|c| *c == b' ' || *c == b'\t')
-                    {
-                        buffer.truncate(last_index);
+                // Strip the first line, if it is only whitespace characters
+                if index == 0 {
+                    println!("First chunk");
+                    if let Some(first_index) = buffer.find('\n') {
+                        println!("Found newline char: {}", first_index);
+                        println!("substring tested: {}", &buffer[0..(first_index + 1)]);
+                        if first_index == 0
+                           || buffer.as_bytes()[..first_index]
+                                .iter()
+                                .all(|c| *c == b' ' || *c == b'\t')
+                        {
+                            buffer = String::from(&buffer[(first_index + 1)..]);
+                        }
+                    }
+                }
+
+                // Strip the last line, if it is only whitespace characters.
+                if index == chunks_len-1 {
+                    if let Some(last_index) = buffer.rfind('\n') {
+                        if last_index == buffer.len() - 1
+                            || buffer.as_bytes()[(last_index + 1)..]
+                                .iter()
+                                .all(|c| *c == b' ' || *c == b'\t')
+                        {
+                            buffer.truncate(last_index);
+                        }
                     }
                 }
 
