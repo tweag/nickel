@@ -4,7 +4,7 @@ use crate::term::make as mk_term;
 use crate::mk_app;
 use crate::types::{Types, AbsType};
 use super::utils::{StringKind, mk_span, mk_label, strip_indent};
-use super::lexer::{Token, NormalToken, StringToken, IndStringToken, LexicalError};
+use super::lexer::{Token, NormalToken, StringToken, MultiStringToken, LexicalError};
 use std::collections::HashMap;
 use either::*;
 use codespan::FileId;
@@ -189,10 +189,10 @@ Str: String = "\"" <s: ChunkLiteral> "\"" => s;
 
 ChunkLiteralPart: Either<&'input str, char> = {
     "str literal" => Either::Left(<>),
-    "indstr literal" => Either::Left(<>),
+    "multstr literal" => Either::Left(<>),
     "false end" => Either::Left(<>),
     "str esc char" => Either::Right(<>),
-    "indstr esc char" => Either::Right(<>),
+    "multstr esc char" => Either::Right(<>),
 };
 
 UOp: UnaryOp<RichTerm> = {
@@ -415,10 +415,10 @@ extern {
     enum Token<'input> {
         "identifier" => Token::Normal(NormalToken::Identifier(<&'input str>)),
         "str literal" => Token::Str(StringToken::Literal(<&'input str>)),
-        "indstr literal" => Token::IndStr(IndStringToken::Literal(<&'input str>)),
+        "multstr literal" => Token::MultiStr(MultiStringToken::Literal(<&'input str>)),
         "str esc char" => Token::Str(StringToken::EscapedChar(<char>)),
-        "indstr esc char" => Token::IndStr(IndStringToken::EscapedChar(<char>)),
-        "false end" => Token::IndStr(IndStringToken::FalseEnd(<&'input str>)),
+        "multstr esc char" => Token::MultiStr(MultiStringToken::EscapedChar(<char>)),
+        "false end" => Token::MultiStr(MultiStringToken::FalseEnd(<&'input str>)),
         "num literal" => Token::Normal(NormalToken::NumLiteral(<f64>)),
 
         "if" => Token::Normal(NormalToken::If),
@@ -444,7 +444,7 @@ extern {
         // `${` and `${ bis` are morally the same token used in the same places,
         // but they correspond to two different modes, so we need to have two
         // distinct token
-        "${ bis" => Token::IndStr(IndStringToken::DollarBrace),
+        "${ bis" => Token::MultiStr(MultiStringToken::DollarBrace),
         "-$" => Token::Normal(NormalToken::MinusDollar),
 
         "+" => Token::Normal(NormalToken::Plus),
@@ -469,8 +469,8 @@ extern {
         "`" => Token::Normal(NormalToken::Backtick),
         "_" => Token::Normal(NormalToken::Underscore),
         "\"" => Token::Normal(NormalToken::DoubleQuote),
-        "\"#m" => Token::IndStr(IndStringToken::End),
-        "m#\"" => Token::Normal(NormalToken::StartMultiline),
+        "\"#m" => Token::MultiStr(MultiStringToken::End),
+        "m#\"" => Token::Normal(NormalToken::MultiStringStart(<usize>)),
 
         "Num" => Token::Normal(NormalToken::Num),
         "Dyn" => Token::Normal(NormalToken::Dyn),
