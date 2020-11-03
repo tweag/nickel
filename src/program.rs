@@ -1179,6 +1179,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
     /// instead of the callsite.
     macro_rules! assert_peq {
         ($t1:expr, $t2:expr) => {
+            println!("asserting {:?}", eval_string($t1));
             assert_eq!(
                 eval_string(&format!("({}) == ({})", $t1, $t2)),
                 Ok(Term::Bool(true)),
@@ -1431,5 +1432,80 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
             f (fun x => x) {a = 1; b = bool; c = 3}",
         )
         .unwrap_err();
+    }
+
+    #[test]
+    fn multiline_string_indent() {
+        assert_peq!(
+            r##"  
+                m#"
+                   this
+                       is an
+                       indented
+                   text
+                "#m
+            "##,
+            "\"this\n    is an\n    indented\ntext\"");
+
+        assert_peq!(
+            r##"  
+                m#"
+                   this
+                       is an
+                       indented
+                   text"#m
+            "##,
+            "\"this\n    is an\n    indented\ntext\"");
+
+        // /!\ Trailing spaces on the empty line are on purpose, don't remove ! /!\
+        assert_peq!(
+            r##"  
+                m#"
+                   ignore
+    
+                    empty line indent
+                "#m
+            "##,
+            "\"ignore\n\n empty line indent\"");
+
+        assert_peq!(
+            r##"  
+                m#"
+    
+                   ignore
+                    first line indent
+                "#m
+            "##,
+            "\"\nignore\n first line indent\"");
+
+    }
+
+    #[test]
+    fn multiline_string_delimiters() {
+        // Writing multi-line strings inside Rust raw strings, which have the similar delimiters
+        // is, is not really pretty
+        assert_eq!(
+            eval_string(r###"m##""#m"##a"##m"###),
+            Ok(Term::Str(String::from(r###""#m"##a"###))),
+        );
+
+        assert_eq!(
+            eval_string(r####"m###""##m"###a"###m"####),
+            Ok(Term::Str(String::from(r####""##m"###a"####))),
+        );
+    }
+
+    #[test]
+    fn multiline_interpolation() {
+        assert_peq!(
+            r###"  
+                m#"
+                   ${m#"thi"#m ++ "s"}
+                       ${"is" ++ " an"}
+                       indented
+                   ${"${m##"te"##m}xt"}
+                "#m
+            "###,
+            "\"this\n    is an\n    indented\ntext\"");
     }
 }
