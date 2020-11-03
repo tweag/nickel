@@ -309,7 +309,11 @@ BOpPre: BinaryOp<RichTerm> = {
 }
 
 Types: Types = {
-    "forall" <id: Ident> "." <ty: Arrows> => Types(AbsType::Forall(id, Box::new(ty))),
+    "forall" <ids: Ident+> "." <ty: Arrows> =>
+        ids.into_iter().rev().fold(
+            ty,
+            |acc, id| Types(AbsType::Forall(id, Box::new(acc)))
+        ),
     <Arrows>
 }
 
