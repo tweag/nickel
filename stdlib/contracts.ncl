@@ -29,4 +29,43 @@
             t
         else
             contr (tag "NotRowExt" l) t;
+
+    record = fun cont l t =>
+        if isRecord t then
+            cont {} l t
+        else
+            blame (tag "not a record" l);
+
+    dyn_record = fun contr l t =>
+        if isRecord t then
+            mapRec (fun _field => contr l) t
+        else
+            blame (tag "not a record" l);
+
+    record_extend = fun field contr cont acc l t =>
+        if hasField field t then
+            let acc = acc$[field = contr (goField field l) (t.$field)] in
+            let t = t -$ field in
+            cont acc l t
+        else
+            blame (tag "missing field" l);
+
+    forall_tail = fun sy pol acc l t =>
+        let magic_fld = "_%wrapped" in
+        if pol == (polarity l) then
+            if hasField magic_fld t then
+                if (t -$ magic_fld) == {} then
+                    let fail = blame (tag "polymorphic tail mismatch" l) in
+                    let inner = unwrap sy (t.$magic_fld) fail in
+                    merge acc inner
+                else
+                    blame (tag "extra field" l)
+            else
+                blame (tag "missing polymorphic part" l)
+        else
+            acc$[magic_fld = wrap sy t];
+
+    empty_tail = fun acc l t =>
+        if t == {} then acc
+        else blame (tag "extra field" l);
 }
