@@ -4,6 +4,7 @@
 //! information about the context of a contract failure.
 use crate::position::RawSpan;
 use crate::types::{AbsType, Types};
+use codespan::Files;
 
 pub mod ty_path {
     //! Type paths.
@@ -179,10 +180,6 @@ pub struct Label {
     pub path: ty_path::Path,
 }
 
-#[cfg(test)]
-use codespan::Files;
-
-#[cfg(test)]
 impl Label {
     /// Generate a dummy label for testing purpose.
     pub fn dummy() -> Label {

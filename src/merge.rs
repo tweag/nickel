@@ -187,18 +187,13 @@ pub fn merge(
             let body = Term::ContractWithDefault(ty_closure, lbl, body).into();
             Ok(Closure { body, env })
         }
-        // Composing two contracts creates a new one which applies these contracts successively.
-        // This composite contract requires its own label, but its components already had their
-        // own, hence they will ignore this label. We make the arbitrary choice of passing the
-        // first label `lbl1` in each such situation: because it will be ignored, it doesn't
-        // matter.
+        // Composed contracts carry and blame their original label. As any contract, the composite
+        // still requires a label, but it will be ignored, so we can provide a dummy one.
         (Term::ContractWithDefault(ty1, lbl1, t1), Term::ContractWithDefault(ty2, lbl2, t2)) => {
             let Closure { body, mut env } = mk_merge_closure(t1, env1.clone(), t2, env2.clone());
             let body = Term::ContractWithDefault(
-                merge_types_closure(&mut env, ty1, lbl1.clone(), env1, ty2, lbl2, env2),
-                // Using lbl1 here is arbitrary, but it will be ignored anyway, and we need to
-                // provide one.
-                lbl1,
+                merge_types_closure(&mut env, ty1, lbl1, env1, ty2, lbl2, env2),
+                Label::dummy(),
                 body,
             )
             .into();
@@ -239,8 +234,8 @@ pub fn merge(
         (Term::Contract(ty1, lbl1), Term::Contract(ty2, lbl2)) => {
             let mut env = HashMap::new();
             let body = Term::Contract(
-                merge_types_closure(&mut env, ty1, lbl1.clone(), env1, ty2, lbl2, env2),
-                lbl1,
+                merge_types_closure(&mut env, ty1, lbl1, env1, ty2, lbl2, env2),
+                Label::dummy(),
             )
             .into();
             Ok(Closure { body, env })
@@ -248,17 +243,17 @@ pub fn merge(
         (Term::Contract(ty1, lbl1), Term::ContractWithDefault(ty2, lbl2, t)) => {
             let mut env = HashMap::new();
             let ty_closure =
-                merge_types_closure(&mut env, ty1, lbl1.clone(), env1, ty2, lbl2, env2.clone());
+                merge_types_closure(&mut env, ty1, lbl1, env1, ty2, lbl2, env2.clone());
             let t_closure = t.closurize(&mut env, env2);
-            let body = Term::ContractWithDefault(ty_closure, lbl1, t_closure).into();
+            let body = Term::ContractWithDefault(ty_closure, Label::dummy(), t_closure).into();
             Ok(Closure { body, env })
         }
         (Term::ContractWithDefault(ty1, lbl1, t), Term::Contract(ty2, lbl2)) => {
             let mut env = HashMap::new();
             let ty_closure =
-                merge_types_closure(&mut env, ty1, lbl1.clone(), env1.clone(), ty2, lbl2, env2);
+                merge_types_closure(&mut env, ty1, lbl1, env1.clone(), ty2, lbl2, env2);
             let t_closure = t.closurize(&mut env, env1);
-            let body = Term::ContractWithDefault(ty_closure, lbl1, t_closure).into();
+            let body = Term::ContractWithDefault(ty_closure, Label::dummy(), t_closure).into();
             Ok(Closure { body, env })
         }
         (Term::Contract(ty, lbl), t) | (Term::ContractWithDefault(ty, lbl, _), t) => {
