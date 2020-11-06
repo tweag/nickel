@@ -176,15 +176,17 @@ impl Types {
         pol: bool,
         sy: &mut i32,
     ) -> RichTerm {
+        use crate::stdlib::contracts;
+
         match self.0 {
-            AbsType::Dyn() => mk_term::var("dyn"),
-            AbsType::Num() => mk_term::var("num"),
-            AbsType::Bool() => mk_term::var("bool"),
-            AbsType::Str() => mk_term::var("string"),
-            AbsType::List() => mk_term::var("list"),
+            AbsType::Dyn() => contracts::dynamic(),
+            AbsType::Num() => contracts::num(),
+            AbsType::Bool() => contracts::bool(),
+            AbsType::Str() => contracts::string(),
+            AbsType::List() => contracts::list(),
             AbsType::Sym() => panic!("Are you trying to check a Sym at runtime?"),
             AbsType::Arrow(ref s, ref t) => mk_app!(
-                mk_term::var("func"),
+                contracts::func(),
                 s.contract_open(h.clone(), !pol, sy),
                 t.contract_open(h, pol, sy)
             ),
@@ -196,20 +198,19 @@ impl Types {
                 rt.clone()
             }
             AbsType::Forall(ref i, ref t) => {
-                let inst_var = mk_app!(mk_term::var("forall_var"), Term::Sym(*sy), Term::Bool(pol));
+                let inst_var = mk_app!(contracts::forall_var(), Term::Sym(*sy), Term::Bool(pol));
 
-                let inst_tail =
-                    mk_app!(mk_term::var("forall_tail"), Term::Sym(*sy), Term::Bool(pol));
+                let inst_tail = mk_app!(contracts::forall_tail(), Term::Sym(*sy), Term::Bool(pol));
 
                 h.insert(i.clone(), (inst_var, inst_tail));
                 *sy += 1;
                 t.contract_open(h, pol, sy)
             }
-            AbsType::RowEmpty() | AbsType::RowExtend(_, _, _) => mk_term::var("fail"),
+            AbsType::RowEmpty() | AbsType::RowExtend(_, _, _) => contracts::fail(),
             AbsType::Enum(ref r) => {
                 fn form(ty: Types, h: HashMap<Ident, (RichTerm, RichTerm)>) -> RichTerm {
                     match ty.0 {
-                        AbsType::RowEmpty() => mk_term::var("fail"),
+                        AbsType::RowEmpty() => contracts::fail(),
                         AbsType::RowExtend(_, Some(_), _) => {
                             panic!("It should be a row without type")
                         }
@@ -219,7 +220,7 @@ impl Types {
                             map.insert(id, Term::Bool(true).into());
 
                             mk_app!(
-                                mk_term::var("row_extend"),
+                                contracts::row_extend(),
                                 rest_contract,
                                 mk_fun!(
                                     "x",
@@ -250,7 +251,7 @@ impl Types {
                     h: HashMap<Ident, (RichTerm, RichTerm)>,
                 ) -> RichTerm {
                     match &ty.0 {
-                        AbsType::RowEmpty() => mk_term::var("empty_tail"),
+                        AbsType::RowEmpty() => contracts::empty_tail(),
                         AbsType::Var(id) => {
                             let (_, rt) = h
                                 .get(&id)
@@ -261,7 +262,7 @@ impl Types {
                             let cont = form(sy, pol, rest.as_ref(), h.clone());
                             let row_contr = ty.contract_open(h, pol, sy);
                             mk_app!(
-                                mk_term::var("record_extend"),
+                                contracts::record_extend(),
                                 mk_term::string(format!("{}", id)),
                                 row_contr,
                                 cont
@@ -274,10 +275,10 @@ impl Types {
                     }
                 }
 
-                mk_app!(mk_term::var("record"), form(sy, pol, ty, h))
+                mk_app!(contracts::record(), form(sy, pol, ty, h))
             }
             AbsType::DynRecord(ref ty) => {
-                mk_app!(mk_term::var("dyn_record"), ty.contract_open(h, pol, sy))
+                mk_app!(contracts::dyn_record(), ty.contract_open(h, pol, sy))
             }
         }
     }

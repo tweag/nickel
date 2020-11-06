@@ -15,6 +15,7 @@ use crate::merge;
 use crate::merge::merge;
 use crate::position::RawSpan;
 use crate::stack::Stack;
+use crate::stdlib;
 use crate::term::make as mk_term;
 use crate::term::{BinaryOp, RichTerm, StrChunk, Term, UnaryOp};
 use crate::transformations::Closurizable;
@@ -827,14 +828,7 @@ fn process_binary_operation(
                     .collect();
                 // lists.all (fun x => x) subeqs
                 Term::App(
-                    mk_app!(
-                        // lists.all
-                        mk_term::op1(
-                            UnaryOp::StaticAccess(Ident::from("all")),
-                            mk_term::var("lists"),
-                        ),
-                        mk_term::id()
-                    ),
+                    mk_app!(stdlib::lists::all(), mk_term::id()),
                     Term::List(subeqs).into(),
                 )
             }
