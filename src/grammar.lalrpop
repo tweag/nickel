@@ -1,5 +1,7 @@
 use crate::identifier::Ident;
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp, StrChunk};
+use crate::term::make as mk_term;
+use crate::mk_app;
 use crate::types::{Types, AbsType};
 use super::utils::{mk_span, mk_label};
 use super::lexer::{Token, NormalToken, StringToken, LexicalError};
@@ -20,12 +22,12 @@ SpTerm<Rule>: RichTerm =
     };
 
 LeftOp<Op, Current, Previous>: RichTerm =
-    <t1: Current> <op: Op> <t2: Previous> => RichTerm::new(Term::Op2(op, t1,
-    t2));
+    <t1: Current> <op: Op> <t2: Previous> => mk_term::op2(op, t1,
+    t2);
 
 LeftOpLazy<Op, Current, Previous>: RichTerm =
     <t1: Current> <op: Op> <t2: Previous> =>
-        RichTerm::app(RichTerm::new(Term::Op1(op, t1)), t2);
+        mk_app!(Term::Op1(op, t1), t2);
 
 RichTerm: RichTerm = {
     <l: @L> "fun" <ps:Pattern+> "=>" <t: SpTerm<Term>> <r: @R> => {
@@ -36,17 +38,17 @@ RichTerm: RichTerm = {
         })
     },
     "let" <id:Ident> "=" <t1:SpTerm<Term>> "in" <t2:SpTerm<Term>> =>
-        RichTerm::new(Term::Let(id, t1, t2)),
+        mk_term::let_in(id, t1, t2),
     "if" <b:SpTerm<Term>> "then" <t:SpTerm<Term>> "else" <e:SpTerm<Term>> =>
-        RichTerm::app(RichTerm::app(RichTerm::new(Term::Op1(UnaryOp::Ite(), b)), t), e),
-    "import" <s: Str> => RichTerm::new(Term::Import(s)),
+        mk_app!(Term::Op1(UnaryOp::Ite(), b), t, e),
+    "import" <s: Str> => RichTerm::from(Term::Import(s)),
     SpTerm<InfixExpr>,
 };
 
 Applicative: RichTerm = {
-    <t1:SpTerm< Applicative>> <t2: SpTerm<Atom>> => RichTerm::new(Term::App(t1, t2)),
-    <op: UOp> <t: SpTerm<Atom>> => RichTerm::new(Term::Op1(op, t)),
-    <op: BOpPre> <t1: SpTerm<Atom>> <t2: SpTerm<Atom>> => RichTerm::new(Term::Op2(op, t1, t2)),
+    <t1:SpTerm< Applicative>> <t2: SpTerm<Atom>> => mk_app!(t1, t2),
+    <op: UOp> <t: SpTerm<Atom>> => mk_term::op1(op, t),
+    <op: BOpPre> <t1: SpTerm<Atom>> <t2: SpTerm<Atom>> => mk_term::op2(op, t1, t2),
     SpTerm<RecordOperationChain>,
     SpTerm<Atom>,
 };
@@ -57,32 +59,32 @@ RecordOperand: RichTerm = {
 }
 
 RecordOperationChain: RichTerm = {
-    <t: SpTerm<RecordOperand>> "." <id: Ident> => RichTerm::new(Term::Op1(UnaryOp::StaticAccess(id), t)),
-    <t: SpTerm<RecordOperand>> ".$" <t_id: SpTerm<Atom>> => RichTerm::new(Term::Op2(BinaryOp::DynAccess(), t_id, t)),
-    <t: SpTerm<RecordOperand>> "-$" <t_id: SpTerm<Atom>> => RichTerm::new(Term::Op2(BinaryOp::DynRemove(), t_id, t)),
+    <t: SpTerm<RecordOperand>> "." <id: Ident> => mk_term::op1(UnaryOp::StaticAccess(id), t),
+    <t: SpTerm<RecordOperand>> ".$" <t_id: SpTerm<Atom>> => mk_term::op2(BinaryOp::DynAccess(), t_id, t),
+    <t: SpTerm<RecordOperand>> "-$" <t_id: SpTerm<Atom>> => mk_term::op2(BinaryOp::DynRemove(), t_id, t),
     <r: SpTerm<RecordOperand>> "$[" <id: SpTerm<Term>> "=" <t: SpTerm<Term>> "]" =>
-        RichTerm::new(Term::Op2(BinaryOp::DynExtend(t), id, r)),
+        mk_term::op2(BinaryOp::DynExtend(t), id, r),
 };
 
 Atom: RichTerm = {
     "(" <SpTerm<Term>> ")",
     <l: @L> "Promise(" <ty: Types> "," <t: SpTerm<Term>> ")" <r: @R> =>
-        RichTerm::new(Term::Promise(ty.clone(), mk_label(ty, src_id, l, r), t)),
+        RichTerm::from(Term::Promise(ty.clone(), mk_label(ty, src_id, l, r), t)),
     <l: @L> "Assume(" <ty: Types> "," <t: SpTerm<Term>> ")" <r: @R> =>
-        RichTerm::new(Term::Assume(ty.clone(), mk_label(ty, src_id, l, r), t)),
+        RichTerm::from(Term::Assume(ty.clone(), mk_label(ty, src_id, l, r), t)),
     <l: @L> "Contract(" <ty: Types> ")" <r: @R> =>
-        RichTerm::new(Term::Contract(ty.clone(), mk_label(ty, src_id, l, r))),
-    "Default(" <t: SpTerm<Term>> ")" => RichTerm::new(Term::DefaultValue(t)),
+        RichTerm::from(Term::Contract(ty.clone(), mk_label(ty, src_id, l, r))),
+    "Default(" <t: SpTerm<Term>> ")" => RichTerm::from(Term::DefaultValue(t)),
     <l: @L> "ContractDefault(" <ty: Types> "," <t: SpTerm<Term>> ")" <r: @R> =>
-        RichTerm::new(Term::ContractWithDefault(ty.clone(),
+        RichTerm::from(Term::ContractWithDefault(ty.clone(),
             mk_label(ty, src_id, l, r), t)
         ),
-    "Docstring(" <s: Str> "," <t: SpTerm<Term>> ")" => RichTerm::new(Term::Docstring(s, t)),
-    "num literal" => RichTerm::new(Term::Num(<>)),
-    Bool => RichTerm::new(Term::Bool(<>)),
+    "Docstring(" <s: Str> "," <t: SpTerm<Term>> ")" => RichTerm::from(Term::Docstring(s, t)),
+    "num literal" => RichTerm::from(Term::Num(<>)),
+    Bool => RichTerm::from(Term::Bool(<>)),
     <StrChunks>,
-    Ident => RichTerm::new(Term::Var(<>)),
-    "`" <Ident> => RichTerm::new(Term::Enum(<>)),
+    Ident => RichTerm::from(Term::Var(<>)),
+    "`" <Ident> => RichTerm::from(Term::Enum(<>)),
     "{" <fields: (RecordField ";")*> <last: RecordField?> "}" => {
         let mut static_map = HashMap::new();
         let mut dynamic_fields = Vec::new();
@@ -96,18 +98,18 @@ Atom: RichTerm = {
                 Right(t) => dynamic_fields.push(t),
             });
 
-        let static_rec = RichTerm::new(Term::RecRecord(static_map));
+        let static_rec = RichTerm::from(Term::RecRecord(static_map));
 
         dynamic_fields.into_iter().fold(static_rec, |rec, field| {
             let (id_t, t) = field;
-            RichTerm::new(Term::Op2(BinaryOp::DynExtend(t), id_t, rec))
+            RichTerm::from(Term::Op2(BinaryOp::DynExtend(t), id_t, rec))
         })
     },
     "[" <terms: (SpTerm<Atom> ",")*> <last: SpTerm<Term>?> "]" => {
         let terms : Vec<RichTerm> = terms.into_iter()
             .map(|x| x.0)
             .chain(last.into_iter()).collect();
-        RichTerm::new(Term::List(terms))
+        RichTerm::from(Term::List(terms))
     }
 };
 
@@ -144,10 +146,10 @@ StrChunks : RichTerm =
             .rev()
             .collect();
 
-        RichTerm::new(Term::StrChunks(chunks))
+        RichTerm::from(Term::StrChunks(chunks))
     };
 
-ChunkLiteral: String = 
+ChunkLiteral: String =
     <parts: ChunkLiteralPart+> => {
         parts.into_iter().fold(String::new(), |mut acc, part| {
             match part {
@@ -215,7 +217,7 @@ InfixExpr0: RichTerm = {
 PrefixExpr1: RichTerm = {
     InfixExpr0,
     "-" <t: PrefixExpr1> =>
-        RichTerm::new(Term::Op2(BinaryOp::Sub(), Term::Num(0.0).into(), t)),
+        mk_term::op2(BinaryOp::Sub(), Term::Num(0.0), t),
 }
 
 BinOp2: BinaryOp<RichTerm> = {
@@ -251,7 +253,7 @@ InfixExpr4: RichTerm = {
 
 PrefixExpr5: RichTerm = {
     InfixExpr4,
-    "!" <PrefixExpr5> => RichTerm::new(Term::Op1(UnaryOp::BoolNot(), <>)), 
+    "!" <PrefixExpr5> => mk_term::op1(UnaryOp::BoolNot(), <>),
 }
 
 BinOp6: BinaryOp<RichTerm> = {

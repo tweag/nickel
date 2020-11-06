@@ -146,6 +146,7 @@ pub enum StrChunk<E> {
 }
 
 impl Term {
+    #[cfg(test)]
     /// Recursively apply a function to all `Term`s contained in a `RichTerm`.
     pub fn apply_to_rich_terms<F>(&mut self, func: F)
     where
@@ -684,44 +685,14 @@ pub struct RichTerm {
 }
 
 impl RichTerm {
-    pub fn new(t: Term) -> RichTerm {
-        RichTerm {
-            term: Box::new(t),
-            pos: None,
-        }
-    }
-
     /// Erase recursively the positional information.
     ///
     /// It allows to use rust `Eq` trait to compare the values of the underlying terms.
+    #[cfg(test)]
     pub fn clean_pos(&mut self) {
         self.pos = None;
         self.term
             .apply_to_rich_terms(|rt: &mut Self| rt.clean_pos());
-    }
-
-    pub fn app(rt1: RichTerm, rt2: RichTerm) -> RichTerm {
-        Term::App(rt1, rt2).into()
-    }
-
-    pub fn var(s: String) -> RichTerm {
-        Term::Var(Ident(s)).into()
-    }
-
-    pub fn fun(s: String, rt: RichTerm) -> RichTerm {
-        Term::Fun(Ident(s), rt).into()
-    }
-
-    pub fn let_in(id: &str, e: RichTerm, t: RichTerm) -> RichTerm {
-        Term::Let(Ident(id.to_string()), e, t).into()
-    }
-
-    pub fn ite(c: RichTerm, t: RichTerm, e: RichTerm) -> RichTerm {
-        RichTerm::app(RichTerm::app(Term::Op1(UnaryOp::Ite(), c).into(), t), e)
-    }
-
-    pub fn plus(t0: RichTerm, t1: RichTerm) -> RichTerm {
-        Term::Op2(BinaryOp::Plus(), t0, t1).into()
     }
 
     /// Apply a transformation on a whole term by mapping a function `f` on each node in a
@@ -981,6 +952,90 @@ impl AsRef<Term> for RichTerm {
 
 impl From<Term> for RichTerm {
     fn from(t: Term) -> Self {
-        Self::new(t)
+        RichTerm {
+            term: Box::new(t),
+            pos: None,
+        }
+    }
+}
+
+#[macro_use]
+/// Helpers to build `RichTerm` objects.
+pub mod make {
+    use super::*;
+
+    /// Multi-ary application for types implementing `Into<RichTerm>`.
+    #[macro_export]
+    macro_rules! mk_app {
+        ( $f:expr, $arg:expr) => {
+            $crate::term::RichTerm::from($crate::term::Term::App($crate::term::RichTerm::from($f), $crate::term::RichTerm::from($arg)))
+        };
+        ( $f:expr, $fst:expr , $( $args:expr ),+ ) => {
+            mk_app!(mk_app!($f, $fst), $( $args ),+)
+        };
+    }
+
+    /// Multi argument function for types implementing `Into<Ident>` (for the identifiers), and
+    /// `Into<RichTerm>` for the body.
+    #[macro_export]
+    macro_rules! mk_fun {
+        ( $id:expr, $body:expr ) => {
+            $crate::term::RichTerm::from($crate::term::Term::Fun($crate::identifier::Ident::from($id), $crate::term::RichTerm::from($body).into()))
+        };
+        ( $id1:expr, $id2:expr , $( $rest:expr ),+ ) => {
+            mk_fun!($crate::identifier::Ident::from($id1), mk_fun!($id2, $( $rest ),+))
+        };
+    }
+
+    pub fn var<I>(v: I) -> RichTerm
+    where
+        I: Into<Ident>,
+    {
+        Term::Var(v.into()).into()
+    }
+
+    pub fn let_in<I, T1, T2>(id: I, t1: T1, t2: T2) -> RichTerm
+    where
+        T1: Into<RichTerm>,
+        T2: Into<RichTerm>,
+        I: Into<Ident>,
+    {
+        Term::Let(id.into(), t1.into(), t2.into()).into()
+    }
+
+    #[cfg(test)]
+    pub fn if_then_else<T1, T2, T3>(cond: T1, t1: T2, t2: T3) -> RichTerm
+    where
+        T1: Into<RichTerm>,
+        T2: Into<RichTerm>,
+        T3: Into<RichTerm>,
+    {
+        mk_app!(Term::Op1(UnaryOp::Ite(), cond.into()), t1.into(), t2.into())
+    }
+
+    pub fn op1<T>(op: UnaryOp<RichTerm>, t: T) -> RichTerm
+    where
+        T: Into<RichTerm>,
+    {
+        Term::Op1(op, t.into()).into()
+    }
+
+    pub fn op2<T1, T2>(op: BinaryOp<RichTerm>, t1: T1, t2: T2) -> RichTerm
+    where
+        T1: Into<RichTerm>,
+        T2: Into<RichTerm>,
+    {
+        Term::Op2(op, t1.into(), t2.into()).into()
+    }
+
+    pub fn string<S>(s: S) -> RichTerm
+    where
+        S: Into<String>,
+    {
+        Term::Str(s.into()).into()
+    }
+
+    pub fn id() -> RichTerm {
+        mk_fun!("x", var("x"))
     }
 }

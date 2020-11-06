@@ -55,9 +55,11 @@ use crate::error::EvalError;
 use crate::eval::{Closure, Environment};
 use crate::label::Label;
 use crate::position::RawSpan;
+use crate::term::make as mk_term;
 use crate::term::{BinaryOp, RichTerm, Term};
 use crate::transformations::Closurizable;
 use crate::types::{AbsType, Types};
+use crate::{mk_app, mk_fun};
 use std::collections::HashMap;
 
 /// Compute the merge of two evaluated operands.
@@ -356,21 +358,16 @@ fn mk_merge_closure(t1: RichTerm, env1: Environment, t2: RichTerm, env2: Environ
 /// notes](https://github.com/tweag/nickel/blob/master/notes/intersection-and-union-types.md) in
 /// the repository).
 fn merge_contracts(c1: RichTerm, l1: Label, c2: RichTerm, l2: Label) -> Types {
-    let contract = RichTerm::fun(
-        "_l".to_string(),
-        RichTerm::fun(
-            "x".to_string(),
-            RichTerm::app(
-                RichTerm::app(c1, Term::Lbl(l1).into()),
-                RichTerm::app(
-                    RichTerm::app(c2, Term::Lbl(l2).into()),
-                    RichTerm::var("x".to_string()),
-                ),
-            ),
-        ),
+    let contract: RichTerm = mk_fun!(
+        "_l",
+        "x",
+        mk_app!(
+            c1,
+            Term::Lbl(l1),
+            mk_app!(c2, Term::Lbl(l2), mk_term::var("x"))
+        )
     );
-
-    Types(AbsType::Flat(contract.into()))
+    Types(AbsType::Flat(contract))
 }
 
 /// [Closurize](../transformations/trait.Closurizable.html) two types with their respective

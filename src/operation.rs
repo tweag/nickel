@@ -15,8 +15,10 @@ use crate::merge;
 use crate::merge::merge;
 use crate::position::RawSpan;
 use crate::stack::Stack;
+use crate::term::make as mk_term;
 use crate::term::{BinaryOp, RichTerm, StrChunk, Term, UnaryOp};
 use crate::transformations::Closurizable;
+use crate::{mk_app, mk_fun};
 use simple_counter::*;
 use std::collections::HashMap;
 
@@ -350,13 +352,10 @@ fn process_unary_operation(
         }
         UnaryOp::Wrap() => {
             if let Term::Sym(s) = *t {
-                Ok(Closure::atomic_closure(
-                    Term::Fun(
-                        Ident("x".to_string()),
-                        Term::Wrapped(s, RichTerm::var("x".to_string())).into(),
-                    )
-                    .into(),
-                ))
+                Ok(Closure::atomic_closure(mk_fun!(
+                    "x",
+                    Term::Wrapped(s, mk_term::var("x"))
+                )))
             } else {
                 Err(EvalError::TypeError(
                     String::from("Sym"),
@@ -394,7 +393,7 @@ fn process_unary_operation(
             if let Term::Record(map) = *t {
                 let mut fields: Vec<String> = map.keys().map(|Ident(id)| id.clone()).collect();
                 fields.sort();
-                let terms = fields.into_iter().map(|id| Term::Str(id).into()).collect();
+                let terms = fields.into_iter().map(mk_term::string).collect();
                 Ok(Closure::atomic_closure(Term::List(terms).into()))
             } else {
                 Err(EvalError::TypeError(
@@ -415,11 +414,7 @@ fn process_unary_operation(
                         let (Ident(s), t) = e;
                         (
                             Ident(s.clone()),
-                            Term::App(
-                                Term::App(f_as_var.clone(), Term::Str(s.clone()).into()).into(),
-                                t.clone(),
-                            )
-                            .into(),
+                            mk_app!(f_as_var.clone(), mk_term::string(s), t.clone()),
                         )
                     })
                     .collect();
@@ -457,8 +452,8 @@ fn process_unary_operation(
                 let first = terms
                     .next()
                     .expect("expected the argument to be a non-empty iterator");
-                let body = terms.fold(Term::Op1(UnaryOp::DeepSeq(), first).into(), |acc, t| {
-                    Term::App(Term::Op1(UnaryOp::DeepSeq(), t).into(), acc).into()
+                let body = terms.fold(mk_term::op1(UnaryOp::DeepSeq(), first), |acc, t| {
+                    mk_app!(mk_term::op1(UnaryOp::DeepSeq(), t), acc).into()
                 });
 
                 Ok(Closure { body, env })
@@ -788,19 +783,14 @@ fn process_binary_operation(
                 Ok(if let Term::Wrapped(s2, t) = *t2 {
                     if s1 == s2 {
                         Closure {
-                            body: Term::Fun(Ident("-invld".to_string()), t).into(),
+                            body: mk_fun!("-invld", t),
                             env: env2,
                         }
                     } else {
-                        Closure::atomic_closure(
-                            Term::Fun(Ident("x".to_string()), RichTerm::var("x".to_string()))
-                                .into(),
-                        )
+                        Closure::atomic_closure(mk_term::id())
                     }
                 } else {
-                    Closure::atomic_closure(
-                        Term::Fun(Ident("x".to_string()), RichTerm::var("x".to_string())).into(),
-                    )
+                    Closure::atomic_closure(mk_term::id())
                 })
             } else {
                 Err(EvalError::TypeError(
@@ -837,15 +827,13 @@ fn process_binary_operation(
                     .collect();
                 // lists.all (fun x => x) subeqs
                 Term::App(
-                    RichTerm::app(
+                    mk_app!(
                         // lists.all
-                        Term::Op1(
+                        mk_term::op1(
                             UnaryOp::StaticAccess(Ident::from("all")),
-                            RichTerm::var(String::from("lists")),
-                        )
-                        .into(),
-                        // identity (we should probably have it in the stdlib at some point)
-                        RichTerm::fun(String::from("x"), RichTerm::var(String::from("x"))),
+                            mk_term::var("lists"),
+                        ),
+                        mk_term::id()
                     ),
                     Term::List(subeqs).into(),
                 )
