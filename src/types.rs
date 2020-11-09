@@ -134,10 +134,6 @@ impl<Ty> AbsType<Ty> {
         }
     }
 
-    pub fn arrow(s: Ty, t: Ty) -> Self {
-        AbsType::Arrow(s, t)
-    }
-
     /// Determine if a type is a row type.
     pub fn is_row_type(&self) -> bool {
         match self {
