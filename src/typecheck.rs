@@ -528,7 +528,7 @@ fn type_check_(
                 .get(&x)
                 .ok_or_else(|| TypecheckError::UnboundIdentifier(x.clone(), pos.clone()))?;
 
-            let instantiated = instantiate_foralls_with(state, x_ty.clone(), TypeWrapper::Ptr);
+            let instantiated = instantiate_foralls(state, x_ty.clone(), ForallInst::Ptr);
             unify(state, strict, ty, instantiated)
                 .map_err(|err| err.to_typecheck_err(state, &rt.pos))
         }
@@ -629,7 +629,7 @@ fn type_check_(
         Term::Promise(ty2, _, t) => {
             let tyw2 = to_typewrapper(ty2.clone());
 
-            let instantiated = instantiate_foralls_with(state, tyw2, TypeWrapper::Constant);
+            let instantiated = instantiate_foralls(state, tyw2, ForallInst::Constant);
 
             unify(state, strict, ty.clone(), to_typewrapper(ty2.clone()))
                 .map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
@@ -694,6 +694,7 @@ pub enum TypeWrapper {
 }
 
 impl TypeWrapper {
+    /// Substitute all the occurrences of a type variable for a typewrapper.
     pub fn subst(self, id: Ident, to: TypeWrapper) -> TypeWrapper {
         use self::TypeWrapper::*;
         match self {
@@ -933,24 +934,19 @@ pub fn unify_(
                 TypeWrapper::Concrete(ty2),
             )),
         },
-        (TypeWrapper::Ptr(r1), TypeWrapper::Ptr(r2)) => {
-            if r1 != r2 {
-                let mut r1_constr = state.constr.remove(&r1).unwrap_or_default();
-                let mut r2_constr = state.constr.remove(&r2).unwrap_or_default();
-                state
-                    .constr
-                    .insert(r1, r1_constr.drain().chain(r2_constr.drain()).collect());
-
-                state.table.insert(r1, Some(TypeWrapper::Ptr(r2)));
-            }
+        // The two following cases are not merged just to correctly distinguish between the
+        // expected type (first component of the tuple) and the inferred type when reporting a row
+        // unification error.
+        (TypeWrapper::Ptr(p), tyw) => {
+            constr_unify(state.constr, p, &tyw)
+                .map_err(|err| err.to_unif_err(TypeWrapper::Ptr(p), tyw.clone()))?;
+            state.table.insert(p, Some(tyw));
             Ok(())
         }
-
-        (TypeWrapper::Ptr(p), s @ TypeWrapper::Concrete(_))
-        | (TypeWrapper::Ptr(p), s @ TypeWrapper::Constant(_))
-        | (s @ TypeWrapper::Concrete(_), TypeWrapper::Ptr(p))
-        | (s @ TypeWrapper::Constant(_), TypeWrapper::Ptr(p)) => {
-            state.table.insert(p, Some(s));
+        (tyw, TypeWrapper::Ptr(p)) => {
+            constr_unify(state.constr, p, &tyw)
+                .map_err(|err| err.to_unif_err(tyw.clone(), TypeWrapper::Ptr(p)))?;
+            state.table.insert(p, Some(tyw));
             Ok(())
         }
         (TypeWrapper::Constant(i1), TypeWrapper::Constant(i2)) if i1 == i2 => Ok(()),
@@ -999,10 +995,14 @@ pub fn unify_rows(
                 // cases, so we delegate the work. However it returns `UnifError` instead of
                 // `RowUnifError`, hence we have a bit of wrapping and unwrapping to do. Note that
                 // since we are unifying types with a constant or a unification variable somewhere,
-                // the only unification errors that should be possible are related to constants.
+                // the only unification errors that should be possible are related to constants or
+                // row constraints.
                 (t1_tail, t2_tail) => unify_(state, t1_tail, t2_tail).map_err(|err| match err {
                     UnifError::ConstMismatch(c1, c2) => RowUnifError::ConstMismatch(c1, c2),
                     UnifError::WithConst(c1, tyw) => RowUnifError::WithConst(c1, tyw),
+                    UnifError::RowConflict(id, tyw_opt, _, _) => {
+                        RowUnifError::UnsatConstr(id, tyw_opt)
+                    }
                     err => panic!(
                         "typechecker::unify_rows(): unexpected error while unifying row tails {:?}",
                         err
@@ -1166,26 +1166,46 @@ mod reporting {
     }
 }
 
-/// Instantiate the type variables which are quantified in head position with type constants.
+/// Type of the parameter controlling instantiation of foralls.
 ///
-/// For example, `forall a. forall b. a -> (forall c. b -> c)` is transformed to `cst1 -> (forall
-/// c. cst2 -> c)` where `cst1` and `cst2` are fresh type constants.  This is used when
-/// typechecking `forall`s: all quantified type variables in head position are replaced by rigid
-/// type constants, and the term is then typechecked normally. As these constants cannot be unified
-/// with anything, this forces all the occurrences of a type variable to be the same type.
-fn instantiate_foralls_with<F>(state: &mut State, mut ty: TypeWrapper, f: F) -> TypeWrapper
-where
-    F: Fn(usize) -> TypeWrapper,
-{
+/// See [`instantiate_foralls`](./fn.instantiate_foralls.html).
+#[derive(Copy, Clone, Debug, PartialEq)]
+enum ForallInst {
+    Constant,
+    Ptr,
+}
+
+/// Instantiate the type variables which are quantified in head position with either unification
+/// variables or type constants.
+///
+/// For example, if `inst` is `Constant`, `forall a. forall b. a -> (forall c. b -> c)` is
+/// transformed to `cst1 -> (forall c. cst2 -> c)` where `cst1` and `cst2` are fresh type
+/// constants.  This is used when typechecking `forall`s: all quantified type variables in head
+/// position are replaced by rigid type constants, and the term is then typechecked normally. As
+/// these constants cannot be unified with anything, this forces all the occurrences of a type
+/// variable to be the same type.
+///
+/// # Parameters
+/// - `state`: the unification state
+/// - `ty`: the polymorphic type to instantiate
+/// - `inst`: the type of instantiation, either by a type constant or by a unification variable
+fn instantiate_foralls(state: &mut State, mut ty: TypeWrapper, inst: ForallInst) -> TypeWrapper {
     if let TypeWrapper::Ptr(p) = ty {
         ty = get_root(state.table, p);
     }
 
     while let TypeWrapper::Concrete(AbsType::Forall(id, forall_ty)) = ty {
         let fresh_id = new_var(state.table);
-        let var = f(fresh_id);
+        let var = match inst {
+            ForallInst::Constant => TypeWrapper::Constant(fresh_id),
+            ForallInst::Ptr => TypeWrapper::Ptr(fresh_id),
+        };
         state.names.insert(fresh_id, id.clone());
         ty = forall_ty.subst(id, var);
+
+        if inst == ForallInst::Ptr {
+            constrain_var(state, &ty, fresh_id)
+        }
     }
 
     ty
@@ -1618,6 +1638,113 @@ fn constraint(state: &mut State, x: TypeWrapper, id: Ident) -> Result<(), RowUni
     }
 }
 
+/// Add row constraints on a freshly instantiated type variable.
+///
+/// When instantiating a quantified type variable with a unification variable, row constraints may
+/// apply. For example, if we instantiate `forall a. {x: Num | a} -> Num` by replacing `a` with a
+/// unification variable `Ptr(p)`, this unification variable requires a constraint to avoid being
+/// unified with a row type containing another declaration for the field `x`.
+///
+/// # Preconditions
+///
+/// Because `constraint_var` should be called on a fresh unification variable `p`, the following is
+/// assumed:
+/// - `get_root(state.table, p) == p`
+/// - `state.constr.get(&p) == None`
+fn constrain_var(state: &mut State, tyw: &TypeWrapper, p: usize) {
+    fn constrain_var_(state: &mut State, mut constr: HashSet<Ident>, tyw: &TypeWrapper, p: usize) {
+        match tyw {
+            TypeWrapper::Ptr(u) if p == *u && !constr.is_empty() => {
+                state.constr.insert(p, constr);
+            }
+            TypeWrapper::Ptr(u) => match get_root(state.table, *u) {
+                TypeWrapper::Ptr(_) => (),
+                tyw => constrain_var_(state, constr, &tyw, p),
+            },
+            TypeWrapper::Concrete(ty) => match ty {
+                AbsType::Arrow(tyw1, tyw2) => {
+                    constrain_var_(state, HashSet::new(), tyw1.as_ref(), p);
+                    constrain_var_(state, HashSet::new(), tyw2.as_ref(), p);
+                }
+                AbsType::Forall(_, tyw) => constrain_var_(state, HashSet::new(), tyw.as_ref(), p),
+                AbsType::Dyn()
+                | AbsType::Num()
+                | AbsType::Bool()
+                | AbsType::Str()
+                | AbsType::Sym()
+                | AbsType::Flat(_)
+                | AbsType::RowEmpty()
+                | AbsType::Var(_)
+                | AbsType::List() => (),
+                AbsType::RowExtend(id, tyw, rest) => {
+                    constr.insert(id.clone());
+                    tyw.iter()
+                        .for_each(|tyw| constrain_var_(state, HashSet::new(), tyw.as_ref(), p));
+                    constrain_var_(state, constr, rest, p)
+                }
+                AbsType::Enum(row) => constrain_var_(state, constr, row, p),
+                AbsType::StaticRecord(row) => constrain_var_(state, constr, row, p),
+                AbsType::DynRecord(tyw) => constrain_var_(state, constr, tyw, p),
+            },
+            TypeWrapper::Constant(_) => (),
+        }
+    }
+
+    constrain_var_(state, HashSet::new(), tyw, p);
+}
+
+/// Check that unifying a variable with a type doesn't violate row constraints, and update the row
+/// constraints of the unified type accordingly if needed.
+///
+/// When a unification variable `Ptr(p)` is unified with a type `tyw` which is either a row type or
+/// another unification variable which could be later unified with a row type itself, the following
+/// operations are required:
+///
+/// 1. If `tyw` is a concrete row, check that it doesn't contain an identifier which is forbidden
+///    by a row constraint on `p`.
+/// 2. If the type is either a unification variable or a row type ending with a unification
+///    variable `Ptr(u)`, we must add the constraints of `p` to the constraints of `u`. Indeed,
+///    take the following situation: `p` appears in a row type `{a: Num | p}`, hence has a
+///    constraint that it must not contain a field `a`. Then `p` is unified with a fresh type
+///    variable `u`. If we don't constrain `u`, `u` could be unified later with a row type `{a :
+///    Str}` which violates the original constraint on `p`. Thus, when unifying `p` with `u` or a
+///    row ending with `u`, `u` must inherit all the constraints of `p`.
+///
+/// If `tyw` is neither a row nor a unification variable, `constr_unify` immediately returns `Ok(())`.
+pub fn constr_unify(
+    constr: &mut RowConstr,
+    p: usize,
+    mut tyw: &TypeWrapper,
+) -> Result<(), RowUnifError> {
+    if let Some(p_constr) = constr.remove(&p) {
+        loop {
+            match tyw {
+                TypeWrapper::Concrete(AbsType::RowExtend(ident, ty, _))
+                    if p_constr.contains(ident) =>
+                {
+                    break Err(RowUnifError::UnsatConstr(
+                        ident.clone(),
+                        ty.as_ref().map(|boxed| (**boxed).clone()),
+                    ))
+                }
+                TypeWrapper::Concrete(AbsType::RowExtend(_, _, tail)) => tyw = tail,
+                TypeWrapper::Ptr(u) if *u != p => {
+                    if let Some(u_constr) = constr.get_mut(&u) {
+                        u_constr.extend(p_constr.into_iter());
+                    } else {
+                        constr.insert(*u, p_constr);
+                    }
+
+                    break Ok(());
+                }
+                _ => break Ok(()),
+            }
+        }
+    } else {
+        Ok(())
+    }
+}
+
 /// Follow the links in the unification table to find the representative of the equivalence class
 /// of unification variable `x`.
 ///
@@ -1654,10 +1781,9 @@ mod tests {
     fn parse_and_typecheck(s: &str) -> Result<Types, TypecheckError> {
         let id = Files::new().add("<test>", s);
 
-        if let Ok(p) = parser::grammar::TermParser::new().parse(id, lexer::Lexer::new(&s)) {
-            type_check_no_import(&p)
-        } else {
-            panic!("Couldn't parse {}", s)
+        match parser::grammar::TermParser::new().parse(id, lexer::Lexer::new(&s)) {
+            Ok(p) => type_check_no_import(&p),
+            Err(e) => panic!("Couldn't parse {}: {:?}", s, e),
         }
     }
 
@@ -2131,5 +2257,45 @@ mod tests {
         parse_and_typecheck(
             "Promise({ {| f : Num -> Num, |} }, { f = fun x => if isZero x then false else 1 + (f (x + (-1)))})"
         ).unwrap_err();
+    }
+
+    /// Regression test following [#144](https://github.com/tweag/nickel/issues/144). Check that
+    /// polymorphic type variables appearing inside a row type are correctly constrained at
+    /// instantiation.
+    #[test]
+    fn polymorphic_row_constraints() {
+        // Assert that the result of evaluation is either directly a `RowConflict` error, or a
+        // `RowConflict` wrapped in an `ArrowTypeMismatch`.
+        fn assert_row_conflict(res: Result<Types, TypecheckError>) {
+            assert!(match res.unwrap_err() {
+                TypecheckError::RowConflict(_, _, _, _, _) => true,
+                TypecheckError::ArrowTypeMismatch(_, _, _, err_boxed, _) => {
+                    if let TypecheckError::RowConflict(_, _, _, _, _) = err_boxed.as_ref() {
+                        true
+                    } else {
+                        false
+                    }
+                }
+                _ => true,
+            })
+        }
+
+        let mut res = parse_and_typecheck(
+            "let extend = Assume(forall c. ({{| | c} }) -> ({ {| a: Str, | c } }), 0) in
+           Promise(Num, let bad = extend {a = 1;} in 0)",
+        );
+        assert_row_conflict(res);
+
+        parse_and_typecheck(
+            "let extend = Assume(forall c. ({{| | c} }) -> ({ {| a: Str, | c } }), 0) in
+           let remove = Assume(forall c. ({{|a: Str, | c} }) -> ({ {| | c } }), 0) in
+           Promise(Num, let good = remove (extend {}) in 0)",
+        )
+        .unwrap();
+        res = parse_and_typecheck(
+            "let remove = Assume(forall c. ({{|a: Str, | c} }) -> ({ {| | c } }), 0) in
+           Promise(Num, let bad = remove (remove {a = \"a\"}) in 0)",
+        );
+        assert_row_conflict(res);
     }
 }
