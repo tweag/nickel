@@ -21,6 +21,7 @@ use crate::label::Label;
 use crate::position::RawSpan;
 use crate::types::{AbsType, Types};
 use codespan::FileId;
+use serde::Serialize;
 use std::collections::HashMap;
 
 /// The AST of a Nickel expression.
@@ -28,7 +29,8 @@ use std::collections::HashMap;
 /// Parsed terms also need to store their position in the source for error reporting.  This is why
 /// this type is nested with [`RichTerm`](type.RichTerm.html).
 ///
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize)]
+#[serde(untagged)]
 pub enum Term {
     /// A boolean value.
     Bool(bool),
@@ -44,17 +46,23 @@ pub enum Term {
     /// data structure is not really necessary, as once created, no other than popping is ever
     /// done.  In consequence, we just reverse the vector at parsing time, so that we can then pop
     /// efficiently from the back of it.
+    #[serde(skip)]
     StrChunks(Vec<StrChunk<RichTerm>>),
     /// A function.
+    #[serde(skip)]
     Fun(Ident, RichTerm),
     /// A blame label.
+    #[serde(skip)]
     Lbl(Label),
 
     /// A let binding.
+    #[serde(skip)]
     Let(Ident, RichTerm, RichTerm),
     /// An application.
+    #[serde(skip)]
     App(RichTerm, RichTerm),
     /// A variable.
+    #[serde(skip)]
     Var(Ident),
 
     /// An enum variant.
@@ -63,19 +71,23 @@ pub enum Term {
     /// A record, mapping identifiers to terms.
     Record(HashMap<Ident, RichTerm>),
     /// A recursive record, where the fields can reference each others.
+    #[serde(skip)]
     RecRecord(HashMap<Ident, RichTerm>),
 
     /// A list.
     List(Vec<RichTerm>),
 
     /// A primitive unary operator.
+    #[serde(skip)]
     Op1(UnaryOp<RichTerm>, RichTerm),
     /// A primitive binary operator.
+    #[serde(skip)]
     Op2(BinaryOp<RichTerm>, RichTerm, RichTerm),
 
     /// A promise.
     ///
     /// Represent a subterm which is to be statically typechecked.
+    #[serde(skip)]
     Promise(Types, Label, RichTerm),
 
     /// An assume.
@@ -83,11 +95,13 @@ pub enum Term {
     /// Represent a subterm which is to be dynamically typechecked (dynamic types are also called.
     /// It ensures at runtime that the term satisfies the contract corresponding to the type, or it
     /// will blame the label instead.
+    #[serde(skip)]
     Assume(Types, Label, RichTerm),
 
     /// A symbol.
     ///
     /// A unique tag corresponding to a type variable. See `Wrapped` below.
+    #[serde(skip)]
     Sym(i32),
 
     /// A wrapped term.
@@ -108,11 +122,13 @@ pub enum Term {
     /// term is of the form `Wrapped(id, term)` where `id` corresponds to the identifier of the
     /// type variable. In our example, the last cast to `a` finds `Wrapped(2, "a")`, while it
     /// expected `Wrapped(1, _)`, hence it raises a positive blame.
+    #[serde(skip)]
     Wrapped(i32, RichTerm),
 
     /// A contract. Enriched value.
     ///
     /// A contract at the term level. This contract is enforced when merged with a value.
+    #[serde(skip)]
     Contract(Types, Label),
 
     /// A default value. Enriched value.
@@ -120,20 +136,27 @@ pub enum Term {
     /// An enriched term representing a default value. It is dropped as soon as it is merged with a
     /// concrete value. Otherwise, if it lives long enough to be accessed, it evaluates to the
     /// underlying term.
+    #[serde(skip_deserializing)]
     DefaultValue(RichTerm),
 
     /// A contract with combined with default value. Enriched value.
     ///
     /// This is a combination generated during evaluation, when merging a contract and a default
     /// value, as both need to be remembered.
+    #[serde(serialize_with = "crate::serialize::serialize_contract_default")]
+    #[serde(skip_deserializing)]
     ContractWithDefault(Types, Label, RichTerm),
 
     /// A term together with its documentation string. Enriched value.
+    #[serde(serialize_with = "crate::serialize::serialize_docstring")]
+    #[serde(skip_deserializing)]
     Docstring(String, RichTerm),
 
     /// An unresolved import.
+    #[serde(skip)]
     Import(String),
     /// A resolved import (which has already been loaded and parsed).
+    #[serde(skip)]
     ResolvedImport(FileId),
 }
 

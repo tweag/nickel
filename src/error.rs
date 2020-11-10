@@ -195,6 +195,10 @@ pub enum ImportError {
     ),
 }
 
+/// A term contains constructs that cannot be serialized.
+#[derive(Debug, PartialEq, Clone)]
+pub struct NonSerializableError(pub RichTerm);
+
 impl From<EvalError> for Error {
     fn from(error: EvalError) -> Error {
         Error::EvalError(error)
@@ -1105,5 +1109,17 @@ impl ToDiagnostic<FileId> for ImportError {
                 diagnostic
             }
         }
+    }
+}
+
+impl ToDiagnostic<FileId> for NonSerializableError {
+    fn to_diagnostic(
+        &self,
+        files: &mut Files<String>,
+        _contract_id: Option<FileId>,
+    ) -> Vec<Diagnostic<FileId>> {
+        vec![Diagnostic::error()
+            .with_message("non serializable term")
+            .with_labels(vec![primary_term(&self.0, files)])]
     }
 }

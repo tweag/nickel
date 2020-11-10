@@ -8,6 +8,7 @@ mod operation;
 mod parser;
 mod position;
 mod program;
+mod serialize;
 mod stack;
 mod stdlib;
 mod term;
