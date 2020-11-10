@@ -653,16 +653,31 @@ mod tests {
     use super::*;
     use crate::error::ImportError;
     use crate::label::Label;
+    use crate::parser::{grammar, lexer};
     use crate::program::resolvers::{DummyResolver, SimpleResolver};
     use crate::term::make as mk_term;
     use crate::term::StrChunk;
     use crate::term::{BinaryOp, UnaryOp};
     use crate::transformations::transform;
     use crate::{mk_app, mk_fun};
+    use codespan::Files;
 
     /// Evaluate a term without import support.
     fn eval_no_import(t: RichTerm) -> Result<Term, EvalError> {
         eval(t, &HashMap::new(), &mut DummyResolver {})
+    }
+
+    fn parse(s: &str) -> Option<RichTerm> {
+        let id = Files::new().add("<test>", String::from(s));
+
+        grammar::TermParser::new()
+            .parse(id, lexer::Lexer::new(&s))
+            .map(|mut t| {
+                t.clean_pos();
+                t
+            })
+            .map_err(|err| println!("{:?}", err))
+            .ok()
     }
 
     #[test]
@@ -958,5 +973,47 @@ mod tests {
         // Shadowing of global environment
         let t = mk_term::let_in("g", Term::Num(2.0), mk_term::var("g"));
         assert_eq!(eval(t, &global_env, &mut resolver), Ok(Term::Num(2.0)));
+    }
+
+    fn mk_env(bindings: Vec<(&str, RichTerm)>) -> Environment {
+        bindings
+            .into_iter()
+            .map(|(id, t)| {
+                (
+                    id.into(),
+                    (
+                        Rc::new(RefCell::new(Closure::atomic_closure(t))),
+                        IdentKind::Let(),
+                    ),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn substitution() {
+        let global_env = mk_env(vec![
+            ("glob1", Term::Num(1.0).into()),
+            ("glob2", parse("\"Glob2\"").unwrap()),
+            ("glob3", Term::Bool(false).into()),
+        ]);
+        let env = mk_env(vec![
+            ("loc1", Term::Bool(true).into()),
+            ("loc2", parse("if glob3 then glob1 else glob2").unwrap()),
+        ]);
+
+        let t = parse("let x = 1 in if loc1 then 1 + loc2 else glob3").unwrap();
+        assert_eq!(
+            substitute(t, &global_env, &env),
+            parse("let x = 1 in if true then 1 + (if false then 1 else \"Glob2\") else false")
+                .unwrap()
+        );
+
+        let t = parse("switch {x => [1, glob1], y => loc2, z => {id = true; other = glob3},} loc1")
+            .unwrap();
+        assert_eq!(
+            substitute(t, &global_env, &env),
+            parse("switch {x => [1, 1], y => (if false then 1 else \"Glob2\"), z => {id = true; other = false},} true").unwrap()
+        );
     }
 }

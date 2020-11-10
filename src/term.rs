@@ -708,6 +708,14 @@ pub struct RichTerm {
 }
 
 impl RichTerm {
+    /// Create a new value from a term and an optional position.
+    pub fn new(t: Term, pos: Option<RawSpan>) -> Self {
+        RichTerm {
+            term: Box::new(t),
+            pos,
+        }
+    }
+
     /// Erase recursively the positional information.
     ///
     /// It allows to use rust `Eq` trait to compare the values of the underlying terms.
@@ -1009,6 +1017,23 @@ pub mod make {
         };
         ( $id1:expr, $id2:expr , $( $rest:expr ),+ ) => {
             mk_fun!($crate::identifier::Ident::from($id1), mk_fun!($id2, $( $rest ),+))
+        };
+    }
+
+    /// Multi field record for types implementing `Into<Ident>` (for the identifiers), and
+    /// `Into<RichTerm>` for the fields. Identifiers and corresponding content are specified as a
+    /// tuple: `mk_record!(("field1", t1), ("field2", t2))` corresponds to the record `{ field1 =
+    /// t1; field2 = t2 }`.
+    #[macro_export]
+    macro_rules! mk_record {
+        ( $( ($id:expr, $body:expr) ),* ) => {
+            {
+                let mut map = std::collections::HashMap::new();
+                $(
+                    map.insert($id.into(), $body.into());
+                )*
+                $crate::term::RichTerm::from($crate::term::Term::Record(map))
+            }
         };
     }
 
