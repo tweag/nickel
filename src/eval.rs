@@ -148,6 +148,14 @@ fn should_update(t: &Term) -> bool {
     !t.is_whnf() && !t.is_enriched()
 }
 
+/// Evaluate a Nickel term. Wrapper around [eval_](fn.eval_.html) that drops the final environment.
+pub fn eval<R>(t0: RichTerm, global_env: Environment, resolver: &mut R) -> Result<Term, EvalError>
+where
+    R: ImportResolver,
+{
+    eval_(t0, global_env, resolver).map(|(term, _)| term)
+}
+
 /// The main loop of evaluation.
 ///
 /// Implement the evaluation of the core language, which includes application, thunk update,
@@ -161,7 +169,17 @@ fn should_update(t: &Term) -> bool {
 /// - `global_env`: the global environment containing the builtin functions of the language. Accessible from anywhere in the
 /// program.
 /// - `resolver`: the interface to fetch imports.
-pub fn eval<R>(t0: RichTerm, global_env: Environment, resolver: &mut R) -> Result<Term, EvalError>
+///
+/// # Return
+///
+/// Either:
+///  - an evaluation error
+///  - the evaluated term with its final environment
+pub fn eval_<R>(
+    t0: RichTerm,
+    global_env: Environment,
+    resolver: &mut R,
+) -> Result<(Term, Environment), EvalError>
 where
     R: ImportResolver,
 {
@@ -445,7 +463,7 @@ where
                     env.insert(x, (thunk, IdentKind::Lam()));
                     Closure { body: t, env }
                 } else {
-                    return Ok(Term::Fun(x, t));
+                    return Ok((Term::Fun(x, t), env));
                 }
             }
             // Otherwise, this is either an ill-formed application, or we are done
@@ -461,7 +479,7 @@ where
                         pos_app,
                     ));
                 } else {
-                    return Ok(t);
+                    return Ok((t, env));
                 }
             }
         }
