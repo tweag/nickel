@@ -1616,7 +1616,7 @@ too
             )
             .unwrap(),
         );
-        // Records are parsed as RecRecords, so we need to build it by hand
+        // Records are parsed as RecRecords, so we need to build one by hand
         let expd = mk_record!((
             "foo",
             mk_record!(("bar", mk_record!(("baz", Term::Num(2.0)))))

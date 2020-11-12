@@ -157,7 +157,7 @@ where
     eval_(t0, global_env, resolver).map(|(term, _)| term)
 }
 
-/// Fully evaluate a Nickel term, that is not a to WHNF, but to a value, with all variable fully substituted.
+/// Fully evaluate a Nickel term: the result is not a WHNF but to a value with all variables substituted.
 pub fn eval_full<R>(
     t0: RichTerm,
     global_env: &Environment,
@@ -176,7 +176,7 @@ where
         ),
     );
     eval_(wrapper, global_env, resolver)
-        .map(|(term, env)| substitute(term.into(), &global_env, &env).into())
+        .map(|(term, env)| subst(term.into(), &global_env, &env).into())
 }
 
 /// The main loop of evaluation.
@@ -518,7 +518,8 @@ fn update_thunks(stack: &mut Stack, closure: &Closure) {
     }
 }
 
-fn substitute(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichTerm {
+/// Recursively substitute each variable occurrence of a term for its value in the environment.
+fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichTerm {
     use crate::types::{AbsType, Types};
 
     let RichTerm { term, pos } = rt;
@@ -528,7 +529,7 @@ fn substitute(rt: RichTerm, global_env: &Environment, env: &Environment) -> Rich
             .or_else(|| global_env.get(&id))
             .map(|(rc, _)| {
                 let closure = rc.borrow().clone();
-                substitute(closure.body, global_env, &closure.env)
+                subst(closure.body, global_env, &closure.env)
             })
             .unwrap_or_else(|| RichTerm::new(Term::Var(id), pos)),
         v @ Term::Bool(_)
@@ -540,53 +541,53 @@ fn substitute(rt: RichTerm, global_env: &Environment, env: &Environment) -> Rich
         | v @ Term::Import(_)
         | v @ Term::ResolvedImport(_) => RichTerm::new(v, pos),
         Term::Fun(id, t) => {
-            let t = substitute(t, global_env, env);
+            let t = subst(t, global_env, env);
 
             RichTerm::new(Term::Fun(id, t), pos)
         }
         Term::Let(id, t1, t2) => {
-            let t1 = substitute(t1, global_env, env);
-            let t2 = substitute(t2, global_env, env);
+            let t1 = subst(t1, global_env, env);
+            let t2 = subst(t2, global_env, env);
 
             RichTerm::new(Term::Let(id, t1, t2), pos)
         }
         Term::App(t1, t2) => {
-            let t1 = substitute(t1, global_env, env);
-            let t2 = substitute(t2, global_env, env);
+            let t1 = subst(t1, global_env, env);
+            let t2 = subst(t2, global_env, env);
 
             RichTerm::new(Term::App(t1, t2), pos)
         }
         Term::Op1(op, t) => {
-            let t = substitute(t, global_env, env);
-            let op = op.map(|t| substitute(t, global_env, env));
+            let t = subst(t, global_env, env);
+            let op = op.map(|t| subst(t, global_env, env));
 
             RichTerm::new(Term::Op1(op, t), pos)
         }
         Term::Op2(op, t1, t2) => {
-            let t1 = substitute(t1, global_env, env);
-            let t2 = substitute(t2, global_env, env);
+            let t1 = subst(t1, global_env, env);
+            let t2 = subst(t2, global_env, env);
 
             RichTerm::new(Term::Op2(op, t1, t2), pos)
         }
         Term::Promise(ty, l, t) => {
-            let t = substitute(t, global_env, env);
+            let t = subst(t, global_env, env);
 
             RichTerm::new(Term::Promise(ty, l, t), pos)
         }
         Term::Assume(ty, l, t) => {
-            let t = substitute(t, global_env, env);
+            let t = subst(t, global_env, env);
 
             RichTerm::new(Term::Assume(ty, l, t), pos)
         }
         Term::Wrapped(i, t) => {
-            let t = substitute(t, global_env, env);
+            let t = subst(t, global_env, env);
 
             RichTerm::new(Term::Wrapped(i, t), pos)
         }
         Term::Record(map) => {
             let map = map
                 .into_iter()
-                .map(|(id, t)| (id, substitute(t, global_env, env)))
+                .map(|(id, t)| (id, subst(t, global_env, env)))
                 .collect();
 
             RichTerm::new(Term::Record(map), pos)
@@ -594,16 +595,13 @@ fn substitute(rt: RichTerm, global_env: &Environment, env: &Environment) -> Rich
         Term::RecRecord(map) => {
             let map = map
                 .into_iter()
-                .map(|(id, t)| (id, substitute(t, global_env, env)))
+                .map(|(id, t)| (id, subst(t, global_env, env)))
                 .collect();
 
             RichTerm::new(Term::RecRecord(map), pos)
         }
         Term::List(ts) => {
-            let ts = ts
-                .into_iter()
-                .map(|t| substitute(t, global_env, env))
-                .collect();
+            let ts = ts.into_iter().map(|t| subst(t, global_env, env)).collect();
 
             RichTerm::new(Term::List(ts), pos)
         }
@@ -612,7 +610,7 @@ fn substitute(rt: RichTerm, global_env: &Environment, env: &Environment) -> Rich
                 .into_iter()
                 .map(|chunk| match chunk {
                     chunk @ StrChunk::Literal(_) => chunk,
-                    StrChunk::Expr(t) => StrChunk::Expr(substitute(t, global_env, env)),
+                    StrChunk::Expr(t) => StrChunk::Expr(subst(t, global_env, env)),
                 })
                 .collect();
 
@@ -620,28 +618,28 @@ fn substitute(rt: RichTerm, global_env: &Environment, env: &Environment) -> Rich
         }
         Term::Contract(ty, label) => {
             let ty = match ty {
-                Types(AbsType::Flat(t)) => Types(AbsType::Flat(substitute(t, global_env, env))),
+                Types(AbsType::Flat(t)) => Types(AbsType::Flat(subst(t, global_env, env))),
                 ty => ty,
             };
 
             RichTerm::new(Term::Contract(ty, label), pos)
         }
         Term::DefaultValue(t) => {
-            let t = substitute(t, global_env, env);
+            let t = subst(t, global_env, env);
 
             RichTerm::new(Term::DefaultValue(t), pos)
         }
         Term::ContractWithDefault(ty, lbl, t) => {
             let ty = match ty {
-                Types(AbsType::Flat(t)) => Types(AbsType::Flat(substitute(t, global_env, env))),
+                Types(AbsType::Flat(t)) => Types(AbsType::Flat(subst(t, global_env, env))),
                 ty => ty,
             };
-            let t = substitute(t, global_env, env);
+            let t = subst(t, global_env, env);
 
             RichTerm::new(Term::ContractWithDefault(ty, lbl, t), pos)
         }
         Term::Docstring(s, t) => {
-            let t = substitute(t, global_env, env);
+            let t = subst(t, global_env, env);
 
             RichTerm::new(Term::Docstring(s, t), pos)
         }
@@ -1004,7 +1002,7 @@ mod tests {
 
         let t = parse("let x = 1 in if loc1 then 1 + loc2 else glob3").unwrap();
         assert_eq!(
-            substitute(t, &global_env, &env),
+            subst(t, &global_env, &env),
             parse("let x = 1 in if true then 1 + (if false then 1 else \"Glob2\") else false")
                 .unwrap()
         );
@@ -1012,7 +1010,7 @@ mod tests {
         let t = parse("switch {x => [1, glob1], y => loc2, z => {id = true; other = glob3},} loc1")
             .unwrap();
         assert_eq!(
-            substitute(t, &global_env, &env),
+            subst(t, &global_env, &env),
             parse("switch {x => [1, 1], y => (if false then 1 else \"Glob2\"), z => {id = true; other = false},} true").unwrap()
         );
     }
