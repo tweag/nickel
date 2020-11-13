@@ -303,12 +303,7 @@ pub fn merge(
             for (field, (t1, t2)) in center.drain() {
                 m.insert(
                     field,
-                    Term::Op2(
-                        BinaryOp::Merge(),
-                        t1.closurize(&mut env, env1.clone()),
-                        t2.closurize(&mut env, env2.clone()),
-                    )
-                    .into(),
+                    merge_closurize(&mut env, t1, env1.clone(), t2, env2.clone()),
                 );
             }
 
@@ -332,17 +327,31 @@ pub fn merge(
     }
 }
 
-/// Take two terms together with their environment, and return a closure representing their merge.
-fn mk_merge_closure(t1: RichTerm, env1: Environment, t2: RichTerm, env2: Environment) -> Closure {
-    let mut env = HashMap::new();
-
-    let body = Term::Op2(
+/// Take the current environment, two terms with their local environment, and return a term which
+/// is the closurized merge of the two.
+fn merge_closurize(
+    env: &mut Environment,
+    t1: RichTerm,
+    env1: Environment,
+    t2: RichTerm,
+    env2: Environment,
+) -> RichTerm {
+    let mut local_env = HashMap::new();
+    let body: RichTerm = Term::Op2(
         BinaryOp::Merge(),
-        t1.closurize(&mut env, env1),
-        t2.closurize(&mut env, env2),
+        t1.closurize(&mut local_env, env1),
+        t2.closurize(&mut local_env, env2),
     )
     .into();
+    body.closurize(env, local_env)
+}
 
+/// Take two terms together with their environment, and return a closure representing their merge.
+/// Just call [`merge_closurize`](./fn.merge_closurize.html) in a new environment and return the
+/// result.
+fn mk_merge_closure(t1: RichTerm, env1: Environment, t2: RichTerm, env2: Environment) -> Closure {
+    let mut env = HashMap::new();
+    let body = merge_closurize(&mut env, t1, env1, t2, env2);
     Closure { body, env }
 }
 
