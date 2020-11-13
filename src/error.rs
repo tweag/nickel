@@ -121,14 +121,14 @@ pub enum TypecheckError {
     /// This is similar to `RowKindMismatch` but occurs in a slightly different situation. Consider a a
     /// unification variable `t`, which is a placeholder to be filled by a concrete type later in
     /// the typechecking phase.  If `t` appears as the tail of a row type, i.e. the type of some
-    /// expression is inferred to be `{| field: Type | t}`, then `t` must not be unified later with
+    /// expression is inferred to be `{ field: Type | t}`, then `t` must not be unified later with
     /// a type including a different declaration for field, such as `field: Type2`.
     ///
     /// A [constraint](../typecheck/type.RowConstr.html) is added accordingly, and if this
     /// constraint is violated (that is if `t` does end up being unified with a type of the form
-    /// `{| .., field: Type2, .. }`), `RowConflict` is raised.  We do not have access to the
+    /// `{ .., field: Type2, .. }`), `RowConflict` is raised.  We do not have access to the
     /// original `field: Type` declaration, as opposed to `RowKindMismatch`, which corresponds to the
-    /// direct failure to unify `{| .. , x: T1, .. }` and `{| .., x: T2, .. }`.
+    /// direct failure to unify `{ .. , x: T1, .. }` and `{ .., x: T2, .. }`.
     RowConflict(
         Ident,
         /* the second type assignment which violates the constraint */ Option<Types>,

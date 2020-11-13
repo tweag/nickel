@@ -1994,12 +1994,12 @@ mod tests {
 
     #[test]
     fn enum_simple() {
-        parse_and_typecheck("Promise(< (| bla, |) >, `bla)").unwrap();
-        parse_and_typecheck("Promise(< (| bla, |) >, `blo)").unwrap_err();
+        parse_and_typecheck("Promise(<bla>, `bla)").unwrap();
+        parse_and_typecheck("Promise(<bla>, `blo)").unwrap_err();
 
-        parse_and_typecheck("Promise(< (| bla, blo, |) >, `blo)").unwrap();
-        parse_and_typecheck("Promise(forall r. < (| bla, | r ) >, `bla)").unwrap();
-        parse_and_typecheck("Promise(forall r. < (| bla, blo, | r ) >, `bla)").unwrap();
+        parse_and_typecheck("Promise(<bla, blo>, `blo)").unwrap();
+        parse_and_typecheck("Promise(forall r. <bla | r>, `bla)").unwrap();
+        parse_and_typecheck("Promise(forall r. <bla, blo | r>, `bla)").unwrap();
 
         parse_and_typecheck("Promise(Num, switch { bla => 3, } `bla)").unwrap();
         parse_and_typecheck("Promise(Num, switch { bla => 3, } `blo)").unwrap_err();
@@ -2010,17 +2010,15 @@ mod tests {
 
     #[test]
     fn enum_complex() {
+        parse_and_typecheck("Promise(<bla, ble> -> Num, fun x => switch {bla => 1, ble => 2,} x)")
+            .unwrap();
         parse_and_typecheck(
-            "Promise(< (| bla, ble, |) > -> Num, fun x => switch {bla => 1, ble => 2,} x)",
-        )
-        .unwrap();
-        parse_and_typecheck(
-            "Promise(< (| bla, ble, |) > -> Num,
+            "Promise(<bla, ble> -> Num,
         fun x => switch {bla => 1, ble => 2, bli => 4,} x)",
         )
         .unwrap_err();
         parse_and_typecheck(
-            "Promise(< (| bla, ble, |) > -> Num,
+            "Promise(<bla, ble> -> Num,
         fun x => switch {bla => 1, ble => 2, bli => 4,} (embed bli x))",
         )
         .unwrap();
@@ -2043,14 +2041,14 @@ mod tests {
 
         parse_and_typecheck(
             "let f = Promise(
-                forall r. < (| blo, ble, | r )> -> Num,
+                forall r. <blo, ble | r> -> Num,
                 fun x => (switch {blo => 1, ble => 2, _ => 3, } x ) ) in
             Promise(Num, f `bli)",
         )
         .unwrap();
         parse_and_typecheck(
             "let f = Promise(
-                forall r. < (| blo, ble, | r )> -> Num,
+                forall r. <blo, ble, | r> -> Num,
                 fun x => (switch {blo => 1, ble => 2, bli => 3, } x ) ) in
             f",
         )
@@ -2058,14 +2056,14 @@ mod tests {
 
         parse_and_typecheck(
             "let f = Promise(
-                forall r. (forall p. < (| blo, ble, | r )> -> < (| bla, bli, | p) > ),
+                forall r. (forall p. <blo, ble | r> -> <bla, bli | p> ),
                 fun x => (switch {blo => `bla, ble => `bli, _ => `bla, } x ) ) in
             f `bli",
         )
         .unwrap();
         parse_and_typecheck(
             "let f = Promise(
-                forall r. (forall p. < (| blo, ble, | r )> -> < (| bla, bli, | p) > ),
+                forall r. (forall p. <blo, ble | r> -> <bla, bli | p> ),
                 fun x => (switch {blo => `bla, ble => `bli, _ => `blo, } x ) ) in
             f `bli",
         )
@@ -2074,19 +2072,18 @@ mod tests {
 
     #[test]
     fn static_record_simple() {
-        parse_and_typecheck("Promise({ {| bla : Num, |} }, { bla = 1; })").unwrap();
-        parse_and_typecheck("Promise({ {| bla : Num, |} }, { bla = true; })").unwrap_err();
-        parse_and_typecheck("Promise({ {| bla : Num, |} }, { blo = 1; })").unwrap_err();
+        parse_and_typecheck("Promise({bla : Num, }, { bla = 1; })").unwrap();
+        parse_and_typecheck("Promise({bla : Num, }, { bla = true; })").unwrap_err();
+        parse_and_typecheck("Promise({bla : Num, }, { blo = 1; })").unwrap_err();
 
-        parse_and_typecheck("Promise({ {| bla : Num, blo : Bool, |} }, { blo = true; bla = 1; })")
-            .unwrap();
+        parse_and_typecheck("Promise({bla : Num, blo : Bool}, { blo = true; bla = 1; })").unwrap();
 
         parse_and_typecheck("Promise(Num, { blo = 1; }.blo)").unwrap();
         parse_and_typecheck("Promise(Num, { bla = true; blo = 1; }.blo)").unwrap();
         parse_and_typecheck("Promise(Bool, { blo = 1; }.blo)").unwrap_err();
 
         parse_and_typecheck(
-            "let r = Promise({ {| bla : Bool, blo : Num, |} }, {blo = 1; bla = true; }) in
+            "let r = Promise({bla : Bool, blo : Num}, {blo = 1; bla = true; }) in
         Promise(Num, if r.bla then r.blo else 2)",
         )
         .unwrap();
@@ -2094,7 +2091,7 @@ mod tests {
         // It worked at first try :O
         parse_and_typecheck(
             "let f = Promise(
-                forall a. (forall r. { {| bla : Bool, blo : a, ble : a, | r } } -> a),
+                forall a. (forall r. {bla : Bool, blo : a, ble : a | r} -> a),
                 fun r => if r.bla then r.blo else r.ble)
             in
             Promise(Num,
@@ -2107,7 +2104,7 @@ mod tests {
 
         parse_and_typecheck(
             "let f = Promise(
-                forall a. (forall r. { {| bla : Bool, blo : a, ble : a, | r } } -> a),
+                forall a. (forall r. {bla : Bool, blo : a, ble : a | r} -> a),
                 fun r => if r.bla then r.blo else r.ble)
             in
             Promise(Num,
@@ -2117,7 +2114,7 @@ mod tests {
         .unwrap_err();
         parse_and_typecheck(
             "let f = Promise(
-                forall a. (forall r. { {| bla : Bool, blo : a, ble : a, | r } } -> a),
+                forall a. (forall r. {bla : Bool, blo : a, ble : a | r} -> a),
                 fun r => if r.bla then (r.blo + 1) else r.ble)
             in
             Promise(Num,
@@ -2227,19 +2224,13 @@ mod tests {
 
     #[test]
     fn recursive_records() {
-        parse_and_typecheck(
-            "Promise({ {| a : Num, b : Num, |} }, { a = Promise(Num,1); b = a + 1})",
-        )
-        .unwrap();
-        parse_and_typecheck(
-            "Promise({ {| a : Num, b : Num, |} }, { a = Promise(Num,true); b = a + 1})",
-        )
-        .unwrap_err();
-        parse_and_typecheck(
-            "Promise({ {| a : Num, b : Bool, |} }, { a = 1; b = Promise(Bool, a) } )",
-        )
-        .unwrap_err();
-        parse_and_typecheck("Promise({ {| a : Num, |} }, { a = Promise(Num, 1 + a) })").unwrap();
+        parse_and_typecheck("Promise({a : Num, b : Num}, { a = Promise(Num,1); b = a + 1})")
+            .unwrap();
+        parse_and_typecheck("Promise({a : Num, b : Num}, { a = Promise(Num,true); b = a + 1})")
+            .unwrap_err();
+        parse_and_typecheck("Promise({a : Num, b : Bool}, { a = 1; b = Promise(Bool, a) } )")
+            .unwrap_err();
+        parse_and_typecheck("Promise({a : Num}, { a = Promise(Num, 1 + a) })").unwrap();
     }
 
     #[test]
@@ -2250,12 +2241,12 @@ mod tests {
             .unwrap_err();
 
         // Fields in recursive records are treated in the type environment in the same way as let-bound expressions
-        parse_and_typecheck("Promise({ {| a : Num, b : Num, |} }, { a = 1; b = 1 + a })").unwrap();
+        parse_and_typecheck("Promise({a : Num, b : Num}, { a = 1; b = 1 + a })").unwrap();
         parse_and_typecheck(
-            "Promise({ {| f : Num -> Num, |} }, { f = fun x => if isZero x then 1 else 1 + (f (x + (-1)));})"
+            "Promise({f : Num -> Num}, { f = fun x => if isZero x then 1 else 1 + (f (x + (-1)));})"
         ).unwrap();
         parse_and_typecheck(
-            "Promise({ {| f : Num -> Num, |} }, { f = fun x => if isZero x then false else 1 + (f (x + (-1)))})"
+            "Promise({f : Num -> Num}, { f = fun x => if isZero x then false else 1 + (f (x + (-1)))})"
         ).unwrap_err();
     }
 

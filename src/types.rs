@@ -362,10 +362,10 @@ impl fmt::Display for Types {
                 }
                 write!(f, ". {}", curr)
             }
-            AbsType::Enum(row) => write!(f, "< (| {}) >", row),
-            AbsType::StaticRecord(row) => write!(f, "{{ {{| {}}} }}", row),
+            AbsType::Enum(row) => write!(f, "<{}>", row),
+            AbsType::StaticRecord(row) => write!(f, "{{{}}}", row),
             AbsType::DynRecord(ty) => write!(f, "{{_: {}}}", ty),
-            AbsType::RowEmpty() => write!(f, " |"),
+            AbsType::RowEmpty() => Ok(()),
             AbsType::RowExtend(Ident(id), ty_opt, tail) => {
                 write!(f, "{}", id)?;
 
@@ -431,10 +431,11 @@ mod test {
         assert_format_eq("{_: Str}");
         assert_format_eq("{_: (Str -> Str) -> Str}");
 
-        assert_format_eq("{ {| x: (Bool -> Bool) -> Bool, y: Bool |} }");
-        assert_format_eq("{ {| x: Bool, y: Bool, z: Bool | r} }");
+        assert_format_eq("{x: (Bool -> Bool) -> Bool, y: Bool}");
+        assert_format_eq("{x: Bool, y: Bool, z: Bool | r}");
+        assert_format_eq("{x: Bool, y: Bool, z: Bool}");
 
-        assert_format_eq("< (| a, b, c, d |) >");
-        assert_format_eq("< (| tag1, tag2, tag3 | r) >");
+        assert_format_eq("<a, b, c, d>");
+        assert_format_eq("<tag1, tag2, tag3 | r>");
     }
 }
