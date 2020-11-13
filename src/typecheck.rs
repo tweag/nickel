@@ -458,9 +458,10 @@ fn type_check_(
                 .try_for_each(|chunk| -> Result<(), TypecheckError> {
                     match chunk {
                         StrChunk::Literal(_) => Ok(()),
-                        StrChunk::Expr(t, _) =>
-                            type_check_(state, envs.clone(), strict, t, mk_typewrapper::dynamic()),
-                   }
+                        StrChunk::Expr(t, _) => {
+                            type_check_(state, envs.clone(), strict, t, mk_typewrapper::dynamic())
+                        }
+                    }
                 })
         }
         Term::Fun(x, t) => {

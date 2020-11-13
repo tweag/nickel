@@ -1179,7 +1179,6 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
     /// instead of the callsite.
     macro_rules! assert_peq {
         ($t1:expr, $t2:expr) => {
-            println!("asserting {:?}", eval_string($t1));
             assert_eq!(
                 eval_string(&format!("({}) == ({})", $t1, $t2)),
                 Ok(Term::Bool(true)),
