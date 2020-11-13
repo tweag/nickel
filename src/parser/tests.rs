@@ -276,4 +276,8 @@ fn str_escape() {
         parse_without_pos(r#""\$\${ }\$""#),
         mk_single_chunk("$${ }$"),
     );
+    assert_eq!(
+        parse_without_pos(r#""$a$b$c\${d\$""#),
+        mk_single_chunk("$a$b$c${d$"),
+    );
 }

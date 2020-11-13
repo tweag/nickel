@@ -189,6 +189,7 @@ Str: String = "\"" <s: ChunkLiteral> "\"" => s;
 
 ChunkLiteralPart: Either<&'input str, char> = {
     "str literal" => Either::Left(<>),
+    "str $" => Either::Left(<>),
     "multstr literal" => Either::Left(<>),
     "multstr $" => Either::Left(<>),
     "multstr \\" => Either::Left(<>),
@@ -417,11 +418,12 @@ extern {
     enum Token<'input> {
         "identifier" => Token::Normal(NormalToken::Identifier(<&'input str>)),
         "str literal" => Token::Str(StringToken::Literal(<&'input str>)),
+        "str $" => Token::Str(StringToken::Dollar(<&'input str>)),
+        "str esc char" => Token::Str(StringToken::EscapedChar(<char>)),
         "multstr literal" => Token::MultiStr(MultiStringToken::Literal(<&'input str>)),
         "multstr $" => Token::MultiStr(MultiStringToken::Dollar(<&'input str>)),
         "multstr \\${" => Token::MultiStr(MultiStringToken::BackslashDollarBrace(<&'input str>)),
         "multstr \\" => Token::MultiStr(MultiStringToken::Backslash(<&'input str>)),
-        "str esc char" => Token::Str(StringToken::EscapedChar(<char>)),
         "false end" => Token::MultiStr(MultiStringToken::FalseEnd(<&'input str>)),
         "num literal" => Token::Normal(NormalToken::NumLiteral(<f64>)),
 

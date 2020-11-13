@@ -247,6 +247,9 @@ pub enum StringToken<'input> {
 
     #[token("\"")]
     DoubleQuote,
+    // Has lower matching priority than `DollarBrace` according to Logos' rules.
+    #[token("$")]
+    Dollar(&'input str),
     #[token("${")]
     DollarBrace,
     #[regex("\\\\.", |lex| lex.slice().chars().nth(1))]
