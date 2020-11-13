@@ -140,7 +140,7 @@ bounded loops - are enough in practice: why take the risk of writing programs
 stuck in an infinite loop for no reward ? On the other hand, one can write
 programs with huge running time and complexity even in a language which is not
 Turing-complete \[1\].  Also, while configuration-specific code almost
-never requires recursion, this is not the case of library code. Allowing
+never requires recursion, this is not the case with library code. Allowing
 recursion makes it possible for programmers to implement new generic
 functionalities \[2\].
 
