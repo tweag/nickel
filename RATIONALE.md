@@ -139,9 +139,13 @@ terminate, and combinators on collections (e.g. `map` or `fold`) - or equivalent
 bounded loops - are enough in practice: why take the risk of writing programs
 stuck in an infinite loop for no reward ? On the other hand, one can write
 programs with huge running time and complexity even in a language which is not
-Turing-complete. Also, while configuration-specific code almost never requires
-recursion, this is not the case of library code. Allowing recursion makes it
-possible for programmers to implement new generic functionalities.
+Turing-complete \[1\].  Also, while configuration-specific code almost
+never requires recursion, this is not the case of library code. Allowing
+recursion makes it possible for programmers to implement new generic
+functionalities \[2\].
+
+\[1\]: [Why Dhall is not Turing complete](http://neilmitchell.blogspot.com/2020/11/turing-incomplete-languages.html)\
+\[2\]: [Turing incomplete languages](http://www.haskellforall.com/2020/01/why-dhall-advertises-absence-of-turing.html)
 
 ### Side-Effects
 As for Turing-completeness, most of these languages also forbid side-effects.
@@ -201,26 +205,26 @@ as in the following example:
 
 ```
 let filterOptional
-	: ∀(a : Type) → ∀(b : Type) → (a → Optional b) → List a → List b
-	=   λ(a : Type)
-	  → λ(b : Type)
-	  → λ(f : a → Optional b)
-	  → λ(l : List a)
-	  → List/build
-		b
-		(   λ(list : Type)
-		  → λ(cons : b → list → list)
-		  → λ(nil : list)
-		  → List/fold
-			a
-			l
-			list
-			(   λ(x : a)
-			  → λ(xs : list)
-			  → Optional/fold b (f x) list (λ(opt : b) → cons opt xs) xs
-			)
-			nil
-		)
+    : ∀(a : Type) → ∀(b : Type) → (a → Optional b) → List a → List b
+    =   λ(a : Type)
+      → λ(b : Type)
+      → λ(f : a → Optional b)
+      → λ(l : List a)
+      → List/build
+        b
+        (   λ(list : Type)
+          → λ(cons : b → list → list)
+          → λ(nil : list)
+          → List/fold
+            a
+            l
+            list
+            (   λ(x : a)
+              → λ(xs : list)
+              → Optional/fold b (f x) list (λ(opt : b) → cons opt xs) xs
+            )
+            nil
+        )
 
 in  filterOptional
 ```
