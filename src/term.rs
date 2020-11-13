@@ -69,6 +69,7 @@ pub enum Term {
     Enum(Ident),
 
     /// A record, mapping identifiers to terms.
+    #[serde(serialize_with = "crate::serialize::serialize_record")]
     Record(HashMap<Ident, RichTerm>),
     /// A recursive record, where the fields can reference each others.
     #[serde(skip)]

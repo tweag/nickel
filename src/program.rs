@@ -123,7 +123,7 @@ impl Program {
     }
 
     /// Create a program by reading it from a generic source.
-    fn new_from_source<T: Read>(
+    pub fn new_from_source<T: Read>(
         mut source: T,
         source_name: impl Into<OsString>,
     ) -> std::io::Result<Program> {
