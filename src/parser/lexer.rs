@@ -274,10 +274,16 @@ pub enum MultiStringToken<'input> {
     // `FalseEnd` otherwise
     #[regex("\"#+m")]
     CandidateEnd(&'input str),
+    // Same as previous: `Dollar` and `Backslash` have lower matching priority than `DollarBrace`
+    // and `BackslashDollarBrace`.
+    #[token("$")]
+    Dollar(&'input str),
     #[token("${")]
     DollarBrace,
-    #[regex("\\\\.", |lex| lex.slice().chars().nth(1))]
-    EscapedChar(char),
+    #[token("\\")]
+    Backslash(&'input str),
+    #[token("\\${")]
+    BackslashDollarBrace(&'input str),
     End,
 }
 
@@ -500,14 +506,9 @@ impl<'input> Iterator for Lexer<'input> {
                 self.enter_normal()
             }
             // Convert escape sequences to the corresponding character.
-            Some(Str(StringToken::EscapedChar(c)))
-            | Some(MultiStr(MultiStringToken::EscapedChar(c))) => {
+            Some(Str(StringToken::EscapedChar(c))) => {
                 if let Some(esc) = escape_char(*c) {
-                    if let Some(Str(_)) = &token {
-                        token = Some(Str(StringToken::EscapedChar(esc)));
-                    } else {
-                        token = Some(MultiStr(MultiStringToken::EscapedChar(esc)));
-                    }
+                    token = Some(Str(StringToken::EscapedChar(esc)));
                 } else {
                     return Some(Err(LexicalError::InvalidEscapeSequence(span.start + 1)));
                 }

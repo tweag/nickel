@@ -183,17 +183,19 @@ ChunkLiteral : String =
 
 ChunkExpr: StrChunk<RichTerm> = DollarBrace <t: SpTerm<RichTerm>> "}" => StrChunk::Expr(t, 0);
 
-DollarBrace = { "${", "${ bis" };
+DollarBrace = { "${", "multstr ${" };
 
 Str: String = "\"" <s: ChunkLiteral> "\"" => s;
 
 ChunkLiteralPart: Either<&'input str, char> = {
     "str literal" => Either::Left(<>),
     "multstr literal" => Either::Left(<>),
+    "multstr $" => Either::Left(<>),
+    "multstr \\" => Either::Left(<>),
+    "multstr \\${" => Either::Left(<>),
     "false end" => Either::Left(<>),
     "str esc char" => Either::Right(<>),
-    "multstr esc char" => Either::Right(<>),
-};
+    };
 
 UOp: UnaryOp<RichTerm> = {
     "isZero" => UnaryOp::IsZero(),
@@ -416,8 +418,10 @@ extern {
         "identifier" => Token::Normal(NormalToken::Identifier(<&'input str>)),
         "str literal" => Token::Str(StringToken::Literal(<&'input str>)),
         "multstr literal" => Token::MultiStr(MultiStringToken::Literal(<&'input str>)),
+        "multstr $" => Token::MultiStr(MultiStringToken::Dollar(<&'input str>)),
+        "multstr \\${" => Token::MultiStr(MultiStringToken::BackslashDollarBrace(<&'input str>)),
+        "multstr \\" => Token::MultiStr(MultiStringToken::Backslash(<&'input str>)),
         "str esc char" => Token::Str(StringToken::EscapedChar(<char>)),
-        "multstr esc char" => Token::MultiStr(MultiStringToken::EscapedChar(<char>)),
         "false end" => Token::MultiStr(MultiStringToken::FalseEnd(<&'input str>)),
         "num literal" => Token::Normal(NormalToken::NumLiteral(<f64>)),
 
@@ -441,10 +445,10 @@ extern {
         ".$" => Token::Normal(NormalToken::DotDollar),
         "$[" => Token::Normal(NormalToken::DollarBracket),
         "${" => Token::Str(StringToken::DollarBrace),
-        // `${` and `${ bis` are morally the same token used in the same places,
+        // `${` and `multstr ${` are morally the same token used in the same places,
         // but they correspond to two different modes, so we need to have two
         // distinct token
-        "${ bis" => Token::MultiStr(MultiStringToken::DollarBrace),
+        "multstr ${" => Token::MultiStr(MultiStringToken::DollarBrace),
         "-$" => Token::Normal(NormalToken::MinusDollar),
 
         "+" => Token::Normal(NormalToken::Plus),
