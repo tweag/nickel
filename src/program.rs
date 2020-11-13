@@ -1339,6 +1339,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         eval_string("\"a\" || false").unwrap_err();
     }
 
+    #[test]
     fn records_contracts_simple() {
         assert_peq!("Assume({ {| |} }, {})", "{}");
         eval_string("Assume({ {| |} }, {a=1})").unwrap_err();

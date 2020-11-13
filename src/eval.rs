@@ -286,7 +286,7 @@ where
                     },
                     None,
                 );
-                stack.push_arg(Closure::atomic_closure(RichTerm::new(Term::Lbl(l))), None);
+                stack.push_arg(Closure::atomic_closure(Term::Lbl(l).into()), None);
                 Closure {
                     body: ty.contract(),
                     env,
@@ -483,9 +483,11 @@ mod tests {
     use crate::error::ImportError;
     use crate::label::Label;
     use crate::program::resolvers::{DummyResolver, SimpleResolver};
+    use crate::term::make as mk_term;
     use crate::term::StrChunk;
     use crate::term::{BinaryOp, UnaryOp};
     use crate::transformations::transform;
+    use crate::{mk_app, mk_fun};
 
     /// Evaluate a term without import support.
     fn eval_no_import(t: RichTerm) -> Result<Term, EvalError> {
@@ -500,18 +502,15 @@ mod tests {
         let boolean = Term::Bool(true);
         assert_eq!(Ok(boolean.clone()), eval_no_import(boolean.into()));
 
-        let lambda = Term::Fun(
-            Ident("x".to_string()),
-            RichTerm::app(RichTerm::var("x".into()), RichTerm::var("x".into())),
-        );
-        assert_eq!(Ok(lambda.clone()), eval_no_import(lambda.into()));
+        let lambda = mk_fun!("x", mk_app!(mk_term::var("x"), mk_term::var("x")));
+        assert_eq!(Ok(lambda.as_ref().clone()), eval_no_import(lambda.into()));
     }
 
     #[test]
     fn blame_panics() {
         let label = Label::dummy();
         if let Err(EvalError::BlameError(l, _)) =
-            eval_no_import(Term::Op1(UnaryOp::Blame(), Term::Lbl(label.clone()).into()).into())
+            eval_no_import(mk_term::op1(UnaryOp::Blame(), Term::Lbl(label.clone())))
         {
             assert_eq!(l, label);
         } else {
@@ -522,74 +521,56 @@ mod tests {
     #[test]
     #[should_panic]
     fn lone_var_panics() {
-        eval_no_import(RichTerm::var("unbound".into())).unwrap();
+        eval_no_import(mk_term::var("unbound")).unwrap();
     }
 
     #[test]
     fn only_fun_are_applicable() {
-        eval_no_import(RichTerm::app(Term::Bool(true).into(), Term::Num(45.).into()).into())
-            .unwrap_err();
+        eval_no_import(mk_app!(Term::Bool(true), Term::Num(45.))).unwrap_err();
     }
 
     #[test]
     fn simple_app() {
-        let t = RichTerm::app(
-            Term::Fun(Ident("x".to_string()), RichTerm::var("x".into())).into(),
-            Term::Num(5.0).into(),
-        );
-
+        let t = mk_app!(mk_term::id(), Term::Num(5.0));
         assert_eq!(Ok(Term::Num(5.0)), eval_no_import(t));
     }
 
     #[test]
     fn simple_let() {
-        let t = RichTerm::let_in("x", Term::Num(5.0).into(), RichTerm::var("x".into()));
-
+        let t = mk_term::let_in("x", Term::Num(5.0), mk_term::var("x"));
         assert_eq!(Ok(Term::Num(5.0)), eval_no_import(t));
     }
 
     #[test]
     fn simple_ite() {
-        let t = RichTerm::ite(
-            Term::Bool(true).into(),
-            Term::Num(5.0).into(),
-            Term::Bool(false).into(),
-        );
-
+        let t = mk_term::if_then_else(Term::Bool(true), Term::Num(5.0), Term::Bool(false));
         assert_eq!(Ok(Term::Num(5.0)), eval_no_import(t));
     }
 
     #[test]
     fn simple_plus() {
-        let t = RichTerm::plus(Term::Num(5.0).into(), Term::Num(7.5).into());
-
+        let t = mk_term::op2(BinaryOp::Plus(), Term::Num(5.0), Term::Num(7.5));
         assert_eq!(Ok(Term::Num(12.5)), eval_no_import(t));
     }
 
     #[test]
     fn simple_is_zero() {
-        let t = Term::Op1(UnaryOp::IsZero(), Term::Num(7.0).into()).into();
-
+        let t = mk_term::op1(UnaryOp::IsZero(), Term::Num(7.0));
         assert_eq!(Ok(Term::Bool(false)), eval_no_import(t));
     }
 
     #[test]
     fn asking_for_various_types() {
-        let num = Term::Op1(UnaryOp::IsNum(), Term::Num(45.3).into()).into();
+        let num = mk_term::op1(UnaryOp::IsNum(), Term::Num(45.3));
         assert_eq!(Ok(Term::Bool(true)), eval_no_import(num));
 
-        let boolean = Term::Op1(UnaryOp::IsBool(), Term::Bool(true).into()).into();
+        let boolean = mk_term::op1(UnaryOp::IsBool(), Term::Bool(true));
         assert_eq!(Ok(Term::Bool(true)), eval_no_import(boolean));
 
-        let lambda = Term::Op1(
+        let lambda = mk_term::op1(
             UnaryOp::IsFun(),
-            Term::Fun(
-                Ident("x".to_string()),
-                RichTerm::app(RichTerm::var("x".into()), RichTerm::var("x".into())),
-            )
-            .into(),
-        )
-        .into();
+            mk_fun!("x", mk_app!(mk_term::var("x"), mk_term::var("x"))),
+        );
         assert_eq!(Ok(Term::Bool(true)), eval_no_import(lambda));
     }
 
@@ -605,23 +586,21 @@ mod tests {
 
     #[test]
     fn merge_enriched_default() {
-        let t = Term::Op2(
+        let t = mk_term::op2(
             BinaryOp::Merge(),
-            Term::Num(1.0).into(),
-            Term::DefaultValue(Term::Num(2.0).into()).into(),
-        )
-        .into();
+            Term::Num(1.0),
+            Term::DefaultValue(Term::Num(2.0).into()),
+        );
         assert_eq!(Ok(Term::Num(1.0)), eval_no_import(t));
     }
 
     #[test]
     fn merge_incompatible_defaults() {
-        let t = Term::Op2(
+        let t = mk_term::op2(
             BinaryOp::Merge(),
-            Term::DefaultValue(Term::Num(1.0).into()).into(),
-            Term::DefaultValue(Term::Num(2.0).into()).into(),
-        )
-        .into();
+            Term::DefaultValue(Term::Num(1.0).into()),
+            Term::DefaultValue(Term::Num(2.0).into()),
+        );
 
         eval_no_import(t).unwrap_err();
     }
@@ -655,26 +634,19 @@ mod tests {
             R: ImportResolver,
         {
             transform(
-                RichTerm::let_in(var, Term::Import(String::from(import)).into(), body),
+                mk_term::let_in(var, Term::Import(String::from(import)), body),
                 resolver,
             )
         };
 
         // let x = import "does_not_exist" in x
-        match mk_import(
-            "x",
-            "does_not_exist",
-            RichTerm::var(String::from("x")),
-            &mut resolver,
-        )
-        .unwrap_err()
-        {
+        match mk_import("x", "does_not_exist", mk_term::var("x"), &mut resolver).unwrap_err() {
             ImportError::IOError(_, _, _) => (),
             _ => assert!(false),
         };
 
         // let x = import "bad" in x
-        match mk_import("x", "bad", RichTerm::var(String::from("x")), &mut resolver).unwrap_err() {
+        match mk_import("x", "bad", mk_term::var("x"), &mut resolver).unwrap_err() {
             ImportError::ParseError(_, _) => (),
             _ => assert!(false),
         };
@@ -682,7 +654,7 @@ mod tests {
         // let x = import "two" in x
         assert_eq!(
             eval(
-                mk_import("x", "two", RichTerm::var(String::from("x")), &mut resolver).unwrap(),
+                mk_import("x", "two", mk_term::var("x"), &mut resolver).unwrap(),
                 HashMap::new(),
                 &mut resolver
             )
@@ -693,13 +665,7 @@ mod tests {
         // let x = import "nested" in x
         assert_eq!(
             eval(
-                mk_import(
-                    "x",
-                    "nested",
-                    RichTerm::var(String::from("x")),
-                    &mut resolver
-                )
-                .unwrap(),
+                mk_import("x", "nested", mk_term::var("x"), &mut resolver).unwrap(),
                 HashMap::new(),
                 &mut resolver
             )
@@ -713,11 +679,7 @@ mod tests {
                 mk_import(
                     "x",
                     "lib",
-                    Term::Op1(
-                        UnaryOp::StaticAccess(Ident::from("f")),
-                        RichTerm::var(String::from("x"))
-                    )
-                    .into(),
+                    mk_term::op1(UnaryOp::StaticAccess(Ident::from("f")), mk_term::var("x")),
                     &mut resolver,
                 )
                 .unwrap(),
@@ -734,11 +696,7 @@ mod tests {
                 mk_import(
                     "x",
                     "cycle",
-                    Term::Op1(
-                        UnaryOp::StaticAccess(Ident::from("b")),
-                        RichTerm::var(String::from("x"))
-                    )
-                    .into(),
+                    mk_term::op1(UnaryOp::StaticAccess(Ident::from("b")), mk_term::var("x")),
                     &mut resolver,
                 )
                 .unwrap(),
@@ -755,18 +713,18 @@ mod tests {
         let mut chunks = vec![
             StrChunk::Literal(String::from("Hello")),
             StrChunk::Expr(
-                Term::Op2(
+                mk_term::op2(
                     BinaryOp::PlusStr(),
-                    Term::Str(String::from(", ")).into(),
-                    Term::Str(String::from("World!")).into(),
+                    mk_term::string(", "),
+                    mk_term::string("World!"),
                 )
                 .into(),
             ),
             StrChunk::Literal(String::from(" How")),
-            StrChunk::Expr(RichTerm::ite(
-                Term::Bool(true).into(),
-                Term::Str(String::from(" are")).into(),
-                Term::Str(String::from(" is")).into(),
+            StrChunk::Expr(mk_term::if_then_else(
+                Term::Bool(true),
+                mk_term::string(" are"),
+                mk_term::string(" is"),
             )),
             StrChunk::Literal(String::from(" you?")),
         ];
@@ -786,15 +744,15 @@ mod tests {
             StrChunk::Expr(
                 Term::Op2(
                     BinaryOp::PlusStr(),
-                    Term::Str(String::from(" ar")).into(),
-                    Term::Str(String::from("e")).into(),
+                    mk_term::string(" ar"),
+                    mk_term::string("e"),
                 )
                 .into(),
             ),
-            StrChunk::Expr(RichTerm::ite(
-                Term::Bool(true).into(),
-                Term::Str(String::from(" you")).into(),
-                Term::Str(String::from(" me")).into(),
+            StrChunk::Expr(mk_term::if_then_else(
+                Term::Bool(true),
+                mk_term::string(" you"),
+                mk_term::string(" me"),
             )),
         ];
         inner_chunks.reverse();
@@ -817,38 +775,23 @@ mod tests {
     fn global_env() {
         let mut global_env = HashMap::new();
         let mut resolver = DummyResolver {};
-        let thunk = Rc::new(RefCell::new(Closure {
-            body: Term::Num(1.0).into(),
-            env: HashMap::new(),
-        }));
+        let thunk = Rc::new(RefCell::new(Closure::atomic_closure(Term::Num(1.0).into())));
         global_env.insert(Ident::from("g"), (Rc::clone(&thunk), IdentKind::Let()));
 
-        let t = RichTerm::let_in(
-            "x",
-            Term::Num(2.0).into(),
-            Term::Var(Ident::from("x")).into(),
-        );
+        let t = mk_term::let_in("x", Term::Num(2.0), mk_term::var("x"));
         assert_eq!(
             eval(t, global_env.clone(), &mut resolver),
             Ok(Term::Num(2.0))
         );
 
-        let t = RichTerm::let_in(
-            "x",
-            Term::Num(2.0).into(),
-            Term::Var(Ident::from("g")).into(),
-        );
+        let t = mk_term::let_in("x", Term::Num(2.0), mk_term::var("g"));
         assert_eq!(
             eval(t, global_env.clone(), &mut resolver),
             Ok(Term::Num(1.0))
         );
 
         // Shadowing of global environment
-        let t = RichTerm::let_in(
-            "g",
-            Term::Num(2.0).into(),
-            Term::Var(Ident::from("g")).into(),
-        );
+        let t = mk_term::let_in("g", Term::Num(2.0), mk_term::var("g"));
         assert_eq!(
             eval(t, global_env.clone(), &mut resolver),
             Ok(Term::Num(2.0))

@@ -52,7 +52,9 @@
 //! enriched values `Contract` or `ContractDefault`. They ensure sane interaction between typed and
 //! untyped parts.
 use crate::identifier::Ident;
+use crate::term::make as mk_term;
 use crate::term::{RichTerm, Term, UnaryOp};
+use crate::{mk_app, mk_fun};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -175,18 +177,16 @@ impl Types {
         sy: &mut i32,
     ) -> RichTerm {
         match self.0 {
-            AbsType::Dyn() => RichTerm::var("dyn".to_string()),
-            AbsType::Num() => RichTerm::var("num".to_string()),
-            AbsType::Bool() => RichTerm::var("bool".to_string()),
-            AbsType::Str() => RichTerm::var("string".to_string()),
-            AbsType::List() => RichTerm::var("list".to_string()),
+            AbsType::Dyn() => mk_term::var("dyn"),
+            AbsType::Num() => mk_term::var("num"),
+            AbsType::Bool() => mk_term::var("bool"),
+            AbsType::Str() => mk_term::var("string"),
+            AbsType::List() => mk_term::var("list"),
             AbsType::Sym() => panic!("Are you trying to check a Sym at runtime?"),
-            AbsType::Arrow(ref s, ref t) => RichTerm::app(
-                RichTerm::app(
-                    RichTerm::var("func".to_string()),
-                    s.contract_open(h.clone(), !pol, sy),
-                ),
-                t.contract_open(h, pol, sy),
+            AbsType::Arrow(ref s, ref t) => mk_app!(
+                mk_term::var("func"),
+                s.contract_open(h.clone(), !pol, sy),
+                t.contract_open(h, pol, sy)
             ),
             AbsType::Flat(ref t) => t.clone(),
             AbsType::Var(ref i) => {
@@ -196,31 +196,20 @@ impl Types {
                 rt.clone()
             }
             AbsType::Forall(ref i, ref t) => {
-                let inst_var = RichTerm::app(
-                    RichTerm::app(
-                        RichTerm::var("forall_var".to_string()),
-                        Term::Sym(*sy).into(),
-                    ),
-                    Term::Bool(pol).into(),
-                );
+                let inst_var = mk_app!(mk_term::var("forall_var"), Term::Sym(*sy), Term::Bool(pol));
 
-                let inst_tail = RichTerm::app(
-                    RichTerm::app(
-                        RichTerm::var("forall_tail".to_string()),
-                        Term::Sym(*sy).into(),
-                    ),
-                    Term::Bool(pol).into(),
-                );
+                let inst_tail =
+                    mk_app!(mk_term::var("forall_tail"), Term::Sym(*sy), Term::Bool(pol));
 
                 h.insert(i.clone(), (inst_var, inst_tail));
                 *sy += 1;
                 t.contract_open(h, pol, sy)
             }
-            AbsType::RowEmpty() | AbsType::RowExtend(_, _, _) => RichTerm::var("fail".to_string()),
+            AbsType::RowEmpty() | AbsType::RowExtend(_, _, _) => mk_term::var("fail"),
             AbsType::Enum(ref r) => {
                 fn form(ty: Types, h: HashMap<Ident, (RichTerm, RichTerm)>) -> RichTerm {
                     match ty.0 {
-                        AbsType::RowEmpty() => RichTerm::var("fail".to_string()),
+                        AbsType::RowEmpty() => mk_term::var("fail"),
                         AbsType::RowExtend(_, Some(_), _) => {
                             panic!("It should be a row without type")
                         }
@@ -229,20 +218,16 @@ impl Types {
                             let mut map = HashMap::new();
                             map.insert(id, Term::Bool(true).into());
 
-                            RichTerm::app(
-                                RichTerm::app(
-                                    RichTerm::var("row_extend".to_string()),
-                                    rest_contract,
-                                ),
-                                Term::Fun(
-                                    Ident("x".to_string()),
-                                    Term::Op1(
+                            mk_app!(
+                                mk_term::var("row_extend"),
+                                rest_contract,
+                                mk_fun!(
+                                    "x",
+                                    mk_term::op1(
                                         UnaryOp::Switch(map, Some(Term::Bool(false).into())),
-                                        Term::Var(Ident("x".to_string())).into(),
+                                        mk_term::var("x"),
                                     )
-                                    .into(),
                                 )
-                                .into(),
                             )
                         }
                         AbsType::Var(ref i) => {
@@ -265,7 +250,7 @@ impl Types {
                     h: HashMap<Ident, (RichTerm, RichTerm)>,
                 ) -> RichTerm {
                     match &ty.0 {
-                        AbsType::RowEmpty() => RichTerm::var(String::from("empty_tail")),
+                        AbsType::RowEmpty() => mk_term::var("empty_tail"),
                         AbsType::Var(id) => {
                             let (_, rt) = h
                                 .get(&id)
@@ -275,15 +260,11 @@ impl Types {
                         AbsType::RowExtend(id, Some(ty), rest) => {
                             let cont = form(sy, pol, rest.as_ref(), h.clone());
                             let row_contr = ty.contract_open(h, pol, sy);
-                            RichTerm::app(
-                                RichTerm::app(
-                                    RichTerm::app(
-                                        RichTerm::var(String::from("record_extend")),
-                                        Term::Str(format!("{}", id)).into(),
-                                    ),
-                                    row_contr,
-                                ),
-                                cont,
+                            mk_app!(
+                                mk_term::var("record_extend"),
+                                mk_term::string(format!("{}", id)),
+                                row_contr,
+                                cont
                             )
                         }
                         ty => panic!(
@@ -293,15 +274,11 @@ impl Types {
                     }
                 }
 
-                RichTerm::app(
-                    Term::Var(Ident(String::from("record"))).into(),
-                    form(sy, pol, ty, h),
-                )
+                mk_app!(mk_term::var("record"), form(sy, pol, ty, h))
             }
-            AbsType::DynRecord(ref ty) => RichTerm::app(
-                RichTerm::var(String::from("dyn_record")),
-                ty.contract_open(h, pol, sy),
-            ),
+            AbsType::DynRecord(ref ty) => {
+                mk_app!(mk_term::var("dyn_record"), ty.contract_open(h, pol, sy))
+            }
         }
     }
 
@@ -400,7 +377,6 @@ mod test {
         // Wrap the type in a contract to have it accepted by the parser.
         let wrapper = format!("Contract({})", s);
         let id = Files::new().add("<test>", wrapper.clone());
-        println!("wrapper: {}", wrapper);
 
         let rt = TermParser::new().parse(id, Lexer::new(&wrapper)).unwrap();
 

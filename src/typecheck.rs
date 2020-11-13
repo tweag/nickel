@@ -1767,8 +1767,10 @@ mod tests {
     use super::*;
     use crate::error::ImportError;
     use crate::label::Label;
+    use crate::mk_app;
     use crate::parser::lexer;
     use crate::program::resolvers::{DummyResolver, SimpleResolver};
+    use crate::term::make as mk_term;
     use crate::transformations::transform;
     use codespan::Files;
 
@@ -1793,20 +1795,14 @@ mod tests {
 
         type_check_no_import(&Term::Bool(true).into())?;
         type_check_no_import(&Term::Num(45.).into())?;
-        type_check_no_import(&RichTerm::fun(String::from("x"), RichTerm::var("x".into())).into())?;
-        type_check_no_import(&RichTerm::let_in(
-            "x",
-            Term::Num(3.).into(),
-            RichTerm::var("x".into()),
-        ))?;
+        type_check_no_import(&mk_term::id())?;
+        type_check_no_import(&mk_term::let_in("x", Term::Num(3.0), mk_term::var("x")))?;
 
-        type_check_no_import(&RichTerm::app(
-            Term::Num(5.).into(),
-            Term::Bool(true).into(),
-        ))?;
-        type_check_no_import(&RichTerm::plus(
-            Term::Num(4.).into(),
-            Term::Bool(false).into(),
+        type_check_no_import(&mk_app!(Term::Num(5.0), Term::Bool(true)))?;
+        type_check_no_import(&mk_term::op2(
+            BinaryOp::Plus(),
+            Term::Num(4.),
+            Term::Bool(false),
         ))?;
 
         Ok(())
@@ -1814,7 +1810,7 @@ mod tests {
 
     #[test]
     fn unbound_variable_always_throws() {
-        type_check_no_import(&RichTerm::var(String::from("x"))).unwrap_err();
+        type_check_no_import(&mk_term::var("x")).unwrap_err();
     }
 
     #[test]
@@ -2199,11 +2195,7 @@ mod tests {
             R: ImportResolver,
         {
             transform(
-                RichTerm::let_in(
-                    "x",
-                    Term::Import(String::from(import)).into(),
-                    RichTerm::var(String::from("x")),
-                ),
+                mk_term::let_in("x", Term::Import(String::from(import)), mk_term::var("x")),
                 resolver,
             )
         };
