@@ -1341,32 +1341,34 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
 
     #[test]
     fn records_contracts_simple() {
-        assert_peq!("Assume({ {| |} }, {})", "{}");
-        eval_string("Assume({ {| |} }, {a=1})").unwrap_err();
+        assert_peq!("Assume({}, {})", "{}");
+        eval_string("Assume({}, {a=1})").unwrap_err();
 
         assert_peq!(
-            "let x = Assume({ {|a: Num, s: Str|} }, {a = 1; s = \"a\"}) in deepSeq x x",
+            "let x = Assume({a: Num, s: Str}, {a = 1; s = \"a\"}) in deepSeq x x",
             "{a = 1; s = \"a\"}"
         );
-        eval_string("let x = Assume({ {|a: Num, s: Str|} }, {a = 1; s = 2}) in deepSeq x x")
+        eval_string("let x = Assume({a: Num, s: Str}, {a = 1; s = 2}) in deepSeq x x").unwrap_err();
+        eval_string("let x = Assume({a: Num, s: Str}, {a = \"a\"; s = \"b\"}) in deepSeq x x")
             .unwrap_err();
+        eval_string("let x = Assume({a: Num, s: Str}, {a = 1}) in deepSeq x x").unwrap_err();
+        eval_string("let x = Assume({a: Num, s: Str}, {s = \"a\"}) in deepSeq x x").unwrap_err();
         eval_string(
-            "let x = Assume({ {|a: Num, s: Str|} }, {a = \"a\"; s = \"b\"}) in deepSeq x x",
-        )
-        .unwrap_err();
-        eval_string("let x = Assume({ {|a: Num, s: Str|} }, {a = 1}) in deepSeq x x").unwrap_err();
-        eval_string("let x = Assume({ {|a: Num, s: Str|} }, {s = \"a\"}) in deepSeq x x")
-            .unwrap_err();
-        eval_string(
-            "let x = Assume({ {|a: Num, s: Str|} }, {a = 1; s = \"a\"; extra = 1}) in deepSeq x x",
+            "let x = Assume({a: Num, s: Str}, {a = 1; s = \"a\"; extra = 1}) in deepSeq x x",
         )
         .unwrap_err();
 
-        assert_peq!("let x = Assume({ {|a: Num, s: { {| foo: Bool |} } |} }, {a = 1; s = { foo = true}}) in deepSeq x x",
-                    "{a = 1; s = { foo = true}}");
-        eval_string("let x = Assume({ {|a: Num, s: { {| foo: Bool |} } |} }, {a = 1; s = { foo = 2}}) in deepSeq x x").unwrap_err();
-        eval_string("let x = Assume({ {|a: Num, s: { {| foo: Bool |} } |} }, {a = 1; s = { foo = true; extra = 1}}) in deepSeq x x").unwrap_err();
-        eval_string("let x = Assume({ {|a: Num, s: { {| foo: Bool |} } |} }, {a = 1; s = { }}) in deepSeq x x").unwrap_err();
+        assert_peq!(
+            "let x = Assume({a: Num, s: {foo: Bool}}, {a = 1; s = { foo = true}}) in deepSeq x x",
+            "{a = 1; s = { foo = true}}"
+        );
+        eval_string(
+            "let x = Assume({a: Num, s: {foo: Bool} }, {a = 1; s = { foo = 2}}) in deepSeq x x",
+        )
+        .unwrap_err();
+        eval_string("let x = Assume({a: Num, s: {foo: Bool} }, {a = 1; s = { foo = true; extra = 1}}) in deepSeq x x").unwrap_err();
+        eval_string("let x = Assume({a: Num, s: {foo: Bool} }, {a = 1; s = { }}) in deepSeq x x")
+            .unwrap_err();
     }
 
     #[test]
@@ -1374,11 +1376,10 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
 
     #[test]
     fn records_contracts_poly() {
-        let id = "let f = Assume(forall a. {{| |a}} -> {{| |a}}, fun x => x) in f";
+        let id = "let f = Assume(forall a. { | a} -> { | a }, fun x => x) in f";
         let extd =
-            "let f = Assume(forall a. {{| |a}} -> {{| foo: Num |a}}, fun x => x$[\"foo\"=1]) in f";
-        let remv =
-            "let f = Assume(forall a. {{| foo: Num |a}} -> {{| |a}}, fun x => x-$\"foo\") in f";
+            "let f = Assume(forall a. { | a} -> {foo: Num | a}, fun x => x$[\"foo\"=1]) in f";
+        let remv = "let f = Assume(forall a. {foo: Num | a} -> { | a}, fun x => x-$\"foo\") in f";
 
         assert_peq!(format!("{} {{}}", id), "{}");
         assert_peq!(format!("{} {{a=1; b=false}}", id), "{a=1; b=false}");
@@ -1402,18 +1403,18 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         assert_peq!(
             "
             let f = Assume(
-                forall a .(forall b. { {| f: a -> a, arg: a | b} } -> a),
+                forall a .(forall b. {f: a -> a, arg: a | b} -> a),
                 fun rec => rec.f (rec.arg)) in
             f { f = fun x => x ++ \" suffix\"; arg = \"blouh\" }",
             "\"blouh suffix\""
         );
 
-        let bad_cst = "let f = Assume(forall a. {{| |a}} -> {{| |a}}, fun x => {a=1}) in f";
-        let bad_acc = "let f = Assume(forall a. {{| |a}} -> {{| |a}}, fun x => seq (x.a) x) in f";
+        let bad_cst = "let f = Assume(forall a. { | a}} -> { | a}, fun x => {a=1}) in f";
+        let bad_acc = "let f = Assume(forall a. { | a}} -> { | a}, fun x => seq (x.a) x) in f";
         let bad_extd =
-            "let f = Assume(forall a. {| |a}} -> {{| foo: Num |a}}, fun x => x-$\"foo\" in f";
+            "let f = Assume(forall a. { | a} -> {foo: Num | a}, fun x => x-$\"foo\" in f";
         let bad_rmv =
-            "let f = Assume(forall a. {| foo: Num |a} -> {{| |a}}, fun x => x$[\"foo\"=1]) in f";
+            "let f = Assume(forall a. {foo: Num | a} -> { | a}, fun x => x$[\"foo\"=1]) in f";
 
         eval_string(&format!("{} {{}}", bad_cst)).unwrap_err();
         eval_string(&format!("{} {{a=1}}", bad_acc)).unwrap_err();
@@ -1422,10 +1423,10 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         eval_string(
             "
             let f = Assume(
-                forall a. ((forall b. ({ {| a: Num, b: Num, |b} }) 
-                    -> ({{| a: Num, |b} }))
-                    -> { {| a: Num | a}}
-                    -> { {| |a} }),
+                forall a. ((forall b. ({a: Num, b: Num |b} }) 
+                    -> ({ a: Num | b}))
+                    -> {a: Num | a}
+                    -> { | a}),
                 fun f rec => (f rec) -$ \"a\" -$ \"b\") in
             f (fun x => x) {a = 1; b = bool; c = 3}",
         )
