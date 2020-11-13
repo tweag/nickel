@@ -155,7 +155,7 @@ StrChunks : RichTerm = {
         };
         chunks.reverse();
 
-        RichTerm::new(Term::StrChunks(chunks))
+        RichTerm::from(Term::StrChunks(chunks))
     },
 };
 
