@@ -47,6 +47,7 @@ use crate::position::RawSpan;
 use crate::program::ImportResolver;
 use crate::term::{BinaryOp, RichTerm, StrChunk, Term, UnaryOp};
 use crate::types::{AbsType, Types};
+use crate::{mk_tyw_arrow, mk_tyw_enum, mk_tyw_enum_row, mk_tyw_record, mk_tyw_row};
 use std::collections::{HashMap, HashSet};
 
 /// Error during the unification of two row types.
@@ -442,14 +443,14 @@ fn type_check_(
     let RichTerm { term: t, pos } = rt;
 
     match t.as_ref() {
-        Term::Bool(_) => unify(state, strict, ty, TypeWrapper::Concrete(AbsType::Bool()))
+        Term::Bool(_) => unify(state, strict, ty, mk_typewrapper::bool())
             .map_err(|err| err.to_typecheck_err(state, &rt.pos)),
-        Term::Num(_) => unify(state, strict, ty, TypeWrapper::Concrete(AbsType::Num()))
+        Term::Num(_) => unify(state, strict, ty, mk_typewrapper::num())
             .map_err(|err| err.to_typecheck_err(state, &rt.pos)),
-        Term::Str(_) => unify(state, strict, ty, TypeWrapper::Concrete(AbsType::Str()))
+        Term::Str(_) => unify(state, strict, ty, mk_typewrapper::str())
             .map_err(|err| err.to_typecheck_err(state, &rt.pos)),
         Term::StrChunks(chunks) => {
-            unify(state, strict, ty, TypeWrapper::Concrete(AbsType::Str()))
+            unify(state, strict, ty, mk_typewrapper::str())
                 .map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
 
             chunks
@@ -457,13 +458,9 @@ fn type_check_(
                 .try_for_each(|chunk| -> Result<(), TypecheckError> {
                     match chunk {
                         StrChunk::Literal(_) => Ok(()),
-                        StrChunk::Expr(t) => type_check_(
-                            state,
-                            envs.clone(),
-                            strict,
-                            t,
-                            TypeWrapper::Concrete(AbsType::Dyn()),
-                        ),
+                        StrChunk::Expr(t) => {
+                            type_check_(state, envs.clone(), strict, t, mk_typewrapper::dynamic())
+                        }
                     }
                 })
         }
@@ -473,8 +470,7 @@ fn type_check_(
             // behaves quite different to (\x.bar) foo, worth considering if it's ok to type these two differently
             // let src = TypeWrapper::The(AbsType::Dyn());
             let trg = TypeWrapper::Ptr(new_var(state.table));
-            let arr =
-                TypeWrapper::Concrete(AbsType::arrow(Box::new(src.clone()), Box::new(trg.clone())));
+            let arr = mk_tyw_arrow!(src.clone(), trg.clone());
 
             unify(state, strict, ty, arr).map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
 
@@ -482,7 +478,7 @@ fn type_check_(
             type_check_(state, envs, strict, t, trg)
         }
         Term::List(terms) => {
-            unify(state, strict, ty, TypeWrapper::Concrete(AbsType::List()))
+            unify(state, strict, ty, mk_typewrapper::list())
                 .map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
 
             terms
@@ -491,18 +487,12 @@ fn type_check_(
                     // Since lists elements are checked against the type `Dyn`, it does not make sense
                     // to typecheck them even in strict mode, as this will always fails, unless they
                     // are annotated with an `Assume(Dyn, ..)`, which will always succeed.
-                    type_check_(
-                        state,
-                        envs.clone(),
-                        false,
-                        t,
-                        TypeWrapper::Concrete(AbsType::Dyn()),
-                    )
+                    type_check_(state, envs.clone(), false, t, mk_typewrapper::dynamic())
                 })
         }
         Term::Lbl(_) => {
             // TODO implement lbl type
-            unify(state, strict, ty, TypeWrapper::Concrete(AbsType::Dyn()))
+            unify(state, strict, ty, mk_typewrapper::dynamic())
                 .map_err(|err| err.to_typecheck_err(state, &rt.pos))
         }
         Term::Let(x, re, rt) => {
@@ -515,7 +505,7 @@ fn type_check_(
         }
         Term::App(e, t) => {
             let src = TypeWrapper::Ptr(new_var(state.table));
-            let arr = TypeWrapper::Concrete(AbsType::arrow(Box::new(src.clone()), Box::new(ty)));
+            let arr = mk_tyw_arrow!(src.clone(), ty);
 
             // This order shouldn't be changed, since applying a function to a record
             // may change how it's typed (static or dynamic)
@@ -534,15 +524,8 @@ fn type_check_(
         }
         Term::Enum(id) => {
             let row = TypeWrapper::Ptr(new_var(state.table));
-            unify(
-                state,
-                strict,
-                ty,
-                TypeWrapper::Concrete(AbsType::Enum(Box::new(TypeWrapper::Concrete(
-                    AbsType::RowExtend(id.clone(), None, Box::new(row)),
-                )))),
-            )
-            .map_err(|err| err.to_typecheck_err(state, &rt.pos))
+            unify(state, strict, ty, mk_tyw_enum!(id.clone(), row))
+                .map_err(|err| err.to_typecheck_err(state, &rt.pos))
         }
         Term::Record(stat_map) | Term::RecRecord(stat_map) => {
             // For recursive records, we look at the apparent type of each field and bind it in
@@ -570,7 +553,7 @@ fn type_check_(
                     })
             } else {
                 let row = stat_map.into_iter().try_fold(
-                    TypeWrapper::Concrete(AbsType::RowEmpty()),
+                    mk_tyw_row!(),
                     |acc, (id, field)| -> Result<TypeWrapper, TypecheckError> {
                         // In the case of a recursive record, new types (either type variables or
                         // annotations) have already be determined and put in the typing
@@ -583,28 +566,19 @@ fn type_check_(
 
                         type_check_(state, envs.clone(), strict, field, ty.clone())?;
 
-                        Ok(TypeWrapper::Concrete(AbsType::RowExtend(
-                            id.clone(),
-                            Some(Box::new(ty)),
-                            Box::new(acc),
-                        )))
+                        Ok(mk_tyw_row!((id.clone(), ty); acc))
                     },
                 )?;
 
-                unify(
-                    state,
-                    strict,
-                    ty,
-                    TypeWrapper::Concrete(AbsType::StaticRecord(Box::new(row))),
-                )
-                .map_err(|err| err.to_typecheck_err(state, &rt.pos))
+                unify(state, strict, ty, mk_tyw_record!(; row))
+                    .map_err(|err| err.to_typecheck_err(state, &rt.pos))
             }
         }
         Term::Op1(op, t) => {
             let ty_op = get_uop_type(state, envs.clone(), strict, op)?;
 
             let src = TypeWrapper::Ptr(new_var(state.table));
-            let arr = TypeWrapper::Concrete(AbsType::arrow(Box::new(src.clone()), Box::new(ty)));
+            let arr = mk_tyw_arrow!(src.clone(), ty);
 
             unify(state, strict, arr, ty_op).map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
             type_check_(state, envs.clone(), strict, t, src)
@@ -614,13 +588,7 @@ fn type_check_(
 
             let src1 = TypeWrapper::Ptr(new_var(state.table));
             let src2 = TypeWrapper::Ptr(new_var(state.table));
-            let arr = TypeWrapper::Concrete(AbsType::arrow(
-                Box::new(src1.clone()),
-                Box::new(TypeWrapper::Concrete(AbsType::arrow(
-                    Box::new(src2.clone()),
-                    Box::new(ty),
-                ))),
-            ));
+            let arr = mk_tyw_arrow!(src1.clone(), src2.clone(), ty);
 
             unify(state, strict, arr, ty_op).map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
             type_check_(state, envs.clone(), strict, e, src1)?;
@@ -641,14 +609,14 @@ fn type_check_(
             let new_ty = TypeWrapper::Ptr(new_var(state.table));
             type_check_(state, envs, false, t, new_ty)
         }
-        Term::Sym(_) => unify(state, strict, ty, TypeWrapper::Concrete(AbsType::Sym()))
+        Term::Sym(_) => unify(state, strict, ty, mk_typewrapper::sym())
             .map_err(|err| err.to_typecheck_err(state, &rt.pos)),
         Term::Wrapped(_, t)
         | Term::DefaultValue(t)
         | Term::ContractWithDefault(_, _, t)
         | Term::Docstring(_, t) => type_check_(state, envs, strict, t, ty),
         Term::Contract(_, _) => Ok(()),
-        Term::Import(_) => unify(state, strict, ty, TypeWrapper::Concrete(AbsType::Dyn()))
+        Term::Import(_) => unify(state, strict, ty, mk_typewrapper::dynamic())
             .map_err(|err| err.to_typecheck_err(state, &rt.pos)),
         Term::ResolvedImport(file_id) => {
             let t = state
@@ -677,7 +645,7 @@ fn apparent_type(t: &Term, table: &mut UnifTable, strict: bool) -> TypeWrapper {
     match t {
         Term::Assume(ty, _, _) | Term::Promise(ty, _, _) => to_typewrapper(ty.clone()),
         _ if strict => TypeWrapper::Ptr(new_var(table)),
-        _ => TypeWrapper::Concrete(AbsType::Dyn()),
+        _ => mk_typewrapper::dynamic(),
     }
 }
 
@@ -740,6 +708,126 @@ impl TypeWrapper {
             Ptr(x) => Ptr(x),
         }
     }
+}
+
+impl From<AbsType<Box<TypeWrapper>>> for TypeWrapper {
+    fn from(ty: AbsType<Box<TypeWrapper>>) -> Self {
+        TypeWrapper::Concrete(ty)
+    }
+}
+
+#[macro_use]
+/// Helpers for building `TypeWrapper`s.
+pub mod mk_typewrapper {
+    use super::{AbsType, TypeWrapper};
+
+    /// Multi-ary arrow constructor for types implementing `Into<TypeWrapper>`.
+    #[macro_export]
+    macro_rules! mk_tyw_arrow {
+        ($left:expr, $right:expr) => {
+            $crate::typecheck::TypeWrapper::Concrete(
+                $crate::types::AbsType::Arrow(
+                    Box::new($crate::typecheck::TypeWrapper::from($left)),
+                    Box::new($crate::typecheck::TypeWrapper::from($right))
+                )
+            )
+        };
+        ( $fst:expr, $snd:expr , $( $types:expr ),+ ) => {
+            mk_tyw_arrow!($fst, mk_tyw_arrow!($snd, $( $types ),+))
+        };
+    }
+
+    /// Multi-ary enum row constructor for types implementing `Into<TypeWrapper>`.
+    /// `mk_tyw_enum_row!(id1, .., idn, tail)` correspond to `<id1, .., idn | tail>.
+    #[macro_export]
+    macro_rules! mk_tyw_enum_row {
+        ($id:expr, $tail:expr) => {
+            $crate::typecheck::TypeWrapper::Concrete(
+                $crate::types::AbsType::RowExtend(
+                    Ident::from($id),
+                    None,
+                    Box::new($crate::typecheck::TypeWrapper::from($tail))
+                )
+            )
+        };
+        ( $fst:expr, $snd:expr , $( $rest:expr ),+ ) => {
+            mk_tyw_enum_row!($fst, mk_tyw_enum_row!($snd, $( $rest),+))
+        };
+    }
+
+    /// Multi-ary record row constructor for types implementing `Into<TypeWrapper>`.
+    /// `mk_tyw_row!((id1, ty1), .., (idn, tyn); tail)` correspond to `{id1: ty1, .., idn: tyn |
+    /// tail}. The tail can be omitted, in which case the empty row is uses as a tail instead.
+    #[macro_export]
+    macro_rules! mk_tyw_row {
+        () => {
+            $crate::typecheck::TypeWrapper::from(AbsType::RowEmpty())
+        };
+        (; $tail:expr) => {
+            $crate::typecheck::TypeWrapper::from($tail)
+        };
+        (($id:expr, $ty:expr) $(($ids:expr, $tys:expr)),* $(; $tail:expr)?) => {
+            $crate::typecheck::TypeWrapper::Concrete(
+                $crate::types::AbsType::RowExtend(
+                    Ident::from($id),
+                    Some($ty.into()),
+                    Box::new(mk_tyw_row!($(($ids, $tys)),* $(; $tail)?))
+                )
+            )
+        };
+    }
+
+    /// Wrapper around `mk_tyw_enum_row!` to build an enum type from an enum row.
+    #[macro_export]
+    macro_rules! mk_tyw_enum {
+        ( $rows:expr ) => {
+            $crate::typecheck::TypeWrapper::Concrete(
+                $crate::types::AbsType::Enum(
+                    Box::new($rows.into())
+                )
+            )
+        };
+        ( $fst:expr, $( $rest:expr ),+ ) => {
+            mk_tyw_enum!(mk_tyw_enum_row!($fst, $( $rest),+))
+        };
+    }
+
+    /// Wrapper around `mk_tyw_record!` to build a record type from a record row.
+    #[macro_export]
+    macro_rules! mk_tyw_record {
+        ($(($ids:expr, $tys:expr)),* $(; $tail:expr)?) => {
+            $crate::typecheck::TypeWrapper::Concrete(
+                $crate::types::AbsType::StaticRecord(
+                    Box::new(mk_tyw_row!($(($ids, $tys)),* $(; $tail)?))
+                )
+            )
+        };
+    }
+
+    /// Generate an helper function to build a 0-ary type.
+    macro_rules! generate_builder {
+        ($fun:ident, $var:ident) => {
+            pub fn $fun() -> TypeWrapper {
+                TypeWrapper::Concrete(AbsType::$var())
+            }
+        };
+    }
+
+    pub fn dyn_record<T>(ty: T) -> TypeWrapper
+    where
+        T: Into<TypeWrapper>,
+    {
+        TypeWrapper::Concrete(AbsType::DynRecord(Box::new(ty.into())))
+    }
+
+    // dyn is a reserved keyword
+    generate_builder!(dynamic, Dyn);
+    generate_builder!(str, Str);
+    generate_builder!(num, Num);
+    generate_builder!(bool, Bool);
+    generate_builder!(sym, Sym);
+    generate_builder!(list, List);
+    generate_builder!(row_empty, RowEmpty);
 }
 
 /// Look for a binding in a row, or add a new one if it is not present and if allowed by [row
@@ -869,49 +957,29 @@ pub fn unify_(
                 (TypeWrapper::Concrete(r1), TypeWrapper::Concrete(r2))
                     if r1.is_row_type() && r2.is_row_type() =>
                 {
-                    unify_rows(state, r1.clone(), r2.clone()).map_err(|err| {
-                        err.to_unif_err(
-                            TypeWrapper::Concrete(AbsType::Enum(Box::new(TypeWrapper::Concrete(
-                                r1,
-                            )))),
-                            TypeWrapper::Concrete(AbsType::Enum(Box::new(TypeWrapper::Concrete(
-                                r2,
-                            )))),
-                        )
-                    })
+                    unify_rows(state, r1.clone(), r2.clone())
+                        .map_err(|err| err.to_unif_err(mk_tyw_enum!(r1), mk_tyw_enum!(r2)))
                 }
-                (TypeWrapper::Concrete(r), _) if !r.is_row_type() => Err(UnifError::IllformedType(
-                    TypeWrapper::Concrete(AbsType::Enum(Box::new(TypeWrapper::Concrete(r)))),
-                )),
-                (_, TypeWrapper::Concrete(r)) if !r.is_row_type() => Err(UnifError::IllformedType(
-                    TypeWrapper::Concrete(AbsType::Enum(Box::new(TypeWrapper::Concrete(r)))),
-                )),
+                (TypeWrapper::Concrete(r), _) if !r.is_row_type() => {
+                    Err(UnifError::IllformedType(mk_tyw_enum!(r)))
+                }
+                (_, TypeWrapper::Concrete(r)) if !r.is_row_type() => {
+                    Err(UnifError::IllformedType(mk_tyw_enum!(r)))
+                }
                 (tyw1, tyw2) => unify_(state, tyw1, tyw2),
             },
             (AbsType::StaticRecord(tyw1), AbsType::StaticRecord(tyw2)) => match (*tyw1, *tyw2) {
                 (TypeWrapper::Concrete(r1), TypeWrapper::Concrete(r2))
                     if r1.is_row_type() && r2.is_row_type() =>
                 {
-                    unify_rows(state, r1.clone(), r2.clone()).map_err(|err| {
-                        err.to_unif_err(
-                            TypeWrapper::Concrete(AbsType::StaticRecord(Box::new(
-                                TypeWrapper::Concrete(r1),
-                            ))),
-                            TypeWrapper::Concrete(AbsType::StaticRecord(Box::new(
-                                TypeWrapper::Concrete(r2),
-                            ))),
-                        )
-                    })
+                    unify_rows(state, r1.clone(), r2.clone())
+                        .map_err(|err| err.to_unif_err(mk_tyw_record!(; r1), mk_tyw_record!(; r2)))
                 }
                 (TypeWrapper::Concrete(r), _) if !r.is_row_type() => {
-                    Err(UnifError::IllformedType(TypeWrapper::Concrete(
-                        AbsType::StaticRecord(Box::new(TypeWrapper::Concrete(r))),
-                    )))
+                    Err(UnifError::IllformedType(mk_tyw_record!(; r)))
                 }
                 (_, TypeWrapper::Concrete(r)) if !r.is_row_type() => {
-                    Err(UnifError::IllformedType(TypeWrapper::Concrete(
-                        AbsType::StaticRecord(Box::new(TypeWrapper::Concrete(r))),
-                    )))
+                    Err(UnifError::IllformedType(mk_tyw_record!(; r)))
                 }
                 (tyw1, tyw2) => unify_(state, tyw1, tyw2),
             },
@@ -1223,22 +1291,15 @@ pub fn get_uop_type(
         UnaryOp::Ite() => {
             let branches = TypeWrapper::Ptr(new_var(state.table));
 
-            TypeWrapper::Concrete(AbsType::arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::Bool())),
-                Box::new(TypeWrapper::Concrete(AbsType::arrow(
-                    Box::new(branches.clone()),
-                    Box::new(TypeWrapper::Concrete(AbsType::arrow(
-                        Box::new(branches.clone()),
-                        Box::new(branches),
-                    ))),
-                ))),
-            ))
+            mk_tyw_arrow!(
+                AbsType::Bool(),
+                branches.clone(),
+                branches.clone(),
+                branches
+            )
         }
         // Num -> Bool
-        UnaryOp::IsZero() => TypeWrapper::Concrete(AbsType::arrow(
-            Box::new(TypeWrapper::Concrete(AbsType::Num())),
-            Box::new(TypeWrapper::Concrete(AbsType::Bool())),
-        )),
+        UnaryOp::IsZero() => mk_tyw_arrow!(AbsType::Num(), AbsType::Bool()),
         // forall a. a -> Bool
         UnaryOp::IsNum()
         | UnaryOp::IsBool()
@@ -1248,49 +1309,28 @@ pub fn get_uop_type(
         | UnaryOp::IsRecord() => {
             let inp = TypeWrapper::Ptr(new_var(state.table));
 
-            TypeWrapper::Concrete(AbsType::arrow(
-                Box::new(inp),
-                Box::new(TypeWrapper::Concrete(AbsType::Bool())),
-            ))
+            mk_tyw_arrow!(inp, AbsType::Bool())
         }
         // Bool -> Bool -> Bool
-        UnaryOp::BoolAnd() | UnaryOp::BoolOr() => TypeWrapper::Concrete(AbsType::arrow(
-            Box::new(TypeWrapper::Concrete(AbsType::Bool())),
-            Box::new(TypeWrapper::Concrete(AbsType::arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::Bool())),
-                Box::new(TypeWrapper::Concrete(AbsType::Bool())),
-            ))),
-        )),
+        UnaryOp::BoolAnd() | UnaryOp::BoolOr() => {
+            mk_tyw_arrow!(AbsType::Bool(), AbsType::Bool(), AbsType::Bool())
+        }
         // Bool -> Bool
-        UnaryOp::BoolNot() => TypeWrapper::Concrete(AbsType::arrow(
-            Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
-            Box::new(TypeWrapper::Concrete(AbsType::Bool())),
-        )),
+        UnaryOp::BoolNot() => mk_tyw_arrow!(AbsType::Bool(), AbsType::Bool()),
         // forall a. Dyn -> a
         UnaryOp::Blame() => {
             let res = TypeWrapper::Ptr(new_var(state.table));
 
-            TypeWrapper::Concrete(AbsType::arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
-                Box::new(res),
-            ))
+            mk_tyw_arrow!(AbsType::Dyn(), res)
         }
         // Dyn -> Bool
-        UnaryOp::Pol() => TypeWrapper::Concrete(AbsType::arrow(
-            Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
-            Box::new(TypeWrapper::Concrete(AbsType::Bool())),
-        )),
-        // forall rows. ( rows ) -> ( `id, rows )
+        UnaryOp::Pol() => mk_tyw_arrow!(AbsType::Dyn(), AbsType::Bool()),
+        // forall rows. < | rows> -> <id | rows>
         UnaryOp::Embed(id) => {
             let row = TypeWrapper::Ptr(new_var(state.table));
             // Constraining a freshly created variable should never fail.
             constraint(state, row.clone(), id.clone()).unwrap();
-            TypeWrapper::Concrete(AbsType::Arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::Enum(Box::new(row.clone())))),
-                Box::new(TypeWrapper::Concrete(AbsType::Enum(Box::new(
-                    TypeWrapper::Concrete(AbsType::RowExtend(id.clone(), None, Box::new(row))),
-                )))),
-            ))
+            mk_tyw_arrow!(mk_tyw_enum!(row.clone()), mk_tyw_enum!(id.clone(), row))
         }
         // 1. rows -> a
         // 2. forall b. b -> a
@@ -1312,52 +1352,27 @@ pub fn get_uop_type(
                     TypeWrapper::Ptr(new_var(state.table))
                 }
                 None => l.iter().try_fold(
-                    TypeWrapper::Concrete(AbsType::RowEmpty()),
+                    mk_typewrapper::row_empty(),
                     |acc, x| -> Result<TypeWrapper, TypecheckError> {
-                        Ok(TypeWrapper::Concrete(AbsType::RowExtend(
-                            x.0.clone(),
-                            None,
-                            Box::new(acc),
-                        )))
+                        Ok(mk_tyw_enum_row!(x.0.clone(), acc))
                     },
                 )?,
             };
 
-            TypeWrapper::Concrete(AbsType::Arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::Enum(Box::new(row)))),
-                Box::new(res),
-            ))
+            mk_tyw_arrow!(mk_tyw_enum!(row), res)
         }
         // Dyn -> Dyn
         UnaryOp::ChangePolarity() | UnaryOp::GoDom() | UnaryOp::GoCodom() | UnaryOp::Tag(_) => {
-            TypeWrapper::Concrete(AbsType::arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
-                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
-            ))
+            mk_tyw_arrow!(AbsType::Dyn(), AbsType::Dyn())
         }
         // Sym -> Dyn -> Dyn
-        UnaryOp::Wrap() => TypeWrapper::Concrete(AbsType::arrow(
-            Box::new(TypeWrapper::Concrete(AbsType::Sym())),
-            Box::new(TypeWrapper::Concrete(AbsType::arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
-                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
-            ))),
-        )),
-        // forall rows a. { rows, id: a } -> a
+        UnaryOp::Wrap() => mk_tyw_arrow!(AbsType::Sym(), AbsType::Dyn(), AbsType::Dyn()),
+        // forall rows a. { id: a | rows} -> a
         UnaryOp::StaticAccess(id) => {
             let row = TypeWrapper::Ptr(new_var(state.table));
             let res = TypeWrapper::Ptr(new_var(state.table));
 
-            TypeWrapper::Concrete(AbsType::arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::StaticRecord(Box::new(
-                    TypeWrapper::Concrete(AbsType::RowExtend(
-                        id.clone(),
-                        Some(Box::new(res.clone())),
-                        Box::new(row),
-                    )),
-                )))),
-                Box::new(res),
-            ))
+            mk_tyw_arrow!(mk_tyw_record!((id.clone(), res.clone()); row), res)
         }
         // { _ : a} -> { _ : b }
         // Unify f with Str -> a -> b.
@@ -1368,58 +1383,31 @@ pub fn get_uop_type(
             let a = TypeWrapper::Ptr(new_var(state.table));
             let b = TypeWrapper::Ptr(new_var(state.table));
 
-            let f_type = TypeWrapper::Concrete(AbsType::Arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::Str())),
-                Box::new(TypeWrapper::Concrete(AbsType::Arrow(
-                    Box::new(a.clone()),
-                    Box::new(b.clone()),
-                ))),
-            ));
-
+            let f_type = mk_tyw_arrow!(AbsType::Str(), a.clone(), b.clone());
             type_check_(state, envs.clone(), strict, f, f_type)?;
 
-            TypeWrapper::Concrete(AbsType::Arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::DynRecord(Box::new(a)))),
-                Box::new(TypeWrapper::Concrete(AbsType::DynRecord(Box::new(b)))),
-            ))
+            mk_tyw_arrow!(mk_typewrapper::dyn_record(a), mk_typewrapper::dyn_record(b))
         }
         // forall a b. a -> b -> b
         UnaryOp::Seq() | UnaryOp::DeepSeq() => {
             let fst = TypeWrapper::Ptr(new_var(state.table));
             let snd = TypeWrapper::Ptr(new_var(state.table));
 
-            TypeWrapper::Concrete(AbsType::Arrow(
-                Box::new(fst),
-                Box::new(TypeWrapper::Concrete(AbsType::Arrow(
-                    Box::new(snd.clone()),
-                    Box::new(snd),
-                ))),
-            ))
+            mk_tyw_arrow!(fst, snd.clone(), snd)
         }
         // List -> Dyn
-        UnaryOp::ListHead() => TypeWrapper::Concrete(AbsType::Arrow(
-            Box::new(TypeWrapper::Concrete(AbsType::List())),
-            Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
-        )),
+        UnaryOp::ListHead() => mk_tyw_arrow!(AbsType::List(), AbsType::Dyn()),
         // List -> List
-        UnaryOp::ListTail() => TypeWrapper::Concrete(AbsType::Arrow(
-            Box::new(TypeWrapper::Concrete(AbsType::List())),
-            Box::new(TypeWrapper::Concrete(AbsType::List())),
-        )),
+        UnaryOp::ListTail() => mk_tyw_arrow!(AbsType::List(), AbsType::List()),
         // List -> Num
-        UnaryOp::ListLength() => TypeWrapper::Concrete(AbsType::Arrow(
-            Box::new(TypeWrapper::Concrete(AbsType::List())),
-            Box::new(TypeWrapper::Concrete(AbsType::Num())),
-        )),
+        UnaryOp::ListLength() => mk_tyw_arrow!(AbsType::List(), AbsType::Num()),
         // This should not happen, as ChunksConcat() is only produced during evaluation.
         UnaryOp::ChunksConcat(_, _) => panic!("cannot type ChunksConcat()"),
         // forall rows. { rows } -> List
-        UnaryOp::FieldsOf() => TypeWrapper::Concrete(AbsType::arrow(
-            Box::new(TypeWrapper::Concrete(AbsType::StaticRecord(Box::new(
-                TypeWrapper::Ptr(new_var(state.table)),
-            )))),
-            Box::new(TypeWrapper::Concrete(AbsType::List())),
-        )),
+        UnaryOp::FieldsOf() => mk_tyw_arrow!(
+            mk_tyw_record!(; TypeWrapper::Ptr(new_var(state.table))),
+            AbsType::List()
+        ),
     })
 }
 
@@ -1430,78 +1418,40 @@ pub fn get_bop_type(
     strict: bool,
     op: &BinaryOp<RichTerm>,
 ) -> Result<TypeWrapper, TypecheckError> {
-    match op {
+    Ok(match op {
         // Num -> Num -> Num
         BinaryOp::Plus()
         | BinaryOp::Sub()
         | BinaryOp::Mult()
         | BinaryOp::Div()
-        | BinaryOp::Modulo() => Ok(TypeWrapper::Concrete(AbsType::arrow(
-            Box::new(TypeWrapper::Concrete(AbsType::Num())),
-            Box::new(TypeWrapper::Concrete(AbsType::arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::Num())),
-                Box::new(TypeWrapper::Concrete(AbsType::Num())),
-            ))),
-        ))),
+        | BinaryOp::Modulo() => mk_tyw_arrow!(AbsType::Num(), AbsType::Num(), AbsType::Num()),
         // Str -> Str -> Str
-        BinaryOp::PlusStr() => Ok(TypeWrapper::Concrete(AbsType::arrow(
-            Box::new(TypeWrapper::Concrete(AbsType::Str())),
-            Box::new(TypeWrapper::Concrete(AbsType::arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::Str())),
-                Box::new(TypeWrapper::Concrete(AbsType::Str())),
-            ))),
-        ))),
+        BinaryOp::PlusStr() => mk_tyw_arrow!(AbsType::Str(), AbsType::Str(), AbsType::Str()),
         // Sym -> Dyn -> Dyn -> Dyn
-        BinaryOp::Unwrap() => Ok(TypeWrapper::Concrete(AbsType::arrow(
-            Box::new(TypeWrapper::Concrete(AbsType::Sym())),
-            Box::new(TypeWrapper::Concrete(AbsType::arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
-                Box::new(TypeWrapper::Concrete(AbsType::arrow(
-                    Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
-                    Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
-                ))),
-            ))),
-        ))),
+        BinaryOp::Unwrap() => mk_tyw_arrow!(
+            AbsType::Sym(),
+            AbsType::Dyn(),
+            AbsType::Dyn(),
+            AbsType::Dyn()
+        ),
         // forall a b. a -> b -> Bool
-        BinaryOp::Eq() => Ok(TypeWrapper::Concrete(AbsType::arrow(
-            Box::new(TypeWrapper::Ptr(new_var(state.table))),
-            Box::new(TypeWrapper::Concrete(AbsType::arrow(
-                Box::new(TypeWrapper::Ptr(new_var(state.table))),
-                Box::new(TypeWrapper::Concrete(AbsType::Bool())),
-            ))),
-        ))),
+        BinaryOp::Eq() => mk_tyw_arrow!(
+            TypeWrapper::Ptr(new_var(state.table)),
+            TypeWrapper::Ptr(new_var(state.table)),
+            AbsType::Bool()
+        ),
         // Num -> Num -> Bool
         BinaryOp::LessThan()
         | BinaryOp::LessOrEq()
         | BinaryOp::GreaterThan()
-        | BinaryOp::GreaterOrEq() => Ok(TypeWrapper::Concrete(AbsType::arrow(
-            Box::new(TypeWrapper::Concrete(AbsType::Num())),
-            Box::new(TypeWrapper::Concrete(AbsType::arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::Num())),
-                Box::new(TypeWrapper::Concrete(AbsType::Bool())),
-            ))),
-        ))),
+        | BinaryOp::GreaterOrEq() => mk_tyw_arrow!(AbsType::Num(), AbsType::Num(), AbsType::Bool()),
         // Str -> Dyn -> Dyn
-        BinaryOp::GoField() => Ok(TypeWrapper::Concrete(AbsType::arrow(
-            Box::new(TypeWrapper::Concrete(AbsType::Str())),
-            Box::new(TypeWrapper::Concrete(AbsType::arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
-                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
-            ))),
-        ))),
+        BinaryOp::GoField() => mk_tyw_arrow!(AbsType::Str(), AbsType::Dyn(), AbsType::Dyn()),
         // forall a. Str -> { _ : a} -> a
         BinaryOp::DynAccess() => {
             let res = TypeWrapper::Ptr(new_var(state.table));
 
-            Ok(TypeWrapper::Concrete(AbsType::arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::Str())),
-                Box::new(TypeWrapper::Concrete(AbsType::arrow(
-                    Box::new(TypeWrapper::Concrete(AbsType::DynRecord(Box::new(
-                        res.clone(),
-                    )))),
-                    Box::new(res),
-                ))),
-            )))
+            mk_tyw_arrow!(AbsType::Str(), mk_typewrapper::dyn_record(res.clone()), res)
         }
         // Str -> { _ : a } -> { _ : a }
         // Unify t with a.
@@ -1510,81 +1460,39 @@ pub fn get_bop_type(
 
             type_check_(state, envs.clone(), strict, t, res.clone())?;
 
-            Ok(TypeWrapper::Concrete(AbsType::arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::Str())),
-                Box::new(TypeWrapper::Concrete(AbsType::arrow(
-                    Box::new(TypeWrapper::Concrete(AbsType::DynRecord(Box::new(
-                        res.clone(),
-                    )))),
-                    Box::new(TypeWrapper::Concrete(AbsType::DynRecord(Box::new(
-                        res.clone(),
-                    )))),
-                ))),
-            )))
+            mk_tyw_arrow!(
+                AbsType::Str(),
+                mk_typewrapper::dyn_record(res.clone()),
+                mk_typewrapper::dyn_record(res)
+            )
         }
         // forall a. Str -> { _ : a } -> { _ : a}
         BinaryOp::DynRemove() => {
             let res = TypeWrapper::Ptr(new_var(state.table));
 
-            Ok(TypeWrapper::Concrete(AbsType::arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::Str())),
-                Box::new(TypeWrapper::Concrete(AbsType::arrow(
-                    Box::new(TypeWrapper::Concrete(AbsType::DynRecord(Box::new(
-                        res.clone(),
-                    )))),
-                    Box::new(TypeWrapper::Concrete(AbsType::DynRecord(Box::new(
-                        res.clone(),
-                    )))),
-                ))),
-            )))
+            mk_tyw_arrow!(
+                AbsType::Str(),
+                mk_typewrapper::dyn_record(res.clone()),
+                mk_typewrapper::dyn_record(res)
+            )
         }
         // Str -> Dyn -> Bool
-        BinaryOp::HasField() => Ok(TypeWrapper::Concrete(AbsType::Arrow(
-            Box::new(TypeWrapper::Concrete(AbsType::Arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::Str())),
-                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
-            ))),
-            Box::new(TypeWrapper::Concrete(AbsType::Bool())),
-        ))),
+        BinaryOp::HasField() => mk_tyw_arrow!(AbsType::Str(), AbsType::Dyn(), AbsType::Bool()),
         // List -> List -> List
-        BinaryOp::ListConcat() => Ok(TypeWrapper::Concrete(AbsType::Arrow(
-            Box::new(TypeWrapper::Concrete(AbsType::List())),
-            Box::new(TypeWrapper::Concrete(AbsType::Arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::List())),
-                Box::new(TypeWrapper::Concrete(AbsType::List())),
-            ))),
-        ))),
+        BinaryOp::ListConcat() => mk_tyw_arrow!(AbsType::List(), AbsType::List(), AbsType::List()),
         // forall a b. (a -> b) -> List -> List
         BinaryOp::ListMap() => {
             let src = TypeWrapper::Ptr(new_var(state.table));
             let tgt = TypeWrapper::Ptr(new_var(state.table));
-            let arrow = TypeWrapper::Concrete(AbsType::Arrow(Box::new(src), Box::new(tgt)));
+            let arrow = mk_tyw_arrow!(src, tgt);
 
-            Ok(TypeWrapper::Concrete(AbsType::Arrow(
-                Box::new(arrow),
-                Box::new(TypeWrapper::Concrete(AbsType::Arrow(
-                    Box::new(TypeWrapper::Concrete(AbsType::List())),
-                    Box::new(TypeWrapper::Concrete(AbsType::List())),
-                ))),
-            )))
+            mk_tyw_arrow!(arrow, AbsType::List(), AbsType::List())
         }
         // List -> Num -> Dyn
-        BinaryOp::ListElemAt() => Ok(TypeWrapper::Concrete(AbsType::Arrow(
-            Box::new(TypeWrapper::Concrete(AbsType::List())),
-            Box::new(TypeWrapper::Concrete(AbsType::Arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::Num())),
-                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
-            ))),
-        ))),
+        BinaryOp::ListElemAt() => mk_tyw_arrow!(AbsType::List(), AbsType::Num(), AbsType::Dyn()),
         // Dyn -> Dyn -> Dyn
-        BinaryOp::Merge() => Ok(TypeWrapper::Concrete(AbsType::arrow(
-            Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
-            Box::new(TypeWrapper::Concrete(AbsType::arrow(
-                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
-                Box::new(TypeWrapper::Concrete(AbsType::Dyn())),
-            ))),
-        ))),
-    }
+        BinaryOp::Merge() => mk_tyw_arrow!(AbsType::Dyn(), AbsType::Dyn(), AbsType::Dyn()),
+    })
 }
 
 /// The unification table.
