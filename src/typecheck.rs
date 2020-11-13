@@ -2172,19 +2172,19 @@ mod tests {
         }
 
         let mut res = parse_and_typecheck(
-            "let extend = Assume(forall c. ({{| | c} }) -> ({ {| a: Str, | c } }), 0) in
+            "let extend = Assume(forall c. { | c} -> {a: Str | c}, 0) in
            Promise(Num, let bad = extend {a = 1;} in 0)",
         );
         assert_row_conflict(res);
 
         parse_and_typecheck(
-            "let extend = Assume(forall c. ({{| | c} }) -> ({ {| a: Str, | c } }), 0) in
-           let remove = Assume(forall c. ({{|a: Str, | c} }) -> ({ {| | c } }), 0) in
+            "let extend = Assume(forall c. { | c} -> {a: Str | c}, 0) in
+           let remove = Assume(forall c. {a: Str | c} -> { | c}, 0) in
            Promise(Num, let good = remove (extend {}) in 0)",
         )
         .unwrap();
         res = parse_and_typecheck(
-            "let remove = Assume(forall c. ({{|a: Str, | c} }) -> ({ {| | c } }), 0) in
+            "let remove = Assume(forall c. {a: Str | c} -> { | c}, 0) in
            Promise(Num, let bad = remove (remove {a = \"a\"}) in 0)",
         );
         assert_row_conflict(res);
