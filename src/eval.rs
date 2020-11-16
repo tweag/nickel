@@ -637,12 +637,10 @@ fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichTerm 
                     .into_iter()
                     .map(|chunk| match chunk {
                         chunk @ StrChunk::Literal(_) => chunk,
-                        StrChunk::Expr(t) => StrChunk::Expr(subst_(
-                            t,
-                            global_env,
-                            env,
-                            Cow::Borrowed(bound.as_ref()),
-                        )),
+                        StrChunk::Expr(t, indent) => StrChunk::Expr(
+                            subst_(t, global_env, env, Cow::Borrowed(bound.as_ref())),
+                            indent,
+                        ),
                     })
                     .collect();
 
