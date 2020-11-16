@@ -1623,6 +1623,10 @@ too
         ));
         assert_eq!(t, *expd.term);
 
-        // let t = parse("{ foo = [(1 + 1), if true then false else true]; bar = \"a${\"b\"}c${\"d\"}\"; baz = { nested = { foo = 1 + 1 } } }").unwrap();
+        // /!\ [MAY OVERFLOW STACK]
+        // Check that substitution do not replace bound variables. Before the fixing commit, this
+        // example would go into an infinite loop, and stack overflow. If it does, this just means
+        // that this test fails.
+        eval_string_full("{y = fun x => x; x = fun y => y}").unwrap();
     }
 }

@@ -520,130 +520,172 @@ fn update_thunks(stack: &mut Stack, closure: &Closure) {
 
 /// Recursively substitute each variable occurrence of a term for its value in the environment.
 fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichTerm {
-    use crate::types::{AbsType, Types};
+    use std::borrow::Cow;
+    use std::collections::HashSet;
 
-    let RichTerm { term, pos } = rt;
-    match *term {
-        Term::Var(id) => env
-            .get(&id)
-            .or_else(|| global_env.get(&id))
-            .map(|(rc, _)| {
-                let closure = rc.borrow().clone();
-                subst(closure.body, global_env, &closure.env)
-            })
-            .unwrap_or_else(|| RichTerm::new(Term::Var(id), pos)),
-        v @ Term::Bool(_)
-        | v @ Term::Num(_)
-        | v @ Term::Str(_)
-        | v @ Term::Lbl(_)
-        | v @ Term::Sym(_)
-        | v @ Term::Enum(_)
-        | v @ Term::Import(_)
-        | v @ Term::ResolvedImport(_) => RichTerm::new(v, pos),
-        Term::Fun(id, t) => {
-            let t = subst(t, global_env, env);
+    // Maintain an additional set of variables bound by abstractions (`fun x => ..`), that must not
+    // be substituted.
+    fn subst_(
+        rt: RichTerm,
+        global_env: &Environment,
+        env: &Environment,
+        bound: Cow<HashSet<Ident>>,
+    ) -> RichTerm {
+        use crate::types::{AbsType, Types};
 
-            RichTerm::new(Term::Fun(id, t), pos)
-        }
-        Term::Let(id, t1, t2) => {
-            let t1 = subst(t1, global_env, env);
-            let t2 = subst(t2, global_env, env);
-
-            RichTerm::new(Term::Let(id, t1, t2), pos)
-        }
-        Term::App(t1, t2) => {
-            let t1 = subst(t1, global_env, env);
-            let t2 = subst(t2, global_env, env);
-
-            RichTerm::new(Term::App(t1, t2), pos)
-        }
-        Term::Op1(op, t) => {
-            let t = subst(t, global_env, env);
-            let op = op.map(|t| subst(t, global_env, env));
-
-            RichTerm::new(Term::Op1(op, t), pos)
-        }
-        Term::Op2(op, t1, t2) => {
-            let t1 = subst(t1, global_env, env);
-            let t2 = subst(t2, global_env, env);
-
-            RichTerm::new(Term::Op2(op, t1, t2), pos)
-        }
-        Term::Promise(ty, l, t) => {
-            let t = subst(t, global_env, env);
-
-            RichTerm::new(Term::Promise(ty, l, t), pos)
-        }
-        Term::Assume(ty, l, t) => {
-            let t = subst(t, global_env, env);
-
-            RichTerm::new(Term::Assume(ty, l, t), pos)
-        }
-        Term::Wrapped(i, t) => {
-            let t = subst(t, global_env, env);
-
-            RichTerm::new(Term::Wrapped(i, t), pos)
-        }
-        Term::Record(map) => {
-            let map = map
-                .into_iter()
-                .map(|(id, t)| (id, subst(t, global_env, env)))
-                .collect();
-
-            RichTerm::new(Term::Record(map), pos)
-        }
-        Term::RecRecord(map) => {
-            let map = map
-                .into_iter()
-                .map(|(id, t)| (id, subst(t, global_env, env)))
-                .collect();
-
-            RichTerm::new(Term::RecRecord(map), pos)
-        }
-        Term::List(ts) => {
-            let ts = ts.into_iter().map(|t| subst(t, global_env, env)).collect();
-
-            RichTerm::new(Term::List(ts), pos)
-        }
-        Term::StrChunks(chunks) => {
-            let chunks = chunks
-                .into_iter()
-                .map(|chunk| match chunk {
-                    chunk @ StrChunk::Literal(_) => chunk,
-                    StrChunk::Expr(t) => StrChunk::Expr(subst(t, global_env, env)),
+        let RichTerm { term, pos } = rt;
+        match *term {
+            Term::Var(id) if !bound.as_ref().contains(&id) => env
+                .get(&id)
+                .or_else(|| global_env.get(&id))
+                .map(|(rc, _)| {
+                    let closure = rc.borrow().clone();
+                    subst_(closure.body, global_env, &closure.env, bound)
                 })
-                .collect();
+                .unwrap_or_else(|| RichTerm::new(Term::Var(id), pos)),
+            v @ Term::Bool(_)
+            | v @ Term::Num(_)
+            | v @ Term::Str(_)
+            | v @ Term::Lbl(_)
+            | v @ Term::Sym(_)
+            | v @ Term::Var(_)
+            | v @ Term::Enum(_)
+            | v @ Term::Import(_)
+            | v @ Term::ResolvedImport(_) => RichTerm::new(v, pos),
+            Term::Fun(id, t) => {
+                let mut bound_owned = bound.into_owned();
+                bound_owned.insert(id.clone());
+                let t = subst_(t, global_env, env, Cow::Owned(bound_owned));
 
-            RichTerm::new(Term::StrChunks(chunks), pos)
-        }
-        Term::Contract(ty, label) => {
-            let ty = match ty {
-                Types(AbsType::Flat(t)) => Types(AbsType::Flat(subst(t, global_env, env))),
-                ty => ty,
-            };
+                RichTerm::new(Term::Fun(id, t), pos)
+            }
+            Term::Let(id, t1, t2) => {
+                let t1 = subst_(t1, global_env, env, Cow::Borrowed(bound.as_ref()));
+                let t2 = subst_(t2, global_env, env, bound);
 
-            RichTerm::new(Term::Contract(ty, label), pos)
-        }
-        Term::DefaultValue(t) => {
-            let t = subst(t, global_env, env);
+                RichTerm::new(Term::Let(id, t1, t2), pos)
+            }
+            Term::App(t1, t2) => {
+                let t1 = subst_(t1, global_env, env, Cow::Borrowed(bound.as_ref()));
+                let t2 = subst_(t2, global_env, env, bound);
 
-            RichTerm::new(Term::DefaultValue(t), pos)
-        }
-        Term::ContractWithDefault(ty, lbl, t) => {
-            let ty = match ty {
-                Types(AbsType::Flat(t)) => Types(AbsType::Flat(subst(t, global_env, env))),
-                ty => ty,
-            };
-            let t = subst(t, global_env, env);
+                RichTerm::new(Term::App(t1, t2), pos)
+            }
+            Term::Op1(op, t) => {
+                let op = op.map(|t| subst_(t, global_env, env, Cow::Borrowed(bound.as_ref())));
+                let t = subst_(t, global_env, env, bound);
 
-            RichTerm::new(Term::ContractWithDefault(ty, lbl, t), pos)
-        }
-        Term::Docstring(s, t) => {
-            let t = subst(t, global_env, env);
+                RichTerm::new(Term::Op1(op, t), pos)
+            }
+            Term::Op2(op, t1, t2) => {
+                let t1 = subst_(t1, global_env, env, Cow::Borrowed(bound.as_ref()));
+                let t2 = subst_(t2, global_env, env, bound);
 
-            RichTerm::new(Term::Docstring(s, t), pos)
+                RichTerm::new(Term::Op2(op, t1, t2), pos)
+            }
+            Term::Promise(ty, l, t) => {
+                let t = subst_(t, global_env, env, bound);
+
+                RichTerm::new(Term::Promise(ty, l, t), pos)
+            }
+            Term::Assume(ty, l, t) => {
+                let t = subst_(t, global_env, env, bound);
+
+                RichTerm::new(Term::Assume(ty, l, t), pos)
+            }
+            Term::Wrapped(i, t) => {
+                let t = subst_(t, global_env, env, bound);
+
+                RichTerm::new(Term::Wrapped(i, t), pos)
+            }
+            Term::Record(map) => {
+                let map = map
+                    .into_iter()
+                    .map(|(id, t)| {
+                        (
+                            id,
+                            subst_(t, global_env, env, Cow::Borrowed(bound.as_ref())),
+                        )
+                    })
+                    .collect();
+
+                RichTerm::new(Term::Record(map), pos)
+            }
+            Term::RecRecord(map) => {
+                let map = map
+                    .into_iter()
+                    .map(|(id, t)| {
+                        (
+                            id,
+                            subst_(t, global_env, env, Cow::Borrowed(bound.as_ref())),
+                        )
+                    })
+                    .collect();
+
+                RichTerm::new(Term::RecRecord(map), pos)
+            }
+            Term::List(ts) => {
+                let ts = ts
+                    .into_iter()
+                    .map(|t| subst_(t, global_env, env, Cow::Borrowed(bound.as_ref())))
+                    .collect();
+
+                RichTerm::new(Term::List(ts), pos)
+            }
+            Term::StrChunks(chunks) => {
+                let chunks = chunks
+                    .into_iter()
+                    .map(|chunk| match chunk {
+                        chunk @ StrChunk::Literal(_) => chunk,
+                        StrChunk::Expr(t) => StrChunk::Expr(subst_(
+                            t,
+                            global_env,
+                            env,
+                            Cow::Borrowed(bound.as_ref()),
+                        )),
+                    })
+                    .collect();
+
+                RichTerm::new(Term::StrChunks(chunks), pos)
+            }
+            Term::Contract(ty, label) => {
+                let ty = match ty {
+                    Types(AbsType::Flat(t)) => {
+                        Types(AbsType::Flat(subst_(t, global_env, env, bound)))
+                    }
+                    ty => ty,
+                };
+
+                RichTerm::new(Term::Contract(ty, label), pos)
+            }
+            Term::DefaultValue(t) => {
+                let t = subst_(t, global_env, env, bound);
+
+                RichTerm::new(Term::DefaultValue(t), pos)
+            }
+            Term::ContractWithDefault(ty, lbl, t) => {
+                let ty = match ty {
+                    Types(AbsType::Flat(t)) => Types(AbsType::Flat(subst_(
+                        t,
+                        global_env,
+                        env,
+                        Cow::Borrowed(bound.as_ref()),
+                    ))),
+                    ty => ty,
+                };
+                let t = subst_(t, global_env, env, bound);
+
+                RichTerm::new(Term::ContractWithDefault(ty, lbl, t), pos)
+            }
+            Term::Docstring(s, t) => {
+                let t = subst_(t, global_env, env, bound);
+
+                RichTerm::new(Term::Docstring(s, t), pos)
+            }
         }
     }
+
+    subst_(rt, global_env, env, Cow::Owned(HashSet::new()))
 }
 
 #[cfg(test)]
