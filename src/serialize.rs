@@ -177,6 +177,5 @@ mod tests {
     fn prevalidation() {
         assert_non_serializable!("{a = 1; b = { c = fun x => x }}");
         assert_non_serializable!("{foo = { bar = let y = \"a\" in y}; b = [[fun x => x]] }");
-        assert_non_serializable!("{foo = { bar = let y = \"a\" in y}; b = [[fun x => x]] }");
     }
 }
