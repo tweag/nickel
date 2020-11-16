@@ -261,15 +261,15 @@ where
                     env: HashMap::new(),
                 },
                 Some(chunk) => {
-                    let arg = match chunk {
-                        StrChunk::Literal(s) => Term::Str(s).into(),
-                        StrChunk::Expr(e) => e,
+                    let (arg, indent) = match chunk {
+                        StrChunk::Literal(s) => (Term::Str(s).into(), 0),
+                        StrChunk::Expr(e, indent) => (e, indent),
                     };
 
                     Closure {
                         body: RichTerm {
                             term: Box::new(Term::Op1(
-                                UnaryOp::ChunksConcat(String::new(), chunks),
+                                UnaryOp::ChunksConcat(indent, String::new(), chunks),
                                 arg,
                             )),
                             pos,
@@ -712,7 +712,7 @@ mod tests {
     fn interpolation_simple() {
         let mut chunks = vec![
             StrChunk::Literal(String::from("Hello")),
-            StrChunk::Expr(
+            StrChunk::expr(
                 mk_term::op2(
                     BinaryOp::PlusStr(),
                     mk_term::string(", "),
@@ -721,7 +721,7 @@ mod tests {
                 .into(),
             ),
             StrChunk::Literal(String::from(" How")),
-            StrChunk::Expr(mk_term::if_then_else(
+            StrChunk::expr(mk_term::if_then_else(
                 Term::Bool(true),
                 mk_term::string(" are"),
                 mk_term::string(" is"),
@@ -741,7 +741,7 @@ mod tests {
     fn interpolation_nested() {
         let mut inner_chunks = vec![
             StrChunk::Literal(String::from(" How")),
-            StrChunk::Expr(
+            StrChunk::expr(
                 Term::Op2(
                     BinaryOp::PlusStr(),
                     mk_term::string(" ar"),
@@ -749,7 +749,7 @@ mod tests {
                 )
                 .into(),
             ),
-            StrChunk::Expr(mk_term::if_then_else(
+            StrChunk::expr(mk_term::if_then_else(
                 Term::Bool(true),
                 mk_term::string(" you"),
                 mk_term::string(" me"),
@@ -759,7 +759,7 @@ mod tests {
 
         let mut chunks = vec![
             StrChunk::Literal(String::from("Hello, World!")),
-            StrChunk::Expr(Term::StrChunks(inner_chunks).into()),
+            StrChunk::expr(Term::StrChunks(inner_chunks).into()),
             StrChunk::Literal(String::from("?")),
         ];
         chunks.reverse();

@@ -1432,4 +1432,122 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         )
         .unwrap_err();
     }
+
+    #[test]
+    fn multiline_string_indent() {
+        // /!\ Trailing spaces on the first line are on purpose, don't remove ! /!\
+        assert_peq!(
+            r##"  
+                m#"
+                   this
+                       is an
+                       indented
+                   text
+                "#m
+            "##,
+            "\"this\n    is an\n    indented\ntext\""
+        );
+
+        // /!\ Trailing spaces on the first line are on purpose, don't remove ! /!\
+        assert_peq!(
+            r##"  
+                m#"
+                   this
+                       is an
+                       indented
+                   text"#m
+            "##,
+            "\"this\n    is an\n    indented\ntext\""
+        );
+
+        // /!\ Trailing spaces on the middle line are on purpose, don't remove ! /!\
+        assert_peq!(
+            r##"  
+                m#"
+                   ignore
+    
+                    empty line indent
+                "#m
+            "##,
+            "\"ignore\n\n empty line indent\""
+        );
+
+        assert_peq!(
+            r##"  
+                m#"
+    
+                   ignore
+                    first line indent
+                "#m
+            "##,
+            "\"\nignore\n first line indent\""
+        );
+    }
+
+    #[test]
+    fn multiline_string_delimiters() {
+        // Writing multi-line strings inside Rust raw strings, which have the similar delimiters
+        // is, is not really pretty
+        assert_eq!(
+            eval_string(r###"m##""#m"##a"##m"###),
+            Ok(Term::Str(String::from(r###""#m"##a"###))),
+        );
+
+        assert_eq!(
+            eval_string(r####"m###""##m"###a"###m"####),
+            Ok(Term::Str(String::from(r####""##m"###a"####))),
+        );
+    }
+
+    #[test]
+    fn multiline_interpolation() {
+        assert_peq!(
+            r###"  
+                m#"
+                   ${m#"thi"#m ++ "s"}
+                       ${"is" ++ " an"}
+                       indented
+                   ${"${m##"te"##m}xt"}
+                "#m
+            "###,
+            "\"this\n    is an\n    indented\ntext\""
+        );
+
+        assert_peq!(
+            r##"
+                let x = "I\n need\n  indent!" in
+                m#"
+                  base
+                    ${x}
+                  ${x}
+                "#m
+            "##,
+            r#""base
+  I
+   need
+    indent!
+I
+ need
+  indent!""#
+        );
+
+        assert_peq!(
+            r##"
+                let x = "ignore\nmy\nindent" in
+                let y = "me\ntoo" in
+                m#"
+                  strip
+                    ${x} ${y}
+                    ${"not\nme"}
+                "#m
+            "##,
+            r#""strip
+  ignore
+my
+indent me
+too
+  not
+  me""#
+        );
+    }
 }
