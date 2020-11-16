@@ -56,7 +56,7 @@ impl Serialize for RichTerm {
     }
 }
 
-/// Check that a term is serializable. Serilizable terms are booleans, numbers, strings, enum,
+/// Check that a term is serializable. Serializable terms are booleans, numbers, strings, enum,
 /// lists of serializable terms or records of serializable terms.
 pub fn validate(t: &RichTerm) -> Result<(), NonSerializableError> {
     use Term::*;
