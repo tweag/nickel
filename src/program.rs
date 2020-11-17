@@ -21,14 +21,14 @@
 //! embedded strings are then parsed by the functions in this module (see
 //! [`mk_global_env`](./struct.Program.html#method.mk_global_env)).  Each such value is added to
 //! the global environment before the evaluation of the program.
-use crate::error::{Error, ImportError, ParseError, ToDiagnostic};
-use crate::eval;
-use crate::parser;
+use crate::error::{Error, ImportError, ParseError, ToDiagnostic, TypecheckError};
 use crate::parser::lexer::Lexer;
 use crate::position::RawSpan;
+use crate::stdlib as nickel_stdlib;
 use crate::term::{RichTerm, Term};
-use crate::transformations;
 use crate::typecheck::type_check;
+use crate::types::Types;
+use crate::{eval, parser, transformations};
 use codespan::{FileId, Files};
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
 use std::cell::RefCell;
@@ -116,12 +116,6 @@ impl Program {
         Program::new_from_source(io::stdin(), "<stdin>")
     }
 
-    /// Create a program by reading from a file.
-    pub fn new_from_file<P: AsRef<Path>>(path: P) -> std::io::Result<Program> {
-        let file = fs::File::open(&path)?;
-        Program::new_from_source(file, path.as_ref())
-    }
-
     /// Create a program by reading it from a generic source.
     pub fn new_from_source<T: Read>(
         mut source: T,
@@ -184,29 +178,34 @@ impl Program {
     }
 
     /// Generate a global environment with values from the standard library parts.
-    fn mk_global_env(&mut self) -> Result<eval::Environment, Error> {
+    fn mk_global_env(&mut self) -> Result<eval::Environment, ImportError> {
         let mut global_env = HashMap::new();
 
         self.load_stdlib(
             "<stdlib/contracts.ncl>",
-            crate::stdlib::CONTRACTS,
+            nickel_stdlib::CONTRACTS,
             &mut global_env,
-        )
-        .map_err(|e| Error::from(e))?;
-        self.load_stdlib("<stdlib/lists.ncl>", crate::stdlib::LISTS, &mut global_env)
-            .map_err(Error::from)?;
+        )?;
+        self.load_stdlib("<stdlib/lists.ncl>", nickel_stdlib::LISTS, &mut global_env)?;
+        Ok(global_env)
+    }
 
-        // Typecheck each entry of the global environment (may be removed later, but as long as the
-        // standard library is unstable, this is useful for debugging purpose)
-        global_env
-            .values()
-            .try_for_each(|(rc, _)| type_check(&rc.borrow().body, &global_env, self).map(|_| ()))?;
+    /// Typecheck each entry of an environment.
+    ///
+    /// Used for the global environment. This may be removed later, but as long as the standard
+    /// library is unstable, this is useful for debugging purpose.
+    pub fn typecheck_env(&self, env: &eval::Environment) -> Result<(), TypecheckError> {
+        env.values()
+            .try_for_each(|(rc, _)| type_check(&rc.borrow().body, &env, self).map(|_| ()))?;
+        Ok(())
+    }
 
-        // After typechecking, we have to apply standard tranformations as well
-        global_env.values_mut().try_for_each(|(rc, _)| -> Result<(), ImportError> {
+    /// Apply program transformations to a global environment.
+    pub fn transform_env(&mut self, env: &mut eval::Environment) -> Result<(), ImportError> {
+        env.values_mut().try_for_each(|(rc, _)| -> Result<(), ImportError> {
             match Rc::get_mut(rc) {
                 Some(c) => {
-                    // Temporarily replacing with a dummy closure to pass the term to transform()
+                    // Temporarily replacing with a dummy closure to pass the term to `transform()`
                     let mut clos = c.replace(eval::Closure::atomic_closure(Term::Bool(false).into()));
                     let t = transformations::transform(clos.body, self)?;// thunk was the only strong ref to the closure
                     clos.body = t;
@@ -216,36 +215,45 @@ impl Program {
                     Ok(())
                 }
                 None => {
-                    // This should not happen, since at this point there should only one rc pointer
-                    // to each entry of the global environment.
-                    panic!("program::mk_global_env(): unexpected multiple borrows to an entry of the global environment")
+                    // This should not happen, since at this point there should only be one
+                    // rc pointer to each entry of the global environment.
+                    panic!("program::mk_global_env(): unexpected multiple borrows of an entry of the global environment")
                 }
             }
-        }).map_err(Error::from)?;
+         })?;
 
-        Ok(global_env)
+        Ok(())
+    }
+
+    /// Retrieve the parsed term, create and process a new global environment, typecheck both, and
+    /// return them.
+    fn prepare_eval(&mut self) -> Result<(RichTerm, eval::Environment), Error> {
+        let t = self.parse_with_cache(self.main_id)?;
+        let mut global_env = self.mk_global_env()?;
+        self.typecheck_env(&global_env)?;
+        self.transform_env(&mut global_env)?;
+        type_check(&t, &global_env, self)?;
+        let t = transformations::transform(t, self).map_err(|err| Error::ImportError(err))?;
+        Ok((t, global_env))
     }
 
     /// Parse if necessary, typecheck and then evaluate the program.
     pub fn eval(&mut self) -> Result<Term, Error> {
-        let t = self
-            .parse_with_cache(self.main_id)
-            .map_err(|e| Error::from(e))?;
-        let global_env = self.mk_global_env()?;
-        type_check(&t, &global_env, self).map_err(|err| Error::from(err))?;
-        let t = transformations::transform(t, self).map_err(|err| Error::ImportError(err))?;
+        let (t, global_env) = self.prepare_eval()?;
         eval::eval(t, &global_env, self).map_err(|e| e.into())
     }
 
     /// Same as `eval`, but proceeds to a full evaluation.
     pub fn eval_full(&mut self) -> Result<Term, Error> {
-        let t = self
-            .parse_with_cache(self.main_id)
-            .map_err(|e| Error::from(e))?;
-        let global_env = self.mk_global_env()?;
-        type_check(&t, &global_env, self).map_err(|err| Error::from(err))?;
-        let t = transformations::transform(t, self).map_err(|err| Error::ImportError(err))?;
+        let (t, global_env) = self.prepare_eval()?;
         eval::eval_full(t, &global_env, self).map_err(|e| e.into())
+    }
+
+    pub fn typecheck(&mut self) -> Result<Types, Error> {
+        let t = self.parse_with_cache(self.main_id)?;
+        let global_env = self.mk_global_env()?;
+        self.typecheck_env(&global_env)?;
+        type_check(&t, &global_env, self).map_err(Error::from)
     }
 
     /// Parse a source file. Do not try to get it from the cache, and do not populate the cache at
@@ -1460,7 +1468,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         eval_string(
             "
             let f = Assume(
-                forall a. ((forall b. ({a: Num, b: Num |b} }) 
+                forall a. ((forall b. ({a: Num, b: Num |b} })
                     -> ({ a: Num | b}))
                     -> {a: Num | a}
                     -> { | a}),
@@ -1499,7 +1507,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
 
         // /!\ Trailing spaces on the middle line are on purpose, don't remove ! /!\
         assert_peq!(
-            r##"  
+            r##"
                 m#"
                    ignore
     
@@ -1509,8 +1517,9 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
             "\"ignore\n\n empty line indent\""
         );
 
+        // /!\ Trailing spaces on the middle line are on purpose, don't remove ! /!\
         assert_peq!(
-            r##"  
+            r##"
                 m#"
     
                    ignore
@@ -1539,7 +1548,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
     #[test]
     fn multiline_interpolation() {
         assert_peq!(
-            r###"  
+            r###"
                 m#"
                    ${m#"thi"#m ++ "s"}
                        ${"is" ++ " an"}
@@ -1591,6 +1600,8 @@ too
     #[test]
     fn evaluation_full() {
         use crate::mk_record;
+        use crate::term::make as mk_term;
+        use std::mem;
 
         // Clean all the position information in a term.
         fn clean_pos(t: Term) -> Term {
@@ -1599,14 +1610,12 @@ too
             *tmp.term
         }
 
-        use crate::term::make as mk_term;
-
         let t =
             clean_pos(eval_string_full("[(1 + 1), (\"a\" ++ \"b\"), ([ 1, [1 + 2] ])]").unwrap());
         let mut expd = parse("[2, \"ab\", [1, [3]]]").unwrap();
         // String are parsed as StrChunks, but evaluated to Str, so we need to hack list a bit
         if let Term::List(ref mut data) = *expd.term {
-            std::mem::replace(data.get_mut(1).unwrap(), mk_term::string("ab"));
+            mem::replace(data.get_mut(1).unwrap(), mk_term::string("ab"));
         } else {
             panic!();
         }

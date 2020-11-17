@@ -363,7 +363,7 @@ impl<'a> Envs<'a> {
 /// The shared state of unification.
 pub struct State<'a> {
     /// The import resolver, to retrieve and typecheck imports.
-    resolver: &'a mut dyn ImportResolver,
+    resolver: &'a dyn ImportResolver,
     /// The unification table.
     table: &'a mut UnifTable,
     /// Row constraints.
@@ -382,7 +382,7 @@ pub struct State<'a> {
 pub fn type_check(
     t: &RichTerm,
     global_eval_env: &eval::Environment,
-    resolver: &mut dyn ImportResolver,
+    resolver: &dyn ImportResolver,
 ) -> Result<Types, TypecheckError> {
     let mut state = State {
         resolver,
@@ -410,7 +410,7 @@ pub fn type_check(
 pub fn type_check_in_env(
     t: &RichTerm,
     global: &Environment,
-    resolver: &mut dyn ImportResolver,
+    resolver: &dyn ImportResolver,
 ) -> Result<Types, TypecheckError> {
     let mut state = State {
         resolver,
