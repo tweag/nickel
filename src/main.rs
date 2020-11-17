@@ -132,7 +132,7 @@ fn main() {
                 Ok(())
             })
         }
-        Some(Command::Typecheck) => program.typecheck().map(|ty| println!("Ok: {}", ty)),
+        Some(Command::Typecheck) => program.typecheck().map(|_| ()),
         None => program.eval().and_then(|t| {
             println!("Done: {:?}", t);
             Ok(())
