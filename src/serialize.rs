@@ -145,12 +145,12 @@ mod tests {
         );
 
         assert_json_eq!(
-            "{a = merge {} {b = {c = if true then `richtig else `falsche}}}",
+            "{a = {} & {b = {c = if true then `richtig else `falsche}}}",
             json!({"a": {"b": {"c": "richtig"}}})
         );
 
         assert_json_eq!(
-            "{foo = let z = 0.5 + 0.5 in z; bar = [\"str\", true || false]; baz = merge {subfoo = !false} {subbar = 1 - 1}}",
+            "{foo = let z = 0.5 + 0.5 in z; bar = [\"str\", true || false]; baz = {subfoo = !false} & {subbar = 1 - 1}}",
             json!({"foo": 1.0, "bar": ["str", true], "baz": {"subfoo": true, "subbar": 0.0}})
         );
     }
@@ -163,12 +163,12 @@ mod tests {
         );
 
         assert_json_eq!(
-            "{a = merge {b = Default({})} {b = {c = Default(if true then `faux else `vrai)}}}",
+            "{a = {b = Default({})} & {b = {c = Default(if true then `faux else `vrai)}}}",
             json!({"a": {"b": {"c": "faux"}}})
         );
 
         assert_json_eq!(
-            "{baz = Default(merge {subfoo = Default(!false)} {subbar = Default(1 - 1)})}",
+            "{baz = Default({subfoo = Default(!false)} & {subbar = Default(1 - 1)})}",
             json!({"baz": {"subfoo": true, "subbar": 0.0}})
         );
     }
