@@ -84,6 +84,8 @@ pub enum NormalToken<'input> {
     Equals,
     #[token(";")]
     SemiCol,
+    #[token("&")]
+    Ampersand,
     #[token(".")]
     Dot,
     #[token(".$")]

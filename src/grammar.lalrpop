@@ -285,37 +285,37 @@ PrefixExpr5: RichTerm = {
 }
 
 BinOp6: BinaryOp<RichTerm> = {
+    "&" => BinaryOp::Merge(),
+}
+
+PrefixExpr6: RichTerm = {
+    PrefixExpr5,
+    LeftOp<BinOp6, PrefixExpr6, PrefixExpr5> => <>,
+}
+
+BinOp7: BinaryOp<RichTerm> = {
     "<" => BinaryOp::LessThan(),
     "<=" => BinaryOp::LessOrEq(),
     ">" => BinaryOp::GreaterThan(),
     ">=" => BinaryOp::GreaterOrEq(),
 }
 
-InfixExpr6: RichTerm = {
-    PrefixExpr5,
-    LeftOp<BinOp6, InfixExpr6, PrefixExpr5> => <>,
-}
-
-BinOp7: BinaryOp<RichTerm> = {
-    "==" => BinaryOp::Eq(),
-}
-
 InfixExpr7: RichTerm = {
-    InfixExpr6,
-    LeftOp<BinOp7, InfixExpr7, InfixExpr6> => <>,
+    PrefixExpr6,
+    LeftOp<BinOp7, InfixExpr7, PrefixExpr6> => <>,
 }
 
-LazyBinOp8: UnaryOp<RichTerm> = {
-    "&&" => UnaryOp::BoolAnd(),
+BinOp8: BinaryOp<RichTerm> = {
+    "==" => BinaryOp::Eq(),
 }
 
 InfixExpr8: RichTerm = {
     InfixExpr7,
-    LeftOpLazy<LazyBinOp8, InfixExpr8, InfixExpr7> => <>
+    LeftOp<BinOp8, InfixExpr8, InfixExpr7> => <>,
 }
 
 LazyBinOp9: UnaryOp<RichTerm> = {
-    "||" => UnaryOp::BoolOr(),
+    "&&" => UnaryOp::BoolAnd(),
 }
 
 InfixExpr9: RichTerm = {
@@ -323,10 +323,19 @@ InfixExpr9: RichTerm = {
     LeftOpLazy<LazyBinOp9, InfixExpr9, InfixExpr8> => <>
 }
 
+LazyBinOp10: UnaryOp<RichTerm> = {
+    "||" => UnaryOp::BoolOr(),
+}
+
+InfixExpr10: RichTerm = {
+    InfixExpr9,
+    LeftOpLazy<LazyBinOp10, InfixExpr10, InfixExpr9> => <>
+}
+
 // TODO: convenience for adding precedence levels during development. Once
 // operators are fixed, we should turn the last level into `InfixExpr` directly
 InfixExpr: RichTerm = {
-    InfixExpr9,
+    InfixExpr10,
 }
 
 BOpPre: BinaryOp<RichTerm> = {
@@ -335,7 +344,6 @@ BOpPre: BinaryOp<RichTerm> = {
     "hasField" => BinaryOp::HasField(),
     "map" => BinaryOp::ListMap(),
     "elemAt" => BinaryOp::ListElemAt(),
-    "merge" => BinaryOp::Merge(),
 }
 
 Types: Types = {
@@ -443,6 +451,7 @@ extern {
         "$" => Token::Normal(NormalToken::Dollar),
         "=" => Token::Normal(NormalToken::Equals),
         ";" => Token::Normal(NormalToken::SemiCol),
+        "&" => Token::Normal(NormalToken::Ampersand),
         "." => Token::Normal(NormalToken::Dot),
         ".$" => Token::Normal(NormalToken::DotDollar),
         "$[" => Token::Normal(NormalToken::DollarBracket),
