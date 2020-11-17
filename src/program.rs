@@ -234,7 +234,19 @@ impl Program {
         let global_env = self.mk_global_env()?;
         type_check(&t, &global_env, self).map_err(|err| Error::from(err))?;
         let t = transformations::transform(t, self).map_err(|err| Error::ImportError(err))?;
-        eval::eval(t, global_env, self).map_err(|e| e.into())
+        eval::eval(t, &global_env, self).map_err(|e| e.into())
+    }
+
+    #[cfg(test)]
+    /// Same as `eval`, but proceeds to a full evaluation.
+    pub fn eval_full(&mut self) -> Result<Term, Error> {
+        let t = self
+            .parse_with_cache(self.main_id)
+            .map_err(|e| Error::from(e))?;
+        let global_env = self.mk_global_env()?;
+        type_check(&t, &global_env, self).map_err(|err| Error::from(err))?;
+        let t = transformations::transform(t, self).map_err(|err| Error::ImportError(err))?;
+        eval::eval_full(t, &global_env, self).map_err(|e| e.into())
     }
 
     /// Parse a source file. Do not try to get it from the cache, and do not populate the cache at
@@ -457,7 +469,21 @@ mod tests {
     use super::*;
     use crate::error::EvalError;
     use crate::identifier::Ident;
+    use crate::parser::{grammar, lexer};
     use std::io::Cursor;
+
+    fn parse(s: &str) -> Option<RichTerm> {
+        let id = Files::new().add("<test>", String::from(s));
+
+        grammar::TermParser::new()
+            .parse(id, lexer::Lexer::new(&s))
+            .map(|mut t| {
+                t.clean_pos();
+                t
+            })
+            .map_err(|err| println!("{:?}", err))
+            .ok()
+    }
 
     fn eval_string(s: &str) -> Result<Term, Error> {
         let src = Cursor::new(s);
@@ -466,6 +492,15 @@ mod tests {
             Error::EvalError(EvalError::Other(format!("IO error: {}", io_err), None))
         })?;
         p.eval()
+    }
+
+    fn eval_string_full(s: &str) -> Result<Term, Error> {
+        let src = Cursor::new(s);
+
+        let mut p = Program::new_from_source(src, "<test>").map_err(|io_err| {
+            Error::EvalError(EvalError::Other(format!("IO error: {}", io_err), None))
+        })?;
+        p.eval_full()
     }
 
     /// Assert if a given Nickel expression evaluates to a record, given as a vector of bindings
@@ -1549,5 +1584,49 @@ too
   not
   me""#
         );
+    }
+
+    #[test]
+    fn evaluation_full() {
+        use crate::mk_record;
+
+        // Clean all the position information in a term.
+        fn clean_pos(t: Term) -> Term {
+            let mut tmp = RichTerm::new(t, None);
+            tmp.clean_pos();
+            *tmp.term
+        }
+
+        use crate::term::make as mk_term;
+
+        let t =
+            clean_pos(eval_string_full("[(1 + 1), (\"a\" ++ \"b\"), ([ 1, [1 + 2] ])]").unwrap());
+        let mut expd = parse("[2, \"ab\", [1, [3]]]").unwrap();
+        // String are parsed as StrChunks, but evaluated to Str, so we need to hack list a bit
+        if let Term::List(ref mut data) = *expd.term {
+            std::mem::replace(data.get_mut(1).unwrap(), mk_term::string("ab"));
+        } else {
+            panic!();
+        }
+        assert_eq!(t, *expd.term);
+
+        let t = clean_pos(
+            eval_string_full(
+                "let x = 1 in let y = 1 + x in let z = { foo = {bar = { baz  = y } } } in z",
+            )
+            .unwrap(),
+        );
+        // Records are parsed as RecRecords, so we need to build one by hand
+        let expd = mk_record!((
+            "foo",
+            mk_record!(("bar", mk_record!(("baz", Term::Num(2.0)))))
+        ));
+        assert_eq!(t, *expd.term);
+
+        // /!\ [MAY OVERFLOW STACK]
+        // Check that substitution do not replace bound variables. Before the fixing commit, this
+        // example would go into an infinite loop, and stack overflow. If it does, this just means
+        // that this test fails.
+        eval_string_full("{y = fun x => x; x = fun y => y}").unwrap();
     }
 }

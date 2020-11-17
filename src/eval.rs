@@ -89,11 +89,12 @@
 //! something to consider at some point.
 use crate::error::EvalError;
 use crate::identifier::Ident;
+use crate::mk_app;
 use crate::operation::{continuate_operation, OperationCont};
 use crate::position::RawSpan;
 use crate::program::ImportResolver;
 use crate::stack::Stack;
-use crate::term::{RichTerm, StrChunk, Term, UnaryOp};
+use crate::term::{make as mk_term, RichTerm, StrChunk, Term, UnaryOp};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
@@ -148,6 +149,36 @@ fn should_update(t: &Term) -> bool {
     !t.is_whnf() && !t.is_enriched()
 }
 
+/// Evaluate a Nickel term. Wrapper around [eval_](fn.eval_.html) that drops the final environment.
+pub fn eval<R>(t0: RichTerm, global_env: &Environment, resolver: &mut R) -> Result<Term, EvalError>
+where
+    R: ImportResolver,
+{
+    eval_(t0, global_env, resolver).map(|(term, _)| term)
+}
+
+/// Fully evaluate a Nickel term: the result is not a WHNF but to a value with all variables substituted.
+pub fn eval_full<R>(
+    t0: RichTerm,
+    global_env: &Environment,
+    resolver: &mut R,
+) -> Result<Term, EvalError>
+where
+    R: ImportResolver,
+{
+    // Desugar to let x = term in deepSeq x x
+    let wrapper = mk_term::let_in(
+        "x",
+        t0,
+        mk_app!(
+            mk_term::op1(UnaryOp::DeepSeq(), mk_term::var("x")),
+            mk_term::var("x")
+        ),
+    );
+    eval_(wrapper, global_env, resolver)
+        .map(|(term, env)| subst(term.into(), &global_env, &env).into())
+}
+
 /// The main loop of evaluation.
 ///
 /// Implement the evaluation of the core language, which includes application, thunk update,
@@ -161,7 +192,17 @@ fn should_update(t: &Term) -> bool {
 /// - `global_env`: the global environment containing the builtin functions of the language. Accessible from anywhere in the
 /// program.
 /// - `resolver`: the interface to fetch imports.
-pub fn eval<R>(t0: RichTerm, global_env: Environment, resolver: &mut R) -> Result<Term, EvalError>
+///
+/// # Return
+///
+/// Either:
+///  - an evaluation error
+///  - the evaluated term with its final environment
+pub fn eval_<R>(
+    t0: RichTerm,
+    global_env: &Environment,
+    resolver: &mut R,
+) -> Result<(Term, Environment), EvalError>
 where
     R: ImportResolver,
 {
@@ -445,7 +486,7 @@ where
                     env.insert(x, (thunk, IdentKind::Lam()));
                     Closure { body: t, env }
                 } else {
-                    return Ok(Term::Fun(x, t));
+                    return Ok((Term::Fun(x, t), env));
                 }
             }
             // Otherwise, this is either an ill-formed application, or we are done
@@ -461,7 +502,7 @@ where
                         pos_app,
                     ));
                 } else {
-                    return Ok(t);
+                    return Ok((t, env));
                 }
             }
         }
@@ -477,21 +518,204 @@ fn update_thunks(stack: &mut Stack, closure: &Closure) {
     }
 }
 
+/// Recursively substitute each variable occurrence of a term for its value in the environment.
+fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichTerm {
+    use std::borrow::Cow;
+    use std::collections::HashSet;
+
+    // Maintain an additional set of variables bound by abstractions (`fun x => ..`), that must not
+    // be substituted.
+    fn subst_(
+        rt: RichTerm,
+        global_env: &Environment,
+        env: &Environment,
+        bound: Cow<HashSet<Ident>>,
+    ) -> RichTerm {
+        use crate::types::{AbsType, Types};
+
+        let RichTerm { term, pos } = rt;
+        match *term {
+            Term::Var(id) if !bound.as_ref().contains(&id) => env
+                .get(&id)
+                .or_else(|| global_env.get(&id))
+                .map(|(rc, _)| {
+                    let closure = rc.borrow().clone();
+                    subst_(closure.body, global_env, &closure.env, bound)
+                })
+                .unwrap_or_else(|| RichTerm::new(Term::Var(id), pos)),
+            v @ Term::Bool(_)
+            | v @ Term::Num(_)
+            | v @ Term::Str(_)
+            | v @ Term::Lbl(_)
+            | v @ Term::Sym(_)
+            | v @ Term::Var(_)
+            | v @ Term::Enum(_)
+            | v @ Term::Import(_)
+            | v @ Term::ResolvedImport(_) => RichTerm::new(v, pos),
+            Term::Fun(id, t) => {
+                let mut bound_owned = bound.into_owned();
+                bound_owned.insert(id.clone());
+                let t = subst_(t, global_env, env, Cow::Owned(bound_owned));
+
+                RichTerm::new(Term::Fun(id, t), pos)
+            }
+            Term::Let(id, t1, t2) => {
+                let t1 = subst_(t1, global_env, env, Cow::Borrowed(bound.as_ref()));
+                let t2 = subst_(t2, global_env, env, bound);
+
+                RichTerm::new(Term::Let(id, t1, t2), pos)
+            }
+            Term::App(t1, t2) => {
+                let t1 = subst_(t1, global_env, env, Cow::Borrowed(bound.as_ref()));
+                let t2 = subst_(t2, global_env, env, bound);
+
+                RichTerm::new(Term::App(t1, t2), pos)
+            }
+            Term::Op1(op, t) => {
+                let op = op.map(|t| subst_(t, global_env, env, Cow::Borrowed(bound.as_ref())));
+                let t = subst_(t, global_env, env, bound);
+
+                RichTerm::new(Term::Op1(op, t), pos)
+            }
+            Term::Op2(op, t1, t2) => {
+                let t1 = subst_(t1, global_env, env, Cow::Borrowed(bound.as_ref()));
+                let t2 = subst_(t2, global_env, env, bound);
+
+                RichTerm::new(Term::Op2(op, t1, t2), pos)
+            }
+            Term::Promise(ty, l, t) => {
+                let t = subst_(t, global_env, env, bound);
+
+                RichTerm::new(Term::Promise(ty, l, t), pos)
+            }
+            Term::Assume(ty, l, t) => {
+                let t = subst_(t, global_env, env, bound);
+
+                RichTerm::new(Term::Assume(ty, l, t), pos)
+            }
+            Term::Wrapped(i, t) => {
+                let t = subst_(t, global_env, env, bound);
+
+                RichTerm::new(Term::Wrapped(i, t), pos)
+            }
+            Term::Record(map) => {
+                let map = map
+                    .into_iter()
+                    .map(|(id, t)| {
+                        (
+                            id,
+                            subst_(t, global_env, env, Cow::Borrowed(bound.as_ref())),
+                        )
+                    })
+                    .collect();
+
+                RichTerm::new(Term::Record(map), pos)
+            }
+            Term::RecRecord(map) => {
+                let map = map
+                    .into_iter()
+                    .map(|(id, t)| {
+                        (
+                            id,
+                            subst_(t, global_env, env, Cow::Borrowed(bound.as_ref())),
+                        )
+                    })
+                    .collect();
+
+                RichTerm::new(Term::RecRecord(map), pos)
+            }
+            Term::List(ts) => {
+                let ts = ts
+                    .into_iter()
+                    .map(|t| subst_(t, global_env, env, Cow::Borrowed(bound.as_ref())))
+                    .collect();
+
+                RichTerm::new(Term::List(ts), pos)
+            }
+            Term::StrChunks(chunks) => {
+                let chunks = chunks
+                    .into_iter()
+                    .map(|chunk| match chunk {
+                        chunk @ StrChunk::Literal(_) => chunk,
+                        StrChunk::Expr(t, indent) => StrChunk::Expr(
+                            subst_(t, global_env, env, Cow::Borrowed(bound.as_ref())),
+                            indent,
+                        ),
+                    })
+                    .collect();
+
+                RichTerm::new(Term::StrChunks(chunks), pos)
+            }
+            Term::Contract(ty, label) => {
+                let ty = match ty {
+                    Types(AbsType::Flat(t)) => {
+                        Types(AbsType::Flat(subst_(t, global_env, env, bound)))
+                    }
+                    ty => ty,
+                };
+
+                RichTerm::new(Term::Contract(ty, label), pos)
+            }
+            Term::DefaultValue(t) => {
+                let t = subst_(t, global_env, env, bound);
+
+                RichTerm::new(Term::DefaultValue(t), pos)
+            }
+            Term::ContractWithDefault(ty, lbl, t) => {
+                let ty = match ty {
+                    Types(AbsType::Flat(t)) => Types(AbsType::Flat(subst_(
+                        t,
+                        global_env,
+                        env,
+                        Cow::Borrowed(bound.as_ref()),
+                    ))),
+                    ty => ty,
+                };
+                let t = subst_(t, global_env, env, bound);
+
+                RichTerm::new(Term::ContractWithDefault(ty, lbl, t), pos)
+            }
+            Term::Docstring(s, t) => {
+                let t = subst_(t, global_env, env, bound);
+
+                RichTerm::new(Term::Docstring(s, t), pos)
+            }
+        }
+    }
+
+    subst_(rt, global_env, env, Cow::Owned(HashSet::new()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::error::ImportError;
     use crate::label::Label;
+    use crate::parser::{grammar, lexer};
     use crate::program::resolvers::{DummyResolver, SimpleResolver};
     use crate::term::make as mk_term;
     use crate::term::StrChunk;
     use crate::term::{BinaryOp, UnaryOp};
     use crate::transformations::transform;
     use crate::{mk_app, mk_fun};
+    use codespan::Files;
 
     /// Evaluate a term without import support.
     fn eval_no_import(t: RichTerm) -> Result<Term, EvalError> {
-        eval(t, HashMap::new(), &mut DummyResolver {})
+        eval(t, &HashMap::new(), &mut DummyResolver {})
+    }
+
+    fn parse(s: &str) -> Option<RichTerm> {
+        let id = Files::new().add("<test>", String::from(s));
+
+        grammar::TermParser::new()
+            .parse(id, lexer::Lexer::new(&s))
+            .map(|mut t| {
+                t.clean_pos();
+                t
+            })
+            .map_err(|err| println!("{:?}", err))
+            .ok()
     }
 
     #[test]
@@ -655,7 +879,7 @@ mod tests {
         assert_eq!(
             eval(
                 mk_import("x", "two", mk_term::var("x"), &mut resolver).unwrap(),
-                HashMap::new(),
+                &HashMap::new(),
                 &mut resolver
             )
             .unwrap(),
@@ -666,7 +890,7 @@ mod tests {
         assert_eq!(
             eval(
                 mk_import("x", "nested", mk_term::var("x"), &mut resolver).unwrap(),
-                HashMap::new(),
+                &HashMap::new(),
                 &mut resolver
             )
             .unwrap(),
@@ -683,7 +907,7 @@ mod tests {
                     &mut resolver,
                 )
                 .unwrap(),
-                HashMap::new(),
+                &HashMap::new(),
                 &mut resolver
             )
             .unwrap(),
@@ -700,7 +924,7 @@ mod tests {
                     &mut resolver,
                 )
                 .unwrap(),
-                HashMap::new(),
+                &HashMap::new(),
                 &mut resolver
             )
             .unwrap(),
@@ -779,22 +1003,55 @@ mod tests {
         global_env.insert(Ident::from("g"), (Rc::clone(&thunk), IdentKind::Let()));
 
         let t = mk_term::let_in("x", Term::Num(2.0), mk_term::var("x"));
-        assert_eq!(
-            eval(t, global_env.clone(), &mut resolver),
-            Ok(Term::Num(2.0))
-        );
+        assert_eq!(eval(t, &global_env, &mut resolver), Ok(Term::Num(2.0)));
 
         let t = mk_term::let_in("x", Term::Num(2.0), mk_term::var("g"));
-        assert_eq!(
-            eval(t, global_env.clone(), &mut resolver),
-            Ok(Term::Num(1.0))
-        );
+        assert_eq!(eval(t, &global_env, &mut resolver), Ok(Term::Num(1.0)));
 
         // Shadowing of global environment
         let t = mk_term::let_in("g", Term::Num(2.0), mk_term::var("g"));
+        assert_eq!(eval(t, &global_env, &mut resolver), Ok(Term::Num(2.0)));
+    }
+
+    fn mk_env(bindings: Vec<(&str, RichTerm)>) -> Environment {
+        bindings
+            .into_iter()
+            .map(|(id, t)| {
+                (
+                    id.into(),
+                    (
+                        Rc::new(RefCell::new(Closure::atomic_closure(t))),
+                        IdentKind::Let(),
+                    ),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn substitution() {
+        let global_env = mk_env(vec![
+            ("glob1", Term::Num(1.0).into()),
+            ("glob2", parse("\"Glob2\"").unwrap()),
+            ("glob3", Term::Bool(false).into()),
+        ]);
+        let env = mk_env(vec![
+            ("loc1", Term::Bool(true).into()),
+            ("loc2", parse("if glob3 then glob1 else glob2").unwrap()),
+        ]);
+
+        let t = parse("let x = 1 in if loc1 then 1 + loc2 else glob3").unwrap();
         assert_eq!(
-            eval(t, global_env.clone(), &mut resolver),
-            Ok(Term::Num(2.0))
+            subst(t, &global_env, &env),
+            parse("let x = 1 in if true then 1 + (if false then 1 else \"Glob2\") else false")
+                .unwrap()
+        );
+
+        let t = parse("switch {x => [1, glob1], y => loc2, z => {id = true; other = glob3},} loc1")
+            .unwrap();
+        assert_eq!(
+            subst(t, &global_env, &env),
+            parse("switch {x => [1, 1], y => (if false then 1 else \"Glob2\"), z => {id = true; other = false},} true").unwrap()
         );
     }
 }
