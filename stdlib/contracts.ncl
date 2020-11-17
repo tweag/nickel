@@ -57,7 +57,7 @@
                 if (t -$ magic_fld) == {} then
                     let fail = blame (tag "polymorphic tail mismatch" l) in
                     let inner = unwrap sy (t.$magic_fld) fail in
-                    merge acc inner
+                    acc & inner
                 else
                     blame (tag "extra field" l)
             else

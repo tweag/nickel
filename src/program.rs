@@ -930,7 +930,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
     #[test]
     fn merge_record_simple() {
         assert_eval_to_record(
-            "merge {a=1;} {b=true;}",
+            "{a=1;} & {b=true;}",
             vec![("a", Term::Num(1.0)), ("b", Term::Bool(true))],
         );
     }
@@ -938,13 +938,13 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
     #[test]
     #[should_panic]
     fn merge_record_failure() {
-        eval_string("(merge {a=1} {a=2}).a").unwrap();
+        eval_string("({a=1} & {a=2}).a").unwrap();
     }
 
     #[test]
     fn merge_record_intersection() {
         assert_eval_to_record(
-            "merge {a=1;b=2;} {b=2;c=3;}",
+            "{a=1;b=2;} & {b=2;c=3;}",
             vec![
                 ("a", Term::Num(1.0)),
                 ("b", Term::Num(2.0)),
@@ -956,7 +956,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
     #[test]
     fn merge_record_nested() {
         assert_eval_to_record(
-            "(merge {a={b=1;};} {a={c=true;};}).a ",
+            "({a={b=1;};} & {a={c=true;};}).a ",
             vec![("b", Term::Num(1.0)), ("c", Term::Bool(true))],
         );
     }
@@ -966,7 +966,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         assert_eval_to_record(
             "let rec1 = {a=false;b=(if true then (1 + 1) else (2 + 0)); c=(((fun x => x) (fun y => y)) 2);} in
              let rec2 = {b=(((fun x => x) (fun y => y)) 2); c=(if true then (1 + 1) else (2 + 0)); d=true;} in
-             merge rec1 rec2",
+             rec1 & rec2",
              vec![("a", Term::Bool(false)), ("b", Term::Num(2.0)), ("c", Term::Num(2.0)), ("d", Term::Bool(true))]
          );
     }
@@ -974,7 +974,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
     #[test]
     fn merge_record_with_env() {
         assert_eq!(
-            eval_string("((fun y => merge ((fun x => {a=y;}) 1) ({b=false;})) 2).a"),
+            eval_string("((fun y => ((fun x => {a=y}) 1) & ({b=false})) 2).a"),
             Ok(Term::Num(2.0))
         );
     }
@@ -983,8 +983,8 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
     fn merge_record_with_env_nested() {
         assert_eq!(
             eval_string(
-                "let rec = merge ({b={c=10;};}) ((fun x => {a=x; b={c=x;};}) 10) in
-                         (rec.b).c"
+                "let rec = {b={c=10}} & ((fun x => {a=x; b={c=x}}) 10) in
+                         rec.b.c"
             ),
             Ok(Term::Num(10.0))
         );
@@ -1006,7 +1006,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
     #[test]
     fn enriched_terms_thunk_update() {
         assert_eq!(
-            eval_string("let x = {a=(fun x => Default(1)) 1} in seq (x.a) ((merge x {a=2}).a)"),
+            eval_string("let x = {a=(fun x => Default(1)) 1} in seq (x.a) ((x & {a=2}).a)"),
             Ok(Term::Num(2.0))
         );
     }
@@ -1014,51 +1014,51 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
     #[test]
     fn merge_default() {
         assert_eval_to_record(
-            "merge {a=2;} {a=Default(0);b=Default(true);}",
+            "{a=2;} & {a=Default(0);b=Default(true);}",
             vec![("a", Term::Num(2.0)), ("b", Term::Bool(true))],
         );
 
         assert_eval_to_record(
-            "(merge {a=Default({x=1;});} {a=Default({y=\"y\";});}).a",
+            "({a=Default({x=1;});} & {a=Default({y=\"y\";});}).a",
             vec![("x", Term::Num(1.0)), ("y", Term::Str(String::from("y")))],
         );
 
-        eval_string("(merge {a=Default(1);} {a=Default(2);}).a").unwrap_err();
+        eval_string("({a=Default(1);} & {a=Default(2);}).a").unwrap_err();
     }
 
     #[test]
     fn merge_contract() {
         assert_eval_to_record(
-            "merge {a=2;b=Contract(Bool);} {a=Contract(Num);b=Default(true);}",
+            "{a=2;b=Contract(Bool);} & {a=Contract(Num);b=Default(true);}",
             vec![("a", Term::Num(2.0)), ("b", Term::Bool(true))],
         );
 
-        eval_string("let r = merge {a=2;} {a=Contract(Bool)} in r.a").unwrap_err();
+        eval_string("let r = {a=2;} & {a=Contract(Bool)} in r.a").unwrap_err();
     }
 
     #[test]
     fn merge_default_contract() {
         assert_eval_to_record(
-            "merge {a=2;} {a=ContractDefault(Num, 0);b=Default(true);}",
+            "{a=2;} & {a=ContractDefault(Num, 0);b=Default(true)}",
             vec![("a", Term::Num(2.0)), ("b", Term::Bool(true))],
         );
 
         assert_eval_to_record(
-            "merge (merge {a=2;} {a=Contract(Num);}) {a=Default(3);}",
+            "{a=2} & {a=Contract(Num)} & {a=Default(3)}",
             vec![("a", Term::Num(2.0))],
         );
 
         assert_eq!(
-            eval_string("(merge (merge {a=2;} {b=Contract(Num);}) {b=Default(3);}).b"),
+            eval_string("({a=2;} & {b=Contract(Num)} & {b=Default(3);}).b"),
             Ok(Term::Num(3.0)),
         );
 
         assert_eq!(
-            eval_string("(merge (merge {a=Default(1);} {b=Contract(Num);}) {a=Default(1);}).a"),
+            eval_string("({a=Default(1)} & {b=Contract(Num)} & {a=Default(1)}).a"),
             Ok(Term::Num(1.0)),
         );
 
-        eval_string("(merge (merge {a=2;} {b=Contract(Num);}) {b=Default(true);}).b").unwrap_err();
+        eval_string("({a=2;} & {b=Contract(Num)} & {b=Default(true)}).b").unwrap_err();
     }
 
     fn make_composed_contract(value: &str) -> Result<Term, Error> {
@@ -1091,8 +1091,8 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
              ) in
              let isEven = toCtr isEven_ in
              let isDivBy3 = toCtr isDivBy3_ in
-             let composed = merge {{a=Contract(#isEven);}} {{a=Contract(#isDivBy3);}} in
-             (merge {{a={};}} composed).a",
+             let composed = {{a=Contract(#isEven)}} & {{a=Contract(#isDivBy3)}} in
+             ({{a={}}} & composed).a",
             value
         );
 
@@ -1127,7 +1127,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         // `definitions`, and then access the `a` field
         let merge_elts = |elts: Vec<&str>| -> Result<Term, Error> {
             let term = elts.into_iter().fold(String::from("{}"), |term, op| {
-                format!("merge ({}) ({})", op, term)
+                format!("({}) & ({})", op, term)
             });
             eval_string(&format!("{} ({}).a", definitions, term))
         };
@@ -1138,13 +1138,10 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
             Ok(Term::Num(1.0))
         );
         // default/value <- value/contract
-        assert_eq!(
-            merge_elts(vec!["def", "merge val ctr_num"]),
-            Ok(Term::Num(1.0))
-        );
+        assert_eq!(merge_elts(vec!["def", "val & ctr_num"]), Ok(Term::Num(1.0)));
         // default/contract-> contract-default/contract-default <- contract/default
         assert_eq!(
-            merge_elts(vec!["merge def ctr_num", "merge ctr_id def2"]),
+            merge_elts(vec!["def & ctr_num", "ctr_id & def2"]),
             Ok(Term::Num(2.0))
         );
         // default/contract -> contract-default/contract -> contract-default/value
@@ -1158,10 +1155,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
             Ok(Term::Num(2.0))
         );
         // value/contract-default <- contract/contract-default
-        assert_eq!(
-            merge_elts(vec!["val", "merge ctr_num def"]),
-            Ok(Term::Num(1.0))
-        );
+        assert_eq!(merge_elts(vec!["val", "ctr_num & def"]), Ok(Term::Num(1.0)));
     }
 
     #[test]
