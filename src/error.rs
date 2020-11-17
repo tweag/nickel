@@ -672,8 +672,9 @@ impl ToDiagnostic<FileId> for EvalError {
                 let mut msg = String::from("Blame error: ");
 
                 // Writing in a string should not raise an error, whence the fearless `unwrap()`
-                if l.path.is_empty() {
-                    // An empty path necessarily corresponds to a positive blame
+                if l.path.is_empty() || ty_path::is_only_field(&l.path) {
+                    // An empty path or a path that contains only fields necessarily corresponds to
+                    // a positive blame
                     assert!(l.polarity);
                     write!(&mut msg, "contract broken by a value").unwrap();
                 } else {
