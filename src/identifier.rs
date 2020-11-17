@@ -1,7 +1,8 @@
 //! Define the type of an identifier.
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
-#[derive(Debug, Eq, Hash, PartialEq, Clone)]
+#[derive(Debug, Eq, Hash, PartialEq, Ord, PartialOrd, Clone, Serialize, Deserialize)]
 pub struct Ident(pub String);
 
 impl fmt::Display for Ident {

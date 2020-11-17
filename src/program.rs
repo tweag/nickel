@@ -123,7 +123,7 @@ impl Program {
     }
 
     /// Create a program by reading it from a generic source.
-    fn new_from_source<T: Read>(
+    pub fn new_from_source<T: Read>(
         mut source: T,
         source_name: impl Into<OsString>,
     ) -> std::io::Result<Program> {
@@ -237,7 +237,6 @@ impl Program {
         eval::eval(t, &global_env, self).map_err(|e| e.into())
     }
 
-    #[cfg(test)]
     /// Same as `eval`, but proceeds to a full evaluation.
     pub fn eval_full(&mut self) -> Result<Term, Error> {
         let t = self
@@ -275,7 +274,10 @@ impl Program {
     ///
     /// This function is located here in `Program` because errors need a reference to `files` in
     /// order to produce a diagnostic (see [`label_alt`](../error/fn.label_alt.html)).
-    pub fn report(&mut self, error: Error) {
+    pub fn report<E>(&mut self, error: E)
+    where
+        E: ToDiagnostic<FileId>,
+    {
         let writer = StandardStream::stderr(ColorChoice::Always);
         let config = codespan_reporting::term::Config::default();
         let diagnostics = error.to_diagnostic(
