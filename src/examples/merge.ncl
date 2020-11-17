@@ -8,4 +8,4 @@ let r2 = {
     c = if true then 1 + 1 else 2 + 0;
     d = true;
 } in
-(merge r1 r2).b
+(r1 & r2).b

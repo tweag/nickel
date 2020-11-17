@@ -26,5 +26,4 @@ let toCtr = fun f l x => (
 ) in
 let isEven = toCtr isEven_ in
 let isDivBy3 = toCtr isDivBy3_ in
-let composed = merge Contract(#isEven) Contract(#isDivBy3) in
-merge 12 composed
+12 & Contract(#isEven) & Contract(#isDivBy3)

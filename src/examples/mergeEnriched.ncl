@@ -20,9 +20,9 @@ let confValidation = {
     gcc = Contract(Str);
     specialFlag = Contract(#oneOrTwo);
 } in
-let confValAndDef = merge confValidation confDefault in
+let confValAndDef = confValidation & confDefault in
 let myConf = {
     gcc = "gcc -02";
 } in
-let result = merge myConf confValAndDef in
+let result = myConf & confValAndDef in
 result.specialFlag
