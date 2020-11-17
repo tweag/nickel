@@ -19,7 +19,6 @@ mod types;
 use crate::error::{Error, IOError, SerializationError};
 use crate::program::Program;
 use crate::term::RichTerm;
-use std::io::prelude::Write;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::{fmt, fs, io, process};
@@ -114,18 +113,20 @@ fn main() {
             program.eval_full().map(RichTerm::from).and_then(|rt| {
                 serialize::validate(&rt).map_err(Error::from)?;
 
-                let data = match format.unwrap_or_default() {
-                    ExportFormat::Json => serde_json::to_string_pretty(&rt),
-                }
-                .map_err(|err| SerializationError::Other(err.to_string()))?;
+                let format = format.unwrap_or_default();
 
                 if let Some(file) = output {
-                    let mut file = fs::File::create(&file).map_err(IOError::from)?;
-                    file.write_all(data.as_bytes()).map_err(IOError::from)?;
+                    let file = fs::File::create(&file).map_err(IOError::from)?;
+
+                    match format {
+                        ExportFormat::Json => serde_json::to_writer_pretty(file, &rt),
+                    }
+                    .map_err(|err| SerializationError::Other(err.to_string()))?;
                 } else {
-                    io::stdout()
-                        .write_all(data.as_bytes())
-                        .map_err(IOError::from)?;
+                    match format {
+                        ExportFormat::Json => serde_json::to_writer_pretty(io::stdout(), &rt),
+                    }
+                    .map_err(|err| SerializationError::Other(err.to_string()))?;
                 }
 
                 Ok(())
