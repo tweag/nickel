@@ -54,22 +54,6 @@ pub struct Program {
     file_cache: HashMap<String, FileId>,
     /// Cache storing parsed terms corresponding to the entries of the file database.
     term_cache: HashMap<FileId, RichTerm>,
-    /// The global environment, containing the standard lib.
-    global_env: GlobalEnvironment,
-}
-
-#[derive(Debug, Clone)]
-pub enum GlobalEnvironment {
-    None,
-    Loaded(eval::Environment),
-    Transformed(eval::Environment),
-    Typechecked(eval::Environment),
-}
-
-impl std::default::Default for GlobalEnvironment {
-    fn default() -> Self {
-        GlobalEnvironment::None
-    }
 }
 
 /// Return status indicating if an import has been resolved from a file (first encounter), or was
@@ -132,12 +116,6 @@ impl Program {
         Program::new_from_source(io::stdin(), "<stdin>")
     }
 
-    /// Create a program by reading from a file.
-    pub fn new_from_file<P: AsRef<Path>>(path: P) -> std::io::Result<Program> {
-        let file = fs::File::open(&path)?;
-        Program::new_from_source(file, path.as_ref())
-    }
-
     /// Create a program by reading it from a generic source.
     pub fn new_from_source<T: Read>(
         mut source: T,
@@ -154,7 +132,6 @@ impl Program {
             files,
             file_cache: HashMap::new(),
             term_cache: HashMap::new(),
-            global_env: GlobalEnvironment::default(),
         })
     }
 
@@ -1491,7 +1468,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         eval_string(
             "
             let f = Assume(
-                forall a. ((forall b. ({a: Num, b: Num |b} }) 
+                forall a. ((forall b. ({a: Num, b: Num |b} })
                     -> ({ a: Num | b}))
                     -> {a: Num | a}
                     -> { | a}),
@@ -1530,7 +1507,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
 
         // /!\ Trailing spaces on the middle line are on purpose, don't remove ! /!\
         assert_peq!(
-            r##"  
+            r##"
                 m#"
                    ignore
     
@@ -1540,8 +1517,9 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
             "\"ignore\n\n empty line indent\""
         );
 
+        // /!\ Trailing spaces on the middle line are on purpose, don't remove ! /!\
         assert_peq!(
-            r##"  
+            r##"
                 m#"
     
                    ignore
@@ -1570,7 +1548,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
     #[test]
     fn multiline_interpolation() {
         assert_peq!(
-            r###"  
+            r###"
                 m#"
                    ${m#"thi"#m ++ "s"}
                        ${"is" ++ " an"}
