@@ -1,5 +1,5 @@
 //! Serialization of an evaluated program to various data format.
-use crate::error::NonSerializableError;
+use crate::error::SerializationError;
 use crate::identifier::Ident;
 use crate::label::Label;
 use crate::term::{RichTerm, Term};
@@ -58,7 +58,7 @@ impl Serialize for RichTerm {
 
 /// Check that a term is serializable. Serializable terms are booleans, numbers, strings, enum,
 /// lists of serializable terms or records of serializable terms.
-pub fn validate(t: &RichTerm) -> Result<(), NonSerializableError> {
+pub fn validate(t: &RichTerm) -> Result<(), SerializationError> {
     use Term::*;
 
     match t.term.as_ref() {
@@ -72,7 +72,7 @@ pub fn validate(t: &RichTerm) -> Result<(), NonSerializableError> {
             Ok(())
         }
         DefaultValue(ref t) | ContractWithDefault(_, _, ref t) | Docstring(_, ref t) => validate(t),
-        _ => Err(NonSerializableError(t.clone())),
+        _ => Err(SerializationError::NonSerializable(t.clone())),
     }
 }
 

@@ -22,6 +22,8 @@ pub enum Error {
     TypecheckError(TypecheckError),
     ParseError(ParseError),
     ImportError(ImportError),
+    SerializationError(SerializationError),
+    IOError(IOError),
 }
 
 /// An error occurring during evaluation.
@@ -195,9 +197,17 @@ pub enum ImportError {
     ),
 }
 
-/// A term contains constructs that cannot be serialized.
+/// An error occurred during serialization.
 #[derive(Debug, PartialEq, Clone)]
-pub struct NonSerializableError(pub RichTerm);
+pub enum SerializationError {
+    /// A term contains constructs that cannot be serialized.
+    NonSerializable(RichTerm),
+    Other(String),
+}
+
+/// A general I/O error, occurring when reading an source file or writing an export.
+#[derive(Debug, PartialEq, Clone)]
+pub struct IOError(pub String);
 
 impl From<EvalError> for Error {
     fn from(error: EvalError) -> Error {
@@ -223,6 +233,23 @@ impl From<ImportError> for Error {
     }
 }
 
+impl From<SerializationError> for Error {
+    fn from(error: SerializationError) -> Error {
+        Error::SerializationError(error)
+    }
+}
+
+impl From<IOError> for Error {
+    fn from(error: IOError) -> Error {
+        Error::IOError(error)
+    }
+}
+
+impl From<std::io::Error> for IOError {
+    fn from(error: std::io::Error) -> IOError {
+        IOError(error.to_string())
+    }
+}
 impl ParseError {
     pub fn from_lalrpop<T>(
         error: lalrpop_util::ParseError<usize, T, LexicalError>,
@@ -657,6 +684,8 @@ impl ToDiagnostic<FileId> for Error {
             Error::TypecheckError(err) => err.to_diagnostic(files, contract_id),
             Error::EvalError(err) => err.to_diagnostic(files, contract_id),
             Error::ImportError(err) => err.to_diagnostic(files, contract_id),
+            Error::SerializationError(err) => err.to_diagnostic(files, contract_id),
+            Error::IOError(err) => err.to_diagnostic(files, contract_id),
         }
     }
 }
@@ -1112,14 +1141,31 @@ impl ToDiagnostic<FileId> for ImportError {
     }
 }
 
-impl ToDiagnostic<FileId> for NonSerializableError {
+impl ToDiagnostic<FileId> for SerializationError {
     fn to_diagnostic(
         &self,
         files: &mut Files<String>,
         _contract_id: Option<FileId>,
     ) -> Vec<Diagnostic<FileId>> {
-        vec![Diagnostic::error()
-            .with_message("non serializable term")
-            .with_labels(vec![primary_term(&self.0, files)])]
+        match self {
+            SerializationError::NonSerializable(rt) => vec![Diagnostic::error()
+                .with_message("non serializable term")
+                .with_labels(vec![primary_term(&rt, files)])],
+            SerializationError::Other(msg) => vec![Diagnostic::error()
+                .with_message("error during serialization")
+                .with_notes(vec![msg.clone()])],
+        }
+    }
+}
+
+impl ToDiagnostic<FileId> for IOError {
+    fn to_diagnostic(
+        &self,
+        _files: &mut Files<String>,
+        _contract_id: Option<FileId>,
+    ) -> Vec<Diagnostic<FileId>> {
+        match self {
+            IOError(msg) => vec![Diagnostic::error().with_message(msg.clone())],
+        }
     }
 }
