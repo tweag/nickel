@@ -205,7 +205,7 @@ pub enum SerializationError {
     Other(String),
 }
 
-/// A general I/O error, occurring when reading an source file or writing an export.
+/// A general I/O error, occurring when reading a source file or writing an export.
 #[derive(Debug, PartialEq, Clone)]
 pub struct IOError(pub String);
 
