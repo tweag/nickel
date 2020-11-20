@@ -248,6 +248,7 @@ impl Types {
                 ) -> RichTerm {
                     match &ty.0 {
                         AbsType::RowEmpty() => contracts::empty_tail(),
+                        AbsType::Dyn() => contracts::dyn_tail(),
                         AbsType::Var(id) => {
                             let (_, rt) = h
                                 .get(&id)

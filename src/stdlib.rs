@@ -48,5 +48,6 @@ pub mod contracts {
     generate_accessor!(dyn_record);
     generate_accessor!(record_extend);
     generate_accessor!(forall_tail);
+    generate_accessor!(dyn_tail);
     generate_accessor!(empty_tail);
 }
