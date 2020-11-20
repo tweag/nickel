@@ -1481,7 +1481,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         );
         assert_peq!(
             "Assume({a: Num | Dyn} -> Dyn, fun r => r.b) {a = 1; b = 2}",
-            "{a = 1; b = 2}"
+            "2"
         );
         eval_string("Assume({a: Num, b: Str | Dyn}, {a = 1})").unwrap_err();
     }
