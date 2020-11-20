@@ -55,17 +55,21 @@ use std::collections::{HashMap, HashSet};
 pub enum RowUnifError {
     /// The LHS had a binding that was missing in the RHS.
     MissingRow(Ident),
+    /// The LHS had a `Dyn` tail that was missing in the RHS.
+    MissingDynTail(),
     /// The RHS had a binding that was not in the LHS.
     ExtraRow(Ident),
+    /// The RHS had a additional `Dyn` tail.
+    ExtraDynTail(),
     /// There were two incompatible definitions for the same row.
     RowMismatch(Ident, UnifError),
     /// Tried to unify an enum row and a record row.
     RowKindMismatch(Ident, Option<TypeWrapper>, Option<TypeWrapper>),
-    /// One of the row was ill-formed (typically, a tail was neither a row nor a variable).
+    /// One of the row was ill-formed (typically, a tail was neither a row, a variable nor `Dyn`).
     ///
     /// This should probably not happen with proper restrictions on the parser and a correct
-    /// typechecking algorithm. We let it as an error for now, but it could be removed and turned
-    /// into a panic! in the future.
+    /// typechecking algorithm. We let it as an error for now, but it could be removed in the
+    /// future.
     IllformedRow(TypeWrapper),
     /// A [row constraint](./type.RowConstr.html) was violated.
     UnsatConstr(Ident, Option<TypeWrapper>),
@@ -88,7 +92,9 @@ impl RowUnifError {
     pub fn to_unif_err(self, left: TypeWrapper, right: TypeWrapper) -> UnifError {
         match self {
             RowUnifError::MissingRow(id) => UnifError::MissingRow(id, left, right),
+            RowUnifError::MissingDynTail() => UnifError::MissingDynTail(left, right),
             RowUnifError::ExtraRow(id) => UnifError::ExtraRow(id, left, right),
+            RowUnifError::ExtraDynTail() => UnifError::ExtraDynTail(left, right),
             RowUnifError::RowKindMismatch(id, tyw1, tyw2) => {
                 UnifError::RowKindMismatch(id, tyw1, tyw2)
             }
@@ -116,8 +122,12 @@ pub enum UnifError {
     ConstMismatch(usize, usize),
     /// Tried to unify two rows, but an identifier of the LHS was absent from the RHS.
     MissingRow(Ident, TypeWrapper, TypeWrapper),
+    /// Tried to unify two rows, but the `Dyn` tail of the RHS was absent from the LHS.
+    MissingDynTail(TypeWrapper, TypeWrapper),
     /// Tried to unify two rows, but an identifier of the RHS was absent from the LHS.
     ExtraRow(Ident, TypeWrapper, TypeWrapper),
+    /// Tried to unify two rows, but the `Dyn` tail of the RHS was absent from the LHS.
+    ExtraDynTail(TypeWrapper, TypeWrapper),
     /// A row was ill-formed.
     IllformedRow(TypeWrapper),
     /// Tried to unify a unification variable with a row type violating the [row
@@ -216,8 +226,19 @@ impl UnifError {
                 reporting::to_type(state, names, tyw2),
                 pos_opt,
             ),
+            UnifError::MissingDynTail(tyw1, tyw2) => TypecheckError::MissingDynTail(
+                reporting::to_type(state, names, tyw1),
+                reporting::to_type(state, names, tyw2),
+                pos_opt,
+            ),
+
             UnifError::ExtraRow(id, tyw1, tyw2) => TypecheckError::ExtraRow(
                 id,
+                reporting::to_type(state, names, tyw1),
+                reporting::to_type(state, names, tyw2),
+                pos_opt,
+            ),
+            UnifError::ExtraDynTail(tyw1, tyw2) => TypecheckError::ExtraDynTail(
                 reporting::to_type(state, names, tyw1),
                 reporting::to_type(state, names, tyw2),
                 pos_opt,
@@ -545,7 +566,7 @@ fn type_check_(
             };
 
             if let TypeWrapper::Concrete(AbsType::DynRecord(rec_ty)) = root_ty.clone() {
-                // Checking for an dynamic record
+                // Checking for a dynamic record
                 stat_map
                     .into_iter()
                     .try_for_each(|(_, t)| -> Result<(), TypecheckError> {
@@ -850,7 +871,9 @@ fn row_add(
         r = get_root(state.table, p);
     }
     match r {
-        TypeWrapper::Concrete(AbsType::RowEmpty()) => Err(RowUnifError::MissingRow(id.clone())),
+        TypeWrapper::Concrete(AbsType::RowEmpty()) | TypeWrapper::Concrete(AbsType::Dyn()) => {
+            Err(RowUnifError::MissingRow(id.clone()))
+        }
         TypeWrapper::Concrete(AbsType::RowExtend(id2, ty2, r2)) => {
             if *id == id2 {
                 Ok((ty2, *r2))
@@ -1035,8 +1058,12 @@ pub fn unify_rows(
     t2: AbsType<Box<TypeWrapper>>,
 ) -> Result<(), RowUnifError> {
     match (t1, t2) {
-        (AbsType::RowEmpty(), AbsType::RowEmpty()) => Ok(()),
+        (AbsType::RowEmpty(), AbsType::RowEmpty()) | (AbsType::Dyn(), AbsType::Dyn()) => Ok(()),
+        (AbsType::RowEmpty(), AbsType::Dyn()) => Err(RowUnifError::ExtraDynTail()),
+        (AbsType::Dyn(), AbsType::RowEmpty()) => Err(RowUnifError::MissingDynTail()),
         (AbsType::RowEmpty(), AbsType::RowExtend(ident, _, _))
+        | (AbsType::Dyn(), AbsType::RowExtend(ident, _, _))
+        | (AbsType::RowExtend(ident, _, _), AbsType::Dyn())
         | (AbsType::RowExtend(ident, _, _), AbsType::RowEmpty()) => {
             Err(RowUnifError::ExtraRow(ident))
         }
@@ -2188,5 +2215,18 @@ mod tests {
            Promise(Num, let bad = remove (remove {a = \"a\"}) in 0)",
         );
         assert_row_conflict(res);
+    }
+
+    #[test]
+    fn dynamic_row_tail() {
+        parse_and_typecheck("let r = Assume({a: Num | Dyn}, {a = 1; b = 2}) in Promise(Num, r.a)")
+            .unwrap();
+        parse_and_typecheck("Promise({a: Num | Dyn}, Assume({a: Num | Dyn}, {a = 1; b = 2}))")
+            .unwrap();
+        // Currently, typechecking is conservative wrt the dynamic row type, meaning it can
+        parse_and_typecheck("Promise({a: Num | Dyn}, {a = 1; b = 2})").unwrap_err();
+        parse_and_typecheck("Promise({a: Num | Dyn}, {a = 1})").unwrap_err();
+        parse_and_typecheck("Promise({a: Num}, Assume({a: Num | Dyn}, {a = 1}))").unwrap_err();
+        parse_and_typecheck("Promise({a: Num | Dyn}, {a = 1})").unwrap_err();
     }
 }
