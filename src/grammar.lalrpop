@@ -11,8 +11,6 @@ use codespan::FileId;
 
 grammar<'input>(src_id: FileId);
 
-pub Term: RichTerm = SpTerm<RichTerm>;
-
 SpTerm<Rule>: RichTerm =
     <l: @L> <t: Rule> <r: @R> => match t {
         RichTerm {term: t, pos: _} => RichTerm {
@@ -20,6 +18,8 @@ SpTerm<Rule>: RichTerm =
             pos: Some(mk_span(src_id, l, r))
         }
     };
+
+TypeAnnot: (usize, Types, usize) = ":" <l: @L> <ty: Types> <r: @R> => (l, ty, r);
 
 LeftOp<Op, Current, Previous>: RichTerm =
     <t1: Current> <op: Op> <t2: Previous> => mk_term::op2(op, t1,
@@ -29,24 +29,45 @@ LeftOpLazy<Op, Current, Previous>: RichTerm =
     <t1: Current> <op: Op> <t2: Previous> =>
         mk_app!(Term::Op1(op, t1), t2);
 
+pub Term: RichTerm = {
+    SpTerm<RichTerm>,
+    SpTerm<TypedTerm>,
+};
+
+TypedTerm: RichTerm = {
+    <t: SpTerm<RichTerm>> <ann: TypeAnnot> => {
+        let (l, ty, r) = ann;
+        RichTerm::from(Term::Promise(ty.clone(), mk_label(ty, src_id, l, r), t))
+    }
+};
+
 RichTerm: RichTerm = {
-    <l: @L> "fun" <ps:Pattern+> "=>" <t: SpTerm<Term>> <r: @R> => {
+    <l: @L> "fun" <ps:Pattern+> "=>" <t: SpTerm<RichTerm>> <r: @R> => {
         let pos = Some(mk_span(src_id, l, r));
         ps.into_iter().rev().fold(t, |t, p| RichTerm {
             term: Box::new(Term::Fun(p, t)),
             pos: pos.clone()
         })
     },
-    "let" <id:Ident> "=" <t1:SpTerm<Term>> "in" <t2:SpTerm<Term>> =>
-        mk_term::let_in(id, t1, t2),
-    "if" <b:SpTerm<Term>> "then" <t:SpTerm<Term>> "else" <e:SpTerm<Term>> =>
+    "let" <id:Ident> <ann: TypeAnnot?> "=" <t1: Term> "in" <t2:SpTerm<RichTerm>> => {
+        let t1 = if let Some((l, ty, r)) = ann {
+            let pos = t1.pos.clone();
+            RichTerm::new(Term::Promise(ty.clone(), mk_label(ty, src_id, l, r), t1), pos)
+        }
+        else {
+            t1
+        };
+
+        mk_term::let_in(id, t1, t2)
+    },
+    "if" <b:Term> "then" <t:Term> "else" <e:SpTerm<RichTerm>> =>
         mk_app!(Term::Op1(UnaryOp::Ite(), b), t, e),
     "import" <s: Str> => RichTerm::from(Term::Import(s)),
     SpTerm<InfixExpr>,
 };
 
 Applicative: RichTerm = {
-    <t1:SpTerm< Applicative>> <t2: SpTerm<Atom>> => mk_app!(t1, t2),
+    <t1:SpTerm<Applicative>> <t2: SpTerm<Atom>> => mk_app!(t1, t2),
     <op: UOp> <t: SpTerm<Atom>> => mk_term::op1(op, t),
     <op: BOpPre> <t1: SpTerm<Atom>> <t2: SpTerm<Atom>> => mk_term::op2(op, t1, t2),
     SpTerm<RecordOperationChain>,
@@ -62,24 +83,22 @@ RecordOperationChain: RichTerm = {
     <t: SpTerm<RecordOperand>> "." <id: Ident> => mk_term::op1(UnaryOp::StaticAccess(id), t),
     <t: SpTerm<RecordOperand>> ".$" <t_id: SpTerm<Atom>> => mk_term::op2(BinaryOp::DynAccess(), t_id, t),
     <t: SpTerm<RecordOperand>> "-$" <t_id: SpTerm<Atom>> => mk_term::op2(BinaryOp::DynRemove(), t_id, t),
-    <r: SpTerm<RecordOperand>> "$[" <id: SpTerm<Term>> "=" <t: SpTerm<Term>> "]" =>
+    <r: SpTerm<RecordOperand>> "$[" <id: Term> "=" <t: Term> "]" =>
         mk_term::op2(BinaryOp::DynExtend(t), id, r),
 };
 
 Atom: RichTerm = {
-    "(" <SpTerm<Term>> ")",
-    <l: @L> "Promise(" <ty: Types> "," <t: SpTerm<Term>> ")" <r: @R> =>
-        RichTerm::from(Term::Promise(ty.clone(), mk_label(ty, src_id, l, r), t)),
-    <l: @L> "Assume(" <ty: Types> "," <t: SpTerm<Term>> ")" <r: @R> =>
+    "(" <Term> ")",
+    <l: @L> "Assume(" <ty: Types> "," <t: Term> ")" <r: @R> =>
         RichTerm::from(Term::Assume(ty.clone(), mk_label(ty, src_id, l, r), t)),
     <l: @L> "Contract(" <ty: Types> ")" <r: @R> =>
         RichTerm::from(Term::Contract(ty.clone(), mk_label(ty, src_id, l, r))),
-    "Default(" <t: SpTerm<Term>> ")" => RichTerm::from(Term::DefaultValue(t)),
-    <l: @L> "ContractDefault(" <ty: Types> "," <t: SpTerm<Term>> ")" <r: @R> =>
+    "Default(" <t: Term> ")" => RichTerm::from(Term::DefaultValue(t)),
+    <l: @L> "ContractDefault(" <ty: Types> "," <t: Term> ")" <r: @R> =>
         RichTerm::from(Term::ContractWithDefault(ty.clone(),
             mk_label(ty, src_id, l, r), t)
         ),
-    "Docstring(" <s: Str> "," <t: SpTerm<Term>> ")" => RichTerm::from(Term::Docstring(s, t)),
+    "Docstring(" <s: Str> "," <t: Term> ")" => RichTerm::from(Term::Docstring(s, t)),
     "num literal" => RichTerm::from(Term::Num(<>)),
     Bool => RichTerm::from(Term::Bool(<>)),
     <StrChunks>,
@@ -105,7 +124,7 @@ Atom: RichTerm = {
             RichTerm::from(Term::Op2(BinaryOp::DynExtend(t), id_t, rec))
         })
     },
-    "[" <terms: (SpTerm<Atom> ",")*> <last: SpTerm<Term>?> "]" => {
+    "[" <terms: (SpTerm<Atom> ",")*> <last: Term?> "]" => {
         let terms : Vec<RichTerm> = terms.into_iter()
             .map(|x| x.0)
             .chain(last.into_iter()).collect();
@@ -114,10 +133,28 @@ Atom: RichTerm = {
 };
 
 RecordField: Either<(Ident, RichTerm), (RichTerm, RichTerm)> = {
-    <id: Ident> "=" <t: SpTerm<Term>> =>
-        Either::Left((id, t)),
-    "$" <id: SpTerm<Term>> "=" <t: SpTerm<Term>> =>
-        Either::Right((id, t)),
+    <id: Ident> <ann: TypeAnnot?> "=" <t: Term> => {
+        let t = if let Some((l, ty, r)) = ann {
+            let pos = t.pos.clone();
+            RichTerm::new(Term::Promise(ty.clone(), mk_label(ty, src_id, l, r), t), pos)
+        }
+        else {
+            t
+        };
+
+        Either::Left((id, t))
+    },
+    "$" <id: SpTerm<Atom>> <ann: TypeAnnot?> "=" <t: Term> => {
+        let t = if let Some((l, ty, r)) = ann {
+            let pos = t.pos.clone();
+            RichTerm::new(Term::Promise(ty.clone(), mk_label(ty, src_id, l, r), t), pos)
+        }
+        else {
+            t
+        };
+
+        Either::Right((id, t))
+    }
 }
 
 Pattern: Ident = {
