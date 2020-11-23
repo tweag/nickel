@@ -4,7 +4,8 @@
 //!
 //! Typechecking can be made in to different modes:
 //! - **Strict**: correspond to traditional typechecking in strongly, statically typed languages.
-//! This happens inside a `Promise` block.
+//! This happens inside a `Promise` block. Promise block are introduced by the typing operator `:`,
+//! as in `1 + 1 : Num` or `let f : Num -> Num = fun x => x + 1 in ..`.
 //! - **Non strict**: do not enforce any typing, but still store the annotations of let bindings in
 //! the environment, and continue to traverse the AST looking for other `Promise` blocks to
 //! typecheck.
@@ -22,7 +23,7 @@
 //!
 //! ```
 //! // Rejected
-//! Promise(Num, let id = fun x => x in seq (id "a") (id 5))
+//! let id = fun x => x in seq (id "a") (id 5) : Num
 //! ```
 //!
 //! Indeed, `id` is given the type `_a -> _a`, where `_a` is a unification variable, but is not
@@ -35,7 +36,7 @@
 //!
 //! ```
 //! // Accepted
-//! Promise(Num, let id = Promise(forall a. a -> a, fun x => x) in seq (id "a") (id 5))
+//! let id : forall a. a -> a = fun x => x in seq (id "a") (id 5) : Num
 //! ```
 //!
 //! In non-strict mode, all let-bound expressions are given type `Dyn`, unless annotated.
@@ -1790,87 +1791,86 @@ mod tests {
         )
         .unwrap_err();
 
-        parse_and_typecheck("Promise(Str, \"hello\")").unwrap();
-        parse_and_typecheck("Promise(Num, \"hello\")").unwrap_err();
+        parse_and_typecheck("\"hello\" : Str").unwrap();
+        parse_and_typecheck("\"hello\" : Num").unwrap_err();
     }
 
     #[test]
     fn promise_complicated() {
         // Inside Promises we typecheck strictly
         parse_and_typecheck("(fun x => if x then x + 1 else 34) false").unwrap();
-        parse_and_typecheck("Promise(Bool -> Num, fun x => if x then x + 1 else 34) false")
+        parse_and_typecheck("let f : Bool -> Num = fun x => if x then x + 1 else 34 in f false")
             .unwrap_err();
 
         // not annotated let bindings type to Dyn
         parse_and_typecheck(
-            "let id = Promise(Num -> Num, fun x => x) in
-            Promise(Num, id 4)",
+            "let id : Num -> Num = fun x => x in
+            (id 4 : Num)",
         )
         .unwrap();
         parse_and_typecheck(
             "let id = fun x => x in
-            Promise(Num, id 4)",
+            (id 4 : Num)",
         )
         .unwrap_err();
 
         // lambdas don't annotate to Dyn
-        parse_and_typecheck("(fun id => Promise(Num, id 4)) (fun x => x)").unwrap();
+        parse_and_typecheck("(fun id => (id 4 : Num)) (fun x => x)").unwrap();
 
         // But they are not polymorphic
-        parse_and_typecheck("(fun id => Promise(Num, id 4) + Promise(Bool, id true)) (fun x => x)")
+        parse_and_typecheck("(fun id => (id 4 : Num) + (id true : Bool)) (fun x => x)")
             .unwrap_err();
 
         // Non strict zones don't unify
-        parse_and_typecheck("(fun id => (id 4) + Promise(Bool, id true)) (fun x => x)").unwrap();
+        parse_and_typecheck("(fun id => (id 4) + (id true: Bool)) (fun x => x)").unwrap();
 
         // We can typecheck any contract
         parse_and_typecheck(
             "let alwaysTrue = fun l t => if t then t else blame l in
-        Promise(#alwaysTrue -> #alwaysTrue, fun x => x)",
+            (fun x => x) : #alwaysTrue -> #alwaysTrue",
         )
         .unwrap();
         // Only if they're named the same way
-        parse_and_typecheck("Promise(#(fun l t => t) -> #(fun l t => t), fun x => x)").unwrap_err();
+        parse_and_typecheck("(fun x => x) : #(fun l t => t) -> #(fun l t => t)").unwrap_err();
     }
 
     #[test]
     fn simple_forall() {
         parse_and_typecheck(
-            "let f = Promise(forall a. a -> a, fun x => x) in
-        Promise(Num, if (f true) then (f 2) else 3)",
+            "let f : forall a. a -> a = fun x => x in
+        (if (f true) then (f 2) else 3) : Num",
         )
         .unwrap();
 
         parse_and_typecheck(
-            "let f = Promise(forall a. (forall b. a -> b -> a), fun x y => x) in
-        Promise(Num, if (f true 3) then (f 2 false) else 3)",
+            "let f : forall a. (forall b. a -> b -> a) = fun x y => x in
+            (if (f true 3) then (f 2 false) else 3) : Num",
         )
         .unwrap();
 
         parse_and_typecheck(
-            "let f = Promise(forall a. (forall b. b -> b) -> a -> a, fun f x => f x) in
-            f Promise(forall y. y -> y, fun z => z)",
+            "let f : forall a. (forall b. b -> b) -> a -> a = fun f x => f x in
+            f (fun z => z : forall y. y -> y)",
         )
         .unwrap();
 
         parse_and_typecheck(
-            "let f = Promise(forall a. (forall b. a -> b -> a), fun x y => y) in
+            "let f : forall a. (forall b. a -> b -> a) = fun x y => y in
             f",
         )
         .unwrap_err();
 
         parse_and_typecheck(
-            "Promise(
-                ((forall a. a -> a) -> Num) -> Num,
-                fun f => let g = Promise(forall b. b -> b, fun y => y) in f g)
+            "((fun f => let g : forall b. b -> b = fun y => y in f g)
+               : ((forall a. a -> a) -> Num) -> Num)
             (fun x => 3)",
         )
         .unwrap_err();
 
         parse_and_typecheck(
-            "let g = Promise(Num -> Num, fun x => x) in
-        let f = Promise(forall a. a -> a, fun x =>  g x) in
-        f",
+            "let g : Num -> Num = fun x => x in
+            let f : forall a. a -> a = fun x => g x in
+            f",
         )
         .unwrap_err();
     }
@@ -1878,97 +1878,89 @@ mod tests {
     #[test]
     fn forall_nested() {
         parse_and_typecheck(
-            "let f = Promise(forall a. a -> a, let g = Assume(forall a. (a -> a), fun x => x) in g) in
-            Promise(Num, if (f true) then (f 2) else 3)",
+            "let f : forall a. a -> a = let g = Assume(forall a. (a -> a), fun x => x) in g in
+            (if (f true) then (f 2) else 3) : Num",
         )
         .unwrap();
 
         parse_and_typecheck(
-            "let f = Promise(forall a. a -> a, let g = Promise(forall a. (a -> a), fun x => x) in g g) in
-            Promise(Num, if (f true) then (f 2) else 3)",
+            "let f : forall a. a -> a = let g = Assume(forall a. (a -> a), fun x => x) in g g in
+            (if (f true) then (f 2) else 3) : Num",
         )
         .unwrap();
 
         parse_and_typecheck(
-            "let f = Promise(forall a. a -> a, let g = Promise(forall a. (forall b. (b -> (a -> a))), fun y x => x) in g 0) in
-            Promise(Num, if (f true) then (f 2) else 3)",
+            "let f : forall a. a -> a = let g : forall a. (forall b. (b -> (a -> a))) = fun y x => x in g 0 in
+            (if (f true) then (f 2) else 3) : Num",
         )
         .unwrap();
     }
 
     #[test]
     fn enum_simple() {
-        parse_and_typecheck("Promise(<bla>, `bla)").unwrap();
-        parse_and_typecheck("Promise(<bla>, `blo)").unwrap_err();
+        parse_and_typecheck("`bla : <bla>").unwrap();
+        parse_and_typecheck("`blo : <bla>").unwrap_err();
 
-        parse_and_typecheck("Promise(<bla, blo>, `blo)").unwrap();
-        parse_and_typecheck("Promise(forall r. <bla | r>, `bla)").unwrap();
-        parse_and_typecheck("Promise(forall r. <bla, blo | r>, `bla)").unwrap();
+        parse_and_typecheck("`blo : <bla, blo>").unwrap();
+        parse_and_typecheck("`bla : forall r. <bla | r>").unwrap();
+        parse_and_typecheck("`bla : forall r. <bla, blo | r>").unwrap();
 
-        parse_and_typecheck("Promise(Num, switch { bla => 3, } `bla)").unwrap();
-        parse_and_typecheck("Promise(Num, switch { bla => 3, } `blo)").unwrap_err();
+        parse_and_typecheck("(switch { bla => 3, } `bla) : Num").unwrap();
+        parse_and_typecheck("(switch { bla => 3, } `blo) : Num").unwrap_err();
 
-        parse_and_typecheck("Promise(Num, switch { bla => 3, _ => 2, } `blo)").unwrap();
-        parse_and_typecheck("Promise(Num, switch { bla => 3, ble => true, } `bla)").unwrap_err();
+        parse_and_typecheck("(switch { bla => 3, _ => 2, } `blo) : Num").unwrap();
+        parse_and_typecheck("(switch { bla => 3, ble => true, } `bla) : Num").unwrap_err();
     }
 
     #[test]
     fn enum_complex() {
-        parse_and_typecheck("Promise(<bla, ble> -> Num, fun x => switch {bla => 1, ble => 2,} x)")
+        parse_and_typecheck("(fun x => switch {bla => 1, ble => 2,} x) : <bla, ble> -> Num")
             .unwrap();
         parse_and_typecheck(
-            "Promise(<bla, ble> -> Num,
-        fun x => switch {bla => 1, ble => 2, bli => 4,} x)",
+            "(fun x => switch {bla => 1, ble => 2, bli => 4,} x) : <bla, ble> -> Num",
         )
         .unwrap_err();
         parse_and_typecheck(
-            "Promise(<bla, ble> -> Num,
-        fun x => switch {bla => 1, ble => 2, bli => 4,} (embed bli x))",
+            "(fun x => switch {bla => 1, ble => 2, bli => 4,} (embed bli x)) : <bla, ble> -> Num",
         )
         .unwrap();
 
         parse_and_typecheck(
-            "Promise(Num,
-            (fun x =>
+            "(fun x =>
                 (switch {bla => 3, bli => 2,} x) +
-                (switch {bli => 6, bla => 20,} x) ) `bla)",
+                (switch {bli => 6, bla => 20,} x) ) `bla : Num",
         )
         .unwrap();
         // TODO typecheck this, I'm not sure how to do it with row variables
         parse_and_typecheck(
-            "Promise(Num,
-            (fun x =>
+            "(fun x =>
                 (switch {bla => 3, bli => 2,} x) +
-                (switch {bla => 6, blo => 20,} x) ) `bla)",
+                (switch {bla => 6, blo => 20,} x) ) `bla : Num",
         )
         .unwrap_err();
 
         parse_and_typecheck(
-            "let f = Promise(
-                forall r. <blo, ble | r> -> Num,
-                fun x => (switch {blo => 1, ble => 2, _ => 3, } x ) ) in
-            Promise(Num, f `bli)",
+            "let f : forall r. <blo, ble | r> -> Num =
+            fun x => (switch {blo => 1, ble => 2, _ => 3, } x) in
+            f `bli : Num",
         )
         .unwrap();
         parse_and_typecheck(
-            "let f = Promise(
-                forall r. <blo, ble, | r> -> Num,
-                fun x => (switch {blo => 1, ble => 2, bli => 3, } x ) ) in
+            "let f : forall r. <blo, ble, | r> -> Num =
+                fun x => (switch {blo => 1, ble => 2, bli => 3, } x) in
             f",
         )
         .unwrap_err();
 
         parse_and_typecheck(
-            "let f = Promise(
-                forall r. (forall p. <blo, ble | r> -> <bla, bli | p> ),
-                fun x => (switch {blo => `bla, ble => `bli, _ => `bla, } x ) ) in
+            "let f : forall r. (forall p. <blo, ble | r> -> <bla, bli | p>) =
+                fun x => (switch {blo => `bla, ble => `bli, _ => `bla, } x) in
             f `bli",
         )
         .unwrap();
         parse_and_typecheck(
-            "let f = Promise(
-                forall r. (forall p. <blo, ble | r> -> <bla, bli | p> ),
-                fun x => (switch {blo => `bla, ble => `bli, _ => `blo, } x ) ) in
+            "let f : forall r. (forall p. <blo, ble | r> -> <bla, bli | p>) =
+                fun x => (switch {blo => `bla, ble => `bli, _ => `blo, } x) in
             f `bli",
         )
         .unwrap_err();
@@ -1976,114 +1968,96 @@ mod tests {
 
     #[test]
     fn static_record_simple() {
-        parse_and_typecheck("Promise({bla : Num, }, { bla = 1; })").unwrap();
-        parse_and_typecheck("Promise({bla : Num, }, { bla = true; })").unwrap_err();
-        parse_and_typecheck("Promise({bla : Num, }, { blo = 1; })").unwrap_err();
+        parse_and_typecheck("{bla = 1} : {bla : Num}").unwrap();
+        parse_and_typecheck("{bla = true} : {bla : Num}").unwrap_err();
+        parse_and_typecheck("{blo = 1} : {bla : Num}").unwrap_err();
 
-        parse_and_typecheck("Promise({bla : Num, blo : Bool}, { blo = true; bla = 1; })").unwrap();
+        parse_and_typecheck("{blo = true; bla = 1} : {bla : Num, blo : Bool}").unwrap();
 
-        parse_and_typecheck("Promise(Num, { blo = 1; }.blo)").unwrap();
-        parse_and_typecheck("Promise(Num, { bla = true; blo = 1; }.blo)").unwrap();
-        parse_and_typecheck("Promise(Bool, { blo = 1; }.blo)").unwrap_err();
+        parse_and_typecheck("{blo = 1}.blo : Num").unwrap();
+        parse_and_typecheck("{bla = true; blo = 1}.blo : Num").unwrap();
+        parse_and_typecheck("{blo = 1}.blo : Bool").unwrap_err();
 
         parse_and_typecheck(
-            "let r = Promise({bla : Bool, blo : Num}, {blo = 1; bla = true; }) in
-        Promise(Num, if r.bla then r.blo else 2)",
+            "let r : {bla : Bool, blo : Num} = {blo = 1; bla = true; } in
+            (if r.bla then r.blo else 2) : Num",
         )
         .unwrap();
 
         // It worked at first try :O
         parse_and_typecheck(
-            "let f = Promise(
-                forall a. (forall r. {bla : Bool, blo : a, ble : a | r} -> a),
-                fun r => if r.bla then r.blo else r.ble)
+            "let f : forall a. (forall r. {bla : Bool, blo : a, ble : a | r} -> a) =
+                fun r => if r.bla then r.blo else r.ble
             in
-            Promise(Num,
-                if (f {bla = true; blo = false; ble = true; blip = 1; }) then
-                    (f {bla = true; blo = 1; ble = 2; blip = `blip; })
-                else
-                    (f {bla = true; blo = 3; ble = 4; bloppo = `bloppop; }))",
+            (if (f {bla = true; blo = false; ble = true; blip = 1; }) then
+                (f {bla = true; blo = 1; ble = 2; blip = `blip; })
+            else
+                (f {bla = true; blo = 3; ble = 4; bloppo = `bloppop; })) : Num",
         )
         .unwrap();
 
         parse_and_typecheck(
-            "let f = Promise(
-                forall a. (forall r. {bla : Bool, blo : a, ble : a | r} -> a),
-                fun r => if r.bla then r.blo else r.ble)
+            "let f : forall a. (forall r. {bla : Bool, blo : a, ble : a | r} -> a) =
+                fun r => if r.bla then r.blo else r.ble
             in
-            Promise(Num,
-                    f {bla = true; blo = 1; ble = true; blip = `blip; })
-                ",
+            (f {bla = true; blo = 1; ble = true; blip = `blip}) : Num",
         )
         .unwrap_err();
         parse_and_typecheck(
-            "let f = Promise(
-                forall a. (forall r. {bla : Bool, blo : a, ble : a | r} -> a),
-                fun r => if r.bla then (r.blo + 1) else r.ble)
+            "let f : forall a. (forall r. {bla : Bool, blo : a, ble : a | r} -> a) =
+                fun r => if r.bla then (r.blo + 1) else r.ble
             in
-            Promise(Num,
-                    f {bla = true; blo = 1; ble = 2; blip = `blip; })
-                ",
+            (f {bla = true; blo = 1; ble = 2; blip = `blip; }) : Num",
         )
         .unwrap_err();
     }
 
     #[test]
     fn dynamic_record_simple() {
-        parse_and_typecheck("Promise({ _ : Num }, { $(if true then \"foo\" else \"bar\") = 2; } )")
+        parse_and_typecheck("{ $(if true then \"foo\" else \"bar\") = 2; } : {_ : Num}").unwrap();
+
+        parse_and_typecheck("({ $(if true then \"foo\" else \"bar\") = 2; }.$(\"bla\")) : Num")
             .unwrap();
 
         parse_and_typecheck(
-            "Promise(Num, { $(if true then \"foo\" else \"bar\") = 2; }.$(\"bla\"))",
-        )
-        .unwrap();
-
-        parse_and_typecheck(
-            "Promise(
-                Num,
-                { $(if true then \"foo\" else \"bar\") = 2; $(\"foo\") = true; }.$(\"bla\"))",
+            "({ $(if true then \"foo\" else \"bar\") = 2; $(\"foo\") = true; }.$(\"bla\")) : Num",
         )
         .unwrap_err();
 
-        parse_and_typecheck("Promise( { _ : Num}, { foo = 3; bar = 4; })").unwrap();
+        parse_and_typecheck("{ foo = 3; bar = 4; } : {_ : Num}").unwrap();
     }
 
     #[test]
     fn seq() {
-        parse_and_typecheck("Promise(Num, seq false 1)").unwrap();
-        parse_and_typecheck("Promise(forall a. (forall b. a -> b -> b), fun x y => seq x y)")
-            .unwrap();
-        parse_and_typecheck("let xDyn = false in let yDyn = 1 in Promise(Dyn, seq xDyn yDyn)")
-            .unwrap();
+        parse_and_typecheck("seq false 1 : Num").unwrap();
+        parse_and_typecheck("(fun x y => seq x y) : forall a. (forall b. a -> b -> b)").unwrap();
+        parse_and_typecheck("let xDyn = false in let yDyn = 1 in (seq xDyn yDyn : Dyn)").unwrap();
     }
 
     #[test]
     fn simple_list() {
         parse_and_typecheck("[1, \"2\", false]").unwrap();
-        parse_and_typecheck("Promise(List, [\"a\", 3, true])").unwrap();
-        parse_and_typecheck("Promise(List, [Promise(forall a. a -> a, fun x => x), 3, true])")
-            .unwrap();
-        parse_and_typecheck("Promise(forall a. a -> List, fun x => [x])").unwrap();
+        parse_and_typecheck("[\"a\", 3, true] : List").unwrap();
+        parse_and_typecheck("[(fun x => x : forall a. a -> a), true] : List").unwrap();
+        parse_and_typecheck("fun x => [x] : forall a. a -> List").unwrap();
 
-        parse_and_typecheck("[1, Promise(Num, \"2\"), false]").unwrap_err();
-        parse_and_typecheck("Promise(List, [Promise(String,1), true, \"b\"])").unwrap_err();
-        parse_and_typecheck("Promise(Num, [1, 2, \"3\"])").unwrap_err();
+        parse_and_typecheck("[1, (\"2\" : Num), false]").unwrap_err();
+        parse_and_typecheck("[(1 : String), true, \"b\"] : List").unwrap_err();
+        parse_and_typecheck("[1, 2, \"3\"] : Num").unwrap_err();
     }
 
     #[test]
     fn lists_operations() {
-        parse_and_typecheck("Promise(List -> List, fun l => tail l)").unwrap();
-        parse_and_typecheck("Promise(List -> Dyn, fun l => head l)").unwrap();
-        parse_and_typecheck(
-            "Promise(forall a. (forall b. (a -> b) -> List -> List), fun f l => map f l)",
-        )
-        .unwrap();
-        parse_and_typecheck("Promise(List -> List -> List, fun l1 => fun l2 => l1 @ l2)").unwrap();
-        parse_and_typecheck("Promise(Num -> List -> Dyn , fun i l => elemAt l i)").unwrap();
+        parse_and_typecheck("fun l => tail l : List -> List").unwrap();
+        parse_and_typecheck("fun l => head l : List -> Dyn").unwrap();
+        parse_and_typecheck("fun f l => map f l : forall a. (forall b. (a -> b) -> List -> List)")
+            .unwrap();
+        parse_and_typecheck("(fun l1 => fun l2 => l1 @ l2) : List -> List -> List").unwrap();
+        parse_and_typecheck("(fun i l => elemAt l i) : Num -> List -> Dyn ").unwrap();
 
-        parse_and_typecheck("Promise(forall a. (List -> a), fun l => head l)").unwrap_err();
+        parse_and_typecheck("(fun l => head l) : forall a. (List -> a)").unwrap_err();
         parse_and_typecheck(
-            "Promise(forall a. (forall b. (a -> b) -> List -> b), fun f l => elemAt (map f l) 0)",
+            "(fun f l => elemAt (map f l) 0) : forall a. (forall b. (a -> b) -> List -> b)",
         )
         .unwrap_err();
     }
@@ -2091,8 +2065,8 @@ mod tests {
     #[test]
     fn imports() {
         let mut resolver = SimpleResolver::new();
-        resolver.add_source(String::from("good"), String::from("Promise(Num, 1 + 1)"));
-        resolver.add_source(String::from("bad"), String::from("Promise(Num, false)"));
+        resolver.add_source(String::from("good"), String::from("1 + 1 : Num"));
+        resolver.add_source(String::from("bad"), String::from("false : Num"));
         resolver.add_source(
             String::from("proxy"),
             String::from("let x = import \"bad\" in x"),
@@ -2124,30 +2098,28 @@ mod tests {
 
     #[test]
     fn recursive_records() {
-        parse_and_typecheck("Promise({a : Num, b : Num}, { a = Promise(Num,1); b = a + 1})")
-            .unwrap();
-        parse_and_typecheck("Promise({a : Num, b : Num}, { a = Promise(Num,true); b = a + 1})")
-            .unwrap_err();
-        parse_and_typecheck("Promise({a : Num, b : Bool}, { a = 1; b = Promise(Bool, a) } )")
-            .unwrap_err();
-        parse_and_typecheck("Promise({a : Num}, { a = Promise(Num, 1 + a) })").unwrap();
+        parse_and_typecheck("{a : Num = 1; b = a + 1} : {a : Num, b : Num}").unwrap();
+        parse_and_typecheck("{a : Num = true; b = a + 1} : {a : Num, b : Num}").unwrap_err();
+        parse_and_typecheck("{a = 1; b : Bool = a} : {a : Num, b : Bool}").unwrap_err();
+        parse_and_typecheck("{a : Num = 1 + a} : {a : Num}").unwrap();
     }
 
     #[test]
     fn let_inference() {
-        parse_and_typecheck("Promise(Num, let x = 1 + 2 in let f = fun x => x + 1 in f x)")
-            .unwrap();
-        parse_and_typecheck("Promise(Num, let x = 1 + 2 in let f = fun x => x ++ \"a\" in f x)")
+        parse_and_typecheck("(let x = 1 + 2 in let f = fun x => x + 1 in f x) : Num").unwrap();
+        parse_and_typecheck("(let x = 1 + 2 in let f = fun x => x ++ \"a\" in f x) : Num")
             .unwrap_err();
 
         // Fields in recursive records are treated in the type environment in the same way as let-bound expressions
-        parse_and_typecheck("Promise({a : Num, b : Num}, { a = 1; b = 1 + a })").unwrap();
+        parse_and_typecheck("{a = 1; b = 1 + a} : {a : Num, b : Num}").unwrap();
         parse_and_typecheck(
-            "Promise({f : Num -> Num}, { f = fun x => if isZero x then 1 else 1 + (f (x + (-1)));})"
-        ).unwrap();
+            "{ f = fun x => if isZero x then 1 else 1 + (f (x + (-1)));} : {f : Num -> Num}",
+        )
+        .unwrap();
         parse_and_typecheck(
-            "Promise({f : Num -> Num}, { f = fun x => if isZero x then false else 1 + (f (x + (-1)))})"
-        ).unwrap_err();
+            "{ f = fun x => if isZero x then false else 1 + (f (x + (-1)))} : {f : Num -> Num}",
+        )
+        .unwrap_err();
     }
 
     /// Regression test following [#144](https://github.com/tweag/nickel/issues/144). Check that
@@ -2173,19 +2145,19 @@ mod tests {
 
         let mut res = parse_and_typecheck(
             "let extend = Assume(forall c. { | c} -> {a: Str | c}, 0) in
-           Promise(Num, let bad = extend {a = 1;} in 0)",
+           (let bad = extend {a = 1;} in 0) : Num",
         );
         assert_row_conflict(res);
 
         parse_and_typecheck(
             "let extend = Assume(forall c. { | c} -> {a: Str | c}, 0) in
            let remove = Assume(forall c. {a: Str | c} -> { | c}, 0) in
-           Promise(Num, let good = remove (extend {}) in 0)",
+           (let good = remove (extend {}) in 0) : Num",
         )
         .unwrap();
         res = parse_and_typecheck(
             "let remove = Assume(forall c. {a: Str | c} -> { | c}, 0) in
-           Promise(Num, let bad = remove (remove {a = \"a\"}) in 0)",
+           (let bad = remove (remove {a = \"a\"}) in 0) : Num",
         );
         assert_row_conflict(res);
     }

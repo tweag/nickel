@@ -599,8 +599,8 @@ g true",
     #[test]
     fn type_contracts() {
         let res = eval_string(
-            "let safePlus = Promise(Num -> Num -> Num , fun x => fun y => x + y) in
-safePlus Promise(Num , 54) Promise(Num , 6)",
+            "let safePlus : Num -> Num -> Num = fun x => fun y => x + y in
+            safePlus (54 : Num) (6 : Num)",
         );
 
         assert_eq!(Ok(Term::Num(60.)), res);
@@ -610,13 +610,13 @@ safePlus Promise(Num , 54) Promise(Num , 6)",
     fn fibonacci() {
         let res = eval_string(
             "let Y = Assume(((Num -> Num) -> Num -> Num) -> Num -> Num, fun f => (fun x => f (x x)) (fun x => f (x x))) in
-let dec = Promise(Num -> Num, fun x => x + (-1)) in
-let or = Promise(Bool -> Bool -> Bool, fun x => fun y => if x then x else y) in
+            let dec : Num -> Num = fun x => x + (-1) in
+            let or : Bool -> Bool -> Bool = fun x => fun y => if x then x else y in
 
-let fibo = Promise(Num -> Num, Y (fun fibo =>
-    (fun x => if or (isZero x) (isZero (dec x)) then 1 else (fibo (dec x)) + (fibo (dec (dec x)))))) in
-let val = Promise(Num, 4) in
-fibo val",
+            let fibo : Num -> Num = Y (fun fibo =>
+                (fun x => if or (isZero x) (isZero (dec x)) then 1 else (fibo (dec x)) + (fibo (dec (dec x))))) in
+            let val : Num = 4 in
+            fibo val",
         );
 
         assert_eq!(Ok(Term::Num(5.)), res);
@@ -624,12 +624,7 @@ fibo val",
 
     #[test]
     fn promise_fail() {
-        let res = eval_string(
-            "let bool = fun l t => if isBool t then t else blame l in
-
-Promise(Bool, 5)
-            ",
-        );
+        let res = eval_string("let bool = fun l t => if isBool t then t else blame l in 5 : Bool");
 
         if let Ok(_) = res {
             panic!("This expression should return an error!");
@@ -715,35 +710,35 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
 
     #[test]
     fn enum_simple() {
-        let res = eval_string("Promise(<foo, bar>, `foo)");
+        let res = eval_string("`foo : <foo, bar>");
         assert_eq!(res, Ok(Term::Enum(Ident("foo".to_string()))));
 
-        let res = eval_string("Promise(forall r. <foo, bar | r>, `bar)");
+        let res = eval_string("`bar : forall r. <foo, bar | r>");
         assert_eq!(res, Ok(Term::Enum(Ident("bar".to_string()))));
 
-        eval_string("Promise(<foo, bar>, `far)").unwrap_err();
+        eval_string("`far : <foo, bar>").unwrap_err();
     }
 
     #[test]
     fn enum_complex() {
         let res = eval_string(
-            "let f = Promise(forall r. <foo, bar | r> -> Num,
-        fun x => switch { foo => 1, bar => 2, _ => 3, } x) in
-        f `bar",
+            "let f : forall r. <foo, bar | r> -> Num =
+            fun x => switch { foo => 1, bar => 2, _ => 3, } x in
+            f `bar",
         );
         assert_eq!(res, Ok(Term::Num(2.)));
 
         let res = eval_string(
-            "let f = Promise(forall r. <foo, bar | r> -> Num,
-        fun x => switch { foo => 1, bar => 2, _ => 3, } x) in
-        f `boo",
+            "let f : forall r. <foo, bar | r> -> Num = 
+            fun x => switch { foo => 1, bar => 2, _ => 3, } x in
+            f `boo",
         );
         assert_eq!(res, Ok(Term::Num(3.)));
 
         eval_string(
-            "let f = Promise(<foo, bar> -> Num,
-        fun x => switch { foo => 1, bar => 2, } x) in
-        f `boo",
+            "let f : <foo, bar> -> Num =
+            fun x => switch { foo => 1, bar => 2, } x in
+            f `boo",
         )
         .unwrap_err();
 
@@ -751,7 +746,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         assert_eq!(
             eval_string(
                 "let x = 3 in
-            switch { foo => 1, _ => x, } (3 + 2)"
+                switch { foo => 1, _ => x, } (3 + 2)"
             ),
             Ok(Term::Num(3.))
         );
@@ -913,11 +908,11 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
                             f next_acc h
                 in
                 let foldr = Y foldr_ in
-                let and = Promise(Bool -> Bool -> Bool,
+                let and : Bool -> Bool -> Bool =
                     fun x => fun y =>
                         if x then
                             if y then true else false
-                        else false)
+                        else false
                 in
                 let all = fun pred => fun l => foldr and true (map pred l) in
                 let isZ = fun x => isZero x in
