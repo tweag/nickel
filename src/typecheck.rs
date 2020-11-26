@@ -459,7 +459,7 @@ fn type_check_(
                     match chunk {
                         StrChunk::Literal(_) => Ok(()),
                         StrChunk::Expr(t, _) => {
-                            type_check_(state, envs.clone(), strict, t, mk_typewrapper::dynamic())
+                            type_check_(state, envs.clone(), strict, t, mk_typewrapper::str())
                         }
                     }
                 })
