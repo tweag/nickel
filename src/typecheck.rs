@@ -1062,10 +1062,10 @@ pub fn unify_rows(
         (AbsType::RowEmpty(), AbsType::Dyn()) => Err(RowUnifError::ExtraDynTail()),
         (AbsType::Dyn(), AbsType::RowEmpty()) => Err(RowUnifError::MissingDynTail()),
         (AbsType::RowEmpty(), AbsType::RowExtend(ident, _, _))
-        | (AbsType::Dyn(), AbsType::RowExtend(ident, _, _))
-        | (AbsType::RowExtend(ident, _, _), AbsType::Dyn())
+        | (AbsType::Dyn(), AbsType::RowExtend(ident, _, _)) => Err(RowUnifError::ExtraRow(ident)),
+        (AbsType::RowExtend(ident, _, _), AbsType::Dyn())
         | (AbsType::RowExtend(ident, _, _), AbsType::RowEmpty()) => {
-            Err(RowUnifError::ExtraRow(ident))
+            Err(RowUnifError::MissingRow(ident))
         }
         (AbsType::RowExtend(id, ty, t), r2 @ AbsType::RowExtend(_, _, _)) => {
             let (ty2, t2_tail) =
