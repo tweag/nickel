@@ -1,3 +1,4 @@
-Promise(
-    ((forall a. a -> a) -> Num) -> Num,
-    fun f => f Promise(forall b. b -> b, fun y => y) ) (fun g => 3)
+let f0 : ((forall a. a -> a) -> Num) -> Num = fun f =>
+  f (fun y => y : forall b.  b -> b)
+in
+f0 (fun g => 3)

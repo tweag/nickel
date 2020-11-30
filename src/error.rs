@@ -148,7 +148,7 @@ pub enum TypecheckError {
     /// argument of a wrong type in some cases:
     ///
     /// ```
-    /// Promise(Num, let id_mono = fun x => x in let _ign = id_mono true in id_mono 0)
+    /// let id_mono = fun x => x in let _ign = id_mono true in id_mono 0 : Num
     /// ```
     ///
     /// This specific error stores additionally the [type path](../label/ty_path/index.html) that

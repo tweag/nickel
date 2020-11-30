@@ -9,6 +9,6 @@ let foldl_ =
             seq next_acc (self f next_acc t)
 in
 let foldl = Y foldl_ in
-let concat = Promise(List -> List -> List, fun x y => x @ y) in
+let concat : List -> List -> List = fun x y => x @ y in
 let flatten = foldl concat [] in
 flatten [[1,2],[3,4],[]]
