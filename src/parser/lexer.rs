@@ -94,8 +94,6 @@ pub enum NormalToken<'input> {
     DollarBracket,
     #[token("$=")]
     DollarEquals,
-    #[token("${")]
-    DollarBrace,
     #[token("\"")]
     DoubleQuote,
     #[token("-$")]
@@ -244,16 +242,16 @@ pub enum StringToken<'input> {
     #[error]
     Error,
 
-    #[regex("[^\"$\\\\]+")]
+    #[regex("[^\"#\\\\]+")]
     Literal(&'input str),
 
     #[token("\"")]
     DoubleQuote,
-    // Has lower matching priority than `DollarBrace` according to Logos' rules.
-    #[token("$")]
-    Dollar(&'input str),
-    #[token("${")]
-    DollarBrace,
+    // Has lower matching priority than `HashBrace` according to Logos' rules.
+    #[token("#")]
+    Hash(&'input str),
+    #[token("#{")]
+    HashBrace,
     #[regex("\\\\.", |lex| lex.slice().chars().nth(1))]
     EscapedChar(char),
 }
@@ -264,32 +262,30 @@ pub enum MultiStringToken<'input> {
     #[error]
     Error,
 
-    #[regex("[^\"$\\\\]+")]
+    #[regex("[^\"#]+")]
     Literal(&'input str),
 
     // A token that starts as a multiline end delimiter, but is not one. To avoid hacking
     // look-aheads in the lexer (which Logos doesn't support for performance reason), we just use a
-    // separate token. This has lowest matching priority according to Logo's rules, so it is
+    // separate token. This one has lowest matching priority according to Logos' rules, so it is
     // matched only if `CandidateEnd` cannot be
     #[regex("\"(#+|(#+[^m]))?")]
     FalseEnd(&'input str),
-    // A candidate end. A multiline string starting delimiter `MultiStringStart` can have a variable
-    // number of `#` character, so the lexer matchs candidate end delimiter, compare the number of
-    // characters, and either emit the `End` token above, or turn the `CandidateEnd` to a
+    // A candidate end. A multiline string starting delimiter `MultiStringStart` can have a
+    // variable number of `#` character, so the lexer matchs candidate end delimiter, compare the
+    // number of characters, and either emit the `End` token above, or turn the `CandidateEnd` to a
     // `FalseEnd` otherwise
     #[regex("\"#+m")]
     CandidateEnd(&'input str),
-    // Same as previous: `Dollar` and `Backslash` have lower matching priority than `DollarBrace`
-    // and `BackslashDollarBrace`.
-    #[token("$")]
-    Dollar(&'input str),
-    #[token("${")]
-    DollarBrace,
-    #[token("\\")]
-    Backslash(&'input str),
-    #[token("\\${")]
-    BackslashDollarBrace(&'input str),
+    // Same as `FalseEnd` and `CandidateEnd` but for an interpolation sequence.
+    #[token("#+")]
+    FalseInterpolation(&'input str),
+    #[regex("#+\\{")]
+    CandidateInterpolation(&'input str),
+    // Token emitted by the modal lexer for the parser once it has decided that a `CandidateEnd` is
+    // an actual end token.
     End,
+    Interpolation,
 }
 
 /// The tokens of the modal lexer.
@@ -507,9 +503,20 @@ impl<'input> Iterator for Lexer<'input> {
                 // `DoubleQuote`, namely the the normal one.
                 token = Some(Normal(NormalToken::DoubleQuote));
             }
-            Some(Str(StringToken::DollarBrace)) | Some(MultiStr(MultiStringToken::DollarBrace)) => {
-                self.enter_normal()
+            // If we encounter a `CandidateInterp` token with the right number of characters, this is
+            // an interpolation sequence.
+            Some(MultiStr(MultiStringToken::CandidateInterpolation(s)))
+                if s.len() == (self.count - 1) =>
+            {
+                token = Some(MultiStr(MultiStringToken::Interpolation));
+                self.enter_normal();
             }
+            // Otherwise, it is just part of the string, so we transform the token into a
+            // `FalseInterpolation` one
+            Some(MultiStr(MultiStringToken::CandidateInterpolation(s))) => {
+                token = Some(MultiStr(MultiStringToken::FalseInterpolation(s)))
+            }
+            Some(Str(StringToken::HashBrace)) => self.enter_normal(),
             // Convert escape sequences to the corresponding character.
             Some(Str(StringToken::EscapedChar(c))) => {
                 if let Some(esc) = escape_char(*c) {
@@ -547,7 +554,7 @@ fn escape_char(chr: char) -> Option<char> {
         '\'' => Some('\''),
         '"' => Some('"'),
         '\\' => Some('\\'),
-        '$' => Some('$'),
+        '#' => Some('#'),
         'n' => Some('\n'),
         'r' => Some('\r'),
         't' => Some('\t'),
