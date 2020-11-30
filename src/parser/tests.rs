@@ -235,11 +235,11 @@ fn string_lexing() {
     );
 
     assert_eq!(
-        lex_without_pos("\"1 + ${ 1 } + 2\""),
+        lex_without_pos("\"1 + #{ 1 } + 2\""),
         Ok(vec![
             Token::Normal(NormalToken::DoubleQuote),
             Token::Str(StringToken::Literal("1 + ")),
-            Token::Str(StringToken::DollarBrace),
+            Token::Str(StringToken::HashBrace),
             Token::Normal(NormalToken::NumLiteral(1.0)),
             Token::Normal(NormalToken::RBrace),
             Token::Str(StringToken::Literal(" + 2")),
@@ -248,13 +248,13 @@ fn string_lexing() {
     );
 
     assert_eq!(
-        lex_without_pos("\"1 + ${ \"${ 1 }\" } + 2\""),
+        lex_without_pos("\"1 + #{ \"#{ 1 }\" } + 2\""),
         Ok(vec![
             Token::Normal(NormalToken::DoubleQuote),
             Token::Str(StringToken::Literal("1 + ")),
-            Token::Str(StringToken::DollarBrace),
+            Token::Str(StringToken::HashBrace),
             Token::Normal(NormalToken::DoubleQuote),
-            Token::Str(StringToken::DollarBrace),
+            Token::Str(StringToken::HashBrace),
             Token::Normal(NormalToken::NumLiteral(1.0)),
             Token::Normal(NormalToken::RBrace),
             Token::Normal(NormalToken::DoubleQuote),
@@ -273,11 +273,11 @@ fn str_escape() {
         mk_single_chunk("str\twith\nescapes"),
     );
     assert_eq!(
-        parse_without_pos(r#""\$\${ }\$""#),
-        mk_single_chunk("$${ }$"),
+        parse_without_pos("\"\\#\\#{ }\\#\""),
+        mk_single_chunk("##{ }#"),
     );
     assert_eq!(
-        parse_without_pos(r#""$a$b$c\${d\$""#),
-        mk_single_chunk("$a$b$c${d$"),
+        parse_without_pos("\"#a#b#c\\#{d#\""),
+        mk_single_chunk("#a#b#c#{d#"),
     );
 }

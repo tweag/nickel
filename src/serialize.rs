@@ -118,7 +118,7 @@ mod tests {
     fn basic() {
         assert_json_eq!("1 + 1", 2.0);
         assert_json_eq!("if true then false else true", false);
-        assert_json_eq!(r#""Hello, ${"world"}!""#, "Hello, world!");
+        assert_json_eq!(r##""Hello, #{"world"}!""##, "Hello, world!");
         assert_json_eq!("`foo", "foo");
     }
 
@@ -127,7 +127,7 @@ mod tests {
         assert_json_eq!("[]", json!([]));
         assert_json_eq!("[(1+1), (2+2), (3+3)]", json!([2.0, 4.0, 6.0]));
         assert_json_eq!(
-            r#"[`a, ("b" ++ "c"), "d${"e"}f", "g"]"#,
+            r##"[`a, ("b" ++ "c"), "d#{"e"}f", "g"]"##,
             json!(["a", "bc", "def", "g"])
         );
         assert_json_eq!(
