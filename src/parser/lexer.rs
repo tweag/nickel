@@ -269,7 +269,7 @@ pub enum MultiStringToken<'input> {
     // look-aheads in the lexer (which Logos doesn't support for performance reason), we just use a
     // separate token. This one has lowest matching priority according to Logos' rules, so it is
     // matched only if `CandidateEnd` cannot be
-    #[regex("\"(#+|(#+[^m]))?")]
+    #[regex("\"#*")]
     FalseEnd(&'input str),
     // A candidate end. A multiline string starting delimiter `MultiStringStart` can have a
     // variable number of `#` character, so the lexer matchs candidate end delimiter, compare the
