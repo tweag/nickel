@@ -1160,28 +1160,28 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         }
 
         assert_eval_str(
-            r#""simple ${"interp" ++ "olation"} here""#,
+            r#""simple #{"interp" ++ "olation"} here""#,
             "simple interpolation here",
         );
-        assert_eval_str(r#""${"alone"}""#, "alone");
+        assert_eval_str(r##""#{"alone"}""##, "alone");
         assert_eval_str(
-            r#""nested ${ "${(fun x => "${x}") "expression"}" }""#,
+            r##""nested #{ "#{(fun x => "#{x}") "expression"}" }""##,
             "nested expression",
         );
         assert_eval_str(
-            r#""${"some"}${" " ++ "se" ++ "qu"}${"${"ence"}"}""#,
+            r##""#{"some"}#{" " ++ "se" ++ "qu"}#{"#{"ence"}"}""##,
             "some sequence",
         );
         assert_eval_str(
-            r#""nested ${ {str = {a = "braces"}.a}.str } !""#,
+            r##""nested #{ {str = {a = "braces"}.a}.str } !""##,
             "nested braces !",
         );
         assert_eval_str(
-            r#"let x = "world" in "Hello, ${x}! Welcome in ${let y = "universe" in "the ${x}-${y}"}""#,
+            r##"let x = "world" in "Hello, #{x}! Welcome in #{let y = "universe" in "the #{x}-#{y}"}""##,
             "Hello, world! Welcome in the world-universe",
         );
 
-        match eval_string(r#""bad type ${1 + 1}""#) {
+        match eval_string(r##""bad type #{1 + 1}""##) {
             Err(Error::EvalError(EvalError::TypeError(_, _, _, _))) => (),
             _ => assert!(false),
         };
@@ -1234,7 +1234,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
     fn poly_eq() {
         assert_peq!("0", "0 + 0 + 0");
         assert_peq!("true", "if true then true else false");
-        assert_peq!("\"a\" ++ \"b\" ++ \"c\"", "\"${\"a\" ++ \"b\"}\" ++ \"c\"");
+        assert_peq!("\"a\" ++ \"b\" ++ \"c\"", "\"#{\"a\" ++ \"b\"}\" ++ \"c\"");
 
         assert_npeq!("1 + 1", "0");
         assert_npeq!("true", "if true then false else true");
@@ -1537,12 +1537,33 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
     #[test]
     fn multiline_interpolation() {
         assert_peq!(
+            r##"m#"Simple #{"interpolated"} string"#m"##,
+            "\"Simple interpolated string\""
+        );
+        assert_peq!(
+            r###"m##"Double ##{"interpolated"} string"##m"###,
+            "\"Double interpolated string\""
+        );
+        assert_peq!(
+            r###"m##"Not #{"interpolated"}"##m"###,
+            "\"Not \\#{\\\"interpolated\\\"}\""
+        );
+        assert_peq!(
+            r####"m###"###{"Triple"} ##{not} #{interpolated}"###m"####,
+            "\"Triple #\\#{not} \\#{interpolated}\""
+        );
+        assert_peq!(
+            r###"m#"#{m##"##{"Not"} #{interpolated}"##m} ##{"string"}"#m"###,
+            "\"Not \\#{interpolated} #\\#{\\\"string\\\"}\""
+        );
+
+        assert_peq!(
             r###"
                 m#"
-                   ${m#"thi"#m ++ "s"}
-                       ${"is" ++ " an"}
+                   #{m#"thi"#m ++ "s"}
+                       #{"is" ++ " an"}
                        indented
-                   ${"${m##"te"##m}xt"}
+                   #{"#{m##"te"##m}xt"}
                 "#m
             "###,
             "\"this\n    is an\n    indented\ntext\""
@@ -1553,8 +1574,8 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
                 let x = "I\n need\n  indent!" in
                 m#"
                   base
-                    ${x}
-                  ${x}
+                    #{x}
+                  #{x}
                 "#m
             "##,
             r#""base
@@ -1572,8 +1593,8 @@ I
                 let y = "me\ntoo" in
                 m#"
                   strip
-                    ${x} ${y}
-                    ${"not\nme"}
+                    #{x} #{y}
+                    #{"not\nme"}
                 "#m
             "##,
             r#""strip
