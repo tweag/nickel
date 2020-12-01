@@ -46,7 +46,7 @@ use crate::identifier::Ident;
 use crate::label::ty_path;
 use crate::position::RawSpan;
 use crate::program::ImportResolver;
-use crate::term::{BinaryOp, RichTerm, StrChunk, Term, UnaryOp};
+use crate::term::{BinaryOp, RichTerm, StrChunk, Term, UnaryOp, MetaValue};
 use crate::types::{AbsType, Types};
 use crate::{mk_tyw_arrow, mk_tyw_enum, mk_tyw_enum_row, mk_tyw_record, mk_tyw_row};
 use std::collections::{HashMap, HashSet};
@@ -615,8 +615,17 @@ fn type_check_(
         Term::Wrapped(_, t)
         | Term::DefaultValue(t)
         | Term::ContractWithDefault(_, _, t)
-        | Term::Docstring(_, t) => type_check_(state, envs, strict, t, ty),
-        Term::Contract(_, _) => Ok(()),
+        | Term::Docstring(_, t)
+        | Term::MetaValue(MetaValue {contract: None, value: Some(t), ..}) => type_check_(state, envs, strict, t, ty),
+        // Handle a metavalue with a contract together with a value in the same way as an assume
+        Term::MetaValue(MetaValue {contract: Some((ty2, _)), value: Some(t), ..}) => {
+            unify(state, strict, ty.clone(), to_typewrapper(ty2.clone()))
+                .map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
+            let new_ty = TypeWrapper::Ptr(new_var(state.table));
+            type_check_(state, envs, false, t, new_ty)
+        },
+        Term::Contract(_, _)
+        | Term::MetaValue(_) => Ok(()),
         Term::Import(_) => unify(state, strict, ty, mk_typewrapper::dynamic())
             .map_err(|err| err.to_typecheck_err(state, &rt.pos)),
         Term::ResolvedImport(file_id) => {
