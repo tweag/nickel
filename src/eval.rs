@@ -94,7 +94,7 @@ use crate::operation::{continuate_operation, OperationCont};
 use crate::position::RawSpan;
 use crate::program::ImportResolver;
 use crate::stack::Stack;
-use crate::term::{make as mk_term, RichTerm, StrChunk, Term, UnaryOp};
+use crate::term::{make as mk_term, RichTerm, StrChunk, Term, UnaryOp, MetaValue};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
@@ -390,6 +390,48 @@ where
                 }
             }
             // Unwrapping of enriched terms
+            Term::MetaValue(meta) => {
+                if meta.value.is_some() {
+                    /* Since we are forcing a meta value, we are morally evaluating `force t`
+                     * rather than `t` iteself.  Updating a thunk after having performed this
+                     * forcing may alter the semantics of the program in an unexpected way (see
+                     * issue https://github.com/tweag/nickel/issues/123): we update potential
+                     * thunks now so that their content remains an enriched value.
+                     */
+                    let update_closure = Closure {
+                        body: RichTerm {
+                            term: Box::new(Term::MetaValue(meta)),
+                            pos,
+                        },
+                        env,
+                    };
+                    update_thunks(&mut stack, &update_closure);
+
+                    let Closure {
+                        body:
+                            RichTerm {
+                                term: meta_box,
+                                pos: _,
+                            },
+                        env,
+                    } = update_closure;
+
+                    let t = match *meta_box {
+                        Term::MetaValue(MetaValue {contract: Some((ty, lbl)), value: Some(t), ..}) =>
+                            Term::Assume(ty, lbl, t).into(),
+                        Term::MetaValue(MetaValue {value: Some(t), ..}) => t,
+                        _ => panic!("eval::eval(): previous match enforced that a metavalue has an underlying value, but matched something else")
+                    };
+                    Closure { body: t, env }
+                }
+                // TODO: improve error message using some positions
+                else {
+                    return Err(EvalError::Other(
+                        String::from("empty metavalue"),
+                        pos,
+                    ));
+                }
+            }
             Term::Contract(_, _) if enriched_strict => {
                 return Err(EvalError::Other(
                     String::from(
@@ -674,6 +716,32 @@ fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichTerm 
                 let t = subst_(t, global_env, env, bound);
 
                 RichTerm::new(Term::ContractWithDefault(ty, lbl, t), pos)
+            }
+            Term::MetaValue(meta) => {
+                let contract = meta.contract.map(|(ty, lbl)| {
+                    let ty = match ty {
+                        Types(AbsType::Flat(t)) => Types(AbsType::Flat(subst_(
+                            t,
+                            global_env,
+                            env,
+                            Cow::Borrowed(bound.as_ref()),
+                        ))),
+                        ty => ty,
+                    };
+
+                    (ty, lbl)
+                });
+
+                let value = meta.value.map(|t| subst_(t, global_env, env, bound));
+
+                let meta = MetaValue {
+                    doc: meta.doc,
+                    contract,
+                    priority: meta.priority,
+                    value
+                };
+
+                RichTerm::new(Term::MetaValue(meta), pos)
             }
             Term::Docstring(s, t) => {
                 let t = subst_(t, global_env, env, bound);
