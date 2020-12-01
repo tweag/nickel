@@ -18,7 +18,8 @@ mod types;
 
 use crate::error::{Error, IOError, SerializationError};
 use crate::program::Program;
-use crate::term::RichTerm;
+use crate::term::{RichTerm, Term};
+use std::io::Write;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::{fmt, fs, io, process};
@@ -42,6 +43,7 @@ struct Opt {
 /// Available export formats.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 enum ExportFormat {
+    Raw,
     Json,
 }
 
@@ -53,7 +55,10 @@ impl std::default::Default for ExportFormat {
 
 impl fmt::Display for ExportFormat {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "json")
+        match self {
+            Self::Raw => write!(f, "raw"),
+            Self::Json => write!(f, "json"),
+        }
     }
 }
 
@@ -71,6 +76,7 @@ impl FromStr for ExportFormat {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_ref() {
+            "raw" => Ok(ExportFormat::Raw),
             "json" => Ok(ExportFormat::Json),
             _ => Err(ParseFormatError(String::from(s))),
         }
@@ -82,7 +88,7 @@ impl FromStr for ExportFormat {
 enum Command {
     /// Export the result to a different format
     Export {
-        /// Available formats: `json`. Default format: `json`.
+        /// Available formats: `raw, json`. Default format: `json`.
         #[structopt(long)]
         format: Option<ExportFormat>,
         /// Output file. Standard output by default
@@ -116,17 +122,35 @@ fn main() {
                 let format = format.unwrap_or_default();
 
                 if let Some(file) = output {
-                    let file = fs::File::create(&file).map_err(IOError::from)?;
+                    let mut file = fs::File::create(&file).map_err(IOError::from)?;
 
                     match format {
-                        ExportFormat::Json => serde_json::to_writer_pretty(file, &rt),
-                    }
-                    .map_err(|err| SerializationError::Other(err.to_string()))?;
+                        ExportFormat::Json => serde_json::to_writer_pretty(file, &rt)
+                            .map_err(|err| SerializationError::Other(err.to_string())),
+                        ExportFormat::Raw => match *rt.term {
+                            Term::Str(s) => file
+                                .write_all(s.as_bytes())
+                                .map_err(|err| SerializationError::Other(err.to_string())),
+                            t => Err(SerializationError::Other(format!(
+                                "raw export requires a `Str`, got {}",
+                                t.type_of().unwrap()
+                            ))),
+                        },
+                    }?
                 } else {
                     match format {
-                        ExportFormat::Json => serde_json::to_writer_pretty(io::stdout(), &rt),
-                    }
-                    .map_err(|err| SerializationError::Other(err.to_string()))?;
+                        ExportFormat::Json => serde_json::to_writer_pretty(io::stdout(), &rt)
+                            .map_err(|err| SerializationError::Other(err.to_string())),
+                        ExportFormat::Raw => match *rt.term {
+                            Term::Str(s) => std::io::stdout()
+                                .write_all(s.as_bytes())
+                                .map_err(|err| SerializationError::Other(err.to_string())),
+                            t => Err(SerializationError::Other(format!(
+                                "raw export requires a `Str`, got {}",
+                                t.type_of().unwrap()
+                            ))),
+                        },
+                    }?
                 }
 
                 Ok(())
