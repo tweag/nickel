@@ -278,7 +278,7 @@ pub enum MultiStringToken<'input> {
     #[regex("\"#+m")]
     CandidateEnd(&'input str),
     // Same as `FalseEnd` and `CandidateEnd` but for an interpolation sequence.
-    #[token("#+")]
+    #[regex("#+")]
     FalseInterpolation(&'input str),
     #[regex("#+\\{")]
     CandidateInterpolation(&'input str),
