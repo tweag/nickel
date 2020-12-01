@@ -148,6 +148,10 @@ pub enum Term {
     #[serde(skip_deserializing)]
     ContractWithDefault(Types, Label, RichTerm),
 
+    // #[serde(serialize_with = "crate::serialize::serialize_meta_value")]
+    #[serde(skip)]
+    MetaValue(MetaValue),
+
     /// A term together with its documentation string. Enriched value.
     #[serde(serialize_with = "crate::serialize::serialize_docstring")]
     #[serde(skip_deserializing)]
@@ -159,6 +163,37 @@ pub enum Term {
     /// A resolved import (which has already been loaded and parsed).
     #[serde(skip)]
     ResolvedImport(FileId),
+}
+
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Copy, Clone)]
+pub enum MergePriority {
+    Default,
+    Normal,
+}
+
+impl Default for MergePriority {
+    fn default() -> Self {
+        Self::Normal
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct MetaValue {
+    pub doc: Option<String>,
+    pub contract: Option<(Types, Label)>,
+    pub priority: MergePriority,
+    pub value: Option<RichTerm>,
+}
+
+impl From<RichTerm> for MetaValue {
+    fn from(rt: RichTerm) -> Self {
+        MetaValue {
+            doc: None,
+            contract: None,
+            priority: Default::default(),
+            value: Some(rt)
+        }
+    }
 }
 
 /// A chunk of a string with interpolated expressions inside. Same as `Either<String,
@@ -217,7 +252,6 @@ impl Term {
                 func(t1);
                 func(t2)
             }
-
             Bool(_)
             | Num(_)
             | Str(_)
@@ -237,6 +271,13 @@ impl Term {
             | Docstring(_, ref mut t)
             | ContractWithDefault(_, _, ref mut t) => {
                 func(t);
+            }
+            MetaValue(ref mut meta) => {
+                meta.contract.iter_mut().for_each(|(ref mut ty, _)| match ty.0 {
+                    AbsType::Flat(ref mut rt) => func(rt),
+                    _ => (),
+                });
+                meta.value.iter_mut().for_each(func);
             }
             Let(_, ref mut t1, ref mut t2)
             | App(ref mut t1, ref mut t2)
@@ -275,7 +316,8 @@ impl Term {
             Term::Contract(_, _)
             | Term::ContractWithDefault(_, _, _)
             | Term::Docstring(_, _)
-            | Term::DefaultValue(_) => Some("EnrichedValue"),
+            | Term::DefaultValue(_)
+            | Term::MetaValue(_) => Some("Metavalue"),
             Term::Let(_, _, _)
             | Term::App(_, _)
             | Term::Var(_)
@@ -323,6 +365,26 @@ impl Term {
             Term::Docstring(_, ref t) => {
                 format!("<enriched:doc,term={}>", (*t.term).shallow_repr())
             }
+            Term::MetaValue(ref meta) => {
+                let mut content = String::new();
+
+                if meta.doc.is_some() {
+                    content.push_str("doc,");
+                }
+                if meta.contract.is_some() {
+                    content.push_str("contract,");
+                }
+
+                let value_label = if meta.priority == MergePriority::Default { "default" } else { "value" };
+                let value = if let Some(t) = &meta.value {
+                    format!("{}", t.as_ref().shallow_repr())
+                }
+                else {
+                    String::from("none")
+                };
+
+                format!("<{}{}={}>", content, value_label, value)
+            }
             Term::DefaultValue(ref t) => format!("<enriched:default={}", (*t.term).shallow_repr()),
             Term::Var(Ident(id)) => id.clone(),
             Term::Let(_, _, _)
@@ -359,6 +421,7 @@ impl Term {
             | Term::Contract(_, _)
             | Term::DefaultValue(_)
             | Term::ContractWithDefault(_, _, _)
+            | Term::MetaValue(_)
             | Term::Docstring(_, _)
             | Term::Import(_)
             | Term::ResolvedImport(_)
@@ -373,7 +436,8 @@ impl Term {
             Term::Contract(_, _)
             | Term::DefaultValue(_)
             | Term::ContractWithDefault(_, _, _)
-            | Term::Docstring(_, _) => true,
+            | Term::Docstring(_, _)
+            | Term::MetaValue(_) => true,
             Term::Bool(_)
             | Term::Num(_)
             | Term::Str(_)
@@ -424,6 +488,7 @@ impl Term {
             | Term::Contract(_, _)
             | Term::DefaultValue(_)
             | Term::ContractWithDefault(_, _, _)
+            | Term::MetaValue(_)
             | Term::Docstring(_, _)
             | Term::Import(_)
             | Term::ResolvedImport(_)
@@ -818,7 +883,7 @@ impl RichTerm {
                 let default = default
                     .map(|t| t.traverse(f, state))
                     // Transpose from Option<Result> to Result<Option>. There is a `transpose`
-                    // method in Rust, but it has currently not make it to the stable version yet
+                    // method in Rust, but it has currently not made it to the stable version yet
                     .map_or(Ok(None), |res| res.map(Some))?;
 
                 let t = t.traverse(f, state)?;
@@ -986,6 +1051,37 @@ impl RichTerm {
                 f(
                     RichTerm {
                         term: Box::new(Term::Docstring(s, t)),
+                        pos,
+                    },
+                    state,
+                )
+            }
+            Term::MetaValue(meta) => {
+                let contract = meta.contract.map(|(ty, lbl)| {
+                    let ty = match ty {
+                        Types(AbsType::Flat(t)) => Types(AbsType::Flat(t.traverse(f, state)?)),
+                        ty => ty,
+                    }
+;
+                    Ok((ty, lbl))
+                })
+                // Transpose from Option<Result> to Result<Option>. There is a `transpose`
+                // method in Rust, but it has currently not made it to the stable version yet
+                .map_or(Ok(None), |res| res.map(Some))?;
+
+                let value = meta.value.map(|t| t.traverse(f, state))
+                .map_or(Ok(None), |res| res.map(Some))?;
+
+                let meta = MetaValue {
+                    doc: meta.doc,
+                    contract,
+                    priority: meta.priority,
+                    value
+                };
+
+                f(
+                    RichTerm {
+                        term: Box::new(Term::MetaValue(meta)),
                         pos,
                     },
                     state,
