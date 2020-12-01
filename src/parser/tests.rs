@@ -281,3 +281,16 @@ fn str_escape() {
         mk_single_chunk("#a#b#c#{d#"),
     );
 }
+
+/// Regression test for [#230](https://github.com/tweag/nickel/issues/230).
+#[test]
+fn multiline_str_escape() {
+    assert_eq!(
+        parse_without_pos(r##"m#"#Hel##lo###"#m"##),
+        mk_single_chunk("#Hel##lo###"),
+    );
+    assert_eq!(
+        parse_without_pos(r##"m#"#Hel##{lo###{"#m"##),
+        mk_single_chunk("#Hel##{lo###{"),
+    );
+}
