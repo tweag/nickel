@@ -94,7 +94,7 @@ use crate::operation::{continuate_operation, OperationCont};
 use crate::position::RawSpan;
 use crate::program::ImportResolver;
 use crate::stack::Stack;
-use crate::term::{make as mk_term, RichTerm, StrChunk, Term, UnaryOp, MetaValue};
+use crate::term::{make as mk_term, MetaValue, RichTerm, StrChunk, Term, UnaryOp};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
@@ -426,10 +426,7 @@ where
                 }
                 // TODO: improve error message using some positions
                 else {
-                    return Err(EvalError::Other(
-                        String::from("empty metavalue"),
-                        pos,
-                    ));
+                    return Err(EvalError::Other(String::from("empty metavalue"), pos));
                 }
             }
             Term::Contract(_, _) if enriched_strict => {
@@ -738,7 +735,7 @@ fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichTerm 
                     doc: meta.doc,
                     contract,
                     priority: meta.priority,
-                    value
+                    value,
                 };
 
                 RichTerm::new(Term::MetaValue(meta), pos)

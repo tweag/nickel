@@ -191,11 +191,10 @@ impl From<RichTerm> for MetaValue {
             doc: None,
             contract: None,
             priority: Default::default(),
-            value: Some(rt)
+            value: Some(rt),
         }
     }
 }
-
 /// A chunk of a string with interpolated expressions inside. Same as `Either<String,
 /// RichTerm>` but with explicit constructor names.
 #[derive(Debug, PartialEq, Clone)]
@@ -273,10 +272,12 @@ impl Term {
                 func(t);
             }
             MetaValue(ref mut meta) => {
-                meta.contract.iter_mut().for_each(|(ref mut ty, _)| match ty.0 {
-                    AbsType::Flat(ref mut rt) => func(rt),
-                    _ => (),
-                });
+                meta.contract
+                    .iter_mut()
+                    .for_each(|(ref mut ty, _)| match ty.0 {
+                        AbsType::Flat(ref mut rt) => func(rt),
+                        _ => (),
+                    });
                 meta.value.iter_mut().for_each(func);
             }
             Let(_, ref mut t1, ref mut t2)
@@ -375,11 +376,14 @@ impl Term {
                     content.push_str("contract,");
                 }
 
-                let value_label = if meta.priority == MergePriority::Default { "default" } else { "value" };
+                let value_label = if meta.priority == MergePriority::Default {
+                    "default"
+                } else {
+                    "value"
+                };
                 let value = if let Some(t) = &meta.value {
                     format!("{}", t.as_ref().shallow_repr())
-                }
-                else {
+                } else {
                     String::from("none")
                 };
 
@@ -1057,26 +1061,29 @@ impl RichTerm {
                 )
             }
             Term::MetaValue(meta) => {
-                let contract = meta.contract.map(|(ty, lbl)| {
-                    let ty = match ty {
-                        Types(AbsType::Flat(t)) => Types(AbsType::Flat(t.traverse(f, state)?)),
-                        ty => ty,
-                    }
-;
-                    Ok((ty, lbl))
-                })
-                // Transpose from Option<Result> to Result<Option>. There is a `transpose`
-                // method in Rust, but it has currently not made it to the stable version yet
-                .map_or(Ok(None), |res| res.map(Some))?;
+                let contract = meta
+                    .contract
+                    .map(|(ty, lbl)| {
+                        let ty = match ty {
+                            Types(AbsType::Flat(t)) => Types(AbsType::Flat(t.traverse(f, state)?)),
+                            ty => ty,
+                        };
+                        Ok((ty, lbl))
+                    })
+                    // Transpose from Option<Result> to Result<Option>. There is a `transpose`
+                    // method in Rust, but it has currently not made it to the stable version yet
+                    .map_or(Ok(None), |res| res.map(Some))?;
 
-                let value = meta.value.map(|t| t.traverse(f, state))
-                .map_or(Ok(None), |res| res.map(Some))?;
+                let value = meta
+                    .value
+                    .map(|t| t.traverse(f, state))
+                    .map_or(Ok(None), |res| res.map(Some))?;
 
                 let meta = MetaValue {
                     doc: meta.doc,
                     contract,
                     priority: meta.priority,
-                    value
+                    value,
                 };
 
                 f(
