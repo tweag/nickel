@@ -132,55 +132,6 @@ pub mod share_normal_form {
                     RichTerm::new(Term::MetaValue(meta), pos)
                 }
             }
-            Term::DefaultValue(t) => {
-                if should_share(&t.term) {
-                    let fresh_var = fresh_var();
-                    let inner = RichTerm {
-                        term: Box::new(Term::DefaultValue(Term::Var(fresh_var.clone()).into())),
-                        pos,
-                    };
-                    Term::Let(fresh_var, t, inner).into()
-                } else {
-                    RichTerm {
-                        term: Box::new(Term::DefaultValue(t)),
-                        pos,
-                    }
-                }
-            }
-            Term::ContractWithDefault(ty, lbl, t) => {
-                if should_share(&t.term) {
-                    let fresh_var = fresh_var();
-                    let inner = RichTerm {
-                        term: Box::new(Term::ContractWithDefault(
-                            ty,
-                            lbl,
-                            Term::Var(fresh_var.clone()).into(),
-                        )),
-                        pos,
-                    };
-                    Term::Let(fresh_var, t, inner).into()
-                } else {
-                    RichTerm {
-                        term: Box::new(Term::ContractWithDefault(ty, lbl, t)),
-                        pos,
-                    }
-                }
-            }
-            Term::Docstring(s, t) => {
-                if should_share(&t.term) {
-                    let fresh_var = fresh_var();
-                    let inner = RichTerm {
-                        term: Box::new(Term::Docstring(s, Term::Var(fresh_var.clone()).into())),
-                        pos,
-                    };
-                    Term::Let(fresh_var, t, inner).into()
-                } else {
-                    RichTerm {
-                        term: Box::new(Term::Docstring(s, t)),
-                        pos,
-                    }
-                }
-            }
             t => RichTerm {
                 term: Box::new(t),
                 pos,

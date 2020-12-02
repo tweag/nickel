@@ -72,6 +72,7 @@ impl Serialize for RichTerm {
 /// Check that a term is serializable. Serializable terms are booleans, numbers, strings, enum,
 /// lists of serializable terms or records of serializable terms.
 pub fn validate(t: &RichTerm) -> Result<(), SerializationError> {
+    use crate::term;
     use Term::*;
 
     match t.term.as_ref() {
@@ -84,7 +85,9 @@ pub fn validate(t: &RichTerm) -> Result<(), SerializationError> {
             vec.iter().try_for_each(validate)?;
             Ok(())
         }
-        DefaultValue(ref t) | ContractWithDefault(_, _, ref t) | Docstring(_, ref t) => validate(t),
+        MetaValue(term::MetaValue {
+            value: Some(ref t), ..
+        }) => validate(t),
         _ => Err(SerializationError::NonSerializable(t.clone())),
     }
 }

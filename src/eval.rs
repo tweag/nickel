@@ -429,51 +429,6 @@ where
                     return Err(EvalError::Other(String::from("empty metavalue"), pos));
                 }
             }
-            Term::Contract(_, _) if enriched_strict => {
-                return Err(EvalError::Other(
-                    String::from(
-                        "Expected a simple term, got a Contract. Contracts cannot be evaluated",
-                    ),
-                    pos,
-                ));
-            }
-            enriched @ Term::DefaultValue(_) | enriched @ Term::Docstring(_, _)
-                if enriched_strict =>
-            {
-                /* Since we are forcing an enriched value, we are morally breaking subject
-                 * reduction (i.e., the type of the current term changes from `enriched something`
-                 * to just `something`). Updating a thunk after having performed this forcing may
-                 * alter the semantics of the program in an unexpected way (see issue
-                 * https://github.com/tweag/nickel/issues/123): we update potential thunks now so
-                 * that their content remains an enriched value.
-                 */
-                let update_closure = Closure {
-                    body: RichTerm {
-                        term: Box::new(enriched),
-                        pos,
-                    },
-                    env,
-                };
-                update_thunks(&mut stack, &update_closure);
-
-                let Closure {
-                    body:
-                        RichTerm {
-                            term: enriched_box,
-                            pos: _,
-                        },
-                    env,
-                } = update_closure;
-                let t = match *enriched_box {
-                    Term::DefaultValue(t) | Term::Docstring(_, t) => t,
-                    _ => panic!("eval::eval(): previous match enforced that a term is a default or a docstring, but matched something else")
-                };
-                Closure { body: t, env }
-            }
-            Term::ContractWithDefault(ty, label, t) if enriched_strict => Closure {
-                body: Term::Assume(ty, label, t).into(),
-                env,
-            },
             Term::ResolvedImport(id) => {
                 if let Some(t) = resolver.get(id) {
                     Closure::atomic_closure(t)
@@ -685,35 +640,6 @@ fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichTerm 
 
                 RichTerm::new(Term::StrChunks(chunks), pos)
             }
-            Term::Contract(ty, label) => {
-                let ty = match ty {
-                    Types(AbsType::Flat(t)) => {
-                        Types(AbsType::Flat(subst_(t, global_env, env, bound)))
-                    }
-                    ty => ty,
-                };
-
-                RichTerm::new(Term::Contract(ty, label), pos)
-            }
-            Term::DefaultValue(t) => {
-                let t = subst_(t, global_env, env, bound);
-
-                RichTerm::new(Term::DefaultValue(t), pos)
-            }
-            Term::ContractWithDefault(ty, lbl, t) => {
-                let ty = match ty {
-                    Types(AbsType::Flat(t)) => Types(AbsType::Flat(subst_(
-                        t,
-                        global_env,
-                        env,
-                        Cow::Borrowed(bound.as_ref()),
-                    ))),
-                    ty => ty,
-                };
-                let t = subst_(t, global_env, env, bound);
-
-                RichTerm::new(Term::ContractWithDefault(ty, lbl, t), pos)
-            }
             Term::MetaValue(meta) => {
                 let contract = meta.contract.map(|(ty, lbl)| {
                     let ty = match ty {
@@ -739,11 +665,6 @@ fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichTerm 
                 };
 
                 RichTerm::new(Term::MetaValue(meta), pos)
-            }
-            Term::Docstring(s, t) => {
-                let t = subst_(t, global_env, env, bound);
-
-                RichTerm::new(Term::Docstring(s, t), pos)
             }
         }
     }
@@ -863,13 +784,27 @@ mod tests {
         assert_eq!(Ok(Term::Bool(true)), eval_no_import(lambda));
     }
 
+    fn mk_default(t: RichTerm) -> Term {
+        use crate::term::MergePriority;
+
+        let mut meta = MetaValue::from(t);
+        meta.priority = MergePriority::Default;
+        Term::MetaValue(meta)
+    }
+
+    fn mk_docstring<S>(t: RichTerm, s: S) -> Term
+    where
+        S: Into<String>,
+    {
+        let mut meta = MetaValue::from(t);
+        meta.doc.replace(s.into());
+        Term::MetaValue(meta)
+    }
+
     #[test]
     fn enriched_terms_unwrapping() {
-        let t = Term::DefaultValue(
-            Term::DefaultValue(Term::Docstring("a".to_string(), Term::Bool(false).into()).into())
-                .into(),
-        )
-        .into();
+        let t = mk_default(mk_default(mk_docstring(Term::Bool(false).into(), "a").into()).into())
+            .into();
         assert_eq!(Ok(Term::Bool(false)), eval_no_import(t));
     }
 
@@ -878,7 +813,7 @@ mod tests {
         let t = mk_term::op2(
             BinaryOp::Merge(),
             Term::Num(1.0),
-            Term::DefaultValue(Term::Num(2.0).into()),
+            mk_default(Term::Num(2.0).into()),
         );
         assert_eq!(Ok(Term::Num(1.0)), eval_no_import(t));
     }
@@ -887,8 +822,8 @@ mod tests {
     fn merge_incompatible_defaults() {
         let t = mk_term::op2(
             BinaryOp::Merge(),
-            Term::DefaultValue(Term::Num(1.0).into()),
-            Term::DefaultValue(Term::Num(2.0).into()),
+            mk_default(Term::Num(1.0).into()),
+            mk_default(Term::Num(2.0).into()),
         );
 
         eval_no_import(t).unwrap_err();

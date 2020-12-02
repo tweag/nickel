@@ -613,9 +613,6 @@ fn type_check_(
         Term::Sym(_) => unify(state, strict, ty, mk_typewrapper::sym())
             .map_err(|err| err.to_typecheck_err(state, &rt.pos)),
         Term::Wrapped(_, t)
-        | Term::DefaultValue(t)
-        | Term::ContractWithDefault(_, _, t)
-        | Term::Docstring(_, t)
         | Term::MetaValue(MetaValue {
             contract: None,
             value: Some(t),
@@ -632,7 +629,7 @@ fn type_check_(
             let new_ty = TypeWrapper::Ptr(new_var(state.table));
             type_check_(state, envs, false, t, new_ty)
         }
-        Term::Contract(_, _) | Term::MetaValue(_) => Ok(()),
+        Term::MetaValue(_) => Ok(()),
         Term::Import(_) => unify(state, strict, ty, mk_typewrapper::dynamic())
             .map_err(|err| err.to_typecheck_err(state, &rt.pos)),
         Term::ResolvedImport(file_id) => {
