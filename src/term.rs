@@ -148,8 +148,7 @@ pub enum Term {
     #[serde(skip_deserializing)]
     ContractWithDefault(Types, Label, RichTerm),
 
-    // #[serde(serialize_with = "crate::serialize::serialize_meta_value")]
-    #[serde(skip)]
+    #[serde(serialize_with = "crate::serialize::serialize_meta_value")]
     MetaValue(MetaValue),
 
     /// A term together with its documentation string. Enriched value.
