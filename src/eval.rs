@@ -390,7 +390,7 @@ where
                 }
             }
             // Unwrapping of enriched terms
-            Term::MetaValue(meta) => {
+            Term::MetaValue(meta) if enriched_strict => {
                 if meta.value.is_some() {
                     /* Since we are forcing a meta value, we are morally evaluating `force t`
                      * rather than `t` iteself.  Updating a thunk after having performed this
