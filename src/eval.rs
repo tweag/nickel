@@ -392,11 +392,11 @@ where
             // Unwrapping of enriched terms
             Term::MetaValue(meta) if enriched_strict => {
                 if meta.value.is_some() {
-                    /* Since we are forcing a meta value, we are morally evaluating `force t`
-                     * rather than `t` iteself.  Updating a thunk after having performed this
-                     * forcing may alter the semantics of the program in an unexpected way (see
-                     * issue https://github.com/tweag/nickel/issues/123): we update potential
-                     * thunks now so that their content remains an enriched value.
+                    /* Since we are forcing a metavalue, we are morally evaluating `force t` rather
+                     * than `t` iteself.  Updating a thunk after having performed this forcing may
+                     * alter the semantics of the program in an unexpected way (see issue
+                     * https://github.com/tweag/nickel/issues/123): we update potential thunks now
+                     * so that their content remains a meta value.
                      */
                     let update_closure = Closure {
                         body: RichTerm {
