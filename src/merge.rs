@@ -56,7 +56,7 @@ use crate::eval::{Closure, Environment};
 use crate::label::Label;
 use crate::position::RawSpan;
 use crate::term::make as mk_term;
-use crate::term::{BinaryOp, MergePriority, MetaValue, RichTerm, Term};
+use crate::term::{BinaryOp, MetaValue, RichTerm, Term};
 use crate::transformations::Closurizable;
 use crate::types::{AbsType, Types};
 use crate::{mk_app, mk_fun};
@@ -234,7 +234,7 @@ pub fn merge(
                 _ => panic!("unreachable case"),
             };
 
-            let contract = merge_contracts_main(&mut env, contract1, env1, contract2, env2);
+            let contract = merge_contracts_meta(&mut env, contract1, env1, contract2, env2);
 
             let meta = MetaValue {
                 doc,
@@ -433,7 +433,7 @@ fn merge_doc(doc1: Option<String>, doc2: Option<String>) -> Option<String> {
 }
 
 /// Merge the two optional contracts of a metavalue.
-fn merge_contracts_main(
+fn merge_contracts_meta(
     env: &mut Environment,
     c1: Option<(Types, Label)>,
     env1: Environment,
