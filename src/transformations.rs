@@ -47,7 +47,7 @@ pub mod share_normal_form {
     use super::fresh_var;
     use crate::identifier::Ident;
     use crate::position::RawSpan;
-    use crate::term::{RichTerm, Term};
+    use crate::term::{MetaValue, RichTerm, Term};
 
     /// Transform the top-level term of an AST to a share normal form, if it can.
     ///
@@ -120,6 +120,17 @@ pub mod share_normal_form {
                     .collect();
 
                 with_bindings(Term::List(ts), bindings, pos)
+            }
+            Term::MetaValue(mut meta @ MetaValue { value: Some(_), .. }) => {
+                if meta.value.as_ref().map(|t| should_share(&t.term)).unwrap() {
+                    let fresh_var = fresh_var();
+                    let t = meta.value.take().unwrap();
+                    meta.value.replace(Term::Var(fresh_var.clone()).into());
+                    let inner = RichTerm::new(Term::MetaValue(meta), pos);
+                    Term::Let(fresh_var, t, inner).into()
+                } else {
+                    RichTerm::new(Term::MetaValue(meta), pos)
+                }
             }
             Term::DefaultValue(t) => {
                 if should_share(&t.term) {
