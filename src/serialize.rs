@@ -1,33 +1,9 @@
 //! Serialization of an evaluated program to various data format.
 use crate::error::SerializationError;
 use crate::identifier::Ident;
-use crate::label::Label;
 use crate::term::{MetaValue, RichTerm, Term};
-use crate::types::Types;
 use serde::ser::{Error, Serialize, SerializeMap, Serializer};
 use std::collections::HashMap;
-
-/// Serializer for docstring. Ignore the meta-data and serialize the underlying term.
-pub fn serialize_docstring<S>(_doc: &String, t: &RichTerm, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    t.serialize(serializer)
-}
-
-/// Serializer for a contract with a default value. Ignore the meta-data and serialize the
-/// underlying term.
-pub fn serialize_contract_default<S>(
-    _ty: &Types,
-    _l: &Label,
-    t: &RichTerm,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    t.serialize(serializer)
-}
 
 /// Serializer for metavalues.
 pub fn serialize_meta_value<S>(meta: &MetaValue, serializer: S) -> Result<S::Ok, S::Error>
@@ -85,6 +61,7 @@ pub fn validate(t: &RichTerm) -> Result<(), SerializationError> {
             vec.iter().try_for_each(validate)?;
             Ok(())
         }
+        //TODO: have a specific error for such missing value.
         MetaValue(term::MetaValue {
             value: Some(ref t), ..
         }) => validate(t),

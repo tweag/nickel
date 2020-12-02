@@ -180,14 +180,8 @@ pub enum StrChunk<E> {
     ),
 }
 
+#[cfg(test)]
 impl<E> StrChunk<E> {
-    pub fn literal<S>(s: S) -> Self
-    where
-        S: Into<String>,
-    {
-        StrChunk::Literal(s.into())
-    }
-
     pub fn expr(e: E) -> Self {
         StrChunk::Expr(e, 0)
     }

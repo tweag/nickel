@@ -337,15 +337,6 @@ fn merge_closurize(
     body.closurize(env, local_env)
 }
 
-/// Take two terms together with their environment, and return a closure representing their merge.
-/// Just call [`merge_closurize`](./fn.merge_closurize.html) in a new environment and return the
-/// result.
-fn mk_merge_closure(t1: RichTerm, env1: Environment, t2: RichTerm, env2: Environment) -> Closure {
-    let mut env = HashMap::new();
-    let body = merge_closurize(&mut env, t1, env1, t2, env2);
-    Closure { body, env }
-}
-
 /// Compose two contracts, given as terms.
 ///
 /// To compose contracts `c1` and `c2`, construct the term `fun _l x => c1 l1 (c2 l2 x)`, where
