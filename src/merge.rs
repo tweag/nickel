@@ -217,6 +217,8 @@ pub fn merge(
                 (value2, _) => (value2, env2.clone()),
             };
 
+            // Selecting either meta1's value, meta2's value, or the merge of the two values,
+            // depending on which is defined and respective priorities.
             let (value, priority, mut env) = match (value1, value2) {
                 (Some(t1), Some(t2)) if priority1 == priority2 => {
                     let mut env = Environment::new();
@@ -242,6 +244,7 @@ pub fn merge(
                 priority,
                 value,
             };
+
             Ok(Closure {
                 body: Term::MetaValue(meta).into(),
                 env,
