@@ -193,12 +193,10 @@ pub fn merge(
             let (value1, val_env1) = match (value1, &contract2) {
                 (Some(t), Some((ty, lbl))) if priority1 >= priority2 => {
                     let mut env = Environment::new();
-                    let ty_closure = ty.clone().closurize(&mut env, env2.clone());
-                    let t_closure = t.closurize(&mut env, env1.clone());
-                    (
-                        Some(Term::Assume(ty_closure, lbl.clone(), t_closure).into()),
-                        env,
-                    )
+                    let mut env1_local = env1.clone();
+                    let ty_closure = ty.clone().closurize(&mut env1_local, env2.clone());
+                    let t: RichTerm = Term::Assume(ty_closure, lbl.clone(), t).into();
+                    (Some(t.closurize(&mut env, env1_local)), env)
                 }
                 (value1, _) => (value1, env1.clone()),
             };
@@ -207,12 +205,10 @@ pub fn merge(
             let (value2, val_env2) = match (value2, &contract1) {
                 (Some(t), Some((ty, lbl))) if priority2 >= priority1 => {
                     let mut env = Environment::new();
-                    let ty_closure = ty.clone().closurize(&mut env, env1.clone());
-                    let t_closure = t.closurize(&mut env, env2.clone());
-                    (
-                        Some(Term::Assume(ty_closure, lbl.clone(), t_closure).into()),
-                        env,
-                    )
+                    let mut env2_local = env2.clone();
+                    let ty_closure = ty.clone().closurize(&mut env2_local, env1.clone());
+                    let t: RichTerm = Term::Assume(ty_closure, lbl.clone(), t).into();
+                    (Some(t.closurize(&mut env, env2_local)), env)
                 }
                 (value2, _) => (value2, env2.clone()),
             };
