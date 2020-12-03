@@ -658,6 +658,15 @@ fn type_check_(
 fn apparent_type(t: &Term, table: &mut UnifTable, strict: bool) -> TypeWrapper {
     match t {
         Term::Assume(ty, _, _) | Term::Promise(ty, _, _) => to_typewrapper(ty.clone()),
+        Term::MetaValue(MetaValue {
+            contract: Some((ty, _)),
+            ..
+        }) => to_typewrapper(ty.clone()),
+        Term::MetaValue(MetaValue {
+            contract: None,
+            value: Some(v),
+            ..
+        }) => apparent_type(v.as_ref(), table, strict),
         _ if strict => TypeWrapper::Ptr(new_var(table)),
         _ => mk_typewrapper::dynamic(),
     }
