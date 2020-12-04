@@ -234,6 +234,8 @@ pub enum NormalToken<'input> {
     RAngleBracket,
     #[token(">=")]
     GreaterOrEq,
+    #[regex("//[^\n]*")]
+    LineComment,
 }
 
 /// The tokens in string mode.
@@ -542,6 +544,8 @@ impl<'input> Iterator for Lexer<'input> {
             | Some(MultiStr(MultiStringToken::Error)) => {
                 return Some(Err(LexicalError::Generic(span.start, span.end)))
             }
+            // Ignore comment
+            Some(Normal(NormalToken::LineComment)) => return self.next(),
             _ => (),
         }
 
