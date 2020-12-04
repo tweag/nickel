@@ -25,7 +25,7 @@
 
     flatten : List -> List =
       fun l =>
-        fold (fun l acc => acc @ Assume(List, l)) l [];
+        fold (fun l acc => Assume(List, l) @ acc) l [];
 
     all : (Dyn -> Bool) -> List -> Bool =
       fun pred l =>
