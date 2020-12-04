@@ -268,9 +268,9 @@ impl Program {
         let (t, global_env) = self.prepare_eval()?;
 
         let t = if let Some(p) = path {
-            // Parsing `hole.path`
-            let hole = "hole___";
-            let source = format!("{}.{}", hole, p);
+            // Parsing `hole.path`. We `seq` it to force the evaluation of the underlying value,
+            // which can be then showed to the user.
+            let source = format!("let x = (y.{}) in seq x x", p);
             let file_id = self.files.add("<query path>", source.clone());
             let new_term = parser::grammar::TermParser::new()
                 .parse(file_id, Lexer::new(&source))
@@ -283,7 +283,7 @@ impl Program {
                 env: eval::Environment::new(),
             };
             env.insert(
-                Ident::from(hole),
+                Ident::from("y"),
                 (Rc::new(RefCell::new(closure)), eval::IdentKind::Let()),
             );
 
