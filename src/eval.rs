@@ -154,7 +154,7 @@ pub fn eval<R>(t0: RichTerm, global_env: &Environment, resolver: &mut R) -> Resu
 where
     R: ImportResolver,
 {
-    eval_(t0, global_env, resolver).map(|(term, _)| term)
+    eval_(t0, global_env, resolver, true).map(|(term, _)| term)
 }
 
 /// Fully evaluate a Nickel term: the result is not a WHNF but to a value with all variables substituted.
@@ -175,10 +175,53 @@ where
             mk_term::var("x")
         ),
     );
-    eval_(wrapper, global_env, resolver)
+    eval_(wrapper, global_env, resolver, true)
         .map(|(term, env)| subst(term.into(), &global_env, &env).into())
 }
 
+/// Evaluate a Nickel Term, stopping when a meta value is encountered at the top-level without
+/// unwrapping it.
+///
+/// Used to query the metadata of a value.
+pub fn eval_meta<R>(
+    t: RichTerm,
+    global_env: &Environment,
+    resolver: &mut R,
+) -> Result<Option<MetaValue>, EvalError>
+where
+    R: ImportResolver,
+{
+    let (term, mut env) = eval_(t, &global_env, resolver, false)?;
+
+    match term {
+        Term::MetaValue(mut meta) => {
+            if let Some(mut t) = meta.value.take() {
+                // Unwrapping leading variables in the value, to have a better representation to
+                // print.
+                while let Term::Var(id) = t.as_ref() {
+                    let thunk = env
+                        .get(&id)
+                        .or_else(|| global_env.get(&id))
+                        .map(|(rc, _)| rc.clone())
+                        .expect("eval::eval_meta(): unexpected unbound identifier");
+
+                    let Closure {
+                        body,
+                        env: local_env,
+                    } = thunk.borrow().clone();
+
+                    t = body;
+                    env = local_env;
+                }
+
+                meta.value.replace(t);
+            }
+
+            Ok(Some(meta))
+        }
+        _ => Ok(None),
+    }
+}
 /// The main loop of evaluation.
 ///
 /// Implement the evaluation of the core language, which includes application, thunk update,
@@ -192,6 +235,8 @@ where
 /// - `global_env`: the global environment containing the builtin functions of the language. Accessible from anywhere in the
 /// program.
 /// - `resolver`: the interface to fetch imports.
+/// - `enriched_strict`: if evaluation is strict with respect to enriched values (metavalues).
+///   Standard evaluation should be strict, but set to false when extracting the metadata of value.
 ///
 /// # Return
 ///
@@ -202,6 +247,7 @@ pub fn eval_<R>(
     t0: RichTerm,
     global_env: &Environment,
     resolver: &mut R,
+    mut enriched_strict: bool,
 ) -> Result<(Term, Environment), EvalError>
 where
     R: ImportResolver,
@@ -209,7 +255,6 @@ where
     let mut clos = Closure::atomic_closure(t0);
     let mut call_stack = CallStack::new();
     let mut stack = Stack::new();
-    let mut enriched_strict = true;
 
     loop {
         let Closure {
@@ -291,7 +336,13 @@ where
                 }
             }
             Term::Op1(op, t) => {
-                stack.push_op_cont(OperationCont::Op1(op, t.pos.clone()), call_stack.len(), pos);
+                let prev_strict = enriched_strict;
+                enriched_strict = true;
+                stack.push_op_cont(
+                    OperationCont::Op1(op, t.pos.clone(), prev_strict),
+                    call_stack.len(),
+                    pos,
+                );
                 Closure { body: t, env }
             }
             Term::Op2(op, fst, snd) => {
@@ -531,7 +582,7 @@ fn update_thunks(stack: &mut Stack, closure: &Closure) {
 }
 
 /// Recursively substitute each variable occurrence of a term for its value in the environment.
-fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichTerm {
+pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichTerm {
     use std::borrow::Cow;
     use std::collections::HashSet;
 
