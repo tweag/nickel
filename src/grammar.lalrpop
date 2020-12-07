@@ -556,7 +556,6 @@ extern {
         "hasField" => Token::Normal(NormalToken::HasField),
         "map" => Token::Normal(NormalToken::Map),
         "elemAt" => Token::Normal(NormalToken::ElemAt),
-        "merge" => Token::Normal(NormalToken::Merge),
 
         "{" => Token::Normal(NormalToken::LBrace),
         "}" => Token::Normal(NormalToken::RBrace),
