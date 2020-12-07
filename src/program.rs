@@ -26,7 +26,7 @@ use crate::identifier::Ident;
 use crate::parser::lexer::Lexer;
 use crate::position::RawSpan;
 use crate::stdlib as nickel_stdlib;
-use crate::term::{MetaValue, RichTerm, Term};
+use crate::term::{RichTerm, Term};
 use crate::typecheck::type_check;
 use crate::types::Types;
 use crate::{eval, parser, transformations};
@@ -778,7 +778,7 @@ Assume(#alwaysTrue, false)
         assert_eq!(res, Ok(Term::Num(2.)));
 
         let res = eval_string(
-            "let f : forall r. <foo, bar | r> -> Num = 
+            "let f : forall r. <foo, bar | r> -> Num =
             fun x => switch { foo => 1, bar => 2, _ => 3, } x in
             f `boo",
         );
