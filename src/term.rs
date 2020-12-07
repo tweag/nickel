@@ -446,11 +446,6 @@ pub enum UnaryOp<CapturedTerm> {
     /// If-then-else.
     Ite(),
 
-    /// Test if a number is zero.
-    ///
-    /// Will be removed once there is a reasonable equality.
-    IsZero(),
-
     /// Test if a term is a numeral.
     IsNum(),
     /// Test if a term is a boolean.
@@ -580,8 +575,6 @@ impl<Ty> UnaryOp<Ty> {
             MapRec(t) => MapRec(f(t)),
 
             Ite() => Ite(),
-
-            IsZero() => IsZero(),
 
             IsNum() => IsNum(),
             IsBool() => IsBool(),

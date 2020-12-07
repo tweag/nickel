@@ -137,13 +137,13 @@ fn lets() {
 #[test]
 fn unary_op() {
     assert_eq!(
-        parse_without_pos("isZero x"),
-        mk_term::op1(UnaryOp::IsZero(), mk_term::var("x"))
+        parse_without_pos("isNum x"),
+        mk_term::op1(UnaryOp::IsNum(), mk_term::var("x"))
     );
     assert_eq!(
-        parse_without_pos("isZero x y"),
+        parse_without_pos("isNum x y"),
         mk_app!(
-            mk_term::op1(UnaryOp::IsZero(), mk_term::var("x")),
+            mk_term::op1(UnaryOp::IsNum(), mk_term::var("x")),
             mk_term::var("y")
         ),
     );

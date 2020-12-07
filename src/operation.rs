@@ -124,19 +124,6 @@ fn process_unary_operation(
                 ))
             }
         }
-        UnaryOp::IsZero() => {
-            if let Term::Num(n) = *t {
-                // TODO Discuss and decide on this comparison for 0 on f64
-                Ok(Closure::atomic_closure(Term::Bool(n == 0.).into()))
-            } else {
-                Err(EvalError::TypeError(
-                    String::from("Num"),
-                    String::from("isZero"),
-                    arg_pos,
-                    RichTerm { term: t, pos },
-                ))
-            }
-        }
         UnaryOp::IsNum() => {
             if let Term::Num(_) = *t {
                 Ok(Closure::atomic_closure(Term::Bool(true).into()))

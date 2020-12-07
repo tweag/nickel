@@ -614,7 +614,7 @@ g true",
             let or : Bool -> Bool -> Bool = fun x => fun y => if x then x else y in
 
             let fibo : Num -> Num = Y (fun fibo =>
-                (fun x => if or (isZero x) (isZero (dec x)) then 1 else (fibo (dec x)) + (fibo (dec (dec x))))) in
+                (fun x => if or (x == 0) (dec x == 0) then 1 else (fibo (dec x)) + (fibo (dec (dec x))))) in
             let val : Num = 4 in
             fibo val",
         );
@@ -900,7 +900,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
                 "let Y = fun f => (fun x => f (x x)) (fun x => f (x x)) in
                 let foldr_ =
                     fun self => fun f => fun acc => fun l =>
-                        if isZero (length l) then acc
+                        if length l == 0 then acc
                         else
                             let h = head l in
                             let t = tail l in
@@ -915,7 +915,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
                         else false
                 in
                 let all = fun pred => fun l => foldr and true (map pred l) in
-                let isZ = fun x => isZero x in
+                let isZ = fun x => x == 0 in
                 all isZ [0, 0, 0, 1]"
             ),
             Ok(Term::Bool(false))
@@ -1063,18 +1063,18 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
              let or = fun x => fun y => if x then x else y in
              let isEven_ = Y (fun f =>
                  (fun x =>
-                     if (isZero x) then true
+                     if x == 0 then true
                      else (
-                         if (isZero (dec x)) then false
+                         if dec x == 0 then false
                          else (f (dec (dec x)))
                      )
                  )
              ) in
              let isDivBy3_ = Y (fun f =>
                  (fun x =>
-                     if (isZero x) then true
+                     if x == 0 then true
                      else (
-                         if or (isZero (dec (dec x))) (isZero (dec x)) then false
+                         if or (dec (dec x) == 0) (dec x == 0) then false
                          else (f (dec (dec (dec x))))
                      )
                  )
@@ -1194,12 +1194,12 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
             Ok(Term::Num(3.0))
         );
         assert_eq!(
-            eval_string("{f = fun x y => if isZero x then y else f (x + (-1)) (y + 1)}.f 5 5"),
+            eval_string("{f = fun x y => if x == 0 then y else f (x + (-1)) (y + 1)}.f 5 5"),
             Ok(Term::Num(10.0))
         );
         assert_eq!(
             eval_string("
-                let with_res = fun res => { f = fun x => if isZero x then res else g x; g = fun y => f (y + (-1)) }.f 10 in
+                let with_res = fun res => { f = fun x => if x == 0 then res else g x; g = fun y => f (y + (-1)) }.f 10 in
                 with_res \"done\""),
             Ok(Term::Str(String::from("done")))
         );

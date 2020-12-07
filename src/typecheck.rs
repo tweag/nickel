@@ -1299,8 +1299,6 @@ pub fn get_uop_type(
                 branches
             )
         }
-        // Num -> Bool
-        UnaryOp::IsZero() => mk_tyw_arrow!(AbsType::Num(), AbsType::Bool()),
         // forall a. a -> Bool
         UnaryOp::IsNum()
         | UnaryOp::IsBool()
@@ -2113,11 +2111,11 @@ mod tests {
         // Fields in recursive records are treated in the type environment in the same way as let-bound expressions
         parse_and_typecheck("{a = 1; b = 1 + a} : {a : Num, b : Num}").unwrap();
         parse_and_typecheck(
-            "{ f = fun x => if isZero x then 1 else 1 + (f (x + (-1)));} : {f : Num -> Num}",
+            "{ f = fun x => if x == 0 then 1 else 1 + (f (x + (-1)));} : {f : Num -> Num}",
         )
         .unwrap();
         parse_and_typecheck(
-            "{ f = fun x => if isZero x then false else 1 + (f (x + (-1)))} : {f : Num -> Num}",
+            "{ f = fun x => if x == 0 then false else 1 + (f (x + (-1)))} : {f : Num -> Num}",
         )
         .unwrap_err();
     }
