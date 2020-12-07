@@ -156,8 +156,6 @@ pub enum NormalToken<'input> {
     #[token("Docstring(")]
     Docstring,
 
-    #[token("isZero")]
-    IsZero,
     #[token("isNum")]
     IsNum,
     #[token("isBool")]

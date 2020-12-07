@@ -778,12 +778,6 @@ mod tests {
     }
 
     #[test]
-    fn simple_is_zero() {
-        let t = mk_term::op1(UnaryOp::IsZero(), Term::Num(7.0));
-        assert_eq!(Ok(Term::Bool(false)), eval_no_import(t));
-    }
-
-    #[test]
     fn asking_for_various_types() {
         let num = mk_term::op1(UnaryOp::IsNum(), Term::Num(45.3));
         assert_eq!(Ok(Term::Bool(true)), eval_no_import(num));

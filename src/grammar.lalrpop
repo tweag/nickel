@@ -234,7 +234,6 @@ ChunkLiteralPart: Either<&'input str, char> = {
     };
 
 UOp: UnaryOp<RichTerm> = {
-    "isZero" => UnaryOp::IsZero(),
     "isNum" => UnaryOp::IsNum(),
     "isBool" => UnaryOp::IsBool(),
     "isStr" => UnaryOp::IsStr(),
@@ -531,7 +530,6 @@ extern {
         "ContractDefault(" => Token::Normal(NormalToken::ContractDeflt),
         "Docstring(" => Token::Normal(NormalToken::Docstring),
 
-        "isZero" => Token::Normal(NormalToken::IsZero),
         "isNum" => Token::Normal(NormalToken::IsNum),
         "isBool" => Token::Normal(NormalToken::IsBool),
         "isStr" => Token::Normal(NormalToken::IsStr),
