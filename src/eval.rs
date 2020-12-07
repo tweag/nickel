@@ -187,7 +187,7 @@ pub fn eval_meta<R>(
     t: RichTerm,
     global_env: &Environment,
     resolver: &mut R,
-) -> Result<Option<MetaValue>, EvalError>
+) -> Result<Term, EvalError>
 where
     R: ImportResolver,
 {
@@ -217,11 +217,12 @@ where
                 meta.value.replace(t);
             }
 
-            Ok(Some(meta))
+            Ok(Term::MetaValue(meta))
         }
-        _ => Ok(None),
+        term => Ok(term),
     }
 }
+
 /// The main loop of evaluation.
 ///
 /// Implement the evaluation of the core language, which includes application, thunk update,

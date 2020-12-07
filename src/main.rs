@@ -197,116 +197,164 @@ fn query(
     contract: bool,
     default: bool,
 ) -> Result<(), Error> {
+    // Print a list the fields of a term if it is a record, or do nothing otherwise.
+    fn print_fields(t: &Term) {
+        println!();
+        match t {
+            Term::Record(map) if !map.is_empty() => query::print_fields(map.keys()),
+            _ => (),
+        }
+    }
+
     let all = !doc && !contract && !default;
-    let meta_opt = program.eval_meta(path)?;
+    let term = program.eval_meta(path)?;
 
-    if let Some(meta) = meta_opt {
-        let mut found = false;
-        match &meta.contract {
-            Some((_, Label { types, .. })) if contract || all => {
-                print_metadata("contract", &format!("{}", types));
-                found = true;
+    match term {
+        Term::MetaValue(meta) => {
+            let mut found = false;
+            match &meta.contract {
+                Some((_, Label { types, .. })) if contract || all => {
+                    query::print_metadata("contract", &format!("{}", types));
+                    found = true;
+                }
+                _ => (),
             }
-            _ => (),
-        }
 
-        match meta {
-            MetaValue {
-                priority: MergePriority::Default,
-                value: Some(t),
-                ..
-            } if default || all => {
-                print_metadata("default", &t.as_ref().shallow_repr());
-                found = true;
+            match &meta {
+                MetaValue {
+                    priority: MergePriority::Default,
+                    value: Some(t),
+                    ..
+                } if default || all => {
+                    query::print_metadata("default", &t.as_ref().shallow_repr());
+                    found = true;
+                }
+                MetaValue {
+                    priority: MergePriority::Normal,
+                    value: Some(t),
+                    ..
+                } if all => {
+                    query::print_metadata("value", &t.as_ref().shallow_repr());
+                    found = true;
+                }
+                _ => (),
             }
-            MetaValue {
-                priority: MergePriority::Normal,
-                value: Some(t),
-                ..
-            } if all => {
-                print_metadata("value", &t.as_ref().shallow_repr());
-                found = true;
-            }
-            _ => (),
-        }
 
-        match meta.doc {
-            Some(s) if doc || all => {
-                print_metadata_doc(s);
-                found = true;
+            match meta.doc {
+                Some(s) if doc || all => {
+                    query::print_metadata_doc(&s);
+                    found = true;
+                }
+                _ => (),
             }
-            _ => (),
-        }
 
-        if !found {
-            println!("Requested metadata were not found for this value.");
+            if !found {
+                println!("Requested metadata were not found for this value.");
+                meta.value.iter().for_each(|rt| print_fields(rt.as_ref()));
+            }
         }
-    } else {
-        println!("No metadata found for this value.");
+        t => {
+            println!("No metadata found for this value.");
+            print_fields(&t)
+        }
     }
 
     Ok(())
 }
 
 #[cfg(feature = "markdown")]
-fn print_metadata(attr: &str, value: &String) {
-    use minimad::*;
-    use termimad::*;
+/// Helper to render the result of the `query` sub-command with markdown support.
+mod query {
+    use super::identifier::Ident;
 
-    let skin = mk_skin();
-    let mut expander = OwningTemplateExpander::new();
-    let template = TextTemplate::from("* **${attr}**: *${value}*");
+    /// Print a metadata given as an attribute name and a value.
+    pub fn print_metadata(attr: &str, value: &String) {
+        use minimad::*;
+        use termimad::*;
 
-    expander.set("attr", attr);
-    expander.set("value", value);
-    let text = expander.expand(&template);
-    let (width, _) = terminal_size();
-    let fmt_text = FmtText::from_text(&skin, text, Some(width as usize));
-    print!("{}", fmt_text);
-}
-//
-//     let skin = MadSkin::default();
-//     let text_template = TextTemplate::from(r#"
-//         # ${app-name} v${app-version}
-//         It is *very* ${adj}.
-//         "#);
-//     let mut expander = text_template.expander();
-//     expander
-//         .set("app-name", "MyApp")
-//         .set("adj", "pretty")
-//         .set("app-version", "42.5.3");
-//     skin.print_expander(expander);
-// }
+        let skin = mk_skin();
+        let mut expander = OwningTemplateExpander::new();
+        let template = TextTemplate::from("* **${attr}**: *${value}*");
 
-#[cfg(feature = "markdown")]
-fn print_metadata_doc(content: String) {
-    let skin = mk_skin();
+        expander.set("attr", attr);
+        expander.set("value", value);
+        let text = expander.expand(&template);
+        let (width, _) = terminal_size();
+        let fmt_text = FmtText::from_text(&skin, text, Some(width as usize));
+        print!("{}", fmt_text);
+    }
 
-    if content.find("\n").is_none() {
-        skin.print_text(&format!("* **documentation**: {}", content));
-    } else {
-        skin.print_text("* **documentation**\n\n");
-        skin.print_text(&content);
+    /// Print the documentation included in a metavalue.
+    pub fn print_metadata_doc(content: &String) {
+        let skin = mk_skin();
+
+        if content.find("\n").is_none() {
+            skin.print_text(&format!("* **documentation**: {}", content));
+        } else {
+            skin.print_text("* **documentation**\n\n");
+            skin.print_text(content);
+        }
+    }
+
+    /// Create the renderer configuration.
+    fn mk_skin() -> termimad::MadSkin {
+        use termimad::MadSkin;
+        MadSkin::default()
+    }
+
+    /// Print the list of fields of a record.
+    pub fn print_fields<'a, I>(fields: I)
+    where
+        I: Iterator<Item = &'a Ident>,
+    {
+        use minimad::*;
+        use termimad::*;
+
+        let skin = mk_skin();
+        let (width, _) = terminal_size();
+        let mut expander = OwningTemplateExpander::new();
+        let template = TextTemplate::from("* ${field}");
+
+        skin.print_text("## Available fields");
+
+        for field in fields {
+            expander.set("field", field.to_string());
+            let text = expander.expand(&template);
+            let fmt_text = FmtText::from_text(&skin, text, Some(width as usize));
+            print!("{}", fmt_text);
+        }
     }
 }
 
-#[cfg(feature = "markdown")]
-fn mk_skin() -> termimad::MadSkin {
-    use termimad::MadSkin;
-    MadSkin::default()
-}
-
 #[cfg(not(feature = "markdown"))]
-fn print_metadata(name: &str, content: &String) {
-    println!("* {}: {}");
-}
+/// Helper to render the result of the `query` sub-command without markdown support.
+mod query {
+    use super::identifier::Ident;
 
-#[cfg(not(feature = "markdown"))]
-fn print_metadata_doc(content: &String) {
-    if content.find("\n").is_none() {
-        print_metadata("documentation", &content);
-    } else {
-        skin.print_text("* **documentation**\n\n");
-        println(content);
+    /// Print a metadata given as an attribute name and a value.
+    pub fn print_metadata(name: &str, content: &String) {
+        println!("* {}: {}", name, content);
+    }
+
+    /// Print the documentation included in a metavalue.
+    pub fn print_metadata_doc(content: &String) {
+        if content.find("\n").is_none() {
+            print_metadata("documentation", &content);
+        } else {
+            println!("* documentation\n");
+            println!("{}", content);
+        }
+    }
+
+    /// Print the list of fields of a record.
+    pub fn print_fields<'a, I>(fields: I)
+    where
+        I: Iterator<Item = &'a Ident>,
+    {
+        println!("Available fields:");
+
+        for field in fields {
+            println!(" - {}", field);
+        }
     }
 }

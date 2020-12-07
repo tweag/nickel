@@ -264,7 +264,7 @@ impl Program {
     ///
     /// As opposed to normal evaluation, it does not try to unwrap the content of a metavalue: the
     /// evaluation stops as soon as a metavalue is encountered.
-    pub fn eval_meta(&mut self, path: Option<String>) -> Result<Option<MetaValue>, Error> {
+    pub fn eval_meta(&mut self, path: Option<String>) -> Result<Term, Error> {
         let (t, global_env) = self.prepare_eval()?;
 
         let t = if let Some(p) = path {
