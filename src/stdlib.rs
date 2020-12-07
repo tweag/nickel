@@ -7,6 +7,7 @@ use crate::term::{RichTerm, UnaryOp};
 pub const BUILTINS: &str = include_str!("../stdlib/builtins.ncl");
 pub const CONTRACTS: &str = include_str!("../stdlib/contracts.ncl");
 pub const LISTS: &str = include_str!("../stdlib/lists.ncl");
+pub const RECORDS: &str = include_str!("../stdlib/records.ncl");
 
 /// Accessors to the lists standard library.
 pub mod lists {

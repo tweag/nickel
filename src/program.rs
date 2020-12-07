@@ -181,13 +181,22 @@ impl Program {
     fn mk_global_env(&mut self) -> Result<eval::Environment, ImportError> {
         let mut global_env = HashMap::new();
 
-        self.load_stdlib("<stdlib/builtins.ncl>", nickel_stdlib::BUILTINS, &mut global_env)?;
+        self.load_stdlib(
+            "<stdlib/builtins.ncl>",
+            nickel_stdlib::BUILTINS,
+            &mut global_env,
+        )?;
         self.load_stdlib(
             "<stdlib/contracts.ncl>",
             nickel_stdlib::CONTRACTS,
             &mut global_env,
         )?;
         self.load_stdlib("<stdlib/lists.ncl>", nickel_stdlib::LISTS, &mut global_env)?;
+        self.load_stdlib(
+            "<stdlib/records.ncl>",
+            nickel_stdlib::RECORDS,
+            &mut global_env,
+        )?;
         Ok(global_env)
     }
 
