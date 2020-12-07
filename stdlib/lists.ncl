@@ -1,21 +1,29 @@
 {
   lists = {
+    head : List -> Dyn = fun l => %head% l;
+
+    tail : List -> List = fun l => %tail% l;
+
+    length : List -> Num = fun l => %length% l;
+
+    map : forall a b. (a -> b) -> List -> List = fun f l => %map% f l;
+
     concat : List -> List -> List = fun l1 l2 => l1 @ l2;
 
     foldl : forall a. (a -> Dyn -> a) -> a -> List -> a =
       fun f fst l =>
-        if length l == 0 then
+        if %length% l == 0 then
           fst
         else
-          let rest = foldl f fst (tail l) in
-          seq rest (f rest (head l));
+          let rest = foldl f fst (%tail% l) in
+          %seq% rest (f rest (%head% l));
 
     fold : forall a. (Dyn -> a -> a) -> List -> a -> a =
       fun f l fst =>
-        if length l == 0 then
+        if %length% l == 0 then
           fst
         else
-          f (head l) (fold f (tail l) fst);
+          f (%head% l) (fold f (%tail% l) fst);
 
     cons : Dyn -> List -> List = fun x l => [x] @ l;
 
