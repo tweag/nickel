@@ -188,8 +188,8 @@ pub enum NormalToken<'input> {
     Unwrap,
     #[token("%embed%")]
     Embed,
-    #[token("%mapRec%")]
-    MapRec,
+    #[token("%recordMap%")]
+    RecordMap,
     #[token("%seq%")]
     Seq,
     #[token("%deepSeq%")]

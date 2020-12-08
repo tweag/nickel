@@ -392,7 +392,7 @@ fn process_unary_operation(
                 ))
             }
         }
-        UnaryOp::MapRec(f) => {
+        UnaryOp::RecordMap(f) => {
             if let Term::Record(rec) = *t {
                 let f_as_var = f.body.closurize(&mut env, f.env);
 

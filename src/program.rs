@@ -811,13 +811,13 @@ Assume(#alwaysTrue, false)
 
         assert_eq!(
             eval_string(
-                "(%mapRec% (fun y => fun x => x + 1) { foo = 1; bar = \"it's lazy\"; }).foo"
+                "(%recordMap% (fun y => fun x => x + 1) { foo = 1; bar = \"it's lazy\"; }).foo"
             ),
             Ok(Term::Num(2.)),
         );
         assert_eq!(
             eval_string(
-                "let r = %mapRec%
+                "let r = %recordMap%
                     (fun y x => if %isNum% x then x + 1 else 0)
                     { foo = 1; bar = \"it's lazy\"; }
                 in

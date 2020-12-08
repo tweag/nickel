@@ -492,9 +492,9 @@ pub enum UnaryOp<CapturedTerm> {
     /// Map a function on a record.
     ///
     /// The mapped function must take two arguments, the name of the field as a string, and the
-    /// content of the field. `MapRec` then replaces the content of each field by the result of the
-    /// function: i.e., `mapRec f {a=2;}` evaluates to `{a=(f "a" 2);}`.
-    MapRec(CapturedTerm),
+    /// content of the field. `RecordMap` then replaces the content of each field by the result of the
+    /// function: i.e., `recordMap f {a=2;}` evaluates to `{a=(f "a" 2);}`.
+    RecordMap(CapturedTerm),
 
     /// Inverse the polarity of a label.
     ChangePolarity(),
@@ -572,7 +572,7 @@ impl<Ty> UnaryOp<Ty> {
                     .collect(),
                 op.map(f),
             ),
-            MapRec(t) => MapRec(f(t)),
+            RecordMap(t) => RecordMap(f(t)),
 
             Ite() => Ite(),
 

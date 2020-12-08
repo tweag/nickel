@@ -1402,7 +1402,7 @@ pub fn get_uop_type(
         }
         // { _ : a} -> { _ : b }
         // Unify f with Str -> a -> b.
-        UnaryOp::MapRec(f) => {
+        UnaryOp::RecordMap(f) => {
             // Assuming f has type Str -> a -> b,
             // this has type DynRecord(a) -> DynRecord(b)
 

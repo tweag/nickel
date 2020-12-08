@@ -38,7 +38,7 @@
 
   dyn_record = fun contr l t =>
       if %isRecord% t then
-          %mapRec% (fun _field => contr l) t
+          %recordMap% (fun _field => contr l) t
       else
           %blame% (%tag% "not a record" l);
 
