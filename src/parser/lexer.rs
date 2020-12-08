@@ -184,6 +184,8 @@ pub enum NormalToken<'input> {
 
     #[token("%wrap%")]
     Wrap,
+    #[token("%unwrap%")]
+    Unwrap,
     #[token("%embed%")]
     Embed,
     #[token("%mapRec%")]
@@ -201,8 +203,6 @@ pub enum NormalToken<'input> {
     #[token("%fieldsOf%")]
     FieldsOf,
 
-    #[token("%unwrap%")]
-    Unwrap,
     #[token("%hasField%")]
     HasField,
     #[token("%map%")]
