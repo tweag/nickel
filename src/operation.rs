@@ -424,22 +424,25 @@ fn process_unary_operation(
         }
         UnaryOp::RecordMap(f) => {
             if let Term::Record(rec) = *t {
+                let mut shared_env = Environment::new();
                 let f_as_var = f.body.closurize(&mut env, f.env);
 
+                // As for `ListMap` (see above), we closurize the content of fields
                 let rec = rec
                     .into_iter()
                     .map(|e| {
                         let (Ident(s), t) = e;
                         (
                             Ident(s.clone()),
-                            mk_app!(f_as_var.clone(), mk_term::string(s), t),
+                            mk_app!(f_as_var.clone(), mk_term::string(s), t)
+                                .closurize(&mut shared_env, env.clone()),
                         )
                     })
                     .collect();
 
                 Ok(Closure {
                     body: Term::Record(rec).into(),
-                    env,
+                    env: shared_env,
                 })
             } else {
                 Err(EvalError::TypeError(
