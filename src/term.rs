@@ -489,6 +489,8 @@ pub enum UnaryOp<CapturedTerm> {
     /// Static means that the field identifier is a statically known string inside the source.
     StaticAccess(Ident),
 
+    /// Map a function on each element of a list.
+    ListMap(CapturedTerm),
     /// Map a function on a record.
     ///
     /// The mapped function must take two arguments, the name of the field as a string, and the
@@ -572,6 +574,7 @@ impl<Ty> UnaryOp<Ty> {
                     .collect(),
                 op.map(f),
             ),
+            ListMap(t) => ListMap(f(t)),
             RecordMap(t) => RecordMap(f(t)),
 
             Ite() => Ite(),
@@ -672,8 +675,6 @@ pub enum BinaryOp<CapturedTerm> {
     HasField(),
     /// Concatenate two lists.
     ListConcat(),
-    /// Map a function on each element of a list.
-    ListMap(),
     /// Access the n-th element of a list.
     ListElemAt(),
     /// The merge operator (see the [merge module](../merge/index.html)).
@@ -703,7 +704,6 @@ impl<Ty> BinaryOp<Ty> {
             DynAccess() => DynAccess(),
             HasField() => HasField(),
             ListConcat() => ListConcat(),
-            ListMap() => ListMap(),
             ListElemAt() => ListElemAt(),
             Merge() => Merge(),
         }

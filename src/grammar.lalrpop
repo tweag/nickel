@@ -253,6 +253,7 @@ UOp: UnaryOp<RichTerm> = {
             ds.into_iter().map(|x| x.0).collect(),
             default,
         ),
+    "map" <Atom> => UnaryOp::ListMap(<>),
     "recordMap" <Atom> => UnaryOp::RecordMap(<>),
     "seq" => UnaryOp::Seq(),
     "deepSeq" => UnaryOp::DeepSeq(),
@@ -376,7 +377,6 @@ BOpPre: BinaryOp<RichTerm> = {
     "unwrap" => BinaryOp::Unwrap(),
     "goField" => BinaryOp::GoField(),
     "hasField" => BinaryOp::HasField(),
-    "map" => BinaryOp::ListMap(),
     "elemAt" => BinaryOp::ListElemAt(),
 }
 
