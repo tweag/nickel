@@ -87,6 +87,12 @@ pub enum TypecheckError {
         /* the inferred/annotated type */ Types,
         Option<RawSpan>,
     ),
+    /// A dynamic tail was expected to be in the type of an expression, but was not.
+    MissingDynTail(
+        /* the expected type */ Types,
+        /* the inferred/annotated type */ Types,
+        Option<RawSpan>,
+    ),
     /// A specific row was not expected to be in the type of an expression.
     ExtraRow(
         Ident,
@@ -94,6 +100,13 @@ pub enum TypecheckError {
         /* the inferred/annotated type */ Types,
         Option<RawSpan>,
     ),
+    /// A additional dynamic tail was not expected to be in the type of an expression.
+    ExtraDynTail(
+        /* the expected type */ Types,
+        /* the inferred/annotated type */ Types,
+        Option<RawSpan>,
+    ),
+
     /// An unbound type variable was referenced.
     UnboundTypeVariable(Ident, Option<RawSpan>),
     /// The actual (inferred or annotated) type of an expression is incompatible with its expected
@@ -956,6 +969,16 @@ impl ToDiagnostic<FileId> for TypecheckError {
                         format!("The type of the expression was inferred to be `{}`, which does not contain the field `{}`", actual,  ident),
                     ])]
             ,
+            TypecheckError::MissingDynTail(expd, actual, span_opt) =>
+                vec![Diagnostic::error()
+                    .with_message(String::from("Type error: missing dynamic tail `| Dyn`"))
+                    .with_labels(mk_expr_label(span_opt))
+                    .with_notes(vec![
+                        format!("The type of the expression was expected to be `{}` which contains the tail `| Dyn`", expd),
+                        format!("The type of the expression was inferred to be `{}`, which does not contain the tail `| Dyn`", actual),
+                    ])]
+            ,
+
             TypecheckError::ExtraRow(Ident(ident), expd, actual, span_opt) =>
                 vec![Diagnostic::error()
                     .with_message(format!("Type error: extra row `{}`", ident))
@@ -965,6 +988,16 @@ impl ToDiagnostic<FileId> for TypecheckError {
                         format!("Tye type of the expression was inferred to be `{}`, which contains the extra field `{}`", actual,  ident),
                     ])]
             ,
+            TypecheckError::ExtraDynTail(expd, actual, span_opt) =>
+                vec![Diagnostic::error()
+                    .with_message(String::from("Type error: extra dynamic tail `| Dyn`"))
+                    .with_labels(mk_expr_label(span_opt))
+                    .with_notes(vec![
+                        format!("The type of the expression was expected to be `{}`, which does not contain the tail `| Dyn`", expd),
+                        format!("Tye type of the expression was inferred to be `{}`, which contains the extra tail `| Dyn`", actual),
+                    ])]
+            ,
+
             TypecheckError::UnboundTypeVariable(Ident(ident), span_opt) =>
                vec![Diagnostic::error()
                     .with_message(String::from("Unbound type variable"))

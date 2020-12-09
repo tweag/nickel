@@ -1406,9 +1406,6 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
     }
 
     #[test]
-    fn records_contracts_dyn() {}
-
-    #[test]
     fn records_contracts_poly() {
         let id = "let f = Assume(forall a. { | a} -> { | a }, fun x => x) in f";
         let extd =
@@ -1465,6 +1462,23 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
             f (fun x => x) {a = 1; b = bool; c = 3}",
         )
         .unwrap_err();
+    }
+
+    #[test]
+    fn records_contracts_dyn() {
+        assert_peq!(
+            "Assume({a: Num, b: Str | Dyn}, {a = 1; b = \"b\"})",
+            "{a = 1; b = \"b\"}"
+        );
+        assert_peq!(
+            "Assume({a: Num, b: Str | Dyn}, {a = 1; b = \"b\"; c = false})",
+            "{a = 1; b = \"b\"; c = false}"
+        );
+        assert_peq!(
+            "Assume({a: Num | Dyn} -> Dyn, fun r => r.b) {a = 1; b = 2}",
+            "2"
+        );
+        eval_string("Assume({a: Num, b: Str | Dyn}, {a = 1})").unwrap_err();
     }
 
     #[test]

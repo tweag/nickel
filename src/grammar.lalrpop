@@ -402,6 +402,11 @@ BaseType: Types = {
     "List" => Types(AbsType::List()),
 };
 
+RowTail: Types = {
+    <Ident> => Types(AbsType::Var(<>)),
+    "Dyn" => Types(AbsType::Dyn()),
+}
+
 subType : Types = {
     <BaseType>,
     <Ident> => Types(AbsType::Var(<>)),
@@ -428,7 +433,7 @@ subType : Types = {
     },
     "{" <rows:(<Ident> ":" <Types> ",")*>
         <last:(<Ident> ":" <Types>)?>
-        <tail: ("|" <Ident>)?> "}" => {
+        <tail: ("|" <RowTail>)?> "}" => {
         let ty = rows.into_iter()
             .chain(last.into_iter())
             // As we build row types as a linked list via a fold on the original
@@ -437,12 +442,7 @@ subType : Types = {
             // order for error reporting.
             .rev()
             .fold(
-                Types(
-                    match tail {
-                        Some(id) => AbsType::Var(id),
-                        None => AbsType::RowEmpty(),
-                    }
-                ),
+                tail.unwrap_or(Types(AbsType::RowEmpty())),
                 |t, i_ty| {
                     let (i, ty) = i_ty;
                     Types(AbsType::RowExtend(i, Some(Box::new(ty)), Box::new(t)))

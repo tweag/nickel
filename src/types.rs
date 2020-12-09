@@ -137,7 +137,7 @@ impl<Ty> AbsType<Ty> {
     /// Determine if a type is a row type.
     pub fn is_row_type(&self) -> bool {
         match self {
-            AbsType::RowExtend(_, _, _) | AbsType::RowEmpty() => true,
+            AbsType::RowExtend(_, _, _) | AbsType::RowEmpty() | AbsType::Dyn() => true,
             _ => false,
         }
     }
@@ -248,6 +248,7 @@ impl Types {
                 ) -> RichTerm {
                     match &ty.0 {
                         AbsType::RowEmpty() => contracts::empty_tail(),
+                        AbsType::Dyn() => contracts::dyn_tail(),
                         AbsType::Var(id) => {
                             let (_, rt) = h
                                 .get(&id)
@@ -350,6 +351,7 @@ impl fmt::Display for Types {
                 match tail.0 {
                     AbsType::RowEmpty() => write!(f, "{}", tail),
                     AbsType::Var(_) => write!(f, " | {}", tail),
+                    AbsType::Dyn() => write!(f, " | Dyn"),
                     _ => write!(f, ", {}", tail),
                 }
             }
