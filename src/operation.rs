@@ -1,4 +1,4 @@
-//! Implementat Closure::atomic_closureon of primitive operations.
+//! Implementation of primitive operations.
 //!
 //! Define functions which perform the evaluation of primitive operators. The machinery required
 //! for the strict evaluation of the operands is mainly handled by [`eval`](../eval/index.html),
@@ -26,12 +26,12 @@ generate_counter!(FreshVariableCounter, usize);
 
 /// Result of the equality of two terms.
 ///
-/// The equality over two terms can either be computed directly on base types (`Num`, `Str`, etc.)
-/// in which case `Bool` is returned. Otherwise, a composite value such a lists or records generate
-/// a new list of subequalities, as represented by the last variant as a vector of pairs of terms.
-/// Moreover, this list is guaranteed non-empty (it if is empty, `eq` should have directly returned
-/// true). The first element of this non-empty list is encoded as the two first parameters of
-/// `Eqs`, where the last parameer is the potentially empty tail.
+/// The equality of two terms can either be computed directly for base types (`Num`, `Str`, etc.),
+/// in which case `Bool` is returned. Otherwise, composite values such as lists or records generate
+/// new subequalities, as represented by the last variant as a vector of pairs of terms.  This list
+/// should be non-empty (it if was empty, `eq` should have returned `Bool(true)` directly).  The
+/// first element of this non-empty list is encoded as the two first parameters of `Eqs`, while the
+/// last vector parameter is the (potentially empty) tail.
 ///
 /// See [`eq`](./fn.eq.html).
 enum EqResult {
@@ -877,7 +877,7 @@ fn process_binary_operation(
                 }),
             }
         }
-        BinaryOp::MultiEq(mut eqs) => {
+        BinaryOp::MultiEq(eqs) => {
             let mut env = Environment::new();
 
             let c1 = Closure {
@@ -895,33 +895,27 @@ fn process_binary_operation(
                 env: env2,
             };
 
+            let mut eqs: Vec<_> = eqs
+                .into_iter()
+                .map(|(c1, c2)| {
+                    (
+                        c1.body.closurize(&mut env, c1.env),
+                        c2.body.closurize(&mut env, c2.env),
+                    )
+                })
+                .collect();
+
             match eq(&mut env, c1, c2) {
                 EqResult::Bool(b) => match (b, eqs.pop()) {
                     (false, _) => Ok(Closure::atomic_closure(Term::Bool(false).into())),
                     (true, None) => Ok(Closure::atomic_closure(Term::Bool(true).into())),
-                    (true, Some((c1, c2))) => {
-                        let mut env = Environment::new();
-                        let t1 = c1.body.closurize(&mut env, c1.env);
-                        let t2 = c2.body.closurize(&mut env, c2.env);
-                        let eq = Term::Op2(BinaryOp::Eq(), t1, t2);
-
-                        Ok(Closure {
-                            body: RichTerm::new(eq, pos_op),
-                            env,
-                        })
-                    }
+                    (true, Some((t1, t2))) => Ok(Closure {
+                        body: RichTerm::new(Term::Op2(BinaryOp::MultiEq(eqs), t1, t2), pos_op),
+                        env,
+                    }),
                 },
                 EqResult::Eqs(t1, t2, subeqs) => {
-                    let eqs: Vec<_> = eqs
-                        .into_iter()
-                        .map(|(c1, c2)| {
-                            (
-                                c1.body.closurize(&mut env, c1.env),
-                                c2.body.closurize(&mut env, c2.env),
-                            )
-                        })
-                        .chain(subeqs.into_iter())
-                        .collect();
+                    eqs.extend(subeqs);
 
                     Ok(Closure {
                         body: RichTerm::new(Term::Op2(BinaryOp::MultiEq(eqs), t1, t2), pos_op),
