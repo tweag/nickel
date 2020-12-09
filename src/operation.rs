@@ -1,4 +1,4 @@
-//! Implementation of primitive operations.
+//! Implementat Closure::atomic_closureon of primitive operations.
 //!
 //! Define functions which perform the evaluation of primitive operators. The machinery required
 //! for the strict evaluation of the operands is mainly handled by [`eval`](../eval/index.html),
@@ -23,6 +23,21 @@ use simple_counter::*;
 use std::collections::HashMap;
 
 generate_counter!(FreshVariableCounter, usize);
+
+/// Result of the equality of two terms.
+///
+/// The equality over two terms can either be computed directly on base types (`Num`, `Str`, etc.)
+/// in which case `Bool` is returned. Otherwise, a composite value such a lists or records generate
+/// a new list of subequalities, as represented by the last variant as a vector of pairs of terms.
+/// Moreover, this list is guaranteed non-empty (it if is empty, `eq` should have directly returned
+/// true). The first element of this non-empty list is encoded as the two first parameters of
+/// `Eqs`, where the last parameer is the potentially empty tail.
+///
+/// See [`eq`](./fn.eq.html).
+enum EqResult {
+    Bool(bool),
+    Eqs(RichTerm, RichTerm, Vec<(RichTerm, RichTerm)>),
+}
 
 /// An operation continuation as stored on the stack.
 #[derive(Debug, PartialEq)]
@@ -609,28 +624,6 @@ fn process_unary_operation(
                 ))
             }
         }
-        UnaryOp::MultiEq(mut eqs) => match (*t, eqs.pop()) {
-            (b @ Term::Bool(false), _) => Ok(Closure::atomic_closure(b.into())),
-            (b @ Term::Bool(true), None) => Ok(Closure::atomic_closure(b.into())),
-            (Term::Bool(true), Some((c1, c2))) => {
-                let mut env = Environment::new();
-                let t1 = c1.body.closurize(&mut env, c1.env);
-                let t2 = c2.body.closurize(&mut env, c2.env);
-                let eq = Term::Op2(BinaryOp::Eq(), t1, t2);
-
-                Ok(Closure {
-                    body: RichTerm::new(eq, pos_op),
-                    env,
-                })
-            }
-            (t, _) => Err(EvalError::InternalError(
-                format!(
-                    "MultiEq() operator expected a boolean argument, got {}",
-                    t.shallow_repr()
-                ),
-                pos_op,
-            )),
-        },
     }
 }
 
@@ -859,55 +852,83 @@ fn process_binary_operation(
             }
         }
         BinaryOp::Eq() => {
-            let mut env: Environment = HashMap::new();
-            let res = match (*t1, *t2) {
-                (Term::Bool(b1), Term::Bool(b2)) => Term::Bool(b1 == b2),
-                (Term::Num(n1), Term::Num(n2)) => Term::Bool(n1 == n2),
-                (Term::Str(s1), Term::Str(s2)) => Term::Bool(s1 == s2),
-                (Term::Lbl(l1), Term::Lbl(l2)) => Term::Bool(l1 == l2),
-                (Term::Sym(s1), Term::Sym(s2)) => Term::Bool(s1 == s2),
-                (Term::Record(m1), Term::Record(m2)) => {
-                    let (left, center, right) = merge::hashmap::split(m1, m2);
+            let mut env = Environment::new();
 
-                    if !left.is_empty() || !right.is_empty() {
-                        Term::Bool(false)
-                    } else if center.is_empty() {
-                        Term::Bool(true)
-                    } else {
-                        let eqs = center
-                            .into_iter()
-                            .map(|(_, (t1, t2))| {
-                                (
-                                    t1.closurize(&mut env, env1.clone()),
-                                    t2.closurize(&mut env, env2.clone()),
-                                )
-                            })
-                            .collect();
-                        Term::Op1(UnaryOp::MultiEq(eqs), Term::Bool(true).into())
-                    }
-                }
-                (Term::List(l1), Term::List(l2)) if l1.len() == l2.len() => {
-                    // Equalities are tested in reverse order, but that shouldn't matter. If it
-                    // does, just do `eqs.rev()`
-                    let eqs = l1
-                        .into_iter()
-                        .zip(l2.into_iter())
-                        .map(|(t1, t2)| {
-                            (
-                                t1.closurize(&mut env, env1.clone()),
-                                t2.closurize(&mut env, env2.clone()),
-                            )
-                        })
-                        .collect();
-                    Term::Op1(UnaryOp::MultiEq(eqs), Term::Bool(true).into())
-                }
-                (_, _) => Term::Bool(false),
+            let c1 = Closure {
+                body: RichTerm {
+                    term: t1,
+                    pos: pos1,
+                },
+                env: env1,
+            };
+            let c2 = Closure {
+                body: RichTerm {
+                    term: t2,
+                    pos: pos2,
+                },
+                env: env2,
             };
 
-            Ok(Closure {
-                body: res.into(),
-                env,
-            })
+            match eq(&mut env, c1, c2) {
+                EqResult::Bool(b) => Ok(Closure::atomic_closure(Term::Bool(b).into())),
+                EqResult::Eqs(fst, snd, eqs) => Ok(Closure {
+                    body: RichTerm::new(Term::Op2(BinaryOp::MultiEq(eqs), fst, snd), pos_op),
+                    env,
+                }),
+            }
+        }
+        BinaryOp::MultiEq(mut eqs) => {
+            let mut env = Environment::new();
+
+            let c1 = Closure {
+                body: RichTerm {
+                    term: t1,
+                    pos: pos1,
+                },
+                env: env1,
+            };
+            let c2 = Closure {
+                body: RichTerm {
+                    term: t2,
+                    pos: pos2,
+                },
+                env: env2,
+            };
+
+            match eq(&mut env, c1, c2) {
+                EqResult::Bool(b) => match (b, eqs.pop()) {
+                    (false, _) => Ok(Closure::atomic_closure(Term::Bool(false).into())),
+                    (true, None) => Ok(Closure::atomic_closure(Term::Bool(true).into())),
+                    (true, Some((c1, c2))) => {
+                        let mut env = Environment::new();
+                        let t1 = c1.body.closurize(&mut env, c1.env);
+                        let t2 = c2.body.closurize(&mut env, c2.env);
+                        let eq = Term::Op2(BinaryOp::Eq(), t1, t2);
+
+                        Ok(Closure {
+                            body: RichTerm::new(eq, pos_op),
+                            env,
+                        })
+                    }
+                },
+                EqResult::Eqs(t1, t2, subeqs) => {
+                    let eqs: Vec<_> = eqs
+                        .into_iter()
+                        .map(|(c1, c2)| {
+                            (
+                                c1.body.closurize(&mut env, c1.env),
+                                c2.body.closurize(&mut env, c2.env),
+                            )
+                        })
+                        .chain(subeqs.into_iter())
+                        .collect();
+
+                    Ok(Closure {
+                        body: RichTerm::new(Term::Op2(BinaryOp::MultiEq(eqs), t1, t2), pos_op),
+                        env,
+                    })
+                }
+            }
         }
         BinaryOp::LessThan() => {
             if let Term::Num(n1) = *t1 {
@@ -1266,6 +1287,78 @@ fn process_binary_operation(
             env2,
             pos_op,
         ),
+    }
+}
+
+/// Compute the equality of two terms, represented as closures.
+///
+/// # Parameters
+///
+/// - env: the final environment in which to closurize the operands of potential subequalities.
+/// - c1: the closure of the first operand.
+/// - c2: the closure of the second operand.
+///
+/// # Return
+///
+/// Return either a boolean when the equality can be computed directly, or a new non-empty list of equalities to be checked if
+/// operands are composite values.
+fn eq(env: &mut Environment, c1: Closure, c2: Closure) -> EqResult {
+    let Closure {
+        body: RichTerm { term: t1, .. },
+        env: env1,
+    } = c1;
+    let Closure {
+        body: RichTerm { term: t2, .. },
+        env: env2,
+    } = c2;
+
+    // Take a list of subequalities, and either return `EqResult::Bool(true)` if it is empty, or
+    // generate an approriate `EqResult::Eqs` variant with closurized terms in it.
+    fn gen_eqs<I>(it: I, env: &mut Environment, env1: Environment, env2: Environment) -> EqResult
+    where
+        I: Iterator<Item = (RichTerm, RichTerm)>,
+    {
+        let mut eqs: Vec<_> = it
+            .map(|(t1, t2)| {
+                (
+                    t1.closurize(env, env1.clone()),
+                    t2.closurize(env, env2.clone()),
+                )
+            })
+            .collect();
+
+        if let Some((t1, t2)) = eqs.pop() {
+            EqResult::Eqs(t1, t2, eqs)
+        } else {
+            EqResult::Bool(true)
+        }
+    }
+
+    match (*t1, *t2) {
+        (Term::Bool(b1), Term::Bool(b2)) => EqResult::Bool(b1 == b2),
+        (Term::Num(n1), Term::Num(n2)) => EqResult::Bool(n1 == n2),
+        (Term::Str(s1), Term::Str(s2)) => EqResult::Bool(s1 == s2),
+        (Term::Lbl(l1), Term::Lbl(l2)) => EqResult::Bool(l1 == l2),
+        (Term::Sym(s1), Term::Sym(s2)) => EqResult::Bool(s1 == s2),
+        (Term::Record(m1), Term::Record(m2)) => {
+            let (left, center, right) = merge::hashmap::split(m1, m2);
+
+            if !left.is_empty() || !right.is_empty() {
+                EqResult::Bool(false)
+            } else if center.is_empty() {
+                EqResult::Bool(true)
+            } else {
+                let eqs = center.into_iter().map(|(_, (t1, t2))| (t1, t2));
+                gen_eqs(eqs.into_iter(), env, env1, env2)
+            }
+        }
+        (Term::List(l1), Term::List(l2)) if l1.len() == l2.len() => {
+            // Equalities are tested in reverse order, but that shouldn't matter. If it
+            // does, just do `eqs.rev()`
+            let eqs = l1.into_iter().zip(l2.into_iter());
+            gen_eqs(eqs.into_iter(), env, env1, env2)
+        }
+        (_, _) => EqResult::Bool(false),
     }
 }
 
