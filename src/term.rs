@@ -556,6 +556,13 @@ pub enum UnaryOp<CapturedTerm> {
         Vec<StrChunk<CapturedTerm>>, /* the remaining chunks */
     ),
 
+    /// Only generated during the evaluation of equality. Holds a vector of pairs of terms, and if
+    /// this list is `[(t1,u1),...,(tn,un)]` then MultiEq evaluates to `t1 == u1 && ... && tn ==
+    /// un`.
+    MultiEq(
+        Vec<(CapturedTerm, CapturedTerm)>, /* the remaining chunks */
+    ),
+
     /// Return the names of the fields of a record as a string list.
     FieldsOf(),
 }
@@ -622,6 +629,8 @@ impl<Ty> UnaryOp<Ty> {
                     })
                     .collect(),
             ),
+
+            MultiEq(eqs) => MultiEq(eqs.into_iter().map(|(t1, t2)| (f(t1), f(t2))).collect()),
 
             FieldsOf() => FieldsOf(),
         }

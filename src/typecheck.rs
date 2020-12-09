@@ -1440,6 +1440,8 @@ pub fn get_uop_type(
         UnaryOp::ListLength() => mk_tyw_arrow!(AbsType::List(), AbsType::Num()),
         // This should not happen, as ChunksConcat() is only produced during evaluation.
         UnaryOp::ChunksConcat(_, _, _) => panic!("cannot type ChunksConcat()"),
+        // This should not happen, as MultiEq() is only produced during evaluation.
+        UnaryOp::MultiEq(_) => panic!("cannot type MultiEq()"),
         // BEFORE: forall rows. { rows } -> List
         // Dyn -> List
         UnaryOp::FieldsOf() => mk_tyw_arrow!(

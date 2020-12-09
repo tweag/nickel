@@ -9,18 +9,6 @@ pub const CONTRACTS: &str = include_str!("../stdlib/contracts.ncl");
 pub const LISTS: &str = include_str!("../stdlib/lists.ncl");
 pub const RECORDS: &str = include_str!("../stdlib/records.ncl");
 
-/// Accessors to the lists standard library.
-pub mod lists {
-    use super::*;
-
-    pub fn all() -> RichTerm {
-        mk_term::op1(
-            UnaryOp::StaticAccess(Ident::from("all")),
-            mk_term::var("lists"),
-        )
-    }
-}
-
 /// Accessors to the builtin contracts.
 pub mod contracts {
     use super::*;
