@@ -1479,8 +1479,6 @@ pub fn get_bop_type(
             TypeWrapper::Ptr(new_var(state.table)),
             AbsType::Bool()
         ),
-        // This should not happen, as MultiEq() is only produced during evaluation.
-        BinaryOp::MultiEq(_) => panic!("cannot type MultiEq()"),
         // Num -> Num -> Bool
         BinaryOp::LessThan()
         | BinaryOp::LessOrEq()

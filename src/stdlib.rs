@@ -1,8 +1,7 @@
 //! Load the Nickel standard library in strings at compile-time.
 
-use crate::identifier::Ident;
 use crate::term::make as mk_term;
-use crate::term::{RichTerm, UnaryOp};
+use crate::term::RichTerm;
 
 pub const BUILTINS: &str = include_str!("../stdlib/builtins.ncl");
 pub const CONTRACTS: &str = include_str!("../stdlib/contracts.ncl");

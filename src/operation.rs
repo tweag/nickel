@@ -21,6 +21,7 @@ use crate::transformations::Closurizable;
 use crate::{mk_app, mk_fun};
 use simple_counter::*;
 use std::collections::HashMap;
+use std::iter::Extend;
 
 generate_counter!(FreshVariableCounter, usize);
 
@@ -36,7 +37,7 @@ generate_counter!(FreshVariableCounter, usize);
 /// See [`eq`](./fn.eq.html).
 enum EqResult {
     Bool(bool),
-    Eqs(RichTerm, RichTerm, Vec<(RichTerm, RichTerm)>),
+    Eqs(RichTerm, RichTerm, Vec<(Closure, Closure)>),
 }
 
 /// An operation continuation as stored on the stack.
@@ -637,7 +638,7 @@ fn process_binary_operation(
     fst_pos: Option<RawSpan>,
     clos: Closure,
     snd_pos: Option<RawSpan>,
-    _stack: &mut Stack,
+    stack: &mut Stack,
     pos_op: Option<RawSpan>,
 ) -> Result<Closure, EvalError> {
     let Closure {
@@ -870,55 +871,27 @@ fn process_binary_operation(
             };
 
             match eq(&mut env, c1, c2) {
-                EqResult::Bool(b) => Ok(Closure::atomic_closure(Term::Bool(b).into())),
-                EqResult::Eqs(fst, snd, eqs) => Ok(Closure {
-                    body: RichTerm::new(Term::Op2(BinaryOp::MultiEq(eqs), fst, snd), pos_op),
-                    env,
-                }),
-            }
-        }
-        BinaryOp::MultiEq(eqs) => {
-            let mut env = Environment::new();
-
-            let c1 = Closure {
-                body: RichTerm {
-                    term: t1,
-                    pos: pos1,
-                },
-                env: env1,
-            };
-            let c2 = Closure {
-                body: RichTerm {
-                    term: t2,
-                    pos: pos2,
-                },
-                env: env2,
-            };
-
-            let mut eqs: Vec<_> = eqs
-                .into_iter()
-                .map(|(c1, c2)| {
-                    (
-                        c1.body.closurize(&mut env, c1.env),
-                        c2.body.closurize(&mut env, c2.env),
-                    )
-                })
-                .collect();
-
-            match eq(&mut env, c1, c2) {
-                EqResult::Bool(b) => match (b, eqs.pop()) {
-                    (false, _) => Ok(Closure::atomic_closure(Term::Bool(false).into())),
+                EqResult::Bool(b) => match (b, stack.pop_eq()) {
+                    (false, _) => {
+                        stack.clear_eqs();
+                        Ok(Closure::atomic_closure(Term::Bool(false).into()))
+                    }
                     (true, None) => Ok(Closure::atomic_closure(Term::Bool(true).into())),
-                    (true, Some((t1, t2))) => Ok(Closure {
-                        body: RichTerm::new(Term::Op2(BinaryOp::MultiEq(eqs), t1, t2), pos_op),
-                        env,
-                    }),
+                    (true, Some((c1, c2))) => {
+                        let t1 = c1.body.closurize(&mut env, c1.env);
+                        let t2 = c2.body.closurize(&mut env, c2.env);
+
+                        Ok(Closure {
+                            body: RichTerm::new(Term::Op2(BinaryOp::Eq(), t1, t2), pos_op),
+                            env,
+                        })
+                    }
                 },
                 EqResult::Eqs(t1, t2, subeqs) => {
-                    eqs.extend(subeqs);
+                    stack.push_eqs(subeqs.into_iter());
 
                     Ok(Closure {
-                        body: RichTerm::new(Term::Op2(BinaryOp::MultiEq(eqs), t1, t2), pos_op),
+                        body: RichTerm::new(Term::Op2(BinaryOp::Eq(), t1, t2), pos_op),
                         env,
                     })
                 }
@@ -1308,21 +1281,32 @@ fn eq(env: &mut Environment, c1: Closure, c2: Closure) -> EqResult {
 
     // Take a list of subequalities, and either return `EqResult::Bool(true)` if it is empty, or
     // generate an approriate `EqResult::Eqs` variant with closurized terms in it.
-    fn gen_eqs<I>(it: I, env: &mut Environment, env1: Environment, env2: Environment) -> EqResult
+    fn gen_eqs<I>(
+        mut it: I,
+        env: &mut Environment,
+        env1: Environment,
+        env2: Environment,
+    ) -> EqResult
     where
         I: Iterator<Item = (RichTerm, RichTerm)>,
     {
-        let mut eqs: Vec<_> = it
-            .map(|(t1, t2)| {
-                (
-                    t1.closurize(env, env1.clone()),
-                    t2.closurize(env, env2.clone()),
-                )
-            })
-            .collect();
+        if let Some((t1, t2)) = it.next() {
+            let eqs = it
+                .map(|(t1, t2)| {
+                    (
+                        Closure {
+                            body: t1,
+                            env: env1.clone(),
+                        },
+                        Closure {
+                            body: t2,
+                            env: env2.clone(),
+                        },
+                    )
+                })
+                .collect();
 
-        if let Some((t1, t2)) = eqs.pop() {
-            EqResult::Eqs(t1, t2, eqs)
+            EqResult::Eqs(t1.closurize(env, env1), t2.closurize(env, env2), eqs)
         } else {
             EqResult::Bool(true)
         }
