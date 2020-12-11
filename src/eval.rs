@@ -264,6 +264,32 @@ where
                 env.insert(x, (Rc::clone(&thunk), IdentKind::Let()));
                 Closure { body: t, env }
             }
+            Term::Switch(exp, cases, default) => {
+                let has_default = default.is_some();
+
+                if let Some(t) = default {
+                    stack.push_arg(
+                        Closure {
+                            body: t,
+                            env: env.clone(),
+                        },
+                        pos.clone(),
+                    );
+                }
+
+                stack.push_arg(
+                    Closure {
+                        body: RichTerm::new(Term::Record(cases), pos.clone()),
+                        env: env.clone(),
+                    },
+                    pos.clone(),
+                );
+
+                Closure {
+                    body: RichTerm::new(Term::Op1(UnaryOp::Switch(has_default), exp), pos),
+                    env,
+                }
+            }
             Term::Op1(op, t) => {
                 let op = op.map(|t| Closure {
                     body: t,
@@ -570,6 +596,22 @@ fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichTerm 
                 let t2 = subst_(t2, global_env, env, bound);
 
                 RichTerm::new(Term::App(t1, t2), pos)
+            }
+            Term::Switch(t, cases, default) => {
+                let default =
+                    default.map(|d| subst_(d, global_env, env, Cow::Borrowed(bound.as_ref())));
+                let cases = cases
+                    .into_iter()
+                    .map(|(id, t)| {
+                        (
+                            id,
+                            subst_(t, global_env, env, Cow::Borrowed(bound.as_ref())),
+                        )
+                    })
+                    .collect();
+                let t = subst_(t, global_env, env, bound);
+
+                RichTerm::new(Term::Switch(t, cases, default), pos)
             }
             Term::Op1(op, t) => {
                 let op = op.map(|t| subst_(t, global_env, env, Cow::Borrowed(bound.as_ref())));
