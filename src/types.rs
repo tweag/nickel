@@ -220,9 +220,10 @@ impl Types {
                                 rest_contract,
                                 mk_fun!(
                                     "x",
-                                    mk_term::op1(
-                                        UnaryOp::Switch(map, Some(Term::Bool(false).into())),
-                                        mk_term::var("x"),
+                                    mk_app!(
+                                        mk_term::op1(UnaryOp::Switch(true), mk_term::var("x")),
+                                        Term::Record(map),
+                                        Term::Bool(false)
                                     )
                                 )
                             )
