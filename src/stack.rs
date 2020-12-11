@@ -184,8 +184,7 @@ impl Stack {
     /// Discard all the consecutive equality from the top of the stack. This drops the continuation
     /// of the equality being currently evaluated.
     pub fn clear_eqs(&mut self) {
-        let stack = std::mem::replace(&mut self.0, vec![]);
-        self.0 = stack.into_iter().skip_while(Marker::is_eq).collect();
+        while self.pop_eq().is_some() {}
     }
 }
 
