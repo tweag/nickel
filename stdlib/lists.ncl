@@ -6,7 +6,7 @@
 
     length : List -> Num = fun l => %length% l;
 
-    map : (Dyn -> Dyn) -> List -> List = fun f l => %map% f l;
+    map : (Dyn -> Dyn) -> List -> List = fun f l => %map% l f;
 
     elemAt : List -> Num -> Dyn = fun l n => %elemAt% l n;
 

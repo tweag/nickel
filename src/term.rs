@@ -498,13 +498,13 @@ pub enum UnaryOp<CapturedTerm> {
     StaticAccess(Ident),
 
     /// Map a function on each element of a list.
-    ListMap(CapturedTerm),
+    ListMap(),
     /// Map a function on a record.
     ///
     /// The mapped function must take two arguments, the name of the field as a string, and the
     /// content of the field. `RecordMap` then replaces the content of each field by the result of the
     /// function: i.e., `recordMap f {a=2;}` evaluates to `{a=(f "a" 2);}`.
-    RecordMap(CapturedTerm),
+    RecordMap(),
 
     /// Inverse the polarity of a label.
     ChangePolarity(),
@@ -574,8 +574,8 @@ impl<Ty> UnaryOp<Ty> {
 
         match self {
             Switch(has_default) => Switch(has_default),
-            ListMap(t) => ListMap(f(t)),
-            RecordMap(t) => RecordMap(f(t)),
+            ListMap() => ListMap(),
+            RecordMap() => RecordMap(),
 
             Ite() => Ite(),
 

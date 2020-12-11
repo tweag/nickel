@@ -1335,8 +1335,8 @@ fn instantiate_foralls(state: &mut State, mut ty: TypeWrapper, inst: ForallInst)
 /// Type of unary operations.
 pub fn get_uop_type(
     state: &mut State,
-    envs: Envs,
-    strict: bool,
+    _envs: Envs,
+    _strict: bool,
     op: &UnaryOp<RichTerm>,
 ) -> Result<TypeWrapper, TypecheckError> {
     Ok(match op {
@@ -1398,20 +1398,16 @@ pub fn get_uop_type(
 
             mk_tyw_arrow!(mk_tyw_record!((id.clone(), res.clone()); row), res)
         }
-        // List -> List
-        // Unify f with a -> b.
-        UnaryOp::ListMap(f) => {
+        // forall a b. List -> (a -> b) -> List
+        UnaryOp::ListMap() => {
             let a = TypeWrapper::Ptr(new_var(state.table));
             let b = TypeWrapper::Ptr(new_var(state.table));
 
             let f_type = mk_tyw_arrow!(a.clone(), b.clone());
-            type_check_(state, envs.clone(), strict, f, f_type)?;
-
-            mk_tyw_arrow!(AbsType::List(), AbsType::List())
+            mk_tyw_arrow!(AbsType::List(), f_type, AbsType::List())
         }
-        // { _ : a} -> { _ : b }
-        // Unify f with Str -> a -> b.
-        UnaryOp::RecordMap(f) => {
+        // forall a b. { _ : a} -> (Str -> a -> b) -> { _ : b }
+        UnaryOp::RecordMap() => {
             // Assuming f has type Str -> a -> b,
             // this has type DynRecord(a) -> DynRecord(b)
 
@@ -1419,9 +1415,11 @@ pub fn get_uop_type(
             let b = TypeWrapper::Ptr(new_var(state.table));
 
             let f_type = mk_tyw_arrow!(AbsType::Str(), a.clone(), b.clone());
-            type_check_(state, envs.clone(), strict, f, f_type)?;
-
-            mk_tyw_arrow!(mk_typewrapper::dyn_record(a), mk_typewrapper::dyn_record(b))
+            mk_tyw_arrow!(
+                mk_typewrapper::dyn_record(a),
+                f_type,
+                mk_typewrapper::dyn_record(b)
+            )
         }
         // forall a b. a -> b -> b
         UnaryOp::Seq() | UnaryOp::DeepSeq() => {
@@ -2079,7 +2077,7 @@ mod tests {
         parse_and_typecheck("fun l => %tail% l : List -> List").unwrap();
         parse_and_typecheck("fun l => %head% l : List -> Dyn").unwrap();
         parse_and_typecheck(
-            "fun f l => %map% f l : forall a. (forall b. (a -> b) -> List -> List)",
+            "fun f l => %map% l f : forall a. (forall b. (a -> b) -> List -> List)",
         )
         .unwrap();
         parse_and_typecheck("(fun l1 => fun l2 => l1 @ l2) : List -> List -> List").unwrap();
@@ -2087,7 +2085,7 @@ mod tests {
 
         parse_and_typecheck("(fun l => %head% l) : forall a. (List -> a)").unwrap_err();
         parse_and_typecheck(
-            "(fun f l => %elemAt% (%map% f l) 0) : forall a. (forall b. (a -> b) -> List -> b)",
+            "(fun f l => %elemAt% (%map% l f) 0) : forall a. (forall b. (a -> b) -> List -> b)",
         )
         .unwrap_err();
     }

@@ -434,7 +434,11 @@ fn process_unary_operation(
                 ))
             }
         }
-        UnaryOp::ListMap(f) => {
+        UnaryOp::ListMap() => {
+            let (f, _) = stack
+                .pop_arg()
+                .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("map"), pos_op))?;
+
             if let Term::List(ts) = *t {
                 let mut shared_env = Environment::new();
                 let f_as_var = f.body.closurize(&mut env, f.env);
@@ -464,7 +468,11 @@ fn process_unary_operation(
                 ))
             }
         }
-        UnaryOp::RecordMap(f) => {
+        UnaryOp::RecordMap() => {
+            let (f, _) = stack
+                .pop_arg()
+                .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("recordMap"), pos_op))?;
+
             if let Term::Record(rec) = *t {
                 let mut shared_env = Environment::new();
                 let f_as_var = f.body.closurize(&mut env, f.env);
