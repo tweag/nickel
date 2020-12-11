@@ -1,3 +1,4 @@
+use crate::identifier::Ident;
 /// A few helpers to generate position spans and labels easily during parsing
 use crate::label::Label;
 use crate::position::RawSpan;
@@ -11,6 +12,13 @@ use codespan::FileId;
 pub enum StringKind {
     Standard,
     Multiline,
+}
+
+/// Distinguish between a normal case `id => exp` and a default case `_ => exp`.
+#[derive(Clone, Debug)]
+pub enum SwitchCase {
+    Normal(Ident, RichTerm),
+    Default(RichTerm),
 }
 
 /// Make a span from parser byte offsets.

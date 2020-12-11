@@ -74,6 +74,13 @@ pub enum Term {
     /// A recursive record, where the fields can reference each others.
     #[serde(skip)]
     RecRecord(HashMap<Ident, RichTerm>),
+    /// A switch construct. The evaluation is done by the corresponding unary operator, but we
+    /// still need this one for typechecking.
+    Switch(
+        RichTerm,                 /* tested expression */
+        HashMap<Ident, RichTerm>, /* cases */
+        Option<RichTerm>,         /* default */
+    ),
 
     /// A list.
     List(Vec<RichTerm>),
@@ -196,9 +203,9 @@ impl Term {
     {
         use self::Term::*;
         match self {
-            Op1(UnaryOp::Switch(ref mut map, ref mut def), ref mut t) => {
-                map.iter_mut().for_each(|e| {
-                    let (_, t) = e;
+            Switch(ref mut t, ref mut cases, ref mut def) => {
+                cases.iter_mut().for_each(|c| {
+                    let (_, t) = c;
                     func(t);
                 });
                 func(t);
@@ -279,6 +286,7 @@ impl Term {
             Term::Let(_, _, _)
             | Term::App(_, _)
             | Term::Var(_)
+            | Term::Switch(..)
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::Promise(_, _, _)
@@ -327,6 +335,7 @@ impl Term {
             Term::Var(Ident(id)) => id.clone(),
             Term::Let(_, _, _)
             | Term::App(_, _)
+            | Term::Switch(..)
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::Promise(_, _, _)
@@ -351,6 +360,7 @@ impl Term {
             Term::Let(_, _, _)
             | Term::App(_, _)
             | Term::Var(_)
+            | Term::Switch(..)
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::Promise(_, _, _)
@@ -388,6 +398,7 @@ impl Term {
             | Term::Wrapped(_, _)
             | Term::Let(_, _, _)
             | Term::App(_, _)
+            | Term::Switch(..)
             | Term::Var(_)
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
@@ -415,6 +426,7 @@ impl Term {
             | Term::List(_)
             | Term::Fun(_, _)
             | Term::App(_, _)
+            | Term::Switch(..)
             | Term::Var(_)
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
@@ -477,12 +489,8 @@ pub enum UnaryOp<CapturedTerm> {
     /// `embed c x` will have enum type `a | b | c`. It only affects typechecking as at runtime
     /// `embed someId` act like the identity.
     Embed(Ident),
-    // This is a hacky way to deal with this for now.
-    //
-    // Ideally it should change to eliminate the dependency with RichTerm
-    // in the future.
     /// A switch block. Used to match on a enumeration.
-    Switch(HashMap<Ident, CapturedTerm>, Option<CapturedTerm>),
+    Switch(bool /* presence of a default case */), //HashMap<Ident, CapturedTerm>, Option<CapturedTerm>),
 
     /// Static access to a record field.
     ///
@@ -565,15 +573,7 @@ impl<Ty> UnaryOp<Ty> {
         use UnaryOp::*;
 
         match self {
-            Switch(m, op) => Switch(
-                m.into_iter()
-                    .map(|e| {
-                        let (id, t) = e;
-                        (id, f(t))
-                    })
-                    .collect(),
-                op.map(f),
-            ),
+            Switch(has_default) => Switch(has_default),
             ListMap(t) => ListMap(f(t)),
             RecordMap(t) => RecordMap(f(t)),
 
@@ -799,7 +799,7 @@ impl RichTerm {
                     state,
                 )
             }
-            Term::Op1(UnaryOp::Switch(cases, default), t) => {
+            Term::Switch(t, cases, default) => {
                 // The annotation on `map_res` use Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
                 let cases_res: Result<HashMap<Ident, RichTerm>, E> = cases
@@ -817,10 +817,7 @@ impl RichTerm {
                 let t = t.traverse(f, state)?;
 
                 f(
-                    RichTerm {
-                        term: Box::new(Term::Op1(UnaryOp::Switch(cases_res?, default), t)),
-                        pos,
-                    },
+                    RichTerm::new(Term::Switch(t, cases_res?, default), pos),
                     state,
                 )
             }
@@ -1051,6 +1048,31 @@ pub mod make {
                 )*
                 $crate::term::RichTerm::from($crate::term::Term::Record(map))
             }
+        };
+    }
+
+    /// Multi field record for types implementing `Into<Ident>` (for the identifiers), and
+    /// `Into<RichTerm>` for the fields. Identifiers and corresponding content are specified as a
+    /// tuple: `mk_record!(("field1", t1), ("field2", t2))` corresponds to the record `{ field1 =
+    /// t1; field2 = t2 }`.
+    #[macro_export]
+    #[cfg(test)]
+    macro_rules! mk_switch {
+        ( $exp:expr, $( ($id:expr, $body:expr) ),* ; $default:expr ) => {
+            {
+                let mut map = std::collections::HashMap::new();
+                $(
+                    map.insert($id.into(), $body.into());
+                )*
+                $crate::term::RichTerm::from($crate::term::Term::Switch($crate::term::RichTerm::from($exp), map, Some($crate::term::RichTerm::from($default))))
+            }
+        };
+        ( $exp:expr, $( ($id:expr, $body:expr) ),*) => {
+                let mut map = std::collections::HashMap::new();
+                $(
+                    map.insert($id.into(), $body.into());
+                )*
+                $crate::term::RichTerm::from($crate::term::Term::Switch($crate::term::RichTerm::from($exp), map, None))
         };
     }
 

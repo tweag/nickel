@@ -3,7 +3,7 @@ use crate::term::{BinaryOp, RichTerm, Term, UnaryOp, StrChunk};
 use crate::term::make as mk_term;
 use crate::mk_app;
 use crate::types::{Types, AbsType};
-use super::utils::{StringKind, mk_span, mk_label, strip_indent};
+use super::utils::{StringKind, mk_span, mk_label, strip_indent, SwitchCase};
 use super::lexer::{Token, NormalToken, StringToken, MultiStringToken, LexicalError};
 use std::collections::HashMap;
 use either::*;
@@ -59,6 +59,27 @@ RichTerm: RichTerm = {
         };
 
         mk_term::let_in(id, t1, t2)
+    },
+    "switch" "{" <cases: (switch_case ",")*> <last: switch_case?> "}" <exp: SpTerm<RichTerm>> => {
+        let mut acc = HashMap::with_capacity(cases.len());
+        let mut default = None;
+
+        for case in cases.into_iter().map(|x| x.0).chain(last.into_iter()) {
+            match case {
+                SwitchCase::Normal(id, t) => acc.insert(id, t),
+                // If there are multiple default cases, the last one silently
+                // erases the others. We should have a dedicated error for that
+                SwitchCase::Default(t) => default.replace(t),
+            };
+        }
+
+        RichTerm::from(
+            Term::Switch(
+                exp,
+                acc,
+                default,
+            )
+        )
     },
     "if" <b:Term> "then" <t:Term> "else" <e:SpTerm<RichTerm>> =>
         mk_app!(Term::Op1(UnaryOp::Ite(), b), t, e),
@@ -248,11 +269,6 @@ UOp: UnaryOp<RichTerm> = {
     "tag" <s: Str> => UnaryOp::Tag(s),
     "wrap" => UnaryOp::Wrap(),
     "embed" <Ident> => UnaryOp::Embed(<>),
-    "switch" "{" <ds: (switch_case ",")*> <default: switch_default?> "}" =>
-        UnaryOp::Switch(
-            ds.into_iter().map(|x| x.0).collect(),
-            default,
-        ),
     "map" <Atom> => UnaryOp::ListMap(<>),
     "recordMap" <Atom> => UnaryOp::RecordMap(<>),
     "seq" => UnaryOp::Seq(),
@@ -263,12 +279,9 @@ UOp: UnaryOp<RichTerm> = {
     "fieldsOf" => UnaryOp::FieldsOf(),
 };
 
-switch_case: (Ident, RichTerm) = {
-    <id: Ident> "=>" <t: SpTerm<Atom> > => (id, t),
-}
-
-switch_default: RichTerm = {
-    "_" "=>" <SpTerm<Atom>> "," => <>,
+switch_case: SwitchCase = {
+    <id: Ident> "=>" <t: Term> => SwitchCase::Normal(id, t),
+    "_" "=>" <t: Term> => SwitchCase::Default(<>),
 }
 
 // TODO: convenience for messing with precedence levels during development. Once
