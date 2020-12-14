@@ -1202,6 +1202,30 @@ Assume(#alwaysTrue, false)
         };
     }
 
+    // The chunk concatenation operator directly uses the stack to store its continuation. Check
+    // that it does not mess up the stack.
+    #[test]
+    fn chunks_nested() {
+        // Generate an non-empty evaluation context to evaluate chunks over a non-empty stack
+        let with_context = |t| format!("let force = fun s => s ++ \"\" in force (force ({}))", t);
+
+        fn assert_eval_str(term: &str, result: &str) {
+            assert_eq!(eval_string(term), Ok(Term::Str(String::from(result))));
+        }
+
+        assert_eval_str(
+            &with_context(r##""nested #{ {str = {a = "braces"}.a}.str } !""##),
+            "nested braces !",
+        );
+
+        assert_eval_str(
+            &with_context(
+                r##"let x = "world" in "Hello, #{x}! Welcome in #{let y = "universe" in "the #{x}-#{y}"}""##,
+            ),
+            "Hello, world! Welcome in the world-universe",
+        );
+    }
+
     #[test]
     fn recursive_records() {
         assert_eq!(
