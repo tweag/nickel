@@ -90,7 +90,7 @@ pub enum Term {
     Op1(UnaryOp, RichTerm),
     /// A primitive binary operator.
     #[serde(skip)]
-    Op2(BinaryOp<RichTerm>, RichTerm, RichTerm),
+    Op2(BinaryOp, RichTerm, RichTerm),
 
     /// A promise.
     ///
@@ -219,11 +219,7 @@ impl Term {
                     func(t);
                 });
             }
-            Op2(BinaryOp::DynExtend(ref mut t), ref mut t1, ref mut t2) => {
-                func(t);
-                func(t1);
-                func(t2)
-            }
+
             Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | Sym(_) | Enum(_) | Import(_)
             | ResolvedImport(_) => {}
             Fun(_, ref mut t)
@@ -567,7 +563,7 @@ pub enum UnaryOp {
 
 /// Primitive binary operators
 #[derive(Clone, Debug, PartialEq)]
-pub enum BinaryOp<CapturedTerm> {
+pub enum BinaryOp {
     /// Addition of numerals.
     Plus(),
     /// Substraction of numerals.
@@ -601,9 +597,10 @@ pub enum BinaryOp<CapturedTerm> {
     /// Extend a record with a dynamic field.
     ///
     /// Dynamic means that the field name may be an expression instead of a statically known
-    /// string.  `DynExtend` tries to evaluate this name to a string, and in case of success, add a
-    /// field with this name to the given record with the `CapturedTerm` as content.
-    DynExtend(CapturedTerm),
+    /// string. `DynExtend` tries to evaluate this name to a string, and in case of success, add a
+    /// field with this name to the given record with the expression on top of the stack as
+    /// content.
+    DynExtend(),
     /// Remove a field from a record. The field name is given as an arbitrary Nickel expression.
     DynRemove(),
     /// Access the field of record. The field name is given as an arbitrary Nickel expression.
@@ -618,34 +615,7 @@ pub enum BinaryOp<CapturedTerm> {
     Merge(),
 }
 
-impl<Ty> BinaryOp<Ty> {
-    pub fn map<To, F: Fn(Ty) -> To>(self, f: F) -> BinaryOp<To> {
-        use BinaryOp::*;
-
-        match self {
-            DynExtend(t) => DynExtend(f(t)),
-            Plus() => Plus(),
-            Sub() => Sub(),
-            Div() => Div(),
-            Mult() => Mult(),
-            Modulo() => Modulo(),
-            PlusStr() => PlusStr(),
-            Eq() => Eq(),
-            LessThan() => LessThan(),
-            LessOrEq() => LessOrEq(),
-            GreaterThan() => GreaterThan(),
-            GreaterOrEq() => GreaterOrEq(),
-            Unwrap() => Unwrap(),
-            GoField() => GoField(),
-            DynRemove() => DynRemove(),
-            DynAccess() => DynAccess(),
-            HasField() => HasField(),
-            ListConcat() => ListConcat(),
-            ListElemAt() => ListElemAt(),
-            Merge() => Merge(),
-        }
-    }
-
+impl BinaryOp {
     pub fn is_strict(&self) -> bool {
         match self {
             BinaryOp::Merge() => false,
@@ -1034,7 +1004,7 @@ pub mod make {
         Term::Op1(op, t.into()).into()
     }
 
-    pub fn op2<T1, T2>(op: BinaryOp<RichTerm>, t1: T1, t2: T2) -> RichTerm
+    pub fn op2<T1, T2>(op: BinaryOp, t1: T1, t2: T2) -> RichTerm
     where
         T1: Into<RichTerm>,
         T2: Into<RichTerm>,

@@ -177,21 +177,20 @@ fn record_terms() {
 
     assert_eq!(
         parse_without_pos("{ a = 1; $123 = (if 4 then 5 else 6); d = 42;}"),
-        mk_term::op2(
-            BinaryOp::DynExtend(mk_app!(
-                mk_term::op1(UnaryOp::Ite(), Num(4.)),
-                Num(5.),
-                Num(6.)
-            )),
-            Num(123.),
-            RecRecord(
-                vec![
-                    (Ident::from("a"), Num(1.).into()),
-                    (Ident::from("d"), Num(42.).into()),
-                ]
-                .into_iter()
-                .collect()
-            )
+        mk_app!(
+            mk_term::op2(
+                BinaryOp::DynExtend(),
+                Num(123.),
+                RecRecord(
+                    vec![
+                        (Ident::from("a"), Num(1.).into()),
+                        (Ident::from("d"), Num(42.).into()),
+                    ]
+                    .into_iter()
+                    .collect()
+                )
+            ),
+            mk_app!(mk_term::op1(UnaryOp::Ite(), Num(4.)), Num(5.), Num(6.))
         )
     );
 }
