@@ -622,7 +622,7 @@ fn type_check_(
             }
         }
         Term::Op1(op, t) => {
-            let ty_op = get_uop_type(state, envs.clone(), strict, op)?;
+            let ty_op = get_uop_type(state, op)?;
 
             let src = TypeWrapper::Ptr(new_var(state.table));
             let arr = mk_tyw_arrow!(src.clone(), ty);
@@ -631,7 +631,7 @@ fn type_check_(
             type_check_(state, envs.clone(), strict, t, src)
         }
         Term::Op2(op, e, t) => {
-            let ty_op = get_bop_type(state, envs.clone(), strict, op)?;
+            let ty_op = get_bop_type(state, op)?;
 
             let src1 = TypeWrapper::Ptr(new_var(state.table));
             let src2 = TypeWrapper::Ptr(new_var(state.table));
@@ -1333,12 +1333,7 @@ fn instantiate_foralls(state: &mut State, mut ty: TypeWrapper, inst: ForallInst)
 }
 
 /// Type of unary operations.
-pub fn get_uop_type(
-    state: &mut State,
-    _envs: Envs,
-    _strict: bool,
-    op: &UnaryOp,
-) -> Result<TypeWrapper, TypecheckError> {
+pub fn get_uop_type(state: &mut State, op: &UnaryOp) -> Result<TypeWrapper, TypecheckError> {
     Ok(match op {
         // forall a. bool -> a -> a -> a
         UnaryOp::Ite() => {
@@ -1447,12 +1442,7 @@ pub fn get_uop_type(
 }
 
 /// Type of a binary operation.
-pub fn get_bop_type(
-    state: &mut State,
-    envs: Envs,
-    strict: bool,
-    op: &BinaryOp<RichTerm>,
-) -> Result<TypeWrapper, TypecheckError> {
+pub fn get_bop_type(state: &mut State, op: &BinaryOp) -> Result<TypeWrapper, TypecheckError> {
     Ok(match op {
         // Num -> Num -> Num
         BinaryOp::Plus()
@@ -1488,16 +1478,14 @@ pub fn get_bop_type(
 
             mk_tyw_arrow!(AbsType::Str(), mk_typewrapper::dyn_record(res.clone()), res)
         }
-        // Str -> { _ : a } -> { _ : a }
-        // Unify t with a.
-        BinaryOp::DynExtend(t) => {
+        // forall a. Str -> { _ : a } -> a -> { _ : a }
+        BinaryOp::DynExtend() => {
             let res = TypeWrapper::Ptr(new_var(state.table));
-
-            type_check_(state, envs.clone(), strict, t, res.clone())?;
 
             mk_tyw_arrow!(
                 AbsType::Str(),
                 mk_typewrapper::dyn_record(res.clone()),
+                res.clone(),
                 mk_typewrapper::dyn_record(res)
             )
         }

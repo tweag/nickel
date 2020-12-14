@@ -105,7 +105,7 @@ RecordOperationChain: RichTerm = {
     <t: SpTerm<RecordOperand>> ".$" <t_id: SpTerm<Atom>> => mk_term::op2(BinaryOp::DynAccess(), t_id, t),
     <t: SpTerm<RecordOperand>> "-$" <t_id: SpTerm<Atom>> => mk_term::op2(BinaryOp::DynRemove(), t_id, t),
     <r: SpTerm<RecordOperand>> "$[" <id: Term> "=" <t: Term> "]" =>
-        mk_term::op2(BinaryOp::DynExtend(t), id, r),
+        mk_app!(mk_term::op2(BinaryOp::DynExtend(), id, r), t),
 };
 
 Atom: RichTerm = {
@@ -142,7 +142,7 @@ Atom: RichTerm = {
 
         dynamic_fields.into_iter().fold(static_rec, |rec, field| {
             let (id_t, t) = field;
-            RichTerm::from(Term::Op2(BinaryOp::DynExtend(t), id_t, rec))
+            mk_app!(mk_term::op2(BinaryOp::DynExtend(), id_t, rec), t)
         })
     },
     "[" <terms: (SpTerm<Atom> ",")*> <last: Term?> "]" => {
@@ -296,7 +296,7 @@ PrefixExpr1: RichTerm = {
         mk_term::op2(BinaryOp::Sub(), Term::Num(0.0), t),
 }
 
-BinOp2: BinaryOp<RichTerm> = {
+BinOp2: BinaryOp = {
     "++" => BinaryOp::PlusStr(),
     "@" => BinaryOp::ListConcat(),
 }
@@ -306,7 +306,7 @@ InfixExpr2: RichTerm = {
     LeftOp<BinOp2, InfixExpr2, PrefixExpr1> => <>,
 }
 
-BinOp3: BinaryOp<RichTerm> = {
+BinOp3: BinaryOp = {
     "*" => BinaryOp::Mult(),
     "/" => BinaryOp::Div(),
     "%" => BinaryOp::Modulo(),
@@ -317,7 +317,7 @@ InfixExpr3: RichTerm = {
     LeftOp<BinOp3, InfixExpr3, InfixExpr2> => <>,
 }
 
-BinOp4: BinaryOp<RichTerm> = {
+BinOp4: BinaryOp = {
     "+" => BinaryOp::Plus(),
     "-" => BinaryOp::Sub(),
 }
@@ -332,7 +332,7 @@ PrefixExpr5: RichTerm = {
     "!" <PrefixExpr5> => mk_term::op1(UnaryOp::BoolNot(), <>),
 }
 
-BinOp6: BinaryOp<RichTerm> = {
+BinOp6: BinaryOp = {
     "&" => BinaryOp::Merge(),
 }
 
@@ -341,7 +341,7 @@ PrefixExpr6: RichTerm = {
     LeftOp<BinOp6, PrefixExpr6, PrefixExpr5> => <>,
 }
 
-BinOp7: BinaryOp<RichTerm> = {
+BinOp7: BinaryOp = {
     "<" => BinaryOp::LessThan(),
     "<=" => BinaryOp::LessOrEq(),
     ">" => BinaryOp::GreaterThan(),
@@ -353,7 +353,7 @@ InfixExpr7: RichTerm = {
     LeftOp<BinOp7, InfixExpr7, PrefixExpr6> => <>,
 }
 
-BinOp8: BinaryOp<RichTerm> = {
+BinOp8: BinaryOp = {
     "==" => BinaryOp::Eq(),
 }
 
@@ -386,7 +386,7 @@ InfixExpr: RichTerm = {
     InfixExpr10,
 }
 
-BOpPre: BinaryOp<RichTerm> = {
+BOpPre: BinaryOp = {
     "unwrap" => BinaryOp::Unwrap(),
     "goField" => BinaryOp::GoField(),
     "hasField" => BinaryOp::HasField(),
