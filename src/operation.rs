@@ -367,19 +367,6 @@ fn process_unary_operation(
                 ))
             }
         }
-        UnaryOp::Tag(s) => {
-            if let Term::Lbl(mut l) = *t {
-                l.tag = String::from(&s);
-                Ok(Closure::atomic_closure(Term::Lbl(l).into()))
-            } else {
-                Err(EvalError::TypeError(
-                    String::from("Label"),
-                    String::from("tag"),
-                    arg_pos,
-                    RichTerm { term: t, pos },
-                ))
-            }
-        }
         UnaryOp::Wrap() => {
             if let Term::Sym(s) = *t {
                 Ok(Closure::atomic_closure(mk_fun!(
@@ -871,6 +858,34 @@ fn process_binary_operation(
                 Err(EvalError::TypeError(
                     String::from("Sym"),
                     String::from("unwrap, 1st argument"),
+                    fst_pos,
+                    RichTerm {
+                        term: t1,
+                        pos: pos1,
+                    },
+                ))
+            }
+        }
+        BinaryOp::Tag() => {
+            if let Term::Str(s) = *t1 {
+                if let Term::Lbl(mut l) = *t2 {
+                    l.tag = s;
+                    Ok(Closure::atomic_closure(Term::Lbl(l).into()))
+                } else {
+                    Err(EvalError::TypeError(
+                        String::from("Label"),
+                        String::from("tag, 2nd argument"),
+                        snd_pos,
+                        RichTerm {
+                            term: t2,
+                            pos: pos2,
+                        },
+                    ))
+                }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("tag, 1st argument"),
                     fst_pos,
                     RichTerm {
                         term: t1,

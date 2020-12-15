@@ -1381,7 +1381,7 @@ pub fn get_uop_type(state: &mut State, op: &UnaryOp) -> Result<TypeWrapper, Type
         // This should not happen, as Switch() is only produced during evaluation.
         UnaryOp::Switch(_) => panic!("cannot typecheck Switch()"),
         // Dyn -> Dyn
-        UnaryOp::ChangePolarity() | UnaryOp::GoDom() | UnaryOp::GoCodom() | UnaryOp::Tag(_) => {
+        UnaryOp::ChangePolarity() | UnaryOp::GoDom() | UnaryOp::GoCodom() => {
             mk_tyw_arrow!(AbsType::Dyn(), AbsType::Dyn())
         }
         // Sym -> Dyn -> Dyn
@@ -1459,6 +1459,8 @@ pub fn get_bop_type(state: &mut State, op: &BinaryOp) -> Result<TypeWrapper, Typ
             AbsType::Dyn(),
             AbsType::Dyn()
         ),
+        // Str -> Dyn -> Dyn
+        BinaryOp::Tag() => mk_tyw_arrow!(AbsType::Str(), AbsType::Dyn(), AbsType::Dyn()),
         // forall a b. a -> b -> Bool
         BinaryOp::Eq() => mk_tyw_arrow!(
             TypeWrapper::Ptr(new_var(state.table)),

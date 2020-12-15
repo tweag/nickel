@@ -266,7 +266,6 @@ UOp: UnaryOp = {
     "polarity" => UnaryOp::Pol(),
     "goDom" => UnaryOp::GoDom(),
     "goCodom" => UnaryOp::GoCodom(),
-    "tag" <s: Str> => UnaryOp::Tag(s),
     "wrap" => UnaryOp::Wrap(),
     "embed" <Ident> => UnaryOp::Embed(<>),
     "map"  => UnaryOp::ListMap(),
@@ -391,6 +390,7 @@ BOpPre: BinaryOp = {
     "goField" => BinaryOp::GoField(),
     "hasField" => BinaryOp::HasField(),
     "elemAt" => BinaryOp::ListElemAt(),
+    "tag" => BinaryOp::Tag(),
 }
 
 Types: Types = {

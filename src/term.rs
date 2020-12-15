@@ -529,8 +529,6 @@ pub enum UnaryOp {
     ///
     /// See `GoDom`.
     GoCodom(),
-    /// Append text to the tag of a label.
-    Tag(String),
 
     /// Wrap a term with a type tag (see `Wrapped` in [`Term`](enum.Term.html)).
     Wrap(),
@@ -593,6 +591,8 @@ pub enum BinaryOp {
     ///
     /// See `GoDom`.
     GoField(),
+    /// Set the tag text of a blame label.
+    Tag(),
     /// Extend a record with a dynamic field.
     ///
     /// Dynamic means that the field name may be an expression instead of a statically known
