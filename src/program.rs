@@ -182,11 +182,21 @@ impl Program {
         let mut global_env = HashMap::new();
 
         self.load_stdlib(
+            "<stdlib/builtins.ncl>",
+            nickel_stdlib::BUILTINS,
+            &mut global_env,
+        )?;
+        self.load_stdlib(
             "<stdlib/contracts.ncl>",
             nickel_stdlib::CONTRACTS,
             &mut global_env,
         )?;
         self.load_stdlib("<stdlib/lists.ncl>", nickel_stdlib::LISTS, &mut global_env)?;
+        self.load_stdlib(
+            "<stdlib/records.ncl>",
+            nickel_stdlib::RECORDS,
+            &mut global_env,
+        )?;
         Ok(global_env)
     }
 
@@ -580,7 +590,7 @@ mod tests {
 
     #[test]
     fn simple_type_check() {
-        let res = eval_string("let x = 5 in if isNum x then true else 1");
+        let res = eval_string("let x = 5 in if %isNum% x then true else 1");
 
         assert_eq!(Ok(Term::Bool(true)), res);
     }
@@ -647,13 +657,16 @@ Assume(#alwaysTrue, false)
     #[test]
     fn flat_higher_order_contract() {
         let res = eval_string(
-            "let alwaysTrue = fun l t => let boolT = Assume(Bool, t) in
-    if boolT then boolT else blame l in
-let alwaysFalse = fun l t => let boolT = Assume(Bool, t) in
-    if boolT then  blame l else boolT in
-let not = fun b => if b then false else true in
-Assume(#alwaysTrue -> #alwaysFalse, not ) true
-",
+            "let alwaysTrue = fun l t =>
+              let boolT = Assume(Bool, t) in
+              if boolT then boolT else %blame% l
+            in
+            let alwaysFalse = fun l t =>
+              let boolT = Assume(Bool, t) in
+              if boolT then %blame% l else boolT
+            in
+            let not = fun b => if b then false else true in
+            Assume(#alwaysTrue -> #alwaysFalse, not ) true",
         );
 
         assert_eq!(Ok(Term::Bool(false)), res);
@@ -788,22 +801,24 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
     #[test]
     fn records_prims() {
         assert_eq!(
-            eval_string("hasField \"foo\" { foo = 1; bar = 2; }"),
+            eval_string("%hasField% \"foo\" { foo = 1; bar = 2; }"),
             Ok(Term::Bool(true))
         );
         assert_eq!(
-            eval_string("hasField \"fop\" { foo = 1; bar = 2; }"),
+            eval_string("%hasField% \"fop\" { foo = 1; bar = 2; }"),
             Ok(Term::Bool(false))
         );
 
         assert_eq!(
-            eval_string("(mapRec (fun y => fun x => x + 1) { foo = 1; bar = \"it's lazy\"; }).foo"),
+            eval_string(
+                "(%mapRec% (fun y => fun x => x + 1) { foo = 1; bar = \"it's lazy\"; }).foo"
+            ),
             Ok(Term::Num(2.)),
         );
         assert_eq!(
             eval_string(
-                "let r = mapRec
-                    (fun y x => if isNum x then x + 1 else 0)
+                "let r = %mapRec%
+                    (fun y x => if %isNum% x then x + 1 else 0)
                     { foo = 1; bar = \"it's lazy\"; }
                 in
                 (r.foo) + (r.bar)"
@@ -812,12 +827,12 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         );
 
         assert_eq!(
-            eval_string("hasField \"foo\" ( { foo = 2; bar = 3; }-$(\"foo\"))"),
+            eval_string("%hasField% \"foo\" ( { foo = 2; bar = 3; }-$(\"foo\"))"),
             Ok(Term::Bool(false))
         );
 
         assert_eq!(
-            eval_string("hasField \"foo\" ( { bar = 3; }$[\"foo\" = 1])"),
+            eval_string("%hasField% \"foo\" ( { bar = 3; }$[\"foo\" = 1])"),
             Ok(Term::Bool(true))
         );
         assert_eq!(
@@ -830,22 +845,22 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
     /// just that the evaluation succeeds
     #[test]
     fn seq_expressions() {
-        assert_eq!(eval_string("seq 1 true"), Ok(Term::Bool(true)));
+        assert_eq!(eval_string("%seq% 1 true"), Ok(Term::Bool(true)));
         assert_eq!(
-            eval_string("let x = (1 + 1) in seq x x"),
+            eval_string("let x = (1 + 1) in %seq% x x"),
             Ok(Term::Num(2.0))
         );
 
         assert_eq!(
-            eval_string("let r = {a=(1 + 1);} in deepSeq r (r.a)"),
+            eval_string("let r = {a=(1 + 1);} in %deepSeq% r (r.a)"),
             Ok(Term::Num(2.0))
         );
         assert_eq!(
-            eval_string("let r = {a=(1 + 1);b=(\"a\" ++ \"b\");} in deepSeq r (r.b)"),
+            eval_string("let r = {a=(1 + 1);b=(\"a\" ++ \"b\");} in %deepSeq% r (r.b)"),
             Ok(Term::Str(String::from("ab")))
         );
         assert_eq!(
-            eval_string("let r = {a={b=(1 + 1);};} in deepSeq r ((r.a).b)"),
+            eval_string("let r = {a={b=(1 + 1);};} in %deepSeq% r ((r.a).b)"),
             Ok(Term::Num(2.0))
         );
 
@@ -853,7 +868,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
             eval_string(
                 "let inj = fun x => {b=(x + 2);} in
                 let cat = fun x => fun y => x ++ y in
-                let r = {a=(inj 1);b=(cat \"a\" \"b\");} in deepSeq r ((r.a).b)"
+                let r = {a=(inj 1);b=(cat \"a\" \"b\");} in %deepSeq% r ((r.a).b)"
             ),
             Ok(Term::Num(3.0))
         )
@@ -861,49 +876,49 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
 
     #[test]
     fn lists() {
-        assert_eq!(eval_string("elemAt [1,2,3] 1"), Ok(Term::Num(2.0)));
+        assert_eq!(eval_string("%elemAt% [1,2,3] 1"), Ok(Term::Num(2.0)));
         assert_eq!(
-            eval_string("elemAt (map (fun x => x + 1) [1,2,3]) 1"),
+            eval_string("%elemAt% (%map% (fun x => x + 1) [1,2,3]) 1"),
             Ok(Term::Num(3.0))
         );
 
-        eval_string("elemAt [1,2,3] (-1)").unwrap_err();
-        eval_string("elemAt [1,2,3] 4").unwrap_err();
+        eval_string("%elemAt% [1,2,3] (-1)").unwrap_err();
+        eval_string("%elemAt% [1,2,3] 4").unwrap_err();
 
-        assert_eq!(eval_string("length []"), Ok(Term::Num(0.0)));
-        assert_eq!(eval_string("length [1,2,3]"), Ok(Term::Num(3.0)));
+        assert_eq!(eval_string("%length% []"), Ok(Term::Num(0.0)));
+        assert_eq!(eval_string("%length% [1,2,3]"), Ok(Term::Num(3.0)));
 
         assert_eq!(
-            eval_string("length ([] @ [1,2] @ [3,4] @ [])"),
+            eval_string("%length% ([] @ [1,2] @ [3,4] @ [])"),
             Ok(Term::Num(4.0))
         );
         // Test case added after https://github.com/tweag/nickel/issues/154
         assert_eq!(
-            eval_string("let x = 1 in let l = [x] @ [2] in head l"),
+            eval_string("let x = 1 in let l = [x] @ [2] in %head% l"),
             Ok(Term::Num(1.0))
         );
 
         assert_eq!(
-            eval_string("head [\"a\",\"b\",\"c\"]"),
+            eval_string("%head% [\"a\",\"b\",\"c\"]"),
             Ok(Term::Str(String::from("a")))
         );
-        eval_string("head []").unwrap_err();
+        eval_string("%head% []").unwrap_err();
 
         assert_eq!(
-            eval_string("length (tail [true,false,1])"),
+            eval_string("%length% (%tail% [true,false,1])"),
             Ok(Term::Num(2.0))
         );
-        eval_string("tail []").unwrap_err();
+        eval_string("%tail% []").unwrap_err();
 
         assert_eq!(
             eval_string(
                 "let Y = fun f => (fun x => f (x x)) (fun x => f (x x)) in
                 let foldr_ =
                     fun self => fun f => fun acc => fun l =>
-                        if length l == 0 then acc
+                        if %length% l == 0 then acc
                         else
-                            let h = head l in
-                            let t = tail l in
+                            let h = %head% l in
+                            let t = %tail% l in
                             let next_acc = self f acc t in
                             f next_acc h
                 in
@@ -914,7 +929,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
                             if y then true else false
                         else false
                 in
-                let all = fun pred => fun l => foldr and true (map pred l) in
+                let all = fun pred => fun l => foldr and true (%map% pred l) in
                 let isZ = fun x => x == 0 in
                 all isZ [0, 0, 0, 1]"
             ),
@@ -1001,7 +1016,7 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
     #[test]
     fn enriched_terms_thunk_update() {
         assert_eq!(
-            eval_string("let x = {a=(fun x => Default(1)) 1} in seq (x.a) ((x & {a=2}).a)"),
+            eval_string("let x = {a=(fun x => Default(1)) 1} in %seq% (x.a) ((x & {a=2}).a)"),
             Ok(Term::Num(2.0))
         );
     }
@@ -1080,9 +1095,9 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
                  )
              ) in
              let toCtr = fun f => fun l => fun x => (
-               if (isNum x) then (
-                 if (f x) then x else blame l)
-               else blame l
+               if (%isNum% x) then (
+                 if (f x) then x else %blame% l)
+               else %blame% l
              ) in
              let isEven = toCtr isEven_ in
              let isDivBy3 = toCtr isDivBy3_ in
@@ -1294,11 +1309,11 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
 
     #[test]
     fn fields_of() {
-        assert_peq!("fieldsOf {}", "[]");
-        assert_peq!("fieldsOf {a = 1; b = 2; c = 3}", "[\"a\", \"b\", \"c\"]");
-        assert_peq!("fieldsOf {aAa = 1; Zzz = 2;}", "[\"Zzz\", \"aAa\"]");
+        assert_peq!("%fieldsOf% {}", "[]");
+        assert_peq!("%fieldsOf% {a = 1; b = 2; c = 3}", "[\"a\", \"b\", \"c\"]");
+        assert_peq!("%fieldsOf% {aAa = 1; Zzz = 2;}", "[\"Zzz\", \"aAa\"]");
         assert_peq!(
-            "fieldsOf {foo = {bar = 0}; baz = Default(true)}",
+            "%fieldsOf% {foo = {bar = 0}; baz = Default(true)}",
             "[\"baz\", \"foo\"]"
         );
     }
@@ -1346,16 +1361,22 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
 
     #[test]
     fn boolean_op() {
-        assert_peq!("1+1>1 && isStr 0", "false");
-        assert_peq!("-1 < -2 && isFun (fun x => x)", "false");
-        assert_peq!("isNum 0 && isFun (fun x => x) || 1 == 0 && true", "true");
+        assert_peq!("1+1>1 && %isStr% 0", "false");
+        assert_peq!("-1 < -2 && %isFun% (fun x => x)", "false");
         assert_peq!(
-            "isNum 0 && isFun false || 1 == 0 && false || 1 > 2 && 2 < 1",
+            "%isNum% 0 && %isFun% (fun x => x) || 1 == 0 && true",
+            "true"
+        );
+        assert_peq!(
+            "%isNum% 0 && %isFun% false || 1 == 0 && false || 1 > 2 && 2 < 1",
             "false"
         );
-        assert_peq!("!(isNum true) && !(isFun 0) && !(isBool \"a\")", "true");
         assert_peq!(
-            "!(isNum (fun x => x) || isBool (fun x => x) || isFun (fun x => x))",
+            "!(%isNum% true) && !(%isFun% 0) && !(%isBool% \"a\")",
+            "true"
+        );
+        assert_peq!(
+            "!(%isNum% (fun x => x) || %isBool% (fun x => x) || %isFun% (fun x => x))",
             "false"
         );
 
@@ -1379,29 +1400,30 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         eval_string("Assume({}, {a=1})").unwrap_err();
 
         assert_peq!(
-            "let x = Assume({a: Num, s: Str}, {a = 1; s = \"a\"}) in deepSeq x x",
+            "let x = Assume({a: Num, s: Str}, {a = 1; s = \"a\"}) in %deepSeq% x x",
             "{a = 1; s = \"a\"}"
         );
-        eval_string("let x = Assume({a: Num, s: Str}, {a = 1; s = 2}) in deepSeq x x").unwrap_err();
-        eval_string("let x = Assume({a: Num, s: Str}, {a = \"a\"; s = \"b\"}) in deepSeq x x")
+        eval_string("let x = Assume({a: Num, s: Str}, {a = 1; s = 2}) in %deepSeq% x x")
             .unwrap_err();
-        eval_string("let x = Assume({a: Num, s: Str}, {a = 1}) in deepSeq x x").unwrap_err();
-        eval_string("let x = Assume({a: Num, s: Str}, {s = \"a\"}) in deepSeq x x").unwrap_err();
+        eval_string("let x = Assume({a: Num, s: Str}, {a = \"a\"; s = \"b\"}) in %deepSeq% x x")
+            .unwrap_err();
+        eval_string("let x = Assume({a: Num, s: Str}, {a = 1}) in %deepSeq% x x").unwrap_err();
+        eval_string("let x = Assume({a: Num, s: Str}, {s = \"a\"}) in %deepSeq% x x").unwrap_err();
         eval_string(
-            "let x = Assume({a: Num, s: Str}, {a = 1; s = \"a\"; extra = 1}) in deepSeq x x",
+            "let x = Assume({a: Num, s: Str}, {a = 1; s = \"a\"; extra = 1}) in %deepSeq% x x",
         )
         .unwrap_err();
 
         assert_peq!(
-            "let x = Assume({a: Num, s: {foo: Bool}}, {a = 1; s = { foo = true}}) in deepSeq x x",
+            "let x = Assume({a: Num, s: {foo: Bool}}, {a = 1; s = { foo = true}}) in %deepSeq% x x",
             "{a = 1; s = { foo = true}}"
         );
         eval_string(
-            "let x = Assume({a: Num, s: {foo: Bool} }, {a = 1; s = { foo = 2}}) in deepSeq x x",
+            "let x = Assume({a: Num, s: {foo: Bool} }, {a = 1; s = { foo = 2}}) in %deepSeq% x x",
         )
         .unwrap_err();
-        eval_string("let x = Assume({a: Num, s: {foo: Bool} }, {a = 1; s = { foo = true; extra = 1}}) in deepSeq x x").unwrap_err();
-        eval_string("let x = Assume({a: Num, s: {foo: Bool} }, {a = 1; s = { }}) in deepSeq x x")
+        eval_string("let x = Assume({a: Num, s: {foo: Bool} }, {a = 1; s = { foo = true; extra = 1}}) in %deepSeq% x x").unwrap_err();
+        eval_string("let x = Assume({a: Num, s: {foo: Bool} }, {a = 1; s = { }}) in %deepSeq% x x")
             .unwrap_err();
     }
 

@@ -1429,9 +1429,11 @@ pub fn get_uop_type(
         UnaryOp::ListLength() => mk_tyw_arrow!(AbsType::List(), AbsType::Num()),
         // This should not happen, as ChunksConcat() is only produced during evaluation.
         UnaryOp::ChunksConcat(_, _, _) => panic!("cannot type ChunksConcat()"),
-        // forall rows. { rows } -> List
+        // BEFORE: forall rows. { rows } -> List
+        // Dyn -> List
         UnaryOp::FieldsOf() => mk_tyw_arrow!(
-            mk_tyw_record!(; TypeWrapper::Ptr(new_var(state.table))),
+            AbsType::Dyn(),
+            //mk_tyw_record!(; TypeWrapper::Ptr(new_var(state.table))),
             AbsType::List()
         ),
     })
@@ -1851,7 +1853,7 @@ mod tests {
 
         // We can typecheck any contract
         parse_and_typecheck(
-            "let alwaysTrue = fun l t => if t then t else blame l in
+            "let alwaysTrue = fun l t => if t then t else %blame% l in
             (fun x => x) : #alwaysTrue -> #alwaysTrue",
         )
         .unwrap();
@@ -1946,7 +1948,7 @@ mod tests {
         )
         .unwrap_err();
         parse_and_typecheck(
-            "(fun x => switch {bla => 1, ble => 2, bli => 4,} (embed bli x)) : <bla, ble> -> Num",
+            "(fun x => switch {bla => 1, ble => 2, bli => 4,} (%embed% bli x)) : <bla, ble> -> Num",
         )
         .unwrap();
 
@@ -2054,9 +2056,9 @@ mod tests {
 
     #[test]
     fn seq() {
-        parse_and_typecheck("seq false 1 : Num").unwrap();
-        parse_and_typecheck("(fun x y => seq x y) : forall a. (forall b. a -> b -> b)").unwrap();
-        parse_and_typecheck("let xDyn = false in let yDyn = 1 in (seq xDyn yDyn : Dyn)").unwrap();
+        parse_and_typecheck("%seq% false 1 : Num").unwrap();
+        parse_and_typecheck("(fun x y => %seq% x y) : forall a. (forall b. a -> b -> b)").unwrap();
+        parse_and_typecheck("let xDyn = false in let yDyn = 1 in (%seq% xDyn yDyn : Dyn)").unwrap();
     }
 
     #[test]
@@ -2073,16 +2075,18 @@ mod tests {
 
     #[test]
     fn lists_operations() {
-        parse_and_typecheck("fun l => tail l : List -> List").unwrap();
-        parse_and_typecheck("fun l => head l : List -> Dyn").unwrap();
-        parse_and_typecheck("fun f l => map f l : forall a. (forall b. (a -> b) -> List -> List)")
-            .unwrap();
-        parse_and_typecheck("(fun l1 => fun l2 => l1 @ l2) : List -> List -> List").unwrap();
-        parse_and_typecheck("(fun i l => elemAt l i) : Num -> List -> Dyn ").unwrap();
-
-        parse_and_typecheck("(fun l => head l) : forall a. (List -> a)").unwrap_err();
+        parse_and_typecheck("fun l => %tail% l : List -> List").unwrap();
+        parse_and_typecheck("fun l => %head% l : List -> Dyn").unwrap();
         parse_and_typecheck(
-            "(fun f l => elemAt (map f l) 0) : forall a. (forall b. (a -> b) -> List -> b)",
+            "fun f l => %map% f l : forall a. (forall b. (a -> b) -> List -> List)",
+        )
+        .unwrap();
+        parse_and_typecheck("(fun l1 => fun l2 => l1 @ l2) : List -> List -> List").unwrap();
+        parse_and_typecheck("(fun i l => %elemAt% l i) : Num -> List -> Dyn ").unwrap();
+
+        parse_and_typecheck("(fun l => %head% l) : forall a. (List -> a)").unwrap_err();
+        parse_and_typecheck(
+            "(fun f l => %elemAt% (%map% f l) 0) : forall a. (forall b. (a -> b) -> List -> b)",
         )
         .unwrap_err();
     }

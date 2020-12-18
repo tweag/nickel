@@ -11,7 +11,7 @@
 //! - All the fields of `r1` that are not in `r2`
 //! - All the fields of `r2` that are not in `r1`
 //! - Fields that are both in `r1` and `r2` are recursively merged: for a field `f`, the result
-//! contains the binding `f = merge r1.f r2.f`
+//! contains the binding `f = r1.f & r2.f`
 //!
 //! As fields are recursively merged, merge needs to operate on any value, not only on records.
 //!

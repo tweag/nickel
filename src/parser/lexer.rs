@@ -141,7 +141,7 @@ pub enum NormalToken<'input> {
     #[regex("m(#+)\"", |lex| lex.slice().len())]
     MultiStringStart(usize),
 
-    #[token("tag")]
+    #[token("%tag%")]
     Tag,
     #[token("Assume(")]
     Assume,
@@ -156,61 +156,59 @@ pub enum NormalToken<'input> {
     #[token("Docstring(")]
     Docstring,
 
-    #[token("isNum")]
+    #[token("%isNum%")]
     IsNum,
-    #[token("isBool")]
+    #[token("%isBool%")]
     IsBool,
-    #[token("isStr")]
+    #[token("%isStr%")]
     IsStr,
-    #[token("isFun")]
+    #[token("%isFun%")]
     IsFun,
-    #[token("isList")]
+    #[token("%isList%")]
     IsList,
-    #[token("isRecord")]
+    #[token("%isRecord%")]
     IsRecord,
 
-    #[token("blame")]
+    #[token("%blame%")]
     Blame,
-    #[token("chngPol")]
+    #[token("%chngPol%")]
     ChangePol,
-    #[token("polarity")]
+    #[token("%polarity%")]
     Polarity,
-    #[token("goDom")]
+    #[token("%goDom%")]
     GoDom,
-    #[token("goCodom")]
+    #[token("%goCodom%")]
     GoCodom,
-    #[token("goField")]
+    #[token("%goField%")]
     GoField,
 
-    #[token("wrap")]
+    #[token("%wrap%")]
     Wrap,
-    #[token("embed")]
+    #[token("%unwrap%")]
+    Unwrap,
+    #[token("%embed%")]
     Embed,
-    #[token("mapRec")]
+    #[token("%mapRec%")]
     MapRec,
-    #[token("seq")]
+    #[token("%seq%")]
     Seq,
-    #[token("deepSeq")]
+    #[token("%deepSeq%")]
     DeepSeq,
-    #[token("head")]
+    #[token("%head%")]
     Head,
-    #[token("tail")]
+    #[token("%tail%")]
     Tail,
-    #[token("length")]
+    #[token("%length%")]
     Length,
-    #[token("fieldsOf")]
+    #[token("%fieldsOf%")]
     FieldsOf,
 
-    #[token("unwrap")]
-    Unwrap,
-    #[token("hasField")]
+    #[token("%hasField%")]
     HasField,
-    #[token("map")]
+    #[token("%map%")]
     Map,
-    #[token("elemAt")]
+    #[token("%elemAt%")]
     ElemAt,
-    #[token("merge")]
-    Merge,
 
     #[token("{")]
     LBrace,
