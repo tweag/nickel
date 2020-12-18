@@ -1400,9 +1400,20 @@ pub fn get_uop_type(
 
             mk_tyw_arrow!(mk_tyw_record!((id.clone(), res.clone()); row), res)
         }
+        // List -> List
+        // Unify f with a -> b.
+        UnaryOp::ListMap(f) => {
+            let a = TypeWrapper::Ptr(new_var(state.table));
+            let b = TypeWrapper::Ptr(new_var(state.table));
+
+            let f_type = mk_tyw_arrow!(a.clone(), b.clone());
+            type_check_(state, envs.clone(), strict, f, f_type)?;
+
+            mk_tyw_arrow!(AbsType::List(), AbsType::List())
+        }
         // { _ : a} -> { _ : b }
         // Unify f with Str -> a -> b.
-        UnaryOp::MapRec(f) => {
+        UnaryOp::RecordMap(f) => {
             // Assuming f has type Str -> a -> b,
             // this has type DynRecord(a) -> DynRecord(b)
 
@@ -1508,14 +1519,6 @@ pub fn get_bop_type(
         BinaryOp::HasField() => mk_tyw_arrow!(AbsType::Str(), AbsType::Dyn(), AbsType::Bool()),
         // List -> List -> List
         BinaryOp::ListConcat() => mk_tyw_arrow!(AbsType::List(), AbsType::List(), AbsType::List()),
-        // forall a b. (a -> b) -> List -> List
-        BinaryOp::ListMap() => {
-            let src = TypeWrapper::Ptr(new_var(state.table));
-            let tgt = TypeWrapper::Ptr(new_var(state.table));
-            let arrow = mk_tyw_arrow!(src, tgt);
-
-            mk_tyw_arrow!(arrow, AbsType::List(), AbsType::List())
-        }
         // List -> Num -> Dyn
         BinaryOp::ListElemAt() => mk_tyw_arrow!(AbsType::List(), AbsType::Num(), AbsType::Dyn()),
         // Dyn -> Dyn -> Dyn

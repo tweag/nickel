@@ -392,24 +392,57 @@ fn process_unary_operation(
                 ))
             }
         }
-        UnaryOp::MapRec(f) => {
-            if let Term::Record(rec) = *t {
+        UnaryOp::ListMap(f) => {
+            if let Term::List(ts) = *t {
+                let mut shared_env = Environment::new();
                 let f_as_var = f.body.closurize(&mut env, f.env);
 
+                // List elements are closurized to preserve lazyness of data structures. It
+                // maintains the invariant that any data structure only contain thunks (that is,
+                // currently, variables).
+                let ts = ts
+                    .into_iter()
+                    .map(|t| {
+                        RichTerm::from(Term::App(f_as_var.clone(), t))
+                            .closurize(&mut shared_env, env.clone())
+                            .into()
+                    })
+                    .collect();
+
+                Ok(Closure {
+                    body: Term::List(ts).into(),
+                    env: shared_env,
+                })
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("List"),
+                    String::from("map, 2nd argument"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
+            }
+        }
+        UnaryOp::RecordMap(f) => {
+            if let Term::Record(rec) = *t {
+                let mut shared_env = Environment::new();
+                let f_as_var = f.body.closurize(&mut env, f.env);
+
+                // As for `ListMap` (see above), we closurize the content of fields
                 let rec = rec
                     .into_iter()
                     .map(|e| {
                         let (Ident(s), t) = e;
                         (
                             Ident(s.clone()),
-                            mk_app!(f_as_var.clone(), mk_term::string(s), t.clone()),
+                            mk_app!(f_as_var.clone(), mk_term::string(s), t)
+                                .closurize(&mut shared_env, env.clone()),
                         )
                     })
                     .collect();
 
                 Ok(Closure {
                     body: Term::Record(rec).into(),
-                    env,
+                    env: shared_env,
                 })
             } else {
                 Err(EvalError::TypeError(
@@ -1175,36 +1208,6 @@ fn process_binary_operation(
                 },
             )),
         },
-        // This one should not be strict in the first argument (f)
-        BinaryOp::ListMap() => {
-            if let Term::List(ts) = *t2 {
-                let f = RichTerm {
-                    term: t1,
-                    pos: pos1,
-                };
-                let f_as_var = f.closurize(&mut env2, env1);
-
-                let ts = ts
-                    .into_iter()
-                    .map(|t| Term::App(f_as_var.clone(), t).into())
-                    .collect();
-
-                Ok(Closure {
-                    body: Term::List(ts).into(),
-                    env: env2,
-                })
-            } else {
-                Err(EvalError::TypeError(
-                    String::from("List"),
-                    String::from("map, 2nd argument"),
-                    snd_pos,
-                    RichTerm {
-                        term: t2,
-                        pos: pos2,
-                    },
-                ))
-            }
-        }
         BinaryOp::ListElemAt() => match (*t1, *t2) {
             (Term::List(mut ts), Term::Num(n)) => {
                 let n_int = n as usize;

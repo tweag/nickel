@@ -38,7 +38,7 @@
 
   dyn_record = fun contr l t =>
       if %isRecord% t then
-          %mapRec% (fun _field => contr l) t
+          %recordMap% (fun _field => contr l) t
       else
           %blame% (%tag% "not a record" l);
 
@@ -65,9 +65,9 @@
       else
           acc$[magic_fld = %wrap% sy t];
 
-    dyn_tail = fun acc l t => acc & t;
+  dyn_tail = fun acc l t => acc & t;
 
-    empty_tail = fun acc l t =>
-        if t == {} then acc
-        else %blame% (%tag% "extra field" l);
+  empty_tail = fun acc l t =>
+      if t == {} then acc
+      else %blame% (%tag% "extra field" l);
 }
