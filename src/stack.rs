@@ -10,6 +10,14 @@ use std::rc::Weak;
 /// An element of the stack.
 #[derive(Debug)]
 pub enum Marker {
+    /// An equality to test.
+    ///
+    /// When evaluating one equality `t1 == t2`, the abstract machine may generate several new
+    /// equalities to test (for example, take `t1` and `t2` to be `[1, 2, 3]`). In this case, the
+    /// first equality is evaluated and the remaining ones - the continuation of the whole
+    /// computation - are put on the stack as `Eq` elements. If an equality evaluates to `false` at
+    /// some point, all the consecutive `Eq` elements at the top of the stack are discarded.
+    Eq(Closure, Closure),
     /// An argument of an application.
     Arg(Closure, Option<RawSpan>),
     /// A thunk, which is pointer to a mutable memory cell to be updated.
@@ -26,24 +34,28 @@ impl Marker {
     pub fn is_arg(&self) -> bool {
         match *self {
             Marker::Arg(_, _) => true,
-            Marker::Thunk(_) => false,
-            Marker::Cont(_, _, _) => false,
+            _ => false,
         }
     }
 
     pub fn is_thunk(&self) -> bool {
         match *self {
-            Marker::Arg(_, _) => false,
             Marker::Thunk(_) => true,
-            Marker::Cont(_, _, _) => false,
+            _ => false,
         }
     }
 
     pub fn is_cont(&self) -> bool {
         match *self {
-            Marker::Arg(_, _) => false,
-            Marker::Thunk(_) => false,
             Marker::Cont(_, _, _) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_eq(&self) -> bool {
+        match *self {
+            Marker::Eq(..) => true,
+            _ => false,
         }
     }
 }
@@ -99,6 +111,16 @@ impl Stack {
         self.0.push(Marker::Cont(cont, len, pos))
     }
 
+    /// Push a sequence of equalities on the stack.
+    pub fn push_eqs<I>(&mut self, it: I)
+    where
+        I: Iterator<Item = (Closure, Closure)>,
+    {
+        self.0.extend(it.map(|(t1, t2)| Marker::Eq(t1, t2)));
+    }
+
+    /// Try to pop an argument from the top of the stack. If `None` is returned, the top element
+    /// was not an argument and the stack is left unchanged.
     pub fn pop_arg(&mut self) -> Option<(Closure, Option<RawSpan>)> {
         match self.0.pop() {
             Some(Marker::Arg(arg, pos)) => Some((arg, pos)),
@@ -110,6 +132,8 @@ impl Stack {
         }
     }
 
+    /// Try to pop a thunk from the top of the stack. If `None` is returned, the top element was
+    /// not a thunk and the stack is left unchanged.
     pub fn pop_thunk(&mut self) -> Option<Weak<RefCell<Closure>>> {
         match self.0.pop() {
             Some(Marker::Thunk(thunk)) => Some(thunk),
@@ -121,6 +145,8 @@ impl Stack {
         }
     }
 
+    /// Try to pop an operator continuation from the top of the stack. If `None` is returned, the
+    /// top element was not an operator continuation and the stack is left unchanged.
     pub fn pop_op_cont(&mut self) -> Option<(OperationCont, usize, Option<RawSpan>)> {
         match self.0.pop() {
             Some(Marker::Cont(cont, len, pos)) => Some((cont, len, pos)),
@@ -132,6 +158,19 @@ impl Stack {
         }
     }
 
+    /// Try to pop an equality from the top of the stack. If `None` is returned, the top element
+    /// was not an equality and the stack is left unchanged.
+    pub fn pop_eq(&mut self) -> Option<(Closure, Closure)> {
+        if self.0.last().map(Marker::is_eq).unwrap_or(false) {
+            match self.0.pop() {
+                Some(Marker::Eq(c1, c2)) => Some((c1, c2)),
+                _ => panic!(),
+            }
+        } else {
+            None
+        }
+    }
+
     /// Check if the top element is an argument.
     pub fn is_top_thunk(&self) -> bool {
         self.0.last().map(Marker::is_thunk).unwrap_or(false)
@@ -140,6 +179,12 @@ impl Stack {
     /// Check if the top element is an operation continuation.
     pub fn is_top_cont(&self) -> bool {
         self.0.last().map(Marker::is_cont).unwrap_or(false)
+    }
+
+    /// Discard all the consecutive equality from the top of the stack. This drops the continuation
+    /// of the equality being currently evaluated.
+    pub fn clear_eqs(&mut self) {
+        while self.pop_eq().is_some() {}
     }
 }
 

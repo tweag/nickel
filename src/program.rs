@@ -1307,6 +1307,33 @@ Assume(#alwaysTrue, false)
         assert_npeq!("{ a = { a = true } }", "{a = { a = { a = true } } }");
     }
 
+    // Now that the equality operator directly uses the stack to store its continuation (see
+    // https://github.com/tweag/nickel/pull/247), check that it correctly cleans the stack when
+    // evaluating a subequality to `false`.
+    #[test]
+    fn poly_eq_nested() {
+        // Generate an non-empty evaluation context to evaluate equalities over a non-empty stack
+        let with_context = |t1, t2| {
+            format!("let not = fun b => if b then true else false in not (not (not (not (({}) == ({})))))", t1, t2)
+        };
+
+        assert_peq!(
+            with_context(
+                "{a = 1 + 0; b = 1 + 1; c = 0; d = 0}",
+                "{ a = 1; b = 3; c = 0; d = 0}"
+            ),
+            "false"
+        );
+
+        assert_peq!(
+            with_context(
+                "[[1,2,3,4], [1,0,3,4], [1,2,3,4], [1,2,3,4]]",
+                "[[1,2,3,4], [1,2,3,4], [1,2,3,4], [1,2,3,4]]"
+            ),
+            "false"
+        );
+    }
+
     #[test]
     fn fields_of() {
         assert_peq!("%fieldsOf% {}", "[]");

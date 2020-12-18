@@ -15,15 +15,30 @@ use crate::merge;
 use crate::merge::merge;
 use crate::position::RawSpan;
 use crate::stack::Stack;
-use crate::stdlib;
 use crate::term::make as mk_term;
 use crate::term::{BinaryOp, RichTerm, StrChunk, Term, UnaryOp};
 use crate::transformations::Closurizable;
 use crate::{mk_app, mk_fun};
 use simple_counter::*;
 use std::collections::HashMap;
+use std::iter::Extend;
 
 generate_counter!(FreshVariableCounter, usize);
+
+/// Result of the equality of two terms.
+///
+/// The equality of two terms can either be computed directly for base types (`Num`, `Str`, etc.),
+/// in which case `Bool` is returned. Otherwise, composite values such as lists or records generate
+/// new subequalities, as represented by the last variant as a vector of pairs of terms.  This list
+/// should be non-empty (it if was empty, `eq` should have returned `Bool(true)` directly).  The
+/// first element of this non-empty list is encoded as the two first parameters of `Eqs`, while the
+/// last vector parameter is the (potentially empty) tail.
+///
+/// See [`eq`](./fn.eq.html).
+enum EqResult {
+    Bool(bool),
+    Eqs(RichTerm, RichTerm, Vec<(Closure, Closure)>),
+}
 
 /// An operation continuation as stored on the stack.
 #[derive(Debug, PartialEq)]
@@ -623,7 +638,7 @@ fn process_binary_operation(
     fst_pos: Option<RawSpan>,
     clos: Closure,
     snd_pos: Option<RawSpan>,
-    _stack: &mut Stack,
+    stack: &mut Stack,
     pos_op: Option<RawSpan>,
 ) -> Result<Closure, EvalError> {
     let Closure {
@@ -838,64 +853,49 @@ fn process_binary_operation(
             }
         }
         BinaryOp::Eq() => {
-            /// Take an iterator of pairs of RichTerm, the common environments of all left
-            /// components of these pairs and all right components, the final environment,
-            /// and build a Term which evaluates to `Bool(true)` if and only if all the pairs are
-            /// equals
-            fn eq_all<T>(
-                it: T,
-                env1: &Environment,
-                env2: &Environment,
-                env: &mut Environment,
-            ) -> Term
-            where
-                T: Iterator<Item = (RichTerm, RichTerm)>,
-            {
-                let subeqs: Vec<RichTerm> = it
-                    .map(|(t1, t2)| {
-                        let t1_var = t1.closurize(env, env1.clone());
-                        let t2_var = t2.closurize(env, env2.clone());
-                        Term::Op2(BinaryOp::Eq(), t1_var, t2_var).into()
-                    })
-                    .collect();
-                // lists.all (fun x => x) subeqs
-                Term::App(
-                    mk_app!(stdlib::lists::all(), mk_term::id()),
-                    Term::List(subeqs).into(),
-                )
-            }
+            let mut env = Environment::new();
 
-            let mut env: Environment = HashMap::new();
-            let res = match (*t1, *t2) {
-                (Term::Bool(b1), Term::Bool(b2)) => Term::Bool(b1 == b2),
-                (Term::Num(n1), Term::Num(n2)) => Term::Bool(n1 == n2),
-                (Term::Str(s1), Term::Str(s2)) => Term::Bool(s1 == s2),
-                (Term::Lbl(l1), Term::Lbl(l2)) => Term::Bool(l1 == l2),
-                (Term::Sym(s1), Term::Sym(s2)) => Term::Bool(s1 == s2),
-                (Term::Record(m1), Term::Record(m2)) => {
-                    let (left, center, right) = merge::hashmap::split(m1, m2);
-
-                    if !left.is_empty() || !right.is_empty() {
-                        Term::Bool(false)
-                    } else {
-                        eq_all(
-                            center.into_iter().map(|(_, (t1, t2))| (t1, t2)),
-                            &env1,
-                            &env2,
-                            &mut env,
-                        )
-                    }
-                }
-                (Term::List(l1), Term::List(l2)) if l1.len() == l2.len() => {
-                    eq_all(l1.into_iter().zip(l2.into_iter()), &env1, &env2, &mut env)
-                }
-                (_, _) => Term::Bool(false),
+            let c1 = Closure {
+                body: RichTerm {
+                    term: t1,
+                    pos: pos1,
+                },
+                env: env1,
+            };
+            let c2 = Closure {
+                body: RichTerm {
+                    term: t2,
+                    pos: pos2,
+                },
+                env: env2,
             };
 
-            Ok(Closure {
-                body: res.into(),
-                env,
-            })
+            match eq(&mut env, c1, c2) {
+                EqResult::Bool(b) => match (b, stack.pop_eq()) {
+                    (false, _) => {
+                        stack.clear_eqs();
+                        Ok(Closure::atomic_closure(Term::Bool(false).into()))
+                    }
+                    (true, None) => Ok(Closure::atomic_closure(Term::Bool(true).into())),
+                    (true, Some((c1, c2))) => {
+                        let t1 = c1.body.closurize(&mut env, c1.env);
+                        let t2 = c2.body.closurize(&mut env, c2.env);
+
+                        Ok(Closure {
+                            body: RichTerm::new(Term::Op2(BinaryOp::Eq(), t1, t2), pos_op),
+                            env,
+                        })
+                    }
+                },
+                EqResult::Eqs(t1, t2, subeqs) => {
+                    stack.push_eqs(subeqs.into_iter());
+
+                    Ok(Closure {
+                        body: RichTerm::new(Term::Op2(BinaryOp::Eq(), t1, t2), pos_op),
+                        env,
+                    })
+                }
+            }
         }
         BinaryOp::LessThan() => {
             if let Term::Num(n1) = *t1 {
@@ -1254,6 +1254,89 @@ fn process_binary_operation(
             env2,
             pos_op,
         ),
+    }
+}
+
+/// Compute the equality of two terms, represented as closures.
+///
+/// # Parameters
+///
+/// - env: the final environment in which to closurize the operands of potential subequalities.
+/// - c1: the closure of the first operand.
+/// - c2: the closure of the second operand.
+///
+/// # Return
+///
+/// Return either a boolean when the equality can be computed directly, or a new non-empty list of equalities to be checked if
+/// operands are composite values.
+fn eq(env: &mut Environment, c1: Closure, c2: Closure) -> EqResult {
+    let Closure {
+        body: RichTerm { term: t1, .. },
+        env: env1,
+    } = c1;
+    let Closure {
+        body: RichTerm { term: t2, .. },
+        env: env2,
+    } = c2;
+
+    // Take a list of subequalities, and either return `EqResult::Bool(true)` if it is empty, or
+    // generate an approriate `EqResult::Eqs` variant with closurized terms in it.
+    fn gen_eqs<I>(
+        mut it: I,
+        env: &mut Environment,
+        env1: Environment,
+        env2: Environment,
+    ) -> EqResult
+    where
+        I: Iterator<Item = (RichTerm, RichTerm)>,
+    {
+        if let Some((t1, t2)) = it.next() {
+            let eqs = it
+                .map(|(t1, t2)| {
+                    (
+                        Closure {
+                            body: t1,
+                            env: env1.clone(),
+                        },
+                        Closure {
+                            body: t2,
+                            env: env2.clone(),
+                        },
+                    )
+                })
+                .collect();
+
+            EqResult::Eqs(t1.closurize(env, env1), t2.closurize(env, env2), eqs)
+        } else {
+            EqResult::Bool(true)
+        }
+    }
+
+    match (*t1, *t2) {
+        (Term::Bool(b1), Term::Bool(b2)) => EqResult::Bool(b1 == b2),
+        (Term::Num(n1), Term::Num(n2)) => EqResult::Bool(n1 == n2),
+        (Term::Str(s1), Term::Str(s2)) => EqResult::Bool(s1 == s2),
+        (Term::Lbl(l1), Term::Lbl(l2)) => EqResult::Bool(l1 == l2),
+        (Term::Sym(s1), Term::Sym(s2)) => EqResult::Bool(s1 == s2),
+        (Term::Record(m1), Term::Record(m2)) => {
+            let (left, center, right) = merge::hashmap::split(m1, m2);
+
+            if !left.is_empty() || !right.is_empty() {
+                EqResult::Bool(false)
+            } else if center.is_empty() {
+                EqResult::Bool(true)
+            } else {
+                let eqs = center.into_iter().map(|(_, (t1, t2))| (t1, t2));
+                gen_eqs(eqs.into_iter(), env, env1, env2)
+            }
+        }
+        (Term::List(l1), Term::List(l2)) if l1.len() == l2.len() => {
+            // Equalities are tested in reverse order, but that shouldn't matter. If it
+            // does, just do `eqs.rev()`
+            let eqs = l1.into_iter().zip(l2.into_iter());
+            gen_eqs(eqs.into_iter(), env, env1, env2)
+        }
+        (_, _) => EqResult::Bool(false),
     }
 }
 
