@@ -65,6 +65,7 @@ impl Program {
         Ok(Program { main_id, cache })
     }
 
+    /// Load and parse the standard library in the cache.
     pub fn load_stdlib(&mut self) -> Result<Vec<FileId>, Error> {
         let file_ids = vec![
             self.cache.add_string(
@@ -83,6 +84,8 @@ impl Program {
         Ok(file_ids)
     }
 
+    /// Typecheck the standard library. This function may be dropped once the standard library is
+    /// stable.
     pub fn typecheck_stdlib(&mut self, file_ids: &Vec<FileId>) -> Result<(), TypecheckError> {
         // We have a small bootstraping problem: to typecheck the global environment, we already
         // need a global evaluation environment, since stdlib parts may reference each other). But
@@ -107,6 +110,7 @@ impl Program {
             })
     }
 
+    /// Load, parse, typecheck and apply program transformation to the standard library.
     pub fn prepare_stdlib(&mut self) -> Result<Vec<FileId>, Error> {
         // We have a small bootstraping problem: to typecheck the global environment, we already
         // need a global evaluation environment, because stdlib parts may be mutually recursive.
@@ -130,6 +134,8 @@ impl Program {
         Ok(file_ids)
     }
 
+    /// Generate a global environment from the list of `file_ids` corresponding to the standard
+    /// library parts.
     pub fn mk_global_env(&self, file_ids: &Vec<FileId>) -> eval::Environment {
         let mut env = eval::Environment::new();
 
@@ -152,8 +158,8 @@ impl Program {
         env
     }
 
-    /// Retrieve the parsed term, create and process a new global environment, typecheck both, and
-    /// return them.
+    /// Retrieve the parsed term and typecheck it, and generate a fresh global environment. Return
+    /// both.
     fn prepare_eval(&mut self) -> Result<(RichTerm, eval::Environment), Error> {
         let file_ids = self.prepare_stdlib()?;
         let global_env = self.mk_global_env(&file_ids);
@@ -173,7 +179,7 @@ impl Program {
         eval::eval_full(t, &global_env, &mut self.cache).map_err(|e| e.into())
     }
 
-    /// Parse if necessary, typecheck, and evaluate the program until a metavalue is encountered.
+    /// Same as `eval`, but evaluate the program until a metavalue is encountered.
     ///
     /// As opposed to normal evaluation, it does not try to unwrap the content of a metavalue: the
     /// evaluation stops as soon as a metavalue is encountered.
@@ -209,6 +215,7 @@ impl Program {
         Ok(eval::eval_meta(t, &global_env, &mut self.cache)?)
     }
 
+    /// Load, parse, and typecheck the program and the standard library, if not already done.
     pub fn typecheck(&mut self) -> Result<(), Error> {
         self.cache.parse(self.main_id)?;
         let file_ids = self.load_stdlib()?;

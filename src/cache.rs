@@ -17,9 +17,9 @@ use std::result::Result;
 
 /// File and terms cache.
 ///
-/// Manage a file database, which stores a set of sources, and the corresponding terms. Terms
-/// possibly undergo typechecking and program transformation. The state of each entry (that is,
-/// what operations have been performed on this term) is stored in an
+/// Manage a file database, which stores a set of sources, and the corresponding parsed terms.
+/// Terms possibly undergo typechecking and program transformation. The state of each entry (that
+/// is, the operations that have been performed on this term) is stored in an
 /// [`EntryState`](./enum.EntryState.html).
 pub struct Cache {
     /// The content of the program source plus potential imports
@@ -43,15 +43,15 @@ pub enum EntryState {
 }
 
 /// The result of a cache operation, such as parsing, typechecking, etc. which can either have
-/// performed actual work, or did nothing if the corresponding entry was already in at a later
-/// stage.
+/// performed actual work, or have done nothing if the corresponding entry was already in at a
+/// later stage.
 #[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Copy, Clone)]
 pub enum CacheOp {
     Done,
     Cached,
 }
 
-/// Wrapper around other error to indicate that typechecking or applying program transformations
+/// Wrapper around other errors to indicate that typechecking or applying program transformations
 /// failed because the source has not been parsed yet.
 pub enum CacheError<E> {
     Error(E),
@@ -110,6 +110,7 @@ impl Cache {
         Ok(self.add_string(source_name, buffer))
     }
 
+    /// Load a new source as a string.
     pub fn add_string<S>(&mut self, source_name: S, s: String) -> FileId
     where
         S: Into<OsString> + Clone,
@@ -134,8 +135,8 @@ impl Cache {
         }
     }
 
-    /// Typecheck an entry of the cache, and update its state accordingly. Require that the
-    /// corresponding source has been parsed.
+    /// Typecheck an entry of the cache and update its state accordingly, or do nothing if the
+    /// entry has already been typechecked. Require that the corresponding source has been parsed.
     pub fn typecheck(
         &mut self,
         file_id: FileId,
@@ -159,9 +160,8 @@ impl Cache {
         }
     }
 
-    /// Apply program transformations to an entry of the cache, and update its state accordingly.
-    /// Require that the corresponding source has at been at least parsed. The term may have been
-    /// typechecked or not.
+    /// Apply program transformations to an entry of the cache, and update its state accordingly,
+    /// or do nothing if the entry has already been transformed.
     pub fn transform(&mut self, file_id: FileId) -> Result<CacheOp, CacheError<ImportError>> {
         match self.entry_state(file_id) {
             Some(EntryState::Transformed) => Ok(CacheOp::Cached),
@@ -175,7 +175,7 @@ impl Cache {
         }
     }
 
-    /// Apply program transformation to all the field of a record. Used to transform the standard
+    /// Apply program transformations to all the field of a record. Used to transform the standard
     /// library.
     pub fn transform_inner(&mut self, file_id: FileId) -> Result<CacheOp, CacheError<ImportError>> {
         match self.entry_state(file_id) {
@@ -235,13 +235,14 @@ impl Cache {
         Ok(result)
     }
 
-    /// Retrieve the name of a source, given a `FileId`.
+    /// Retrieve the name of a source corresponding to an id.
     pub fn name(&self, file_id: FileId) -> &OsStr {
         self.files.name(file_id)
     }
 
-    /// Retrieve the id of a source, given a name. Note that files added via `add_file` must be
-    /// referenced by their full normalied path (cf [`normalize_path`](fn.normalize_path.html)).
+    /// Retrieve the id of a source corresponding to a name. Note that files added via
+    /// [`add_file`](fn.add_file.html) must be referenced via their full normalied path (cf
+    /// [`normalize_path`](fn.normalize_path.html)).
     pub fn file_id(&self, name: impl AsRef<OsStr>) -> Option<FileId> {
         self.file_ids.get(name.as_ref()).copied()
     }
@@ -252,6 +253,7 @@ impl Cache {
         &mut self.files
     }
 
+    /// Update the state of an entry. Return the previous state.
     pub fn update_state(&mut self, file_id: FileId, new: EntryState) -> Option<EntryState> {
         self.cache
             .get_mut(&file_id)
@@ -259,7 +261,7 @@ impl Cache {
     }
 
     /// Retrieve the state of an entry. Return `None` if the entry is not in the term cache,
-    /// meaning the content of the source has been loaded but has not been parsed yet.
+    /// meaning that the content of the source has been loaded but has not been parsed yet.
     pub fn entry_state(&self, file_id: FileId) -> Option<EntryState> {
         self.cache.get(&file_id).map(|(_, state)| state).copied()
     }
