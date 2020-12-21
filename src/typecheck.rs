@@ -634,9 +634,6 @@ fn type_check_(
         Term::Sym(_) => unify(state, strict, ty, mk_typewrapper::sym())
             .map_err(|err| err.to_typecheck_err(state, &rt.pos)),
         Term::Wrapped(_, t)
-        | Term::DefaultValue(t)
-        | Term::ContractWithDefault(_, _, t)
-        | Term::Docstring(_, t)
         | Term::MetaValue(MetaValue {
             contract: None,
             value: Some(t),
@@ -653,7 +650,7 @@ fn type_check_(
             let new_ty = TypeWrapper::Ptr(new_var(state.table));
             type_check_(state, envs, false, t, new_ty)
         }
-        Term::Contract(_, _) | Term::MetaValue(_) => Ok(()),
+        Term::MetaValue(_) => Ok(()),
         Term::Import(_) => unify(state, strict, ty, mk_typewrapper::dynamic())
             .map_err(|err| err.to_typecheck_err(state, &rt.pos)),
         Term::ResolvedImport(file_id) => {
@@ -682,6 +679,15 @@ fn type_check_(
 fn apparent_type(t: &Term, table: &mut UnifTable, strict: bool) -> TypeWrapper {
     match t {
         Term::Assume(ty, _, _) | Term::Promise(ty, _, _) => to_typewrapper(ty.clone()),
+        Term::MetaValue(MetaValue {
+            contract: Some((ty, _)),
+            ..
+        }) => to_typewrapper(ty.clone()),
+        Term::MetaValue(MetaValue {
+            contract: None,
+            value: Some(v),
+            ..
+        }) => apparent_type(v.as_ref(), table, strict),
         _ if strict => TypeWrapper::Ptr(new_var(table)),
         _ => mk_typewrapper::dynamic(),
     }

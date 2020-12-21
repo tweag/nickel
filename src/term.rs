@@ -126,35 +126,8 @@ pub enum Term {
     #[serde(skip)]
     Wrapped(i32, RichTerm),
 
-    /// A contract. Enriched value.
-    ///
-    /// A contract at the term level. This contract is enforced when merged with a value.
-    #[serde(skip)]
-    Contract(Types, Label),
-
-    /// A default value. Enriched value.
-    ///
-    /// An enriched term representing a default value. It is dropped as soon as it is merged with a
-    /// concrete value. Otherwise, if it lives long enough to be accessed, it evaluates to the
-    /// underlying term.
-    #[serde(skip_deserializing)]
-    DefaultValue(RichTerm),
-
-    /// A contract with combined with default value. Enriched value.
-    ///
-    /// This is a combination generated during evaluation, when merging a contract and a default
-    /// value, as both need to be remembered.
-    #[serde(serialize_with = "crate::serialize::serialize_contract_default")]
-    #[serde(skip_deserializing)]
-    ContractWithDefault(Types, Label, RichTerm),
-
     #[serde(serialize_with = "crate::serialize::serialize_meta_value")]
     MetaValue(MetaValue),
-
-    /// A term together with its documentation string. Enriched value.
-    #[serde(serialize_with = "crate::serialize::serialize_docstring")]
-    #[serde(skip_deserializing)]
-    Docstring(String, RichTerm),
 
     /// An unresolved import.
     #[serde(skip)]
@@ -207,14 +180,8 @@ pub enum StrChunk<E> {
     ),
 }
 
+#[cfg(test)]
 impl<E> StrChunk<E> {
-    pub fn literal<S>(s: S) -> Self
-    where
-        S: Into<String>,
-    {
-        StrChunk::Literal(s.into())
-    }
-
     pub fn expr(e: E) -> Self {
         StrChunk::Expr(e, 0)
     }
@@ -250,24 +217,13 @@ impl Term {
                 func(t1);
                 func(t2)
             }
-            Bool(_)
-            | Num(_)
-            | Str(_)
-            | Lbl(_)
-            | Var(_)
-            | Sym(_)
-            | Enum(_)
-            | Contract(_, _)
-            | Import(_)
+            Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | Sym(_) | Enum(_) | Import(_)
             | ResolvedImport(_) => {}
             Fun(_, ref mut t)
             | Op1(_, ref mut t)
             | Promise(_, _, ref mut t)
             | Assume(_, _, ref mut t)
-            | Wrapped(_, ref mut t)
-            | DefaultValue(ref mut t)
-            | Docstring(_, ref mut t)
-            | ContractWithDefault(_, _, ref mut t) => {
+            | Wrapped(_, ref mut t) => {
                 func(t);
             }
             MetaValue(ref mut meta) => {
@@ -313,11 +269,7 @@ impl Term {
             Term::List(_) => Some("List"),
             Term::Sym(_) => Some("Sym"),
             Term::Wrapped(_, _) => Some("Wrapped"),
-            Term::Contract(_, _)
-            | Term::ContractWithDefault(_, _, _)
-            | Term::Docstring(_, _)
-            | Term::DefaultValue(_)
-            | Term::MetaValue(_) => Some("Metavalue"),
+            Term::MetaValue(_) => Some("Metavalue"),
             Term::Let(_, _, _)
             | Term::App(_, _)
             | Term::Var(_)
@@ -358,13 +310,6 @@ impl Term {
             Term::List(_) => String::from("[ ... ]"),
             Term::Sym(_) => String::from("<sym>"),
             Term::Wrapped(_, _) => String::from("<wrapped>"),
-            Term::Contract(_, _) => String::from("<enriched:contract>"),
-            Term::ContractWithDefault(_, _, ref t) => {
-                format!("<enriched:contract,default={}>", (*t.term).shallow_repr())
-            }
-            Term::Docstring(_, ref t) => {
-                format!("<enriched:doc,term={}>", (*t.term).shallow_repr())
-            }
             Term::MetaValue(ref meta) => {
                 let mut content = String::new();
 
@@ -388,7 +333,6 @@ impl Term {
 
                 format!("<{}{}={}>", content, value_label, value)
             }
-            Term::DefaultValue(ref t) => format!("<enriched:default={}", (*t.term).shallow_repr()),
             Term::Var(Ident(id)) => id.clone(),
             Term::Let(_, _, _)
             | Term::App(_, _)
@@ -421,11 +365,7 @@ impl Term {
             | Term::Promise(_, _, _)
             | Term::Assume(_, _, _)
             | Term::Wrapped(_, _)
-            | Term::Contract(_, _)
-            | Term::DefaultValue(_)
-            | Term::ContractWithDefault(_, _, _)
             | Term::MetaValue(_)
-            | Term::Docstring(_, _)
             | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
@@ -436,11 +376,7 @@ impl Term {
     /// Determine if a term is an enriched value.
     pub fn is_enriched(&self) -> bool {
         match self {
-            Term::Contract(_, _)
-            | Term::DefaultValue(_)
-            | Term::ContractWithDefault(_, _, _)
-            | Term::Docstring(_, _)
-            | Term::MetaValue(_) => true,
+            Term::MetaValue(_) => true,
             Term::Bool(_)
             | Term::Num(_)
             | Term::Str(_)
@@ -488,11 +424,7 @@ impl Term {
             | Term::Promise(_, _, _)
             | Term::Assume(_, _, _)
             | Term::Wrapped(_, _)
-            | Term::Contract(_, _)
-            | Term::DefaultValue(_)
-            | Term::ContractWithDefault(_, _, _)
             | Term::MetaValue(_)
-            | Term::Docstring(_, _)
             | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
@@ -1001,52 +933,6 @@ impl RichTerm {
                 f(
                     RichTerm {
                         term: Box::new(Term::StrChunks(chunks_res?)),
-                        pos,
-                    },
-                    state,
-                )
-            }
-            Term::Contract(ty, label) => {
-                let ty = match ty {
-                    Types(AbsType::Flat(t)) => Types(AbsType::Flat(t.traverse(f, state)?)),
-                    ty => ty,
-                };
-
-                Ok(RichTerm {
-                    term: Box::new(Term::Contract(ty, label)),
-                    pos,
-                })
-            }
-            Term::DefaultValue(t) => {
-                let t = t.traverse(f, state)?;
-                f(
-                    RichTerm {
-                        term: Box::new(Term::DefaultValue(t)),
-                        pos,
-                    },
-                    state,
-                )
-            }
-            Term::ContractWithDefault(ty, lbl, t) => {
-                let ty = match ty {
-                    Types(AbsType::Flat(t)) => Types(AbsType::Flat(t.traverse(f, state)?)),
-                    ty => ty,
-                };
-
-                let t = t.traverse(f, state)?;
-                f(
-                    RichTerm {
-                        term: Box::new(Term::ContractWithDefault(ty, lbl, t)),
-                        pos,
-                    },
-                    state,
-                )
-            }
-            Term::Docstring(s, t) => {
-                let t = t.traverse(f, state)?;
-                f(
-                    RichTerm {
-                        term: Box::new(Term::Docstring(s, t)),
                         pos,
                     },
                     state,
