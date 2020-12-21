@@ -21,23 +21,18 @@
 //! embedded strings are then parsed by the functions in this module (see
 //! [`mk_global_env`](./struct.Program.html#method.mk_global_env)).  Each such value is added to
 //! the global environment before the evaluation of the program.
-use crate::error::{Error, ImportError, ParseError, ToDiagnostic, TypecheckError};
+use crate::cache::*;
+use crate::error::{Error, ParseError, ToDiagnostic, TypecheckError};
 use crate::identifier::Ident;
 use crate::parser::lexer::Lexer;
-use crate::position::RawSpan;
 use crate::stdlib as nickel_stdlib;
 use crate::term::{RichTerm, Term};
-use crate::typecheck::type_check;
-use crate::types::Types;
-use crate::{eval, parser, transformations};
-use codespan::{FileId, Files};
+use crate::{eval, parser};
+use codespan::FileId;
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::ffi::OsString;
-use std::fs;
 use std::io::{self, Read};
-use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::result::Result;
 
@@ -48,67 +43,8 @@ use std::result::Result;
 pub struct Program {
     /// The id of the program source in the file database.
     main_id: FileId,
-    /// The file database holding the content of the program source plus potential imports
-    /// made by the program (imports will be supported in a near future).
-    files: Files<String>,
-    /// Cache storing the id of files that are already stored in the database.
-    file_cache: HashMap<String, FileId>,
-    /// Cache storing parsed terms corresponding to the entries of the file database.
-    term_cache: HashMap<FileId, RichTerm>,
-}
-
-/// Return status indicating if an import has been resolved from a file (first encounter), or was
-/// retrieved from the cache.
-///
-/// See [`resolve`](./fn.resolve.html).
-#[derive(Debug, PartialEq)]
-pub enum ResolvedTerm {
-    FromFile(
-        /* the parsed term */ RichTerm,
-        /* the path of the loaded file */ PathBuf,
-    ),
-    FromCache(),
-}
-
-/// Abstract the access to imported files and the import cache. Used by the evaluator, the
-/// typechecker and at [import resolution](../transformations/import_resolution/index.html) phase.
-///
-/// The standard implementation use 2 caches, the file cache for raw contents and the term cache
-/// for parsed contents, mirroring the 2 steps when resolving an import:
-/// 1. When an import is encountered for the first time, the content of the corresponding file is
-///    read and stored in the file cache (consisting of the file database plus a map between paths
-///    and ids in the database). The content is parsed, and this term is queued somewhere so that
-///    it can undergo the standard [transformations](../transformations/index.html) first, but is
-///    not stored in the term cache yet.
-/// 2. When it is finally processed, the term cache is updated with the transformed term.
-pub trait ImportResolver {
-    /// Resolve an import.
-    ///
-    /// Read and store the content of an import, put it in the file cache (or get it from there if
-    /// it is cached), then parse it and return the corresponding term and file id.
-    ///
-    /// The term and the path are provided only if the import is processed for the first time.
-    /// Indeed, at import resolution phase, the term of an import encountered for the first time is
-    /// queued to be processed (e.g. having its own imports resolved). The path is needed to
-    /// resolve nested imports relatively to this parent. Only after this processing the term is
-    /// inserted back in the cache via [`insert`](#tymethod.insert). On the other hand, if it has
-    /// been resolved before, it is already transformed in the cache and do not need further
-    /// processing.
-    fn resolve(
-        &mut self,
-        path: &String,
-        parent: Option<PathBuf>,
-        pos: &Option<RawSpan>,
-    ) -> Result<(ResolvedTerm, FileId), ImportError>;
-
-    /// Insert an entry in the term cache after transformation.
-    fn insert(&mut self, file_id: FileId, term: RichTerm);
-
-    /// Get a resolved import from the term cache.
-    fn get(&self, file_id: FileId) -> Option<RichTerm>;
-
-    /// Get a file id from the file cache.
-    fn get_id(&self, path: &String, parent: Option<PathBuf>) -> Option<FileId>;
+    /// The cache holding the sources and parsed terms of the main source as well as imports.
+    cache: Cache,
 }
 
 impl Program {
@@ -118,146 +54,123 @@ impl Program {
     }
 
     /// Create a program by reading it from a generic source.
-    pub fn new_from_source<T: Read>(
-        mut source: T,
-        source_name: impl Into<OsString>,
-    ) -> std::io::Result<Program> {
-        let mut buffer = String::new();
-        let mut files = Files::<String>::new();
+    pub fn new_from_source<T, S>(source: T, source_name: S) -> std::io::Result<Program>
+    where
+        T: Read,
+        S: Into<OsString> + Clone,
+    {
+        let mut cache = Cache::new();
+        let main_id = cache.add_source(source_name, source)?;
 
-        source.read_to_string(&mut buffer)?;
-        let main_id = files.add(source_name, buffer);
-
-        Ok(Program {
-            main_id,
-            files,
-            file_cache: HashMap::new(),
-            term_cache: HashMap::new(),
-        })
+        Ok(Program { main_id, cache })
     }
 
-    /// Load a part of the Nickel standard library in the given global environment.
-    ///
-    /// The source must be a string representing a record literal. Each binding of this record is
-    /// then inserted in `global_env`.
-    fn load_stdlib(
-        &mut self,
-        name: &str,
-        source: &str,
-        global_env: &mut eval::Environment,
-    ) -> Result<(), ImportError> {
-        let src_id = self.file_cache.get(name).copied().unwrap_or_else(|| {
-            let id = self.files.add(String::from(name), String::from(source));
-            self.file_cache.insert(String::from(name), id);
-            id
-        });
-        let rt = self
-            .parse_with_cache(src_id)
-            .map_err(|err| ImportError::ParseError(err, None))?;
-
-        match *rt.term {
-            Term::Record(bindings) | Term::RecRecord(bindings) => {
-                let ext = bindings.into_iter().map(|(id, t)| {
-                    let closure = eval::Closure {
-                        body: t,
-                        env: HashMap::new(),
-                    };
-                    (
-                        id,
-                        (Rc::new(RefCell::new(closure)), eval::IdentKind::Record()),
-                    )
-                });
-                global_env.extend(ext);
-            }
-            _ => panic!(
-                "program::load_stdlib(): the builtin {} must be a record.",
-                name
+    pub fn load_stdlib(&mut self) -> Result<Vec<FileId>, Error> {
+        let file_ids = vec![
+            self.cache.add_string(
+                OsString::from("<stdlib/contracts.ncl>"),
+                String::from(nickel_stdlib::CONTRACTS),
             ),
-        };
+            self.cache.add_string(
+                OsString::from("<stdlib/lists.ncl>"),
+                String::from(nickel_stdlib::LISTS),
+            ),
+        ];
 
-        Ok(())
+        file_ids
+            .iter()
+            .try_for_each(|file_id| self.cache.parse(*file_id).map(|_| ()))?;
+        Ok(file_ids)
     }
 
-    /// Generate a global environment with values from the standard library parts.
-    fn mk_global_env(&mut self) -> Result<eval::Environment, ImportError> {
-        let mut global_env = HashMap::new();
-
-        self.load_stdlib(
-            "<stdlib/builtins.ncl>",
-            nickel_stdlib::BUILTINS,
-            &mut global_env,
-        )?;
-        self.load_stdlib(
-            "<stdlib/contracts.ncl>",
-            nickel_stdlib::CONTRACTS,
-            &mut global_env,
-        )?;
-        self.load_stdlib("<stdlib/lists.ncl>", nickel_stdlib::LISTS, &mut global_env)?;
-        self.load_stdlib(
-            "<stdlib/records.ncl>",
-            nickel_stdlib::RECORDS,
-            &mut global_env,
-        )?;
-        Ok(global_env)
-    }
-
-    /// Typecheck each entry of an environment.
-    ///
-    /// Used for the global environment. This may be removed later, but as long as the standard
-    /// library is unstable, this is useful for debugging purpose.
-    pub fn typecheck_env(&self, env: &eval::Environment) -> Result<(), TypecheckError> {
-        env.values()
-            .try_for_each(|(rc, _)| type_check(&rc.borrow().body, &env, self).map(|_| ()))?;
-        Ok(())
-    }
-
-    /// Apply program transformations to a global environment.
-    pub fn transform_env(&mut self, env: &mut eval::Environment) -> Result<(), ImportError> {
-        env.values_mut().try_for_each(|(rc, _)| -> Result<(), ImportError> {
-            match Rc::get_mut(rc) {
-                Some(c) => {
-                    // Temporarily replacing with a dummy closure to pass the term to `transform()`
-                    let mut clos = c.replace(eval::Closure::atomic_closure(Term::Bool(false).into()));
-                    let t = transformations::transform(clos.body, self)?;// thunk was the only strong ref to the closure
-                    clos.body = t;
-
-                    // Put back the transformed term
-                    c.replace(clos);
-                    Ok(())
+    pub fn typecheck_stdlib(&mut self, file_ids: &Vec<FileId>) -> Result<(), TypecheckError> {
+        // We have a small bootstraping problem: to typecheck the global environment, we already
+        // need a global evaluation environment, since stdlib parts may reference each other). But
+        // typechecking is performed before program transformations, so this environment is not
+        // final one. We have create a temporary global environment just for typechecking, which is dropped
+        // right after. However:
+        // 1. The stdlib is meant to stay relatively light.
+        // 2. Typechecking the standard library ought to occur only during development. Once the
+        //    stdlib is stable, we won't have typecheck it at every execution.
+        file_ids
+            .iter()
+            .try_for_each(|file_id| {
+                self.cache
+                    .typecheck(*file_id, &self.mk_global_env(file_ids))
+                    .map(|_| ())
+            })
+            .map_err(|cache_err| match cache_err {
+                CacheError::NotParsed => {
+                    panic!("program::typecheck_stdlib(): expected standard library to be parsed")
                 }
-                None => {
-                    // This should not happen, since at this point there should only be one
-                    // rc pointer to each entry of the global environment.
-                    panic!("program::mk_global_env(): unexpected multiple borrows of an entry of the global environment")
+                CacheError::Error(err) => err,
+            })
+    }
+
+    pub fn prepare_stdlib(&mut self) -> Result<Vec<FileId>, Error> {
+        // We have a small bootstraping problem: to typecheck the global environment, we already
+        // need a global evaluation environment, because stdlib parts may be mutually recursive.
+        // But typechecking is performed before program transformations, so this environment is not
+        // the final one. We have to create a temporary global environment just for typechecking,
+        // which is dropped right after. However:
+        // 1. The stdlib is meant to stay relatively light.
+        // 2. Typechecking the standard library ought to occur only during development. Ideally, we
+        //    should only typecheck it at every update, not at every execution.
+        let file_ids = self.load_stdlib()?;
+        self.typecheck_stdlib(&file_ids)?;
+        file_ids
+            .iter()
+            .try_for_each(|file_id| self.cache.transform_inner(*file_id).map(|_| ()))
+            .map_err(|cache_err| match cache_err {
+                CacheError::NotParsed => {
+                    panic!("program::prepare_stdlib(): expected standard library to be parsed")
                 }
+                CacheError::Error(err) => err,
+            })?;
+        Ok(file_ids)
+    }
+
+    pub fn mk_global_env(&self, file_ids: &Vec<FileId>) -> eval::Environment {
+        let mut env = eval::Environment::new();
+
+        file_ids.iter().for_each(|file_id| {
+            match eval::env_add_term(
+                &mut env,
+                self.cache
+                    .get_owned(*file_id)
+                    .expect("program::mk_global_env(): can't build environment, stdlib not parsed"),
+            ) {
+                Err(eval::EnvBuildError::NotARecord(rt)) => panic!(
+                    "program::load_stdlib(): the builtin {} must be a record. Debug: {:?}",
+                    self.cache.name(*file_id).to_string_lossy().as_ref(),
+                    rt
+                ),
+                _ => (),
             }
-         })?;
+        });
 
-        Ok(())
+        env
     }
 
     /// Retrieve the parsed term, create and process a new global environment, typecheck both, and
     /// return them.
     fn prepare_eval(&mut self) -> Result<(RichTerm, eval::Environment), Error> {
-        let t = self.parse_with_cache(self.main_id)?;
-        let mut global_env = self.mk_global_env()?;
-        self.typecheck_env(&global_env)?;
-        self.transform_env(&mut global_env)?;
-        type_check(&t, &global_env, self)?;
-        let t = transformations::transform(t, self).map_err(|err| Error::ImportError(err))?;
-        Ok((t, global_env))
+        let file_ids = self.prepare_stdlib()?;
+        let global_env = self.mk_global_env(&file_ids);
+        self.cache.prepare(self.main_id, &global_env)?;
+        Ok((self.cache.get_owned(self.main_id).unwrap(), global_env))
     }
 
     /// Parse if necessary, typecheck and then evaluate the program.
     pub fn eval(&mut self) -> Result<Term, Error> {
         let (t, global_env) = self.prepare_eval()?;
-        eval::eval(t, &global_env, self).map_err(|e| e.into())
+        eval::eval(t, &global_env, &mut self.cache).map_err(|e| e.into())
     }
 
     /// Same as `eval`, but proceeds to a full evaluation.
     pub fn eval_full(&mut self) -> Result<Term, Error> {
         let (t, global_env) = self.prepare_eval()?;
-        eval::eval_full(t, &global_env, self).map_err(|e| e.into())
+        eval::eval_full(t, &global_env, &mut self.cache).map_err(|e| e.into())
     }
 
     /// Parse if necessary, typecheck, and evaluate the program until a metavalue is encountered.
@@ -268,16 +181,16 @@ impl Program {
         let (t, global_env) = self.prepare_eval()?;
 
         let t = if let Some(p) = path {
-            // Parsing `hole.path`. We `seq` it to force the evaluation of the underlying value,
+            // Parsing `y.path`. We `seq` it to force the evaluation of the underlying value,
             // which can be then showed to the user. The newline gives better messages in case of
             // errors.
             let source = format!("let x = (y.{})\n in %seq% x x", p);
-            let file_id = self.files.add("<query path>", source.clone());
+            let file_id = self.cache.add_string("<query path>", source.clone());
             let new_term = parser::grammar::TermParser::new()
                 .parse(file_id, Lexer::new(&source))
                 .map_err(|err| ParseError::from_lalrpop(err, file_id))?;
 
-            // Substituting `___HOLE` for `t`
+            // Substituting `y` for `t`
             let mut env = eval::Environment::new();
             let closure = eval::Closure {
                 body: t,
@@ -293,36 +206,20 @@ impl Program {
             t
         };
 
-        Ok(eval::eval_meta(t, &global_env, self)?)
+        Ok(eval::eval_meta(t, &global_env, &mut self.cache)?)
     }
 
-    pub fn typecheck(&mut self) -> Result<Types, Error> {
-        let t = self.parse_with_cache(self.main_id)?;
-        let global_env = self.mk_global_env()?;
-        self.typecheck_env(&global_env)?;
-        type_check(&t, &global_env, self).map_err(Error::from)
-    }
-
-    /// Parse a source file. Do not try to get it from the cache, and do not populate the cache at
-    /// the end either.
-    fn parse(&mut self, file_id: FileId) -> Result<RichTerm, ParseError> {
-        let buf = self.files.source(file_id).clone();
-        parser::grammar::TermParser::new()
-            .parse(file_id, Lexer::new(&buf))
-            .map_err(|err| ParseError::from_lalrpop(err, file_id))
-    }
-
-    /// Parse a source file and populate the corresponding entry in the cache, or just get it from
-    /// the term cache if it is there. Return a copy of the cached term.
-    fn parse_with_cache(&mut self, file_id: FileId) -> Result<RichTerm, ParseError> {
-        Ok(match self.term_cache.get(&file_id) {
-            Some(t) => t.clone(),
-            None => {
-                let t = self.parse(file_id)?;
-                self.term_cache.insert(file_id, t.clone());
-                t
-            }
-        })
+    pub fn typecheck(&mut self) -> Result<(), Error> {
+        self.cache.parse(self.main_id)?;
+        let file_ids = self.load_stdlib()?;
+        self.typecheck_stdlib(&file_ids)?;
+        let global_env = self.mk_global_env(&file_ids);
+        self.cache
+            .typecheck(self.main_id, &global_env)
+            .map_err(|cache_err| {
+                cache_err.expect_err("program::typecheck(): expected source to be parsed")
+            })?;
+        Ok(())
     }
 
     /// Pretty-print an error.
@@ -335,13 +232,11 @@ impl Program {
     {
         let writer = StandardStream::stderr(ColorChoice::Always);
         let config = codespan_reporting::term::Config::default();
-        let diagnostics = error.to_diagnostic(
-            &mut self.files,
-            self.file_cache.get("<stdlib/contracts.ncl>").copied(),
-        );
+        let contracts_id = self.cache.file_id("<stdlib/contracts.ncl>");
+        let diagnostics = error.to_diagnostic(self.cache.files_mut(), contracts_id);
 
         let result = diagnostics.iter().try_for_each(|d| {
-            codespan_reporting::term::emit(&mut writer.lock(), &config, &self.files, &d)
+            codespan_reporting::term::emit(&mut writer.lock(), &config, self.cache.files_mut(), &d)
         });
         match result {
             Ok(()) => (),
@@ -353,180 +248,13 @@ impl Program {
     }
 }
 
-impl ImportResolver for Program {
-    fn resolve(
-        &mut self,
-        path: &String,
-        parent: Option<PathBuf>,
-        pos: &Option<RawSpan>,
-    ) -> Result<(ResolvedTerm, FileId), ImportError> {
-        let (path_buf, normalized) = with_parent(path, parent);
-
-        if let Some(file_id) = self.file_cache.get(&normalized) {
-            return Ok((ResolvedTerm::FromCache(), *file_id));
-        }
-
-        let mut buffer = String::new();
-        let file_id = fs::File::open(path_buf)
-            .and_then(|mut file| file.read_to_string(&mut buffer))
-            .map(|_| self.files.add(path, buffer))
-            .map_err(|err| ImportError::IOError(path.clone(), format!("{}", err), pos.clone()))?;
-        self.file_cache.insert(normalized, file_id.clone());
-
-        let t = self
-            .parse(file_id)
-            .map_err(|err| ImportError::ParseError(err, pos.clone()))?;
-        Ok((
-            ResolvedTerm::FromFile(t, Path::new(path).to_path_buf()),
-            file_id,
-        ))
-    }
-
-    fn get(&self, file_id: FileId) -> Option<RichTerm> {
-        self.term_cache.get(&file_id).cloned()
-    }
-
-    fn get_id(&self, path: &String, parent: Option<PathBuf>) -> Option<FileId> {
-        let (_, normalized) = with_parent(path, parent);
-        self.file_cache.get(&normalized).cloned()
-    }
-
-    fn insert(&mut self, file_id: FileId, term: RichTerm) {
-        self.term_cache.insert(file_id, term);
-    }
-}
-
-/// Compute the path of a file relatively to a parent, and a string representation of the
-/// normalized full path (see [`normalize_path`](./fn.normalize_path.html). If the path is absolute
-/// or if the parent is `None`, the first component is the same as `Path::new(path).to_path_buf()`.
-fn with_parent(path: &String, parent: Option<PathBuf>) -> (PathBuf, String) {
-    let mut path_buf = parent.unwrap_or(PathBuf::new());
-    path_buf.pop();
-    path_buf.push(Path::new(path));
-    let normalized = normalize_path(path_buf.as_path()).unwrap_or_else(|| path.clone());
-
-    (path_buf, normalized)
-}
-
-/// Normalize the path of a file to uniquely identify names in the cache.
-///
-/// If an IO error occurs here, `None` is returned.
-fn normalize_path(path: &Path) -> Option<String> {
-    path.canonicalize()
-        .ok()
-        .map(|p_| p_.to_string_lossy().into_owned())
-}
-
-/// Provide mockup import resolvers for testing purpose.
-#[cfg(test)]
-pub mod resolvers {
-    use super::*;
-
-    /// A dummy resolver that panics when asked to do something. Used to test code that contains no
-    /// import.
-    pub struct DummyResolver {}
-
-    impl ImportResolver for DummyResolver {
-        fn resolve(
-            &mut self,
-            _path: &String,
-            _parent: Option<PathBuf>,
-            _pos: &Option<RawSpan>,
-        ) -> Result<(ResolvedTerm, FileId), ImportError> {
-            panic!("program::resolvers: dummy resolver should not have been invoked");
-        }
-
-        fn insert(&mut self, _file_id: FileId, _term: RichTerm) {
-            panic!("program::resolvers: dummy resolver should not have been invoked");
-        }
-
-        fn get(&self, _file_id: FileId) -> Option<RichTerm> {
-            panic!("program::resolvers: dummy resolver should not have been invoked");
-        }
-
-        fn get_id(&self, _path: &String, _parent: Option<PathBuf>) -> Option<FileId> {
-            panic!("program::resolvers: dummy resolver should not have been invoked");
-        }
-    }
-
-    /// Resolve imports from a mockup file database. Used to test imports without accessing the
-    /// file system.
-    pub struct SimpleResolver {
-        files: Files<String>,
-        file_cache: HashMap<String, FileId>,
-        term_cache: HashMap<FileId, Option<RichTerm>>,
-    }
-
-    impl SimpleResolver {
-        pub fn new() -> SimpleResolver {
-            SimpleResolver {
-                files: Files::new(),
-                file_cache: HashMap::new(),
-                term_cache: HashMap::new(),
-            }
-        }
-
-        /// Add a mockup file to available imports.
-        pub fn add_source(&mut self, name: String, source: String) {
-            let id = self.files.add(&name, source);
-            self.file_cache.insert(name, id);
-        }
-    }
-
-    impl ImportResolver for SimpleResolver {
-        fn resolve(
-            &mut self,
-            path: &String,
-            _parent: Option<PathBuf>,
-            pos: &Option<RawSpan>,
-        ) -> Result<(ResolvedTerm, FileId), ImportError> {
-            let file_id =
-                self.file_cache
-                    .get(path)
-                    .map(|id| id.clone())
-                    .ok_or(ImportError::IOError(
-                        path.clone(),
-                        String::from("Import not found by the mockup resolver."),
-                        pos.clone(),
-                    ))?;
-
-            if self.term_cache.contains_key(&file_id) {
-                Ok((ResolvedTerm::FromCache(), file_id))
-            } else {
-                self.term_cache.insert(file_id, None);
-                let buf = self.files.source(file_id);
-                let t = parser::grammar::TermParser::new()
-                    .parse(file_id, Lexer::new(&buf))
-                    .map_err(|e| ParseError::from_lalrpop(e, file_id))
-                    .map_err(|e| ImportError::ParseError(e, pos.clone()))?;
-                Ok((ResolvedTerm::FromFile(t, PathBuf::new()), file_id))
-            }
-        }
-
-        fn insert(&mut self, file_id: FileId, term: RichTerm) {
-            self.term_cache.insert(file_id, Some(term));
-        }
-
-        fn get(&self, file_id: FileId) -> Option<RichTerm> {
-            self.term_cache
-                .get(&file_id)
-                .map(|opt| opt.as_ref())
-                .flatten()
-                .cloned()
-        }
-
-        fn get_id(&self, path: &String, _parent: Option<PathBuf>) -> Option<FileId> {
-            self.file_cache.get(path).copied()
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::error::EvalError;
     use crate::identifier::Ident;
     use crate::parser::{grammar, lexer};
+    use codespan::Files;
     use std::io::Cursor;
 
     fn parse(s: &str) -> Option<RichTerm> {

@@ -1,4 +1,5 @@
 //! Entry point of the program.
+mod cache;
 mod error;
 mod eval;
 mod identifier;

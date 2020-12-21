@@ -1,9 +1,9 @@
 //! Program transformations.
 
+use crate::cache::ImportResolver;
 use crate::error::ImportError;
 use crate::eval::{Closure, Environment, IdentKind};
 use crate::identifier::Ident;
-use crate::program::ImportResolver;
 use crate::term::{RichTerm, Term};
 use crate::types::{AbsType, Types};
 use codespan::FileId;
@@ -188,8 +188,8 @@ type PendingImport = (RichTerm, FileId, PathBuf);
 
 pub mod import_resolution {
     use super::{ImportResolver, PathBuf, PendingImport, RichTerm, Term};
+    use crate::cache::ResolvedTerm;
     use crate::error::ImportError;
-    use crate::program::ResolvedTerm;
 
     /// Resolve the import if the term is an unresolved import, or return the term unchanged.
     ///
@@ -211,7 +211,7 @@ pub mod import_resolution {
                 let (res_term, file_id) = resolver.resolve(&path, parent.clone(), &pos)?;
                 let ret = match res_term {
                     ResolvedTerm::FromCache() => None,
-                    ResolvedTerm::FromFile(t, p) => Some((t, file_id, p)),
+                    ResolvedTerm::FromFile { term, path } => Some((term, file_id, path)),
                 };
 
                 Ok((

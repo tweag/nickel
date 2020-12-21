@@ -23,6 +23,7 @@ use crate::types::{AbsType, Types};
 use codespan::FileId;
 use serde::Serialize;
 use std::collections::HashMap;
+use std::ffi::OsString;
 
 /// The AST of a Nickel expression.
 ///
@@ -138,7 +139,7 @@ pub enum Term {
 
     /// An unresolved import.
     #[serde(skip)]
-    Import(String),
+    Import(OsString),
     /// A resolved import (which has already been loaded and parsed).
     #[serde(skip)]
     ResolvedImport(FileId),
@@ -1021,5 +1022,13 @@ pub mod make {
 
     pub fn id() -> RichTerm {
         mk_fun!("x", var("x"))
+    }
+
+    #[cfg(test)]
+    pub fn import<S>(path: S) -> RichTerm
+    where
+        S: Into<OsString>,
+    {
+        Term::Import(path.into()).into()
     }
 }
