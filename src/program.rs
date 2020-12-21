@@ -811,15 +811,15 @@ Assume(#alwaysTrue, false)
 
         assert_eq!(
             eval_string(
-                "(%recordMap% (fun y => fun x => x + 1) { foo = 1; bar = \"it's lazy\"; }).foo"
+                "(%recordMap% { foo = 1; bar = \"it's lazy\"; } (fun y => fun x => x + 1)).foo"
             ),
             Ok(Term::Num(2.)),
         );
         assert_eq!(
             eval_string(
                 "let r = %recordMap%
-                    (fun y x => if %isNum% x then x + 1 else 0)
                     { foo = 1; bar = \"it's lazy\"; }
+                    (fun y x => if %isNum% x then x + 1 else 0)
                 in
                 (r.foo) + (r.bar)"
             ),
@@ -878,7 +878,7 @@ Assume(#alwaysTrue, false)
     fn lists() {
         assert_eq!(eval_string("%elemAt% [1,2,3] 1"), Ok(Term::Num(2.0)));
         assert_eq!(
-            eval_string("%elemAt% (%map% (fun x => x + 1) [1,2,3]) 1"),
+            eval_string("%elemAt% (%map% [1,2,3] (fun x => x + 1)) 1"),
             Ok(Term::Num(3.0))
         );
 
@@ -929,7 +929,7 @@ Assume(#alwaysTrue, false)
                             if y then true else false
                         else false
                 in
-                let all = fun pred => fun l => foldr and true (%map% pred l) in
+                let all = fun pred => fun l => foldr and true (%map% l pred) in
                 let isZ = fun x => x == 0 in
                 all isZ [0, 0, 0, 1]"
             ),
