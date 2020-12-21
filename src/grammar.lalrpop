@@ -291,7 +291,7 @@ ChunkLiteralPart: Either<&'input str, char> = {
     "str esc char" => Either::Right(<>),
     };
 
-UOp: UnaryOp<RichTerm> = {
+UOp: UnaryOp = {
     "isNum" => UnaryOp::IsNum(),
     "isBool" => UnaryOp::IsBool(),
     "isStr" => UnaryOp::IsStr(),
@@ -399,7 +399,7 @@ InfixExpr8: RichTerm = {
     LeftOp<BinOp8, InfixExpr8, InfixExpr7> => <>,
 }
 
-LazyBinOp9: UnaryOp<RichTerm> = {
+LazyBinOp9: UnaryOp = {
     "&&" => UnaryOp::BoolAnd(),
 }
 
@@ -408,7 +408,7 @@ InfixExpr9: RichTerm = {
     LeftOpLazy<LazyBinOp9, InfixExpr9, InfixExpr8> => <>
 }
 
-LazyBinOp10: UnaryOp<RichTerm> = {
+LazyBinOp10: UnaryOp = {
     "||" => UnaryOp::BoolOr(),
 }
 

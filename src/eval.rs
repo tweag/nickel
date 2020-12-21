@@ -291,11 +291,6 @@ where
                 }
             }
             Term::Op1(op, t) => {
-                let op = op.map(|t| Closure {
-                    body: t,
-                    env: env.clone(),
-                });
-
                 stack.push_op_cont(OperationCont::Op1(op, t.pos.clone()), call_stack.len(), pos);
                 Closure { body: t, env }
             }
@@ -333,14 +328,11 @@ where
                         StrChunk::Expr(e, indent) => (e, indent),
                     };
 
+                    stack.push_str_chunks(chunks.into_iter());
+                    stack.push_str_acc(String::new(), indent, env.clone());
+
                     Closure {
-                        body: RichTerm {
-                            term: Box::new(Term::Op1(
-                                UnaryOp::ChunksConcat(indent, String::new(), chunks),
-                                arg,
-                            )),
-                            pos,
-                        },
+                        body: RichTerm::new(Term::Op1(UnaryOp::ChunksConcat(), arg), pos),
                         env,
                     }
                 }
@@ -608,7 +600,6 @@ fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichTerm 
                 RichTerm::new(Term::Switch(t, cases, default), pos)
             }
             Term::Op1(op, t) => {
-                let op = op.map(|t| subst_(t, global_env, env, Cow::Borrowed(bound.as_ref())));
                 let t = subst_(t, global_env, env, bound);
 
                 RichTerm::new(Term::Op1(op, t), pos)

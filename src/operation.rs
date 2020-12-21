@@ -44,7 +44,7 @@ enum EqResult {
 #[derive(Debug, PartialEq)]
 pub enum OperationCont {
     Op1(
-        /* unary operation */ UnaryOp<Closure>,
+        /* unary operation */ UnaryOp,
         /* original position of the argument before evaluation */ Option<RawSpan>,
     ),
     // The last parameter saves the strictness mode before the evaluation of the operator
@@ -109,7 +109,7 @@ pub fn continuate_operation(
 /// The argument is expected to be evaluated (in WHNF). `pos_op` corresponds to the whole
 /// operation position, that may be needed for error reporting.
 fn process_unary_operation(
-    u_op: UnaryOp<Closure>,
+    u_op: UnaryOp,
     clos: Closure,
     arg_pos: Option<RawSpan>,
     stack: &mut Stack,
@@ -599,7 +599,9 @@ fn process_unary_operation(
                 ))
             }
         }
-        UnaryOp::ChunksConcat(indent, mut acc, mut tail) => {
+        UnaryOp::ChunksConcat() => {
+            let (mut acc, indent, env_chunks) = stack.pop_str_acc().unwrap();
+
             if let Term::Str(s) = *t {
                 let s = if indent != 0 {
                     let indent_str: String = std::iter::once('\n')
@@ -612,35 +614,23 @@ fn process_unary_operation(
 
                 acc.push_str(&s);
 
-                let mut next_opt = tail.pop();
+                let mut next_opt = stack.pop_str_chunk();
 
                 // Pop consecutive string literals to find the next expression to evaluate
                 while let Some(StrChunk::Literal(s)) = next_opt {
                     acc.push_str(&s);
-                    next_opt = tail.pop();
+                    next_opt = stack.pop_str_chunk();
                 }
 
                 if let Some(StrChunk::Expr(e, indent)) = next_opt {
-                    let arg_closure = e.body.closurize(&mut env, e.env);
-                    let tail_closure = tail
-                        .into_iter()
-                        .map(|chunk| match chunk {
-                            StrChunk::Literal(s) => StrChunk::Literal(s),
-                            StrChunk::Expr(c, indent) => {
-                                StrChunk::Expr(c.body.closurize(&mut env, c.env), indent)
-                            }
-                        })
-                        .collect();
+                    stack.push_str_acc(acc, indent, env_chunks.clone());
 
                     Ok(Closure {
                         body: RichTerm {
-                            term: Box::new(Term::Op1(
-                                UnaryOp::ChunksConcat(indent, acc, tail_closure),
-                                arg_closure,
-                            )),
+                            term: Box::new(Term::Op1(UnaryOp::ChunksConcat(), e)),
                             pos: pos_op,
                         },
-                        env,
+                        env: env_chunks,
                     })
                 } else {
                     Ok(Closure {
@@ -648,10 +638,12 @@ fn process_unary_operation(
                             term: Box::new(Term::Str(acc)),
                             pos: pos_op,
                         },
-                        env: HashMap::new(),
+                        env: Environment::new(),
                     })
                 }
             } else {
+                // Since the error halts the evaluation, we don't bother cleaning the stack of the
+                // remaining string chunks.
                 Err(EvalError::TypeError(
                     String::from("String"),
                     String::from("interpolated string"),

@@ -1359,7 +1359,7 @@ pub fn get_uop_type(
     state: &mut State,
     _envs: Envs,
     _strict: bool,
-    op: &UnaryOp<RichTerm>,
+    op: &UnaryOp,
 ) -> Result<TypeWrapper, TypecheckError> {
     Ok(match op {
         // forall a. bool -> a -> a -> a
@@ -1457,7 +1457,7 @@ pub fn get_uop_type(
         // List -> Num
         UnaryOp::ListLength() => mk_tyw_arrow!(AbsType::List(), AbsType::Num()),
         // This should not happen, as ChunksConcat() is only produced during evaluation.
-        UnaryOp::ChunksConcat(_, _, _) => panic!("cannot type ChunksConcat()"),
+        UnaryOp::ChunksConcat() => panic!("cannot type ChunksConcat()"),
         // BEFORE: forall rows. { rows } -> List
         // Dyn -> List
         UnaryOp::FieldsOf() => mk_tyw_arrow!(
