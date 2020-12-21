@@ -373,6 +373,8 @@ mod test {
 
     /// Parse a type represented as a string.
     fn parse_type(s: &str) -> Types {
+        use crate::term::MetaValue;
+
         // Wrap the type in a contract to have it accepted by the parser.
         let wrapper = format!("Contract({})", s);
         let id = Files::new().add("<test>", wrapper.clone());
@@ -380,7 +382,10 @@ mod test {
         let rt = TermParser::new().parse(id, Lexer::new(&wrapper)).unwrap();
 
         match *rt.term {
-            Term::Contract(ty, _) => ty,
+            Term::MetaValue(MetaValue {
+                contract: Some((ty, _)),
+                ..
+            }) => ty,
             _ => panic!("types::test::parse_type(): expected contract"),
         }
     }

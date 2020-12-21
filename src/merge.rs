@@ -56,7 +56,7 @@ use crate::eval::{Closure, Environment};
 use crate::label::Label;
 use crate::position::RawSpan;
 use crate::term::make as mk_term;
-use crate::term::{BinaryOp, RichTerm, Term};
+use crate::term::{BinaryOp, MetaValue, RichTerm, Term};
 use crate::transformations::Closurizable;
 use crate::types::{AbsType, Types};
 use crate::{mk_app, mk_fun};
@@ -70,6 +70,22 @@ pub fn merge(
     env2: Environment,
     pos_op: Option<RawSpan>,
 ) -> Result<Closure, EvalError> {
+    // Merging a simple value and a metavalue is equivalent to first wrapping the simple value in a
+    // new metavalue (with no attribute set excepted the value), and then merging the two
+    let (t1, t2) = match (t1.term.is_enriched(), t2.term.is_enriched()) {
+        (true, false) => {
+            let pos = t2.pos.clone();
+            let t = Term::MetaValue(MetaValue::from(t2));
+            (t1, RichTerm::new(t, pos))
+        }
+        (false, true) => {
+            let pos = t1.pos.clone();
+            let t = Term::MetaValue(MetaValue::from(t1));
+            (RichTerm::new(t, pos), t2)
+        }
+        _ => (t1, t2),
+    };
+
     let RichTerm {
         term: t1,
         pos: pos1,
@@ -78,6 +94,7 @@ pub fn merge(
         term: t2,
         pos: pos2,
     } = t2;
+
     match (*t1, *t2) {
         // Merge is idempotent on basic terms
         (Term::Bool(b1), Term::Bool(b2)) => {
@@ -147,6 +164,87 @@ pub fn merge(
                     pos_op,
                 ))
             }
+        }
+        (Term::MetaValue(meta1), Term::MetaValue(meta2)) => {
+            // For now, we blindly closurize things and copy environments in this section. A
+            // careful analysis would make it possible to spare a few closurize operations and more
+            // generally environment cloning.
+
+            let MetaValue {
+                doc: doc1,
+                contract: contract1,
+                priority: priority1,
+                value: value1,
+            } = meta1;
+            let MetaValue {
+                doc: doc2,
+                contract: contract2,
+                priority: priority2,
+                value: value2,
+            } = meta2;
+
+            let doc = merge_doc(doc1, doc2);
+
+            // If:
+            // 1. meta1 has a value
+            // 2. meta2 has a contract
+            // 3. The priorities are such that meta1's value will be used in the final value
+            // We apply meta2's contract to meta1.
+            let (value1, val_env1) = match (value1, &contract2) {
+                (Some(t), Some((ty, lbl))) if priority1 >= priority2 => {
+                    let mut env = Environment::new();
+                    let mut env1_local = env1.clone();
+                    let ty_closure = ty.clone().closurize(&mut env1_local, env2.clone());
+                    let t: RichTerm = Term::Assume(ty_closure, lbl.clone(), t).into();
+                    (Some(t.closurize(&mut env, env1_local)), env)
+                }
+                (value1, _) => (value1, env1.clone()),
+            };
+
+            // Same thing for the dual situation.
+            let (value2, val_env2) = match (value2, &contract1) {
+                (Some(t), Some((ty, lbl))) if priority2 >= priority1 => {
+                    let mut env = Environment::new();
+                    let mut env2_local = env2.clone();
+                    let ty_closure = ty.clone().closurize(&mut env2_local, env1.clone());
+                    let t: RichTerm = Term::Assume(ty_closure, lbl.clone(), t).into();
+                    (Some(t.closurize(&mut env, env2_local)), env)
+                }
+                (value2, _) => (value2, env2.clone()),
+            };
+
+            // Selecting either meta1's value, meta2's value, or the merge of the two values,
+            // depending on which is defined and respective priorities.
+            let (value, priority, mut env) = match (value1, value2) {
+                (Some(t1), Some(t2)) if priority1 == priority2 => {
+                    let mut env = Environment::new();
+                    (
+                        Some(merge_closurize(&mut env, t1, val_env1, t2, val_env2)),
+                        priority1,
+                        env,
+                    )
+                }
+                (Some(t1), _) if priority1 > priority2 => (Some(t1), priority1, val_env1),
+                (Some(t1), None) => (Some(t1), priority1, val_env1),
+                (_, Some(t2)) if priority2 > priority1 => (Some(t2), priority2, val_env2),
+                (None, Some(t2)) => (Some(t2), priority2, val_env2),
+                (None, None) => (None, Default::default(), Environment::new()),
+                _ => panic!("unreachable case"),
+            };
+
+            let contract = merge_contracts_meta(&mut env, contract1, env1, contract2, env2);
+
+            let meta = MetaValue {
+                doc,
+                contract,
+                priority,
+                value,
+            };
+
+            Ok(Closure {
+                body: Term::MetaValue(meta).into(),
+                env,
+            })
         }
         // Right-biased: when merging two docstrings (s1,t2) and (s2,t2), the right one will end up
         // as the outermost position in the resulting term (s2,(s1,merge t1 t2))
@@ -324,6 +422,31 @@ pub fn merge(
             },
             pos_op,
         )),
+    }
+}
+
+/// Merge the two optional documentations of a metavalue.
+fn merge_doc(doc1: Option<String>, doc2: Option<String>) -> Option<String> {
+    //FIXME: how to merge documentation? Just concatenate?
+    doc1.or(doc2)
+}
+
+/// Merge the two optional contracts of a metavalue.
+fn merge_contracts_meta(
+    env: &mut Environment,
+    c1: Option<(Types, Label)>,
+    env1: Environment,
+    c2: Option<(Types, Label)>,
+    env2: Environment,
+) -> Option<(Types, Label)> {
+    match (c1, c2) {
+        (Some((ty1, lbl1)), Some((ty2, lbl2))) => Some((
+            merge_types_closure(env, ty1, lbl1, env1, ty2, lbl2, env2),
+            Label::dummy(),
+        )),
+        (Some((ty1, lbl1)), None) => Some((ty1.closurize(env, env1), lbl1)),
+        (None, Some((ty2, lbl2))) => Some((ty2.closurize(env, env2), lbl2)),
+        (None, None) => None,
     }
 }
 

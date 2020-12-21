@@ -1,5 +1,6 @@
 use crate::identifier::Ident;
-use crate::term::{BinaryOp, RichTerm, Term, UnaryOp, StrChunk};
+use crate::term::{BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
+    MergePriority};
 use crate::term::make as mk_term;
 use crate::mk_app;
 use crate::types::{Types, AbsType};
@@ -92,13 +93,49 @@ Atom: RichTerm = {
     <l: @L> "Assume(" <ty: Types> "," <t: Term> ")" <r: @R> =>
         RichTerm::from(Term::Assume(ty.clone(), mk_label(ty, src_id, l, r), t)),
     <l: @L> "Contract(" <ty: Types> ")" <r: @R> =>
-        RichTerm::from(Term::Contract(ty.clone(), mk_label(ty, src_id, l, r))),
-    "Default(" <t: Term> ")" => RichTerm::from(Term::DefaultValue(t)),
-    <l: @L> "ContractDefault(" <ty: Types> "," <t: Term> ")" <r: @R> =>
-        RichTerm::from(Term::ContractWithDefault(ty.clone(),
-            mk_label(ty, src_id, l, r), t)
+        RichTerm::from(
+            Term::MetaValue(
+                MetaValue {
+                    doc: None,
+                    contract: Some((ty.clone(), mk_label(ty, src_id, l, r))),
+                    priority: Default::default(),
+                    value: None,
+                }
+            )
         ),
-    "Docstring(" <s: Str> "," <t: Term> ")" => RichTerm::from(Term::Docstring(s, t)),
+    "Default(" <t: Term> ")" =>
+        RichTerm::from(
+            Term::MetaValue(
+                MetaValue {
+                    doc: None,
+                    contract: None,
+                    priority: MergePriority::Default,
+                    value: Some(t),
+                }
+            )
+        ),
+    <l: @L> "ContractDefault(" <ty: Types> "," <t: Term> ")" <r: @R> =>
+        RichTerm::from(
+            Term::MetaValue(
+                MetaValue {
+                    doc: None,
+                    contract: Some((ty.clone(), mk_label(ty, src_id, l, r))),
+                    priority: MergePriority::Default,
+                    value: Some(t),
+                }
+            )
+        ),
+    "Docstring(" <s: Str> "," <t: Term> ")" =>
+        RichTerm::from(
+            Term::MetaValue(
+                MetaValue {
+                    doc: Some(s),
+                    contract: None,
+                    priority: Default::default(),
+                    value: Some(t)
+                }
+            )
+        ),
     "num literal" => RichTerm::from(Term::Num(<>)),
     Bool => RichTerm::from(Term::Bool(<>)),
     <StrChunks>,

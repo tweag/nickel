@@ -2,9 +2,9 @@
 use crate::error::SerializationError;
 use crate::identifier::Ident;
 use crate::label::Label;
-use crate::term::{RichTerm, Term};
+use crate::term::{MetaValue, RichTerm, Term};
 use crate::types::Types;
-use serde::ser::{Serialize, SerializeMap, Serializer};
+use serde::ser::{Error, Serialize, SerializeMap, Serializer};
 use std::collections::HashMap;
 
 /// Serializer for docstring. Ignore the meta-data and serialize the underlying term.
@@ -27,6 +27,19 @@ where
     S: Serializer,
 {
     t.serialize(serializer)
+}
+
+/// Serializer for metavalues.
+pub fn serialize_meta_value<S>(meta: &MetaValue, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    if let Some(ref t) = meta.value {
+        t.serialize(serializer)
+    } else {
+        // This error should not happen if the input term is validated before serialization
+        Err(Error::custom("empty metavalue"))
+    }
 }
 
 /// Serializer for a record. Serialize fields in alphabetical order to get a deterministic output
