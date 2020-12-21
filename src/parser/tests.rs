@@ -1,9 +1,9 @@
 use super::lexer::{Lexer, LexicalError, NormalToken, StringToken, Token};
 use crate::identifier::Ident;
-use crate::mk_app;
 use crate::term::make as mk_term;
 use crate::term::Term::*;
 use crate::term::{BinaryOp, RichTerm, StrChunk, UnaryOp};
+use crate::{mk_app, mk_switch};
 use codespan::Files;
 
 fn parse(s: &str) -> Option<RichTerm> {
@@ -155,18 +155,7 @@ fn enum_terms() {
 
     assert_eq!(
         parse_without_pos("switch { foo => true, bar => false, _ => 456, } 123"),
-        mk_term::op1(
-            UnaryOp::Switch(
-                vec![
-                    (Ident::from("foo"), Bool(true).into()),
-                    (Ident::from("bar"), Bool(false).into())
-                ]
-                .into_iter()
-                .collect(),
-                Some(Num(456.).into())
-            ),
-            Num(123.),
-        )
+        mk_switch!(Num(123.), ("foo", Bool(true)), ("bar", Bool(false)) ; Num(456.))
     )
 }
 

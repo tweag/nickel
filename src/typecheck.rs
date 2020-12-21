@@ -535,6 +535,31 @@ fn type_check_(
             type_check_(state, envs.clone(), strict, e, arr)?;
             type_check_(state, envs, strict, t, src)
         }
+        Term::Switch(exp, cases, default) => {
+            // Currently, if it has a default value, we typecheck the whole thing as
+            // taking ANY enum, since it's more permissive and there's no loss of information
+            let res = TypeWrapper::Ptr(new_var(state.table));
+
+            for case in cases.values() {
+                type_check_(state, envs.clone(), strict, case, res.clone())?;
+            }
+
+            let row = match default {
+                Some(t) => {
+                    type_check_(state, envs.clone(), strict, t, res.clone())?;
+                    TypeWrapper::Ptr(new_var(state.table))
+                }
+                None => cases.iter().try_fold(
+                    mk_typewrapper::row_empty(),
+                    |acc, x| -> Result<TypeWrapper, TypecheckError> {
+                        Ok(mk_tyw_enum_row!(x.0.clone(), acc))
+                    },
+                )?,
+            };
+
+            unify(state, strict, ty, res).map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
+            type_check_(state, envs, strict, exp, mk_tyw_enum!(row))
+        }
         Term::Var(x) => {
             let x_ty = envs
                 .get(&x)
@@ -1380,35 +1405,8 @@ pub fn get_uop_type(
             constraint(state, row.clone(), id.clone()).unwrap();
             mk_tyw_arrow!(mk_tyw_enum!(row.clone()), mk_tyw_enum!(id.clone(), row))
         }
-        // 1. rows -> a
-        // 2. forall b. b -> a
-        // Rows is ( `label1, .., `labeln ) for label in l.keys().
-        // Unify each branch in l.values() with a.
-        // If the switch has a default case, the more general type 2. is used.
-        UnaryOp::Switch(l, d) => {
-            // Currently, if it has a default value, we typecheck the whole thing as
-            // taking ANY enum, since it's more permissive and there's not a loss of information
-            let res = TypeWrapper::Ptr(new_var(state.table));
-
-            for exp in l.values() {
-                type_check_(state, envs.clone(), strict, exp, res.clone())?;
-            }
-
-            let row = match d {
-                Some(e) => {
-                    type_check_(state, envs.clone(), strict, e, res.clone())?;
-                    TypeWrapper::Ptr(new_var(state.table))
-                }
-                None => l.iter().try_fold(
-                    mk_typewrapper::row_empty(),
-                    |acc, x| -> Result<TypeWrapper, TypecheckError> {
-                        Ok(mk_tyw_enum_row!(x.0.clone(), acc))
-                    },
-                )?,
-            };
-
-            mk_tyw_arrow!(mk_tyw_enum!(row), res)
-        }
+        // This should not happen, as Switch() is only produced during evaluation.
+        UnaryOp::Switch(_) => panic!("cannot typecheck Switch()"),
         // Dyn -> Dyn
         UnaryOp::ChangePolarity() | UnaryOp::GoDom() | UnaryOp::GoCodom() | UnaryOp::Tag(_) => {
             mk_tyw_arrow!(AbsType::Dyn(), AbsType::Dyn())

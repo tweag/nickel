@@ -260,13 +260,43 @@ fn process_unary_operation(
                 ))
             }
         }
-        UnaryOp::Switch(mut m, d) => {
+        UnaryOp::Switch(has_default) => {
+            let (cases_closure, _) = stack.pop_arg().expect("missing arg for switch");
+            let default = if has_default {
+                Some(
+                    stack
+                        .pop_arg()
+                        .map(|(clos, _)| clos)
+                        .expect("missing default case for switch"),
+                )
+            } else {
+                None
+            };
+
             if let Term::Enum(en) = *t {
-                match m.remove(&en) {
-                    Some(clos) => Ok(clos),
-                    None => match d {
-                        Some(clos) => Ok(clos),
-                        None => Err(EvalError::TypeError(
+                let Closure {
+                    body:
+                        RichTerm {
+                            term: cases_term, ..
+                        },
+                    env: cases_env,
+                } = cases_closure;
+
+                let mut cases = match *cases_term {
+                    Term::Record(map) => map,
+                    _ => panic!("invalid argument for switch"),
+                };
+
+                cases
+                    .remove(&en)
+                    .map(|body| Closure {
+                        body,
+                        env: cases_env,
+                    })
+                    .or(default)
+                    .ok_or_else(||
+                        // ? We should have a dedicated error for unmatched pattern
+                        EvalError::TypeError(
                             String::from("Enum"),
                             String::from("switch"),
                             arg_pos,
@@ -274,19 +304,16 @@ fn process_unary_operation(
                                 term: Box::new(Term::Enum(en)),
                                 pos,
                             },
-                        )),
-                    },
-                }
+                        ))
+            } else if let Some(clos) = default {
+                Ok(clos)
             } else {
-                match d {
-                    Some(clos) => Ok(clos),
-                    None => Err(EvalError::TypeError(
-                        String::from("Enum"),
-                        String::from("switch"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    )),
-                }
+                Err(EvalError::TypeError(
+                    String::from("Enum"),
+                    String::from("switch"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
             }
         }
         UnaryOp::ChangePolarity() => {
