@@ -201,7 +201,14 @@ fn query(
     fn print_fields(t: &Term) {
         println!();
         match t {
-            Term::Record(map) if !map.is_empty() => query::print_fields(map.keys()),
+            Term::Record(map) | Term::RecRecord(map) if !map.is_empty() => {
+                let mut fields: Vec<_> = map.keys().collect();
+                fields.sort();
+                query::print_fields(fields.into_iter());
+            }
+            Term::Record(_) | Term::RecRecord(_) => {
+                query::print_metadata("value", &String::from("{}"))
+            }
             _ => (),
         }
     }
@@ -253,9 +260,15 @@ fn query(
                 meta.value.iter().for_each(|rt| print_fields(rt.as_ref()));
             }
         }
-        t => {
+        t @ Term::Record(_) | t @ Term::RecRecord(_) => {
             println!("No metadata found for this value.");
             print_fields(&t)
+        }
+        t => {
+            println!("No metadata found for this value.\n");
+            if all {
+                query::print_metadata("value", &t.shallow_repr());
+            }
         }
     }
 

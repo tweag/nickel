@@ -269,8 +269,9 @@ impl Program {
 
         let t = if let Some(p) = path {
             // Parsing `hole.path`. We `seq` it to force the evaluation of the underlying value,
-            // which can be then showed to the user.
-            let source = format!("let x = (y.{}) in seq x x", p);
+            // which can be then showed to the user. The newline gives better messages in case of
+            // errors.
+            let source = format!("let x = (y.{})\n in %seq% x x", p);
             let file_id = self.files.add("<query path>", source.clone());
             let new_term = parser::grammar::TermParser::new()
                 .parse(file_id, Lexer::new(&source))
