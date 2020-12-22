@@ -22,6 +22,7 @@
 //! [`mk_global_env`](./struct.Program.html#method.mk_global_env)).  Each such value is added to
 //! the global environment before the evaluation of the program.
 use crate::error::{Error, ImportError, ParseError, ToDiagnostic, TypecheckError};
+use crate::identifier::Ident;
 use crate::parser::lexer::Lexer;
 use crate::position::RawSpan;
 use crate::stdlib as nickel_stdlib;
@@ -257,6 +258,42 @@ impl Program {
     pub fn eval_full(&mut self) -> Result<Term, Error> {
         let (t, global_env) = self.prepare_eval()?;
         eval::eval_full(t, &global_env, self).map_err(|e| e.into())
+    }
+
+    /// Parse if necessary, typecheck, and evaluate the program until a metavalue is encountered.
+    ///
+    /// As opposed to normal evaluation, it does not try to unwrap the content of a metavalue: the
+    /// evaluation stops as soon as a metavalue is encountered.
+    pub fn eval_meta(&mut self, path: Option<String>) -> Result<Term, Error> {
+        let (t, global_env) = self.prepare_eval()?;
+
+        let t = if let Some(p) = path {
+            // Parsing `hole.path`. We `seq` it to force the evaluation of the underlying value,
+            // which can be then showed to the user. The newline gives better messages in case of
+            // errors.
+            let source = format!("let x = (y.{})\n in %seq% x x", p);
+            let file_id = self.files.add("<query path>", source.clone());
+            let new_term = parser::grammar::TermParser::new()
+                .parse(file_id, Lexer::new(&source))
+                .map_err(|err| ParseError::from_lalrpop(err, file_id))?;
+
+            // Substituting `___HOLE` for `t`
+            let mut env = eval::Environment::new();
+            let closure = eval::Closure {
+                body: t,
+                env: eval::Environment::new(),
+            };
+            env.insert(
+                Ident::from("y"),
+                (Rc::new(RefCell::new(closure)), eval::IdentKind::Let()),
+            );
+
+            eval::subst(new_term, &eval::Environment::new(), &env)
+        } else {
+            t
+        };
+
+        Ok(eval::eval_meta(t, &global_env, self)?)
     }
 
     pub fn typecheck(&mut self) -> Result<Types, Error> {
@@ -742,7 +779,7 @@ Assume(#alwaysTrue, false)
         assert_eq!(res, Ok(Term::Num(2.)));
 
         let res = eval_string(
-            "let f : forall r. <foo, bar | r> -> Num = 
+            "let f : forall r. <foo, bar | r> -> Num =
             fun x => switch { foo => 1, bar => 2, _ => 3, } x in
             f `boo",
         );

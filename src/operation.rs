@@ -46,6 +46,7 @@ pub enum OperationCont {
     Op1(
         /* unary operation */ UnaryOp,
         /* original position of the argument before evaluation */ Option<RawSpan>,
+        /* previous value of enriched_strict */ bool,
     ),
     // The last parameter saves the strictness mode before the evaluation of the operator
     Op2First(
@@ -77,8 +78,10 @@ pub fn continuate_operation(
     let (cont, cs_len, pos) = stack.pop_op_cont().expect("Condition already checked");
     call_stack.truncate(cs_len);
     match cont {
-        OperationCont::Op1(u_op, arg_pos) => {
-            process_unary_operation(u_op, clos, arg_pos, stack, pos)
+        OperationCont::Op1(u_op, arg_pos, prev_strict) => {
+            let result = process_unary_operation(u_op, clos, arg_pos, stack, pos);
+            *enriched_strict = prev_strict;
+            result
         }
         OperationCont::Op2First(b_op, mut snd_clos, fst_pos, prev_strict) => {
             std::mem::swap(&mut clos, &mut snd_clos);
@@ -1378,7 +1381,7 @@ mod tests {
 
     #[test]
     fn ite_operation() {
-        let cont = OperationCont::Op1(UnaryOp::Ite(), None);
+        let cont = OperationCont::Op1(UnaryOp::Ite(), None, true);
         let mut stack = Stack::new();
         stack.push_arg(Closure::atomic_closure(Term::Num(5.0).into()), None);
         stack.push_arg(Closure::atomic_closure(Term::Num(46.0).into()), None);

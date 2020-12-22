@@ -7,6 +7,11 @@ readme = "README.md"
 description = "Programmable configuration files."
 edition = "2018"
 
+[features]
+default = ["markdown"]
+# markdown = ["termimad", "minimad", "lazy_static", "crossterm"]
+markdown = ["termimad", "minimad"]
+
 [build-dependencies] # <-- We added this and everything after!
 lalrpop = "0.16.2"
 
@@ -21,6 +26,12 @@ logos = "0.11.4"
 serde = "1.0.117"
 serde_json = "1.0.59"
 structopt = "0.3"
+
+termimad = { version = "0.9.1", optional = true }
+# Use the same version as termimad
+minimad = { version = "0.6.7", optional = true }
+# lazy_static = { version = "1.4", optional = true }
+# crossterm = { version = "0.17.7", optional = true }
 
 [dev-dependencies]
 pretty_assertions = "0.5.1"
