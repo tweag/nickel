@@ -50,13 +50,13 @@ pub enum OperationCont {
     ),
     // The last parameter saves the strictness mode before the evaluation of the operator
     Op2First(
-        /* the binary operation */ BinaryOp<Closure>,
+        /* the binary operation */ BinaryOp,
         /* second argument, to evaluate next */ Closure,
         /* original position of the first argument */ Option<RawSpan>,
         /* previous value of enriched_strict */ bool,
     ),
     Op2Second(
-        /* binary operation */ BinaryOp<Closure>,
+        /* binary operation */ BinaryOp,
         /* first argument, evaluated */ Closure,
         /* original position of the first argument before evaluation */ Option<RawSpan>,
         /* original position of the second argument before evaluation */ Option<RawSpan>,
@@ -370,19 +370,6 @@ fn process_unary_operation(
                 ))
             }
         }
-        UnaryOp::Tag(s) => {
-            if let Term::Lbl(mut l) = *t {
-                l.tag = String::from(&s);
-                Ok(Closure::atomic_closure(Term::Lbl(l).into()))
-            } else {
-                Err(EvalError::TypeError(
-                    String::from("Label"),
-                    String::from("tag"),
-                    arg_pos,
-                    RichTerm { term: t, pos },
-                ))
-            }
-        }
         UnaryOp::Wrap() => {
             if let Term::Sym(s) = *t {
                 Ok(Closure::atomic_closure(mk_fun!(
@@ -663,7 +650,7 @@ fn process_unary_operation(
 /// Both arguments are expected to be evaluated (in WHNF). `pos_op` corresponds to the whole
 /// operation position, that may be needed for error reporting.
 fn process_binary_operation(
-    b_op: BinaryOp<Closure>,
+    b_op: BinaryOp,
     fst_clos: Closure,
     fst_pos: Option<RawSpan>,
     clos: Closure,
@@ -874,6 +861,34 @@ fn process_binary_operation(
                 Err(EvalError::TypeError(
                     String::from("Sym"),
                     String::from("unwrap, 1st argument"),
+                    fst_pos,
+                    RichTerm {
+                        term: t1,
+                        pos: pos1,
+                    },
+                ))
+            }
+        }
+        BinaryOp::Tag() => {
+            if let Term::Str(s) = *t1 {
+                if let Term::Lbl(mut l) = *t2 {
+                    l.tag = s;
+                    Ok(Closure::atomic_closure(Term::Lbl(l).into()))
+                } else {
+                    Err(EvalError::TypeError(
+                        String::from("Label"),
+                        String::from("tag, 2nd argument"),
+                        snd_pos,
+                        RichTerm {
+                            term: t2,
+                            pos: pos2,
+                        },
+                    ))
+                }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("tag, 1st argument"),
                     fst_pos,
                     RichTerm {
                         term: t1,
@@ -1101,7 +1116,11 @@ fn process_binary_operation(
                 ))
             }
         }
-        BinaryOp::DynExtend(clos) => {
+        BinaryOp::DynExtend() => {
+            let (clos, _) = stack.pop_arg().ok_or_else(|| {
+                EvalError::NotEnoughArgs(3, String::from("$[ .. ]"), pos_op.clone())
+            })?;
+
             if let Term::Str(id) = *t1 {
                 if let Term::Record(mut static_map) = *t2 {
                     let as_var = clos.body.closurize(&mut env2, clos.env);

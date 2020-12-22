@@ -48,18 +48,19 @@
           let t = t -$ field in
           cont acc l t
       else
-          %blame% (%tag% "missing field" l);
+          %blame% (%tag% "missing field `#{field}`" l);
 
   forall_tail = fun sy pol acc l t =>
       let magic_fld = "_%wrapped" in
       if pol == (%polarity% l) then
           if %hasField% magic_fld t then
-              if (t -$ magic_fld) == {} then
+              let rest = (t -$ magic_fld) in
+              if rest == {} then
                   let fail = %blame% (%tag% "polymorphic tail mismatch" l) in
                   let inner = %unwrap% sy (t.$magic_fld) fail in
                   acc & inner
               else
-                  %blame% (%tag% "extra field" l)
+                  %blame% (%tag% "extra field `#{%head% (%fieldsOf% rest)}`" l)
           else
               %blame% (%tag% "missing polymorphic part" l)
       else
@@ -69,5 +70,5 @@
 
   empty_tail = fun acc l t =>
       if t == {} then acc
-      else %blame% (%tag% "extra field" l);
+      else %blame% (%tag% "extra field `#{%head% (%fieldsOf% t)}`" l);
 }

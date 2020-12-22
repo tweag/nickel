@@ -347,11 +347,6 @@ where
                 Closure { body: t, env }
             }
             Term::Op2(op, fst, snd) => {
-                let op = op.map(|t| Closure {
-                    body: t,
-                    env: env.clone(),
-                });
-
                 let prev_strict = enriched_strict;
                 enriched_strict = op.is_strict();
                 stack.push_op_cont(
