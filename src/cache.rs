@@ -8,10 +8,11 @@ use crate::term::{RichTerm, Term};
 use crate::typecheck::type_check;
 use crate::{eval, parser, transformations};
 use codespan::{FileId, Files};
+use io::Read;
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::fs;
-use std::io::Read;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::result::Result;
 use std::time::SystemTime;
@@ -75,9 +76,9 @@ pub enum EntryState {
 /// performed actual work, or have done nothing if the corresponding entry was already in at a
 /// later stage.
 #[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Copy, Clone)]
-pub enum CacheOp {
-    Done,
-    Cached,
+pub enum CacheOp<T> {
+    Done(T),
+    Cached(T),
 }
 
 /// Wrapper around other errors to indicate that typechecking or applying program transformations
@@ -125,7 +126,7 @@ impl Cache {
     }
 
     /// Load a file in the file database. Do not insert an entry in the name-id table.
-    fn load_file(&mut self, path: impl Into<OsString>) -> std::io::Result<FileId> {
+    fn load_file(&mut self, path: impl Into<OsString>) -> io::Result<FileId> {
         let path = path.into();
         let mut buffer = String::new();
         fs::File::open(&path)
@@ -133,16 +134,20 @@ impl Cache {
             .map(|_| self.files.add(path, buffer))
     }
 
-    /// Same as [`add_file`](./fn.add_file.html), but assume that the path is already normalized.
-    fn add_file_normalized(&mut self, path: impl Into<OsString>) -> std::io::Result<FileId> {
+    /// Same as [`add_file`](./fn.add_file.html), but assume that the path is already normalized,
+    /// and take the timestamp as a parameter.
+    fn add_file_(
+        &mut self,
+        path: impl Into<OsString>,
+        timestamp: SystemTime,
+    ) -> io::Result<FileId> {
         let path = path.into();
-        let timestamp = Some(fs::metadata(&path)?.modified()?);
         let file_id = self.load_file(path.clone())?;
         self.file_ids.insert(
             path,
             NameIdEntry {
                 id: file_id,
-                timestamp,
+                timestamp: Some(timestamp),
             },
         );
         Ok(file_id)
@@ -154,22 +159,42 @@ impl Cache {
     /// check if a source with the same name as the normalized path of the file and the same
     /// *modified at* timestamp already exists: if it is the case, this one will override the old
     /// entry in the table.
-    ///
-    /// If the path cannot be normalized because of an IO error, then the file is loaded but not added to the
-    /// name-id table.
-    pub fn add_file(&mut self, path: impl Into<OsString>) -> std::io::Result<FileId> {
+    pub fn add_file(&mut self, path: impl Into<OsString>) -> io::Result<FileId> {
         let path = path.into();
-        match normalize_path(PathBuf::from(&path).as_path()) {
-            Some(p) => self.add_file_normalized(&p),
-            None => self.load_file(path),
+        let timestamp = timestamp(&path)?;
+        let normalized = normalize_path(PathBuf::from(&path).as_path())?;
+        self.add_file_(normalized, timestamp)
+    }
+
+    /// Same as [`get_or_add_file`](./fn.get_or_add_file.html), but assume that the path is already
+    /// normalized, and take the timestamp as a parameter.
+    fn get_or_add_file_(
+        &mut self,
+        path: impl Into<OsString>,
+        timestamp: SystemTime,
+    ) -> io::Result<CacheOp<FileId>> {
+        let path = path.into();
+        if let Some(file_id) = self.id_of_file_(&path, timestamp) {
+            Ok(CacheOp::Cached(file_id))
+        } else {
+            self.add_file_(path, timestamp).map(CacheOp::Done)
         }
+    }
+
+    /// Try to retrieve the id of a file from the cache, using the normalized path and comparing
+    /// timestamps. If it was not in cache, add it as a new entry.
+    pub fn get_or_add_file(&mut self, path: impl Into<OsString>) -> io::Result<CacheOp<FileId>> {
+        let path = path.into();
+        let timestamp = timestamp(&path)?;
+        let normalized = normalize_path(PathBuf::from(&path).as_path())?;
+        self.get_or_add_file_(normalized, timestamp)
     }
 
     /// Load a source and add it to the name-id table.
     ///
     /// Do not check if a source with the same name already exists: if it is the
     /// case, this one will override the old entry in the name-id table.
-    pub fn add_source<T, S>(&mut self, source_name: S, mut source: T) -> std::io::Result<FileId>
+    pub fn add_source<T, S>(&mut self, source_name: S, mut source: T) -> io::Result<FileId>
     where
         T: Read,
         S: Into<OsString>,
@@ -198,16 +223,16 @@ impl Cache {
 
     /// Parse a source file and populate the corresponding entry in the cache, or just get it from
     /// the term cache if it is there.
-    pub fn parse(&mut self, file_id: FileId) -> Result<CacheOp, ParseError> {
+    pub fn parse(&mut self, file_id: FileId) -> Result<CacheOp<()>, ParseError> {
         if self.terms.contains_key(&file_id) {
-            Ok(CacheOp::Cached)
+            Ok(CacheOp::Cached(()))
         } else {
             let buf = self.files.source(file_id).clone();
             let t = parser::grammar::TermParser::new()
                 .parse(file_id, Lexer::new(&buf))
                 .map_err(|err| ParseError::from_lalrpop(err, file_id))?;
             self.terms.insert(file_id, (t, EntryState::Parsed));
-            Ok(CacheOp::Done)
+            Ok(CacheOp::Done(()))
         }
     }
 
@@ -217,7 +242,7 @@ impl Cache {
         &mut self,
         file_id: FileId,
         global_env: &eval::Environment,
-    ) -> Result<CacheOp, CacheError<TypecheckError>> {
+    ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
         if !self.terms.contains_key(&file_id) {
             return Err(CacheError::NotParsed);
         }
@@ -226,11 +251,11 @@ impl Cache {
         let (t, state) = self.terms.get(&file_id).unwrap();
 
         if *state > EntryState::Typechecked {
-            Ok(CacheOp::Cached)
+            Ok(CacheOp::Cached(()))
         } else if *state == EntryState::Parsed {
             type_check(t, global_env, self)?;
             self.update_state(file_id, EntryState::Typechecked);
-            Ok(CacheOp::Done)
+            Ok(CacheOp::Done(()))
         } else {
             panic!()
         }
@@ -238,14 +263,14 @@ impl Cache {
 
     /// Apply program transformations to an entry of the cache, and update its state accordingly,
     /// or do nothing if the entry has already been transformed.
-    pub fn transform(&mut self, file_id: FileId) -> Result<CacheOp, CacheError<ImportError>> {
+    pub fn transform(&mut self, file_id: FileId) -> Result<CacheOp<()>, CacheError<ImportError>> {
         match self.entry_state(file_id) {
-            Some(EntryState::Transformed) => Ok(CacheOp::Cached),
+            Some(EntryState::Transformed) => Ok(CacheOp::Cached(())),
             Some(_) => {
                 let (t, _) = self.terms.remove(&file_id).unwrap();
                 let t = transformations::transform(t, self)?;
                 self.terms.insert(file_id, (t, EntryState::Transformed));
-                Ok(CacheOp::Done)
+                Ok(CacheOp::Done(()))
             }
             None => Err(CacheError::NotParsed),
         }
@@ -253,9 +278,12 @@ impl Cache {
 
     /// Apply program transformations to all the field of a record. Used to transform the standard
     /// library.
-    pub fn transform_inner(&mut self, file_id: FileId) -> Result<CacheOp, CacheError<ImportError>> {
+    pub fn transform_inner(
+        &mut self,
+        file_id: FileId,
+    ) -> Result<CacheOp<()>, CacheError<ImportError>> {
         match self.entry_state(file_id) {
-            Some(EntryState::Transformed) => Ok(CacheOp::Cached),
+            Some(EntryState::Transformed) => Ok(CacheOp::Cached(())),
             Some(_) => {
                 let (mut t, _) = self.terms.remove(&file_id).unwrap();
                 match t.term.as_mut() {
@@ -274,7 +302,7 @@ impl Cache {
                 }
 
                 self.terms.insert(file_id, (t, EntryState::Transformed));
-                Ok(CacheOp::Done)
+                Ok(CacheOp::Done(()))
             }
             None => Err(CacheError::NotParsed),
         }
@@ -286,27 +314,27 @@ impl Cache {
         &mut self,
         file_id: FileId,
         global_env: &eval::Environment,
-    ) -> Result<CacheOp, Error> {
-        let mut result = CacheOp::Cached;
+    ) -> Result<CacheOp<()>, Error> {
+        let mut result = CacheOp::Cached(());
 
-        if self.parse(file_id)? == CacheOp::Done {
-            result = CacheOp::Done;
+        if self.parse(file_id)? == CacheOp::Done(()) {
+            result = CacheOp::Done(());
         };
 
         let typecheck_res = self.typecheck(file_id, global_env).map_err(|cache_err| {
             cache_err
                 .expect_err("cache::prepare(): expected source to be parsed before typechecking")
         })?;
-        if typecheck_res == CacheOp::Done {
-            result = CacheOp::Done;
+        if typecheck_res == CacheOp::Done(()) {
+            result = CacheOp::Done(());
         };
 
         let transform_res = self.transform(file_id).map_err(|cache_err| {
             cache_err
                 .expect_err("cache::prepare(): expected source to be parsed before transformations")
         })?;
-        if transform_res == CacheOp::Done {
-            result = CacheOp::Done;
+        if transform_res == CacheOp::Done(()) {
+            result = CacheOp::Done(());
         };
 
         Ok(result)
@@ -324,6 +352,29 @@ impl Cache {
     /// rather use [`id_entry`](./fn.id_entry).
     pub fn id_of(&self, name: impl AsRef<OsStr>) -> Option<FileId> {
         self.file_ids.get(name.as_ref()).map(|entry| entry.id)
+    }
+
+    /// Retrieve the id of a file given a path.
+    ///
+    /// This function normalizes the given path, search it in the name-id table, and check that the
+    /// stored timestamp is the same as the current timestamp of the file. If normalization or
+    /// metadata retrieval fails, or if the stored entry has no timestamps (it was added as a
+    /// stand-alone source), `None` is returned.
+    pub fn id_of_file(&self, path: impl AsRef<OsStr>) -> io::Result<Option<FileId>> {
+        let normalized = normalize_path(PathBuf::from(path.as_ref()).as_path())?;
+        let timestamp = timestamp(path)?;
+        Ok(self.id_of_file_(normalized, timestamp))
+    }
+
+    /// Retrieve the id of a file given a path. Same as [`id_of_file`](./fn.id_of_file), but assume
+    /// that the given path is already normalized and take the timestamp as a parameter.
+    fn id_of_file_(&self, path: impl AsRef<OsStr>, timestamp: SystemTime) -> Option<FileId> {
+        self.file_ids
+            .get(path.as_ref())
+            .and_then(|entry| match entry.timestamp {
+                Some(ts) if ts == timestamp => Some(entry.id),
+                _ => None,
+            })
     }
 
     /// Get a mutable reference to the underlying files. Required by the `to_diagnostic` method of
@@ -387,9 +438,6 @@ pub trait ImportResolver {
 
     /// Get a resolved import from the term cache.
     fn get(&self, file_id: FileId) -> Option<RichTerm>;
-
-    /// Get a file id from the file cache.
-    fn get_id(&self, path: &OsStr, parent: Option<PathBuf>) -> Option<FileId>;
 }
 
 impl ImportResolver for Cache {
@@ -399,29 +447,26 @@ impl ImportResolver for Cache {
         parent: Option<PathBuf>,
         pos: &Option<RawSpan>,
     ) -> Result<(ResolvedTerm, FileId), ImportError> {
-        let (path_buf, normalized) = with_parent(path, parent);
-
-        if let Some(id) = normalized.as_ref().and_then(|p| self.id_of(p)) {
-            return Ok((ResolvedTerm::FromCache(), id));
-        }
-
-        let file_id = normalized
-            .map(|p| self.add_file_normalized(p))
-            .unwrap_or_else(|| self.load_file(path_buf))
-            .map_err(|err| {
-                ImportError::IOError(
-                    path.to_string_lossy().into_owned(),
-                    format!("{}", err),
-                    pos.clone(),
-                )
-            })?;
+        let path_buf = with_parent(path, parent.clone());
+        let id_op = self.get_or_add_file(&path_buf).map_err(|err| {
+            ImportError::IOError(
+                path.to_string_lossy().into_owned(),
+                format!("{}", err),
+                pos.clone(),
+            )
+        })?;
+        let file_id = match id_op {
+            CacheOp::Cached(id) => return Ok((ResolvedTerm::FromCache(), id)),
+            CacheOp::Done(id) => id,
+        };
 
         self.parse(file_id)
             .map_err(|err| ImportError::ParseError(err, pos.clone()))?;
+
         Ok((
             ResolvedTerm::FromFile {
                 term: self.get_owned(file_id).unwrap(),
-                path: Path::new(path).to_path_buf(),
+                path: path_buf,
             },
             file_id,
         ))
@@ -434,36 +479,29 @@ impl ImportResolver for Cache {
         })
     }
 
-    fn get_id(&self, path: &OsStr, parent: Option<PathBuf>) -> Option<FileId> {
-        let (_, normalized) = with_parent(path, parent);
-        normalized
-            .and_then(|p| self.file_ids.get(&p))
-            .map(|entry| entry.id)
-    }
-
     fn insert(&mut self, file_id: FileId, term: RichTerm) {
         self.terms.insert(file_id, (term, EntryState::Transformed));
     }
 }
 
-/// Compute the normalized path of a file relatively to a parent (see
-/// [`normalize_path`](./fn.normalize_path.html)).
-fn with_parent(path: &OsStr, parent: Option<PathBuf>) -> (PathBuf, Option<OsString>) {
+/// Compute the path of a file relatively to a parent.
+fn with_parent(path: &OsStr, parent: Option<PathBuf>) -> PathBuf {
     let mut path_buf = parent.unwrap_or(PathBuf::new());
     path_buf.pop();
     path_buf.push(Path::new(path));
-    let normalized = normalize_path(path_buf.as_path());
-
-    (path_buf, normalized)
+    path_buf
 }
 
 /// Normalize the path of a file to uniquely identify names in the cache.
 ///
 /// If an IO error occurs here, `None` is returned.
-pub fn normalize_path(path: &Path) -> Option<OsString> {
-    path.canonicalize()
-        .ok()
-        .map(|p_| p_.as_os_str().to_os_string())
+pub fn normalize_path(path: &Path) -> io::Result<OsString> {
+    path.canonicalize().map(|p_| p_.as_os_str().to_os_string())
+}
+
+/// Return the timestamp of a file. Return `None` if an IO error occurred.
+pub fn timestamp(path: impl AsRef<OsStr>) -> io::Result<SystemTime> {
+    fs::metadata(path.as_ref())?.modified()
 }
 
 /// Provide mockup import resolvers for testing purpose.
@@ -490,10 +528,6 @@ pub mod resolvers {
         }
 
         fn get(&self, _file_id: FileId) -> Option<RichTerm> {
-            panic!("program::resolvers: dummy resolver should not have been invoked");
-        }
-
-        fn get_id(&self, _path: &OsStr, _parent: Option<PathBuf>) -> Option<FileId> {
             panic!("program::resolvers: dummy resolver should not have been invoked");
         }
     }
@@ -569,12 +603,6 @@ pub mod resolvers {
                 .map(|opt| opt.as_ref())
                 .flatten()
                 .cloned()
-        }
-
-        fn get_id(&self, path: &OsStr, _parent: Option<PathBuf>) -> Option<FileId> {
-            self.file_cache
-                .get(path.to_string_lossy().as_ref())
-                .copied()
         }
     }
 }
