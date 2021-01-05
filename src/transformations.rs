@@ -194,7 +194,7 @@ pub mod import_resolution {
     /// Resolve the import if the term is an unresolved import, or return the term unchanged.
     ///
     /// If an import was resolved, the corresponding `FileId` is returned in the second component
-    /// of the result, and the file path as the third. It the import has been already resolved, or
+    /// of the result, and the file path as the third. If the import has been already resolved, or
     /// if the term was not an import, `None` is returned. As
     /// [`share_normal_form::transform_one`](../share_normal_form/fn.transform_one.html), this function is not recursive.
     pub fn transform_one<R>(
