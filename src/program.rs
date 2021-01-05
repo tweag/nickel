@@ -53,6 +53,13 @@ impl Program {
         Program::new_from_source(io::stdin(), "<stdin>")
     }
 
+    pub fn new_from_file(path: impl Into<OsString>) -> std::io::Result<Program> {
+        let mut cache = Cache::new();
+        let main_id = cache.add_file(path)?;
+
+        Ok(Program { main_id, cache })
+    }
+
     /// Create a program by reading it from a generic source.
     pub fn new_from_source<T, S>(source: T, source_name: S) -> std::io::Result<Program>
     where
@@ -239,7 +246,7 @@ impl Program {
     {
         let writer = StandardStream::stderr(ColorChoice::Always);
         let config = codespan_reporting::term::Config::default();
-        let contracts_id = self.cache.file_id("<stdlib/contracts.ncl>");
+        let contracts_id = self.cache.id_of("<stdlib/contracts.ncl>");
         let diagnostics = error.to_diagnostic(self.cache.files_mut(), contracts_id);
 
         let result = diagnostics.iter().try_for_each(|d| {

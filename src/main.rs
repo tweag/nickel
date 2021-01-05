@@ -115,10 +115,7 @@ fn main() {
     let opts = Opt::from_args();
     let mut program = opts
         .file
-        .map(|path: PathBuf| -> io::Result<_> {
-            let file = fs::File::open(&path)?;
-            Program::new_from_source(file, &path)
-        })
+        .map(Program::new_from_file)
         .unwrap_or_else(Program::new_from_stdin)
         .unwrap_or_else(|err| {
             eprintln!("Error when reading input: {}", err);
