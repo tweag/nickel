@@ -73,8 +73,8 @@ pub enum EntryState {
 }
 
 /// The result of a cache operation, such as parsing, typechecking, etc. which can either have
-/// performed actual work, or have done nothing if the corresponding entry was already in at a
-/// later stage.
+/// performed actual work, or have done nothing if the corresponding entry was already at a later
+/// stage.
 #[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Copy, Clone)]
 pub enum CacheOp<T> {
     Done(T),
@@ -95,7 +95,7 @@ impl<E> From<E> for CacheError<E> {
 }
 
 impl<E> CacheError<E> {
-    pub fn expect_err(self, msg: &str) -> E {
+    pub fn unwrap_error(self, msg: &str) -> E {
         match self {
             CacheError::Error(err) => err,
             CacheError::NotParsed => panic!("{}", msg),
@@ -221,8 +221,8 @@ impl Cache {
         id
     }
 
-    /// Parse a source file and populate the corresponding entry in the cache, or just get it from
-    /// the term cache if it is there.
+    /// Parse a source file and populate the corresponding entry in the cache, or do nothing if the
+    /// entry has already been parsed.
     pub fn parse(&mut self, file_id: FileId) -> Result<CacheOp<()>, ParseError> {
         if self.terms.contains_key(&file_id) {
             Ok(CacheOp::Cached(()))
@@ -262,7 +262,8 @@ impl Cache {
     }
 
     /// Apply program transformations to an entry of the cache, and update its state accordingly,
-    /// or do nothing if the entry has already been transformed.
+    /// or do nothing if the entry has already been transformed. Require that the corresponding
+    /// source has been parsed.
     pub fn transform(&mut self, file_id: FileId) -> Result<CacheOp<()>, CacheError<ImportError>> {
         match self.entry_state(file_id) {
             Some(EntryState::Transformed) => Ok(CacheOp::Cached(())),
@@ -276,8 +277,15 @@ impl Cache {
         }
     }
 
-    /// Apply program transformations to all the field of a record. Used to transform the standard
-    /// library.
+    /// Apply program transformations to all the fields of a record.
+    ///
+    /// Used to transform the standard library. If one just uses
+    /// [`transform`](./fn.transform.html), the share normal form transformation would add let
+    /// bindings to record entry `{ ... }`, turning it into `let %0 = ... in ... in { ... }`, but
+    /// standard library entries are required to be syntactically records.
+    ///
+    /// Note that this requirement may be relaxed in the future by evaluating stdlib entries before
+    /// adding their fields to the global environment.
     pub fn transform_inner(
         &mut self,
         file_id: FileId,
@@ -323,15 +331,16 @@ impl Cache {
 
         let typecheck_res = self.typecheck(file_id, global_env).map_err(|cache_err| {
             cache_err
-                .expect_err("cache::prepare(): expected source to be parsed before typechecking")
+                .unwrap_error("cache::prepare(): expected source to be parsed before typechecking")
         })?;
         if typecheck_res == CacheOp::Done(()) {
             result = CacheOp::Done(());
         };
 
         let transform_res = self.transform(file_id).map_err(|cache_err| {
-            cache_err
-                .expect_err("cache::prepare(): expected source to be parsed before transformations")
+            cache_err.unwrap_error(
+                "cache::prepare(): expected source to be parsed before transformations",
+            )
         })?;
         if transform_res == CacheOp::Done(()) {
             result = CacheOp::Done(());
@@ -377,8 +386,8 @@ impl Cache {
             })
     }
 
-    /// Get a mutable reference to the underlying files. Required by the `to_diagnostic` method of
-    /// errors.
+    /// Get a mutable reference to the underlying files. Required by
+    /// [`to_diagnostic`](../error/method.to_diagnostic.html).
     pub fn files_mut<'a>(&'a mut self) -> &'a mut Files<String> {
         &mut self.files
     }
@@ -405,13 +414,13 @@ impl Cache {
 /// Abstract the access to imported files and the import cache. Used by the evaluator, the
 /// typechecker and at [import resolution](../transformations/import_resolution/index.html) phase.
 ///
-/// The standard implementation use 2 caches, the file cache for raw contents and the term cache
+/// The standard implementation uses 2 caches, the file cache for raw contents and the term cache
 /// for parsed contents, mirroring the 2 steps when resolving an import:
 /// 1. When an import is encountered for the first time, the content of the corresponding file is
 ///    read and stored in the file cache (consisting of the file database plus a map between paths
-///    and ids in the database). The content is parsed, and this term is queued somewhere so that
-///    it can undergo the standard [transformations](../transformations/index.html) first, but is
-///    not stored in the term cache yet.
+///    and ids in the database, the name-id table). The content is parsed, stored in the term
+///    cache, and queued somewhere so that it can undergo the standard
+///    [transformations](../transformations/index.html) (including import resolution) later.
 /// 2. When it is finally processed, the term cache is updated with the transformed term.
 pub trait ImportResolver {
     /// Resolve an import.

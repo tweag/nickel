@@ -231,7 +231,7 @@ impl Program {
         self.cache
             .typecheck(self.main_id, &global_env)
             .map_err(|cache_err| {
-                cache_err.expect_err("program::typecheck(): expected source to be parsed")
+                cache_err.unwrap_error("program::typecheck(): expected source to be parsed")
             })?;
         Ok(())
     }
