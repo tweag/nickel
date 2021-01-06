@@ -22,11 +22,11 @@ use std::time::SystemTime;
 /// Manage a file database, which stores a set of sources (the original source code as string) and
 /// the corresponding parsed terms. The storage comprises three elements:
 ///
-/// - the file database, holding the string content of sources indexed by unique `FileId`.
-/// identifiers
-/// - the name-id table, associating source names for standalone inputs, or paths and timestamps
-/// for files, to `FileId`s
-/// - the term cache, holding parsed terms indexed by `FileId`s
+/// - The file database, holding the string content of sources indexed by unique `FileId`
+/// identifiers.
+/// - The name-id table, associating source names for standalone inputs, or paths and timestamps
+/// for files, to `FileId`s.
+/// - The term cache, holding parsed terms indexed by `FileId`s.
 ///
 /// Terms possibly undergo typechecking and program transformation. The state of each entry (that
 /// is, the operations that have been performed on this term) is stored in an
@@ -37,24 +37,23 @@ pub struct Cache {
     files: Files<String>,
     /// The name-id table, holding file ids stored in the database indexed by source names.
     file_ids: HashMap<OsString, NameIdEntry>,
-    /// Cache storing parsed terms corresponding to the entries of the file database.
+    /// The table storing parsed terms corresponding to the entries of the file database.
     terms: HashMap<FileId, (RichTerm, EntryState)>,
 }
 
 /// Cache keys for sources.
 ///
-/// A source can be either a snippet input by the user, in which case it is uniquely identified by
-/// its name that corresponds to a unique `FileId`. On the other hand, different versions of the
+/// A source can be either a snippet input by the user, in which case it is only identified by its
+/// name in the name-id table, and a unique `FileId`. On the other hand, different versions of the
 /// same file can coexist during the same session of the REPL. For this reason, an entry of the
 /// name-id table of a file also stores the *modified at* timestamp, such that if a file is
 /// imported or loaded again and has been modified in between, the entry is invalidated, the
 /// content is loaded again and a new `FileId` is generated.
 ///
 /// Note that in that case, invalidation just means that the `FileId` of a previous version is not
-/// accessible anymore just using the name of a file. However, terms that contain non evaluated
-/// imports or source locations referring to previous version are still able access the
-/// corresponding source or term by using the corresponding `FileId`, which are kept respectively
-/// in `files` and `cache`.
+/// accessible anymore in the name-id table. However, terms that contain non evaluated imports or
+/// source locations referring to previous version are still able access the corresponding source
+/// or term which are kept respectively in `files` and `cache` by using the corresponding `FileId`.
 #[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Copy, Clone)]
 pub struct NameIdEntry {
     id: FileId,
@@ -106,7 +105,7 @@ impl<E> CacheError<E> {
 /// Return status indicating if an import has been resolved from a file (first encounter), or was
 /// retrieved from the cache.
 ///
-/// See [`resolve`](./fn.resolve.html).
+/// See [`resolve`](./trait.ImportResolver.html#tymethod.resolve).
 #[derive(Debug, PartialEq)]
 pub enum ResolvedTerm {
     FromFile {
@@ -134,7 +133,7 @@ impl Cache {
             .map(|_| self.files.add(path, buffer))
     }
 
-    /// Same as [`add_file`](./fn.add_file.html), but assume that the path is already normalized,
+    /// Same as [`add_file`](#method.add_file), but assume that the path is already normalized,
     /// and take the timestamp as a parameter.
     fn add_file_(
         &mut self,
@@ -158,7 +157,7 @@ impl Cache {
     /// Use the normalized path and the *modified at* timestamp as the name-id table entry. Do not
     /// check if a source with the same name as the normalized path of the file and the same
     /// *modified at* timestamp already exists: if it is the case, this one will override the old
-    /// entry in the table.
+    /// entry in the name-id table.
     pub fn add_file(&mut self, path: impl Into<OsString>) -> io::Result<FileId> {
         let path = path.into();
         let timestamp = timestamp(&path)?;
@@ -166,7 +165,7 @@ impl Cache {
         self.add_file_(normalized, timestamp)
     }
 
-    /// Same as [`get_or_add_file`](./fn.get_or_add_file.html), but assume that the path is already
+    /// Same as [`get_or_add_file`](#method.get_or_add_file), but assume that the path is already
     /// normalized, and take the timestamp as a parameter.
     fn get_or_add_file_(
         &mut self,
@@ -279,13 +278,13 @@ impl Cache {
 
     /// Apply program transformations to all the fields of a record.
     ///
-    /// Used to transform the standard library. If one just uses
-    /// [`transform`](./fn.transform.html), the share normal form transformation would add let
-    /// bindings to record entry `{ ... }`, turning it into `let %0 = ... in ... in { ... }`, but
-    /// standard library entries are required to be syntactically records.
+    /// Used to transform the standard library. If one just uses [`transform`](#method.transform),
+    /// the share normal form transformation would add let bindings to a record entry `{ ... }`,
+    /// turning it into `let %0 = ... in ... in { ... }`. But stdlib entries are required to be
+    /// syntactically records.
     ///
-    /// Note that this requirement may be relaxed in the future by evaluating stdlib entries before
-    /// adding their fields to the global environment.
+    /// Note that this requirement may be relaxed in the future by e.g. evaluating stdlib entries
+    /// before adding their fields to the global environment.
     pub fn transform_inner(
         &mut self,
         file_id: FileId,
@@ -356,9 +355,9 @@ impl Cache {
 
     /// Retrieve the id of a source given a name.
     ///
-    /// Note that files added via [`add_file`](fn.add_file.html) are indexed by their full
+    /// Note that files added via [`add_file`](#method.add_file) are indexed by their full
     /// normalized path (cf [`normalize_path`](./fn.normalize_path.html)). When querying file,
-    /// rather use [`id_entry`](./fn.id_entry).
+    /// rather use [`id_of_file`](#method.id_of_file).
     pub fn id_of(&self, name: impl AsRef<OsStr>) -> Option<FileId> {
         self.file_ids.get(name.as_ref()).map(|entry| entry.id)
     }
@@ -375,7 +374,7 @@ impl Cache {
         Ok(self.id_of_file_(normalized, timestamp))
     }
 
-    /// Retrieve the id of a file given a path. Same as [`id_of_file`](./fn.id_of_file), but assume
+    /// Retrieve the id of a file given a path. Same as [`id_of_file`](#method.id_of_file), but assume
     /// that the given path is already normalized and take the timestamp as a parameter.
     fn id_of_file_(&self, path: impl AsRef<OsStr>, timestamp: SystemTime) -> Option<FileId> {
         self.file_ids
@@ -387,7 +386,7 @@ impl Cache {
     }
 
     /// Get a mutable reference to the underlying files. Required by
-    /// [`to_diagnostic`](../error/method.to_diagnostic.html).
+    /// [`to_diagnostic`](../error/trait.ToDiagnostic.html#tymethod.to_diagnostic).
     pub fn files_mut<'a>(&'a mut self) -> &'a mut Files<String> {
         &mut self.files
     }
@@ -501,7 +500,7 @@ fn with_parent(path: &OsStr, parent: Option<PathBuf>) -> PathBuf {
     path_buf
 }
 
-/// Normalize the path of a file to uniquely identify names in the cache.
+/// Normalize the path of a file for unique identification in the cache.
 ///
 /// If an IO error occurs here, `None` is returned.
 pub fn normalize_path(path: &Path) -> io::Result<OsString> {

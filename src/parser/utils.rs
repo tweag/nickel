@@ -102,7 +102,7 @@ pub fn min_indent(chunks: &Vec<StrChunk<RichTerm>>) -> usize {
 ///
 /// Examples:
 ///
-/// ```
+/// ```text
 /// let x = "I\nam\nindented" in
 /// m#"
 ///   baseline
@@ -110,17 +110,20 @@ pub fn min_indent(chunks: &Vec<StrChunk<RichTerm>>) -> usize {
 ///   end
 /// "#m
 /// ```
+///
 /// gives
-/// ```
+///
+/// ```text
 ///"baseline
 ///  I
 ///  am
 ///  indented
 /// end"
-/// ```.
-///
-/// while
 /// ```
+///
+/// While
+///
+/// ```text
 /// let x = "I\nam\nnot" in
 /// m#"
 ///   baseline
@@ -128,14 +131,16 @@ pub fn min_indent(chunks: &Vec<StrChunk<RichTerm>>) -> usize {
 ///   end
 /// "#m
 /// ```
+///
 /// gives
-/// ```
+///
+/// ```text
 ///"baseline
 ///  I
 ///am
 ///not sth
 /// end"
-/// ```.
+/// ```
 pub fn strip_indent(mut chunks: Vec<StrChunk<RichTerm>>) -> Vec<StrChunk<RichTerm>> {
     if chunks.is_empty() {
         return chunks;
