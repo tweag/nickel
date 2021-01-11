@@ -355,13 +355,15 @@ impl<'a> Envs<'a> {
     }
 
     /// Populate a new global typing environment from a global term environment.
-    pub fn mk_global(eval_env: &eval::Environment, table: &mut UnifTable) -> Environment {
+    pub fn mk_global(eval_env: &eval::Environment) -> Environment {
         eval_env
             .iter()
             .map(|(id, (rc, _))| {
                 (
                     id.clone(),
-                    apparent_type(rc.borrow().body.as_ref(), table, false),
+                    apparent_type(rc.borrow().body.as_ref())
+                        .map(to_typewrapper)
+                        .unwrap_or_else(mk_typewrapper::dynamic),
                 )
             })
             .collect()
@@ -413,7 +415,7 @@ pub fn type_check(
         names: &mut HashMap::new(),
     };
     let ty = TypeWrapper::Ptr(new_var(state.table));
-    let global = Envs::mk_global(global_eval_env, state.table);
+    let global = Envs::mk_global(global_eval_env);
     type_check_(&mut state, Envs::from_global(&global), false, t, ty.clone())?;
 
     Ok(to_type(&state.table, ty))
@@ -518,7 +520,7 @@ fn type_check_(
                 .map_err(|err| err.to_typecheck_err(state, &rt.pos))
         }
         Term::Let(x, re, rt) => {
-            let ty_let = apparent_type(re.as_ref(), state.table, strict);
+            let ty_let = let_type(re.as_ref(), state.table, strict);
             type_check_(state, envs.clone(), strict, re, ty_let.clone())?;
 
             // TODO move this up once lets are rec
@@ -579,9 +581,9 @@ fn type_check_(
             // env before actually typechecking the content of fields
             if let Term::RecRecord(_) = t.as_ref() {
                 envs.local.extend(
-                    stat_map.iter().map(|(id, rt)| {
-                        (id.clone(), apparent_type(rt.as_ref(), state.table, strict))
-                    }),
+                    stat_map
+                        .iter()
+                        .map(|(id, rt)| (id.clone(), let_type(rt.as_ref(), state.table, strict))),
                 );
             }
 
@@ -688,6 +690,22 @@ fn type_check_(
     }
 }
 
+/// Determine the type of a let-bound expression.
+///
+/// Call to [`apparent_type`](./fn.apparent_type.html) to see if the let-binding is annotated. If
+/// it is, return this type as a [`TypeWrapper`](./enum.TypeWrapper.html). Otherwise:
+///     * in non strict mode, we won't (and possibly can't) infer the type of `bound_exp`: just
+///       return `Dyn`.
+///     * in strict mode, we will typecheck `bound_exp`: return a new unification variable to be
+///       associated to `bound_exp`.
+fn let_type(t: &Term, table: &mut UnifTable, strict: bool) -> TypeWrapper {
+    match apparent_type(t) {
+        Some(ty) => to_typewrapper(ty),
+        None if strict => TypeWrapper::Ptr(new_var(table)),
+        None => mk_typewrapper::dynamic(),
+    }
+}
+
 /// Determine the apparent type of a let-bound expression.
 ///
 /// When a let-binding `let x = bound_exp in body` is processed, the type of `bound_exp` must be
@@ -695,26 +713,21 @@ fn type_check_(
 /// Then, future occurrences of `x` can be given this type when used in a `Promise` block.
 ///
 /// The role of `apparent_type` is precisely to determine the type of `bound_exp`:
-/// - if `bound_exp` is annotated by an `Assume` or a `Promise`, use the user-provided type.
-/// - Otherwise:
-///     * in non strict mode, we won't (and possibly can't) infer the type of `bound_exp`: just
-///       return `Dyn`.
-///     * in strict mode, we will typecheck `bound_exp`: return a new unification variable to be
-///       associated to `bound_exp`.
-fn apparent_type(t: &Term, table: &mut UnifTable, strict: bool) -> TypeWrapper {
+/// - if `bound_exp` is annotated by an `Assume` or a `Promise`, return the user-provided type.
+/// - Otherwise, `None` is returned.
+pub fn apparent_type(t: &Term) -> Option<Types> {
     match t {
-        Term::Assume(ty, _, _) | Term::Promise(ty, _, _) => to_typewrapper(ty.clone()),
+        Term::Assume(ty, _, _) | Term::Promise(ty, _, _) => Some(ty.clone()),
         Term::MetaValue(MetaValue {
             contract: Some((ty, _)),
             ..
-        }) => to_typewrapper(ty.clone()),
+        }) => Some(ty.clone()),
         Term::MetaValue(MetaValue {
             contract: None,
             value: Some(v),
             ..
-        }) => apparent_type(v.as_ref(), table, strict),
-        _ if strict => TypeWrapper::Ptr(new_var(table)),
-        _ => mk_typewrapper::dynamic(),
+        }) => apparent_type(v.as_ref()),
+        _ => None,
     }
 }
 
