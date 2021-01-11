@@ -80,8 +80,16 @@ impl Program {
                 String::from(nickel_stdlib::CONTRACTS),
             ),
             self.cache.add_string(
+                OsString::from("<stdlib/builtins.ncl>"),
+                String::from(nickel_stdlib::BUILTINS),
+            ),
+            self.cache.add_string(
                 OsString::from("<stdlib/lists.ncl>"),
                 String::from(nickel_stdlib::LISTS),
+            ),
+            self.cache.add_string(
+                OsString::from("<stdlib/records.ncl>"),
+                String::from(nickel_stdlib::RECORDS),
             ),
         ];
 
