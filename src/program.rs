@@ -22,10 +22,9 @@
 //! [`mk_global_env`](./struct.Program.html#method.mk_global_env)).  Each such value is added to
 //! the global environment before the evaluation of the program.
 use crate::cache::*;
-use crate::error::{Error, ParseError, ToDiagnostic, TypecheckError};
+use crate::error::{Error, ParseError, ToDiagnostic};
 use crate::identifier::Ident;
 use crate::parser::lexer::Lexer;
-use crate::stdlib as nickel_stdlib;
 use crate::term::{RichTerm, Term};
 use crate::{eval, parser};
 use codespan::FileId;
@@ -72,101 +71,14 @@ impl Program {
         Ok(Program { main_id, cache })
     }
 
-    /// Load and parse the standard library in the cache.
-    pub fn load_stdlib(&mut self) -> Result<Vec<FileId>, Error> {
-        let file_ids: Vec<FileId> = nickel_stdlib::modules()
-            .into_iter()
-            .map(|(name, content)| {
-                self.cache
-                    .add_string(OsString::from(name), String::from(content))
-            })
-            .collect();
-
-        file_ids
-            .iter()
-            .try_for_each(|file_id| self.cache.parse(*file_id).map(|_| ()))?;
-        Ok(file_ids)
-    }
-
-    /// Typecheck the standard library. This function may be dropped once the standard library is
-    /// stable.
-    pub fn typecheck_stdlib(&mut self, file_ids: &Vec<FileId>) -> Result<(), TypecheckError> {
-        // We have a small bootstraping problem: to typecheck the global environment, we already
-        // need a global evaluation environment, since stdlib parts may reference each other). But
-        // typechecking is performed before program transformations, so this environment is not
-        // final one. We have create a temporary global environment just for typechecking, which is dropped
-        // right after. However:
-        // 1. The stdlib is meant to stay relatively light.
-        // 2. Typechecking the standard library ought to occur only during development. Once the
-        //    stdlib is stable, we won't have typecheck it at every execution.
-        file_ids
-            .iter()
-            .try_for_each(|file_id| {
-                self.cache
-                    .typecheck(*file_id, &self.mk_global_env(file_ids))
-                    .map(|_| ())
-            })
-            .map_err(|cache_err| match cache_err {
-                CacheError::NotParsed => {
-                    panic!("program::typecheck_stdlib(): expected standard library to be parsed")
-                }
-                CacheError::Error(err) => err,
-            })
-    }
-
-    /// Load, parse, typecheck and apply program transformation to the standard library.
-    pub fn prepare_stdlib(&mut self) -> Result<Vec<FileId>, Error> {
-        // We have a small bootstraping problem: to typecheck the global environment, we already
-        // need a global evaluation environment, because stdlib parts may be mutually recursive.
-        // But typechecking is performed before program transformations, so this environment is not
-        // the final one. We have to create a temporary global environment just for typechecking,
-        // which is dropped right after. However:
-        // 1. The stdlib is meant to stay relatively light.
-        // 2. Typechecking the standard library ought to occur only during development. Ideally, we
-        //    should only typecheck it at every update, not at every execution.
-        let file_ids = self.load_stdlib()?;
-        self.typecheck_stdlib(&file_ids)?;
-        file_ids
-            .iter()
-            .try_for_each(|file_id| self.cache.transform_inner(*file_id).map(|_| ()))
-            .map_err(|cache_err| match cache_err {
-                CacheError::NotParsed => {
-                    panic!("program::prepare_stdlib(): expected standard library to be parsed")
-                }
-                CacheError::Error(err) => err,
-            })?;
-        Ok(file_ids)
-    }
-
-    /// Generate a global environment from the list of `file_ids` corresponding to the standard
-    /// library parts.
-    pub fn mk_global_env(&self, file_ids: &Vec<FileId>) -> eval::Environment {
-        let mut env = eval::Environment::new();
-
-        file_ids.iter().for_each(|file_id| {
-            match eval::env_add_term(
-                &mut env,
-                self.cache
-                    .get_owned(*file_id)
-                    .expect("program::mk_global_env(): can't build environment, stdlib not parsed"),
-            ) {
-                Err(eval::EnvBuildError::NotARecord(rt)) => panic!(
-                    "program::load_stdlib(): the builtin {} must be a record. Debug: {:?}",
-                    self.cache.name(*file_id).to_string_lossy().as_ref(),
-                    rt
-                ),
-                _ => (),
-            }
-        });
-
-        env
-    }
-
     /// Retrieve the parsed term and typecheck it, and generate a fresh global environment. Return
     /// both.
     fn prepare_eval(&mut self) -> Result<(RichTerm, eval::Environment), Error> {
-        let file_ids = self.prepare_stdlib()?;
-        let global_env = self.mk_global_env(&file_ids);
+        self.cache.prepare_stdlib()?;
+        let global_env = self
+            .cache
+            .mk_global_env()
+            .expect("program::prepare_eval(): expected event to be ready");
         self.cache.prepare(self.main_id, &global_env)?;
         Ok((self.cache.get_owned(self.main_id).unwrap(), global_env))
     }
@@ -222,9 +134,9 @@ impl Program {
     /// Load, parse, and typecheck the program and the standard library, if not already done.
     pub fn typecheck(&mut self) -> Result<(), Error> {
         self.cache.parse(self.main_id)?;
-        let file_ids = self.load_stdlib()?;
-        self.typecheck_stdlib(&file_ids)?;
-        let global_env = self.mk_global_env(&file_ids);
+        self.cache.load_stdlib()?;
+        self.cache.typecheck_stdlib().map_err(|err| err.unwrap_error("program::typecheck(): stdlib has been loaded but was not found in cache on typechecking"))?;
+        let global_env = self.cache.mk_global_env().expect("program::typecheck(): stdlib has been loaded but was not found in cache on mk_global_env()");
         self.cache
             .typecheck(self.main_id, &global_env)
             .map_err(|cache_err| {
