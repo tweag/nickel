@@ -6,8 +6,8 @@ use crate::parser::lexer::Lexer;
 use crate::position::RawSpan;
 use crate::stdlib as nickel_stdlib;
 use crate::term::{RichTerm, Term};
-use crate::typecheck::type_check;
-use crate::{eval, parser, transformations};
+use crate::typecheck::{type_check, type_check_in_env};
+use crate::{eval, parser, transformations, typecheck};
 use codespan::{FileId, Files};
 use io::Read;
 use std::collections::HashMap;
@@ -266,6 +266,32 @@ impl Cache {
         }
     }
 
+    /// Typecheck an entry of the cache in a given typing environment, and update its state
+    /// accordingly, or do nothing if the entry has already been typechecked. Require that the
+    /// corresponding source has been parsed.
+    pub fn typecheck_in_env(
+        &mut self,
+        file_id: FileId,
+        type_env: &typecheck::Environment,
+    ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
+        if !self.terms.contains_key(&file_id) {
+            return Err(CacheError::NotParsed);
+        }
+
+        // After self.parse(), the cache must be populated
+        let (t, state) = self.terms.get(&file_id).unwrap();
+
+        if *state > EntryState::Typechecked {
+            Ok(CacheOp::Cached(()))
+        } else if *state == EntryState::Parsed {
+            type_check_in_env(t, type_env, self)?;
+            self.update_state(file_id, EntryState::Typechecked);
+            Ok(CacheOp::Done(()))
+        } else {
+            panic!()
+        }
+    }
+
     /// Apply program transformations to an entry of the cache, and update its state accordingly,
     /// or do nothing if the entry has already been transformed. Require that the corresponding
     /// source has been parsed.
@@ -284,14 +310,23 @@ impl Cache {
 
     /// Apply program transformations to all the fields of a record.
     ///
-    /// Used to transform the standard library. If one just uses [`transform`](#method.transform),
-    /// the share normal form transformation would add let bindings to a record entry `{ ... }`,
+    /// Used to transform stdlib modules and other records loaded in the environment, when using
+    /// e.g. the `load` command of the REPL. If one just uses [`transform`](#method.transform), the
+    /// share normal form transformation would add let bindings to a record entry `{ ... }`,
     /// turning it into `let %0 = ... in ... in { ... }`. But stdlib entries are required to be
     /// syntactically records.
     ///
     /// Note that this requirement may be relaxed in the future by e.g. evaluating stdlib entries
     /// before adding their fields to the global environment.
-    fn transform_inner(&mut self, file_id: FileId) -> Result<CacheOp<()>, CacheError<ImportError>> {
+    ///
+    /// # Preconditions
+    ///
+    /// - the entry must syntactically be a record (`Record` or `RecRecord`). Otherwise, this
+    /// function panic
+    pub fn transform_inner(
+        &mut self,
+        file_id: FileId,
+    ) -> Result<CacheOp<()>, CacheError<ImportError>> {
         match self.entry_state(file_id) {
             Some(EntryState::Transformed) => Ok(CacheOp::Cached(())),
             Some(_) => {
@@ -412,6 +447,11 @@ impl Cache {
         self.terms.get(&file_id).map(|(t, _)| t.clone())
     }
 
+    /// Retrieve a reference to a cached term.
+    pub fn get_ref(&self, file_id: FileId) -> Option<&RichTerm> {
+        self.terms.get(&file_id).map(|(t, _)| t)
+    }
+
     /// Load and parse the standard library in the cache.
     pub fn load_stdlib(&mut self) -> Result<CacheOp<()>, Error> {
         if self.stdlib_ids.is_some() {
@@ -477,8 +517,8 @@ impl Cache {
             .as_ref()
             .cloned()
             .expect("cache::prepare_stdlib(): stdlib has been loaded but stdlib_ids is None")
-            .iter()
-            .try_for_each(|file_id| self.transform_inner(*file_id).map(|_| ()))
+            .into_iter()
+            .try_for_each(|file_id| self.transform_inner(file_id).map(|_| ()))
             .map_err(|cache_err| {
                 cache_err
                     .unwrap_error("cache::prepare_stdlib(): expected standard library to be parsed")
