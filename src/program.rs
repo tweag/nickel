@@ -74,24 +74,13 @@ impl Program {
 
     /// Load and parse the standard library in the cache.
     pub fn load_stdlib(&mut self) -> Result<Vec<FileId>, Error> {
-        let file_ids = vec![
-            self.cache.add_string(
-                OsString::from("<stdlib/contracts.ncl>"),
-                String::from(nickel_stdlib::CONTRACTS),
-            ),
-            self.cache.add_string(
-                OsString::from("<stdlib/builtins.ncl>"),
-                String::from(nickel_stdlib::BUILTINS),
-            ),
-            self.cache.add_string(
-                OsString::from("<stdlib/lists.ncl>"),
-                String::from(nickel_stdlib::LISTS),
-            ),
-            self.cache.add_string(
-                OsString::from("<stdlib/records.ncl>"),
-                String::from(nickel_stdlib::RECORDS),
-            ),
-        ];
+        let file_ids: Vec<FileId> = nickel_stdlib::modules()
+            .into_iter()
+            .map(|(name, content)| {
+                self.cache
+                    .add_string(OsString::from(name), String::from(content))
+            })
+            .collect();
 
         file_ids
             .iter()
