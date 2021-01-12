@@ -21,6 +21,7 @@ mod types;
 use crate::error::{Error, IOError, SerializationError};
 use crate::label::Label;
 use crate::program::Program;
+use crate::repl::rustyline_frontend;
 use crate::term::{MergePriority, MetaValue, RichTerm, Term};
 use std::io::Write;
 use std::path::PathBuf;
@@ -110,37 +111,49 @@ enum Command {
     },
     /// Typecheck a program, but do not run it
     Typecheck,
+    /// Start an REPL session
+    REPL,
 }
 
 fn main() {
     let opts = Opt::from_args();
-    let mut program = opts
-        .file
-        .map(Program::new_from_file)
-        .unwrap_or_else(Program::new_from_stdin)
-        .unwrap_or_else(|err| {
-            eprintln!("Error when reading input: {}", err);
+
+    if let Some(Command::REPL) = opts.command {
+        #[cfg(feature = "repl")]
+        rustyline_frontend::repl();
+
+        #[cfg(not(feature = "repl"))]
+        eprintln!("error: this executable was not compiled with REPL support");
+    } else {
+        let mut program = opts
+            .file
+            .map(Program::new_from_file)
+            .unwrap_or_else(Program::new_from_stdin)
+            .unwrap_or_else(|err| {
+                eprintln!("Error when reading input: {}", err);
+                process::exit(1)
+            });
+
+        let result = match opts.command {
+            Some(Command::Export { format, output }) => export(&mut program, format, output),
+            Some(Command::Query {
+                path,
+                doc,
+                contract,
+                default,
+            }) => query(&mut program, path, doc, contract, default),
+            Some(Command::Typecheck) => program.typecheck().map(|_| ()),
+            Some(Command::REPL) => unreachable!(),
+            None => program.eval().and_then(|t| {
+                println!("Done: {:?}", t);
+                Ok(())
+            }),
+        };
+
+        if let Err(err) = result {
+            program.report(err);
             process::exit(1)
-        });
-
-    let result = match opts.command {
-        Some(Command::Export { format, output }) => export(&mut program, format, output),
-        Some(Command::Query {
-            path,
-            doc,
-            contract,
-            default,
-        }) => query(&mut program, path, doc, contract, default),
-        Some(Command::Typecheck) => program.typecheck().map(|_| ()),
-        None => program.eval().and_then(|t| {
-            println!("Done: {:?}", t);
-            Ok(())
-        }),
-    };
-
-    if let Err(err) = result {
-        program.report(err);
-        process::exit(1)
+        }
     }
 }
 

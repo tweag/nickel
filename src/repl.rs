@@ -28,6 +28,8 @@ pub trait REPL {
     fn typecheck(&mut self, exp: &str) -> Result<Types, Error>;
     /// Query the metadata of an expression.
     fn query(&mut self, exp: &str, path: Option<&str>) -> Result<Term, Error>;
+    /// Required for error reporting on the frontend.
+    fn cache_mut<'a>(&'a mut self) -> &'a mut Cache;
 }
 
 /// Standard implementation of the REPL backend.
@@ -44,20 +46,25 @@ pub struct REPLImpl {
 }
 
 impl REPLImpl {
-    /// Create a new REPL with the stdlib processed, loaded in the environment, and the
-    /// corresponding typing environment.
-    pub fn new() -> Result<Self, Error> {
+    /// Create a new empty REPL.
+    pub fn new() -> Self {
         let mut cache = Cache::new();
-        cache.prepare_stdlib()?;
 
-        let eval_env = cache.mk_global_env().unwrap();
-        let type_env = typecheck::Envs::mk_global(&eval_env);
-
-        Ok(REPLImpl {
+        REPLImpl {
             cache,
-            eval_env,
-            type_env,
-        })
+            eval_env: eval::Environment::new(),
+            type_env: typecheck::Environment::new(),
+        }
+    }
+
+    /// Load and process the stdlib, and use it to populate the eval environment as well as the
+    /// typing environment.
+    pub fn load_stdlib(&mut self) -> Result<(), Error> {
+        self.cache.prepare_stdlib()?;
+
+        self.eval_env = self.cache.mk_global_env().unwrap();
+        self.type_env = typecheck::Envs::mk_global(&self.eval_env);
+        Ok(())
     }
 }
 
@@ -131,5 +138,110 @@ impl REPL for REPLImpl {
             &self.eval_env,
             path.map(String::from),
         )
+    }
+
+    fn cache_mut<'a>(&'a mut self) -> &'a mut Cache {
+        &mut self.cache
+    }
+}
+
+#[cfg(feature = "repl")]
+pub mod rustyline_frontend {
+    use super::*;
+    use crate::program::report;
+    use rustyline::completion::{Completer, FilenameCompleter, Pair};
+    use rustyline::config::OutputStreamType;
+    use rustyline::error::ReadlineError;
+    use rustyline::highlight::{Highlighter, MatchingBracketHighlighter};
+    use rustyline::hint::{Hinter, HistoryHinter};
+    use rustyline::validate::{self, MatchingBracketValidator, Validator};
+    use rustyline::{Cmd, CompletionType, Config, Context, EditMode, Editor, KeyEvent};
+
+    /// Error when initializing the REPL.
+    pub enum InitError {
+        /// Unable to load, parse or typecheck the stdlib
+        Stdlib,
+    }
+
+    pub fn config() -> Config {
+        Config::builder()
+            .history_ignore_space(true)
+            .edit_mode(EditMode::Emacs)
+            .output_stream(OutputStreamType::Stdout)
+            .build()
+    }
+
+    pub fn repl() -> Result<(), InitError> {
+        let mut repl = REPLImpl::new();
+        match repl.load_stdlib() {
+            Ok(()) => (),
+            Err(err) => {
+                report(repl.cache_mut(), err);
+                return Err(InitError::Stdlib);
+            }
+        }
+
+        let config = config();
+        let mut editor: Editor<()> = Editor::with_config(config);
+        let prompt = format!("\x1b[1;32m{}\x1b[0m", "> ");
+
+        loop {
+            match editor.readline(&prompt) {
+                Ok(line) if line.starts_with(":") => {
+                    let cmd_end = line.find(" ").unwrap_or(line.len());
+                    let command: String = line.chars().skip(1).take(cmd_end - 1).collect();
+                    let arg: String = line.chars().skip(cmd_end + 1).collect();
+
+                    let result = match command.as_str() {
+                        "load" => repl.load(&arg).map(|term| match term.as_ref() {
+                            Term::Record(map) | Term::RecRecord(map) => {
+                                println!("Loaded {} symbol(s) in the environment.", map.len())
+                            }
+                            _ => (),
+                        }),
+                        "typecheck" => repl.typecheck(&arg).map(|types| println!("Ok: {}", types)),
+                        "query" => {
+                            println!("Not implemented");
+                            Ok(())
+                        }
+                        "?" | "help" => {
+                            help();
+                            Ok(())
+                        }
+                        cmd => {
+                            println!("Unknown command `{}`. Type ':?' or ':help' for a list of available commands", cmd);
+                            Ok(())
+                        }
+                    };
+
+                    if let Err(err) = result {
+                        report(repl.cache_mut(), err);
+                    }
+                }
+                Ok(line) => {
+                    match repl.eval(&line) {
+                        Ok(t) => println!("Ok: {}", t.shallow_repr()),
+                        Err(err) => report(repl.cache_mut(), err),
+                    };
+                }
+                Err(ReadlineError::Interrupted) => {
+                    println!("Interrupted. Exiting");
+                    break Ok(());
+                }
+                Err(ReadlineError::Eof) => {
+                    println!("EOF");
+                }
+                Err(err) => {
+                    report(
+                        repl.cache_mut(),
+                        Error::IOError(IOError(format!("{}", err))),
+                    );
+                }
+            }
+        }
+    }
+
+    fn help() {
+        println!("Not implemented");
     }
 }
