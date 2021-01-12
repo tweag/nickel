@@ -1,4 +1,11 @@
 //! The Nickel REPL.
+//!
+//! A backend designates a module which actually execute a sequence of REPL commands, while being
+//! agnostic to the user interface and the presentation of the results.
+//!
+//! Dually, the frontend is the user-facing part, which may be a CLI, a web application, a
+//! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
+//! formatting), etc.
 use crate::cache::Cache;
 use crate::error::{Error, EvalError, IOError};
 use crate::term::{RichTerm, Term};
@@ -11,7 +18,7 @@ use std::result::Result;
 
 generate_counter!(InputNameCounter, usize);
 
-/// Interface of the REPL.
+/// Interface of the REPL backend.
 pub trait REPL {
     /// Eval an expression.
     fn eval(&mut self, exp: &str) -> Result<Term, Error>;
@@ -23,7 +30,7 @@ pub trait REPL {
     fn query(&mut self, exp: &str, path: Option<&str>) -> Result<Term, Error>;
 }
 
-/// Implementation of the REPL.
+/// Standard implementation of the REPL backend.
 pub struct REPLImpl {
     /// The underlying cache, storing input, loaded files and parsed terms.
     cache: Cache,
