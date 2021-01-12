@@ -1,43 +1,38 @@
 //! The Nickel REPL.
 use crate::cache::Cache;
-use crate::error::{
-    Error, EvalError, IOError, ImportError, ParseError, ToDiagnostic, TypecheckError,
-};
-use crate::identifier::Ident;
-use crate::parser::lexer::Lexer;
-use crate::position::RawSpan;
-use crate::stdlib as nickel_stdlib;
+use crate::error::{Error, EvalError, IOError};
 use crate::term::{RichTerm, Term};
-use crate::typecheck::type_check;
 use crate::types::{AbsType, Types};
-use crate::{eval, parser, transformations, typecheck};
-use codespan::{FileId, Files};
-use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
+use crate::{eval, typecheck};
 use simple_counter::*;
-use std::cell::RefCell;
-use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::ffi::OsString;
-use std::fs;
-use std::io::{self, Read};
-use std::path::{Path, PathBuf};
-use std::rc::Rc;
 use std::result::Result;
 
 generate_counter!(InputNameCounter, usize);
 
 /// Interface of the REPL.
 pub trait REPL {
+    /// Eval an expression.
     fn eval(&mut self, exp: &str) -> Result<Term, Error>;
+    /// Load the content of a file in the environment.
     fn load(&mut self, path: impl AsRef<OsStr>) -> Result<RichTerm, Error>;
+    /// Typecheck an expression and return the apparent type.
     fn typecheck(&mut self, exp: &str) -> Result<Types, Error>;
-    fn query(&self, exp: &str) -> Result<String, Error>;
+    /// Query the metadata of an expression.
+    fn query(&mut self, exp: &str, path: Option<&str>) -> Result<Term, Error>;
 }
 
 /// Implementation of the REPL.
 pub struct REPLImpl {
+    /// The underlying cache, storing input, loaded files and parsed terms.
     cache: Cache,
+    /// The eval environment. Contain the global environment containing the stdlib, plus
+    /// declarations and loadings made in the REPL.
     eval_env: eval::Environment,
+    /// The type environment, counterpart of the eval environment for typechecking. Entires are
+    /// `TypeWrapper` for the ease of interacting with the typechecker, but there should not be any
+    /// unification variable in it.
     type_env: typecheck::Environment,
 }
 
@@ -83,7 +78,7 @@ impl REPL for REPLImpl {
         self.cache.parse(file_id)?;
         let RichTerm { term, pos } = self.cache.get_ref(file_id).unwrap();
 
-        // Check that the entry is a record, otherwise transform_inner panics
+        // Check that the entry is a record, which is a precondition of transform_inner
         match term.as_ref() {
             Term::Record(_) | Term::RecRecord(_) => (),
             _ => {
@@ -96,30 +91,38 @@ impl REPL for REPLImpl {
         self.cache.transform_inner(file_id).map_err(|err| {
             err.unwrap_error("load(): expected term to be parsed before transformation")
         })?;
-        eval::env_add_term(&mut self.eval_env, self.cache.get_owned(file_id).unwrap()).unwrap();
-        //TODO: typecheck::env_add_term(..)
-        Ok(self.cache.get_owned(file_id).unwrap())
+
+        let term = self.cache.get_owned(file_id).unwrap();
+        typecheck::Envs::env_add_term(&mut self.type_env, &term).unwrap();
+        eval::env_add_term(&mut self.eval_env, term.clone()).unwrap();
+
+        Ok(term)
     }
 
     fn typecheck(&mut self, exp: &str) -> Result<Types, Error> {
-        let file_id = self.cache.add_string(
-            format!("repl-input-{}", InputNameCounter::next()),
-            String::from(exp),
-        );
-
+        let file_id = self.cache.add_tmp("<repl-typecheck>", String::from(exp));
         self.cache.parse(file_id)?;
         self.cache
             .typecheck_in_env(file_id, &self.type_env)
             .map_err(|cache_err| {
                 cache_err.unwrap_error("repl: expected source to be parsed before typechecking")
             })?;
+
         Ok(
             typecheck::apparent_type(self.cache.get_ref(file_id).unwrap().as_ref())
                 .unwrap_or(Types(AbsType::Dyn())),
         )
     }
 
-    fn query(&self, exp: &str) -> Result<String, Error> {
-        panic!("not implemented")
+    fn query(&mut self, exp: &str, path: Option<&str>) -> Result<Term, Error> {
+        use crate::program;
+
+        let file_id = self.cache.add_tmp("<repl-query>", String::from(exp));
+        program::query(
+            &mut self.cache,
+            file_id,
+            &self.eval_env,
+            path.map(String::from),
+        )
     }
 }
