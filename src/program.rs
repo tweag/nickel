@@ -167,7 +167,7 @@ pub fn query(
     use std::cell::RefCell;
     use std::rc::Rc;
 
-    cache.prepare(file_id, global_env);
+    cache.prepare(file_id, global_env)?;
 
     let t = if let Some(p) = path {
         // Parsing `y.path`. We `seq` it to force the evaluation of the underlying value,
