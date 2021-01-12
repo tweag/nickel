@@ -8,10 +8,10 @@ description = "Programmable configuration files."
 edition = "2018"
 
 [features]
-default = ["markdown"]
+default = ["markdown", "repl"]
 # markdown = ["termimad", "minimad", "lazy_static", "crossterm"]
 markdown = ["termimad", "minimad"]
-repl-native = ["rustyline"]
+repl = ["rustyline"]
 
 [build-dependencies] # <-- We added this and everything after!
 lalrpop = "0.16.2"
