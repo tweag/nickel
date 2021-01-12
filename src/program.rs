@@ -117,29 +117,12 @@ impl Program {
         Ok(())
     }
 
-    /// Pretty-print an error.
-    ///
-    /// This function is located here in `Program` because errors need a reference to `files` in
-    /// order to produce a diagnostic (see [`label_alt`](../error/fn.label_alt.html)).
+    /// Wrapper for [`report`](./fn.report.html).
     pub fn report<E>(&mut self, error: E)
     where
         E: ToDiagnostic<FileId>,
     {
-        let writer = StandardStream::stderr(ColorChoice::Always);
-        let config = codespan_reporting::term::Config::default();
-        let contracts_id = self.cache.id_of("<stdlib/contracts.ncl>");
-        let diagnostics = error.to_diagnostic(self.cache.files_mut(), contracts_id);
-
-        let result = diagnostics.iter().try_for_each(|d| {
-            codespan_reporting::term::emit(&mut writer.lock(), &config, self.cache.files_mut(), &d)
-        });
-        match result {
-            Ok(()) => (),
-            Err(err) => panic!(
-                "Program::report: could not print an error on stderr: {}",
-                err
-            ),
-        };
+        report(&mut self.cache, error)
     }
 }
 
@@ -197,6 +180,33 @@ pub fn query(
     };
 
     Ok(eval::eval_meta(t, &global_env, cache)?)
+}
+
+/// Pretty-print an error.
+///
+/// This function is located here in `Program` because errors need a reference to `files` in
+/// order to produce a diagnostic (see [`label_alt`](../error/fn.label_alt.html)).
+//TODO: not sure where this should go. It seems to embed too much logic to be in `Cache`, but is
+//common to both `Program` and `REPL`. Leaving it here as a stand-alone function for now
+pub fn report<E>(cache: &mut Cache, error: E)
+where
+    E: ToDiagnostic<FileId>,
+{
+    let writer = StandardStream::stderr(ColorChoice::Always);
+    let config = codespan_reporting::term::Config::default();
+    let contracts_id = cache.id_of("<stdlib/contracts.ncl>");
+    let diagnostics = error.to_diagnostic(cache.files_mut(), contracts_id);
+
+    let result = diagnostics.iter().try_for_each(|d| {
+        codespan_reporting::term::emit(&mut writer.lock(), &config, cache.files_mut(), &d)
+    });
+    match result {
+        Ok(()) => (),
+        Err(err) => panic!(
+            "Program::report: could not print an error on stderr: {}",
+            err
+        ),
+    };
 }
 
 #[cfg(test)]
