@@ -226,6 +226,29 @@ impl Cache {
         id
     }
 
+    /// Load a temporary source. If a source with the same name exists, this updates destructively
+    /// not only the name-id table entry, but also the content of the source itself.
+    ///
+    /// Used to store intermediate short-lived generated snippets that needs to have a
+    /// corresponding `FileId`, such as when querying or reporting errors.
+    pub fn add_tmp(&mut self, source_name: impl Into<OsString>, s: String) -> FileId {
+        let source_name = source_name.into();
+        if let Some(file_id) = self.id_of(&source_name) {
+            self.files.update(file_id, s);
+            file_id
+        } else {
+            let file_id = self.files.add(source_name.clone(), s);
+            self.file_ids.insert(
+                source_name,
+                NameIdEntry {
+                    id: file_id,
+                    timestamp: None,
+                },
+            );
+            file_id
+        }
+    }
+
     /// Parse a source file and populate the corresponding entry in the cache, or do nothing if the
     /// entry has already been parsed.
     pub fn parse(&mut self, file_id: FileId) -> Result<CacheOp<()>, ParseError> {
