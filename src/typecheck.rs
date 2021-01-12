@@ -546,7 +546,7 @@ fn type_check_(
                 .map_err(|err| err.to_typecheck_err(state, &rt.pos))
         }
         Term::Let(x, re, rt) => {
-            let ty_let = let_type(re.as_ref(), state.table, strict);
+            let ty_let = binding_type(re.as_ref(), state.table, strict);
             type_check_(state, envs.clone(), strict, re, ty_let.clone())?;
 
             // TODO move this up once lets are rec
@@ -607,9 +607,9 @@ fn type_check_(
             // env before actually typechecking the content of fields
             if let Term::RecRecord(_) = t.as_ref() {
                 envs.local.extend(
-                    stat_map
-                        .iter()
-                        .map(|(id, rt)| (id.clone(), let_type(rt.as_ref(), state.table, strict))),
+                    stat_map.iter().map(|(id, rt)| {
+                        (id.clone(), binding_type(rt.as_ref(), state.table, strict))
+                    }),
                 );
             }
 
@@ -716,15 +716,16 @@ fn type_check_(
     }
 }
 
-/// Determine the type of a let-bound expression.
+/// Determine the type of a let-bound expression, or more generally of any binding (e.g. fields)
+/// that may be stored in a typing environment at some point.
 ///
-/// Call to [`apparent_type`](./fn.apparent_type.html) to see if the let-binding is annotated. If
+/// Call [`apparent_type`](./fn.apparent_type.html) to see if the binding is annotated. If
 /// it is, return this type as a [`TypeWrapper`](./enum.TypeWrapper.html). Otherwise:
 ///     * in non strict mode, we won't (and possibly can't) infer the type of `bound_exp`: just
 ///       return `Dyn`.
 ///     * in strict mode, we will typecheck `bound_exp`: return a new unification variable to be
 ///       associated to `bound_exp`.
-fn let_type(t: &Term, table: &mut UnifTable, strict: bool) -> TypeWrapper {
+fn binding_type(t: &Term, table: &mut UnifTable, strict: bool) -> TypeWrapper {
     match apparent_type(t) {
         Some(ty) => to_typewrapper(ty),
         None if strict => TypeWrapper::Ptr(new_var(table)),
