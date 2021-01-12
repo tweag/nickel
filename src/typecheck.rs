@@ -369,6 +369,32 @@ impl<'a> Envs<'a> {
             .collect()
     }
 
+    /// Add the bindings of a record to a typing environment.
+    //TODO: support the case of a record with a type annotation.
+    pub fn env_add_term(env: &mut Environment, rt: &RichTerm) -> Result<(), eval::EnvBuildError> {
+        let RichTerm { term, pos } = rt;
+
+        match term.as_ref() {
+            Term::Record(bindings) | Term::RecRecord(bindings) => {
+                let ext = bindings.into_iter().map(|(id, t)| {
+                    (
+                        id.clone(),
+                        apparent_type(t.as_ref())
+                            .map(to_typewrapper)
+                            .unwrap_or_else(mk_typewrapper::dynamic),
+                    )
+                });
+
+                env.extend(ext);
+                Ok(())
+            }
+            t => Err(eval::EnvBuildError::NotARecord(RichTerm::new(
+                t.clone(),
+                pos.clone(),
+            ))),
+        }
+    }
+
     /// Fetch a binding from the environment. Try first in the local environment, and then in the
     /// global.
     pub fn get(&self, ident: &Ident) -> Option<TypeWrapper> {
