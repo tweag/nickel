@@ -226,8 +226,9 @@ impl Cache {
         id
     }
 
-    /// Load a temporary source. If a source with the same name exists, this updates destructively
-    /// not only the name-id table entry, but also the content of the source itself.
+    /// Load a temporary source. If a source with the same name exists, clear the corresponding
+    /// term cache entry, and destructively update not only the name-id table entry, but also the
+    /// content of the source itself.
     ///
     /// Used to store intermediate short-lived generated snippets that needs to have a
     /// corresponding `FileId`, such as when querying or reporting errors.
@@ -235,6 +236,7 @@ impl Cache {
         let source_name = source_name.into();
         if let Some(file_id) = self.id_of(&source_name) {
             self.files.update(file_id, s);
+            self.terms.remove(&file_id);
             file_id
         } else {
             let file_id = self.files.add(source_name.clone(), s);
