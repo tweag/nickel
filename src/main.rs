@@ -213,7 +213,7 @@ fn query(
     }
 
     let all = !doc && !contract && !default;
-    let term = program.eval_meta(path)?;
+    let term = program.query(path)?;
 
     match term {
         Term::MetaValue(meta) => {
