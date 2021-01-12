@@ -11,6 +11,7 @@ edition = "2018"
 default = ["markdown"]
 # markdown = ["termimad", "minimad", "lazy_static", "crossterm"]
 markdown = ["termimad", "minimad"]
+repl-native = ["rustyline"]
 
 [build-dependencies] # <-- We added this and everything after!
 lalrpop = "0.16.2"
@@ -33,6 +34,8 @@ termimad = { version = "0.9.1", optional = true }
 minimad = { version = "0.6.7", optional = true }
 # lazy_static = { version = "1.4", optional = true }
 # crossterm = { version = "0.17.7", optional = true }
+
+rustyline = {version = "7.1.0", optional = true}
 
 [dev-dependencies]
 pretty_assertions = "0.5.1"
