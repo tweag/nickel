@@ -120,7 +120,9 @@ fn main() {
 
     if let Some(Command::REPL) = opts.command {
         #[cfg(feature = "repl")]
-        rustyline_frontend::repl();
+        if let Err(_) = rustyline_frontend::repl() {
+            process::exit(1);
+        }
 
         #[cfg(not(feature = "repl"))]
         eprintln!("error: this executable was not compiled with REPL support");
