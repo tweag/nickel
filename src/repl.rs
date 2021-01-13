@@ -166,7 +166,7 @@ pub mod rustyline_frontend {
     pub fn config() -> Config {
         Config::builder()
             .history_ignore_space(true)
-            .edit_mode(EditMode::Emacs)
+            .edit_mode(EditMode::Vi)
             .output_stream(OutputStreamType::Stdout)
             .build()
     }
@@ -242,6 +242,6 @@ pub mod rustyline_frontend {
     }
 
     fn help() {
-        println!("Not implemented");
+        println!("Available commands: ? help query load typecheck");
     }
 }
