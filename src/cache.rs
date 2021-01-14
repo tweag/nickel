@@ -4,6 +4,7 @@ use crate::error::{Error, ImportError, ParseError, TypecheckError};
 use crate::identifier::Ident;
 use crate::parser::lexer::Lexer;
 use crate::position::RawSpan;
+use crate::stdlib as nickel_stdlib;
 use crate::term::{RichTerm, Term};
 use crate::typecheck::type_check;
 use crate::{eval, parser, transformations};
@@ -16,6 +17,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::result::Result;
 use std::time::SystemTime;
+use void::Void;
 
 /// File and terms cache.
 ///
@@ -39,6 +41,8 @@ pub struct Cache {
     file_ids: HashMap<OsString, NameIdEntry>,
     /// The table storing parsed terms corresponding to the entries of the file database.
     terms: HashMap<FileId, (RichTerm, EntryState)>,
+    /// The list of ids corresponding to the stdlib modules
+    stdlib_ids: Option<Vec<FileId>>,
 }
 
 /// Cache keys for sources.
@@ -82,6 +86,7 @@ pub enum CacheOp<T> {
 
 /// Wrapper around other errors to indicate that typechecking or applying program transformations
 /// failed because the source has not been parsed yet.
+#[derive(Eq, PartialEq, Debug, Clone)]
 pub enum CacheError<E> {
     Error(E),
     NotParsed,
@@ -121,6 +126,7 @@ impl Cache {
             files: Files::new(),
             file_ids: HashMap::new(),
             terms: HashMap::new(),
+            stdlib_ids: None,
         }
     }
 
@@ -285,10 +291,7 @@ impl Cache {
     ///
     /// Note that this requirement may be relaxed in the future by e.g. evaluating stdlib entries
     /// before adding their fields to the global environment.
-    pub fn transform_inner(
-        &mut self,
-        file_id: FileId,
-    ) -> Result<CacheOp<()>, CacheError<ImportError>> {
+    fn transform_inner(&mut self, file_id: FileId) -> Result<CacheOp<()>, CacheError<ImportError>> {
         match self.entry_state(file_id) {
             Some(EntryState::Transformed) => Ok(CacheOp::Cached(())),
             Some(_) => {
@@ -407,6 +410,108 @@ impl Cache {
     /// Retrieve a fresh clone of a cached term.
     pub fn get_owned(&self, file_id: FileId) -> Option<RichTerm> {
         self.terms.get(&file_id).map(|(t, _)| t.clone())
+    }
+
+    /// Load and parse the standard library in the cache.
+    pub fn load_stdlib(&mut self) -> Result<CacheOp<()>, Error> {
+        if self.stdlib_ids.is_some() {
+            return Ok(CacheOp::Cached(()));
+        }
+
+        let file_ids: Vec<FileId> = nickel_stdlib::modules()
+            .into_iter()
+            .map(|(name, content)| self.add_string(OsString::from(name), String::from(content)))
+            .collect();
+
+        file_ids
+            .iter()
+            .try_for_each(|file_id| self.parse(*file_id).map(|_| ()))?;
+        self.stdlib_ids.replace(file_ids);
+        Ok(CacheOp::Done(()))
+    }
+
+    /// Typecheck the standard library. This function may be dropped once the standard library is
+    /// stable.
+    pub fn typecheck_stdlib(&mut self) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
+        // We have a small bootstraping problem: to typecheck the global environment, we already
+        // need a global evaluation environment, since stdlib parts may reference each other). But
+        // typechecking is performed before program transformations, so this environment is not
+        // final one. We have create a temporary global environment just for typechecking, which is dropped
+        // right after. However:
+        // 1. The stdlib is meant to stay relatively light.
+        // 2. Typechecking the standard library ought to occur only during development. Once the
+        //    stdlib is stable, we won't have typecheck it at every execution.
+        if let Some(ids) = self.stdlib_ids.as_ref().cloned() {
+            ids.iter()
+                .try_fold(CacheOp::Cached(()), |cache_op, file_id| {
+                    let global_env = self.mk_global_env().map_err(|err| match err {
+                        CacheError::NotParsed => CacheError::NotParsed,
+                        CacheError::Error(_) => unreachable!(),
+                    })?;
+                    match self.typecheck(*file_id, &global_env)? {
+                        done @ CacheOp::Done(()) => Ok(done),
+                        _ => Ok(cache_op),
+                    }
+                })
+        } else {
+            Err(CacheError::NotParsed)
+        }
+    }
+
+    /// Load, parse, typecheck and apply program transformations to the standard library.
+    pub fn prepare_stdlib(&mut self) -> Result<(), Error> {
+        // We have a small bootstraping problem: to typecheck the global environment, we already
+        // need a global evaluation environment, because stdlib parts may be mutually recursive.
+        // But typechecking is performed before program transformations, so this environment is not
+        // the final one. We have to create a temporary global environment just for typechecking,
+        // which is dropped right after. However:
+        // 1. The stdlib is meant to stay relatively light.
+        // 2. Typechecking the standard library ought to occur only during development. Ideally, we
+        //    should only typecheck it at every update, not at every execution.
+        self.load_stdlib()?;
+        self.typecheck_stdlib().map_err(|cache_err| {
+            cache_err
+                .unwrap_error("cache::prepare_stdlib(): expected standard library to be parsed")
+        })?;
+        self.stdlib_ids
+            .as_ref()
+            .cloned()
+            .expect("cache::prepare_stdlib(): stdlib has been loaded but stdlib_ids is None")
+            .iter()
+            .try_for_each(|file_id| self.transform_inner(*file_id).map(|_| ()))
+            .map_err(|cache_err| {
+                cache_err
+                    .unwrap_error("cache::prepare_stdlib(): expected standard library to be parsed")
+            })?;
+        Ok(())
+    }
+
+    /// Generate a global environment from the list of `file_ids` corresponding to the standard
+    /// library parts.
+    pub fn mk_global_env(&self) -> Result<eval::Environment, CacheError<Void>> {
+        if let Some(ids) = self.stdlib_ids.as_ref().cloned() {
+            let mut env = eval::Environment::new();
+
+            ids.iter().for_each(|file_id| {
+                match eval::env_add_term(
+                    &mut env,
+                    self.get_owned(*file_id).expect(
+                        "cache::mk_global_env(): can't build environment, stdlib not parsed",
+                    ),
+                ) {
+                    Err(eval::EnvBuildError::NotARecord(rt)) => panic!(
+                        "cache::load_stdlib(): expected the stdlib module {} to be a record, got {:?}",
+                        self.name(*file_id).to_string_lossy().as_ref(),
+                        rt
+                    ),
+                    _ => (),
+                }
+            });
+
+            Ok(env)
+        } else {
+            Err(CacheError::NotParsed)
+        }
     }
 }
 
@@ -528,15 +633,15 @@ pub mod resolvers {
             _parent: Option<PathBuf>,
             _pos: &Option<RawSpan>,
         ) -> Result<(ResolvedTerm, FileId), ImportError> {
-            panic!("program::resolvers: dummy resolver should not have been invoked");
+            panic!("cache::resolvers: dummy resolver should not have been invoked");
         }
 
         fn insert(&mut self, _file_id: FileId, _term: RichTerm) {
-            panic!("program::resolvers: dummy resolver should not have been invoked");
+            panic!("cache::resolvers: dummy resolver should not have been invoked");
         }
 
         fn get(&self, _file_id: FileId) -> Option<RichTerm> {
-            panic!("program::resolvers: dummy resolver should not have been invoked");
+            panic!("cache::resolvers: dummy resolver should not have been invoked");
         }
     }
 

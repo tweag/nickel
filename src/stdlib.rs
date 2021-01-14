@@ -3,10 +3,21 @@
 use crate::term::make as mk_term;
 use crate::term::RichTerm;
 
-pub const BUILTINS: &str = include_str!("../stdlib/builtins.ncl");
-pub const CONTRACTS: &str = include_str!("../stdlib/contracts.ncl");
-pub const LISTS: &str = include_str!("../stdlib/lists.ncl");
-pub const RECORDS: &str = include_str!("../stdlib/records.ncl");
+pub const BUILTINS: (&str, &str) = (
+    "<stdlib/builtins.ncl>",
+    include_str!("../stdlib/builtins.ncl"),
+);
+pub const CONTRACTS: (&str, &str) = (
+    "<stdlib/contracts.ncl>",
+    include_str!("../stdlib/contracts.ncl"),
+);
+pub const LISTS: (&str, &str) = ("<stdlib/lists>", include_str!("../stdlib/lists.ncl"));
+pub const RECORDS: (&str, &str) = ("<stdlib/records>", include_str!("../stdlib/records.ncl"));
+
+/// Return the list `(name, source_code)` of all the stdlib modules.
+pub fn modules() -> Vec<(&'static str, &'static str)> {
+    vec![BUILTINS, CONTRACTS, LISTS, RECORDS]
+}
 
 /// Accessors to the builtin contracts.
 pub mod contracts {
