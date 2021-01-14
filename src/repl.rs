@@ -27,7 +27,7 @@ pub trait REPL {
     /// Typecheck an expression and return the apparent type.
     fn typecheck(&mut self, exp: &str) -> Result<Types, Error>;
     /// Query the metadata of an expression.
-    fn query(&mut self, exp: &str, path: Option<&str>) -> Result<Term, Error>;
+    fn query(&mut self, exp: &str) -> Result<Term, Error>;
     /// Required for error reporting on the frontend.
     fn cache_mut<'a>(&'a mut self) -> &'a mut Cache;
 }
@@ -128,16 +128,11 @@ impl REPL for REPLImpl {
         )
     }
 
-    fn query(&mut self, exp: &str, path: Option<&str>) -> Result<Term, Error> {
+    fn query(&mut self, exp: &str) -> Result<Term, Error> {
         use crate::program;
 
         let file_id = self.cache.add_tmp("<repl-query>", String::from(exp));
-        program::query(
-            &mut self.cache,
-            file_id,
-            &self.eval_env,
-            path.map(String::from),
-        )
+        program::query(&mut self.cache, file_id, &self.eval_env, None)
     }
 
     fn cache_mut<'a>(&'a mut self) -> &'a mut Cache {
@@ -173,8 +168,6 @@ pub mod rustyline_frontend {
     }
 
     pub fn repl() -> Result<(), InitError> {
-        use crate::program::{MetavalueQuery, ParseQueryError};
-
         let mut repl = REPLImpl::new();
         match repl.load_stdlib() {
             Ok(()) => (),
@@ -203,18 +196,9 @@ pub mod rustyline_frontend {
                             _ => (),
                         }),
                         "typecheck" => repl.typecheck(&arg).map(|types| println!("Ok: {}", types)),
-                        "query" => {
-                            let mut chars = arg.chars();
-                            match MetavalueQuery::from_iter(&mut chars) {
-                                Ok(query) => program::query(&mut cache, panic!(), panic!(), query),
-                                Err(ParseQueryError::UnexpectedToken(c)) => (),
-                                Err(ParseQueryError::UnterminatedString) => (),
-                                Err(ParseQueryError::ExpectedSep(char)) => (),
-                                Err(ParseQueryError::EmptyIdentifier) => (),
-                            }
-
-                            Ok(())
-                        }
+                        "query" => repl.query(&arg).map(|t| {
+                            query_print::print_query_result(&t, query_print::Attributes::default())
+                        }),
                         "?" | "help" => {
                             print_help(&arg);
                             Ok(())
@@ -226,13 +210,13 @@ pub mod rustyline_frontend {
                     };
 
                     if let Err(err) = result {
-                        report(repl.cache_mut(), err);
+                        program::report(repl.cache_mut(), err);
                     }
                 }
                 Ok(line) => {
                     match repl.eval(&line) {
                         Ok(t) => println!("{}\n", t.shallow_repr()),
-                        Err(err) => report(repl.cache_mut(), err),
+                        Err(err) => program::report(repl.cache_mut(), err),
                     };
                 }
                 Err(ReadlineError::Interrupted) => {
@@ -241,7 +225,7 @@ pub mod rustyline_frontend {
                 }
                 Err(ReadlineError::Eof) => (),
                 Err(err) => {
-                    report(
+                    program::report(
                         repl.cache_mut(),
                         Error::IOError(IOError(format!("{}", err))),
                     );
@@ -252,5 +236,221 @@ pub mod rustyline_frontend {
 
     fn print_help(_arg: &str) {
         println!("Available commands: ? help query load typecheck");
+    }
+}
+
+pub mod query_print {
+    use crate::identifier::Ident;
+    use crate::label::Label;
+    use crate::term::{MergePriority, MetaValue, Term};
+
+    pub trait QueryPrinter {
+        fn print_metadata(&self, attr: &str, value: &str);
+        fn print_doc(&self, content: &str);
+        /// Print the list of fields of a record.
+        fn print_fields<'a, I>(&self, fields: I)
+        where
+            I: Iterator<Item = &'a Ident>;
+    }
+
+    #[cfg(feature = "markdown")]
+    pub struct MarkdownRenderer {
+        skin: termimad::MadSkin,
+    }
+
+    pub struct SimpleRenderer {}
+
+    /// Helper to render the result of the `query` sub-command with markdown support.
+    impl QueryPrinter for SimpleRenderer {
+        fn print_metadata(&self, attr: &str, value: &str) {
+            println!("* {}: {}", attr, value);
+        }
+
+        fn print_doc(&self, content: &str) {
+            if content.find("\n").is_none() {
+                self.print_metadata("documentation", &content);
+            } else {
+                println!("* documentation\n");
+                println!("{}", content);
+            }
+        }
+
+        fn print_fields<'a, I>(&self, fields: I)
+        where
+            I: Iterator<Item = &'a Ident>,
+        {
+            println!("Available fields:");
+
+            for field in fields {
+                println!(" - {}", field);
+            }
+        }
+    }
+
+    #[cfg(feature = "markdown")]
+    impl MarkdownRenderer {
+        pub fn new() -> Self {
+            MarkdownRenderer {
+                skin: termimad::MadSkin::default(),
+            }
+        }
+    }
+
+    /// Helper to render the result of the `query` sub-command with markdown support.
+    #[cfg(feature = "markdown")]
+    impl QueryPrinter for MarkdownRenderer {
+        fn print_metadata(&self, attr: &str, value: &str) {
+            use minimad::*;
+            use termimad::*;
+
+            let mut expander = OwningTemplateExpander::new();
+            let template = TextTemplate::from("* **${attr}**: *${value}*");
+
+            expander.set("attr", attr);
+            expander.set("value", value);
+            let text = expander.expand(&template);
+            let (width, _) = terminal_size();
+            let fmt_text = FmtText::from_text(&self.skin, text, Some(width as usize));
+            print!("{}", fmt_text);
+        }
+
+        fn print_doc(&self, content: &str) {
+            if content.find("\n").is_none() {
+                self.skin
+                    .print_text(&format!("* **documentation**: {}", content));
+            } else {
+                self.skin.print_text("* **documentation**\n\n");
+                self.skin.print_text(content);
+            }
+        }
+
+        fn print_fields<'a, I>(&self, fields: I)
+        where
+            I: Iterator<Item = &'a Ident>,
+        {
+            use minimad::*;
+            use termimad::*;
+
+            let (width, _) = terminal_size();
+            let mut expander = OwningTemplateExpander::new();
+            let template = TextTemplate::from("* ${field}");
+
+            self.skin.print_text("## Available fields");
+
+            for field in fields {
+                expander.set("field", field.to_string());
+                let text = expander.expand(&template);
+                let fmt_text = FmtText::from_text(&self.skin, text, Some(width as usize));
+                print!("{}", fmt_text);
+            }
+        }
+    }
+
+    /// Which attributes are requested.
+    #[derive(Clone, Copy, Eq, PartialEq)]
+    pub struct Attributes {
+        pub doc: bool,
+        pub contract: bool,
+        pub default: bool,
+        pub value: bool,
+    }
+
+    impl Default for Attributes {
+        fn default() -> Self {
+            Attributes {
+                doc: true,
+                contract: true,
+                default: true,
+                value: true,
+            }
+        }
+    }
+
+    pub fn print_query_result(term: &Term, selected_attrs: Attributes) {
+        #[cfg(feature = "markdown")]
+        let renderer = MarkdownRenderer::new();
+
+        #[cfg(not(feature = "markdown"))]
+        let renderer = SimpleRenderer {};
+
+        print_query_result_(term, selected_attrs, &renderer)
+    }
+
+    pub fn print_query_result_<R: QueryPrinter>(
+        term: &Term,
+        selected_attrs: Attributes,
+        renderer: &R,
+    ) {
+        // Print a list the fields of a term if it is a record, or do nothing otherwise.
+        fn print_fields<R: QueryPrinter>(renderer: &R, t: &Term) {
+            println!();
+            match t {
+                Term::Record(map) | Term::RecRecord(map) if !map.is_empty() => {
+                    let mut fields: Vec<_> = map.keys().collect();
+                    fields.sort();
+                    renderer.print_fields(fields.into_iter());
+                }
+                Term::Record(_) | Term::RecRecord(_) => renderer.print_metadata("value", "{}"),
+                _ => (),
+            }
+        }
+
+        match term {
+            Term::MetaValue(meta) => {
+                let mut found = false;
+                match &meta.contract {
+                    Some((_, Label { types, .. })) if selected_attrs.contract => {
+                        renderer.print_metadata("contract", &format!("{}", types));
+                        found = true;
+                    }
+                    _ => (),
+                }
+
+                match &meta {
+                    MetaValue {
+                        priority: MergePriority::Default,
+                        value: Some(t),
+                        ..
+                    } if selected_attrs.default => {
+                        renderer.print_metadata("default", &t.as_ref().shallow_repr());
+                        found = true;
+                    }
+                    MetaValue {
+                        priority: MergePriority::Normal,
+                        value: Some(t),
+                        ..
+                    } if selected_attrs.value => {
+                        renderer.print_metadata("value", &t.as_ref().shallow_repr());
+                        found = true;
+                    }
+                    _ => (),
+                }
+
+                match meta.doc {
+                    Some(ref s) if selected_attrs.doc => {
+                        renderer.print_doc(s);
+                        found = true;
+                    }
+                    _ => (),
+                }
+
+                if !found {
+                    println!("Requested metadata were not found for this value.");
+                    meta.value
+                        .iter()
+                        .for_each(|rt| print_fields(renderer, rt.as_ref()));
+                }
+            }
+            t @ Term::Record(_) | t @ Term::RecRecord(_) => {
+                println!("No metadata found for this value.");
+                print_fields(renderer, &t)
+            }
+            t => {
+                println!("No metadata found for this value.\n");
+                if selected_attrs.value {
+                    renderer.print_metadata("value", &t.shallow_repr());
+                }
+            }
+        }
     }
 }
