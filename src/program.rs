@@ -174,10 +174,10 @@ pub fn query(
         // which can be then showed to the user. The newline gives better messages in case of
         // errors.
         let source = format!("let x = (y.{})\n in %seq% x x", p);
-        let file_id = cache.add_tmp("<query>", source.clone());
+        let query_file_id = cache.add_tmp("<query>", source.clone());
         let new_term = parser::grammar::TermParser::new()
-            .parse(file_id, Lexer::new(&source))
-            .map_err(|err| ParseError::from_lalrpop(err, file_id))?;
+            .parse(query_file_id, Lexer::new(&source))
+            .map_err(|err| ParseError::from_lalrpop(err, query_file_id))?;
 
         // Substituting `y` for `t`
         let mut env = eval::Environment::new();
