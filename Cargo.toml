@@ -11,7 +11,7 @@ edition = "2018"
 default = ["markdown", "repl"]
 # markdown = ["termimad", "minimad", "lazy_static", "crossterm"]
 markdown = ["termimad", "minimad"]
-repl = ["rustyline", "termcolor"]
+repl = ["rustyline", "ansi_term"]
 
 [build-dependencies]
 lalrpop = "0.16.2"
@@ -33,8 +33,7 @@ termimad = { version = "0.9.1", optional = true }
 # Use the same version as termimad
 minimad = { version = "0.6.7", optional = true }
 
-# Use the same version as codespan-reporting
-termcolor = { version = "^1", optional = true }
+ansi_term = { version = "0.12", optional = true }
 
 rustyline = {version = "7.1.0", optional = true}
 
