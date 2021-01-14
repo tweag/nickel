@@ -143,8 +143,11 @@ impl REPL for REPLImpl {
 #[cfg(feature = "repl")]
 pub mod rustyline_frontend {
     use super::*;
+    use crate::error::REPLError;
     use crate::program;
     use ansi_term::{Colour, Style};
+    use codespan::{FileId, Files};
+    use codespan_reporting::diagnostic::Diagnostic;
     use rustyline::completion::{Completer, FilenameCompleter, Pair};
     use rustyline::config::OutputStreamType;
     use rustyline::error::ReadlineError;
@@ -168,6 +171,17 @@ pub mod rustyline_frontend {
     }
 
     pub fn repl() -> Result<(), InitError> {
+        fn require_arg(cmd: &str, arg: &str, msg_opt: Option<&str>) -> Result<(), REPLError> {
+            if arg.trim().is_empty() {
+                Err(REPLError::MissingArg {
+                    cmd: String::from(cmd),
+                    msg_opt: msg_opt.map(String::from),
+                })
+            } else {
+                Ok(())
+            }
+        }
+
         let mut repl = REPLImpl::new();
         match repl.load_stdlib() {
             Ok(()) => (),
@@ -189,24 +203,40 @@ pub mod rustyline_frontend {
                     let arg: String = line.chars().skip(cmd_end + 1).collect();
 
                     let result = match command.as_str() {
-                        "load" => repl.load(&arg).map(|term| match term.as_ref() {
-                            Term::Record(map) | Term::RecRecord(map) => {
-                                println!("Loaded {} symbol(s) in the environment.", map.len())
-                            }
-                            _ => (),
-                        }),
-                        "typecheck" => repl.typecheck(&arg).map(|types| println!("Ok: {}", types)),
-                        "query" => repl.query(&arg).map(|t| {
-                            query_print::print_query_result(&t, query_print::Attributes::default())
-                        }),
+                        "load" => {
+                            require_arg(&command, &arg, Some("Please provid a file to load."))
+                                .map_err(Error::from)
+                                .and_then(|()| {
+                                    repl.load(&arg).map(|term| match term.as_ref() {
+                                        Term::Record(map) | Term::RecRecord(map) => println!(
+                                            "Loaded {} symbol(s) in the environment.",
+                                            map.len()
+                                        ),
+                                        _ => (),
+                                    })
+                                })
+                        }
+                        "typecheck" => require_arg(&command, &arg, None)
+                            .map_err(Error::from)
+                            .and_then(|()| {
+                                repl.typecheck(&arg).map(|types| println!("Ok: {}", types))
+                            }),
+                        "query" => require_arg(&command, &arg, None)
+                            .map_err(Error::from)
+                            .and_then(|()| repl.query(&arg))
+                            .map(|t| {
+                                query_print::print_query_result(
+                                    &t,
+                                    query_print::Attributes::default(),
+                                )
+                            }),
                         "?" | "help" => {
                             print_help(&arg);
                             Ok(())
                         }
-                        cmd => {
-                            println!("Unknown command `{}`. Type ':?' or ':help' for a list of available commands", cmd);
-                            Ok(())
-                        }
+                        cmd => Err(Error::REPLError(REPLError::UnknownCommand(String::from(
+                            cmd,
+                        )))),
                     };
 
                     if let Err(err) = result {
