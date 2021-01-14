@@ -40,12 +40,12 @@
 //! ```
 //!
 //! In non-strict mode, all let-bound expressions are given type `Dyn`, unless annotated.
+use crate::cache::ImportResolver;
 use crate::error::TypecheckError;
 use crate::eval;
 use crate::identifier::Ident;
 use crate::label::ty_path;
 use crate::position::RawSpan;
-use crate::program::ImportResolver;
 use crate::term::{BinaryOp, MetaValue, RichTerm, StrChunk, Term, UnaryOp};
 use crate::types::{AbsType, Types};
 use crate::{mk_tyw_arrow, mk_tyw_enum, mk_tyw_enum_row, mk_tyw_record, mk_tyw_row};
@@ -1712,11 +1712,11 @@ pub fn get_root(table: &UnifTable, x: usize) -> TypeWrapper {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cache::resolvers::{DummyResolver, SimpleResolver};
     use crate::error::ImportError;
     use crate::label::Label;
     use crate::mk_app;
     use crate::parser::lexer;
-    use crate::program::resolvers::{DummyResolver, SimpleResolver};
     use crate::term::make as mk_term;
     use crate::transformations::transform;
     use codespan::Files;
@@ -2117,7 +2117,7 @@ mod tests {
             R: ImportResolver,
         {
             transform(
-                mk_term::let_in("x", Term::Import(String::from(import)), mk_term::var("x")),
+                mk_term::let_in("x", mk_term::import(import), mk_term::var("x")),
                 resolver,
             )
         };

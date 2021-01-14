@@ -87,12 +87,12 @@
 //! probably suboptimal for a functional language and is unable to collect cyclic data, which may
 //! appear inside recursive records in the future. An adapted garbage collector is probably
 //! something to consider at some point.
+use crate::cache::ImportResolver;
 use crate::error::EvalError;
 use crate::identifier::Ident;
 use crate::mk_app;
 use crate::operation::{continuate_operation, OperationCont};
 use crate::position::RawSpan;
-use crate::program::ImportResolver;
 use crate::stack::Stack;
 use crate::term::{make as mk_term, MetaValue, RichTerm, StrChunk, Term, UnaryOp};
 use std::cell::RefCell;
@@ -138,6 +138,33 @@ impl Closure {
             body,
             env: HashMap::new(),
         }
+    }
+}
+
+/// Raised when trying to build an environment from a term which is not a record.
+#[derive(Clone, Debug)]
+pub enum EnvBuildError {
+    NotARecord(RichTerm),
+}
+
+/// Add the bindings of a record to an environment.
+pub fn env_add_term(env: &mut Environment, rt: RichTerm) -> Result<(), EnvBuildError> {
+    let RichTerm { term, pos } = rt;
+
+    match *term {
+        Term::Record(bindings) | Term::RecRecord(bindings) => {
+            let ext = bindings.into_iter().map(|(id, t)| {
+                let closure = Closure {
+                    body: t,
+                    env: HashMap::new(),
+                };
+                (id, (Rc::new(RefCell::new(closure)), IdentKind::Record()))
+            });
+
+            env.extend(ext);
+            Ok(())
+        }
+        t => Err(EnvBuildError::NotARecord(RichTerm::new(t, pos))),
     }
 }
 
@@ -506,7 +533,7 @@ where
             }
             Term::Import(path) => {
                 return Err(EvalError::InternalError(
-                    format!("Unresolved import ({})", path),
+                    format!("Unresolved import ({})", path.to_string_lossy()),
                     pos,
                 ))
             }
@@ -755,10 +782,10 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cache::resolvers::{DummyResolver, SimpleResolver};
     use crate::error::ImportError;
     use crate::label::Label;
     use crate::parser::{grammar, lexer};
-    use crate::program::resolvers::{DummyResolver, SimpleResolver};
     use crate::term::make as mk_term;
     use crate::term::StrChunk;
     use crate::term::{BinaryOp, UnaryOp};
@@ -932,7 +959,7 @@ mod tests {
             R: ImportResolver,
         {
             transform(
-                mk_term::let_in(var, Term::Import(String::from(import)), body),
+                mk_term::let_in(var, mk_term::import(import), body),
                 resolver,
             )
         };

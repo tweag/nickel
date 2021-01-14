@@ -5,6 +5,7 @@ use crate::term::make as mk_term;
 use crate::mk_app;
 use crate::types::{Types, AbsType};
 use super::utils::{StringKind, mk_span, mk_label, strip_indent, SwitchCase};
+use std::ffi::OsString;
 use super::lexer::{Token, NormalToken, StringToken, MultiStringToken, LexicalError};
 use std::collections::HashMap;
 use either::*;
@@ -27,8 +28,7 @@ LeftOp<Op, Current, Previous>: RichTerm =
     t2);
 
 LeftOpLazy<Op, Current, Previous>: RichTerm =
-    <t1: Current> <op: Op> <t2: Previous> =>
-        mk_app!(Term::Op1(op, t1), t2);
+    <t1: Current> <op: Op> <t2: Previous> => mk_app!(Term::Op1(op, t1), t2);
 
 pub Term: RichTerm = {
     SpTerm<RichTerm>,
@@ -84,7 +84,7 @@ RichTerm: RichTerm = {
     },
     "if" <b:Term> "then" <t:Term> "else" <e:SpTerm<RichTerm>> =>
         mk_app!(Term::Op1(UnaryOp::Ite(), b), t, e),
-    "import" <s: Str> => RichTerm::from(Term::Import(s)),
+    "import" <s: Str> => RichTerm::from(Term::Import(OsString::from(s))),
     SpTerm<InfixExpr>,
 };
 

@@ -1,9 +1,9 @@
 //! Program transformations.
 
+use crate::cache::ImportResolver;
 use crate::error::ImportError;
 use crate::eval::{Closure, Environment, IdentKind};
 use crate::identifier::Ident;
-use crate::program::ImportResolver;
 use crate::term::{RichTerm, Term};
 use crate::types::{AbsType, Types};
 use codespan::FileId;
@@ -188,13 +188,13 @@ type PendingImport = (RichTerm, FileId, PathBuf);
 
 pub mod import_resolution {
     use super::{ImportResolver, PathBuf, PendingImport, RichTerm, Term};
+    use crate::cache::ResolvedTerm;
     use crate::error::ImportError;
-    use crate::program::ResolvedTerm;
 
     /// Resolve the import if the term is an unresolved import, or return the term unchanged.
     ///
     /// If an import was resolved, the corresponding `FileId` is returned in the second component
-    /// of the result, and the file path as the third. It the import has been already resolved, or
+    /// of the result, and the file path as the third. If the import has been already resolved, or
     /// if the term was not an import, `None` is returned. As
     /// [`share_normal_form::transform_one`](../share_normal_form/fn.transform_one.html), this function is not recursive.
     pub fn transform_one<R>(
@@ -211,7 +211,7 @@ pub mod import_resolution {
                 let (res_term, file_id) = resolver.resolve(&path, parent.clone(), &pos)?;
                 let ret = match res_term {
                     ResolvedTerm::FromCache() => None,
-                    ResolvedTerm::FromFile(t, p) => Some((t, file_id, p)),
+                    ResolvedTerm::FromFile { term, path } => Some((term, file_id, path)),
                 };
 
                 Ok((
