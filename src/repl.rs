@@ -148,7 +148,8 @@ impl REPL for REPLImpl {
 #[cfg(feature = "repl")]
 pub mod rustyline_frontend {
     use super::*;
-    use crate::program::report;
+    use crate::program;
+    use ansi_term::{Colour, Style};
     use rustyline::completion::{Completer, FilenameCompleter, Pair};
     use rustyline::config::OutputStreamType;
     use rustyline::error::ReadlineError;
@@ -172,18 +173,20 @@ pub mod rustyline_frontend {
     }
 
     pub fn repl() -> Result<(), InitError> {
+        use crate::program::{MetavalueQuery, ParseQueryError};
+
         let mut repl = REPLImpl::new();
         match repl.load_stdlib() {
             Ok(()) => (),
             Err(err) => {
-                report(repl.cache_mut(), err);
+                program::report(repl.cache_mut(), err);
                 return Err(InitError::Stdlib);
             }
         }
 
         let config = config();
         let mut editor: Editor<()> = Editor::with_config(config);
-        let prompt = format!("\x1b[1;32m{}\x1b[0m", "> ");
+        let prompt = Style::new().fg(Colour::Green).paint("> ").to_string();
 
         loop {
             match editor.readline(&prompt) {
@@ -201,11 +204,19 @@ pub mod rustyline_frontend {
                         }),
                         "typecheck" => repl.typecheck(&arg).map(|types| println!("Ok: {}", types)),
                         "query" => {
-                            println!("Not implemented");
+                            let mut chars = arg.chars();
+                            match MetavalueQuery::from_iter(&mut chars) {
+                                Ok(query) => program::query(&mut cache, panic!(), panic!(), query),
+                                Err(ParseQueryError::UnexpectedToken(c)) => (),
+                                Err(ParseQueryError::UnterminatedString) => (),
+                                Err(ParseQueryError::ExpectedSep(char)) => (),
+                                Err(ParseQueryError::EmptyIdentifier) => (),
+                            }
+
                             Ok(())
                         }
                         "?" | "help" => {
-                            help();
+                            print_help(&arg);
                             Ok(())
                         }
                         cmd => {
@@ -220,17 +231,15 @@ pub mod rustyline_frontend {
                 }
                 Ok(line) => {
                     match repl.eval(&line) {
-                        Ok(t) => println!("Ok: {}", t.shallow_repr()),
+                        Ok(t) => println!("{}\n", t.shallow_repr()),
                         Err(err) => report(repl.cache_mut(), err),
                     };
                 }
                 Err(ReadlineError::Interrupted) => {
-                    println!("Interrupted. Exiting");
+                    println!("{}", Style::new().bold().paint("Interrupted. Exiting"));
                     break Ok(());
                 }
-                Err(ReadlineError::Eof) => {
-                    println!("EOF");
-                }
+                Err(ReadlineError::Eof) => (),
                 Err(err) => {
                     report(
                         repl.cache_mut(),
@@ -241,7 +250,7 @@ pub mod rustyline_frontend {
         }
     }
 
-    fn help() {
+    fn print_help(_arg: &str) {
         println!("Available commands: ? help query load typecheck");
     }
 }
