@@ -3,6 +3,7 @@
 
 # Nix generated
 /result*
+/scripts/tmp.toml
 
 # rustfmt Backup file
 **/*.rs.bk

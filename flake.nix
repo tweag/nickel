@@ -6,23 +6,11 @@
   outputs = { self, nixpkgs, nixpkgs-mozilla, import-cargo }:
     let
 
-      CHANNELS = {
-        nightly =
-          { channel = "nightly";
-            date = "2021-01-15";
-            sha256 = "sha256-uoGBMgGmIPj4E+jCY8XH41Ia8NbaRjDC3KioiaCA/M8=";
-          };
-        beta =
-          { channel = "beta";
-            date = "2021-01-15";
-            sha256 = "sha256-DE2l5X02z9o4z8E5bmBG4QXWOAKEStdVmjZdGZE7PAQ=";
-          };
-        stable =
-          { channel = "stable";
-            date = "2020-12-31";
-            sha256 = "sha256-KCh2UBGtdlBJ/4UOqZlxUtcyefv7MH1neoVNV4z0nWs=";
-          };
-      };
+      CHANNELS = readChannels [
+        "stable"
+        "beta"
+        "nightly"
+      ];
 
       SYSTEMS = [
         "x86_64-linux"
@@ -30,6 +18,9 @@
       ];
 
       inherit (nixpkgs.lib) genAttrs substring;
+
+      readChannel = c: builtins.fromTOML (builtins.readFile (./. + "/scripts/channel_${c}.toml"));
+      readChannels = cs: builtins.listToAttrs (map (c: { name = c; value = readChannel c; }) cs);
 
       forAllSystems = f: genAttrs SYSTEMS (system: f system);
 
