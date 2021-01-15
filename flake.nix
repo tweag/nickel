@@ -23,13 +23,17 @@
             sha256 = "sha256-KCh2UBGtdlBJ/4UOqZlxUtcyefv7MH1neoVNV4z0nWs=";
           };
       };
-      SYSTEMS = [ "x86_64-linux" "x86_64-darwin" ];
+
+      SYSTEMS = [
+        "x86_64-linux"
+        "x86_64-darwin"
+      ];
 
       inherit (nixpkgs.lib) genAttrs substring;
 
       forAllSystems = f: genAttrs SYSTEMS (system: f system);
 
-      buildPackage = { system, isShell ? false, channel ? null }:
+      buildPackage = { system, isShell ? false, channel ? "stable" }:
         let
           pkgs = import nixpkgs {
             inherit system;
