@@ -1233,7 +1233,7 @@ impl ToDiagnostic<FileId> for REPLError {
             REPLError::UnknownCommand(s) => vec![Diagnostic::error()
                 .with_message(format!("unkown command `{}`", s))
                 .with_notes(vec![String::from(
-                    "Type :? or :help for a list of available commands.",
+                    "type `:?` or `:help` for a list of available commands.",
                 )])],
             REPLError::MissingArg { cmd, msg_opt } => {
                 let mut notes = msg_opt
