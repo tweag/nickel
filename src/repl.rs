@@ -1,6 +1,6 @@
 //! The Nickel REPL.
 //!
-//! A backend designates a module which actually execute a sequence of REPL commands, while being
+//! A backend designates a module which actually executes a sequence of REPL commands, while being
 //! agnostic to the user interface and the presentation of the results.
 //!
 //! Dually, the frontend is the user-facing part, which may be a CLI, a web application, a
@@ -23,7 +23,7 @@ generate_counter!(InputNameCounter, usize);
 pub trait REPL {
     /// Eval an expression.
     fn eval(&mut self, exp: &str) -> Result<Term, Error>;
-    /// Load the content of a file in the environment.
+    /// Load the content of a file in the environment. Return the loaded record.
     fn load(&mut self, path: impl AsRef<OsStr>) -> Result<RichTerm, Error>;
     /// Typecheck an expression and return the apparent type.
     fn typecheck(&mut self, exp: &str) -> Result<Types, Error>;
@@ -37,11 +37,11 @@ pub trait REPL {
 pub struct REPLImpl {
     /// The underlying cache, storing input, loaded files and parsed terms.
     cache: Cache,
-    /// The eval environment. Contain the global environment containing the stdlib, plus
-    /// declarations and loadings made in the REPL.
+    /// The eval environment. Contain the global environment with the stdlib, plus declarations and
+    /// loadings made inside the REPL.
     eval_env: eval::Environment,
-    /// The type environment, counterpart of the eval environment for typechecking. Entires are
-    /// `TypeWrapper` for the ease of interacting with the typechecker, but there should not be any
+    /// The typing environment, counterpart of the eval environment for typechecking. Entries are
+    /// `TypeWrapper` for the ease of interacting with the typechecker, but there are not any
     /// unification variable in it.
     type_env: typecheck::Environment,
 }
@@ -276,7 +276,7 @@ pub mod command {
     }
 }
 
-/// Native terminal implementation REPL frontend using rustyline.
+/// Native terminal implementation of an REPL frontend using rustyline.
 #[cfg(feature = "repl")]
 pub mod rustyline_frontend {
     use super::command::{Command, CommandType, UnknownCommandError};
@@ -288,12 +288,13 @@ pub mod rustyline_frontend {
     use rustyline::error::ReadlineError;
     use rustyline::{Config, EditMode, Editor};
 
-    /// Error when initializing the REPL.
+    /// Error occurring when initializing the REPL.
     pub enum InitError {
         /// Unable to load, parse or typecheck the stdlib
         Stdlib,
     }
 
+    /// The config of rustyline's editor.
     pub fn config() -> Config {
         Config::builder()
             .history_ignore_space(true)
@@ -302,6 +303,7 @@ pub mod rustyline_frontend {
             .build()
     }
 
+    /// Main loop of the REPL.
     pub fn repl() -> Result<(), InitError> {
         let mut repl = REPLImpl::new();
         match repl.load_stdlib() {
@@ -317,10 +319,15 @@ pub mod rustyline_frontend {
         let prompt = Style::new().fg(Colour::Green).paint("> ").to_string();
 
         loop {
-            match editor.readline(&prompt) {
+            let line = editor.readline(&prompt);
+
+            if let Ok(line) = line.as_ref() {
+                editor.add_history_entry(line.clone());
+            }
+
+            match line {
                 Ok(line) if line.starts_with(":") => {
                     let cmd = line.chars().skip(1).collect::<String>().parse::<Command>();
-
                     let result = match cmd {
                         Ok(Command::Load(path)) => {
                             repl.load(&path).map(|term| match term.as_ref() {
@@ -374,6 +381,8 @@ pub mod rustyline_frontend {
         }
     }
 
+    /// Print the help message corresponding to a command, or show a list of available commands if
+    /// the argument is `None` or is not a command.
     fn print_help(arg: Option<&str>) {
         if let Some(arg) = arg {
             fn print_aliases(cmd: CommandType) {
@@ -540,7 +549,7 @@ pub mod query_print {
         }
     }
 
-    /// Represent which metadata attributes are requested.
+    /// Represent which metadata attributes are requested by a query.
     #[derive(Clone, Copy, Eq, PartialEq)]
     pub struct Attributes {
         pub doc: bool,
@@ -561,8 +570,11 @@ pub mod query_print {
         }
     }
 
-    /// Print the result of a query, which is a "weakly" evaluated term (see
+    /// Print the result of a metadata query, which is a "weakly" evaluated term (see
     /// [`eval_meta`](../../eval/fn.eval_meta.html) and [`query`](../../program/fn.query.html)).
+    ///
+    /// Wrapper around [`print_query_result_`](./fn.print_query_result_) that selects an adapated
+    /// query printer at compile time.
     pub fn print_query_result(term: &Term, selected_attrs: Attributes) {
         #[cfg(feature = "markdown")]
         let renderer = MarkdownRenderer::new();
@@ -573,6 +585,8 @@ pub mod query_print {
         print_query_result_(term, selected_attrs, &renderer)
     }
 
+    /// Print the result of a metadata query, which is a "weakly" evaluated term (see
+    /// [`eval_meta`](../../eval/fn.eval_meta.html) and [`query`](../../program/fn.query.html)).
     fn print_query_result_<R: QueryPrinter>(term: &Term, selected_attrs: Attributes, renderer: &R) {
         // Print a list the fields of a term if it is a record, or do nothing otherwise.
         fn print_fields<R: QueryPrinter>(renderer: &R, t: &Term) {
