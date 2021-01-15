@@ -234,6 +234,10 @@ pub mod rustyline_frontend {
                             print_help(&arg);
                             Ok(())
                         }
+                        "exit" => {
+                            println!("{}", Style::new().bold().paint("Exiting"));
+                            return Ok(());
+                        }
                         cmd => Err(Error::REPLError(REPLError::UnknownCommand(String::from(
                             cmd,
                         )))),
@@ -264,8 +268,34 @@ pub mod rustyline_frontend {
         }
     }
 
-    fn print_help(_arg: &str) {
-        println!("Available commands: ? help query load typecheck");
+    fn print_help(arg: &str) {
+        match arg.trim() {
+            "help" => {
+                println!(":help [command]");
+                println!("Prints a list of available commands or the help of the given command");
+            }
+            "query" => {
+                println!(":query <expression>");
+                println!("Print the metadata attached to an attribute");
+            }
+            "load" => {
+                println!(":load <file>");
+                print!("Evaluate the content of <file> to a record and load its attributes in the environment.");
+                println!(" Fail if the content of <file> doesn't evaluate to a record");
+            }
+            "typecheck" => {
+                println!(":typecheck <expression>");
+                println!("Typecheck the given expression and print its top-level type");
+            }
+            "exit" => {
+                println!(":exit");
+                println!("Exit the REPL session");
+            }
+            "" => println!("Available commands: ? help query load typecheck"),
+            _ => (),
+        };
+
+        println!();
     }
 }
 

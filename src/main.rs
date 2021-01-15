@@ -100,6 +100,7 @@ enum Command {
         #[structopt(parse(from_os_str))]
         output: Option<PathBuf>,
     },
+    /// Print the metadata attached to an attribute, given as a path
     Query {
         path: Option<String>,
         #[structopt(long)]
