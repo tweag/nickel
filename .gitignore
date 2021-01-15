@@ -1,6 +1,9 @@
 # Cargo generated
 /target/
 
+# Nix generated
+/result*
+
 # rustfmt Backup file
 **/*.rs.bk
 
