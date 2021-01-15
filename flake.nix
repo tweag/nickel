@@ -9,40 +9,43 @@
 
       forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f system);
 
-      # Memoize nixpkgs for different platforms for efficiency.
-      nixpkgsFor = forAllSystems (system: import nixpkgs { inherit system; });
+      buildPackage = { isShell, system }:
+        let
+          pkgs = import nixpkgs { inherit system; };
 
-      buildPackage = { isShell, system }: with nixpkgsFor.${system}; stdenv.mkDerivation {
-        name = "nickel-${lib.substring 0 8 self.lastModifiedDate}-${self.shortRev or "dirty"}";
+          inherit (pkgs) stdenv lib;
+        in
+        stdenv.mkDerivation {
+          name = "nickel-${lib.substring 0 8 self.lastModifiedDate}-${self.shortRev or "dirty"}";
 
-        buildInputs =
-          [ rustc
-            cargo
-          ] ++ (if isShell then [
-            rustfmt
-            clippy
-          ] else [
-            (import-cargo.builders.importCargo {
-              lockFile = ./Cargo.lock;
-              inherit pkgs;
-            }).cargoHome
-          ]);
+          buildInputs =
+            with pkgs; [ rustc
+              cargo
+            ] ++ (if isShell then with pkgs;[
+              rustfmt
+              clippy
+            ] else [
+              (import-cargo.builders.importCargo {
+                lockFile = ./Cargo.lock;
+                inherit pkgs;
+              }).cargoHome
+            ]);
 
-        src = if isShell then null else self;
+          src = if isShell then null else self;
 
-        buildPhase = "cargo build --release --frozen --offline";
+          buildPhase = "cargo build --release --frozen --offline";
 
-        doCheck = true;
+          doCheck = true;
 
-        checkPhase = "cargo test --release --frozen --offline";
+          checkPhase = "cargo test --release --frozen --offline";
 
-        installPhase =
-          ''
-            mkdir -p $out
-            cargo install --frozen --offline --path . --root $out
-            rm $out/.crates.toml
-          '';
-      };
+          installPhase =
+            ''
+              mkdir -p $out
+              cargo install --frozen --offline --path . --root $out
+              rm $out/.crates.toml
+            '';
+        };
 
     in {
 
