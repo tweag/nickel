@@ -19,10 +19,9 @@ mod typecheck;
 mod types;
 
 use crate::error::{Error, IOError, SerializationError};
-use crate::label::Label;
 use crate::program::Program;
 use crate::repl::rustyline_frontend;
-use crate::term::{MergePriority, MetaValue, RichTerm, Term};
+use crate::term::{RichTerm, Term};
 use std::io::Write;
 use std::path::PathBuf;
 use std::str::FromStr;

@@ -7,14 +7,15 @@
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
 use crate::cache::Cache;
+use crate::error::REPLError;
 use crate::error::{Error, EvalError, IOError};
 use crate::term::{RichTerm, Term};
 use crate::types::{AbsType, Types};
 use crate::{eval, typecheck};
 use simple_counter::*;
-use std::ffi::OsStr;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::result::Result;
+use std::str::FromStr;
 
 generate_counter!(InputNameCounter, usize);
 
@@ -48,10 +49,8 @@ pub struct REPLImpl {
 impl REPLImpl {
     /// Create a new empty REPL.
     pub fn new() -> Self {
-        let mut cache = Cache::new();
-
         REPLImpl {
-            cache,
+            cache: Cache::new(),
             eval_env: eval::Environment::new(),
             type_env: typecheck::Environment::new(),
         }
@@ -140,21 +139,154 @@ impl REPL for REPLImpl {
     }
 }
 
+/// REPL commands helpers common to all frontends.
+pub mod command {
+    use super::*;
+    use std::fmt;
+
+    /// Available commands.
+    #[derive(Copy, Clone, Eq, PartialEq, Debug)]
+    pub enum CommandType {
+        Load,
+        Typecheck,
+        Query,
+        Help,
+        Exit,
+    }
+
+    /// A parsed command with corresponding argument(s). Required argument are checked for
+    /// non-emptiness.
+    #[derive(Clone, Eq, PartialEq, Debug)]
+    pub enum Command {
+        Load(OsString),
+        Typecheck(String),
+        Query(String),
+        Help(Option<String>),
+        Exit,
+    }
+
+    pub struct UnknownCommandError {}
+
+    fn require_arg(cmd: CommandType, arg: &str, msg_opt: Option<&str>) -> Result<(), REPLError> {
+        if arg.trim().is_empty() {
+            Err(REPLError::MissingArg {
+                cmd,
+                msg_opt: msg_opt.map(String::from),
+            })
+        } else {
+            Ok(())
+        }
+    }
+
+    impl FromStr for CommandType {
+        type Err = UnknownCommandError;
+
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+            use CommandType::*;
+
+            match s {
+                "load" | "l" => Ok(Load),
+                "typecheck" | "tc" => Ok(Typecheck),
+                "query" | "q" => Ok(Query),
+                "help" | "?" | "h" => Ok(Help),
+                "exit" | "e" => Ok(Exit),
+                _ => Err(UnknownCommandError {}),
+            }
+        }
+    }
+
+    impl CommandType {
+        pub fn aliases(&self) -> Vec<String> {
+            use CommandType::*;
+
+            match self {
+                Load => vec![String::from("l")],
+                Typecheck => vec![String::from("tc")],
+                Query => vec![String::from("q")],
+                Help => vec![String::from("h"), String::from("?")],
+                Exit => vec![String::from("e")],
+            }
+        }
+    }
+
+    impl std::fmt::Display for CommandType {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            use CommandType::*;
+
+            match self {
+                Load => write!(f, "load"),
+                Typecheck => write!(f, "Typecheck"),
+                Query => write!(f, "query"),
+                Help => write!(f, "help"),
+                Exit => write!(f, "exit"),
+            }
+        }
+    }
+
+    impl FromStr for Command {
+        type Err = REPLError;
+
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+            let cmd_end = s.find(" ").unwrap_or(s.len());
+            let cmd_str: String = s.chars().take(cmd_end).collect();
+            let cmd: CommandType = cmd_str
+                .parse()
+                .map_err(|_| REPLError::UnknownCommand(cmd_str.clone()))?;
+            let arg: String = s.chars().skip(cmd_end + 1).collect();
+
+            match cmd {
+                CommandType::Load => {
+                    require_arg(cmd, &arg, Some("Please provide a file to load"))?;
+                    Ok(Command::Load(OsString::from(arg)))
+                }
+                CommandType::Typecheck => {
+                    require_arg(cmd, &arg, None)?;
+                    Ok(Command::Typecheck(arg))
+                }
+                CommandType::Query => {
+                    require_arg(cmd, &arg, None)?;
+                    Ok(Command::Query(arg))
+                }
+                CommandType::Exit => Ok(Command::Exit),
+                CommandType::Help => {
+                    let arg_opt = if arg.trim().is_empty() {
+                        None
+                    } else {
+                        Some(String::from(arg.trim()))
+                    };
+
+                    Ok(Command::Help(arg_opt))
+                }
+            }
+        }
+    }
+
+    impl Command {
+        pub fn typ(&self) -> CommandType {
+            use Command::*;
+
+            match self {
+                Load(..) => CommandType::Load,
+                Typecheck(..) => CommandType::Typecheck,
+                Query(..) => CommandType::Query,
+                Help(..) => CommandType::Help,
+                Exit => CommandType::Exit,
+            }
+        }
+    }
+}
+
+/// Native terminal implementation REPL frontend using rustyline.
 #[cfg(feature = "repl")]
 pub mod rustyline_frontend {
+    use super::command::{Command, CommandType, UnknownCommandError};
     use super::*;
-    use crate::error::REPLError;
+
     use crate::program;
     use ansi_term::{Colour, Style};
-    use codespan::{FileId, Files};
-    use codespan_reporting::diagnostic::Diagnostic;
-    use rustyline::completion::{Completer, FilenameCompleter, Pair};
     use rustyline::config::OutputStreamType;
     use rustyline::error::ReadlineError;
-    use rustyline::highlight::{Highlighter, MatchingBracketHighlighter};
-    use rustyline::hint::{Hinter, HistoryHinter};
-    use rustyline::validate::{self, MatchingBracketValidator, Validator};
-    use rustyline::{Cmd, CompletionType, Config, Context, EditMode, Editor, KeyEvent};
+    use rustyline::{Config, EditMode, Editor};
 
     /// Error when initializing the REPL.
     pub enum InitError {
@@ -171,17 +303,6 @@ pub mod rustyline_frontend {
     }
 
     pub fn repl() -> Result<(), InitError> {
-        fn require_arg(cmd: &str, arg: &str, msg_opt: Option<&str>) -> Result<(), REPLError> {
-            if arg.trim().is_empty() {
-                Err(REPLError::MissingArg {
-                    cmd: String::from(cmd),
-                    msg_opt: msg_opt.map(String::from),
-                })
-            } else {
-                Ok(())
-            }
-        }
-
         let mut repl = REPLImpl::new();
         match repl.load_stdlib() {
             Ok(()) => (),
@@ -198,53 +319,38 @@ pub mod rustyline_frontend {
         loop {
             match editor.readline(&prompt) {
                 Ok(line) if line.starts_with(":") => {
-                    let cmd_end = line.find(" ").unwrap_or(line.len());
-                    let command: String = line.chars().skip(1).take(cmd_end - 1).collect();
-                    let arg: String = line.chars().skip(cmd_end + 1).collect();
+                    let cmd = line.chars().skip(1).collect::<String>().parse::<Command>();
 
-                    let result = match command.as_str() {
-                        "load" => {
-                            require_arg(&command, &arg, Some("Please provid a file to load."))
-                                .map_err(Error::from)
-                                .and_then(|()| {
-                                    repl.load(&arg).map(|term| match term.as_ref() {
-                                        Term::Record(map) | Term::RecRecord(map) => println!(
-                                            "Loaded {} symbol(s) in the environment.",
-                                            map.len()
-                                        ),
-                                        _ => (),
-                                    })
-                                })
+                    let result = match cmd {
+                        Ok(Command::Load(path)) => {
+                            repl.load(&path).map(|term| match term.as_ref() {
+                                Term::Record(map) | Term::RecRecord(map) => {
+                                    println!("Loaded {} symbol(s) in the environment.", map.len())
+                                }
+                                _ => (),
+                            })
                         }
-                        "typecheck" => require_arg(&command, &arg, None)
-                            .map_err(Error::from)
-                            .and_then(|()| {
-                                repl.typecheck(&arg).map(|types| println!("Ok: {}", types))
-                            }),
-                        "query" => require_arg(&command, &arg, None)
-                            .map_err(Error::from)
-                            .and_then(|()| repl.query(&arg))
-                            .map(|t| {
-                                query_print::print_query_result(
-                                    &t,
-                                    query_print::Attributes::default(),
-                                )
-                            }),
-                        "?" | "help" => {
-                            print_help(&arg);
+                        Ok(Command::Typecheck(exp)) => {
+                            repl.typecheck(&exp).map(|types| println!("Ok: {}", types))
+                        }
+                        Ok(Command::Query(exp)) => repl.query(&exp).map(|t| {
+                            query_print::print_query_result(&t, query_print::Attributes::default());
+                        }),
+                        Ok(Command::Help(arg)) => {
+                            print_help(arg.as_ref().map(String::as_str));
                             Ok(())
                         }
-                        "exit" => {
+                        Ok(Command::Exit) => {
                             println!("{}", Style::new().bold().paint("Exiting"));
                             return Ok(());
                         }
-                        cmd => Err(Error::REPLError(REPLError::UnknownCommand(String::from(
-                            cmd,
-                        )))),
+                        Err(err) => Err(Error::from(err)),
                     };
 
                     if let Err(err) = result {
                         program::report(repl.cache_mut(), err);
+                    } else {
+                        println!();
                     }
                 }
                 Ok(line) => {
@@ -268,44 +374,72 @@ pub mod rustyline_frontend {
         }
     }
 
-    fn print_help(arg: &str) {
-        match arg.trim() {
-            "help" => {
-                println!(":help [command]");
-                println!("Prints a list of available commands or the help of the given command");
-            }
-            "query" => {
-                println!(":query <expression>");
-                println!("Print the metadata attached to an attribute");
-            }
-            "load" => {
-                println!(":load <file>");
-                print!("Evaluate the content of <file> to a record and load its attributes in the environment.");
-                println!(" Fail if the content of <file> doesn't evaluate to a record");
-            }
-            "typecheck" => {
-                println!(":typecheck <expression>");
-                println!("Typecheck the given expression and print its top-level type");
-            }
-            "exit" => {
-                println!(":exit");
-                println!("Exit the REPL session");
-            }
-            "" => println!("Available commands: ? help query load typecheck"),
-            _ => (),
-        };
+    fn print_help(arg: Option<&str>) {
+        if let Some(arg) = arg {
+            fn print_aliases(cmd: CommandType) {
+                let mut aliases = cmd.aliases().into_iter();
 
-        println!();
+                if let Some(fst) = aliases.next() {
+                    print!("Aliases: `{}`", fst);
+                    aliases.for_each(|alias| print!(", `{}`", alias));
+                    println!();
+                }
+
+                println!();
+            }
+
+            match arg.parse::<CommandType>() {
+                Ok(c @ CommandType::Help) => {
+                    println!(":{} [command]", c);
+                    print_aliases(c);
+                    println!(
+                        "Prints a list of available commands or the help of the given command"
+                    );
+                }
+                Ok(c @ CommandType::Query) => {
+                    println!(":{} <expression>", c);
+                    print_aliases(c);
+                    println!("Print the metadata attached to an attribute");
+                }
+                Ok(c @ CommandType::Load) => {
+                    println!(":{} <file>", c);
+                    print_aliases(c);
+                    print!("Evaluate the content of <file> to a record and load its attributes in the environment.");
+                    println!(" Fail if the content of <file> doesn't evaluate to a record");
+                }
+                Ok(c @ CommandType::Typecheck) => {
+                    println!(":{} <expression>", c);
+                    print_aliases(c);
+                    println!("Typecheck the given expression and print its top-level type");
+                }
+                Ok(c @ CommandType::Exit) => {
+                    println!(":{}", c);
+                    print_aliases(c);
+                    println!("Exit the REPL session");
+                }
+                Err(UnknownCommandError {}) => {
+                    println!("Unknown command `{}`.", arg);
+                    println!("Available commands: ? help query load typecheck");
+                }
+            }
+        } else {
+            println!("Available commands: help query load typecheck exit");
+        }
     }
 }
 
+/// Rendering of the results of a metadata query.
 pub mod query_print {
     use crate::identifier::Ident;
     use crate::label::Label;
     use crate::term::{MergePriority, MetaValue, Term};
 
+    /// A query printer. The implementation may differ depending on the activation of markdown
+    /// support.
     pub trait QueryPrinter {
+        /// Print a metadata attribute.
         fn print_metadata(&self, attr: &str, value: &str);
+        /// Print the documentation attribute.
         fn print_doc(&self, content: &str);
         /// Print the list of fields of a record.
         fn print_fields<'a, I>(&self, fields: I)
@@ -320,7 +454,7 @@ pub mod query_print {
 
     pub struct SimpleRenderer {}
 
-    /// Helper to render the result of the `query` sub-command with markdown support.
+    /// Helper to render the result of the `query` sub-command without markdown support.
     impl QueryPrinter for SimpleRenderer {
         fn print_metadata(&self, attr: &str, value: &str) {
             println!("* {}: {}", attr, value);
@@ -406,7 +540,7 @@ pub mod query_print {
         }
     }
 
-    /// Which attributes are requested.
+    /// Represent which metadata attributes are requested.
     #[derive(Clone, Copy, Eq, PartialEq)]
     pub struct Attributes {
         pub doc: bool,
@@ -415,6 +549,7 @@ pub mod query_print {
         pub value: bool,
     }
 
+    // By default, show all available metadata.
     impl Default for Attributes {
         fn default() -> Self {
             Attributes {
@@ -426,6 +561,8 @@ pub mod query_print {
         }
     }
 
+    /// Print the result of a query, which is a "weakly" evaluated term (see
+    /// [`eval_meta`](../../eval/fn.eval_meta.html) and [`query`](../../program/fn.query.html)).
     pub fn print_query_result(term: &Term, selected_attrs: Attributes) {
         #[cfg(feature = "markdown")]
         let renderer = MarkdownRenderer::new();
@@ -436,11 +573,7 @@ pub mod query_print {
         print_query_result_(term, selected_attrs, &renderer)
     }
 
-    pub fn print_query_result_<R: QueryPrinter>(
-        term: &Term,
-        selected_attrs: Attributes,
-        renderer: &R,
-    ) {
+    fn print_query_result_<R: QueryPrinter>(term: &Term, selected_attrs: Attributes, renderer: &R) {
         // Print a list the fields of a term if it is a record, or do nothing otherwise.
         fn print_fields<R: QueryPrinter>(renderer: &R, t: &Term) {
             println!();

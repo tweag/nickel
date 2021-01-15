@@ -4,13 +4,13 @@
 //! [codespan](https://crates.io/crates/codespan-reporting) diagnostic from them.
 use crate::eval::{CallStack, StackElem};
 use crate::identifier::Ident;
-use crate::label;
 use crate::label::ty_path;
 use crate::parser::lexer::LexicalError;
 use crate::parser::utils::mk_span;
 use crate::position::RawSpan;
 use crate::term::RichTerm;
 use crate::types::Types;
+use crate::{label, repl};
 use codespan::{FileId, Files};
 use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 use std::fmt::Write;
@@ -228,7 +228,7 @@ pub struct IOError(pub String);
 pub enum REPLError {
     UnknownCommand(String),
     MissingArg {
-        cmd: String,
+        cmd: repl::command::CommandType,
         msg_opt: Option<String>,
     },
 }
@@ -1231,7 +1231,7 @@ impl ToDiagnostic<FileId> for REPLError {
     ) -> Vec<Diagnostic<FileId>> {
         match self {
             REPLError::UnknownCommand(s) => vec![Diagnostic::error()
-                .with_message(format!("unkown command {}", s))
+                .with_message(format!("unkown command `{}`", s))
                 .with_notes(vec![String::from(
                     "Type :? or :help for a list of available commands.",
                 )])],
