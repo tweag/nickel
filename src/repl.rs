@@ -286,7 +286,7 @@ pub mod rustyline_frontend {
     use ansi_term::{Colour, Style};
     use rustyline::config::OutputStreamType;
     use rustyline::error::ReadlineError;
-    use rustyline::{Config, EditMode, Editor};
+    use rustyline::{Config, EditMode, Editor, KeyEvent};
 
     /// Error occurring when initializing the REPL.
     pub enum InitError {
@@ -316,6 +316,7 @@ pub mod rustyline_frontend {
 
         let config = config();
         let mut editor: Editor<()> = Editor::with_config(config);
+        editor.bind_sequence(KeyEvent::ctrl('d'), rustyline::Cmd::AcceptLine);
         let prompt = Style::new().fg(Colour::Green).paint("> ").to_string();
 
         loop {
@@ -326,6 +327,7 @@ pub mod rustyline_frontend {
             }
 
             match line {
+                Ok(line) if line.is_empty() => (),
                 Ok(line) if line.starts_with(":") => {
                     let cmd = line.chars().skip(1).collect::<String>().parse::<Command>();
                     let result = match cmd {
