@@ -395,6 +395,16 @@ impl<'a> Envs<'a> {
         }
     }
 
+    /// Bind one term in a typing environment.
+    pub fn env_add(env: &mut Environment, id: Ident, rt: &RichTerm) {
+        env.insert(
+            id,
+            apparent_type(rt.as_ref())
+                .map(to_typewrapper)
+                .unwrap_or_else(mk_typewrapper::dynamic),
+        );
+    }
+
     /// Fetch a binding from the environment. Try first in the local environment, and then in the
     /// global.
     pub fn get(&self, ident: &Ident) -> Option<TypeWrapper> {

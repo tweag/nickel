@@ -168,6 +168,15 @@ pub fn env_add_term(env: &mut Environment, rt: RichTerm) -> Result<(), EnvBuildE
     }
 }
 
+/// Bind a closure in an environment.
+pub fn env_add(env: &mut Environment, id: Ident, rt: RichTerm, local_env: Environment) {
+    let closure = Closure {
+        body: rt,
+        env: local_env,
+    };
+    env.insert(id, (Rc::new(RefCell::new(closure)), IdentKind::Let()));
+}
+
 /// Determine if a thunk is worth being put on the stack for future update.
 ///
 /// Typically, WHNFs and enriched values will not be evaluated to a simpler expression and are not
