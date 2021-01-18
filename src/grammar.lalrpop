@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use either::*;
 use codespan::FileId;
 
-grammar<'input>(src_id: FileId);
+grammar<'input>(src_id: FileId, );
 
 SpTerm<Rule>: RichTerm =
     <l: @L> <t: Rule> <r: @R> => match t {
@@ -34,6 +34,20 @@ pub Term: RichTerm = {
     SpTerm<RichTerm>,
     SpTerm<TypedTerm>,
 };
+
+pub ToplevelLet: (Ident, RichTerm) = {
+    "let" <id:Ident> <ann: TypeAnnot?> "=" <t1: Term> => {
+        let t1 = if let Some((l, ty, r)) = ann {
+            let pos = t1.pos.clone();
+            RichTerm::new(Term::Promise(ty.clone(), mk_label(ty, src_id, l, r), t1), pos)
+        }
+        else {
+            t1
+        };
+
+        (id, t1)
+    },
+}
 
 TypedTerm: RichTerm = {
     <t: SpTerm<RichTerm>> <ann: TypeAnnot> => {
