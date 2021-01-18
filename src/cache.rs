@@ -251,19 +251,25 @@ impl Cache {
         }
     }
 
-    /// Parse a source file and populate the corresponding entry in the cache, or do nothing if the
+    /// Parse a source and populate the corresponding entry in the cache, or do nothing if the
     /// entry has already been parsed.
     pub fn parse(&mut self, file_id: FileId) -> Result<CacheOp<()>, ParseError> {
         if self.terms.contains_key(&file_id) {
             Ok(CacheOp::Cached(()))
         } else {
-            let buf = self.files.source(file_id).clone();
-            let t = parser::grammar::TermParser::new()
-                .parse(file_id, Lexer::new(&buf))
-                .map_err(|err| ParseError::from_lalrpop(err, file_id))?;
-            self.terms.insert(file_id, (t, EntryState::Parsed));
+            self.terms
+                .insert(file_id, (self.parse_nocache(file_id)?, EntryState::Parsed));
             Ok(CacheOp::Done(()))
         }
+    }
+
+    /// Parse a source without querying nor populating the cache.
+    pub fn parse_nocache(&self, file_id: FileId) -> Result<RichTerm, ParseError> {
+        let buf = self.files.source(file_id);
+        let t = parser::grammar::TermParser::new()
+            .parse(file_id, Lexer::new(&buf))
+            .map_err(|err| ParseError::from_lalrpop(err, file_id))?;
+        Ok(t)
     }
 
     /// Typecheck an entry of the cache and update its state accordingly, or do nothing if the
@@ -284,32 +290,6 @@ impl Cache {
             Ok(CacheOp::Cached(()))
         } else if *state == EntryState::Parsed {
             type_check(t, global_env, self)?;
-            self.update_state(file_id, EntryState::Typechecked);
-            Ok(CacheOp::Done(()))
-        } else {
-            panic!()
-        }
-    }
-
-    /// Typecheck an entry of the cache in a given typing environment, and update its state
-    /// accordingly, or do nothing if the entry has already been typechecked. Require that the
-    /// corresponding source has been parsed.
-    pub fn typecheck_in_env(
-        &mut self,
-        file_id: FileId,
-        type_env: &typecheck::Environment,
-    ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
-        if !self.terms.contains_key(&file_id) {
-            return Err(CacheError::NotParsed);
-        }
-
-        // After self.parse(), the cache must be populated
-        let (t, state) = self.terms.get(&file_id).unwrap();
-
-        if *state > EntryState::Typechecked {
-            Ok(CacheOp::Cached(()))
-        } else if *state == EntryState::Parsed {
-            type_check_in_env(t, type_env, self)?;
             self.update_state(file_id, EntryState::Typechecked);
             Ok(CacheOp::Done(()))
         } else {
@@ -409,6 +389,19 @@ impl Cache {
         };
 
         Ok(result)
+    }
+
+    /// Same as [`prepare`](#method.prepare), but do not use nor populate the cache. Used for
+    /// inputs which are known to not be reused.
+    pub fn prepare_nocache(
+        &mut self,
+        file_id: FileId,
+        global_env: &eval::Environment,
+    ) -> Result<RichTerm, Error> {
+        let term = self.parse_nocache(file_id)?;
+        type_check(&term, global_env, self)?;
+        let term = transformations::transform(term, self)?;
+        Ok(term)
     }
 
     /// Retrieve the name of a source given an id.
