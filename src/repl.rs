@@ -9,9 +9,11 @@
 use crate::cache::Cache;
 use crate::error::REPLError;
 use crate::error::{Error, EvalError, IOError};
+use crate::identifier::Ident;
+use crate::parser::extended::{ExtendedParser, ExtendedTerm};
 use crate::term::{RichTerm, Term};
 use crate::types::{AbsType, Types};
-use crate::{eval, typecheck};
+use crate::{eval, transformations, typecheck};
 use simple_counter::*;
 use std::ffi::{OsStr, OsString};
 use std::result::Result;
@@ -19,10 +21,21 @@ use std::str::FromStr;
 
 generate_counter!(InputNameCounter, usize);
 
+pub enum EvalResult {
+    Evaluated(Term),
+    Bound(Ident),
+}
+
+impl From<Term> for EvalResult {
+    fn from(t: Term) -> Self {
+        EvalResult::Evaluated(t)
+    }
+}
+
 /// Interface of the REPL backend.
 pub trait REPL {
     /// Eval an expression.
-    fn eval(&mut self, exp: &str) -> Result<Term, Error>;
+    fn eval(&mut self, exp: &str) -> Result<EvalResult, Error>;
     /// Load the content of a file in the environment. Return the loaded record.
     fn load(&mut self, path: impl AsRef<OsStr>) -> Result<RichTerm, Error>;
     /// Typecheck an expression and return the apparent type.
@@ -37,6 +50,8 @@ pub trait REPL {
 pub struct REPLImpl {
     /// The underlying cache, storing input, loaded files and parsed terms.
     cache: Cache,
+    /// The parser.
+    parser: ExtendedParser,
     /// The eval environment. Contain the global environment with the stdlib, plus declarations and
     /// loadings made inside the REPL.
     eval_env: eval::Environment,
@@ -51,6 +66,7 @@ impl REPLImpl {
     pub fn new() -> Self {
         REPLImpl {
             cache: Cache::new(),
+            parser: ExtendedParser::new(),
             eval_env: eval::Environment::new(),
             type_env: typecheck::Environment::new(),
         }
@@ -68,19 +84,29 @@ impl REPLImpl {
 }
 
 impl REPL for REPLImpl {
-    fn eval(&mut self, exp: &str) -> Result<Term, Error> {
+    fn eval(&mut self, exp: &str) -> Result<EvalResult, Error> {
         let file_id = self.cache.add_string(
             format!("repl-input-{}", InputNameCounter::next()),
             String::from(exp),
         );
-        self.cache.prepare(file_id, &self.eval_env)?;
-        Ok(eval::eval(
-            self.cache.get_owned(file_id).expect(
-                "repl::eval(): term was prepared for evaluation but it is missing from the term cache",
-            ),
-            &self.eval_env,
-            &mut self.cache,
-        )?)
+
+        match self.parser.parse(file_id, exp)? {
+            ExtendedTerm::RichTerm(t) => {
+                typecheck::type_check_in_env(&t, &self.type_env, &self.cache)?;
+                let t = transformations::transform(t, &mut self.cache)?;
+                Ok(eval::eval(t, &self.eval_env, &mut self.cache)?.into())
+            }
+            ExtendedTerm::ToplevelLet(id, t) => {
+                typecheck::type_check_in_env(&t, &self.type_env, &self.cache)?;
+                typecheck::Envs::env_add(&mut self.type_env, id.clone(), &t);
+
+                let t = transformations::transform(t, &mut self.cache)?;
+
+                let local_env = self.eval_env.clone();
+                eval::env_add(&mut self.eval_env, id.clone(), t, local_env);
+                Ok(EvalResult::Bound(id))
+            }
+        }
     }
 
     fn load(&mut self, path: impl AsRef<OsStr>) -> Result<RichTerm, Error> {
@@ -114,12 +140,8 @@ impl REPL for REPLImpl {
 
     fn typecheck(&mut self, exp: &str) -> Result<Types, Error> {
         let file_id = self.cache.add_tmp("<repl-typecheck>", String::from(exp));
-        self.cache.parse(file_id)?;
-        self.cache
-            .typecheck_in_env(file_id, &self.type_env)
-            .map_err(|cache_err| {
-                cache_err.unwrap_error("repl: expected source to be parsed before typechecking")
-            })?;
+        let term = self.cache.parse_nocache(file_id)?;
+        typecheck::type_check_in_env(&term, &self.type_env, &self.cache)?;
 
         Ok(
             typecheck::apparent_type(self.cache.get_ref(file_id).unwrap().as_ref())
@@ -283,7 +305,7 @@ pub mod rustyline_frontend {
     use super::*;
 
     use crate::error::ParseError;
-    use crate::parser;
+    use crate::parser::extended::ExtendedParser;
     use crate::program;
     use ansi_term::{Colour, Style};
     use codespan::FileId;
@@ -304,7 +326,7 @@ pub mod rustyline_frontend {
     //reused. This overhead shouldn't be dramatic for the typical REPL input size, though.
     #[derive(Completer, Helper, Highlighter, Hinter)]
     pub struct MultilineValidator {
-        parser: parser::grammar::TermParser,
+        parser: ExtendedParser,
         /// Currently the parser expect a `FileId` to fill in location information. For this
         /// validator, this may be a dummy one, since for now location information is not used.
         file_id: FileId,
@@ -313,7 +335,7 @@ pub mod rustyline_frontend {
     impl MultilineValidator {
         fn new(file_id: FileId) -> Self {
             MultilineValidator {
-                parser: parser::grammar::TermParser::new(),
+                parser: ExtendedParser::new(),
                 file_id,
             }
         }
@@ -327,10 +349,7 @@ pub mod rustyline_frontend {
                 return Ok(ValidationResult::Valid(None));
             }
 
-            let result = self
-                .parser
-                .parse(self.file_id, parser::lexer::Lexer::new(ctx.input()))
-                .map_err(|err| ParseError::from_lalrpop(err, self.file_id));
+            let result = self.parser.parse(self.file_id, ctx.input());
 
             match result {
                 Err(ParseError::UnexpectedEOF(..)) | Err(ParseError::UnmatchedCloseBrace(..)) => {
@@ -421,7 +440,8 @@ pub mod rustyline_frontend {
                 }
                 Ok(line) => {
                     match repl.eval(&line) {
-                        Ok(t) => println!("{}\n", t.shallow_repr()),
+                        Ok(EvalResult::Evaluated(t)) => println!("{}\n", t.shallow_repr()),
+                        Ok(EvalResult::Bound(_)) => println!(),
                         Err(err) => program::report(repl.cache_mut(), err),
                     };
                 }
