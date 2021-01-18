@@ -215,7 +215,7 @@ pub mod command {
 
             match self {
                 Load => write!(f, "load"),
-                Typecheck => write!(f, "Typecheck"),
+                Typecheck => write!(f, "typecheck"),
                 Query => write!(f, "query"),
                 Help => write!(f, "help"),
                 Exit => write!(f, "exit"),
@@ -282,11 +282,64 @@ pub mod rustyline_frontend {
     use super::command::{Command, CommandType, UnknownCommandError};
     use super::*;
 
+    use crate::error::ParseError;
+    use crate::parser;
     use crate::program;
     use ansi_term::{Colour, Style};
+    use codespan::FileId;
     use rustyline::config::OutputStreamType;
     use rustyline::error::ReadlineError;
+    use rustyline::validate::{ValidationContext, ValidationResult, Validator};
     use rustyline::{Config, EditMode, Editor, KeyEvent};
+    use rustyline_derive::{Completer, Helper, Highlighter, Hinter};
+
+    /// Validator enabling multiline input.
+    ///
+    /// The behavior is the following:
+    /// - always end an input that starts with the command prefix `:`
+    /// - otherwise, try to parse the input. If an unexpected end of file error occurs, continue
+    ///   the input in a new line. Otherwise, accept and end the input.
+    //TODO: the validator throws away the result of parsing, or the parse error, when accepting an
+    //input, meaning that the work is done a second time by the REPL. Validator's work could be
+    //reused. This overhead shouldn't be dramatic for the typical REPL input size, though.
+    #[derive(Completer, Helper, Highlighter, Hinter)]
+    pub struct MultilineValidator {
+        parser: parser::grammar::TermParser,
+        /// Currently the parser expect a `FileId` to fill in location information. For this
+        /// validator, this may be a dummy one, since for now location information is not used.
+        file_id: FileId,
+    }
+
+    impl MultilineValidator {
+        fn new(file_id: FileId) -> Self {
+            MultilineValidator {
+                parser: parser::grammar::TermParser::new(),
+                file_id,
+            }
+        }
+    }
+
+    impl Validator for MultilineValidator {
+        fn validate(&self, ctx: &mut ValidationContext<'_>) -> rustyline::Result<ValidationResult> {
+            let input = ctx.input();
+
+            if input.starts_with(":") {
+                return Ok(ValidationResult::Valid(None));
+            }
+
+            let result = self
+                .parser
+                .parse(self.file_id, parser::lexer::Lexer::new(ctx.input()))
+                .map_err(|err| ParseError::from_lalrpop(err, self.file_id));
+
+            match result {
+                Err(ParseError::UnexpectedEOF(..)) | Err(ParseError::UnmatchedCloseBrace(..)) => {
+                    Ok(ValidationResult::Invalid(None))
+                }
+                _ => Ok(ValidationResult::Valid(None)),
+            }
+        }
+    }
 
     /// Error occurring when initializing the REPL.
     pub enum InitError {
@@ -306,6 +359,7 @@ pub mod rustyline_frontend {
     /// Main loop of the REPL.
     pub fn repl() -> Result<(), InitError> {
         let mut repl = REPLImpl::new();
+
         match repl.load_stdlib() {
             Ok(()) => (),
             Err(err) => {
@@ -314,10 +368,13 @@ pub mod rustyline_frontend {
             }
         }
 
-        let config = config();
-        let mut editor: Editor<()> = Editor::with_config(config);
+        let validator =
+            MultilineValidator::new(repl.cache_mut().add_tmp("<repl-input>", String::new()));
+
+        let mut editor = Editor::with_config(config());
+        editor.set_helper(Some(validator));
         editor.bind_sequence(KeyEvent::ctrl('d'), rustyline::Cmd::AcceptLine);
-        let prompt = Style::new().fg(Colour::Green).paint("> ").to_string();
+        let prompt = Style::new().fg(Colour::Green).paint("nickel> ").to_string();
 
         loop {
             let line = editor.readline(&prompt);
