@@ -2,11 +2,11 @@
   "nodes": {
     "import-cargo": {
       "locked": {
-        "lastModified": 1567183309,
-        "narHash": "sha256-wIXWOpX9rRjK5NDsL6WzuuBJl2R0kUCnlpZUrASykSc=",
+        "lastModified": 1594305518,
+        "narHash": "sha256-frtArgN42rSaEcEOYWg8sVPMUK+Zgch3c+wejcpX3DY=",
         "owner": "edolstra",
         "repo": "import-cargo",
-        "rev": "8abf7b3a8cbe1c8a885391f826357a74d382a422",
+        "rev": "25d40be4a73d40a2572e0cc233b83253554f06c5",
         "type": "github"
       },
       "original": {
@@ -17,11 +17,11 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1603528673,
-        "narHash": "sha256-iFrxF9GMes1jH7v8qjep1BsQYEq/admkEv/gJoqQsHo=",
+        "lastModified": 1610637514,
+        "narHash": "sha256-XZkdjPTTek6nc1N6jKiDybp7p3gdKL/NhS7g8nm7iKI=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "95d26c9a9f2a102e25cf318a648de44537f42e09",
+        "rev": "3d8fa5f72158b866804ab30f42f6937bf25e420f",
         "type": "github"
       },
       "original": {
@@ -30,10 +30,45 @@
         "type": "indirect"
       }
     },
+    "nixpkgs-mozilla": {
+      "inputs": {
+        "nixpkgs": "nixpkgs_2"
+      },
+      "locked": {
+        "lastModified": 1610699763,
+        "narHash": "sha256-Sf0A1KeMo461OEHQtoE8U7xLVBiLmwGwSZJiJDkq+38=",
+        "owner": "garbas",
+        "repo": "nixpkgs-mozilla",
+        "rev": "8305afa70d8b4ba45dae5b51e3b11122a44323cd",
+        "type": "github"
+      },
+      "original": {
+        "owner": "garbas",
+        "ref": "flake",
+        "repo": "nixpkgs-mozilla",
+        "type": "github"
+      }
+    },
+    "nixpkgs_2": {
+      "locked": {
+        "lastModified": 1610219734,
+        "narHash": "sha256-hCsGe2nDz+SX4uO+lj0qPVcSGZdt52R9Yk5MOYs4djw=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "257cbbcd3ab7bd96f5d24d50adc807de7c82e06d",
+        "type": "github"
+      },
+      "original": {
+        "id": "nixpkgs",
+        "ref": "nixos-unstable",
+        "type": "indirect"
+      }
+    },
     "root": {
       "inputs": {
         "import-cargo": "import-cargo",
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs",
+        "nixpkgs-mozilla": "nixpkgs-mozilla"
       }
     }
   },

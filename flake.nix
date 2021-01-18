@@ -1,58 +1,88 @@
 {
   inputs.nixpkgs.url = "nixpkgs/nixos-20.09";
+  inputs.nixpkgs-mozilla.url = "github:garbas/nixpkgs-mozilla/flake";
   inputs.import-cargo.url = "github:edolstra/import-cargo";
 
-  outputs = { self, nixpkgs, import-cargo }:
+  outputs = { self, nixpkgs, nixpkgs-mozilla, import-cargo }:
     let
 
-      systems = [ "x86_64-linux" "x86_64-darwin" ];
+      CHANNELS = readChannels [
+        "stable"
+        "beta"
+        "nightly"
+      ];
 
-      forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f system);
+      SYSTEMS = [
+        "x86_64-linux"
+        "x86_64-darwin"
+      ];
 
-      # Memoize nixpkgs for different platforms for efficiency.
-      nixpkgsFor = forAllSystems (system: import nixpkgs { inherit system; });
+      inherit (nixpkgs.lib) genAttrs substring;
 
-      buildPackage = { isShell, system }: with nixpkgsFor.${system}; stdenv.mkDerivation {
-        name = "nickel-${lib.substring 0 8 self.lastModifiedDate}-${self.shortRev or "dirty"}";
+      readChannel = c: builtins.fromTOML (builtins.readFile (./. + "/scripts/channel_${c}.toml"));
+      readChannels = cs: builtins.listToAttrs (map (c: { name = c; value = readChannel c; }) cs);
 
-        buildInputs =
-          [ rustc
-            cargo
-          ] ++ (if isShell then [
-            rustfmt
-            clippy
-          ] else [
-            (import-cargo.builders.importCargo {
-              lockFile = ./Cargo.lock;
-              inherit pkgs;
-            }).cargoHome
-          ]);
+      forAllSystems = f: genAttrs SYSTEMS (system: f system);
 
-        src = if isShell then null else self;
+      buildPackage = { system, isShell ? false, channel ? "stable" }:
+        let
+          pkgs = import nixpkgs {
+            inherit system;
+            overlays = [ nixpkgs-mozilla.overlays.rust ];
+          };
 
-        buildPhase = "cargo build --release --frozen --offline";
+          rust =
+            (pkgs.rustChannelOf CHANNELS."${channel}").rust.override({
+              # targets = [];
+               extensions = if isShell then [
+                "rust-src"
+                "rust-analysis"
+                "rustfmt-preview"
+                "clippy-preview"
+              ] else [];
 
-        doCheck = true;
+            });
 
-        checkPhase = "cargo test --release --frozen --offline";
+        in pkgs.stdenv.mkDerivation {
+          name = "nickel-${substring 0 8 self.lastModifiedDate}-${self.shortRev or "dirty"}";
 
-        installPhase =
-          ''
-            mkdir -p $out
-            cargo install --frozen --offline --path . --root $out
-            rm $out/.crates.toml
-          '';
-      };
+          buildInputs =
+            [ rust
+            ] ++ (if isShell then [] else [
+              (import-cargo.builders.importCargo {
+                lockFile = ./Cargo.lock;
+                inherit pkgs;
+              }).cargoHome
+            ]);
+
+          src = if isShell then null else self;
+
+          buildPhase = "cargo build --release --frozen --offline";
+
+          doCheck = true;
+
+          checkPhase = "cargo test --release --frozen --offline";
+
+          installPhase =
+            ''
+              mkdir -p $out
+              cargo install --frozen --offline --path . --root $out
+              rm $out/.crates.toml
+            '';
+        };
 
     in {
-
-      defaultPackage = forAllSystems (system: buildPackage { inherit system; isShell = false; });
-
-      checks = forAllSystems (system: {
-        build = self.defaultPackage.${system};
-      });
-
+      defaultPackage = forAllSystems (system: buildPackage { inherit system; });
       devShell = forAllSystems (system: buildPackage { inherit system; isShell = true; });
-
+      checks =
+        forAllSystems (system:
+          builtins.listToAttrs
+            (map (channel:
+              { name = "build_${channel}";
+                value = buildPackage { inherit system channel; };
+              }
+            )
+            (builtins.attrNames CHANNELS))
+        );
     };
 }
