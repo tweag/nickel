@@ -34,7 +34,13 @@
           rust =
             (pkgs.rustChannelOf CHANNELS."${channel}").rust.override({
               # targets = [];
-              # extentions = [];
+               extensions = if isShell then [
+                "rust-src"
+                "rust-analysis"
+                "rustfmt-preview"
+                "clippy-preview"
+              ] else [];
+
             });
 
         in pkgs.stdenv.mkDerivation {
