@@ -146,10 +146,7 @@ impl REPL for REPLImpl {
         let term = self.cache.parse_nocache(file_id)?;
         typecheck::type_check_in_env(&term, &self.type_env, &self.cache)?;
 
-        Ok(
-            typecheck::apparent_type(self.cache.get_ref(file_id).unwrap().as_ref())
-                .unwrap_or(Types(AbsType::Dyn())),
-        )
+        Ok(typecheck::apparent_type(term.as_ref()).unwrap_or(Types(AbsType::Dyn())))
     }
 
     fn query(&mut self, exp: &str) -> Result<Term, Error> {
