@@ -192,6 +192,8 @@ pub enum ParseError {
     UnmatchedCloseBrace(RawSpan),
     /// Invalid escape sequence in a string literal.
     InvalidEscapeSequence(RawSpan),
+    /// Invalid ASCII escape code in a string literal.
+    InvalidAsciiEscapeCode(RawSpan),
 }
 
 /// An error occurring during the resolution of an import.
@@ -292,6 +294,9 @@ impl ParseError {
             lalrpop_util::ParseError::User {
                 error: LexicalError::InvalidEscapeSequence(location),
             } => ParseError::InvalidEscapeSequence(mk_span(file_id, location, location + 1)),
+            lalrpop_util::ParseError::User {
+                error: LexicalError::InvalidAsciiEscapeCode(location),
+            } => ParseError::InvalidAsciiEscapeCode(mk_span(file_id, location, location + 2)),
         }
     }
 }
@@ -922,6 +927,9 @@ impl ToDiagnostic<FileId> for ParseError {
                 .with_labels(vec![primary(span)]),
             ParseError::InvalidEscapeSequence(span) => Diagnostic::error()
                 .with_message("Invalid escape sequence")
+                .with_labels(vec![primary(span)]),
+            ParseError::InvalidAsciiEscapeCode(span) => Diagnostic::error()
+                .with_message("Invalid ascii escape code")
                 .with_labels(vec![primary(span)]),
         };
 
