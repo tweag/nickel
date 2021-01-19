@@ -21,8 +21,11 @@ use std::str::FromStr;
 
 generate_counter!(InputNameCounter, usize);
 
+/// Result of the evaluation of an input.
 pub enum EvalResult {
+    /// The input has been evaluated to a term.
     Evaluated(Term),
+    /// The input was a toplevel let, which has been bound in the environment.
     Bound(Ident),
 }
 
@@ -34,11 +37,11 @@ impl From<Term> for EvalResult {
 
 /// Interface of the REPL backend.
 pub trait REPL {
-    /// Eval an expression.
+    /// Evaluate an expression, which can be either a standard term or a toplevel let-binding.
     fn eval(&mut self, exp: &str) -> Result<EvalResult, Error>;
     /// Load the content of a file in the environment. Return the loaded record.
     fn load(&mut self, path: impl AsRef<OsStr>) -> Result<RichTerm, Error>;
-    /// Typecheck an expression and return the apparent type.
+    /// Typecheck an expression and return its [apparent type](../typecheck/fn.apparent_type.html).
     fn typecheck(&mut self, exp: &str) -> Result<Types, Error>;
     /// Query the metadata of an expression.
     fn query(&mut self, exp: &str) -> Result<Term, Error>;
@@ -50,14 +53,14 @@ pub trait REPL {
 pub struct REPLImpl {
     /// The underlying cache, storing input, loaded files and parsed terms.
     cache: Cache,
-    /// The parser.
+    /// The parser, supporting toplevel let declaration.
     parser: ExtendedParser,
-    /// The eval environment. Contain the global environment with the stdlib, plus declarations and
-    /// loadings made inside the REPL.
+    /// The eval environment. Contain the global environment with the stdlib, plus toplevel
+    /// declarations and loadings made inside the REPL.
     eval_env: eval::Environment,
     /// The typing environment, counterpart of the eval environment for typechecking. Entries are
-    /// `TypeWrapper` for the ease of interacting with the typechecker, but there are not any
-    /// unification variable in it.
+    /// [`TypeWrapper`](../typecheck/enum.TypeWrapper.html) for the ease of interacting with the
+    /// typechecker, but there are not any unification variable in it.
     type_env: typecheck::Environment,
 }
 
@@ -189,6 +192,7 @@ pub mod command {
 
     pub struct UnknownCommandError {}
 
+    /// Check that an argument is non-empty, or return an error with the given optional message.
     fn require_arg(cmd: CommandType, arg: &str, msg_opt: Option<&str>) -> Result<(), REPLError> {
         if arg.trim().is_empty() {
             Err(REPLError::MissingArg {
@@ -218,6 +222,7 @@ pub mod command {
     }
 
     impl CommandType {
+        /// Return the aliases of a command.
         pub fn aliases(&self) -> Vec<String> {
             use CommandType::*;
 
