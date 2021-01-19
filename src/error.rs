@@ -265,6 +265,19 @@ impl From<std::io::Error> for IOError {
         IOError(error.to_string())
     }
 }
+
+/// Return an escaped version of a string. Used to sanitize strings before inclusion in error
+/// messages, which can contain ASCII code sequences, and in particular ANSI escape codes, that
+/// could alter Nickel's error messages.
+pub fn escape(s: &str) -> String {
+    String::from_utf8(
+        s.bytes()
+            .flat_map(std::ascii::escape_default)
+            .collect::<Vec<u8>>(),
+    )
+    .expect("escape(): converting from a string should give back a valid UTF8 string")
+}
+
 impl ParseError {
     pub fn from_lalrpop<T>(
         error: lalrpop_util::ParseError<usize, T, LexicalError>,
@@ -733,7 +746,7 @@ impl ToDiagnostic<FileId> for EvalError {
                 }
 
                 if !l.tag.is_empty() {
-                    write!(&mut msg, " [{}].", l.tag).unwrap();
+                    write!(&mut msg, " [{}].", &escape(&l.tag)).unwrap();
                 } else {
                     write!(&mut msg, ".").unwrap();
                 }
@@ -817,6 +830,7 @@ impl ToDiagnostic<FileId> for EvalError {
             EvalError::FieldMissing(field, op, t, span_opt) => {
                 let mut labels = Vec::new();
                 let mut notes = Vec::new();
+                let field = escape(field);
 
                 if let Some(span) = span_opt {
                     labels.push(
