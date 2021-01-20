@@ -7,10 +7,10 @@
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
 use crate::cache::Cache;
-use crate::error::REPLError;
 use crate::error::{Error, EvalError, IOError};
+use crate::error::{ParseError, REPLError};
 use crate::identifier::Ident;
-use crate::parser::extended::{ExtendedParser, ExtendedTerm};
+use crate::parser::{grammar, lexer, ExtendedTerm};
 use crate::term::{RichTerm, Term};
 use crate::types::{AbsType, Types};
 use crate::{eval, transformations, typecheck};
@@ -54,7 +54,7 @@ pub struct REPLImpl {
     /// The underlying cache, storing input, loaded files and parsed terms.
     cache: Cache,
     /// The parser, supporting toplevel let declaration.
-    parser: ExtendedParser,
+    parser: grammar::ExtendedTermParser,
     /// The eval environment. Contain the global environment with the stdlib, plus toplevel
     /// declarations and loadings made inside the REPL.
     eval_env: eval::Environment,
@@ -69,7 +69,7 @@ impl REPLImpl {
     pub fn new() -> Self {
         REPLImpl {
             cache: Cache::new(),
-            parser: ExtendedParser::new(),
+            parser: grammar::ExtendedTermParser::new(),
             eval_env: eval::Environment::new(),
             type_env: typecheck::Environment::new(),
         }
@@ -93,7 +93,11 @@ impl REPL for REPLImpl {
             String::from(exp),
         );
 
-        match self.parser.parse(file_id, exp)? {
+        match self
+            .parser
+            .parse(file_id, lexer::Lexer::new(exp))
+            .map_err(|err| ParseError::from_lalrpop(err, file_id))?
+        {
             ExtendedTerm::RichTerm(t) => {
                 typecheck::type_check_in_env(&t, &self.type_env, &self.cache)?;
                 let t = transformations::transform(t, &mut self.cache)?;
@@ -307,7 +311,6 @@ pub mod rustyline_frontend {
     use super::*;
 
     use crate::error::ParseError;
-    use crate::parser::extended::ExtendedParser;
     use crate::program;
     use ansi_term::{Colour, Style};
     use codespan::FileId;
@@ -328,7 +331,7 @@ pub mod rustyline_frontend {
     //reused. This overhead shouldn't be dramatic for the typical REPL input size, though.
     #[derive(Completer, Helper, Highlighter, Hinter)]
     pub struct MultilineValidator {
-        parser: ExtendedParser,
+        parser: grammar::ExtendedTermParser,
         /// Currently the parser expect a `FileId` to fill in location information. For this
         /// validator, this may be a dummy one, since for now location information is not used.
         file_id: FileId,
@@ -337,7 +340,7 @@ pub mod rustyline_frontend {
     impl MultilineValidator {
         fn new(file_id: FileId) -> Self {
             MultilineValidator {
-                parser: ExtendedParser::new(),
+                parser: grammar::ExtendedTermParser::new(),
                 file_id,
             }
         }
@@ -351,7 +354,10 @@ pub mod rustyline_frontend {
                 return Ok(ValidationResult::Valid(None));
             }
 
-            let result = self.parser.parse(self.file_id, ctx.input());
+            let result = self
+                .parser
+                .parse(self.file_id, lexer::Lexer::new(ctx.input()))
+                .map_err(|err| ParseError::from_lalrpop(err, self.file_id));
 
             match result {
                 Err(ParseError::UnexpectedEOF(..)) | Err(ParseError::UnmatchedCloseBrace(..)) => {

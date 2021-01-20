@@ -4,6 +4,7 @@ use crate::term::{BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
 use crate::term::make as mk_term;
 use crate::mk_app;
 use crate::types::{Types, AbsType};
+use super::ExtendedTerm;
 use super::utils::{StringKind, mk_span, mk_label, strip_indent, SwitchCase,
     strip_indent_doc};
 use std::ffi::OsString;
@@ -71,7 +72,7 @@ pub Term: RichTerm = {
     SpTerm<MetaTerm>,
 };
 
-pub ToplevelLet: (Ident, RichTerm) = {
+pub ExtendedTerm: ExtendedTerm = {
     "let" <id:Ident> <ann: TypeAnnot?> "=" <t1: Term> => {
         let t1 = if let Some((l, ty, r)) = ann {
             let pos = t1.pos.clone();
@@ -81,8 +82,9 @@ pub ToplevelLet: (Ident, RichTerm) = {
             t1
         };
 
-        (id, t1)
+        ExtendedTerm::ToplevelLet(id, t1)
     },
+    Term => ExtendedTerm::RichTerm(<>),
 }
 
 TypedTerm: RichTerm = {
