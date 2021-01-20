@@ -1,18 +1,19 @@
 use super::lexer::{Lexer, LexicalError, NormalToken, StringToken, Token};
+use crate::error::ParseError;
 use crate::identifier::Ident;
 use crate::term::make as mk_term;
 use crate::term::Term::*;
 use crate::term::{BinaryOp, RichTerm, StrChunk, UnaryOp};
 use crate::{mk_app, mk_switch};
+use assert_matches::assert_matches;
 use codespan::Files;
 
-fn parse(s: &str) -> Option<RichTerm> {
+fn parse(s: &str) -> Result<RichTerm, ParseError> {
     let id = Files::new().add("<test>", String::from(s));
 
     super::grammar::TermParser::new()
         .parse(id, Lexer::new(&s))
-        .map_err(|err| println!("{:?}", err))
-        .ok()
+        .map_err(|err| ParseError::from_lalrpop(err, id))
 }
 
 fn parse_without_pos(s: &str) -> RichTerm {
@@ -120,7 +121,7 @@ fn applications() {
 
 #[test]
 fn variables() {
-    assert!(parse("x1_x_").is_some());
+    assert!(parse("x1_x_").is_ok());
 }
 
 #[test]
@@ -130,8 +131,8 @@ fn functions() {
 
 #[test]
 fn lets() {
-    assert!(parse("let x1 = x2 in x3").is_some());
-    assert!(parse("x (let x1 = x2 in x3) y").is_some());
+    assert_matches!(parse("let x1 = x2 in x3"), Ok(..));
+    assert_matches!(parse("x (let x1 = x2 in x3) y"), Ok(..));
 }
 
 #[test]
@@ -255,7 +256,10 @@ fn string_lexing() {
 
 #[test]
 fn str_escape() {
-    assert!(parse("\"bad escape \\g\"").is_none());
+    assert_matches!(
+        parse("\"bad escape \\g\""),
+        Err(ParseError::InvalidEscapeSequence(..))
+    );
     assert_eq!(
         parse_without_pos(r#""str\twith\nescapes""#),
         mk_single_chunk("str\twith\nescapes"),
@@ -268,6 +272,46 @@ fn str_escape() {
         parse_without_pos("\"#a#b#c\\#{d#\""),
         mk_single_chunk("#a#b#c#{d#"),
     );
+}
+
+#[test]
+fn ascii_escape() {
+    assert_matches!(
+        parse("\"\\x[f\""),
+        Err(ParseError::InvalidEscapeSequence(..))
+    );
+    assert_matches!(
+        parse("\"\\x0\""),
+        Err(ParseError::InvalidEscapeSequence(..))
+    );
+    assert_matches!(
+        parse("\"\\x0z\""),
+        Err(ParseError::InvalidEscapeSequence(..))
+    );
+
+    assert_matches!(
+        parse("\"\\x80\""),
+        Err(ParseError::InvalidAsciiEscapeCode(..))
+    );
+    assert_matches!(
+        parse("\"\\xab\""),
+        Err(ParseError::InvalidAsciiEscapeCode(..))
+    );
+    assert_matches!(
+        parse("\"\\xFF\""),
+        Err(ParseError::InvalidAsciiEscapeCode(..))
+    );
+
+    assert_eq!(parse_without_pos("\"\\x00\""), mk_single_chunk("\x00"));
+    assert_eq!(parse_without_pos("\"\\x08\""), mk_single_chunk("\x08"));
+    assert_eq!(parse_without_pos("\"\\x7F\""), mk_single_chunk("\x7F"));
+
+    assert_eq!(parse_without_pos("m#\"\\x[f\"#m"), mk_single_chunk("\\x[f"));
+    assert_eq!(parse_without_pos("m#\"\\x0\"#m"), mk_single_chunk("\\x0"));
+    assert_eq!(parse_without_pos("m#\"\\x0z\"#m"), mk_single_chunk("\\x0z"));
+    assert_eq!(parse_without_pos("m#\"\\x00\"#m"), mk_single_chunk("\\x00"));
+    assert_eq!(parse_without_pos("m#\"\\x08\"#m"), mk_single_chunk("\\x08"));
+    assert_eq!(parse_without_pos("m#\"\\x7F\"#m"), mk_single_chunk("\\x7F"));
 }
 
 /// Regression test for [#230](https://github.com/tweag/nickel/issues/230).

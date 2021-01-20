@@ -36,3 +36,4 @@ minimad = { version = "0.6.7", optional = true }
 
 [dev-dependencies]
 pretty_assertions = "0.5.1"
+assert_matches = "1.4.0"

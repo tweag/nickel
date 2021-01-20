@@ -252,6 +252,9 @@ pub enum StringToken<'input> {
     HashBrace,
     #[regex("\\\\.", |lex| lex.slice().chars().nth(1))]
     EscapedChar(char),
+    // Repetition range `{2}` was not supported at the time of writing this regex.
+    #[regex("\\\\x[A-Fa-f0-9][A-Fa-f0-9]", |lex| &lex.slice()[2..4])]
+    EscapedAscii(&'input str),
 }
 
 /// The tokens in multiline string mode.
@@ -334,6 +337,8 @@ pub enum LexicalError {
     UnmatchedCloseBrace(usize),
     /// Invalid escape sequence in a string literal.
     InvalidEscapeSequence(usize),
+    /// Invalid escape ASCII code in a string literal.
+    InvalidAsciiEscapeCode(usize),
     /// Generic lexer error
     Generic(usize, usize),
 }
@@ -523,6 +528,13 @@ impl<'input> Iterator for Lexer<'input> {
                     return Some(Err(LexicalError::InvalidEscapeSequence(span.start + 1)));
                 }
             }
+            Some(Str(StringToken::EscapedAscii(code))) => {
+                if let Some(esc) = escape_ascii(code) {
+                    token = Some(Str(StringToken::EscapedChar(esc)));
+                } else {
+                    return Some(Err(LexicalError::InvalidAsciiEscapeCode(span.start + 2)));
+                }
+            }
             // If we encounter a `CandidateEnd` token with the right number of characters, this is
             // the end of a multiline string
             Some(MultiStr(MultiStringToken::CandidateEnd(s))) if s.len() == self.count => {
@@ -549,6 +561,7 @@ impl<'input> Iterator for Lexer<'input> {
     }
 }
 
+/// Generate the character corresponding to an escape char.
 fn escape_char(chr: char) -> Option<char> {
     match chr {
         '\'' => Some('\''),
@@ -559,5 +572,18 @@ fn escape_char(chr: char) -> Option<char> {
         'r' => Some('\r'),
         't' => Some('\t'),
         _ => None,
+    }
+}
+
+/// Generate the character corresponding to an ASCII escape sequence.
+///
+/// # Arguments
+/// - `code`: a string representation of the ASCII code in hexadecimal
+fn escape_ascii(code: &str) -> Option<char> {
+    let code = u8::from_str_radix(code, 16).ok()?;
+    if code > 0x7F {
+        None
+    } else {
+        Some(code as char)
     }
 }
