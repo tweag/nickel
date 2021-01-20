@@ -33,9 +33,11 @@
       fun pred l =>
         fold (fun x acc => if pred x then acc @ [x] else acc) l [];
 
+    //TODO: this enforces a List contract at each iteration. Get rid of it once
+    //parametrized list types lands and `fold` get a more precise type.
     flatten : List -> List =
       fun l =>
-        fold (fun l acc => Assume(List, l) @ acc) l [];
+        fold (fun l acc => (l | List) @ acc) l [];
 
     all : (Dyn -> Bool) -> List -> Bool =
       fun pred l =>
