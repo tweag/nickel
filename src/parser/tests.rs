@@ -305,6 +305,13 @@ fn ascii_escape() {
     assert_eq!(parse_without_pos("\"\\x00\""), mk_single_chunk("\x00"));
     assert_eq!(parse_without_pos("\"\\x08\""), mk_single_chunk("\x08"));
     assert_eq!(parse_without_pos("\"\\x7F\""), mk_single_chunk("\x7F"));
+
+    assert_eq!(parse_without_pos("m#\"\\x[f\"#m"), mk_single_chunk("\\x[f"));
+    assert_eq!(parse_without_pos("m#\"\\x0\"#m"), mk_single_chunk("\\x0"));
+    assert_eq!(parse_without_pos("m#\"\\x0z\"#m"), mk_single_chunk("\\x0z"));
+    assert_eq!(parse_without_pos("m#\"\\x00\"#m"), mk_single_chunk("\\x00"));
+    assert_eq!(parse_without_pos("m#\"\\x08\"#m"), mk_single_chunk("\\x08"));
+    assert_eq!(parse_without_pos("m#\"\\x7F\"#m"), mk_single_chunk("\\x7F"));
 }
 
 /// Regression test for [#230](https://github.com/tweag/nickel/issues/230).
