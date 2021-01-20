@@ -71,4 +71,9 @@
   empty_tail = fun acc l t =>
       if t == {} then acc
       else %blame% (%tag% "extra field `#{%head% (%fieldsOf% t)}`" l);
+
+  contracts = {
+    blame = fun l => %blame% l;
+    tag = fun msg l => %tag% msg l;
+  };
 }
