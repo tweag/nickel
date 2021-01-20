@@ -131,8 +131,8 @@ fn functions() {
 
 #[test]
 fn lets() {
-    assert!(parse("let x1 = x2 in x3").is_ok());
-    assert!(parse("x (let x1 = x2 in x3) y").is_ok());
+    assert_matches!(parse("let x1 = x2 in x3"), Ok(..));
+    assert_matches!(parse("x (let x1 = x2 in x3) y"), Ok(..));
 }
 
 #[test]
