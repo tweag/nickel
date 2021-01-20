@@ -29,10 +29,8 @@ use crate::term::{RichTerm, Term};
 use crate::{eval, parser};
 use codespan::FileId;
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
-use std::cell::RefCell;
 use std::ffi::OsString;
 use std::io::{self, Read};
-use std::rc::Rc;
 use std::result::Result;
 
 /// A Nickel program.
@@ -79,8 +77,10 @@ impl Program {
             .cache
             .mk_global_env()
             .expect("program::prepare_eval(): expected event to be ready");
-        self.cache.prepare(self.main_id, &global_env)?;
-        Ok((self.cache.get_owned(self.main_id).unwrap(), global_env))
+        Ok((
+            self.cache.prepare_nocache(self.main_id, &global_env)?,
+            global_env,
+        ))
     }
 
     /// Parse if necessary, typecheck and then evaluate the program.
@@ -95,40 +95,14 @@ impl Program {
         eval::eval_full(t, &global_env, &mut self.cache).map_err(|e| e.into())
     }
 
-    /// Same as `eval`, but evaluate the program until a metavalue is encountered.
-    ///
-    /// As opposed to normal evaluation, it does not try to unwrap the content of a metavalue: the
-    /// evaluation stops as soon as a metavalue is encountered.
-    pub fn eval_meta(&mut self, path: Option<String>) -> Result<Term, Error> {
-        let (t, global_env) = self.prepare_eval()?;
-
-        let t = if let Some(p) = path {
-            // Parsing `y.path`. We `seq` it to force the evaluation of the underlying value,
-            // which can be then showed to the user. The newline gives better messages in case of
-            // errors.
-            let source = format!("let x = (y.{})\n in %seq% x x", p);
-            let file_id = self.cache.add_string("<query path>", source.clone());
-            let new_term = parser::grammar::TermParser::new()
-                .parse(file_id, Lexer::new(&source))
-                .map_err(|err| ParseError::from_lalrpop(err, file_id))?;
-
-            // Substituting `y` for `t`
-            let mut env = eval::Environment::new();
-            let closure = eval::Closure {
-                body: t,
-                env: eval::Environment::new(),
-            };
-            env.insert(
-                Ident::from("y"),
-                (Rc::new(RefCell::new(closure)), eval::IdentKind::Let()),
-            );
-
-            eval::subst(new_term, &eval::Environment::new(), &env)
-        } else {
-            t
-        };
-
-        Ok(eval::eval_meta(t, &global_env, &mut self.cache)?)
+    /// Wrapper for [`query`](./fn.query.html).
+    pub fn query(&mut self, path: Option<String>) -> Result<Term, Error> {
+        self.cache.prepare_stdlib()?;
+        let global_env = self
+            .cache
+            .mk_global_env()
+            .expect("program::prepare_eval(): expected event to be ready");
+        query(&mut self.cache, self.main_id, &global_env, path)
     }
 
     /// Load, parse, and typecheck the program and the standard library, if not already done.
@@ -145,30 +119,96 @@ impl Program {
         Ok(())
     }
 
-    /// Pretty-print an error.
-    ///
-    /// This function is located here in `Program` because errors need a reference to `files` in
-    /// order to produce a diagnostic (see [`label_alt`](../error/fn.label_alt.html)).
+    /// Wrapper for [`report`](./fn.report.html).
     pub fn report<E>(&mut self, error: E)
     where
         E: ToDiagnostic<FileId>,
     {
-        let writer = StandardStream::stderr(ColorChoice::Always);
-        let config = codespan_reporting::term::Config::default();
-        let contracts_id = self.cache.id_of("<stdlib/contracts.ncl>");
-        let diagnostics = error.to_diagnostic(self.cache.files_mut(), contracts_id);
-
-        let result = diagnostics.iter().try_for_each(|d| {
-            codespan_reporting::term::emit(&mut writer.lock(), &config, self.cache.files_mut(), &d)
-        });
-        match result {
-            Ok(()) => (),
-            Err(err) => panic!(
-                "Program::report: could not print an error on stderr: {}",
-                err
-            ),
-        };
+        report(&mut self.cache, error)
     }
+}
+
+/// Query the metadata of a path of a term in the cache.
+///
+/// The path is a list of dot separated identifiers. For example, querying `{a = {b  = ..}}` with
+/// path `a.b` will return a "weak" (see below) evaluation of `b`.
+///
+/// "Weak" means that as opposed to normal evaluation, it does not try to unwrap the content of a
+/// metavalue: the evaluation stops as soon as a metavalue is encountered, although the potential
+/// term inside the meta-value is forced, so that the concrete value of the field may also be
+/// reported when present.
+//TODO: more robust implementation than `let x = (y.path) in %seq% x x`, with respect to e.g.
+//error message in case of syntax error or missing file.
+//TODO: also gather type information, such that `query a.b.c <<< '{ ... } : {a: {b: {c: Num}}}`
+//would additionally report `type: Num` for example.
+//TODO: not sure where this should go. It seems to embed too much logic to be in `Cache`, but is
+//common to both `Program` and `REPL`. Leaving it here as a stand-alone function for now
+pub fn query(
+    cache: &mut Cache,
+    file_id: FileId,
+    global_env: &eval::Environment,
+    path: Option<String>,
+) -> Result<Term, Error> {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    cache.prepare(file_id, global_env)?;
+
+    let t = if let Some(p) = path {
+        // Parsing `y.path`. We `seq` it to force the evaluation of the underlying value,
+        // which can be then showed to the user. The newline gives better messages in case of
+        // errors.
+        let source = format!("let x = (y.{})\n in %seq% x x", p);
+        let query_file_id = cache.add_tmp("<query>", source.clone());
+        let new_term = parser::grammar::TermParser::new()
+            .parse(query_file_id, Lexer::new(&source))
+            .map_err(|err| ParseError::from_lalrpop(err, query_file_id))?;
+
+        // Substituting `y` for `t`
+        let mut env = eval::Environment::new();
+        let closure = eval::Closure {
+            body: cache.get_owned(file_id).unwrap(),
+            env: eval::Environment::new(),
+        };
+        env.insert(
+            Ident::from("y"),
+            (Rc::new(RefCell::new(closure)), eval::IdentKind::Let()),
+        );
+
+        //TODO: why passing an empty global environment?
+        eval::subst(new_term, &eval::Environment::new(), &env)
+    } else {
+        cache.get_owned(file_id).unwrap()
+    };
+
+    Ok(eval::eval_meta(t, &global_env, cache)?)
+}
+
+/// Pretty-print an error.
+///
+/// This function is located here in `Program` because errors need a reference to `files` in
+/// order to produce a diagnostic (see [`label_alt`](../error/fn.label_alt.html)).
+//TODO: not sure where this should go. It seems to embed too much logic to be in `Cache`, but is
+//common to both `Program` and `REPL`. Leaving it here as a stand-alone function for now
+pub fn report<E>(cache: &mut Cache, error: E)
+where
+    E: ToDiagnostic<FileId>,
+{
+    let writer = StandardStream::stderr(ColorChoice::Always);
+    let config = codespan_reporting::term::Config::default();
+    let contracts_id = cache.id_of("<stdlib/contracts.ncl>");
+    let diagnostics = error.to_diagnostic(cache.files_mut(), contracts_id);
+
+    let result = diagnostics.iter().try_for_each(|d| {
+        codespan_reporting::term::emit(&mut writer.lock(), &config, cache.files_mut(), &d)
+    });
+    match result {
+        Ok(()) => (),
+        Err(err) => panic!(
+            "Program::report: could not print an error on stderr: {}",
+            err
+        ),
+    };
 }
 
 #[cfg(test)]

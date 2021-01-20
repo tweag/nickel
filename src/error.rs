@@ -4,13 +4,13 @@
 //! [codespan](https://crates.io/crates/codespan-reporting) diagnostic from them.
 use crate::eval::{CallStack, StackElem};
 use crate::identifier::Ident;
-use crate::label;
 use crate::label::ty_path;
 use crate::parser::lexer::LexicalError;
 use crate::parser::utils::mk_span;
 use crate::position::RawSpan;
 use crate::term::RichTerm;
 use crate::types::Types;
+use crate::{label, repl};
 use codespan::{FileId, Files};
 use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 use std::fmt::Write;
@@ -24,6 +24,7 @@ pub enum Error {
     ImportError(ImportError),
     SerializationError(SerializationError),
     IOError(IOError),
+    REPLError(REPLError),
 }
 
 /// An error occurring during evaluation.
@@ -224,6 +225,16 @@ pub enum SerializationError {
 #[derive(Debug, PartialEq, Clone)]
 pub struct IOError(pub String);
 
+/// An error occurring during an REPL session.
+#[derive(Debug, PartialEq, Clone)]
+pub enum REPLError {
+    UnknownCommand(String),
+    MissingArg {
+        cmd: repl::command::CommandType,
+        msg_opt: Option<String>,
+    },
+}
+
 impl From<EvalError> for Error {
     fn from(error: EvalError) -> Error {
         Error::EvalError(error)
@@ -276,6 +287,12 @@ pub fn escape(s: &str) -> String {
             .collect::<Vec<u8>>(),
     )
     .expect("escape(): converting from a string should give back a valid UTF8 string")
+}
+
+impl From<REPLError> for Error {
+    fn from(error: REPLError) -> Error {
+        Error::REPLError(error)
+    }
 }
 
 impl ParseError {
@@ -717,6 +734,7 @@ impl ToDiagnostic<FileId> for Error {
             Error::ImportError(err) => err.to_diagnostic(files, contract_id),
             Error::SerializationError(err) => err.to_diagnostic(files, contract_id),
             Error::IOError(err) => err.to_diagnostic(files, contract_id),
+            Error::REPLError(err) => err.to_diagnostic(files, contract_id),
         }
     }
 }
@@ -1222,6 +1240,36 @@ impl ToDiagnostic<FileId> for IOError {
     ) -> Vec<Diagnostic<FileId>> {
         match self {
             IOError(msg) => vec![Diagnostic::error().with_message(msg.clone())],
+        }
+    }
+}
+
+impl ToDiagnostic<FileId> for REPLError {
+    fn to_diagnostic(
+        &self,
+        _files: &mut Files<String>,
+        _contract_id: Option<FileId>,
+    ) -> Vec<Diagnostic<FileId>> {
+        match self {
+            REPLError::UnknownCommand(s) => vec![Diagnostic::error()
+                .with_message(format!("unkown command `{}`", s))
+                .with_notes(vec![String::from(
+                    "type `:?` or `:help` for a list of available commands.",
+                )])],
+            REPLError::MissingArg { cmd, msg_opt } => {
+                let mut notes = msg_opt
+                    .as_ref()
+                    .map(|msg| vec![msg.clone()])
+                    .unwrap_or(vec![]);
+                notes.push(format!(
+                    "type `:? {}` or `:help {}` for more information.",
+                    cmd, cmd
+                ));
+
+                vec![Diagnostic::error()
+                    .with_message(format!("{}: missing argument", cmd))
+                    .with_notes(notes)]
+            }
         }
     }
 }

@@ -226,19 +226,50 @@ impl Cache {
         id
     }
 
-    /// Parse a source file and populate the corresponding entry in the cache, or do nothing if the
+    /// Load a temporary source. If a source with the same name exists, clear the corresponding
+    /// term cache entry, and destructively update not only the name-id table entry, but also the
+    /// content of the source itself.
+    ///
+    /// Used to store intermediate short-lived generated snippets that needs to have a
+    /// corresponding `FileId`, such as when querying or reporting errors.
+    pub fn add_tmp(&mut self, source_name: impl Into<OsString>, s: String) -> FileId {
+        let source_name = source_name.into();
+        if let Some(file_id) = self.id_of(&source_name) {
+            self.files.update(file_id, s);
+            self.terms.remove(&file_id);
+            file_id
+        } else {
+            let file_id = self.files.add(source_name.clone(), s);
+            self.file_ids.insert(
+                source_name,
+                NameIdEntry {
+                    id: file_id,
+                    timestamp: None,
+                },
+            );
+            file_id
+        }
+    }
+
+    /// Parse a source and populate the corresponding entry in the cache, or do nothing if the
     /// entry has already been parsed.
     pub fn parse(&mut self, file_id: FileId) -> Result<CacheOp<()>, ParseError> {
         if self.terms.contains_key(&file_id) {
             Ok(CacheOp::Cached(()))
         } else {
-            let buf = self.files.source(file_id).clone();
-            let t = parser::grammar::TermParser::new()
-                .parse(file_id, Lexer::new(&buf))
-                .map_err(|err| ParseError::from_lalrpop(err, file_id))?;
-            self.terms.insert(file_id, (t, EntryState::Parsed));
+            self.terms
+                .insert(file_id, (self.parse_nocache(file_id)?, EntryState::Parsed));
             Ok(CacheOp::Done(()))
         }
+    }
+
+    /// Parse a source without querying nor populating the cache.
+    pub fn parse_nocache(&self, file_id: FileId) -> Result<RichTerm, ParseError> {
+        let buf = self.files.source(file_id);
+        let t = parser::grammar::TermParser::new()
+            .parse(file_id, Lexer::new(&buf))
+            .map_err(|err| ParseError::from_lalrpop(err, file_id))?;
+        Ok(t)
     }
 
     /// Typecheck an entry of the cache and update its state accordingly, or do nothing if the
@@ -284,14 +315,23 @@ impl Cache {
 
     /// Apply program transformations to all the fields of a record.
     ///
-    /// Used to transform the standard library. If one just uses [`transform`](#method.transform),
-    /// the share normal form transformation would add let bindings to a record entry `{ ... }`,
+    /// Used to transform stdlib modules and other records loaded in the environment, when using
+    /// e.g. the `load` command of the REPL. If one just uses [`transform`](#method.transform), the
+    /// share normal form transformation would add let bindings to a record entry `{ ... }`,
     /// turning it into `let %0 = ... in ... in { ... }`. But stdlib entries are required to be
     /// syntactically records.
     ///
     /// Note that this requirement may be relaxed in the future by e.g. evaluating stdlib entries
     /// before adding their fields to the global environment.
-    fn transform_inner(&mut self, file_id: FileId) -> Result<CacheOp<()>, CacheError<ImportError>> {
+    ///
+    /// # Preconditions
+    ///
+    /// - the entry must syntactically be a record (`Record` or `RecRecord`). Otherwise, this
+    /// function panic
+    pub fn transform_inner(
+        &mut self,
+        file_id: FileId,
+    ) -> Result<CacheOp<()>, CacheError<ImportError>> {
         match self.entry_state(file_id) {
             Some(EntryState::Transformed) => Ok(CacheOp::Cached(())),
             Some(_) => {
@@ -349,6 +389,19 @@ impl Cache {
         };
 
         Ok(result)
+    }
+
+    /// Same as [`prepare`](#method.prepare), but do not use nor populate the cache. Used for
+    /// inputs which are known to not be reused.
+    pub fn prepare_nocache(
+        &mut self,
+        file_id: FileId,
+        global_env: &eval::Environment,
+    ) -> Result<RichTerm, Error> {
+        let term = self.parse_nocache(file_id)?;
+        type_check(&term, global_env, self)?;
+        let term = transformations::transform(term, self)?;
+        Ok(term)
     }
 
     /// Retrieve the name of a source given an id.
@@ -410,6 +463,11 @@ impl Cache {
     /// Retrieve a fresh clone of a cached term.
     pub fn get_owned(&self, file_id: FileId) -> Option<RichTerm> {
         self.terms.get(&file_id).map(|(t, _)| t.clone())
+    }
+
+    /// Retrieve a reference to a cached term.
+    pub fn get_ref(&self, file_id: FileId) -> Option<&RichTerm> {
+        self.terms.get(&file_id).map(|(t, _)| t)
     }
 
     /// Load and parse the standard library in the cache.
@@ -477,8 +535,8 @@ impl Cache {
             .as_ref()
             .cloned()
             .expect("cache::prepare_stdlib(): stdlib has been loaded but stdlib_ids is None")
-            .iter()
-            .try_for_each(|file_id| self.transform_inner(*file_id).map(|_| ()))
+            .into_iter()
+            .try_for_each(|file_id| self.transform_inner(file_id).map(|_| ()))
             .map_err(|cache_err| {
                 cache_err
                     .unwrap_error("cache::prepare_stdlib(): expected standard library to be parsed")
