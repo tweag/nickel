@@ -175,6 +175,18 @@ impl From<RichTerm> for MetaValue {
         }
     }
 }
+
+impl MetaValue {
+    pub fn new() -> Self {
+        MetaValue {
+            doc: None,
+            contract: None,
+            priority: Default::default(),
+            value: None,
+        }
+    }
+}
+
 /// A chunk of a string with interpolated expressions inside. Same as `Either<String,
 /// RichTerm>` but with explicit constructor names.
 #[derive(Debug, PartialEq, Clone)]
