@@ -209,6 +209,12 @@ pub enum NormalToken<'input> {
     Map,
     #[token("%elemAt%")]
     ElemAt,
+    #[token("merge")]
+    Merge,
+    #[token("default")]
+    Default,
+    #[token("doc")]
+    Doc,
 
     #[token("{")]
     LBrace,
