@@ -58,10 +58,10 @@ pub mod ty_path {
         p.iter().all(|elt| *elt == Elem::Codomain)
     }
 
-    /// Determine if the path has only `Field` components.
-    pub fn is_only_field(p: &Path) -> bool {
-        p.iter().all(|elt| match *elt {
-            Elem::Field(_) => true,
+    /// Determine if the path is not higher order, that is, if it doesn't contain any arrow.
+    pub fn has_no_arrow(p: &Path) -> bool {
+        !p.iter().any(|elt| match *elt {
+            Elem::Domain | Elem::Codomain => true,
             _ => false,
         })
     }
