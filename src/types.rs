@@ -322,7 +322,7 @@ impl Types {
     /// Determine if a type is an atom, that is a either an atom or a type delimited by specific
     /// markers (such as a row type). Used in formatting to decide if parentheses need to be
     /// inserted during pretty pretting.
-    fn fmt_is_atom(&self) -> bool {
+    pub fn fmt_is_atom(&self) -> bool {
         use AbsType::*;
 
         match &self.0 {
