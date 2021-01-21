@@ -1503,7 +1503,7 @@ pub fn get_uop_type(state: &mut State, op: &UnaryOp) -> Result<TypeWrapper, Type
         // forall a. List a -> a
         UnaryOp::ListHead() => {
             let ty_elt = TypeWrapper::Ptr(new_var(state.table));
-            mk_tyw_arrow!(mk_typewrapper::list(ty_elt), AbsType::Dyn())
+            mk_tyw_arrow!(mk_typewrapper::list(ty_elt.clone()), ty_elt)
         }
         // forall a. List a -> List a
         UnaryOp::ListTail() => {
@@ -2149,27 +2149,28 @@ mod tests {
     #[test]
     fn simple_list() {
         parse_and_typecheck("[1, \"2\", false]").unwrap();
-        parse_and_typecheck("[\"a\", 3, true] : List").unwrap();
-        parse_and_typecheck("[(fun x => x : forall a. a -> a), true] : List").unwrap();
-        parse_and_typecheck("fun x => [x] : forall a. a -> List").unwrap();
+        //TODO: reintroduce this test once there's a corresponding special case in the typechecker
+        // parse_and_typecheck("[1, \"2\", false] : List").unwrap();
+        parse_and_typecheck("[\"a\", \"b\", \"c\"] : List Str").unwrap();
+        parse_and_typecheck("[1, 2, 3] : List Num").unwrap();
+        parse_and_typecheck("fun x => [x] : forall a. a -> List a").unwrap();
 
-        parse_and_typecheck("[1, (\"2\" : Num), false]").unwrap_err();
+        parse_and_typecheck("[1, 2, false] : List Num").unwrap_err();
         parse_and_typecheck("[(1 : String), true, \"b\"] : List").unwrap_err();
-        parse_and_typecheck("[1, 2, \"3\"] : Num").unwrap_err();
+        parse_and_typecheck("[1, 2, \"3\"] : List Str").unwrap_err();
     }
 
     #[test]
     fn lists_operations() {
-        parse_and_typecheck("fun l => %tail% l : List -> List").unwrap();
-        parse_and_typecheck("fun l => %head% l : List -> Dyn").unwrap();
-        parse_and_typecheck(
-            "fun f l => %map% l f : forall a. (forall b. (a -> b) -> List -> List)",
-        )
-        .unwrap();
-        parse_and_typecheck("(fun l1 => fun l2 => l1 @ l2) : List -> List -> List").unwrap();
-        parse_and_typecheck("(fun i l => %elemAt% l i) : Num -> List -> Dyn ").unwrap();
+        parse_and_typecheck("fun l => %tail% l : forall a. List a -> List a").unwrap();
+        parse_and_typecheck("fun l => %head% l : forall a. List a -> a").unwrap();
+        parse_and_typecheck("fun f l => %map% l f : forall a b. (a -> b) -> List a -> List b")
+            .unwrap();
+        parse_and_typecheck("(fun l1 => fun l2 => l1 @ l2) : forall a. List a -> List a -> List a")
+            .unwrap();
+        parse_and_typecheck("(fun i l => %elemAt% l i) : forall a. Num -> List a -> a").unwrap();
 
-        parse_and_typecheck("(fun l => %head% l) : forall a. (List -> a)").unwrap_err();
+        parse_and_typecheck("(fun l => %head% l) : forall a b. (List a -> b)").unwrap_err();
         parse_and_typecheck(
             "(fun f l => %elemAt% (%map% l f) 0) : forall a. (forall b. (a -> b) -> List -> b)",
         )
