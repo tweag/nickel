@@ -2265,4 +2265,13 @@ mod tests {
         parse_and_typecheck("Assume({a: Num | Dyn}, {a = 1}) : {a: Num}").unwrap_err();
         parse_and_typecheck("{a = 1} : {a: Num | Dyn}").unwrap_err();
     }
+
+    /// Regression test following [#270](https://github.com/tweag/nickel/issues/270). Check that
+    /// uniyfing a variable with itself doesn't introduce a loop. The failure of this test result
+    /// in a stack overflow.
+    #[test]
+    fn unification_graph_cycle() {
+        parse_and_typecheck("{gen_ = fun acc x => if x == 0 then acc else gen_ (acc @ [x]) (x - 1)}.gen_ : List -> Num -> List").unwrap();
+        parse_and_typecheck("{f = fun x => f x}.f : forall a. a -> a").unwrap();
+    }
 }
