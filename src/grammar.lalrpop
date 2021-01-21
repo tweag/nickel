@@ -517,7 +517,6 @@ BaseType: Types = {
     "Num" => Types(AbsType::Num()),
     "Bool" => Types(AbsType::Bool()),
     "Str" => Types(AbsType::Str()),
-    "List" => Types(AbsType::List()),
 };
 
 RowTail: Types = {
@@ -527,6 +526,10 @@ RowTail: Types = {
 
 subType : Types = {
     <BaseType>,
+    "List" <ty: subType?> => {
+        let ty = Box::new(ty.unwrap_or(Types(AbsType::Dyn())));
+        Types(AbsType::List(ty))
+    },
     <Ident> => Types(AbsType::Var(<>)),
     "#" <SpTerm<Atom>> => Types(AbsType::Flat(<>)),
     "(" <Types> ")" => <>,
