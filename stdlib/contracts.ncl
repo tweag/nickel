@@ -7,7 +7,7 @@
 
   string = fun l t => if %isStr% t then t else %blame% l;
 
-  list = fun l t => if %isList% t then t else %blame% l;
+  list = fun elt l t => if %isList% t then %map% t (elt l) else %blame% l;
 
   func = fun s t l e =>
       if %isFun% e then

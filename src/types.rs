@@ -179,10 +179,9 @@ impl Types {
             AbsType::Num() => contracts::num(),
             AbsType::Bool() => contracts::bool(),
             AbsType::Str() => contracts::string(),
-            //FIXME: implement homogeneuous list contract
             //TODO: optimization: have a specialized contract for `List Dyn`, to avoid mapping an
             //always succesful contract on each element.
-            AbsType::List(_) => contracts::list(),
+            AbsType::List(ref ty) => mk_app!(contracts::list(), ty.contract_open(h, pol, sy)),
             AbsType::Sym() => panic!("Are you trying to check a Sym at runtime?"),
             AbsType::Arrow(ref s, ref t) => mk_app!(
                 contracts::func(),
