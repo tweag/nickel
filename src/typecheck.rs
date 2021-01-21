@@ -1123,6 +1123,7 @@ pub fn unify_(
                 TypeWrapper::Concrete(ty2),
             )),
         },
+        (TypeWrapper::Ptr(p1), TypeWrapper::Ptr(p2)) if p1 == p2 => Ok(()),
         // The two following cases are not merged just to correctly distinguish between the
         // expected type (first component of the tuple) and the inferred type when reporting a row
         // unification error.
