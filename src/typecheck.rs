@@ -1458,7 +1458,7 @@ pub fn get_uop_type(state: &mut State, op: &UnaryOp) -> Result<TypeWrapper, Type
         // This should not happen, as Switch() is only produced during evaluation.
         UnaryOp::Switch(_) => panic!("cannot typecheck Switch()"),
         // Dyn -> Dyn
-        UnaryOp::ChangePolarity() | UnaryOp::GoDom() | UnaryOp::GoCodom() => {
+        UnaryOp::ChangePolarity() | UnaryOp::GoDom() | UnaryOp::GoCodom() | UnaryOp::GoList() => {
             mk_tyw_arrow!(AbsType::Dyn(), AbsType::Dyn())
         }
         // Sym -> Dyn -> Dyn
