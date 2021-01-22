@@ -217,6 +217,7 @@ mod tests {
     use crate::error::EvalError;
     use crate::identifier::Ident;
     use crate::parser::{grammar, lexer};
+    use assert_matches::assert_matches;
     use codespan::Files;
     use std::io::Cursor;
 
@@ -1280,6 +1281,48 @@ Assume(#alwaysTrue, false)
             "2"
         );
         eval_string("Assume({a: Num, b: Str | Dyn}, {a = 1})").unwrap_err();
+    }
+
+    #[test]
+    fn lists_contracts() {
+        use crate::label::ty_path::Elem;
+
+        assert_peq!("[1, \"2\", false] | List", "[1, \"2\", false]");
+        assert_peq!("[1, 2, 3] | List Num", "[1, 2, 3]");
+        assert_peq!(
+            "[\"1\", \"2\", \"false\"] | List Str",
+            "[\"1\", \"2\", \"false\"]"
+        );
+
+        assert_matches!(
+            eval_string("%deepSeq% ([1, \"a\"] | List Num) 0"),
+            Err(Error::EvalError(EvalError::BlameError(..)))
+        );
+        assert_matches!(
+            eval_string("1 | List"),
+            Err(Error::EvalError(EvalError::BlameError(..)))
+        );
+        assert_matches!(
+            eval_string("(fun x => x) | List"),
+            Err(Error::EvalError(EvalError::BlameError(..)))
+        );
+
+        // Check that error reporting correctly handle type paths with List elements inside
+        let err = eval_string("%deepSeq% ([{a = [1]}] | List {a: List Str}) false").unwrap_err();
+        match err {
+            Error::EvalError(EvalError::BlameError(l, _)) => {
+                assert_matches!(l.path.as_slice(), [Elem::List, Elem::Field(id), Elem::List] if &id.to_string() == "a")
+            }
+            err => panic!("expected blame error, got {:?}", err),
+        }
+
+        let err = eval_string("(%elemAt% (({foo = [(fun x => \"a\")]} | {foo: List (forall a. a -> Num)}).foo) 0) false").unwrap_err();
+        match err {
+            Error::EvalError(EvalError::BlameError(l, _)) => {
+                assert_matches!(l.path.as_slice(), [Elem::Field(id), Elem::List, Elem::Codomain] if &id.to_string() == "foo")
+            }
+            err => panic!("expected blame error, got {:?}", err),
+        }
     }
 
     #[test]

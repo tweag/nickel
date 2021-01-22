@@ -2149,7 +2149,7 @@ mod tests {
     #[test]
     fn simple_list() {
         parse_and_typecheck("[1, \"2\", false]").unwrap();
-        //TODO: reintroduce this test once there's a corresponding special case in the typechecker
+        //TODO: the type system may accept the following test at some point.
         // parse_and_typecheck("[1, \"2\", false] : List").unwrap();
         parse_and_typecheck("[\"a\", \"b\", \"c\"] : List Str").unwrap();
         parse_and_typecheck("[1, 2, 3] : List Num").unwrap();
