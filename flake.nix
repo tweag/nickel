@@ -6,21 +6,21 @@
   outputs = { self, nixpkgs, nixpkgs-mozilla, import-cargo }:
     let
 
-      CHANNELS = readChannels [
-        "stable"
-        "beta"
-        "nightly"
-      ];
-
       SYSTEMS = [
         "x86_64-linux"
         "x86_64-darwin"
       ];
 
+      RUST_CHANNELS = readRustChannels [
+        "stable"
+        "beta"
+        "nightly"
+      ];
+
       inherit (nixpkgs.lib) genAttrs substring;
 
-      readChannel = c: builtins.fromTOML (builtins.readFile (./. + "/scripts/channel_${c}.toml"));
-      readChannels = cs: builtins.listToAttrs (map (c: { name = c; value = readChannel c; }) cs);
+      readRustChannel = c: builtins.fromTOML (builtins.readFile (./. + "/scripts/channel_${c}.toml"));
+      readRustChannels = cs: builtins.listToAttrs (map (c: { name = c; value = readRustChannel c; }) cs);
 
       forAllSystems = f: genAttrs SYSTEMS (system: f system);
 
@@ -32,7 +32,7 @@
           };
 
           rust =
-            (pkgs.rustChannelOf CHANNELS."${channel}").rust.override({
+            (pkgs.rustChannelOf RUST_CHANNELS."${channel}").rust.override({
               # targets = [];
                extensions = if isShell then [
                 "rust-src"
