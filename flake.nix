@@ -82,7 +82,7 @@
                 value = buildPackage { inherit system channel; };
               }
             )
-            (builtins.attrNames CHANNELS))
+            (builtins.attrNames RUST_CHANNELS))
         );
     };
 }
