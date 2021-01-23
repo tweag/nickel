@@ -47,7 +47,7 @@ jobs:
 
     - name: Update `${{ matrix.channel }}` channel
       run: |
-        bash ./scripts/update_channels.sh ${{ matrix.channel }}
+        bash ./scripts/update_channel.sh ${{ matrix.channel }}
 
     - name: Build Nickel for `${{ matrix.channel }}` channel
       run: |
