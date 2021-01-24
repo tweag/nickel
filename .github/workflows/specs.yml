@@ -42,4 +42,4 @@ jobs:
 
     - name: Run Makam Spec
       run: |
-        nix build ./#check.x86_64-linux.specs
+        nix build ./#checks.x86_64-linux.specs

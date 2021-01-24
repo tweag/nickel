@@ -53,7 +53,7 @@ jobs:
 
     - name: Build Nickel against `${{ matrix.rust_channel }}` Rust channel
       run: |
-        nix build ./#check.x86_64-linux.nickel-against-${{ matrix.rust_channel }}-rust-channel
+        nix build ./#checks.x86_64-linux.nickel-against-${{ matrix.rust_channel }}-rust-channel
 
     # TODO:
     # - name: Commit `scripts/channel_${{ matrix.channel }}.toml`
