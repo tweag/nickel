@@ -49,7 +49,7 @@
             (import-cargo.builders.importCargo {
               lockFile = ./Cargo.lock;
               inherit pkgs;
-            }).cargoHome
+            }).cargoHome;
 
         in pkgs.stdenv.mkDerivation {
           name = "nickel-${version}";
