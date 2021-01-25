@@ -68,6 +68,8 @@ pub enum EvalError {
     ),
     /// An unbound identifier was referenced.
     UnboundIdentifier(Ident, Option<RawSpan>),
+    /// A thunk was entered during its own update.
+    InfiniteRecursion(CallStack, Option<RawSpan>),
     /// An unexpected internal error.
     InternalError(String, Option<RawSpan>),
     /// Errors occurring rarely enough to not deserve a dedicated variant.
@@ -979,6 +981,16 @@ impl ToDiagnostic<FileId> for EvalError {
                 .with_message("Unbound identifier")
                 .with_labels(vec![primary_alt(span_opt, ident.clone(), files)
                     .with_message("this identifier is unbound")])],
+            EvalError::InfiniteRecursion(_call_stack, span_opt) => {
+                let labels = span_opt
+                    .as_ref()
+                    .map(|span| vec![primary(span).with_message("recursive reference")])
+                    .unwrap_or_else(Vec::new);
+
+                vec![Diagnostic::error()
+                    .with_message("infinite recursion")
+                    .with_labels(labels)]
+            }
             EvalError::Other(msg, span_opt) => {
                 let labels = span_opt
                     .as_ref()
