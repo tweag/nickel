@@ -99,6 +99,16 @@ use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
+
+/// The state of a thunk.
+///
+/// When created, a thunk is flagged as pending. The first time it is accessed, a corresponding
+/// [`ThunkUpdateFrame`](./struct.ThunkUpdateFrame.html) is pushed on the stack and the thunk is
+/// flagged as black-hole. This prevents direct infinite recursions, as if a thunk is re-accessed
+/// while still in a black-hole state, we are sure that the evaluation will loop, and we can thus
+/// error out before overflowing the stack or looping forever. Finally, once the content of a thunk
+/// has been evaluated, the thunk is updated with the new value and flagged as evaluated, so that
+/// future accesses won't even push an update frame on the stack.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum ThunkState {
     Blackholed,
@@ -106,6 +116,7 @@ pub enum ThunkState {
     Evaluated,
 }
 
+/// The mutable data stored inside a thunk.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ThunkData {
     closure: Closure,
@@ -121,6 +132,11 @@ impl ThunkData {
     }
 }
 
+/// A thunk.
+///
+/// A thunk is a shared pending computation. It is the primary device for the implementation of
+/// lazy evaluation. When evaluated for the first time, the content of a thunk is updated such that
+/// future uses won't recompute the same thing.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Thunk {
     data: Rc<RefCell<ThunkData>>,
@@ -139,6 +155,8 @@ impl Thunk {
         self.data.borrow().state
     }
 
+    /// Generate an update frame from this thunk and set the state to `Blackholed`. Return an
+    /// error if the thunk was already black-holed.
     pub fn to_update_frame(&mut self) -> Result<ThunkUpdateFrame, ()> {
         if self.data.borrow().state == ThunkState::Blackholed {
             return Err(());
@@ -152,6 +170,7 @@ impl Thunk {
         })
     }
 
+    /// Immutably borrow the inner closure. Panic if there is another active mutable borrow.
     pub fn borrow(&self) -> Ref<'_, Closure> {
         let (closure, _) = Ref::map_split(self.data.borrow(), |data| {
             let ThunkData {
@@ -164,6 +183,7 @@ impl Thunk {
         closure
     }
 
+    /// Mutably borrow the inner closure. Panic if there is any other active borrow.
     pub fn borrow_mut<'a>(&'a mut self) -> RefMut<'_, Closure> {
         let (closure, _) = RefMut::map_split(self.data.borrow_mut(), |data| {
             let ThunkData {
@@ -176,6 +196,7 @@ impl Thunk {
         closure
     }
 
+    /// Get an owned clone of the inner closure.
     pub fn get_owned(&self) -> Closure {
         self.data.borrow().closure.clone()
     }
@@ -184,6 +205,8 @@ impl Thunk {
         self.ident_kind
     }
 
+    /// Consume the thunk and return an owned closure. Avoid cloning if this thunk is the only
+    /// reference to the inner closure.
     pub fn into_closure(self) -> Closure {
         match Rc::try_unwrap(self.data) {
             Ok(inner) => inner.into_inner().closure,
@@ -192,6 +215,12 @@ impl Thunk {
     }
 }
 
+/// A thunk update frame.
+///
+/// A thunk update frame is put on the stack whenever a variable is entered, such that once this
+/// variable is evaluated, the corresponding thunk can be updated. It is similar to a thunk but it
+/// holds a weak reference to the inner closure, to avoid unnecessarily keeping the underlying
+/// closure alive.
 #[derive(Clone, Debug)]
 pub struct ThunkUpdateFrame {
     data: Weak<RefCell<ThunkData>>,
@@ -199,6 +228,12 @@ pub struct ThunkUpdateFrame {
 }
 
 impl ThunkUpdateFrame {
+    /// Update the corresponding thunk with a closure. Set the state to `Evaluated`
+    ///
+    /// # Return
+    ///
+    /// - `true` if the thunk was successfully updated
+    /// - `false` if the corresponding closure has been dropped since
     pub fn update(self, closure: Closure) -> bool {
         if let Some(data) = Weak::upgrade(&self.data) {
             *data.borrow_mut() = ThunkData {
@@ -211,18 +246,6 @@ impl ThunkUpdateFrame {
         }
     }
 }
-
-//
-//
-// pub trait AbsEnv<I, V>: Clone {
-//     fn new() -> Self;
-//     fn insert(&mut self, id: I, value: V);
-//     fn get<'a>(&'a self, id: &I) -> Option<&'a V>;
-//     fn remove(&mut self, id: &I) -> Option<V>;
-// }
-//
-// pub struct ConcreteEnv(HashMap<Ident, (Rc<RefCell<Closure>>, IdentKind)>);
-//
 
 /// An environment, which is a mapping from identifiers to closures.
 pub type Environment = HashMap<Ident, Thunk>;
