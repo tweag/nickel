@@ -314,7 +314,7 @@ pub mod rustyline_frontend {
     use rustyline::config::OutputStreamType;
     use rustyline::error::ReadlineError;
     use rustyline::validate::{ValidationContext, ValidationResult, Validator};
-    use rustyline::{Config, EditMode, Editor, KeyEvent};
+    use rustyline::{Config, EditMode, Editor};
     use rustyline_derive::{Completer, Helper, Highlighter, Hinter};
 
     /// Validator enabling multiline input.
@@ -347,7 +347,7 @@ pub mod rustyline_frontend {
         fn validate(&self, ctx: &mut ValidationContext<'_>) -> rustyline::Result<ValidationResult> {
             let input = ctx.input();
 
-            if input.starts_with(":") {
+            if input.starts_with(":") || input.trim().is_empty() {
                 return Ok(ValidationResult::Valid(None));
             }
 
@@ -394,7 +394,6 @@ pub mod rustyline_frontend {
 
         let mut editor = Editor::with_config(config());
         editor.set_helper(Some(validator));
-        editor.bind_sequence(KeyEvent::ctrl('d'), rustyline::Cmd::AcceptLine);
         let prompt = Style::new().fg(Colour::Green).paint("nickel> ").to_string();
 
         loop {
@@ -405,7 +404,7 @@ pub mod rustyline_frontend {
             }
 
             match line {
-                Ok(line) if line.is_empty() => (),
+                Ok(line) if line.trim().is_empty() => (),
                 Ok(line) if line.starts_with(":") => {
                     let cmd = line.chars().skip(1).collect::<String>().parse::<Command>();
                     let result = match cmd {
@@ -443,15 +442,15 @@ pub mod rustyline_frontend {
                 Ok(line) => {
                     match repl.eval(&line) {
                         Ok(EvalResult::Evaluated(t)) => println!("{}\n", t.shallow_repr()),
-                        Ok(EvalResult::Bound(_)) => println!(),
+                        Ok(EvalResult::Bound(_)) => (),
                         Err(err) => program::report(repl.cache_mut(), err),
                     };
                 }
-                Err(ReadlineError::Interrupted) => {
-                    println!("{}", Style::new().bold().paint("Interrupted. Exiting"));
+                Err(ReadlineError::Eof) => {
+                    println!("{}", Style::new().bold().paint("Ctrl+D. Exiting"));
                     break Ok(());
                 }
-                Err(ReadlineError::Eof) => (),
+                Err(ReadlineError::Interrupted) => (),
                 Err(err) => {
                     program::report(
                         repl.cache_mut(),
