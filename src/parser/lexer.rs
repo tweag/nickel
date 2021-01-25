@@ -181,6 +181,8 @@ pub enum NormalToken<'input> {
     GoCodom,
     #[token("%goField%")]
     GoField,
+    #[token("%goList%")]
+    GoList,
 
     #[token("%wrap%")]
     Wrap,

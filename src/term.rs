@@ -543,6 +543,10 @@ pub enum UnaryOp {
     ///
     /// See `GoDom`.
     GoCodom(),
+    /// Go to the list in the type path of a label.
+    ///
+    /// See `GoDom`.
+    GoList(),
 
     /// Wrap a term with a type tag (see `Wrapped` in [`Term`](enum.Term.html)).
     Wrap(),

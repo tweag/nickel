@@ -538,16 +538,15 @@ fn type_check_(
             type_check_(state, envs, strict, t, trg)
         }
         Term::List(terms) => {
-            unify(state, strict, ty, mk_typewrapper::list())
+            let ty_elts = TypeWrapper::Ptr(new_var(state.table));
+
+            unify(state, strict, ty, mk_typewrapper::list(ty_elts.clone()))
                 .map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
 
             terms
                 .iter()
                 .try_for_each(|t| -> Result<(), TypecheckError> {
-                    // Since lists elements are checked against the type `Dyn`, it does not make sense
-                    // to typecheck them even in strict mode, as this will always fails, unless they
-                    // are annotated with an `Assume(Dyn, ..)`, which will always succeed.
-                    type_check_(state, envs.clone(), false, t, mk_typewrapper::dynamic())
+                    type_check_(state, envs.clone(), strict, t, ty_elts.clone())
                 })
         }
         Term::Lbl(_) => {
@@ -822,7 +821,7 @@ impl TypeWrapper {
             Concrete(AbsType::DynRecord(def_ty)) => {
                 Concrete(AbsType::DynRecord(Box::new(def_ty.subst(id, to))))
             }
-            Concrete(AbsType::List()) => Concrete(AbsType::List()),
+            Concrete(AbsType::List(ty)) => Concrete(AbsType::List(Box::new(ty.subst(id, to)))),
             Constant(x) => Constant(x),
             Ptr(x) => Ptr(x),
         }
@@ -939,13 +938,19 @@ pub mod mk_typewrapper {
         TypeWrapper::Concrete(AbsType::DynRecord(Box::new(ty.into())))
     }
 
+    pub fn list<T>(ty: T) -> TypeWrapper
+    where
+        T: Into<TypeWrapper>,
+    {
+        TypeWrapper::Concrete(AbsType::List(Box::new(ty.into())))
+    }
+
     // dyn is a reserved keyword
     generate_builder!(dynamic, Dyn);
     generate_builder!(str, Str);
     generate_builder!(num, Num);
     generate_builder!(bool, Bool);
     generate_builder!(sym, Sym);
-    generate_builder!(list, List);
     generate_builder!(row_empty, RowEmpty);
 }
 
@@ -1042,7 +1047,7 @@ pub fn unify_(
             (AbsType::Num(), AbsType::Num()) => Ok(()),
             (AbsType::Bool(), AbsType::Bool()) => Ok(()),
             (AbsType::Str(), AbsType::Str()) => Ok(()),
-            (AbsType::List(), AbsType::List()) => Ok(()),
+            (AbsType::List(tyw1), AbsType::List(tyw2)) => unify_(state, *tyw1, *tyw2),
             (AbsType::Sym(), AbsType::Sym()) => Ok(()),
             (AbsType::Arrow(s1s, s1t), AbsType::Arrow(s2s, s2t)) => {
                 unify_(state, (*s1s).clone(), (*s2s).clone()).map_err(|err| {
@@ -1453,7 +1458,7 @@ pub fn get_uop_type(state: &mut State, op: &UnaryOp) -> Result<TypeWrapper, Type
         // This should not happen, as Switch() is only produced during evaluation.
         UnaryOp::Switch(_) => panic!("cannot typecheck Switch()"),
         // Dyn -> Dyn
-        UnaryOp::ChangePolarity() | UnaryOp::GoDom() | UnaryOp::GoCodom() => {
+        UnaryOp::ChangePolarity() | UnaryOp::GoDom() | UnaryOp::GoCodom() | UnaryOp::GoList() => {
             mk_tyw_arrow!(AbsType::Dyn(), AbsType::Dyn())
         }
         // Sym -> Dyn -> Dyn
@@ -1465,13 +1470,13 @@ pub fn get_uop_type(state: &mut State, op: &UnaryOp) -> Result<TypeWrapper, Type
 
             mk_tyw_arrow!(mk_tyw_record!((id.clone(), res.clone()); row), res)
         }
-        // forall a b. List -> (a -> b) -> List
+        // forall a b. List a -> (a -> b) -> List b
         UnaryOp::ListMap() => {
             let a = TypeWrapper::Ptr(new_var(state.table));
             let b = TypeWrapper::Ptr(new_var(state.table));
 
             let f_type = mk_tyw_arrow!(a.clone(), b.clone());
-            mk_tyw_arrow!(AbsType::List(), f_type, AbsType::List())
+            mk_tyw_arrow!(mk_typewrapper::list(a), f_type, mk_typewrapper::list(b))
         }
         // forall a b. { _ : a} -> (Str -> a -> b) -> { _ : b }
         UnaryOp::RecordMap() => {
@@ -1495,20 +1500,32 @@ pub fn get_uop_type(state: &mut State, op: &UnaryOp) -> Result<TypeWrapper, Type
 
             mk_tyw_arrow!(fst, snd.clone(), snd)
         }
-        // List -> Dyn
-        UnaryOp::ListHead() => mk_tyw_arrow!(AbsType::List(), AbsType::Dyn()),
-        // List -> List
-        UnaryOp::ListTail() => mk_tyw_arrow!(AbsType::List(), AbsType::List()),
-        // List -> Num
-        UnaryOp::ListLength() => mk_tyw_arrow!(AbsType::List(), AbsType::Num()),
+        // forall a. List a -> a
+        UnaryOp::ListHead() => {
+            let ty_elt = TypeWrapper::Ptr(new_var(state.table));
+            mk_tyw_arrow!(mk_typewrapper::list(ty_elt.clone()), ty_elt)
+        }
+        // forall a. List a -> List a
+        UnaryOp::ListTail() => {
+            let ty_elt = TypeWrapper::Ptr(new_var(state.table));
+            mk_tyw_arrow!(
+                mk_typewrapper::list(ty_elt.clone()),
+                mk_typewrapper::list(ty_elt)
+            )
+        }
+        // forall a. List a -> Num
+        UnaryOp::ListLength() => {
+            let ty_elt = TypeWrapper::Ptr(new_var(state.table));
+            mk_tyw_arrow!(mk_typewrapper::list(ty_elt), AbsType::Num())
+        }
         // This should not happen, as ChunksConcat() is only produced during evaluation.
         UnaryOp::ChunksConcat() => panic!("cannot type ChunksConcat()"),
         // BEFORE: forall rows. { rows } -> List
-        // Dyn -> List
+        // Dyn -> List Str
         UnaryOp::FieldsOf() => mk_tyw_arrow!(
             AbsType::Dyn(),
             //mk_tyw_record!(; TypeWrapper::Ptr(new_var(state.table))),
-            AbsType::List()
+            mk_typewrapper::list(AbsType::Str())
         ),
     })
 }
@@ -1575,10 +1592,17 @@ pub fn get_bop_type(state: &mut State, op: &BinaryOp) -> Result<TypeWrapper, Typ
         }
         // Str -> Dyn -> Bool
         BinaryOp::HasField() => mk_tyw_arrow!(AbsType::Str(), AbsType::Dyn(), AbsType::Bool()),
-        // List -> List -> List
-        BinaryOp::ListConcat() => mk_tyw_arrow!(AbsType::List(), AbsType::List(), AbsType::List()),
-        // List -> Num -> Dyn
-        BinaryOp::ListElemAt() => mk_tyw_arrow!(AbsType::List(), AbsType::Num(), AbsType::Dyn()),
+        // forall a. List a -> List a -> List a
+        BinaryOp::ListConcat() => {
+            let ty_elt = TypeWrapper::Ptr(new_var(state.table));
+            let ty_list = mk_typewrapper::list(ty_elt);
+            mk_tyw_arrow!(ty_list.clone(), ty_list.clone(), ty_list)
+        }
+        // forall a. List a -> Num -> a
+        BinaryOp::ListElemAt() => {
+            let ty_elt = TypeWrapper::Ptr(new_var(state.table));
+            mk_tyw_arrow!(mk_typewrapper::list(ty_elt.clone()), AbsType::Num(), ty_elt)
+        }
         // Dyn -> Dyn -> Dyn
         BinaryOp::Merge() => mk_tyw_arrow!(AbsType::Dyn(), AbsType::Dyn(), AbsType::Dyn()),
     })
@@ -1671,8 +1695,8 @@ fn constrain_var(state: &mut State, tyw: &TypeWrapper, p: usize) {
                 | AbsType::Sym()
                 | AbsType::Flat(_)
                 | AbsType::RowEmpty()
-                | AbsType::Var(_)
-                | AbsType::List() => (),
+                | AbsType::Var(_) => (),
+                AbsType::List(tyw) => constrain_var_(state, HashSet::new(), tyw.as_ref(), p),
                 AbsType::RowExtend(id, tyw, rest) => {
                     constr.insert(id.clone());
                     tyw.iter()
@@ -2125,27 +2149,28 @@ mod tests {
     #[test]
     fn simple_list() {
         parse_and_typecheck("[1, \"2\", false]").unwrap();
-        parse_and_typecheck("[\"a\", 3, true] : List").unwrap();
-        parse_and_typecheck("[(fun x => x : forall a. a -> a), true] : List").unwrap();
-        parse_and_typecheck("fun x => [x] : forall a. a -> List").unwrap();
+        //TODO: the type system may accept the following test at some point.
+        // parse_and_typecheck("[1, \"2\", false] : List").unwrap();
+        parse_and_typecheck("[\"a\", \"b\", \"c\"] : List Str").unwrap();
+        parse_and_typecheck("[1, 2, 3] : List Num").unwrap();
+        parse_and_typecheck("fun x => [x] : forall a. a -> List a").unwrap();
 
-        parse_and_typecheck("[1, (\"2\" : Num), false]").unwrap_err();
+        parse_and_typecheck("[1, 2, false] : List Num").unwrap_err();
         parse_and_typecheck("[(1 : String), true, \"b\"] : List").unwrap_err();
-        parse_and_typecheck("[1, 2, \"3\"] : Num").unwrap_err();
+        parse_and_typecheck("[1, 2, \"3\"] : List Str").unwrap_err();
     }
 
     #[test]
     fn lists_operations() {
-        parse_and_typecheck("fun l => %tail% l : List -> List").unwrap();
-        parse_and_typecheck("fun l => %head% l : List -> Dyn").unwrap();
-        parse_and_typecheck(
-            "fun f l => %map% l f : forall a. (forall b. (a -> b) -> List -> List)",
-        )
-        .unwrap();
-        parse_and_typecheck("(fun l1 => fun l2 => l1 @ l2) : List -> List -> List").unwrap();
-        parse_and_typecheck("(fun i l => %elemAt% l i) : Num -> List -> Dyn ").unwrap();
+        parse_and_typecheck("fun l => %tail% l : forall a. List a -> List a").unwrap();
+        parse_and_typecheck("fun l => %head% l : forall a. List a -> a").unwrap();
+        parse_and_typecheck("fun f l => %map% l f : forall a b. (a -> b) -> List a -> List b")
+            .unwrap();
+        parse_and_typecheck("(fun l1 => fun l2 => l1 @ l2) : forall a. List a -> List a -> List a")
+            .unwrap();
+        parse_and_typecheck("(fun i l => %elemAt% l i) : forall a. Num -> List a -> a").unwrap();
 
-        parse_and_typecheck("(fun l => %head% l) : forall a. (List -> a)").unwrap_err();
+        parse_and_typecheck("(fun l => %head% l) : forall a b. (List a -> b)").unwrap_err();
         parse_and_typecheck(
             "(fun f l => %elemAt% (%map% l f) 0) : forall a. (forall b. (a -> b) -> List -> b)",
         )

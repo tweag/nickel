@@ -48,6 +48,7 @@ pub mod ty_path {
         Domain,
         Codomain,
         Field(Ident),
+        List,
     }
 
     pub type Path = Vec<Elem>;
@@ -57,10 +58,10 @@ pub mod ty_path {
         p.iter().all(|elt| *elt == Elem::Codomain)
     }
 
-    /// Determine if the path has only `Field` components.
-    pub fn is_only_field(p: &Path) -> bool {
-        p.iter().all(|elt| match *elt {
-            Elem::Field(_) => true,
+    /// Determine if the path is not higher order, that is, if it doesn't contain any arrow.
+    pub fn has_no_arrow(p: &Path) -> bool {
+        !p.iter().any(|elt| match *elt {
+            Elem::Domain | Elem::Codomain => true,
             _ => false,
         })
     }
@@ -83,7 +84,7 @@ pub mod ty_path {
     {
         // peek() returns a reference, and hence keeps a mutable borrow of `path_it` which forbids
         // to call to next() in the same region. This is why we need to split the match in two
-        // different block.
+        // different blocks.
         let forall_offset = match (&ty.0, path_it.peek()) {
             (_, None) => {
                 let repr = format!("{}", ty);
@@ -166,6 +167,22 @@ pub mod ty_path {
                         _ => panic!(),
                     }
                 }
+            }
+            (AbsType::List(ty), Some(Elem::List)) if *ty.as_ref() == Types(AbsType::Dyn()) =>
+            // Dyn shouldn't be the target of any blame
+            {
+                panic!("span(): unexpected blame of a dyn contract inside a list")
+            }
+            (AbsType::List(ty), Some(Elem::List)) => {
+                // initial "List "
+                let start_offset = 5;
+                let paren_offset = if ty.fmt_is_atom() { 0 } else { 1 };
+
+                let (sub_start, sub_end) = span(path_it, ty);
+                (
+                    start_offset + paren_offset + sub_start,
+                    start_offset + paren_offset + sub_end,
+                )
             }
             (ty, next) => panic!(
                 "label::span: unexpected type {} with path element {:?}",

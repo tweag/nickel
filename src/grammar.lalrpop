@@ -371,6 +371,7 @@ UOp: UnaryOp = {
     "polarity" => UnaryOp::Pol(),
     "goDom" => UnaryOp::GoDom(),
     "goCodom" => UnaryOp::GoCodom(),
+    "goList" => UnaryOp::GoList(),
     "wrap" => UnaryOp::Wrap(),
     "embed" <Ident> => UnaryOp::Embed(<>),
     "map"  => UnaryOp::ListMap(),
@@ -517,7 +518,6 @@ BaseType: Types = {
     "Num" => Types(AbsType::Num()),
     "Bool" => Types(AbsType::Bool()),
     "Str" => Types(AbsType::Str()),
-    "List" => Types(AbsType::List()),
 };
 
 RowTail: Types = {
@@ -527,6 +527,10 @@ RowTail: Types = {
 
 subType : Types = {
     <BaseType>,
+    "List" <ty: subType?> => {
+        let ty = Box::new(ty.unwrap_or(Types(AbsType::Dyn())));
+        Types(AbsType::List(ty))
+    },
     <Ident> => Types(AbsType::Var(<>)),
     "#" <SpTerm<Atom>> => Types(AbsType::Flat(<>)),
     "(" <Types> ")" => <>,
@@ -658,6 +662,7 @@ extern {
         "polarity" => Token::Normal(NormalToken::Polarity),
         "goDom" => Token::Normal(NormalToken::GoDom),
         "goCodom" => Token::Normal(NormalToken::GoCodom),
+        "goList" => Token::Normal(NormalToken::GoList),
         "goField" => Token::Normal(NormalToken::GoField),
         "wrap" => Token::Normal(NormalToken::Wrap),
         "unwrap" => Token::Normal(NormalToken::Unwrap),

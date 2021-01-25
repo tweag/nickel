@@ -370,6 +370,19 @@ fn process_unary_operation(
                 ))
             }
         }
+        UnaryOp::GoList() => {
+            if let Term::Lbl(mut l) = *t {
+                l.path.push(ty_path::Elem::List);
+                Ok(Closure::atomic_closure(Term::Lbl(l).into()))
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Label"),
+                    String::from("goList"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
+            }
+        }
         UnaryOp::Wrap() => {
             if let Term::Sym(s) = *t {
                 Ok(Closure::atomic_closure(mk_fun!(

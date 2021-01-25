@@ -97,8 +97,8 @@ pub enum AbsType<Ty> {
     /// A dynamic record type, where all fields must have the same type.
     // DynRecord will only have a default type, this is simpler for now, I don't think we lose much
     DynRecord(Ty /*, Ty  Row */),
-    /// An heterogeneous list.
-    List(),
+    /// A parametrized list.
+    List(Ty),
 }
 
 impl<Ty> AbsType<Ty> {
@@ -130,7 +130,7 @@ impl<Ty> AbsType<Ty> {
             AbsType::Enum(t) => AbsType::Enum(f(t)),
             AbsType::StaticRecord(t) => AbsType::StaticRecord(f(t)),
             AbsType::DynRecord(t) => AbsType::DynRecord(f(t)),
-            AbsType::List() => AbsType::List(),
+            AbsType::List(t) => AbsType::List(f(t)),
         }
     }
 
@@ -179,7 +179,9 @@ impl Types {
             AbsType::Num() => contracts::num(),
             AbsType::Bool() => contracts::bool(),
             AbsType::Str() => contracts::string(),
-            AbsType::List() => contracts::list(),
+            //TODO: optimization: have a specialized contract for `List Dyn`, to avoid mapping an
+            //always succesful contract on each element.
+            AbsType::List(ref ty) => mk_app!(contracts::list(), ty.contract_open(h, pol, sy)),
             AbsType::Sym() => panic!("Are you trying to check a Sym at runtime?"),
             AbsType::Arrow(ref s, ref t) => mk_app!(
                 contracts::func(),
@@ -316,6 +318,19 @@ impl Types {
             }
         }
     }
+
+    /// Determine if a type is an atom, that is a either an atom or a type delimited by specific
+    /// markers (such as a row type). Used in formatting to decide if parentheses need to be
+    /// inserted during pretty pretting.
+    pub fn fmt_is_atom(&self) -> bool {
+        use AbsType::*;
+
+        match &self.0 {
+            Dyn() | Num() | Bool() | Str() | Var(_) => true,
+            List(ty) if ty.0 == AbsType::Dyn() => true,
+            _ => false,
+        }
+    }
 }
 
 impl fmt::Display for Types {
@@ -325,7 +340,16 @@ impl fmt::Display for Types {
             AbsType::Num() => write!(f, "Num"),
             AbsType::Bool() => write!(f, "Bool"),
             AbsType::Str() => write!(f, "Str"),
-            AbsType::List() => write!(f, "List"),
+            AbsType::List(ty) if ty.0 == AbsType::Dyn() => write!(f, "List"),
+            AbsType::List(ty) => {
+                write!(f, "List ")?;
+
+                if ty.fmt_is_atom() {
+                    write!(f, "{}", ty)
+                } else {
+                    write!(f, "({})", ty)
+                }
+            }
             AbsType::Sym() => write!(f, "Sym"),
             AbsType::Flat(ref t) => write!(f, "#{}", t.as_ref().shallow_repr()),
             AbsType::Var(Ident(ref var)) => write!(f, "{}", var),
@@ -418,5 +442,12 @@ mod test {
 
         assert_format_eq("<a, b, c, d>");
         assert_format_eq("<tag1, tag2, tag3 | r>");
+
+        assert_format_eq("List");
+        assert_format_eq("List Num");
+        assert_format_eq("List (List Num)");
+        assert_format_eq("Num -> List (List Str) -> Num");
+        assert_format_eq("List (Num -> Num)");
+        assert_format_eq("List (List List -> Num)");
     }
 }

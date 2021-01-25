@@ -488,8 +488,12 @@ fn report_ty_path(l: &label::Label, files: &mut Files<String>) -> (Label<FileId>
 
     let (msg, notes) = if l.path.is_empty() {
         (String::from("expected type"), Vec::new())
-    } else if ty_path::is_only_field(&l.path) {
-        (String::from("expected field type"), Vec::new())
+    } else if ty_path::has_no_arrow(&l.path) {
+        match l.path.last() {
+            Some(ty_path::Elem::List) => (String::from("expected list element type"), Vec::new()),
+            Some(ty_path::Elem::Field(_)) => (String::from("expected field type"), Vec::new()),
+            _ => unreachable!(),
+        }
     }
     // If the path is only composed of codomains, polarity is necessarily true and the cause of the
     // blame is the return value of the function
@@ -508,13 +512,13 @@ fn report_ty_path(l: &label::Label, files: &mut Files<String>) -> (Label<FileId>
             ],
         )
     } else {
-        // We ignore the `Field` elements of the path, since they do not impact polarity, and only
-        // consider "higher-order" elements to customize error messages.
+        // We ignore the `Field` and `List` elements of the path, since they do not impact
+        // polarity, and only consider "higher-order" elements to customize error messages.
         let last = l
             .path
             .iter()
             .filter(|elt| match *elt {
-                ty_path::Elem::Field(_) => false,
+                ty_path::Elem::Field(_) | ty_path::Elem::List => false,
                 _ => true,
             })
             .last()
@@ -749,8 +753,8 @@ impl ToDiagnostic<FileId> for EvalError {
             EvalError::BlameError(l, cs_opt) => {
                 let mut msg = String::from("Blame error: ");
 
-                // Writing in a string should not raise an error, whence the fearless `unwrap()`
-                if l.path.is_empty() || ty_path::is_only_field(&l.path) {
+                // Writing in a string should not raise an error, hence the fearless `unwrap()`
+                if ty_path::has_no_arrow(&l.path) {
                     // An empty path or a path that contains only fields necessarily corresponds to
                     // a positive blame
                     assert!(l.polarity);
