@@ -753,7 +753,7 @@ impl ToDiagnostic<FileId> for EvalError {
             EvalError::BlameError(l, cs_opt) => {
                 let mut msg = String::from("Blame error: ");
 
-                // Writing in a string should not raise an error, whence the fearless `unwrap()`
+                // Writing in a string should not raise an error, hence the fearless `unwrap()`
                 if ty_path::has_no_arrow(&l.path) {
                     // An empty path or a path that contains only fields necessarily corresponds to
                     // a positive blame
