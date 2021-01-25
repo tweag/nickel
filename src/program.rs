@@ -149,9 +149,6 @@ pub fn query(
     global_env: &eval::Environment,
     path: Option<String>,
 ) -> Result<Term, Error> {
-    use std::cell::RefCell;
-    use std::rc::Rc;
-
     cache.prepare(file_id, global_env)?;
 
     let t = if let Some(p) = path {
@@ -166,15 +163,12 @@ pub fn query(
 
         // Substituting `y` for `t`
         let mut env = eval::Environment::new();
-        let closure = eval::Closure {
-            body: cache.get_owned(file_id).unwrap(),
-            env: eval::Environment::new(),
-        };
-        env.insert(
+        eval::env_add(
+            &mut env,
             Ident::from("y"),
-            (Rc::new(RefCell::new(closure)), eval::IdentKind::Let()),
+            cache.get_owned(file_id).unwrap(),
+            eval::Environment::new(),
         );
-
         //TODO: why passing an empty global environment?
         eval::subst(new_term, &eval::Environment::new(), &env)
     } else {
@@ -1516,5 +1510,25 @@ too
         // example would go into an infinite loop, and stack overflow. If it does, this just means
         // that this test fails.
         eval_string_full("{y = fun x => x; x = fun y => y}").unwrap();
+    }
+
+    #[test]
+    fn infinite_loops() {
+        assert_matches!(
+            eval_string("{x = x}.x"),
+            Err(Error::EvalError(EvalError::InfiniteRecursion(..)))
+        );
+        assert_matches!(
+            eval_string("{x = y; y = z; z = x }.x"),
+            Err(Error::EvalError(EvalError::InfiniteRecursion(..)))
+        );
+        assert_matches!(
+            eval_string("{x = y + z; y = z + x; z = 1}.x"),
+            Err(Error::EvalError(EvalError::InfiniteRecursion(..)))
+        );
+        assert_matches!(
+            eval_string("{x = (fun a => a + y) 0; y = (fun a => a + x) 0}.x"),
+            Err(Error::EvalError(EvalError::InfiniteRecursion(..)))
+        );
     }
 }

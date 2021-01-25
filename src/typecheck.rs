@@ -359,10 +359,10 @@ impl<'a> Envs<'a> {
     pub fn mk_global(eval_env: &eval::Environment) -> Environment {
         eval_env
             .iter()
-            .map(|(id, (rc, _))| {
+            .map(|(id, thunk)| {
                 (
                     id.clone(),
-                    to_typewrapper(apparent_type(rc.borrow().body.as_ref(), None).into()),
+                    to_typewrapper(apparent_type(thunk.borrow().body.as_ref(), None).into()),
                 )
             })
             .collect()
