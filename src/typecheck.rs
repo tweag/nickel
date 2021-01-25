@@ -2267,7 +2267,7 @@ mod tests {
     }
 
     /// Regression test following [#270](https://github.com/tweag/nickel/issues/270). Check that
-    /// uniyfing a variable with itself doesn't introduce a loop. The failure of this test result
+    /// unifying a variable with itself doesn't introduce a loop. The failure of this test results
     /// in a stack overflow.
     #[test]
     fn unification_graph_cycle() {
