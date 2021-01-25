@@ -347,7 +347,7 @@ pub mod rustyline_frontend {
         fn validate(&self, ctx: &mut ValidationContext<'_>) -> rustyline::Result<ValidationResult> {
             let input = ctx.input();
 
-            if input.starts_with(":") {
+            if input.starts_with(":") || input.trim().is_empty() {
                 return Ok(ValidationResult::Valid(None));
             }
 
@@ -404,7 +404,7 @@ pub mod rustyline_frontend {
             }
 
             match line {
-                Ok(line) if line.is_empty() => (),
+                Ok(line) if line.trim().is_empty() => (),
                 Ok(line) if line.starts_with(":") => {
                     let cmd = line.chars().skip(1).collect::<String>().parse::<Command>();
                     let result = match cmd {
