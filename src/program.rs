@@ -1307,33 +1307,26 @@ Assume(#alwaysTrue, false)
             Err(Error::EvalError(EvalError::BlameError(..)))
         );
 
-        // Check that error reporting correctly handle type paths with List elements inside
-        fn eval_err(s: &str) -> (Error, Program) {
-            let src = Cursor::new(s);
-
-            let mut p = Program::new_from_source(src, "<test>")
-                .expect(&format!("unexpected IO error while parsing string {}", s));
-            (p.eval().unwrap_err(), p)
-        }
-
-        let (err, mut p) = eval_err("%deepSeq% ([{a = [1]}] | List {a: List Str}) false");
-        match &err {
-            Error::EvalError(EvalError::BlameError(ref l, _)) => {
+        let res = eval_string("%deepSeq% ([{a = [1]}] | List {a: List Str}) false");
+        match &res {
+            Err(Error::EvalError(EvalError::BlameError(ref l, _))) => {
                 assert_matches!(l.path.as_slice(), [Elem::List, Elem::Field(id), Elem::List] if &id.to_string() == "a")
             }
             err => panic!("expected blame error, got {:?}", err),
         }
-        // Check that reporting doesn't panic
-        p.report(err);
+        // Check that reporting doesn't panic. Provide a dummy file database, as we won't report
+        // the error message but just check that it can be built.
+        let mut files = Files::new();
+        res.unwrap_err().to_diagnostic(&mut files, None);
 
-        let (err, mut p) = eval_err("(%elemAt% (({foo = [(fun x => \"a\")]} | {foo: List (forall a. a -> Num)}).foo) 0) false");
-        match &err {
-            Error::EvalError(EvalError::BlameError(ref l, _)) => {
+        let res = eval_string("(%elemAt% (({foo = [(fun x => \"a\")]} | {foo: List (forall a. a -> Num)}).foo) 0) false");
+        match &res {
+            Err(Error::EvalError(EvalError::BlameError(ref l, _))) => {
                 assert_matches!(l.path.as_slice(), [Elem::Field(id), Elem::List, Elem::Codomain] if &id.to_string() == "foo")
             }
             err => panic!("expected blame error, got {:?}", err),
         }
-        p.report(err);
+        res.unwrap_err().to_diagnostic(&mut files, None);
     }
 
     #[test]
