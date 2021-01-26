@@ -101,7 +101,7 @@ use std::rc::{Rc, Weak};
 
 /// The state of a thunk.
 ///
-/// When created, a thunk is flagged as pending. When accessed for the first time, a corresponding
+/// When created, a thunk is flagged as suspended. When accessed for the first time, a corresponding
 /// [`ThunkUpdateFrame`](./struct.ThunkUpdateFrame.html) is pushed on the stack and the thunk is
 /// flagged as black-hole. This prevents direct infinite recursions, since if a thunk is
 /// re-accessed while still in a black-hole state, we are sure that the evaluation will loop, and
@@ -111,7 +111,7 @@ use std::rc::{Rc, Weak};
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum ThunkState {
     Blackholed,
-    Pending,
+    Suspended,
     Evaluated,
 }
 
@@ -126,14 +126,14 @@ impl ThunkData {
     pub fn new(closure: Closure) -> Self {
         ThunkData {
             closure,
-            state: ThunkState::Pending,
+            state: ThunkState::Suspended,
         }
     }
 }
 
 /// A thunk.
 ///
-/// A thunk is a shared pending computation. It is the primary device for the implementation of
+/// A thunk is a shared suspended computation. It is the primary device for the implementation of
 /// lazy evaluation.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Thunk {
@@ -141,7 +141,7 @@ pub struct Thunk {
     ident_kind: IdentKind,
 }
 
-/// A thunk black-holed thunk was accessed, which would lead to infinite recursion.
+/// A black-holed thunk was accessed, which would lead to infinite recursion.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BlackholedError;
 
@@ -319,16 +319,11 @@ pub fn env_add_term(env: &mut Environment, rt: RichTerm) -> Result<(), EnvBuildE
 
 /// Bind a closure in an environment.
 pub fn env_add(env: &mut Environment, id: Ident, rt: RichTerm, local_env: Environment) {
-    env.insert(
-        id,
-        Thunk::new(
-            Closure {
-                body: rt,
-                env: local_env,
-            },
-            IdentKind::Let(),
-        ),
-    );
+    let closure = Closure {
+        body: rt,
+        env: local_env,
+    };
+    env.insert(id, Thunk::new(closure, IdentKind::Let()));
 }
 
 /// Determine if a thunk is worth being put on the stack for future update.
@@ -466,10 +461,11 @@ where
                 if thunk.state() != ThunkState::Evaluated
                     && should_update(&thunk.borrow().body.term)
                 {
-                    if let Ok(thunk_upd) = thunk.to_update_frame() {
-                        stack.push_thunk(thunk_upd);
-                    } else {
-                        return Err(EvalError::InfiniteRecursion(call_stack, pos));
+                    match thunk.to_update_frame() {
+                        Ok(thunk_upd) => stack.push_thunk(thunk_upd),
+                        Err(BlackholedError) => {
+                            return Err(EvalError::InfiniteRecursion(call_stack, pos))
+                        }
                     }
                 }
 
