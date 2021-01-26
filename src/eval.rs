@@ -99,16 +99,15 @@ use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
-
 /// The state of a thunk.
 ///
-/// When created, a thunk is flagged as pending. The first time it is accessed, a corresponding
+/// When created, a thunk is flagged as pending. When accessed for the first time, a corresponding
 /// [`ThunkUpdateFrame`](./struct.ThunkUpdateFrame.html) is pushed on the stack and the thunk is
-/// flagged as black-hole. This prevents direct infinite recursions, as if a thunk is re-accessed
-/// while still in a black-hole state, we are sure that the evaluation will loop, and we can thus
-/// error out before overflowing the stack or looping forever. Finally, once the content of a thunk
-/// has been evaluated, the thunk is updated with the new value and flagged as evaluated, so that
-/// future accesses won't even push an update frame on the stack.
+/// flagged as black-hole. This prevents direct infinite recursions, since if a thunk is
+/// re-accessed while still in a black-hole state, we are sure that the evaluation will loop, and
+/// we can thus error out before overflowing the stack or looping forever. Finally, once the
+/// content of a thunk has been evaluated, the thunk is updated with the new value and flagged as
+/// evaluated, so that future accesses won't even push an update frame on the stack.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum ThunkState {
     Blackholed,
@@ -135,13 +134,16 @@ impl ThunkData {
 /// A thunk.
 ///
 /// A thunk is a shared pending computation. It is the primary device for the implementation of
-/// lazy evaluation. When evaluated for the first time, the content of a thunk is updated such that
-/// future uses won't recompute the same thing.
+/// lazy evaluation.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Thunk {
     data: Rc<RefCell<ThunkData>>,
     ident_kind: IdentKind,
 }
+
+/// A thunk black-holed thunk was accessed, which would lead to infinite recursion.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BlackholedError;
 
 impl Thunk {
     pub fn new(closure: Closure, ident_kind: IdentKind) -> Self {
@@ -157,9 +159,9 @@ impl Thunk {
 
     /// Generate an update frame from this thunk and set the state to `Blackholed`. Return an
     /// error if the thunk was already black-holed.
-    pub fn to_update_frame(&mut self) -> Result<ThunkUpdateFrame, ()> {
+    pub fn to_update_frame(&mut self) -> Result<ThunkUpdateFrame, BlackholedError> {
         if self.data.borrow().state == ThunkState::Blackholed {
-            return Err(());
+            return Err(BlackholedError);
         }
 
         self.data.borrow_mut().state = ThunkState::Blackholed;
