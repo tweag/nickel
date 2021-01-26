@@ -157,6 +157,11 @@ impl Thunk {
         self.data.borrow().state
     }
 
+    /// Set the state to evaluated.
+    pub fn set_evaluated(&mut self) {
+        self.data.borrow_mut().state = ThunkState::Evaluated;
+    }
+
     /// Generate an update frame from this thunk and set the state to `Blackholed`. Return an
     /// error if the thunk was already black-holed.
     pub fn to_update_frame(&mut self) -> Result<ThunkUpdateFrame, BlackholedError> {
@@ -458,14 +463,18 @@ where
                     .ok_or(EvalError::UnboundIdentifier(x.clone(), pos.clone()))?;
                 std::mem::drop(env); // thunk may be a 1RC pointer
 
-                if thunk.state() != ThunkState::Evaluated
-                    && should_update(&thunk.borrow().body.term)
-                {
-                    match thunk.to_update_frame() {
-                        Ok(thunk_upd) => stack.push_thunk(thunk_upd),
-                        Err(BlackholedError) => {
-                            return Err(EvalError::InfiniteRecursion(call_stack, pos))
+                if thunk.state() != ThunkState::Evaluated {
+                    if should_update(&thunk.borrow().body.term) {
+                        match thunk.to_update_frame() {
+                            Ok(thunk_upd) => stack.push_thunk(thunk_upd),
+                            Err(BlackholedError) => {
+                                return Err(EvalError::InfiniteRecursion(call_stack, pos))
+                            }
                         }
+                    }
+                    // If the thunk isn't to be updated, directly set the evaluated flag.
+                    else {
+                        thunk.set_evaluated();
                     }
                 }
 
