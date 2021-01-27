@@ -1128,6 +1128,7 @@ pub fn unify_(
                 TypeWrapper::Concrete(ty2),
             )),
         },
+        (TypeWrapper::Ptr(p1), TypeWrapper::Ptr(p2)) if p1 == p2 => Ok(()),
         // The two following cases are not merged just to correctly distinguish between the
         // expected type (first component of the tuple) and the inferred type when reporting a row
         // unification error.
@@ -2288,5 +2289,14 @@ mod tests {
         parse_and_typecheck("{a = 1} : {a: Num | Dyn}").unwrap_err();
         parse_and_typecheck("Assume({a: Num | Dyn}, {a = 1}) : {a: Num}").unwrap_err();
         parse_and_typecheck("{a = 1} : {a: Num | Dyn}").unwrap_err();
+    }
+
+    /// Regression test following [#270](https://github.com/tweag/nickel/issues/270). Check that
+    /// unifying a variable with itself doesn't introduce a loop. The failure of this test results
+    /// in a stack overflow.
+    #[test]
+    fn unification_graph_cycle() {
+        parse_and_typecheck("{gen_ = fun acc x => if x == 0 then acc else gen_ (acc @ [x]) (x - 1)}.gen_ : List -> Num -> List").unwrap();
+        parse_and_typecheck("{f = fun x => f x}.f : forall a. a -> a").unwrap();
     }
 }
