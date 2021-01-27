@@ -2296,7 +2296,7 @@ mod tests {
     /// in a stack overflow.
     #[test]
     fn unification_graph_cycle() {
-        parse_and_typecheck("{gen_ = fun acc x => if x == 0 then acc else gen_ (acc @ [x]) (x - 1)}.gen_ : List -> Num -> List").unwrap();
+        parse_and_typecheck("{gen_ = fun acc x => if x == 0 then acc else gen_ (acc @ [x]) (x - 1)}.gen_ : List Num -> Num -> List Num").unwrap();
         parse_and_typecheck("{f = fun x => f x}.f : forall a. a -> a").unwrap();
     }
 }
