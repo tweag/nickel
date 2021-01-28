@@ -48,6 +48,8 @@ struct Opt {
 enum ExportFormat {
     Raw,
     Json,
+    Yaml,
+    Toml,
 }
 
 impl std::default::Default for ExportFormat {
@@ -61,6 +63,8 @@ impl fmt::Display for ExportFormat {
         match self {
             Self::Raw => write!(f, "raw"),
             Self::Json => write!(f, "json"),
+            Self::Yaml => write!(f, "yaml"),
+            Self::Toml => write!(f, "toml"),
         }
     }
 }
@@ -81,6 +85,8 @@ impl FromStr for ExportFormat {
         match s.to_lowercase().as_ref() {
             "raw" => Ok(ExportFormat::Raw),
             "json" => Ok(ExportFormat::Json),
+            "yaml" => Ok(ExportFormat::Yaml),
+            "toml" => Ok(ExportFormat::Toml),
             _ => Err(ParseFormatError(String::from(s))),
         }
     }
@@ -194,6 +200,14 @@ fn export(
         match format {
             ExportFormat::Json => serde_json::to_writer_pretty(file, &rt)
                 .map_err(|err| SerializationError::Other(err.to_string())),
+            ExportFormat::Yaml => serde_yaml::to_writer(file, &rt)
+                .map_err(|err| SerializationError::Other(err.to_string())),
+            ExportFormat::Toml => toml::ser::to_string_pretty(&rt)
+                .map_err(|err| SerializationError::Other(err.to_string()))
+                .and_then(|s| {
+                    file.write_all(s.as_bytes())
+                        .map_err(|err| SerializationError::Other(err.to_string()))
+                }),
             ExportFormat::Raw => match *rt.term {
                 Term::Str(s) => file
                     .write_all(s.as_bytes())
@@ -208,6 +222,15 @@ fn export(
         match format {
             ExportFormat::Json => serde_json::to_writer_pretty(io::stdout(), &rt)
                 .map_err(|err| SerializationError::Other(err.to_string())),
+            ExportFormat::Yaml => serde_yaml::to_writer(io::stdout(), &rt)
+                .map_err(|err| SerializationError::Other(err.to_string())),
+            ExportFormat::Toml => toml::ser::to_string_pretty(&rt)
+                .map_err(|err| SerializationError::Other(err.to_string()))
+                .and_then(|s| {
+                    std::io::stdout()
+                        .write_all(s.as_bytes())
+                        .map_err(|err| SerializationError::Other(err.to_string()))
+                }),
             ExportFormat::Raw => match *rt.term {
                 Term::Str(s) => std::io::stdout()
                     .write_all(s.as_bytes())
