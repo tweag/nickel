@@ -792,6 +792,13 @@ impl Into<TypeWrapper> for ApparentType {
 /// - Otherwise, return an approximation of the type (currently `Dyn`, but could be more precise in
 ///   the future, such as `Dyn -> Dyn` for functions, `{ | Dyn}` for records, and so on).
 pub fn apparent_type(t: &Term, envs: Option<&Envs>) -> ApparentType {
+    fn is_literal(chunk: &StrChunk<RichTerm>) -> bool {
+        match chunk {
+            StrChunk::Literal(_) => true,
+            _ => false,
+        }
+    }
+
     match t {
         Term::Assume(ty, _, _) | Term::Promise(ty, _, _) => ApparentType::Annotated(ty.clone()),
         Term::MetaValue(MetaValue {
@@ -806,7 +813,13 @@ pub fn apparent_type(t: &Term, envs: Option<&Envs>) -> ApparentType {
         Term::Num(_) => ApparentType::Exact(Types(AbsType::Num())),
         Term::Bool(_) => ApparentType::Exact(Types(AbsType::Bool())),
         Term::Sym(_) => ApparentType::Exact(Types(AbsType::Sym())),
-        Term::Str(_) | Term::StrChunks(_) => ApparentType::Exact(Types(AbsType::Str())),
+        Term::Str(_) => ApparentType::Exact(Types(AbsType::Str())),
+        // If there are interpolated expressions inside a string, we can't guarantee that this is a
+        // well-typed string (e.g. "#{1 + 1}" is not). We can only do so if all chunks are string
+        // literals.
+        Term::StrChunks(chunks) if chunks.iter().all(is_literal) => {
+            ApparentType::Exact(Types(AbsType::Str()))
+        }
         Term::List(_) => ApparentType::Exact(Types(AbsType::List(Box::new(Types(AbsType::Dyn()))))),
         Term::Var(id) => envs
             .and_then(|envs| envs.get(id))
