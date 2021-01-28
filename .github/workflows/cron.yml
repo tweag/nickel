@@ -41,11 +41,10 @@ jobs:
         echo 'experimental-features = nix-command flakes' | sudo tee -a /etc/nix/nix.conf
         echo "$HOME/.nix-profile/bin" >> $GITHUB_PATH
 
-    # TODO:
-    # - uses: cachix/cachix-action@v8
-    #   with:
-    #     name: nickel
-    #     signingKey: '${{ secrets.CACHIX_SIGNING_KEY }}'
+    - uses: cachix/cachix-action@v8
+      with:
+        name: nickel
+        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
 
     - name: Update `${{ matrix.rust_channel }}` channel
       run: |
