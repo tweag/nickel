@@ -1,0 +1,46 @@
+name: "Test Nickel building in PRs"
+on:
+  pull_request:
+jobs:
+
+  test-nickel-building:
+
+    strategy:
+      matrix:
+        rust_channel:
+        - stable
+        - beta
+        - nightly
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+    - name: Checking out the repository
+      uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
+
+    - name: Installing Nix
+      uses: cachix/install-nix-action@v12
+      with:
+        nix_path: nixpkgs=channel:nixos-unstable
+
+    - name: Add `unstable` Nix channel
+      run: |
+        nix-channel --add https://nixos.org/channels/nixpkgs-unstable
+        nix-channel --update
+
+    - name: Installing nixFlakes
+      run: |
+        nix-env -iA nixpkgs.nixFlakes
+        echo 'experimental-features = nix-command flakes' | sudo tee -a /etc/nix/nix.conf
+        echo "$HOME/.nix-profile/bin" >> $GITHUB_PATH
+
+    - uses: cachix/cachix-action@v8
+      with:
+        name: nickel
+
+    - name: Build Nickel against `${{ matrix.rust_channel }}` Rust channel
+      run: |
+        nix build ./#checks.x86_64-linux.nickel-against-${{ matrix.rust_channel }}-rust-channel

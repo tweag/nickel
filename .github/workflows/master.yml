@@ -1,8 +1,8 @@
-name: "Test Nickel building"
+name: "Test Nickel building on master"
 on:
-  pull_request:
   branches:
     - master
+    - migrate-to-github-actions
 jobs:
 
   test-nickel-building:
@@ -39,11 +39,10 @@ jobs:
         echo 'experimental-features = nix-command flakes' | sudo tee -a /etc/nix/nix.conf
         echo "$HOME/.nix-profile/bin" >> $GITHUB_PATH
 
-    # TODO:
-    # - uses: cachix/cachix-action@v8
-    #   with:
-    #     name: nickel
-    #     signingKey: '${{ secrets.CACHIX_SIGNING_KEY }}'
+    - uses: cachix/cachix-action@v8
+      with:
+        name: nickel
+        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
 
     - name: Build Nickel against `${{ matrix.rust_channel }}` Rust channel
       run: |
