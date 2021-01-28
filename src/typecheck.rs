@@ -1873,6 +1873,7 @@ mod tests {
     use crate::parser::lexer;
     use crate::term::make as mk_term;
     use crate::transformations::transform;
+    use assert_matches::assert_matches;
     use codespan::Files;
 
     use crate::parser;
@@ -2377,5 +2378,23 @@ mod tests {
     fn unification_graph_cycle() {
         parse_and_typecheck("{gen_ = fun acc x => if x == 0 then acc else gen_ (acc @ [x]) (x - 1)}.gen_ : List Num -> Num -> List Num").unwrap();
         parse_and_typecheck("{f = fun x => f x}.f : forall a. a -> a").unwrap();
+    }
+
+    #[test]
+    fn shallow_type_inference() {
+        parse_and_typecheck("let x = 1 in (x + 1 : Num)").unwrap();
+        assert_matches!(
+            parse_and_typecheck("let x = (1 + 1) in (x + 1 : Num)"),
+            Err(TypecheckError::TypeMismatch(..))
+        );
+
+        parse_and_typecheck("let x = \"a\" in (x ++ \"a\" : Str)").unwrap();
+        assert_matches!(
+            parse_and_typecheck("let x = \"a#{1}\" in (x ++ \"a\" : Str)"),
+            Err(TypecheckError::TypeMismatch(..))
+        );
+
+        parse_and_typecheck("let x = false in (x || true : Bool)").unwrap();
+        parse_and_typecheck("let x = false in let y = x in let z = y in (z : Bool)").unwrap();
     }
 }
