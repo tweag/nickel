@@ -12,7 +12,7 @@ use crate::error::{Error, EvalError, IOError};
 use crate::identifier::Ident;
 use crate::parser::extended::{ExtendedParser, ExtendedTerm};
 use crate::term::{RichTerm, Term};
-use crate::types::{AbsType, Types};
+use crate::types::Types;
 use crate::{eval, transformations, typecheck};
 use simple_counter::*;
 use std::ffi::{OsStr, OsString};
@@ -146,7 +146,11 @@ impl REPL for REPLImpl {
         let term = self.cache.parse_nocache(file_id)?;
         typecheck::type_check_in_env(&term, &self.type_env, &self.cache)?;
 
-        Ok(typecheck::apparent_type(term.as_ref()).unwrap_or(Types(AbsType::Dyn())))
+        Ok(typecheck::apparent_type(
+            term.as_ref(),
+            Some(&typecheck::Envs::from_global(&self.type_env)),
+        )
+        .into())
     }
 
     fn query(&mut self, exp: &str) -> Result<Term, Error> {
