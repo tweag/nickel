@@ -2,6 +2,8 @@
 use crate::error::SerializationError;
 use crate::identifier::Ident;
 use crate::term::{MetaValue, RichTerm, Term};
+use codespan::FileId;
+use serde::de::{Deserialize, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde::ser::{Error, Serialize, SerializeMap, Serializer};
 use std::collections::HashMap;
 
@@ -42,6 +44,16 @@ impl Serialize for RichTerm {
         S: Serializer,
     {
         (*self.term).serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for RichTerm {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let t: Term = Term::deserialize(deserializer)?;
+        Ok(RichTerm::new(t, None))
     }
 }
 
