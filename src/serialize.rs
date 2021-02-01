@@ -2,8 +2,7 @@
 use crate::error::SerializationError;
 use crate::identifier::Ident;
 use crate::term::{MetaValue, RichTerm, Term};
-use codespan::FileId;
-use serde::de::{Deserialize, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
+use serde::de::{Deserialize, Deserializer};
 use serde::ser::{Error, Serialize, SerializeMap, Serializer};
 use std::collections::HashMap;
 
