@@ -85,6 +85,7 @@ mod tests {
     use super::*;
     use crate::error::{Error, EvalError};
     use crate::program::Program;
+    use crate::term::{make as mk_term, BinaryOp};
     use serde_json::json;
     use std::io::Cursor;
 
@@ -115,6 +116,44 @@ mod tests {
                     .into(),
             )
             .unwrap_err();
+        };
+    }
+
+    macro_rules! assert_involutory {
+        ( $term:expr ) => {
+            let evaluated = mk_program($term).and_then(|mut p| p.eval_full()).unwrap();
+            let from_json: RichTerm =
+                serde_json::from_str(&serde_json::to_string(&evaluated).unwrap()).unwrap();
+            let from_yaml: RichTerm =
+                serde_yaml::from_str(&serde_yaml::to_string(&evaluated).unwrap()).unwrap();
+            let from_toml: RichTerm =
+                toml::from_str(&format!("{}", &toml::Value::try_from(&evaluated).unwrap()))
+                    .unwrap();
+
+            assert_eq!(
+                $crate::eval::eval(
+                    mk_term::op2(BinaryOp::Eq(), from_json, evaluated.clone()),
+                    &HashMap::new(),
+                    &mut $crate::cache::resolvers::DummyResolver {}
+                ),
+                Ok(Term::Bool(true))
+            );
+            assert_eq!(
+                $crate::eval::eval(
+                    mk_term::op2(BinaryOp::Eq(), from_yaml, evaluated.clone()),
+                    &HashMap::new(),
+                    &mut $crate::cache::resolvers::DummyResolver {}
+                ),
+                Ok(Term::Bool(true))
+            );
+            assert_eq!(
+                $crate::eval::eval(
+                    mk_term::op2(BinaryOp::Eq(), from_toml, evaluated),
+                    &HashMap::new(),
+                    &mut $crate::cache::resolvers::DummyResolver {}
+                ),
+                Ok(Term::Bool(true))
+            );
         };
     }
 
@@ -181,5 +220,15 @@ mod tests {
     fn prevalidation() {
         assert_non_serializable!("{a = 1; b = { c = fun x => x }}");
         assert_non_serializable!("{foo = { bar = let y = \"a\" in y}; b = [[fun x => x]] }");
+    }
+
+    #[test]
+    fn involution() {
+        assert_involutory!("{val = 1 + 1}");
+        assert_involutory!("{val = \"Some string\"}");
+        assert_involutory!("{val = [\"a\", 3, []]}");
+        assert_involutory!(
+            "{a = {foo = {bar = \"2\"}}; b = false; c = [{d = \"e\"}, {d = \"f\"}]}"
+        );
     }
 }
