@@ -195,6 +195,12 @@ pub enum ParseError {
     InvalidEscapeSequence(RawSpan),
     /// Invalid ASCII escape code in a string literal.
     InvalidAsciiEscapeCode(RawSpan),
+    /// Error when parsing an external format such as JSON, YAML, etc.
+    ExternalFormatError(
+        String, /* format */
+        String, /* error message */
+        Option<RawSpan>,
+    ),
 }
 
 /// An error occurring during the resolution of an import.
@@ -328,6 +334,63 @@ impl ParseError {
                 error: LexicalError::InvalidAsciiEscapeCode(location),
             } => ParseError::InvalidAsciiEscapeCode(mk_span(file_id, location, location + 2)),
         }
+    }
+
+    pub fn from_serde_json(
+        error: serde_json::Error,
+        file_id: FileId,
+        files: &Files<String>,
+    ) -> Self {
+        use codespan::ByteOffset;
+
+        let line_span = files.line_span(file_id, (error.line() - 1) as u32);
+        let start = line_span.map(|ls| ls.start() + ByteOffset::from(error.column() as i64 - 1));
+        ParseError::ExternalFormatError(
+            String::from("json"),
+            error.to_string(),
+            start
+                .map(|start| RawSpan {
+                    src_id: file_id,
+                    start,
+                    end: start + ByteOffset::from(1),
+                })
+                .ok(),
+        )
+    }
+
+    pub fn from_serde_yaml(error: serde_yaml::Error, file_id: FileId) -> Self {
+        use codespan::{ByteIndex, ByteOffset};
+
+        let start = error
+            .location()
+            .map(|loc| loc.index() as u32)
+            .map(ByteIndex::from);
+        ParseError::ExternalFormatError(
+            String::from("yaml"),
+            error.to_string(),
+            start.map(|start| RawSpan {
+                src_id: file_id,
+                start,
+                end: start + ByteOffset::from(1),
+            }),
+        )
+    }
+
+    pub fn from_toml(error: toml::de::Error, file_id: FileId, files: &Files<String>) -> Self {
+        use codespan::ByteOffset;
+
+        let start = error.line_col().and_then(|(line, col)| {
+            Some(files.line_span(file_id, line as u32).ok()?.start() + ByteOffset::from(col as i64))
+        });
+        ParseError::ExternalFormatError(
+            String::from("toml"),
+            error.to_string(),
+            start.map(|start| RawSpan {
+                src_id: file_id,
+                start,
+                end: start + ByteOffset::from(1),
+            }),
+        )
     }
 }
 
@@ -967,6 +1030,16 @@ impl ToDiagnostic<FileId> for ParseError {
             ParseError::InvalidAsciiEscapeCode(span) => Diagnostic::error()
                 .with_message("Invalid ascii escape code")
                 .with_labels(vec![primary(span)]),
+            ParseError::ExternalFormatError(format, msg, span_opt) => {
+                let labels = span_opt
+                    .as_ref()
+                    .map(|span| vec![primary(span)])
+                    .unwrap_or(Vec::new());
+
+                Diagnostic::error()
+                    .with_message(format!("{} parse error: {}", format, msg))
+                    .with_labels(labels)
+            }
         };
 
         vec![diagnostic]

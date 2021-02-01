@@ -325,9 +325,12 @@ impl Cache {
                     .map_err(|err| ParseError::from_lalrpop(err, file_id))?;
                 Ok(t)
             }
-            InputFormat::Json => Ok(serde_json::from_str(self.files.source(file_id)).unwrap()),
-            InputFormat::Yaml => Ok(serde_yaml::from_str(self.files.source(file_id)).unwrap()),
-            InputFormat::Toml => Ok(toml::from_str(self.files.source(file_id)).unwrap()),
+            InputFormat::Json => serde_json::from_str(self.files.source(file_id))
+                .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files)),
+            InputFormat::Yaml => serde_yaml::from_str(self.files.source(file_id))
+                .map_err(|err| ParseError::from_serde_yaml(err, file_id)),
+            InputFormat::Toml => toml::from_str(self.files.source(file_id))
+                .map_err(|err| ParseError::from_toml(err, file_id, &self.files)),
         }
     }
 
