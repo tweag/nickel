@@ -792,13 +792,6 @@ impl Into<TypeWrapper> for ApparentType {
 /// - Otherwise, return an approximation of the type (currently `Dyn`, but could be more precise in
 ///   the future, such as `Dyn -> Dyn` for functions, `{ | Dyn}` for records, and so on).
 pub fn apparent_type(t: &Term, envs: Option<&Envs>) -> ApparentType {
-    fn is_literal(chunk: &StrChunk<RichTerm>) -> bool {
-        match chunk {
-            StrChunk::Literal(_) => true,
-            _ => false,
-        }
-    }
-
     match t {
         Term::Assume(ty, _, _) | Term::Promise(ty, _, _) => ApparentType::Annotated(ty.clone()),
         Term::MetaValue(MetaValue {
@@ -813,14 +806,10 @@ pub fn apparent_type(t: &Term, envs: Option<&Envs>) -> ApparentType {
         Term::Num(_) => ApparentType::Inferred(Types(AbsType::Num())),
         Term::Bool(_) => ApparentType::Inferred(Types(AbsType::Bool())),
         Term::Sym(_) => ApparentType::Inferred(Types(AbsType::Sym())),
-        Term::Str(_) => ApparentType::Inferred(Types(AbsType::Str())),
-        // If there are interpolated expressions inside a string, we can't guarantee that this is a
-        // well-typed string (e.g. "#{1 + 1}" is not). We can only do so if all chunks are string
-        // literals.
-        Term::StrChunks(chunks) if chunks.iter().all(is_literal) => {
-            ApparentType::Inferred(Types(AbsType::Str()))
+        Term::Str(_) | Term::StrChunks(_) => ApparentType::Inferred(Types(AbsType::Str())),
+        Term::List(_) => {
+            ApparentType::Inferred(Types(AbsType::List(Box::new(Types(AbsType::Dyn())))))
         }
-        Term::List(_) => ApparentType::Inferred(Types(AbsType::List(Box::new(Types(AbsType::Dyn()))))),
         Term::Var(id) => envs
             .and_then(|envs| envs.get(id))
             .map(ApparentType::FromEnv)
@@ -2389,10 +2378,7 @@ mod tests {
         );
 
         parse_and_typecheck("let x = \"a\" in (x ++ \"a\" : Str)").unwrap();
-        assert_matches!(
-            parse_and_typecheck("let x = \"a#{1}\" in (x ++ \"a\" : Str)"),
-            Err(TypecheckError::TypeMismatch(..))
-        );
+        parse_and_typecheck("let x = \"a#{\"some str inside\"}\" in (x ++ \"a\" : Str)").unwrap();
 
         parse_and_typecheck("let x = false in (x || true : Bool)").unwrap();
         parse_and_typecheck("let x = false in let y = x in let z = y in (z : Bool)").unwrap();
