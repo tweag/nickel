@@ -1380,6 +1380,7 @@ fn eq(env: &mut Environment, c1: Closure, c2: Closure) -> EqResult {
         (Term::Str(s1), Term::Str(s2)) => EqResult::Bool(s1 == s2),
         (Term::Lbl(l1), Term::Lbl(l2)) => EqResult::Bool(l1 == l2),
         (Term::Sym(s1), Term::Sym(s2)) => EqResult::Bool(s1 == s2),
+        (Term::Enum(id1), Term::Enum(id2)) => EqResult::Bool(id1 == id2),
         (Term::Record(m1), Term::Record(m2)) => {
             let (left, center, right) = merge::hashmap::split(m1, m2);
 

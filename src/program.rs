@@ -1003,6 +1003,8 @@ Assume(#alwaysTrue, false)
         assert_peq!("0", "0 + 0 + 0");
         assert_peq!("true", "if true then true else false");
         assert_peq!("\"a\" ++ \"b\" ++ \"c\"", "\"#{\"a\" ++ \"b\"}\" ++ \"c\"");
+        assert_peq!("`Less", "`Less");
+        assert_peq!("`small", "`small");
 
         assert_npeq!("1 + 1", "0");
         assert_npeq!("true", "if true then false else true");
@@ -1010,6 +1012,9 @@ Assume(#alwaysTrue, false)
         assert_npeq!("1", "true");
         assert_npeq!("\"1\"", "1");
         assert_npeq!("\"true\"", "true");
+        assert_npeq!("`Less", "`small");
+        assert_npeq!("`Less", "0");
+        assert_npeq!("`Greater", "false");
     }
 
     #[test]
