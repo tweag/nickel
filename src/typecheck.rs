@@ -746,8 +746,8 @@ pub enum ApparentType {
     /// The apparent type is given by a user-provided annotation, such as an `Assume`, a `Promise`,
     /// or a metavalue.
     Annotated(Types),
-    /// The apparent type has been exactly deduced from a simple expression.
-    Exact(Types),
+    /// The apparent type has been inferred from a simple expression.
+    Inferred(Types),
     /// The term is a variable and its type was retrieved from the typing environment.
     FromEnv(TypeWrapper),
     /// The apparent type wasn't trivial to determine, and an approximation (most of the time,
@@ -759,7 +759,7 @@ impl Into<Types> for ApparentType {
     fn into(self) -> Types {
         match self {
             ApparentType::Annotated(ty)
-            | ApparentType::Exact(ty)
+            | ApparentType::Inferred(ty)
             | ApparentType::Approximated(ty) => ty,
             ApparentType::FromEnv(tyw) => tyw.try_into().ok().unwrap_or(Types(AbsType::Dyn())),
         }
@@ -770,7 +770,7 @@ impl Into<TypeWrapper> for ApparentType {
     fn into(self) -> TypeWrapper {
         match self {
             ApparentType::Annotated(ty)
-            | ApparentType::Exact(ty)
+            | ApparentType::Inferred(ty)
             | ApparentType::Approximated(ty) => to_typewrapper(ty),
             ApparentType::FromEnv(tyw) => tyw,
         }
@@ -810,17 +810,17 @@ pub fn apparent_type(t: &Term, envs: Option<&Envs>) -> ApparentType {
             value: Some(v),
             ..
         }) => apparent_type(v.as_ref(), envs),
-        Term::Num(_) => ApparentType::Exact(Types(AbsType::Num())),
-        Term::Bool(_) => ApparentType::Exact(Types(AbsType::Bool())),
-        Term::Sym(_) => ApparentType::Exact(Types(AbsType::Sym())),
-        Term::Str(_) => ApparentType::Exact(Types(AbsType::Str())),
+        Term::Num(_) => ApparentType::Inferred(Types(AbsType::Num())),
+        Term::Bool(_) => ApparentType::Inferred(Types(AbsType::Bool())),
+        Term::Sym(_) => ApparentType::Inferred(Types(AbsType::Sym())),
+        Term::Str(_) => ApparentType::Inferred(Types(AbsType::Str())),
         // If there are interpolated expressions inside a string, we can't guarantee that this is a
         // well-typed string (e.g. "#{1 + 1}" is not). We can only do so if all chunks are string
         // literals.
         Term::StrChunks(chunks) if chunks.iter().all(is_literal) => {
-            ApparentType::Exact(Types(AbsType::Str()))
+            ApparentType::Inferred(Types(AbsType::Str()))
         }
-        Term::List(_) => ApparentType::Exact(Types(AbsType::List(Box::new(Types(AbsType::Dyn()))))),
+        Term::List(_) => ApparentType::Inferred(Types(AbsType::List(Box::new(Types(AbsType::Dyn()))))),
         Term::Var(id) => envs
             .and_then(|envs| envs.get(id))
             .map(ApparentType::FromEnv)
