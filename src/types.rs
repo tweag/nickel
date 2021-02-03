@@ -102,36 +102,42 @@ pub enum AbsType<Ty> {
 }
 
 impl<Ty> AbsType<Ty> {
-    pub fn map<To, F: FnMut(Ty) -> To>(self, mut f: F) -> AbsType<To> {
+    pub fn try_map<To, F, E>(self, mut f: F) -> Result<AbsType<To>, E>
+    where
+        F: FnMut(Ty) -> Result<To, E>,
+    {
         match self {
-            AbsType::Dyn() => AbsType::Dyn(),
-            AbsType::Num() => AbsType::Num(),
-            AbsType::Bool() => AbsType::Bool(),
-            AbsType::Str() => AbsType::Str(),
-            AbsType::Sym() => AbsType::Sym(),
-            AbsType::Flat(t) => AbsType::Flat(t),
-            AbsType::Arrow(s, t) => {
-                let fs = f(s);
-                let ft = f(t);
-
-                AbsType::Arrow(fs, ft)
-            }
-            AbsType::Var(i) => AbsType::Var(i),
-            AbsType::Forall(i, t) => {
-                let ft = f(t);
-
-                AbsType::Forall(i, ft)
-            }
-            AbsType::RowEmpty() => AbsType::RowEmpty(),
+            AbsType::Dyn() => Ok(AbsType::Dyn()),
+            AbsType::Num() => Ok(AbsType::Num()),
+            AbsType::Bool() => Ok(AbsType::Bool()),
+            AbsType::Str() => Ok(AbsType::Str()),
+            AbsType::Sym() => Ok(AbsType::Sym()),
+            AbsType::Flat(t) => Ok(AbsType::Flat(t)),
+            AbsType::Arrow(s, t) => Ok(AbsType::Arrow(f(s)?, f(t)?)),
+            AbsType::Var(i) => Ok(AbsType::Var(i)),
+            AbsType::Forall(i, t) => Ok(AbsType::Forall(i, f(t)?)),
+            AbsType::RowEmpty() => Ok(AbsType::RowEmpty()),
             AbsType::RowExtend(id, t1, t2) => {
-                let t2_mapped = f(t2);
-                AbsType::RowExtend(id, t1.map(f), t2_mapped)
+                let t1_mapped = match t1 {
+                    Some(ty) => Some(f(ty)?),
+                    None => None,
+                };
+
+                Ok(AbsType::RowExtend(id, t1_mapped, f(t2)?))
             }
-            AbsType::Enum(t) => AbsType::Enum(f(t)),
-            AbsType::StaticRecord(t) => AbsType::StaticRecord(f(t)),
-            AbsType::DynRecord(t) => AbsType::DynRecord(f(t)),
-            AbsType::List(t) => AbsType::List(f(t)),
+            AbsType::Enum(t) => Ok(AbsType::Enum(f(t)?)),
+            AbsType::StaticRecord(t) => Ok(AbsType::StaticRecord(f(t)?)),
+            AbsType::DynRecord(t) => Ok(AbsType::DynRecord(f(t)?)),
+            AbsType::List(t) => Ok(AbsType::List(f(t)?)),
         }
+    }
+
+    pub fn map<To, F>(self, mut f: F) -> AbsType<To>
+    where
+        F: FnMut(Ty) -> To,
+    {
+        let f_lift = |ty: Ty| -> Result<To, ()> { Ok(f(ty)) };
+        self.try_map(f_lift).unwrap()
     }
 
     /// Determine if a type is a row type.
