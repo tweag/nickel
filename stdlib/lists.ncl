@@ -66,10 +66,10 @@
         else
           generate gen (n-1) @ [gen n],
 
-    sort : forall a. (a -> a -> Bool) -> List a -> List a =
+    sort : forall a. (a -> a -> <Less, Equal, Greater>) -> List a -> List a =
       fun cmp l =>
         let first = %head% l in
-        let parts = partition (fun x => cmp x first) (%tail% l) in
+        let parts = partition (fun x => (cmp x first == `Less)) (%tail% l) in
         if %length% l <= 1 then
           l
         else
