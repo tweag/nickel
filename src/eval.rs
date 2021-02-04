@@ -590,9 +590,8 @@ where
             Term::RecRecord(ts) => {
                 // Thanks to the share normal form transformation, the content is either a constant or a
                 // variable.
-                let rec_env =
-                    ts.iter()
-                        .try_fold(HashMap::new(), |mut rec_env, (id, rt)| match rt.as_ref() {
+                let rec_env = ts.iter().try_fold::<_, _, Result<Environment, EvalError>>(
+                        HashMap::new(), |mut rec_env, (id, rt)| match rt.as_ref() {
                             Term::Var(ref var_id) => {
                                 let thunk = env.get(var_id).ok_or_else(|| {
                                     EvalError::UnboundIdentifier(var_id.clone(), rt.pos.clone())
