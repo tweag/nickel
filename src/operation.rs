@@ -6,19 +6,20 @@
 //! the functions [`process_unary_operation`](fn.process_unary_operation.html) and
 //! [`process_binary_operation`](fn.process_binary_operation.html) receive evaluated operands and
 //! implement the actual semantics of operators.
-use crate::error::EvalError;
-use crate::eval::Environment;
-use crate::eval::{CallStack, Closure};
+use crate::error::{EvalError, SerializationError};
+use crate::eval::{subst, CallStack, Closure, Environment};
 use crate::identifier::Ident;
 use crate::label::ty_path;
 use crate::merge;
 use crate::merge::merge;
 use crate::position::RawSpan;
+use crate::serialize;
 use crate::stack::Stack;
 use crate::term::make as mk_term;
 use crate::term::{BinaryOp, RichTerm, StrChunk, Term, UnaryOp};
 use crate::transformations::Closurizable;
 use crate::{mk_app, mk_fun};
+use md5::digest::Digest;
 use simple_counter::*;
 use std::collections::HashMap;
 use std::iter::Extend;
@@ -1315,6 +1316,163 @@ fn process_binary_operation(
             env2,
             pos_op,
         ),
+        BinaryOp::Hash() => {
+            let mk_err_fst = |t1| {
+                Err(EvalError::TypeError(
+                    String::from("Enum <Md5, Sha1, Sha256, Sha512>"),
+                    String::from("hash, 1st argument"),
+                    fst_pos,
+                    RichTerm {
+                        term: t1,
+                        pos: pos1,
+                    },
+                ))
+            };
+
+            if let Term::Enum(ref id) = t1.as_ref() {
+                if let Term::Str(s) = *t2 {
+                    let result = match id.to_string().as_str() {
+                        "Md5" => {
+                            let mut hasher = md5::Md5::new();
+                            hasher.update(s);
+                            format!("{:x}", hasher.finalize())
+                        }
+                        "Sha1" => {
+                            let mut hasher = sha1::Sha1::new();
+                            hasher.update(s);
+                            format!("{:x}", hasher.finalize())
+                        }
+                        "Sha256" => {
+                            let mut hasher = sha2::Sha256::new();
+                            hasher.update(s);
+                            format!("{:x}", hasher.finalize())
+                        }
+                        "Sha512" => {
+                            let mut hasher = sha2::Sha512::new();
+                            hasher.update(s);
+                            format!("{:x}", hasher.finalize())
+                        }
+                        _ => return mk_err_fst(t1),
+                    };
+
+                    Ok(Closure::atomic_closure(
+                        Term::Str(String::from(result)).into(),
+                    ))
+                } else {
+                    Err(EvalError::TypeError(
+                        String::from("Str"),
+                        String::from("hash, 2nd argument"),
+                        snd_pos,
+                        RichTerm {
+                            term: t2,
+                            pos: pos2,
+                        },
+                    ))
+                }
+            } else {
+                mk_err_fst(t1)
+            }
+        }
+        BinaryOp::Serialize() => {
+            let mk_err_fst = |t1| {
+                Err(EvalError::TypeError(
+                    String::from("Enum <Json, Yaml, Toml>"),
+                    String::from("serialize, 1st argument"),
+                    fst_pos,
+                    RichTerm {
+                        term: t1,
+                        pos: pos1,
+                    },
+                ))
+            };
+
+            if let Term::Enum(ref id) = t1.as_ref() {
+                // Serialization needs all variables term to be fully substituted
+                let global_env = Environment::new();
+                let rt2 = subst(
+                    RichTerm {
+                        term: t2,
+                        pos: pos2,
+                    },
+                    &global_env,
+                    &env2,
+                )
+                .into();
+                serialize::validate(&rt2)?;
+
+                let result = match id.to_string().as_str() {
+                    "Json" => serde_json::to_string_pretty(&rt2)
+                        .map_err(|err| SerializationError::Other(err.to_string()))?,
+                    "Yaml" => serde_yaml::to_string(&rt2)
+                        .map_err(|err| SerializationError::Other(err.to_string()))?,
+                    "Toml" => toml::ser::to_string_pretty(&rt2)
+                        .map_err(|err| SerializationError::Other(err.to_string()))?,
+                    _ => return mk_err_fst(t1),
+                };
+
+                Ok(Closure::atomic_closure(
+                    Term::Str(String::from(result)).into(),
+                ))
+            } else {
+                mk_err_fst(t1)
+            }
+        }
+        BinaryOp::Deserialize() => {
+            let mk_err_fst = |t1| {
+                Err(EvalError::TypeError(
+                    String::from("Enum <Json, Yaml, Toml>"),
+                    String::from("deserialize, 1st argument"),
+                    fst_pos,
+                    RichTerm {
+                        term: t1,
+                        pos: pos1,
+                    },
+                ))
+            };
+
+            if let Term::Enum(ref id) = t1.as_ref() {
+                if let Term::Str(s) = *t2 {
+                    let rt: RichTerm = match id.to_string().as_str() {
+                        "Json" => serde_json::from_str(&s).map_err(|err| {
+                            EvalError::DeserializationError(
+                                String::from("json"),
+                                format!("{}", err),
+                                pos_op,
+                            )
+                        })?,
+                        "Yaml" => serde_yaml::from_str(&s).map_err(|err| {
+                            EvalError::DeserializationError(
+                                String::from("yaml"),
+                                format!("{}", err),
+                                pos_op,
+                            )
+                        })?,
+                        "Toml" => toml::from_str(&s).map_err(|err| {
+                            EvalError::DeserializationError(
+                                String::from("toml"),
+                                format!("{}", err),
+                                pos_op,
+                            )
+                        })?,
+                        _ => return mk_err_fst(t1),
+                    };
+
+                    Ok(Closure::atomic_closure(rt))
+                } else {
+                    Err(EvalError::TypeError(
+                        String::from("Str"),
+                        String::from("deserialize, 2nd argument"),
+                        snd_pos,
+                        RichTerm {
+                            term: t2,
+                            pos: pos2,
+                        },
+                    ))
+                }
+            } else {
+                mk_err_fst(t1)
+            }
+        }
     }
 }
 

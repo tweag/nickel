@@ -70,6 +70,14 @@ pub enum EvalError {
     UnboundIdentifier(Ident, Option<RawSpan>),
     /// A thunk was entered during its own update.
     InfiniteRecursion(CallStack, Option<RawSpan>),
+    /// A serialization error occurred during a call to the builtin `serialize`.
+    SerializationError(SerializationError),
+    /// A parse error occurred during a call to the builtin `deserialize`.
+    DeserializationError(
+        String,          /* format */
+        String,          /* error message */
+        Option<RawSpan>, /* position of the call to deserialize */
+    ),
     /// An unexpected internal error.
     InternalError(String, Option<RawSpan>),
     /// Errors occurring rarely enough to not deserve a dedicated variant.
@@ -282,6 +290,12 @@ impl From<IOError> for Error {
 impl From<std::io::Error> for IOError {
     fn from(error: std::io::Error) -> IOError {
         IOError(error.to_string())
+    }
+}
+
+impl From<SerializationError> for EvalError {
+    fn from(error: SerializationError) -> EvalError {
+        EvalError::SerializationError(error)
     }
 }
 
@@ -1004,6 +1018,18 @@ impl ToDiagnostic<FileId> for EvalError {
 
                 vec![Diagnostic::error()
                     .with_message(format!("Internal error ({})", msg))
+                    .with_labels(labels)
+                    .with_notes(vec![String::from(INTERNAL_ERROR_MSG)])]
+            }
+            EvalError::SerializationError(err) => err.to_diagnostic(files, contract_id),
+            EvalError::DeserializationError(format, msg, span_opt) => {
+                let labels = span_opt
+                    .as_ref()
+                    .map(|span| vec![primary(span).with_message("here")])
+                    .unwrap_or(Vec::new());
+
+                vec![Diagnostic::error()
+                    .with_message(format!("{} parse error: {}", format, msg))
                     .with_labels(labels)
                     .with_notes(vec![String::from(INTERNAL_ERROR_MSG)])]
             }
