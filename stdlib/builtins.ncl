@@ -6,15 +6,21 @@
     isFun : Dyn -> Bool = fun x => %isFun% x;
     isList : Dyn -> Bool = fun x => %isList% x;
     isRecord : Dyn -> Bool = fun x => %isRecord% x;
-    typeOf : Dyn -> <TypeNum, TypeBool, TypeStr, TypeFun, TypeList, TypeRecord, Unknown>
-      = fun x =>
+    typeOf : Dyn -> <
+      TypeNum,
+      TypeBool,
+      TypeStr,
+      TypeFun,
+      TypeList,
+      TypeRecord,
+      Other> = fun x =>
       if %isNum% x then `TypeNum
       else if %isBool% x then `TypeBool
       else if %isStr% x then `TypeStr
       else if %isFun% x then `TypeFun
       else if %isList% x then `TypeList
       else if %isRecord% x then `TypeRecord
-      else `Unknown;
+      else `Other;
 
     seq : forall a. Dyn -> a -> a = fun x y => %seq% x y;
     deepSeq : forall a. Dyn -> a -> a = fun x y => %deepSeq% x y;
