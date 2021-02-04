@@ -1405,7 +1405,8 @@ fn process_binary_operation(
                         .map_err(|err| SerializationError::Other(err.to_string()))?,
                     "Yaml" => serde_yaml::to_string(&rt2)
                         .map_err(|err| SerializationError::Other(err.to_string()))?,
-                    "Toml" => toml::ser::to_string_pretty(&rt2)
+                    "Toml" => toml::Value::try_from(&rt2)
+                        .map(|v| format!("{}", v))
                         .map_err(|err| SerializationError::Other(err.to_string()))?,
                     _ => return mk_err_fst(t1),
                 };
