@@ -1676,6 +1676,33 @@ pub fn get_bop_type(state: &mut State, op: &BinaryOp) -> Result<TypeWrapper, Typ
         }
         // Dyn -> Dyn -> Dyn
         BinaryOp::Merge() => mk_tyw_arrow!(AbsType::Dyn(), AbsType::Dyn(), AbsType::Dyn()),
+        // <Md5, Sha1, Sha256, Sha512> -> Str -> Str
+        BinaryOp::Hash() => mk_tyw_arrow!(
+            mk_tyw_enum!(
+                "Md5",
+                "Sha1",
+                "Sha256",
+                "Sha512",
+                mk_typewrapper::row_empty()
+            ),
+            mk_typewrapper::str(),
+            mk_typewrapper::str()
+        ),
+        // forall a. <Json, Yaml, Toml> -> a -> Str
+        BinaryOp::Serialize() => {
+            let ty_input = TypeWrapper::Ptr(new_var(state.table));
+            mk_tyw_arrow!(
+                mk_tyw_enum!("Json", "Yaml", "Toml", mk_typewrapper::row_empty()),
+                ty_input,
+                mk_typewrapper::str()
+            )
+        }
+        // <Json, Yaml, Toml> -> Str -> Dyn
+        BinaryOp::Deserialize() => mk_tyw_arrow!(
+            mk_tyw_enum!("Json", "Yaml", "Toml", mk_typewrapper::row_empty()),
+            mk_typewrapper::str(),
+            mk_typewrapper::dynamic()
+        ),
     })
 }
 
