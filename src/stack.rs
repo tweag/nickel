@@ -1,12 +1,10 @@
 //! Define the main evaluation stack of the Nickel abstract machine and related operations.
 //!
 //! See [eval](../eval/index.html).
-use crate::eval::{Closure, Environment};
+use crate::eval::{Closure, Environment, ThunkUpdateFrame};
 use crate::operation::OperationCont;
 use crate::position::RawSpan;
 use crate::term::{RichTerm, StrChunk};
-use std::cell::RefCell;
-use std::rc::Weak;
 
 /// An element of the stack.
 #[derive(Debug)]
@@ -22,7 +20,7 @@ pub enum Marker {
     /// An argument of an application.
     Arg(Closure, Option<RawSpan>),
     /// A thunk, which is pointer to a mutable memory cell to be updated.
-    Thunk(Weak<RefCell<Closure>>),
+    Thunk(ThunkUpdateFrame),
     /// The continuation of a primitive operation.
     Cont(
         OperationCont,
@@ -132,7 +130,7 @@ impl Stack {
         self.0.push(Marker::Arg(arg, pos))
     }
 
-    pub fn push_thunk(&mut self, thunk: Weak<RefCell<Closure>>) {
+    pub fn push_thunk(&mut self, thunk: ThunkUpdateFrame) {
         self.0.push(Marker::Thunk(thunk))
     }
 
@@ -176,7 +174,7 @@ impl Stack {
 
     /// Try to pop a thunk from the top of the stack. If `None` is returned, the top element was
     /// not a thunk and the stack is left unchanged.
-    pub fn pop_thunk(&mut self) -> Option<Weak<RefCell<Closure>>> {
+    pub fn pop_thunk(&mut self) -> Option<ThunkUpdateFrame> {
         match self.0.pop() {
             Some(Marker::Thunk(thunk)) => Some(thunk),
             Some(m) => {
@@ -239,7 +237,7 @@ impl Stack {
         }
     }
 
-    /// Check if the top element is an argument.
+    /// Check if the top element is a thunk.
     pub fn is_top_thunk(&self) -> bool {
         self.0.last().map(Marker::is_thunk).unwrap_or(false)
     }
@@ -259,8 +257,9 @@ impl Stack {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::eval::{IdentKind, Thunk};
     use crate::term::{Term, UnaryOp};
-    use std::rc::Rc;
+    use assert_matches::assert_matches;
 
     impl Stack {
         /// Count the number of thunks at the top of the stack.
@@ -287,8 +286,8 @@ mod tests {
     }
 
     fn some_thunk_marker() -> Marker {
-        let rc = Rc::new(RefCell::new(some_closure()));
-        Marker::Thunk(Rc::downgrade(&rc))
+        let mut thunk = Thunk::new(some_closure(), IdentKind::Let());
+        Marker::Thunk(thunk.to_update_frame().unwrap())
     }
 
     fn some_cont_marker() -> Marker {
@@ -319,11 +318,24 @@ mod tests {
         let mut s = Stack::new();
         assert_eq!(0, s.count_thunks());
 
-        s.push_thunk(Rc::downgrade(&Rc::new(RefCell::new(some_closure()))));
-        s.push_thunk(Rc::downgrade(&Rc::new(RefCell::new(some_closure()))));
+        let mut thunk = Thunk::new(some_closure(), IdentKind::Let());
+        s.push_thunk(thunk.to_update_frame().unwrap());
+        thunk = Thunk::new(some_closure(), IdentKind::Let());
+        s.push_thunk(thunk.to_update_frame().unwrap());
+
         assert_eq!(2, s.count_thunks());
         s.pop_thunk().expect("Already checked");
         assert_eq!(1, s.count_thunks());
+    }
+
+    #[test]
+    fn thunk_blackhole() {
+        let mut thunk = Thunk::new(some_closure(), IdentKind::Let());
+        let thunk_upd = thunk.to_update_frame();
+        assert_matches!(thunk_upd, Ok(..));
+        assert_matches!(thunk.to_update_frame(), Err(..));
+        thunk_upd.unwrap().update(some_closure());
+        assert_matches!(thunk.to_update_frame(), Ok(..));
     }
 
     #[test]

@@ -2,15 +2,13 @@
 
 use crate::cache::ImportResolver;
 use crate::error::ImportError;
-use crate::eval::{Closure, Environment, IdentKind};
+use crate::eval::{Closure, Environment, IdentKind, Thunk};
 use crate::identifier::Ident;
 use crate::term::{RichTerm, Term};
 use crate::types::{AbsType, Types};
 use codespan::FileId;
 use simple_counter::*;
-use std::cell::RefCell;
 use std::path::PathBuf;
-use std::rc::Rc;
 
 generate_counter!(FreshVarCounter, usize);
 
@@ -321,12 +319,11 @@ impl Closurizable for RichTerm {
     /// and return this variable as a fresh term.
     fn closurize(self, env: &mut Environment, with_env: Environment) -> RichTerm {
         let var = fresh_var();
-        let c = Closure {
+        let closure = Closure {
             body: self,
             env: with_env,
         };
-
-        env.insert(var.clone(), (Rc::new(RefCell::new(c)), IdentKind::Record()));
+        env.insert(var.clone(), Thunk::new(closure, IdentKind::Record()));
 
         Term::Var(var).into()
     }

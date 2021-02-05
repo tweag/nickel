@@ -95,12 +95,167 @@ use crate::operation::{continuate_operation, OperationCont};
 use crate::position::RawSpan;
 use crate::stack::Stack;
 use crate::term::{make as mk_term, MetaValue, RichTerm, StrChunk, Term, UnaryOp};
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
+/// The state of a thunk.
+///
+/// When created, a thunk is flagged as suspended. When accessed for the first time, a corresponding
+/// [`ThunkUpdateFrame`](./struct.ThunkUpdateFrame.html) is pushed on the stack and the thunk is
+/// flagged as black-hole. This prevents direct infinite recursions, since if a thunk is
+/// re-accessed while still in a black-hole state, we are sure that the evaluation will loop, and
+/// we can thus error out before overflowing the stack or looping forever. Finally, once the
+/// content of a thunk has been evaluated, the thunk is updated with the new value and flagged as
+/// evaluated, so that future accesses won't even push an update frame on the stack.
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum ThunkState {
+    Blackholed,
+    Suspended,
+    Evaluated,
+}
+
+/// The mutable data stored inside a thunk.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ThunkData {
+    closure: Closure,
+    state: ThunkState,
+}
+
+impl ThunkData {
+    pub fn new(closure: Closure) -> Self {
+        ThunkData {
+            closure,
+            state: ThunkState::Suspended,
+        }
+    }
+}
+
+/// A thunk.
+///
+/// A thunk is a shared suspended computation. It is the primary device for the implementation of
+/// lazy evaluation.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Thunk {
+    data: Rc<RefCell<ThunkData>>,
+    ident_kind: IdentKind,
+}
+
+/// A black-holed thunk was accessed, which would lead to infinite recursion.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BlackholedError;
+
+impl Thunk {
+    pub fn new(closure: Closure, ident_kind: IdentKind) -> Self {
+        Thunk {
+            data: Rc::new(RefCell::new(ThunkData::new(closure))),
+            ident_kind,
+        }
+    }
+
+    pub fn state(&self) -> ThunkState {
+        self.data.borrow().state
+    }
+
+    /// Set the state to evaluated.
+    pub fn set_evaluated(&mut self) {
+        self.data.borrow_mut().state = ThunkState::Evaluated;
+    }
+
+    /// Generate an update frame from this thunk and set the state to `Blackholed`. Return an
+    /// error if the thunk was already black-holed.
+    pub fn to_update_frame(&mut self) -> Result<ThunkUpdateFrame, BlackholedError> {
+        if self.data.borrow().state == ThunkState::Blackholed {
+            return Err(BlackholedError);
+        }
+
+        self.data.borrow_mut().state = ThunkState::Blackholed;
+
+        Ok(ThunkUpdateFrame {
+            data: Rc::downgrade(&self.data),
+            ident_kind: self.ident_kind,
+        })
+    }
+
+    /// Immutably borrow the inner closure. Panic if there is another active mutable borrow.
+    pub fn borrow(&self) -> Ref<'_, Closure> {
+        let (closure, _) = Ref::map_split(self.data.borrow(), |data| {
+            let ThunkData {
+                ref closure,
+                ref state,
+            } = data;
+            (closure, state)
+        });
+
+        closure
+    }
+
+    /// Mutably borrow the inner closure. Panic if there is any other active borrow.
+    pub fn borrow_mut<'a>(&'a mut self) -> RefMut<'_, Closure> {
+        let (closure, _) = RefMut::map_split(self.data.borrow_mut(), |data| {
+            let ThunkData {
+                ref mut closure,
+                ref mut state,
+            } = data;
+            (closure, state)
+        });
+
+        closure
+    }
+
+    /// Get an owned clone of the inner closure.
+    pub fn get_owned(&self) -> Closure {
+        self.data.borrow().closure.clone()
+    }
+
+    pub fn ident_kind(&self) -> IdentKind {
+        self.ident_kind
+    }
+
+    /// Consume the thunk and return an owned closure. Avoid cloning if this thunk is the only
+    /// reference to the inner closure.
+    pub fn into_closure(self) -> Closure {
+        match Rc::try_unwrap(self.data) {
+            Ok(inner) => inner.into_inner().closure,
+            Err(rc) => rc.borrow().clone().closure,
+        }
+    }
+}
+
+/// A thunk update frame.
+///
+/// A thunk update frame is put on the stack whenever a variable is entered, such that once this
+/// variable is evaluated, the corresponding thunk can be updated. It is similar to a thunk but it
+/// holds a weak reference to the inner closure, to avoid unnecessarily keeping the underlying
+/// closure alive.
+#[derive(Clone, Debug)]
+pub struct ThunkUpdateFrame {
+    data: Weak<RefCell<ThunkData>>,
+    ident_kind: IdentKind,
+}
+
+impl ThunkUpdateFrame {
+    /// Update the corresponding thunk with a closure. Set the state to `Evaluated`
+    ///
+    /// # Return
+    ///
+    /// - `true` if the thunk was successfully updated
+    /// - `false` if the corresponding closure has been dropped since
+    pub fn update(self, closure: Closure) -> bool {
+        if let Some(data) = Weak::upgrade(&self.data) {
+            *data.borrow_mut() = ThunkData {
+                closure,
+                state: ThunkState::Evaluated,
+            };
+            true
+        } else {
+            false
+        }
+    }
+}
+
 /// An environment, which is a mapping from identifiers to closures.
-pub type Environment = HashMap<Ident, (Rc<RefCell<Closure>>, IdentKind)>;
+pub type Environment = HashMap<Ident, Thunk>;
 
 /// A call stack, saving the history of function calls.
 ///
@@ -118,7 +273,7 @@ pub enum StackElem {
 }
 
 /// Kind of an identifier.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum IdentKind {
     Let(),
     Lam(),
@@ -154,11 +309,10 @@ pub fn env_add_term(env: &mut Environment, rt: RichTerm) -> Result<(), EnvBuildE
     match *term {
         Term::Record(bindings) | Term::RecRecord(bindings) => {
             let ext = bindings.into_iter().map(|(id, t)| {
-                let closure = Closure {
-                    body: t,
-                    env: HashMap::new(),
-                };
-                (id, (Rc::new(RefCell::new(closure)), IdentKind::Record()))
+                (
+                    id,
+                    Thunk::new(Closure::atomic_closure(t), IdentKind::Record()),
+                )
             });
 
             env.extend(ext);
@@ -174,7 +328,7 @@ pub fn env_add(env: &mut Environment, id: Ident, rt: RichTerm, local_env: Enviro
         body: rt,
         env: local_env,
     };
-    env.insert(id, (Rc::new(RefCell::new(closure)), IdentKind::Let()));
+    env.insert(id, Thunk::new(closure, IdentKind::Let()));
 }
 
 /// Determine if a thunk is worth being put on the stack for future update.
@@ -238,13 +392,12 @@ where
                     let thunk = env
                         .get(&id)
                         .or_else(|| global_env.get(&id))
-                        .map(|(rc, _)| rc.clone())
                         .expect("eval::eval_meta(): unexpected unbound identifier");
 
                     let Closure {
                         body,
                         env: local_env,
-                    } = thunk.borrow().clone();
+                    } = thunk.get_owned();
 
                     t = body;
                     env = local_env;
@@ -304,29 +457,29 @@ where
         let term = *boxed_term;
         clos = match term {
             Term::Var(x) => {
-                let (thunk, id_kind) = env
+                let mut thunk = env
                     .remove(&x)
-                    .or_else(|| {
-                        global_env
-                            .get(&x)
-                            .map(|(rc, id_kind)| (rc.clone(), id_kind.clone()))
-                    })
+                    .or_else(|| global_env.get(&x).map(Thunk::clone))
                     .ok_or(EvalError::UnboundIdentifier(x.clone(), pos.clone()))?;
                 std::mem::drop(env); // thunk may be a 1RC pointer
-                if should_update(&thunk.borrow().body.term) {
-                    stack.push_thunk(Rc::downgrade(&thunk));
-                }
-                call_stack.push(StackElem::Var(id_kind, x, pos));
-                match Rc::try_unwrap(thunk) {
-                    Ok(c) => {
-                        // thunk was the only strong ref to the closure
-                        c.into_inner()
+
+                if thunk.state() != ThunkState::Evaluated {
+                    if should_update(&thunk.borrow().body.term) {
+                        match thunk.to_update_frame() {
+                            Ok(thunk_upd) => stack.push_thunk(thunk_upd),
+                            Err(BlackholedError) => {
+                                return Err(EvalError::InfiniteRecursion(call_stack, pos))
+                            }
+                        }
                     }
-                    Err(rc) => {
-                        // We need to clone it, there are other strong refs
-                        rc.borrow().clone()
+                    // If the thunk isn't to be updated, directly set the evaluated flag.
+                    else {
+                        thunk.set_evaluated();
                     }
                 }
+
+                call_stack.push(StackElem::Var(thunk.ident_kind(), x, pos));
+                thunk.into_closure()
             }
             Term::App(t1, t2) => {
                 stack.push_arg(
@@ -339,11 +492,11 @@ where
                 Closure { body: t1, env }
             }
             Term::Let(x, s, t) => {
-                let thunk = Rc::new(RefCell::new(Closure {
+                let closure = Closure {
                     body: s,
                     env: env.clone(),
-                }));
-                env.insert(x, (Rc::clone(&thunk), IdentKind::Let()));
+                };
+                env.insert(x, Thunk::new(closure, IdentKind::Let()));
                 Closure { body: t, env }
             }
             Term::Switch(exp, cases, default) => {
@@ -441,24 +594,22 @@ where
                     ts.iter()
                         .try_fold(HashMap::new(), |mut rec_env, (id, rt)| match rt.as_ref() {
                             &Term::Var(ref var_id) => {
-                                let (thunk, id_kind) = env.get(var_id).ok_or(
-                                    EvalError::UnboundIdentifier(var_id.clone(), rt.pos.clone()),
-                                )?;
-                                rec_env.insert(id.clone(), (thunk.clone(), id_kind.clone()));
+                                let thunk = env.get(var_id).ok_or(EvalError::UnboundIdentifier(
+                                    var_id.clone(),
+                                    rt.pos.clone(),
+                                ))?;
+                                rec_env.insert(id.clone(), thunk.clone());
                                 Ok(rec_env)
                             }
                             _ => {
                                 // If we are in this branch, the term must be a constant after the
                                 // share normal form transformation, hence it should not need an
-                                // environment, which is it is dropped.
+                                // environment, which is why it is dropped.
                                 let closure = Closure {
                                     body: rt.clone(),
                                     env: HashMap::new(),
                                 };
-                                rec_env.insert(
-                                    id.clone(),
-                                    (Rc::new(RefCell::new(closure)), IdentKind::Let()),
-                                );
+                                rec_env.insert(id.clone(), Thunk::new(closure, IdentKind::Let()));
                                 Ok(rec_env)
                             }
                         })?;
@@ -469,7 +620,7 @@ where
                         Term::Var(var_id) => {
                             // We already checked for unbound identifier in the previous fold, so this
                             // get should always succeed.
-                            let (thunk, _) = env.get(&var_id).unwrap();
+                            let thunk = env.get_mut(&var_id).unwrap();
                             thunk.borrow_mut().env.extend(rec_env.clone());
                             (
                                 id,
@@ -577,8 +728,7 @@ where
                 if 0 < stack.count_args() {
                     let (arg, pos_app) = stack.pop_arg().expect("Condition already checked.");
                     call_stack.push(StackElem::App(pos_app));
-                    let thunk = Rc::new(RefCell::new(arg));
-                    env.insert(x, (thunk, IdentKind::Lam()));
+                    env.insert(x, Thunk::new(arg, IdentKind::Lam()));
                     Closure { body: t, env }
                 } else {
                     return Ok((Term::Fun(x, t), env));
@@ -607,9 +757,7 @@ where
 /// Pop and update all the thunks on the top of the stack with the given closure.
 fn update_thunks(stack: &mut Stack, closure: &Closure) {
     while let Some(thunk) = stack.pop_thunk() {
-        if let Some(safe_thunk) = Weak::upgrade(&thunk) {
-            *safe_thunk.borrow_mut() = closure.clone();
-        }
+        thunk.update(closure.clone());
     }
 }
 
@@ -633,8 +781,8 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
             Term::Var(id) if !bound.as_ref().contains(&id) => env
                 .get(&id)
                 .or_else(|| global_env.get(&id))
-                .map(|(rc, _)| {
-                    let closure = rc.borrow().clone();
+                .map(|thunk| {
+                    let closure = thunk.get_owned();
                     subst_(closure.body, global_env, &closure.env, bound)
                 })
                 .unwrap_or_else(|| RichTerm::new(Term::Var(id), pos)),
@@ -1109,8 +1257,13 @@ mod tests {
     fn global_env() {
         let mut global_env = HashMap::new();
         let mut resolver = DummyResolver {};
-        let thunk = Rc::new(RefCell::new(Closure::atomic_closure(Term::Num(1.0).into())));
-        global_env.insert(Ident::from("g"), (Rc::clone(&thunk), IdentKind::Let()));
+        global_env.insert(
+            Ident::from("g"),
+            Thunk::new(
+                Closure::atomic_closure(Term::Num(1.0).into()),
+                IdentKind::Let(),
+            ),
+        );
 
         let t = mk_term::let_in("x", Term::Num(2.0), mk_term::var("x"));
         assert_eq!(eval(t, &global_env, &mut resolver), Ok(Term::Num(2.0)));
@@ -1129,10 +1282,7 @@ mod tests {
             .map(|(id, t)| {
                 (
                     id.into(),
-                    (
-                        Rc::new(RefCell::new(Closure::atomic_closure(t))),
-                        IdentKind::Let(),
-                    ),
+                    Thunk::new(Closure::atomic_closure(t), IdentKind::Let()),
                 )
             })
             .collect()
