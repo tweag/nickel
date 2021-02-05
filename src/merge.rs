@@ -115,7 +115,7 @@ pub fn merge(
             }
         }
         (Term::Num(n1), Term::Num(n2)) => {
-            if n1 == n2 {
+            if (n1 - n2).abs() < f64::EPSILON {
                 Ok(Closure::atomic_closure(Term::Num(n1).into()))
             } else {
                 Err(EvalError::MergeIncompatibleArgs(

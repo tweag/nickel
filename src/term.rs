@@ -299,7 +299,7 @@ impl Term {
             | Term::ResolvedImport(_)
             | Term::StrChunks(_) => None,
         }
-        .map(|s| String::from(s))
+        .map(String::from)
     }
 
     /// Return a shallow string representation of a term, used for error reporting.
@@ -311,10 +311,10 @@ impl Term {
             Term::Str(s) => format!("\"{}\"", s),
             Term::StrChunks(chunks) => {
                 let chunks_str: Vec<String> = chunks
-                    .into_iter()
+                    .iter()
                     .map(|chunk| match chunk {
                         StrChunk::Literal(s) => s,
-                        StrChunk::Expr(_, _) => "${ ... }",
+                        StrChunk::Expr(..) => "${ ... }",
                     })
                     .map(String::from)
                     .collect();
@@ -344,7 +344,7 @@ impl Term {
                     "value"
                 };
                 let value = if let Some(t) = &meta.value {
-                    format!("{}", t.as_ref().shallow_repr())
+                    t.as_ref().shallow_repr()
                 } else {
                     String::from("none")
                 };

@@ -128,7 +128,7 @@ fn main() {
 
     if let Some(Command::REPL) = opts.command {
         #[cfg(feature = "repl")]
-        if let Err(_) = rustyline_frontend::repl() {
+        if rustyline_frontend::repl().is_err() {
             process::exit(1);
         }
 
@@ -171,10 +171,7 @@ fn main() {
             }
             Some(Command::Typecheck) => program.typecheck().map(|_| ()),
             Some(Command::REPL) => unreachable!(),
-            None => program.eval().and_then(|t| {
-                println!("Done: {:?}", t);
-                Ok(())
-            }),
+            None => program.eval().map(|t| println!("Done: {:?}", t)),
         };
 
         if let Err(err) = result {

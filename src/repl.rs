@@ -46,7 +46,7 @@ pub trait REPL {
     /// Query the metadata of an expression.
     fn query(&mut self, exp: &str) -> Result<Term, Error>;
     /// Required for error reporting on the frontend.
-    fn cache_mut<'a>(&'a mut self) -> &'a mut Cache;
+    fn cache_mut(&mut self) -> &mut Cache;
 }
 
 /// Standard implementation of the REPL backend.
@@ -164,7 +164,7 @@ impl REPL for REPLImpl {
         program::query(&mut self.cache, file_id, &self.eval_env, None)
     }
 
-    fn cache_mut<'a>(&'a mut self) -> &'a mut Cache {
+    fn cache_mut(&mut self) -> &mut Cache {
         &mut self.cache
     }
 }
@@ -259,7 +259,7 @@ pub mod command {
         type Err = REPLError;
 
         fn from_str(s: &str) -> Result<Self, Self::Err> {
-            let cmd_end = s.find(" ").unwrap_or(s.len());
+            let cmd_end = s.find(' ').unwrap_or_else(|| s.len());
             let cmd_str: String = s.chars().take(cmd_end).collect();
             let cmd: CommandType = cmd_str
                 .parse()
@@ -354,7 +354,7 @@ pub mod rustyline_frontend {
         fn validate(&self, ctx: &mut ValidationContext<'_>) -> rustyline::Result<ValidationResult> {
             let input = ctx.input();
 
-            if input.starts_with(":") || input.trim().is_empty() {
+            if input.starts_with(':') || input.trim().is_empty() {
                 return Ok(ValidationResult::Valid(None));
             }
 
@@ -415,7 +415,7 @@ pub mod rustyline_frontend {
 
             match line {
                 Ok(line) if line.trim().is_empty() => (),
-                Ok(line) if line.starts_with(":") => {
+                Ok(line) if line.starts_with(':') => {
                     let cmd = line.chars().skip(1).collect::<String>().parse::<Command>();
                     let result = match cmd {
                         Ok(Command::Load(path)) => {
@@ -433,7 +433,7 @@ pub mod rustyline_frontend {
                             query_print::print_query_result(&t, query_print::Attributes::default());
                         }),
                         Ok(Command::Help(arg)) => {
-                            print_help(arg.as_ref().map(String::as_str));
+                            print_help(arg.as_deref());
                             Ok(())
                         }
                         Ok(Command::Exit) => {
@@ -560,7 +560,7 @@ pub mod query_print {
         }
 
         fn print_doc(&self, content: &str) {
-            if content.find("\n").is_none() {
+            if content.find('\n').is_none() {
                 self.print_metadata("documentation", &content);
             } else {
                 println!("* documentation\n");
@@ -608,7 +608,7 @@ pub mod query_print {
         }
 
         fn print_doc(&self, content: &str) {
-            if content.find("\n").is_none() {
+            if content.find('\n').is_none() {
                 self.skin
                     .print_text(&format!("* **documentation**: {}", content));
             } else {

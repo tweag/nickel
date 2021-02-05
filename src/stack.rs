@@ -45,45 +45,27 @@ pub enum Marker {
 
 impl Marker {
     pub fn is_arg(&self) -> bool {
-        match *self {
-            Marker::Arg(_, _) => true,
-            _ => false,
-        }
+        matches!(*self, Marker::Arg(..))
     }
 
     pub fn is_thunk(&self) -> bool {
-        match *self {
-            Marker::Thunk(_) => true,
-            _ => false,
-        }
+        matches!(*self, Marker::Thunk(..))
     }
 
     pub fn is_cont(&self) -> bool {
-        match *self {
-            Marker::Cont(_, _, _) => true,
-            _ => false,
-        }
+        matches!(*self, Marker::Cont(..))
     }
 
     pub fn is_eq(&self) -> bool {
-        match *self {
-            Marker::Eq(..) => true,
-            _ => false,
-        }
+        matches!(*self, Marker::Eq(..))
     }
 
     pub fn is_str_chunk(&self) -> bool {
-        match *self {
-            Marker::StrChunk(..) => true,
-            _ => false,
-        }
+        matches!(*self, Marker::StrChunk(..))
     }
 
     pub fn is_str_acc(&self) -> bool {
-        match *self {
-            Marker::StrAcc(..) => true,
-            _ => false,
-        }
+        matches!(*self, Marker::StrAcc(..))
     }
 }
 
@@ -287,7 +269,7 @@ mod tests {
 
     fn some_thunk_marker() -> Marker {
         let mut thunk = Thunk::new(some_closure(), IdentKind::Let());
-        Marker::Thunk(thunk.to_update_frame().unwrap())
+        Marker::Thunk(thunk.mk_update_frame().unwrap())
     }
 
     fn some_cont_marker() -> Marker {
@@ -319,9 +301,9 @@ mod tests {
         assert_eq!(0, s.count_thunks());
 
         let mut thunk = Thunk::new(some_closure(), IdentKind::Let());
-        s.push_thunk(thunk.to_update_frame().unwrap());
+        s.push_thunk(thunk.mk_update_frame().unwrap());
         thunk = Thunk::new(some_closure(), IdentKind::Let());
-        s.push_thunk(thunk.to_update_frame().unwrap());
+        s.push_thunk(thunk.mk_update_frame().unwrap());
 
         assert_eq!(2, s.count_thunks());
         s.pop_thunk().expect("Already checked");
@@ -331,11 +313,11 @@ mod tests {
     #[test]
     fn thunk_blackhole() {
         let mut thunk = Thunk::new(some_closure(), IdentKind::Let());
-        let thunk_upd = thunk.to_update_frame();
+        let thunk_upd = thunk.mk_update_frame();
         assert_matches!(thunk_upd, Ok(..));
-        assert_matches!(thunk.to_update_frame(), Err(..));
+        assert_matches!(thunk.mk_update_frame(), Err(..));
         thunk_upd.unwrap().update(some_closure());
-        assert_matches!(thunk.to_update_frame(), Ok(..));
+        assert_matches!(thunk.mk_update_frame(), Ok(..));
     }
 
     #[test]
