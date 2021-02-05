@@ -21,7 +21,7 @@ use crate::label::Label;
 use crate::position::RawSpan;
 use crate::types::{AbsType, Types};
 use codespan::FileId;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ffi::OsString;
 
@@ -30,7 +30,7 @@ use std::ffi::OsString;
 /// Parsed terms also need to store their position in the source for error reporting.  This is why
 /// this type is nested with [`RichTerm`](type.RichTerm.html).
 ///
-#[derive(Debug, PartialEq, Clone, Serialize)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Term {
     /// A boolean value.
@@ -135,6 +135,7 @@ pub enum Term {
     Wrapped(i32, RichTerm),
 
     #[serde(serialize_with = "crate::serialize::serialize_meta_value")]
+    #[serde(skip_deserializing)]
     MetaValue(MetaValue),
 
     /// An unresolved import.

@@ -19,6 +19,27 @@ use std::result::Result;
 use std::time::SystemTime;
 use void::Void;
 
+/// Supported input formats.
+#[derive(Clone, Copy, Eq, Debug, PartialEq)]
+pub enum InputFormat {
+    Nickel,
+    Json,
+    Yaml,
+    Toml,
+}
+
+impl InputFormat {
+    fn from_path_buf(path_buf: &PathBuf) -> Option<InputFormat> {
+        match path_buf.extension().and_then(OsStr::to_str) {
+            Some("ncl") => Some(InputFormat::Nickel),
+            Some("json") => Some(InputFormat::Json),
+            Some("yaml") => Some(InputFormat::Yaml),
+            Some("toml") => Some(InputFormat::Toml),
+            _ => None,
+        }
+    }
+}
+
 /// File and terms cache.
 ///
 /// Manage a file database, which stores a set of sources (the original source code as string) and
@@ -263,13 +284,54 @@ impl Cache {
         }
     }
 
+    /// Parse a source and populate the corresponding entry in the cache, or do nothing if the
+    /// entry has already been parsed.
+    pub fn parse_multi(
+        &mut self,
+        file_id: FileId,
+        format: InputFormat,
+    ) -> Result<CacheOp<()>, ParseError> {
+        if self.terms.contains_key(&file_id) {
+            Ok(CacheOp::Cached(()))
+        } else {
+            self.terms.insert(
+                file_id,
+                (
+                    self.parse_nocache_multi(file_id, format)?,
+                    EntryState::Parsed,
+                ),
+            );
+            Ok(CacheOp::Done(()))
+        }
+    }
+
     /// Parse a source without querying nor populating the cache.
     pub fn parse_nocache(&self, file_id: FileId) -> Result<RichTerm, ParseError> {
+        self.parse_nocache_multi(file_id, InputFormat::Nickel)
+    }
+
+    /// Parse a source without querying nor populating the cache. Support multiple formats.
+    pub fn parse_nocache_multi(
+        &self,
+        file_id: FileId,
+        format: InputFormat,
+    ) -> Result<RichTerm, ParseError> {
         let buf = self.files.source(file_id);
-        let t = parser::grammar::TermParser::new()
-            .parse(file_id, Lexer::new(&buf))
-            .map_err(|err| ParseError::from_lalrpop(err, file_id))?;
-        Ok(t)
+
+        match format {
+            InputFormat::Nickel => {
+                let t = parser::grammar::TermParser::new()
+                    .parse(file_id, Lexer::new(&buf))
+                    .map_err(|err| ParseError::from_lalrpop(err, file_id))?;
+                Ok(t)
+            }
+            InputFormat::Json => serde_json::from_str(self.files.source(file_id))
+                .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files)),
+            InputFormat::Yaml => serde_yaml::from_str(self.files.source(file_id))
+                .map_err(|err| ParseError::from_serde_yaml(err, file_id)),
+            InputFormat::Toml => toml::from_str(self.files.source(file_id))
+                .map_err(|err| ParseError::from_toml(err, file_id, &self.files)),
+        }
     }
 
     /// Typecheck an entry of the cache and update its state accordingly, or do nothing if the
@@ -619,6 +681,7 @@ impl ImportResolver for Cache {
         pos: &Option<RawSpan>,
     ) -> Result<(ResolvedTerm, FileId), ImportError> {
         let path_buf = with_parent(path, parent.clone());
+        let format = InputFormat::from_path_buf(&path_buf).unwrap_or(InputFormat::Nickel);
         let id_op = self.get_or_add_file(&path_buf).map_err(|err| {
             ImportError::IOError(
                 path.to_string_lossy().into_owned(),
@@ -631,7 +694,7 @@ impl ImportResolver for Cache {
             CacheOp::Done(id) => id,
         };
 
-        self.parse(file_id)
+        self.parse_multi(file_id, format)
             .map_err(|err| ImportError::ParseError(err, pos.clone()))?;
 
         Ok((
