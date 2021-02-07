@@ -78,6 +78,23 @@
             '';
         };
 
+      buildDocker = { system }:
+        let
+          pkgs = import nixpkgs { inherit system; };
+          nickel = buildNickel { inherit system; };
+        in pkgs.dockerTools.buildLayeredImage {
+            name = "nickel";
+            tag = version;
+            contents = [
+              nickel
+              pkgs.bashInteractive
+            ];
+            config = {
+              Cmd = "bash";
+            };
+          };
+
+
       buildMakamSpecs = { system }:
         let
           pkgs = import nixpkgs { inherit system; };
@@ -99,10 +116,11 @@
         };
 
     in rec {
-      defaultPackage = forAllSystems (system: packages."${system}".nickel);
+      defaultPackage = forAllSystems (system: packages."${system}".build);
       devShell = forAllSystems (system: buildNickel { inherit system; isShell = true; });
       packages = forAllSystems (system: {
-        nickel = buildNickel { inherit system; };
+        build = buildNickel { inherit system; };
+        dockerImage = buildDocker { inherit system; };
       });
 
       checks = forAllSystems (system: 
