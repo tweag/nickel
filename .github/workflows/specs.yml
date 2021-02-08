@@ -2,9 +2,8 @@ name: "Test specs"
 
 on:
   pull_request:
-  branches:
-    - master
-
+    branches:
+      - master
 jobs:
 
   build:
