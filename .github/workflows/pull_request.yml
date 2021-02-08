@@ -1,6 +1,7 @@
 name: "Test Nickel building in PRs"
 on:
   pull_request:
+
 jobs:
 
   test-nickel-building:

@@ -2,7 +2,6 @@ name: "Test Nickel building on master"
 on:
   branches:
     - master
-    - migrate-to-github-actions
 jobs:
 
   test-nickel-building:
