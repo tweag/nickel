@@ -41,6 +41,7 @@ jobs:
     - uses: cachix/cachix-action@v8
       with:
         name: nickel
+        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
 
     - name: Build Nickel against `${{ matrix.rust_channel }}` Rust channel
       run: |
