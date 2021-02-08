@@ -142,10 +142,10 @@ impl<Ty> AbsType<Ty> {
 
     /// Determine if a type is a row type.
     pub fn is_row_type(&self) -> bool {
-        match self {
-            AbsType::RowExtend(_, _, _) | AbsType::RowEmpty() | AbsType::Dyn() => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            AbsType::RowExtend(..) | AbsType::RowEmpty() | AbsType::Dyn()
+        )
     }
 }
 
@@ -316,7 +316,7 @@ impl Types {
         let next = self.row_find(&path[0]);
 
         if path.len() == 1 {
-            return next;
+            next
         } else {
             match next {
                 Some(ty) => ty.row_find_path(&path[1..]),

@@ -47,7 +47,7 @@ pub fn mk_label(types: Types, src_id: FileId, l: usize, r: usize) -> Label {
 /// indentation level of a line is the number of consecutive whitespace characters, which are
 /// either a space or a tab, counted from the beginning of the line. If a line is empty or consist
 /// only of whitespace characters, it is ignored.
-pub fn min_indent(chunks: &Vec<StrChunk<RichTerm>>) -> usize {
+pub fn min_indent(chunks: &[StrChunk<RichTerm>]) -> usize {
     let mut min: usize = std::usize::MAX;
     let mut current = 0;
     let mut start_line = true;
@@ -224,7 +224,7 @@ pub fn strip_indent(mut chunks: Vec<StrChunk<RichTerm>>) -> Vec<StrChunk<RichTer
                     }
                 }
 
-                std::mem::replace(s, buffer);
+                *s = buffer;
             }
             StrChunk::Expr(_, ref mut indent) => {
                 if start_line {

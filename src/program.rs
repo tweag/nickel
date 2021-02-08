@@ -1472,7 +1472,6 @@ too
     fn evaluation_full() {
         use crate::mk_record;
         use crate::term::make as mk_term;
-        use std::mem;
 
         // Clean all the position information in a term.
         fn clean_pos(t: Term) -> Term {
@@ -1486,7 +1485,7 @@ too
         let mut expd = parse("[2, \"ab\", [1, [3]]]").unwrap();
         // String are parsed as StrChunks, but evaluated to Str, so we need to hack list a bit
         if let Term::List(ref mut data) = *expd.term {
-            mem::replace(data.get_mut(1).unwrap(), mk_term::string("ab"));
+            *data.get_mut(1).unwrap() = mk_term::string("ab");
         } else {
             panic!();
         }

@@ -91,7 +91,7 @@ impl RowUnifError {
     ///
     /// Each level usually adds information (such as types or positions) and group different
     /// specific errors into most general ones.
-    pub fn to_unif_err(self, left: TypeWrapper, right: TypeWrapper) -> UnifError {
+    pub fn into_unif_err(self, left: TypeWrapper, right: TypeWrapper) -> UnifError {
         match self {
             RowUnifError::MissingRow(id) => UnifError::MissingRow(id, left, right),
             RowUnifError::MissingDynTail() => UnifError::MissingDynTail(left, right),
@@ -156,8 +156,8 @@ impl UnifError {
     ///
     /// Wrapper that calls [`to_typecheck_err_`](./fn.to_typecheck_err_.html) with an empty [name
     /// registry](./reporting/struct.NameReg.html).
-    pub fn to_typecheck_err(self, state: &State, pos_opt: &Option<RawSpan>) -> TypecheckError {
-        self.to_typecheck_err_(state, &mut reporting::NameReg::new(), pos_opt)
+    pub fn into_typecheck_err(self, state: &State, pos_opt: &Option<RawSpan>) -> TypecheckError {
+        self.into_typecheck_err_(state, &mut reporting::NameReg::new(), pos_opt)
     }
 
     /// Convert a unification error to a typechecking error.
@@ -177,7 +177,7 @@ impl UnifError {
     /// - `names`: a [name registry](./reporting/struct.NameReg.html), structure used to assign
     /// unique a humain-readable names to unification variables and type constants.
     /// - `pos_opt`: the position span of the expression that failed to typecheck.
-    pub fn to_typecheck_err_(
+    pub fn into_typecheck_err_(
         self,
         state: &State,
         names: &mut reporting::NameReg,
@@ -194,7 +194,7 @@ impl UnifError {
                 ident,
                 reporting::to_type(state, names, tyw1),
                 reporting::to_type(state, names, tyw2),
-                Box::new((*err).to_typecheck_err_(state, names, &None)),
+                Box::new((*err).into_typecheck_err_(state, names, &None)),
                 pos_opt,
             ),
             UnifError::RowKindMismatch(id, ty1, ty2) => TypecheckError::RowKindMismatch(
@@ -260,12 +260,12 @@ impl UnifError {
             }
             err @ UnifError::CodomainMismatch(_, _, _)
             | err @ UnifError::DomainMismatch(_, _, _) => {
-                let (expd, actual, path, err_final) = err.to_type_path().unwrap();
+                let (expd, actual, path, err_final) = err.into_type_path().unwrap();
                 TypecheckError::ArrowTypeMismatch(
                     reporting::to_type(state, names, expd),
                     reporting::to_type(state, names, actual),
                     path,
-                    Box::new(err_final.to_typecheck_err_(state, names, &None)),
+                    Box::new(err_final.into_typecheck_err_(state, names, &None)),
                     pos_opt,
                 )
             }
@@ -291,7 +291,7 @@ impl UnifError {
     ///  - the original actual type.
     ///  - a type path pointing at the subtypes which failed to be unified.
     ///  - the final error, which is the actual cause of that failure.
-    pub fn to_type_path(self) -> Option<(TypeWrapper, TypeWrapper, ty_path::Path, Self)> {
+    pub fn into_type_path(self) -> Option<(TypeWrapper, TypeWrapper, ty_path::Path, Self)> {
         let mut curr: Self = self;
         let mut path = ty_path::Path::new();
         // The original expected and actual type. They are just updated once, in the first
@@ -497,14 +497,14 @@ fn type_check_(
 
     match t.as_ref() {
         Term::Bool(_) => unify(state, strict, ty, mk_typewrapper::bool())
-            .map_err(|err| err.to_typecheck_err(state, &rt.pos)),
+            .map_err(|err| err.into_typecheck_err(state, &rt.pos)),
         Term::Num(_) => unify(state, strict, ty, mk_typewrapper::num())
-            .map_err(|err| err.to_typecheck_err(state, &rt.pos)),
+            .map_err(|err| err.into_typecheck_err(state, &rt.pos)),
         Term::Str(_) => unify(state, strict, ty, mk_typewrapper::str())
-            .map_err(|err| err.to_typecheck_err(state, &rt.pos)),
+            .map_err(|err| err.into_typecheck_err(state, &rt.pos)),
         Term::StrChunks(chunks) => {
             unify(state, strict, ty, mk_typewrapper::str())
-                .map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
+                .map_err(|err| err.into_typecheck_err(state, &rt.pos))?;
 
             chunks
                 .iter()
@@ -525,7 +525,7 @@ fn type_check_(
             let trg = TypeWrapper::Ptr(new_var(state.table));
             let arr = mk_tyw_arrow!(src.clone(), trg.clone());
 
-            unify(state, strict, ty, arr).map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
+            unify(state, strict, ty, arr).map_err(|err| err.into_typecheck_err(state, &rt.pos))?;
 
             envs.insert(x.clone(), src);
             type_check_(state, envs, strict, t, trg)
@@ -534,7 +534,7 @@ fn type_check_(
             let ty_elts = TypeWrapper::Ptr(new_var(state.table));
 
             unify(state, strict, ty, mk_typewrapper::list(ty_elts.clone()))
-                .map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
+                .map_err(|err| err.into_typecheck_err(state, &rt.pos))?;
 
             terms
                 .iter()
@@ -545,7 +545,7 @@ fn type_check_(
         Term::Lbl(_) => {
             // TODO implement lbl type
             unify(state, strict, ty, mk_typewrapper::dynamic())
-                .map_err(|err| err.to_typecheck_err(state, &rt.pos))
+                .map_err(|err| err.into_typecheck_err(state, &rt.pos))
         }
         Term::Let(x, re, rt) => {
             let ty_let = binding_type(re.as_ref(), &envs, state.table, strict);
@@ -587,7 +587,7 @@ fn type_check_(
                 )?,
             };
 
-            unify(state, strict, ty, res).map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
+            unify(state, strict, ty, res).map_err(|err| err.into_typecheck_err(state, &rt.pos))?;
             type_check_(state, envs, strict, exp, mk_tyw_enum!(row))
         }
         Term::Var(x) => {
@@ -595,14 +595,14 @@ fn type_check_(
                 .get(&x)
                 .ok_or_else(|| TypecheckError::UnboundIdentifier(x.clone(), pos.clone()))?;
 
-            let instantiated = instantiate_foralls(state, x_ty.clone(), ForallInst::Ptr);
+            let instantiated = instantiate_foralls(state, x_ty, ForallInst::Ptr);
             unify(state, strict, ty, instantiated)
-                .map_err(|err| err.to_typecheck_err(state, &rt.pos))
+                .map_err(|err| err.into_typecheck_err(state, &rt.pos))
         }
         Term::Enum(id) => {
             let row = TypeWrapper::Ptr(new_var(state.table));
             unify(state, strict, ty, mk_tyw_enum!(id.clone(), row))
-                .map_err(|err| err.to_typecheck_err(state, &rt.pos))
+                .map_err(|err| err.into_typecheck_err(state, &rt.pos))
         }
         Term::Record(stat_map) | Term::RecRecord(stat_map) => {
             // For recursive records, we look at the apparent type of each field and bind it in
@@ -620,22 +620,22 @@ fn type_check_(
                 ty.clone()
             };
 
-            if let TypeWrapper::Concrete(AbsType::DynRecord(rec_ty)) = root_ty.clone() {
+            if let TypeWrapper::Concrete(AbsType::DynRecord(rec_ty)) = root_ty {
                 // Checking for a dynamic record
                 stat_map
-                    .into_iter()
+                    .iter()
                     .try_for_each(|(_, t)| -> Result<(), TypecheckError> {
                         type_check_(state, envs.clone(), strict, t, (*rec_ty).clone())
                     })
             } else {
-                let row = stat_map.into_iter().try_fold(
+                let row = stat_map.iter().try_fold(
                     mk_tyw_row!(),
                     |acc, (id, field)| -> Result<TypeWrapper, TypecheckError> {
                         // In the case of a recursive record, new types (either type variables or
                         // annotations) have already be determined and put in the typing
                         // environment, and we need to use the same.
                         let ty = if let Term::RecRecord(_) = t.as_ref() {
-                            envs.get(&id).unwrap().clone()
+                            envs.get(&id).unwrap()
                         } else {
                             TypeWrapper::Ptr(new_var(state.table))
                         };
@@ -647,7 +647,7 @@ fn type_check_(
                 )?;
 
                 unify(state, strict, ty, mk_tyw_record!(; row))
-                    .map_err(|err| err.to_typecheck_err(state, &rt.pos))
+                    .map_err(|err| err.into_typecheck_err(state, &rt.pos))
             }
         }
         Term::Op1(op, t) => {
@@ -656,7 +656,8 @@ fn type_check_(
             let src = TypeWrapper::Ptr(new_var(state.table));
             let arr = mk_tyw_arrow!(src.clone(), ty);
 
-            unify(state, strict, arr, ty_op).map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
+            unify(state, strict, arr, ty_op)
+                .map_err(|err| err.into_typecheck_err(state, &rt.pos))?;
             type_check_(state, envs.clone(), strict, t, src)
         }
         Term::Op2(op, e, t) => {
@@ -666,7 +667,8 @@ fn type_check_(
             let src2 = TypeWrapper::Ptr(new_var(state.table));
             let arr = mk_tyw_arrow!(src1.clone(), src2.clone(), ty);
 
-            unify(state, strict, arr, ty_op).map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
+            unify(state, strict, arr, ty_op)
+                .map_err(|err| err.into_typecheck_err(state, &rt.pos))?;
             type_check_(state, envs.clone(), strict, e, src1)?;
             type_check_(state, envs, strict, t, src2)
         }
@@ -675,18 +677,18 @@ fn type_check_(
 
             let instantiated = instantiate_foralls(state, tyw2, ForallInst::Constant);
 
-            unify(state, strict, ty.clone(), to_typewrapper(ty2.clone()))
-                .map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
+            unify(state, strict, ty, to_typewrapper(ty2.clone()))
+                .map_err(|err| err.into_typecheck_err(state, &rt.pos))?;
             type_check_(state, envs, true, t, instantiated)
         }
         Term::Assume(ty2, _, t) => {
-            unify(state, strict, ty.clone(), to_typewrapper(ty2.clone()))
-                .map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
+            unify(state, strict, ty, to_typewrapper(ty2.clone()))
+                .map_err(|err| err.into_typecheck_err(state, &rt.pos))?;
             let new_ty = TypeWrapper::Ptr(new_var(state.table));
             type_check_(state, envs, false, t, new_ty)
         }
         Term::Sym(_) => unify(state, strict, ty, mk_typewrapper::sym())
-            .map_err(|err| err.to_typecheck_err(state, &rt.pos)),
+            .map_err(|err| err.into_typecheck_err(state, &rt.pos)),
         Term::Wrapped(_, t)
         | Term::MetaValue(MetaValue {
             contract: None,
@@ -699,18 +701,18 @@ fn type_check_(
             value: Some(t),
             ..
         }) => {
-            unify(state, strict, ty.clone(), to_typewrapper(ty2.clone()))
-                .map_err(|err| err.to_typecheck_err(state, &rt.pos))?;
+            unify(state, strict, ty, to_typewrapper(ty2.clone()))
+                .map_err(|err| err.into_typecheck_err(state, &rt.pos))?;
             let new_ty = TypeWrapper::Ptr(new_var(state.table));
             type_check_(state, envs, false, t, new_ty)
         }
         Term::MetaValue(_) => Ok(()),
         Term::Import(_) => unify(state, strict, ty, mk_typewrapper::dynamic())
-            .map_err(|err| err.to_typecheck_err(state, &rt.pos)),
+            .map_err(|err| err.into_typecheck_err(state, &rt.pos)),
         Term::ResolvedImport(file_id) => {
             let t = state
                 .resolver
-                .get(file_id.clone())
+                .get(*file_id)
                 .expect("Internal error: resolved import not found ({:?}) during typechecking.");
             type_check_in_env(&t, envs.global, state.resolver).map(|_ty| ())
         }
@@ -1144,7 +1146,7 @@ pub fn unify_(
             },
             (r1, r2) if r1.is_row_type() && r2.is_row_type() => {
                 unify_rows(state, r1.clone(), r2.clone()).map_err(|err| {
-                    err.to_unif_err(TypeWrapper::Concrete(r1), TypeWrapper::Concrete(r2))
+                    err.into_unif_err(TypeWrapper::Concrete(r1), TypeWrapper::Concrete(r2))
                 })
             }
             (AbsType::Enum(tyw1), AbsType::Enum(tyw2)) => match (*tyw1, *tyw2) {
@@ -1152,7 +1154,7 @@ pub fn unify_(
                     if r1.is_row_type() && r2.is_row_type() =>
                 {
                     unify_rows(state, r1.clone(), r2.clone())
-                        .map_err(|err| err.to_unif_err(mk_tyw_enum!(r1), mk_tyw_enum!(r2)))
+                        .map_err(|err| err.into_unif_err(mk_tyw_enum!(r1), mk_tyw_enum!(r2)))
                 }
                 (TypeWrapper::Concrete(r), _) if !r.is_row_type() => {
                     Err(UnifError::IllformedType(mk_tyw_enum!(r)))
@@ -1166,8 +1168,9 @@ pub fn unify_(
                 (TypeWrapper::Concrete(r1), TypeWrapper::Concrete(r2))
                     if r1.is_row_type() && r2.is_row_type() =>
                 {
-                    unify_rows(state, r1.clone(), r2.clone())
-                        .map_err(|err| err.to_unif_err(mk_tyw_record!(; r1), mk_tyw_record!(; r2)))
+                    unify_rows(state, r1.clone(), r2.clone()).map_err(|err| {
+                        err.into_unif_err(mk_tyw_record!(; r1), mk_tyw_record!(; r2))
+                    })
                 }
                 (TypeWrapper::Concrete(r), _) if !r.is_row_type() => {
                     Err(UnifError::IllformedType(mk_tyw_record!(; r)))
@@ -1202,13 +1205,13 @@ pub fn unify_(
         // unification error.
         (TypeWrapper::Ptr(p), tyw) => {
             constr_unify(state.constr, p, &tyw)
-                .map_err(|err| err.to_unif_err(TypeWrapper::Ptr(p), tyw.clone()))?;
+                .map_err(|err| err.into_unif_err(TypeWrapper::Ptr(p), tyw.clone()))?;
             state.table.insert(p, Some(tyw));
             Ok(())
         }
         (tyw, TypeWrapper::Ptr(p)) => {
             constr_unify(state.constr, p, &tyw)
-                .map_err(|err| err.to_unif_err(tyw.clone(), TypeWrapper::Ptr(p)))?;
+                .map_err(|err| err.into_unif_err(tyw.clone(), TypeWrapper::Ptr(p)))?;
             state.table.insert(p, Some(tyw));
             Ok(())
         }
@@ -1240,8 +1243,7 @@ pub fn unify_rows(
             Err(RowUnifError::MissingRow(ident))
         }
         (AbsType::RowExtend(id, ty, t), r2 @ AbsType::RowExtend(_, _, _)) => {
-            let (ty2, t2_tail) =
-                row_add(state, &id, ty.clone(), TypeWrapper::Concrete(r2.clone()))?;
+            let (ty2, t2_tail) = row_add(state, &id, ty.clone(), TypeWrapper::Concrete(r2))?;
             match (ty, ty2) {
                 (None, None) => Ok(()),
                 (Some(ty), Some(ty2)) => unify_(state, *ty, *ty2)

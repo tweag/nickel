@@ -408,7 +408,7 @@ impl Cache {
                                         .map(|t_ok| (id.clone(), t_ok))
                                 })
                                 .collect();
-                        std::mem::replace(map, map_res?);
+                        *map = map_res?;
                     }
                     _ => panic!("cache::transform_inner(): not a record"),
                 }
@@ -505,7 +505,7 @@ impl Cache {
 
     /// Get a mutable reference to the underlying files. Required by
     /// [`to_diagnostic`](../error/trait.ToDiagnostic.html#tymethod.to_diagnostic).
-    pub fn files_mut<'a>(&'a mut self) -> &'a mut Files<String> {
+    pub fn files_mut(&mut self) -> &mut Files<String> {
         &mut self.files
     }
 
@@ -613,18 +613,18 @@ impl Cache {
             let mut env = eval::Environment::new();
 
             ids.iter().for_each(|file_id| {
-                match eval::env_add_term(
+                let result = eval::env_add_term(
                     &mut env,
                     self.get_owned(*file_id).expect(
                         "cache::mk_global_env(): can't build environment, stdlib not parsed",
                     ),
-                ) {
-                    Err(eval::EnvBuildError::NotARecord(rt)) => panic!(
+                );
+                if let Err(eval::EnvBuildError::NotARecord(rt)) = result {
+                     panic!(
                         "cache::load_stdlib(): expected the stdlib module {} to be a record, got {:?}",
                         self.name(*file_id).to_string_lossy().as_ref(),
                         rt
-                    ),
-                    _ => (),
+                     )
                 }
             });
 
@@ -680,7 +680,7 @@ impl ImportResolver for Cache {
         parent: Option<PathBuf>,
         pos: &Option<RawSpan>,
     ) -> Result<(ResolvedTerm, FileId), ImportError> {
-        let path_buf = with_parent(path, parent.clone());
+        let path_buf = with_parent(path, parent);
         let format = InputFormat::from_path_buf(&path_buf).unwrap_or(InputFormat::Nickel);
         let id_op = self.get_or_add_file(&path_buf).map_err(|err| {
             ImportError::IOError(
@@ -720,7 +720,7 @@ impl ImportResolver for Cache {
 
 /// Compute the path of a file relatively to a parent.
 fn with_parent(path: &OsStr, parent: Option<PathBuf>) -> PathBuf {
-    let mut path_buf = parent.unwrap_or(PathBuf::new());
+    let mut path_buf = parent.unwrap_or_default();
     path_buf.pop();
     path_buf.push(Path::new(path));
     path_buf

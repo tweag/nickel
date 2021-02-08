@@ -60,10 +60,8 @@ pub mod ty_path {
 
     /// Determine if the path is not higher order, that is, if it doesn't contain any arrow.
     pub fn has_no_arrow(p: &Path) -> bool {
-        !p.iter().any(|elt| match *elt {
-            Elem::Domain | Elem::Codomain => true,
-            _ => false,
-        })
+        !p.iter()
+            .any(|elt| matches!(*elt, Elem::Domain | Elem::Codomain))
     }
 
     /// Return the position span encoded by a type path in the string representation of the

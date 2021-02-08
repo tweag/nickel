@@ -164,7 +164,7 @@ impl Thunk {
 
     /// Generate an update frame from this thunk and set the state to `Blackholed`. Return an
     /// error if the thunk was already black-holed.
-    pub fn to_update_frame(&mut self) -> Result<ThunkUpdateFrame, BlackholedError> {
+    pub fn mk_update_frame(&mut self) -> Result<ThunkUpdateFrame, BlackholedError> {
         if self.data.borrow().state == ThunkState::Blackholed {
             return Err(BlackholedError);
         }
@@ -191,7 +191,7 @@ impl Thunk {
     }
 
     /// Mutably borrow the inner closure. Panic if there is any other active borrow.
-    pub fn borrow_mut<'a>(&'a mut self) -> RefMut<'_, Closure> {
+    pub fn borrow_mut(&mut self) -> RefMut<'_, Closure> {
         let (closure, _) = RefMut::map_split(self.data.borrow_mut(), |data| {
             let ThunkData {
                 ref mut closure,
@@ -460,12 +460,12 @@ where
                 let mut thunk = env
                     .remove(&x)
                     .or_else(|| global_env.get(&x).map(Thunk::clone))
-                    .ok_or(EvalError::UnboundIdentifier(x.clone(), pos.clone()))?;
+                    .ok_or_else(|| EvalError::UnboundIdentifier(x.clone(), pos.clone()))?;
                 std::mem::drop(env); // thunk may be a 1RC pointer
 
                 if thunk.state() != ThunkState::Evaluated {
                     if should_update(&thunk.borrow().body.term) {
-                        match thunk.to_update_frame() {
+                        match thunk.mk_update_frame() {
                             Ok(thunk_upd) => stack.push_thunk(thunk_upd),
                             Err(BlackholedError) => {
                                 return Err(EvalError::InfiniteRecursion(call_stack, pos))
@@ -593,11 +593,10 @@ where
                 let rec_env =
                     ts.iter()
                         .try_fold(HashMap::new(), |mut rec_env, (id, rt)| match rt.as_ref() {
-                            &Term::Var(ref var_id) => {
-                                let thunk = env.get(var_id).ok_or(EvalError::UnboundIdentifier(
-                                    var_id.clone(),
-                                    rt.pos.clone(),
-                                ))?;
+                            Term::Var(ref var_id) => {
+                                let thunk = env.get(var_id).ok_or_else(|| {
+                                    EvalError::UnboundIdentifier(var_id.clone(), rt.pos.clone())
+                                })?;
                                 rec_env.insert(id.clone(), thunk.clone());
                                 Ok(rec_env)
                             }

@@ -57,7 +57,6 @@ pub mod share_normal_form {
     /// traversal to obtain a full transformation.
     pub fn transform_one(rt: RichTerm) -> RichTerm {
         let RichTerm { term, pos } = rt;
-        let pos = pos.clone();
         match *term {
             Term::Record(map) => {
                 let mut bindings = Vec::with_capacity(map.len());
@@ -166,15 +165,13 @@ pub mod share_normal_form {
         bindings: Vec<(Ident, RichTerm)>,
         pos: Option<RawSpan>,
     ) -> RichTerm {
-        let result = bindings.into_iter().fold(
+        bindings.into_iter().fold(
             RichTerm {
                 term: Box::new(body),
                 pos,
             },
             |acc, (id, t)| Term::Let(id, t, acc).into(),
-        );
-
-        result.into()
+        )
     }
 }
 

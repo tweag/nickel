@@ -582,10 +582,7 @@ fn report_ty_path(l: &label::Label, files: &mut Files<String>) -> (Label<FileId>
         let last = l
             .path
             .iter()
-            .filter(|elt| match *elt {
-                ty_path::Elem::Field(_) | ty_path::Elem::List => false,
-                _ => true,
-            })
+            .filter(|elt| matches!(*elt, ty_path::Elem::Domain | ty_path::Elem::Codomain))
             .last()
             .unwrap();
         match last {
@@ -714,7 +711,7 @@ pub fn process_callstack(cs: &CallStack, contract_id: FileId) -> Vec<(Option<Ide
     // iteration. To do so, we create a zipper of the original iterator with a copy of the iterator
     // shifted by one element, which returns options to be able to iter until the very last element
     // (it is padded with an ending `None`).
-    let shifted = it.clone().skip(1).map(|elem| Some(elem)).chain(Some(None));
+    let shifted = it.clone().skip(1).map(Some).chain(Some(None));
     let mut it = it.peekable();
 
     // The call element being currently built.
@@ -824,12 +821,10 @@ impl ToDiagnostic<FileId> for EvalError {
                     // a positive blame
                     assert!(l.polarity);
                     write!(&mut msg, "contract broken by a value").unwrap();
+                } else if l.polarity {
+                    write!(&mut msg, "contract broken by a function").unwrap();
                 } else {
-                    if l.polarity {
-                        write!(&mut msg, "contract broken by a function").unwrap();
-                    } else {
-                        write!(&mut msg, "contract broken by the caller").unwrap();
-                    }
+                    write!(&mut msg, "contract broken by the caller").unwrap();
                 }
 
                 if !l.tag.is_empty() {
@@ -862,8 +857,8 @@ impl ToDiagnostic<FileId> for EvalError {
                                 .map(|calls| {
                                     calls.into_iter().enumerate().map(|(i, (id_opt, pos))| {
                                         let name = id_opt
-                                            .map(|Ident(id)| id.clone())
-                                            .unwrap_or(String::from("<func>"));
+                                            .map(|Ident(id)| id)
+                                            .unwrap_or_else(|| String::from("<func>"));
                                         Diagnostic::note().with_labels(vec![secondary(&pos)
                                             .with_message(format!("({}) calling {}", i + 1, name))])
                                     })
@@ -881,7 +876,9 @@ impl ToDiagnostic<FileId> for EvalError {
             EvalError::TypeError(expd, msg, orig_pos_opt, t) => {
                 let label = format!(
                     "This expression has type {}, but {} was expected",
-                    t.term.type_of().unwrap_or(String::from("<unevaluated>")),
+                    t.term
+                        .type_of()
+                        .unwrap_or_else(|| String::from("<unevaluated>")),
                     expd,
                 );
 
@@ -985,7 +982,7 @@ impl ToDiagnostic<FileId> for EvalError {
                 let labels = span_opt
                     .as_ref()
                     .map(|span| vec![primary(span).with_message("recursive reference")])
-                    .unwrap_or_else(Vec::new);
+                    .unwrap_or_default();
 
                 vec![Diagnostic::error()
                     .with_message("infinite recursion")
@@ -995,7 +992,7 @@ impl ToDiagnostic<FileId> for EvalError {
                 let labels = span_opt
                     .as_ref()
                     .map(|span| vec![primary(span).with_message("here")])
-                    .unwrap_or(Vec::new());
+                    .unwrap_or_default();
 
                 vec![Diagnostic::error().with_message(msg).with_labels(labels)]
             }
@@ -1003,7 +1000,7 @@ impl ToDiagnostic<FileId> for EvalError {
                 let labels = span_opt
                     .as_ref()
                     .map(|span| vec![primary(span).with_message("here")])
-                    .unwrap_or(Vec::new());
+                    .unwrap_or_default();
 
                 vec![Diagnostic::error()
                     .with_message(format!("Internal error ({})", msg))
@@ -1024,7 +1021,7 @@ impl ToDiagnostic<FileId> for ParseError {
             ParseError::UnexpectedEOF(file_id, _expected) => {
                 Diagnostic::error().with_message(format!(
                     "Unexpected end of file when parsing {}",
-                    files.name(file_id.clone()).to_string_lossy()
+                    files.name(*file_id).to_string_lossy()
                 ))
             }
             ParseError::UnexpectedToken(span, _expected) => Diagnostic::error()
@@ -1046,7 +1043,7 @@ impl ToDiagnostic<FileId> for ParseError {
                 let labels = span_opt
                     .as_ref()
                     .map(|span| vec![primary(span)])
-                    .unwrap_or(Vec::new());
+                    .unwrap_or_default();
 
                 Diagnostic::error()
                     .with_message(format!("{} parse error: {}", format, msg))
@@ -1068,7 +1065,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
             span_opt
                 .as_ref()
                 .map(|span| vec![primary(span).with_message("this expression")])
-                .unwrap_or(Vec::new())
+                .unwrap_or_default()
         }
 
         match self {
@@ -1283,7 +1280,7 @@ impl ToDiagnostic<FileId> for ImportError {
                 let labels = span_opt
                     .as_ref()
                     .map(|span| vec![secondary(span).with_message("imported here")])
-                    .unwrap_or(Vec::new());
+                    .unwrap_or_default();
 
                 vec![Diagnostic::error()
                     .with_message(format!("Import of {} failed: {}", path, error))
@@ -1349,7 +1346,7 @@ impl ToDiagnostic<FileId> for REPLError {
                 let mut notes = msg_opt
                     .as_ref()
                     .map(|msg| vec![msg.clone()])
-                    .unwrap_or(vec![]);
+                    .unwrap_or_default();
                 notes.push(format!(
                     "type `:? {}` or `:help {}` for more information.",
                     cmd, cmd

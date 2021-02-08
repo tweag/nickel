@@ -454,7 +454,6 @@ fn process_unary_operation(
                     .map(|t| {
                         RichTerm::from(Term::App(f_as_var.clone(), t))
                             .closurize(&mut shared_env, env.clone())
-                            .into()
                     })
                     .collect();
 
@@ -527,7 +526,7 @@ fn process_unary_operation(
                     .next()
                     .expect("expected the argument to be a non-empty iterator");
                 let body = terms.fold(mk_term::op1(UnaryOp::DeepSeq(), first), |acc, t| {
-                    mk_app!(mk_term::op1(UnaryOp::DeepSeq(), t), acc).into()
+                    mk_app!(mk_term::op1(UnaryOp::DeepSeq(), t), acc)
                 });
 
                 Ok(Closure { body, env })
@@ -569,7 +568,7 @@ fn process_unary_operation(
         UnaryOp::ListTail() => {
             if let Term::List(ts) = *t {
                 let mut ts_it = ts.into_iter();
-                if let Some(_) = ts_it.next() {
+                if ts_it.next().is_some() {
                     Ok(Closure {
                         body: Term::List(ts_it.collect()).into(),
                         env,
@@ -1097,7 +1096,7 @@ fn process_binary_operation(
                     match static_map.remove(&Ident(id.clone())) {
                         Some(e) => Ok(Closure { body: e, env: env2 }),
                         None => Err(EvalError::FieldMissing(
-                            format!("{}", id),
+                            id,
                             String::from("(.$)"),
                             RichTerm {
                                 term: Box::new(Term::Record(static_map)),
@@ -1172,7 +1171,7 @@ fn process_binary_operation(
                 if let Term::Record(mut static_map) = *t2 {
                     match static_map.remove(&Ident(id.clone())) {
                         None => Err(EvalError::FieldMissing(
-                            format!("{}", id),
+                            id,
                             String::from("(-$)"),
                             RichTerm {
                                 term: Box::new(Term::Record(static_map)),
@@ -1390,14 +1389,14 @@ fn eq(env: &mut Environment, c1: Closure, c2: Closure) -> EqResult {
                 EqResult::Bool(true)
             } else {
                 let eqs = center.into_iter().map(|(_, (t1, t2))| (t1, t2));
-                gen_eqs(eqs.into_iter(), env, env1, env2)
+                gen_eqs(eqs, env, env1, env2)
             }
         }
         (Term::List(l1), Term::List(l2)) if l1.len() == l2.len() => {
             // Equalities are tested in reverse order, but that shouldn't matter. If it
             // does, just do `eqs.rev()`
             let eqs = l1.into_iter().zip(l2.into_iter());
-            gen_eqs(eqs.into_iter(), env, env1, env2)
+            gen_eqs(eqs, env, env1, env2)
         }
         (_, _) => EqResult::Bool(false),
     }
