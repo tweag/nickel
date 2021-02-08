@@ -15,9 +15,8 @@ case $CHANNEL in
     ;;
 esac
 
-
-echo "Downloading the latest $CHANNEL channel information ..."
-curl -Q "https://static.rust-lang.org/dist/channel-rust-$CHANNEL.toml" > $HERE/tmp.toml
+echo "Downloading the latest '$CHANNEL' channel information ..."
+curl "https://static.rust-lang.org/dist/channel-rust-$CHANNEL.toml" > $HERE/tmp.toml
 
 CHANNEL_FILE=$HERE/channel_$CHANNEL.toml
 CHANNEL_DATE=$(nix-instantiate --eval -E "(builtins.fromTOML (builtins.readFile $HERE/tmp.toml)).date")
