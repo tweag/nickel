@@ -576,6 +576,27 @@ pub enum UnaryOp {
 
     /// Return the names of the fields of a record as a string list.
     FieldsOf(),
+
+    /// Remove heading and trailing spaces from a string.
+    StrTrim(),
+    /// Return the list of characters of a string.
+    StrChars(),
+    /// Return the code of a character (givne as a string of length 1).
+    CharCode(),
+    /// Return the character corresponding to a code.
+    CharFromCode(),
+    /// Transform a string to uppercase.
+    StrUppercase(),
+    /// Transform a string to lowercase.
+    StrLowercase(),
+    /// Return the length of a string.
+    StrLength(),
+    /// Transform a data to a string.
+    StrFrom(),
+    /// Transform a string to a number.
+    NumFrom(),
+    /// Transform a string to an enum.
+    EnumFrom(),
 }
 
 /// Primitive binary operators
@@ -638,6 +659,11 @@ pub enum BinaryOp {
     Serialize(),
     /// Deserialize a string to a value.
     Deserialize(),
+
+    StrSplit(),
+    StrContains(),
+    StrMatch(),
+    StrSubstr(),
 }
 
 impl BinaryOp {
