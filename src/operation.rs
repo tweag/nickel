@@ -762,7 +762,7 @@ fn process_unary_operation(
         UnaryOp::StrTrim() => {
             if let Term::Str(s) = *t {
                 Ok(Closure {
-                    body: Term::Str(s.trim()).into(),
+                    body: Term::Str(String::from(s.trim())).into(),
                     env: HashMap::new(),
                 })
             } else {
@@ -778,7 +778,7 @@ fn process_unary_operation(
             if let Term::Str(s) = *t {
                 let ts = s
                     .chars()
-                    .map(|c| RichTerm::From(Term::Str(c.to_string())))
+                    .map(|c| RichTerm::from(Term::Str(c.to_string())))
                     .collect();
                 Ok(Closure {
                     body: Term::List(ts).into(),
@@ -802,9 +802,10 @@ fn process_unary_operation(
                         env: Environment::new(),
                     })
                 } else {
-                    Err(EvalError::Other(format!(
-                        "charCode: expected a char, given as a string of length 1"
-                    )))
+                    Err(EvalError::Other(
+                        format!("charCode: expected 1-char string, got `{}`", s.len()),
+                        pos,
+                    ))
                 }
             } else {
                 Err(EvalError::TypeError(
@@ -817,16 +818,20 @@ fn process_unary_operation(
         }
         UnaryOp::CharFromCode() => {
             if let Term::Num(code) = *t {
-                let code_u32 = n as u32;
                 if code.fract() != 0.0 {
-                    Err(EvalError::Other(format!("charFromCode: expected the agument to be an integer, got the floating-point value {}", n), pos_op))
-                } else if code < 0.0 || code_u32 > (u32::MAX as f64) {
-                    Err(EvalError::Other(format!("charFromCode: code out of bounds. Expected a value between 0 and {}, got {}", u32::MAX, n), pos_op))
-                } else {
+                    Err(EvalError::Other(format!("charFromCode: expected the agument to be an integer, got the floating-point value {}", code), pos_op))
+                } else if code < 0.0 || code > (u32::MAX as f64) {
+                    Err(EvalError::Other(format!("charFromCode: code out of bounds. Expected a value between 0 and {}, got {}", u32::MAX, code), pos_op))
+                } else if let Some(car) = std::char::from_u32(code as u32) {
                     Ok(Closure {
-                        body: Term::Str(String::from(char::from_u32(code))),
-                        env: env1,
+                        body: Term::Str(String::from(car)).into(),
+                        env: Environment::new(),
                     })
+                } else {
+                    Err(EvalError::Other(
+                        format!("charFromCode: invalid character code {}", code),
+                        pos_op,
+                    ))
                 }
             } else {
                 Err(EvalError::TypeError(
@@ -870,7 +875,7 @@ fn process_unary_operation(
         UnaryOp::StrLength() => {
             if let Term::Str(s) = *t {
                 Ok(Closure {
-                    body: Term::Num(s.len()).into(),
+                    body: Term::Num(s.len() as f64).into(),
                     env: HashMap::new(),
                 })
             } else {
@@ -883,11 +888,56 @@ fn process_unary_operation(
             }
         }
         UnaryOp::StrFrom() => {
+            let result = match *t {
+                Term::Num(n) => Ok(Term::Str(n.to_string())),
+                Term::Str(s) => Ok(Term::Str(s)),
+                Term::Bool(b) => Ok(Term::Str(b.to_string())),
+                Term::Enum(id) => Ok(Term::Str(id.to_string())),
+                t => Err(EvalError::Other(
+                    format!(
+                        "strFrom: can't convert the argument of type {} to string",
+                        t.type_of().unwrap()
+                    ),
+                    pos,
+                )),
+            }?;
+            Ok(Closure {
+                body: RichTerm::new(result, pos_op),
+                env: HashMap::new(),
+            })
+        }
+        UnaryOp::NumFrom() => {
             if let Term::Str(s) = *t {
+                let n = s.parse::<f64>().map_err(|_| {
+                    EvalError::Other(format!("numFrom: invalid num literal `{}`", s), pos)
+                })?;
                 Ok(Closure {
-                    body: Term::Num(s.len()).into(),
+                    body: Term::Num(n).into(),
                     env: HashMap::new(),
                 })
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("strLength"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
+            }
+        }
+        UnaryOp::EnumFrom() => {
+            if let Term::Str(s) = *t {
+                let re = regex::Regex::new("_?[a-zA-Z][_a-zA-Z0-9]*").unwrap();
+                if re.is_match(&s) {
+                    Ok(Closure {
+                        body: Term::Enum(Ident(s)).into(),
+                        env: HashMap::new(),
+                    })
+                } else {
+                    Err(EvalError::Other(
+                        format!("enumFrom: invalid enum tag `{}`", s),
+                        pos,
+                    ))
+                }
             } else {
                 Err(EvalError::TypeError(
                     String::from("Str"),
@@ -1851,6 +1901,40 @@ fn process_binary_operation(
                 mk_err_fst(t1)
             }
         }
+        BinaryOp::StrSplit() => match (*t1, *t2) {
+            (Term::Str(s1), Term::Str(s2)) => {
+                let list: Vec<RichTerm> = s1
+                    .split(&s2)
+                    .map(|s| Term::Str(String::from(s)).into())
+                    .collect();
+                Ok(Closure {
+                    body: Term::List(list).into(),
+                    env: env1,
+                })
+            }
+            (Term::Str(_), t2) => Err(EvalError::TypeError(
+                String::from("Str"),
+                String::from("strSplit, 2nd argument"),
+                snd_pos,
+                RichTerm {
+                    term: Box::new(t2),
+                    pos: pos2,
+                },
+            )),
+            (t1, _) => Err(EvalError::TypeError(
+                String::from("Str"),
+                String::from("strSplit, 1st argument"),
+                fst_pos,
+                RichTerm {
+                    term: Box::new(t1),
+                    pos: pos1,
+                },
+            )),
+        },
+        BinaryOp::StrContains() => unimplemented!(),
+        BinaryOp::StrMatch() => unimplemented!(),
+        //TODO: BinaryOp::StrReplace() => unimplemented!(),
+        BinaryOp::StrSubstr() => unimplemented!(),
     }
 }
 
