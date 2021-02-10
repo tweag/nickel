@@ -972,11 +972,11 @@ pub mod mk_typewrapper {
         (; $tail:expr) => {
             $crate::typecheck::TypeWrapper::from($tail)
         };
-        (($id:expr, $ty:expr) $(($ids:expr, $tys:expr)),* $(; $tail:expr)?) => {
+        (($id:expr, $ty:expr) $(,($ids:expr, $tys:expr))* $(; $tail:expr)?) => {
             $crate::typecheck::TypeWrapper::Concrete(
                 $crate::types::AbsType::RowExtend(
                     Ident::from($id),
-                    Some($ty.into()),
+                    Some(Box::new($ty.into())),
                     Box::new(mk_tyw_row!($(($ids, $tys)),* $(; $tail)?))
                 )
             )
@@ -1618,6 +1618,32 @@ pub fn get_uop_type(state: &mut State, op: &UnaryOp) -> Result<TypeWrapper, Type
             //mk_tyw_record!(; TypeWrapper::Ptr(new_var(state.table))),
             mk_typewrapper::list(AbsType::Str())
         ),
+        // Str -> Str
+        UnaryOp::StrTrim() => mk_tyw_arrow!(mk_typewrapper::str(), mk_typewrapper::str()),
+        // Str -> List Str
+        UnaryOp::StrChars() => mk_tyw_arrow!(
+            mk_typewrapper::str(),
+            mk_typewrapper::list(mk_typewrapper::str())
+        ),
+        // Str -> Num
+        UnaryOp::CharCode() => mk_tyw_arrow!(mk_typewrapper::str(), mk_typewrapper::num()),
+        // Num -> Str
+        UnaryOp::CharFromCode() => mk_tyw_arrow!(mk_typewrapper::num(), mk_typewrapper::str()),
+        // Str -> Str
+        UnaryOp::StrUppercase() => mk_tyw_arrow!(mk_typewrapper::str(), mk_typewrapper::str()),
+        // Str -> Str
+        UnaryOp::StrLowercase() => mk_tyw_arrow!(mk_typewrapper::str(), mk_typewrapper::str()),
+        // Str -> Num
+        UnaryOp::StrLength() => mk_tyw_arrow!(mk_typewrapper::str(), mk_typewrapper::num()),
+        // Dyn -> Str
+        UnaryOp::StrFrom() => mk_tyw_arrow!(mk_typewrapper::dynamic(), mk_typewrapper::num()),
+        // Str -> Num
+        UnaryOp::NumFrom() => mk_tyw_arrow!(mk_typewrapper::str(), mk_typewrapper::num()),
+        // Str -> < | Dyn>
+        UnaryOp::EnumFrom() => mk_tyw_arrow!(
+            mk_typewrapper::str(),
+            mk_tyw_enum!(mk_typewrapper::dynamic())
+        ),
     })
 }
 
@@ -1723,6 +1749,30 @@ pub fn get_bop_type(state: &mut State, op: &BinaryOp) -> Result<TypeWrapper, Typ
             mk_typewrapper::str(),
             mk_typewrapper::dynamic()
         ),
+        // Str -> Str -> Bool
+        BinaryOp::StrContains() => mk_tyw_arrow!(AbsType::Str(), AbsType::Str(), AbsType::Bool()),
+        // Str -> Str -> {match: Str, index: Num, groups: List Str}
+        BinaryOp::StrMatch() => mk_tyw_arrow!(
+            AbsType::Str(),
+            AbsType::Str(),
+            AbsType::Str(),
+            mk_tyw_record!(
+                ("match", AbsType::Str()),
+                ("index", AbsType::Num()),
+                ("groups", mk_typewrapper::list(AbsType::Str()))
+            )
+        ),
+        BinaryOp::StrSubstr() => mk_tyw_arrow!(
+            AbsType::Str(),
+            AbsType::Num(),
+            AbsType::Num(),
+            AbsType::Str()
+        ),
+        BinaryOp::StrSplit() => mk_tyw_arrow!(
+            AbsType::Str(),
+            AbsType::Str(),
+            mk_typewrapper::list(AbsType::Str())
+        ),
     })
 }
 
@@ -1732,7 +1782,7 @@ pub fn get_nop_type(
 ) -> Result<(Vec<TypeWrapper>, TypeWrapper), TypecheckError> {
     Ok(match op {
         _ => unimplemented!(),
-    })
+   })
 }
 
 /// The unification table.

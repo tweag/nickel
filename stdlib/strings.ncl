@@ -75,12 +75,12 @@
     substring: Str -> Num -> Num -> Str = fun s start end =>
       %strSubstring% s start end;
 
-    fromNum : Num -> Str = fun n => %toStr% n;
-    fromEnum : forall a. < | a> -> Str => fun enum => %toStr% enum;
-    fromBool : Bool -> Str => fun bool => %toStr% bool;
+    fromNum | Num -> Str = fun n => %toStr% n;
+    fromEnum | forall a. < | a> -> Str => fun tag => %toStr% tag;
+    fromBool | Bool -> Str => fun b => %toStr% b;
 
     toNum | #NumLiteral -> Num = fun s => %numFrom% n;
     toBool | #BoolLiteral -> Bool = fun s => s == "true";
-    toEnum | #Ident -> Bool = fun s => %enumFrom% s;
+    toEnum | #Ident -> < | Dyn> = fun s => %enumFrom% s;
   }
 }
