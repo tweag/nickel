@@ -759,6 +759,144 @@ fn process_unary_operation(
                 ))
             }
         }
+        UnaryOp::StrTrim() => {
+            if let Term::Str(s) = *t {
+                Ok(Closure {
+                    body: Term::Str(s.trim()).into(),
+                    env: HashMap::new(),
+                })
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("trim"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
+            }
+        }
+        UnaryOp::StrChars() => {
+            if let Term::Str(s) = *t {
+                let ts = s
+                    .chars()
+                    .map(|c| RichTerm::From(Term::Str(c.to_string())))
+                    .collect();
+                Ok(Closure {
+                    body: Term::List(ts).into(),
+                    env: HashMap::new(),
+                })
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("chars"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
+            }
+        }
+        UnaryOp::CharCode() => {
+            if let Term::Str(s) = *t {
+                if s.len() == 1 {
+                    let code = (s.chars().next().unwrap() as u32) as f64;
+                    Ok(Closure {
+                        body: Term::Num(code).into(),
+                        env: Environment::new(),
+                    })
+                } else {
+                    Err(EvalError::Other(format!(
+                        "charCode: expected a char, given as a string of length 1"
+                    )))
+                }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("charCode"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
+            }
+        }
+        UnaryOp::CharFromCode() => {
+            if let Term::Num(code) = *t {
+                let code_u32 = n as u32;
+                if code.fract() != 0.0 {
+                    Err(EvalError::Other(format!("charFromCode: expected the agument to be an integer, got the floating-point value {}", n), pos_op))
+                } else if code < 0.0 || code_u32 > (u32::MAX as f64) {
+                    Err(EvalError::Other(format!("charFromCode: code out of bounds. Expected a value between 0 and {}, got {}", u32::MAX, n), pos_op))
+                } else {
+                    Ok(Closure {
+                        body: Term::Str(String::from(char::from_u32(code))),
+                        env: env1,
+                    })
+                }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Num"),
+                    String::from("charFromCode"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
+            }
+        }
+        UnaryOp::StrUppercase() => {
+            if let Term::Str(s) = *t {
+                Ok(Closure {
+                    body: Term::Str(s.to_uppercase()).into(),
+                    env: HashMap::new(),
+                })
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("strUppercase"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
+            }
+        }
+        UnaryOp::StrLowercase() => {
+            if let Term::Str(s) = *t {
+                Ok(Closure {
+                    body: Term::Str(s.to_lowercase()).into(),
+                    env: HashMap::new(),
+                })
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("strLowercase"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
+            }
+        }
+        UnaryOp::StrLength() => {
+            if let Term::Str(s) = *t {
+                Ok(Closure {
+                    body: Term::Num(s.len()).into(),
+                    env: HashMap::new(),
+                })
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("strLength"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
+            }
+        }
+        UnaryOp::StrFrom() => {
+            if let Term::Str(s) = *t {
+                Ok(Closure {
+                    body: Term::Num(s.len()).into(),
+                    env: HashMap::new(),
+                })
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("strLength"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
+            }
+        }
     }
 }
 

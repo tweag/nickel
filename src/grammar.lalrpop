@@ -340,6 +340,16 @@ UOp: UnaryOp = {
     "length" => UnaryOp::ListLength(),
     "fieldsOf" => UnaryOp::FieldsOf(),
     "valuesOf" => UnaryOp::ValuesOf(),
+    "strTrim" => UnaryOp::StrTrim(),
+    "strChars" => UnaryOp::StrChars(),
+    "charCode" => UnaryOp::CharCode(),
+    "carFromCode", => UnaryOp::CarFromCode(),
+    "strUppercase" => UnaryOp::StrUppercase(),
+    "strLowercase" => UnaryOp::StrLowercase(),
+    "strLength" => UnaryOp::StrLength(),
+    "strFrom" => UnaryOp::StrFrom(),
+    "numFrom" => UnaryOp::NumFrom(),
+    "enumFrom" => UnaryOp::EnumFrom(),
 };
 
 switch_case: SwitchCase = {
@@ -461,6 +471,10 @@ BOpPre: BinaryOp = {
     "serialize" => BinaryOp::Serialize(),
     "deserialize" => BinaryOp::Deserialize(),
     "pow" => BinaryOp::Pow(),
+    "strSplit" => BinaryOp::StrSplit(),
+    "strContains" => BinaryOp::StrContains(),
+    "strMatch" => BinaryOp::StrMatch(),
+    "strSubstr" => BinaryOp::StrSubstr(),
 }
 
 Types: Types = {
@@ -645,6 +659,21 @@ extern {
         "hash" => Token::Normal(NormalToken::OpHash),
         "serialize" => Token::Normal(NormalToken::Serialize),
         "deserialize" => Token::Normal(NormalToken::Deserialize),
+        "strSplit" => Token::Normal(NormalToken::StrSplit),
+        "strTrim" => Token::Normal(NormalToken::StrTrim),
+        "strChars" => Token::Normal(NormalToken::StrChars),
+        "charCode" => Token::Normal(NormalToken::CharCode),
+        "carFromCode", => Token::Normal(NormalToken::CarFromCode),
+        "strUppercase" => Token::Normal(NormalToken::StrUppercase),
+        "strLowercase" => Token::Normal(NormalToken::StrLowercase),
+        "strContains" => Token::Normal(NormalToken::StrContains),
+        "strReplace" => Token::Normal(NormalToken::StrReplace),
+        "strMatch" => Token::Normal(NormalToken::StrMatch),
+        "strLength" => Token::Normal(NormalToken::StrLength),
+        "strSubstr" => Token::Normal(NormalToken::StrSubstr),
+        "strFrom" => Token::Normal(NormalToken::StrFrom),
+        "numFrom" => Token::Normal(NormalToken::NumFrom),
+        "enumFrom" => Token::Normal(NormalToken::EnumFrom),
 
         "{" => Token::Normal(NormalToken::LBrace),
         "}" => Token::Normal(NormalToken::RBrace),
