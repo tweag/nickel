@@ -1355,9 +1355,7 @@ fn process_binary_operation(
                         _ => return mk_err_fst(t1),
                     };
 
-                    Ok(Closure::atomic_closure(
-                        Term::Str(String::from(result)).into(),
-                    ))
+                    Ok(Closure::atomic_closure(Term::Str(result).into()))
                 } else {
                     Err(EvalError::TypeError(
                         String::from("Str"),
@@ -1396,8 +1394,7 @@ fn process_binary_operation(
                     },
                     &global_env,
                     &env2,
-                )
-                .into();
+                );
                 serialize::validate(&rt2)?;
 
                 let result = match id.to_string().as_str() {
@@ -1411,9 +1408,7 @@ fn process_binary_operation(
                     _ => return mk_err_fst(t1),
                 };
 
-                Ok(Closure::atomic_closure(
-                    Term::Str(String::from(result)).into(),
-                ))
+                Ok(Closure::atomic_closure(Term::Str(result).into()))
             } else {
                 mk_err_fst(t1)
             }

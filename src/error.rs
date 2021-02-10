@@ -1026,7 +1026,7 @@ impl ToDiagnostic<FileId> for EvalError {
                 let labels = span_opt
                     .as_ref()
                     .map(|span| vec![primary(span).with_message("here")])
-                    .unwrap_or(Vec::new());
+                    .unwrap_or_default();
 
                 vec![Diagnostic::error()
                     .with_message(format!("{} parse error: {}", format, msg))
