@@ -1374,6 +1374,7 @@ fn eq(env: &mut Environment, c1: Closure, c2: Closure) -> EqResult {
     }
 
     match (*t1, *t2) {
+        (Term::Null, Term::Null) => EqResult::Bool(true),
         (Term::Bool(b1), Term::Bool(b2)) => EqResult::Bool(b1 == b2),
         (Term::Num(n1), Term::Num(n2)) => EqResult::Bool(n1 == n2),
         (Term::Str(s1), Term::Str(s2)) => EqResult::Bool(s1 == s2),
