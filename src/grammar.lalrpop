@@ -237,6 +237,7 @@ Atom: RichTerm = {
             )
         ),
     "num literal" => RichTerm::from(Term::Num(<>)),
+    "null" => RichTerm::from(Term::Null),
     Bool => RichTerm::from(Term::Bool(<>)),
     <StrChunks>,
     Ident => RichTerm::from(Term::Var(<>)),
@@ -616,6 +617,7 @@ extern {
         "let" => Token::Normal(NormalToken::Let),
         "switch" => Token::Normal(NormalToken::Switch),
 
+        "null" => Token::Normal(NormalToken::Null),
         "true" => Token::Normal(NormalToken::True),
         "false" => Token::Normal(NormalToken::False),
 

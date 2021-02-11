@@ -6,6 +6,15 @@ use serde::de::{Deserialize, Deserializer};
 use serde::ser::{Error, Serialize, SerializeMap, Serializer};
 use std::collections::HashMap;
 
+/// Available export formats.
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum ExportFormat {
+    Raw,
+    Json,
+    Yaml,
+    Toml,
+}
+
 /// Serializer for metavalues.
 pub fn serialize_meta_value<S>(meta: &MetaValue, serializer: S) -> Result<S::Ok, S::Error>
 where
@@ -58,25 +67,36 @@ impl<'de> Deserialize<'de> for RichTerm {
 
 /// Check that a term is serializable. Serializable terms are booleans, numbers, strings, enum,
 /// lists of serializable terms or records of serializable terms.
-pub fn validate(t: &RichTerm) -> Result<(), SerializationError> {
+pub fn validate(t: &RichTerm, format: ExportFormat) -> Result<(), SerializationError> {
     use crate::term;
     use Term::*;
 
-    match t.term.as_ref() {
-        Bool(_) | Num(_) | Str(_) | Enum(_) => Ok(()),
-        Record(map) | RecRecord(map) => {
-            map.iter().try_for_each(|(_, t)| validate(t))?;
+    if format == ExportFormat::Raw {
+        if let Term::Str(_) = t.term.as_ref() {
             Ok(())
+        } else {
+            Err(SerializationError::NotAString(t.clone()))
         }
-        List(vec) => {
-            vec.iter().try_for_each(validate)?;
-            Ok(())
+    } else {
+        match t.term.as_ref() {
+            // TOML doesn't support null values
+            Null if format == ExportFormat::Json || format == ExportFormat::Yaml => Ok(()),
+            Null => Err(SerializationError::UnsupportedNull(format, t.clone())),
+            Bool(_) | Num(_) | Str(_) | Enum(_) => Ok(()),
+            Record(map) | RecRecord(map) => {
+                map.iter().try_for_each(|(_, t)| validate(t, format))?;
+                Ok(())
+            }
+            List(vec) => {
+                vec.iter().try_for_each(|t| validate(t, format))?;
+                Ok(())
+            }
+            //TODO: have a specific error for such missing value.
+            MetaValue(term::MetaValue {
+                value: Some(ref t), ..
+            }) => validate(t, format),
+            _ => Err(SerializationError::NonSerializable(t.clone())),
         }
-        //TODO: have a specific error for such missing value.
-        MetaValue(term::MetaValue {
-            value: Some(ref t), ..
-        }) => validate(t),
-        _ => Err(SerializationError::NonSerializable(t.clone())),
     }
 }
 
@@ -107,13 +127,24 @@ mod tests {
         };
     }
 
-    macro_rules! assert_non_serializable {
-        ( $term:expr ) => {
+    macro_rules! assert_pass_validation {
+        ( $term:expr, $format:expr, true) => {
             validate(
                 &mk_program($term)
                     .and_then(|mut p| p.eval_full())
                     .unwrap()
                     .into(),
+                $format,
+            )
+            .unwrap();
+        };
+        ( $term:expr, $format:expr, false) => {
+            validate(
+                &mk_program($term)
+                    .and_then(|mut p| p.eval_full())
+                    .unwrap()
+                    .into(),
+                $format,
             )
             .unwrap_err();
         };
@@ -160,6 +191,10 @@ mod tests {
     #[test]
     fn basic() {
         assert_json_eq!("1 + 1", 2.0);
+
+        let null: Option<()> = None;
+        assert_json_eq!("null", null);
+
         assert_json_eq!("if true then false else true", false);
         assert_json_eq!(r##""Hello, #{"world"}!""##, "Hello, world!");
         assert_json_eq!("`foo", "foo");
@@ -168,7 +203,7 @@ mod tests {
     #[test]
     fn lists() {
         assert_json_eq!("[]", json!([]));
-        assert_json_eq!("[(1+1), (2+2), (3+3)]", json!([2.0, 4.0, 6.0]));
+        assert_json_eq!("[null, (1+1), (2+2), (3+3)]", json!([null, 2.0, 4.0, 6.0]));
         assert_json_eq!(
             r##"[`a, ("b" ++ "c"), "d#{"e"}f", "g"]"##,
             json!(["a", "bc", "def", "g"])
@@ -183,8 +218,8 @@ mod tests {
     #[test]
     fn records() {
         assert_json_eq!(
-            "{a = 1; b = 2+2; c = 3}",
-            json!({"a": 1.0, "b": 4.0, "c": 3.0})
+            "{a = 1; b = 2+2; c = 3; d = null}",
+            json!({"a": 1.0, "b": 4.0, "c": 3.0, "d": null})
         );
 
         assert_json_eq!(
@@ -218,8 +253,14 @@ mod tests {
 
     #[test]
     fn prevalidation() {
-        assert_non_serializable!("{a = 1; b = { c = fun x => x }}");
-        assert_non_serializable!("{foo = { bar = let y = \"a\" in y}; b = [[fun x => x]] }");
+        assert_pass_validation!("{a = 1; b = { c = fun x => x }}", ExportFormat::Json, false);
+        assert_pass_validation!(
+            "{foo = { bar = let y = \"a\" in y}; b = [[fun x => x]] }",
+            ExportFormat::Json,
+            false
+        );
+        assert_pass_validation!("{foo = null}", ExportFormat::Json, true);
+        assert_pass_validation!("{foo = null}", ExportFormat::Toml, false);
     }
 
     #[test]

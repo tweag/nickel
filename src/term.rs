@@ -33,6 +33,10 @@ use std::ffi::OsString;
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Term {
+    /// The null value.
+    // #[serde(serialize_with = "crate::serialize::serialize_null")]
+    // #[serde(deserialize_with = "crate::serialize::deserialize_null")]
+    Null,
     /// A boolean value.
     Bool(bool),
     /// A floating-point value.
@@ -217,6 +221,7 @@ impl Term {
     {
         use self::Term::*;
         match self {
+            Null => (),
             Switch(ref mut t, ref mut cases, ref mut def) => {
                 cases.iter_mut().for_each(|c| {
                     let (_, t) = c;
@@ -276,6 +281,7 @@ impl Term {
     /// for records, `"Fun`" for functions, etc. If the term is not a WHNF, `None` is returned.
     pub fn type_of(&self) -> Option<String> {
         match self {
+            Term::Null => Some("Null"),
             Term::Bool(_) => Some("Bool"),
             Term::Num(_) => Some("Num"),
             Term::Str(_) => Some("Str"),
@@ -305,6 +311,7 @@ impl Term {
     /// Return a shallow string representation of a term, used for error reporting.
     pub fn shallow_repr(&self) -> String {
         match self {
+            Term::Null => String::from("null"),
             Term::Bool(true) => String::from("true"),
             Term::Bool(false) => String::from("false"),
             Term::Num(n) => format!("{}", n),
@@ -367,7 +374,8 @@ impl Term {
     /// Determine if a term is in evaluated from, called weak head normal form (WHNF).
     pub fn is_whnf(&self) -> bool {
         match self {
-            Term::Bool(_)
+            Term::Null
+            | Term::Bool(_)
             | Term::Num(_)
             | Term::Str(_)
             | Term::Fun(_, _)
@@ -395,40 +403,17 @@ impl Term {
 
     /// Determine if a term is an enriched value.
     pub fn is_enriched(&self) -> bool {
-        match self {
-            Term::MetaValue(_) => true,
-            Term::Bool(_)
-            | Term::Num(_)
-            | Term::Str(_)
-            | Term::StrChunks(_)
-            | Term::Fun(_, _)
-            | Term::Lbl(_)
-            | Term::Enum(_)
-            | Term::Record(_)
-            | Term::RecRecord(_)
-            | Term::List(_)
-            | Term::Sym(_)
-            | Term::Wrapped(_, _)
-            | Term::Let(_, _, _)
-            | Term::App(_, _)
-            | Term::Switch(..)
-            | Term::Var(_)
-            | Term::Op1(_, _)
-            | Term::Op2(_, _, _)
-            | Term::Promise(_, _, _)
-            | Term::Assume(_, _, _)
-            | Term::Import(_)
-            | Term::ResolvedImport(_) => false,
-        }
+        matches!(self, Term::MetaValue(..))
     }
 
     /// Determine if a term is a constant.
     ///
-    /// In this context, a constant is an atomic literal of the language: a boolean, a number, a
+    /// In this context, a constant is an atomic literal of the language: null, a boolean, a number, a
     /// string, a label, an enum tag or a symbol.
     pub fn is_constant(&self) -> bool {
         match self {
-            Term::Bool(_)
+            Term::Null
+            | Term::Bool(_)
             | Term::Num(_)
             | Term::Str(_)
             | Term::Lbl(_)
@@ -677,7 +662,8 @@ impl RichTerm {
     {
         let RichTerm { term, pos } = self;
         match *term {
-            v @ Term::Bool(_)
+            v @ Term::Null
+            | v @ Term::Bool(_)
             | v @ Term::Num(_)
             | v @ Term::Str(_)
             | v @ Term::Lbl(_)
