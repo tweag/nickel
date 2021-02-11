@@ -786,7 +786,8 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
                     subst_(closure.body, global_env, &closure.env, bound)
                 })
                 .unwrap_or_else(|| RichTerm::new(Term::Var(id), pos)),
-            v @ Term::Bool(_)
+            v @ Term::Null
+            | v @ Term::Bool(_)
             | v @ Term::Num(_)
             | v @ Term::Str(_)
             | v @ Term::Lbl(_)

@@ -21,6 +21,7 @@ mod types;
 use crate::error::{Error, IOError, SerializationError};
 use crate::program::Program;
 use crate::repl::rustyline_frontend;
+use crate::serialize::ExportFormat;
 use crate::term::{RichTerm, Term};
 use std::io::Write;
 use std::path::PathBuf;
@@ -41,15 +42,6 @@ struct Opt {
     file: Option<PathBuf>,
     #[structopt(subcommand)]
     command: Option<Command>,
-}
-
-/// Available export formats.
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
-enum ExportFormat {
-    Raw,
-    Json,
-    Yaml,
-    Toml,
 }
 
 impl std::default::Default for ExportFormat {
@@ -187,9 +179,9 @@ fn export(
     output: Option<PathBuf>,
 ) -> Result<(), Error> {
     let rt = program.eval_full().map(RichTerm::from)?;
-    serialize::validate(&rt)?;
-
     let format = format.unwrap_or_default();
+
+    serialize::validate(&rt, format)?;
 
     if let Some(file) = output {
         let mut file = fs::File::create(&file).map_err(IOError::from)?;

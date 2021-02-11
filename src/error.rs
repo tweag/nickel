@@ -8,6 +8,7 @@ use crate::label::ty_path;
 use crate::parser::lexer::LexicalError;
 use crate::parser::utils::mk_span;
 use crate::position::RawSpan;
+use crate::serialize::ExportFormat;
 use crate::term::RichTerm;
 use crate::types::Types;
 use crate::{label, repl};
@@ -232,6 +233,10 @@ pub enum ImportError {
 /// An error occurred during serialization.
 #[derive(Debug, PartialEq, Clone)]
 pub enum SerializationError {
+    /// Encountered a null value for a format that doesn't support them.
+    UnsupportedNull(ExportFormat, RichTerm),
+    /// Tried exporting something else than a `Str` to raw format.
+    NotAString(RichTerm),
     /// A term contains constructs that cannot be serialized.
     NonSerializable(RichTerm),
     Other(String),
@@ -1341,6 +1346,17 @@ impl ToDiagnostic<FileId> for SerializationError {
         _contract_id: Option<FileId>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
+            SerializationError::NotAString(rt) => vec![Diagnostic::error()
+                .with_message(format!(
+                    "raw export only supports `Str`, got {}",
+                    rt.as_ref()
+                        .type_of()
+                        .unwrap_or(String::from("<unevaluated>"))
+                ))
+                .with_labels(vec![primary_term(&rt, files)])],
+            SerializationError::UnsupportedNull(format, rt) => vec![Diagnostic::error()
+                .with_message(format!("{} doesn't support null values", format))
+                .with_labels(vec![primary_term(&rt, files)])],
             SerializationError::NonSerializable(rt) => vec![Diagnostic::error()
                 .with_message("non serializable term")
                 .with_labels(vec![primary_term(&rt, files)])],

@@ -69,6 +69,8 @@ pub enum NormalToken<'input> {
     #[token("switch")]
     Switch,
 
+    #[token("null")]
+    Null,
     #[token("true")]
     True,
     #[token("false")]
