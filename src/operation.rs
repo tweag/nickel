@@ -1931,10 +1931,39 @@ fn process_binary_operation(
                 },
             )),
         },
-        BinaryOp::StrContains() => unimplemented!(),
+        BinaryOp::StrContains() => {
+            BinaryOp::StrSplit() => match (*t1, *t2) {
+            (Term::Str(s1), Term::Str(s2)) => {
+                let list: Vec<RichTerm> = s1
+                    .split(&s2)
+                    .map(|s| Term::Str(String::from(s)).into())
+                    .collect();
+                Ok(Closure {
+                    body: Term::List(list).into(),
+                    env: env1,
+                })
+            }
+            (Term::Str(_), t2) => Err(EvalError::TypeError(
+                String::from("Str"),
+                String::from("strSplit, 2nd argument"),
+                snd_pos,
+                RichTerm {
+                    term: Box::new(t2),
+                    pos: pos2,
+                },
+            )),
+            (t1, _) => Err(EvalError::TypeError(
+                String::from("Str"),
+                String::from("strSplit, 1st argument"),
+                fst_pos,
+                RichTerm {
+                    term: Box::new(t1),
+                    pos: pos1,
+                },
+            )),
+        }
+        },
         BinaryOp::StrMatch() => unimplemented!(),
-        //TODO: BinaryOp::StrReplace() => unimplemented!(),
-        BinaryOp::StrSubstr() => unimplemented!(),
     }
 }
 

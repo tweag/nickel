@@ -707,10 +707,12 @@ pub enum BinaryOp {
     /// Deserialize a string to a value.
     Deserialize(),
 
+    /// Split a string into a list.
     StrSplit(),
+    /// Determine if a string is a substring of another one.
     StrContains(),
+    /// Match a regex on a string.
     StrMatch(),
-    StrSubstr(),
 }
 
 impl BinaryOp {

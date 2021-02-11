@@ -1831,12 +1831,12 @@ pub fn get_bop_type(
                 ("groups", mk_typewrapper::list(AbsType::Str()))
             )
         ),
-        BinaryOp::StrSubstr() => mk_tyw_arrow!(
-            AbsType::Str(),
-            AbsType::Num(),
-            AbsType::Num(),
-            AbsType::Str()
-        ),
+        // BinaryOp::StrSubstr() => mk_tyw_arrow!(
+        //     AbsType::Str(),
+        //     AbsType::Num(),
+        //     AbsType::Num(),
+        //     AbsType::Str()
+        // ),
         BinaryOp::StrSplit() => mk_tyw_arrow!(
             AbsType::Str(),
             AbsType::Str(),
