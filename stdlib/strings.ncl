@@ -65,15 +65,17 @@
     lowercase : Str -> Str = fun s => %strLowercase% s;
 
     contains: Str -> Str -> Bool = fun s subs => %strContains% s subs;
-    replace: Str -> Str -> Str -> Str = fun s pattern replace =>
-      %strReplace% s pattern replace;
+    // Waiting for ternary primitive op
+    // replace: Str -> Str -> Str -> Str = fun s pattern replace =>
+    //   %strReplace% s pattern replace;
 
     match : Str -> Str -> {match: Str, index: Num, groups: List Str} = %blame% "fail";
 
     length : Str -> Num = fun s => %strLength% s;
 
-    substring: Str -> Num -> Num -> Str = fun s start end =>
-      %strSubstring% s start end;
+    // Waiting for ternary primitive ops
+    // substring: Str -> Num -> Num -> Str = fun s start end =>
+    //  %strSubstring% s start end;
 
     fromNum | Num -> Str = fun n => %toStr% n;
     fromEnum | forall a. < | a> -> Str => fun tag => %toStr% tag;

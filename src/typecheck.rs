@@ -1762,12 +1762,12 @@ pub fn get_bop_type(state: &mut State, op: &BinaryOp) -> Result<TypeWrapper, Typ
                 ("groups", mk_typewrapper::list(AbsType::Str()))
             )
         ),
-        BinaryOp::StrSubstr() => mk_tyw_arrow!(
-            AbsType::Str(),
-            AbsType::Num(),
-            AbsType::Num(),
-            AbsType::Str()
-        ),
+        // BinaryOp::StrSubstr() => mk_tyw_arrow!(
+        //     AbsType::Str(),
+        //     AbsType::Num(),
+        //     AbsType::Num(),
+        //     AbsType::Str()
+        // ),
         BinaryOp::StrSplit() => mk_tyw_arrow!(
             AbsType::Str(),
             AbsType::Str(),
