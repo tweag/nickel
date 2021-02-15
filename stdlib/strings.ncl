@@ -12,7 +12,7 @@
       else
         %blame% (%tag% "not a string" l);
 
-    NumLiteral = 
+    NumLiteral =
       let pattern = m#"^[+-]?(\d+(\.\d*)?(e[+-]?\d+)?|\.\d+(e[+-]?\d+)?)$"#m in
       fun l s =>
         if %isStr% s then
@@ -33,9 +33,12 @@
         %blame% (%tag% "not a string" l);
 
     Ident = fun l s =>
+      let pattern = m#"_?[a-zA-Z][_a-zA-Z0-9]*"#m in
       if %isStr% s then
-        //use regex here
-        s 
+        if (%strMatch% s pattern).index > -1 then
+            s
+          else
+            %blame% (%tag% "invalid enum tag" l)
       else
         %blame% (%tag% "not a string" l);
 
@@ -58,7 +61,7 @@
 
     chars : Str -> List Str = fun s => %strChars% s;
     code | #CharLiteral -> Num = fun s => %charCode% s;
-    fromCode | Num -> #CharLiteral = fun s => %charFromCode% s; 
+    fromCode | Num -> #CharLiteral = fun s => %charFromCode% s;
 
     uppercase : Str -> Str = fun s => %strUppercase% s;
     lowercase : Str -> Str = fun s => %strLowercase% s;
