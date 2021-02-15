@@ -1755,7 +1755,6 @@ pub fn get_bop_type(state: &mut State, op: &BinaryOp) -> Result<TypeWrapper, Typ
         BinaryOp::StrMatch() => mk_tyw_arrow!(
             AbsType::Str(),
             AbsType::Str(),
-            AbsType::Str(),
             mk_tyw_record!(
                 ("match", AbsType::Str()),
                 ("index", AbsType::Num()),

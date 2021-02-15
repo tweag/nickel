@@ -468,7 +468,6 @@ BOpPre: BinaryOp = {
     "strSplit" => BinaryOp::StrSplit(),
     "strContains" => BinaryOp::StrContains(),
     "strMatch" => BinaryOp::StrMatch(),
-    "strSubstr" => BinaryOp::StrSubstr(),
 }
 
 Types: Types = {

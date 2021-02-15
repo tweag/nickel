@@ -13,6 +13,7 @@ use crate::label::ty_path;
 use crate::merge;
 use crate::merge::merge;
 use crate::position::TermPos;
+use crate::mk_record;
 use crate::stack::Stack;
 use crate::term::make as mk_term;
 use crate::term::{BinaryOp, NAryOp, RichTerm, StrChunk, Term, UnaryOp};
@@ -731,7 +732,7 @@ fn process_unary_operation(
             if let Term::Str(s) = *t {
                 Ok(Closure {
                     body: Term::Str(String::from(s.trim())).into(),
-                    env: HashMap::new(),
+                    env: Environment::new(),
                 })
             } else {
                 Err(EvalError::TypeError(
@@ -750,7 +751,7 @@ fn process_unary_operation(
                     .collect();
                 Ok(Closure {
                     body: Term::List(ts).into(),
-                    env: HashMap::new(),
+                    env: Environment::new(),
                 })
             } else {
                 Err(EvalError::TypeError(
@@ -814,7 +815,7 @@ fn process_unary_operation(
             if let Term::Str(s) = *t {
                 Ok(Closure {
                     body: Term::Str(s.to_uppercase()).into(),
-                    env: HashMap::new(),
+                    env: Environment::new(),
                 })
             } else {
                 Err(EvalError::TypeError(
@@ -829,7 +830,7 @@ fn process_unary_operation(
             if let Term::Str(s) = *t {
                 Ok(Closure {
                     body: Term::Str(s.to_lowercase()).into(),
-                    env: HashMap::new(),
+                    env: Environment::new(),
                 })
             } else {
                 Err(EvalError::TypeError(
@@ -844,7 +845,7 @@ fn process_unary_operation(
             if let Term::Str(s) = *t {
                 Ok(Closure {
                     body: Term::Num(s.len() as f64).into(),
-                    env: HashMap::new(),
+                    env: Environment::new(),
                 })
             } else {
                 Err(EvalError::TypeError(
@@ -871,7 +872,7 @@ fn process_unary_operation(
             }?;
             Ok(Closure {
                 body: RichTerm::new(result, pos_op),
-                env: HashMap::new(),
+                env: Environment::new(),
             })
         }
         UnaryOp::NumFrom() => {
@@ -881,7 +882,7 @@ fn process_unary_operation(
                 })?;
                 Ok(Closure {
                     body: Term::Num(n).into(),
-                    env: HashMap::new(),
+                    env: Environment::new(),
                 })
             } else {
                 Err(EvalError::TypeError(
@@ -898,7 +899,7 @@ fn process_unary_operation(
                 if re.is_match(&s) {
                     Ok(Closure {
                         body: Term::Enum(Ident(s)).into(),
-                        env: HashMap::new(),
+                        env: Environment::new(),
                     })
                 } else {
                     Err(EvalError::Other(
@@ -1806,21 +1807,14 @@ fn process_binary_operation(
                 },
             )),
         },
-        BinaryOp::StrContains() => {
-            BinaryOp::StrSplit() => match (*t1, *t2) {
-            (Term::Str(s1), Term::Str(s2)) => {
-                let list: Vec<RichTerm> = s1
-                    .split(&s2)
-                    .map(|s| Term::Str(String::from(s)).into())
-                    .collect();
-                Ok(Closure {
-                    body: Term::List(list).into(),
-                    env: env1,
-                })
-            }
+        BinaryOp::StrContains() => match (*t1, *t2) {
+            (Term::Str(s1), Term::Str(s2)) => Ok(Closure {
+                body: Term::Bool(s1.contains(&s2)).into(),
+                env: env1,
+            }),
             (Term::Str(_), t2) => Err(EvalError::TypeError(
                 String::from("Str"),
-                String::from("strSplit, 2nd argument"),
+                String::from("strContains, 2nd argument"),
                 snd_pos,
                 RichTerm {
                     term: Box::new(t2),
@@ -1829,16 +1823,68 @@ fn process_binary_operation(
             )),
             (t1, _) => Err(EvalError::TypeError(
                 String::from("Str"),
-                String::from("strSplit, 1st argument"),
+                String::from("strContains, 1st argument"),
                 fst_pos,
                 RichTerm {
                     term: Box::new(t1),
                     pos: pos1,
                 },
             )),
-        }
         },
-        BinaryOp::StrMatch() => unimplemented!(),
+        BinaryOp::StrMatch() => {
+            match (*t1, *t2) {
+                (Term::Str(s1), Term::Str(s2)) => {
+                    let re = regex::Regex::new(&s2)
+                        .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
+                    let capt = re.captures(&s1);
+
+                    let body = if let Some(capt) = capt {
+                        let first_match = capt.get(0).unwrap();
+                        let groups: Vec<RichTerm> = capt
+                            .iter()
+                            .skip(1)
+                            .map(|s_opt| {
+                                s_opt.map(|s| RichTerm::from(Term::Str(String::from(s.as_str()))))
+                            })
+                            .filter_map(|x| x)
+                            .collect();
+
+                        mk_record!(
+                            ("match", Term::Str(String::from(first_match.as_str()))),
+                            ("index", Term::Num(first_match.start() as f64)),
+                            ("groups", Term::List(groups))
+                        )
+                    } else {
+                        //FIXME: Change Term::Bool to Term:Null!!
+                        mk_record!(
+                            ("match", Term::Str(String::new())),
+                            ("index", Term::Num(-1.)),
+                            ("groups", Term::List(Vec::new()))
+                        )
+                    };
+
+                    Ok(Closure { body, env: env1 })
+                }
+                (Term::Str(_), t2) => Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("strContains, 2nd argument"),
+                    snd_pos,
+                    RichTerm {
+                        term: Box::new(t2),
+                        pos: pos2,
+                    },
+                )),
+                (t1, _) => Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("strContains, 1st argument"),
+                    fst_pos,
+                    RichTerm {
+                        term: Box::new(t1),
+                        pos: pos1,
+                    },
+                )),
+            }
+        }
     }
 }
 
