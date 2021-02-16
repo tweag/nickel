@@ -12,7 +12,8 @@ use crate::identifier::Ident;
 use crate::label::ty_path;
 use crate::merge;
 use crate::merge::merge;
-use crate::position::RawSpan;
+use crate::serialize;
+use crate::position::TermPos;
 use crate::stack::Stack;
 use crate::term::make as mk_term;
 use crate::term::{BinaryOp, RichTerm, StrChunk, Term, UnaryOp};
@@ -46,21 +47,21 @@ enum EqResult {
 pub enum OperationCont {
     Op1(
         /* unary operation */ UnaryOp,
-        /* original position of the argument before evaluation */ Option<RawSpan>,
+        /* original position of the argument before evaluation */ TermPos,
         /* previous value of enriched_strict */ bool,
     ),
     // The last parameter saves the strictness mode before the evaluation of the operator
     Op2First(
         /* the binary operation */ BinaryOp,
         /* second argument, to evaluate next */ Closure,
-        /* original position of the first argument */ Option<RawSpan>,
+        /* original position of the first argument */ TermPos,
         /* previous value of enriched_strict */ bool,
     ),
     Op2Second(
         /* binary operation */ BinaryOp,
         /* first argument, evaluated */ Closure,
-        /* original position of the first argument before evaluation */ Option<RawSpan>,
-        /* original position of the second argument before evaluation */ Option<RawSpan>,
+        /* original position of the first argument before evaluation */ TermPos,
+        /* original position of the second argument before evaluation */ TermPos,
         /* previous value of enriched_strict */ bool,
     ),
 }
@@ -115,9 +116,9 @@ pub fn continuate_operation(
 fn process_unary_operation(
     u_op: UnaryOp,
     clos: Closure,
-    arg_pos: Option<RawSpan>,
+    arg_pos: TermPos,
     stack: &mut Stack,
-    pos_op: Option<RawSpan>,
+    pos_op: TermPos,
 ) -> Result<Closure, EvalError> {
     let Closure {
         body: RichTerm { term: t, pos },
@@ -665,11 +666,11 @@ fn process_unary_operation(
 fn process_binary_operation(
     b_op: BinaryOp,
     fst_clos: Closure,
-    fst_pos: Option<RawSpan>,
+    fst_pos: TermPos,
     clos: Closure,
-    snd_pos: Option<RawSpan>,
+    snd_pos: TermPos,
     stack: &mut Stack,
-    pos_op: Option<RawSpan>,
+    pos_op: TermPos,
 ) -> Result<Closure, EvalError> {
     let Closure {
         body: RichTerm {
@@ -1576,17 +1577,23 @@ mod tests {
 
     #[test]
     fn ite_operation() {
-        let cont = OperationCont::Op1(UnaryOp::Ite(), None, true);
+        let cont = OperationCont::Op1(UnaryOp::Ite(), TermPos::None, true);
         let mut stack = Stack::new();
-        stack.push_arg(Closure::atomic_closure(Term::Num(5.0).into()), None);
-        stack.push_arg(Closure::atomic_closure(Term::Num(46.0).into()), None);
+        stack.push_arg(
+            Closure::atomic_closure(Term::Num(5.0).into()),
+            TermPos::None,
+        );
+        stack.push_arg(
+            Closure::atomic_closure(Term::Num(46.0).into()),
+            TermPos::None,
+        );
 
         let mut clos = Closure {
             body: Term::Bool(true).into(),
             env: some_env(),
         };
 
-        stack.push_op_cont(cont, 0, None);
+        stack.push_op_cont(cont, 0, TermPos::None);
         let mut call_stack = CallStack::new();
         let mut strict = true;
 
@@ -1610,7 +1617,7 @@ mod tests {
                 body: Term::Num(6.0).into(),
                 env: some_env(),
             },
-            None,
+            TermPos::None,
             true,
         );
 
@@ -1619,7 +1626,7 @@ mod tests {
             env: some_env(),
         };
         let mut stack = Stack::new();
-        stack.push_op_cont(cont, 0, None);
+        stack.push_op_cont(cont, 0, TermPos::None);
         let mut call_stack = CallStack::new();
         let mut strict = true;
 
@@ -1642,12 +1649,12 @@ mod tests {
                         body: Term::Num(7.0).into(),
                         env: some_env(),
                     },
-                    None,
-                    None,
+                    TermPos::None,
+                    TermPos::None,
                     true
                 ),
                 0,
-                None
+                TermPos::None
             ),
             stack.pop_op_cont().expect("Condition already checked.")
         );
@@ -1661,8 +1668,8 @@ mod tests {
                 body: Term::Num(7.0).into(),
                 env: some_env(),
             },
-            None,
-            None,
+            TermPos::None,
+            TermPos::None,
             true,
         );
         let mut clos = Closure {
@@ -1670,7 +1677,7 @@ mod tests {
             env: some_env(),
         };
         let mut stack = Stack::new();
-        stack.push_op_cont(cont, 0, None);
+        stack.push_op_cont(cont, 0, TermPos::None);
         let mut call_stack = CallStack::new();
         let mut strict = false;
 

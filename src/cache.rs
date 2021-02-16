@@ -3,7 +3,7 @@
 use crate::error::{Error, ImportError, ParseError, TypecheckError};
 use crate::identifier::Ident;
 use crate::parser::lexer::Lexer;
-use crate::position::RawSpan;
+use crate::position::TermPos;
 use crate::stdlib as nickel_stdlib;
 use crate::term::{RichTerm, Term};
 use crate::typecheck::type_check;
@@ -663,7 +663,7 @@ pub trait ImportResolver {
         &mut self,
         path: &OsStr,
         parent: Option<PathBuf>,
-        pos: &Option<RawSpan>,
+        pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError>;
 
     /// Insert an entry in the term cache after transformation.
@@ -678,7 +678,7 @@ impl ImportResolver for Cache {
         &mut self,
         path: &OsStr,
         parent: Option<PathBuf>,
-        pos: &Option<RawSpan>,
+        pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError> {
         let path_buf = with_parent(path, parent);
         let format = InputFormat::from_path_buf(&path_buf).unwrap_or(InputFormat::Nickel);
@@ -752,7 +752,7 @@ pub mod resolvers {
             &mut self,
             _path: &OsStr,
             _parent: Option<PathBuf>,
-            _pos: &Option<RawSpan>,
+            _pos: &TermPos,
         ) -> Result<(ResolvedTerm, FileId), ImportError> {
             panic!("cache::resolvers: dummy resolver should not have been invoked");
         }
@@ -796,7 +796,7 @@ pub mod resolvers {
             &mut self,
             path: &OsStr,
             _parent: Option<PathBuf>,
-            pos: &Option<RawSpan>,
+            pos: &TermPos,
         ) -> Result<(ResolvedTerm, FileId), ImportError> {
             let file_id = self
                 .file_cache

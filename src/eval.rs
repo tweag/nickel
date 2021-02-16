@@ -92,7 +92,7 @@ use crate::error::EvalError;
 use crate::identifier::Ident;
 use crate::mk_app;
 use crate::operation::{continuate_operation, OperationCont};
-use crate::position::RawSpan;
+use crate::position::{RawSpan, TermPos};
 use crate::stack::Stack;
 use crate::term::{make as mk_term, MetaValue, RichTerm, StrChunk, Term, UnaryOp};
 use std::cell::{Ref, RefCell, RefMut};
@@ -268,8 +268,8 @@ pub type CallStack = Vec<StackElem>;
 /// A call stack element.
 #[derive(Debug, PartialEq, Clone)]
 pub enum StackElem {
-    App(Option<RawSpan>),
-    Var(IdentKind, Ident, Option<RawSpan>),
+    App(TermPos),
+    Var(IdentKind, Ident, TermPos),
 }
 
 /// Kind of an identifier.

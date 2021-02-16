@@ -5,7 +5,7 @@ use crate::term::make as mk_term;
 use crate::mk_app;
 use crate::types::{Types, AbsType};
 use super::ExtendedTerm;
-use super::utils::{StringKind, mk_span, mk_label, strip_indent, SwitchCase,
+use super::utils::{StringKind, mk_pos, mk_label, strip_indent, SwitchCase,
     FieldPathElem, strip_indent_doc, build_record, elaborate_field_path,
     ChunkLiteralPart};
 use std::ffi::OsString;
@@ -20,7 +20,7 @@ SpTerm<Rule>: RichTerm =
     <l: @L> <t: Rule> <r: @R> => match t {
         RichTerm {term: t, pos: _} => RichTerm {
             term: t,
-            pos: Some(mk_span(src_id, l, r))
+            pos: Some(mk_pos(src_id, l, r))
         }
     };
 
@@ -115,7 +115,7 @@ MetaTerm: RichTerm = {
 
 RichTerm: RichTerm = {
     <l: @L> "fun" <ps:Pattern+> "=>" <t: SpTerm<RichTerm>> <r: @R> => {
-        let pos = Some(mk_span(src_id, l, r));
+        let pos = Some(mk_pos(src_id, l, r));
         ps.into_iter().rev().fold(t, |t, p| RichTerm {
             term: Box::new(Term::Fun(p, t)),
             pos: pos.clone()
@@ -268,7 +268,7 @@ RecordField: (FieldPathElem, RichTerm) = {
         let mut meta = meta;
         let pos = t.as_ref()
             .map(|t| t.pos.clone())
-            .unwrap_or(Some(mk_span(src_id, l, r)));
+            .unwrap_or(Some(mk_pos(src_id, l, r)));
         meta.value = t;
         let t = RichTerm::new(Term::MetaValue(meta), pos);
         elaborate_field_path(path, t)

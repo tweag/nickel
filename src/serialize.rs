@@ -61,7 +61,7 @@ impl<'de> Deserialize<'de> for RichTerm {
         D: Deserializer<'de>,
     {
         let t: Term = Term::deserialize(deserializer)?;
-        Ok(RichTerm::new(t, None))
+        Ok(RichTerm::from(t))
     }
 }
 
@@ -104,6 +104,7 @@ pub fn validate(t: &RichTerm, format: ExportFormat) -> Result<(), SerializationE
 mod tests {
     use super::*;
     use crate::error::{Error, EvalError};
+    use crate::position::TermPos;
     use crate::program::Program;
     use crate::term::{make as mk_term, BinaryOp};
     use serde_json::json;
@@ -113,7 +114,10 @@ mod tests {
         let src = Cursor::new(s);
 
         Program::new_from_source(src, "<test>").map_err(|io_err| {
-            Error::EvalError(EvalError::Other(format!("IO error: {}", io_err), None))
+            Error::EvalError(EvalError::Other(
+                format!("IO error: {}", io_err),
+                TermPos::None,
+            ))
         })
     }
 

@@ -211,6 +211,7 @@ mod tests {
     use crate::error::EvalError;
     use crate::identifier::Ident;
     use crate::parser::{grammar, lexer};
+    use crate::position::TermPos;
     use assert_matches::assert_matches;
     use codespan::Files;
     use serde_json::json;
@@ -233,7 +234,10 @@ mod tests {
         let src = Cursor::new(s);
 
         let mut p = Program::new_from_source(src, "<test>").map_err(|io_err| {
-            Error::EvalError(EvalError::Other(format!("IO error: {}", io_err), None))
+            Error::EvalError(EvalError::Other(
+                format!("IO error: {}", io_err),
+                TermPos::None,
+            ))
         })?;
         p.eval()
     }
@@ -242,7 +246,10 @@ mod tests {
         let src = Cursor::new(s);
 
         let mut p = Program::new_from_source(src, "<test>").map_err(|io_err| {
-            Error::EvalError(EvalError::Other(format!("IO error: {}", io_err), None))
+            Error::EvalError(EvalError::Other(
+                format!("IO error: {}", io_err),
+                TermPos::None,
+            ))
         })?;
         p.eval_full()
     }
@@ -1480,7 +1487,7 @@ too
 
         // Clean all the position information in a term.
         fn clean_pos(t: Term) -> Term {
-            let mut tmp = RichTerm::new(t, None);
+            let mut tmp = RichTerm::new(t, TermPos::None);
             tmp.clean_pos();
             *tmp.term
         }

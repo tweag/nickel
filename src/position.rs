@@ -7,7 +7,7 @@ use codespan::{ByteIndex, FileId};
 use std::cmp::Ordering;
 
 /// A position identified by a byte offset in a file.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct RawPos {
     pub src_id: FileId,
     pub index: ByteIndex,
@@ -16,11 +16,70 @@ pub struct RawPos {
 /// A position span identified by a starting byte offset and an ending byte offset in a file.
 ///
 /// `end` is the offset of the last character plus one.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct RawSpan {
     pub src_id: FileId,
     pub start: ByteIndex,
     pub end: ByteIndex,
+}
+
+/// The position span of a term.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum TermPos {
+    /// The term exactly corresponds to an original expression in the source, or is a construct
+    /// introduced by program transformation that correponds to an original span in the source.
+    Original(RawSpan),
+    /// The term is the result of the evaluation of an original expression in the source.
+    Inherited(RawSpan),
+    /// The term couldn't be assigned a position (usually generated during execution or program
+    /// transformations).
+    None,
+}
+
+impl TermPos {
+    /// Apply a transformation to the inner position, if any.
+    pub fn map<F: FnOnce(RawSpan) -> RawSpan>(self, f: F) -> Self {
+        match self {
+            TermPos::Original(x) => TermPos::Original(f(x)),
+            TermPos::Inherited(x) => TermPos::Inherited(f(x)),
+            TermPos::None => TermPos::None,
+        }
+    }
+
+    pub fn as_opt_ref(&self) -> Option<&RawSpan> {
+        match self {
+            TermPos::Original(ref pos) | TermPos::Inherited(ref pos) => Some(pos),
+            TermPos::None => None,
+        }
+    }
+
+    // In principle, this should rather be implemented in a trait impl `impl Into<Option<RawSpan>>
+    // for TermPos`, but the type inference was working too badly.
+    pub fn into_opt(self) -> Option<RawSpan> {
+        self.into()
+    }
+
+    /// Determine is the position is defined. Return `false` if it is `None`, and `true` otherwise.
+    pub fn is_def(&self) -> bool {
+        matches!(self, TermPos::Original(_) | TermPos::Inherited(_))
+    }
+
+    /// Try to unwrap the underlying span. Panic if `self` is `None`.
+    pub fn unwrap(self) -> RawSpan {
+        match self {
+            TermPos::Original(x) | TermPos::Inherited(x) => x,
+            TermPos::None => panic!("TermPos::unwrap"),
+        }
+    }
+
+    /// Try to set the position to inherited, if it wasn't already. If `self` was `None`, `None` is
+    /// returned.
+    pub fn into_inherited(self) -> Self {
+        match self {
+            TermPos::Original(pos) => TermPos::Inherited(pos),
+            p => p,
+        }
+    }
 }
 
 /// A natural ordering for positions: `p1` is smaller than `p2` if they are located in the same
