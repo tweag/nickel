@@ -477,6 +477,43 @@ fn process_unary_operation(
                 ))
             }
         }
+        UnaryOp::ListGen() => {
+            let (f, _) = stack
+                .pop_arg()
+                .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("generate"), pos_op.clone()))?;
+
+            if let Term::Num(n) = *t {
+                let n_int = n as usize;
+                if n < 0.0 || n.fract() != 0.0 {
+                    Err(EvalError::Other(format!("generate: expected the 1st agument to be a positive integer, got {}", n), pos_op))
+                } else {
+                    let mut shared_env = Environment::new();
+                    let f_as_var = f.body.closurize(&mut env, f.env);
+
+                    // List elements are closurized to preserve lazyness of data structures. It
+                    // maintains the invariant that any data structure only contain thunks (that is,
+                    // currently, variables).
+                    let ts = (0..n_int)
+                        .map(|n| {
+                            mk_app!(f_as_var.clone(), Term::Num(n as f64))
+                                .closurize(&mut shared_env, env.clone())
+                        })
+                        .collect();
+
+                    Ok(Closure {
+                        body: Term::List(ts).into(),
+                        env: shared_env,
+                    })
+                }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Num"),
+                    String::from("generate, 1st argument"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
+            }
+        }
         UnaryOp::RecordMap() => {
             let (f, ..) = stack
                 .pop_arg()

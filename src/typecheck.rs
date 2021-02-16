@@ -1565,6 +1565,13 @@ pub fn get_uop_type(state: &mut State, op: &UnaryOp) -> Result<TypeWrapper, Type
             let f_type = mk_tyw_arrow!(a.clone(), b.clone());
             mk_tyw_arrow!(mk_typewrapper::list(a), f_type, mk_typewrapper::list(b))
         }
+        // forall a. Num -> (Num -> a) -> List a
+        UnaryOp::ListGen() => {
+            let a = TypeWrapper::Ptr(new_var(state.table));
+
+            let f_type = mk_tyw_arrow!(AbsType::Num(), a.clone());
+            mk_tyw_arrow!(AbsType::Num(), f_type, mk_typewrapper::list(a))
+        }
         // forall a b. { _ : a} -> (Str -> a -> b) -> { _ : b }
         UnaryOp::RecordMap() => {
             // Assuming f has type Str -> a -> b,
