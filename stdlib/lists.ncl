@@ -59,12 +59,7 @@
         in
         foldl aux {right = []; wrong = []} l;
 
-    generate : forall a. (Num -> a) -> Num -> List a =
-      fun gen n =>
-        if n <= 0 then
-          []
-        else
-          generate gen (n-1) @ [gen n];
+    generate : forall a. (Num -> a) -> Num -> List a = fun f n => %generate% n f;
 
     sort : forall a. (a -> a -> <Less, Equal, Greater>) -> List a -> List a =
       fun cmp l =>
