@@ -810,7 +810,7 @@ pub fn apparent_type(t: &Term, envs: Option<&Envs>) -> ApparentType {
         Term::Sym(_) => ApparentType::Inferred(Types(AbsType::Sym())),
         Term::Str(_) | Term::StrChunks(_) => ApparentType::Inferred(Types(AbsType::Str())),
         Term::List(_) => {
-            ApparentType::Inferred(Types(AbsType::List(Box::new(Types(AbsType::Dyn())))))
+            ApparentType::Approximated(Types(AbsType::List(Box::new(Types(AbsType::Dyn())))))
         }
         Term::Var(id) => envs
             .and_then(|envs| envs.get(id))
