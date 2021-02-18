@@ -345,18 +345,25 @@ impl ParseError {
     ) -> Self {
         use codespan::ByteOffset;
 
-        let line_span = files.line_span(file_id, (error.line() - 1) as u32);
+        // error.line() should start at `1` according to the documentation, but in practice, it may
+        // be 0 for the error `json parse error: data did not match any variant of untagged enum
+        // Term`. Although this error should not happen, if it does, it's better to get a message
+        // than a panic message `subtract with overflow`.
+        let line_span = if error.line() == 0 {
+            None
+        } else {
+            files.line_span(file_id, (error.line() - 1) as u32).ok()
+        };
+
         let start = line_span.map(|ls| ls.start() + ByteOffset::from(error.column() as i64 - 1));
         ParseError::ExternalFormatError(
             String::from("json"),
             error.to_string(),
-            start
-                .map(|start| RawSpan {
-                    src_id: file_id,
-                    start,
-                    end: start + ByteOffset::from(1),
-                })
-                .ok(),
+            start.map(|start| RawSpan {
+                src_id: file_id,
+                start,
+                end: start + ByteOffset::from(1),
+            }),
         )
     }
 
