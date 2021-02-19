@@ -44,7 +44,7 @@
 
   record_extend = fun field contr cont acc l t =>
       if %hasField% field t then
-          let acc = acc$[field = contr (%goField% field l) (t.$field)] in
+          let acc = acc$[field = contr (%goField% field l) (t."#{field}")] in
           let t = t -$ field in
           cont acc l t
       else
@@ -57,7 +57,7 @@
               let rest = (t -$ magic_fld) in
               if rest == {} then
                   let fail = %blame% (%tag% "polymorphic tail mismatch" l) in
-                  let inner = %unwrap% sy (t.$magic_fld) fail in
+                  let inner = %unwrap% sy (t."#{magic_fld}") fail in
                   acc & inner
               else
                   %blame% (%tag% "extra field `#{%head% (%fieldsOf% rest)}`" l)

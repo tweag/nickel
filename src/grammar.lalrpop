@@ -182,7 +182,7 @@ RecordOperand: RichTerm = {
 
 RecordOperationChain: RichTerm = {
     <t: SpTerm<RecordOperand>> "." <id: Ident> => mk_term::op1(UnaryOp::StaticAccess(id), t),
-    <t: SpTerm<RecordOperand>> ".$" <t_id: SpTerm<Atom>> => mk_term::op2(BinaryOp::DynAccess(), t_id, t),
+    <t: SpTerm<RecordOperand>> "." <t_id: StrChunks> => mk_term::op2(BinaryOp::DynAccess(), t_id, t),
     <t: SpTerm<RecordOperand>> "-$" <t_id: SpTerm<Atom>> => mk_term::op2(BinaryOp::DynRemove(), t_id, t),
     <r: SpTerm<RecordOperand>> "$[" <id: Term> "=" <t: Term> "]" =>
         mk_app!(mk_term::op2(BinaryOp::DynExtend(), id, r), t),
@@ -287,8 +287,7 @@ FieldPath: Vec<FieldPathElem> = {
 
 FieldPathElem: FieldPathElem = {
     <Ident> => FieldPathElem::Ident(<>),
-    "\"" <ChunkLiteral> "\"" => FieldPathElem::Ident(Ident(<>)),
-    "$" <id: SpTerm<Atom>> => FieldPathElem::Expr(<>),
+    <StrChunks> => FieldPathElem::Expr(<>),
 };
 
 Pattern: Ident = {
@@ -616,7 +615,6 @@ extern {
         ";" => Token::Normal(NormalToken::SemiCol),
         "&" => Token::Normal(NormalToken::Ampersand),
         "." => Token::Normal(NormalToken::Dot),
-        ".$" => Token::Normal(NormalToken::DotDollar),
         "$[" => Token::Normal(NormalToken::DollarBracket),
         "#{" => Token::Str(StringToken::HashBrace),
         "multstr #{" => Token::MultiStr(MultiStringToken::Interpolation),
@@ -634,7 +632,6 @@ extern {
         "||" => Token::Normal(NormalToken::DoublePipe),
         "!" => Token::Normal(NormalToken::Bang),
 
-        "$=" => Token::Normal(NormalToken::DollarEquals),
         "fun" => Token::Normal(NormalToken::Fun),
         "import" => Token::Normal(NormalToken::Import),
         "|" => Token::Normal(NormalToken::Pipe),
