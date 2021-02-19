@@ -501,23 +501,23 @@ Assume(#alwaysTrue, false)
         );
 
         assert_eq!(
-            eval_string("({ $(if true then \"foo\" else \"bar\") = false; bar = true; }).foo"),
+            eval_string("({ \"#{if true then \"foo\" else \"bar\"}\" = false; bar = true; }).foo"),
             Ok(Term::Bool(false)),
         );
 
         assert_eq!(
-            eval_string("({ foo = 3; bar = true; }).$(\"bar\")"),
+            eval_string("({ foo = 3; bar = true; }).\"bar\""),
             Ok(Term::Bool(true)),
         );
 
         assert_eq!(
             eval_string(
-                "({ $(if true then \"foo\" else \"bar\") = false; bar = true; }).$(\"foo\")"
+                "({ \"#{if true then \"foo\" else \"bar\"}\" = false; bar = true; }).\"foo\""
             ),
             Ok(Term::Bool(false)),
         );
 
-        eval_string("({ $(if false then \"foo\" else \"bar\") = false; bar = true; }).foo")
+        eval_string("({ \"#{if false then \"foo\" else \"bar\"}\" = false; bar = true; }).foo")
             .unwrap_err();
     }
 

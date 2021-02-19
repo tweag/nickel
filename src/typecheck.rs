@@ -2201,13 +2201,14 @@ mod tests {
 
     #[test]
     fn dynamic_record_simple() {
-        parse_and_typecheck("{ $(if true then \"foo\" else \"bar\") = 2; } : {_ : Num}").unwrap();
+        parse_and_typecheck("{ \"#{if true then \"foo\" else \"bar\"}\" = 2; } : {_ : Num}")
+            .unwrap();
 
-        parse_and_typecheck("({ $(if true then \"foo\" else \"bar\") = 2; }.$(\"bla\")) : Num")
+        parse_and_typecheck("({ \"#{if true then \"foo\" else \"bar\"}\" = 2; }.\"bla\") : Num")
             .unwrap();
 
         parse_and_typecheck(
-            "({ $(if true then \"foo\" else \"bar\") = 2; $(\"foo\") = true; }.$(\"bla\")) : Num",
+            "({ \"#{if true then \"foo\" else \"bar\"}\" = 2; \"foo\" = true; }.\"bla\") : Num",
         )
         .unwrap_err();
 
