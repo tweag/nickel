@@ -1,10 +1,13 @@
 use crate::identifier::Ident;
 /// A few helpers to generate position spans and labels easily during parsing
 use crate::label::Label;
+use crate::mk_app;
 use crate::position::RawSpan;
-use crate::term::{RichTerm, StrChunk};
+use crate::term::{make as mk_term, BinaryOp, RichTerm, StrChunk, Term};
 use crate::types::Types;
 use codespan::FileId;
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 
 /// Distinguish between the standard string separators `"`/`"` and the multi-line string separators
 /// `m#"`/`"#m` in the parser.
@@ -19,6 +22,82 @@ pub enum StringKind {
 pub enum SwitchCase {
     Normal(Ident, RichTerm),
     Default(RichTerm),
+}
+
+/// Left hand side of a record field declaration.
+#[derive(Clone, Debug)]
+pub enum FieldPathElem {
+    /// A static declaration, quoted or not: `{ foo = .. }` or `{ "$some'field" = .. }`
+    Ident(Ident),
+    /// An interpolated expression: `{ $(x ++ "foo") = .. }`
+    Expr(RichTerm),
+}
+
+/// String chunk literal, being either a string or a single char.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ChunkLiteralPart<'input> {
+    Str(&'input str),
+    Char(char),
+}
+
+/// Elaborate a record field definition made as a path, such as `a.b.c.d = foo`, into a regular
+/// flat definition `a = { .. }`.
+///
+/// # Preconditions
+/// - path must be **non-empty**, otherwise this function panics
+pub fn elaborate_field_path(
+    path: Vec<FieldPathElem>,
+    content: RichTerm,
+) -> (FieldPathElem, RichTerm) {
+    let mut it = path.into_iter();
+    let fst = it.next().unwrap();
+
+    let content = it.rev().fold(content, |acc, path_elem| match path_elem {
+        FieldPathElem::Ident(id) => {
+            let mut map = HashMap::new();
+            map.insert(id, acc);
+            Term::Record(map).into()
+        }
+        FieldPathElem::Expr(exp) => {
+            let empty = Term::Record(HashMap::new());
+            mk_app!(mk_term::op2(BinaryOp::DynExtend(), exp, empty), acc)
+        }
+    });
+
+    (fst, content)
+}
+
+/// Build a record from a list of field definitions. If fields are defined several times, the
+/// definitions are merged.
+pub fn build_record<I>(fields: I) -> Term
+where
+    I: IntoIterator<Item = (FieldPathElem, RichTerm)>,
+{
+    let mut static_map = HashMap::new();
+    let mut dynamic_fields = Vec::new();
+
+    fields.into_iter().for_each(|field| match field {
+        (FieldPathElem::Ident(id), t) => {
+            match static_map.entry(id) {
+                Entry::Occupied(mut occpd) => {
+                    // temporary putting null in the entry to take the previous value.
+                    let prev = occpd.insert(Term::Null.into());
+                    occpd.insert(mk_term::op2(BinaryOp::Merge(), prev, t));
+                }
+                Entry::Vacant(vac) => {
+                    vac.insert(t);
+                }
+            }
+        }
+        (FieldPathElem::Expr(e), t) => dynamic_fields.push((e, t)),
+    });
+
+    dynamic_fields
+        .into_iter()
+        .fold(Term::RecRecord(static_map), |rec, field| {
+            let (id_t, t) = field;
+            Term::App(mk_term::op2(BinaryOp::DynExtend(), id_t, rec), t)
+        })
 }
 
 /// Make a span from parser byte offsets.
