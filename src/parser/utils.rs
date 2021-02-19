@@ -27,24 +27,30 @@ pub enum SwitchCase {
 /// Left hand side of a record field declaration.
 #[derive(Clone, Debug)]
 pub enum FieldPathElem {
-    /// A static declaration, quoted or not: `{ foo = .. }` or `{ "$some'field" = .. }`
+    /// A static field declaration: `{ foo = .. }`
     Ident(Ident),
-    /// An interpolated expression: `{ $(x ++ "foo") = .. }`
+    /// A quoted field declaration: `{ "#{protocol}" = .. }`
+    ///
+    /// In practice, the argument must always be `StrChunks`, but since we also need to keep track
+    /// of the associated span it's handier to just use a `RichTerm`.
     Expr(RichTerm),
 }
 
-/// String chunk literal, being either a string or a single char.
+/// A string chunk literal atom, being either a string or a single char.
+///
+/// Because of the way the lexer handles escaping and interpolation, a contiguous static string
+/// `"Some \\ \#{escaped} string"` will be lexed as a sequence of such atoms.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ChunkLiteralPart<'input> {
     Str(&'input str),
     Char(char),
 }
 
-/// Elaborate a record field definition made as a path, such as `a.b.c.d = foo`, into a regular
-/// flat definition `a = { .. }`.
+/// Elaborate a record field definition specified as a path, like `a.b.c = foo`, into a regular
+/// flat definition `a = {b = {c = foo}}`.
 ///
 /// # Preconditions
-/// - path must be **non-empty**, otherwise this function panics
+/// - /!\ path must be **non-empty**, otherwise this function panics
 pub fn elaborate_field_path(
     path: Vec<FieldPathElem>,
     content: RichTerm,
@@ -67,8 +73,8 @@ pub fn elaborate_field_path(
     (fst, content)
 }
 
-/// Build a record from a list of field definitions. If fields are defined several times, the
-/// definitions are merged.
+/// Build a record from a list of field definitions. If a field is defined several times, the
+/// different definitions are merged.
 pub fn build_record<I>(fields: I) -> Term
 where
     I: IntoIterator<Item = (FieldPathElem, RichTerm)>,
