@@ -622,7 +622,6 @@ dependencies = [
  "assert_matches",
  "codespan",
  "codespan-reporting",
- "either",
  "lalrpop",
  "lalrpop-util",
  "logos",

@@ -19,7 +19,6 @@ lalrpop = "0.16.2"
 [dependencies]
 lalrpop-util = "0.16.2"
 regex = "0.2.1"
-either = "1.5.3"
 simple-counter = "0.1.0"
 codespan = "0.9.5"
 codespan-reporting = "0.9.5"
