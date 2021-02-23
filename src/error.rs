@@ -75,8 +75,8 @@ pub enum EvalError {
     SerializationError(SerializationError),
     /// A parse error occurred during a call to the builtin `deserialize`.
     DeserializationError(
-        String,          /* format */
-        String,          /* error message */
+        String,  /* format */
+        String,  /* error message */
         TermPos, /* position of the call to deserialize */
     ),
     /// An unexpected internal error.
@@ -714,9 +714,9 @@ pub fn process_callstack(cs: &CallStack, contract_id: FileId) -> Vec<(Option<Ide
     fn from_elem(elem: &StackElem) -> (Option<Ident>, RawSpan) {
         match elem {
             StackElem::Var(_, id, TermPos::Original(pos))
-            | StackElem::Var(_, id, TermPos::Inherited(pos)) => (Some(id.clone()), pos.clone()),
+            | StackElem::Var(_, id, TermPos::Inherited(pos)) => (Some(id.clone()), *pos),
             StackElem::App(TermPos::Original(pos)) | StackElem::App(TermPos::Inherited(pos)) => {
-                (None, pos.clone())
+                (None, *pos)
             }
             _ => panic!(),
         }
@@ -757,7 +757,7 @@ pub fn process_callstack(cs: &CallStack, contract_id: FileId) -> Vec<(Option<Ide
             // corresponds to the case 1 mentioned in the description of this function.
             (StackElem::Var(_, _, _), Some(StackElem::Var(_, id, TermPos::Original(pos))))
             | (StackElem::Var(_, _, _), Some(StackElem::Var(_, id, TermPos::Inherited(pos)))) => {
-                pending = (Some(id.clone()), pos.clone())
+                pending = (Some(id.clone()), *pos)
             }
             // If an `App` is followed by a `Var`, then `Var` necessarily belongs to a different
             // call (or to no call at all): we push the pending call and replace it with a fresh
@@ -766,7 +766,7 @@ pub fn process_callstack(cs: &CallStack, contract_id: FileId) -> Vec<(Option<Ide
             | (StackElem::App(pos_app), Some(StackElem::Var(_, id, TermPos::Inherited(pos))))
                 if pos_app.is_def() =>
             {
-                let old = std::mem::replace(&mut pending, (Some(id.clone()), pos.clone()));
+                let old = std::mem::replace(&mut pending, (Some(id.clone()), *pos));
                 acc.push(old);
             }
             // If a `Var` is followed by an `App`, they belong to the same call iff the position
@@ -779,7 +779,7 @@ pub fn process_callstack(cs: &CallStack, contract_id: FileId) -> Vec<(Option<Ide
                     (id_opt, pos) if *pos <= *pos_app => id_opt.as_ref().cloned(),
                     _ => None,
                 };
-                pending = (id_opt, pos_app.clone());
+                pending = (id_opt, *pos_app);
             }
             // Same thing with two `App`: we test for the containment of position spans. If this
             // fails, however, we still push `pending`, since as opposed to `Var`, an `App` always
@@ -791,9 +791,9 @@ pub fn process_callstack(cs: &CallStack, contract_id: FileId) -> Vec<(Option<Ide
                     _ => (false, None),
                 };
                 if contained {
-                    pending = (id_opt, pos_app.clone());
+                    pending = (id_opt, *pos_app);
                 } else {
-                    let old = std::mem::replace(&mut pending, (None, pos_app.clone()));
+                    let old = std::mem::replace(&mut pending, (None, *pos_app));
                     acc.push(old);
                 };
             }
@@ -1119,7 +1119,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
             TypecheckError::UnboundIdentifier(ident, pos_opt) =>
             // Use the same diagnostic as `EvalError::UnboundIdentifier` for consistency.
             {
-                EvalError::UnboundIdentifier(ident.clone(), pos_opt.clone())
+                EvalError::UnboundIdentifier(ident.clone(), *pos_opt)
                     .to_diagnostic(files, contract_id)
             }
             TypecheckError::IllformedType(ty) => {

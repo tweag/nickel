@@ -74,12 +74,12 @@ pub fn merge(
     // new metavalue (with no attribute set excepted the value), and then merging the two
     let (t1, t2) = match (t1.term.is_enriched(), t2.term.is_enriched()) {
         (true, false) => {
-            let pos = t2.pos.clone();
+            let pos = t2.pos;
             let t = Term::MetaValue(MetaValue::from(t2));
             (t1, RichTerm::new(t, pos))
         }
         (false, true) => {
-            let pos = t1.pos.clone();
+            let pos = t1.pos;
             let t = Term::MetaValue(MetaValue::from(t1));
             (RichTerm::new(t, pos), t2)
         }

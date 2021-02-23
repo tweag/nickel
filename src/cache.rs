@@ -686,7 +686,7 @@ impl ImportResolver for Cache {
             ImportError::IOError(
                 path.to_string_lossy().into_owned(),
                 format!("{}", err),
-                pos.clone(),
+                *pos,
             )
         })?;
         let file_id = match id_op {
@@ -695,7 +695,7 @@ impl ImportResolver for Cache {
         };
 
         self.parse_multi(file_id, format)
-            .map_err(|err| ImportError::ParseError(err, pos.clone()))?;
+            .map_err(|err| ImportError::ParseError(err, *pos))?;
 
         Ok((
             ResolvedTerm::FromFile {
@@ -805,7 +805,7 @@ pub mod resolvers {
                 .ok_or(ImportError::IOError(
                     path.to_string_lossy().into_owned(),
                     String::from("Import not found by the mockup resolver."),
-                    pos.clone(),
+                    *pos,
                 ))?;
 
             if self.term_cache.contains_key(&file_id) {
@@ -816,7 +816,7 @@ pub mod resolvers {
                 let term = parser::grammar::TermParser::new()
                     .parse(file_id, Lexer::new(&buf))
                     .map_err(|e| ParseError::from_lalrpop(e, file_id))
-                    .map_err(|e| ImportError::ParseError(e, pos.clone()))?;
+                    .map_err(|e| ImportError::ParseError(e, *pos))?;
                 Ok((
                     ResolvedTerm::FromFile {
                         term,

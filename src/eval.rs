@@ -92,7 +92,7 @@ use crate::error::EvalError;
 use crate::identifier::Ident;
 use crate::mk_app;
 use crate::operation::{continuate_operation, OperationCont};
-use crate::position::{RawSpan, TermPos};
+use crate::position::TermPos;
 use crate::stack::Stack;
 use crate::term::{make as mk_term, MetaValue, RichTerm, StrChunk, Term, UnaryOp};
 use std::cell::{Ref, RefCell, RefMut};
@@ -460,7 +460,7 @@ where
                 let mut thunk = env
                     .remove(&x)
                     .or_else(|| global_env.get(&x).map(Thunk::clone))
-                    .ok_or_else(|| EvalError::UnboundIdentifier(x.clone(), pos.clone()))?;
+                    .ok_or_else(|| EvalError::UnboundIdentifier(x.clone(), pos))?;
                 std::mem::drop(env); // thunk may be a 1RC pointer
 
                 if thunk.state() != ThunkState::Evaluated {
@@ -508,16 +508,16 @@ where
                             body: t,
                             env: env.clone(),
                         },
-                        pos.clone(),
+                        pos,
                     );
                 }
 
                 stack.push_arg(
                     Closure {
-                        body: RichTerm::new(Term::Record(cases), pos.clone()),
+                        body: RichTerm::new(Term::Record(cases), pos),
                         env: env.clone(),
                     },
-                    pos.clone(),
+                    pos,
                 );
 
                 Closure {
@@ -529,7 +529,7 @@ where
                 let prev_strict = enriched_strict;
                 enriched_strict = true;
                 stack.push_op_cont(
-                    OperationCont::Op1(op, t.pos.clone(), prev_strict),
+                    OperationCont::Op1(op, t.pos, prev_strict),
                     call_stack.len(),
                     pos,
                 );
@@ -545,7 +545,7 @@ where
                             body: snd,
                             env: env.clone(),
                         },
-                        fst.pos.clone(),
+                        fst.pos,
                         prev_strict,
                     ),
                     call_stack.len(),
@@ -579,9 +579,9 @@ where
                         body: t,
                         env: env.clone(),
                     },
-                    None,
+                    TermPos::None,
                 );
-                stack.push_arg(Closure::atomic_closure(Term::Lbl(l).into()), None);
+                stack.push_arg(Closure::atomic_closure(Term::Lbl(l).into()), TermPos::None);
                 Closure {
                     body: ty.contract(),
                     env,
@@ -591,11 +591,11 @@ where
                 // Thanks to the share normal form transformation, the content is either a constant or a
                 // variable.
                 let rec_env = ts.iter().try_fold::<_, _, Result<Environment, EvalError>>(
-                    HashMap::new(),
+                    Environment::new(),
                     |mut rec_env, (id, rt)| match rt.as_ref() {
                         Term::Var(ref var_id) => {
                             let thunk = env.get(var_id).ok_or_else(|| {
-                                EvalError::UnboundIdentifier(var_id.clone(), rt.pos.clone())
+                                EvalError::UnboundIdentifier(var_id.clone(), rt.pos)
                             })?;
                             rec_env.insert(id.clone(), thunk.clone());
                             Ok(rec_env)
@@ -606,7 +606,7 @@ where
                             // environment, which is why it is dropped.
                             let closure = Closure {
                                 body: rt.clone(),
-                                env: HashMap::new(),
+                                env: Environment::new(),
                             };
                             rec_env.insert(id.clone(), Thunk::new(closure, IdentKind::Let()));
                             Ok(rec_env)

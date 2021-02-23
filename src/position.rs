@@ -56,7 +56,10 @@ impl TermPos {
     // In principle, this should rather be implemented in a trait impl `impl Into<Option<RawSpan>>
     // for TermPos`, but the type inference was working too badly.
     pub fn into_opt(self) -> Option<RawSpan> {
-        self.into()
+        match self {
+            TermPos::Original(pos) | TermPos::Inherited(pos) => Some(pos),
+            TermPos::None => None,
+        }
     }
 
     /// Determine is the position is defined. Return `false` if it is `None`, and `true` otherwise.

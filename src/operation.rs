@@ -12,8 +12,8 @@ use crate::identifier::Ident;
 use crate::label::ty_path;
 use crate::merge;
 use crate::merge::merge;
-use crate::serialize;
 use crate::position::TermPos;
+use crate::serialize;
 use crate::stack::Stack;
 use crate::term::make as mk_term;
 use crate::term::{BinaryOp, RichTerm, StrChunk, Term, UnaryOp};
@@ -88,13 +88,7 @@ pub fn continuate_operation(
         OperationCont::Op2First(b_op, mut snd_clos, fst_pos, prev_strict) => {
             std::mem::swap(&mut clos, &mut snd_clos);
             stack.push_op_cont(
-                OperationCont::Op2Second(
-                    b_op,
-                    snd_clos,
-                    fst_pos,
-                    clos.body.pos.clone(),
-                    prev_strict,
-                ),
+                OperationCont::Op2Second(b_op, snd_clos, fst_pos, clos.body.pos, prev_strict),
                 cs_len,
                 pos,
             );
@@ -1131,9 +1125,9 @@ fn process_binary_operation(
             }
         }
         BinaryOp::DynExtend() => {
-            let (clos, _) = stack.pop_arg().ok_or_else(|| {
-                EvalError::NotEnoughArgs(3, String::from("$[ .. ]"), pos_op.clone())
-            })?;
+            let (clos, _) = stack
+                .pop_arg()
+                .ok_or_else(|| EvalError::NotEnoughArgs(3, String::from("$[ .. ]"), pos_op))?;
 
             if let Term::Str(id) = *t1 {
                 if let Term::Record(mut static_map) = *t2 {

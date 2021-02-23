@@ -384,7 +384,7 @@ impl<'a> Envs<'a> {
             }
             t => Err(eval::EnvBuildError::NotARecord(RichTerm::new(
                 t.clone(),
-                pos.clone(),
+                *pos,
             ))),
         }
     }
@@ -595,7 +595,7 @@ fn type_check_(
         Term::Var(x) => {
             let x_ty = envs
                 .get(&x)
-                .ok_or_else(|| TypecheckError::UnboundIdentifier(x.clone(), pos.clone()))?;
+                .ok_or_else(|| TypecheckError::UnboundIdentifier(x.clone(), *pos))?;
 
             let instantiated = instantiate_foralls(state, x_ty, ForallInst::Ptr);
             unify(state, strict, ty, instantiated)
