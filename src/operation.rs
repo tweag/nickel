@@ -257,7 +257,7 @@ fn process_unary_operation(
                         "x",
                         mk_term::op2(BinaryOp::Merge(), closurized, mk_term::var("x"))
                     )
-                    .with_pos(pos);
+                    .with_pos(pos.into_inherited());
 
                     Ok(Closure { body, env: new_env })
                 }
