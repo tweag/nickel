@@ -260,7 +260,7 @@ mod tests {
     }
 
     fn some_cont() -> OperationCont {
-        OperationCont::Op1(UnaryOp::IsNum(), None, true)
+        OperationCont::Op1(UnaryOp::IsNum(), TermPos::None, true)
     }
 
     fn some_arg_marker() -> Marker {
