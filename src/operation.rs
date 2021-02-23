@@ -388,7 +388,7 @@ fn process_unary_operation(
         UnaryOp::Wrap() => {
             if let Term::Sym(s) = *t {
                 Ok(Closure::atomic_closure(
-                    mk_fun!("x", Term::Wrapped(s, mk_term::var("x"))).with_pos_inher(pos_op),
+                    mk_fun!("x", Term::Wrapped(s, mk_term::var("x"))).with_pos(pos_op_inh),
                 ))
             } else {
                 Err(EvalError::TypeError(
@@ -488,12 +488,12 @@ fn process_unary_operation(
                     .into_iter()
                     .map(|e| {
                         let (Ident(s), t) = e;
-                        let pos = t.pos;
+                        let pos = t.pos.into_inherited();
                         (
                             Ident(s.clone()),
                             mk_app!(f_as_var.clone(), mk_term::string(s), t)
                                 .closurize(&mut shared_env, env.clone())
-                                .with_pos_inher(pos),
+                                .with_pos(pos),
                         )
                     })
                     .collect();

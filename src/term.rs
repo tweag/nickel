@@ -659,13 +659,9 @@ impl RichTerm {
             .apply_to_rich_terms(|rt: &mut Self| rt.clean_pos());
     }
 
+    /// Set the position, and return the updated term.
     pub fn with_pos(mut self, pos: TermPos) -> Self {
         self.pos = pos;
-        self
-    }
-
-    pub fn with_pos_inher(mut self, pos: TermPos) -> Self {
-        self.pos = pos.into_inherited();
         self
     }
 
