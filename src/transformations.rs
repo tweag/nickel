@@ -321,7 +321,7 @@ impl Closurizable for RichTerm {
         };
         env.insert(var.clone(), Thunk::new(closure, IdentKind::Record()));
 
-        RichTerm::new(Term::Var(var), pos)
+        RichTerm::new(Term::Var(var), pos.into_inherited())
     }
 }
 

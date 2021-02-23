@@ -99,7 +99,10 @@ pub fn merge(
         // Merge is idempotent on basic terms
         (Term::Bool(b1), Term::Bool(b2)) => {
             if b1 == b2 {
-                Ok(Closure::atomic_closure(Term::Bool(b1).into()))
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Bool(b1),
+                    pos_op.into_inherited(),
+                )))
             } else {
                 Err(EvalError::MergeIncompatibleArgs(
                     RichTerm {
@@ -116,7 +119,10 @@ pub fn merge(
         }
         (Term::Num(n1), Term::Num(n2)) => {
             if (n1 - n2).abs() < f64::EPSILON {
-                Ok(Closure::atomic_closure(Term::Num(n1).into()))
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Num(n1),
+                    pos_op.into_inherited(),
+                )))
             } else {
                 Err(EvalError::MergeIncompatibleArgs(
                     RichTerm {
@@ -133,7 +139,10 @@ pub fn merge(
         }
         (Term::Str(s1), Term::Str(s2)) => {
             if s1 == s2 {
-                Ok(Closure::atomic_closure(Term::Str(s1).into()))
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Str(s1),
+                    pos_op.into_inherited(),
+                )))
             } else {
                 Err(EvalError::MergeIncompatibleArgs(
                     RichTerm {
@@ -150,7 +159,10 @@ pub fn merge(
         }
         (Term::Lbl(l1), Term::Lbl(l2)) => {
             if l1 == l2 {
-                Ok(Closure::atomic_closure(Term::Lbl(l1).into()))
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Lbl(l1),
+                    pos_op.into_inherited(),
+                )))
             } else {
                 Err(EvalError::MergeIncompatibleArgs(
                     RichTerm {
@@ -195,7 +207,11 @@ pub fn merge(
                     let mut env = Environment::new();
                     let mut env1_local = env1.clone();
                     let ty_closure = ty.clone().closurize(&mut env1_local, env2.clone());
-                    let t: RichTerm = Term::Assume(ty_closure, lbl.clone(), t).into();
+                    let pos_t = t.pos;
+                    let t = RichTerm::new(
+                        Term::Assume(ty_closure, lbl.clone(), t),
+                        pos_t.into_inherited(),
+                    );
                     (Some(t.closurize(&mut env, env1_local)), env)
                 }
                 (value1, _) => (value1, env1.clone()),
@@ -207,7 +223,11 @@ pub fn merge(
                     let mut env = Environment::new();
                     let mut env2_local = env2.clone();
                     let ty_closure = ty.clone().closurize(&mut env2_local, env1.clone());
-                    let t: RichTerm = Term::Assume(ty_closure, lbl.clone(), t).into();
+                    let pos_t = t.pos;
+                    let t = RichTerm::new(
+                        Term::Assume(ty_closure, lbl.clone(), t),
+                        pos_t.into_inherited(),
+                    );
                     (Some(t.closurize(&mut env, env2_local)), env)
                 }
                 (value2, _) => (value2, env2.clone()),
@@ -242,7 +262,7 @@ pub fn merge(
             };
 
             Ok(Closure {
-                body: Term::MetaValue(meta).into(),
+                body: RichTerm::new(Term::MetaValue(meta), pos_op.into_inherited()),
                 env,
             })
         }
@@ -274,7 +294,7 @@ pub fn merge(
             }
 
             Ok(Closure {
-                body: Term::Record(m).into(),
+                body: RichTerm::new(Term::Record(m), pos_op.into_inherited()),
                 env,
             })
         }
@@ -328,12 +348,11 @@ fn merge_closurize(
     env2: Environment,
 ) -> RichTerm {
     let mut local_env = HashMap::new();
-    let body: RichTerm = Term::Op2(
+    let body = RichTerm::from(Term::Op2(
         BinaryOp::Merge(),
         t1.closurize(&mut local_env, env1),
         t2.closurize(&mut local_env, env2),
-    )
-    .into();
+    ));
     body.closurize(env, local_env)
 }
 
