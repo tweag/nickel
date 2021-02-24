@@ -1,7 +1,7 @@
 //! Define the main evaluation stack of the Nickel abstract machine and related operations.
 //!
 //! See [eval](../eval/index.html).
-use crate::eval::{Closure, Environment, ThunkUpdateFrame};
+use crate::eval::{Closure, Environment, IdentKind, Thunk, ThunkUpdateFrame};
 use crate::operation::OperationCont;
 use crate::position::TermPos;
 use crate::term::{RichTerm, StrChunk};
@@ -19,6 +19,11 @@ pub enum Marker {
     Eq(Closure, Closure),
     /// An argument of an application.
     Arg(Closure, TermPos),
+    /// A tracked argument. Behave the same as a standard argument, but is given directly as a thunk, such that
+    /// it can be shared with other part of the program.
+    ///
+    /// In particular, contract arguments are tracked, in order to report the actual, evaluated offending term in case of blame.
+    TrackedArg(Thunk, TermPos),
     /// A thunk, which is pointer to a mutable memory cell to be updated.
     Thunk(ThunkUpdateFrame),
     /// The continuation of a primitive operation.
@@ -45,7 +50,7 @@ pub enum Marker {
 
 impl Marker {
     pub fn is_arg(&self) -> bool {
-        matches!(*self, Marker::Arg(..))
+        matches!(*self, Marker::Arg(..) | Marker::TrackedArg(..))
     }
 
     pub fn is_thunk(&self) -> bool {
@@ -112,6 +117,10 @@ impl Stack {
         self.0.push(Marker::Arg(arg, pos))
     }
 
+    pub fn push_tracked_arg(&mut self, arg_thunk: Thunk, pos: TermPos) {
+        self.0.push(Marker::TrackedArg(arg_thunk, pos))
+    }
+
     pub fn push_thunk(&mut self, thunk: ThunkUpdateFrame) {
         self.0.push(Marker::Thunk(thunk))
     }
@@ -143,9 +152,28 @@ impl Stack {
 
     /// Try to pop an argument from the top of the stack. If `None` is returned, the top element
     /// was not an argument and the stack is left unchanged.
+    ///
+    /// If the argument is tracked, it is automatically converted into an owned closure.
     pub fn pop_arg(&mut self) -> Option<(Closure, TermPos)> {
         match self.0.pop() {
             Some(Marker::Arg(arg, pos)) => Some((arg, pos)),
+            Some(Marker::TrackedArg(arg_thunk, pos)) => Some((arg_thunk.into_closure(), pos)),
+            Some(m) => {
+                self.0.push(m);
+                None
+            }
+            _ => None,
+        }
+    }
+
+    /// Try to pop an argument from the top of the stack and return it as a thunk. If `None` is
+    /// returned, the top element was not an argument and the stack is left unchanged.
+    ///
+    /// If the argument is not tracked, it is directly returned.
+    pub fn pop_arg_as_thunk(&mut self) -> Option<(Thunk, TermPos)> {
+        match self.0.pop() {
+            Some(Marker::Arg(arg, pos)) => Some((Thunk::new(arg, IdentKind::Lam()), pos)),
+            Some(Marker::TrackedArg(arg_thunk, pos)) => Some((arg_thunk, pos)),
             Some(m) => {
                 self.0.push(m);
                 None

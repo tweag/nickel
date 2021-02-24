@@ -477,6 +477,13 @@ pub enum UnaryOp {
 
     /// Raise a blame, which stops the execution and prints an error according to the label argument.
     Blame(),
+    /// Apply a contract to a label and a value. The label and the value are stored on the stack, unevaluated.
+    ///
+    /// Operationally equivalent to the standard application for contracts given as functions, this
+    /// operator additionally marks the location of the tested value for better error reporting. It
+    /// also accepts contracts as records, which are translated to a merge operation instead of
+    /// function application.
+    ApplyContract(),
 
     /// Typecast an enum to a larger enum type.
     ///
@@ -659,7 +666,7 @@ impl RichTerm {
             .apply_to_rich_terms(|rt: &mut Self| rt.clean_pos());
     }
 
-    /// Set the position, and return the updated term.
+    /// Set the position and return the term updated.
     pub fn with_pos(mut self, pos: TermPos) -> Self {
         self.pos = pos;
         self
