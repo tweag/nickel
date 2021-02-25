@@ -1,7 +1,6 @@
 use nickel::program::Program;
 use nickel::term::Term;
-use std::ffi::{OsStr, OsString};
-use std::fs::read_dir;
+use std::ffi::OsString;
 use std::path::PathBuf;
 use std::thread;
 
@@ -20,31 +19,75 @@ fn run(path: impl Into<OsString>) {
     );
 }
 
-#[test]
-fn tests() {
-    let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    d.push("tests/pass");
+fn check_file(file: &str) {
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push(format!("tests/pass/{}", file));
 
-    let children: Vec<_> = read_dir(d)
+    thread::Builder::new()
+        .name(String::from(file))
+        .stack_size(STACK_SIZE)
+        .spawn(|| run(path))
         .unwrap()
-        .into_iter()
-        .map(|file| {
-            let file = file.unwrap();
-            let path = file.path();
-            let name = String::from(
-                path.file_name()
-                    .map(OsStr::to_string_lossy)
-                    .unwrap_or(path.to_string_lossy()),
-            );
-            thread::Builder::new()
-                .name(format!("pass {}", name))
-                .stack_size(STACK_SIZE)
-                .spawn(|| run(path))
-                .unwrap()
-        })
-        .collect();
+        .join()
+        .unwrap();
+}
 
-    for thread in children {
-        thread.join().unwrap();
-    }
+#[test]
+fn basics() {
+    check_file("basics.ncl");
+}
+
+#[test]
+fn builtins() {
+    check_file("builtins.ncl");
+}
+
+#[test]
+fn complete() {
+    check_file("complete.ncl");
+}
+
+#[test]
+fn contracts() {
+    check_file("contracts.ncl");
+}
+
+#[test]
+fn eq() {
+    check_file("eq.ncl")
+}
+
+#[test]
+fn functions() {
+    check_file("functions.ncl");
+}
+
+#[test]
+fn lists() {
+    check_file("lists.ncl");
+}
+
+#[test]
+fn metavalues() {
+    check_file("metavalues.ncl");
+}
+
+#[test]
+fn records() {
+    check_file("records.ncl");
+}
+
+#[test]
+fn strings() {
+    check_file("strings.ncl");
+}
+
+#[test]
+fn typechecking() {
+    check_file("typechecking.ncl");
+}
+
+#[test]
+fn types() {
+    check_file("types.ncl");
 }
