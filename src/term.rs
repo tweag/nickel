@@ -121,7 +121,7 @@ pub enum Term {
     ///
     /// Wrapped terms are introduced by contracts on polymorphic types. Take the following example:
     ///
-    /// ```
+    /// ```ignore
     /// let f = Assume(forall a. forall b. a -> b -> a, fun x y => y) in
     /// f true "a"
     /// ```
@@ -511,7 +511,7 @@ pub enum UnaryOp {
     /// If the argument is a label with a [type path](../label/enum.TyPath.html) representing some
     /// subtype of the type of the original contract, as in:
     ///
-    /// ```
+    /// ```ignore
     /// (Num -> Num) -> Num
     ///  ^^^^^^^^^^ type path
     /// ------------------- original type
@@ -519,7 +519,7 @@ pub enum UnaryOp {
     ///
     /// Then `GoDom` evaluates to a copy of this label, where the path has gone forward into the domain:
     ///
-    /// ```
+    /// ```ignore
     /// (Num -> Num) -> Num
     ///  ^^^ new type path
     /// ------------------- original type

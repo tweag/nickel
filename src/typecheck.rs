@@ -21,7 +21,7 @@
 //! expressions (the type of `bound_exp` in `let x = bound_exp in body`) is inferred in strict
 //! mode, but it is never implicitly generalized. For example, the following program is rejected:
 //!
-//! ```
+//! ```ignore
 //! // Rejected
 //! let id = fun x => x in seq (id "a") (id 5) : Num
 //! ```
@@ -34,7 +34,7 @@
 //! can interact with other parts of type inference. If polymorphism is required, a simple
 //! annotation is sufficient:
 //!
-//! ```
+//! ```ignore
 //! // Accepted
 //! let id : forall a. a -> a = fun x => x in seq (id "a") (id 5) : Num
 //! ```

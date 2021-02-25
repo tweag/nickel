@@ -5,7 +5,7 @@
 //! expressions, which is not possible using LALRPOP's generated lexer. To see why, consider the
 //! following string:
 //!
-//! ```
+//! ```ignore
 //! "hello, I have 1 + ${ {a = "40"}.a } + 1 bananas."
 //! ```
 //!

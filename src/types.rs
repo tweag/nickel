@@ -25,7 +25,7 @@
 //! can be abstracted over, leaving the row open for future extension. A simple and demonstrative
 //! example is field access:
 //!
-//! ```
+//! ```ignore
 //! let f = Promise(forall a. { myField : Num, a} -> Num, fun rec => rec.myField)
 //! ```
 //!

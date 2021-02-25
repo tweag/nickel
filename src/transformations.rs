@@ -20,7 +20,7 @@ generate_counter!(FreshVarCounter, usize);
 /// bindings put at the beginning of the WHNF.
 ///
 /// For example, take the expression
-/// ```
+/// ```ignore
 /// let x = {a = (1 + 1);} in x.a + x.a
 /// ```
 ///
@@ -32,7 +32,7 @@ generate_counter!(FreshVarCounter, usize);
 /// of records and the elements of lists - `(1 + 1)` in our example -, with fresh variables
 /// introduced by `let`  added at the head of the term:
 ///
-/// ```
+/// ```ignore
 /// let x = (let var = 1 + 1 in {a = var;}) in x.a + x.a
 /// ```
 ///

@@ -1,28 +1,9 @@
 //! Entry point of the program.
-mod cache;
-mod error;
-mod eval;
-mod identifier;
-mod label;
-mod merge;
-mod operation;
-mod parser;
-mod position;
-mod program;
-mod repl;
-mod serialize;
-mod stack;
-mod stdlib;
-mod term;
-mod transformations;
-mod typecheck;
-mod types;
-
-use crate::error::{Error, IOError, SerializationError};
-use crate::program::Program;
-use crate::repl::rustyline_frontend;
-use crate::serialize::ExportFormat;
-use crate::term::{RichTerm, Term};
+use nickel::error::{Error, IOError, SerializationError};
+use nickel::program::Program;
+use nickel::{repl, repl::rustyline_frontend};
+use nickel::term::{RichTerm, Term};
+use nickel::serialize;
 use std::io::Write;
 use std::path::PathBuf;
 use std::str::FromStr;
