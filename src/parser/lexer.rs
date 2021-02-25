@@ -82,6 +82,8 @@ pub enum NormalToken<'input> {
     Dollar,
     #[token("=")]
     Equals,
+    #[token("!=")]
+    NotEquals,
     #[token(";")]
     SemiCol,
     #[token("&")]

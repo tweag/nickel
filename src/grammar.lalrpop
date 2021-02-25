@@ -60,8 +60,7 @@ MetaAnnot: MetaValue =
     };
 
 LeftOp<Op, Current, Previous>: RichTerm =
-    <t1: Current> <op: Op> <t2: Previous> => mk_term::op2(op, t1,
-    t2);
+    <t1: Current> <op: Op> <t2: Previous> => mk_term::op2(op, t1, t2);
 
 LeftOpLazy<Op, Current, Previous>: RichTerm =
     <t1: Current> <op: Op> <t2: Previous> => mk_app!(Term::Op1(op, t1), t2);
@@ -261,9 +260,8 @@ Atom: RichTerm = {
             mk_app!(mk_term::op2(BinaryOp::DynExtend(), id_t, rec), t)
         })
     },
-    "[" <terms: (SpTerm<Atom> ",")*> <last: Term?> "]" => {
+    "[" <terms: (<Term> ",")*> <last: Term?> "]" => {
         let terms : Vec<RichTerm> = terms.into_iter()
-            .map(|x| x.0)
             .chain(last.into_iter()).collect();
         RichTerm::from(Term::List(terms))
     }
@@ -484,6 +482,15 @@ BinOp8: BinaryOp = {
 InfixExpr8: RichTerm = {
     InfixExpr7,
     LeftOp<BinOp8, InfixExpr8, InfixExpr7> => <>,
+    <l: @L> <t1: InfixExpr8> "!=" <t2: InfixExpr7> <r: @R> => {
+        mk_term::op1(
+            UnaryOp::BoolNot(),
+            RichTerm::new(
+                Term::Op2(BinaryOp::Eq(), t1, t2),
+                Some(mk_span(src_id, l, r))
+            )
+        )
+    }
 }
 
 LazyBinOp9: UnaryOp = {
@@ -623,6 +630,7 @@ extern {
         ":" => Token::Normal(NormalToken::Colon),
         "$" => Token::Normal(NormalToken::Dollar),
         "=" => Token::Normal(NormalToken::Equals),
+        "!=" => Token::Normal(NormalToken::NotEquals),
         ";" => Token::Normal(NormalToken::SemiCol),
         "&" => Token::Normal(NormalToken::Ampersand),
         "." => Token::Normal(NormalToken::Dot),
