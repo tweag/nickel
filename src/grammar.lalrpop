@@ -516,6 +516,9 @@ BOpPre: BinaryOp = {
     "hasField" => BinaryOp::HasField(),
     "elemAt" => BinaryOp::ListElemAt(),
     "tag" => BinaryOp::Tag(),
+    "hash" => BinaryOp::Hash(),
+    "serialize" => BinaryOp::Serialize(),
+    "deserialize" => BinaryOp::Deserialize(),
 }
 
 Types: Types = {
@@ -700,6 +703,10 @@ extern {
         "merge" => Token::Normal(NormalToken::Merge),
         "default" => Token::Normal(NormalToken::Default),
         "doc" => Token::Normal(NormalToken::Doc),
+
+        "hash" => Token::Normal(NormalToken::OpHash),
+        "serialize" => Token::Normal(NormalToken::Serialize),
+        "deserialize" => Token::Normal(NormalToken::Deserialize),
 
         "{" => Token::Normal(NormalToken::LBrace),
         "}" => Token::Normal(NormalToken::RBrace),

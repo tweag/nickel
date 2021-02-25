@@ -199,11 +199,10 @@ fn export(
                 .map_err(|err| SerializationError::Other(err.to_string())),
             ExportFormat::Yaml => serde_yaml::to_writer(file, &rt)
                 .map_err(|err| SerializationError::Other(err.to_string())),
-            ExportFormat::Toml => toml::ser::to_string_pretty(&rt)
+            ExportFormat::Toml => toml::Value::try_from(&rt)
                 .map_err(|err| SerializationError::Other(err.to_string()))
-                .and_then(|s| {
-                    file.write_all(s.as_bytes())
-                        .map_err(|err| SerializationError::Other(err.to_string()))
+                .and_then(|v| {
+                    write!(file, "{}", v).map_err(|err| SerializationError::Other(err.to_string()))
                 }),
             ExportFormat::Raw => match *rt.term {
                 Term::Str(s) => file

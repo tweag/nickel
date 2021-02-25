@@ -218,6 +218,12 @@ pub enum NormalToken<'input> {
     #[token("doc")]
     Doc,
 
+    #[token("%hash%")]
+    OpHash,
+    #[token("%serialize%")]
+    Serialize,
+    #[token("%deserialize%")]
+    Deserialize,
     #[token("{")]
     LBrace,
     #[token("}")]

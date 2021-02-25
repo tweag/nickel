@@ -631,6 +631,12 @@ pub enum BinaryOp {
     ListElemAt(),
     /// The merge operator (see the [merge module](../merge/index.html)).
     Merge(),
+    /// Hash a string.
+    Hash(),
+    /// Serialize a value to a string.
+    Serialize(),
+    /// Deserialize a string to a value.
+    Deserialize(),
 }
 
 impl BinaryOp {

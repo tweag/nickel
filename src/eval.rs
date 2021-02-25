@@ -590,28 +590,29 @@ where
             Term::RecRecord(ts) => {
                 // Thanks to the share normal form transformation, the content is either a constant or a
                 // variable.
-                let rec_env =
-                    ts.iter()
-                        .try_fold(HashMap::new(), |mut rec_env, (id, rt)| match rt.as_ref() {
-                            Term::Var(ref var_id) => {
-                                let thunk = env.get(var_id).ok_or_else(|| {
-                                    EvalError::UnboundIdentifier(var_id.clone(), rt.pos.clone())
-                                })?;
-                                rec_env.insert(id.clone(), thunk.clone());
-                                Ok(rec_env)
-                            }
-                            _ => {
-                                // If we are in this branch, the term must be a constant after the
-                                // share normal form transformation, hence it should not need an
-                                // environment, which is why it is dropped.
-                                let closure = Closure {
-                                    body: rt.clone(),
-                                    env: HashMap::new(),
-                                };
-                                rec_env.insert(id.clone(), Thunk::new(closure, IdentKind::Let()));
-                                Ok(rec_env)
-                            }
-                        })?;
+                let rec_env = ts.iter().try_fold::<_, _, Result<Environment, EvalError>>(
+                    HashMap::new(),
+                    |mut rec_env, (id, rt)| match rt.as_ref() {
+                        Term::Var(ref var_id) => {
+                            let thunk = env.get(var_id).ok_or_else(|| {
+                                EvalError::UnboundIdentifier(var_id.clone(), rt.pos.clone())
+                            })?;
+                            rec_env.insert(id.clone(), thunk.clone());
+                            Ok(rec_env)
+                        }
+                        _ => {
+                            // If we are in this branch, the term must be a constant after the
+                            // share normal form transformation, hence it should not need an
+                            // environment, which is why it is dropped.
+                            let closure = Closure {
+                                body: rt.clone(),
+                                env: HashMap::new(),
+                            };
+                            rec_env.insert(id.clone(), Thunk::new(closure, IdentKind::Let()));
+                            Ok(rec_env)
+                        }
+                    },
+                )?;
 
                 let new_ts = ts.into_iter().map(|(id, rt)| {
                     let RichTerm { term, pos } = rt;
