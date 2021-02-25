@@ -1890,7 +1890,6 @@ mod tests {
     use crate::cache::resolvers::{DummyResolver, SimpleResolver};
     use crate::error::ImportError;
     use crate::label::Label;
-    use crate::mk_app;
     use crate::parser::lexer;
     use crate::term::make as mk_term;
     use crate::transformations::transform;
@@ -1913,25 +1912,6 @@ mod tests {
     }
 
     #[test]
-    fn simple_no_promises() -> Result<(), TypecheckError> {
-        // It's easy to check these will never fail, that's why we keep them all together
-
-        type_check_no_import(&Term::Bool(true).into())?;
-        type_check_no_import(&Term::Num(45.).into())?;
-        type_check_no_import(&mk_term::id())?;
-        type_check_no_import(&mk_term::let_in("x", Term::Num(3.0), mk_term::var("x")))?;
-
-        type_check_no_import(&mk_app!(Term::Num(5.0), Term::Bool(true)))?;
-        type_check_no_import(&mk_term::op2(
-            BinaryOp::Plus(),
-            Term::Num(4.),
-            Term::Bool(false),
-        ))?;
-
-        Ok(())
-    }
-
-    #[test]
     fn unbound_variable_always_throws() {
         type_check_no_import(&mk_term::var("x")).unwrap_err();
     }
@@ -1940,15 +1920,6 @@ mod tests {
     fn promise_simple_checks() {
         type_check_no_import(
             &Term::Promise(
-                Types(AbsType::Bool()),
-                Label::dummy(),
-                Term::Bool(true).into(),
-            )
-            .into(),
-        )
-        .unwrap();
-        type_check_no_import(
-            &Term::Promise(
                 Types(AbsType::Num()),
                 Label::dummy(),
                 Term::Bool(true).into(),
@@ -1976,20 +1947,6 @@ mod tests {
         )
         .unwrap_err();
 
-        type_check_no_import(
-            &Term::Promise(
-                Types(AbsType::Num()),
-                Label::dummy(),
-                Term::Assume(
-                    Types(AbsType::Num()),
-                    Label::dummy(),
-                    Term::Bool(true).into(),
-                )
-                .into(),
-            )
-            .into(),
-        )
-        .unwrap();
         type_check_no_import(
             &Term::Promise(
                 Types(AbsType::Num()),
@@ -2005,69 +1962,32 @@ mod tests {
         )
         .unwrap_err();
 
-        parse_and_typecheck("\"hello\" : Str").unwrap();
         parse_and_typecheck("\"hello\" : Num").unwrap_err();
     }
 
     #[test]
     fn promise_complicated() {
         // Inside Promises we typecheck strictly
-        parse_and_typecheck("(fun x => if x then x + 1 else 34) false").unwrap();
         parse_and_typecheck("let f : Bool -> Num = fun x => if x then x + 1 else 34 in f false")
             .unwrap_err();
 
         // not annotated let bindings type to Dyn
-        parse_and_typecheck(
-            "let id : Num -> Num = fun x => x in
-            (id 4 : Num)",
-        )
-        .unwrap();
         parse_and_typecheck(
             "let id = fun x => x in
             (id 4 : Num)",
         )
         .unwrap_err();
 
-        // lambdas don't annotate to Dyn
-        parse_and_typecheck("(fun id => (id 4 : Num)) (fun x => x)").unwrap();
-
         // But they are not polymorphic
         parse_and_typecheck("(fun id => (id 4 : Num) + (id true : Bool)) (fun x => x)")
             .unwrap_err();
 
-        // Non strict zones don't unify
-        parse_and_typecheck("(fun id => (id 4) + (id true: Bool)) (fun x => x)").unwrap();
-
-        // We can typecheck any contract
-        parse_and_typecheck(
-            "let alwaysTrue = fun l t => if t then t else %blame% l in
-            (fun x => x) : #alwaysTrue -> #alwaysTrue",
-        )
-        .unwrap();
         // Only if they're named the same way
         parse_and_typecheck("(fun x => x) : #(fun l t => t) -> #(fun l t => t)").unwrap_err();
     }
 
     #[test]
     fn simple_forall() {
-        parse_and_typecheck(
-            "let f : forall a. a -> a = fun x => x in
-        (if (f true) then (f 2) else 3) : Num",
-        )
-        .unwrap();
-
-        parse_and_typecheck(
-            "let f : forall a. (forall b. a -> b -> a) = fun x y => x in
-            (if (f true 3) then (f 2 false) else 3) : Num",
-        )
-        .unwrap();
-
-        parse_and_typecheck(
-            "let f : forall a. (forall b. b -> b) -> a -> a = fun f x => f x in
-            f (fun z => z : forall y. y -> y)",
-        )
-        .unwrap();
-
         parse_and_typecheck(
             "let f : forall a. (forall b. a -> b -> a) = fun x y => y in
             f",
@@ -2090,61 +2010,19 @@ mod tests {
     }
 
     #[test]
-    fn forall_nested() {
-        parse_and_typecheck(
-            "let f : forall a. a -> a = let g = Assume(forall a. (a -> a), fun x => x) in g in
-            (if (f true) then (f 2) else 3) : Num",
-        )
-        .unwrap();
-
-        parse_and_typecheck(
-            "let f : forall a. a -> a = let g = Assume(forall a. (a -> a), fun x => x) in g g in
-            (if (f true) then (f 2) else 3) : Num",
-        )
-        .unwrap();
-
-        parse_and_typecheck(
-            "let f : forall a. a -> a = let g : forall a. (forall b. (b -> (a -> a))) = fun y x => x in g 0 in
-            (if (f true) then (f 2) else 3) : Num",
-        )
-        .unwrap();
-    }
-
-    #[test]
     fn enum_simple() {
-        parse_and_typecheck("`bla : <bla>").unwrap();
         parse_and_typecheck("`blo : <bla>").unwrap_err();
-
-        parse_and_typecheck("`blo : <bla, blo>").unwrap();
-        parse_and_typecheck("`bla : forall r. <bla | r>").unwrap();
-        parse_and_typecheck("`bla : forall r. <bla, blo | r>").unwrap();
-
-        parse_and_typecheck("(switch { bla => 3, } `bla) : Num").unwrap();
         parse_and_typecheck("(switch { bla => 3, } `blo) : Num").unwrap_err();
-
-        parse_and_typecheck("(switch { bla => 3, _ => 2, } `blo) : Num").unwrap();
         parse_and_typecheck("(switch { bla => 3, ble => true, } `bla) : Num").unwrap_err();
     }
 
     #[test]
     fn enum_complex() {
-        parse_and_typecheck("(fun x => switch {bla => 1, ble => 2,} x) : <bla, ble> -> Num")
-            .unwrap();
         parse_and_typecheck(
             "(fun x => switch {bla => 1, ble => 2, bli => 4,} x) : <bla, ble> -> Num",
         )
         .unwrap_err();
-        parse_and_typecheck(
-            "(fun x => switch {bla => 1, ble => 2, bli => 4,} (%embed% bli x)) : <bla, ble> -> Num",
-        )
-        .unwrap();
 
-        parse_and_typecheck(
-            "(fun x =>
-                (switch {bla => 3, bli => 2,} x) +
-                (switch {bli => 6, bla => 20,} x) ) `bla : Num",
-        )
-        .unwrap();
         // TODO typecheck this, I'm not sure how to do it with row variables
         parse_and_typecheck(
             "(fun x =>
@@ -2154,24 +2032,12 @@ mod tests {
         .unwrap_err();
 
         parse_and_typecheck(
-            "let f : forall r. <blo, ble | r> -> Num =
-            fun x => (switch {blo => 1, ble => 2, _ => 3, } x) in
-            f `bli : Num",
-        )
-        .unwrap();
-        parse_and_typecheck(
             "let f : forall r. <blo, ble, | r> -> Num =
                 fun x => (switch {blo => 1, ble => 2, bli => 3, } x) in
             f",
         )
         .unwrap_err();
 
-        parse_and_typecheck(
-            "let f : forall r. (forall p. <blo, ble | r> -> <bla, bli | p>) =
-                fun x => (switch {blo => `bla, ble => `bli, _ => `bla, } x) in
-            f `bli",
-        )
-        .unwrap();
         parse_and_typecheck(
             "let f : forall r. (forall p. <blo, ble | r> -> <bla, bli | p>) =
                 fun x => (switch {blo => `bla, ble => `bli, _ => `blo, } x) in
@@ -2182,33 +2048,10 @@ mod tests {
 
     #[test]
     fn static_record_simple() {
-        parse_and_typecheck("{bla = 1} : {bla : Num}").unwrap();
         parse_and_typecheck("{bla = true} : {bla : Num}").unwrap_err();
         parse_and_typecheck("{blo = 1} : {bla : Num}").unwrap_err();
 
-        parse_and_typecheck("{blo = true; bla = 1} : {bla : Num, blo : Bool}").unwrap();
-
-        parse_and_typecheck("{blo = 1}.blo : Num").unwrap();
-        parse_and_typecheck("{bla = true; blo = 1}.blo : Num").unwrap();
         parse_and_typecheck("{blo = 1}.blo : Bool").unwrap_err();
-
-        parse_and_typecheck(
-            "let r : {bla : Bool, blo : Num} = {blo = 1; bla = true; } in
-            (if r.bla then r.blo else 2) : Num",
-        )
-        .unwrap();
-
-        // It worked at first try :O
-        parse_and_typecheck(
-            "let f : forall a. (forall r. {bla : Bool, blo : a, ble : a | r} -> a) =
-                fun r => if r.bla then r.blo else r.ble
-            in
-            (if (f {bla = true; blo = false; ble = true; blip = 1; }) then
-                (f {bla = true; blo = 1; ble = 2; blip = `blip; })
-            else
-                (f {bla = true; blo = 3; ble = 4; bloppo = `bloppop; })) : Num",
-        )
-        .unwrap();
 
         parse_and_typecheck(
             "let f : forall a. (forall r. {bla : Bool, blo : a, ble : a | r} -> a) =
@@ -2228,36 +2071,14 @@ mod tests {
 
     #[test]
     fn dynamic_record_simple() {
-        parse_and_typecheck("{ \"#{if true then \"foo\" else \"bar\"}\" = 2; } : {_ : Num}")
-            .unwrap();
-
-        parse_and_typecheck("({ \"#{if true then \"foo\" else \"bar\"}\" = 2; }.\"bla\") : Num")
-            .unwrap();
-
         parse_and_typecheck(
             "({ \"#{if true then \"foo\" else \"bar\"}\" = 2; \"foo\" = true; }.\"bla\") : Num",
         )
         .unwrap_err();
-
-        parse_and_typecheck("{ foo = 3; bar = 4; } : {_ : Num}").unwrap();
-    }
-
-    #[test]
-    fn seq() {
-        parse_and_typecheck("%seq% false 1 : Num").unwrap();
-        parse_and_typecheck("(fun x y => %seq% x y) : forall a. (forall b. a -> b -> b)").unwrap();
-        parse_and_typecheck("let xDyn = if false then true else false in let yDyn = 1 + 1 in (%seq% xDyn yDyn : Dyn)").unwrap();
     }
 
     #[test]
     fn simple_list() {
-        parse_and_typecheck("[1, \"2\", false]").unwrap();
-        //TODO: the type system may accept the following test at some point.
-        // parse_and_typecheck("[1, \"2\", false] : List").unwrap();
-        parse_and_typecheck("[\"a\", \"b\", \"c\"] : List Str").unwrap();
-        parse_and_typecheck("[1, 2, 3] : List Num").unwrap();
-        parse_and_typecheck("fun x => [x] : forall a. a -> List a").unwrap();
-
         parse_and_typecheck("[1, 2, false] : List Num").unwrap_err();
         parse_and_typecheck("[(1 : String), true, \"b\"] : List").unwrap_err();
         parse_and_typecheck("[1, 2, \"3\"] : List Str").unwrap_err();
@@ -2265,14 +2086,6 @@ mod tests {
 
     #[test]
     fn lists_operations() {
-        parse_and_typecheck("fun l => %tail% l : forall a. List a -> List a").unwrap();
-        parse_and_typecheck("fun l => %head% l : forall a. List a -> a").unwrap();
-        parse_and_typecheck("fun f l => %map% l f : forall a b. (a -> b) -> List a -> List b")
-            .unwrap();
-        parse_and_typecheck("(fun l1 => fun l2 => l1 @ l2) : forall a. List a -> List a -> List a")
-            .unwrap();
-        parse_and_typecheck("(fun i l => %elemAt% l i) : forall a. Num -> List a -> a").unwrap();
-
         parse_and_typecheck("(fun l => %head% l) : forall a b. (List a -> b)").unwrap_err();
         parse_and_typecheck(
             "(fun f l => %elemAt% (%map% l f) 0) : forall a. (forall b. (a -> b) -> List -> b)",
@@ -2316,24 +2129,16 @@ mod tests {
 
     #[test]
     fn recursive_records() {
-        parse_and_typecheck("{a : Num = 1; b = a + 1} : {a : Num, b : Num}").unwrap();
         parse_and_typecheck("{a : Num = true; b = a + 1} : {a : Num, b : Num}").unwrap_err();
         parse_and_typecheck("{a = 1; b : Bool = a} : {a : Num, b : Bool}").unwrap_err();
-        parse_and_typecheck("{a : Num = 1 + a} : {a : Num}").unwrap();
     }
 
     #[test]
     fn let_inference() {
-        parse_and_typecheck("(let x = 1 + 2 in let f = fun x => x + 1 in f x) : Num").unwrap();
         parse_and_typecheck("(let x = 1 + 2 in let f = fun x => x ++ \"a\" in f x) : Num")
             .unwrap_err();
 
         // Fields in recursive records are treated in the type environment in the same way as let-bound expressions
-        parse_and_typecheck("{a = 1; b = 1 + a} : {a : Num, b : Num}").unwrap();
-        parse_and_typecheck(
-            "{ f = fun x => if x == 0 then 1 else 1 + (f (x + (-1)));} : {f : Num -> Num}",
-        )
-        .unwrap();
         parse_and_typecheck(
             "{ f = fun x => if x == 0 then false else 1 + (f (x + (-1)))} : {f : Num -> Num}",
         )
@@ -2367,12 +2172,6 @@ mod tests {
         );
         assert_row_conflict(res);
 
-        parse_and_typecheck(
-            "let extend = Assume(forall c. { | c} -> {a: Str | c}, 0) in
-           let remove = Assume(forall c. {a: Str | c} -> { | c}, 0) in
-           (let good = remove (extend {}) in 0) : Num",
-        )
-        .unwrap();
         res = parse_and_typecheck(
             "let remove = Assume(forall c. {a: Str | c} -> { | c}, 0) in
            (let bad = remove (remove {a = \"a\"}) in 0) : Num",
@@ -2382,9 +2181,6 @@ mod tests {
 
     #[test]
     fn dynamic_row_tail() {
-        parse_and_typecheck("let r = Assume({a: Num | Dyn}, {a = 1; b = 2}) in (r.a : Num)")
-            .unwrap();
-        parse_and_typecheck("Assume({a: Num | Dyn}, {a = 1; b = 2}) : {a: Num | Dyn}").unwrap();
         // Currently, typechecking is conservative wrt the dynamic row type, meaning it can't to a
         // less precise type with a dynamic tail.
         parse_and_typecheck("{a = 1; b = 2} : {a: Num | Dyn}").unwrap_err();
@@ -2393,28 +2189,12 @@ mod tests {
         parse_and_typecheck("{a = 1} : {a: Num | Dyn}").unwrap_err();
     }
 
-    /// Regression test following [#270](https://github.com/tweag/nickel/issues/270). Check that
-    /// unifying a variable with itself doesn't introduce a loop. The failure of this test results
-    /// in a stack overflow.
-    #[test]
-    fn unification_graph_cycle() {
-        parse_and_typecheck("{gen_ = fun acc x => if x == 0 then acc else gen_ (acc @ [x]) (x - 1)}.gen_ : List Num -> Num -> List Num").unwrap();
-        parse_and_typecheck("{f = fun x => f x}.f : forall a. a -> a").unwrap();
-    }
-
     #[test]
     fn shallow_type_inference() {
-        parse_and_typecheck("let x = 1 in (x + 1 : Num)").unwrap();
         assert_matches!(
             parse_and_typecheck("let x = (1 + 1) in (x + 1 : Num)"),
             Err(TypecheckError::TypeMismatch(..))
         );
-
-        parse_and_typecheck("let x = \"a\" in (x ++ \"a\" : Str)").unwrap();
-        parse_and_typecheck("let x = \"a#{\"some str inside\"}\" in (x ++ \"a\" : Str)").unwrap();
-
-        parse_and_typecheck("let x = false in (x || true : Bool)").unwrap();
-        parse_and_typecheck("let x = false in let y = x in let z = y in (z : Bool)").unwrap();
     }
 
     /// Regression test following, see [#297](https://github.com/tweag/nickel/pull/297). Check that
