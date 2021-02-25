@@ -68,7 +68,11 @@
 
           doCheck = true;
 
-          checkPhase = "cargo test --release --frozen --offline";
+          checkPhase =
+            ''
+              cargo test --release --frozen --offline
+              cargo fmt --all -- --check
+            '';
 
           installPhase =
             ''
