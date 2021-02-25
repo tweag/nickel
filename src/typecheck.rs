@@ -810,7 +810,7 @@ pub fn apparent_type(t: &Term, envs: Option<&Envs>) -> ApparentType {
         Term::Sym(_) => ApparentType::Inferred(Types(AbsType::Sym())),
         Term::Str(_) | Term::StrChunks(_) => ApparentType::Inferred(Types(AbsType::Str())),
         Term::List(_) => {
-            ApparentType::Inferred(Types(AbsType::List(Box::new(Types(AbsType::Dyn())))))
+            ApparentType::Approximated(Types(AbsType::List(Box::new(Types(AbsType::Dyn())))))
         }
         Term::Var(id) => envs
             .and_then(|envs| envs.get(id))
@@ -2384,5 +2384,14 @@ mod tests {
 
         parse_and_typecheck("let x = false in (x || true : Bool)").unwrap();
         parse_and_typecheck("let x = false in let y = x in let z = y in (z : Bool)").unwrap();
+    }
+
+    /// Regression test following, see [#297](https://github.com/tweag/nickel/pull/297). Check that
+    /// [apparent_type](../fn.apparent_type.html) doesn't silently convert list literals from `List
+    /// T` (for `T` a type or a type variable) to `List Dyn`.
+    #[test]
+    fn apparent_type_lists() {
+        parse_and_typecheck("{foo = [1]} : {foo : List Num}").unwrap();
+        parse_and_typecheck("(let y = [] in y) : forall a. List a").unwrap();
     }
 }
