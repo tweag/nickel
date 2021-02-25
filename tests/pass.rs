@@ -1,6 +1,6 @@
 use nickel::program::Program;
 use nickel::term::Term;
-use std::ffi::{OsString, OsStr};
+use std::ffi::{OsStr, OsString};
 use std::fs::read_dir;
 use std::path::PathBuf;
 use std::thread;
@@ -31,7 +31,11 @@ fn tests() {
         .map(|file| {
             let file = file.unwrap();
             let path = file.path();
-            let name = String::from(path.file_name().map(OsStr::to_string_lossy).unwrap_or(path.to_string_lossy()));
+            let name = String::from(
+                path.file_name()
+                    .map(OsStr::to_string_lossy)
+                    .unwrap_or(path.to_string_lossy()),
+            );
             thread::Builder::new()
                 .name(format!("pass {}", name))
                 .stack_size(STACK_SIZE)

@@ -1,9 +1,9 @@
 //! Entry point of the program.
 use nickel::error::{Error, IOError, SerializationError};
 use nickel::program::Program;
-use nickel::{repl, repl::rustyline_frontend};
-use nickel::term::{RichTerm, Term};
 use nickel::serialize;
+use nickel::term::{RichTerm, Term};
+use nickel::{repl, repl::rustyline_frontend};
 use std::io::Write;
 use std::path::PathBuf;
 use std::str::FromStr;
