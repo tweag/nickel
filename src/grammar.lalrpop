@@ -482,15 +482,8 @@ BinOp8: BinaryOp = {
 InfixExpr8: RichTerm = {
     InfixExpr7,
     LeftOp<BinOp8, InfixExpr8, InfixExpr7> => <>,
-    <l: @L> <t1: InfixExpr8> "!=" <t2: InfixExpr7> <r: @R> => {
-        mk_term::op1(
-            UnaryOp::BoolNot(),
-            RichTerm::new(
-                Term::Op2(BinaryOp::Eq(), t1, t2),
-                Some(mk_span(src_id, l, r))
-            )
-        )
-    }
+    <t1: InfixExpr8> "!=" <t2: InfixExpr7> =>
+        mk_term::op1( UnaryOp::BoolNot(), Term::Op2(BinaryOp::Eq(), t1, t2)),
 }
 
 LazyBinOp9: UnaryOp = {
