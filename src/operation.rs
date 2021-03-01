@@ -1403,7 +1403,10 @@ fn process_binary_operation(
                         _ => return mk_err_fst(t1),
                     };
 
-                    Ok(Closure::atomic_closure(Term::Str(result).into()))
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Str(result),
+                        pos_op_inh,
+                    )))
                 } else {
                     Err(EvalError::TypeError(
                         String::from("Str"),
@@ -1464,7 +1467,10 @@ fn process_binary_operation(
                     _ => return mk_err_fst(t1),
                 };
 
-                Ok(Closure::atomic_closure(Term::Str(result).into()))
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Str(result),
+                    pos_op_inh,
+                )))
             } else {
                 mk_err_fst(t1)
             }
@@ -1509,7 +1515,7 @@ fn process_binary_operation(
                         _ => return mk_err_fst(t1),
                     };
 
-                    Ok(Closure::atomic_closure(rt))
+                    Ok(Closure::atomic_closure(rt.with_pos(pos_op_inh)))
                 } else {
                     Err(EvalError::TypeError(
                         String::from("Str"),
