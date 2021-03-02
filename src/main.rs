@@ -30,8 +30,6 @@ use std::{fmt, fs, io, process};
 // use std::ffi::OsStr;
 use structopt::StructOpt;
 
-extern crate either;
-
 /// Command-line options and subcommands.
 #[derive(StructOpt, Debug)]
 /// The interpreter of the Nickel language.

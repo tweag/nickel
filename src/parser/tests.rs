@@ -177,11 +177,11 @@ fn record_terms() {
     );
 
     assert_eq!(
-        parse_without_pos("{ a = 1; $123 = (if 4 then 5 else 6); d = 42;}"),
+        parse_without_pos("{ a = 1; \"#{123}\" = (if 4 then 5 else 6); d = 42;}"),
         mk_app!(
             mk_term::op2(
                 BinaryOp::DynExtend(),
-                Num(123.),
+                StrChunks(vec![StrChunk::expr(RichTerm::from(Num(123.)))]),
                 RecRecord(
                     vec![
                         (Ident::from("a"), Num(1.).into()),

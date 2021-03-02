@@ -90,12 +90,8 @@ pub enum NormalToken<'input> {
     Ampersand,
     #[token(".")]
     Dot,
-    #[token(".$")]
-    DotDollar,
     #[token("$[")]
     DollarBracket,
-    #[token("$=")]
-    DollarEquals,
     #[token("\"")]
     DoubleQuote,
     #[token("-$")]

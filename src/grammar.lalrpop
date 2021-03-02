@@ -6,12 +6,12 @@ use crate::mk_app;
 use crate::types::{Types, AbsType};
 use super::ExtendedTerm;
 use super::utils::{StringKind, mk_span, mk_label, strip_indent, SwitchCase,
-    strip_indent_doc};
+    FieldPathElem, strip_indent_doc, build_record, elaborate_field_path,
+    ChunkLiteralPart};
 use std::ffi::OsString;
 use super::lexer::{Token, NormalToken, StringToken, MultiStringToken, LexicalError};
 use std::collections::HashMap;
 use std::cmp::min;
-use either::*;
 use codespan::FileId;
 
 grammar<'input>(src_id: FileId, );
@@ -182,7 +182,7 @@ RecordOperand: RichTerm = {
 
 RecordOperationChain: RichTerm = {
     <t: SpTerm<RecordOperand>> "." <id: Ident> => mk_term::op1(UnaryOp::StaticAccess(id), t),
-    <t: SpTerm<RecordOperand>> ".$" <t_id: SpTerm<Atom>> => mk_term::op2(BinaryOp::DynAccess(), t_id, t),
+    <t: SpTerm<RecordOperand>> "." <t_id: StrChunks> => mk_term::op2(BinaryOp::DynAccess(), t_id, t),
     <t: SpTerm<RecordOperand>> "-$" <t_id: SpTerm<Atom>> => mk_term::op2(BinaryOp::DynRemove(), t_id, t),
     <r: SpTerm<RecordOperand>> "$[" <id: Term> "=" <t: Term> "]" =>
         mk_app!(mk_term::op2(BinaryOp::DynExtend(), id, r), t),
@@ -242,25 +242,9 @@ Atom: RichTerm = {
     <StrChunks>,
     Ident => RichTerm::from(Term::Var(<>)),
     "`" <Ident> => RichTerm::from(Term::Enum(<>)),
-    "{" <fields: (RecordField ";")*> <last: RecordField?> "}" => {
-        let mut static_map = HashMap::new();
-        let mut dynamic_fields = Vec::new();
-
-        fields
-            .into_iter()
-            .map(|x| x.0)
-            .chain(last.into_iter())
-            .for_each(|field| match field {
-                Left((id, t)) => { static_map.insert(id, t) ;}
-                Right(t) => dynamic_fields.push(t),
-            });
-
-        let static_rec = RichTerm::from(Term::RecRecord(static_map));
-
-        dynamic_fields.into_iter().fold(static_rec, |rec, field| {
-            let (id_t, t) = field;
-            mk_app!(mk_term::op2(BinaryOp::DynExtend(), id_t, rec), t)
-        })
+    "{" <fields: (<RecordField> ";")*> <last: RecordField?> "}" => {
+        let fields = fields.into_iter().chain(last.into_iter());
+        RichTerm::from(build_record(fields))
     },
     "[" <terms: (SpTerm<Atom> ",")*> <last: Term?> "]" => {
         let terms : Vec<RichTerm> = terms.into_iter()
@@ -270,8 +254,8 @@ Atom: RichTerm = {
     }
 };
 
-RecordField: Either<(Ident, RichTerm), (RichTerm, RichTerm)> = {
-    <id: Ident> <ann: TypeAnnot?> "=" <t: Term> => {
+RecordField: (FieldPathElem, RichTerm) = {
+    <path: FieldPath> <ann: TypeAnnot?> "=" <t: Term> => {
         let t = if let Some((l, ty, r)) = ann {
             let pos = t.pos.clone();
             RichTerm::new(Term::Promise(ty.clone(), mk_label(ty, src_id, l, r), t), pos)
@@ -280,28 +264,31 @@ RecordField: Either<(Ident, RichTerm), (RichTerm, RichTerm)> = {
             t
         };
 
-        Either::Left((id, t))
+        elaborate_field_path(path, t)
     },
-    <l: @L> <id: Ident> <meta: MetaAnnot> <r: @R> <t: ("=" <Term>)?> => {
+    <l: @L> <path: FieldPath> <meta: MetaAnnot> <r: @R> <t: ("=" <Term>)?> => {
         let mut meta = meta;
         let pos = t.as_ref()
             .map(|t| t.pos.clone())
             .unwrap_or(Some(mk_span(src_id, l, r)));
         meta.value = t;
-        Either::Left((id, RichTerm::new(Term::MetaValue(meta), pos)))
-    },
-    "$" <id: SpTerm<Atom>> <ann: TypeAnnot?> "=" <t: Term> => {
-        let t = if let Some((l, ty, r)) = ann {
-            let pos = t.pos.clone();
-            RichTerm::new(Term::Promise(ty.clone(), mk_label(ty, src_id, l, r), t), pos)
-        }
-        else {
-            t
-        };
-
-        Either::Right((id, t))
+        let t = RichTerm::new(Term::MetaValue(meta), pos);
+        elaborate_field_path(path, t)
     }
 }
+
+FieldPath: Vec<FieldPathElem> = {
+    <elems: (<FieldPathElem> ".")*> <last: FieldPathElem> => {
+        let mut elems = elems;
+        elems.push(last);
+        elems
+    }
+};
+
+FieldPathElem: FieldPathElem = {
+    <Ident> => FieldPathElem::Ident(<>),
+    <StrChunks> => FieldPathElem::Expr(<>),
+};
 
 Pattern: Ident = {
     Ident,
@@ -356,8 +343,8 @@ ChunkLiteral : String =
     <parts: ChunkLiteralPart+> => {
         parts.into_iter().fold(String::new(), |mut acc, part| {
             match part {
-                Either::Left(s) => acc.push_str(s),
-                Either::Right(c) => acc.push(c),
+                ChunkLiteralPart::Str(s) => acc.push_str(s),
+                ChunkLiteralPart::Char(c) => acc.push(c),
             };
 
             acc
@@ -370,13 +357,13 @@ HashBrace = { "#{", "multstr #{" };
 
 Str: String = "\"" <s: ChunkLiteral> "\"" => s;
 
-ChunkLiteralPart: Either<&'input str, char> = {
-    "str literal" => Either::Left(<>),
-    "str #" => Either::Left(<>),
-    "multstr literal" => Either::Left(<>),
-    "false interpolation" => Either::Left(<>),
-    "false end" => Either::Left(<>),
-    "str esc char" => Either::Right(<>),
+ChunkLiteralPart: ChunkLiteralPart<'input> = {
+    "str literal" => ChunkLiteralPart::Str(<>),
+    "str #" => ChunkLiteralPart::Str(<>),
+    "multstr literal" => ChunkLiteralPart::Str(<>),
+    "false interpolation" => ChunkLiteralPart::Str(<>),
+    "false end" => ChunkLiteralPart::Str(<>),
+    "str esc char" => ChunkLiteralPart::Char(<>),
     };
 
 UOp: UnaryOp = {
@@ -631,7 +618,6 @@ extern {
         ";" => Token::Normal(NormalToken::SemiCol),
         "&" => Token::Normal(NormalToken::Ampersand),
         "." => Token::Normal(NormalToken::Dot),
-        ".$" => Token::Normal(NormalToken::DotDollar),
         "$[" => Token::Normal(NormalToken::DollarBracket),
         "#{" => Token::Str(StringToken::HashBrace),
         "multstr #{" => Token::MultiStr(MultiStringToken::Interpolation),
@@ -649,7 +635,6 @@ extern {
         "||" => Token::Normal(NormalToken::DoublePipe),
         "!" => Token::Normal(NormalToken::Bang),
 
-        "$=" => Token::Normal(NormalToken::DollarEquals),
         "fun" => Token::Normal(NormalToken::Fun),
         "import" => Token::Normal(NormalToken::Import),
         "|" => Token::Normal(NormalToken::Pipe),
