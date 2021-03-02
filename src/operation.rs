@@ -13,7 +13,6 @@ use crate::label::ty_path;
 use crate::merge;
 use crate::merge::merge;
 use crate::position::TermPos;
-use crate::serialize;
 use crate::stack::Stack;
 use crate::term::make as mk_term;
 use crate::term::{BinaryOp, RichTerm, StrChunk, Term, UnaryOp};
