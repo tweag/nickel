@@ -212,7 +212,6 @@ mod tests {
     use crate::parser::{grammar, lexer};
     use assert_matches::assert_matches;
     use codespan::Files;
-    use serde_json::json;
     use std::io::Cursor;
 
     fn parse(s: &str) -> Option<RichTerm> {
@@ -599,77 +598,6 @@ Assume(#alwaysTrue, false)
         assert_matches!(
             eval_string("{x = (fun a => a + y) 0; y = (fun a => a + x) 0}.x"),
             Err(Error::EvalError(EvalError::InfiniteRecursion(..)))
-        );
-    }
-
-    /// Check that `deserialize (serialize term) == term`.
-    macro_rules! assert_ser_inv {
-        ($t:expr) => {
-            assert_peq!(
-                $t,
-                format!(
-                    "%deserialize% `Json (%serialize% `Json (let x = {} in %deepSeq% x x))",
-                    $t
-                )
-            );
-            assert_peq!(
-                $t,
-                format!(
-                    "%deserialize% `Yaml (%serialize% `Yaml (let x = {} in %deepSeq% x x))",
-                    $t
-                )
-            );
-            assert_peq!(
-                $t,
-                format!(
-                    "%deserialize% `Toml (%serialize% `Toml (let x = {} in %deepSeq% x x))",
-                    $t
-                )
-            );
-        };
-    }
-
-    /// Check that `serialize (deserialize s) == s`.
-    macro_rules! assert_deser_inv {
-        ($data:expr) => {
-            let as_str = serde_json::to_string_pretty(&$data).unwrap();
-            assert_peq!(
-                format!("\"{}\"", as_str.replace("\"", "\\\"")),
-                format!(
-                    "%serialize% `Json (%deserialize% `Json m##\"{}\"##m)",
-                    as_str
-                )
-            );
-            let as_str = serde_yaml::to_string(&$data).unwrap();
-            assert_peq!(
-                format!("\"{}\"", as_str.replace("\"", "\\\"")),
-                format!(
-                    "%serialize% `Yaml (%deserialize% `Yaml m##\"{}\"##m)",
-                    as_str
-                )
-            );
-            let as_str = format!("{}", toml::Value::try_from(&$data).unwrap());
-            assert_peq!(
-                format!("\"{}\"", as_str.replace("\"", "\\\"")),
-                format!(
-                    "%serialize% `Toml (%deserialize% `Toml m##\"{}\"##m)",
-                    as_str
-                )
-            );
-        };
-    }
-
-    #[test]
-    fn serialize_builtin_laws() {
-        assert_ser_inv!("{val = 1 + 1}");
-        assert_ser_inv!("{val = \"Some string\"}");
-        assert_ser_inv!("{val = [\"a\", 3, []]}");
-        assert_ser_inv!("{a = {foo = {bar = \"2\"}}; b = false; c = [{d = \"e\"}, {d = \"f\"}]}");
-
-        assert_deser_inv!(json!({"a": 1.0, "b": 4.0, "c": 3.0}));
-        assert_deser_inv!(json!({"a": {"b": {"c": "richtig"}}}));
-        assert_deser_inv!(
-            json!({"foo": 1.0, "bar": ["str", true], "baz": {"subfoo": true, "subbar": 0.0}})
         );
     }
 }
