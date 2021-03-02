@@ -1,32 +1,12 @@
 //! Entry point of the program.
-mod cache;
-mod error;
-mod eval;
-mod identifier;
-mod label;
-mod merge;
-mod operation;
-mod parser;
-mod position;
-mod program;
-mod repl;
-mod serialize;
-mod stack;
-mod stdlib;
-mod term;
-mod transformations;
-mod typecheck;
-mod types;
-
-use crate::error::{Error, IOError, SerializationError};
-use crate::program::Program;
-use crate::repl::rustyline_frontend;
-use crate::serialize::ExportFormat;
-use crate::term::{RichTerm, Term};
+use nickel::error::{Error, IOError, SerializationError};
+use nickel::program::Program;
+use nickel::term::{RichTerm, Term};
+use nickel::{repl, repl::rustyline_frontend};
+use nickel::{serialize, serialize::ExportFormat};
 use std::io::Write;
 use std::path::PathBuf;
-use std::str::FromStr;
-use std::{fmt, fs, io, process};
+use std::{fs, io, process};
 // use std::ffi::OsStr;
 use structopt::StructOpt;
 
@@ -40,46 +20,6 @@ struct Opt {
     file: Option<PathBuf>,
     #[structopt(subcommand)]
     command: Option<Command>,
-}
-
-impl std::default::Default for ExportFormat {
-    fn default() -> Self {
-        ExportFormat::Json
-    }
-}
-
-impl fmt::Display for ExportFormat {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::Raw => write!(f, "raw"),
-            Self::Json => write!(f, "json"),
-            Self::Yaml => write!(f, "yaml"),
-            Self::Toml => write!(f, "toml"),
-        }
-    }
-}
-
-#[derive(Clone, Eq, PartialEq, Debug)]
-pub struct ParseFormatError(String);
-
-impl fmt::Display for ParseFormatError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "unsupported export format {}", self.0)
-    }
-}
-
-impl FromStr for ExportFormat {
-    type Err = ParseFormatError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_ref() {
-            "raw" => Ok(ExportFormat::Raw),
-            "json" => Ok(ExportFormat::Json),
-            "yaml" => Ok(ExportFormat::Yaml),
-            "toml" => Ok(ExportFormat::Toml),
-            _ => Err(ParseFormatError(String::from(s))),
-        }
-    }
 }
 
 /// Available subcommands.

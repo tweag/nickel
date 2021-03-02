@@ -11,7 +11,7 @@ pub mod ty_path {
     //!
     //! Checking higher-order contracts can involve a good share of intermediate contract checking.
     //! Take the following example:
-    //! ```
+    //! ```ignore
     //! Assume((Num -> Num) -> Num) -> Num -> Num, fun ev => fun cst => ev (fun x => cst))
     //! ```
     //! Once called, various checks will be performed on the arguments of functions and their return
@@ -22,7 +22,7 @@ pub mod ty_path {
     //! 4. etc.
     //!
     //! Each check can be linked to a base type occurrence (here, a `Num`) in the original type:
-    //! ```
+    //! ```ignore
     //! (Num -> Num) -> Num) -> Num -> Num
     //!  ^^^1   ^^^2    ^^^3    etc.
     //! ```
@@ -202,7 +202,7 @@ pub mod ty_path {
 /// One crucial aspect of first class contracts is to be able to check higher-order types, which
 /// are types with arrows in it. Consider the simplest example:
 ///
-/// ```
+/// ```ignore
 /// Assume(Num -> Num, f)
 /// ```
 ///
