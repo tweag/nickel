@@ -13,12 +13,12 @@ use crate::label::ty_path;
 use crate::merge;
 use crate::merge::merge;
 use crate::position::RawSpan;
-use crate::serialize;
 use crate::stack::Stack;
 use crate::term::make as mk_term;
 use crate::term::{BinaryOp, RichTerm, StrChunk, Term, UnaryOp};
 use crate::transformations::Closurizable;
 use crate::{mk_app, mk_fun};
+use crate::{serialize, serialize::ExportFormat};
 use md5::digest::Digest;
 use simple_counter::*;
 use std::collections::HashMap;
@@ -1395,16 +1395,24 @@ fn process_binary_operation(
                     &global_env,
                     &env2,
                 );
-                serialize::validate(&rt2)?;
 
                 let result = match id.to_string().as_str() {
-                    "Json" => serde_json::to_string_pretty(&rt2)
-                        .map_err(|err| SerializationError::Other(err.to_string()))?,
-                    "Yaml" => serde_yaml::to_string(&rt2)
-                        .map_err(|err| SerializationError::Other(err.to_string()))?,
-                    "Toml" => toml::Value::try_from(&rt2)
-                        .map(|v| format!("{}", v))
-                        .map_err(|err| SerializationError::Other(err.to_string()))?,
+                    "Json" => {
+                        serialize::validate(&rt2, ExportFormat::Json)?;
+                        serde_json::to_string_pretty(&rt2)
+                            .map_err(|err| SerializationError::Other(err.to_string()))?
+                    }
+                    "Yaml" => {
+                        serialize::validate(&rt2, ExportFormat::Yaml)?;
+                        serde_yaml::to_string(&rt2)
+                            .map_err(|err| SerializationError::Other(err.to_string()))?
+                    }
+                    "Toml" => {
+                        serialize::validate(&rt2, ExportFormat::Toml)?;
+                        toml::Value::try_from(&rt2)
+                            .map(|v| format!("{}", v))
+                            .map_err(|err| SerializationError::Other(err.to_string()))?
+                    }
                     _ => return mk_err_fst(t1),
                 };
 
@@ -1528,6 +1536,7 @@ fn eq(env: &mut Environment, c1: Closure, c2: Closure) -> EqResult {
     }
 
     match (*t1, *t2) {
+        (Term::Null, Term::Null) => EqResult::Bool(true),
         (Term::Bool(b1), Term::Bool(b2)) => EqResult::Bool(b1 == b2),
         (Term::Num(n1), Term::Num(n2)) => EqResult::Bool(n1 == n2),
         (Term::Str(s1), Term::Str(s2)) => EqResult::Bool(s1 == s2),

@@ -143,7 +143,8 @@ pub mod share_normal_form {
     /// subexpressions, such as a record, should be shared.
     fn should_share(t: &Term) -> bool {
         match t {
-            Term::Bool(_)
+            Term::Null
+            | Term::Bool(_)
             | Term::Num(_)
             | Term::Str(_)
             | Term::Lbl(_)

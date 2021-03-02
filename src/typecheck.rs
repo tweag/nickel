@@ -496,6 +496,9 @@ fn type_check_(
     let RichTerm { term: t, pos } = rt;
 
     match t.as_ref() {
+        // null is inferred to be of type Dyn
+        Term::Null => unify(state, strict, ty, mk_typewrapper::dynamic())
+            .map_err(|err| err.into_typecheck_err(state, &rt.pos)),
         Term::Bool(_) => unify(state, strict, ty, mk_typewrapper::bool())
             .map_err(|err| err.into_typecheck_err(state, &rt.pos)),
         Term::Num(_) => unify(state, strict, ty, mk_typewrapper::num())
