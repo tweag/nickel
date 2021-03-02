@@ -91,3 +91,8 @@ fn typechecking() {
 fn types() {
     check_file("types.ncl");
 }
+
+#[test]
+fn serialize() {
+    check_file("serialize.ncl");
+}
