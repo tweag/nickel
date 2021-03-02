@@ -5,6 +5,8 @@ use crate::term::{MetaValue, RichTerm, Term};
 use serde::de::{Deserialize, Deserializer};
 use serde::ser::{Error, Serialize, SerializeMap, Serializer};
 use std::collections::HashMap;
+use std::fmt;
+use std::str::FromStr;
 
 /// Available export formats.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -13,6 +15,46 @@ pub enum ExportFormat {
     Json,
     Yaml,
     Toml,
+}
+
+impl std::default::Default for ExportFormat {
+    fn default() -> Self {
+        ExportFormat::Json
+    }
+}
+
+impl fmt::Display for ExportFormat {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Raw => write!(f, "raw"),
+            Self::Json => write!(f, "json"),
+            Self::Yaml => write!(f, "yaml"),
+            Self::Toml => write!(f, "toml"),
+        }
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub struct ParseFormatError(String);
+
+impl fmt::Display for ParseFormatError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "unsupported export format {}", self.0)
+    }
+}
+
+impl FromStr for ExportFormat {
+    type Err = ParseFormatError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_ref() {
+            "raw" => Ok(ExportFormat::Raw),
+            "json" => Ok(ExportFormat::Json),
+            "yaml" => Ok(ExportFormat::Yaml),
+            "toml" => Ok(ExportFormat::Toml),
+            _ => Err(ParseFormatError(String::from(s))),
+        }
+    }
 }
 
 /// Serializer for metavalues.
