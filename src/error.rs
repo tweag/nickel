@@ -1360,7 +1360,7 @@ impl ToDiagnostic<FileId> for SerializationError {
                     "raw export only supports `Str`, got {}",
                     rt.as_ref()
                         .type_of()
-                        .unwrap_or(String::from("<unevaluated>"))
+                        .unwrap_or_else(|| String::from("<unevaluated>"))
                 ))
                 .with_labels(vec![primary_term(&rt, files)])],
             SerializationError::UnsupportedNull(format, rt) => vec![Diagnostic::error()
