@@ -89,8 +89,8 @@ let typecheck = [
     else
       (f {bla = true; blo = 3; ble = 4; bloppo = `bloppop; }) : Num),
 
-  ({ $(if true then "foo" else "bar") = 2; } : {_ : Num}),
-  ({ $(if true then "foo" else "bar") = 2; }.$("bla") : Num),
+  ({ "#{if true then "foo" else "bar"}" = 2; } : {_ : Num}),
+  ({ "#{if true then "foo" else "bar"}" = 2; }."bla" : Num),
   ({ foo = 3; bar = 4; } : {_ : Num}),
 
   // seq

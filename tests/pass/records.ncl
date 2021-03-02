@@ -2,12 +2,12 @@ let Assert = fun l x => x || %blame% l in
 
 // accesses
 (({foo = 3; bar = true}).bar == true | #Assert) &&
-({$(if true then "foo" else "bar") = false; bar = true}.foo
+({"#{if true then "foo" else "bar"}" = false; bar = true}.foo
   == false
   | #Assert) &&
 
-(({foo = 3; bar = true}).$("bar") == true | #Assert) &&
-({$(if true then "foo" else "bar") = false; bar = true}.$("foo")
+(({foo = 3; bar = true})."bar" == true | #Assert) &&
+({"#{if true then "foo" else "bar"}" = false; bar = true}."#{"foo"}"
  == false 
  | #Assert) &&
 
@@ -17,7 +17,7 @@ let Assert = fun l x => x || %blame% l in
 // primitive_ops
 (records.hasField "foo" {foo = 1; bar = 2} | #Assert) &&
 (records.hasField "fop" {foo = 1; bar = 2} == false | #Assert) &&
-(records.hasField "foo" ({foo = 2; bar = 3}-$ "foo")
+(records.hasField "foo" ({foo = 2; bar = 3} -$ "foo")
   == false
   | #Assert) &&
 
