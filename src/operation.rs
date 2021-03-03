@@ -6,7 +6,7 @@
 //! the functions [`process_unary_operation`](fn.process_unary_operation.html) and
 //! [`process_binary_operation`](fn.process_binary_operation.html) receive evaluated operands and
 //! implement the actual semantics of operators.
-use crate::error::{EvalError, SerializationError};
+use crate::error::EvalError;
 use crate::eval::{subst, CallStack, Closure, Environment};
 use crate::identifier::Ident;
 use crate::label::ty_path;
@@ -1478,28 +1478,16 @@ fn process_binary_operation(
                     &env2,
                 );
 
-                let result = match id.to_string().as_str() {
-                    "Json" => {
-                        serialize::validate(&rt2, ExportFormat::Json)?;
-                        serde_json::to_string_pretty(&rt2)
-                            .map_err(|err| SerializationError::Other(err.to_string()))?
-                    }
-                    "Yaml" => {
-                        serialize::validate(&rt2, ExportFormat::Yaml)?;
-                        serde_yaml::to_string(&rt2)
-                            .map_err(|err| SerializationError::Other(err.to_string()))?
-                    }
-                    "Toml" => {
-                        serialize::validate(&rt2, ExportFormat::Toml)?;
-                        toml::Value::try_from(&rt2)
-                            .map(|v| format!("{}", v))
-                            .map_err(|err| SerializationError::Other(err.to_string()))?
-                    }
+                let format = match id.to_string().as_str() {
+                    "Json" => ExportFormat::Json,
+                    "Yaml" => ExportFormat::Yaml,
+                    "Toml" => ExportFormat::Toml,
                     _ => return mk_err_fst(t1),
                 };
 
+                serialize::validate(format, &rt2)?;
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Str(result),
+                    Term::Str(serialize::to_string(format, &rt2)?),
                     pos_op_inh,
                 )))
             } else {

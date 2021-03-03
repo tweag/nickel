@@ -40,6 +40,7 @@ pub enum Term {
     /// A boolean value.
     Bool(bool),
     /// A floating-point value.
+    #[serde(serialize_with = "crate::serialize::serialize_num")]
     Num(f64),
     /// A literal string.
     Str(String),

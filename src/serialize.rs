@@ -6,6 +6,7 @@ use serde::de::{Deserialize, Deserializer};
 use serde::ser::{Error, Serialize, SerializeMap, Serializer};
 use std::collections::HashMap;
 use std::fmt;
+use std::io;
 use std::str::FromStr;
 
 /// Available export formats.
@@ -55,6 +56,25 @@ impl FromStr for ExportFormat {
             _ => Err(ParseFormatError(String::from(s))),
         }
     }
+}
+
+/// Implicitely convert float to integers when possible to avoid trailing zeros. Note thas this
+/// only work if the float is in range of either `i64` or `f64`. It seems there's no easy general
+/// solution (working for both YAML, TOML, and JSON) to chose the way floating point values are
+/// formatted.
+pub fn serialize_num<S>(n: &f64, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    if n.fract() == 0.0 {
+        if *n < 0.0 && *n >= (i64::MIN as f64) && *n <= (i64::MAX as f64) {
+            return (*n as i64).serialize(serializer);
+        } else if *n >= 0.0 && *n <= (u64::MAX as f64) {
+            return (*n as u64).serialize(serializer);
+        }
+    }
+
+    return n.serialize(serializer);
 }
 
 /// Serializer for metavalues.
@@ -109,7 +129,7 @@ impl<'de> Deserialize<'de> for RichTerm {
 
 /// Check that a term is serializable. Serializable terms are booleans, numbers, strings, enum,
 /// lists of serializable terms or records of serializable terms.
-pub fn validate(t: &RichTerm, format: ExportFormat) -> Result<(), SerializationError> {
+pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), SerializationError> {
     use crate::term;
     use Term::*;
 
@@ -126,19 +146,69 @@ pub fn validate(t: &RichTerm, format: ExportFormat) -> Result<(), SerializationE
             Null => Err(SerializationError::UnsupportedNull(format, t.clone())),
             Bool(_) | Num(_) | Str(_) | Enum(_) => Ok(()),
             Record(map) | RecRecord(map) => {
-                map.iter().try_for_each(|(_, t)| validate(t, format))?;
+                map.iter().try_for_each(|(_, t)| validate(format, t))?;
                 Ok(())
             }
             List(vec) => {
-                vec.iter().try_for_each(|t| validate(t, format))?;
+                vec.iter().try_for_each(|t| validate(format, t))?;
                 Ok(())
             }
             //TODO: have a specific error for such missing value.
             MetaValue(term::MetaValue {
                 value: Some(ref t), ..
-            }) => validate(t, format),
+            }) => validate(format, t),
             _ => Err(SerializationError::NonSerializable(t.clone())),
         }
+    }
+}
+
+pub fn to_writer<W>(
+    mut writer: W,
+    format: ExportFormat,
+    rt: &RichTerm,
+) -> Result<(), SerializationError>
+where
+    W: io::Write,
+{
+    match format {
+        ExportFormat::Json => serde_json::to_writer_pretty(writer, &rt)
+            .map_err(|err| SerializationError::Other(err.to_string())),
+        ExportFormat::Yaml => serde_yaml::to_writer(writer, &rt)
+            .map_err(|err| SerializationError::Other(err.to_string())),
+        ExportFormat::Toml => toml::Value::try_from(&rt)
+            .map_err(|err| SerializationError::Other(err.to_string()))
+            .and_then(|v| {
+                write!(writer, "{}", v).map_err(|err| SerializationError::Other(err.to_string()))
+            }),
+        ExportFormat::Raw => match rt.as_ref() {
+            Term::Str(s) => writer
+                .write_all(s.as_bytes())
+                .map_err(|err| SerializationError::Other(err.to_string())),
+            t => Err(SerializationError::Other(format!(
+                "raw export requires a `Str`, got {}",
+                t.type_of().unwrap()
+            ))),
+        },
+    }
+}
+
+pub fn to_string(format: ExportFormat, rt: &RichTerm) -> Result<String, SerializationError> {
+    match format {
+        ExportFormat::Json => serde_json::to_string_pretty(&rt)
+            .map_err(|err| SerializationError::Other(err.to_string())),
+        ExportFormat::Yaml => {
+            serde_yaml::to_string(&rt).map_err(|err| SerializationError::Other(err.to_string()))
+        }
+        ExportFormat::Toml => toml::Value::try_from(&rt)
+            .map(|v| format!("{}", v))
+            .map_err(|err| SerializationError::Other(err.to_string())),
+        ExportFormat::Raw => match rt.as_ref() {
+            Term::Str(s) => Ok(s.clone()),
+            t => Err(SerializationError::Other(format!(
+                "raw export requires a `Str`, got {}",
+                t.type_of().unwrap()
+            ))),
+        },
     }
 }
 
@@ -174,23 +244,23 @@ mod tests {
     }
 
     macro_rules! assert_pass_validation {
-        ( $term:expr, $format:expr, true) => {
+        ( $format:expr, $term:expr, true) => {
             validate(
+                $format,
                 &mk_program($term)
                     .and_then(|mut p| p.eval_full())
                     .unwrap()
                     .into(),
-                $format,
             )
             .unwrap();
         };
-        ( $term:expr, $format:expr, false) => {
+        ( $format:expr, $term:expr, false) => {
             validate(
+                $format,
                 &mk_program($term)
                     .and_then(|mut p| p.eval_full())
                     .unwrap()
                     .into(),
-                $format,
             )
             .unwrap_err();
         };
@@ -236,7 +306,7 @@ mod tests {
 
     #[test]
     fn basic() {
-        assert_json_eq!("1 + 1", 2.0);
+        assert_json_eq!("1 + 1", 2);
 
         let null: Option<()> = None;
         assert_json_eq!("null", null);
@@ -249,23 +319,23 @@ mod tests {
     #[test]
     fn lists() {
         assert_json_eq!("[]", json!([]));
-        assert_json_eq!("[null, (1+1), (2+2), (3+3)]", json!([null, 2.0, 4.0, 6.0]));
+        assert_json_eq!("[null, (1+1), (2+2), (3+3)]", json!([null, 2, 4, 6]));
         assert_json_eq!(
             r##"[`a, ("b" ++ "c"), "d#{"e"}f", "g"]"##,
             json!(["a", "bc", "def", "g"])
         );
         assert_json_eq!(
             r#"lists.fold (fun elt acc => [[elt]] @ acc) [1, 2, 3, 4] []"#,
-            json!([[1.0], [2.0], [3.0], [4.0]])
+            json!([[1], [2], [3], [4]])
         );
-        assert_json_eq!("[\"a\", 1, false, `foo]", json!(["a", 1.0, false, "foo"]));
+        assert_json_eq!("[\"a\", 1, false, `foo]", json!(["a", 1, false, "foo"]));
     }
 
     #[test]
     fn records() {
         assert_json_eq!(
             "{a = 1; b = 2+2; c = 3; d = null}",
-            json!({"a": 1.0, "b": 4.0, "c": 3.0, "d": null})
+            json!({"a": 1, "b": 4, "c": 3, "d": null})
         );
 
         assert_json_eq!(
@@ -275,7 +345,7 @@ mod tests {
 
         assert_json_eq!(
             "{foo = let z = 0.5 + 0.5 in z; bar = [\"str\", true || false]; baz = {subfoo = !false} & {subbar = 1 - 1}}",
-            json!({"foo": 1.0, "bar": ["str", true], "baz": {"subfoo": true, "subbar": 0.0}})
+            json!({"foo": 1, "bar": ["str", true], "baz": {"subfoo": true, "subbar": 0}})
         );
     }
 
@@ -283,7 +353,7 @@ mod tests {
     fn enriched_values() {
         assert_json_eq!(
             "{a = Default(1); b = Docstring(\"doc\", 2+2); c = 3}",
-            json!({"a": 1.0, "b": 4.0, "c": 3.0})
+            json!({"a": 1, "b": 4, "c": 3})
         );
 
         assert_json_eq!(
@@ -293,20 +363,20 @@ mod tests {
 
         assert_json_eq!(
             "{baz = Default({subfoo = Default(!false)} & {subbar = Default(1 - 1)})}",
-            json!({"baz": {"subfoo": true, "subbar": 0.0}})
+            json!({"baz": {"subfoo": true, "subbar": 0}})
         );
     }
 
     #[test]
     fn prevalidation() {
-        assert_pass_validation!("{a = 1; b = { c = fun x => x }}", ExportFormat::Json, false);
+        assert_pass_validation!(ExportFormat::Json, "{a = 1; b = { c = fun x => x }}", false);
         assert_pass_validation!(
-            "{foo = { bar = let y = \"a\" in y}; b = [[fun x => x]] }",
             ExportFormat::Json,
+            "{foo = { bar = let y = \"a\" in y}; b = [[fun x => x]] }",
             false
         );
-        assert_pass_validation!("{foo = null}", ExportFormat::Json, true);
-        assert_pass_validation!("{foo = null}", ExportFormat::Toml, false);
+        assert_pass_validation!(ExportFormat::Json, "{foo = null}", true);
+        assert_pass_validation!(ExportFormat::Toml, "{foo = null}", false);
     }
 
     #[test]

@@ -1,12 +1,11 @@
 //! Entry point of the program.
-use nickel::error::{Error, IOError, SerializationError};
+use nickel::error::{Error, IOError};
 use nickel::program::Program;
-use nickel::term::{RichTerm, Term};
+use nickel::term::RichTerm;
 use nickel::{repl, repl::rustyline_frontend};
 use nickel::{serialize, serialize::ExportFormat};
-use std::io::Write;
 use std::path::PathBuf;
-use std::{fs, io, process};
+use std::{fs, process};
 // use std::ffi::OsStr;
 use structopt::StructOpt;
 
@@ -119,54 +118,13 @@ fn export(
     let rt = program.eval_full().map(RichTerm::from)?;
     let format = format.unwrap_or_default();
 
-    serialize::validate(&rt, format)?;
+    serialize::validate(format, &rt)?;
 
     if let Some(file) = output {
-        let mut file = fs::File::create(&file).map_err(IOError::from)?;
-
-        match format {
-            ExportFormat::Json => serde_json::to_writer_pretty(file, &rt)
-                .map_err(|err| SerializationError::Other(err.to_string())),
-            ExportFormat::Yaml => serde_yaml::to_writer(file, &rt)
-                .map_err(|err| SerializationError::Other(err.to_string())),
-            ExportFormat::Toml => toml::Value::try_from(&rt)
-                .map_err(|err| SerializationError::Other(err.to_string()))
-                .and_then(|v| {
-                    write!(file, "{}", v).map_err(|err| SerializationError::Other(err.to_string()))
-                }),
-            ExportFormat::Raw => match *rt.term {
-                Term::Str(s) => file
-                    .write_all(s.as_bytes())
-                    .map_err(|err| SerializationError::Other(err.to_string())),
-                t => Err(SerializationError::Other(format!(
-                    "raw export requires a `Str`, got {}",
-                    t.type_of().unwrap()
-                ))),
-            },
-        }?
+        let file = fs::File::create(&file).map_err(IOError::from)?;
+        serialize::to_writer(file, format, &rt)?;
     } else {
-        match format {
-            ExportFormat::Json => serde_json::to_writer_pretty(io::stdout(), &rt)
-                .map_err(|err| SerializationError::Other(err.to_string())),
-            ExportFormat::Yaml => serde_yaml::to_writer(io::stdout(), &rt)
-                .map_err(|err| SerializationError::Other(err.to_string())),
-            ExportFormat::Toml => toml::ser::to_string_pretty(&rt)
-                .map_err(|err| SerializationError::Other(err.to_string()))
-                .and_then(|s| {
-                    std::io::stdout()
-                        .write_all(s.as_bytes())
-                        .map_err(|err| SerializationError::Other(err.to_string()))
-                }),
-            ExportFormat::Raw => match *rt.term {
-                Term::Str(s) => std::io::stdout()
-                    .write_all(s.as_bytes())
-                    .map_err(|err| SerializationError::Other(err.to_string())),
-                t => Err(SerializationError::Other(format!(
-                    "raw export requires a `Str`, got {}",
-                    t.type_of().unwrap()
-                ))),
-            },
-        }?
+        serialize::to_writer(std::io::stdout(), format, &rt)?;
     }
 
     Ok(())
