@@ -1,6 +1,6 @@
 let AssertEq = fun val l x => val == x || %blame% l in
 
-let Y = Assume(((Num -> Num) -> Num -> Num) -> Num -> Num, fun f => (fun x => f (x x)) (fun x => f (x x))) in
+let Y | ((Num -> Num) -> Num -> Num) -> Num -> Num = fun f => (fun x => f (x x)) (fun x => f (x x)) in
   let dec : Num -> Num = fun x => x + (-1) in
   let or : Bool -> Bool -> Bool = fun x => fun y => if x then x else y in
   let fibo : Num -> Num = Y (fun fibo =>

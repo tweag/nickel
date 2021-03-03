@@ -143,19 +143,6 @@ pub enum NormalToken<'input> {
 
     #[token("%tag%")]
     Tag,
-    #[token("Assume(")]
-    Assume,
-    #[token("Promise(")]
-    Promise,
-    #[token("Default(")]
-    Deflt,
-    #[token("Contract(")]
-    Contract,
-    #[token("ContractDefault(")]
-    ContractDeflt,
-    #[token("Docstring(")]
-    Docstring,
-
     #[token("%isNum%")]
     IsNum,
     #[token("%isBool%")]

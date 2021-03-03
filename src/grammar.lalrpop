@@ -183,52 +183,6 @@ RecordOperationChain: RichTerm = {
 
 Atom: RichTerm = {
     "(" <Term> ")",
-    <l: @L> "Assume(" <ty: Types> "," <t: Term> ")" <r: @R> =>
-        RichTerm::from(Term::Assume(ty.clone(), mk_label(ty, src_id, l, r), t)),
-    <l: @L> "Contract(" <ty: Types> ")" <r: @R> =>
-        RichTerm::from(
-            Term::MetaValue(
-                MetaValue {
-                    doc: None,
-                    contract: Some((ty.clone(), mk_label(ty, src_id, l, r))),
-                    priority: Default::default(),
-                    value: None,
-                }
-            )
-        ),
-    "Default(" <t: Term> ")" =>
-        RichTerm::from(
-            Term::MetaValue(
-                MetaValue {
-                    doc: None,
-                    contract: None,
-                    priority: MergePriority::Default,
-                    value: Some(t),
-                }
-            )
-        ),
-    <l: @L> "ContractDefault(" <ty: Types> "," <t: Term> ")" <r: @R> =>
-        RichTerm::from(
-            Term::MetaValue(
-                MetaValue {
-                    doc: None,
-                    contract: Some((ty.clone(), mk_label(ty, src_id, l, r))),
-                    priority: MergePriority::Default,
-                    value: Some(t),
-                }
-            )
-        ),
-    "Docstring(" <s: Str> "," <t: Term> ")" =>
-        RichTerm::from(
-            Term::MetaValue(
-                MetaValue {
-                    doc: Some(s),
-                    contract: None,
-                    priority: Default::default(),
-                    value: Some(t)
-                }
-            )
-        ),
     "num literal" => RichTerm::from(Term::Num(<>)),
     "null" => RichTerm::from(Term::Null),
     Bool => RichTerm::from(Term::Bool(<>)),
@@ -651,12 +605,6 @@ extern {
 
         "tag" => Token::Normal(NormalToken::Tag),
         "applyContract" => Token::Normal(NormalToken::ApplyContract),
-        "Assume(" => Token::Normal(NormalToken::Assume),
-        "Promise(" => Token::Normal(NormalToken::Promise),
-        "Default(" => Token::Normal(NormalToken::Deflt),
-        "Contract(" => Token::Normal(NormalToken::Contract),
-        "ContractDefault(" => Token::Normal(NormalToken::ContractDeflt),
-        "Docstring(" => Token::Normal(NormalToken::Docstring),
         "isNum" => Token::Normal(NormalToken::IsNum),
         "isBool" => Token::Normal(NormalToken::IsBool),
         "isStr" => Token::Normal(NormalToken::IsStr),

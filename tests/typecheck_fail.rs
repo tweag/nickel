@@ -222,13 +222,13 @@ fn polymorphic_row_constraints() {
     }
 
     let mut res = type_check_expr(
-        "let extend = Assume(forall c. { | c} -> {a: Str | c}, 0) in
+        "let extend | forall c. { | c} -> {a: Str | c} = null in
            (let bad = extend {a = 1;} in 0) : Num",
     );
     assert_row_conflict(res);
 
     res = type_check_expr(
-        "let remove = Assume(forall c. {a: Str | c} -> { | c}, 0) in
+        "let remove | forall c. {a: Str | c} -> { | c} = nul in
            (let bad = remove (remove {a = \"a\"}) in 0) : Num",
     );
     assert_row_conflict(res);

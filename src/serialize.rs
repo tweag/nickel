@@ -352,17 +352,17 @@ mod tests {
     #[test]
     fn enriched_values() {
         assert_json_eq!(
-            "{a = Default(1); b = Docstring(\"doc\", 2+2); c = 3}",
+            "{a | default = 1; b | doc \"doc\" = 2+2; c = 3}",
             json!({"a": 1, "b": 4, "c": 3})
         );
 
         assert_json_eq!(
-            "{a = {b = Default({})} & {b = {c = Default(if true then `faux else `vrai)}}}",
+            "{a = {b | default = {}} & {b.c | default = (if true then `faux else `vrai)}}",
             json!({"a": {"b": {"c": "faux"}}})
         );
 
         assert_json_eq!(
-            "{baz = Default({subfoo = Default(!false)} & {subbar = Default(1 - 1)})}",
+            "{baz | default = {subfoo | default = !false} & {subbar | default = 1 - 1}}",
             json!({"baz": {"subfoo": true, "subbar": 0}})
         );
     }
