@@ -2182,8 +2182,8 @@ mod tests {
 
     #[test]
     fn dynamic_row_tail() {
-        // Currently, typechecking is conservative wrt the dynamic row type, meaning it can't to a
-        // less precise type with a dynamic tail.
+        // Currently, typechecking is conservative wrt the dynamic row type, meaning it can't
+        // convert to a less precise type with a dynamic tail.
         parse_and_typecheck("{a = 1; b = 2} : {a: Num | Dyn}").unwrap_err();
         parse_and_typecheck("{a = 1} : {a: Num | Dyn}").unwrap_err();
         parse_and_typecheck("Assume({a: Num | Dyn}, {a = 1}) : {a: Num}").unwrap_err();

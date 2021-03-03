@@ -262,66 +262,6 @@ mod tests {
     }
 
     #[test]
-    fn simple_type_check() {
-        let res = eval_string("let x = 5 in if %isNum% x then true else 1");
-
-        assert_eq!(Ok(Term::Bool(true)), res);
-    }
-
-    #[test]
-    fn promise_fail() {
-        let res = eval_string("let bool = fun l t => if isBool t then t else blame l in 5 : Bool");
-
-        if let Ok(_) = res {
-            panic!("This expression should return an error!");
-        }
-    }
-
-    #[test]
-    fn flat_contract_fail() {
-        let res = eval_string(
-            "let alwaysTrue = fun l t => let boolT = Assume(Bool, t) in
-    if boolT then boolT else blame l in
-Assume(#alwaysTrue, false)
-",
-        );
-        if let Ok(_) = res {
-            panic!("This expression should return an error!");
-        }
-    }
-
-    #[test]
-    fn id_fail() {
-        let res = eval_string(
-            "let id = Assume(forall a. a -> a, fun x => false) in
-            id false",
-        );
-        if let Ok(_) = res {
-            panic!("This expression should return an error!");
-        }
-    }
-
-    #[test]
-    fn enum_simple() {
-        eval_string("`far : <foo, bar>").unwrap_err();
-    }
-
-    #[test]
-    fn enum_complex() {
-        eval_string(
-            "let f : <foo, bar> -> Num =
-            fun x => switch { foo => 1, bar => 2, } x in
-            f `boo",
-        )
-        .unwrap_err();
-    }
-
-    #[test]
-    fn row_types() {
-        eval_string("Assume(< >, 123)").unwrap_err();
-    }
-
-    #[test]
     fn records_accessing() {
         eval_string("({ $(if false then \"foo\" else \"bar\") = false; bar = true; }).foo")
             .unwrap_err();
@@ -352,71 +292,8 @@ Assume(#alwaysTrue, false)
     }
 
     #[test]
-    #[should_panic]
-    fn enriched_terms_contract_default_fail() {
-        eval_string("ContractDefault(Num, true)").unwrap();
-    }
-
-    #[test]
     fn merge_default() {
         eval_string("({a=Default(1);} & {a=Default(2);}).a").unwrap_err();
-    }
-
-    #[test]
-    fn merge_contract() {
-        eval_string("let r = {a=2;} & {a=Contract(Bool)} in r.a").unwrap_err();
-    }
-
-    #[test]
-    fn merge_default_contract() {
-        eval_string("({a=2;} & {b=Contract(Num)} & {b=Default(true)}).b").unwrap_err();
-    }
-
-    fn make_composed_contract(value: &str) -> Result<Term, Error> {
-        let s = format!(
-            "let Y = fun f => (fun x => f (x x)) (fun x => f (x x)) in
-             let dec = fun x => x + (-1) in
-             let or = fun x => fun y => if x then x else y in
-             let isEven_ = Y (fun f =>
-                 (fun x =>
-                     if x == 0 then true
-                     else (
-                         if dec x == 0 then false
-                         else (f (dec (dec x)))
-                     )
-                 )
-             ) in
-             let isDivBy3_ = Y (fun f =>
-                 (fun x =>
-                     if x == 0 then true
-                     else (
-                         if or (dec (dec x) == 0) (dec x == 0) then false
-                         else (f (dec (dec (dec x))))
-                     )
-                 )
-             ) in
-             let toCtr = fun f => fun l => fun x => (
-               if (%isNum% x) then (
-                 if (f x) then x else %blame% l)
-               else %blame% l
-             ) in
-             let isEven = toCtr isEven_ in
-             let isDivBy3 = toCtr isDivBy3_ in
-             let composed = {{a=Contract(#isEven)}} & {{a=Contract(#isDivBy3)}} in
-             ({{a={}}} & composed).a",
-            value
-        );
-
-        eval_string(s.as_str())
-    }
-
-    #[test]
-    fn merge_compose_contract() {
-        make_composed_contract("1").unwrap_err();
-        make_composed_contract("14").unwrap_err();
-        make_composed_contract("27").unwrap_err();
-        make_composed_contract("10").unwrap_err();
-        make_composed_contract("35").unwrap_err();
     }
 
     #[test]
@@ -444,105 +321,9 @@ Assume(#alwaysTrue, false)
 
     #[test]
     fn boolean_op() {
-        eval_string("let throw = Assume(#fail, 0) in false || true && throw").unwrap_err();
+        eval_string("let throw = 0 | #fail in false || true && throw").unwrap_err();
         eval_string("0 && true").unwrap_err();
         eval_string("\"a\" || false").unwrap_err();
-    }
-
-    #[test]
-    fn records_contracts_simple() {
-        eval_string("Assume({}, {a=1})").unwrap_err();
-
-        eval_string("let x = Assume({a: Num, s: Str}, {a = 1; s = 2}) in %deepSeq% x x")
-            .unwrap_err();
-        eval_string("let x = Assume({a: Num, s: Str}, {a = \"a\"; s = \"b\"}) in %deepSeq% x x")
-            .unwrap_err();
-        eval_string("let x = Assume({a: Num, s: Str}, {a = 1}) in %deepSeq% x x").unwrap_err();
-        eval_string("let x = Assume({a: Num, s: Str}, {s = \"a\"}) in %deepSeq% x x").unwrap_err();
-        eval_string(
-            "let x = Assume({a: Num, s: Str}, {a = 1; s = \"a\"; extra = 1}) in %deepSeq% x x",
-        )
-        .unwrap_err();
-
-        eval_string(
-            "let x = Assume({a: Num, s: {foo: Bool} }, {a = 1; s = { foo = 2}}) in %deepSeq% x x",
-        )
-        .unwrap_err();
-        eval_string("let x = Assume({a: Num, s: {foo: Bool} }, {a = 1; s = { foo = true; extra = 1}}) in %deepSeq% x x").unwrap_err();
-        eval_string("let x = Assume({a: Num, s: {foo: Bool} }, {a = 1; s = { }}) in %deepSeq% x x")
-            .unwrap_err();
-    }
-
-    #[test]
-    fn records_contracts_poly() {
-        // TODO: this test should ultimately pass (i.e., the program should be rejected)
-        // but this is not yet the case.
-        // eval_string(&format!("{} {{foo = 2}}", extd)).unwrap_err();
-
-        let remv = "let f = Assume(forall a. {foo: Num | a} -> { | a}, fun x => x-$\"foo\") in f";
-        eval_string(&format!("{} {{}}", remv)).unwrap_err();
-
-        let bad_cst = "let f = Assume(forall a. { | a} -> { | a}, fun x => {a=1}) in f";
-        let bad_acc = "let f = Assume(forall a. { | a} -> { | a}, fun x => seq (x.a) x) in f";
-        let bad_extd =
-            "let f = Assume(forall a. { | a} -> {foo: Num | a}, fun x => x-$\"foo\" in f";
-        let bad_rmv =
-            "let f = Assume(forall a. {foo: Num | a} -> { | a}, fun x => x$[\"foo\"=1]) in f";
-
-        eval_string(&format!("{} {{}}", bad_cst)).unwrap_err();
-        eval_string(&format!("{} {{a=1}}", bad_acc)).unwrap_err();
-        eval_string(&format!("{} {{foo=1}}", bad_extd)).unwrap_err();
-        eval_string(&format!("{} {{}}", bad_rmv)).unwrap_err();
-        eval_string(
-            "
-            let f = Assume(
-                forall a. ((forall b. ({a: Num, b: Num |b} })
-                    -> ({ a: Num | b}))
-                    -> {a: Num | a}
-                    -> { | a}),
-                fun f rec => (f rec) -$ \"a\" -$ \"b\") in
-            f (fun x => x) {a = 1; b = bool; c = 3}",
-        )
-        .unwrap_err();
-    }
-
-    #[test]
-    fn lists_contracts() {
-        use crate::label::ty_path::Elem;
-
-        assert_matches!(
-            eval_string("%deepSeq% ([1, \"a\"] | List Num) 0"),
-            Err(Error::EvalError(EvalError::BlameError(..)))
-        );
-        assert_matches!(
-            eval_string("1 | List"),
-            Err(Error::EvalError(EvalError::BlameError(..)))
-        );
-        assert_matches!(
-            eval_string("(fun x => x) | List"),
-            Err(Error::EvalError(EvalError::BlameError(..)))
-        );
-
-        let res = eval_string("%deepSeq% ([{a = [1]}] | List {a: List Str}) false");
-        match &res {
-            Err(Error::EvalError(EvalError::BlameError(ref l, _))) => {
-                assert_matches!(l.path.as_slice(), [Elem::List, Elem::Field(id), Elem::List] if &id.to_string() == "a")
-            }
-            err => panic!("expected blame error, got {:?}", err),
-        }
-        // Check that reporting doesn't panic. Provide a dummy file database, as we won't report
-        // the error message but just check that it can be built.
-        let mut files = Files::new();
-        res.unwrap_err().to_diagnostic(&mut files, None);
-
-        let res = eval_string("(%elemAt% (({foo = [(fun x => \"a\")]} | {foo: List (forall a. a -> Num)}).foo) 0) false");
-        match &res {
-            Err(Error::EvalError(EvalError::BlameError(ref l, _))) => {
-                assert_matches!(l.path.as_slice(), [Elem::Field(id), Elem::List, Elem::Codomain] if &id.to_string() == "foo")
-            }
-            err => panic!("expected blame error, got {:?}", err),
-        }
-        res.unwrap_err().to_diagnostic(&mut files, None);
     }
 
     #[test]
