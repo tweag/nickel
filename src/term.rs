@@ -659,6 +659,12 @@ impl RichTerm {
             .apply_to_rich_terms(|rt: &mut Self| rt.clean_pos());
     }
 
+    /// Set the position, and return the updated term.
+    pub fn with_pos(mut self, pos: TermPos) -> Self {
+        self.pos = pos;
+        self
+    }
+
     /// Apply a transformation on a whole term by mapping a function `f` on each node in a
     /// bottom-up manner. `f` may return a generic error `E` and use the state `S` which is
     /// passed around.

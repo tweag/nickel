@@ -21,7 +21,6 @@ use crate::{mk_app, mk_fun};
 use crate::{serialize, serialize::ExportFormat};
 use md5::digest::Digest;
 use simple_counter::*;
-use std::collections::HashMap;
 use std::iter::Extend;
 
 generate_counter!(FreshVariableCounter, usize);
@@ -117,6 +116,8 @@ fn process_unary_operation(
         body: RichTerm { term: t, pos },
         mut env,
     } = clos;
+    let pos_op_inh = pos_op.into_inherited();
+
     match u_op {
         UnaryOp::Ite() => {
             if let Term::Bool(b) = *t {
@@ -137,47 +138,30 @@ fn process_unary_operation(
                 ))
             }
         }
-        UnaryOp::IsNum() => {
-            if let Term::Num(_) = *t {
-                Ok(Closure::atomic_closure(Term::Bool(true).into()))
-            } else {
-                Ok(Closure::atomic_closure(Term::Bool(false).into()))
-            }
-        }
-        UnaryOp::IsBool() => {
-            if let Term::Bool(_) = *t {
-                Ok(Closure::atomic_closure(Term::Bool(true).into()))
-            } else {
-                Ok(Closure::atomic_closure(Term::Bool(false).into()))
-            }
-        }
-        UnaryOp::IsStr() => {
-            if let Term::Str(_) = *t {
-                Ok(Closure::atomic_closure(Term::Bool(true).into()))
-            } else {
-                Ok(Closure::atomic_closure(Term::Bool(false).into()))
-            }
-        }
-        UnaryOp::IsFun() => {
-            if let Term::Fun(_, _) = *t {
-                Ok(Closure::atomic_closure(Term::Bool(true).into()))
-            } else {
-                Ok(Closure::atomic_closure(Term::Bool(false).into()))
-            }
-        }
-        UnaryOp::IsList() => {
-            if let Term::List(_) = *t {
-                Ok(Closure::atomic_closure(Term::Bool(true).into()))
-            } else {
-                Ok(Closure::atomic_closure(Term::Bool(false).into()))
-            }
-        }
-        UnaryOp::IsRecord() => match *t {
-            Term::Record(_) | Term::RecRecord(_) => {
-                Ok(Closure::atomic_closure(Term::Bool(true).into()))
-            }
-            _ => Ok(Closure::atomic_closure(Term::Bool(false).into())),
-        },
+        UnaryOp::IsNum() => Ok(Closure::atomic_closure(RichTerm::new(
+            Term::Bool(matches!(*t, Term::Num(..))),
+            pos_op_inh,
+        ))),
+        UnaryOp::IsBool() => Ok(Closure::atomic_closure(RichTerm::new(
+            Term::Bool(matches!(*t, Term::Bool(..))),
+            pos_op_inh,
+        ))),
+        UnaryOp::IsStr() => Ok(Closure::atomic_closure(RichTerm::new(
+            Term::Bool(matches!(*t, Term::Str(..))),
+            pos_op_inh,
+        ))),
+        UnaryOp::IsFun() => Ok(Closure::atomic_closure(RichTerm::new(
+            Term::Bool(matches!(*t, Term::Fun(..))),
+            pos_op_inh,
+        ))),
+        UnaryOp::IsList() => Ok(Closure::atomic_closure(RichTerm::new(
+            Term::Bool(matches!(*t, Term::List(..))),
+            pos_op_inh,
+        ))),
+        UnaryOp::IsRecord() => Ok(Closure::atomic_closure(RichTerm::new(
+            Term::Bool(matches!(*t, Term::Record(..) | Term::RecRecord(..))),
+            pos_op_inh,
+        ))),
         UnaryOp::BoolAnd() =>
         // The syntax should not allow partially applied boolean operators.
         {
@@ -189,7 +173,9 @@ fn process_unary_operation(
                     // efficient, but can make debugging harder. In any case, it should be solved
                     // only once primary operators have better support for laziness in some
                     // arguments.
-                    b @ Term::Bool(false) => Ok(Closure::atomic_closure(b.into())),
+                    b @ Term::Bool(false) => {
+                        Ok(Closure::atomic_closure(RichTerm::new(b, pos_op_inh)))
+                    }
                     _ => Err(EvalError::TypeError(
                         String::from("Bool"),
                         String::from("&&"),
@@ -204,7 +190,9 @@ fn process_unary_operation(
         UnaryOp::BoolOr() => {
             if let Some((next, _)) = stack.pop_arg() {
                 match *t {
-                    b @ Term::Bool(true) => Ok(Closure::atomic_closure(b.into())),
+                    b @ Term::Bool(true) => {
+                        Ok(Closure::atomic_closure(RichTerm::new(b, pos_op_inh)))
+                    }
                     // FIXME: this does not check that the second argument is actually a boolean.
                     // This means `false || 2` silently evaluates to `2`. This is simpler and more
                     // efficient, but can make debugging harder. In any case, it should be solved
@@ -224,7 +212,10 @@ fn process_unary_operation(
         }
         UnaryOp::BoolNot() => {
             if let Term::Bool(b) = *t {
-                Ok(Closure::atomic_closure(Term::Bool(!b).into()))
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Bool(!b),
+                    pos_op_inh,
+                )))
             } else {
                 Err(EvalError::TypeError(
                     String::from("Bool"),
@@ -248,7 +239,7 @@ fn process_unary_operation(
         }
         UnaryOp::Embed(_id) => {
             if let en @ Term::Enum(_) = *t {
-                Ok(Closure::atomic_closure(en.into()))
+                Ok(Closure::atomic_closure(RichTerm::new(en, pos_op_inh)))
             } else {
                 Err(EvalError::TypeError(
                     String::from("Enum"),
@@ -317,7 +308,10 @@ fn process_unary_operation(
         UnaryOp::ChangePolarity() => {
             if let Term::Lbl(mut l) = *t {
                 l.polarity = !l.polarity;
-                Ok(Closure::atomic_closure(Term::Lbl(l).into()))
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Lbl(l),
+                    pos_op_inh,
+                )))
             } else {
                 Err(EvalError::TypeError(
                     String::from("Label"),
@@ -329,7 +323,10 @@ fn process_unary_operation(
         }
         UnaryOp::Pol() => {
             if let Term::Lbl(l) = *t {
-                Ok(Closure::atomic_closure(Term::Bool(l.polarity).into()))
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Bool(l.polarity),
+                    pos_op_inh,
+                )))
             } else {
                 Err(EvalError::TypeError(
                     String::from("Label"),
@@ -342,7 +339,10 @@ fn process_unary_operation(
         UnaryOp::GoDom() => {
             if let Term::Lbl(mut l) = *t {
                 l.path.push(ty_path::Elem::Domain);
-                Ok(Closure::atomic_closure(Term::Lbl(l).into()))
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Lbl(l),
+                    pos_op_inh,
+                )))
             } else {
                 Err(EvalError::TypeError(
                     String::from("Label"),
@@ -355,7 +355,10 @@ fn process_unary_operation(
         UnaryOp::GoCodom() => {
             if let Term::Lbl(mut l) = *t {
                 l.path.push(ty_path::Elem::Codomain);
-                Ok(Closure::atomic_closure(Term::Lbl(l).into()))
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Lbl(l),
+                    pos_op_inh,
+                )))
             } else {
                 Err(EvalError::TypeError(
                     String::from("Label"),
@@ -368,7 +371,10 @@ fn process_unary_operation(
         UnaryOp::GoList() => {
             if let Term::Lbl(mut l) = *t {
                 l.path.push(ty_path::Elem::List);
-                Ok(Closure::atomic_closure(Term::Lbl(l).into()))
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Lbl(l),
+                    pos_op_inh,
+                )))
             } else {
                 Err(EvalError::TypeError(
                     String::from("Label"),
@@ -380,10 +386,9 @@ fn process_unary_operation(
         }
         UnaryOp::Wrap() => {
             if let Term::Sym(s) = *t {
-                Ok(Closure::atomic_closure(mk_fun!(
-                    "x",
-                    Term::Wrapped(s, mk_term::var("x"))
-                )))
+                Ok(Closure::atomic_closure(
+                    mk_fun!("x", Term::Wrapped(s, mk_term::var("x"))).with_pos(pos_op_inh),
+                ))
             } else {
                 Err(EvalError::TypeError(
                     String::from("Sym"),
@@ -422,7 +427,10 @@ fn process_unary_operation(
                 let mut fields: Vec<String> = map.keys().map(|Ident(id)| id.clone()).collect();
                 fields.sort();
                 let terms = fields.into_iter().map(mk_term::string).collect();
-                Ok(Closure::atomic_closure(Term::List(terms).into()))
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::List(terms),
+                    pos_op_inh,
+                )))
             } else {
                 Err(EvalError::TypeError(
                     String::from("Record"),
@@ -447,13 +455,13 @@ fn process_unary_operation(
                 let ts = ts
                     .into_iter()
                     .map(|t| {
-                        RichTerm::from(Term::App(f_as_var.clone(), t))
+                        RichTerm::new(Term::App(f_as_var.clone(), t), pos_op_inh)
                             .closurize(&mut shared_env, env.clone())
                     })
                     .collect();
 
                 Ok(Closure {
-                    body: Term::List(ts).into(),
+                    body: RichTerm::new(Term::List(ts), pos_op_inh),
                     env: shared_env,
                 })
             } else {
@@ -479,16 +487,18 @@ fn process_unary_operation(
                     .into_iter()
                     .map(|e| {
                         let (Ident(s), t) = e;
+                        let pos = t.pos.into_inherited();
                         (
                             Ident(s.clone()),
                             mk_app!(f_as_var.clone(), mk_term::string(s), t)
-                                .closurize(&mut shared_env, env.clone()),
+                                .closurize(&mut shared_env, env.clone())
+                                .with_pos(pos),
                         )
                     })
                     .collect();
 
                 Ok(Closure {
-                    body: Term::Record(rec).into(),
+                    body: RichTerm::new(Term::Record(rec), pos_op_inh),
                     env: shared_env,
                 })
             } else {
@@ -513,16 +523,21 @@ fn process_unary_operation(
             /// evaluation of the argument on the top of the stack.
             ///
             /// Requires its first argument to be non-empty.
-            fn seq_terms<I>(mut terms: I, env: Environment) -> Result<Closure, EvalError>
+            fn seq_terms<I>(
+                mut terms: I,
+                env: Environment,
+                pos_op_inh: TermPos,
+            ) -> Result<Closure, EvalError>
             where
                 I: Iterator<Item = RichTerm>,
             {
                 let first = terms
                     .next()
                     .expect("expected the argument to be a non-empty iterator");
-                let body = terms.fold(mk_term::op1(UnaryOp::DeepSeq(), first), |acc, t| {
-                    mk_app!(mk_term::op1(UnaryOp::DeepSeq(), t), acc)
-                });
+                let body = terms.fold(
+                    mk_term::op1(UnaryOp::DeepSeq(), first).with_pos(pos_op_inh),
+                    |acc, t| mk_app!(mk_term::op1(UnaryOp::DeepSeq(), t), acc).with_pos(pos_op_inh),
+                );
 
                 Ok(Closure { body, env })
             };
@@ -530,9 +545,9 @@ fn process_unary_operation(
             match *t {
                 Term::Record(map) if !map.is_empty() => {
                     let terms = map.into_iter().map(|(_, t)| t);
-                    seq_terms(terms, env)
+                    seq_terms(terms, env, pos_op)
                 }
-                Term::List(ts) if !ts.is_empty() => seq_terms(ts.into_iter(), env),
+                Term::List(ts) if !ts.is_empty() => seq_terms(ts.into_iter(), env, pos_op),
                 _ => {
                     if stack.count_args() >= 1 {
                         let (next, _) = stack.pop_arg().expect("Condition already checked.");
@@ -565,7 +580,7 @@ fn process_unary_operation(
                 let mut ts_it = ts.into_iter();
                 if ts_it.next().is_some() {
                     Ok(Closure {
-                        body: Term::List(ts_it.collect()).into(),
+                        body: RichTerm::new(Term::List(ts_it.collect()), pos_op_inh),
                         env,
                     })
                 } else {
@@ -584,8 +599,8 @@ fn process_unary_operation(
             if let Term::List(ts) = *t {
                 // A num does not have any free variable so we can drop the environment
                 Ok(Closure {
-                    body: Term::Num(ts.len() as f64).into(),
-                    env: HashMap::new(),
+                    body: RichTerm::new(Term::Num(ts.len() as f64), pos_op_inh),
+                    env: Environment::new(),
                 })
             } else {
                 Err(EvalError::TypeError(
@@ -623,20 +638,14 @@ fn process_unary_operation(
                     stack.push_str_acc(acc, indent, env_chunks.clone());
 
                     Ok(Closure {
-                        body: RichTerm {
-                            term: Box::new(Term::Op1(UnaryOp::ChunksConcat(), e)),
-                            pos: pos_op,
-                        },
+                        body: RichTerm::new(Term::Op1(UnaryOp::ChunksConcat(), e), pos_op_inh),
                         env: env_chunks,
                     })
                 } else {
-                    Ok(Closure {
-                        body: RichTerm {
-                            term: Box::new(Term::Str(acc)),
-                            pos: pos_op,
-                        },
-                        env: Environment::new(),
-                    })
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Str(acc),
+                        pos_op_inh,
+                    )))
                 }
             } else {
                 // Since the error halts the evaluation, we don't bother cleaning the stack of the
@@ -679,12 +688,16 @@ fn process_binary_operation(
         },
         env: mut env2,
     } = clos;
+    let pos_op_inh = pos_op.into_inherited();
 
     match b_op {
         BinaryOp::Plus() => {
             if let Term::Num(n1) = *t1 {
                 if let Term::Num(n2) = *t2 {
-                    Ok(Closure::atomic_closure(Term::Num(n1 + n2).into()))
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Num(n1 + n2),
+                        pos_op_inh,
+                    )))
                 } else {
                     Err(EvalError::TypeError(
                         String::from("Num"),
@@ -711,7 +724,10 @@ fn process_binary_operation(
         BinaryOp::Sub() => {
             if let Term::Num(n1) = *t1 {
                 if let Term::Num(n2) = *t2 {
-                    Ok(Closure::atomic_closure(Term::Num(n1 - n2).into()))
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Num(n1 - n2),
+                        pos_op_inh,
+                    )))
                 } else {
                     Err(EvalError::TypeError(
                         String::from("Num"),
@@ -738,7 +754,10 @@ fn process_binary_operation(
         BinaryOp::Mult() => {
             if let Term::Num(n1) = *t1 {
                 if let Term::Num(n2) = *t2 {
-                    Ok(Closure::atomic_closure(Term::Num(n1 * n2).into()))
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Num(n1 * n2),
+                        pos_op_inh,
+                    )))
                 } else {
                     Err(EvalError::TypeError(
                         String::from("Num"),
@@ -768,7 +787,10 @@ fn process_binary_operation(
                     if n2 == 0.0 {
                         Err(EvalError::Other(String::from("division by zero"), pos_op))
                     } else {
-                        Ok(Closure::atomic_closure(Term::Num(n1 / n2).into()))
+                        Ok(Closure::atomic_closure(RichTerm::new(
+                            Term::Num(n1 / n2),
+                            pos_op_inh,
+                        )))
                     }
                 } else {
                     Err(EvalError::TypeError(
@@ -796,7 +818,10 @@ fn process_binary_operation(
         BinaryOp::Modulo() => {
             if let Term::Num(n1) = *t1 {
                 if let Term::Num(n2) = *t2 {
-                    Ok(Closure::atomic_closure(Term::Num(n1 % n2).into()))
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Num(n1 % n2),
+                        pos_op_inh,
+                    )))
                 } else {
                     Err(EvalError::TypeError(
                         String::from("Num"),
@@ -823,7 +848,10 @@ fn process_binary_operation(
         BinaryOp::PlusStr() => {
             if let Term::Str(s1) = *t1 {
                 if let Term::Str(s2) = *t2 {
-                    Ok(Closure::atomic_closure(Term::Str(s1 + &s2).into()))
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Str(s1 + &s2),
+                        pos_op_inh,
+                    )))
                 } else {
                     Err(EvalError::TypeError(
                         String::from("Str"),
@@ -880,7 +908,10 @@ fn process_binary_operation(
             if let Term::Str(s) = *t1 {
                 if let Term::Lbl(mut l) = *t2 {
                     l.tag = s;
-                    Ok(Closure::atomic_closure(Term::Lbl(l).into()))
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Lbl(l),
+                        pos_op_inh,
+                    )))
                 } else {
                     Err(EvalError::TypeError(
                         String::from("Label"),
@@ -926,9 +957,15 @@ fn process_binary_operation(
                 EqResult::Bool(b) => match (b, stack.pop_eq()) {
                     (false, _) => {
                         stack.clear_eqs();
-                        Ok(Closure::atomic_closure(Term::Bool(false).into()))
+                        Ok(Closure::atomic_closure(RichTerm::new(
+                            Term::Bool(false),
+                            pos_op_inh,
+                        )))
                     }
-                    (true, None) => Ok(Closure::atomic_closure(Term::Bool(true).into())),
+                    (true, None) => Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Bool(true),
+                        pos_op_inh,
+                    ))),
                     (true, Some((c1, c2))) => {
                         let t1 = c1.body.closurize(&mut env, c1.env);
                         let t2 = c2.body.closurize(&mut env, c2.env);
@@ -952,7 +989,10 @@ fn process_binary_operation(
         BinaryOp::LessThan() => {
             if let Term::Num(n1) = *t1 {
                 if let Term::Num(n2) = *t2 {
-                    Ok(Closure::atomic_closure(Term::Bool(n1 < n2).into()))
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Bool(n1 < n2),
+                        pos_op_inh,
+                    )))
                 } else {
                     Err(EvalError::TypeError(
                         String::from("Num"),
@@ -979,7 +1019,10 @@ fn process_binary_operation(
         BinaryOp::LessOrEq() => {
             if let Term::Num(n1) = *t1 {
                 if let Term::Num(n2) = *t2 {
-                    Ok(Closure::atomic_closure(Term::Bool(n1 <= n2).into()))
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Bool(n1 <= n2),
+                        pos_op_inh,
+                    )))
                 } else {
                     Err(EvalError::TypeError(
                         String::from("Num"),
@@ -1006,7 +1049,10 @@ fn process_binary_operation(
         BinaryOp::GreaterThan() => {
             if let Term::Num(n1) = *t1 {
                 if let Term::Num(n2) = *t2 {
-                    Ok(Closure::atomic_closure(Term::Bool(n1 > n2).into()))
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Bool(n1 > n2),
+                        pos_op_inh,
+                    )))
                 } else {
                     Err(EvalError::TypeError(
                         String::from("Num"),
@@ -1033,7 +1079,10 @@ fn process_binary_operation(
         BinaryOp::GreaterOrEq() => {
             if let Term::Num(n1) = *t1 {
                 if let Term::Num(n2) = *t2 {
-                    Ok(Closure::atomic_closure(Term::Bool(n1 >= n2).into()))
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Bool(n1 >= n2),
+                        pos_op_inh,
+                    )))
                 } else {
                     Err(EvalError::TypeError(
                         String::from("Num"),
@@ -1061,7 +1110,10 @@ fn process_binary_operation(
             if let Term::Str(field) = *t1 {
                 if let Term::Lbl(mut l) = *t2 {
                     l.path.push(ty_path::Elem::Field(Ident(field)));
-                    Ok(Closure::atomic_closure(Term::Lbl(l).into()))
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Lbl(l),
+                        pos_op_inh,
+                    )))
                 } else {
                     Err(EvalError::TypeError(
                         String::from("Label"),
@@ -1175,7 +1227,7 @@ fn process_binary_operation(
                             pos_op,
                         )),
                         Some(_) => Ok(Closure {
-                            body: Term::Record(static_map).into(),
+                            body: RichTerm::new(Term::Record(static_map), pos_op_inh),
                             env: env2,
                         }),
                     }
@@ -1205,9 +1257,10 @@ fn process_binary_operation(
         BinaryOp::HasField() => {
             if let Term::Str(id) = *t1 {
                 if let Term::Record(static_map) = *t2 {
-                    Ok(Closure::atomic_closure(
-                        Term::Bool(static_map.contains_key(&Ident(id))).into(),
-                    ))
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Bool(static_map.contains_key(&Ident(id))),
+                        pos_op_inh,
+                    )))
                 } else {
                     Err(EvalError::TypeError(
                         String::from("Record"),
@@ -1241,7 +1294,7 @@ fn process_binary_operation(
                 ts.extend(ts2.into_iter().map(|t| t.closurize(&mut env, env2.clone())));
 
                 Ok(Closure {
-                    body: Term::List(ts).into(),
+                    body: RichTerm::new(Term::List(ts), pos_op_inh),
                     env,
                 })
             }
@@ -1349,7 +1402,10 @@ fn process_binary_operation(
                         _ => return mk_err_fst(t1),
                     };
 
-                    Ok(Closure::atomic_closure(Term::Str(result).into()))
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Str(result),
+                        pos_op_inh,
+                    )))
                 } else {
                     Err(EvalError::TypeError(
                         String::from("Str"),
@@ -1410,7 +1466,10 @@ fn process_binary_operation(
                     _ => return mk_err_fst(t1),
                 };
 
-                Ok(Closure::atomic_closure(Term::Str(result).into()))
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Str(result),
+                    pos_op_inh,
+                )))
             } else {
                 mk_err_fst(t1)
             }
@@ -1455,7 +1514,7 @@ fn process_binary_operation(
                         _ => return mk_err_fst(t1),
                     };
 
-                    Ok(Closure::atomic_closure(rt))
+                    Ok(Closure::atomic_closure(rt.with_pos(pos_op_inh)))
                 } else {
                     Err(EvalError::TypeError(
                         String::from("Str"),
@@ -1564,10 +1623,6 @@ mod tests {
     use super::*;
     use crate::eval::{CallStack, Environment};
 
-    fn some_env() -> Environment {
-        HashMap::new()
-    }
-
     #[test]
     fn ite_operation() {
         let cont = OperationCont::Op1(UnaryOp::Ite(), TermPos::None, true);
@@ -1583,7 +1638,7 @@ mod tests {
 
         let mut clos = Closure {
             body: Term::Bool(true).into(),
-            env: some_env(),
+            env: Environment::new(),
         };
 
         stack.push_op_cont(cont, 0, TermPos::None);
@@ -1596,7 +1651,7 @@ mod tests {
             clos,
             Closure {
                 body: Term::Num(46.0).into(),
-                env: some_env()
+                env: Environment::new()
             }
         );
         assert_eq!(0, stack.count_args());
@@ -1608,7 +1663,7 @@ mod tests {
             BinaryOp::Plus(),
             Closure {
                 body: Term::Num(6.0).into(),
-                env: some_env(),
+                env: Environment::new(),
             },
             TermPos::None,
             true,
@@ -1616,7 +1671,7 @@ mod tests {
 
         let mut clos = Closure {
             body: Term::Num(7.0).into(),
-            env: some_env(),
+            env: Environment::new(),
         };
         let mut stack = Stack::new();
         stack.push_op_cont(cont, 0, TermPos::None);
@@ -1629,7 +1684,7 @@ mod tests {
             clos,
             Closure {
                 body: Term::Num(6.0).into(),
-                env: some_env()
+                env: Environment::new()
             }
         );
 
@@ -1640,7 +1695,7 @@ mod tests {
                     BinaryOp::Plus(),
                     Closure {
                         body: Term::Num(7.0).into(),
-                        env: some_env(),
+                        env: Environment::new(),
                     },
                     TermPos::None,
                     TermPos::None,
@@ -1659,7 +1714,7 @@ mod tests {
             BinaryOp::Plus(),
             Closure {
                 body: Term::Num(7.0).into(),
-                env: some_env(),
+                env: Environment::new(),
             },
             TermPos::None,
             TermPos::None,
@@ -1667,7 +1722,7 @@ mod tests {
         );
         let mut clos = Closure {
             body: Term::Num(6.0).into(),
-            env: some_env(),
+            env: Environment::new(),
         };
         let mut stack = Stack::new();
         stack.push_op_cont(cont, 0, TermPos::None);
@@ -1680,7 +1735,7 @@ mod tests {
             clos,
             Closure {
                 body: Term::Num(13.0).into(),
-                env: some_env()
+                env: Environment::new()
             }
         );
     }

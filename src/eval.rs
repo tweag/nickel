@@ -574,14 +574,15 @@ where
                 }
             },
             Term::Promise(ty, l, t) | Term::Assume(ty, l, t) => {
+                let pos = pos.into_inherited();
                 stack.push_arg(
                     Closure {
                         body: t,
                         env: env.clone(),
                     },
-                    TermPos::None,
+                    pos,
                 );
-                stack.push_arg(Closure::atomic_closure(Term::Lbl(l).into()), TermPos::None);
+                stack.push_arg(Closure::atomic_closure(Term::Lbl(l).into()), pos);
                 Closure {
                     body: ty.contract(),
                     env,
