@@ -156,6 +156,11 @@ let typecheck = [
   let x = "a#{"some str inside"}" in (x ++ "a" : Str),
   let x = false in (x || true : Bool),
   let x = false in let y = x in let z = y in (z : Bool),
+  // Regression test following, see [#297](https://github.com/tweag/nickel/pull/297). Check that
+  // [apparent_type](../fn.apparent_type.html) doesn't silently convert list literals from `List
+  // T` (for `T` a type or a type variable) to `List Dyn`.
+  {foo = [1]} : {foo : List Num},
+  (let y = [] in y) : forall a. List a,
 ] in
 
 

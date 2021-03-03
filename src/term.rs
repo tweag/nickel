@@ -1047,7 +1047,6 @@ pub mod make {
         mk_fun!("x", var("x"))
     }
 
-    #[cfg(test)]
     pub fn import<S>(path: S) -> RichTerm
     where
         S: Into<OsString>,
