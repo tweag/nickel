@@ -682,10 +682,9 @@ fn type_check_(
         }) => {
             let tyw2 = to_typewrapper(ty2.clone());
 
-            let instantiated = instantiate_foralls(state, tyw2, ForallInst::Constant);
+            let instantiated = instantiate_foralls(state, tyw2.clone(), ForallInst::Constant);
 
-            unify(state, strict, ty, to_typewrapper(ty2.clone()))
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+            unify(state, strict, ty, tyw2).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
             type_check_(state, envs, true, t, instantiated)
         }
         // A metavalue with at least one contract is an assume. If there's several

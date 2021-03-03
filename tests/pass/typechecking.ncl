@@ -161,6 +161,9 @@ let typecheck = [
   // T` (for `T` a type or a type variable) to `List Dyn`.
   {foo = [1]} : {foo : List Num},
   (let y = [] in y) : forall a. List a,
+
+  // full_annotations
+  let x : Num | doc "some" | default = 1 in x + 1 : Num,
 ] in
 
 
