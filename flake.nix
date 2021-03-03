@@ -56,6 +56,11 @@
 
           buildInputs =
             [ rust ] ++ (
+              if system == "x86_64-linux" then
+                [ pkgs.darwin.apple_sdk.frameworks.Security ]
+              else
+                []
+            ) ++ (
               if isShell then
                 [ pkgs.nodePackages.makam ]
               else
