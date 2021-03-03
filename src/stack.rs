@@ -3,7 +3,7 @@
 //! See [eval](../eval/index.html).
 use crate::eval::{Closure, Environment, ThunkUpdateFrame};
 use crate::operation::OperationCont;
-use crate::position::RawSpan;
+use crate::position::TermPos;
 use crate::term::{RichTerm, StrChunk};
 
 /// An element of the stack.
@@ -18,14 +18,14 @@ pub enum Marker {
     /// some point, all the consecutive `Eq` elements at the top of the stack are discarded.
     Eq(Closure, Closure),
     /// An argument of an application.
-    Arg(Closure, Option<RawSpan>),
+    Arg(Closure, TermPos),
     /// A thunk, which is pointer to a mutable memory cell to be updated.
     Thunk(ThunkUpdateFrame),
     /// The continuation of a primitive operation.
     Cont(
         OperationCont,
-        usize,           /*callStack size*/
-        Option<RawSpan>, /*position span of the operation*/
+        usize,   /*callStack size*/
+        TermPos, /*position span of the operation*/
     ),
     /// A string chunk.
     ///
@@ -108,7 +108,7 @@ impl Stack {
         Stack::count(self, Marker::is_arg)
     }
 
-    pub fn push_arg(&mut self, arg: Closure, pos: Option<RawSpan>) {
+    pub fn push_arg(&mut self, arg: Closure, pos: TermPos) {
         self.0.push(Marker::Arg(arg, pos))
     }
 
@@ -116,7 +116,7 @@ impl Stack {
         self.0.push(Marker::Thunk(thunk))
     }
 
-    pub fn push_op_cont(&mut self, cont: OperationCont, len: usize, pos: Option<RawSpan>) {
+    pub fn push_op_cont(&mut self, cont: OperationCont, len: usize, pos: TermPos) {
         self.0.push(Marker::Cont(cont, len, pos))
     }
 
@@ -143,7 +143,7 @@ impl Stack {
 
     /// Try to pop an argument from the top of the stack. If `None` is returned, the top element
     /// was not an argument and the stack is left unchanged.
-    pub fn pop_arg(&mut self) -> Option<(Closure, Option<RawSpan>)> {
+    pub fn pop_arg(&mut self) -> Option<(Closure, TermPos)> {
         match self.0.pop() {
             Some(Marker::Arg(arg, pos)) => Some((arg, pos)),
             Some(m) => {
@@ -169,7 +169,7 @@ impl Stack {
 
     /// Try to pop an operator continuation from the top of the stack. If `None` is returned, the
     /// top element was not an operator continuation and the stack is left unchanged.
-    pub fn pop_op_cont(&mut self) -> Option<(OperationCont, usize, Option<RawSpan>)> {
+    pub fn pop_op_cont(&mut self) -> Option<(OperationCont, usize, TermPos)> {
         match self.0.pop() {
             Some(Marker::Cont(cont, len, pos)) => Some((cont, len, pos)),
             Some(m) => {
@@ -260,11 +260,11 @@ mod tests {
     }
 
     fn some_cont() -> OperationCont {
-        OperationCont::Op1(UnaryOp::IsNum(), None, true)
+        OperationCont::Op1(UnaryOp::IsNum(), TermPos::None, true)
     }
 
     fn some_arg_marker() -> Marker {
-        Marker::Arg(some_closure(), None)
+        Marker::Arg(some_closure(), TermPos::None)
     }
 
     fn some_thunk_marker() -> Marker {
@@ -273,7 +273,7 @@ mod tests {
     }
 
     fn some_cont_marker() -> Marker {
-        Marker::Cont(some_cont(), 42, None)
+        Marker::Cont(some_cont(), 42, TermPos::None)
     }
 
     #[test]
@@ -288,8 +288,8 @@ mod tests {
         let mut s = Stack::new();
         assert_eq!(0, s.count_args());
 
-        s.push_arg(some_closure(), None);
-        s.push_arg(some_closure(), None);
+        s.push_arg(some_closure(), TermPos::None);
+        s.push_arg(some_closure(), TermPos::None);
         assert_eq!(2, s.count_args());
         assert_eq!(some_closure(), s.pop_arg().expect("Already checked").0);
         assert_eq!(1, s.count_args());
@@ -325,11 +325,11 @@ mod tests {
         let mut s = Stack::new();
         assert_eq!(0, s.count_conts());
 
-        s.push_op_cont(some_cont(), 3, None);
-        s.push_op_cont(some_cont(), 4, None);
+        s.push_op_cont(some_cont(), 3, TermPos::None);
+        s.push_op_cont(some_cont(), 4, TermPos::None);
         assert_eq!(2, s.count_conts());
         assert_eq!(
-            (some_cont(), 4, None),
+            (some_cont(), 4, TermPos::None),
             s.pop_op_cont().expect("Already checked")
         );
         assert_eq!(1, s.count_conts());

@@ -130,7 +130,7 @@ impl REPL for REPLImpl {
             _ => {
                 return Err(Error::EvalError(EvalError::Other(
                     String::from("load: expected a record"),
-                    pos.clone(),
+                    *pos,
                 )))
             }
         };

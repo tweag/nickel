@@ -18,7 +18,7 @@
 //! modular definitions of contracts, record and metadata all together.
 use crate::identifier::Ident;
 use crate::label::Label;
-use crate::position::RawSpan;
+use crate::position::TermPos;
 use crate::types::{AbsType, Types};
 use codespan::FileId;
 use serde::{Deserialize, Serialize};
@@ -637,12 +637,12 @@ impl BinaryOp {
 #[derive(Debug, PartialEq, Clone)]
 pub struct RichTerm {
     pub term: Box<Term>,
-    pub pos: Option<RawSpan>,
+    pub pos: TermPos,
 }
 
 impl RichTerm {
     /// Create a new value from a term and an optional position.
-    pub fn new(t: Term, pos: Option<RawSpan>) -> Self {
+    pub fn new(t: Term, pos: TermPos) -> Self {
         RichTerm {
             term: Box::new(t),
             pos,
@@ -654,7 +654,7 @@ impl RichTerm {
     /// It allows to use rust `Eq` trait to compare the values of the underlying terms.
     #[cfg(test)]
     pub fn clean_pos(&mut self) {
-        self.pos = None;
+        self.pos = TermPos::None;
         self.term
             .apply_to_rich_terms(|rt: &mut Self| rt.clean_pos());
     }
@@ -906,7 +906,7 @@ impl From<Term> for RichTerm {
     fn from(t: Term) -> Self {
         RichTerm {
             term: Box::new(t),
-            pos: None,
+            pos: TermPos::None,
         }
     }
 }

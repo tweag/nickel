@@ -54,7 +54,7 @@
 use crate::error::EvalError;
 use crate::eval::{Closure, Environment};
 use crate::label::Label;
-use crate::position::RawSpan;
+use crate::position::TermPos;
 use crate::term::make as mk_term;
 use crate::term::{BinaryOp, MetaValue, RichTerm, Term};
 use crate::transformations::Closurizable;
@@ -68,18 +68,18 @@ pub fn merge(
     env1: Environment,
     t2: RichTerm,
     env2: Environment,
-    pos_op: Option<RawSpan>,
+    pos_op: TermPos,
 ) -> Result<Closure, EvalError> {
     // Merging a simple value and a metavalue is equivalent to first wrapping the simple value in a
     // new metavalue (with no attribute set excepted the value), and then merging the two
     let (t1, t2) = match (t1.term.is_enriched(), t2.term.is_enriched()) {
         (true, false) => {
-            let pos = t2.pos.clone();
+            let pos = t2.pos;
             let t = Term::MetaValue(MetaValue::from(t2));
             (t1, RichTerm::new(t, pos))
         }
         (false, true) => {
-            let pos = t1.pos.clone();
+            let pos = t1.pos;
             let t = Term::MetaValue(MetaValue::from(t1));
             (RichTerm::new(t, pos), t2)
         }

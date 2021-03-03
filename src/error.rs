@@ -7,7 +7,7 @@ use crate::identifier::Ident;
 use crate::label::ty_path;
 use crate::parser::lexer::LexicalError;
 use crate::parser::utils::mk_span;
-use crate::position::RawSpan;
+use crate::position::{RawSpan, TermPos};
 use crate::serialize::ExportFormat;
 use crate::term::RichTerm;
 use crate::types::Types;
@@ -37,14 +37,14 @@ pub enum EvalError {
     TypeError(
         /* expected type */ String,
         /* operation */ String,
-        /* position of the original unevaluated expression */ Option<RawSpan>,
+        /* position of the original unevaluated expression */ TermPos,
         /* evaluated expression */ RichTerm,
     ),
     /// A term which is not a function has been applied to an argument.
     NotAFunc(
         /* term */ RichTerm,
         /* arg */ RichTerm,
-        /* app position */ Option<RawSpan>,
+        /* app position */ TermPos,
     ),
     /// A field access, or another record operation requiring the existence of a specific field,
     /// has been performed on a record missing that field.
@@ -52,44 +52,44 @@ pub enum EvalError {
         /* field identifier */ String,
         /* operator */ String,
         RichTerm,
-        Option<RawSpan>,
+        TermPos,
     ),
     /// Too few arguments were provided to a builtin function.
     NotEnoughArgs(
         /* required arg count */ usize,
         /* primitive */ String,
-        Option<RawSpan>,
+        TermPos,
     ),
     /// Attempted to merge incompatible values: for example, tried to merge two distinct default
     /// values into one record field.
     MergeIncompatibleArgs(
         /* left operand */ RichTerm,
         /* right operand */ RichTerm,
-        /* original merge */ Option<RawSpan>,
+        /* original merge */ TermPos,
     ),
     /// An unbound identifier was referenced.
-    UnboundIdentifier(Ident, Option<RawSpan>),
+    UnboundIdentifier(Ident, TermPos),
     /// A thunk was entered during its own update.
-    InfiniteRecursion(CallStack, Option<RawSpan>),
+    InfiniteRecursion(CallStack, TermPos),
     /// A serialization error occurred during a call to the builtin `serialize`.
     SerializationError(SerializationError),
     /// A parse error occurred during a call to the builtin `deserialize`.
     DeserializationError(
-        String,          /* format */
-        String,          /* error message */
-        Option<RawSpan>, /* position of the call to deserialize */
+        String,  /* format */
+        String,  /* error message */
+        TermPos, /* position of the call to deserialize */
     ),
     /// An unexpected internal error.
-    InternalError(String, Option<RawSpan>),
+    InternalError(String, TermPos),
     /// Errors occurring rarely enough to not deserve a dedicated variant.
-    Other(String, Option<RawSpan>),
+    Other(String, TermPos),
 }
 
 /// An error occurring during the static typechecking phase.
 #[derive(Debug, PartialEq, Clone)]
 pub enum TypecheckError {
     /// An unbound identifier was referenced.
-    UnboundIdentifier(Ident, Option<RawSpan>),
+    UnboundIdentifier(Ident, TermPos),
     /// An ill-formed type, such as a non-row type appearing in a row.
     IllformedType(Types),
     /// A specific row was expected to be in the type of an expression, but was not.
@@ -97,43 +97,43 @@ pub enum TypecheckError {
         Ident,
         /* the expected type */ Types,
         /* the inferred/annotated type */ Types,
-        Option<RawSpan>,
+        TermPos,
     ),
     /// A dynamic tail was expected to be in the type of an expression, but was not.
     MissingDynTail(
         /* the expected type */ Types,
         /* the inferred/annotated type */ Types,
-        Option<RawSpan>,
+        TermPos,
     ),
     /// A specific row was not expected to be in the type of an expression.
     ExtraRow(
         Ident,
         /* the expected type */ Types,
         /* the inferred/annotated type */ Types,
-        Option<RawSpan>,
+        TermPos,
     ),
     /// A additional dynamic tail was not expected to be in the type of an expression.
     ExtraDynTail(
         /* the expected type */ Types,
         /* the inferred/annotated type */ Types,
-        Option<RawSpan>,
+        TermPos,
     ),
 
     /// An unbound type variable was referenced.
-    UnboundTypeVariable(Ident, Option<RawSpan>),
+    UnboundTypeVariable(Ident, TermPos),
     /// The actual (inferred or annotated) type of an expression is incompatible with its expected
     /// type.
     TypeMismatch(
         /* the expected type */ Types,
         /* the actual type */ Types,
-        Option<RawSpan>,
+        TermPos,
     ),
     /// Two incompatible kind (enum vs record) have been deduced for the same identifier of a row type.
     RowKindMismatch(
         Ident,
         /* the expected type */ Option<Types>,
         /* the actual type */ Option<Types>,
-        Option<RawSpan>,
+        TermPos,
     ),
     /// Two incompatible types have been deduced for the same identifier in a row type.
     RowMismatch(
@@ -141,7 +141,7 @@ pub enum TypecheckError {
         /* the expected row type (whole) */ Types,
         /* the actual row type (whole) */ Types,
         /* error at the given row */ Box<TypecheckError>,
-        Option<RawSpan>,
+        TermPos,
     ),
     /// Two incompatible types have been deduced for the same identifier of a row type.
     ///
@@ -161,7 +161,7 @@ pub enum TypecheckError {
         /* the second type assignment which violates the constraint */ Option<Types>,
         /* the expected type of the subexpression */ Types,
         /* the actual type of the subexpression */ Types,
-        Option<RawSpan>,
+        TermPos,
     ),
     /// Type mismatch on a subtype of an an arrow type.
     ///
@@ -183,7 +183,7 @@ pub enum TypecheckError {
         /* the actual arrow type */ Types,
         /* the path to the incompatible subtypes */ ty_path::Path,
         /* the error on the subtype unification */ Box<TypecheckError>,
-        Option<RawSpan>,
+        TermPos,
     ),
 }
 
@@ -221,12 +221,12 @@ pub enum ImportError {
     IOError(
         /* imported file */ String,
         /* error message */ String,
-        /* import position */ Option<RawSpan>,
+        /* import position */ TermPos,
     ),
     /// A parse error occurred during an import.
     ParseError(
         /* error */ ParseError,
-        /* import position */ Option<RawSpan>,
+        /* import position */ TermPos,
     ),
 }
 
@@ -509,7 +509,7 @@ fn secondary(span: &RawSpan) -> Label<FileId> {
 ///    snippets. This adds some boilerplate, that we wanted to avoid, but this stays on the
 ///    reasonable side of being an alternative.
 fn label_alt(
-    span_opt: &Option<RawSpan>,
+    span_opt: Option<RawSpan>,
     alt_term: String,
     style: LabelStyle,
     files: &mut Files<String>,
@@ -536,7 +536,7 @@ fn label_alt(
 ///
 /// See [`label_alt`](fn.label_alt.html).
 fn primary_alt(
-    span_opt: &Option<RawSpan>,
+    span_opt: Option<RawSpan>,
     alt_term: String,
     files: &mut Files<String>,
 ) -> Label<FileId> {
@@ -548,19 +548,15 @@ fn primary_alt(
 ///
 /// See [`label_alt`](fn.label_alt.html).
 fn primary_term(term: &RichTerm, files: &mut Files<String>) -> Label<FileId> {
-    primary_alt(&term.pos, term.as_ref().shallow_repr(), files)
+    primary_alt(term.pos.into_opt(), term.as_ref().shallow_repr(), files)
 }
 
 /// Create a secondary label from an optional span, or fallback to annotating the alternative snippet
 /// `alt_term` if the span is `None`.
 ///
 /// See [`label_alt`](fn.label_alt.html).
-fn secondary_alt(
-    span_opt: &Option<RawSpan>,
-    alt_term: String,
-    files: &mut Files<String>,
-) -> Label<FileId> {
-    label_alt(span_opt, alt_term, LabelStyle::Secondary, files)
+fn secondary_alt(span_opt: TermPos, alt_term: String, files: &mut Files<String>) -> Label<FileId> {
+    label_alt(span_opt.into_opt(), alt_term, LabelStyle::Secondary, files)
 }
 
 /// Create a secondary label from a term, or fallback to annotating the shallow representation of this term
@@ -568,7 +564,7 @@ fn secondary_alt(
 ///
 /// See [`label_alt`](fn.label_alt.html).
 fn secondary_term(term: &RichTerm, files: &mut Files<String>) -> Label<FileId> {
-    secondary_alt(&term.pos, term.as_ref().shallow_repr(), files)
+    secondary_alt(term.pos, term.as_ref().shallow_repr(), files)
 }
 
 /// Generate a codespan label that describes the [type path](../label/enum.TyPath.html) of a
@@ -717,15 +713,20 @@ pub fn process_callstack(cs: &CallStack, contract_id: FileId) -> Vec<(Option<Ide
     // Create a call element from a callstack element.
     fn from_elem(elem: &StackElem) -> (Option<Ident>, RawSpan) {
         match elem {
-            StackElem::Var(_, id, Some(pos)) => (Some(id.clone()), pos.clone()),
-            StackElem::App(Some(pos)) => (None, pos.clone()),
+            StackElem::Var(_, id, TermPos::Original(pos))
+            | StackElem::Var(_, id, TermPos::Inherited(pos)) => (Some(id.clone()), *pos),
+            StackElem::App(TermPos::Original(pos)) | StackElem::App(TermPos::Inherited(pos)) => {
+                (None, *pos)
+            }
             _ => panic!(),
         }
     }
 
     let it = cs.iter().filter(|elem| match elem {
-        StackElem::Var(_, _, Some(RawSpan { src_id, .. }))
-        | StackElem::App(Some(RawSpan { src_id, .. }))
+        StackElem::Var(_, _, TermPos::Original(RawSpan { src_id, .. }))
+        | StackElem::Var(_, _, TermPos::Inherited(RawSpan { src_id, .. }))
+        | StackElem::App(TermPos::Original(RawSpan { src_id, .. }))
+        | StackElem::App(TermPos::Inherited(RawSpan { src_id, .. }))
             if *src_id != contract_id =>
         {
             true
@@ -754,39 +755,45 @@ pub fn process_callstack(cs: &CallStack, contract_id: FileId) -> Vec<(Option<Ide
             // If a `Var` is immediately followed by another `Var`, it does not correspond to a
             // call: we just drop `pending` and replace it with a fresh call element. This
             // corresponds to the case 1 mentioned in the description of this function.
-            (StackElem::Var(_, _, _), Some(StackElem::Var(_, id, Some(pos)))) => {
-                pending = (Some(id.clone()), pos.clone())
+            (StackElem::Var(_, _, _), Some(StackElem::Var(_, id, TermPos::Original(pos))))
+            | (StackElem::Var(_, _, _), Some(StackElem::Var(_, id, TermPos::Inherited(pos)))) => {
+                pending = (Some(id.clone()), *pos)
             }
             // If an `App` is followed by a `Var`, then `Var` necessarily belongs to a different
             // call (or to no call at all): we push the pending call and replace it with a fresh
             // call element.
-            (StackElem::App(Some(_)), Some(StackElem::Var(_, id, Some(pos)))) => {
-                let old = std::mem::replace(&mut pending, (Some(id.clone()), pos.clone()));
+            (StackElem::App(pos_app), Some(StackElem::Var(_, id, TermPos::Original(pos))))
+            | (StackElem::App(pos_app), Some(StackElem::Var(_, id, TermPos::Inherited(pos))))
+                if pos_app.is_def() =>
+            {
+                let old = std::mem::replace(&mut pending, (Some(id.clone()), *pos));
                 acc.push(old);
             }
             // If a `Var` is followed by an `App`, they belong to the same call iff the position
             // span of the `Var` is included in the position span of the following `App`. In this
             // case, we fuse them. Otherwise, `Var` again does not correspond to any call, and we
             // just drop the old `pending`.
-            (StackElem::Var(_, _, _), Some(StackElem::App(Some(pos_app)))) => {
+            (StackElem::Var(_, _, _), Some(StackElem::App(TermPos::Original(pos_app))))
+            | (StackElem::Var(_, _, _), Some(StackElem::App(TermPos::Inherited(pos_app)))) => {
                 let id_opt = match &pending {
                     (id_opt, pos) if *pos <= *pos_app => id_opt.as_ref().cloned(),
                     _ => None,
                 };
-                pending = (id_opt, pos_app.clone());
+                pending = (id_opt, *pos_app);
             }
             // Same thing with two `App`: we test for the containment of position spans. If this
             // fails, however, we still push `pending`, since as opposed to `Var`, an `App` always
             // corresponds to an actual call.
-            (StackElem::App(_), Some(StackElem::App(Some(pos_app)))) => {
+            (StackElem::App(_), Some(StackElem::App(TermPos::Original(pos_app))))
+            | (StackElem::App(_), Some(StackElem::App(TermPos::Inherited(pos_app)))) => {
                 let (contained, id_opt) = match &pending {
                     (id_opt, pos) if *pos <= *pos_app => (true, id_opt.as_ref().cloned()),
                     _ => (false, None),
                 };
                 if contained {
-                    pending = (id_opt, pos_app.clone());
+                    pending = (id_opt, *pos_app);
                 } else {
-                    let old = std::mem::replace(&mut pending, (None, pos_app.clone()));
+                    let old = std::mem::replace(&mut pending, (None, *pos_app));
                     acc.push(old);
                 };
             }
@@ -909,10 +916,12 @@ impl ToDiagnostic<FileId> for EvalError {
                 );
 
                 let labels = match orig_pos_opt {
-                    Some(pos) if orig_pos_opt != &t.pos => vec![
-                        primary(pos).with_message(label),
-                        secondary_term(&t, files).with_message("evaluated to this"),
-                    ],
+                    TermPos::Original(pos) | TermPos::Inherited(pos) if orig_pos_opt != &t.pos => {
+                        vec![
+                            primary(pos).with_message(label),
+                            secondary_term(&t, files).with_message("evaluated to this"),
+                        ]
+                    }
                     _ => vec![primary_term(&t, files).with_message(label)],
                 };
 
@@ -927,7 +936,7 @@ impl ToDiagnostic<FileId> for EvalError {
                     primary_term(&t, files)
                         .with_message("this term is applied, but it is not a function"),
                     secondary_alt(
-                        &pos_opt,
+                        *pos_opt,
                         format!(
                             "({}) ({})",
                             (*t.term).shallow_repr(),
@@ -942,7 +951,7 @@ impl ToDiagnostic<FileId> for EvalError {
                 let mut notes = Vec::new();
                 let field = escape(field);
 
-                if let Some(span) = span_opt {
+                if let Some(span) = span_opt.into_opt() {
                     labels.push(
                         Label::primary(span.src_id, span.start.to_usize()..span.end.to_usize())
                             .with_message(format!("this requires field {} to exist", field)),
@@ -954,7 +963,7 @@ impl ToDiagnostic<FileId> for EvalError {
                     ));
                 }
 
-                if let Some(ref span) = t.pos {
+                if let Some(span) = t.pos.as_opt_ref() {
                     labels.push(
                         secondary(span).with_message(format!("field {} is missing here", field)),
                     );
@@ -972,7 +981,7 @@ impl ToDiagnostic<FileId> for EvalError {
                     op, count
                 );
 
-                if let Some(span) = span_opt {
+                if let Some(span) = span_opt.into_opt() {
                     labels.push(
                         Label::primary(span.src_id, span.start.to_usize()..span.end.to_usize())
                             .with_message(msg),
@@ -992,7 +1001,7 @@ impl ToDiagnostic<FileId> for EvalError {
                     primary_term(&t2, files).with_message("with this expression"),
                 ];
 
-                if let Some(span) = span_opt {
+                if let TermPos::Original(span) | TermPos::Inherited(span) = span_opt {
                     labels.push(secondary(&span).with_message("merged here"));
                 }
 
@@ -1002,11 +1011,11 @@ impl ToDiagnostic<FileId> for EvalError {
             }
             EvalError::UnboundIdentifier(Ident(ident), span_opt) => vec![Diagnostic::error()
                 .with_message("Unbound identifier")
-                .with_labels(vec![primary_alt(span_opt, ident.clone(), files)
+                .with_labels(vec![primary_alt(span_opt.into_opt(), ident.clone(), files)
                     .with_message("this identifier is unbound")])],
             EvalError::InfiniteRecursion(_call_stack, span_opt) => {
                 let labels = span_opt
-                    .as_ref()
+                    .as_opt_ref()
                     .map(|span| vec![primary(span).with_message("recursive reference")])
                     .unwrap_or_default();
 
@@ -1016,7 +1025,7 @@ impl ToDiagnostic<FileId> for EvalError {
             }
             EvalError::Other(msg, span_opt) => {
                 let labels = span_opt
-                    .as_ref()
+                    .as_opt_ref()
                     .map(|span| vec![primary(span).with_message("here")])
                     .unwrap_or_default();
 
@@ -1024,7 +1033,7 @@ impl ToDiagnostic<FileId> for EvalError {
             }
             EvalError::InternalError(msg, span_opt) => {
                 let labels = span_opt
-                    .as_ref()
+                    .as_opt_ref()
                     .map(|span| vec![primary(span).with_message("here")])
                     .unwrap_or_default();
 
@@ -1036,7 +1045,7 @@ impl ToDiagnostic<FileId> for EvalError {
             EvalError::SerializationError(err) => err.to_diagnostic(files, contract_id),
             EvalError::DeserializationError(format, msg, span_opt) => {
                 let labels = span_opt
-                    .as_ref()
+                    .as_opt_ref()
                     .map(|span| vec![primary(span).with_message("here")])
                     .unwrap_or_default();
 
@@ -1099,9 +1108,9 @@ impl ToDiagnostic<FileId> for TypecheckError {
         files: &mut Files<String>,
         contract_id: Option<FileId>,
     ) -> Vec<Diagnostic<FileId>> {
-        fn mk_expr_label(span_opt: &Option<RawSpan>) -> Vec<Label<FileId>> {
+        fn mk_expr_label(span_opt: &TermPos) -> Vec<Label<FileId>> {
             span_opt
-                .as_ref()
+                .as_opt_ref()
                 .map(|span| vec![primary(span).with_message("this expression")])
                 .unwrap_or_default()
         }
@@ -1110,7 +1119,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
             TypecheckError::UnboundIdentifier(ident, pos_opt) =>
             // Use the same diagnostic as `EvalError::UnboundIdentifier` for consistency.
             {
-                EvalError::UnboundIdentifier(ident.clone(), pos_opt.clone())
+                EvalError::UnboundIdentifier(ident.clone(), *pos_opt)
                     .to_diagnostic(files, contract_id)
             }
             TypecheckError::IllformedType(ty) => {
@@ -1165,7 +1174,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
             TypecheckError::UnboundTypeVariable(Ident(ident), span_opt) =>
                vec![Diagnostic::error()
                     .with_message(String::from("Unbound type variable"))
-                    .with_labels(vec![primary_alt(span_opt, ident.clone(), files).with_message("this type variable is unbound")])
+                    .with_labels(vec![primary_alt(span_opt.into_opt(), ident.clone(), files).with_message("this type variable is unbound")])
                     .with_notes(vec![
                         format!("Maybe you forgot to put a `forall {}.` somewhere in the enclosing type ?", ident),
                     ])]
@@ -1316,7 +1325,7 @@ impl ToDiagnostic<FileId> for ImportError {
         match self {
             ImportError::IOError(path, error, span_opt) => {
                 let labels = span_opt
-                    .as_ref()
+                    .as_opt_ref()
                     .map(|span| vec![secondary(span).with_message("imported here")])
                     .unwrap_or_default();
 
@@ -1327,7 +1336,7 @@ impl ToDiagnostic<FileId> for ImportError {
             ImportError::ParseError(error, span_opt) => {
                 let mut diagnostic = error.to_diagnostic(files, contract_id);
 
-                if let Some(span) = span_opt {
+                if let Some(span) = span_opt.as_opt_ref() {
                     diagnostic[0]
                         .labels
                         .push(secondary(span).with_message("imported here"));
@@ -1351,7 +1360,7 @@ impl ToDiagnostic<FileId> for SerializationError {
                     "raw export only supports `Str`, got {}",
                     rt.as_ref()
                         .type_of()
-                        .unwrap_or(String::from("<unevaluated>"))
+                        .unwrap_or_else(|| String::from("<unevaluated>"))
                 ))
                 .with_labels(vec![primary_term(&rt, files)])],
             SerializationError::UnsupportedNull(format, rt) => vec![Diagnostic::error()

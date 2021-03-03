@@ -2,7 +2,7 @@ use crate::identifier::Ident;
 /// A few helpers to generate position spans and labels easily during parsing
 use crate::label::Label;
 use crate::mk_app;
-use crate::position::RawSpan;
+use crate::position::{RawSpan, TermPos};
 use crate::term::{make as mk_term, BinaryOp, RichTerm, StrChunk, Term};
 use crate::types::Types;
 use codespan::FileId;
@@ -113,6 +113,10 @@ pub fn mk_span(src_id: FileId, l: usize, r: usize) -> RawSpan {
         start: (l as u32).into(),
         end: (r as u32).into(),
     }
+}
+
+pub fn mk_pos(src_id: FileId, l: usize, r: usize) -> TermPos {
+    TermPos::Original(mk_span(src_id, l, r))
 }
 
 /// Same as `mk_span`, but for labels.

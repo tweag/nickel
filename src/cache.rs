@@ -3,7 +3,7 @@
 use crate::error::{Error, ImportError, ParseError, TypecheckError};
 use crate::identifier::Ident;
 use crate::parser::lexer::Lexer;
-use crate::position::RawSpan;
+use crate::position::TermPos;
 use crate::stdlib as nickel_stdlib;
 use crate::term::{RichTerm, Term};
 use crate::typecheck::type_check;
@@ -663,7 +663,7 @@ pub trait ImportResolver {
         &mut self,
         path: &OsStr,
         parent: Option<PathBuf>,
-        pos: &Option<RawSpan>,
+        pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError>;
 
     /// Insert an entry in the term cache after transformation.
@@ -678,7 +678,7 @@ impl ImportResolver for Cache {
         &mut self,
         path: &OsStr,
         parent: Option<PathBuf>,
-        pos: &Option<RawSpan>,
+        pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError> {
         let path_buf = with_parent(path, parent);
         let format = InputFormat::from_path_buf(&path_buf).unwrap_or(InputFormat::Nickel);
@@ -686,7 +686,7 @@ impl ImportResolver for Cache {
             ImportError::IOError(
                 path.to_string_lossy().into_owned(),
                 format!("{}", err),
-                pos.clone(),
+                *pos,
             )
         })?;
         let file_id = match id_op {
@@ -695,7 +695,7 @@ impl ImportResolver for Cache {
         };
 
         self.parse_multi(file_id, format)
-            .map_err(|err| ImportError::ParseError(err, pos.clone()))?;
+            .map_err(|err| ImportError::ParseError(err, *pos))?;
 
         Ok((
             ResolvedTerm::FromFile {
@@ -752,7 +752,7 @@ pub mod resolvers {
             &mut self,
             _path: &OsStr,
             _parent: Option<PathBuf>,
-            _pos: &Option<RawSpan>,
+            _pos: &TermPos,
         ) -> Result<(ResolvedTerm, FileId), ImportError> {
             panic!("cache::resolvers: dummy resolver should not have been invoked");
         }
@@ -796,7 +796,7 @@ pub mod resolvers {
             &mut self,
             path: &OsStr,
             _parent: Option<PathBuf>,
-            pos: &Option<RawSpan>,
+            pos: &TermPos,
         ) -> Result<(ResolvedTerm, FileId), ImportError> {
             let file_id = self
                 .file_cache
@@ -805,7 +805,7 @@ pub mod resolvers {
                 .ok_or(ImportError::IOError(
                     path.to_string_lossy().into_owned(),
                     String::from("Import not found by the mockup resolver."),
-                    pos.clone(),
+                    *pos,
                 ))?;
 
             if self.term_cache.contains_key(&file_id) {
@@ -816,7 +816,7 @@ pub mod resolvers {
                 let term = parser::grammar::TermParser::new()
                     .parse(file_id, Lexer::new(&buf))
                     .map_err(|e| ParseError::from_lalrpop(e, file_id))
-                    .map_err(|e| ImportError::ParseError(e, pos.clone()))?;
+                    .map_err(|e| ImportError::ParseError(e, *pos))?;
                 Ok((
                     ResolvedTerm::FromFile {
                         term,

@@ -44,7 +44,7 @@ generate_counter!(FreshVarCounter, usize);
 pub mod share_normal_form {
     use super::fresh_var;
     use crate::identifier::Ident;
-    use crate::position::RawSpan;
+    use crate::position::TermPos;
     use crate::term::{MetaValue, RichTerm, Term};
 
     /// Transform the top-level term of an AST to a share normal form, if it can.
@@ -67,7 +67,7 @@ pub mod share_normal_form {
                         if should_share(&t.term) {
                             let fresh_var = fresh_var();
                             bindings.push((fresh_var.clone(), t));
-                            (id, Term::Var(fresh_var).into())
+                            (id, RichTerm::new(Term::Var(fresh_var), pos))
                         } else {
                             (id, t)
                         }
@@ -91,7 +91,7 @@ pub mod share_normal_form {
                         if !t.as_ref().is_constant() {
                             let fresh_var = fresh_var();
                             bindings.push((fresh_var.clone(), t));
-                            (id, Term::Var(fresh_var).into())
+                            (id, RichTerm::new(Term::Var(fresh_var), pos))
                         } else {
                             (id, t)
                         }
@@ -109,7 +109,7 @@ pub mod share_normal_form {
                         if should_share(&t.term) {
                             let fresh_var = fresh_var();
                             bindings.push((fresh_var.clone(), t));
-                            Term::Var(fresh_var).into()
+                            RichTerm::new(Term::Var(fresh_var), pos)
                         } else {
                             t
                         }
@@ -122,9 +122,10 @@ pub mod share_normal_form {
                 if meta.value.as_ref().map(|t| should_share(&t.term)).unwrap() {
                     let fresh_var = fresh_var();
                     let t = meta.value.take().unwrap();
-                    meta.value.replace(Term::Var(fresh_var.clone()).into());
+                    meta.value
+                        .replace(RichTerm::new(Term::Var(fresh_var.clone()), pos));
                     let inner = RichTerm::new(Term::MetaValue(meta), pos);
-                    Term::Let(fresh_var, t, inner).into()
+                    RichTerm::new(Term::Let(fresh_var, t, inner), pos)
                 } else {
                     RichTerm::new(Term::MetaValue(meta), pos)
                 }
@@ -161,17 +162,13 @@ pub mod share_normal_form {
     /// Given the term `body` and bindings of identifiers to terms represented as a list of pairs
     /// `(id_1, term_1), .., (id_n, term_n)`, return the new term `let id_n = term_n in ... let
     /// id_1 = term_1 in body`.
-    fn with_bindings(
-        body: Term,
-        bindings: Vec<(Ident, RichTerm)>,
-        pos: Option<RawSpan>,
-    ) -> RichTerm {
+    fn with_bindings(body: Term, bindings: Vec<(Ident, RichTerm)>, pos: TermPos) -> RichTerm {
         bindings.into_iter().fold(
             RichTerm {
                 term: Box::new(body),
-                pos,
+                pos: pos.into_inherited(),
             },
-            |acc, (id, t)| Term::Let(id, t, acc).into(),
+            |acc, (id, t)| RichTerm::new(Term::Let(id, t, acc), pos),
         )
     }
 }
@@ -317,13 +314,14 @@ impl Closurizable for RichTerm {
     /// and return this variable as a fresh term.
     fn closurize(self, env: &mut Environment, with_env: Environment) -> RichTerm {
         let var = fresh_var();
+        let pos = self.pos;
         let closure = Closure {
             body: self,
             env: with_env,
         };
         env.insert(var.clone(), Thunk::new(closure, IdentKind::Record()));
 
-        Term::Var(var).into()
+        RichTerm::new(Term::Var(var), pos)
     }
 }
 
