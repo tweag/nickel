@@ -58,9 +58,9 @@ impl FromStr for ExportFormat {
     }
 }
 
-/// Implicitely convert float to integers when possible to avoid trailing zeros. Note thas this
+/// Implicitly convert float to integers when possible to avoid trailing zeros. Note this this
 /// only work if the float is in range of either `i64` or `f64`. It seems there's no easy general
-/// solution (working for both YAML, TOML, and JSON) to chose the way floating point values are
+/// solution (working for both YAML, TOML, and JSON) to choose the way floating point values are
 /// formatted.
 pub fn serialize_num<S>(n: &f64, serializer: S) -> Result<S::Ok, S::Error>
 where
