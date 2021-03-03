@@ -79,7 +79,7 @@ pub fn continuate_operation(
     call_stack.truncate(cs_len);
     match cont {
         OperationCont::Op1(u_op, arg_pos, prev_strict) => {
-            let result = process_unary_operation(u_op, clos, arg_pos, stack, pos);
+            let result = process_unary_operation(u_op, clos, arg_pos, stack, call_stack, pos);
             *enriched_strict = prev_strict;
             result
         }
@@ -110,6 +110,7 @@ fn process_unary_operation(
     clos: Closure,
     arg_pos: TermPos,
     stack: &mut Stack,
+    call_stack: &mut CallStack,
     pos_op: TermPos,
 ) -> Result<Closure, EvalError> {
     let Closure {
@@ -122,8 +123,8 @@ fn process_unary_operation(
         UnaryOp::Ite() => {
             if let Term::Bool(b) = *t {
                 if stack.count_args() >= 2 {
-                    let (fst, _) = stack.pop_arg().expect("Condition already checked.");
-                    let (snd, _) = stack.pop_arg().expect("Condition already checked.");
+                    let (fst, ..) = stack.pop_arg().expect("Condition already checked.");
+                    let (snd, ..) = stack.pop_arg().expect("Condition already checked.");
 
                     Ok(if b { fst } else { snd })
                 } else {
@@ -165,7 +166,7 @@ fn process_unary_operation(
         UnaryOp::BoolAnd() =>
         // The syntax should not allow partially applied boolean operators.
         {
-            if let Some((next, _)) = stack.pop_arg() {
+            if let Some((next, ..)) = stack.pop_arg() {
                 match *t {
                     Term::Bool(true) => Ok(next),
                     // FIXME: this does not check that the second argument is actually a boolean.
@@ -188,7 +189,7 @@ fn process_unary_operation(
             }
         }
         UnaryOp::BoolOr() => {
-            if let Some((next, _)) = stack.pop_arg() {
+            if let Some((next, ..)) = stack.pop_arg() {
                 match *t {
                     b @ Term::Bool(true) => {
                         Ok(Closure::atomic_closure(RichTerm::new(b, pos_op_inh)))
@@ -226,8 +227,11 @@ fn process_unary_operation(
             }
         }
         UnaryOp::Blame() => {
-            if let Term::Lbl(l) = *t {
-                Err(EvalError::BlameError(l, None))
+            if let Term::Lbl(label) = *t {
+                Err(EvalError::BlameError(
+                    label,
+                    std::mem::replace(call_stack, Vec::new()),
+                ))
             } else {
                 Err(EvalError::TypeError(
                     String::from("Label"),
@@ -235,6 +239,34 @@ fn process_unary_operation(
                     arg_pos,
                     RichTerm { term: t, pos },
                 ))
+            }
+        }
+        UnaryOp::ApplyContract() => {
+            match *t {
+                Term::Fun(..) => Ok(Closure {
+                    body: RichTerm { term: t, pos },
+                    env,
+                }),
+                Term::Record(..) => {
+                    let mut new_env = Environment::new();
+                    let closurized = RichTerm { term: t, pos }.closurize(&mut new_env, env);
+
+                    // Convert the record to the function `fun l x => contract & x`.
+                    let body = mk_fun!(
+                        "l",
+                        "x",
+                        mk_term::op2(BinaryOp::Merge(), closurized, mk_term::var("x"))
+                    )
+                    .with_pos(pos.into_inherited());
+
+                    Ok(Closure { body, env: new_env })
+                }
+                _ => Err(EvalError::TypeError(
+                    String::from("Function or record"),
+                    String::from("contract application"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                )),
             }
         }
         UnaryOp::Embed(_id) => {
@@ -250,12 +282,12 @@ fn process_unary_operation(
             }
         }
         UnaryOp::Switch(has_default) => {
-            let (cases_closure, _) = stack.pop_arg().expect("missing arg for switch");
+            let (cases_closure, ..) = stack.pop_arg().expect("missing arg for switch");
             let default = if has_default {
                 Some(
                     stack
                         .pop_arg()
-                        .map(|(clos, _)| clos)
+                        .map(|(clos, ..)| clos)
                         .expect("missing default case for switch"),
                 )
             } else {
@@ -441,7 +473,7 @@ fn process_unary_operation(
             }
         }
         UnaryOp::ListMap() => {
-            let (f, _) = stack
+            let (f, ..) = stack
                 .pop_arg()
                 .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("map"), pos_op))?;
 
@@ -474,7 +506,7 @@ fn process_unary_operation(
             }
         }
         UnaryOp::RecordMap() => {
-            let (f, _) = stack
+            let (f, ..) = stack
                 .pop_arg()
                 .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("recordMap"), pos_op))?;
 
@@ -512,7 +544,7 @@ fn process_unary_operation(
         }
         UnaryOp::Seq() => {
             if stack.count_args() >= 1 {
-                let (next, _) = stack.pop_arg().expect("Condition already checked.");
+                let (next, ..) = stack.pop_arg().expect("Condition already checked.");
                 Ok(next)
             } else {
                 Err(EvalError::NotEnoughArgs(2, String::from("seq"), pos_op))
@@ -549,8 +581,7 @@ fn process_unary_operation(
                 }
                 Term::List(ts) if !ts.is_empty() => seq_terms(ts.into_iter(), env, pos_op),
                 _ => {
-                    if stack.count_args() >= 1 {
-                        let (next, _) = stack.pop_arg().expect("Condition already checked.");
+                    if let Some((next, ..)) = stack.pop_arg() {
                         Ok(next)
                     } else {
                         Err(EvalError::NotEnoughArgs(2, String::from("deepSeq"), pos_op))
@@ -1137,6 +1168,7 @@ fn process_binary_operation(
                 ))
             }
         }
+
         BinaryOp::DynAccess() => {
             if let Term::Str(id) = *t1 {
                 if let Term::Record(mut static_map) = *t2 {

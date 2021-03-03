@@ -2,7 +2,8 @@
 //!
 //! A label is a value holding metadata relative to contract checking. It gives the user useful
 //! information about the context of a contract failure.
-use crate::position::RawSpan;
+use crate::eval::Thunk;
+use crate::position::{RawSpan, TermPos};
 use crate::types::{AbsType, Types};
 use codespan::Files;
 
@@ -236,6 +237,10 @@ pub struct Label {
     pub tag: String,
     /// The position of the original contract.
     pub span: RawSpan,
+    /// The thunk corresponding to the value being checked. Set at run-time by the interpreter.
+    pub arg_thunk: Option<Thunk>,
+    /// The original position of the value being checked. Set at run-time by the interpreter.
+    pub arg_pos: TermPos,
     /// The polarity, used for higher-order contracts, that specifies if the current contract is
     /// on the environment (ex, the argument of a function) or on the term.
     pub polarity: bool,
@@ -254,6 +259,8 @@ impl Label {
                 start: 0.into(),
                 end: 1.into(),
             },
+            arg_thunk: None,
+            arg_pos: TermPos::None,
             polarity: false,
             path: Vec::new(),
         }

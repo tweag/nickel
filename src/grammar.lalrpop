@@ -16,13 +16,7 @@ use codespan::FileId;
 
 grammar<'input>(src_id: FileId, );
 
-SpTerm<Rule>: RichTerm =
-    <l: @L> <t: Rule> <r: @R> => match t {
-        RichTerm {term: t, pos: _} => RichTerm {
-            term: t,
-            pos: mk_pos(src_id, l, r)
-        }
-    };
+SpTerm<Rule>: RichTerm = <l: @L> <t: Rule> <r: @R> => t.with_pos(mk_pos(src_id, l, r));
 
 TypeAnnot: (usize, Types, usize) = ":" <l: @L> <ty: Types> <r: @R> => (l, ty, r);
 
@@ -372,6 +366,7 @@ UOp: UnaryOp = {
     "isList" => UnaryOp::IsList(),
     "isRecord" => UnaryOp::IsRecord(),
     "blame" => UnaryOp::Blame(),
+    "applyContract" => UnaryOp::ApplyContract(),
     "chngPol" => UnaryOp::ChangePolarity(),
     "polarity" => UnaryOp::Pol(),
     "goDom" => UnaryOp::GoDom(),
@@ -655,6 +650,7 @@ extern {
         "List" => Token::Normal(NormalToken::List),
 
         "tag" => Token::Normal(NormalToken::Tag),
+        "applyContract" => Token::Normal(NormalToken::ApplyContract),
         "Assume(" => Token::Normal(NormalToken::Assume),
         "Promise(" => Token::Normal(NormalToken::Promise),
         "Default(" => Token::Normal(NormalToken::Deflt),

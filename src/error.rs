@@ -17,7 +17,7 @@ use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 use std::fmt::Write;
 
 /// A general error occurring during either parsing or evaluation.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Error {
     EvalError(EvalError),
     TypecheckError(TypecheckError),
@@ -29,10 +29,10 @@ pub enum Error {
 }
 
 /// An error occurring during evaluation.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum EvalError {
     /// A blame occurred: a contract have been broken somewhere.
-    BlameError(label::Label, Option<CallStack>),
+    BlameError(label::Label, CallStack),
     /// Mismatch between the expected type and the actual type of an expression.
     TypeError(
         /* expected type */ String,
@@ -845,7 +845,7 @@ impl ToDiagnostic<FileId> for EvalError {
         contract_id: Option<FileId>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
-            EvalError::BlameError(l, cs_opt) => {
+            EvalError::BlameError(l, call_stack) => {
                 let mut msg = String::from("Blame error: ");
 
                 // Writing in a string should not raise an error, hence the fearless `unwrap()`
@@ -867,41 +867,100 @@ impl ToDiagnostic<FileId> for EvalError {
                 }
 
                 let (path_label, notes) = report_ty_path(&l, files);
-                let labels = vec![
-                    path_label,
-                    Label::primary(
-                        l.span.src_id,
-                        l.span.start.to_usize()..l.span.end.to_usize(),
-                    )
-                    .with_message("bound here"),
-                ];
+                let mut labels = vec![path_label];
+
+                if let Some(ref arg_pos) = l.arg_pos.into_opt() {
+                    labels.push(primary(&arg_pos).with_message("applied to this expression"));
+                }
+
+                // If we have a reference to the thunk that was being tested, we can try to show
+                // more information about the final, evaluated value that is responsible for the
+                // blame.
+                if let Some(ref thunk) = l.arg_thunk {
+                    // The indication may be verbose, and are less useful in case of a function
+                    // contract. We only show the following information for ground types.
+                    if ty_path::has_no_arrow(&l.path) {
+                        let mut val = thunk.get_owned().body;
+
+                        match (val.pos, l.arg_pos.as_opt_ref(), contract_id) {
+                            // Avoid showing a position inside builtin contracts, it's rarely
+                            // informative.
+                            (TermPos::Original(val_pos), _, Some(c_id))
+                                if val_pos.src_id == c_id =>
+                            {
+                                val.pos = TermPos::None;
+                                labels.push(
+                                    secondary_term(&val, files)
+                                        .with_message("evaluated to this value"),
+                                );
+                            }
+                            // Do not show the same thing twice: if arg_pos and val_pos are the same,
+                            // the first label "applied to this value" is sufficient.
+                            (TermPos::Original(ref val_pos), Some(arg_pos), _)
+                                if val_pos == arg_pos =>
+                            {
+                                ()
+                            }
+                            (TermPos::Original(ref val_pos), ..) => labels.push(
+                                secondary(val_pos).with_message("evaluated to this expression"),
+                            ),
+                            // If the final thunk is a direct reduct of the original value, rather
+                            // print the actual value than referring to the same position as
+                            // before.
+                            (TermPos::Inherited(ref val_pos), Some(arg_pos), _)
+                                if val_pos == arg_pos =>
+                            {
+                                val.pos = TermPos::None;
+                                labels.push(
+                                    secondary_term(&val, files)
+                                        .with_message("evaluated to this value"),
+                                );
+                            }
+                            // Finally, if the parameter reduced to a value which originates from a
+                            // different expression, show both the expression and the value.
+                            (TermPos::Inherited(ref val_pos), ..) => {
+                                labels.push(
+                                    secondary(val_pos).with_message("evaluated to this expression"),
+                                );
+                                val.pos = TermPos::None;
+                                labels.push(
+                                    secondary_term(&val, files)
+                                        .with_message("evaluated to this value"),
+                                );
+                            }
+                            (TermPos::None, ..) => labels.push(
+                                secondary_term(&val, files)
+                                    .with_message("value evaluated to this value"),
+                            ),
+                        }
+                    }
+                }
 
                 let mut diagnostics = vec![Diagnostic::error()
                     .with_message(msg)
                     .with_labels(labels)
                     .with_notes(notes)];
 
-                match contract_id {
-                    Some(id) if !ty_path::is_only_codom(&l.path) => {
-                        let diags_opt =
-                            cs_opt
-                                .as_ref()
-                                .map(|cs| process_callstack(cs, id))
-                                .map(|calls| {
-                                    calls.into_iter().enumerate().map(|(i, (id_opt, pos))| {
-                                        let name = id_opt
-                                            .map(|Ident(id)| id)
-                                            .unwrap_or_else(|| String::from("<func>"));
-                                        Diagnostic::note().with_labels(vec![secondary(&pos)
-                                            .with_message(format!("({}) calling {}", i + 1, name))])
-                                    })
-                                });
+                diagnostics.push(Diagnostic::note().with_labels(vec![
+                                                   Label::primary(
+                    l.span.src_id,
+                    l.span.start.to_usize()..l.span.end.to_usize(),
+                ).with_message("bound here")]));
 
-                        if let Some(diags) = diags_opt {
-                            diagnostics.extend(diags);
-                        }
-                    }
-                    _ => (),
+                if ty_path::is_only_codom(&l.path) {
+                } else if let Some(id) = contract_id {
+                    let diags = process_callstack(call_stack, id)
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, (id_opt, pos))| {
+                            let name = id_opt
+                                .map(|Ident(id)| id)
+                                .unwrap_or_else(|| String::from("<func>"));
+                            Diagnostic::note().with_labels(vec![secondary(&pos)
+                                .with_message(format!("({}) calling {}", i + 1, name))])
+                        });
+
+                    diagnostics.extend(diags);
                 }
 
                 diagnostics

@@ -1,5 +1,4 @@
 //! Evaluation of a Nickel term.
-//!
 //! The implementation of the Nickel abstract machine which evaluates a term. Note that this
 //! machine is not currently formalized somewhere and is just a convenient name to designate the
 //! current implementation.
@@ -266,14 +265,16 @@ pub type Environment = HashMap<Ident, Thunk>;
 pub type CallStack = Vec<StackElem>;
 
 /// A call stack element.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum StackElem {
+    /// A function body was entered. The position is the position of the original application.
     App(TermPos),
+    /// A variable was entered.
     Var(IdentKind, Ident, TermPos),
 }
 
 /// Kind of an identifier.
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum IdentKind {
     Let(),
     Lam(),
@@ -455,6 +456,7 @@ where
             mut env,
         } = clos;
         let term = *boxed_term;
+
         clos = match term {
             Term::Var(x) => {
                 let mut thunk = env
@@ -573,16 +575,23 @@ where
                     }
                 }
             },
-            Term::Promise(ty, l, t) | Term::Assume(ty, l, t) => {
-                let pos = pos.into_inherited();
-                stack.push_arg(
+            Term::Promise(ty, mut l, t) | Term::Assume(ty, mut l, t) => {
+                l.arg_pos = t.pos;
+                let thunk = Thunk::new(
                     Closure {
                         body: t,
                         env: env.clone(),
                     },
-                    pos,
+                    IdentKind::Lam(),
                 );
-                stack.push_arg(Closure::atomic_closure(Term::Lbl(l).into()), pos);
+                l.arg_thunk = Some(thunk.clone());
+
+                stack.push_tracked_arg(thunk, pos.into_inherited());
+                stack.push_arg(
+                    Closure::atomic_closure(Term::Lbl(l).into()),
+                    pos.into_inherited(),
+                );
+
                 Closure {
                     body: ty.contract(),
                     env,
@@ -711,25 +720,14 @@ where
                     update_thunks(&mut stack, &clos);
                     clos
                 } else {
-                    let cont_result = continuate_operation(
-                        clos,
-                        &mut stack,
-                        &mut call_stack,
-                        &mut enriched_strict,
-                    );
-
-                    if let Err(EvalError::BlameError(l, _)) = cont_result {
-                        return Err(EvalError::BlameError(l, Some(call_stack)));
-                    }
-                    cont_result?
+                    continuate_operation(clos, &mut stack, &mut call_stack, &mut enriched_strict)?
                 }
             }
             // Function call
             Term::Fun(x, t) => {
-                if 0 < stack.count_args() {
-                    let (arg, pos_app) = stack.pop_arg().expect("Condition already checked.");
+                if let Some((thunk, pos_app)) = stack.pop_arg_as_thunk() {
                     call_stack.push(StackElem::App(pos_app));
-                    env.insert(x, Thunk::new(arg, IdentKind::Lam()));
+                    env.insert(x, thunk);
                     Closure { body: t, env }
                 } else {
                     return Ok((Term::Fun(x, t), env));
@@ -737,8 +735,7 @@ where
             }
             // Otherwise, this is either an ill-formed application, or we are done
             t => {
-                if 0 < stack.count_args() {
-                    let (arg, pos_app) = stack.pop_arg().expect("Condition already checked.");
+                if let Some((arg, pos_app)) = stack.pop_arg() {
                     return Err(EvalError::NotAFunc(
                         RichTerm {
                             term: Box::new(t),
@@ -985,7 +982,7 @@ mod tests {
     #[test]
     fn blame_panics() {
         let label = Label::dummy();
-        if let Err(EvalError::BlameError(l, _)) =
+        if let Err(EvalError::BlameError(l, ..)) =
             eval_no_import(mk_term::op1(UnaryOp::Blame(), Term::Lbl(label.clone())))
         {
             assert_eq!(l, label);
