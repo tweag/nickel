@@ -161,11 +161,10 @@ RichTerm: RichTerm = {
 };
 
 Applicative: RichTerm = {
-    <t1:SpTerm<Applicative>> <t2: SpTerm<Atom>> => mk_app!(t1, t2),
-    <op: UOp> <t: SpTerm<Atom>> => mk_term::op1(op, t),
-    <op: BOpPre> <t1: SpTerm<Atom>> <t2: SpTerm<Atom>> => mk_term::op2(op, t1, t2),
-    SpTerm<RecordOperationChain>,
-    SpTerm<Atom>,
+    <t1:SpTerm<Applicative>> <t2: RecordOperand> => mk_app!(t1, t2),
+    <op: UOp> <t: SpTerm<RecordOperand>> => mk_term::op1(op, t),
+    <op: BOpPre> <t1: SpTerm<RecordOperand>> <t2: SpTerm<Atom>> => mk_term::op2(op, t1, t2),
+    <RecordOperand>,
 };
 
 RecordOperand: RichTerm = {
