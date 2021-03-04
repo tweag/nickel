@@ -211,7 +211,6 @@ mod tests {
     use crate::error::EvalError;
     use crate::parser::{grammar, lexer};
     use crate::position::TermPos;
-    use assert_matches::assert_matches;
     use codespan::Files;
     use std::io::Cursor;
 
@@ -228,19 +227,7 @@ mod tests {
             .ok()
     }
 
-    fn eval_string(s: &str) -> Result<Term, Error> {
-        let src = Cursor::new(s);
-
-        let mut p = Program::new_from_source(src, "<test>").map_err(|io_err| {
-            Error::EvalError(EvalError::Other(
-                format!("IO error: {}", io_err),
-                TermPos::None,
-            ))
-        })?;
-        p.eval()
-    }
-
-    fn eval_string_full(s: &str) -> Result<Term, Error> {
+    fn eval_full(s: &str) -> Result<Term, Error> {
         let src = Cursor::new(s);
 
         let mut p = Program::new_from_source(src, "<test>").map_err(|io_err| {
@@ -250,80 +237,6 @@ mod tests {
             ))
         })?;
         p.eval_full()
-    }
-
-    #[test]
-    fn parse_error() {
-        let res = eval_string("let g  = funky x => x in g true");
-
-        if let Ok(_) = res {
-            panic!("This test should have returned Err()!");
-        }
-    }
-
-    #[test]
-    fn records_accessing() {
-        eval_string("({ $(if false then \"foo\" else \"bar\") = false; bar = true; }).foo")
-            .unwrap_err();
-    }
-
-    #[test]
-    fn lists() {
-        eval_string("%elemAt% [1,2,3] (-1)").unwrap_err();
-        eval_string("%elemAt% [1,2,3] 4").unwrap_err();
-
-        assert_eq!(
-            eval_string("%head% [\"a\",\"b\",\"c\"]"),
-            Ok(Term::Str(String::from("a")))
-        );
-        eval_string("%head% []").unwrap_err();
-
-        assert_eq!(
-            eval_string("%length% (%tail% [true,false,1])"),
-            Ok(Term::Num(2.0))
-        );
-        eval_string("%tail% []").unwrap_err();
-    }
-
-    #[test]
-    #[should_panic]
-    fn merge_record_failure() {
-        eval_string("({a=1} & {a=2}).a").unwrap();
-    }
-
-    #[test]
-    fn merge_default() {
-        eval_string("({a=Default(1);} & {a=Default(2);}).a").unwrap_err();
-    }
-
-    #[test]
-    fn string_chunks() {
-        match eval_string(r##""bad type #{1 + 1}""##) {
-            Err(Error::EvalError(EvalError::TypeError(_, _, _, _))) => (),
-            _ => assert!(false),
-        };
-    }
-
-    #[test]
-    fn arithmetic_expr() {
-        eval_string("1 + 1 / (1 - 1)").unwrap_err();
-    }
-
-    #[test]
-    fn comparisons() {
-        eval_string("1 < 2 < 3").unwrap_err();
-        eval_string("1 < 2 > 3").unwrap_err();
-        eval_string("\"a\" < 2").unwrap_err();
-        eval_string("true <= []").unwrap_err();
-        eval_string("\"a\" > \"b\"").unwrap_err();
-        eval_string("\"a\" >= \"b\"").unwrap_err();
-    }
-
-    #[test]
-    fn boolean_op() {
-        eval_string("let throw = 0 | #fail in false || true && throw").unwrap_err();
-        eval_string("0 && true").unwrap_err();
-        eval_string("\"a\" || false").unwrap_err();
     }
 
     #[test]
@@ -338,22 +251,21 @@ mod tests {
             *tmp.term
         }
 
-        let t =
-            clean_pos(eval_string_full("[(1 + 1), (\"a\" ++ \"b\"), ([ 1, [1 + 2] ])]").unwrap());
+        let t = clean_pos(eval_full("[(1 + 1), (\"a\" ++ \"b\"), ([ 1, [1 + 2] ])]").unwrap());
         let mut expd = parse("[2, \"ab\", [1, [3]]]").unwrap();
+
         // String are parsed as StrChunks, but evaluated to Str, so we need to hack list a bit
         if let Term::List(ref mut data) = *expd.term {
             *data.get_mut(1).unwrap() = mk_term::string("ab");
         } else {
             panic!();
         }
+
         assert_eq!(t, *expd.term);
 
         let t = clean_pos(
-            eval_string_full(
-                "let x = 1 in let y = 1 + x in let z = { foo = {bar = { baz  = y } } } in z",
-            )
-            .unwrap(),
+            eval_full("let x = 1 in let y = 1 + x in let z = { foo = {bar = { baz  = y } } } in z")
+                .unwrap(),
         );
         // Records are parsed as RecRecords, so we need to build one by hand
         let expd = mk_record!((
@@ -366,26 +278,6 @@ mod tests {
         // Check that substitution do not replace bound variables. Before the fixing commit, this
         // example would go into an infinite loop, and stack overflow. If it does, this just means
         // that this test fails.
-        eval_string_full("{y = fun x => x; x = fun y => y}").unwrap();
-    }
-
-    #[test]
-    fn infinite_loops() {
-        assert_matches!(
-            eval_string("{x = x}.x"),
-            Err(Error::EvalError(EvalError::InfiniteRecursion(..)))
-        );
-        assert_matches!(
-            eval_string("{x = y; y = z; z = x }.x"),
-            Err(Error::EvalError(EvalError::InfiniteRecursion(..)))
-        );
-        assert_matches!(
-            eval_string("{x = y + z; y = z + x; z = 1}.x"),
-            Err(Error::EvalError(EvalError::InfiniteRecursion(..)))
-        );
-        assert_matches!(
-            eval_string("{x = (fun a => a + y) 0; y = (fun a => a + x) 0}.x"),
-            Err(Error::EvalError(EvalError::InfiniteRecursion(..)))
-        );
+        eval_full("{y = fun x => x; x = fun y => y}").unwrap();
     }
 }

@@ -1,14 +1,9 @@
 use assert_matches::assert_matches;
 use codespan::Files;
 use nickel::error::{Error, EvalError, ToDiagnostic};
-use nickel::program::Program;
-use nickel::term::Term;
-use std::io::Cursor;
 
-fn eval(s: impl std::string::ToString) -> Result<Term, Error> {
-    let mut p = Program::new_from_source(Cursor::new(s.to_string()), "test").unwrap();
-    p.eval()
-}
+mod common;
+use common::eval;
 
 macro_rules! assert_raise_blame {
     ($term:expr) => {{
