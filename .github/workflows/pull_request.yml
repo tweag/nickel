@@ -4,7 +4,19 @@ jobs:
 
   build-nickel:
 
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os:
+        - ubuntu-latest
+        - macos-latest
+        include:
+          - os: ubuntu-latest
+            system: x86_64-linux
+          - os: macos-latest
+            system: x86_64-darwin
+
+
+    runs-on: ${{ matrix.os }}
 
     steps:
 
@@ -35,8 +47,8 @@ jobs:
 
     - name: Build Nickel
       run: |
-        nix build ./#packages.x86_64-linux.build
+        nix build ./#packages.${{ matrix.system }}.build
 
     - name: Run Makam Spec
       run: |
-        nix build ./#checks.x86_64-linux.specs
+        nix build ./#checks.${{ matrix.system }}.specs

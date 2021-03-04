@@ -9,12 +9,20 @@ jobs:
 
     strategy:
       matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
         rust_channel:
-        - stable
-        - beta
-        - nightly
+          - stable
+          - beta
+          - nightly
+        include:
+          - os: ubuntu-latest
+            system: x86_64-linux
+          - os: macos-latest
+            system: x86_64-darwin
 
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
 
     steps:
 
@@ -46,4 +54,4 @@ jobs:
 
     - name: Build Nickel against `${{ matrix.rust_channel }}` Rust channel
       run: |
-        nix build ./#checks.x86_64-linux.nickel-against-${{ matrix.rust_channel }}-rust-channel
+        nix build ./#checks.${{ matrix.system }}.nickel-against-${{ matrix.rust_channel }}-rust-channel
