@@ -201,7 +201,19 @@ impl MetaValue {
         }
     }
 
-    pub fn flatten(outer: MetaValue, inner: MetaValue) -> MetaValue {
+    /// Flatten two nested metavalues into one, combining their metadata. If data that can't be
+    /// combined (typically, the documentation or the type annotation) are set by both metavalues,
+    /// outer's one are kept.
+    ///
+    /// Note that no environment management such as closurization takes place, because this
+    /// function is expected to be used on the AST before the evaluation (in the parser or during
+    /// program transformation).
+    ///
+    /// #Preconditions
+    /// - `outer.value` is assumed to be `inner`. While `flatten` may still work fine if this
+    ///   condition is not fullfilled, the value of the final metavalue is set to be `inner`'s one,
+    ///   and `outer`'s one is dropped.
+    pub fn flatten(outer: MetaValue, mut inner: MetaValue) -> MetaValue {
         // Keep the outermost value for non-mergeable information, such as documentation, type annotation,
         // and so on, which is the one that is accessible from the outside anyway (by queries, by the typechecker, and
         // so on).
@@ -213,6 +225,14 @@ impl MetaValue {
             priority,
             value: _,
         } = outer;
+
+        // If both have type annotations, the result will have the outer one as a type annotation.
+        // However we still need to enforce the corresponding contract to preserve the operational
+        // semantics. Thus, the inner type annotation is derelicted to a contract.
+        match inner.types.take() {
+            Some(ctr) if types.is_some() => contracts.push(ctr),
+            _ => (),
+        };
 
         contracts.extend(inner.contracts.into_iter());
 

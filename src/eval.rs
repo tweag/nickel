@@ -899,8 +899,6 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
                 RichTerm::new(Term::StrChunks(chunks), pos)
             }
             Term::MetaValue(meta) => {
-                // let contracts = meta.contracts.clone();
-                // let types = meta.types.clone();
                 let contracts: Vec<_> = meta
                     .contracts
                     .into_iter()
@@ -959,7 +957,7 @@ mod tests {
     use crate::label::Label;
     use crate::parser::{grammar, lexer};
     use crate::term::make as mk_term;
-    use crate::term::{BinaryOp, Contract, StrChunk, UnaryOp};
+    use crate::term::{BinaryOp, StrChunk, UnaryOp};
     use crate::transformations::transform;
     use crate::{mk_app, mk_fun};
     use codespan::Files;

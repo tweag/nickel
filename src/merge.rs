@@ -202,35 +202,37 @@ pub fn merge(
             //    meta1's value will be used in the final value
             // Then, we apply meta2's contract to meta1. This creates a new value and a new
             // intermediate environment.
-            let (value1, val_env1) = if value1.is_some()
-                && (types2.is_some() || !contracts2.is_empty())
-                && (priority1 >= priority2 || value2.is_none())
-            {
-                let (v, e) = cross_apply_contracts(
-                    value1.unwrap(),
-                    &env1,
-                    types2.iter().chain(contracts2.iter()),
-                    &env2,
-                );
-                (Some(v), e)
-            } else {
-                (value1, env1.clone())
+            let (value1, val_env1) = match value1 {
+                Some(v1)
+                    if (types2.is_some() || !contracts2.is_empty())
+                        && (priority1 >= priority2 || value2.is_none()) =>
+                {
+                    let (v, e) = cross_apply_contracts(
+                        v1,
+                        &env1,
+                        types2.iter().chain(contracts2.iter()),
+                        &env2,
+                    );
+                    (Some(v), e)
+                }
+                v1 => (v1, env1.clone()),
             };
 
             // Dually, we cross apply meta1's contracts to meta2's value.
-            let (value2, val_env2) = if value2.is_some()
-                && (types1.is_some() || !contracts1.is_empty())
-                && (priority2 >= priority1 || value1.is_none())
-            {
-                let (v, e) = cross_apply_contracts(
-                    value2.unwrap(),
-                    &env2,
-                    types1.iter().chain(contracts1.iter()),
-                    &env1,
-                );
-                (Some(v), e)
-            } else {
-                (value2, env2.clone())
+            let (value2, val_env2) = match value2 {
+                Some(v2)
+                    if (types1.is_some() || !contracts1.is_empty())
+                        && (priority2 >= priority1 || value1.is_none()) =>
+                {
+                    let (v, e) = cross_apply_contracts(
+                        v2,
+                        &env2,
+                        types1.iter().chain(contracts1.iter()),
+                        &env1,
+                    );
+                    (Some(v), e)
+                }
+                v2 => (v2, env2.clone()),
             };
 
             // Selecting either meta1's value, meta2's value, or the merge of the two values,
@@ -340,6 +342,13 @@ pub fn merge(
     }
 }
 
+/// Apply a series of contract to term and closurize the result, and apply the necessary
+/// intermediate closurization.
+///
+/// # Parameters
+///
+/// - the term is given by `t1` in its environment `env1`
+/// - the contracts are given as an iterator `it2` together with their environment `env2`
 fn cross_apply_contracts<'a>(
     t1: RichTerm,
     env1: &Environment,

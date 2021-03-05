@@ -214,9 +214,20 @@ pub mod import_resolution {
     }
 }
 
+/// During the evaluation, we the following invariant is enforced: any contract (be it the type
+/// annotation, or the contracts) contained in a `MetaValue` must have been applied to the inner
+/// value of this metavalue. This invariant is false just after parsing, as there's merely no
+/// direct `Assume` in the output AST. This transformation makes it true after program
+/// transformations by generating corresponding assume.
+///
+/// It must be run before `share_normal_form` to avoid rechecking contracts each time the inner
+/// value is unwrapped.
 pub mod apply_contracts {
     use super::{RichTerm, Term};
 
+    /// If the top-level node of the AST is a meta-value, wrap the inner value inside generated
+    /// `Assume`s corresponding to the meta-value's contracts. Otherwise, return the term
+    /// unchanged.
     pub fn transform_one(rt: RichTerm) -> RichTerm {
         let RichTerm { term, pos } = rt;
 
