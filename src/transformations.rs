@@ -4,7 +4,7 @@ use crate::cache::ImportResolver;
 use crate::error::ImportError;
 use crate::eval::{Closure, Environment, IdentKind, Thunk};
 use crate::identifier::Ident;
-use crate::term::{RichTerm, Term};
+use crate::term::{Contract, RichTerm, Term};
 use crate::types::{AbsType, Types};
 use codespan::FileId;
 use simple_counter::*;
@@ -133,10 +133,7 @@ pub mod share_normal_form {
                     RichTerm::new(Term::MetaValue(meta), pos)
                 }
             }
-            t => RichTerm {
-                term: Box::new(t),
-                pos,
-            },
+            t => RichTerm::new(t, pos),
         }
     }
 
@@ -210,21 +207,32 @@ pub mod import_resolution {
                     ResolvedTerm::FromFile { term, path } => Some((term, file_id, path)),
                 };
 
-                Ok((
-                    RichTerm {
-                        term: Box::new(Term::ResolvedImport(file_id)),
-                        pos,
-                    },
-                    ret,
-                ))
+                Ok((RichTerm::new(Term::ResolvedImport(file_id), pos), ret))
             }
-            t => Ok((
-                RichTerm {
-                    term: Box::new(t),
-                    pos,
-                },
-                None,
-            )),
+            t => Ok((RichTerm::new(t, pos), None)),
+        }
+    }
+}
+
+pub mod apply_contracts {
+    use super::{RichTerm, Term};
+
+    pub fn transform_one(rt: RichTerm) -> RichTerm {
+        let RichTerm { term, pos } = rt;
+
+        match *term {
+            Term::MetaValue(mut meta) if meta.value.is_some() => {
+                let inner = meta.types.iter().chain(meta.contracts.iter()).fold(
+                    meta.value.take().unwrap(),
+                    |acc, ctr| {
+                        RichTerm::new(Term::Assume(ctr.types.clone(), ctr.label.clone(), acc), pos)
+                    },
+                );
+
+                meta.value.replace(inner);
+                RichTerm::new(Term::MetaValue(meta), pos)
+            }
+            t => RichTerm::new(t, pos),
         }
     }
 }
@@ -280,6 +288,8 @@ where
     // Apply one step of each transformation. If an import is resolved, then stack it.
     rt.traverse(
         &mut |rt: RichTerm, state: &mut TransformState<R>| -> Result<RichTerm, ImportError> {
+            // We need to do contract generation before wrapping stuff in variables
+            let rt = apply_contracts::transform_one(rt);
             let rt = share_normal_form::transform_one(rt);
             let (rt, pending) =
                 import_resolution::transform_one(rt, state.resolver, &state.parent)?;
@@ -335,5 +345,14 @@ impl Closurizable for Types {
     /// type defined by a custom contract).
     fn closurize(self, env: &mut Environment, with_env: Environment) -> Types {
         Types(AbsType::Flat(self.contract().closurize(env, with_env)))
+    }
+}
+
+impl Closurizable for Contract {
+    fn closurize(self, env: &mut Environment, with_env: Environment) -> Contract {
+        Contract {
+            types: self.types.closurize(env, with_env),
+            label: self.label,
+        }
     }
 }

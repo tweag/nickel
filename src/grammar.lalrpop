@@ -1,6 +1,6 @@
 use crate::identifier::Ident;
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
-    MergePriority};
+    MergePriority, Contract};
 use crate::term::make as mk_term;
 use crate::mk_app;
 use crate::types::{Types, AbsType};
@@ -11,7 +11,6 @@ use super::utils::{StringKind, mk_pos, mk_label, strip_indent, SwitchCase,
 use std::ffi::OsString;
 use super::lexer::{Token, NormalToken, StringToken, MultiStringToken, LexicalError};
 use std::collections::HashMap;
-use std::cmp::min;
 use codespan::FileId;
 
 grammar<'input>(src_id: FileId, );
@@ -23,35 +22,28 @@ TypeAnnot: (usize, Types, usize) = ":" <l: @L> <ty: Types> <r: @R> => (l, ty, r)
 MetaAnnotAtom: MetaValue = {
     "|" <l: @L> <ty: Types> <r: @R> => MetaValue {
         doc: None,
-        contract: Some((ty.clone(), mk_label(ty, src_id, l, r))),
+        types: None,
+        contracts: vec![Contract {types: ty.clone(), label: mk_label(ty, src_id, l, r)}],
         priority: Default::default(),
         value: None,
     },
     "|" "default" => MetaValue {
         doc: None,
-        contract: None,
+        types: None,
+        contracts: Vec::new(),
         priority: MergePriority::Default,
         value: None,
     },
     "|" "doc" <s: Str> => MetaValue {
         doc: Some(strip_indent_doc(s)),
-        contract: None,
+        types: None,
+        contracts: Vec::new(),
         priority: Default::default(),
         value: None,
     },
 };
 
-MetaAnnot: MetaValue =
-    <anns: MetaAnnotAtom+> => {
-        anns.into_iter().fold(MetaValue::new(), |acc, meta| {
-            MetaValue {
-                doc: meta.doc.or(acc.doc),
-                contract: meta.contract.or(acc.contract),
-                priority: min(acc.priority, meta.priority),
-                value: meta.value.or(acc.value),
-            }
-        })
-    };
+MetaAnnot: MetaValue = <anns: MetaAnnotAtom+> => anns.into_iter().fold(MetaValue::new(), MetaValue::flatten);
 
 LeftOp<Op, Current, Previous>: RichTerm =
     <t1: Current> <op: Op> <t2: Previous> => mk_term::op2(op, t1, t2);

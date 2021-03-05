@@ -53,13 +53,9 @@
 //! evaluates to a contract check, that is an `Assume(..., t)`
 use crate::error::EvalError;
 use crate::eval::{Closure, Environment};
-use crate::label::Label;
 use crate::position::TermPos;
-use crate::term::make as mk_term;
-use crate::term::{BinaryOp, MetaValue, RichTerm, Term};
+use crate::term::{BinaryOp, Contract, MetaValue, RichTerm, Term};
 use crate::transformations::Closurizable;
-use crate::types::{AbsType, Types};
-use crate::{mk_app, mk_fun};
 use std::collections::HashMap;
 
 /// Compute the merge of two evaluated operands.
@@ -184,13 +180,15 @@ pub fn merge(
 
             let MetaValue {
                 doc: doc1,
-                contract: contract1,
+                types: types1,
+                contracts: contracts1,
                 priority: priority1,
                 value: value1,
             } = meta1;
             let MetaValue {
                 doc: doc2,
-                contract: contract2,
+                types: types2,
+                contracts: contracts2,
                 priority: priority2,
                 value: value2,
             } = meta2;
@@ -200,37 +198,39 @@ pub fn merge(
             // If:
             // 1. meta1 has a value
             // 2. meta2 has a contract
-            // 3. The priorities are such that meta1's value will be used in the final value
-            // We apply meta2's contract to meta1.
-            let (value1, val_env1) = match (value1, &contract2) {
-                (Some(t), Some((ty, lbl))) if priority1 >= priority2 => {
-                    let mut env = Environment::new();
-                    let mut env1_local = env1.clone();
-                    let ty_closure = ty.clone().closurize(&mut env1_local, env2.clone());
-                    let pos_t = t.pos;
-                    let t = RichTerm::new(
-                        Term::Assume(ty_closure, lbl.clone(), t),
-                        pos_t.into_inherited(),
-                    );
-                    (Some(t.closurize(&mut env, env1_local)), env)
-                }
-                (value1, _) => (value1, env1.clone()),
+            // 3. The priorities (or the fact that meta2's value is not defined) are such that
+            //    meta1's value will be used in the final value
+            // Then, we apply meta2's contract to meta1. This creates a new value and a new
+            // intermediate environment.
+            let (value1, val_env1) = if value1.is_some()
+                && (types2.is_some() || !contracts2.is_empty())
+                && (priority1 >= priority2 || value2.is_none())
+            {
+                let (v, e) = cross_apply_contracts(
+                    value1.unwrap(),
+                    &env1,
+                    types2.iter().chain(contracts2.iter()),
+                    &env2,
+                );
+                (Some(v), e)
+            } else {
+                (value1, env1.clone())
             };
 
-            // Same thing for the dual situation.
-            let (value2, val_env2) = match (value2, &contract1) {
-                (Some(t), Some((ty, lbl))) if priority2 >= priority1 => {
-                    let mut env = Environment::new();
-                    let mut env2_local = env2.clone();
-                    let ty_closure = ty.clone().closurize(&mut env2_local, env1.clone());
-                    let pos_t = t.pos;
-                    let t = RichTerm::new(
-                        Term::Assume(ty_closure, lbl.clone(), t),
-                        pos_t.into_inherited(),
-                    );
-                    (Some(t.closurize(&mut env, env2_local)), env)
-                }
-                (value2, _) => (value2, env2.clone()),
+            // Dually, we cross apply meta1's contracts to meta2's value.
+            let (value2, val_env2) = if value2.is_some()
+                && (types1.is_some() || !contracts1.is_empty())
+                && (priority2 >= priority1 || value1.is_none())
+            {
+                let (v, e) = cross_apply_contracts(
+                    value2.unwrap(),
+                    &env2,
+                    types1.iter().chain(contracts1.iter()),
+                    &env1,
+                );
+                (Some(v), e)
+            } else {
+                (value2, env2.clone())
             };
 
             // Selecting either meta1's value, meta2's value, or the merge of the two values,
@@ -249,14 +249,41 @@ pub fn merge(
                 (_, Some(t2)) if priority2 > priority1 => (Some(t2), priority2, val_env2),
                 (None, Some(t2)) => (Some(t2), priority2, val_env2),
                 (None, None) => (None, Default::default(), Environment::new()),
-                _ => panic!("unreachable case"),
+                _ => unreachable!(),
             };
 
-            let contract = merge_contracts_meta(&mut env, contract1, env1, contract2, env2);
+            // Finally, we also need to closurize the contracts in the final envirnment.
+            let mut contracts1: Vec<Contract> = contracts1
+                .into_iter()
+                .map(|ctr| ctr.closurize(&mut env, env1.clone()))
+                .collect();
+            let contracts2: Vec<Contract> = contracts2
+                .into_iter()
+                .map(|ctr| ctr.closurize(&mut env, env2.clone()))
+                .collect();
+            let types1 = types1.map(|ctr| ctr.closurize(&mut env, env1));
+            let types2 = types2.map(|ctr| ctr.closurize(&mut env, env2));
 
+            // If both have type annotations, we arbitrarily choose the first one. At this point we
+            // are evaluating the term, and types annotations and contracts make no difference
+            // operationnally. Even for a query, it's strange to show multiple static types. So if
+            // both are set, we turn types2 to a contract and keep type1 as the type annotation.
+            let types = match types2 {
+                Some(ctr) if types1.is_some() => {
+                    contracts1.push(ctr);
+                    types1
+                }
+                _ => types1,
+            };
+
+            let contracts: Vec<_> = contracts1
+                .into_iter()
+                .chain(contracts2.into_iter())
+                .collect();
             let meta = MetaValue {
                 doc,
-                contract,
+                types,
+                contracts,
                 priority,
                 value,
             };
@@ -313,29 +340,30 @@ pub fn merge(
     }
 }
 
+fn cross_apply_contracts<'a>(
+    t1: RichTerm,
+    env1: &Environment,
+    it2: impl Iterator<Item = &'a Contract>,
+    env2: &Environment,
+) -> (RichTerm, Environment) {
+    let mut env = Environment::new();
+    let mut env1_local = env1.clone();
+
+    let pos = t1.pos.into_inherited();
+    let result = it2
+        .fold(t1, |acc, ctr| {
+            let ty_closure = ctr.types.clone().closurize(&mut env1_local, env2.clone());
+            RichTerm::new(Term::Assume(ty_closure, ctr.label.clone(), acc), pos)
+        })
+        .closurize(&mut env, env1_local);
+
+    (result, env)
+}
+
 /// Merge the two optional documentations of a metavalue.
 fn merge_doc(doc1: Option<String>, doc2: Option<String>) -> Option<String> {
     //FIXME: how to merge documentation? Just concatenate?
     doc1.or(doc2)
-}
-
-/// Merge the two optional contracts of a metavalue.
-fn merge_contracts_meta(
-    env: &mut Environment,
-    c1: Option<(Types, Label)>,
-    env1: Environment,
-    c2: Option<(Types, Label)>,
-    env2: Environment,
-) -> Option<(Types, Label)> {
-    match (c1, c2) {
-        (Some((ty1, lbl1)), Some((ty2, lbl2))) => Some((
-            merge_types_closure(env, ty1, lbl1, env1, ty2, lbl2, env2),
-            Label::dummy(),
-        )),
-        (Some((ty1, lbl1)), None) => Some((ty1.closurize(env, env1), lbl1)),
-        (None, Some((ty2, lbl2))) => Some((ty2.closurize(env, env2), lbl2)),
-        (None, None) => None,
-    }
 }
 
 /// Take the current environment, two terms with their local environment, and return a term which
@@ -354,48 +382,6 @@ fn merge_closurize(
         t2.closurize(&mut local_env, env2),
     ));
     body.closurize(env, local_env)
-}
-
-/// Compose two contracts, given as terms.
-///
-/// To compose contracts `c1` and `c2`, construct the term `fun _l x => c1 l1 (c2 l2 x)`, where
-/// `l1` and `l2` are the original respective labels of `c1` and `c2`, and return the corresponding
-/// flat type.
-///
-/// This type corresponds to the intersection of the types associated to `c1` and `c2`.  This
-/// function is not correct for the intersection of higher-order contracts, which is way more
-/// involved (see the [corresponding
-/// notes](https://github.com/tweag/nickel/blob/master/notes/intersection-and-union-types.md) in
-/// the repository).
-fn merge_contracts(c1: RichTerm, l1: Label, c2: RichTerm, l2: Label) -> Types {
-    let contract: RichTerm = mk_fun!(
-        "_l",
-        "x",
-        mk_app!(
-            c1,
-            Term::Lbl(l1),
-            mk_app!(c2, Term::Lbl(l2), mk_term::var("x"))
-        )
-    );
-    Types(AbsType::Flat(contract))
-}
-
-/// [Closurize](../transformations/trait.Closurizable.html) two types with their respective
-/// environment and merge them by composing their underlying contracts.
-///
-/// See [`merge_contracts`](./fn.merge_contracts.html).
-fn merge_types_closure(
-    env: &mut Environment,
-    ty1: Types,
-    l1: Label,
-    env1: Environment,
-    ty2: Types,
-    l2: Label,
-    env2: Environment,
-) -> Types {
-    let c1 = ty1.contract().closurize(env, env1);
-    let c2 = ty2.contract().closurize(env, env2);
-    merge_contracts(c1, l1, c2, l2)
 }
 
 pub mod hashmap {
