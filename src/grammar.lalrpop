@@ -311,7 +311,6 @@ UOp: UnaryOp = {
     "isList" => UnaryOp::IsList(),
     "isRecord" => UnaryOp::IsRecord(),
     "blame" => UnaryOp::Blame(),
-    "assume" => UnaryOp::Assume(),
     "chngPol" => UnaryOp::ChangePolarity(),
     "polarity" => UnaryOp::Pol(),
     "goDom" => UnaryOp::GoDom(),
@@ -447,6 +446,7 @@ BOpPre: BinaryOp = {
     "hash" => BinaryOp::Hash(),
     "serialize" => BinaryOp::Serialize(),
     "deserialize" => BinaryOp::Deserialize(),
+    "assume" => BinaryOp::Assume(),
 }
 
 Types: Types = {

@@ -870,66 +870,63 @@ impl ToDiagnostic<FileId> for EvalError {
                 let mut labels = vec![path_label];
 
                 if let Some(ref arg_pos) = l.arg_pos.into_opt() {
-                    labels.push(primary(&arg_pos).with_message("applied to this expression"));
+                    // In some cases, if the blame error is located in an argument or return value
+                    // of an higher order functions for example, the original argument position can
+                    // point to the builtin implementation contract like `func` or `record`, so
+                    // there's no good reason to show it. Note than even in that case, the
+                    // information contained in the argument thunk can still be useful.
+                    if contract_id.map(|ctrs_id| arg_pos.src_id != ctrs_id).unwrap_or(true)  {
+                        labels.push(primary(&arg_pos).with_message("applied to this expression"));
+                    }
                 }
 
                 // If we have a reference to the thunk that was being tested, we can try to show
                 // more information about the final, evaluated value that is responsible for the
                 // blame.
                 if let Some(ref thunk) = l.arg_thunk {
-                    // The indication may be verbose, and are less useful in case of a function
-                    // contract. We only show the following information for ground types.
-                    if ty_path::has_no_arrow(&l.path) {
-                        let mut val = thunk.get_owned().body;
+                    let mut val = thunk.get_owned().body;
 
-                        match (val.pos, l.arg_pos.as_opt_ref(), contract_id) {
-                            // Avoid showing a position inside builtin contracts, it's rarely
-                            // informative.
-                            (TermPos::Original(val_pos), _, Some(c_id))
-                                if val_pos.src_id == c_id =>
-                            {
-                                val.pos = TermPos::None;
-                                labels.push(
-                                    secondary_term(&val, files)
-                                        .with_message("evaluated to this value"),
-                                );
-                            }
-                            // Do not show the same thing twice: if arg_pos and val_pos are the same,
-                            // the first label "applied to this value" is sufficient.
-                            (TermPos::Original(ref val_pos), Some(arg_pos), _)
-                                if val_pos == arg_pos => {}
-                            (TermPos::Original(ref val_pos), ..) => labels.push(
-                                secondary(val_pos).with_message("evaluated to this expression"),
-                            ),
-                            // If the final thunk is a direct reduct of the original value, rather
-                            // print the actual value than referring to the same position as
-                            // before.
-                            (TermPos::Inherited(ref val_pos), Some(arg_pos), _)
-                                if val_pos == arg_pos =>
-                            {
-                                val.pos = TermPos::None;
-                                labels.push(
-                                    secondary_term(&val, files)
-                                        .with_message("evaluated to this value"),
-                                );
-                            }
-                            // Finally, if the parameter reduced to a value which originates from a
-                            // different expression, show both the expression and the value.
-                            (TermPos::Inherited(ref val_pos), ..) => {
-                                labels.push(
-                                    secondary(val_pos).with_message("evaluated to this expression"),
-                                );
-                                val.pos = TermPos::None;
-                                labels.push(
-                                    secondary_term(&val, files)
-                                        .with_message("evaluated to this value"),
-                                );
-                            }
-                            (TermPos::None, ..) => labels.push(
-                                secondary_term(&val, files)
-                                    .with_message("value evaluated to this value"),
-                            ),
+                    match (val.pos, l.arg_pos.as_opt_ref(), contract_id) {
+                        // Avoid showing a position inside builtin contracts, it's rarely
+                        // informative.
+                        (TermPos::Original(val_pos), _, Some(c_id)) if val_pos.src_id == c_id => {
+                            val.pos = TermPos::None;
+                            labels.push(
+                                secondary_term(&val, files).with_message("evaluated to this value"),
+                            );
                         }
+                        // Do not show the same thing twice: if arg_pos and val_pos are the same,
+                        // the first label "applied to this value" is sufficient.
+                        (TermPos::Original(ref val_pos), Some(arg_pos), _)
+                            if val_pos == arg_pos => {}
+                        (TermPos::Original(ref val_pos), ..) => labels
+                            .push(secondary(val_pos).with_message("evaluated to this expression")),
+                        // If the final thunk is a direct reduct of the original value, rather
+                        // print the actual value than referring to the same position as
+                        // before.
+                        (TermPos::Inherited(ref val_pos), Some(arg_pos), _)
+                            if val_pos == arg_pos =>
+                        {
+                            val.pos = TermPos::None;
+                            labels.push(
+                                secondary_term(&val, files).with_message("evaluated to this value"),
+                            );
+                        }
+                        // Finally, if the parameter reduced to a value which originates from a
+                        // different expression, show both the expression and the value.
+                        (TermPos::Inherited(ref val_pos), ..) => {
+                            labels.push(
+                                secondary(val_pos).with_message("evaluated to this expression"),
+                            );
+                            val.pos = TermPos::None;
+                            labels.push(
+                                secondary_term(&val, files).with_message("evaluated to this value"),
+                            );
+                        }
+                        (TermPos::None, ..) => labels.push(
+                            secondary_term(&val, files)
+                                .with_message("value evaluated to this value"),
+                        ),
                     }
                 }
 
