@@ -195,13 +195,7 @@ impl Types {
                 s.contract_open(h.clone(), !pol, sy),
                 t.contract_open(h, pol, sy)
             ),
-            AbsType::Flat(ref t) => {
-                // As contracts may be specified either as function or records, we apply the ToCtrFun
-                // operator, specifically to generate a uniform function of the label and the value to be
-                // tested.
-                let pos = t.pos;
-                mk_term::op1(UnaryOp::ToCtrFun(), t.clone()).with_pos(pos.into_inherited())
-            }
+            AbsType::Flat(ref t) => t.clone(),
             AbsType::Var(ref i) => {
                 let (rt, _) = h
                     .get(i)
@@ -295,10 +289,10 @@ impl Types {
             }
         };
 
-        // To track the argument to contracts, we need to wrap the function contracts as an
-        // `Assume`. Since `Assume` is strict in the label and need to be fully applied, we need
-        // to wrap this assume back as a standard function, that is to form:
-        // `fun l val => %assume% ctr l val`
+        // To track the argument to contracts and support contracts as record, we need to wrap the
+        // function contracts as an `Assume`. Since `Assume` is strict in the label and need to be
+        // fully applied, we need to wrap the whole expression back as a standard function, that is
+        // to form: `fun l val => %assume% ctr l val`
         let var_l = fresh_var();
         let var_val = fresh_var();
         let pos = ctr.pos;

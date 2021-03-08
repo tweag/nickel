@@ -1528,8 +1528,6 @@ pub fn get_uop_type(state: &mut State, op: &UnaryOp) -> Result<TypeWrapper, Type
         }
         // Bool -> Bool
         UnaryOp::BoolNot() => mk_tyw_arrow!(AbsType::Bool(), AbsType::Bool()),
-        // This should not happen, as ToCtrFun() is only produced during evaluation.
-        UnaryOp::ToCtrFun() => panic!("cannot typecheck ToCtrFun()"),
         // forall a. Dyn -> a
         UnaryOp::Blame() => {
             let res = TypeWrapper::Ptr(new_var(state.table));
