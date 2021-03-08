@@ -409,7 +409,8 @@ mod test {
         use crate::term::MetaValue;
 
         // Wrap the type in a contract to have it accepted by the parser.
-        let wrapper = format!("Contract({})", s);
+        let wrapper = format!("null | {}", s);
+        println!("{}", wrapper);
         let id = Files::new().add("<test>", wrapper.clone());
 
         let rt = TermParser::new().parse(id, Lexer::new(&wrapper)).unwrap();

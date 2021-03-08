@@ -130,8 +130,8 @@ let typecheck = [
     : {f : Num -> Num},
 
   // polymorphic_row_constraints
-  let extend = Assume(forall c. { | c} -> {a: Str | c}, 0) in
-    let remove = Assume(forall c. {a: Str | c} -> { | c}, 0) in
+  let extend | forall c. { | c} -> {a: Str | c} = 0 in
+    let remove | forall c. {a: Str | c} -> { | c} = 0 in
     (let good = remove (extend {}) in 0) : Num,
 
   let r | {a: Num | Dyn} = {a = 1; b = 2} in (r.a : Num),
@@ -156,6 +156,11 @@ let typecheck = [
   let x = "a#{"some str inside"}" in (x ++ "a" : Str),
   let x = false in (x || true : Bool),
   let x = false in let y = x in let z = y in (z : Bool),
+  // Regression test following, see [#297](https://github.com/tweag/nickel/pull/297). Check that
+  // [apparent_type](../fn.apparent_type.html) doesn't silently convert list literals from `List
+  // T` (for `T` a type or a type variable) to `List Dyn`.
+  {foo = [1]} : {foo : List Num},
+  (let y = [] in y) : forall a. List a,
 ] in
 
 

@@ -1,10 +1,10 @@
 let Assert = fun l x => x || %blame% l in
 
 (let AlwaysTrue = fun l t =>
-  let boolT = Assume(Bool, t) in
+  let boolT | Bool = t in
   if boolT then boolT else %blame% l in
 let AlwaysFalse = fun l t =>
-  let boolT = Assume(Bool, t) in
+  let boolT | Bool = t in
   if boolT then %blame% l else boolT
 in let not | #AlwaysTrue -> #AlwaysFalse = fun b => if b then false else true in
 not true == false) &&

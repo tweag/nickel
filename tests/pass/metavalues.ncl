@@ -25,7 +25,7 @@ let Assert = fun l x => x || %blame% l in
 
 ({a=2} & {a | Num} & {a | default = 3} == {a = 2} | #Assert) &&
 ({a=2} & {b | Num} & {b | default = 3} == {a = 2; b = 3} | #Assert) &&
-(({a=Default(1)} & {b=Contract(Num)} & {a=Default(1)}).a
+(({a | default = 1} & {b | Num} & {a | default = 1}).a
   == 1
   | #Assert) &&
 

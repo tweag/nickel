@@ -739,7 +739,6 @@ pub fn timestamp(path: impl AsRef<OsStr>) -> io::Result<SystemTime> {
 }
 
 /// Provide mockup import resolvers for testing purpose.
-#[cfg(test)]
 pub mod resolvers {
     use super::*;
 
