@@ -53,7 +53,7 @@
 //! untyped parts.
 use crate::identifier::Ident;
 use crate::term::make as mk_term;
-use crate::term::{RichTerm, Term, UnaryOp};
+use crate::term::{RichTerm, Term, UnaryOp, BinaryOp};
 use crate::{mk_app, mk_fun};
 use std::collections::HashMap;
 use std::fmt;
@@ -186,7 +186,7 @@ impl Types {
             AbsType::Bool() => contracts::bool(),
             AbsType::Str() => contracts::string(),
             //TODO: optimization: have a specialized contract for `List Dyn`, to avoid mapping an
-            //always succesful contract on each element.
+            //always successful contract on each element.
             AbsType::List(ref ty) => mk_app!(contracts::list(), ty.contract_open(h, pol, sy)),
             AbsType::Sym() => panic!("Are you trying to check a Sym at runtime?"),
             AbsType::Arrow(ref s, ref t) => mk_app!(
@@ -195,7 +195,10 @@ impl Types {
                 t.contract_open(h, pol, sy)
             ),
             AbsType::Flat(ref t) => {
-                mk_term::op1(UnaryOp::Assume(), t.clone()).with_pos(t.pos)
+                // The assume primive op being strict in its first argument, we need to map the
+                // contract 
+                mk_fun!("l", mk_term::op2(BinaryOp::Assume(), t.clone(), mk_term::var("l")))
+                //mk_term::op1(UnaryOp::Assume(), t.clone()).with_pos(t.pos)
             }
             AbsType::Var(ref i) => {
                 let (rt, _) = h

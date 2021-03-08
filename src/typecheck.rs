@@ -1534,8 +1534,6 @@ pub fn get_uop_type(state: &mut State, op: &UnaryOp) -> Result<TypeWrapper, Type
 
             mk_tyw_arrow!(AbsType::Dyn(), res)
         }
-        // This should not happen, as `ApplyContract()` is only produced during evaluation.
-        UnaryOp::Assume() => panic!("cannot typecheck ApplyContract()"),
         // Dyn -> Bool
         UnaryOp::Pol() => mk_tyw_arrow!(AbsType::Dyn(), AbsType::Bool()),
         // forall rows. < | rows> -> <id | rows>
@@ -1632,6 +1630,8 @@ pub fn get_bop_type(state: &mut State, op: &BinaryOp) -> Result<TypeWrapper, Typ
         // Str -> Str -> Str
         BinaryOp::PlusStr() => mk_tyw_arrow!(AbsType::Str(), AbsType::Str(), AbsType::Str()),
         // Sym -> Dyn -> Dyn -> Dyn
+        // This should not happen, as `ApplyContract()` is only produced during evaluation.
+        BinaryOp::Assume() => panic!("cannot typecheck assume"),
         BinaryOp::Unwrap() => mk_tyw_arrow!(
             AbsType::Sym(),
             AbsType::Dyn(),
