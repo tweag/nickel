@@ -518,6 +518,12 @@ pub enum UnaryOp {
 
     /// Raise a blame, which stops the execution and prints an error according to the label argument.
     Blame(),
+    /// Convert a flat contract, specified as an expression like `#SomeContract`, to a function of
+    /// two arguments (a label and the value to be tested) suitable to be passed to [`Assume`]().
+    /// This operator's purpose is to accept more terms than just functions as a contract: it is
+    /// the identity on functions, but it also accepts contracts as records, which are translated
+    /// to a function that performs a merge operation with its argument.
+    ToCtrFun(),
 
     /// Typecast an enum to a larger enum type.
     ///
@@ -632,9 +638,7 @@ pub enum BinaryOp {
     ///
     /// Apply a contract to a label and a value. The label and the value are stored on the stack,
     /// unevaluated, while the contract is the strict argument to this operator.  This operator
-    /// additionally marks the location of the tested value for better error reporting. It also
-    /// accepts contracts as records, which are translated to a merge operation instead of function
-    /// application.
+    /// additionally marks the location of the tested value for better error reporting.
     Assume(),
     /// Unwrap a tagged term.
     ///

@@ -54,7 +54,7 @@
 use crate::error::EvalError;
 use crate::eval::{Closure, Environment};
 use crate::position::TermPos;
-use crate::term::{BinaryOp, Contract, MetaValue, RichTerm, Term, make as mk_term};
+use crate::term::{make as mk_term, BinaryOp, Contract, MetaValue, RichTerm, Term};
 use crate::transformations::Closurizable;
 use std::collections::HashMap;
 

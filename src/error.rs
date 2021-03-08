@@ -875,7 +875,10 @@ impl ToDiagnostic<FileId> for EvalError {
                     // point to the builtin implementation contract like `func` or `record`, so
                     // there's no good reason to show it. Note than even in that case, the
                     // information contained in the argument thunk can still be useful.
-                    if contract_id.map(|ctrs_id| arg_pos.src_id != ctrs_id).unwrap_or(true)  {
+                    if contract_id
+                        .map(|ctrs_id| arg_pos.src_id != ctrs_id)
+                        .unwrap_or(true)
+                    {
                         labels.push(primary(&arg_pos).with_message("applied to this expression"));
                     }
                 }

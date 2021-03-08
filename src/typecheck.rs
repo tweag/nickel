@@ -814,7 +814,7 @@ pub fn apparent_type(t: &Term, envs: Option<&Envs>) -> ApparentType {
     match t {
         Term::Promise(ty, _, _)
         | Term::MetaValue(MetaValue {
-            types: Some(Contract {types: ty, ..}),
+            types: Some(Contract { types: ty, .. }),
             ..
         }) => ApparentType::Annotated(ty.clone()),
         // For metavalues, if there's no type annotation, choose the first contract appearing.
@@ -1528,6 +1528,8 @@ pub fn get_uop_type(state: &mut State, op: &UnaryOp) -> Result<TypeWrapper, Type
         }
         // Bool -> Bool
         UnaryOp::BoolNot() => mk_tyw_arrow!(AbsType::Bool(), AbsType::Bool()),
+        // This should not happen, as ToCtrFun() is only produced during evaluation.
+        UnaryOp::ToCtrFun() => panic!("cannot typecheck ToCtrFun()"),
         // forall a. Dyn -> a
         UnaryOp::Blame() => {
             let res = TypeWrapper::Ptr(new_var(state.table));
