@@ -224,7 +224,7 @@ pub mod import_resolution {
 /// value is unwrapped.
 pub mod apply_contracts {
     use super::{RichTerm, Term};
-    use crate::term::make as mk_term;
+    use crate::mk_app;
 
     /// If the top-level node of the AST is a meta-value, wrap the inner value inside generated
     /// `Assume`s corresponding to the meta-value's contracts. Otherwise, return the term
@@ -237,7 +237,12 @@ pub mod apply_contracts {
                 let inner = meta.types.iter().chain(meta.contracts.iter()).fold(
                     meta.value.take().unwrap(),
                     |acc, ctr| {
-                        mk_term::assume(ctr.types.clone(), ctr.label.clone(), acc).with_pos(pos)
+                        mk_app!(
+                            ctr.types.clone().contract(),
+                            Term::Lbl(ctr.label.clone()),
+                            acc
+                        )
+                        .with_pos(pos)
                     },
                 );
 
@@ -317,7 +322,7 @@ where
 }
 
 /// Generate a new fresh variable which do not clash with user-defined variables.
-fn fresh_var() -> Ident {
+pub fn fresh_var() -> Ident {
     Ident(format!("%{}", FreshVarCounter::next()))
 }
 

@@ -179,8 +179,9 @@ impl Types {
         sy: &mut i32,
     ) -> RichTerm {
         use crate::stdlib::contracts;
+        use crate::transformations::fresh_var;
 
-        match self.0 {
+        let ctr = match self.0 {
             AbsType::Dyn() => contracts::dynamic(),
             AbsType::Num() => contracts::num(),
             AbsType::Bool() => contracts::bool(),
@@ -292,7 +293,24 @@ impl Types {
             AbsType::DynRecord(ref ty) => {
                 mk_app!(contracts::dyn_record(), ty.contract_open(h, pol, sy))
             }
-        }
+        };
+
+        // To track the argument to contracts, we need to wrap the function contracts as an
+        // `Assume`. Since `Assume` is strict in the label and need to be fully applied, we need
+        // to wrap this assume back as a standard function, that is to form:
+        // `fun l val => %assume% ctr l val`
+        let var_l = fresh_var();
+        let var_val = fresh_var();
+        let pos = ctr.pos;
+        mk_fun!(
+            var_l.clone(),
+            var_val.clone(),
+            mk_app!(
+                mk_term::op2(BinaryOp::Assume(), ctr, Term::Var(var_l)),
+                Term::Var(var_val)
+            )
+        )
+        .with_pos(pos.into_inherited())
     }
 
     /// Find a binding in a record row type. Return `None` if there is no such binding, if the type
