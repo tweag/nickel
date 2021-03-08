@@ -691,22 +691,36 @@ fn type_check_(
         Term::Sym(_) => unify(state, strict, ty, mk_typewrapper::sym())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
         Term::Wrapped(_, t) => type_check_(state, envs, strict, t, ty),
-        Term::MetaValue(MetaValue {
-            types: None,
-            contracts,
-            value: Some(t),
-            ..
-        }) if contracts.is_empty() => type_check_(state, envs, strict, t, ty),
-        // Handle a metavalue with a contract together with a value in the same way as an assume
+        // A non-empty metavalue with a type annotation is a promise.
         Term::MetaValue(MetaValue {
             types: Some(Contract { types: ty2, .. }),
             value: Some(t),
             ..
         }) => {
+            let tyw2 = to_typewrapper(ty2.clone());
+            let instantiated = instantiate_foralls(state, tyw2, ForallInst::Constant);
+
             unify(state, strict, ty, to_typewrapper(ty2.clone()))
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            let new_ty = TypeWrapper::Ptr(new_var(state.table));
-            type_check_(state, envs, false, t, new_ty)
+            type_check_(state, envs, true, t, instantiated)
+        }
+        // A non-empty metavalue with at least one contract is an assume. If there's several
+        // contracts, we arbitrarily chose the first one as the type annotation.
+        Term::MetaValue(MetaValue {
+            contracts,
+            value: Some(t),
+            ..
+        }) if !contracts.is_empty() => {
+            let ctr = contracts.get(0).unwrap();
+            let Contract { types: ty2, .. } = ctr;
+
+            unify(state, strict, ty, to_typewrapper(ty2.clone()))
+                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+            type_check_(state, envs, false, t, mk_typewrapper::dynamic())
+        }
+        // A metavalue without a type or contract annotation is typechecked in the same way as its inner value
+        Term::MetaValue(MetaValue { value: Some(t), .. }) => {
+            type_check_(state, envs, strict, t, ty)
         }
         Term::MetaValue(_) => Ok(()),
         Term::Import(_) => unify(state, strict, ty, mk_typewrapper::dynamic())
