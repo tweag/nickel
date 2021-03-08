@@ -518,7 +518,7 @@ pub enum UnaryOp {
 
     /// Raise a blame, which stops the execution and prints an error according to the label argument.
     Blame(),
-    
+
     /// Typecast an enum to a larger enum type.
     ///
     /// `Embed` is used to upcast enums. For example, if a value `x` has enum type `a | b`, then

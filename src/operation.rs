@@ -901,9 +901,13 @@ fn process_binary_operation(
                         },
                         env: env1,
                     }),
-                   Term::Record(..) => {
+                    Term::Record(..) => {
                         let mut new_env = Environment::new();
-                        let closurized = RichTerm { term: t1, pos: pos1 }.closurize(&mut new_env, env1);
+                        let closurized = RichTerm {
+                            term: t1,
+                            pos: pos1,
+                        }
+                        .closurize(&mut new_env, env1);
 
                         // Convert the record to the function `fun l x => contract & x`.
                         let body = mk_fun!(
@@ -914,7 +918,7 @@ fn process_binary_operation(
                         .with_pos(pos1.into_inherited());
 
                         Ok(Closure { body, env: new_env })
-                    }    
+                    }
                     _ => Err(EvalError::TypeError(
                         String::from("Function or Record"),
                         String::from("assume, 1st argument"),
