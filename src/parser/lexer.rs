@@ -170,8 +170,6 @@ pub enum NormalToken<'input> {
     GoField,
     #[token("%goList%")]
     GoList,
-    #[token("%assume%")]
-    Assume,
 
     #[token("%wrap%")]
     Wrap,

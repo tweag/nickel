@@ -446,7 +446,6 @@ BOpPre: BinaryOp = {
     "hash" => BinaryOp::Hash(),
     "serialize" => BinaryOp::Serialize(),
     "deserialize" => BinaryOp::Deserialize(),
-    "assume" => BinaryOp::Assume(),
 }
 
 Types: Types = {
@@ -595,7 +594,6 @@ extern {
         "List" => Token::Normal(NormalToken::List),
 
         "tag" => Token::Normal(NormalToken::Tag),
-        "assume" => Token::Normal(NormalToken::Assume),
         "isNum" => Token::Normal(NormalToken::IsNum),
         "isBool" => Token::Normal(NormalToken::IsBool),
         "isStr" => Token::Normal(NormalToken::IsStr),
