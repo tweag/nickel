@@ -195,7 +195,7 @@ impl Types {
                 t.contract_open(h, pol, sy)
             ),
             AbsType::Flat(ref t) => {
-                mk_term::op1(UnaryOp::ApplyContract(), t.clone()).with_pos(t.pos)
+                mk_term::op1(UnaryOp::Assume(), t.clone()).with_pos(t.pos)
             }
             AbsType::Var(ref i) => {
                 let (rt, _) = h

@@ -241,7 +241,7 @@ fn process_unary_operation(
                 ))
             }
         }
-        UnaryOp::ApplyContract() => {
+        UnaryOp::Assume() => {
             match *t {
                 Term::Fun(..) => Ok(Closure {
                     body: RichTerm { term: t, pos },

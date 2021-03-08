@@ -311,7 +311,7 @@ UOp: UnaryOp = {
     "isList" => UnaryOp::IsList(),
     "isRecord" => UnaryOp::IsRecord(),
     "blame" => UnaryOp::Blame(),
-    "applyContract" => UnaryOp::ApplyContract(),
+    "assume" => UnaryOp::Assume(),
     "chngPol" => UnaryOp::ChangePolarity(),
     "polarity" => UnaryOp::Pol(),
     "goDom" => UnaryOp::GoDom(),
@@ -595,7 +595,7 @@ extern {
         "List" => Token::Normal(NormalToken::List),
 
         "tag" => Token::Normal(NormalToken::Tag),
-        "applyContract" => Token::Normal(NormalToken::ApplyContract),
+        "assume" => Token::Normal(NormalToken::Assume),
         "isNum" => Token::Normal(NormalToken::IsNum),
         "isBool" => Token::Normal(NormalToken::IsBool),
         "isStr" => Token::Normal(NormalToken::IsStr),

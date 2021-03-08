@@ -575,7 +575,7 @@ where
                     }
                 }
             },
-            Term::Promise(ty, mut l, t) | Term::Assume(ty, mut l, t) => {
+            Term::Promise(ty, mut l, t) => {
                 l.arg_pos = t.pos;
                 let thunk = Thunk::new(
                     Closure {
@@ -839,11 +839,6 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
                 let t = subst_(t, global_env, env, bound);
 
                 RichTerm::new(Term::Promise(ty, l, t), pos)
-            }
-            Term::Assume(ty, l, t) => {
-                let t = subst_(t, global_env, env, bound);
-
-                RichTerm::new(Term::Assume(ty, l, t), pos)
             }
             Term::Wrapped(i, t) => {
                 let t = subst_(t, global_env, env, bound);
