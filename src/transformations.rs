@@ -224,6 +224,7 @@ pub mod import_resolution {
 /// value is unwrapped.
 pub mod apply_contracts {
     use super::{RichTerm, Term};
+    use crate::term::make as mk_term;
 
     /// If the top-level node of the AST is a meta-value, wrap the inner value inside generated
     /// `Assume`s corresponding to the meta-value's contracts. Otherwise, return the term
@@ -236,7 +237,7 @@ pub mod apply_contracts {
                 let inner = meta.types.iter().chain(meta.contracts.iter()).fold(
                     meta.value.take().unwrap(),
                     |acc, ctr| {
-                        RichTerm::new(Term::Assume(ctr.types.clone(), ctr.label.clone(), acc), pos)
+                        mk_term::assume(ctr.types.clone(), ctr.label.clone(), acc).with_pos(pos)
                     },
                 );
 
