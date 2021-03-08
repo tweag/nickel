@@ -267,9 +267,7 @@ impl Stack {
     /// corresponding thunk, or `None` if the top element wasn't an argument.
     pub fn track_arg(&mut self) -> Option<Thunk> {
         match self.0.last_mut() {
-            Some(Marker::TrackedArg(thunk, _)) => {
-                Some(thunk.clone())
-            }
+            Some(Marker::TrackedArg(thunk, _)) => Some(thunk.clone()),
             Some(Marker::Arg(..)) => {
                 let (closure, pos) = self.pop_arg().unwrap();
                 let thunk = Thunk::new(closure, IdentKind::Lam());

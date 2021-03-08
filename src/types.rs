@@ -53,7 +53,7 @@
 //! untyped parts.
 use crate::identifier::Ident;
 use crate::term::make as mk_term;
-use crate::term::{RichTerm, Term, UnaryOp, BinaryOp};
+use crate::term::{BinaryOp, RichTerm, Term, UnaryOp};
 use crate::{mk_app, mk_fun};
 use std::collections::HashMap;
 use std::fmt;
@@ -180,7 +180,7 @@ impl Types {
     ) -> RichTerm {
         use crate::stdlib::contracts;
 
-        let ctr = match self.0 {
+        match self.0 {
             AbsType::Dyn() => contracts::dynamic(),
             AbsType::Num() => contracts::num(),
             AbsType::Bool() => contracts::bool(),
@@ -189,19 +189,17 @@ impl Types {
             //always successful contract on each element.
             AbsType::List(ref ty) => mk_app!(contracts::list(), ty.contract_open(h, pol, sy)),
             AbsType::Sym() => panic!("Are you trying to check a Sym at runtime?"),
-            AbsType::Arrow(ref s, ref t) => {
-                let res = mk_app!(
+            AbsType::Arrow(ref s, ref t) => mk_app!(
                 contracts::func(),
                 s.contract_open(h.clone(), !pol, sy),
                 t.contract_open(h, pol, sy)
-            );
-                println!("Resulting contract: {:#?}", res);
-                res
-            }
+            ),
             AbsType::Flat(ref t) => {
-                // The assume primive op being strict in the label, we need to map the contract in
-                // a function first.
-                mk_fun!("l", mk_term::op2(BinaryOp::Assume(), t.clone(), mk_term::var("l")))
+                // As contracts may be specified either as function or records, we apply the ToCtrFun
+                // operator, specifically to generate a uniform function of the label and the value to be
+                // tested.
+                let pos = t.pos;
+                mk_term::op1(UnaryOp::ToCtrFun(), t.clone()).with_pos(pos.into_inherited())
             }
             AbsType::Var(ref i) => {
                 let (rt, _) = h
@@ -294,12 +292,7 @@ impl Types {
             AbsType::DynRecord(ref ty) => {
                 mk_app!(contracts::dyn_record(), ty.contract_open(h, pol, sy))
             }
-        };
-
-        // The assume primive op being strict in the label, we need to map contracts as a lazy
-        // function.
-        let pos = ctr.pos;
-        mk_fun!("l", mk_term::op2(BinaryOp::Assume(), ctr, mk_term::var("l"))).with_pos(pos.into_inherited())
+        }
     }
 
     /// Find a binding in a record row type. Return `None` if there is no such binding, if the type
