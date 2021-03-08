@@ -897,10 +897,7 @@ impl ToDiagnostic<FileId> for EvalError {
                             // Do not show the same thing twice: if arg_pos and val_pos are the same,
                             // the first label "applied to this value" is sufficient.
                             (TermPos::Original(ref val_pos), Some(arg_pos), _)
-                                if val_pos == arg_pos =>
-                            {
-                                ()
-                            }
+                                if val_pos == arg_pos => {}
                             (TermPos::Original(ref val_pos), ..) => labels.push(
                                 secondary(val_pos).with_message("evaluated to this expression"),
                             ),
