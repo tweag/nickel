@@ -241,34 +241,6 @@ fn process_unary_operation(
                 ))
             }
         }
-        UnaryOp::Assume() => {
-            match *t {
-                Term::Fun(..) => Ok(Closure {
-                    body: RichTerm { term: t, pos },
-                    env,
-                }),
-                Term::Record(..) => {
-                    let mut new_env = Environment::new();
-                    let closurized = RichTerm { term: t, pos }.closurize(&mut new_env, env);
-
-                    // Convert the record to the function `fun l x => contract & x`.
-                    let body = mk_fun!(
-                        "l",
-                        "x",
-                        mk_term::op2(BinaryOp::Merge(), closurized, mk_term::var("x"))
-                    )
-                    .with_pos(pos.into_inherited());
-
-                    Ok(Closure { body, env: new_env })
-                }
-                _ => Err(EvalError::TypeError(
-                    String::from("Function or record"),
-                    String::from("contract application"),
-                    arg_pos,
-                    RichTerm { term: t, pos },
-                )),
-            }
-        }
         UnaryOp::Embed(_id) => {
             if let en @ Term::Enum(_) = *t {
                 Ok(Closure::atomic_closure(RichTerm::new(en, pos_op_inh)))
@@ -904,6 +876,56 @@ fn process_binary_operation(
                         pos: pos1,
                     },
                 ))
+            }
+        }
+        BinaryOp::Assume() => {
+            if let Term::Lbl(mut l) = *t2 {
+                // Track the contract argument for better error reporting, and push back the label
+                // on the stack, so that it becomes the first argument of the contract.
+                let thunk = stack.track_arg().ok_or_else(|| EvalError::NotEnoughArgs(3, String::from("assume"), pos_op))?;
+                l.arg_pos = thunk.borrow().body.pos;
+                l.arg_thunk = Some(thunk);
+
+                stack.push_arg(
+                    Closure::atomic_closure(Term::Lbl(l).into()),
+                    pos2.into_inherited(),
+                );
+
+              match *t1 {
+                Term::Fun(..) => {
+                    Ok(Closure {
+                        body: RichTerm { term: t1, pos: pos1 },
+                        env: env1,
+                    })
+                }
+                Term::Record(..) => {
+                    let mut new_env = Environment::new();
+                    let closurized = RichTerm { term: t1, pos: pos1 }.closurize(&mut new_env, env1);
+
+                    // Convert the record to the function `fun l x => contract & x`.
+                    let body = mk_fun!(
+                        "l",
+                        "x",
+                        mk_term::op2(BinaryOp::Merge(), closurized, mk_term::var("x"))
+                    )
+                    .with_pos(pos1.into_inherited());
+
+                    Ok(Closure { body, env: new_env })
+                }
+                _ => Err(EvalError::TypeError(
+                    String::from("Function or record"),
+                    String::from("contract application, 1st argument"),
+                    fst_pos,
+                    RichTerm { term: t1, pos: pos1 },
+                )),
+              }
+            }
+            else {
+                Err(EvalError::TypeError(
+                    String::from("Label"),
+                    String::from("contract application, 2nd argument"),
+                    snd_pos,
+                    RichTerm { term: t2, pos: pos2}))
             }
         }
         BinaryOp::Unwrap() => {

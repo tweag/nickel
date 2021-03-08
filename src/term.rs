@@ -518,14 +518,6 @@ pub enum UnaryOp {
 
     /// Raise a blame, which stops the execution and prints an error according to the label argument.
     Blame(),
-    /// An assume.
-    ///
-    /// Apply a contract to a label and a value. The label and the value are stored on the stack,
-    /// unevaluated, while the contract is the strict argument to this operator.  This operator
-    /// additionally marks the location of the tested value for better error reporting. It also
-    /// accepts contracts as records, which are translated to a merge operation instead of function
-    /// application.
-    Assume(),
 
     /// Typecast an enum to a larger enum type.
     ///
@@ -636,6 +628,14 @@ pub enum BinaryOp {
     GreaterThan(),
     /// Greater than or equal comparison operator.
     GreaterOrEq(),
+    /// An assume.
+    ///
+    /// Apply a contract to a label and a value. The label and the value are stored on the stack,
+    /// unevaluated, while the contract is the strict argument to this operator.  This operator
+    /// additionally marks the location of the tested value for better error reporting. It also
+    /// accepts contracts as records, which are translated to a merge operation instead of function
+    /// application.
+    Assume(),
     /// Unwrap a tagged term.
     ///
     /// See `Wrap` in [`UnaryOp`](enum.UnaryOp.html).
@@ -1081,8 +1081,14 @@ pub mod make {
         Term::Op2(op, t1.into(), t2.into()).into()
     }
 
-    pub fn assume<T>(types: Types, l: Label, t: T) -> RichTerm where T: Into<RichTerm> {
-        mk_app!(op1(UnaryOp::Assume(), types.contract()), Term::Lbl(l), t.into()) 
+    pub fn assume<T>(types: Types, l: Label, t: T) -> RichTerm
+    where
+        T: Into<RichTerm>,
+    {
+        mk_app!(
+            op2(BinaryOp::Assume(), types.contract(), Term::Lbl(l)),
+            t.into()
+        )
     }
 
     pub fn string<S>(s: S) -> RichTerm
