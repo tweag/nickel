@@ -226,34 +226,6 @@ fn process_unary_operation(
                 ))
             }
         }
-        UnaryOp::ToCtrFun() => {
-            match *t {
-                Term::Fun(..) => Ok(Closure {
-                    body: RichTerm { term: t, pos },
-                    env,
-                }),
-                Term::Record(..) => {
-                    let mut new_env = Environment::new();
-                    let closurized = RichTerm { term: t, pos }.closurize(&mut new_env, env);
-
-                    // Convert the record to the function `fun l x => contract & x`.
-                    let body = mk_fun!(
-                        "_l",
-                        "x",
-                        mk_term::op2(BinaryOp::Merge(), closurized, mk_term::var("x"))
-                    )
-                    .with_pos(pos.into_inherited());
-
-                    Ok(Closure { body, env: new_env })
-                }
-                _ => Err(EvalError::TypeError(
-                    String::from("Function or record"),
-                    String::from("contract application, 1st argument"),
-                    arg_pos,
-                    RichTerm { term: t, pos },
-                )),
-            }
-        }
         UnaryOp::Blame() => {
             if let Term::Lbl(label) = *t {
                 Err(EvalError::BlameError(
@@ -929,8 +901,22 @@ fn process_binary_operation(
                         },
                         env: env1,
                     }),
+                   Term::Record(..) => {
+                        let mut new_env = Environment::new();
+                        let closurized = RichTerm { term: t1, pos: pos1 }.closurize(&mut new_env, env1);
+
+                        // Convert the record to the function `fun l x => contract & x`.
+                        let body = mk_fun!(
+                            "_l",
+                            "x",
+                            mk_term::op2(BinaryOp::Merge(), closurized, mk_term::var("x"))
+                        )
+                        .with_pos(pos1.into_inherited());
+
+                        Ok(Closure { body, env: new_env })
+                    }    
                     _ => Err(EvalError::TypeError(
-                        String::from("Function"),
+                        String::from("Function or Record"),
                         String::from("assume, 1st argument"),
                         fst_pos,
                         RichTerm {
