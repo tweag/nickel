@@ -150,39 +150,43 @@ fn lists_operations() {
     );
 }
 
-#[test]
-fn imports() {
-    let mut resolver = SimpleResolver::new();
-    resolver.add_source(String::from("good"), String::from("1 + 1 : Num"));
-    resolver.add_source(String::from("bad"), String::from("false : Num"));
-    resolver.add_source(
-        String::from("proxy"),
-        String::from("let x = import \"bad\" in x"),
-    );
-
-    fn mk_import<R>(import: &str, resolver: &mut R) -> Result<RichTerm, ImportError>
-    where
-        R: ImportResolver,
-    {
-        transform(
-            mk_term::let_in("x", mk_term::import(import), mk_term::var("x")),
-            resolver,
-        )
-    };
-
-    type_check_in_env(
-        &mk_import("good", &mut resolver).unwrap(),
-        &Environment::new(),
-        &mut resolver,
-    )
-    .unwrap();
-    type_check_in_env(
-        &mk_import("proxy", &mut resolver).unwrap(),
-        &Environment::new(),
-        &mut resolver,
-    )
-    .unwrap_err();
-}
+// FIXME: these tests are boguous, because they transform the term before typechecking, which is
+// not the case in the actual evaluation pipeline. Currently, typechecking is done before program
+// transformation, and thus can't typecheck imported files, which is an issue that needs to be
+// solved before re-introducing these tests. See https://github.com/tweag/nickel/issues/316.
+// #[test]
+// fn imports() {
+//     let mut resolver = SimpleResolver::new();
+//     resolver.add_source(String::from("good"), String::from("1 + 1 : Num"));
+//     resolver.add_source(String::from("bad"), String::from("false : Num"));
+//     resolver.add_source(
+//         String::from("proxy"),
+//         String::from("let x = import \"bad\" in x"),
+//     );
+//
+//     fn mk_import<R>(import: &str, resolver: &mut R) -> Result<RichTerm, ImportError>
+//     where
+//         R: ImportResolver,
+//     {
+//         transform(
+//             mk_term::let_in("x", mk_term::import(import), mk_term::var("x")),
+//             resolver,
+//         )
+//     };
+//
+//     type_check_in_env(
+//         &mk_import("good", &mut resolver).unwrap(),
+//         &Environment::new(),
+//         &mut resolver,
+//     )
+//     .unwrap();
+//     type_check_in_env(
+//         &mk_import("proxy", &mut resolver).unwrap(),
+//         &Environment::new(),
+//         &mut resolver,
+//     )
+//     .unwrap_err();
+// }
 
 #[test]
 fn recursive_records() {
