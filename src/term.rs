@@ -856,7 +856,6 @@ impl RichTerm {
             Term::OpN(op, ts) => {
                 let ts_res: Result<Vec<RichTerm>, E> =
                     ts.into_iter().map(|t| t.traverse(f, state)).collect();
-
                 f(
                     RichTerm {
                         term: Box::new(Term::OpN(op, ts_res?)),
