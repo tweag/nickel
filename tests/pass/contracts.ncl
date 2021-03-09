@@ -86,4 +86,11 @@ f `boo == 3) &&
 (([1, 2, 3] | List Num) == [1, 2, 3] | #Assert) &&
 ((["1", "2", "false"] | List Str) == ["1", "2", "false"] | #Assert) &&
 
+// full_annotations
+// Check that the contract introduced by the type annotation doesn't interact
+// with the `default` attribute
+(({foo : {bar: Bool} | default = {bar = false}} & {foo.bar = true}).foo.bar
+  | #Assert) &&
+
+
 true
