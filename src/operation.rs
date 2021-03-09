@@ -15,7 +15,7 @@ use crate::merge::merge;
 use crate::position::TermPos;
 use crate::stack::Stack;
 use crate::term::make as mk_term;
-use crate::term::{BinaryOp, RichTerm, StrChunk, Term, UnaryOp};
+use crate::term::{BinaryOp, NAryOp, RichTerm, StrChunk, Term, UnaryOp};
 use crate::transformations::Closurizable;
 use crate::{mk_app, mk_fun};
 use crate::{serialize, serialize::ExportFormat};
@@ -62,6 +62,32 @@ pub enum OperationCont {
         /* original position of the second argument before evaluation */ TermPos,
         /* previous value of enriched_strict */ bool,
     ),
+    OpN {
+        op: NAryOp,                         /* the n-ary operation */
+        evaluated: Vec<(Closure, TermPos)>, /* evaluated arguments and their original position */
+        current_pos: TermPos, /* original position of the argument being currently evaluated */
+        pending: Vec<Closure>, /* pending arguments yet to be evaluated */
+        prev_enriched_strict: bool,
+    },
+}
+
+impl OperationCont {
+    pub fn opn(
+        op: NAryOp,
+        args: Vec<Closure>,
+        fst_pos: TermPos,
+        prev_enriched_strict: bool,
+    ) -> OperationCont {
+        let arity = args.len();
+
+        OperationCont::OpN {
+            op,
+            evaluated: Vec::with_capacity(arity),
+            current_pos: fst_pos,
+            pending: args,
+            prev_enriched_strict,
+        }
+    }
 }
 
 /// Process to the next step of the evaluation of an operation.
@@ -97,6 +123,36 @@ pub fn continuate_operation(
                 process_binary_operation(b_op, fst_clos, fst_pos, clos, snd_pos, stack, pos);
             *enriched_strict = prev_strict;
             result
+        }
+        OperationCont::OpN {
+            op,
+            mut evaluated,
+            current_pos,
+            mut pending,
+            prev_enriched_strict,
+        } => {
+            evaluated.push((clos, current_pos));
+
+            if let Some(next) = pending.pop() {
+                let current_pos = next.body.pos;
+                stack.push_op_cont(
+                    OperationCont::OpN {
+                        op,
+                        evaluated,
+                        current_pos,
+                        pending,
+                        prev_enriched_strict,
+                    },
+                    cs_len,
+                    pos,
+                );
+
+                Ok(next)
+            } else {
+                let result = process_nary_operation(op, evaluated, stack, pos);
+                *enriched_strict = prev_enriched_strict;
+                result
+            }
         }
     }
 }
@@ -1614,6 +1670,20 @@ fn process_binary_operation(
     }
 }
 
+/// Evaluate a n-ary operation.
+///
+/// Arguments are expected to be evaluated (in WHNF). `pos_op` corresponds to the whole
+/// operation position, that may be needed for error reporting.
+fn process_nary_operation(
+    n_op: NAryOp,
+    _args: Vec<(Closure, TermPos)>,
+    _stack: &mut Stack,
+    _pos_op: TermPos,
+) -> Result<Closure, EvalError> {
+    match n_op {
+        _ => unimplemented!(),
+    }
+}
 /// Compute the equality of two terms, represented as closures.
 ///
 /// # Parameters

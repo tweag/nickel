@@ -555,6 +555,31 @@ where
                 );
                 Closure { body: fst, env }
             }
+            Term::OpN(op, mut args) => {
+                let prev_strict = enriched_strict;
+                enriched_strict = op.is_strict();
+
+                args.reverse();
+                let fst = args
+                    .pop()
+                    .ok_or_else(|| EvalError::NotEnoughArgs(op.arity(), op.to_string(), pos))?;
+
+                let pending: Vec<Closure> = args
+                    .into_iter()
+                    .map(|t| Closure {
+                        body: t,
+                        env: env.clone(),
+                    })
+                    .collect();
+
+                stack.push_op_cont(
+                    OperationCont::opn(op, pending, fst.pos, prev_strict),
+                    call_stack.len(),
+                    pos,
+                );
+
+                Closure { body: fst, env }
+            }
             Term::StrChunks(mut chunks) => match chunks.pop() {
                 None => Closure {
                     body: Term::Str(String::new()).into(),
@@ -834,6 +859,14 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
                 let t2 = subst_(t2, global_env, env, bound);
 
                 RichTerm::new(Term::Op2(op, t1, t2), pos)
+            }
+            Term::OpN(op, ts) => {
+                let ts = ts
+                    .into_iter()
+                    .map(|t| subst_(t, global_env, env, Cow::Borrowed(bound.as_ref())))
+                    .collect();
+
+                RichTerm::new(Term::OpN(op, ts), pos)
             }
             Term::Promise(ty, l, t) => {
                 let t = subst_(t, global_env, env, bound);

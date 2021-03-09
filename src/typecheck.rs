@@ -46,7 +46,7 @@ use crate::eval;
 use crate::identifier::Ident;
 use crate::label::ty_path;
 use crate::position::TermPos;
-use crate::term::{BinaryOp, Contract, MetaValue, RichTerm, StrChunk, Term, UnaryOp};
+use crate::term::{BinaryOp, Contract, MetaValue, NAryOp, RichTerm, StrChunk, Term, UnaryOp};
 use crate::types::{AbsType, Types};
 use crate::{mk_tyw_arrow, mk_tyw_enum, mk_tyw_enum_row, mk_tyw_record, mk_tyw_row};
 use std::collections::{HashMap, HashSet};
@@ -672,6 +672,22 @@ fn type_check_(
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
             type_check_(state, envs.clone(), strict, e, src1)?;
             type_check_(state, envs, strict, t, src2)
+        }
+        Term::OpN(op, args) => {
+            let (tys_op, ty_ret) = get_nop_type(state, op)?;
+
+            unify(state, strict, ty, ty_ret)
+                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+
+            tys_op
+                .into_iter()
+                .zip(args.iter())
+                .try_for_each(|(ty_t, t)| {
+                    type_check_(state, envs.clone(), strict, t, ty_t)?;
+                    Ok(())
+                })?;
+
+            Ok(())
         }
         Term::Promise(ty2, _, t)
         // A non-empty metavalue with a type annotation is a promise.
@@ -1726,6 +1742,15 @@ pub fn get_bop_type(state: &mut State, op: &BinaryOp) -> Result<TypeWrapper, Typ
             mk_typewrapper::num(),
             mk_typewrapper::num()
         ),
+    })
+}
+
+pub fn get_nop_type(
+    _state: &mut State,
+    op: &NAryOp,
+) -> Result<(Vec<TypeWrapper>, TypeWrapper), TypecheckError> {
+    Ok(match op {
+        _ => unimplemented!(),
     })
 }
 
