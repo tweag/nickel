@@ -559,6 +559,8 @@ where
                 let prev_strict = enriched_strict;
                 enriched_strict = op.is_strict();
 
+                // Arguments are passed as a stack to the operation continuation, so we reverse the
+                // original list.
                 args.reverse();
                 let fst = args
                     .pop()
@@ -573,7 +575,13 @@ where
                     .collect();
 
                 stack.push_op_cont(
-                    OperationCont::opn(op, pending, fst.pos, prev_strict),
+                    OperationCont::OpN {
+                        op,
+                        evaluated: Vec::with_capacity(pending.len() + 1),
+                        pending,
+                        current_pos: fst.pos,
+                        prev_enriched_strict: prev_strict,
+                    },
                     call_stack.len(),
                     pos,
                 );

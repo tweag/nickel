@@ -66,28 +66,10 @@ pub enum OperationCont {
         op: NAryOp,                         /* the n-ary operation */
         evaluated: Vec<(Closure, TermPos)>, /* evaluated arguments and their original position */
         current_pos: TermPos, /* original position of the argument being currently evaluated */
-        pending: Vec<Closure>, /* pending arguments yet to be evaluated */
+        pending: Vec<Closure>, /* a stack (meaning the order of arguments is to be reversed)
+                              of arguments yet to be evaluated */
         prev_enriched_strict: bool,
     },
-}
-
-impl OperationCont {
-    pub fn opn(
-        op: NAryOp,
-        args: Vec<Closure>,
-        fst_pos: TermPos,
-        prev_enriched_strict: bool,
-    ) -> OperationCont {
-        let arity = args.len();
-
-        OperationCont::OpN {
-            op,
-            evaluated: Vec::with_capacity(arity),
-            current_pos: fst_pos,
-            pending: args,
-            prev_enriched_strict,
-        }
-    }
 }
 
 /// Process to the next step of the evaluation of an operation.
