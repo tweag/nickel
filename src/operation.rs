@@ -762,10 +762,10 @@ fn process_unary_operation(
         }
         UnaryOp::StrTrim() => {
             if let Term::Str(s) = *t {
-                Ok(Closure {
-                    body: Term::Str(String::from(s.trim())).into(),
-                    env: Environment::new(),
-                })
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Str(String::from(s.trim())),
+                    pos_op_inh,
+                )))
             } else {
                 Err(EvalError::TypeError(
                     String::from("Str"),
@@ -781,10 +781,10 @@ fn process_unary_operation(
                     .chars()
                     .map(|c| RichTerm::from(Term::Str(c.to_string())))
                     .collect();
-                Ok(Closure {
-                    body: Term::List(ts).into(),
-                    env: Environment::new(),
-                })
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::List(ts),
+                    pos_op_inh,
+                )))
             } else {
                 Err(EvalError::TypeError(
                     String::from("Str"),
@@ -798,10 +798,10 @@ fn process_unary_operation(
             if let Term::Str(s) = *t {
                 if s.len() == 1 {
                     let code = (s.chars().next().unwrap() as u32) as f64;
-                    Ok(Closure {
-                        body: Term::Num(code).into(),
-                        env: Environment::new(),
-                    })
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Num(code),
+                        pos_op_inh,
+                    )))
                 } else {
                     Err(EvalError::Other(
                         format!("charCode: expected 1-char string, got `{}`", s.len()),
@@ -824,10 +824,10 @@ fn process_unary_operation(
                 } else if code < 0.0 || code > (u32::MAX as f64) {
                     Err(EvalError::Other(format!("charFromCode: code out of bounds. Expected a value between 0 and {}, got {}", u32::MAX, code), pos_op))
                 } else if let Some(car) = std::char::from_u32(code as u32) {
-                    Ok(Closure {
-                        body: Term::Str(String::from(car)).into(),
-                        env: Environment::new(),
-                    })
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Str(String::from(car)),
+                        pos_op_inh,
+                    )))
                 } else {
                     Err(EvalError::Other(
                         format!("charFromCode: invalid character code {}", code),
@@ -845,10 +845,10 @@ fn process_unary_operation(
         }
         UnaryOp::StrUppercase() => {
             if let Term::Str(s) = *t {
-                Ok(Closure {
-                    body: Term::Str(s.to_uppercase()).into(),
-                    env: Environment::new(),
-                })
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Str(s.to_uppercase()),
+                    pos_op_inh,
+                )))
             } else {
                 Err(EvalError::TypeError(
                     String::from("Str"),
@@ -860,10 +860,10 @@ fn process_unary_operation(
         }
         UnaryOp::StrLowercase() => {
             if let Term::Str(s) = *t {
-                Ok(Closure {
-                    body: Term::Str(s.to_lowercase()).into(),
-                    env: Environment::new(),
-                })
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Str(s.to_lowercase()),
+                    pos_op_inh,
+                )))
             } else {
                 Err(EvalError::TypeError(
                     String::from("Str"),
@@ -875,10 +875,10 @@ fn process_unary_operation(
         }
         UnaryOp::StrLength() => {
             if let Term::Str(s) = *t {
-                Ok(Closure {
-                    body: Term::Num(s.len() as f64).into(),
-                    env: Environment::new(),
-                })
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Num(s.len() as f64),
+                    pos_op_inh,
+                )))
             } else {
                 Err(EvalError::TypeError(
                     String::from("Str"),
@@ -902,20 +902,17 @@ fn process_unary_operation(
                     pos,
                 )),
             }?;
-            Ok(Closure {
-                body: RichTerm::new(result, pos_op),
-                env: Environment::new(),
-            })
+            Ok(Closure::atomic_closure(RichTerm::new(result, pos_op_inh)))
         }
         UnaryOp::NumFrom() => {
             if let Term::Str(s) = *t {
                 let n = s.parse::<f64>().map_err(|_| {
                     EvalError::Other(format!("numFrom: invalid num literal `{}`", s), pos)
                 })?;
-                Ok(Closure {
-                    body: Term::Num(n).into(),
-                    env: Environment::new(),
-                })
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Num(n),
+                    pos_op_inh,
+                )))
             } else {
                 Err(EvalError::TypeError(
                     String::from("Str"),
@@ -929,10 +926,10 @@ fn process_unary_operation(
             if let Term::Str(s) = *t {
                 let re = regex::Regex::new("_?[a-zA-Z][_a-zA-Z0-9]*").unwrap();
                 if re.is_match(&s) {
-                    Ok(Closure {
-                        body: Term::Enum(Ident(s)).into(),
-                        env: Environment::new(),
-                    })
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Enum(Ident(s)),
+                        pos_op_inh,
+                    )))
                 } else {
                     Err(EvalError::Other(
                         format!("enumFrom: invalid enum tag `{}`", s),
@@ -1908,10 +1905,10 @@ fn process_binary_operation(
                     .split(&s2)
                     .map(|s| Term::Str(String::from(s)).into())
                     .collect();
-                Ok(Closure {
-                    body: Term::List(list).into(),
-                    env: env1,
-                })
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::List(list),
+                    pos_op_inh,
+                )))
             }
             (Term::Str(_), t2) => Err(EvalError::TypeError(
                 String::from("Str"),
@@ -1933,10 +1930,10 @@ fn process_binary_operation(
             )),
         },
         BinaryOp::StrContains() => match (*t1, *t2) {
-            (Term::Str(s1), Term::Str(s2)) => Ok(Closure {
-                body: Term::Bool(s1.contains(&s2)).into(),
-                env: env1,
-            }),
+            (Term::Str(s1), Term::Str(s2)) => Ok(Closure::atomic_closure(RichTerm::new(
+                Term::Bool(s1.contains(&s2)),
+                pos_op_inh,
+            ))),
             (Term::Str(_), t2) => Err(EvalError::TypeError(
                 String::from("Str"),
                 String::from("strContains, 2nd argument"),
@@ -1992,7 +1989,7 @@ fn process_binary_operation(
                         .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
                     let capt = re.captures(&s1);
 
-                    let body = if let Some(capt) = capt {
+                    let result = if let Some(capt) = capt {
                         let first_match = capt.get(0).unwrap();
                         let groups: Vec<RichTerm> = capt
                             .iter()
@@ -2017,7 +2014,7 @@ fn process_binary_operation(
                         )
                     };
 
-                    Ok(Closure { body, env: env1 })
+                    Ok(Closure::atomic_closure(result))
                 }
                 (Term::Str(_), t2) => Err(EvalError::TypeError(
                     String::from("Str"),
