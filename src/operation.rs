@@ -507,7 +507,7 @@ fn process_unary_operation(
                         .collect();
 
                     Ok(Closure {
-                        body: Term::List(ts).into(),
+                        body: RichTerm::new(Term::List(ts), pos_op_inh),
                         env: shared_env,
                     })
                 }
