@@ -50,7 +50,7 @@
       else
         %blame% (%tag% "not a string" l);
 
-    // using a contract instead of type for now becaus of https://github.com/tweag/nickel/issues/226
+    // using a contract instead of type for now becauss of https://github.com/tweag/nickel/issues/226
     join | List Str -> Str -> Str = fun l sep =>
         lists.foldl (fun acc s => s ++ sep ++ acc) "" l;
 
