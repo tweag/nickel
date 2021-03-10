@@ -1,5 +1,14 @@
 {
   lists = {
+    NonEmpty = fun label value =>
+      if %isList% value then
+        if %length% value != 0 then
+          value
+        else
+          %blame% (%tag% "empty list" label)
+      else
+        %blame% (%tag% "not a list" label),
+
     head : forall a. List a -> a = fun l => %head% l,
 
     tail : forall a. List a -> List a = fun l => %tail% l,
@@ -33,8 +42,6 @@
       fun pred l =>
         fold (fun x acc => if pred x then acc @ [x] else acc) l [],
 
-    //TODO: this enforces a List contract at each iteration. Get rid of it once
-    //parametrized list types lands and `fold` get a more precise type.
     flatten : forall a. List (List a) -> List a =
       fun l =>
         fold (fun l acc => l @ acc) l [],
