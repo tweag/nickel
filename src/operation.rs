@@ -1831,6 +1831,35 @@ fn process_binary_operation(
                 },
             )),
         },
+        BinaryOp::StrIsMatch() => match (*t1, *t2) {
+            (Term::Str(s1), Term::Str(s2)) => {
+                let re = regex::Regex::new(&s2)
+                    .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
+
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Bool(re.is_match(&s1)),
+                    pos_op_inh,
+                )))
+            }
+            (Term::Str(_), t2) => Err(EvalError::TypeError(
+                String::from("Str"),
+                String::from("strIsMatch, 2nd argument"),
+                snd_pos,
+                RichTerm {
+                    term: Box::new(t2),
+                    pos: pos2,
+                },
+            )),
+            (t1, _) => Err(EvalError::TypeError(
+                String::from("Str"),
+                String::from("strIsMatch, 1st argument"),
+                fst_pos,
+                RichTerm {
+                    term: Box::new(t1),
+                    pos: pos1,
+                },
+            )),
+        },
         BinaryOp::StrMatch() => {
             match (*t1, *t2) {
                 (Term::Str(s1), Term::Str(s2)) => {
@@ -1855,7 +1884,7 @@ fn process_binary_operation(
                             ("groups", Term::List(groups))
                         )
                     } else {
-                        //FIXME: Change Term::Bool to Term:Null!!
+                        //FIXME: what should we return when there's no match?
                         mk_record!(
                             ("match", Term::Str(String::new())),
                             ("index", Term::Num(-1.)),
@@ -1867,7 +1896,7 @@ fn process_binary_operation(
                 }
                 (Term::Str(_), t2) => Err(EvalError::TypeError(
                     String::from("Str"),
-                    String::from("strContains, 2nd argument"),
+                    String::from("strMatch, 2nd argument"),
                     snd_pos,
                     RichTerm {
                         term: Box::new(t2),
@@ -1876,7 +1905,7 @@ fn process_binary_operation(
                 )),
                 (t1, _) => Err(EvalError::TypeError(
                     String::from("Str"),
-                    String::from("strContains, 1st argument"),
+                    String::from("strMatch, 1st argument"),
                     fst_pos,
                     RichTerm {
                         term: Box::new(t1),
