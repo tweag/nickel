@@ -1830,12 +1830,6 @@ pub fn get_bop_type(
                 ("groups", mk_typewrapper::list(AbsType::Str()))
             )
         ),
-        // BinaryOp::StrSubstr() => mk_tyw_arrow!(
-        //     AbsType::Str(),
-        //     AbsType::Num(),
-        //     AbsType::Num(),
-        //     AbsType::Str()
-        // ),
         BinaryOp::StrSplit() => mk_tyw_arrow!(
             AbsType::Str(),
             AbsType::Str(),
@@ -1849,8 +1843,25 @@ pub fn get_nop_type(
     op: &NAryOp,
 ) -> Result<(Vec<TypeWrapper>, TypeWrapper), TypecheckError> {
     Ok(match op {
-        _ => unimplemented!(),
-   })
+        // Str -> Str -> Str -> Str
+        NAryOp::StrReplace() => (
+            vec![
+                mk_typewrapper::str(),
+                mk_typewrapper::str(),
+                mk_typewrapper::str(),
+            ],
+            mk_typewrapper::str(),
+        ),
+        // Str -> Num -> Num -> Str
+        NAryOp::StrSubstr() => (
+            vec![
+                mk_typewrapper::str(),
+                mk_typewrapper::num(),
+                mk_typewrapper::num(),
+            ],
+            mk_typewrapper::str(),
+        ),
+    })
 }
 
 /// The unification table.

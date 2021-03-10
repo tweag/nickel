@@ -727,12 +727,16 @@ impl BinaryOp {
 /// Primitive n-ary operators. Unary and binary operator make up for most of operators and are
 /// hence special cased. `NAryOp` handles strict operations of arity greater than 2.
 #[derive(Clone, Debug, PartialEq)]
-pub enum NAryOp {}
+pub enum NAryOp {
+    StrReplace(),
+    StrSubstr(),
+}
 
 impl NAryOp {
     pub fn arity(&self) -> usize {
         match self {
-            _ => 0,
+            NAryOp::StrReplace() => 3,
+            NAryOp::StrSubstr() => 3,
         }
     }
 
@@ -1061,6 +1065,17 @@ pub mod make {
         };
         ( $f:expr, $fst:expr , $( $args:expr ),+ ) => {
             mk_app!(mk_app!($f, $fst), $( $args ),+)
+        };
+    }
+
+    /// Multi-ary application for types implementing `Into<RichTerm>`.
+    #[macro_export]
+    macro_rules! mk_opn {
+        ( $op:expr, $( $args:expr ),+) => {
+            {
+                let args = vec![$( RichTerm::from($args) ),+];
+                $crate::term::RichTerm::from($crate::term::Term::OpN($op, args))
+            }
         };
     }
 

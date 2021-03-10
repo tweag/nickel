@@ -1,6 +1,5 @@
 {
-  strings =
-  {
+  strings = {
     BoolLiteral = fun l s =>
       if %isStr% s then
         if s == "true" || s == "True" then
@@ -67,18 +66,16 @@
     lowercase : Str -> Str = fun s => %strLowercase% s;
 
     contains: Str -> Str -> Bool = fun s subs => %strContains% s subs;
-    // Waiting for ternary primitive op
-    // replace: Str -> Str -> Str -> Str = fun s pattern replace =>
-    //   %strReplace% s pattern replace;
+    replace: Str -> Str -> Str -> Str = fun s pattern replace =>
+       %strReplace% s pattern replace;
 
     match : Str -> Str -> {match: Str, index: Num, groups: List Str} =
      fun s regex => %strMatch% s regex;
 
     length : Str -> Num = fun s => %strLength% s;
 
-    // Waiting for ternary primitive ops
-    // substring: Str -> Num -> Num -> Str = fun s start end =>
-    //  %strSubstring% s start end;
+    substring: Str -> Num -> Num -> Str = fun s start end =>
+      %strSubstr% s start end;
 
     fromNum | Num -> Str = fun n => %strFrom% n;
     // fromEnum | < | Dyn> -> Str = fun tag => %strFrom% tag;

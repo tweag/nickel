@@ -12,8 +12,8 @@ use crate::identifier::Ident;
 use crate::label::ty_path;
 use crate::merge;
 use crate::merge::merge;
-use crate::position::TermPos;
 use crate::mk_record;
+use crate::position::TermPos;
 use crate::stack::Stack;
 use crate::term::make as mk_term;
 use crate::term::{BinaryOp, NAryOp, RichTerm, StrChunk, Term, UnaryOp};
@@ -2024,9 +2024,11 @@ fn process_nary_operation(
     _pos_op: TermPos,
 ) -> Result<Closure, EvalError> {
     match n_op {
-        _ => unimplemented!(),
+        NAryOp::StrReplace() => unimplemented!(),
+        NAryOp::StrSubstr() => unimplemented!(),
     }
 }
+
 /// Compute the equality of two terms, represented as closures.
 ///
 /// # Parameters
