@@ -199,7 +199,7 @@ pub enum NormalToken<'input> {
     #[token("%elemAt%")]
     ElemAt,
     #[token("%generate%")]
-    ListGen, 
+    ListGen,
     #[token("merge")]
     Merge,
     #[token("default")]

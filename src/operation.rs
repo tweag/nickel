@@ -478,14 +478,20 @@ fn process_unary_operation(
             }
         }
         UnaryOp::ListGen() => {
-            let (f, _) = stack
-                .pop_arg()
-                .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("generate"), pos_op.clone()))?;
+            let (f, _) = stack.pop_arg().ok_or_else(|| {
+                EvalError::NotEnoughArgs(2, String::from("generate"), pos_op.clone())
+            })?;
 
             if let Term::Num(n) = *t {
                 let n_int = n as usize;
                 if n < 0.0 || n.fract() != 0.0 {
-                    Err(EvalError::Other(format!("generate: expected the 1st agument to be a positive integer, got {}", n), pos_op))
+                    Err(EvalError::Other(
+                        format!(
+                            "generate: expected the 1st agument to be a positive integer, got {}",
+                            n
+                        ),
+                        pos_op,
+                    ))
                 } else {
                     let mut shared_env = Environment::new();
                     let f_as_var = f.body.closurize(&mut env, f.env);
