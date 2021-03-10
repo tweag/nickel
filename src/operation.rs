@@ -2019,13 +2019,97 @@ fn process_binary_operation(
 /// operation position, that may be needed for error reporting.
 fn process_nary_operation(
     n_op: NAryOp,
-    _args: Vec<(Closure, TermPos)>,
+    args: Vec<(Closure, TermPos)>,
     _stack: &mut Stack,
-    _pos_op: TermPos,
+    pos_op: TermPos,
 ) -> Result<Closure, EvalError> {
+    let pos_op_inh = pos_op.into_inherited();
+
+    // Currently, for fixed arity primitive operators, the parser must ensure that they get exactly
+    // the right number of argument: if it is not the case, this is a bug, and we panic.
     match n_op {
-        NAryOp::StrReplace() => unimplemented!(),
-        NAryOp::StrSubstr() => unimplemented!(),
+        NAryOp::StrReplace() => {
+            let mut args_wo_env = args
+                .into_iter()
+                .map(|(clos, pos)| (clos.body.term, clos.body.pos, pos));
+            let (fst, pos1, fst_pos) = args_wo_env.next().unwrap();
+            let (snd, pos2, snd_pos) = args_wo_env.next().unwrap();
+            let (thd, pos3, thd_pos) = args_wo_env.next().unwrap();
+            debug_assert!(args_wo_env.next().is_none());
+
+            match (*fst, *snd, *thd) {
+                (Term::Str(s), Term::Str(from), Term::Str(to)) => Ok(Closure::atomic_closure(
+                    RichTerm::new(Term::Str(str::replace(&s, &from, &to)), pos_op_inh),
+                )),
+                (Term::Str(_), Term::Str(_), t3) => Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("strReplace, 3rd argument"),
+                    thd_pos,
+                    RichTerm::new(t3, pos3),
+                )),
+                (Term::Str(_), t2, _) => Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("strReplace, 2nd argument"),
+                    snd_pos,
+                    RichTerm::new(t2, pos2),
+                )),
+                (t1, _, _) => Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("strReplace, 1st argument"),
+                    fst_pos,
+                    RichTerm::new(t1, pos1),
+                )),
+            }
+        }
+        NAryOp::StrSubstr() => {
+            let mut args_wo_env = args
+                .into_iter()
+                .map(|(clos, pos)| (clos.body.term, clos.body.pos, pos));
+            let (fst, pos1, fst_pos) = args_wo_env.next().unwrap();
+            let (snd, pos2, snd_pos) = args_wo_env.next().unwrap();
+            let (thd, pos3, thd_pos) = args_wo_env.next().unwrap();
+            debug_assert!(args_wo_env.next().is_none());
+
+            match (*fst, *snd, *thd) {
+                (Term::Str(s), Term::Num(start), Term::Num(end)) => {
+                    let start_int = start as usize;
+                    let end_int = end as usize;
+
+                    if start.fract() != 0.0 {
+                        Err(EvalError::Other(format!("substring: expected the 2nd agument (start) to be an integer, got the floating-point value {}", start), pos_op))
+                    } else if start < 0.0 || start_int >= s.len() {
+                        Err(EvalError::Other(format!("substring: index out of bounds. Expected the 2nd argument (start) to be between 0 and {}, got {}", s.len(), start), pos_op))
+                    } else if end.fract() != 0.0 {
+                        Err(EvalError::Other(format!("substring: expected the 3nd argument (end) to be an integer, got the floating-point value {}", end), pos_op))
+                    } else if end <= start || end_int >= s.len() {
+                        Err(EvalError::Other(format!("substring: index out of bounds. Expected the 3rd argument (end) to be between {} and {}, got {}", start+1., s.len(), end), pos_op))
+                    } else {
+                        Ok(Closure::atomic_closure(RichTerm::new(
+                            Term::Str(String::from(&s[start_int..end_int])),
+                            pos_op_inh,
+                        )))
+                    }
+                }
+                (Term::Str(_), Term::Str(_), t3) => Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("strReplace, 3rd argument"),
+                    thd_pos,
+                    RichTerm::new(t3, pos3),
+                )),
+                (Term::Str(_), t2, _) => Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("strReplace, 2nd argument"),
+                    snd_pos,
+                    RichTerm::new(t2, pos2),
+                )),
+                (t1, _, _) => Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("strReplace, 1st argument"),
+                    fst_pos,
+                    RichTerm::new(t1, pos1),
+                )),
+            }
+        }
     }
 }
 
