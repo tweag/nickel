@@ -475,6 +475,7 @@ BOpPre: BinaryOp = {
     "strSplit" => BinaryOp::StrSplit(),
     "strContains" => BinaryOp::StrContains(),
     "strMatch" => BinaryOp::StrMatch(),
+    "strIsMatch" => BinaryOp::StrIsMatch(),
 }
 
 NOpPre<ArgRule>: RichTerm = {
@@ -675,6 +676,7 @@ extern {
         "strLowercase" => Token::Normal(NormalToken::StrLowercase),
         "strContains" => Token::Normal(NormalToken::StrContains),
         "strReplace" => Token::Normal(NormalToken::StrReplace),
+        "strIsMatch" => Token::Normal(NormalToken::StrIsMatch),
         "strMatch" => Token::Normal(NormalToken::StrMatch),
         "strLength" => Token::Normal(NormalToken::StrLength),
         "strSubstr" => Token::Normal(NormalToken::StrSubstr),

@@ -15,7 +15,7 @@
       let pattern = m#"^[+-]?(\d+(\.\d*)?(e[+-]?\d+)?|\.\d+(e[+-]?\d+)?)$"#m in
       fun l s =>
         if %isStr% s then
-          if (%strMatch% s pattern).index > -1 then
+          if %strIsMatch% s pattern then
             s
           else
             %blame% (%tag% "invalid num literal" l)
@@ -34,7 +34,7 @@
     Ident = fun l s =>
       let pattern = m#"_?[a-zA-Z][_a-zA-Z0-9]*"#m in
       if %isStr% s then
-        if (%strMatch% s pattern).index > -1 then
+        if %strIsMatch% s pattern then
             s
           else
             %blame% (%tag% "invalid enum tag" l)
@@ -68,7 +68,10 @@
     contains: Str -> Str -> Bool = fun s subs => %strContains% s subs;
     replace: Str -> Str -> Str -> Str = fun s pattern replace =>
        %strReplace% s pattern replace;
+    replaceRegex: Str -> Str -> Str -> Str = fun s pattern replace =>
+       %strReplace% s pattern replace;
 
+    isMatch : Str -> Str -> Bool = fun s regex => %strIsMatch% s regex;
     match : Str -> Str -> {match: Str, index: Num, groups: List Str} =
      fun s regex => %strMatch% s regex;
 

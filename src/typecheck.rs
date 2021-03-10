@@ -1820,6 +1820,8 @@ pub fn get_bop_type(
         ),
         // Str -> Str -> Bool
         BinaryOp::StrContains() => mk_tyw_arrow!(AbsType::Str(), AbsType::Str(), AbsType::Bool()),
+        // Str -> Str -> Bool
+        BinaryOp::StrIsMatch() => mk_tyw_arrow!(AbsType::Str(), AbsType::Str(), AbsType::Bool()),
         // Str -> Str -> {match: Str, index: Num, groups: List Str}
         BinaryOp::StrMatch() => mk_tyw_arrow!(
             AbsType::Str(),

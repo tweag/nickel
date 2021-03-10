@@ -711,6 +711,8 @@ pub enum BinaryOp {
     StrSplit(),
     /// Determine if a string is a substring of another one.
     StrContains(),
+    /// Test if a regex matches a string.
+    StrIsMatch(),
     /// Match a regex on a string.
     StrMatch(),
 }
