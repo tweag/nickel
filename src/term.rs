@@ -713,7 +713,8 @@ pub enum BinaryOp {
     StrContains(),
     /// Test if a regex matches a string.
     StrIsMatch(),
-    /// Match a regex on a string.
+    /// Match a regex on a string, and returns the captured groups together, the index of the
+    /// match, etc.
     StrMatch(),
 }
 
@@ -730,7 +731,9 @@ impl BinaryOp {
 /// hence special cased. `NAryOp` handles strict operations of arity greater than 2.
 #[derive(Clone, Debug, PartialEq)]
 pub enum NAryOp {
+    /// Replace a substring by another one in a string.
     StrReplace(),
+    /// Return a substring of an original string.
     StrSubstr(),
 }
 
@@ -748,9 +751,10 @@ impl NAryOp {
 }
 
 impl fmt::Display for NAryOp {
-    fn fmt(&self, _f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            _ => unimplemented!(),
+            NAryOp::StrReplace() => write!(f, "strReplace"),
+            NAryOp::StrSubstr() => write!(f, "substring"),
         }
     }
 }
