@@ -331,6 +331,7 @@ UOp: UnaryOp = {
     "tail" => UnaryOp::ListTail(),
     "length" => UnaryOp::ListLength(),
     "fieldsOf" => UnaryOp::FieldsOf(),
+    "valuesOf" => UnaryOp::ValuesOf(),
 };
 
 switch_case: SwitchCase = {
@@ -622,6 +623,7 @@ extern {
         "tail" => Token::Normal(NormalToken::Tail),
         "length" => Token::Normal(NormalToken::Length),
         "fieldsOf" => Token::Normal(NormalToken::FieldsOf),
+        "valuesOf" => Token::Normal(NormalToken::ValuesOf),
         "pow" => Token::Normal(NormalToken::Pow),
 
         "hasField" => Token::Normal(NormalToken::HasField),

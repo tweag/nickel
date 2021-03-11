@@ -1614,6 +1614,8 @@ pub fn get_uop_type(state: &mut State, op: &UnaryOp) -> Result<TypeWrapper, Type
             //mk_tyw_record!(; TypeWrapper::Ptr(new_var(state.table))),
             mk_typewrapper::list(AbsType::Str())
         ),
+        // Dyn -> List
+        UnaryOp::ValuesOf() => mk_tyw_arrow!(AbsType::Dyn(), mk_typewrapper::list(AbsType::Dyn())),
     })
 }
 
