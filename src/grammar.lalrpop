@@ -188,7 +188,7 @@ Atom: RichTerm = {
     <StrChunks>,
     Ident => RichTerm::from(Term::Var(<>)),
     "`" <Ident> => RichTerm::from(Term::Enum(<>)),
-    "{" <fields: (<RecordField> ";")*> <last: RecordField?> "}" => {
+    "{" <fields: (<RecordField> ",")*> <last: RecordField?> "}" => {
         let fields = fields.into_iter().chain(last.into_iter());
         RichTerm::from(build_record(fields))
     },
@@ -564,7 +564,6 @@ extern {
         "$" => Token::Normal(NormalToken::Dollar),
         "=" => Token::Normal(NormalToken::Equals),
         "!=" => Token::Normal(NormalToken::NotEquals),
-        ";" => Token::Normal(NormalToken::SemiCol),
         "&" => Token::Normal(NormalToken::Ampersand),
         "." => Token::Normal(NormalToken::Dot),
         "$[" => Token::Normal(NormalToken::DollarBracket),
