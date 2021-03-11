@@ -583,6 +583,8 @@ pub enum BinaryOp {
     Div(),
     /// Modulo of numerals.
     Modulo(),
+    /// Raise a number to a power.
+    Pow(),
     /// Concatenation of strings.
     PlusStr(),
     /// Polymorphic equality.

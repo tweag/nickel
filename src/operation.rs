@@ -876,6 +876,36 @@ fn process_binary_operation(
                 ))
             }
         }
+        BinaryOp::Pow() => {
+            if let Term::Num(n1) = *t1 {
+                if let Term::Num(n2) = *t2 {
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Num(n1.powf(n2)),
+                        pos_op_inh,
+                    )))
+                } else {
+                    Err(EvalError::TypeError(
+                        String::from("Num"),
+                        String::from("pow, 2nd argument"),
+                        snd_pos,
+                        RichTerm {
+                            term: t2,
+                            pos: pos2,
+                        },
+                    ))
+                }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Num"),
+                    String::from("pow, 1st argument"),
+                    fst_pos,
+                    RichTerm {
+                        term: t1,
+                        pos: pos1,
+                    },
+                ))
+            }
+        }
         BinaryOp::PlusStr() => {
             if let Term::Str(s1) = *t1 {
                 if let Term::Str(s2) = *t2 {
