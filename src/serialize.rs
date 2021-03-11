@@ -334,7 +334,7 @@ mod tests {
     #[test]
     fn records() {
         assert_json_eq!(
-            "{a = 1; b = 2+2; c = 3; d = null}",
+            "{a = 1, b = 2+2, c = 3, d = null}",
             json!({"a": 1, "b": 4, "c": 3, "d": null})
         );
 
@@ -344,15 +344,15 @@ mod tests {
         );
 
         assert_json_eq!(
-            "{foo = let z = 0.5 + 0.5 in z; bar = [\"str\", true || false]; baz = {subfoo = !false} & {subbar = 1 - 1}}",
+            "{foo = let z = 0.5 + 0.5 in z, bar = [\"str\", true || false], baz = {subfoo = !false} & {subbar = 1 - 1}}",
             json!({"foo": 1, "bar": ["str", true], "baz": {"subfoo": true, "subbar": 0}})
         );
     }
 
     #[test]
-    fn enriched_values() {
+    fn meta_values() {
         assert_json_eq!(
-            "{a | default = 1; b | doc \"doc\" = 2+2; c = 3}",
+            "{a | default = 1, b | doc \"doc\" = 2+2, c = 3}",
             json!({"a": 1, "b": 4, "c": 3})
         );
 
@@ -369,10 +369,10 @@ mod tests {
 
     #[test]
     fn prevalidation() {
-        assert_pass_validation!(ExportFormat::Json, "{a = 1; b = { c = fun x => x }}", false);
+        assert_pass_validation!(ExportFormat::Json, "{a = 1, b = {c = fun x => x}}", false);
         assert_pass_validation!(
             ExportFormat::Json,
-            "{foo = { bar = let y = \"a\" in y}; b = [[fun x => x]] }",
+            "{foo.bar = let y = \"a\" in y, b = [[fun x => x]]}",
             false
         );
         assert_pass_validation!(ExportFormat::Json, "{foo = null}", true);
@@ -384,8 +384,6 @@ mod tests {
         assert_involutory!("{val = 1 + 1}");
         assert_involutory!("{val = \"Some string\"}");
         assert_involutory!("{val = [\"a\", 3, []]}");
-        assert_involutory!(
-            "{a = {foo = {bar = \"2\"}}; b = false; c = [{d = \"e\"}, {d = \"f\"}]}"
-        );
+        assert_involutory!("{a.foo.bar = \"2\", b = false, c = [{d = \"e\"}, {d = \"f\"}]}");
     }
 }

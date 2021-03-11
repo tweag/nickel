@@ -163,7 +163,7 @@ fn enum_terms() {
 #[test]
 fn record_terms() {
     assert_eq!(
-        parse_without_pos("{ a = 1; b = 2; c = 3;}"),
+        parse_without_pos("{ a = 1, b = 2, c = 3}"),
         RecRecord(
             vec![
                 (Ident::from("a"), Num(1.).into()),
@@ -177,7 +177,7 @@ fn record_terms() {
     );
 
     assert_eq!(
-        parse_without_pos("{ a = 1; \"#{123}\" = (if 4 then 5 else 6); d = 42;}"),
+        parse_without_pos("{ a = 1, \"#{123}\" = (if 4 then 5 else 6), d = 42}"),
         mk_app!(
             mk_term::op2(
                 BinaryOp::DynExtend(),
@@ -336,7 +336,7 @@ fn line_comments() {
     assert_eq!(
         parse_without_pos(
             "{ // Some comment
-            field = foo; // Some description
+            field = foo, // Some description
             } // Some other"
         ),
         parse_without_pos("{field = foo}")
