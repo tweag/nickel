@@ -36,30 +36,30 @@ let Assert = fun l x => x || %blame% l in
 // records
 ({} == {} | #Assert) &&
 ({}$["a" = 1]$["b" = true]
-  == {a = 1; b = true}
+  == {a = 1, b = true}
   | #Assert) &&
-({a = 1 + 0; b = 1 + 1; c = 1 + 1 + 1}
-  == { a = 1; b = 2; c = 3 }
+({a = 1 + 0, b = 1 + 1, c = 1 + 1 + 1}
+  == { a = 1, b = 2, c = 3 }
   | #Assert) &&
 ({
-    foo = 1 + 0;
-    bar = "a" ++ "b";
+    foo = 1 + 0,
+    bar = "a" ++ "b",
     baz = if true then true else false
-  } == {foo = 1; bar = "ab"; baz = true}
+  } == {foo = 1, bar = "ab", baz = true}
   | #Assert) &&
 
 ({}$["a" = { a = { a = {} } }]
   == { a = { a = { a = {} } } }
   | #Assert) &&
 ({
-    foo = {bar = 2 + (-1)};
+    foo = {bar = 2 + (-1)},
     baz = {foo = {bar = 1 + 1}}
   }
-  == {foo = {bar = 1}; baz = {foo = {bar = 2}}}
+  == {foo = {bar = 1}, baz = {foo = {bar = 2}}}
   | #Assert) &&
 ({} != {a = true} | #Assert) &&
 ({a = 1} != {a = 2} | #Assert) &&
-({ a = "a"; b = true } != { a = true; b = "a"} | #Assert) &&
+({ a = "a", b = true } != { a = true, b = "a"} | #Assert) &&
 ({ a = { a = true } } != {a = { a = { a = true } } } | #Assert) &&
 
 // Now that the equality operator directly uses the stack to store its continuation (see
@@ -71,8 +71,8 @@ let Assert = fun l x => x || %blame% l in
       if b then true else false in
     not (not (not (not ((x) == (y))))) in
   (eq_with_ctxt
-      {a = 1 + 0; b = 1 + 1 + a; c = 0; d = 0}
-      { a = 1; b = 3; c = 0; d = 0}
+      {a = 1 + 0, b = 1 + 1 + a, c = 0, d = 0}
+      { a = 1, b = 3, c = 0, d = 0}
     | #Assert) &&
   (eq_with_ctxt
       [[1,2,3,4], [1,0,3,4], [1,2,3,4], [1,2,3,4]]

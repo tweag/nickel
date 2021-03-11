@@ -41,12 +41,12 @@ f `boo == 3) &&
 
 // records_simple
 (({} | {}) == {} | #Assert) &&
-(let x | {a: Num, s: Str} = {a = 1; s = "a"} in
-  %deepSeq% x x == {a = 1; s = "a"}
+(let x | {a: Num, s: Str} = {a = 1, s = "a"} in
+  %deepSeq% x x == {a = 1, s = "a"}
   | #Assert) &&
 
-(let x | {a: Num, s: {foo: Bool}} = {a = 1; s = { foo = true}} in
-  %deepSeq% x x == {a = 1; s = { foo = true}}
+(let x | {a: Num, s: {foo: Bool}} = {a = 1, s = { foo = true}} in
+  %deepSeq% x x == {a = 1, s = { foo = true}}
   | #Assert) &&
 
 // polymorphism
@@ -57,27 +57,27 @@ f `boo == 3) &&
     x -$ "foo" in
 
   (id {} == {} | #Assert) &&
-  (id {a = 1; b = false} == {a = 1; b = false} | #Assert) &&
+  (id {a = 1, b = false} == {a = 1, b = false} | #Assert) &&
   (extend {} == {foo = 1} | #Assert) &&
-  (extend {bar = false} == {foo = 1; bar = false} | #Assert) &&
+  (extend {bar = false} == {foo = 1, bar = false} | #Assert) &&
   (remove {foo = 1} == {} | #Assert) &&
-  (remove {foo = 1; bar = 1} == {bar = 1} | #Assert) &&
+  (remove {foo = 1, bar = 1} == {bar = 1} | #Assert) &&
   (remove (extend {}) == {} | #Assert) &&
   (extend (remove {foo = 2}) == {foo =1} | #Assert) &&
   (let f | forall a b. {f: a -> a, arg: a | b} -> a =
       fun rec => rec.f (rec.arg) in
-    f { f = fun x => x ++ " suffix"; arg = "foo" }
+    f { f = fun x => x ++ " suffix", arg = "foo" }
     == "foo suffix"
     | #Assert)
 ) &&
 
 // records_dynamic_tail
-(({a = 1; b = "b"} | {a: Num, b: Str | Dyn}) == {a = 1; b = "b"}
+(({a = 1, b = "b"} | {a: Num, b: Str | Dyn}) == {a = 1, b = "b"}
   | #Assert) &&
-(({a = 1; b = "b"; c = false} | {a: Num, b: Str | Dyn})
-  == {a = 1; b = "b"; c = false}
+(({a = 1, b = "b", c = false} | {a: Num, b: Str | Dyn})
+  == {a = 1, b = "b", c = false}
   | #Assert) &&
-((fun r => r.b | {a: Num | Dyn} -> Dyn) {a = 1; b = 2} == 2
+((fun r => r.b | {a: Num | Dyn} -> Dyn) {a = 1, b = 2} == 2
   | #Assert) &&
 
 

@@ -11,7 +11,7 @@ fn records_access() {
         Err(Error::EvalError(EvalError::FieldMissing(..)))
     );
     assert_matches!(
-        eval("({ \"#{(if false then \"foo\" else \"bar\")}\" = false; bar = true; }).foo"),
+        eval("({ \"#{(if false then \"foo\" else \"bar\")}\" = false, bar = true, }).foo"),
         Err(Error::EvalError(EvalError::Other(msg, ..))) if msg.starts_with("$[ .. ]"));
 }
 
@@ -22,7 +22,7 @@ fn non_mergeable() {
         Err(Error::EvalError(EvalError::MergeIncompatibleArgs(..)))
     );
     assert_matches!(
-        eval("({a | default = false;} & {a | default = true}).a"),
+        eval("({a | default = false} & {a | default = true}).a"),
         Err(Error::EvalError(EvalError::MergeIncompatibleArgs(..)))
     );
     assert_matches!(

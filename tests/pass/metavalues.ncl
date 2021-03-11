@@ -8,23 +8,23 @@ let Assert = fun l x => x || %blame% l in
   builtins.seq (x.a) ((x & {a=2}).a) == 2 | #Assert) &&
 
 // merge_default
-(({a = 2} & {a | default = 0; b | default = true}) == {a = 2; b = true}
+(({a = 2} & {a | default = 0, b | default = true}) == {a = 2, b = true}
   | #Assert) &&
-({a | default = {x = 1}} & {a | default = {y = "y"}} == {a = {x = 1; y = "y"}}
+({a | default = {x = 1}} & {a | default = {y = "y"}} == {a = {x = 1, y = "y"}}
   | #Assert) &&
 
 // merge_contract
-({a = 2; b | Bool} & {a | Num; b | default = true}
-  == {a = 2; b = true}
+({a = 2, b | Bool} & {a | Num, b | default = true}
+  == {a = 2, b = true}
   | #Assert) &&
 
 // merge_default_contract
-({a = 2} & {a | default | Num = 0; b | default = true}
-  == {a = 2; b = true}
+({a = 2} & {a | default | Num = 0, b | default = true}
+  == {a = 2, b = true}
   | #Assert) &&
 
 ({a=2} & {a | Num} & {a | default = 3} == {a = 2} | #Assert) &&
-({a=2} & {b | Num} & {b | default = 3} == {a = 2; b = 3} | #Assert) &&
+({a=2} & {b | Num} & {b | default = 3} == {a = 2, b = 3} | #Assert) &&
 (({a | default = 1} & {b | Num} & {a | default = 1}).a
   == 1
   | #Assert) &&

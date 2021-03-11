@@ -60,7 +60,7 @@ fn merge_compose_contract() {
             "let Even = fun l x => if x % 2 == 0 then x else %blame% l in
         let DivBy3 = fun l x => if x % 3 ==  0 then x else %blame% l in
         let composed = {{a | #Even}} & {{a | #DivBy3}} in
-        (({{a = {};}}) & composed).a",
+        (({{a = {},}}) & composed).a",
             arg
         )
     };
@@ -76,21 +76,21 @@ fn merge_compose_contract() {
 fn records_contracts_simple() {
     assert_raise_blame!("{a=1} | {}");
 
-    assert_raise_blame!("let x | {a: Num, s: Str} = {a = 1; s = 2} in %deepSeq% x x");
-    assert_raise_blame!("let x | {a: Num, s: Str} = {a = \"a\"; s = \"b\"} in %deepSeq% x x");
+    assert_raise_blame!("let x | {a: Num, s: Str} = {a = 1, s = 2} in %deepSeq% x x");
+    assert_raise_blame!("let x | {a: Num, s: Str} = {a = \"a\", s = \"b\"} in %deepSeq% x x");
     assert_raise_blame!("let x | {a: Num, s: Str} = {a = 1} in %deepSeq% x x");
     assert_raise_blame!("let x | {a: Num, s: Str} = {s = \"a\"} in %deepSeq% x x");
     assert_raise_blame!(
-        "let x | {a: Num, s: Str} = {a = 1; s = \"a\"; extra = 1} in %deepSeq% x x"
+        "let x | {a: Num, s: Str} = {a = 1, s = \"a\", extra = 1} in %deepSeq% x x"
     );
 
     assert_raise_blame!(
-        "let x | {a: Num, s: {foo: Bool}} = {a = 1; s = {foo = 2}} in %deepSeq% x x"
+        "let x | {a: Num, s: {foo: Bool}} = {a = 1, s = {foo = 2}} in %deepSeq% x x"
     );
     assert_raise_blame!(
-        "let x | {a: Num, s: {foo: Bool}} = {a = 1; s = {foo = true; extra = 1}} in %deepSeq% x x"
+        "let x | {a: Num, s: {foo: Bool}} = {a = 1, s = {foo = true, extra = 1}} in %deepSeq% x x"
     );
-    assert_raise_blame!("let x | {a: Num, s: {foo: Bool}} = {a = 1; s = {}} in %deepSeq% x x");
+    assert_raise_blame!("let x | {a: Num, s: {foo: Bool}} = {a = 1, s = {}} in %deepSeq% x x");
 }
 
 #[test]
@@ -103,7 +103,7 @@ fn records_contracts_poly() {
     assert_raise_blame!(&format!("{} {{}}", remv));
 
     let bad_cst = "let f | forall a. { | a} -> { | a} = fun x => {a=1} in f";
-    let bad_acc = "let f | forall a. { | a} -> { | a} = fun x => %seq% (x.a) x in f";
+    let bad_acc = "let f | forall a. { | a} -> { | a} = fun x => %seq% x.a x in f";
     let bad_extd = "let f | forall a. { | a} -> {foo: Num | a} = fun x => x-$\"foo\" in f";
     let bad_rmv = "let f | forall a. {foo: Num | a} -> { | a} = fun x => x$[\"foo\"=1] in f";
 
@@ -126,7 +126,7 @@ fn records_contracts_poly() {
                 -> {a: Num | a}
                 -> { | a}
             = fun f rec => (f rec) -$ \"a\" -$ \"b\" in
-        f (fun x => x) {a = 1; b = true; c = 3}"
+        f (fun x => x) {a = 1, b = true, c = 3}"
     );
 }
 
