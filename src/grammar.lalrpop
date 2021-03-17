@@ -33,7 +33,7 @@ MetaAnnotAtom: MetaValue = {
         priority: MergePriority::Default,
         value: None,
     },
-    "|" "doc" <s: Str> => MetaValue {
+    "|" "doc" <s: StaticString> => MetaValue {
         doc: Some(strip_indent_doc(s)),
         contract: None,
         priority: Default::default(),
@@ -156,7 +156,7 @@ RichTerm: RichTerm = {
     },
     "if" <b:Term> "then" <t:Term> "else" <e:SpTerm<RichTerm>> =>
         mk_app!(Term::Op1(UnaryOp::Ite(), b), t, e),
-    "import" <s: Str> => RichTerm::from(Term::Import(OsString::from(s))),
+    "import" <s: StaticString> => RichTerm::from(Term::Import(OsString::from(s))),
     SpTerm<InfixExpr>,
 };
 
@@ -249,7 +249,7 @@ Bool: bool = {
 StrChunks : RichTerm = {
   <start: StringStart> <fst: ChunkLiteral?> <chunks: (ChunkExpr+ChunkLiteral)*> <lasts:
     ChunkExpr*> <end: StringEnd> => {
-        assert_eq!(start, end);
+        debug_assert_eq!(start, end);
 
         let chunks: Vec<StrChunk<RichTerm>> = fst.into_iter()
             .map(StrChunk::Literal)
@@ -300,7 +300,7 @@ ChunkExpr: StrChunk<RichTerm> = HashBrace <t: SpTerm<RichTerm>> "}" => StrChunk:
 
 HashBrace = { "#{", "multstr #{" };
 
-Str: String = "\"" <s: ChunkLiteral> "\"" => s;
+StaticString: String = StringStart <s: ChunkLiteral> StringEnd => s;
 
 ChunkLiteralPart: ChunkLiteralPart<'input> = {
     "str literal" => ChunkLiteralPart::Str(<>),
