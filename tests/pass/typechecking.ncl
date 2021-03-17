@@ -76,22 +76,22 @@ let typecheck = [
 
   // static records
   ({bla = 1} : {bla : Num}),
-  ({blo = true; bla = 1} : {bla : Num, blo : Bool}),
+  ({blo = true, bla = 1} : {bla : Num, blo : Bool}),
   ({blo = 1}.blo : Num),
-  ({bla = true; blo = 1}.blo : Num),
-  let r : {bla : Bool, blo : Num} = {blo = 1; bla = true} in
+  ({bla = true, blo = 1}.blo : Num),
+  let r : {bla : Bool, blo : Num} = {blo = 1, bla = true} in
     ((if r.bla then r.blo else 2) : Num),
 
   let f : forall a. (forall r. {bla : Bool, blo : a, ble : a | r} -> a) =
       fun r => if r.bla then r.blo else r.ble in
-    (if (f {bla = true; blo = false; ble = true; blip = 1; }) then
-      (f {bla = true; blo = 1; ble = 2; blip = `blip; })
+    (if (f {bla = true, blo = false, ble = true, blip = 1, }) then
+      (f {bla = true, blo = 1, ble = 2, blip = `blip, })
     else
-      (f {bla = true; blo = 3; ble = 4; bloppo = `bloppop; }) : Num),
+      (f {bla = true, blo = 3, ble = 4, bloppo = `bloppop, }) : Num),
 
-  ({ "#{if true then "foo" else "bar"}" = 2; } : {_ : Num}),
-  ({ "#{if true then "foo" else "bar"}" = 2; }."bla" : Num),
-  ({ foo = 3; bar = 4; } : {_ : Num}),
+  ({ "#{if true then "foo" else "bar"}" = 2, } : {_ : Num}),
+  ({ "#{if true then "foo" else "bar"}" = 2, }."bla" : Num),
+  ({ foo = 3, bar = 4, } : {_ : Num}),
 
   // seq
   (%seq% false 1 : Num),
@@ -115,18 +115,18 @@ let typecheck = [
   fun i l => %elemAt% l i : forall a. Num -> List a -> a,
 
   // recursive_records
-  {a : Num = 1; b = a + 1} : {a : Num, b : Num},
+  {a : Num = 1, b = a + 1} : {a : Num, b : Num},
   {a : Num = 1 + a} : {a : Num},
   {a : Num = 1 + a} : {a : Num},
 
   // let_inference
   (let x = 1 + 2 in let f = fun x => x + 1 in f x) : Num, 
   // (let x = 1 + 2 in let f = fun x => x ++ "a" in f x) : Num,
-  {a = 1; b = 1 + a} : {a : Num, b : Num},
-  {f = fun x => if x == 0 then 1 else 1 + (f (x + (-1)));}
+  {a = 1, b = 1 + a} : {a : Num, b : Num},
+  {f = fun x => if x == 0 then 1 else 1 + (f (x + (-1))),}
     : {f : Num -> Num},
 
-  { f = fun x => if x == 0 then 1 else 1 + (f (x + (-1)));}
+  { f = fun x => if x == 0 then 1 else 1 + (f (x + (-1))),}
     : {f : Num -> Num},
 
   // polymorphic_row_constraints
@@ -134,8 +134,8 @@ let typecheck = [
     let remove | forall c. {a: Str | c} -> { | c} = 0 in
     (let good = remove (extend {}) in 0) : Num,
 
-  let r | {a: Num | Dyn} = {a = 1; b = 2} in (r.a : Num),
-  ({a = 1; b = 2} | {a: Num | Dyn}) : {a: Num | Dyn},
+  let r | {a: Num | Dyn} = {a = 1, b = 2} in (r.a : Num),
+  ({a = 1, b = 2} | {a: Num | Dyn}) : {a: Num | Dyn},
 
   //Regression test following [#270](https://github.com/tweag/nickel/issues/270). Check that
   //unifying a variable with itself doesn't introduce a loop. The failure of this test results

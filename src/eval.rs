@@ -1090,7 +1090,7 @@ mod tests {
     fn imports() {
         let mut resolver = SimpleResolver::new();
         resolver.add_source(String::from("two"), String::from("1 + 1"));
-        resolver.add_source(String::from("lib"), String::from("{ f = true }"));
+        resolver.add_source(String::from("lib"), String::from("{f = true}"));
         resolver.add_source(String::from("bad"), String::from("^$*/.23ab 0°@"));
         resolver.add_source(
             String::from("nested"),
@@ -1098,7 +1098,7 @@ mod tests {
         );
         resolver.add_source(
             String::from("cycle"),
-            String::from("let x = import \"cycle_b\" in {a = 1; b = x.a}"),
+            String::from("let x = import \"cycle_b\" in {a = 1, b = x.a}"),
         );
         resolver.add_source(
             String::from("cycle_b"),
@@ -1306,11 +1306,11 @@ mod tests {
                 .unwrap()
         );
 
-        let t = parse("switch {x => [1, glob1], y => loc2, z => {id = true; other = glob3},} loc1")
+        let t = parse("switch {x => [1, glob1], y => loc2, z => {id = true, other = glob3}} loc1")
             .unwrap();
         assert_eq!(
             subst(t, &global_env, &env),
-            parse("switch {x => [1, 1], y => (if false then 1 else \"Glob2\"), z => {id = true; other = false},} true").unwrap()
+            parse("switch {x => [1, 1], y => (if false then 1 else \"Glob2\"), z => {id = true, other = false}} true").unwrap()
         );
     }
 }

@@ -11,15 +11,15 @@ fn infinite_loops() {
         Err(Error::EvalError(EvalError::InfiniteRecursion(..)))
     );
     assert_matches!(
-        eval("{x = y; y = z; z = x }.x"),
+        eval("{x = y, y = z, z = x }.x"),
         Err(Error::EvalError(EvalError::InfiniteRecursion(..)))
     );
     assert_matches!(
-        eval("{x = y + z; y = z + x; z = 1}.x"),
+        eval("{x = y + z, y = z + x, z = 1}.x"),
         Err(Error::EvalError(EvalError::InfiniteRecursion(..)))
     );
     assert_matches!(
-        eval("{x = (fun a => a + y) 0; y = (fun a => a + x) 0}.x"),
+        eval("{x = (fun a => a + y) 0, y = (fun a => a + x) 0}.x"),
         Err(Error::EvalError(EvalError::InfiniteRecursion(..)))
     );
 }

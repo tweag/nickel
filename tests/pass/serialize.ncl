@@ -18,15 +18,15 @@ let assertDeserInv = fun x =>
 (assertSerInv {val = 1 + 1} | #Assert) &&
 (assertSerInv {val = "Some string"} | #Assert) &&
 (assertSerInv {val = ["a", 3, []]} | #Assert) &&
-(assertSerInv {a.foo.bar = "2"; b = false; c = [{d = "e"}, {d = "f"}]}
+(assertSerInv {a.foo.bar = "2", b = false, c = [{d = "e"}, {d = "f"}]}
   | #Assert) &&
 
-(assertDeserInv {a = 1; b = 4; c = 3} | #Assert) &&
+(assertDeserInv {a = 1, b = 4, c = 3} | #Assert) &&
 (assertDeserInv {a.b.c = "richtig"} | #Assert) &&
 (assertDeserInv {
-    foo = 1;
-    bar = ["str", true];
-    baz = {subfoo = true; subbar = 0}
+    foo = 1,
+    bar = ["str", true],
+    baz = {subfoo = true, subbar = 0}
   } | #Assert) &&
 
 

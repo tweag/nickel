@@ -119,19 +119,19 @@ fn static_record_simple() {
     assert_typecheck_fails!(
         "let f : forall a. (forall r. {bla : Bool, blo : a, ble : a | r} -> a) =
             fun r => if r.bla then r.blo else r.ble in
-         (f {bla = true; blo = 1; ble = true; blip = `blip} : Num)"
+         (f {bla = true, blo = 1, ble = true, blip = `blip} : Num)"
     );
     assert_typecheck_fails!(
         "let f : forall a. (forall r. {bla : Bool, blo : a, ble : a | r} -> a) =
             fun r => if r.bla then (r.blo + 1) else r.ble in
-         (f {bla = true; blo = 1; ble = 2; blip = `blip} : Num)"
+         (f {bla = true, blo = 1, ble = 2, blip = `blip} : Num)"
     );
 }
 
 #[test]
 fn dynamic_record_simple() {
     assert_typecheck_fails!(
-        "({ \"#{if true then \"foo\" else \"bar\"}\" = 2; \"foo\" = true; }.\"bla\") : Num"
+        "({ \"#{if true then \"foo\" else \"bar\"}\" = 2, \"foo\" = true, }.\"bla\") : Num"
     );
 }
 
@@ -186,8 +186,8 @@ fn imports() {
 
 #[test]
 fn recursive_records() {
-    assert_typecheck_fails!("{a : Num = true; b = a + 1} : {a : Num, b : Num}");
-    assert_typecheck_fails!("{a = 1; b : Bool = a} : {a : Num, b : Bool}");
+    assert_typecheck_fails!("{a : Num = true, b = a + 1} : {a : Num, b : Num}");
+    assert_typecheck_fails!("{a = 1, b : Bool = a} : {a : Num, b : Bool}");
 }
 
 #[test]
@@ -223,7 +223,7 @@ fn polymorphic_row_constraints() {
 
     let mut res = type_check_expr(
         "let extend | forall c. { | c} -> {a: Str | c} = null in
-           (let bad = extend {a = 1;} in 0) : Num",
+           (let bad = extend {a = 1} in 0) : Num",
     );
     assert_row_conflict(res);
 
@@ -238,7 +238,7 @@ fn polymorphic_row_constraints() {
 fn dynamic_row_tail() {
     // Currently, typechecking is conservative wrt the dynamic row type, meaning it can't
     // convert to a less precise type with a dynamic tail.
-    assert_typecheck_fails!("{a = 1; b = 2} : {a: Num | Dyn}");
+    assert_typecheck_fails!("{a = 1, b = 2} : {a: Num | Dyn}");
     assert_typecheck_fails!("{a = 1} : {a: Num | Dyn}");
     assert_typecheck_fails!("({a = 1} | {a: Num | Dyn}) : {a: Num}");
     assert_typecheck_fails!("{a = 1} : {a: Num | Dyn}");

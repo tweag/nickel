@@ -264,8 +264,7 @@ mod tests {
         assert_eq!(t, *expd.term);
 
         let t = clean_pos(
-            eval_full("let x = 1 in let y = 1 + x in let z = { foo = {bar = { baz  = y } } } in z")
-                .unwrap(),
+            eval_full("let x = 1 in let y = 1 + x in let z = {foo.bar.baz = y} in z").unwrap(),
         );
         // Records are parsed as RecRecords, so we need to build one by hand
         let expd = mk_record!((
@@ -278,6 +277,6 @@ mod tests {
         // Check that substitution do not replace bound variables. Before the fixing commit, this
         // example would go into an infinite loop, and stack overflow. If it does, this just means
         // that this test fails.
-        eval_full("{y = fun x => x; x = fun y => y}").unwrap();
+        eval_full("{y = fun x => x, x = fun y => y}").unwrap();
     }
 }
