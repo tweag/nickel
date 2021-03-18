@@ -83,7 +83,6 @@ where
     S: Serializer,
 {
     if let Some(ref t) = meta.value {
-        println!("Serializing {:p}", meta);
         t.serialize(serializer)
     } else {
         // This error should not happen if the input term is validated before serialization
