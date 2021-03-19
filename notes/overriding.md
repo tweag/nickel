@@ -642,10 +642,12 @@ Possible solutions:
 
 3. A more extreme take is to do as in 2., but generalize it to every term: a
    merge expression would behave like a lazy datatype `Merge(t1,t2)` with
-   respect to laziness. Evaluating it would amount to apply `eval : Merge(t1,t2)
-   -> t1 & t2`, which wouldn't mess the original top-level thunk `Merge(t1,t2)`.
-   This is exactly how default value, for example, are currently handled. Doing
-   so, we don't need to restrict custom merge functions to record fields.
+   respect to evaluation. Evaluating it would amount to auto-apply `eval :
+   Merge(t1,t2) -> t1 & t2`, which wouldn't mess the original top-level thunk
+   `Merge(t1,t2)`.  This is exactly how default value are currently handled for
+   example. Doing so, we don't need to restrict custom merge functions to record
+   fields. This incurs an additional cost though, of remembering all the AST of
+   merge expressions.
 
 I propose to adopt solution 2., as it is probably sufficient in the vast
 majority, and is still compatible with a future upgrade to 3.
