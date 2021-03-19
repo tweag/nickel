@@ -565,7 +565,7 @@ repr(r) := {
 Concretely, each field of a record may either be a thunk as usual, in the case
 of non recursive expressions like `a`, or a thunk together with the original
 expression in the recursive case. All record operations excepted merge operate
-on the thunk. A merge operation, on the other hand, restore the original
+on the thunk. A merge operation, on the other hand, restores the original
 expression again.
 
 There's more potential optimizations, but this first step should be a reasonable
