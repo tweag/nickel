@@ -8,7 +8,7 @@ author: Yann Hamdaoui
 
 This document is a proposal for an overriding mechanism in Nickel. It is
 expected to evolve while we put these ideas in practice, but shall serve as
-design and implementation baseline.
+a design and implementation baseline.
 
 Related issues: [#103](https://github.com/tweag/nickel/issues/103),
 [#240](https://github.com/tweag/nickel/issues/240),
