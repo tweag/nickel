@@ -52,7 +52,7 @@ new_value}`, Haskell's `record {field = newValue}`, Nix `//` operator `record //
 ..record}`. There are more advanced programming techniques that make updating
 deeply nested records ergonomic such as
 [Lenses](https://www.fpcomplete.com/haskell/tutorial/lens/) in Haskell, but
-these rely on advanced language and typing features to be practical.
+these rely too heavily on advanced language and typing features to be practical.
 
 In Nickel, we can already do a functional update using merging, although the
 updated field must have been marked as `default`:
