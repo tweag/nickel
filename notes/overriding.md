@@ -408,7 +408,7 @@ implementation**.
 As before, it is useful to see recursive records represented as functions -- or
 constructors -- that take a `self` parameter and return a non recursive record,
 together with the current data, in a similar way to the original overriding
-mechanism of Nixpkgs (the non-existing syntax `def := value` is used to insist
+mechanism of Nixpkgs (the non-existing syntax `def := value` is used to insist on the fact
 that we are defining new objects):
 
 ```
