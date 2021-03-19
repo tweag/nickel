@@ -439,14 +439,14 @@ This brings the problem of scoping: should a record be able to access a yet
 undefined field because it is expected to be provided by a subsequent merge?
 Two possible approaches:
 
- - **dynamically scoping**: records can reference fields that are not explicitly
+ - **dynamic scoping**: records can reference fields that are not explicitly
    defined locally, such as:
    ```nickel
    {a = b} & {b = 1}
    ```
    However, dynamic scoping have a number of issues, and is usually considered
    bad practice.
- - **lexically scoping**: as currently, require self-referenced fields to be
+ - **lexical scoping**: as currently, require self-referenced fields to be
    defined locally. Note that thanks to contracts, one can require the existence
    of a field without defining it. For example, we could write the previous
    example as:
