@@ -364,7 +364,7 @@ somewhere, but it is rather expressed as priorities. This system has the
 advantage of making merge commutative (in contrast with inheritance or the `//`
 operator), as in CUE, and to untie data definition from precedence
 specification: one can define a module where each field has a different
-priority, if it makes sense to group logically them.  With inheritance, values
+priority, if it makes sense to group them logically.  With inheritance, values
 are required to be grouped in layers of the same priority, instead of logically.
 
 Summing up the differences between inheritance-based mechanisms and merge-based
