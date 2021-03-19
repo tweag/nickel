@@ -6,7 +6,9 @@ author: Yann Hamdaoui
 
 # Overriding
 
-This document is a proposal for an overriding mechanism in Nickel.
+This document is a proposal for an overriding mechanism in Nickel. It is
+expected to evolve while we put these ideas in practice, but shall serve as
+design and implementation baseline.
 
 Related issues: [#103](https://github.com/tweag/nickel/issues/103),
 [#240](https://github.com/tweag/nickel/issues/240),
@@ -249,7 +251,7 @@ resulting in the possibility of defining a list of paths by pieces:
 
 # Config
 [..]
-someModule.paths = [foo/bar]; 
+someModule.paths = [foo/bar];
 
 # Other config
 [..]
@@ -432,6 +434,27 @@ Merging simply merges the underlying representations:
 ```
 repr(r1) & repr(r2) := fun self => r1 self & r2 self
 ```
+
+This brings the problem of scoping: should a record be able to access a yet
+undefined field because it is expected to be provided by a subsequent merge?
+Two possible approaches:
+
+ - **dynamically scoping**: records can reference fields that are not explicitly
+   defined locally, such as:
+   ```nickel
+   {a = b} & {b = 1}
+   ```
+   However, dynamic scoping have a number of issues, and is usually considered
+   bad practice.
+ - **lexically scoping**: as currently, require self-referenced fields to be
+   defined locally. Note that thanks to contracts, one can require the existence
+   of a field without defining it. For example, we could write the previous
+   example as:
+   ```nickel
+   {a = b, b | Num} & {b = 1}
+   ```
+   This is also a better practice to explicitly state the fields whose presence
+   is required.
 
 ### Priorities
 
@@ -622,7 +645,7 @@ Possible solutions:
    val1 & val2 & (val3 | merge func)
    <=> (val1 | merge func) & val2 & val3
    <=> func (func val1 val2) val3
-   // instead of the naive 
+   // instead of the naive
    <=/=> func (val1 & val2) val3
    ```
 
