@@ -414,7 +414,7 @@ that we are defining new objects):
 ```
 r = {
   a = 1;
-  b = a = 1;
+  b = a + 1;
 }
 // Definition of the representation of r
 repr(r) := fun self => {
