@@ -406,10 +406,9 @@ discussed further in a dedicated section.
 implementation**.
 
 As before, it is useful to see recursive records represented as functions -- or
-constructors -- that take a `self` parameter and return a non recursive record,
-together with the current data, in a similar way to the original overriding
-mechanism of Nixpkgs (the non-existing syntax `def := value` is used to insist on the fact
-that we are defining new objects):
+constructors -- that take a `self` parameter and return a final non recursive record,
+in the same way as the original overriding mechanism of Nixpkgs (the non-existing
+syntax `def := value` is used to insist on the fact that we are defining new objects):
 
 ```
 r = {
@@ -544,7 +543,7 @@ block1 & block2
 
 The proposal raises some questions. While none seems insuperable, users will
 need to have a good mental picture of the system, and we should be careful to
-avoid ending up with a complicated system full of ad-hoc fixes to corner cases.
+avoid ending up with a complicated system full of ad-hoc fixes to edge cases.
 
 ### Implementation
 
@@ -635,7 +634,7 @@ Possible solutions:
    commutativity problem per se: we also have to decide that in ordinary
    merging, custom function wouldn't affect subsequent merges anymore. This does
    raise yet other problems, one being of a good distinctive syntax. More
-   generally, it looks confusing and unsatisfying.
+   generally, it sounds confusing and unsatisfying.
 
 2. What seems the right, but not trivial solution, would be to symmetrize custom
    merging and make it "distribute backward" as well, that is (simplifying by
@@ -654,22 +653,22 @@ Possible solutions:
    `let x = val1 & val2 in builtins.seq x (x & (val3 | merge func))`?
 
    In some way, we would like to have a call-by-name semantics rather than a
-   call-by-value. But in the case of record fields, overriding had to solve the
-   same problem of remembering the original expression along an evaluated
+   call-by-need. In the case of record fields, overriding has to solve the
+   same problem of remembering an original expression along an evaluated
    version.  If we allow custom merge annotations only on record fields, it is
    possible to always recover the original merge AST (abstract syntax tree) and
    interpret it with the custom merge function as wanted. This may prove a bit
    tricky to implement in practice, for the merge expression `val1 & val2` may
    be obfuscated by some program transformations or evaluation artifacts, but
-   clearly doable.
+   doable.
 
 3. A more extreme take is to do as in 2., but generalize it to every term: a
    merge expression would behave like a lazy datatype `Merge(t1,t2)` with
-   respect to evaluation. Evaluating it would amount to auto-apply `eval :
-   Merge(t1,t2) -> t1 & t2`, which wouldn't mess the original top-level thunk
-   `Merge(t1,t2)`.  This is exactly how default value are currently handled for
+   respect to evaluation. Evaluating it would amount to automatically apply
+   `eval : Merge(t1,t2) -> t1 & t2`, which wouldn't erase the original top-level thunk
+   `Merge(t1,t2)`.  This is exactly how default value are currently handled, for
    example. Doing so, we don't need to restrict custom merge functions to record
-   fields. This incurs an additional cost though, of remembering all the AST of
+   fields. This incurs an additional cost though, of remembering all the ASTs of
    merge expressions.
 
 I propose to adopt solution 2., as it is probably sufficient in the vast
