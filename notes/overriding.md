@@ -234,7 +234,7 @@ Nonetheless, modules need to combine different pieces of data together rather
 than just overriding one value with another. This is made difficult by the
 disappearance of the explicit `super`, compared to overlays.
 
-The issue is solved by custom merge functions, that can define how to combines
+The issue is solved by custom merge functions, that can define how to combine
 different values of the field of a configuration. By default, when merging two
 list values, the module system only knows how to replace one value with the
 other, because there's no canonical and commutative way of merging two lists.
