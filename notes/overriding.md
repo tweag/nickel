@@ -97,9 +97,10 @@ to be updated as well.
 
 ## Overriding in Nix
 
-Nix expressions don't have a built-in way of doing this either. Since the
-feature is still actively needed, it is provided by mechanisms implemented in
-library code.
+Nix expressions don't have a built-in way of overriding recursive records while
+automatically updating the dependent recursive fields either. Since the feature
+is still actively needed, it is provided by mechanisms implemented in library
+code.
 
 Keeping a language lean is usually a good design guideline: to provide an
 expressive yet simple set of features upon which others can be built as
@@ -262,9 +263,6 @@ someModule.paths = [/bar/baz];
 
 ## Overriding elsewhere
 
-To my knowledge, among the other configuration languages Nickel is close to,
-Jsonnet is the only one to feature a proper overriding mechanism.
-
 ### CUE
 CUE allows a form of late-binding for recursive attributes:
 
@@ -283,25 +281,28 @@ fields: {
 }
 ```
 
-However, by the very nature of CUE's merge operation, the value of `a` can't be
-changed by merging, it can only be made more precise:
+Combined with [default values](https://cuelang.org/docs/tutorials/tour/types/defaults/),
+this provides an overriding mechanism:
 
 ```
 $cat test2.cue
 fields: {
- a: 1
+ a: int | *1
  b: a + 1
 } & {
  a: 2
 }
 $cue eval test2.cue
-fields.a: conflicting values 1 and 2:
-    ./test2.cue:1:9
-    ./test2.cue:2:5
-    ./test2.cue:5:5
+fields: {
+    a: 2
+    b: 3
+}
 ```
 
-It is thus not really an overriding mechanism.
+The basics of this overriding mechanism are close in spirit to what we want to
+achieve in this proposal. This is similar to Nickel's current `default`
+behavior, but with the desired late-bound merging. This is however not enough
+for Nix use cases: we will need to add other features to the merge system.
 
 ### Jsonnet
 
@@ -329,8 +330,8 @@ the same way as Nixpkgs overlays, using the `super` keyword.
 
 While not exactly the same, all these overriding mechanisms are based on the
 same underlying principles:
-1. Represent recursive records explicitly as a function of `self` (and `super`
-   in some cases)
+1. Represent recursive records (explicitly or implicitly) as a function of
+   `self` (and `super` in some cases)
 2. Compute the combination as a **fixpoint** of several recursive records,
    giving back a standard record.
 
