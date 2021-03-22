@@ -72,7 +72,7 @@ As explained in the next section though, this is not satisfying.
 
 Nickel's records are different from the ones of OCaml, Haskell or Rust.  They
 are lazy and recursive by default. They are thus better understood as
-[codata](https://www.researchgate.net/publication/332248372_Codata_in_Action)
+[codata](https://link.springer.com/chapter/10.1007/978-3-030-17184-1_5)
 rather than data. Take the following example:
 
 ```nickel
