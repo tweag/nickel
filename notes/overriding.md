@@ -142,7 +142,7 @@ It is computed as a
 [fixpoint](https://en.wikipedia.org/wiki/Fixed-point_combinator), simply
 realized by auto-application thanks to laziness:
 
-```
+```nix
 r = let fixpoint = rRepr fixpoint; in fixpoint
 ```
 
