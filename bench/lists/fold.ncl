@@ -1,5 +1,3 @@
-// Test memory and time consumption when folding on big lists
-
 let letter | #(strings.CharLiteral) -> #(strings.CharLiteral)= fun n => strings.charFromCode (strings.charCode "a" + (n % 26)) in
 
 {
