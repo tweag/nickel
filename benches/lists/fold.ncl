@@ -1,4 +1,4 @@
-let letter | #(strings.CharLiteral) -> #(strings.CharLiteral)= fun n => strings.charFromCode (strings.charCode "a" + (n % 26)) in
+let letter | #(strings.CharLiteral) -> #(strings.CharLiteral) = fun n => strings.charFromCode (strings.charCode "a" + (n % 26)) in
 
 {
   right = {
@@ -30,4 +30,5 @@ let letter | #(strings.CharLiteral) -> #(strings.CharLiteral)= fun n => strings.
           lists.foldl (fun x acc => [x] ++ acc) (lists.generate n (fun n => [n]))
       },
     },
+  }
 }
