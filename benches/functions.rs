@@ -1,10 +1,12 @@
 use criterion::{criterion_group, criterion_main, Criterion};
+use nickel::term::Term;
 
 mod common;
-use common::{call_bench, EvalMode};
+use common::{bench_expect, EvalMode};
 
 fn church(c: &mut Criterion) {
-    call_bench("church 5", "functions/church", None, 5, EvalMode::Normal, c);
+    let expect = |term| matches!(term, Term::Bool(true));
+    bench_expect("church 3", "functions/church", None, 3, EvalMode::Normal, expect, c);
 }
 
 criterion_group!(benches, church);

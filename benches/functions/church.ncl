@@ -17,11 +17,13 @@
     let orig = generate id n in
     let encoded = lists.map encode orig in
 
-    let lChurch = lists.map (fun nChurch => mult nChurch nChurch) encoded in
-    let lChurch = lists.map (fun nChurch => add nChurch nChurch) lChurch in
-    let rChurch = lists.fold (fun nChurch acc => mult nChurch acc) lChurch (encode 1) in
+    let listChurch = lists.map (fun nChurch =>
+      add (mult (encode 3) nChurch) (encode 5))
+      encoded in
+    let sumChurch = lists.fold (fun accChurch nChurch => add accChurch nChurch)
+      listChurch (encode 0) in
 
-    let l = lists.map (fun n => 2*n*n) orig in
-    let r = lists.foldl (fun acc n => acc*n) 1 l in
-    decode rChurch == r,
+    let list = lists.map (fun n => 3*n + 5) orig in
+    let sum = lists.foldl (fun acc n => acc + n) 0 list in
+    decode sumChurch == sum,
 }
