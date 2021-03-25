@@ -78,6 +78,11 @@ fn records() {
 }
 
 #[test]
+fn record_defs() {
+    check_file("record-defs.ncl");
+}
+
+#[test]
 fn strings() {
     check_file("strings.ncl");
 }

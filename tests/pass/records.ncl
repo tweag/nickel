@@ -93,18 +93,5 @@ let Assert = fun l x => x || %blame% l in
   with_res "done" == "done"
   | #Assert) &&
 
-// piecewise_definition
-({a.b.c.d = "foo"} == {a = {b = {c = {d = "foo"}}}} | #Assert) &&
-({a.b = "foo", a.c = "bar"} == {a = {b = "foo", c = "bar"}} | #Assert) &&
-({a.b.c = "foo", a.b.d = {foo = 1}, a.b.d = {bar = 2}}
-  == {a = {b = {c = "foo", d = {foo = 1, bar = 2}}}}
-  | #Assert) &&
-
-// piecewise_annotations
-({foo.bar | default = 1, foo.baz = 2}
-  == {foo = {bar = 1, baz = 2}}
-  | #Assert) &&
-({foo.bar | default = 1, foo.bar = 2} == {foo = {bar = 2}} | #Assert) &&
-({foo.bar.baz | Bool = true}.foo.bar.baz | #Assert) &&
 
 true
