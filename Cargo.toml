@@ -50,3 +50,7 @@ criterion = "0.3"
 [[bench]]
 name = "numeric"
 harness = false
+
+[[bench]]
+name = "functions"
+harness = false
