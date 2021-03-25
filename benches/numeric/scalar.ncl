@@ -1,6 +1,6 @@
 {
-  let map2 = fun f l1 l2 =>
-    if l == [] || l2 == [] then
+  map2 = fun f l1 l2 =>
+    if l1 == [] || l2 == [] then
       []
     else
       [f (lists.head l1) (lists.head l2)]
