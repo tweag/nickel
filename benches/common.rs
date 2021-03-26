@@ -18,7 +18,14 @@ pub fn bench(
     eval_mode: EvalMode,
     c: &mut Criterion,
 ) {
-    bench_expect(name, subpath, subtest, iteration, eval_mode, |_| true, c)
+    bench_args(
+        name,
+        subpath,
+        subtest,
+        vec![iteration.to_string()],
+        eval_mode,
+        c,
+    )
 }
 
 pub fn bench_expect<F>(
@@ -26,6 +33,39 @@ pub fn bench_expect<F>(
     subpath: &str,
     subtest: Option<&str>,
     iteration: u32,
+    eval_mode: EvalMode,
+    pred: F,
+    c: &mut Criterion,
+) where
+    F: Fn(Term) -> bool,
+{
+    bench_args_expect(
+        name,
+        subpath,
+        subtest,
+        vec![iteration.to_string()],
+        eval_mode,
+        pred,
+        c,
+    )
+}
+
+pub fn bench_args(
+    name: &str,
+    subpath: &str,
+    subtest: Option<&str>,
+    args: Vec<String>,
+    eval_mode: EvalMode,
+    c: &mut Criterion,
+) {
+    bench_args_expect(name, subpath, subtest, args, eval_mode, |_| true, c)
+}
+
+pub fn bench_args_expect<F>(
+    name: &str,
+    subpath: &str,
+    subtest: Option<&str>,
+    args: Vec<String>,
     eval_mode: EvalMode,
     pred: F,
     c: &mut Criterion,
@@ -40,7 +80,10 @@ pub fn bench_expect<F>(
         "(import \"{}\"){}.run {}",
         path.to_string_lossy(),
         field_path,
-        iteration
+        args.into_iter()
+            .map(|s| format!("({})", s))
+            .collect::<Vec<String>>()
+            .join(" ")
     );
 
     let content = if eval_mode == EvalMode::DeepSeq {
