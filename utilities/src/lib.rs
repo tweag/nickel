@@ -19,6 +19,7 @@ pub enum EvalMode {
 
 pub fn bench(
     name: &str,
+    base_dir: &str,
     subpath: &str,
     subtest: Option<&str>,
     iteration: u32,
@@ -27,6 +28,7 @@ pub fn bench(
 ) {
     bench_args(
         name,
+        base_dir,
         subpath,
         subtest,
         vec![iteration.to_string()],

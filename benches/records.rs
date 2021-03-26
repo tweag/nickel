@@ -6,7 +6,7 @@ fn dummy(c: &mut Criterion) { }
 
 // Waiting for lists stdlib
 // fn count_letters(c: &mut Criterion) {
-//     bench("countLetters", "records/countLetters", None,
+//     bench("countLetters", env!("CARGO_MANIFEST_DIR"), "records/countLetters", None,
 //         vec![r#"
 //             "
 //             "
