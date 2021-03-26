@@ -1,8 +1,7 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use nickel::term::Term;
 
-mod common;
-use common::{bench_expect, EvalMode};
+use utilities::{bench_expect, EvalMode};
 
 fn church(c: &mut Criterion) {
     let expect = |term| matches!(term, Term::Bool(true));

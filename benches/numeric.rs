@@ -1,10 +1,9 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 
-mod common;
-use common::{bench, EvalMode};
+use utilities::{bench, EvalMode};
 
 fn fibonacci(c: &mut Criterion) {
-    bench("fibonacci 10", "numeric/fibonacci", None, 10, EvalMode::Normal, c);
+    bench("fibonacci 10", env!("CARGO_MANIFEST_DIR"), "numeric/fibonacci", None, 10, EvalMode::Normal, c);
 }
 
 // Waiting for nums stdlib

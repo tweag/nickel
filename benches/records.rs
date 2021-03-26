@@ -1,7 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 
-mod common;
-use common::{bench_args, EvalMode};
+use utilities::{bench_args, EvalMode};
 
 fn dummy(c: &mut Criterion) { }
 

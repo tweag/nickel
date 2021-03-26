@@ -1,7 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 
-mod common;
-use common::{bench, EvalMode};
+use utilities::{bench, EvalMode};
 
 // Waiting for lists stdlib
 //fn fold_normal(c: &mut Criterion) {
