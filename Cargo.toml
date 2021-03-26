@@ -50,6 +50,11 @@ criterion = "0.3"
 [lib]
 bench = false
 
+[[bin]]
+name = "nickel"
+path = "src/main.rs"
+bench = false
+
 [[bench]]
 name = "numeric"
 harness = false
