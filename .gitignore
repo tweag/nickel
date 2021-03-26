@@ -1,5 +1,6 @@
 # Cargo generated
 /target/
+/utilities/target
 
 # Nix generated
 /result*

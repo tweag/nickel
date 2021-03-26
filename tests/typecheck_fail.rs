@@ -3,7 +3,8 @@ use codespan::Files;
 use nickel::cache::resolvers::DummyResolver;
 use nickel::error::TypecheckError;
 use nickel::parser::{grammar, lexer};
-use nickel::term::RichTerm;
+use nickel::term::{RichTerm, make as mk_term};
+use nickel::transformations::transform;
 use nickel::typecheck::{type_check_in_env, Environment};
 use nickel::types::Types;
 
