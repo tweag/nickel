@@ -79,15 +79,14 @@ decisions and trade-offs.
 
 1. Clone the repository in a local folder:
   ```
-  $ git clone git@github.com:tweag/nickel.git
-  $ cd nickel
-  nickel$
+  git clone git@github.com:tweag/nickel.git
+  cd nickel
   ```
 
 2. Install build dependencies:
     - **With Nix**: If you have Nix installed, you can just type
     ```
-    nickel$ nix-shell shell.nix
+    nix-shell shell.nix
     [nix-shell:/tmp/nickel]$
     ```
     to be dropped in a shell, ready to build.
@@ -98,32 +97,57 @@ decisions and trade-offs.
 
 3. Build Nickel:
   ```
-  nickel$ cargo build
+  cargo build
   ```
   And voilà ! Generated files are placed in `target/debug`.
 
 ### Run
 
-1. (*optional*) Make a symbolic link to the executable:
+1. *(optional)* make a symbolic link to the executable:
   ```
-  nickel$ ln -S nickel target/debug/nickel
+  ln -S nickel target/debug/nickel
+  ```
+  Alternatively, you can use `cargo run` to launch nickel. To pass arguments to
+  nickel using `cargo run`, use `--`:
+  ```
+  cargo run -- -f program.ncl
   ```
 
 2. Run your first program:
   ```
-  nickel$ ./nickel <<< 'let x = 2 in x + x'
+  ./nickel <<< 'let x = 2 in x + x'
   Typechecked: Ok(Types(Dyn))
   Done: Num(4.0)
   ```
   Or load it from a file:
   ```
-  nickel$ echo 'let s = "world" in "Hello, " ++ s' > program.ncl
-  nickel$ ./nickel < program.ncl
+  echo 'let s = "world" in "Hello, " ++ s' > program.ncl
+  ./nickel -f program.ncl
   Typechecked: Ok(Types(Dyn))
   Done: Str("Hello, world")
   ```
 
-By default, Nickel reads from the standard input. It may change in the future.
+3. Start an REPL:
+  ```
+  ./nickel repl
+  nickel> let x = 2 in x + x
+  nickel> x
+  4
+
+  nickel>
+  ```
+  Use `:help` for a list of available commands.
+
+4. Export your configuration to JSON, YAML or TOML:
+  ```
+  ./nickel export --format json <<< '{foo = "Hello, world!"}'
+  {
+    "foo": "Hello, world!"
+  }
+  ```
+
+Use `./nickel help` for a list of subcommands, and `./nickel help <subcommand>`
+for help about a specific subcommand.
 
 ### Tests
 ```
@@ -150,12 +174,11 @@ and others important practical aspects are still being debated. We aim to
 transition from an experimental stage to a minimum viable product stage.  The
 next points to deal with are:
 
-- Imports
+- [Stdlib stabilization](https://github.com/tweag/nickel/issues/321)
+- [Overriding](https://github.com/tweag/nickel/pull/330)
+- Memory management (use reference counting) & basic performance improvements
 - [List comprehensions](https://github.com/tweag/nickel/issues/80)
 - [Destructuring](https://github.com/tweag/nickel/issues/81)
-- [String interpolation](https://github.com/tweag/nickel/issues/82)
-- [Recursive records](https://github.com/tweag/nickel/issues/83)
-- Syntax
 
 ## Related projects and inspirations
 - [Cue](https://cuelang.org/) is a configuration language with a focus on data
