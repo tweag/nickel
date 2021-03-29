@@ -11,10 +11,10 @@ jobs:
     name: run benchmark
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-        with:
-          ref: master
-          fetch-depth: 0
+      # - uses: actions/checkout@v2
+      #   with:
+      #     ref: master
+      #     fetch-depth: 0
       - uses: jasonwilliams/criterion-compare-action@move_to_actions
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
