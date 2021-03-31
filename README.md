@@ -79,14 +79,15 @@ decisions and trade-offs.
 
 1. Clone the repository in a local folder:
   ```
-  git clone git@github.com:tweag/nickel.git
-  cd nickel
+  $ git clone git@github.com:tweag/nickel.git
+  $ cd nickel
+  nickel$
   ```
 
 2. Install build dependencies:
     - **With Nix**: If you have Nix installed, you can just type
     ```
-    nix-shell shell.nix
+    nickel$ nix-shell shell.nix
     [nix-shell:/tmp/nickel]$
     ```
     to be dropped in a shell, ready to build.
@@ -97,7 +98,7 @@ decisions and trade-offs.
 
 3. Build Nickel:
   ```
-  cargo build
+  nickel$ cargo build
   ```
   And voilà ! Generated files are placed in `target/debug`.
 
@@ -105,31 +106,31 @@ decisions and trade-offs.
 
 1. *(optional)* make a symbolic link to the executable:
   ```
-  ln -S nickel target/debug/nickel
+  nickel$ ln -S nickel target/debug/nickel
   ```
   Alternatively, you can use `cargo run` to launch nickel. To pass arguments to
   nickel using `cargo run`, use `--`:
   ```
-  cargo run -- -f program.ncl
+  nickel$ cargo run -- -f program.ncl
   ```
 
 2. Run your first program:
   ```
-  ./nickel <<< 'let x = 2 in x + x'
+  nickel$ ./nickel <<< 'let x = 2 in x + x'
   Typechecked: Ok(Types(Dyn))
   Done: Num(4.0)
   ```
   Or load it from a file:
   ```
-  echo 'let s = "world" in "Hello, " ++ s' > program.ncl
-  ./nickel -f program.ncl
+  nickel$ echo 'let s = "world" in "Hello, " ++ s' > program.ncl
+  nickel$ ./nickel -f program.ncl
   Typechecked: Ok(Types(Dyn))
   Done: Str("Hello, world")
   ```
 
 3. Start an REPL:
   ```
-  ./nickel repl
+  nickel$ ./nickel repl
   nickel> let x = 2 in x + x
   nickel> x
   4
@@ -140,13 +141,13 @@ decisions and trade-offs.
 
 4. Export your configuration to JSON, YAML or TOML:
   ```
-  ./nickel export --format json <<< '{foo = "Hello, world!"}'
+  nickel$ ./nickel export --format json <<< '{foo = "Hello, world!"}'
   {
     "foo": "Hello, world!"
   }
   ```
 
-Use `./nickel help` for a list of subcommands, and `./nickel help <subcommand>`
+Use `nickel help` for a list of subcommands, and `nickel help <subcommand>`
 for help about a specific subcommand.
 
 ### Tests
