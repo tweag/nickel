@@ -70,7 +70,7 @@ LeftOpLazy<Op, Current, Previous>: RichTerm =
     <t1: Current> <op: Op> <t2: Previous> => mk_app!(Term::Op1(op, t1), t2);
 
 pub Term: RichTerm = {
-    <t: SpTerm<RichTerm>> <meta: Annot?> => {
+    <t: SpTerm<RootTermNoLet>> <meta: Annot?> => {
         let pos = t.pos;
 
         if let Some(mut meta) = meta {
@@ -80,7 +80,8 @@ pub Term: RichTerm = {
         else {
             t
         }
-    }
+    },
+    SpTerm<RootTermLet>,
 };
 
 pub ExtendedTerm: ExtendedTerm = {
@@ -100,28 +101,16 @@ pub ExtendedTerm: ExtendedTerm = {
     Term => ExtendedTerm::RichTerm(<>),
 }
 
-RichTerm: RichTerm = {
-    <l: @L> "fun" <ps:Pattern+> "=>" <t: SpTerm<RichTerm>> <r: @R> => {
+RootTermMacro<RightRule>: RichTerm = {
+    <l: @L> "fun" <ps:Pattern+> "=>" <t: SpTerm<RightRule>> <r: @R> => {
         let pos = mk_pos(src_id, l, r);
         ps.into_iter().rev().fold(t, |t, p| RichTerm {
             term: Box::new(Term::Fun(p, t)),
             pos,
         })
     },
-    "let" <id:Ident> <meta: Annot?> "=" <t1: Term> "in" <t2:SpTerm<RichTerm>> => {
-        let pos = t1.pos;
-
-        let t1 = if let Some(mut meta) = meta {
-            meta.value = Some(t1);
-            RichTerm::new(Term::MetaValue(meta), pos)
-        }
-        else {
-            t1
-        };
-
-        mk_term::let_in(id, t1, t2)
-    },
-    "switch" "{" <cases: (switch_case ",")*> <last: switch_case?> "}" <exp: SpTerm<RichTerm>> => {
+    "switch" "{" <cases: (switch_case ",")*> <last: switch_case?> "}" <exp:
+        SpTerm<RightRule>> => {
         let mut acc = HashMap::with_capacity(cases.len());
         let mut default = None;
 
@@ -142,9 +131,52 @@ RichTerm: RichTerm = {
             )
         )
     },
-    "if" <b:Term> "then" <t:Term> "else" <e:SpTerm<RichTerm>> =>
+    "if" <b:Term> "then" <t:Term> "else" <e:SpTerm<RightRule>> =>
         mk_app!(Term::Op1(UnaryOp::Ite(), b), t, e),
-    "import" <s: StaticString> => RichTerm::from(Term::Import(OsString::from(s))),
+};
+
+RootTermLet: RichTerm = {
+    "let" <id:Ident> <meta1: Annot?> "=" <t1: Term> "in"
+        <t2:SpTerm<RootTermNoLet>> <meta2: Annot?> => {
+        let pos1 = t1.pos;
+        let t1 = if let Some(mut meta1) = meta1 {
+            meta1.value = Some(t1);
+            RichTerm::new(Term::MetaValue(meta1), pos1)
+        }
+        else {
+            t1
+        };
+
+        let pos2 = t2.pos;
+        let t2 = if let Some(mut meta2) = meta2 {
+            meta2.value = Some(t2);
+            RichTerm::new(Term::MetaValue(meta2), pos2)
+        }
+        else {
+            t2
+        };
+
+        mk_term::let_in(id, t1, t2)
+    },
+    "let" <id:Ident> <meta: Annot?> "=" <t1: Term> "in"
+        <t2:SpTerm<RootTermLet>> => {
+        let pos = t1.pos;
+        let t1 = if let Some(mut meta) = meta {
+            meta.value = Some(t1);
+            RichTerm::new(Term::MetaValue(meta), pos)
+        }
+        else {
+            t1
+        };
+
+        mk_term::let_in(id, t1, t2)
+    },
+    RootTermMacro<RootTermLet>,
+}
+
+RootTermNoLet: RichTerm = {
+    RootTermMacro<RootTermNoLet>,
+    "import" <s: Str> => RichTerm::from(Term::Import(OsString::from(s))),
     SpTerm<InfixExpr>,
 };
 
@@ -293,7 +325,7 @@ ChunkLiteral : String =
         })
     };
 
-ChunkExpr: StrChunk<RichTerm> = HashBrace <t: SpTerm<RichTerm>> "}" => StrChunk::Expr(t, 0);
+ChunkExpr: StrChunk<RichTerm> = HashBrace <t: SpTerm<Term>> "}" => StrChunk::Expr(t, 0);
 
 HashBrace = { "#{", "multstr #{" };
 
