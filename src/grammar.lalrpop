@@ -455,6 +455,7 @@ BOpPre: BinaryOp = {
     "hash" => BinaryOp::Hash(),
     "serialize" => BinaryOp::Serialize(),
     "deserialize" => BinaryOp::Deserialize(),
+    "pow" => BinaryOp::Pow(),
 }
 
 Types: Types = {
@@ -626,6 +627,7 @@ extern {
         "tail" => Token::Normal(NormalToken::Tail),
         "length" => Token::Normal(NormalToken::Length),
         "fieldsOf" => Token::Normal(NormalToken::FieldsOf),
+        "pow" => Token::Normal(NormalToken::Pow),
 
         "hasField" => Token::Normal(NormalToken::HasField),
         "map" => Token::Normal(NormalToken::Map),

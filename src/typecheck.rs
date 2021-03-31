@@ -1707,6 +1707,11 @@ pub fn get_bop_type(state: &mut State, op: &BinaryOp) -> Result<TypeWrapper, Typ
             mk_typewrapper::str(),
             mk_typewrapper::dynamic()
         ),
+        BinaryOp::Pow() => mk_tyw_arrow!(
+            mk_typewrapper::num(),
+            mk_typewrapper::num(),
+            mk_typewrapper::num()
+        ),
     })
 }
 
