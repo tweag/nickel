@@ -1,3 +1,6 @@
+// /!\ THIS EXAMPLE IS EXPECTED TO FAIL
+// Illustrate a basic contract violation.
+
 let Even = fun label value =>
   if builtins.isNum value && value % 2 == 0 then
     value
