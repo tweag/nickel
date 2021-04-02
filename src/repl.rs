@@ -741,6 +741,10 @@ pub mod query_print {
                         .iter()
                         .for_each(|rt| print_fields(renderer, rt.as_ref()));
                 }
+
+                meta.value
+                    .iter()
+                    .for_each(|rt| print_fields(renderer, rt.as_ref()));
             }
             t @ Term::Record(_) | t @ Term::RecRecord(_) => {
                 println!("No metadata found for this value.");

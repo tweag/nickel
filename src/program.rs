@@ -169,7 +169,6 @@ pub fn query(
             cache.get_owned(file_id).unwrap(),
             eval::Environment::new(),
         );
-        //TODO: why passing an empty global environment?
         eval::subst(new_term, &eval::Environment::new(), &env)
     } else {
         cache.get_owned(file_id).unwrap()
