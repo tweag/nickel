@@ -698,7 +698,10 @@ pub mod query_print {
                     let ctrs: Vec<String> = meta
                         .contracts
                         .iter()
-                        .map(|ctr| ctr.types.to_string())
+                        // We use the original user-written type stored in the label. Using
+                        // `ctr.types` instead is unreadable most of the time, as it can have been
+                        // altered by closurizations or other run-time rewriting
+                        .map(|ctr| ctr.label.types.to_string())
                         .collect();
                     renderer.print_metadata("contract", &ctrs.join(","));
                     found = true;
