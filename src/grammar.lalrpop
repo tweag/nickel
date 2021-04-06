@@ -180,7 +180,7 @@ Atom: RichTerm = {
     "num literal" => RichTerm::from(Term::Num(<>)),
     "null" => RichTerm::from(Term::Null),
     Bool => RichTerm::from(Term::Bool(<>)),
-    <StrChunks>,
+    StrChunks,
     Ident => RichTerm::from(Term::Var(<>)),
     "`" <Ident> => RichTerm::from(Term::Enum(<>)),
     "{" <fields: (<RecordField> ",")*> <last: RecordField?> "}" => {
