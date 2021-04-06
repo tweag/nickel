@@ -103,16 +103,16 @@ let typecheck = [
   [1, "2", false],
   //TODO: the type system may accept the following test at some point.
   //([1, "2", false] : List),
-  (["a", "b", "c"] : List Str),
-  ([1, 2, 3] : List Num),
-  (fun x => [x] : forall a. a -> List a),
+  ["a", "b", "c"] : List Str,
+  [1, 2, 3] : List Num,
+  (fun x => [x]) : forall a. a -> List a,
 
   // lists_ops
-  fun l => %tail% l : forall a. List a -> List a,
-  fun l => %head% l : forall a. List a -> a,
-  fun f l => %map% l f : forall a b. (a -> b) -> List a -> List b,
-  fun l1 => fun l2 => l1 @ l2 : forall a. List a -> List a -> List a,
-  fun i l => %elemAt% l i : forall a. Num -> List a -> a,
+  (fun l => %tail% l) : forall a. List a -> List a,
+  (fun l => %head% l) : forall a. List a -> a,
+  (fun f l => %map% l f) : forall a b. (a -> b) -> List a -> List b,
+  (fun l1 => fun l2 => l1 @ l2) : forall a. List a -> List a -> List a,
+  (fun i l => %elemAt% l i) : forall a. Num -> List a -> a,
 
   // recursive_records
   {a : Num = 1, b = a + 1} : {a : Num, b : Num},

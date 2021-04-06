@@ -77,7 +77,7 @@ f `boo == 3) &&
 (({a = 1, b = "b", c = false} | {a: Num, b: Str | Dyn})
   == {a = 1, b = "b", c = false}
   | #Assert) &&
-((fun r => r.b | {a: Num | Dyn} -> Dyn) {a = 1, b = 2} == 2
+(((fun r => r.b) | {a: Num | Dyn} -> Dyn) {a = 1; b = 2} == 2
   | #Assert) &&
 
 

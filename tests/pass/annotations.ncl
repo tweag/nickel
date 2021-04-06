@@ -19,7 +19,8 @@ let Assert = fun l x => x || %blame% l in
   f true) &&
 
 // others_precedence
-((fun x => x | #Assert -> Dyn) true) &&
-(switch {Ok => true, Err => false} `Ok | #Assert) &&
+((fun x => x | #Assert) true) &&
+(let AssertOk = fun l t => if t == `Ok then t else %blame% l in
+  switch {Ok => true, Err => false} `Ok | #AssertOk) &&
 
 true
