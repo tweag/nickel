@@ -60,14 +60,14 @@
     partition : forall a. (a -> Bool) -> List a -> {right: List a, wrong: List a} =
       fun pred l =>
         let aux = fun acc x => if (pred x) then
-          {right = acc.right @ [x]; wrong = acc.wrong}
+          {right = acc.right @ [x], wrong = acc.wrong}
         else
-          {right = acc.right; wrong = acc.wrong @ [x]}
+          {right = acc.right, wrong = acc.wrong @ [x]}
         in
-        foldl aux {right = []; wrong = []} l,
+        foldl aux {right = [], wrong = []} l,
 
     generate : forall a. (Num -> a) -> Num -> List a =
-      fun f n => generate% n f,
+      fun f n => %generate% n f,
 
     sort : forall a. (a -> a -> <Less, Equal, Greater>) -> List a -> List a =
       fun cmp l =>
