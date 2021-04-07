@@ -530,7 +530,6 @@ pub mod rustyline_frontend {
 /// Rendering of the results of a metadata query.
 pub mod query_print {
     use crate::identifier::Ident;
-    use crate::label::Label;
     use crate::term::{MergePriority, MetaValue, Term};
 
     /// A query printer. The implementation may differ depending on the activation of markdown
@@ -695,12 +694,14 @@ pub mod query_print {
         match term {
             Term::MetaValue(meta) => {
                 let mut found = false;
-                match &meta.contract {
-                    Some((_, Label { types, .. })) if selected_attrs.contract => {
-                        renderer.print_metadata("contract", &format!("{}", types));
-                        found = true;
-                    }
-                    _ => (),
+                if !meta.contracts.is_empty() && selected_attrs.contract {
+                    let ctrs: Vec<String> = meta
+                        .contracts
+                        .iter()
+                        .map(|ctr| ctr.types.to_string())
+                        .collect();
+                    renderer.print_metadata("contract", &ctrs.join(","));
+                    found = true;
                 }
 
                 match &meta {

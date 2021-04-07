@@ -74,7 +74,7 @@ where
         }
     }
 
-    return n.serialize(serializer);
+    n.serialize(serializer)
 }
 
 /// Serializer for metavalues.

@@ -164,9 +164,16 @@ impl Default for MergePriority {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub struct Contract {
+    pub types: Types,
+    pub label: Label,
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct MetaValue {
     pub doc: Option<String>,
-    pub contract: Option<(Types, Label)>,
+    pub types: Option<Contract>,
+    pub contracts: Vec<Contract>,
     pub priority: MergePriority,
     pub value: Option<RichTerm>,
 }
@@ -175,7 +182,8 @@ impl From<RichTerm> for MetaValue {
     fn from(rt: RichTerm) -> Self {
         MetaValue {
             doc: None,
-            contract: None,
+            types: None,
+            contracts: Vec::new(),
             priority: Default::default(),
             value: Some(rt),
         }
@@ -186,9 +194,54 @@ impl MetaValue {
     pub fn new() -> Self {
         MetaValue {
             doc: None,
-            contract: None,
+            types: None,
+            contracts: Vec::new(),
             priority: Default::default(),
             value: None,
+        }
+    }
+
+    /// Flatten two nested metavalues into one, combining their metadata. If data that can't be
+    /// combined (typically, the documentation or the type annotation) are set by both metavalues,
+    /// outer's one are kept.
+    ///
+    /// Note that no environment management such as closurization takes place, because this
+    /// function is expected to be used on the AST before the evaluation (in the parser or during
+    /// program transformation).
+    ///
+    /// #Preconditions
+    /// - `outer.value` is assumed to be `inner`. While `flatten` may still work fine if this
+    ///   condition is not fullfilled, the value of the final metavalue is set to be `inner`'s one,
+    ///   and `outer`'s one is dropped.
+    pub fn flatten(outer: MetaValue, mut inner: MetaValue) -> MetaValue {
+        // Keep the outermost value for non-mergeable information, such as documentation, type annotation,
+        // and so on, which is the one that is accessible from the outside anyway (by queries, by the typechecker, and
+        // so on).
+        // Keep the inner value
+        let MetaValue {
+            doc,
+            types,
+            mut contracts,
+            priority,
+            value: _,
+        } = outer;
+
+        // If both have type annotations, the result will have the outer one as a type annotation.
+        // However we still need to enforce the corresponding contract to preserve the operational
+        // semantics. Thus, the inner type annotation is derelicted to a contract.
+        match inner.types.take() {
+            Some(ctr) if types.is_some() => contracts.push(ctr),
+            _ => (),
+        };
+
+        contracts.extend(inner.contracts.into_iter());
+
+        MetaValue {
+            doc: doc.or(inner.doc),
+            types: types.or(inner.types),
+            contracts,
+            priority: std::cmp::min(priority, inner.priority),
+            value: inner.value,
         }
     }
 }
@@ -250,9 +303,9 @@ impl Term {
                 func(t);
             }
             MetaValue(ref mut meta) => {
-                meta.contract
+                meta.contracts
                     .iter_mut()
-                    .for_each(|(ref mut ty, _)| match ty.0 {
+                    .for_each(|Contract { types, .. }| match types.0 {
                         AbsType::Flat(ref mut rt) => func(rt),
                         _ => (),
                     });
@@ -342,7 +395,7 @@ impl Term {
                 if meta.doc.is_some() {
                     content.push_str("doc,");
                 }
-                if meta.contract.is_some() {
+                if !meta.contracts.is_empty() {
                     content.push_str("contract,");
                 }
 
@@ -869,14 +922,27 @@ impl RichTerm {
                 )
             }
             Term::MetaValue(meta) => {
-                let contract = meta
-                    .contract
-                    .map(|(ty, lbl)| {
-                        let ty = match ty {
+                let contracts: Result<Vec<Contract>, _> = meta
+                    .contracts
+                    .into_iter()
+                    .map(|ctr| {
+                        let types = match ctr.types {
                             Types(AbsType::Flat(t)) => Types(AbsType::Flat(t.traverse(f, state)?)),
                             ty => ty,
                         };
-                        Ok((ty, lbl))
+                        Ok(Contract { types, ..ctr })
+                    })
+                    .collect();
+                let contracts = contracts?;
+
+                let types = meta
+                    .types
+                    .map(|ctr| {
+                        let types = match ctr.types {
+                            Types(AbsType::Flat(t)) => Types(AbsType::Flat(t.traverse(f, state)?)),
+                            ty => ty,
+                        };
+                        Ok(Contract { types, ..ctr })
                     })
                     // Transpose from Option<Result> to Result<Option>. There is a `transpose`
                     // method in Rust, but it has currently not made it to the stable version yet
@@ -889,7 +955,8 @@ impl RichTerm {
 
                 let meta = MetaValue {
                     doc: meta.doc,
-                    contract,
+                    types,
+                    contracts,
                     priority: meta.priority,
                     value,
                 };

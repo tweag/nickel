@@ -800,12 +800,14 @@ pub mod resolvers {
             let file_id = self
                 .file_cache
                 .get(path.to_string_lossy().as_ref())
-                .map(|id| id.clone())
-                .ok_or(ImportError::IOError(
-                    path.to_string_lossy().into_owned(),
-                    String::from("Import not found by the mockup resolver."),
-                    *pos,
-                ))?;
+                .copied()
+                .ok_or_else(|| {
+                    ImportError::IOError(
+                        path.to_string_lossy().into_owned(),
+                        String::from("Import not found by the mockup resolver."),
+                        *pos,
+                    )
+                })?;
 
             if self.term_cache.contains_key(&file_id) {
                 Ok((ResolvedTerm::FromCache(), file_id))

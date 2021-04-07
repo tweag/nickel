@@ -93,7 +93,7 @@ use crate::mk_app;
 use crate::operation::{continuate_operation, OperationCont};
 use crate::position::TermPos;
 use crate::stack::Stack;
-use crate::term::{make as mk_term, MetaValue, RichTerm, StrChunk, Term, UnaryOp};
+use crate::term::{make as mk_term, Contract, MetaValue, RichTerm, StrChunk, Term, UnaryOp};
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
@@ -670,21 +670,16 @@ where
                     update_thunks(&mut stack, &update_closure);
 
                     let Closure {
-                        body:
-                            RichTerm {
-                                term: meta_box,
-                                pos: _,
-                            },
+                        body: RichTerm { term, .. },
                         env,
                     } = update_closure;
 
-                    let t = match *meta_box {
-                        Term::MetaValue(MetaValue {contract: Some((ty, lbl)), value: Some(t), ..}) =>
-                            Term::Assume(ty, lbl, t).into(),
-                        Term::MetaValue(MetaValue {value: Some(t), ..}) => t,
-                        _ => panic!("eval::eval(): previous match enforced that a metavalue has an underlying value, but matched something else")
-                    };
-                    Closure { body: t, env }
+                    match *term {
+                        Term::MetaValue(MetaValue {
+                            value: Some(inner), ..
+                        }) => Closure { body: inner, env },
+                        _ => unreachable!(),
+                    }
                 }
                 // TODO: improve error message using some positions
                 else {
@@ -904,8 +899,26 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
                 RichTerm::new(Term::StrChunks(chunks), pos)
             }
             Term::MetaValue(meta) => {
-                let contract = meta.contract.map(|(ty, lbl)| {
-                    let ty = match ty {
+                let contracts: Vec<_> = meta
+                    .contracts
+                    .into_iter()
+                    .map(|ctr| {
+                        let types = match ctr.types {
+                            Types(AbsType::Flat(t)) => Types(AbsType::Flat(subst_(
+                                t,
+                                global_env,
+                                env,
+                                Cow::Borrowed(bound.as_ref()),
+                            ))),
+                            ty => ty,
+                        };
+
+                        Contract { types, ..ctr }
+                    })
+                    .collect();
+
+                let types = meta.types.map(|ctr| {
+                    let types = match ctr.types {
                         Types(AbsType::Flat(t)) => Types(AbsType::Flat(subst_(
                             t,
                             global_env,
@@ -915,14 +928,15 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
                         ty => ty,
                     };
 
-                    (ty, lbl)
+                    Contract { types, ..ctr }
                 });
 
                 let value = meta.value.map(|t| subst_(t, global_env, env, bound));
 
                 let meta = MetaValue {
                     doc: meta.doc,
-                    contract,
+                    types,
+                    contracts,
                     priority: meta.priority,
                     value,
                 };
@@ -943,8 +957,7 @@ mod tests {
     use crate::label::Label;
     use crate::parser::{grammar, lexer};
     use crate::term::make as mk_term;
-    use crate::term::StrChunk;
-    use crate::term::{BinaryOp, UnaryOp};
+    use crate::term::{BinaryOp, StrChunk, UnaryOp};
     use crate::transformations::transform;
     use crate::{mk_app, mk_fun};
     use codespan::Files;

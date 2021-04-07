@@ -416,10 +416,9 @@ mod test {
         let rt = TermParser::new().parse(id, Lexer::new(&wrapper)).unwrap();
 
         match *rt.term {
-            Term::MetaValue(MetaValue {
-                contract: Some((ty, _)),
-                ..
-            }) => ty,
+            Term::MetaValue(MetaValue { mut contracts, .. }) if contracts.len() == 1 => {
+                contracts.remove(0).types
+            }
             _ => panic!("types::test::parse_type(): expected contract"),
         }
     }
