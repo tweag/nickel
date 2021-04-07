@@ -24,6 +24,7 @@ use codespan::FileId;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ffi::OsString;
+use std::fmt;
 
 /// The AST of a Nickel expression.
 ///
@@ -97,6 +98,9 @@ pub enum Term {
     /// A primitive binary operator.
     #[serde(skip)]
     Op2(BinaryOp, RichTerm, RichTerm),
+    /// An primitive n-ary operator.
+    #[serde(skip)]
+    OpN(NAryOp, Vec<RichTerm>),
 
     /// A promise.
     ///
@@ -308,7 +312,7 @@ impl Term {
                 func(t1);
                 func(t2);
             }
-            List(ref mut terms) => terms.iter_mut().for_each(|t| {
+            OpN(_, ref mut terms) | List(ref mut terms) => terms.iter_mut().for_each(|t| {
                 func(t);
             }),
             StrChunks(chunks) => chunks.iter_mut().for_each(|chunk| match chunk {
@@ -344,6 +348,7 @@ impl Term {
             | Term::Switch(..)
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
+            | Term::OpN(..)
             | Term::Promise(_, _, _)
             | Term::Import(_)
             | Term::ResolvedImport(_)
@@ -408,6 +413,7 @@ impl Term {
             | Term::Switch(..)
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
+            | Term::OpN(..)
             | Term::Promise(_, _, _)
             | Term::Import(_)
             | Term::ResolvedImport(_) => String::from("<unevaluated>"),
@@ -433,6 +439,7 @@ impl Term {
             | Term::Switch(..)
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
+            | Term::OpN(..)
             | Term::Promise(_, _, _)
             | Term::Wrapped(_, _)
             | Term::MetaValue(_)
@@ -470,6 +477,7 @@ impl Term {
             | Term::Var(_)
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
+            | Term::OpN(..)
             | Term::Promise(_, _, _)
             | Term::Wrapped(_, _)
             | Term::MetaValue(_)
@@ -684,6 +692,31 @@ impl BinaryOp {
     }
 }
 
+/// Primitive n-ary operators. Unary and binary operator make up for most of operators and are
+/// hence special cased. `NAryOp` handles strict operations of arity greater than 2.
+#[derive(Clone, Debug, PartialEq)]
+pub enum NAryOp {}
+
+impl NAryOp {
+    pub fn arity(&self) -> usize {
+        match self {
+            _ => 0,
+        }
+    }
+
+    pub fn is_strict(&self) -> bool {
+        true
+    }
+}
+
+impl fmt::Display for NAryOp {
+    fn fmt(&self, _f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            _ => unimplemented!(),
+        }
+    }
+}
+
 /// Wrap [terms](type.Term.html) with positional information.
 #[derive(Debug, PartialEq, Clone)]
 pub struct RichTerm {
@@ -811,6 +844,18 @@ impl RichTerm {
                 f(
                     RichTerm {
                         term: Box::new(Term::Op2(op, t1, t2)),
+                        pos,
+                    },
+                    state,
+                )
+            }
+            Term::OpN(op, ts) => {
+                let ts_res: Result<Vec<RichTerm>, E> =
+                    ts.into_iter().map(|t| t.traverse(f, state)).collect();
+
+                f(
+                    RichTerm {
+                        term: Box::new(Term::OpN(op, ts_res?)),
                         pos,
                     },
                     state,
