@@ -46,5 +46,33 @@
     any : forall a. (a -> Bool) -> List a -> Bool =
       fun pred l =>
         fold (fun x acc => if pred x then true else acc) l false,
+
+    elem : Dyn -> List -> Bool =
+      fun elt => any (fun x => x == elt),
+
+    partition : forall a. (a -> Bool) -> List a -> {right: List a, wrong: List a} =
+      fun pred l =>
+        let aux = fun acc x => if (pred x) then
+          {right = acc.right @ [x]; wrong = acc.wrong}
+        else
+          {right = acc.right; wrong = acc.wrong @ [x]}
+        in
+        foldl aux {right = []; wrong = []} l,
+
+    generate : forall a. (Num -> a) -> Num -> List a =
+      fun gen n =>
+        if n <= 0 then
+          []
+        else
+          generate gen (n-1) @ [gen n],
+
+    sort : forall a. (a -> a -> Bool) -> List a -> List a =
+      fun cmp l =>
+        let first = %head% l in
+        let parts = partition (fun x => cmp x first) (%tail% l) in
+        if %length% l <= 1 then
+          l
+        else
+          (sort cmp (parts.right)) @ [first] @ (sort cmp (parts.wrong)),
   }
 }
