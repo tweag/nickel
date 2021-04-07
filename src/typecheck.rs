@@ -1772,10 +1772,10 @@ pub fn get_bop_type(
             mk_typewrapper::str(),
             mk_typewrapper::dynamic(),
         ),
-        BinaryOp::Pow() => mk_tyw_arrow!(
+        BinaryOp::Pow() => (
             mk_typewrapper::num(),
             mk_typewrapper::num(),
-            mk_typewrapper::num()
+            mk_typewrapper::num(),
         ),
     })
 }
