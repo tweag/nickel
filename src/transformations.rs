@@ -226,9 +226,8 @@ pub mod apply_contracts {
     use super::{RichTerm, Term};
     use crate::mk_app;
 
-    /// If the top-level node of the AST is a meta-value, wrap the inner value inside generated
-    /// `Assume`s corresponding to the meta-value's contracts. Otherwise, return the term
-    /// unchanged.
+    /// If the top-level node of the AST is a meta-value, apply the meta-value's contracts to the
+    /// inner value.  Otherwise, return the term unchanged.
     pub fn transform_one(rt: RichTerm) -> RichTerm {
         let RichTerm { term, pos } = rt;
 
