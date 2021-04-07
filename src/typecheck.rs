@@ -673,42 +673,26 @@ fn type_check_(
             type_check_(state, envs.clone(), strict, e, src1)?;
             type_check_(state, envs, strict, t, src2)
         }
-        Term::Promise(ty2, _, t) => {
-            let tyw2 = to_typewrapper(ty2.clone());
-
-            let instantiated = instantiate_foralls(state, tyw2, ForallInst::Constant);
-
-            unify(state, strict, ty, to_typewrapper(ty2.clone()))
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            type_check_(state, envs, true, t, instantiated)
-        }
-        Term::Assume(ty2, _, t) => {
-            unify(state, strict, ty, to_typewrapper(ty2.clone()))
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            let new_ty = TypeWrapper::Ptr(new_var(state.table));
-            type_check_(state, envs, false, t, new_ty)
-        }
-        Term::Sym(_) => unify(state, strict, ty, mk_typewrapper::sym())
-            .map_err(|err| err.into_typecheck_err(state, rt.pos)),
-        Term::Wrapped(_, t) => type_check_(state, envs, strict, t, ty),
+        Term::Promise(ty2, _, t)
         // A non-empty metavalue with a type annotation is a promise.
-        Term::MetaValue(MetaValue {
+        | Term::MetaValue(MetaValue {
             types: Some(Contract { types: ty2, .. }),
             value: Some(t),
             ..
         }) => {
             let tyw2 = to_typewrapper(ty2.clone());
+
             let instantiated = instantiate_foralls(state, tyw2, ForallInst::Constant);
 
             unify(state, strict, ty, to_typewrapper(ty2.clone()))
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
             type_check_(state, envs, true, t, instantiated)
         }
-        // A non-empty metavalue with at least one contract is an assume. If there's several
+        // A metavalue with at least one contract is an assume. If there's several
         // contracts, we arbitrarily chose the first one as the type annotation.
         Term::MetaValue(MetaValue {
             contracts,
-            value: Some(t),
+            value,
             ..
         }) if !contracts.is_empty() => {
             let ctr = contracts.get(0).unwrap();
@@ -716,13 +700,30 @@ fn type_check_(
 
             unify(state, strict, ty, to_typewrapper(ty2.clone()))
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            type_check_(state, envs, false, t, mk_typewrapper::dynamic())
+
+            // if there's an inner value, we have to recursively typecheck it, but in non strict
+            // mode.
+            if let Some(t) = value {
+                type_check_(state, envs, false, t, mk_typewrapper::dynamic())
+            }
+            else {
+                Ok(())
+            }
         }
-        // A metavalue without a type or contract annotation is typechecked in the same way as its inner value
+        Term::Sym(_) => unify(state, strict, ty, mk_typewrapper::sym())
+            .map_err(|err| err.into_typecheck_err(state, rt.pos)),
+        Term::Wrapped(_, t) => type_check_(state, envs, strict, t, ty),
+        // A non-empty metavalue without a type or contract annotation is typechecked in the same way as its inner value
         Term::MetaValue(MetaValue { value: Some(t), .. }) => {
             type_check_(state, envs, strict, t, ty)
         }
-        Term::MetaValue(_) => Ok(()),
+        // A metavalue without a body nor a type annotation is a record field without definition.
+        // This should probably be non representable in the syntax, as it doesn't really make
+        // sense. In any case, we infer it to be of type `Dyn` for now.
+        Term::MetaValue(_) => {
+             unify(state, strict, ty, mk_typewrapper::dynamic())
+                .map_err(|err| err.into_typecheck_err(state, rt.pos))
+        },
         Term::Import(_) => unify(state, strict, ty, mk_typewrapper::dynamic())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
         Term::ResolvedImport(file_id) => {
@@ -811,12 +812,12 @@ impl Into<TypeWrapper> for ApparentType {
 ///   the future, such as `Dyn -> Dyn` for functions, `{ | Dyn}` for records, and so on).
 pub fn apparent_type(t: &Term, envs: Option<&Envs>) -> ApparentType {
     match t {
-        Term::Assume(ty, _, _) | Term::Promise(ty, _, _) => ApparentType::Annotated(ty.clone()),
-        // For metavalues, chose first the type annotation if any, or the first contract appearing.
-        Term::MetaValue(MetaValue {
-            types: Some(ty_ctr),
+        Term::Promise(ty, _, _)
+        | Term::MetaValue(MetaValue {
+            types: Some(Contract { types: ty, .. }),
             ..
-        }) => ApparentType::Annotated(ty_ctr.types.clone()),
+        }) => ApparentType::Annotated(ty.clone()),
+        // For metavalues, if there's no type annotation, choose the first contract appearing.
         Term::MetaValue(MetaValue { contracts, .. }) if !contracts.is_empty() => {
             ApparentType::Annotated(contracts.get(0).unwrap().types.clone())
         }
@@ -1533,8 +1534,6 @@ pub fn get_uop_type(state: &mut State, op: &UnaryOp) -> Result<TypeWrapper, Type
 
             mk_tyw_arrow!(AbsType::Dyn(), res)
         }
-        // This should not happen, as `ApplyContract()` is only produced during evaluation.
-        UnaryOp::ApplyContract() => panic!("cannot typecheck ApplyContract()"),
         // Dyn -> Bool
         UnaryOp::Pol() => mk_tyw_arrow!(AbsType::Dyn(), AbsType::Bool()),
         // forall rows. < | rows> -> <id | rows>
@@ -1631,6 +1630,8 @@ pub fn get_bop_type(state: &mut State, op: &BinaryOp) -> Result<TypeWrapper, Typ
         // Str -> Str -> Str
         BinaryOp::PlusStr() => mk_tyw_arrow!(AbsType::Str(), AbsType::Str(), AbsType::Str()),
         // Sym -> Dyn -> Dyn -> Dyn
+        // This should not happen, as `ApplyContract()` is only produced during evaluation.
+        BinaryOp::Assume() => panic!("cannot typecheck assume"),
         BinaryOp::Unwrap() => mk_tyw_arrow!(
             AbsType::Sym(),
             AbsType::Dyn(),

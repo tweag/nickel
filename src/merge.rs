@@ -54,7 +54,7 @@
 use crate::error::EvalError;
 use crate::eval::{Closure, Environment};
 use crate::position::TermPos;
-use crate::term::{BinaryOp, Contract, MetaValue, RichTerm, Term};
+use crate::term::{make as mk_term, BinaryOp, Contract, MetaValue, RichTerm, Term};
 use crate::transformations::Closurizable;
 use std::collections::HashMap;
 
@@ -362,7 +362,7 @@ fn cross_apply_contracts<'a>(
     let result = it2
         .fold(t1, |acc, ctr| {
             let ty_closure = ctr.types.clone().closurize(&mut env1_local, env2.clone());
-            RichTerm::new(Term::Assume(ty_closure, ctr.label.clone(), acc), pos)
+            mk_term::assume(ty_closure, ctr.label.clone(), acc).with_pos(pos)
         })
         .closurize(&mut env, env1_local);
 

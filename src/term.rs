@@ -104,14 +104,6 @@ pub enum Term {
     #[serde(skip)]
     Promise(Types, Label, RichTerm),
 
-    /// An assume.
-    ///
-    /// Represent a subterm which is to be dynamically typechecked (dynamic types are also called.
-    /// It ensures at runtime that the term satisfies the contract corresponding to the type, or it
-    /// will blame the label instead.
-    #[serde(skip)]
-    Assume(Types, Label, RichTerm),
-
     /// A symbol.
     ///
     /// A unique tag corresponding to a type variable. See `Wrapped` below.
@@ -298,7 +290,6 @@ impl Term {
             Fun(_, ref mut t)
             | Op1(_, ref mut t)
             | Promise(_, _, ref mut t)
-            | Assume(_, _, ref mut t)
             | Wrapped(_, ref mut t) => {
                 func(t);
             }
@@ -354,7 +345,6 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::Promise(_, _, _)
-            | Term::Assume(_, _, _)
             | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_) => None,
@@ -419,7 +409,6 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::Promise(_, _, _)
-            | Term::Assume(_, _, _)
             | Term::Import(_)
             | Term::ResolvedImport(_) => String::from("<unevaluated>"),
         }
@@ -445,7 +434,6 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::Promise(_, _, _)
-            | Term::Assume(_, _, _)
             | Term::Wrapped(_, _)
             | Term::MetaValue(_)
             | Term::Import(_)
@@ -483,7 +471,6 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::Promise(_, _, _)
-            | Term::Assume(_, _, _)
             | Term::Wrapped(_, _)
             | Term::MetaValue(_)
             | Term::Import(_)
@@ -531,13 +518,6 @@ pub enum UnaryOp {
 
     /// Raise a blame, which stops the execution and prints an error according to the label argument.
     Blame(),
-    /// Apply a contract to a label and a value. The label and the value are stored on the stack, unevaluated.
-    ///
-    /// Operationally equivalent to the standard application for contracts given as functions, this
-    /// operator additionally marks the location of the tested value for better error reporting. It
-    /// also accepts contracts as records, which are translated to a merge operation instead of
-    /// function application.
-    ApplyContract(),
 
     /// Typecast an enum to a larger enum type.
     ///
@@ -650,6 +630,14 @@ pub enum BinaryOp {
     GreaterThan(),
     /// Greater than or equal comparison operator.
     GreaterOrEq(),
+    /// An assume.
+    ///
+    /// Apply a contract to a label and a value. The value is is stored on the stack unevaluated,
+    /// while the contract and the label are the strict arguments to this operator. Assume also
+    /// accepts contracts as records, that are translates to a function that performs a merge
+    /// operation with its argument. Finally, this operator marks the location of the contract
+    /// argument for better error reporting.
+    Assume(),
     /// Unwrap a tagged term.
     ///
     /// See `Wrap` in [`UnaryOp`](enum.UnaryOp.html).
@@ -833,16 +821,6 @@ impl RichTerm {
                 f(
                     RichTerm {
                         term: Box::new(Term::Promise(ty, l, t)),
-                        pos,
-                    },
-                    state,
-                )
-            }
-            Term::Assume(ty, l, t) => {
-                let t = t.traverse(f, state)?;
-                f(
-                    RichTerm {
-                        term: Box::new(Term::Assume(ty, l, t)),
                         pos,
                     },
                     state,
@@ -1103,6 +1081,16 @@ pub mod make {
         T2: Into<RichTerm>,
     {
         Term::Op2(op, t1.into(), t2.into()).into()
+    }
+
+    pub fn assume<T>(types: Types, l: Label, t: T) -> RichTerm
+    where
+        T: Into<RichTerm>,
+    {
+        mk_app!(
+            op2(BinaryOp::Assume(), types.contract(), Term::Lbl(l)),
+            t.into()
+        )
     }
 
     pub fn string<S>(s: S) -> RichTerm

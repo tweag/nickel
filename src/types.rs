@@ -53,7 +53,7 @@
 //! untyped parts.
 use crate::identifier::Ident;
 use crate::term::make as mk_term;
-use crate::term::{RichTerm, Term, UnaryOp};
+use crate::term::{BinaryOp, RichTerm, Term, UnaryOp};
 use crate::{mk_app, mk_fun};
 use std::collections::HashMap;
 use std::fmt;
@@ -179,14 +179,15 @@ impl Types {
         sy: &mut i32,
     ) -> RichTerm {
         use crate::stdlib::contracts;
+        use crate::transformations::fresh_var;
 
-        match self.0 {
+        let ctr = match self.0 {
             AbsType::Dyn() => contracts::dynamic(),
             AbsType::Num() => contracts::num(),
             AbsType::Bool() => contracts::bool(),
             AbsType::Str() => contracts::string(),
             //TODO: optimization: have a specialized contract for `List Dyn`, to avoid mapping an
-            //always succesful contract on each element.
+            //always successful contract on each element.
             AbsType::List(ref ty) => mk_app!(contracts::list(), ty.contract_open(h, pol, sy)),
             AbsType::Sym() => panic!("Are you trying to check a Sym at runtime?"),
             AbsType::Arrow(ref s, ref t) => mk_app!(
@@ -194,9 +195,7 @@ impl Types {
                 s.contract_open(h.clone(), !pol, sy),
                 t.contract_open(h, pol, sy)
             ),
-            AbsType::Flat(ref t) => {
-                mk_term::op1(UnaryOp::ApplyContract(), t.clone()).with_pos(t.pos)
-            }
+            AbsType::Flat(ref t) => t.clone(),
             AbsType::Var(ref i) => {
                 let (rt, _) = h
                     .get(i)
@@ -288,7 +287,24 @@ impl Types {
             AbsType::DynRecord(ref ty) => {
                 mk_app!(contracts::dyn_record(), ty.contract_open(h, pol, sy))
             }
-        }
+        };
+
+        // To track the argument to contracts and support contracts as record, we need to wrap the
+        // function contracts as an `Assume`. Since `Assume` is strict in the label and need to be
+        // fully applied, we need to wrap the whole expression back as a standard function, that is
+        // to form: `fun l val => %assume% ctr l val`
+        let var_l = fresh_var();
+        let var_val = fresh_var();
+        let pos = ctr.pos;
+        mk_fun!(
+            var_l.clone(),
+            var_val.clone(),
+            mk_app!(
+                mk_term::op2(BinaryOp::Assume(), ctr, Term::Var(var_l)),
+                Term::Var(var_val)
+            )
+        )
+        .with_pos(pos.into_inherited())
     }
 
     /// Find a binding in a record row type. Return `None` if there is no such binding, if the type
