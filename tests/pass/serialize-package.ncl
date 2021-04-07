@@ -4,16 +4,16 @@ let ctr = {
           = {
     name | doc "
            The package name."
-         | Str;
+         | Str,
 
     buildInputs | doc "
                   The list of inputs for this package, specified as a
                   `NixPackage`."
-                | List #NixPackage;
+                | List #NixPackage,
     // Many more missing
-  };
+  },
 
-  Shell = Derivation & {};
+  Shell = Derivation & {},
 
   NixPackage | doc "
                Interchange format representing a package only accessible on the
@@ -39,26 +39,26 @@ let ctr = {
     package | Str
             | doc "
               The package name, given as a string. Dot-separated paths are not yet
-              supported";
+              supported",
 
     input | Str
           | doc "
             The inputs where to fetch the package from. Must be a variable name
             that is in scope on the Nix side."
-          | default = "nixpkgs";
+          | default = "nixpkgs",
 
     _type | doc "
             Used by the interop Nix code. Forced to a fixed value. Please
             do not override."
-          = "package";
+          = "package",
   }
 } in
 builtins.serialize `Json (
   {
-    name = "nickel";
-    buildInputs = [{package = "hello"}];
+    name = "nickel",
+    buildInputs = [{package = "hello"}],
   } | #(ctr.Shell)
 ) == builtins.serialize `Json {
-  name = "nickel";
-  buildInputs = [{input = "nixpkgs"; package = "hello"; "_type" = "package"}];
+  name = "nickel",
+  buildInputs = [{input = "nixpkgs", package = "hello", "_type" = "package"}],
 }
