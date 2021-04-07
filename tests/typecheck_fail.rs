@@ -1,14 +1,9 @@
 use assert_matches::assert_matches;
 use codespan::Files;
-use nickel::cache::{
-    resolvers::{DummyResolver, SimpleResolver},
-    ImportResolver,
-};
-use nickel::error::{ImportError, TypecheckError};
+use nickel::cache::resolvers::DummyResolver;
+use nickel::error::TypecheckError;
 use nickel::parser::{grammar, lexer};
-use nickel::term::make as mk_term;
 use nickel::term::RichTerm;
-use nickel::transformations::transform;
 use nickel::typecheck::{type_check_in_env, Environment};
 use nickel::types::Types;
 

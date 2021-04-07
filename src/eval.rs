@@ -1126,7 +1126,7 @@ mod tests {
                 mk_term::let_in(var, mk_term::import(import), body),
                 resolver,
             )
-        };
+        }
 
         // let x = import "does_not_exist" in x
         match mk_import("x", "does_not_exist", mk_term::var("x"), &mut resolver).unwrap_err() {

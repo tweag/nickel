@@ -527,11 +527,7 @@ fn process_unary_operation(
             /// evaluation of the argument on the top of the stack.
             ///
             /// Requires its first argument to be non-empty.
-            fn seq_terms<I>(
-                mut terms: I,
-                env: Environment,
-                pos_op_inh: TermPos,
-            ) -> Result<Closure, EvalError>
+            fn seq_terms<I>(mut terms: I, env: Environment, pos_op_inh: TermPos) -> Closure
             where
                 I: Iterator<Item = RichTerm>,
             {
@@ -543,15 +539,15 @@ fn process_unary_operation(
                     |acc, t| mk_app!(mk_term::op1(UnaryOp::DeepSeq(), t), acc).with_pos(pos_op_inh),
                 );
 
-                Ok(Closure { body, env })
-            };
+                Closure { body, env }
+            }
 
             match *t {
                 Term::Record(map) if !map.is_empty() => {
                     let terms = map.into_iter().map(|(_, t)| t);
-                    seq_terms(terms, env, pos_op)
+                    Ok(seq_terms(terms, env, pos_op))
                 }
-                Term::List(ts) if !ts.is_empty() => seq_terms(ts.into_iter(), env, pos_op),
+                Term::List(ts) if !ts.is_empty() => Ok(seq_terms(ts.into_iter(), env, pos_op)),
                 _ => {
                     if let Some((next, ..)) = stack.pop_arg() {
                         Ok(next)

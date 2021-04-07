@@ -773,9 +773,9 @@ pub enum ApparentType {
     Approximated(Types),
 }
 
-impl Into<Types> for ApparentType {
-    fn into(self) -> Types {
-        match self {
+impl From<ApparentType> for Types {
+    fn from(at: ApparentType) -> Self {
+        match at {
             ApparentType::Annotated(ty)
             | ApparentType::Inferred(ty)
             | ApparentType::Approximated(ty) => ty,
@@ -784,9 +784,9 @@ impl Into<Types> for ApparentType {
     }
 }
 
-impl Into<TypeWrapper> for ApparentType {
-    fn into(self) -> TypeWrapper {
-        match self {
+impl From<ApparentType> for TypeWrapper {
+    fn from(at: ApparentType) -> TypeWrapper {
+        match at {
             ApparentType::Annotated(ty)
             | ApparentType::Inferred(ty)
             | ApparentType::Approximated(ty) => to_typewrapper(ty),

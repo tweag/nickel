@@ -29,7 +29,7 @@ pub enum InputFormat {
 }
 
 impl InputFormat {
-    fn from_path_buf(path_buf: &PathBuf) -> Option<InputFormat> {
+    fn from_path_buf(path_buf: &Path) -> Option<InputFormat> {
         match path_buf.extension().and_then(OsStr::to_str) {
             Some("ncl") => Some(InputFormat::Nickel),
             Some("json") => Some(InputFormat::Json),
