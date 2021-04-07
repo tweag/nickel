@@ -25,6 +25,18 @@ fn non_mergeable() {
         eval("({a | default = false} & {a | default = true}).a"),
         Err(Error::EvalError(EvalError::MergeIncompatibleArgs(..)))
     );
+}
+
+#[test]
+fn non_mergeable_piecewise() {
+    assert_matches!(
+        eval("({a.b=1, a = {b = 2}}).a.b"),
+        Err(Error::EvalError(EvalError::MergeIncompatibleArgs(..)))
+    );
+    assert_matches!(
+        eval("({foo.bar | default = false, foo.bar | default = true}).foo.bar"),
+        Err(Error::EvalError(EvalError::MergeIncompatibleArgs(..)))
+    );
     assert_matches!(
         eval("({a.b = {}} & {a.b.c = []} & {a.b.c = {}}).a.b.c"),
         Err(Error::EvalError(EvalError::MergeIncompatibleArgs(..)))
