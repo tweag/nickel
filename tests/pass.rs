@@ -95,4 +95,5 @@ fn types() {
 #[test]
 fn serialize() {
     check_file("serialize.ncl");
+    check_file("serialize-package.ncl");
 }
