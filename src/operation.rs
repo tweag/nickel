@@ -888,7 +888,7 @@ fn process_unary_operation(
                 ))
             }
         }
-        UnaryOp::StrFrom() => {
+        UnaryOp::ToStr() => {
             let result = match *t {
                 Term::Num(n) => Ok(Term::Str(n.to_string())),
                 Term::Str(s) => Ok(Term::Str(s)),
@@ -904,7 +904,7 @@ fn process_unary_operation(
             }?;
             Ok(Closure::atomic_closure(RichTerm::new(result, pos_op_inh)))
         }
-        UnaryOp::NumFrom() => {
+        UnaryOp::NumFromStr() => {
             if let Term::Str(s) = *t {
                 let n = s.parse::<f64>().map_err(|_| {
                     EvalError::Other(format!("numFrom: invalid num literal `{}`", s), pos)
@@ -922,7 +922,7 @@ fn process_unary_operation(
                 ))
             }
         }
-        UnaryOp::EnumFrom() => {
+        UnaryOp::EnumFromStr() => {
             if let Term::Str(s) = *t {
                 let re = regex::Regex::new("_?[a-zA-Z][_a-zA-Z0-9]*").unwrap();
                 if re.is_match(&s) {

@@ -241,12 +241,12 @@ pub enum NormalToken<'input> {
     StrLength,
     #[token("%strSubstr%")]
     StrSubstr,
-    #[token("%strFrom%")]
-    StrFrom,
-    #[token("%numFrom%")]
-    NumFrom,
-    #[token("%enumFrom%")]
-    EnumFrom,
+    #[token("%toStr%")]
+    ToStr,
+    #[token("%numFromStr%")]
+    NumFromStr,
+    #[token("%enumFromStr%")]
+    EnumFromStr,
 
     #[token("{")]
     LBrace,

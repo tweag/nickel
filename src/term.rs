@@ -629,11 +629,11 @@ pub enum UnaryOp {
     /// Return the length of a string.
     StrLength(),
     /// Transform a data to a string.
-    StrFrom(),
+    ToStr(),
     /// Transform a string to a number.
-    NumFrom(),
+    NumFromStr(),
     /// Transform a string to an enum.
-    EnumFrom(),
+    EnumFromStr(),
 }
 
 /// Primitive binary operators

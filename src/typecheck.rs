@@ -1662,11 +1662,11 @@ pub fn get_uop_type(
         // Str -> Num
         UnaryOp::StrLength() => mk_tyw_arrow!(mk_typewrapper::str(), mk_typewrapper::num()),
         // Dyn -> Str
-        UnaryOp::StrFrom() => mk_tyw_arrow!(mk_typewrapper::dynamic(), mk_typewrapper::num()),
+        UnaryOp::ToStr() => mk_tyw_arrow!(mk_typewrapper::dynamic(), mk_typewrapper::num()),
         // Str -> Num
-        UnaryOp::NumFrom() => mk_tyw_arrow!(mk_typewrapper::str(), mk_typewrapper::num()),
+        UnaryOp::NumFromStr() => mk_tyw_arrow!(mk_typewrapper::str(), mk_typewrapper::num()),
         // Str -> < | Dyn>
-        UnaryOp::EnumFrom() => mk_tyw_arrow!(
+        UnaryOp::EnumFromStr() => mk_tyw_arrow!(
             mk_typewrapper::str(),
             mk_tyw_enum!(mk_typewrapper::dynamic())
         ),

@@ -80,14 +80,14 @@
     substring: Str -> Num -> Num -> Str = fun s start end =>
       %strSubstr% s start end,
 
-    fromNum | Num -> Str = fun n => %strFrom% n,
-    // fromEnum | < | Dyn> -> Str = fun tag => %strFrom% tag,
-    fromEnum | Dyn -> Str = fun tag => %strFrom% tag,
-    fromBool | Bool -> Str = fun b => %strFrom% b,
+    fromNum | Num -> Str = fun n => %toStr% n,
+    // fromEnum | < | Dyn> -> Str = fun tag => %toStr% tag,
+    fromEnum | Dyn -> Str = fun tag => %toStr% tag,
+    fromBool | Bool -> Str = fun b => %toStr% b,
 
-    toNum | #NumLiteral -> Num = fun s => %numFrom% s,
+    toNum | #NumLiteral -> Num = fun s => %numFromStr% s,
     toBool | #BoolLiteral -> Bool = fun s => s == "true",
-    // toEnum | #Ident -> < | Dyn> = fun s => %enumFrom% s,
-    toEnum | #Ident -> Dyn = fun s => %enumFrom% s,
+    // toEnum | #Ident -> < | Dyn> = fun s => %enumFromStr% s,
+    toEnum | #Ident -> Dyn = fun s => %enumFromStr% s,
   }
 }

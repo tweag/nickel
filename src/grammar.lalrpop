@@ -348,9 +348,9 @@ UOp: UnaryOp = {
     "strUppercase" => UnaryOp::StrUppercase(),
     "strLowercase" => UnaryOp::StrLowercase(),
     "strLength" => UnaryOp::StrLength(),
-    "strFrom" => UnaryOp::StrFrom(),
-    "numFrom" => UnaryOp::NumFrom(),
-    "enumFrom" => UnaryOp::EnumFrom(),
+    "strFrom" => UnaryOp::ToStr(),
+    "numFrom" => UnaryOp::NumFromStr(),
+    "enumFrom" => UnaryOp::EnumFromStr(),
 };
 
 switch_case: SwitchCase = {
@@ -680,9 +680,9 @@ extern {
         "strMatch" => Token::Normal(NormalToken::StrMatch),
         "strLength" => Token::Normal(NormalToken::StrLength),
         "strSubstr" => Token::Normal(NormalToken::StrSubstr),
-        "strFrom" => Token::Normal(NormalToken::StrFrom),
-        "numFrom" => Token::Normal(NormalToken::NumFrom),
-        "enumFrom" => Token::Normal(NormalToken::EnumFrom),
+        "strFrom" => Token::Normal(NormalToken::ToStr),
+        "numFrom" => Token::Normal(NormalToken::NumFromStr),
+        "enumFrom" => Token::Normal(NormalToken::EnumFromStr),
 
         "{" => Token::Normal(NormalToken::LBrace),
         "}" => Token::Normal(NormalToken::RBrace),
