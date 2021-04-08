@@ -93,7 +93,7 @@ use crate::mk_app;
 use crate::operation::{continuate_operation, OperationCont};
 use crate::position::TermPos;
 use crate::stack::Stack;
-use crate::term::{make as mk_term, Contract, MetaValue, RichTerm, StrChunk, Term, UnaryOp};
+use crate::term::{make as mk_term, MetaValue, RichTerm, StrChunk, Term, UnaryOp};
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
@@ -340,12 +340,13 @@ fn should_update(t: &Term) -> bool {
     !t.is_whnf() && !t.is_enriched()
 }
 
-/// Evaluate a Nickel term. Wrapper around [eval_](fn.eval_.html) that drops the final environment.
+/// Evaluate a Nickel term. Wrapper around [eval_closure](fn.eval_closure.html) that starts from an
+/// empty local environment and drops the final environment.
 pub fn eval<R>(t0: RichTerm, global_env: &Environment, resolver: &mut R) -> Result<Term, EvalError>
 where
     R: ImportResolver,
 {
-    eval_(t0, global_env, resolver, true).map(|(term, _)| term)
+    eval_closure(Closure::atomic_closure(t0), global_env, resolver, true).map(|(term, _)| term)
 }
 
 /// Fully evaluate a Nickel term: the result is not a WHNF but to a value with all variables substituted.
@@ -357,21 +358,25 @@ pub fn eval_full<R>(
 where
     R: ImportResolver,
 {
+    use crate::transformations::fresh_var;
+
+    let var = fresh_var();
     // Desugar to let x = term in deepSeq x x
     let wrapper = mk_term::let_in(
-        "x",
+        var.clone(),
         t0,
         mk_app!(
-            mk_term::op1(UnaryOp::DeepSeq(), mk_term::var("x")),
-            mk_term::var("x")
+            mk_term::op1(UnaryOp::DeepSeq(), Term::Var(var.clone())),
+            Term::Var(var)
         ),
     );
-    eval_(wrapper, global_env, resolver, true)
+    eval_closure(Closure::atomic_closure(wrapper), global_env, resolver, true)
         .map(|(term, env)| subst(term.into(), &global_env, &env).into())
 }
 
 /// Evaluate a Nickel Term, stopping when a meta value is encountered at the top-level without
-/// unwrapping it.
+/// unwrapping it. Then evaluate the underlying value, and substitute variables in order to obtain
+/// a WHNF that is printable.
 ///
 /// Used to query the metadata of a value.
 pub fn eval_meta<R>(
@@ -382,29 +387,17 @@ pub fn eval_meta<R>(
 where
     R: ImportResolver,
 {
-    let (term, mut env) = eval_(t, &global_env, resolver, false)?;
+    let (term, env) = eval_closure(Closure::atomic_closure(t), &global_env, resolver, false)?;
 
     match term {
         Term::MetaValue(mut meta) => {
-            if let Some(mut t) = meta.value.take() {
-                // Unwrapping leading variables in the value, to have a better representation to
-                // print.
-                while let Term::Var(id) = t.as_ref() {
-                    let thunk = env
-                        .get(&id)
-                        .or_else(|| global_env.get(&id))
-                        .expect("eval::eval_meta(): unexpected unbound identifier");
+            if let Some(t) = meta.value.take() {
+                let pos = t.pos;
+                let (evaluated, env) =
+                    eval_closure(Closure { body: t, env }, global_env, resolver, true)?;
+                let substituted = subst(RichTerm::new(evaluated, pos), global_env, &env);
 
-                    let Closure {
-                        body,
-                        env: local_env,
-                    } = thunk.get_owned();
-
-                    t = body;
-                    env = local_env;
-                }
-
-                meta.value.replace(t);
+                meta.value.replace(substituted);
             }
 
             Ok(Term::MetaValue(meta))
@@ -434,8 +427,8 @@ where
 /// Either:
 ///  - an evaluation error
 ///  - the evaluated term with its final environment
-pub fn eval_<R>(
-    t0: RichTerm,
+pub fn eval_closure<R>(
+    mut clos: Closure,
     global_env: &Environment,
     resolver: &mut R,
     mut enriched_strict: bool,
@@ -443,7 +436,6 @@ pub fn eval_<R>(
 where
     R: ImportResolver,
 {
-    let mut clos = Closure::atomic_closure(t0);
     let mut call_stack = CallStack::new();
     let mut stack = Stack::new();
 
@@ -800,8 +792,6 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
         env: &Environment,
         bound: Cow<HashSet<Ident>>,
     ) -> RichTerm {
-        use crate::types::{AbsType, Types};
-
         let RichTerm { term, pos } = rt;
         match *term {
             Term::Var(id) if !bound.as_ref().contains(&id) => env
@@ -816,19 +806,15 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
             | v @ Term::Bool(_)
             | v @ Term::Num(_)
             | v @ Term::Str(_)
+            // Do not substitute under lambdas: mutually recursive function could cause an infinite
+            // loop. Although avoidable, this requires some care and is not currently needed.
+            | v @ Term::Fun(..)
             | v @ Term::Lbl(_)
             | v @ Term::Sym(_)
             | v @ Term::Var(_)
             | v @ Term::Enum(_)
             | v @ Term::Import(_)
             | v @ Term::ResolvedImport(_) => RichTerm::new(v, pos),
-            Term::Fun(id, t) => {
-                let mut bound_owned = bound.into_owned();
-                bound_owned.insert(id.clone());
-                let t = subst_(t, global_env, env, Cow::Owned(bound_owned));
-
-                RichTerm::new(Term::Fun(id, t), pos)
-            }
             Term::Let(id, t1, t2) => {
                 let t1 = subst_(t1, global_env, env, Cow::Borrowed(bound.as_ref()));
                 let t2 = subst_(t2, global_env, env, bound);
@@ -935,46 +921,48 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
                 RichTerm::new(Term::StrChunks(chunks), pos)
             }
             Term::MetaValue(meta) => {
-                let contracts: Vec<_> = meta
-                    .contracts
-                    .into_iter()
-                    .map(|ctr| {
-                        let types = match ctr.types {
-                            Types(AbsType::Flat(t)) => Types(AbsType::Flat(subst_(
-                                t,
-                                global_env,
-                                env,
-                                Cow::Borrowed(bound.as_ref()),
-                            ))),
-                            ty => ty,
-                        };
+                // Currently, there is no interest in replacing variables inside contracts, thus we
+                // limit the work of `subst`. If this is needed at some point, just uncomment the
+                // following code.
 
-                        Contract { types, ..ctr }
-                    })
-                    .collect();
-
-                let types = meta.types.map(|ctr| {
-                    let types = match ctr.types {
-                        Types(AbsType::Flat(t)) => Types(AbsType::Flat(subst_(
-                            t,
-                            global_env,
-                            env,
-                            Cow::Borrowed(bound.as_ref()),
-                        ))),
-                        ty => ty,
-                    };
-
-                    Contract { types, ..ctr }
-                });
+                // let contracts: Vec<_> = meta
+                //     .contracts
+                //     .into_iter()
+                //     .map(|ctr| {
+                //         let types = match ctr.types {
+                //             Types(AbsType::Flat(t)) => Types(AbsType::Flat(subst_(
+                //                 t,
+                //                 global_env,
+                //                 env,
+                //                 Cow::Borrowed(bound.as_ref()),
+                //             ))),
+                //             ty => ty,
+                //         };
+                //
+                //         Contract { types, ..ctr }
+                //     })
+                //     .collect();
+                //
+                // let types = meta.types.map(|ctr| {
+                //     let types = match ctr.types {
+                //         Types(AbsType::Flat(t)) => Types(AbsType::Flat(subst_(
+                //             t,
+                //             global_env,
+                //             env,
+                //             Cow::Borrowed(bound.as_ref()),
+                //         ))),
+                //         ty => ty,
+                //     };
+                //
+                //     Contract { types, ..ctr }
+                // });
 
                 let value = meta.value.map(|t| subst_(t, global_env, env, bound));
 
                 let meta = MetaValue {
                     doc: meta.doc,
-                    types,
-                    contracts,
-                    priority: meta.priority,
                     value,
+                    ..meta
                 };
 
                 RichTerm::new(Term::MetaValue(meta), pos)

@@ -155,7 +155,7 @@ pub fn query(
         // Parsing `y.path`. We `seq` it to force the evaluation of the underlying value,
         // which can be then showed to the user. The newline gives better messages in case of
         // errors.
-        let source = format!("let x = (y.{})\n in %seq% x x", p);
+        let source = format!("x.{}", p);
         let query_file_id = cache.add_tmp("<query>", source.clone());
         let new_term = parser::grammar::TermParser::new()
             .parse(query_file_id, Lexer::new(&source))
@@ -165,11 +165,10 @@ pub fn query(
         let mut env = eval::Environment::new();
         eval::env_add(
             &mut env,
-            Ident::from("y"),
+            Ident::from("x"),
             cache.get_owned(file_id).unwrap(),
             eval::Environment::new(),
         );
-        //TODO: why passing an empty global environment?
         eval::subst(new_term, &eval::Environment::new(), &env)
     } else {
         cache.get_owned(file_id).unwrap()
