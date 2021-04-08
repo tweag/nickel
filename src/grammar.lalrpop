@@ -15,7 +15,7 @@ use codespan::FileId;
 
 grammar<'input>(src_id: FileId);
 
-SpTerm<Rule>: RichTerm = <l: @L> <t: Rule> <r: @R> => t.with_pos(mk_pos(src_id, l, r));
+WithPos<Rule>: RichTerm = <l: @L> <t: Rule> <r: @R> => t.with_pos(mk_pos(src_id, l, r));
 
 TypeAnnot: MetaValue = ":" <l: @L> <ty: Types> <r: @R> => MetaValue {
     doc: None,
@@ -69,19 +69,7 @@ LeftOp<Op, Current, Previous>: RichTerm =
 LeftOpLazy<Op, Current, Previous>: RichTerm =
     <t1: Current> <op: Op> <t2: Previous> => mk_app!(Term::Op1(op, t1), t2);
 
-pub Term: RichTerm = {
-    <t: SpTerm<RichTerm>> <meta: Annot?> => {
-        let pos = t.pos;
-
-        if let Some(mut meta) = meta {
-            meta.value = Some(t);
-            RichTerm::new(Term::MetaValue(meta), pos)
-        }
-        else {
-            t
-        }
-    }
-};
+pub Term: RichTerm = WithPos<RootTerm>;
 
 pub ExtendedTerm: ExtendedTerm = {
     "let" <id:Ident> <meta: Annot?> "=" <t: Term> => {
@@ -100,17 +88,10 @@ pub ExtendedTerm: ExtendedTerm = {
     Term => ExtendedTerm::RichTerm(<>),
 }
 
-RichTerm: RichTerm = {
-    <l: @L> "fun" <ps:Pattern+> "=>" <t: SpTerm<RichTerm>> <r: @R> => {
-        let pos = mk_pos(src_id, l, r);
-        ps.into_iter().rev().fold(t, |t, p| RichTerm {
-            term: Box::new(Term::Fun(p, t)),
-            pos,
-        })
-    },
-    "let" <id:Ident> <meta: Annot?> "=" <t1: Term> "in" <t2:SpTerm<RichTerm>> => {
+RootTerm: RichTerm = {
+    "let" <id:Ident> <meta: Annot?> "=" <t1: Term> "in"
+        <t2: Term> => {
         let pos = t1.pos;
-
         let t1 = if let Some(mut meta) = meta {
             meta.value = Some(t1);
             RichTerm::new(Term::MetaValue(meta), pos)
@@ -121,7 +102,15 @@ RichTerm: RichTerm = {
 
         mk_term::let_in(id, t1, t2)
     },
-    "switch" "{" <cases: (switch_case ",")*> <last: switch_case?> "}" <exp: SpTerm<RichTerm>> => {
+    <l: @L> "fun" <ps:Pattern+> "=>" <t: Term> <r: @R> => {
+        let pos = mk_pos(src_id, l, r);
+        ps.into_iter().rev().fold(t, |t, p| RichTerm {
+            term: Box::new(Term::Fun(p, t)),
+            pos,
+        })
+    },
+    "switch" "{" <cases: (switch_case ",")*> <last: switch_case?> "}"
+        <exp: Term> => {
         let mut acc = HashMap::with_capacity(cases.len());
         let mut default = None;
 
@@ -142,29 +131,47 @@ RichTerm: RichTerm = {
             )
         )
     },
-    "if" <b:Term> "then" <t:Term> "else" <e:SpTerm<RichTerm>> =>
-        mk_app!(Term::Op1(UnaryOp::Ite(), b), t, e),
+    "if" <cond: Term> "then" <t1: Term> "else" <t2: Term> =>
+        mk_app!(Term::Op1(UnaryOp::Ite(), cond), t1, t2),
+    AnnotatedTerm,
+};
+
+AnnotatedTerm: RichTerm = {
+    <t: WithPos<Infix>> <meta: Annot?> => {
+        let pos = t.pos;
+
+        if let Some(mut meta) = meta {
+            meta.value = Some(t);
+            RichTerm::new(Term::MetaValue(meta), pos)
+        }
+        else {
+            t
+        }
+    },
+};
+
+Infix: RichTerm = {
     "import" <s: StaticString> => RichTerm::from(Term::Import(OsString::from(s))),
-    SpTerm<InfixExpr>,
+    InfixExpr,
 };
 
 Applicative: RichTerm = {
-    <t1:SpTerm<Applicative>> <t2: RecordOperand> => mk_app!(t1, t2),
-    <op: UOp> <t: SpTerm<RecordOperand>> => mk_term::op1(op, t),
-    <op: BOpPre> <t1: SpTerm<RecordOperand>> <t2: SpTerm<Atom>> => mk_term::op2(op, t1, t2),
-    <RecordOperand>,
+    <t1:WithPos<Applicative>> <t2: WithPos<RecordOperand>> => mk_app!(t1, t2),
+    <op: UOp> <t: WithPos<RecordOperand>> => mk_term::op1(op, t),
+    <op: BOpPre> <t1: WithPos<RecordOperand>> <t2: WithPos<Atom>> => mk_term::op2(op, t1, t2),
+    RecordOperand,
 };
 
 RecordOperand: RichTerm = {
-    SpTerm<Atom>,
-    SpTerm<RecordOperationChain>,
+    Atom,
+    RecordOperationChain,
 }
 
 RecordOperationChain: RichTerm = {
-    <t: SpTerm<RecordOperand>> "." <id: Ident> => mk_term::op1(UnaryOp::StaticAccess(id), t),
-    <t: SpTerm<RecordOperand>> "." <t_id: StrChunks> => mk_term::op2(BinaryOp::DynAccess(), t_id, t),
-    <t: SpTerm<RecordOperand>> "-$" <t_id: SpTerm<Atom>> => mk_term::op2(BinaryOp::DynRemove(), t_id, t),
-    <r: SpTerm<RecordOperand>> "$[" <id: Term> "=" <t: Term> "]" =>
+    <t: WithPos<RecordOperand>> "." <id: Ident> => mk_term::op1(UnaryOp::StaticAccess(id), t),
+    <t: WithPos<RecordOperand>> "." <t_id: StrChunks> => mk_term::op2(BinaryOp::DynAccess(), t_id, t),
+    <t: WithPos<RecordOperand>> "-$" <t_id: WithPos<Atom>> => mk_term::op2(BinaryOp::DynRemove(), t_id, t),
+    <r: WithPos<RecordOperand>> "$[" <id: Term> "=" <t: Term> "]" =>
         mk_app!(mk_term::op2(BinaryOp::DynExtend(), id, r), t),
 };
 
@@ -173,7 +180,7 @@ Atom: RichTerm = {
     "num literal" => RichTerm::from(Term::Num(<>)),
     "null" => RichTerm::from(Term::Null),
     Bool => RichTerm::from(Term::Bool(<>)),
-    <StrChunks>,
+    StrChunks,
     Ident => RichTerm::from(Term::Var(<>)),
     "`" <Ident> => RichTerm::from(Term::Enum(<>)),
     "{" <fields: (<RecordField> ",")*> <last: RecordField?> "}" => {
@@ -293,7 +300,7 @@ ChunkLiteral : String =
         })
     };
 
-ChunkExpr: StrChunk<RichTerm> = HashBrace <t: SpTerm<RichTerm>> "}" => StrChunk::Expr(t, 0);
+ChunkExpr: StrChunk<RichTerm> = HashBrace <t: WithPos<Term>> "}" => StrChunk::Expr(t, 0);
 
 HashBrace = { "#{", "multstr #{" };
 
@@ -488,7 +495,7 @@ subType : Types = {
         Types(AbsType::List(ty))
     },
     <Ident> => Types(AbsType::Var(<>)),
-    "#" <SpTerm<Atom>> => Types(AbsType::Flat(<>)),
+    "#" <WithPos<Atom>> => Types(AbsType::Flat(<>)),
     "(" <Types> ")" => <>,
     "<" <rows:(<Ident> ",")*> <last: (<Ident>)?> <tail: ("|" <Ident>)?> ">" => {
         let ty = rows.into_iter()

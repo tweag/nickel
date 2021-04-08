@@ -84,7 +84,9 @@ fn enum_simple() {
 
 #[test]
 fn enum_complex() {
-    assert_typecheck_fails!("fun x => switch {bla => 1, ble => 2, bli => 4} x : <bla, ble> -> Num");
+    assert_typecheck_fails!(
+        "(fun x => switch {bla => 1, ble => 2, bli => 4} x) : <bla, ble> -> Num"
+    );
     // TODO typecheck this, I'm not sure how to do it with row variables
     // LATER NOTE: this requires row subtyping, not easy
     assert_typecheck_fails!(
