@@ -198,6 +198,8 @@ pub enum NormalToken<'input> {
     Map,
     #[token("%elemAt%")]
     ElemAt,
+    #[token("%generate%")]
+    ListGen,
     #[token("merge")]
     Merge,
     #[token("default")]

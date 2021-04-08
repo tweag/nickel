@@ -1,5 +1,14 @@
 {
   lists = {
+    NonEmpty = fun label value =>
+      if %isList% value then
+        if %length% value != 0 then
+          value
+        else
+          %blame% (%tag% "empty list" label)
+      else
+        %blame% (%tag% "not a list" label),
+
     head : forall a. List a -> a = fun l => %head% l,
 
     tail : forall a. List a -> List a = fun l => %tail% l,
@@ -33,8 +42,6 @@
       fun pred l =>
         fold (fun x acc => if pred x then acc @ [x] else acc) l [],
 
-    //TODO: this enforces a List contract at each iteration. Get rid of it once
-    //parametrized list types lands and `fold` get a more precise type.
     flatten : forall a. List (List a) -> List a =
       fun l =>
         fold (fun l acc => l @ acc) l [],
@@ -46,5 +53,29 @@
     any : forall a. (a -> Bool) -> List a -> Bool =
       fun pred l =>
         fold (fun x acc => if pred x then true else acc) l false,
+
+    elem : Dyn -> List -> Bool =
+      fun elt => any (fun x => x == elt),
+
+    partition : forall a. (a -> Bool) -> List a -> {right: List a, wrong: List a} =
+      fun pred l =>
+        let aux = fun acc x => if (pred x) then
+          {right = acc.right @ [x], wrong = acc.wrong}
+        else
+          {right = acc.right, wrong = acc.wrong @ [x]}
+        in
+        foldl aux {right = [], wrong = []} l,
+
+    generate : forall a. (Num -> a) -> Num -> List a =
+      fun f n => %generate% n f,
+
+    sort : forall a. (a -> a -> <Less, Equal, Greater>) -> List a -> List a =
+      fun cmp l =>
+        let first = %head% l in
+        let parts = partition (fun x => (cmp x first == `Less)) (%tail% l) in
+        if %length% l <= 1 then
+          l
+        else
+          (sort cmp (parts.right)) @ [first] @ (sort cmp (parts.wrong)),
   }
 }

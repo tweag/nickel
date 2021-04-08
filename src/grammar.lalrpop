@@ -324,6 +324,7 @@ UOp: UnaryOp = {
     "wrap" => UnaryOp::Wrap(),
     "embed" <Ident> => UnaryOp::Embed(<>),
     "map"  => UnaryOp::ListMap(),
+    "generate" => UnaryOp::ListGen(),
     "recordMap" => UnaryOp::RecordMap(),
     "seq" => UnaryOp::Seq(),
     "deepSeq" => UnaryOp::DeepSeq(),
@@ -626,6 +627,7 @@ extern {
 
         "hasField" => Token::Normal(NormalToken::HasField),
         "map" => Token::Normal(NormalToken::Map),
+        "generate" => Token::Normal(NormalToken::ListGen),
         "elemAt" => Token::Normal(NormalToken::ElemAt),
         "merge" => Token::Normal(NormalToken::Merge),
         "default" => Token::Normal(NormalToken::Default),
