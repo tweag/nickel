@@ -1645,30 +1645,30 @@ pub fn get_uop_type(
             mk_typewrapper::list(AbsType::Dyn()),
         ),
         // Str -> Str
-        UnaryOp::StrTrim() => mk_tyw_arrow!(mk_typewrapper::str(), mk_typewrapper::str()),
+        UnaryOp::StrTrim() => (mk_typewrapper::str(), mk_typewrapper::str()),
         // Str -> List Str
-        UnaryOp::StrChars() => mk_tyw_arrow!(
+        UnaryOp::StrChars() => (
             mk_typewrapper::str(),
-            mk_typewrapper::list(mk_typewrapper::str())
+            mk_typewrapper::list(mk_typewrapper::str()),
         ),
         // Str -> Num
-        UnaryOp::CharCode() => mk_tyw_arrow!(mk_typewrapper::str(), mk_typewrapper::num()),
+        UnaryOp::CharCode() => (mk_typewrapper::str(), mk_typewrapper::num()),
         // Num -> Str
-        UnaryOp::CharFromCode() => mk_tyw_arrow!(mk_typewrapper::num(), mk_typewrapper::str()),
+        UnaryOp::CharFromCode() => (mk_typewrapper::num(), mk_typewrapper::str()),
         // Str -> Str
-        UnaryOp::StrUppercase() => mk_tyw_arrow!(mk_typewrapper::str(), mk_typewrapper::str()),
+        UnaryOp::StrUppercase() => (mk_typewrapper::str(), mk_typewrapper::str()),
         // Str -> Str
-        UnaryOp::StrLowercase() => mk_tyw_arrow!(mk_typewrapper::str(), mk_typewrapper::str()),
+        UnaryOp::StrLowercase() => (mk_typewrapper::str(), mk_typewrapper::str()),
         // Str -> Num
-        UnaryOp::StrLength() => mk_tyw_arrow!(mk_typewrapper::str(), mk_typewrapper::num()),
+        UnaryOp::StrLength() => (mk_typewrapper::str(), mk_typewrapper::num()),
         // Dyn -> Str
-        UnaryOp::ToStr() => mk_tyw_arrow!(mk_typewrapper::dynamic(), mk_typewrapper::num()),
+        UnaryOp::ToStr() => (mk_typewrapper::dynamic(), mk_typewrapper::num()),
         // Str -> Num
-        UnaryOp::NumFromStr() => mk_tyw_arrow!(mk_typewrapper::str(), mk_typewrapper::num()),
+        UnaryOp::NumFromStr() => (mk_typewrapper::str(), mk_typewrapper::num()),
         // Str -> < | Dyn>
-        UnaryOp::EnumFromStr() => mk_tyw_arrow!(
+        UnaryOp::EnumFromStr() => (
             mk_typewrapper::str(),
-            mk_tyw_enum!(mk_typewrapper::dynamic())
+            mk_tyw_enum!(mk_typewrapper::dynamic()),
         ),
     })
 }
@@ -1819,23 +1819,31 @@ pub fn get_bop_type(
             mk_typewrapper::num(),
         ),
         // Str -> Str -> Bool
-        BinaryOp::StrContains() => mk_tyw_arrow!(AbsType::Str(), AbsType::Str(), AbsType::Bool()),
+        BinaryOp::StrContains() => (
+            mk_typewrapper::str(),
+            mk_typewrapper::str(),
+            mk_typewrapper::bool(),
+        ),
         // Str -> Str -> Bool
-        BinaryOp::StrIsMatch() => mk_tyw_arrow!(AbsType::Str(), AbsType::Str(), AbsType::Bool()),
+        BinaryOp::StrIsMatch() => (
+            mk_typewrapper::str(),
+            mk_typewrapper::str(),
+            mk_typewrapper::bool(),
+        ),
         // Str -> Str -> {match: Str, index: Num, groups: List Str}
-        BinaryOp::StrMatch() => mk_tyw_arrow!(
-            AbsType::Str(),
-            AbsType::Str(),
+        BinaryOp::StrMatch() => (
+            mk_typewrapper::str(),
+            mk_typewrapper::str(),
             mk_tyw_record!(
                 ("match", AbsType::Str()),
                 ("index", AbsType::Num()),
                 ("groups", mk_typewrapper::list(AbsType::Str()))
-            )
+            ),
         ),
-        BinaryOp::StrSplit() => mk_tyw_arrow!(
-            AbsType::Str(),
-            AbsType::Str(),
-            mk_typewrapper::list(AbsType::Str())
+        BinaryOp::StrSplit() => (
+            mk_typewrapper::str(),
+            mk_typewrapper::str(),
+            mk_typewrapper::list(AbsType::Str()),
         ),
     })
 }
