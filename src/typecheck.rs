@@ -1846,7 +1846,7 @@ pub fn get_nop_type(
 ) -> Result<(Vec<TypeWrapper>, TypeWrapper), TypecheckError> {
     Ok(match op {
         // Str -> Str -> Str -> Str
-        NAryOp::StrReplace() => (
+        NAryOp::StrReplace() | NAryOp::StrReplaceRegex() => (
             vec![
                 mk_typewrapper::str(),
                 mk_typewrapper::str(),

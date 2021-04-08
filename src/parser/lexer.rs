@@ -233,6 +233,8 @@ pub enum NormalToken<'input> {
     StrContains,
     #[token("%strReplace%")]
     StrReplace,
+    #[token("%strReplaceRegex%")]
+    StrReplaceRegex,
     #[token("%strIsMatch%")]
     StrIsMatch,
     #[token("%strMatch%")]

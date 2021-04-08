@@ -733,6 +733,8 @@ impl BinaryOp {
 pub enum NAryOp {
     /// Replace a substring by another one in a string.
     StrReplace(),
+    /// Same as [`StrReplace()`], but the pattern is interpreted as a regular expression.
+    StrReplaceRegex(),
     /// Return a substring of an original string.
     StrSubstr(),
 }
@@ -740,8 +742,7 @@ pub enum NAryOp {
 impl NAryOp {
     pub fn arity(&self) -> usize {
         match self {
-            NAryOp::StrReplace() => 3,
-            NAryOp::StrSubstr() => 3,
+            NAryOp::StrReplace() | NAryOp::StrReplaceRegex() | NAryOp::StrSubstr() => 3,
         }
     }
 
@@ -754,6 +755,7 @@ impl fmt::Display for NAryOp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             NAryOp::StrReplace() => write!(f, "strReplace"),
+            NAryOp::StrReplaceRegex() => write!(f, "strReplaceRegex"),
             NAryOp::StrSubstr() => write!(f, "substring"),
         }
     }

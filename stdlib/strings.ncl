@@ -50,7 +50,7 @@
       else
         %blame% (%tag% "not a string" l),
 
-    // using a contract instead of type for now becauss of https://github.com/tweag/nickel/issues/226
+    // using a contract instead of type for now because of https://github.com/tweag/nickel/issues/226
     join | List Str -> Str -> Str = fun l sep =>
         lists.foldl (fun acc s => s ++ sep ++ acc) "" l,
 
@@ -69,7 +69,7 @@
     replace: Str -> Str -> Str -> Str = fun s pattern replace =>
        %strReplace% s pattern replace,
     replaceRegex: Str -> Str -> Str -> Str = fun s pattern replace =>
-       %strReplace% s pattern replace,
+       %strReplaceRegex% s pattern replace,
 
     isMatch : Str -> Str -> Bool = fun s regex => %strIsMatch% s regex,
     match : Str -> Str -> {match: Str, index: Num, groups: List Str} =

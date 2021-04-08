@@ -2054,7 +2054,7 @@ fn process_nary_operation(
     // Currently, for fixed arity primitive operators, the parser must ensure that they get exactly
     // the right number of argument: if it is not the case, this is a bug, and we panic.
     match n_op {
-        NAryOp::StrReplace() => {
+        NAryOp::StrReplace() | NAryOp::StrReplaceRegex() => {
             let mut args_wo_env = args
                 .into_iter()
                 .map(|(clos, pos)| (clos.body.term, clos.body.pos, pos));
@@ -2064,24 +2064,36 @@ fn process_nary_operation(
             debug_assert!(args_wo_env.next().is_none());
 
             match (*fst, *snd, *thd) {
-                (Term::Str(s), Term::Str(from), Term::Str(to)) => Ok(Closure::atomic_closure(
-                    RichTerm::new(Term::Str(str::replace(&s, &from, &to)), pos_op_inh),
-                )),
+                (Term::Str(s), Term::Str(from), Term::Str(to)) => {
+                    let result = if let NAryOp::StrReplace() = n_op {
+                        str::replace(&s, &from, &to)
+                    } else {
+                        let re = regex::Regex::new(&from)
+                            .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
+
+                        re.replace_all(&s, to.as_str()).into_owned()
+                    };
+
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Str(result),
+                        pos_op_inh,
+                    )))
+                }
                 (Term::Str(_), Term::Str(_), t3) => Err(EvalError::TypeError(
                     String::from("Str"),
-                    String::from("strReplace, 3rd argument"),
+                    format!("{}, 3rd argument", n_op),
                     thd_pos,
                     RichTerm::new(t3, pos3),
                 )),
                 (Term::Str(_), t2, _) => Err(EvalError::TypeError(
                     String::from("Str"),
-                    String::from("strReplace, 2nd argument"),
+                    format!("{}, 2nd argument", n_op),
                     snd_pos,
                     RichTerm::new(t2, pos2),
                 )),
                 (t1, _, _) => Err(EvalError::TypeError(
                     String::from("Str"),
-                    String::from("strReplace, 1st argument"),
+                    format!("{}, 1st argument", n_op),
                     fst_pos,
                     RichTerm::new(t1, pos1),
                 )),

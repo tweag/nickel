@@ -481,6 +481,8 @@ BOpPre: BinaryOp = {
 NOpPre<ArgRule>: RichTerm = {
     "strReplace" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
         mk_opn!(NAryOp::StrReplace(), t1, t2, t3),
+    "strReplaceRegex" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
+        mk_opn!(NAryOp::StrReplaceRegex(), t1, t2, t3),
     "strSubstr" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
         mk_opn!(NAryOp::StrSubstr(), t1, t2, t3),
 }
@@ -676,6 +678,7 @@ extern {
         "strLowercase" => Token::Normal(NormalToken::StrLowercase),
         "strContains" => Token::Normal(NormalToken::StrContains),
         "strReplace" => Token::Normal(NormalToken::StrReplace),
+        "strReplaceRegex" => Token::Normal(NormalToken::StrReplaceRegex),
         "strIsMatch" => Token::Normal(NormalToken::StrIsMatch),
         "strMatch" => Token::Normal(NormalToken::StrMatch),
         "strLength" => Token::Normal(NormalToken::StrLength),
