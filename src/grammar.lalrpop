@@ -151,7 +151,7 @@ AnnotatedTerm: RichTerm = {
 };
 
 Infix: RichTerm = {
-    "import" <s: Str> => RichTerm::from(Term::Import(OsString::from(s))),
+    "import" <s: StaticString> => RichTerm::from(Term::Import(OsString::from(s))),
     InfixExpr,
 };
 
