@@ -236,8 +236,8 @@ dedicated helper functions.
 - **order-dependency**: The result is order-dependent. Applying both `self:
   super: {a = super.a + 1}` and `self: super: {a = super.a / 2}` can give two
   different results depending on which one is the first layer. This also means
-  that overrides must be regrouped by overlays, which is not necessarily the
-  most logical structure.
+  that overrides must be regrouped by layers, which is not necessarily the most
+  logical structure.
 - ~~**(NEST)**~~ Overriding nested fields is still clumsy:
    ```nix
    self: super: { lib = (super.lib or {}) // { firefoxVersion = ...; }; }
@@ -246,14 +246,14 @@ dedicated helper functions.
 ### NixOs module system
 
 The NixOS module system takes a different approach. There, all the basic blocks
--- the modules -- are merged together in an unspecified order. What's deciding
+- the modules - are merged together in an unspecified order. What's deciding
 the priority of one option over the other are attributes that are explicitly
 stated in the modules themselves. The declaration of options (type, priority,
 etc.) and their assignment must be made separately.
 
 #### Advantages
 
-- **order-independence**: as opposed to overlays, module can be merged in any
+- **order-independence**: as opposed to overlays, modules can be merged in any
     order, and the final result will be the same.
 
 #### Limits
@@ -334,7 +334,7 @@ too limited for Nix use cases.
 
 #### Advantages
 
-- **(ERG)**: Overriding works seamlessly with native record. Note however that
+- **(ERG)**: Overriding works seamlessly with native records. Note however that
     it requires fields to be explicitly marked as overridable (default).
 
 #### Limits
@@ -368,13 +368,13 @@ the same way as Nixpkgs overlays, using the `super` keyword.
 #### Advantages
 
 - **(ERG)**: Integrated with native records.
-- **(COMP)**: Overriding can be iterated.
-- **(EXP)**: Achieve the same level of expressively than overlays, with the
+- **(COMP)**: Overriding is easily iterated.
+- **(EXP)**: Achieve the same level of expressivity than overlays with the
     special keywords `self` and `super`.
 
 #### Limits
 
-- **order-dependency**: as for overlays, the order of application of overrides
+- **order-dependency**: As with overlays, the order of application of overrides
     matters.
 
 ## Taking a step back
@@ -431,14 +431,14 @@ information is encoded as priorities. Thus, overriding by merging can be defined
 using stand-alone pieces of data, although the behavior of priorities is not
 local.
 
-**super**
+**(EXP)**
 
 Merged records have only access to the final computed fixpoint `self`, while
 objects have access to the previous stage of extension via `super`. However, as
 in the NixOS module system, it is possible to address this issue using custom
-merge functions. This is a bit less powerful, but in a good way: it forces the
-merge strategy to be uniform along each field, while overlays can do pretty much
-what they want.
+merge functions. This is a bit less expressive, but in a good way: it forces the
+merge strategy to be uniform along each field, while mechanisms like overlays
+can do pretty much what they want.
 
 ## Proposal overview
 
@@ -457,8 +457,8 @@ discussed further in a dedicated section.
 **This section defines the semantics, rather than an actual efficient
 implementation**.
 
-As before, it is useful to see recursive records represented as functions -- or
-constructors -- that take a `self` parameter and return a final non recursive record,
+As before, it is useful to see recursive records represented as functions - or
+constructors - that take a `self` parameter and return a final non recursive record,
 in the same way as the original overriding mechanism of Nixpkgs (the non-existing
 syntax `def := value` is used to insist on the fact that we are defining new objects):
 
@@ -600,7 +600,7 @@ This RFC proposes to adopt the following ordered set of priorities:
 - Integers priorities in the middle
 - `force` is the top element
 
-That is, `Priorities := default \/ {n | n integers} \/ top` with `default <= ...
+That is, `Priorities := default \/ {n | n integer} \/ top` with `default <= ...
 <= -1 <= 0 <= 1 <= ... <= force`.
 
 If not specified, the standard priority (no to be confused with the `default`
@@ -627,7 +627,7 @@ Example:
 
 #### Recursive priorities
 
-As noted in [#240](https://github.com/tweag/nickel/issues/240), configuration
+As noted in [#240](https://github.com/tweag/nickel/issues/240), configurations
 should be easily overridable, and the approach outlined until now can end up
 annoyingly requiring configurations to be written with either `default` or
 `force` everywhere.
@@ -645,13 +645,13 @@ new meta-values `default rec` and `force rec`, whose semantics are defined as:
 - `defaulted(annots)`:
   * if `annots` contains the priority metavalue `force`, then `defaulted(annots)
     := annots`
-  * otherwise, let `annots' | prio` be the decomposition of `annots` (prio can
-    eventually be empty if `annots` doesn't have a priority metavalue), then
+  * otherwise, let `annots' | prio` be the decomposition of `annots` into a
+    priority `prio` (possibly empty) and the other metavalues, then
     `defaulted(annots) := annots' | default`
 
-That is, `default rec` recursively overwrites all the priorities of leafs to
-default, excepted for `force` that is left untouched (metavalues are written in
-a liberal way, in that they can be empty).
+That is, `default rec` recursively overwrites all the priorities of the leafs of
+a record to `default`, excepted for `force` that is left untouched (metavalues
+are written in a liberal way, in that they can be empty).
 
 `force rec` is defined similarly, excepted that it erases all priorites, even
 default ones. The names `default rec/force rec` are just suggestions.
