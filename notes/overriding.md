@@ -229,7 +229,8 @@ dedicated helper functions.
 The NixOS module system takes a different approach. There, all the basic blocks
 -- the modules -- are merged together in an unspecified order. What's deciding
 the priority of one option over the other are attributes that are explicitly
-stated in the modules themselves.
+stated in the modules themselves. The declaration of options (type, priority,
+etc.) and their assignement must be made separately.
 
 Nonetheless, modules need to combine different pieces of data together rather
 than just overriding one value with another. This is made difficult by the
