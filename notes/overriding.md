@@ -95,6 +95,24 @@ scenario for configurations in general: if I patch a base configuration by
 changing an option, I usually want other default values depending on this option
 to be updated as well.
 
+## Comparing override mechanisms
+We are going to review various overriding mechanisms of Nix and other related
+languages. Let us sketch some general traits of such mechanisms as a framework
+for comparison:
+
+- **(ERG)**: Ergonomy. A mechanism is ergonomic if it avoids
+  complex encodings for overridable records, it doesn't require extra library
+  functions, and so on.  It would ideally work out of the box with the native
+  records of the language.
+- **(NEST)**: Nested field overriding. The ease of overriding nested fields,
+  such as `bar`'s value in `{foo = {bar = "baz"}}`.  Ideally, overriding nested
+  fields is no harder than standard fields.
+- **(COMP)**: Composability. Overriding is composable when one can seamlessly
+    apply several overrides to an initial record.
+- **(EXPR)**: Expressivity. An expressive mechanism is one that allow to express
+  and do more things. For example, it can be the ability to drop some fields, to
+  access the previous record's version of the data (`super`), and so on.
+
 ## Overriding in Nix
 
 Nix expressions don't have a built-in way of overriding recursive records while
@@ -105,17 +123,17 @@ code.
 Keeping a language lean is usually a good design guideline: to provide an
 expressive yet simple set of features upon which others can be built as
 libraries. However, in the case of Nix, overriding is a fundamental pattern, and
-having it implemented in user code leads to some well-known issues:
+having it implemented in user code leads to some general well-known issues:
 
-- Definition, update or field access may not be as ergonomic as with vanilla
-  native records.
+- ~~**(ERG)**~~ Definition, update or field access is not as ergonomic as with
+  vanilla native records.
 - Several competing mechanisms have been implemented in slightly different
   contexts. Overriding in general is already difficult for beginners, but having
   to learn several ones, all similar but still different, is hard.
 - User land implementations don't have a first-class access to information such
   as source location and metavalues. In a dynamic language, this can make good
   error reporting much harder.
-- It is also potentially harder to make user land implementations efficient.
+- It is potentially harder to make user land implementations efficient.
 
 See [this gist](https://gist.github.com/edolstra/29ce9d8ea399b703a7023073b0dbc00d)
 for more details. We continue with an overview of existing mechanisms in Nix and
@@ -165,12 +183,11 @@ Some details are left out, but this is the gist of it. See also
 [this pill on overriding](https://nixos.org/guides/nix-pills/override-design-pattern.html)
 or [this article on fixpoints in Nix](http://r6.ca/blog/20140422T142911Z.html).
 
-**limits**
-
-- Use a specific representation, rather than handling good old plain records
+#### Limits
+- ~~**(ERG)**~~ Use a specific representation, rather than handling good old plain records
   (although the actual representation in Nixpkgs is more ergonomic than a plain
   function).
-- Overriding nested attribute sets is painful. If one do the naive thing,
+- ~~**(NEST)**~~ Overriding nested attribute sets is painful. If one do the naive thing,
   the whole subrecord is erased:
   ```nix
   let rRepr = self: {
@@ -184,9 +201,7 @@ or [this article on fixpoints in Nix](http://r6.ca/blog/20140422T142911Z.html).
 
 ### Nixpkgs overlays
 
-[Overlays](https://nixos.wiki/wiki/Overlays) were defined to address the
-composability issue of the previous mechanism, that is, being able to apply
-several overrides in a modular way. Overlays can be seen as a sequence of
+[Overlays](https://nixos.wiki/wiki/Overlays) can be seen as a sequence of
 transformations from a base record, each layer having access to a `super`
 reference to the previous layer and the `self` reference to the final value.
 
@@ -210,17 +225,22 @@ let fixpoint = applyOverlays fixpoint; in fixpoint
 In practice, the `super // ..` and fixpoints parts can be factorised in
 dedicated helper functions.
 
-**limits**
- - Modifications must be applied in the right order.
- - Still need to manipulate representations.
- - Overriding nested fields is still clumsy:
+#### Advantages
+
+- **(EXPR)**: The explicit representation of layers with the explicit `super`
+  and `self` gives a large control to the user.
+- **(COMP)**: Composition is first-class.
+
+#### Limits
+- ~~**(ERG)**~~ Users still need to manipulate representations.
+- **order-dependency**: The result is order-dependent. Applying both `self:
+  super: {a = super.a + 1}` and `self: super: {a = super.a / 2}` can give two
+  different results depending on which one is the first layer. This also means
+  that overrides must be regrouped by overlays, which is not necessarily the
+  most logical structure.
+- ~~**(NEST)**~~ Overriding nested fields is still clumsy:
    ```nix
-   self: super:
-   {
-     lib = (super.lib or {}) // {
-       firefoxVersion = ...;
-     };
-   }
+   self: super: { lib = (super.lib or {}) // { firefoxVersion = ...; }; }
    ```
 
 ### NixOs module system
@@ -229,37 +249,45 @@ The NixOS module system takes a different approach. There, all the basic blocks
 -- the modules -- are merged together in an unspecified order. What's deciding
 the priority of one option over the other are attributes that are explicitly
 stated in the modules themselves. The declaration of options (type, priority,
-etc.) and their assignement must be made separately.
+etc.) and their assignment must be made separately.
 
-Nonetheless, modules need to combine different pieces of data together rather
-than just overriding one value with another. This is made difficult by the
-disappearance of the explicit `super`, compared to overlays.
+#### Advantages
 
-The issue is solved by custom merge functions, that can define how to combine
-different values of the field of a configuration. By default, when merging two
-list values, the module system only knows how to replace one value with the
-other, because there's no canonical and commutative way of merging two lists.
-However, the user can specify that these lists should in fact be concatenated,
-resulting in the possibility of defining a list of paths by pieces:
+- **order-independence**: as opposed to overlays, module can be merged in any
+    order, and the final result will be the same.
 
-```nix
-# Some module
-{
-  paths = mkOption {
-    type = types.listOf types.path;
-  };
-}
+#### Limits
 
-# Config
-[..]
-someModule.paths = [foo/bar];
+- ~~**(EXPR)**~~: As presented, modules can only override one value with
+  another, instead of combining different pieces of data together. Compared to
+  overlays, the explicit reference to `super` has disappeared.
 
-# Other config
-[..]
-someModule.paths = [/bar/baz];
+  The issue is mitigated by custom merge functions, that can redefine how to
+  combine different values of the field of a configuration. By default, when
+  merging two list values, the module system only knows how to replace one value
+  with the other, because there's no canonical and commutative way of merging
+  two lists.  However, the user can specify that these lists should in fact be
+  concatenated, resulting in the possibility of defining a list of paths by
+  pieces:
 
-# Resulting config: [foo/bar /bar/baz]
-```
+  ```nix
+  # Some module
+  {
+    paths = mkOption {
+      type = types.listOf types.path;
+    };
+  }
+  
+  # Config
+  [..]
+  someModule.paths = [foo/bar];
+  
+  # Other config
+  [..]
+  someModule.paths = [/bar/baz];
+  
+  # Resulting config: [foo/bar /bar/baz]
+  ```
 
 ## Overriding elsewhere
 
@@ -301,8 +329,19 @@ fields: {
 
 The basics of this overriding mechanism are close in spirit to what we want to
 achieve in this proposal. This is similar to Nickel's current `default`
-behavior, but with the desired late-bound merging. This is however not enough
-for Nix use cases: we will need to add other features to the merge system.
+behavior, but with the desired late-bound merging. The expressivity is however
+too limited for Nix use cases.
+
+#### Advantages
+
+- **(ERG)**: Overriding works seamlessly with native record. Note however that
+    it requires fields to be explicitly marked as overridable (default).
+
+#### Limits
+
+- ~~**(EXP)**~~: One can only replace a value by another one. It is not
+     possible to add one to the previous value, for example. 
+- ~~**(COMP)**~~: Overriding a record a second time is not possible
 
 ### Jsonnet
 
@@ -325,6 +364,18 @@ local obj = {
 This is similar to the Nix operator `//`, but doing recursive overriding in the
 expected way out of the box. The extension can access the previous version in
 the same way as Nixpkgs overlays, using the `super` keyword.
+
+#### Advantages
+
+- **(ERG)**: Integrated with native records.
+- **(COMP)**: Overriding can be iterated.
+- **(EXP)**: Achieve the same level of expressively than overlays, with the
+    special keywords `self` and `super`.
+
+#### Limits
+
+- **order-dependency**: as for overlays, the order of application of overrides
+    matters.
 
 ## Taking a step back
 
