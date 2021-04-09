@@ -611,6 +611,8 @@ pub enum UnaryOp {
 
     /// Return the names of the fields of a record as a string list.
     FieldsOf(),
+    /// Return the values of the fields of a record as a list.
+    ValuesOf(),
 }
 
 /// Primitive binary operators
