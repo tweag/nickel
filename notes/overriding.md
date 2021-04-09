@@ -181,7 +181,6 @@ or [this article on fixpoints in Nix](http://r6.ca/blog/20140422T142911Z.html).
   fixpoint // extension
   # Gives {a = {c = 2;};} instead of expected {a = {b = 2; c = 2;};}
   ```
-- They don't [compose well](https://github.com/NixOS/nixpkgs/issues/16394).
 
 ### Nixpkgs overlays
 
