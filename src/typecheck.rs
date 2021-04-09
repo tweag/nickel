@@ -1640,7 +1640,10 @@ pub fn get_uop_type(
             mk_typewrapper::list(AbsType::Str()),
         ),
         // Dyn -> List
-        UnaryOp::ValuesOf() => mk_tyw_arrow!(AbsType::Dyn(), mk_typewrapper::list(AbsType::Dyn())),
+        UnaryOp::ValuesOf() => (
+            mk_typewrapper::dynamic(),
+            mk_typewrapper::list(AbsType::Dyn()),
+        ),
     })
 }
 
