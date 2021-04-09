@@ -440,7 +440,7 @@ merge functions. This is a bit less powerful, but in a good way: it forces the
 merge strategy to be uniform along each field, while overlays can do pretty much
 what they want.
 
-## Proposal
+## Proposal overview
 
 We basically propose to adopt the same kind of merge, priority, and custom merge
 function-based scheme as the NixOS module system. One big difference with the
@@ -486,27 +486,6 @@ Merging simply merges the underlying representations:
 repr(r1) & repr(r2) := fun self => r1 self & r2 self
 ```
 
-This brings the problem of scoping: should a record be able to access a yet
-undefined field because it is expected to be provided by a subsequent merge?
-Two possible approaches:
-
- - **dynamic scoping**: records can reference fields that are not explicitly
-   defined locally, such as:
-   ```nickel
-   {a = b} & {b = 1}
-   ```
-   However, dynamic scoping have a number of issues, and is usually considered
-   bad practice.
- - **lexical scoping**: as currently, require self-referenced fields to be
-   defined locally. Note that thanks to contracts, one can require the existence
-   of a field without defining it. For example, we could write the previous
-   example as:
-   ```nickel
-   {a = b, b | Num} & {b = 1}
-   ```
-   This is also a better practice to explicitly state the fields whose presence
-   is required.
-
 ### Priorities
 
 Merge is fundamentally commutative. The problem is, not all fields should be
@@ -518,60 +497,23 @@ system, encoding the precedence of each value while retaining commutativity
 Priorities have drawbacks. One is non-locality: the final result depends on
 other priorities of the field's values you are being merged with, potentially
 defined elsewhere. However, this can be mitigated by good defaults and an
-adapted set of priorities. For example:
-
-1. `default` is lowest than everything else (bottom)
-2. Integer priorities in the middle, with `0` being the default
-3. `force` is higher than everything else (top)
-
-Doing so, it's easy to just use `default` or `force` to override or be
-overridden by anything, without knowing the precise integer priority. Integer
-priorities still gives freedom with an infinite supply of levels if that is
-required, and the default priority is right in the middle.
-
-However, as noted in [#240](https://github.com/tweag/nickel/issues/240),
-configuration should be easily overridable, and the approach outlined here can
-become annoying because it may end up requiring either configurations to be
-written with `default` or `force` everywhere. A solution is to have additional
-recursive (or "leafy", or "push down") annotations, as described in
-[#279](https://github.com/tweag/nickel/issues/279):
-
-```nickel
-let someNeutraleConfig = {
-  foo = 1,
-  bar.baz = "stuff",
-  bar.blorg = false,
-}
-let defaulted | default rec = someNeutralConfig;
-
-// defaulted will evaluate to:
-// {
-//   foo | default = 1,
-//   bar = {
-//     baz | default = "stuff",
-//     bar.blorg | default = false,
-//   },
-// }
-// This is different from defaulted | default !
-
-// Same with force:
-let overrider | force rec = someNeutralConfig;
-```
-
-This way, an existing definition (arbitrarily complex: that could be the root of
-all Nixpkgs) can easily (and lazily) be turned into a full overriding or
-overridable configuration.
+adapted set of priorities, such as a bottom `default`, a top `force`, and a
+infinite range of integers priorities in between. Doing so, it's easy to just
+use `default` or `force` to override or be overridden by anything, without
+knowing the precise integer priority. Integer priorities still gives freedom
+with an infinite supply of levels if required.
 
 ### Custom merge functions
 
 Custom merge functions would be specified by a `merge` metavalue attribute. In
 order to enforce commutativity, they would receive their arguments in an
-indistinguishable order, such as `{lower: Dyn, higher: Dyn}`, just knowing which
-one has a higher priority than the other. If both have the same priority, the
-order is not specified, and may even be randomized by the interpreter.
+indistinguishable order, such as having the type `{lower: Dyn, higher: Dyn,
+priority: <Different, Equal> -> Dyn`.  If both have the same priority, the order
+is not specified, and may even be randomized by the interpreter. The `priority`
+field indicates when it is the case, if this case needs special handling.
 
 ```nickel
-let mergeLists : forall a. {lower: List a, higher: List a} -> List a = fun args =>
+let mergeLists : forall a. {lower: List a, higher: List a, priority: <Different, Equal>} -> List a = fun args =>
   args.lower @ args.higher in
 
 let Contract = {
@@ -623,29 +565,138 @@ There's more potential optimizations, but this first step should be a reasonable
 trade-off between implementation complexity and performance. See
 [#103](https://github.com/tweag/nickel/issues/103) for more details.
 
+### Scoping
+
+Should a record be able to access a yet undefined field because it is expected
+to be provided by a subsequent merge? Two possible approaches:
+
+ - **dynamic scoping**: records can reference fields that are not explicitly
+   defined locally, such as:
+   ```nickel
+   {a = b} & {b = 1}
+   ```
+   Dynamic scoping have a number of issues, and is usually considered bad
+   practice.
+ - **lexical scoping**: as currently, require self-referenced fields to be
+   defined locally. Note that thanks to contracts, one can require the existence
+   of a field without defining it. For example, we could write the previous
+   example as:
+   ```nickel
+   {a = b, b | Num} & {b = 1}
+   ```
+   This is also a better practice to explicitly state the fields whose presence
+   is assumed in general.
+
+This RFC proposes to adopt **lexical scoping**. We could have an even lighter
+syntax, such as `{a = b, b} & {b = 1}` for requiring presence.
+
 ### Priorities
 
-In some cases, the semantics of the proposed recursive annotations `default rec`
-and `force rec` are not obvious:
+#### Levels
 
+This RFC proposes to adopt the following ordered set of priorities:
+
+- `default` is the bottom element
+- Integers priorities in the middle
+- `force` is the top element
+
+That is, `Priorities := default \/ {n | n integers} \/ top` with `default <= ...
+<= -1 <= 0 <= 1 <= ... <= force`.
+
+If not specified, the standard priority (no to be confused with the `default`
+priority) is `0`. This provides an infinite supply of priorities both below
+(`default \/ {n | n < 0}`) as well as above (`force \/ {n | n > 0}`).
+
+Integer priorities are specified using the `priority` keyword. Defining more
+than one priority in the same meta-value is an error.
+
+Example:
 ```nickel
-let record = {
-  a = 1,
-  b | force = "DONT CHANGE",
-} in
-record | default rec
+{
+  foo | Num
+      | default = 1,
+
+  bar | Str,
+  //equivalent to `bar | Str | priority 0`
+  
+  baz.boo.bor | priority -4 = "value",
+
+  final | force = `CantOverrideMe,
+}
 ```
 
-What should be the result? Several possibilities:
+#### Recursive priorities
 
-1. The `default` erases everything else. This doesn't sound right, because a
-   configuration may use `force` to prevent a final value from being modified.
-2. The `default` only erases the `0` priority, and let any other untouched.
-3. The `default` erases everything excepted a `force`.
+As noted in [#240](https://github.com/tweag/nickel/issues/240), configuration
+should be easily overridable, and the approach outlined until now can end up
+annoyingly requiring configurations to be written with either `default` or
+`force` everywhere.
 
-Both 2. and 3. sounds reasonable. The `force rec` may have a dual behavior, but
-could also erase everything else: it make more sense to turn a `default` to a
-`force` than the other way around.
+This RFC proposes to add *recursive* (or "leafy", or "push down") priorities, as
+described in [#279](https://github.com/tweag/nickel/issues/279). We define the
+new meta-values `default rec` and `force rec`, whose semantics are defined as:
+
+- `eval(expr | default rec)`: case of `eval(expr)`:
+  * `{field1 = value1, .., fieldn = valuen} | annots`: `{field1 = (value1 | default rec aux), .., fieldn =
+      (valuen | default rec aux)} | annots` 
+  * `v | annots` if `v` is not a record: `v | defaulted(annots)` where
+      `defaulted(annots)` is defined below.
+
+- `defaulted(annots)`:
+  * if `annots` contains the priority metavalue `force`, then `defaulted(annots)
+    := annots`
+  * otherwise, let `annots' | prio` be the decomposition of `annots` (prio can
+    eventually be empty if `annots` doesn't have a priority metavalue), then
+    `defaulted(annots) := annots' | default`
+
+That is, `default rec` recursively overwrites all the priorities of leafs to
+default, excepted for `force` that is left untouched (metavalues are written in
+a liberal way, in that they can be empty).
+
+`force rec` is defined similarly, excepted that it erases all priorites, even
+default ones. The names `default rec/force rec` are just suggestions.
+
+Example:
+```nickel
+let neutralConf = {
+  foo = 1,
+  bar.baz = "stuff",
+  bar.blorg = false,
+}
+
+let defaulted | default rec = neutralConf
+// ^ Will evaluate to:
+// {
+//   foo | default = 1,
+//   bar = {
+//     baz | default = "stuff",
+//     bar.blorg | default = false,
+//   },
+// }
+// This is different from `neutralConf | default`! The latter version
+// would be overrided at once, as illustrated below.
+
+defaulted & {bar.baz = "shapoinkl"}
+// ^ Gives the expected:
+// {
+//   foo | default = 1,
+//   bar = {
+//     baz = "shapoinkl";
+//     bar.blor | default = false,
+//   },
+// }
+// While
+
+neutralConf | default & {bar.baz = "shapoinkl"}
+// ^ This gives only:
+// {bar.baz = "shapoinkl"}
+```
+
+This way, an existing definition (arbitrarily complex: that could be the root of
+all Nixpkgs) can easily (and lazily) be turned into a full overriding or
+overridable configuration. A possible extension is to have a user-provided
+function that is mapped on priotities: `default/force rec` are just special
+cases of this.
 
 ### Custom merge functions
 
@@ -686,11 +737,11 @@ Possible solutions:
    commutativity problem per se: we also have to decide that in ordinary
    merging, custom function wouldn't affect subsequent merges anymore. This does
    raise yet other problems, one being of a good distinctive syntax. More
-   generally, it sounds confusing and unsatisfying.
+   generally, it sounds confusing and ad-hoc.
 
-2. What seems the right, but not trivial solution, would be to symmetrize custom
-   merging and make it "distribute backward" as well, that is (simplifying by
-   forgetting about priority and `lower`/`higher` arguments):
+2. What seems the right, but not trivial solution: symmetrize custom merging and
+   make it "distribute backward" as well. That is (simplifying by forgetting
+   about priority and `lower`/`higher` arguments):
 
    ```nickel
    val1 & val2 & (val3 | merge func)
@@ -700,28 +751,43 @@ Possible solutions:
    <=/=> func (val1 & val2) val3
    ```
 
-   But what if `val1 & val2` is in a thunk that happens to be forced in between?
-   What should `let x = val1 & val2 in x & (val3 | merge func)` evaluate to? And
-   `let x = val1 & val2 in builtins.seq x (x & (val3 | merge func))`?
+This RFC proposes solution 2. This raises some difficulties:
 
-   In some way, we would like to have a call-by-name semantics rather than a
-   call-by-need. In the case of record fields, overriding has to solve the
-   same problem of remembering an original expression along an evaluated
-   version.  If we allow custom merge annotations only on record fields, it is
-   possible to always recover the original merge AST (abstract syntax tree) and
-   interpret it with the custom merge function as wanted. This may prove a bit
-   tricky to implement in practice, for the merge expression `val1 & val2` may
-   be obfuscated by some program transformations or evaluation artifacts, but
-   doable.
+- What if `val1 & val2` is in a thunk that happens to be forced in between?
+  What should `let x = val1 & val2 in x & (val3 | merge func)` evaluate to, or
+  `let x = val1 & val2 in builtins.seq x (x & (val3 | merge func))`?
 
-3. A more extreme take is to do as in 2., but generalize it to every term: a
-   merge expression would behave like a lazy datatype `Merge(t1,t2)` with
-   respect to evaluation. Evaluating it would amount to automatically apply
-   `eval : Merge(t1,t2) -> t1 & t2`, which wouldn't erase the original top-level thunk
-   `Merge(t1,t2)`.  This is exactly how default value are currently handled, for
-   example. Doing so, we don't need to restrict custom merge functions to record
-   fields. This incurs an additional cost though, of remembering all the ASTs of
-   merge expressions.
+  In some way, we would like to have a call-by-name semantics rather than a
+  call-by-need.
 
-I propose to adopt solution 2., as it is probably sufficient in the vast
-majority, and is still compatible with a future upgrade to 3.
+  * (a) In the case of record fields, overriding has to solve the
+    same problem of remembering an original expression along an evaluated version.
+    If we allow custom merge annotations only on record fields, it is possible to
+    recover the original merge AST (abstract syntax tree) and interpret it with
+    the custom merge function as wanted. This may prove a bit tricky to implement
+    in practice, for the merge expression `val1 & val2` may be obfuscated by some
+    program transformations or evaluation artifacts, but doable.
+
+  * (b) A more extreme take is to do to generalize this it to any term: a
+    merge expression would behave like a lazy datatype `Merge(t1,t2)` with
+    respect to evaluation. Evaluating it would amount to automatically apply
+    `eval : Merge(t1,t2) -> t1 & t2` with a potential merge function, which
+    wouldn't erase the original top-level thunk `Merge(t1,t2)`.  This is in fact
+    how default values are currently handled. Doing so, we don't need to
+    restrict custom merge functions to record fields. This incurs an additional
+    cost though, of remembering all the ASTs of merge expressions.
+
+We propose solution (a), as it is probably sufficient in the vast
+majority, and is still compatible with a future upgrade to (b).
+
+### Operational semantics
+
+This section define more precisely the opertional semantics of merging with the
+choices previously described:
+
+**TODO**
+
+- delimit the AST of a merge expression
+- find out all the custom merge functions. They must all be the same in one AST,
+    or this is an error.
+- interpret the AST accordingly with this merge function and given priorities
