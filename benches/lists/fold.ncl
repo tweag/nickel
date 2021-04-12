@@ -16,19 +16,17 @@ let letter | #(strings.CharLiteral) -> #(strings.CharLiteral) = fun n => strings
     },
   },
   left = {
-    right = {
-      strings = {
-        run = fun n =>
-          lists.foldl (fun x y => x ++ "a") (lists.generate n (fun n => letter n))
-      },
-      nums = {
-        run = fun n =>
-          lists.foldl (fun x y => x*y + (x - y)) (lists.generate n (fun n => n/2))
-      },
-      lists = {
-        run = fun n =>
-          lists.foldl (fun x acc => [x] ++ acc) (lists.generate n (fun n => [n]))
-      },
+    strings = {
+      run = fun n =>
+        lists.foldl (fun x y => x ++ "a") (lists.generate n (fun n => letter n))
+    },
+    nums = {
+      run = fun n =>
+        lists.foldl (fun x y => x*y + (x - y)) (lists.generate n (fun n => n/2))
+    },
+    lists = {
+      run = fun n =>
+        lists.foldl (fun x acc => [x] ++ acc) (lists.generate n (fun n => [n]))
     },
   }
 }
