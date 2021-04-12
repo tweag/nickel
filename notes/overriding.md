@@ -437,8 +437,8 @@ Merged records have only access to the final computed fixpoint `self`, while
 objects have access to the previous stage of extension via `super`. However, as
 in the NixOS module system, it is possible to address this issue using custom
 merge functions. This is a bit less expressive, but in a good way: it forces the
-merge strategy to be uniform along each field, while mechanisms like overlays
-can do pretty much what they want.
+merge strategy to be uniform along each field, while mechanisms like overlays or
+inheritance can do pretty much what they want.
 
 ## Proposal overview
 
@@ -449,8 +449,10 @@ for any native record whatsoever, and having good interaction with the rest of
 the language features. The implementation would have first class access to
 locations, to the AST, the memory layout, the metadata, and so on.
 
-We first describe ideas at a high-level. Issues, details and challenges are
-discussed further in a dedicated section.
+We first describe the ideas at a high-level. Then, we review the issue and
+challenges of this approach, and propose concrete solutions to overcome or
+mitigate them. Finally, technical operational semantics are laid out in a
+dedicated section.
 
 ### Recursive records & merging
 
@@ -513,8 +515,9 @@ is not specified, and may even be randomized by the interpreter. The `priority`
 field indicates when it is the case, if this case needs special handling.
 
 ```nickel
-let mergeLists : forall a. {lower: List a, higher: List a, priority: <Different, Equal>} -> List a = fun args =>
-  args.lower @ args.higher in
+let mergeLists :
+  forall a. {lower: List a, higher: List a, priority: <Different, Equal>} -> List a
+  = fun args => args.lower @ args.higher in
 
 let Contract = {
   path | List Str
@@ -588,7 +591,8 @@ to be provided by a subsequent merge? Two possible approaches:
    is assumed in general.
 
 This RFC proposes to adopt **lexical scoping**. We could have an even lighter
-syntax, such as `{a = b, b} & {b = 1}` for requiring presence.
+syntax, such as `{a = b, b} & {b = 1}` for requiring the presence of a field
+`b`.
 
 ### Priorities
 
@@ -780,10 +784,10 @@ This RFC proposes solution 2. This raises some difficulties:
 We propose solution (a), as it is probably sufficient in the vast
 majority, and is still compatible with a future upgrade to (b).
 
-### Operational semantics
+## Operational semantics
 
-This section define more precisely the opertional semantics of merging with the
-choices previously described:
+This section define more precisely the operational semantics of merging with the
+choices previously described.
 
 **TODO**
 
