@@ -671,6 +671,8 @@ pub trait ImportResolver {
 
     /// Get a resolved import from the term cache.
     fn get(&self, file_id: FileId) -> Option<RichTerm>;
+
+    fn get_path(&self, file_id: FileId) -> &OsStr;
 }
 
 impl ImportResolver for Cache {
@@ -715,6 +717,10 @@ impl ImportResolver for Cache {
 
     fn insert(&mut self, file_id: FileId, term: RichTerm) {
         self.terms.insert(file_id, (term, EntryState::Transformed));
+    }
+
+    fn get_path(&self, file_id: FileId) -> &OsStr {
+        self.files.name(file_id)
     }
 }
 
@@ -761,6 +767,10 @@ pub mod resolvers {
         }
 
         fn get(&self, _file_id: FileId) -> Option<RichTerm> {
+            panic!("cache::resolvers: dummy resolver should not have been invoked");
+        }
+
+        fn get_path(&self, _: codespan::FileId) -> &std::ffi::OsStr {
             panic!("cache::resolvers: dummy resolver should not have been invoked");
         }
     }
@@ -838,6 +848,10 @@ pub mod resolvers {
                 .map(|opt| opt.as_ref())
                 .flatten()
                 .cloned()
+        }
+
+        fn get_path(&self, file_id: FileId) -> &OsStr {
+            self.files.name(file_id)
         }
     }
 }
