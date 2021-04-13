@@ -274,7 +274,11 @@ where
 {
     let mut stack = Vec::new();
 
-    let result = transform_pass(rt, resolver, &mut stack, None);
+    let source_file: Option<PathBuf> = rt.pos.into_opt().map(|x| {
+        let path = resolver.get_path(x.src_id);
+        PathBuf::from(path)
+    });
+    let result = transform_pass(rt, resolver, &mut stack, source_file);
 
     while let Some((t, file_id, parent)) = stack.pop() {
         let result = transform_pass(t, resolver, &mut stack, Some(parent))?;
