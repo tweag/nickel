@@ -770,7 +770,7 @@ pub mod resolvers {
             panic!("cache::resolvers: dummy resolver should not have been invoked");
         }
 
-        fn get_path(&self, _: codespan::FileId) -> &std::ffi::OsStr {
+        fn get_path(&self, _file_id: FileId) -> &OsStr {
             panic!("cache::resolvers: dummy resolver should not have been invoked");
         }
     }
