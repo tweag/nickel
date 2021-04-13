@@ -1813,6 +1813,7 @@ pub fn get_bop_type(
             mk_typewrapper::str(),
             mk_typewrapper::dynamic(),
         ),
+        // Num -> Num -> Num
         BinaryOp::Pow() => (
             mk_typewrapper::num(),
             mk_typewrapper::num(),
@@ -1840,6 +1841,7 @@ pub fn get_bop_type(
                 ("groups", mk_typewrapper::list(AbsType::Str()))
             ),
         ),
+        // Str -> Str -> List Str
         BinaryOp::StrSplit() => (
             mk_typewrapper::str(),
             mk_typewrapper::str(),
