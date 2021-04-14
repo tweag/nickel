@@ -979,11 +979,11 @@ pub mod mk_typewrapper {
         (; $tail:expr) => {
             $crate::typecheck::TypeWrapper::from($tail)
         };
-        (($id:expr, $ty:expr) $(($ids:expr, $tys:expr)),* $(; $tail:expr)?) => {
+        (($id:expr, $ty:expr) $(,($ids:expr, $tys:expr))* $(; $tail:expr)?) => {
             $crate::typecheck::TypeWrapper::Concrete(
                 $crate::types::AbsType::RowExtend(
                     Ident::from($id),
-                    Some($ty.into()),
+                    Some(Box::new($ty.into())),
                     Box::new(mk_tyw_row!($(($ids, $tys)),* $(; $tail)?))
                 )
             )
@@ -1644,6 +1644,32 @@ pub fn get_uop_type(
             mk_typewrapper::dynamic(),
             mk_typewrapper::list(AbsType::Dyn()),
         ),
+        // Str -> Str
+        UnaryOp::StrTrim() => (mk_typewrapper::str(), mk_typewrapper::str()),
+        // Str -> List Str
+        UnaryOp::StrChars() => (
+            mk_typewrapper::str(),
+            mk_typewrapper::list(mk_typewrapper::str()),
+        ),
+        // Str -> Num
+        UnaryOp::CharCode() => (mk_typewrapper::str(), mk_typewrapper::num()),
+        // Num -> Str
+        UnaryOp::CharFromCode() => (mk_typewrapper::num(), mk_typewrapper::str()),
+        // Str -> Str
+        UnaryOp::StrUppercase() => (mk_typewrapper::str(), mk_typewrapper::str()),
+        // Str -> Str
+        UnaryOp::StrLowercase() => (mk_typewrapper::str(), mk_typewrapper::str()),
+        // Str -> Num
+        UnaryOp::StrLength() => (mk_typewrapper::str(), mk_typewrapper::num()),
+        // Dyn -> Str
+        UnaryOp::ToStr() => (mk_typewrapper::dynamic(), mk_typewrapper::num()),
+        // Str -> Num
+        UnaryOp::NumFromStr() => (mk_typewrapper::str(), mk_typewrapper::num()),
+        // Str -> < | Dyn>
+        UnaryOp::EnumFromStr() => (
+            mk_typewrapper::str(),
+            mk_tyw_enum!(mk_typewrapper::dynamic()),
+        ),
     })
 }
 
@@ -1787,10 +1813,39 @@ pub fn get_bop_type(
             mk_typewrapper::str(),
             mk_typewrapper::dynamic(),
         ),
+        // Num -> Num -> Num
         BinaryOp::Pow() => (
             mk_typewrapper::num(),
             mk_typewrapper::num(),
             mk_typewrapper::num(),
+        ),
+        // Str -> Str -> Bool
+        BinaryOp::StrContains() => (
+            mk_typewrapper::str(),
+            mk_typewrapper::str(),
+            mk_typewrapper::bool(),
+        ),
+        // Str -> Str -> Bool
+        BinaryOp::StrIsMatch() => (
+            mk_typewrapper::str(),
+            mk_typewrapper::str(),
+            mk_typewrapper::bool(),
+        ),
+        // Str -> Str -> {match: Str, index: Num, groups: List Str}
+        BinaryOp::StrMatch() => (
+            mk_typewrapper::str(),
+            mk_typewrapper::str(),
+            mk_tyw_record!(
+                ("match", AbsType::Str()),
+                ("index", AbsType::Num()),
+                ("groups", mk_typewrapper::list(AbsType::Str()))
+            ),
+        ),
+        // Str -> Str -> List Str
+        BinaryOp::StrSplit() => (
+            mk_typewrapper::str(),
+            mk_typewrapper::str(),
+            mk_typewrapper::list(AbsType::Str()),
         ),
     })
 }
@@ -1800,7 +1855,24 @@ pub fn get_nop_type(
     op: &NAryOp,
 ) -> Result<(Vec<TypeWrapper>, TypeWrapper), TypecheckError> {
     Ok(match op {
-        _ => unimplemented!(),
+        // Str -> Str -> Str -> Str
+        NAryOp::StrReplace() | NAryOp::StrReplaceRegex() => (
+            vec![
+                mk_typewrapper::str(),
+                mk_typewrapper::str(),
+                mk_typewrapper::str(),
+            ],
+            mk_typewrapper::str(),
+        ),
+        // Str -> Num -> Num -> Str
+        NAryOp::StrSubstr() => (
+            vec![
+                mk_typewrapper::str(),
+                mk_typewrapper::num(),
+                mk_typewrapper::num(),
+            ],
+            mk_typewrapper::str(),
+        ),
     })
 }
 

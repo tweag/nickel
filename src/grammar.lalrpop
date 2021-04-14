@@ -1,8 +1,8 @@
 use crate::identifier::Ident;
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
-    MergePriority, Contract};
+    MergePriority, Contract, NAryOp};
 use crate::term::make as mk_term;
-use crate::mk_app;
+use crate::{mk_app, mk_opn};
 use crate::types::{Types, AbsType};
 use super::ExtendedTerm;
 use super::utils::{StringKind, mk_pos, mk_label, strip_indent, SwitchCase,
@@ -159,6 +159,7 @@ Applicative: RichTerm = {
     <t1:WithPos<Applicative>> <t2: WithPos<RecordOperand>> => mk_app!(t1, t2),
     <op: UOp> <t: WithPos<RecordOperand>> => mk_term::op1(op, t),
     <op: BOpPre> <t1: WithPos<RecordOperand>> <t2: WithPos<Atom>> => mk_term::op2(op, t1, t2),
+    NOpPre<WithPos<RecordOperand>>,
     RecordOperand,
 };
 
@@ -340,6 +341,16 @@ UOp: UnaryOp = {
     "length" => UnaryOp::ListLength(),
     "fieldsOf" => UnaryOp::FieldsOf(),
     "valuesOf" => UnaryOp::ValuesOf(),
+    "strTrim" => UnaryOp::StrTrim(),
+    "strChars" => UnaryOp::StrChars(),
+    "charCode" => UnaryOp::CharCode(),
+    "charFromCode" => UnaryOp::CharFromCode(),
+    "strUppercase" => UnaryOp::StrUppercase(),
+    "strLowercase" => UnaryOp::StrLowercase(),
+    "strLength" => UnaryOp::StrLength(),
+    "strFrom" => UnaryOp::ToStr(),
+    "numFrom" => UnaryOp::NumFromStr(),
+    "enumFrom" => UnaryOp::EnumFromStr(),
 };
 
 switch_case: SwitchCase = {
@@ -461,6 +472,19 @@ BOpPre: BinaryOp = {
     "serialize" => BinaryOp::Serialize(),
     "deserialize" => BinaryOp::Deserialize(),
     "pow" => BinaryOp::Pow(),
+    "strSplit" => BinaryOp::StrSplit(),
+    "strContains" => BinaryOp::StrContains(),
+    "strMatch" => BinaryOp::StrMatch(),
+    "strIsMatch" => BinaryOp::StrIsMatch(),
+}
+
+NOpPre<ArgRule>: RichTerm = {
+    "strReplace" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
+        mk_opn!(NAryOp::StrReplace(), t1, t2, t3),
+    "strReplaceRegex" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
+        mk_opn!(NAryOp::StrReplaceRegex(), t1, t2, t3),
+    "strSubstr" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
+        mk_opn!(NAryOp::StrSubstr(), t1, t2, t3),
 }
 
 Types: Types = {
@@ -645,6 +669,23 @@ extern {
         "hash" => Token::Normal(NormalToken::OpHash),
         "serialize" => Token::Normal(NormalToken::Serialize),
         "deserialize" => Token::Normal(NormalToken::Deserialize),
+        "strSplit" => Token::Normal(NormalToken::StrSplit),
+        "strTrim" => Token::Normal(NormalToken::StrTrim),
+        "strChars" => Token::Normal(NormalToken::StrChars),
+        "charCode" => Token::Normal(NormalToken::CharCode),
+        "charFromCode" => Token::Normal(NormalToken::CharFromCode),
+        "strUppercase" => Token::Normal(NormalToken::StrUppercase),
+        "strLowercase" => Token::Normal(NormalToken::StrLowercase),
+        "strContains" => Token::Normal(NormalToken::StrContains),
+        "strReplace" => Token::Normal(NormalToken::StrReplace),
+        "strReplaceRegex" => Token::Normal(NormalToken::StrReplaceRegex),
+        "strIsMatch" => Token::Normal(NormalToken::StrIsMatch),
+        "strMatch" => Token::Normal(NormalToken::StrMatch),
+        "strLength" => Token::Normal(NormalToken::StrLength),
+        "strSubstr" => Token::Normal(NormalToken::StrSubstr),
+        "strFrom" => Token::Normal(NormalToken::ToStr),
+        "numFrom" => Token::Normal(NormalToken::NumFromStr),
+        "enumFrom" => Token::Normal(NormalToken::EnumFromStr),
 
         "{" => Token::Normal(NormalToken::LBrace),
         "}" => Token::Normal(NormalToken::RBrace),

@@ -12,6 +12,7 @@ use crate::identifier::Ident;
 use crate::label::ty_path;
 use crate::merge;
 use crate::merge::merge;
+use crate::mk_record;
 use crate::position::TermPos;
 use crate::stack::Stack;
 use crate::term::make as mk_term;
@@ -755,6 +756,191 @@ fn process_unary_operation(
                     String::from("String"),
                     String::from("interpolated string"),
                     pos_op,
+                    RichTerm { term: t, pos },
+                ))
+            }
+        }
+        UnaryOp::StrTrim() => {
+            if let Term::Str(s) = *t {
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Str(String::from(s.trim())),
+                    pos_op_inh,
+                )))
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("trim"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
+            }
+        }
+        UnaryOp::StrChars() => {
+            if let Term::Str(s) = *t {
+                let ts = s
+                    .chars()
+                    .map(|c| RichTerm::from(Term::Str(c.to_string())))
+                    .collect();
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::List(ts),
+                    pos_op_inh,
+                )))
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("chars"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
+            }
+        }
+        UnaryOp::CharCode() => {
+            if let Term::Str(s) = *t {
+                if s.len() == 1 {
+                    let code = (s.chars().next().unwrap() as u32) as f64;
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Num(code),
+                        pos_op_inh,
+                    )))
+                } else {
+                    Err(EvalError::Other(
+                        format!("charCode: expected 1-char string, got `{}`", s.len()),
+                        pos,
+                    ))
+                }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("charCode"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
+            }
+        }
+        UnaryOp::CharFromCode() => {
+            if let Term::Num(code) = *t {
+                if code.fract() != 0.0 {
+                    Err(EvalError::Other(format!("charFromCode: expected the agument to be an integer, got the floating-point value {}", code), pos_op))
+                } else if code < 0.0 || code > (u32::MAX as f64) {
+                    Err(EvalError::Other(format!("charFromCode: code out of bounds. Expected a value between 0 and {}, got {}", u32::MAX, code), pos_op))
+                } else if let Some(car) = std::char::from_u32(code as u32) {
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Str(String::from(car)),
+                        pos_op_inh,
+                    )))
+                } else {
+                    Err(EvalError::Other(
+                        format!("charFromCode: invalid character code {}", code),
+                        pos_op,
+                    ))
+                }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Num"),
+                    String::from("charFromCode"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
+            }
+        }
+        UnaryOp::StrUppercase() => {
+            if let Term::Str(s) = *t {
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Str(s.to_uppercase()),
+                    pos_op_inh,
+                )))
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("strUppercase"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
+            }
+        }
+        UnaryOp::StrLowercase() => {
+            if let Term::Str(s) = *t {
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Str(s.to_lowercase()),
+                    pos_op_inh,
+                )))
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("strLowercase"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
+            }
+        }
+        UnaryOp::StrLength() => {
+            if let Term::Str(s) = *t {
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Num(s.len() as f64),
+                    pos_op_inh,
+                )))
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("strLength"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
+            }
+        }
+        UnaryOp::ToStr() => {
+            let result = match *t {
+                Term::Num(n) => Ok(Term::Str(n.to_string())),
+                Term::Str(s) => Ok(Term::Str(s)),
+                Term::Bool(b) => Ok(Term::Str(b.to_string())),
+                Term::Enum(id) => Ok(Term::Str(id.to_string())),
+                t => Err(EvalError::Other(
+                    format!(
+                        "strFrom: can't convert the argument of type {} to string",
+                        t.type_of().unwrap()
+                    ),
+                    pos,
+                )),
+            }?;
+            Ok(Closure::atomic_closure(RichTerm::new(result, pos_op_inh)))
+        }
+        UnaryOp::NumFromStr() => {
+            if let Term::Str(s) = *t {
+                let n = s.parse::<f64>().map_err(|_| {
+                    EvalError::Other(format!("numFrom: invalid num literal `{}`", s), pos)
+                })?;
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Num(n),
+                    pos_op_inh,
+                )))
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("strLength"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
+            }
+        }
+        UnaryOp::EnumFromStr() => {
+            if let Term::Str(s) = *t {
+                let re = regex::Regex::new("_?[a-zA-Z][_a-zA-Z0-9]*").unwrap();
+                if re.is_match(&s) {
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Enum(Ident(s)),
+                        pos_op_inh,
+                    )))
+                } else {
+                    Err(EvalError::Other(
+                        format!("enumFrom: invalid enum tag `{}`", s),
+                        pos,
+                    ))
+                }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("strLength"),
+                    arg_pos,
                     RichTerm { term: t, pos },
                 ))
             }
@@ -1713,6 +1899,143 @@ fn process_binary_operation(
                 mk_err_fst(t1)
             }
         }
+        BinaryOp::StrSplit() => match (*t1, *t2) {
+            (Term::Str(s1), Term::Str(s2)) => {
+                let list: Vec<RichTerm> = s1
+                    .split(&s2)
+                    .map(|s| Term::Str(String::from(s)).into())
+                    .collect();
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::List(list),
+                    pos_op_inh,
+                )))
+            }
+            (Term::Str(_), t2) => Err(EvalError::TypeError(
+                String::from("Str"),
+                String::from("strSplit, 2nd argument"),
+                snd_pos,
+                RichTerm {
+                    term: Box::new(t2),
+                    pos: pos2,
+                },
+            )),
+            (t1, _) => Err(EvalError::TypeError(
+                String::from("Str"),
+                String::from("strSplit, 1st argument"),
+                fst_pos,
+                RichTerm {
+                    term: Box::new(t1),
+                    pos: pos1,
+                },
+            )),
+        },
+        BinaryOp::StrContains() => match (*t1, *t2) {
+            (Term::Str(s1), Term::Str(s2)) => Ok(Closure::atomic_closure(RichTerm::new(
+                Term::Bool(s1.contains(&s2)),
+                pos_op_inh,
+            ))),
+            (Term::Str(_), t2) => Err(EvalError::TypeError(
+                String::from("Str"),
+                String::from("strContains, 2nd argument"),
+                snd_pos,
+                RichTerm {
+                    term: Box::new(t2),
+                    pos: pos2,
+                },
+            )),
+            (t1, _) => Err(EvalError::TypeError(
+                String::from("Str"),
+                String::from("strContains, 1st argument"),
+                fst_pos,
+                RichTerm {
+                    term: Box::new(t1),
+                    pos: pos1,
+                },
+            )),
+        },
+        BinaryOp::StrIsMatch() => match (*t1, *t2) {
+            (Term::Str(s1), Term::Str(s2)) => {
+                let re = regex::Regex::new(&s2)
+                    .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
+
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Bool(re.is_match(&s1)),
+                    pos_op_inh,
+                )))
+            }
+            (Term::Str(_), t2) => Err(EvalError::TypeError(
+                String::from("Str"),
+                String::from("strIsMatch, 2nd argument"),
+                snd_pos,
+                RichTerm {
+                    term: Box::new(t2),
+                    pos: pos2,
+                },
+            )),
+            (t1, _) => Err(EvalError::TypeError(
+                String::from("Str"),
+                String::from("strIsMatch, 1st argument"),
+                fst_pos,
+                RichTerm {
+                    term: Box::new(t1),
+                    pos: pos1,
+                },
+            )),
+        },
+        BinaryOp::StrMatch() => {
+            match (*t1, *t2) {
+                (Term::Str(s1), Term::Str(s2)) => {
+                    let re = regex::Regex::new(&s2)
+                        .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
+                    let capt = re.captures(&s1);
+
+                    let result = if let Some(capt) = capt {
+                        let first_match = capt.get(0).unwrap();
+                        let groups: Vec<RichTerm> = capt
+                            .iter()
+                            .skip(1)
+                            .map(|s_opt| {
+                                s_opt.map(|s| RichTerm::from(Term::Str(String::from(s.as_str()))))
+                            })
+                            .filter_map(|x| x)
+                            .collect();
+
+                        mk_record!(
+                            ("match", Term::Str(String::from(first_match.as_str()))),
+                            ("index", Term::Num(first_match.start() as f64)),
+                            ("groups", Term::List(groups))
+                        )
+                    } else {
+                        //FIXME: what should we return when there's no match?
+                        mk_record!(
+                            ("match", Term::Str(String::new())),
+                            ("index", Term::Num(-1.)),
+                            ("groups", Term::List(Vec::new()))
+                        )
+                    };
+
+                    Ok(Closure::atomic_closure(result))
+                }
+                (Term::Str(_), t2) => Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("strMatch, 2nd argument"),
+                    snd_pos,
+                    RichTerm {
+                        term: Box::new(t2),
+                        pos: pos2,
+                    },
+                )),
+                (t1, _) => Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("strMatch, 1st argument"),
+                    fst_pos,
+                    RichTerm {
+                        term: Box::new(t1),
+                        pos: pos1,
+                    },
+                )),
+            }
+        }
     }
 }
 
@@ -1722,14 +2045,112 @@ fn process_binary_operation(
 /// operation position, that may be needed for error reporting.
 fn process_nary_operation(
     n_op: NAryOp,
-    _args: Vec<(Closure, TermPos)>,
+    args: Vec<(Closure, TermPos)>,
     _stack: &mut Stack,
-    _pos_op: TermPos,
+    pos_op: TermPos,
 ) -> Result<Closure, EvalError> {
+    let pos_op_inh = pos_op.into_inherited();
+
+    // Currently, for fixed arity primitive operators, the parser must ensure that they get exactly
+    // the right number of argument: if it is not the case, this is a bug, and we panic.
     match n_op {
-        _ => unimplemented!(),
+        NAryOp::StrReplace() | NAryOp::StrReplaceRegex() => {
+            let mut args_wo_env = args
+                .into_iter()
+                .map(|(clos, pos)| (clos.body.term, clos.body.pos, pos));
+            let (fst, pos1, fst_pos) = args_wo_env.next().unwrap();
+            let (snd, pos2, snd_pos) = args_wo_env.next().unwrap();
+            let (thd, pos3, thd_pos) = args_wo_env.next().unwrap();
+            debug_assert!(args_wo_env.next().is_none());
+
+            match (*fst, *snd, *thd) {
+                (Term::Str(s), Term::Str(from), Term::Str(to)) => {
+                    let result = if let NAryOp::StrReplace() = n_op {
+                        str::replace(&s, &from, &to)
+                    } else {
+                        let re = regex::Regex::new(&from)
+                            .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
+
+                        re.replace_all(&s, to.as_str()).into_owned()
+                    };
+
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Str(result),
+                        pos_op_inh,
+                    )))
+                }
+                (Term::Str(_), Term::Str(_), t3) => Err(EvalError::TypeError(
+                    String::from("Str"),
+                    format!("{}, 3rd argument", n_op),
+                    thd_pos,
+                    RichTerm::new(t3, pos3),
+                )),
+                (Term::Str(_), t2, _) => Err(EvalError::TypeError(
+                    String::from("Str"),
+                    format!("{}, 2nd argument", n_op),
+                    snd_pos,
+                    RichTerm::new(t2, pos2),
+                )),
+                (t1, _, _) => Err(EvalError::TypeError(
+                    String::from("Str"),
+                    format!("{}, 1st argument", n_op),
+                    fst_pos,
+                    RichTerm::new(t1, pos1),
+                )),
+            }
+        }
+        NAryOp::StrSubstr() => {
+            let mut args_wo_env = args
+                .into_iter()
+                .map(|(clos, pos)| (clos.body.term, clos.body.pos, pos));
+            let (fst, pos1, fst_pos) = args_wo_env.next().unwrap();
+            let (snd, pos2, snd_pos) = args_wo_env.next().unwrap();
+            let (thd, pos3, thd_pos) = args_wo_env.next().unwrap();
+            debug_assert!(args_wo_env.next().is_none());
+
+            match (*fst, *snd, *thd) {
+                (Term::Str(s), Term::Num(start), Term::Num(end)) => {
+                    let start_int = start as usize;
+                    let end_int = end as usize;
+
+                    if start.fract() != 0.0 {
+                        Err(EvalError::Other(format!("substring: expected the 2nd agument (start) to be an integer, got the floating-point value {}", start), pos_op))
+                    } else if start < 0.0 || start_int >= s.len() {
+                        Err(EvalError::Other(format!("substring: index out of bounds. Expected the 2nd argument (start) to be between 0 and {}, got {}", s.len(), start), pos_op))
+                    } else if end.fract() != 0.0 {
+                        Err(EvalError::Other(format!("substring: expected the 3nd argument (end) to be an integer, got the floating-point value {}", end), pos_op))
+                    } else if end <= start || end_int >= s.len() {
+                        Err(EvalError::Other(format!("substring: index out of bounds. Expected the 3rd argument (end) to be between {} and {}, got {}", start+1., s.len(), end), pos_op))
+                    } else {
+                        Ok(Closure::atomic_closure(RichTerm::new(
+                            Term::Str(String::from(&s[start_int..end_int])),
+                            pos_op_inh,
+                        )))
+                    }
+                }
+                (Term::Str(_), Term::Str(_), t3) => Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("strReplace, 3rd argument"),
+                    thd_pos,
+                    RichTerm::new(t3, pos3),
+                )),
+                (Term::Str(_), t2, _) => Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("strReplace, 2nd argument"),
+                    snd_pos,
+                    RichTerm::new(t2, pos2),
+                )),
+                (t1, _, _) => Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("strReplace, 1st argument"),
+                    fst_pos,
+                    RichTerm::new(t1, pos1),
+                )),
+            }
+        }
     }
 }
+
 /// Compute the equality of two terms, represented as closures.
 ///
 /// # Parameters

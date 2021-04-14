@@ -613,6 +613,27 @@ pub enum UnaryOp {
     FieldsOf(),
     /// Return the values of the fields of a record as a list.
     ValuesOf(),
+
+    /// Remove heading and trailing spaces from a string.
+    StrTrim(),
+    /// Return the list of characters of a string.
+    StrChars(),
+    /// Return the code of a character (givne as a string of length 1).
+    CharCode(),
+    /// Return the character corresponding to a code.
+    CharFromCode(),
+    /// Transform a string to uppercase.
+    StrUppercase(),
+    /// Transform a string to lowercase.
+    StrLowercase(),
+    /// Return the length of a string.
+    StrLength(),
+    /// Transform a data to a string.
+    ToStr(),
+    /// Transform a string to a number.
+    NumFromStr(),
+    /// Transform a string to an enum.
+    EnumFromStr(),
 }
 
 /// Primitive binary operators
@@ -685,6 +706,16 @@ pub enum BinaryOp {
     Serialize(),
     /// Deserialize a string to a value.
     Deserialize(),
+
+    /// Split a string into a list.
+    StrSplit(),
+    /// Determine if a string is a substring of another one.
+    StrContains(),
+    /// Test if a regex matches a string.
+    StrIsMatch(),
+    /// Match a regex on a string, and returns the captured groups together, the index of the
+    /// match, etc.
+    StrMatch(),
 }
 
 impl BinaryOp {
@@ -699,12 +730,19 @@ impl BinaryOp {
 /// Primitive n-ary operators. Unary and binary operator make up for most of operators and are
 /// hence special cased. `NAryOp` handles strict operations of arity greater than 2.
 #[derive(Clone, Debug, PartialEq)]
-pub enum NAryOp {}
+pub enum NAryOp {
+    /// Replace a substring by another one in a string.
+    StrReplace(),
+    /// Same as [`StrReplace()`], but the pattern is interpreted as a regular expression.
+    StrReplaceRegex(),
+    /// Return a substring of an original string.
+    StrSubstr(),
+}
 
 impl NAryOp {
     pub fn arity(&self) -> usize {
         match self {
-            _ => 0,
+            NAryOp::StrReplace() | NAryOp::StrReplaceRegex() | NAryOp::StrSubstr() => 3,
         }
     }
 
@@ -714,9 +752,11 @@ impl NAryOp {
 }
 
 impl fmt::Display for NAryOp {
-    fn fmt(&self, _f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            _ => unimplemented!(),
+            NAryOp::StrReplace() => write!(f, "strReplace"),
+            NAryOp::StrReplaceRegex() => write!(f, "strReplaceRegex"),
+            NAryOp::StrSubstr() => write!(f, "substring"),
         }
     }
 }
@@ -856,7 +896,6 @@ impl RichTerm {
             Term::OpN(op, ts) => {
                 let ts_res: Result<Vec<RichTerm>, E> =
                     ts.into_iter().map(|t| t.traverse(f, state)).collect();
-
                 f(
                     RichTerm {
                         term: Box::new(Term::OpN(op, ts_res?)),
@@ -1034,6 +1073,17 @@ pub mod make {
         };
         ( $f:expr, $fst:expr , $( $args:expr ),+ ) => {
             mk_app!(mk_app!($f, $fst), $( $args ),+)
+        };
+    }
+
+    /// Multi-ary application for types implementing `Into<RichTerm>`.
+    #[macro_export]
+    macro_rules! mk_opn {
+        ( $op:expr, $( $args:expr ),+) => {
+            {
+                let args = vec![$( RichTerm::from($args) ),+];
+                $crate::term::RichTerm::from($crate::term::Term::OpN($op, args))
+            }
         };
     }
 

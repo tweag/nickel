@@ -13,11 +13,12 @@ pub const CONTRACTS: (&str, &str) = (
 );
 pub const LISTS: (&str, &str) = ("<stdlib/lists>", include_str!("../stdlib/lists.ncl"));
 pub const RECORDS: (&str, &str) = ("<stdlib/records>", include_str!("../stdlib/records.ncl"));
+pub const STRINGS: (&str, &str) = ("<stdlib/strings>", include_str!("../stdlib/strings.ncl"));
 pub const NUMS: (&str, &str) = ("<stdlib/nums>", include_str!("../stdlib/nums.ncl"));
 
 /// Return the list `(name, source_code)` of all the stdlib modules.
 pub fn modules() -> Vec<(&'static str, &'static str)> {
-    vec![BUILTINS, CONTRACTS, LISTS, RECORDS, NUMS]
+    vec![BUILTINS, CONTRACTS, LISTS, RECORDS, STRINGS, NUMS]
 }
 
 /// Accessors to the builtin contracts.

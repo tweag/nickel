@@ -215,6 +215,41 @@ pub enum NormalToken<'input> {
     Serialize,
     #[token("%deserialize%")]
     Deserialize,
+    #[token("%strSplit%")]
+    StrSplit,
+    #[token("%strTrim%")]
+    StrTrim,
+    #[token("%strChars%")]
+    StrChars,
+    #[token("%charCode%")]
+    CharCode,
+    #[token("%charFromCode%")]
+    CharFromCode,
+    #[token("%strUppercase%")]
+    StrUppercase,
+    #[token("%strLowercase%")]
+    StrLowercase,
+    #[token("%strContains%")]
+    StrContains,
+    #[token("%strReplace%")]
+    StrReplace,
+    #[token("%strReplaceRegex%")]
+    StrReplaceRegex,
+    #[token("%strIsMatch%")]
+    StrIsMatch,
+    #[token("%strMatch%")]
+    StrMatch,
+    #[token("%strLength%")]
+    StrLength,
+    #[token("%strSubstr%")]
+    StrSubstr,
+    #[token("%toStr%")]
+    ToStr,
+    #[token("%numFromStr%")]
+    NumFromStr,
+    #[token("%enumFromStr%")]
+    EnumFromStr,
+
     #[token("{")]
     LBrace,
     #[token("}")]
