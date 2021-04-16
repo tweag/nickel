@@ -5,7 +5,7 @@ use nickel::term::RichTerm;
 use nickel::{repl, repl::rustyline_frontend};
 use nickel::{serialize, serialize::ExportFormat};
 use std::path::PathBuf;
-use std::{fs, process};
+use std::{fs, io, process};
 // use std::ffi::OsStr;
 use structopt::StructOpt;
 
@@ -95,7 +95,7 @@ fn main() {
                         }
                     };
 
-                    repl::query_print::print_query_result(&term, attrs)
+                    repl::query_print::write_query_result(&mut io::stdout(), &term, attrs).unwrap()
                 })
             }
             Some(Command::Typecheck) => program.typecheck().map(|_| ()),
