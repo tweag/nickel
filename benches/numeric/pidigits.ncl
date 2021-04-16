@@ -11,7 +11,7 @@
     if n == iterCount-1 then
       total 
     else
-      sum x (total + (nth_term x n)) (n+1) max,
+      sum x (total + (nth_term x n)) (n+1) iterCount,
 
   atan = fun x iterCount => sum x 0 0 iterCount,
 

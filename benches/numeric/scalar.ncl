@@ -8,7 +8,7 @@
 
   run = fun n =>
     let left = lists.generate builtins.id n in
-    let right = lists.generate (fun n => n*n/2) in
+    let right = lists.generate (fun n => n*n/2) n in
     let prod = map2 (fun x y => x * y) left right in
     lists.foldl (fun x y => x + y) 0 prod
 }

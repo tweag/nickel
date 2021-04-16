@@ -10,7 +10,7 @@ let letter | #(strings.CharLiteral) -> #(strings.CharLiteral) = fun n => strings
       run = fun n =>
         lists.fold (fun x y => x*y + (x - y)) (lists.generate n (fun n => n/2))
     },
-    lists = {
+    lists_ = {
       run = fun n =>
         lists.fold (fun x acc => [x] ++ acc) (lists.generate n (fun n => [n]))
     },
@@ -24,7 +24,7 @@ let letter | #(strings.CharLiteral) -> #(strings.CharLiteral) = fun n => strings
       run = fun n =>
         lists.foldl (fun x y => x*y + (x - y)) (lists.generate n (fun n => n/2))
     },
-    lists = {
+    lists_ = {
       run = fun n =>
         lists.foldl (fun x acc => [x] ++ acc) (lists.generate n (fun n => [n]))
     },
