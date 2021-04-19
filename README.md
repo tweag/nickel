@@ -15,7 +15,7 @@ Nickel's salient traits are:
 - **Composable code**: the basic building blocks for computing are functions.
     They are first-class citizens, which can be passed around, called and
     composed.
-- **Composable data**: the basic building blocks for data blocks are records
+- **Composable data**: the basic building blocks for data are records
     (called *objects* in JSON). In Nickel, records can be merged at will,
     including associated metadata (documentation, default values, type
     contracts, etc).
