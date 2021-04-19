@@ -12,14 +12,14 @@ session:
 
 - *Base values*: some examples just return numbers, strings or booleans. You can run them directly:
     ```
-    nickel$ nickel -f fibonacci.ncl
+    $ nickel -f fibonacci.ncl
     Done: Num(55.0)
     ```
 - *Configurations*: some return records representing configuration. Because of laziness, Nickel
     won't currently print any readable result as is. Please use the `export`
     subcommand to see the result serialized as JSON:
     ```
-    nickel$ nickel -f merge-main.ncl export
+    $ nickel -f merge-main.ncl export
     {
       "firewall": {
       ...
@@ -30,7 +30,7 @@ session:
     list of attributes or the documentation:
 
     ```
-    nickel$ nickel -f record-contract.ncl query kind 
+    $ nickel -f record-contract.ncl query kind
       • contract: <ReplicationController, ReplicaSet, Pod>
       • value: `ReplicationController
       • documentation: The kind of the element being configured.
@@ -41,7 +41,7 @@ session:
 First start the REPL:
 
 ```
-nickel$ nickel repl
+$ nickel repl
 nickel>
 ```
 
