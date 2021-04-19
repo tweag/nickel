@@ -1,28 +1,14 @@
-name: Build and test Nickel
+name: Makam specifications
+
 on:
   - push
   - pull_request
 
 jobs:
 
-  build-and-test:
+  build:
 
-    strategy:
-      matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
-        rust_channel:
-          - stable
-          - beta
-          - nightly
-        include:
-          - os: ubuntu-latest
-            system: x86_64-linux
-          - os: macos-latest
-            system: x86_64-darwin
-
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
 
     steps:
 
@@ -36,7 +22,7 @@ jobs:
       with:
         nix_path: nixpkgs=channel:nixos-unstable
 
-    - name: Adding `unstable` Nix channel
+    - name: Add `unstable` Nix channel
       run: |
         nix-channel --add https://nixos.org/channels/nixpkgs-unstable
         nix-channel --update
@@ -52,6 +38,6 @@ jobs:
         name: nickel
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
 
-    - name: Building Nickel against `${{ matrix.rust_channel }}` Rust channel
+    - name: Run Makam Spec
       run: |
-        nix build ./#checks.${{ matrix.system }}.nickel-against-${{ matrix.rust_channel }}-rust-channel
+        nix build ./#checks.x86_64-linux.specs
