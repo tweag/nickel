@@ -33,7 +33,7 @@ impl InputFormat {
         match path_buf.extension().and_then(OsStr::to_str) {
             Some("ncl") => Some(InputFormat::Nickel),
             Some("json") => Some(InputFormat::Json),
-            Some("yaml") => Some(InputFormat::Yaml),
+            Some("yaml") | Some("yml") => Some(InputFormat::Yaml),
             Some("toml") => Some(InputFormat::Toml),
             _ => None,
         }
