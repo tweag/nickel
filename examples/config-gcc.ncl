@@ -73,7 +73,7 @@ let Contract = {
                     | default = 1,
 } in
 
-// Use `nickel -f config_gcc.ncl` to see the resulting json.
+// Use `nickel -f config_gcc.ncl export` to see the resulting json.
 ({
   flags = ["Wextra", {flag = "o", arg = "stuff.o"}],
   optimizationLevel = 2,
