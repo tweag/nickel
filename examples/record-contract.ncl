@@ -8,9 +8,9 @@ let Port | doc "A contract for a port number" =
       value >= 0 &&
       value <= 65535
     then
-        value
-      else
-        contracts.blame label in
+      value
+    else
+      contracts.blame label in
 
 let PortElt
   | doc "A contract for a port element of a Kubernetes configuration"

@@ -5,8 +5,9 @@ This directory contain an evolving selection of examples of Nickel programs.
 ## Execution
 
 Please follow the main repository's README instructions to have a working nickel
-executable. You can then either use one-liner commands or launch an interactive
-session:
+executable. You can then either use the command line or launch an interactive
+session. Play with the values to see contracts failing when fed with invalid
+data!
 
 ### From the command line
 

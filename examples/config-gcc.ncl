@@ -23,16 +23,26 @@ let GccFlag =
   else
     contracts.blame (contracts.tag "expected record or string") in
 
-let Path = fun label value =>
-  if builtins.isStr value then
-    value
-  else
-    contracts.blame label in
+let Path =
+  let pattern = m#"^(.+)/([^/]+)$"#m in
+  fun label value =>
+    if builtins.isStr value then
+      if strings.isMatch value pattern then
+        value
+      else
+        contracts.blame (contracts.tag "invalid path" label)
+    else
+      contracts.blame (contracts.tag "not a string" label) in
+
 let SharedObjectFile = fun label value =>
   if builtins.isStr value then
-    value
+    if strings.isMatch value m#"\.so$"#m then
+      value
+    else
+      contracts.blame (contracts.tag "not an .so file" label)
   else
-    contracts.blame label in
+    contracts.blame (contracts.tag "not a string" label) in
+
 let OptLevel = fun label value =>
   if value == 0 || value == 1 || value == 2 then
     value
