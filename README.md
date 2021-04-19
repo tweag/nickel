@@ -19,7 +19,7 @@ Nickel's salient traits are:
     (called *objects* in JSON). In Nickel, records can be merged at will,
     including associated metadata (documentation, default values, type
     contracts, etc).
-- **Typed only when it helps**: static types improve code quality, serve as
+- **Typed, but only when it helps**: static types improve code quality, serve as
     documentation and eliminate bugs early. But application-specific
     self-contained code will always evaluate to the same value, so type errors
     will show up at runtime anyway. Some JSON is hard to type. There, types are
