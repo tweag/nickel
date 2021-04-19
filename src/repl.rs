@@ -19,6 +19,7 @@ use simple_counter::*;
 use std::ffi::{OsStr, OsString};
 use std::result::Result;
 use std::str::FromStr;
+use std::{io, io::Write};
 
 #[cfg(feature = "repl")]
 use rustyline::validate::{ValidationContext, ValidationResult};
@@ -411,6 +412,78 @@ impl rustyline::validate::Validator for InputParser {
     }
 }
 
+/// Print the help message corresponding to a command, or show a list of available commands if
+/// the argument is `None` or is not a command.
+#[cfg(any(feature = "repl", feature = "repl-wasm"))]
+pub fn print_help(out: &mut impl Write, arg: Option<&str>) -> std::io::Result<()> {
+    use command::*;
+
+    if let Some(arg) = arg {
+        fn print_aliases(w: &mut impl Write, cmd: CommandType) -> std::io::Result<()> {
+            let mut aliases = cmd.aliases().into_iter();
+
+            if let Some(fst) = aliases.next() {
+                write!(w, "Aliases: `{}`", fst)?;
+                aliases.try_for_each(|alias| write!(w, ", `{}`", alias))?;
+                writeln!(w)?;
+            }
+
+            writeln!(w)
+        }
+
+        match arg.parse::<CommandType>() {
+            Ok(c @ CommandType::Help) => {
+                writeln!(out, ":{} [command]", c)?;
+                print_aliases(out, c)?;
+                writeln!(
+                    out,
+                    "Prints a list of available commands or the help of the given command"
+                )?;
+            }
+            Ok(c @ CommandType::Query) => {
+                writeln!(out, ":{} <expression>", c)?;
+                print_aliases(out, c)?;
+                writeln!(out, "Print the metadata attached to an attribute")?;
+            }
+            Ok(c @ CommandType::Load) => {
+                writeln!(out, ":{} <file>", c)?;
+                print_aliases(out, c)?;
+                write!(out,"Evaluate the content of <file> to a record and load its attributes in the environment.")?;
+                writeln!(
+                    out,
+                    " Fail if the content of <file> doesn't evaluate to a record"
+                )?;
+            }
+            Ok(c @ CommandType::Typecheck) => {
+                writeln!(out, ":{} <expression>", c)?;
+                print_aliases(out, c)?;
+                writeln!(
+                    out,
+                    "Typecheck the given expression and print its top-level type"
+                )?;
+            }
+                Ok(c @ CommandType::Print) => {
+                    writeln!(out, ":{} <expression>", c)?;
+                    print_aliases(out, c)?;
+                    writeln!(out, "Evaluate and print <expression> recursively")?;
+                }
+            Ok(c @ CommandType::Exit) => {
+                writeln!(out, ":{}", c)?;
+                print_aliases(out, c)?;
+                writeln!(out, "Exit the REPL session")?;
+            }
+            Err(UnknownCommandError {}) => {
+                writeln!(out, "Unknown command `{}`.", arg)?;
+                writeln!(out, "Available commands: ? help query load typecheck")?;
+            }
+        };
+
+        Ok(())
+    } else {
+        writeln!(out, "Available commands: help query load typecheck exit")
+    }
+}
+
 /// Native terminal implementation of an REPL frontend using rustyline.
 #[cfg(feature = "repl")]
 pub mod rustyline_frontend {
@@ -492,8 +565,7 @@ pub mod rustyline_frontend {
                             Ok(())
                         }
                         Ok(Command::Help(arg)) => {
-                            simple_frontend::print_help(&mut std::io::stdout(), arg.as_deref())
-                                .unwrap();
+                            print_help(&mut std::io::stdout(), arg.as_deref()).unwrap();
                             Ok(())
                         }
                         Ok(Command::Exit) => {
@@ -533,16 +605,31 @@ pub mod rustyline_frontend {
 }
 
 /// Simple UI-agnostic interface to the REPL, taking string inputs and returning string inputs.
-// #[cfg(feature = "repl-wasm")]
+#[cfg(feature = "repl-wasm")]
 pub mod simple_frontend {
     use super::command::{Command, CommandType, UnknownCommandError};
     use super::*;
     use crate::error::ToDiagnostic;
     use crate::program;
-    use ansi_term::Style;
     use codespan::FileId;
     use codespan_reporting::term::termcolor::Ansi;
     use std::io::{Cursor, Write};
+    use wasm_bindgen::prelude::*;
+
+    #[wasm_bindgen]
+    pub enum WASMInputResultTag {
+        Success = 0,
+        Blank = 1,
+        Partial = 2,
+        Error = 3,
+    }
+
+    #[wasm_bindgen]
+    pub struct WASMInputResult {
+        msg: String,
+        tag: WASMInputResultTag,
+        state: REPLState,
+    }
 
     pub enum InputResult {
         Success(String),
@@ -550,14 +637,68 @@ pub mod simple_frontend {
         Partial,
     }
 
-    pub fn init() -> Result<REPLImpl, InitError> {
+    impl WASMInputResult {
+        fn from_input_result(repl: REPLState, ir: InputResult) -> Self {
+            match ir {
+                InputResult::Success(msg) =>
+                    WASMInputResult {
+                        msg,
+                        tag: WASMInputResultTag::Success,
+                        state: repl,
+                    },
+                InputResult::Blank =>
+                    WASMInputResult {
+                        msg: String::new(),
+                        tag: WASMInputResultTag::Blank,
+                        state: repl,
+                    },
+                InputResult::Partial =>
+                    WASMInputResult {
+                        msg: String::new(),
+                        tag: WASMInputResultTag::Partial,
+                        state: repl,
+                    },
+            }
+        }
+    }
+
+    #[wasm_bindgen]
+    pub struct REPLState(REPLImpl);
+
+    fn mk_err(msg: String) -> WASMInputResult {
+        WASMInputResult {
+                msg,
+                tag: WASMInputResultTag::Error,
+                state: REPLState(REPLImpl::new()),
+            }
+    }
+
+    #[wasm_bindgen]
+    pub fn wasm_init() -> WASMInputResult {
+        init()
+            .map(|repl| WASMInputResult {
+                msg: String::new(),
+                tag: WASMInputResultTag::Success,
+                state: REPLState(repl),
+            })
+            .unwrap_or_else(mk_err)
+    }
+
+    #[wasm_bindgen]
+    pub fn wasm_input(mut state: REPLState, line: &str) -> WASMInputResult {
+        match input(&mut state.0, line) {
+            Ok(result) => WASMInputResult::from_input_result(state, result),
+            Err(err) => mk_err(err)
+        }
+    }
+
+    pub fn init() -> Result<REPLImpl, String> {
         let mut repl = REPLImpl::new();
 
         match repl.load_stdlib() {
             Ok(()) => (),
             Err(err) => {
-                program::report(repl.cache_mut(), err);
-                return Err(InitError::Stdlib);
+                return Err(err_to_str(repl.cache_mut(), err));
             }
         }
 
@@ -613,10 +754,7 @@ pub mod simple_frontend {
                         String::from_utf8(buffer.into_inner()).unwrap(),
                     ))
                 }
-                Ok(Command::Exit) => Ok(InputResult::Success(format!(
-                    "{}",
-                    Style::new().bold().paint("Exiting")
-                ))),
+                Ok(Command::Exit) => Ok(InputResult::Success(String::from("Exiting"))),
                 Err(err) => Err(Error::from(err)),
             };
 
@@ -634,85 +772,13 @@ pub mod simple_frontend {
             }
         }
     }
-
-    /// Print the help message corresponding to a command, or show a list of available commands if
-    /// the argument is `None` or is not a command.
-    pub fn print_help(out: &mut impl Write, arg: Option<&str>) -> std::io::Result<()> {
-        if let Some(arg) = arg {
-            fn print_aliases(w: &mut impl Write, cmd: CommandType) -> std::io::Result<()> {
-                let mut aliases = cmd.aliases().into_iter();
-
-                if let Some(fst) = aliases.next() {
-                    write!(w, "Aliases: `{}`", fst)?;
-                    aliases.try_for_each(|alias| write!(w, ", `{}`", alias))?;
-                    writeln!(w)?;
-                }
-
-                writeln!(w)
-            }
-
-            match arg.parse::<CommandType>() {
-                Ok(c @ CommandType::Help) => {
-                    writeln!(out, ":{} [command]", c)?;
-                    print_aliases(out, c)?;
-                    writeln!(
-                        out,
-                        "Prints a list of available commands or the help of the given command"
-                    )?;
-                }
-                Ok(c @ CommandType::Query) => {
-                    writeln!(out, ":{} <expression>", c)?;
-                    print_aliases(out, c)?;
-                    writeln!(out, "Print the metadata attached to an attribute")?;
-                }
-                Ok(c @ CommandType::Load) => {
-                    writeln!(out, ":{} <file>", c)?;
-                    print_aliases(out, c)?;
-                    write!(out,"Evaluate the content of <file> to a record and load its attributes in the environment.")?;
-                    writeln!(
-                        out,
-                        " Fail if the content of <file> doesn't evaluate to a record"
-                    )?;
-                }
-                Ok(c @ CommandType::Typecheck) => {
-                    writeln!(out, ":{} <expression>", c)?;
-                    print_aliases(out, c)?;
-                    writeln!(
-                        out,
-                        "Typecheck the given expression and print its top-level type"
-                    )?;
-                }
-                Ok(c @ CommandType::Print) => {
-                    writeln!(out, ":{} <expression>", c)?;
-                    print_aliases(out, c)?;
-                    writeln!(out, "Evaluate and print <expression> recursively")?;
-                }
-                Ok(c @ CommandType::Exit) => {
-                    writeln!(out, ":{}", c)?;
-                    print_aliases(out, c)?;
-                    writeln!(out, "Exit the REPL session")?;
-                }
-                Err(UnknownCommandError {}) => {
-                    writeln!(out, "Unknown command `{}`.", arg)?;
-                    writeln!(out, "Available commands: ? help query load typecheck print")?;
-                }
-            };
-
-            Ok(())
-        } else {
-            writeln!(
-                out,
-                "Available commands: help query load typecheck print exit"
-            )
-        }
-    }
 }
 
 /// Rendering of the results of a metadata query.
 pub mod query_print {
+    use super::{io, Write};
     use crate::identifier::Ident;
     use crate::term::{MergePriority, MetaValue, Term};
-    use std::{io, io::Write};
 
     /// A query printer. The implementation may differ depending on the activation of markdown
     /// support.
@@ -772,6 +838,7 @@ pub mod query_print {
         }
     }
 
+    #[cfg(feature = "markdown")]
     fn termimad_to_io(err: termimad::Error) -> io::Error {
         match err {
             termimad::Error::IO(err) => err,
