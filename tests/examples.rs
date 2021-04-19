@@ -1,8 +1,8 @@
-use nickel::program::Program;
-use std::path::PathBuf;
-use nickel::term::Term;
-use nickel::error::{Error, EvalError};
 use assert_matches::assert_matches;
+use nickel::error::{Error, EvalError};
+use nickel::program::Program;
+use nickel::term::Term;
+use std::path::PathBuf;
 
 use std::sync::Once;
 
@@ -19,7 +19,8 @@ fn set_env() {
 
 fn eval_file(file: &str) -> Result<Term, Error> {
     set_env();
-    let mut p = Program::new_from_file(PathBuf::from(file)).expect("could not load file as a program");
+    let mut p =
+        Program::new_from_file(PathBuf::from(file)).expect("could not load file as a program");
     p.eval()
 }
 
@@ -61,5 +62,8 @@ fn simple_contract_bool() {
 /// This example is expected to fail.
 #[test]
 fn simple_contract_div() {
-    assert_matches!(eval_file("simple-contract-div.ncl"), Err(Error::EvalError(EvalError::BlameError(..))));
+    assert_matches!(
+        eval_file("simple-contract-div.ncl"),
+        Err(Error::EvalError(EvalError::BlameError(..)))
+    );
 }
