@@ -1,5 +1,7 @@
 # Nickel
 
+[![Continuous integration](https://github.com/tweag/nickel/workflows/Continuous%20integration/badge.svg)](https://github.com/tweag/nickel/actions?query=branch%3Amaster)
+
 Nickel is the cheap configuration language.
 
 Its purpose is to automate the generation of static configuration files - think
@@ -32,7 +34,7 @@ Nickel's salient traits are:
     a principled approach to checking assertions. The interpreter automatically
     inserts assertions at the boundary between typed and untyped code. Nickel
     lets users add arbitrary assertions of their own and easily understand why
-	when assertions fail.
+    when assertions fail.
 
 The motto guiding Nickel's design is:
 > Great defaults, design for extensibility
@@ -78,7 +80,7 @@ abstractions or just feel ad hoc. Nickel buys you more for less.
      ```
      $ nix-shell shell.nix
      ```
-	 to be dropped in a shell, ready to build.
+     to be dropped in a shell, ready to build.
    - **Without Nix**: otherwise, follow [this guide][rust-guide] to install Rust
      and Cargo first.
 2. Build Nickel:
