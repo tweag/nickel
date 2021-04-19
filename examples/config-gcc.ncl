@@ -1,4 +1,3 @@
-let strings = { length = fun x => 1; substring = fun start end s => "W"} in
 // Validate and normalize gcc flags. They can be either a string `-Wextra` or
 // a structured value `{flag = "W", arg = "extra"}`. Arguments are not checked.
 let GccFlag =
@@ -6,8 +5,8 @@ let GccFlag =
   let available = ["W", "c", "S", "e", "o"] in
   fun label value =>
   if builtins.isStr value then
-    if strings.length value > 0 && lists.any (fun x => x == strings.substring 0
-      1 value) available then
+    if strings.length value > 0 &&
+      lists.any (fun x => x == strings.substring value 0 1) available then
       value
     else
       contracts.blame (contracts.tag "unknown flag #{value}" label)
@@ -20,7 +19,7 @@ let GccFlag =
         contracts.blame (contracts.tag "unkown flag #{value.flag}")
     else
       contracts.blame (contracts.tag "bad record structure: missing field
-        `flag` org `arg`" label) 
+        `flag` or `arg`" label)
   else
     contracts.blame (contracts.tag "expected record or string") in
 
@@ -44,14 +43,14 @@ let Contract = {
   pathLibC | doc "Path to libc."
            | #Path
            | #SharedObjectFile
-           | default = "/lib/x86_64-linux-gnu/libc.so";
+           | default = "/lib/x86_64-linux-gnu/libc.so",
 
   flags | doc "
             Additional flags to pass to GCC. Either provide a string without the
             leading `-`, or a structured value `{flag : Str, arg: Str}`.
           "
         | List #GccFlag
-        | default = [];
+        | default = [],
 
   optimizationLevel | doc "
                        Optimization level. Possible values:
@@ -61,11 +60,11 @@ let Contract = {
                         - *2*: use optimizations
                       "
                     | #OptLevel
-                    | default = 1;
+                    | default = 1,
 } in
 
 // Use `nickel -f config_gcc.ncl` to see the resulting json.
 ({
-  flags = ["Wextra", {flag = "o"; arg = "stuff.o"}];
-  optimizationLevel = 2;
+  flags = ["Wextra", {flag = "o", arg = "stuff.o"}],
+  optimizationLevel = 2,
 } | #Contract)
