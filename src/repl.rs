@@ -617,6 +617,7 @@ pub mod simple_frontend {
     use wasm_bindgen::prelude::*;
 
     #[wasm_bindgen]
+    #[derive(Clone, Copy, Eq, PartialEq)]
     pub enum WASMResultTag {
         Success = 0,
         Blank = 1,
@@ -627,7 +628,7 @@ pub mod simple_frontend {
     #[wasm_bindgen]
     pub struct WASMInitResult {
         msg: String,
-        tag: WASMResultTag,
+        pub tag: WASMResultTag,
         state: REPLState,
     }
 
@@ -642,9 +643,21 @@ pub mod simple_frontend {
     }
 
     #[wasm_bindgen]
+    impl WASMInitResult {
+        #[wasm_bindgen(getter)]
+        pub fn msg(&self) -> String {
+            self.msg.clone()
+        }
+
+        pub fn repl(self) -> REPLState {
+            self.state
+        }
+    }
+
+    #[wasm_bindgen]
     pub struct WASMInputResult {
         msg: String,
-        tag: WASMResultTag,
+        pub tag: WASMResultTag,
     }
 
     impl WASMInputResult {
@@ -653,6 +666,14 @@ pub mod simple_frontend {
                 msg,
                 tag: WASMResultTag::Error,
             }
+        }
+    }
+
+    #[wasm_bindgen]
+    impl WASMInputResult {
+        #[wasm_bindgen(getter)]
+        pub fn msg(&self) -> String {
+            self.msg.clone()
         }
     }
 
@@ -696,7 +717,7 @@ pub mod simple_frontend {
     }
 
     #[wasm_bindgen]
-    pub fn wasm_input(mut state: REPLState, line: &str) -> WASMInputResult {
+    pub fn wasm_input(&mut state: REPLState, line: &str) -> WASMInputResult {
         input(&mut state.0, line)
             .map(WASMInputResult::from)
             .unwrap_or_else(WASMInputResult::mk_error)
