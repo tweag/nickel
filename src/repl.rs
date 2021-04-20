@@ -617,7 +617,7 @@ pub mod simple_frontend {
     use wasm_bindgen::prelude::*;
 
     #[wasm_bindgen]
-    pub enum WASMInputResultTag {
+    pub enum WASMResultTag {
         Success = 0,
         Blank = 1,
         Partial = 2,
@@ -625,10 +625,35 @@ pub mod simple_frontend {
     }
 
     #[wasm_bindgen]
+    pub struct WASMInitResult {
+        msg: String,
+        tag: WASMResultTag,
+        state: REPLState,
+    }
+
+    impl WASMInitResult {
+        fn mk_error(msg: String) -> WASMInitResult {
+            WASMInitResult {
+                msg,
+                tag: WASMResultTag::Error,
+                state: REPLState(REPLImpl::new()),
+            }
+        }
+    }
+
+    #[wasm_bindgen]
     pub struct WASMInputResult {
         msg: String,
-        tag: WASMInputResultTag,
-        state: REPLState,
+        tag: WASMResultTag,
+    }
+
+    impl WASMInputResult {
+        fn mk_error(msg: String) -> WASMInputResult {
+            WASMInputResult {
+                msg,
+                tag: WASMResultTag::Error,
+            }
+        }
     }
 
     pub enum InputResult {
@@ -637,27 +662,21 @@ pub mod simple_frontend {
         Partial,
     }
 
-    impl WASMInputResult {
-        fn from_input_result(repl: REPLState, ir: InputResult) -> Self {
+    impl From<InputResult> for WASMInputResult {
+        fn from(ir: InputResult) -> Self {
             match ir {
-                InputResult::Success(msg) =>
-                    WASMInputResult {
-                        msg,
-                        tag: WASMInputResultTag::Success,
-                        state: repl,
-                    },
-                InputResult::Blank =>
-                    WASMInputResult {
-                        msg: String::new(),
-                        tag: WASMInputResultTag::Blank,
-                        state: repl,
-                    },
-                InputResult::Partial =>
-                    WASMInputResult {
-                        msg: String::new(),
-                        tag: WASMInputResultTag::Partial,
-                        state: repl,
-                    },
+                InputResult::Success(msg) => WASMInputResult {
+                    msg,
+                    tag: WASMResultTag::Success,
+                },
+                InputResult::Blank => WASMInputResult {
+                    msg: String::new(),
+                    tag: WASMResultTag::Blank,
+                },
+                InputResult::Partial => WASMInputResult {
+                    msg: String::new(),
+                    tag: WASMResultTag::Partial,
+                },
             }
         }
     }
@@ -665,31 +684,22 @@ pub mod simple_frontend {
     #[wasm_bindgen]
     pub struct REPLState(REPLImpl);
 
-    fn mk_err(msg: String) -> WASMInputResult {
-        WASMInputResult {
-                msg,
-                tag: WASMInputResultTag::Error,
-                state: REPLState(REPLImpl::new()),
-            }
-    }
-
     #[wasm_bindgen]
-    pub fn wasm_init() -> WASMInputResult {
+    pub fn wasm_init() -> WASMInitResult {
         init()
-            .map(|repl| WASMInputResult {
+            .map(|repl| WASMInitResult {
                 msg: String::new(),
-                tag: WASMInputResultTag::Success,
+                tag: WASMResultTag::Success,
                 state: REPLState(repl),
             })
-            .unwrap_or_else(mk_err)
+            .unwrap_or_else(WASMInitResult::mk_error)
     }
 
     #[wasm_bindgen]
     pub fn wasm_input(mut state: REPLState, line: &str) -> WASMInputResult {
-        match input(&mut state.0, line) {
-            Ok(result) => WASMInputResult::from_input_result(state, result),
-            Err(err) => mk_err(err)
-        }
+        input(&mut state.0, line)
+            .map(WASMInputResult::from)
+            .unwrap_or_else(WASMInputResult::mk_error)
     }
 
     pub fn init() -> Result<REPLImpl, String> {
