@@ -4,23 +4,10 @@ use nickel::program::Program;
 use nickel::term::Term;
 use std::path::PathBuf;
 
-use std::sync::Once;
-
-static INIT: Once = Once::new();
-
-/// CD into the examples directory: otherwise, imports are not resolved as they should.
-fn set_env() {
-    INIT.call_once(|| {
-        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        path.push("examples");
-        std::env::set_current_dir(path).unwrap();
-    });
-}
-
 fn eval_file(file: &str) -> Result<Term, Error> {
-    set_env();
-    let mut p =
-        Program::new_from_file(PathBuf::from(file)).expect("could not load file as a program");
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push(format!("examples/{}", file));
+    let mut p = Program::new_from_file(path).expect("could not load file as a program");
     p.eval()
 }
 
