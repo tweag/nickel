@@ -717,7 +717,7 @@ pub mod simple_frontend {
     }
 
     #[wasm_bindgen]
-    pub fn wasm_input(&mut state: REPLState, line: &str) -> WASMInputResult {
+    pub fn wasm_input(state: &mut REPLState, line: &str) -> WASMInputResult {
         input(&mut state.0, line)
             .map(WASMInputResult::from)
             .unwrap_or_else(WASMInputResult::mk_error)
