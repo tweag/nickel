@@ -1,5 +1,5 @@
 // An illustrative (thus incomplete and maybe incorrect) contract example for a
-// Kubernetes configuration element.
+// Kubernetes configuration.
 
 let Port | doc "A contract for a port number" =
   fun label value =>
