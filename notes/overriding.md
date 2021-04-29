@@ -162,7 +162,7 @@ It is computed as a
 realized by auto-application thanks to laziness:
 
 ```nix
-r = let fixpoint = rRepr fixpoint; in fixpoint
+r = rRepr r
 ```
 
 The explicit dependency to `self` gives the ability to provide a different
