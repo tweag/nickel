@@ -89,17 +89,23 @@ abstractions or just feel ad hoc. Nickel buys you more for less.
    ```
    And voilà! Generated files are placed in `target/debug`.
 
-### Run
 
 1. *(optional)* make a symbolic link to the executable:
   ```
   $ ln -S nickel target/debug/nickel
   ```
-  Alternatively, you can use `cargo run` to launch nickel. To pass arguments to
-  nickel using `cargo run`, use `--`:
-  ```
-  $ cargo run -- -f program.ncl
-  ```
+
+### Run
+
+1. Start Nickel either
+   * with [flake-enabled](https://nixos.wiki/wiki/Flakes) Nix directly from
+     this repo with `nix run github:tweag/nickel`, passing in arguments with
+     an extra `--` as in `nix run github:tweag/nickel -- repl`,
+   * after building, depending on the location of the executable via `./nickel`
+     or `./target/debug nickel`, passing in arguments directly,
+   * or after building with `cargo run`, passing in arguments with and extra
+     `--` as in `cargo run -- -f program.ncl`.
+
 2. Run your first program:
   ```
   $ ./nickel <<< 'let x = 2 in x + x'
