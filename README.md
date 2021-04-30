@@ -71,40 +71,16 @@ abstractions or just feel ad hoc. Nickel buys you more for less.
 
 ## Getting started
 
-### Build
-
-[rust-guide]: https://doc.rust-lang.org/cargo/getting-started/installation.html
-
-1. Download build dependencies:
-   - **With Nix**: If you have [Nix](https://nixos.org/nix) installed:
-     ```
-     $ nix-shell shell.nix
-     ```
-     to be dropped in a shell, ready to build.
-   - **Without Nix**: otherwise, follow [this guide][rust-guide] to install Rust
-     and Cargo first.
-2. Build Nickel:
-   ```
-   $ cargo build
-   ```
-   And voilà! Generated files are placed in `target/debug`.
-
-
-1. *(optional)* make a symbolic link to the executable:
-  ```
-  $ ln -S nickel target/debug/nickel
-  ```
-
 ### Run
 
 1. Start Nickel either
    * with [flake-enabled](https://nixos.wiki/wiki/Flakes) Nix directly from
      this repo with `nix run github:tweag/nickel`, passing in arguments with
      an extra `--` as in `nix run github:tweag/nickel -- repl`,
-   * after building, depending on the location of the executable via `./nickel`
-     or `./target/debug nickel`, passing in arguments directly,
-   * or after building with `cargo run`, passing in arguments with and extra
-     `--` as in `cargo run -- -f program.ncl`.
+   * after [building](#Build), depending on the location of the executable via
+     `./nickel` or `./target/debug nickel`, passing in arguments directly,
+   * or after [building](#Build) with `cargo run`, passing in arguments with
+     and extra `--` as in `cargo run -- -f program.ncl`.
 
 2. Run your first program:
   ```
@@ -139,6 +115,31 @@ abstractions or just feel ad hoc. Nickel buys you more for less.
 
 Use `nickel help` for a list of subcommands, and `nickel help <subcommand>`
 for help about a specific subcommand.
+
+### Build
+
+[rust-guide]: https://doc.rust-lang.org/cargo/getting-started/installation.html
+
+1. Download build dependencies:
+   - **With Nix**: If you have [Nix](https://nixos.org/nix) installed:
+     ```
+     $ nix-shell shell.nix
+     ```
+     to be dropped in a shell, ready to build.
+   - **Without Nix**: otherwise, follow [this guide][rust-guide] to install Rust
+     and Cargo first.
+2. Build Nickel:
+   ```
+   $ cargo build
+   ```
+   And voilà! Generated files are placed in `target/debug`.
+
+
+1. *(optional)* make a symbolic link to the executable:
+  ```
+  $ ln -S nickel target/debug/nickel
+  ```
+
 
 ### Tests
 
