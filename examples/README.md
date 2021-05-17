@@ -1,6 +1,6 @@
 # Examples
 
-This directory contain an evolving selection of examples of Nickel programs.
+This directory contains an evolving selection of examples of Nickel programs.
 
 ## Execution
 
