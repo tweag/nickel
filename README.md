@@ -151,7 +151,7 @@ $ cargo test
 ### Examples
 
 You can find examples in
-[`src/examples`](https://github.com/tweag/nickel/tree/master/src/examples). Note
+[`examples`](./examples). Note
 that as the syntax is not yet fixed, and some basic helpers are missing, they
 may seem a bit alien currently.
 
