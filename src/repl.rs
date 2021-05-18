@@ -462,11 +462,11 @@ pub fn print_help(out: &mut impl Write, arg: Option<&str>) -> std::io::Result<()
                     "Typecheck the given expression and print its top-level type"
                 )?;
             }
-                Ok(c @ CommandType::Print) => {
-                    writeln!(out, ":{} <expression>", c)?;
-                    print_aliases(out, c)?;
-                    writeln!(out, "Evaluate and print <expression> recursively")?;
-                }
+            Ok(c @ CommandType::Print) => {
+                writeln!(out, ":{} <expression>", c)?;
+                print_aliases(out, c)?;
+                writeln!(out, "Evaluate and print <expression> recursively")?;
+            }
             Ok(c @ CommandType::Exit) => {
                 writeln!(out, ":{}", c)?;
                 print_aliases(out, c)?;
@@ -604,18 +604,28 @@ pub mod rustyline_frontend {
     }
 }
 
-/// Simple UI-agnostic interface to the REPL, taking string inputs and returning string inputs.
+/// Web assembly interface to the REPL.
 #[cfg(feature = "repl-wasm")]
-pub mod simple_frontend {
-    use super::command::{Command, CommandType, UnknownCommandError};
-    use super::*;
+pub mod wasm_frontend {
+    use super::simple_frontend::{input, InputError, InputResult};
+    use super::{REPLImpl, REPL};
+    use crate::cache::Cache;
     use crate::error::ToDiagnostic;
-    use crate::program;
-    use codespan::FileId;
-    use codespan_reporting::term::termcolor::Ansi;
-    use std::io::{Cursor, Write};
+    use codespan::{FileId, Files};
+    use codespan_reporting::{
+        diagnostic::{Diagnostic, Label, LabelStyle, Severity},
+        term::termcolor::Ansi,
+    };
+    use serde::Serialize;
+    use serde_repr::Serialize_repr;
+    use std::io::Cursor;
     use wasm_bindgen::prelude::*;
 
+    /// Return codes of the WASM REPL.
+    ///
+    /// wasm-bindgen doesn't support exporting arbitrary enumeration. Thus we have to encode these
+    /// enums as structures with a tag and values. The values that are actually set depend on the
+    /// tag.
     #[wasm_bindgen]
     #[derive(Clone, Copy, Eq, PartialEq)]
     pub enum WASMResultTag {
@@ -625,21 +635,123 @@ pub mod simple_frontend {
         Error = 3,
     }
 
+    /// Severity of an error diagnostic. WASM wrapper for the corresponding codespan type.
+    #[derive(Serialize_repr, Clone, Copy, Eq, PartialEq)]
+    #[repr(u8)]
+    pub enum WASMErrorSeverity {
+        Bug = 5,
+        /// An error.
+        Error = 4,
+        /// A warning.
+        Warning = 3,
+        /// A note.
+        Note = 2,
+        /// A help message.
+        Help = 1,
+    }
+
+    impl From<Severity> for WASMErrorSeverity {
+        fn from(s: Severity) -> WASMErrorSeverity {
+            match s {
+                Severity::Bug => WASMErrorSeverity::Bug,
+                Severity::Error => WASMErrorSeverity::Error,
+                Severity::Warning => WASMErrorSeverity::Warning,
+                Severity::Note => WASMErrorSeverity::Note,
+                Severity::Help => WASMErrorSeverity::Help,
+            }
+        }
+    }
+
+    /// Style of an error label. WASM wrapper for the corresponding codespan type.
+    #[derive(Serialize_repr, Clone, Copy, Eq, PartialEq)]
+    #[repr(u8)]
+    pub enum WASMErrorLabelStyle {
+        Primary = 0,
+        Secondary = 1,
+    }
+
+    impl From<LabelStyle> for WASMErrorLabelStyle {
+        fn from(label_style: LabelStyle) -> WASMErrorLabelStyle {
+            match label_style {
+                LabelStyle::Primary => WASMErrorLabelStyle::Primary,
+                LabelStyle::Secondary => WASMErrorLabelStyle::Secondary,
+            }
+        }
+    }
+
+    /// A serializable error diagnostic. WASM wrapper for the corresponding codespan type.
+    #[derive(Serialize)]
+    pub struct WASMErrorDiagnostic {
+        pub severity: WASMErrorSeverity,
+        msg: String,
+        notes: Vec<String>,
+        labels: Vec<WASMErrorLabel>,
+    }
+
+    impl WASMErrorDiagnostic {
+        fn from_codespan(files: &Files<String>, diag: Diagnostic<FileId>) -> Self {
+            WASMErrorDiagnostic {
+                severity: diag.severity.into(),
+                msg: diag.message,
+                notes: diag.notes,
+                labels: diag
+                    .labels
+                    .into_iter()
+                    .map(|label| WASMErrorLabel::from_codespan(files, label))
+                    .collect(),
+            }
+        }
+    }
+
+    /// A serializable error label. WASM wrapper for the corresponding codespan type.
+    #[derive(Serialize)]
+    pub struct WASMErrorLabel {
+        msg: String,
+        pub style: WASMErrorLabelStyle,
+        pub line_start: usize,
+        pub col_start: usize,
+        pub line_end: usize,
+        pub col_end: usize,
+    }
+
+    impl WASMErrorLabel {
+        fn from_codespan(files: &Files<String>, label: Label<FileId>) -> Self {
+            let start_loc = files.location(label.file_id, label.range.start as u32);
+            let end_loc = files.location(label.file_id, label.range.end as u32);
+
+            let (line_start, col_start, line_end, col_end) = match (start_loc, end_loc) {
+                (Ok(start_loc), Ok(end_loc)) => (
+                    start_loc.line.to_usize(),
+                    start_loc.column.to_usize(),
+                    end_loc.line.to_usize(),
+                    end_loc.column.to_usize(),
+                ),
+                (Ok(loc), _) | (_, Ok(loc)) => (
+                    loc.line.to_usize(),
+                    loc.column.to_usize(),
+                    loc.line.to_usize(),
+                    loc.column.to_usize(),
+                ),
+                _ => (0, 0, 0, 0),
+            };
+
+            WASMErrorLabel {
+                msg: label.message,
+                style: label.style.into(),
+                line_start,
+                col_start,
+                line_end,
+                col_end,
+            }
+        }
+    }
+
+    /// WASM wrapper for the result type of the initialization of the REPL.
     #[wasm_bindgen]
     pub struct WASMInitResult {
         msg: String,
         pub tag: WASMResultTag,
         state: REPLState,
-    }
-
-    impl WASMInitResult {
-        fn mk_error(msg: String) -> WASMInitResult {
-            WASMInitResult {
-                msg,
-                tag: WASMResultTag::Error,
-                state: REPLState(REPLImpl::new()),
-            }
-        }
     }
 
     #[wasm_bindgen]
@@ -652,21 +764,23 @@ pub mod simple_frontend {
         pub fn repl(self) -> REPLState {
             self.state
         }
+
+        /// Make an `WASMInitResult` result from an `InputError`.
+        fn error(mut state: REPLState, error: InputError) -> Self {
+            WASMInitResult {
+                msg: err_to_string(&mut state.0.cache_mut(), &error),
+                tag: WASMResultTag::Error,
+                state,
+            }
+        }
     }
 
+    /// WASM wrapper for the result type of an execution of the REPL.
     #[wasm_bindgen]
     pub struct WASMInputResult {
         msg: String,
         pub tag: WASMResultTag,
-    }
-
-    impl WASMInputResult {
-        fn mk_error(msg: String) -> WASMInputResult {
-            WASMInputResult {
-                msg,
-                tag: WASMResultTag::Error,
-            }
-        }
+        errors: JsValue,
     }
 
     #[wasm_bindgen]
@@ -675,12 +789,40 @@ pub mod simple_frontend {
         pub fn msg(&self) -> String {
             self.msg.clone()
         }
-    }
 
-    pub enum InputResult {
-        Success(String),
-        Blank,
-        Partial,
+        #[wasm_bindgen(getter)]
+        pub fn errors(&self) -> JsValue {
+            self.errors.clone()
+        }
+
+        /// Make an `WASMInputResult` from an `InputError`.
+        fn error(cache: &mut Cache, error: InputError) -> Self {
+            let (msg, errors) = match error {
+                InputError::NickelError(err) => {
+                    let contracts_id = cache.id_of("<stdlib/contracts.ncl>");
+                    let diagnostics = err.to_diagnostic(cache.files_mut(), contracts_id);
+
+                    let msg = diags_to_string(cache, &diagnostics);
+                    let errors: Vec<WASMErrorDiagnostic> = diagnostics
+                        .into_iter()
+                        .map(|diag| WASMErrorDiagnostic::from_codespan(cache.files(), diag))
+                        .collect();
+                    (msg, errors)
+                }
+                InputError::Other(err) => (err, Vec::new()),
+            };
+
+            WASMInputResult {
+                msg,
+                tag: WASMResultTag::Error,
+                errors: JsValue::from_serde(&errors).unwrap(),
+            }
+        }
+
+        /// Generate a serializable empty list.
+        fn empty_errors() -> JsValue {
+            JsValue::from_serde(&Vec::<WASMErrorDiagnostic>::new()).unwrap()
+        }
     }
 
     impl From<InputResult> for WASMInputResult {
@@ -689,60 +831,32 @@ pub mod simple_frontend {
                 InputResult::Success(msg) => WASMInputResult {
                     msg,
                     tag: WASMResultTag::Success,
+                    errors: WASMInputResult::empty_errors(),
                 },
                 InputResult::Blank => WASMInputResult {
                     msg: String::new(),
                     tag: WASMResultTag::Blank,
+                    errors: WASMInputResult::empty_errors(),
                 },
                 InputResult::Partial => WASMInputResult {
                     msg: String::new(),
                     tag: WASMResultTag::Partial,
+                    errors: WASMInputResult::empty_errors(),
                 },
             }
         }
     }
 
+    /// WASM-compatible wrapper around `REPLImpl`.
     #[wasm_bindgen]
     pub struct REPLState(REPLImpl);
 
-    #[wasm_bindgen]
-    pub fn wasm_init() -> WASMInitResult {
-        init()
-            .map(|repl| WASMInitResult {
-                msg: String::new(),
-                tag: WASMResultTag::Success,
-                state: REPLState(repl),
-            })
-            .unwrap_or_else(WASMInitResult::mk_error)
-    }
-
-    #[wasm_bindgen]
-    pub fn wasm_input(state: &mut REPLState, line: &str) -> WASMInputResult {
-        input(&mut state.0, line)
-            .map(WASMInputResult::from)
-            .unwrap_or_else(WASMInputResult::mk_error)
-    }
-
-    pub fn init() -> Result<REPLImpl, String> {
-        let mut repl = REPLImpl::new();
-
-        match repl.load_stdlib() {
-            Ok(()) => (),
-            Err(err) => {
-                return Err(err_to_str(repl.cache_mut(), err));
-            }
-        }
-
-        Ok(repl)
-    }
-
-    pub fn err_to_str<E: ToDiagnostic<FileId>>(cache: &mut Cache, err: E) -> String {
+    /// Render error diagnostics as a string.
+    pub fn diags_to_string(cache: &mut Cache, diags: &Vec<Diagnostic<FileId>>) -> String {
         let mut buffer = Ansi::new(Cursor::new(Vec::new()));
         let config = codespan_reporting::term::Config::default();
-        let contracts_id = cache.id_of("<stdlib/contracts.ncl>");
-        let diagnostics = err.to_diagnostic(cache.files_mut(), contracts_id);
 
-        diagnostics
+        diags
             .iter()
             .try_for_each(|d| {
                 codespan_reporting::term::emit(&mut buffer, &config, cache.files_mut(), &d)
@@ -752,32 +866,112 @@ pub mod simple_frontend {
         String::from_utf8(buffer.into_inner().into_inner()).unwrap()
     }
 
-    pub fn input<R: REPL>(repl: &mut R, line: &str) -> Result<InputResult, String> {
+    /// Render an error as a string (similar to [`diags_to_string`](./meth.diags_to_string.html)).
+    pub fn err_to_string(cache: &mut Cache, error: &InputError) -> String {
+        match error {
+            InputError::NickelError(nickel_err) => {
+                let contracts_id = cache.id_of("<stdlib/contracts.ncl>");
+                let diags = nickel_err.to_diagnostic(cache.files_mut(), contracts_id);
+                diags_to_string(cache, &diags)
+            }
+            InputError::Other(msg) => msg.clone(),
+        }
+    }
+
+    /// Return a new instance of the WASM REPL, with the standard library loaded.
+    #[wasm_bindgen]
+    pub fn repl_init() -> WASMInitResult {
+        let mut repl = REPLImpl::new();
+        match repl.load_stdlib() {
+            Ok(()) => WASMInitResult {
+                msg: String::new(),
+                tag: WASMResultTag::Success,
+                state: REPLState(repl),
+            },
+            Err(err) => WASMInitResult::error(REPLState(repl), err.into()),
+        }
+    }
+
+    /// Evaluate an input in the WASM REPL.
+    #[wasm_bindgen]
+    pub fn repl_input(state: &mut REPLState, line: &str) -> WASMInputResult {
+        input(&mut state.0, line)
+            .map(WASMInputResult::from)
+            .unwrap_or_else(|err| WASMInputResult::error(state.0.cache_mut(), err))
+    }
+}
+
+/// Simple, UI-agnostic interface to the REPL. Take string inputs and return string outputs.
+/// The output may contain ANSI escape codes.
+pub mod simple_frontend {
+    use super::{command::Command, *};
+    use crate::error::Error;
+    use std::io::Cursor;
+
+    /// Add a failure mode to usual errors for features that are not supported by all REPLs (for
+    /// example, the `:load` command in the WASM frontend).
+    pub enum InputError {
+        NickelError(Error),
+        Other(String),
+    }
+
+    /// The successful result of the evaluation of an input.
+    pub enum InputResult {
+        /// The input succeeded with associated error message.
+        Success(String),
+        /// The input was blank.
+        Blank,
+        /// The input is incomplete.
+        Partial,
+    }
+
+    impl From<Error> for InputError {
+        fn from(error: Error) -> InputError {
+            InputError::NickelError(error)
+        }
+    }
+
+    /// Return a new instance of an REPL with the standard library loaded.
+    pub fn init() -> Result<REPLImpl, Error> {
+        let mut repl = REPLImpl::new();
+        repl.load_stdlib()?;
+        Ok(repl)
+    }
+
+    /// Evaluate an input.
+    pub fn input<R: REPL>(repl: &mut R, line: &str) -> Result<InputResult, InputError> {
         if line.trim().is_empty() {
             Ok(InputResult::Blank)
         } else if line.starts_with(':') {
             let cmd = line.chars().skip(1).collect::<String>().parse::<Command>();
-            let result = match cmd {
-                Ok(Command::Load(_)) => {
-                    return Err(String::from(":load is not enabled on the online REPL."));
-                }
+            match cmd {
+                Ok(Command::Load(_)) => Err(InputError::Other(String::from(
+                    ":load is not enabled on this REPL.",
+                ))),
                 Ok(Command::Typecheck(exp)) => repl
                     .typecheck(&exp)
-                    .map(|types| InputResult::Success(format!("Ok: {}", types))),
-                Ok(Command::Query(exp)) => repl.query(&exp).map(|t| {
-                    let mut buffer = Cursor::new(Vec::<u8>::new());
-                    query_print::write_query_result(
-                        &mut buffer,
-                        &t,
-                        query_print::Attributes::default(),
-                    )
-                    .unwrap();
-                    InputResult::Success(String::from_utf8(buffer.into_inner()).unwrap())
-                }),
-                Ok(Command::Print(exp)) => repl.eval_full(&exp).map(|res| match res {
-                    EvalResult::Evaluated(t) => InputResult::Success(t.deep_repr()),
-                    EvalResult::Bound(_) => InputResult::Blank,
-                }),
+                    .map(|types| InputResult::Success(format!("Ok: {}", types)))
+                    .map_err(InputError::from),
+                Ok(Command::Query(exp)) => repl
+                    .query(&exp)
+                    .map(|t| {
+                        let mut buffer = Cursor::new(Vec::<u8>::new());
+                        query_print::write_query_result(
+                            &mut buffer,
+                            &t,
+                            query_print::Attributes::default(),
+                        )
+                        .unwrap();
+                        InputResult::Success(String::from_utf8(buffer.into_inner()).unwrap())
+                    })
+                    .map_err(InputError::from),
+                Ok(Command::Print(exp)) => repl
+                    .eval_full(&exp)
+                    .map(|res| match res {
+                        EvalResult::Evaluated(t) => InputResult::Success(t.deep_repr()),
+                        EvalResult::Bound(_) => InputResult::Blank,
+                    })
+                    .map_err(InputError::from),
                 Ok(Command::Help(arg)) => {
                     let mut buffer = Cursor::new(Vec::<u8>::new());
                     simple_frontend::print_help(&mut buffer, arg.as_deref()).unwrap();
@@ -786,21 +980,17 @@ pub mod simple_frontend {
                     ))
                 }
                 Ok(Command::Exit) => Ok(InputResult::Success(String::from("Exiting"))),
-                Err(err) => Err(Error::from(err)),
-            };
-
-            Ok(
-                result
-                    .unwrap_or_else(|err| InputResult::Success(err_to_str(repl.cache_mut(), err))),
-            )
-        } else {
-            match repl.eval(&line) {
-                Ok(EvalResult::Evaluated(t)) => {
-                    Ok(InputResult::Success(format!("{}\n", t.shallow_repr())))
-                }
-                Ok(EvalResult::Bound(_)) => Ok(InputResult::Success(String::new())),
-                Err(err) => Ok(InputResult::Success(err_to_str(repl.cache_mut(), err))),
+                Err(err) => Err(InputError::from(Error::from(err))),
             }
+        } else {
+            repl.eval(&line)
+                .map(|eval_res| match eval_res {
+                    EvalResult::Evaluated(t) => {
+                        InputResult::Success(format!("{}\n", t.shallow_repr()))
+                    }
+                    EvalResult::Bound(_) => InputResult::Success(String::new()),
+                })
+                .map_err(InputError::from)
         }
     }
 }
