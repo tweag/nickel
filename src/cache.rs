@@ -503,6 +503,13 @@ impl Cache {
             })
     }
 
+    /// Get a reference to the underlying files. Required by
+    /// the WASM REPL error reporting code.
+    #[cfg(feature = "repl-wasm")]
+    pub fn files(&self) -> &Files<String> {
+        &self.files
+    }
+
     /// Get a mutable reference to the underlying files. Required by
     /// [`to_diagnostic`](../error/trait.ToDiagnostic.html#tymethod.to_diagnostic).
     pub fn files_mut(&mut self) -> &mut Files<String> {
