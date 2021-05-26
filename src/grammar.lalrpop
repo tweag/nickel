@@ -64,18 +64,17 @@ Annot: MetaValue = {
 };
 
 LeftOp<Op, Current, Previous>: RichTerm =
-    <t1: Current> <op: Op> <t2: Previous> => mk_term::op2(op, t1, t2);
+    <t1: WithPos<Current>> <op: Op> <t2: WithPos<Previous>> => mk_term::op2(op, t1, t2);
 
 LeftOpLazy<Op, Current, Previous>: RichTerm =
-    <t1: Current> <op: Op> <t2: Previous> => mk_app!(Term::Op1(op, t1), t2);
+    <t1: WithPos<Current>> <op: Op> <t2: WithPos<Previous>> => mk_app!(Term::Op1(op, t1), t2);
 
 pub Term: RichTerm = WithPos<RootTerm>;
 
 pub ExtendedTerm: ExtendedTerm = {
     "let" <id:Ident> <meta: Annot?> "=" <t: Term> => {
-        let pos = t.pos;
-
         let t = if let Some(mut meta) = meta {
+            let pos = t.pos;
             meta.value = Some(t);
             RichTerm::new(Term::MetaValue(meta), pos)
         }
@@ -91,8 +90,8 @@ pub ExtendedTerm: ExtendedTerm = {
 RootTerm: RichTerm = {
     "let" <id:Ident> <meta: Annot?> "=" <t1: Term> "in"
         <t2: Term> => {
-        let pos = t1.pos;
         let t1 = if let Some(mut meta) = meta {
+            let pos = t1.pos;
             meta.value = Some(t1);
             RichTerm::new(Term::MetaValue(meta), pos)
         }
@@ -138,9 +137,8 @@ RootTerm: RichTerm = {
 
 AnnotatedTerm: RichTerm = {
     <t: WithPos<Infix>> <meta: Annot?> => {
-        let pos = t.pos;
-
         if let Some(mut meta) = meta {
+            let pos = t.pos;
             meta.value = Some(t);
             RichTerm::new(Term::MetaValue(meta), pos)
         }
