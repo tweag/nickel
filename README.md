@@ -73,13 +73,14 @@ abstractions or just feel ad hoc. Nickel buys you more for less.
 
 ### Run
 
-1. Start Nickel either
-   * with [flake-enabled](https://nixos.wiki/wiki/Flakes) Nix directly from
-     this repo with `nix run github:tweag/nickel`, passing in arguments with
-     an extra `--` as in `nix run github:tweag/nickel -- repl`,
-   * after [building](#Build), depending on the location of the executable via
-     `./nickel` or `./target/debug nickel`, passing in arguments directly,
-   * or after [building](#Build) with `cargo run`, passing in arguments with
+1. Start Nickel
+   * with [flake-enabled](https://nixos.wiki/wiki/Flakes) Nix directly
+     with `nix run nickel` (which pulls it from the global flakes registry), or
+     with `nix run github:tweag/nickel` (which pulls it from the repo). You
+     pass in arguments with an extra `--` as in `nix run nickel -- repl`,
+   * with `./nickel`, after [building](#Build) this repo, depending on the
+   * location of the executable and passing in arguments directly,
+   * or with `cargo run` after [building](#Build), passing in arguments with
      and extra `--` as in `cargo run -- -f program.ncl`.
 
 2. Run your first program:
