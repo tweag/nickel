@@ -38,3 +38,11 @@ labels:
   - name: "merge-queue"
     color: 0e8a16
     description: "merge on green CI"
+  - name: "area: contracts"
+    color: 77dd77
+  - name: "area: typing"
+    color: 77dd77
+  - name: "area: cli"
+    color: 77dd77
+  - name: "area: syntax"
+    color: 77dd77
