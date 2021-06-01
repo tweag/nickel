@@ -974,7 +974,7 @@ pub mod simple_frontend {
                     .map_err(InputError::from),
                 Ok(Command::Help(arg)) => {
                     let mut buffer = Cursor::new(Vec::<u8>::new());
-                    simple_frontend::print_help(&mut buffer, arg.as_deref()).unwrap();
+                    print_help(&mut buffer, arg.as_deref()).unwrap();
                     Ok(InputResult::Success(
                         String::from_utf8(buffer.into_inner()).unwrap(),
                     ))
