@@ -196,11 +196,11 @@ fn map_deepseq(c: &mut Criterion) {
 
 fn pipe_normal(c: &mut Criterion) {
     bench(
-        "pipe normal 30",
+        "pipe normal 20",
         env!("CARGO_MANIFEST_DIR"),
         "lists/pipe",
         None,
-        30,
+        20,
         EvalMode::Normal,
         c,
     );
