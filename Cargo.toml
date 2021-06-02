@@ -10,7 +10,9 @@ edition = "2018"
 [lib]
 # The cdylib option is for WASM. Currently we only care about either the WASM
 # lib or the binary. But if we are to make nickel accessible as a library, we'll
-# have to remove the cdylib option
+# have to have two different version of Cargo.toml (and maybe have a separate
+# branch with a different cargo file just for the WASM. See
+# https://github.com/rust-lang/cargo/issues/4881)
 crate-type = ["cdylib", "rlib"]
 
 [[bin]]
