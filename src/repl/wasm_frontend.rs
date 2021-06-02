@@ -1,4 +1,4 @@
-/// Web assembly interface to the REPL.
+//! Web assembly interface to the REPL.
 use super::simple_frontend::{input, InputError, InputResult};
 use super::{REPLImpl, REPL};
 use crate::cache::Cache;
