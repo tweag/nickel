@@ -1153,7 +1153,7 @@ pub mod query_print {
     /// Print the result of a metadata query, which is a "weakly" evaluated term (see
     /// [`eval_meta`](../../eval/fn.eval_meta.html) and [`query`](../../program/fn.query.html)).
     ///
-    /// Wrapper around [`print_query_result_`](./fn.print_query_result_) that selects an adapated
+    /// Wrapper around [`write_query_result_`](./fn.write_query_result_) that selects an adapated
     /// query printer at compile time.
     pub fn write_query_result(
         out: &mut impl Write,
