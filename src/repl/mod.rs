@@ -16,9 +16,9 @@ use crate::{eval, transformations, typecheck};
 use codespan::FileId;
 use simple_counter::*;
 use std::ffi::{OsStr, OsString};
+use std::io::Write;
 use std::result::Result;
 use std::str::FromStr;
-use std::io::Write;
 
 #[cfg(feature = "repl")]
 use rustyline::validate::{ValidationContext, ValidationResult};

@@ -95,7 +95,8 @@ fn main() {
                         }
                     };
 
-                    repl::query_print::write_query_result(&mut std::io::stdout(), &term, attrs).unwrap()
+                    repl::query_print::write_query_result(&mut std::io::stdout(), &term, attrs)
+                        .unwrap()
                 })
             }
             Some(Command::Typecheck) => program.typecheck().map(|_| ()),
