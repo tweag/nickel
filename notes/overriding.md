@@ -39,7 +39,7 @@ let record = {
 }
 ```
 
-This quickly become unmanageable for large records, which are common in Nix and
+This quickly becomes unmanageable for large records, which are common in Nix and
 Nixpkgs. In functional languages, this is usually better done using what's
 called functional update. Functional update is an operation that takes the
 original record, one or several field to update, the corresponding new value,
