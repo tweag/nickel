@@ -4,11 +4,11 @@ import PropTypes from "prop-types";
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
     faGithub,
-    faTwitter,
-    faComment,
+    faTwitter
 } from "@fortawesome/free-brands-svg-icons";
 import {
-    faArrowUp
+    faArrowUp,
+    faComments
 } from '@fortawesome/free-solid-svg-icons';
 
 const Footer = () => (
@@ -22,7 +22,7 @@ const Footer = () => (
                 ><FontAwesomeIcon icon={faGithub}/></Link>
 
                 <Link className="btn btn-outline-light btn-floating m-1" to="https://github.com/tweag/nickel/discussions" role="button"
-                ><FontAwesomeIcon icon={faComment}/></Link>
+                ><FontAwesomeIcon icon={faComments}/></Link>
 
                 <Link className="btn btn-outline-light btn-floating m-1 ml-4" to="#" role="button"
                 ><FontAwesomeIcon icon={faArrowUp}/></Link>
