@@ -5,7 +5,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
     faGithub,
     faTwitter,
-    faDiscourse,
+    faComment,
 } from "@fortawesome/free-brands-svg-icons";
 import {
     faArrowUp
@@ -18,11 +18,11 @@ const Footer = () => (
                 <Link className="btn btn-outline-light btn-floating m-1" to="https://twitter.com/nickel_lang" role="button"
                 ><FontAwesomeIcon icon={faTwitter}/></Link>
 
-                <Link className="btn btn-outline-light btn-floating m-1" to="https://github.com/tweag/nickel/" role="button"
+                <Link className="btn btn-outline-light btn-floating m-1" to="https://github.com/tweag/nickel" role="button"
                 ><FontAwesomeIcon icon={faGithub}/></Link>
 
-                <Link className="btn btn-outline-light btn-floating m-1" to="#" role="button"
-                ><FontAwesomeIcon icon={faDiscourse}/></Link>
+                <Link className="btn btn-outline-light btn-floating m-1" to="https://github.com/tweag/nickel/discussions" role="button"
+                ><FontAwesomeIcon icon={faComment}/></Link>
 
                 <Link className="btn btn-outline-light btn-floating m-1 ml-4" to="#" role="button"
                 ><FontAwesomeIcon icon={faArrowUp}/></Link>
