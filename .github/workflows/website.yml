@@ -6,9 +6,10 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v1
-      - run: cd website/
       - run: npm ci --only=production
+        working-directory: website/
       - run: npm run build
+        working-directory: website/
       - name: Deploy to Netlify
         id: deploy
         run: |
@@ -16,6 +17,7 @@ jobs:
           # Awk is required because netlify outputs some warnings on stdout.
           npx netlify deploy $flags --json | awk "/{/,/}/" | tee result.json
           echo "::set-output name=deploy_url::$(jq -r .deploy_url result.json)"
+        working-directory: website/
         env:
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
