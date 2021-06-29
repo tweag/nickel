@@ -1,0 +1,48 @@
+@use "sass:map";
+@use "sass:color";
+
+$theme-colors: (
+        "primary": #e0c3fc,
+        "secondary": #8ec5fc
+);
+
+@import '~bootstrap/scss/bootstrap.scss';
+
+@mixin link($color) {
+  $selected: map.get($theme-colors, $color);
+  color: color.adjust($selected, $lightness: -10%);
+
+  &:hover, &:focus {
+    color: color.adjust($selected, $lightness: -40%);
+  }
+
+  &.active {
+    background-color: $selected !important;
+  }
+}
+
+a:hover { text-decoration: none; }
+
+.link-primary {
+  @include link("primary");
+}
+
+.link-secondary {
+  @include link("secondary");
+}
+
+.horizontal-sep {
+  height: 5px;
+  background: map.get($theme-colors, "primary");
+}
+
+.content {
+  h1, h2, h3, h4, h5 {
+    margin-bottom: 0.5em;
+    margin-top: 2.5em;
+  }
+
+  h1:first-child {
+    margin-top: 0;
+  }
+}
