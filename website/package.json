@@ -36,6 +36,7 @@
     "gatsby-transformer-remark": "^4.0.0",
     "gatsby-transformer-sharp": "^3.3.0",
     "jquery": "^3.6.0",
+    "nickel-repl": "file:nickel-repl",
     "prismjs": "^1.23.0",
     "react": "^17.0.1",
     "react-ace": "^9.4.0",

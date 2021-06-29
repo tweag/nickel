@@ -1,0 +1,17 @@
+{
+  "name": "nickel-repl",
+  "collaborators": [
+    "Nicl team"
+  ],
+  "description": "Programmable configuration files.",
+  "version": "0.1.0",
+  "license": "MIT OR Apache-2.0",
+  "files": [
+    "nickel_bg.wasm",
+    "nickel.js",
+    "nickel.d.ts"
+  ],
+  "module": "nickel.js",
+  "types": "nickel.d.ts",
+  "sideEffects": false
+}
