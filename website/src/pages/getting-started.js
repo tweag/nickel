@@ -19,7 +19,7 @@ const codeExamples = {
 Cloning in 'nickel'...
 [..]
 cd nickel`,
-        build: `nix build
+        build: `nix-build
 [1 built, 0.0 MiB DL]`,
         run: `./result/bin/nickel -V
 nickel 0.1.0`,
@@ -113,7 +113,7 @@ const IndexPage = () => {
                         <pre className={'command-line language-bash'} data-user="devops" data-host="nickel"
                              data-output="2-3:"><code>{codeExamples.withNix.clone}</code></pre>
                     </li>
-                    <li><p>Invoke <code>nix build</code>:</p>
+                    <li><p>Invoke <code>nix-build</code>:</p>
                         <pre className={'command-line language-bash'} data-user="devops" data-host="nickel:~/nickel"
                              data-output="2:"><code>{codeExamples.withNix.build}</code></pre>
                     </li>
