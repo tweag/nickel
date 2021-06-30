@@ -29,8 +29,7 @@ const Footer = () => (
         </div>
         <hr/>
         <div className="text-center pb-3">
-            © 2021 Copyright:
-            Nickel contributors
+            © 2021 Copyright: <Link to={'https://github.com/tweag/nickel/graphs/contributors'} className={'text-light'}>Nickel contributors</Link>
         </div>
     </footer>
 )
