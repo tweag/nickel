@@ -88,7 +88,7 @@ const IndexPage = () => {
               <img src={reuseImage} className="abstract-illustration" alt={""}/>
                 <h3 className="mb-4 mt-4">Reuse</h3>
               <div className="text-left lt-4">
-                Don't hack, don't reinvent the wheel: Nickel is a
+                Don't use hacks, don't reinvent the wheel: Nickel is a
                 programming language. Factorize. Reuse the generic parts. Import external libraries.
               </div>
             </div>
