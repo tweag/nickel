@@ -9,14 +9,7 @@ import "prismjs/themes/prism-tomorrow.css";
 import "prismjs/plugins/command-line/prism-command-line";
 import "prismjs/plugins/command-line/prism-command-line.css";
 import Playground from "../components/playground-clientside";
-
-const modes = {
-    REPL: 'repl',
-    JSON: 'json',
-    TOML: 'toml',
-    YAML: 'yaml',
-};
-//import {modes} from "../components/repl";
+import modes from "../components/playground/modes";
 import nickelLanguageDefinition from "../prism/nickel";
 
 // Escaping curly braces and other stuff in JSX is tiring, so we define all code examples here

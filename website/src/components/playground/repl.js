@@ -3,6 +3,7 @@ import {repl_init, repl_input} from "nickel-repl";
 import Ansi from "ansi-to-react";
 import {EDITOR_SEND_EVENT, REPL_RUN_EVENT} from "./events";
 import modes from './modes';
+import nickelCodes from './nickel-codes';
 
 /**
  * An REPL. This component can run Nickel programs or REPL commands and display a stylized output.
