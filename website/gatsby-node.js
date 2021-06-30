@@ -4,7 +4,7 @@ exports.onCreateWebpackConfig = ({ stage, actions, loaders }) => {
             // This was necessary to have the Nickel WASM REPL work with Webpack
             asyncWebAssembly: true,
         },
-        module: {
+       /* module: {
             rules: [
                 {
                     test: /react-ace/,
@@ -19,6 +19,6 @@ exports.onCreateWebpackConfig = ({ stage, actions, loaders }) => {
                     use: loaders.null(),
                 }
             ],
-        },
+        },*/
     })
 };
