@@ -34,7 +34,7 @@ ace.define('ace/mode/nickel_highlight_rules', ['require', 'exports', 'ace/lib/oo
         // delimiters
         let genQqdoc = length => ({
             token: "string",
-            regex: `m${'#'.repeat(length)}\"`,
+            regex: `m${'#'.repeat(length)}"`,
             next: `qqdoc${length}`,
         });
 

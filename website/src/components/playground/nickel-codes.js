@@ -2,7 +2,7 @@
  * Codes returned by the Nickel WASM evaluator.
  * @type {{result: {BLANK: number, SUCCESS: number, PARTIAL: number, ERROR: number}, error: {severity: {HELP: number, BUG: number, NOTE: number, ERROR: number, WARNING: number}, label: {SECONDARY: number, PRIMARY: number}}}}
  */
-export default {
+const nickelCodes = {
     result: {
         SUCCESS: 0,
         BLANK: 1,
@@ -23,3 +23,5 @@ export default {
         }
     }
 };
+
+export default nickelCodes;

@@ -1,4 +1,3 @@
-import React from "react"
 import Loadable from "@loadable/component";
 
 /**
