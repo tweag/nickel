@@ -4,8 +4,8 @@ import {StaticImage} from "gatsby-plugin-image";
 import mergeImage from '../images/merge-2.png';
 import validateImage from '../images/validate-2.png';
 import reuseImage from '../images/reuse-2.png';
-import PlaygroundComponent from "../components/playground";
-import {modes} from "../components/repl";
+import PlaygroundComponent from "../components/playground-clientside";
+import modes from "../components/playground/modes";
 import {Command} from "react-bootstrap-icons";
 
 const codeExample = `let conf = {
@@ -29,7 +29,7 @@ let AppSchema = {
   description | Str,
 } in
 
-conf | #AppSchema`
+conf | #AppSchema`;
 
 const IndexPage = () => {
   return (

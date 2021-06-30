@@ -1,10 +1,10 @@
 import * as React from 'react';
 
 import Editor from "./editor";
-import {modes, Repl} from "./repl";
+import Repl from "./repl";
+import modes from "./modes";
+import {PLAYGROUND_SEND_EVENT} from "./events.js";
 import {Command} from 'react-bootstrap-icons';
-
-const PLAYGROUND_SEND_EVENT = 'playground:send';
 
 /**
  * Playground component, composed of both a code editor and a REPL component.
@@ -89,5 +89,3 @@ export default class Playground extends React.Component {
         </React.Fragment>
     }
 }
-
-export {Playground, PLAYGROUND_SEND_EVENT}

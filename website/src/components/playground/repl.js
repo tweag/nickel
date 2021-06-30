@@ -1,42 +1,8 @@
 import * as React from 'react';
 import {repl_init, repl_input} from "nickel-repl";
 import Ansi from "ansi-to-react";
-import {EDITOR_SEND_EVENT} from "./editor";
-
-const REPL_RUN_EVENT = 'nickel-repl:run';
-
-/**
- * Codes returned by the Nickel WASM evaluator.
- * @type {{result: {BLANK: number, SUCCESS: number, PARTIAL: number, ERROR: number}, error: {severity: {HELP: number, BUG: number, NOTE: number, ERROR: number, WARNING: number}, label: {SECONDARY: number, PRIMARY: number}}}}
- */
-const nickelCodes = {
-    result: {
-        SUCCESS: 0,
-        BLANK: 1,
-        PARTIAL: 2,
-        ERROR: 3,
-    },
-    error: {
-        severity: {
-            HELP: 1,
-            NOTE: 2,
-            WARNING: 3,
-            ERROR: 4,
-            BUG: 5,
-        },
-        label: {
-            PRIMARY: 0,
-            SECONDARY: 1,
-        }
-    }
-};
-
-const modes = {
-    REPL: 'repl',
-    JSON: 'json',
-    TOML: 'toml',
-    YAML: 'yaml',
-};
+import {EDITOR_SEND_EVENT, REPL_RUN_EVENT} from "./events";
+import modes from './modes';
 
 /**
  * An REPL. This component can run Nickel programs or REPL commands and display a stylized output.
@@ -223,5 +189,3 @@ export default class Repl extends React.Component {
         </div>
     }
 }
-
-export {Repl, REPL_RUN_EVENT, nickelCodes, modes};

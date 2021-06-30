@@ -1,4 +1,6 @@
-// import * as ace from 'ace-builds/src-min-noconflict/ace.js'
+/**
+ * Define a Nickel mode in the ace editor. This enables syntax highlighting for the Nickel language.
+ */
 
 import ace from "ace-builds/src-noconflict/ace";
 

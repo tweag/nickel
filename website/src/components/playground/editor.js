@@ -1,13 +1,11 @@
 import * as React from 'react';
 import AceEditor from 'react-ace';
-import {nickelCodes, REPL_RUN_EVENT} from './repl'
-import {PLAYGROUND_SEND_EVENT} from "./playground";
+import nickelCodes from './nickel-codes'
+import {PLAYGROUND_SEND_EVENT, EDITOR_SEND_EVENT, REPL_RUN_EVENT} from "./events";
 
 import "ace-builds/src-noconflict/theme-solarized_dark";
-import "../ace-nickel-mode/ace-nickel-mode";
+import "../../ace-nickel-mode/ace-nickel-mode";
 import ReactDOMServer from "react-dom/server";
-
-const EDITOR_SEND_EVENT = 'nickel-repl:send';
 
 /**
  * Nickel code editor component, based on the Ace editor.
@@ -160,5 +158,3 @@ export default class Editor extends React.Component {
         />;
     }
 }
-
-export {Editor, EDITOR_SEND_EVENT};

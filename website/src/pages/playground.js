@@ -1,7 +1,6 @@
 import * as React from "react"
 import Layout from "../components/layout"
-import {Helmet} from "react-helmet";
-import PlaygroundComponent from "../components/playground";
+import PlaygroundComponent from "../components/playground-clientside";
 
 const PlaygroundPage = () => {
     return (
