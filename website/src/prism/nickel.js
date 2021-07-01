@@ -5,8 +5,8 @@
 const nickel = {
     comment: /\/\/.+/,
     string: [
-        /m(#)+".*"\1m/,
-        /".+"/,
+        { pattern: /m(#+)"(.|\n)*?"\1m/, greedy: true},
+        { pattern: /".*?"/, greedy: true},
     ],
     operator: [
         />/, />=/, /</, /<=/, /&/, /==/, /&&/, /\|\|/, /!/, /\+/, /@/, /-/, /\+\+/,

@@ -137,8 +137,12 @@ const IndexPage = () => {
                     But you'll only have to deal with any of this once you need to.
                     Writing a basic configuration is as simple as writing JSON or YAML. Let us write a manifest of a fictional app:</p>
 
-                <Playground fit={'code'} mode={modes.YAML} value={codeExamples.firstConfig}/>
-
+                <div className={'d-none d-lg-block'}>
+                    <Playground fit={'code'} mode={modes.YAML} value={codeExamples.firstConfig}/>
+                </div>
+                <div className={'d-block d-lg-none'}>
+                    <pre><code className={'language-nickel'}>{codeExamples.firstConfig}</code></pre>
+                </div>
                 <p/>This program is composed of <i>record</i>. A record is the same thing as an object in JSON. It is a list of
                     key-value pairs delimited
                     by <code>{'{'}</code> and <code>{'}'}</code>. In general, the values of Nickel map directly to a

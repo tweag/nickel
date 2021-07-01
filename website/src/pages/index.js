@@ -48,9 +48,9 @@ const IndexPage = () => {
             </div>
           </section>
 
-          <hr className={'horizontal-sep'}/>
+          <hr className={'horizontal-sep d-none d-lg-block'}/>
 
-          <section className={'row section-block'}>
+          <section className={'row section-block d-none d-lg-block'}>
             <div className="col-12 text-center">
               <h2 className="mb-4">Try it out. Find the error!</h2>
               <div className="mt-4 mb-4 main-text">
