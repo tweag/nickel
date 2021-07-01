@@ -30,7 +30,7 @@ export default function Layout({children}) {
                         ]}
                     >
                     </Helmet>
-                    <Header siteTitle={data.site.siteMetadata.title} menuLinks={data.site.siteMetadata.menuLinks}/>
+                    <Header menuLinks={data.site.siteMetadata.menuLinks}/>
                     <div>
                         {children}
                     </div>
