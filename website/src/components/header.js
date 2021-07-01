@@ -28,12 +28,4 @@ const Header = ({ menuLinks }) => (
     </header>
 );
 
-Header.propTypes = {
-    siteTitle: PropTypes.string,
-};
-
-Header.defaultProps = {
-    siteTitle: `Nickel`,
-};
-
 export default Header

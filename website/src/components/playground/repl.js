@@ -184,7 +184,7 @@ export default class Repl extends React.Component {
             content = <Ansi useClasses>{this.state.output_serialize}</Ansi>;
         }
 
-        return <div style={{whiteSpace: 'pre'}}>
+        return <div style={{whiteSpace: 'pre-wrap'}}>
             {content}
             <div ref={this.endRef}/>
         </div>

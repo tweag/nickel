@@ -6,6 +6,7 @@ import {PLAYGROUND_SEND_EVENT, EDITOR_SEND_EVENT, REPL_RUN_EVENT} from "./events
 import "ace-builds/src-noconflict/theme-solarized_dark";
 import "../../ace-nickel-mode/ace-nickel-mode";
 import ReactDOMServer from "react-dom/server";
+import {wrapPageElement} from "gatsby/dist/utils/api-browser-docs";
 
 /**
  * Nickel code editor component, based on the Ace editor.
@@ -32,6 +33,7 @@ export default class Editor extends React.Component {
             enableSnippets: false,
             showLineNumbers: true,
             annotations: [],
+            wrapEnabled: true,
         };
 
         if(this.props.fit && this.props.fit === 'code') {
@@ -65,7 +67,7 @@ export default class Editor extends React.Component {
     }
 
     getHeight() {
-        return this.aceEditorRef.current.editor.getSession().getScreenLength() * this.aceEditorRef.current.editor.renderer.lineHeight + this.aceEditorRef.current.editor.renderer.scrollBarH.height;
+        return this.aceEditorRef.current.editor.getSession().getScreenLength() * this.aceEditorRef.current.editor.renderer.lineHeight - 17;
     }
 
     /**
@@ -139,6 +141,7 @@ export default class Editor extends React.Component {
             showPrintMargin={this.state.showPrintMargin}
             showGutter={this.state.showGutter}
             highlightActiveLine={this.state.highlightActiveLine}
+            wrapEnabled={this.state.wrapEnabled}
             commands={[
                 {
                     name: 'send-repl',
