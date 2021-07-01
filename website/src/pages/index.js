@@ -54,7 +54,7 @@ const IndexPage = () => {
             <div className="col-12 text-center">
               <h2 className="mb-4">Try it out. Find the error!</h2>
               <div className="mt-4 mb-4 main-text">
-                This configuration contains an error. Fix it and type <kbd>Ctrl</kbd>+<kbd>Enter</kbd> (or <kbd>Cmd <Command/>
+                This configuration contains an error. Fix it and press <kbd>Ctrl</kbd>+<kbd>Enter</kbd> (or <kbd>Cmd <Command/>
               </kbd>+<kbd>Enter</kbd>) or click <span className={'btn btn-primary disabled'}>Run</span> to try your solution.
               </div>
               <div className={'text-left landingpage-playground-wrapper'}>
