@@ -55,7 +55,7 @@ contributors:
   - email: johndoe@example.com
     name: John Doe
   - name: Ivy Lane
-    url: https=//example.com/ivylane
+    url: https://example.com/ivylane
 dependencies:
   dep1: ^1.0.0
   dep3: "6.7"
@@ -183,12 +183,12 @@ const IndexPage = () => {
                     The name <code>example</code> appears both in <code>name</code> and <code>scripts.test</code> as well.
                     Pure aesthetics aside, a more serious issue is inconsistency. If you bump the
                     version number in <code>version</code>, you may forget to do so in the <code>scripts.test</code> as well,
-                    ending up wih incompatible version numbers in the same configuration. To remedy the problem, let's have a
+                    ending up wih incoherent version numbers in the same configuration. To remedy the problem, let's have a
                     single source of truth by reusing the value of <code>name</code> and <code>version</code> in <code>scripts.test</code>, using
                     the string interpolation syntax <code>#{'{expr}'}</code>:</p>
                 <pre><code className={'language-nickel'}>{codeExamples.reuse.diff}</code></pre>
 
-                <p>Now, if we change version to &quot;0.1.2&quot; and export the result, the test script
+                <p>Now, if we change version to <code>0.1.2</code> and export the result, the test script
                     invocation is updated as well:</p>
 
                 <pre><code className={'language-yaml'}>{codeExamples.reuse.result}</code></pre>
@@ -201,7 +201,7 @@ const IndexPage = () => {
                         className={"link-primary"}
                         href="https://github.com/tweag/nickel/tree/master/examples">examples in the repository</a>. You will also find more details on the language and its design in the <a
                         className={"link-primary"}
-                        href="https://github.com/tweag/nickel/#nickel">README</a> or in the <a
+                        href="https://github.com/tweag/nickel/#nickel">README</a> and in the <a
                 className={"link-primary"}
                 href="https://github.com/tweag/nickel/blob/master/RATIONALE.md">design rationale</a>.</p>
             </main>

@@ -86,6 +86,10 @@
     margin-top: 5em;
 }
 
+.landingpage-error {
+    color: #de6e71;
+}
+
 .logo {
     height: auto;
     width: 100px;
