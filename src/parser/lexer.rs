@@ -281,13 +281,12 @@ pub enum StringToken<'input> {
     Error,
 
     #[regex("[^\"#\\\\]+")]
+    // Has lower matching priority than `HashBrace` according to Logos' rules.
+    #[token("#")]
     Literal(&'input str),
 
     #[token("\"")]
     DoubleQuote,
-    // Has lower matching priority than `HashBrace` according to Logos' rules.
-    #[token("#")]
-    Hash(&'input str),
     #[token("#{")]
     HashBrace,
     #[regex("\\\\.", |lex| lex.slice().chars().nth(1))]
@@ -304,23 +303,20 @@ pub enum MultiStringToken<'input> {
     Error,
 
     #[regex("[^\"#]+")]
+    // A token that starts as a multiline end delimiter or an interpolation sequence but is not
+    // one.  These ones should have lowest matching priority according to Logos' rules, and
+    // CandidateEnd and CandidateInterpolation should be matched in priority.
+    #[regex("\"#+")]
+    #[regex("#+")]
     Literal(&'input str),
 
-    // A token that starts as a multiline end delimiter, but is not one. To avoid hacking
-    // look-aheads in the lexer (which Logos doesn't support for performance reason), we just use a
-    // separate token. This one has lowest matching priority according to Logos' rules, so it is
-    // matched only if `CandidateEnd` cannot be
-    #[regex("\"#*")]
-    FalseEnd(&'input str),
     // A candidate end. A multiline string starting delimiter `MultiStringStart` can have a
     // variable number of `#` character, so the lexer matchs candidate end delimiter, compare the
     // number of characters, and either emit the `End` token above, or turn the `CandidateEnd` to a
     // `FalseEnd` otherwise
     #[regex("\"#+m")]
     CandidateEnd(&'input str),
-    // Same as `FalseEnd` and `CandidateEnd` but for an interpolation sequence.
-    #[regex("#+")]
-    FalseInterpolation(&'input str),
+    // Same as CandidateEnd but for interpolation
     #[regex("#+\\{")]
     CandidateInterpolation(&'input str),
     // Token emitted by the modal lexer for the parser once it has decided that a `CandidateEnd` is
@@ -557,7 +553,7 @@ impl<'input> Iterator for Lexer<'input> {
             // Otherwise, it is just part of the string, so we transform the token into a
             // `FalseInterpolation` one
             Some(MultiStr(MultiStringToken::CandidateInterpolation(s))) => {
-                token = Some(MultiStr(MultiStringToken::FalseInterpolation(s)))
+                token = Some(MultiStr(MultiStringToken::Literal(s)))
             }
             Some(Str(StringToken::HashBrace)) => self.enter_normal(),
             // Convert escape sequences to the corresponding character.
@@ -584,7 +580,7 @@ impl<'input> Iterator for Lexer<'input> {
             // Otherwise, it is just part of the string, so we transform the token into a
             // `FalseEnd` one
             Some(MultiStr(MultiStringToken::CandidateEnd(s))) => {
-                token = Some(MultiStr(MultiStringToken::FalseEnd(s)))
+                token = Some(MultiStr(MultiStringToken::Literal(s)))
             }
             // Early report errors for now. This could change in the future
             Some(Normal(NormalToken::Error))
@@ -597,6 +593,7 @@ impl<'input> Iterator for Lexer<'input> {
             _ => (),
         }
 
+        println!("NEXT TOKEN: {:#?}", token);
         token.map(|t| Ok((span.start, t, span.end)))
     }
 }
