@@ -16,10 +16,9 @@ jobs:
         id: deploy
         run: |
           [[ "$GITHUB_REF" == "refs/heads/master" ]] && flags=--prod
-          npx netlify deploy $flags --json
           # Awk is required because netlify outputs some warnings on stdout.
-          # npx netlify deploy $flags --json | awk "/{/,/}/" | tee result.json
-          # echo "::set-output name=deploy_url::$(jq -r .deploy_url result.json)"
+          npx netlify deploy $flags --json | awk "/{/,/}/" | tee result.json
+          echo "::set-output name=deploy_url::$(jq -r .deploy_url result.json)"
         working-directory: website/
         env:
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
