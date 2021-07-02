@@ -23,14 +23,14 @@ ace.define('ace/mode/nickel_highlight_rules', ['require', 'exports', 'ace/lib/oo
 
         // Although Ace supports modal lexing (the next, push and pop rules allow to
         // maintain a state and a stack), we can't encode nickel
-        // constiable-length delimiter directly with one nice generic rule.
+        // variable-length delimiter directly with one nice generic rule.
         //
         // We thus generate a rule for lengths 1, 2 and 3 (m#", m##", and m###")
         // plus write a generic rule for size n. The generic rule is wrong for
         // length 5 and above, but this is highly unlikely to be used in
         // practice.
 
-        // Generate the starting rule of a string with constiable-length
+        // Generate the starting rule of a string with variable-length
         // delimiters
         let genQqdoc = length => ({
             token: "string",
@@ -38,7 +38,7 @@ ace.define('ace/mode/nickel_highlight_rules', ['require', 'exports', 'ace/lib/oo
             next: `qqdoc${length}`,
         });
 
-        // Generate the escape and end rules of a string with constiable-length delimiters
+        // Generate the escape and end rules of a string with variable-length delimiters
         let genQqdocState = length => ({
             [`qqdoc${length}`]: [
                 {
@@ -140,12 +140,10 @@ ace.define("ace/mode/nickel",["require","exports","module","ace/lib/oop","ace/mo
     const oop = ace.require("ace/lib/oop");
     const TextMode = ace.require("ace/mode/text").Mode;
     const NimHighlightRules = ace.require("ace/mode/nickel_highlight_rules").NickelHighlightRules;
-   // const CStyleFoldMode = ace.require("ace/mode/folding/cstyle").FoldMode;
 
     const Mode = function () {
         TextMode.call(this);
         this.HighlightRules = NimHighlightRules;
-     //   this.foldingRules = new CStyleFoldMode();
         this.$behaviour = this.$defaultBehaviour;
     };
 
@@ -157,5 +155,4 @@ ace.define("ace/mode/nickel",["require","exports","module","ace/lib/oop","ace/mo
     }).call(Mode.prototype);
 
     exports.Mode = Mode;
-
 });
