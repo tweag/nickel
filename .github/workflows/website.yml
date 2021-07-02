@@ -1,34 +1,38 @@
 name: Website
-on: push
+on:
+  pull_request:
+  push:
+    branches:
+      - "master"
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+
       - uses: actions/setup-node@v1
         with:
           node-version: 14
+
       - run: npm ci --only=production
         working-directory: website/
+
       - run: npm run build
         working-directory: website/
+
       - name: Deploy to Netlify
-        id: deploy
-        run: |
-          [[ "$GITHUB_REF" == "refs/heads/master" ]] && flags=--prod
-          # Awk is required because netlify outputs some warnings on stdout.
-          npx netlify deploy $flags --json | awk "/{/,/}/" | tee result.json
-          echo "::set-output name=deploy_url::$(jq -r .deploy_url result.json)"
-        working-directory: website/
+        uses: nwtgck/actions-netlify@v1.2
         env:
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-      - name: Add commit status
-        uses: Sibz/github-status-action@v1.1.0
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
         with:
-          authToken: ${{ secrets.GITHUB_TOKEN }}
-          sha: ${{ github.event.pull_request.head.sha || github.sha }}
-          context: deploy/netlify
-          description: Deploy preview ready
-          state: success
-          target_url: ${{ steps.deploy.outputs.deploy_url }}
+          production-branch: 'master'
+          production-deploy: ${{ github.event_name == "push" }}
+          publish-dir: './website/public'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          deploy-message: 'Deploy from GitHub Actions'
+          enable-pull-request-comment: true
+          enable-commit-comment: true
+          enable-commit-status: true
+          overwrites-pull-request-comment: false
+        if: github.repository == 'tweag/nickel'
