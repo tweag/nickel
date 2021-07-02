@@ -5,7 +5,7 @@ on:
     branches:
       - "master"
 jobs:
-  deploy:
+  deploy-to-netlify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -27,7 +27,7 @@ jobs:
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
         with:
           production-branch: 'master'
-          production-deploy: ${{ github.event_name == "push" }}
+          production-deploy: ${{ github.event_name == 'push' }}
           publish-dir: './website/public'
           github-token: ${{ secrets.GITHUB_TOKEN }}
           deploy-message: 'Deploy from GitHub Actions'
