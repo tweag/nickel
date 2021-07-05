@@ -5,13 +5,13 @@ import {StaticImage} from "gatsby-plugin-image";
 
 const Header = ({ menuLinks }) => (
     <header>
-        <nav className="navbar navbar-expand-lg navbar-light bg-primary">
+        <nav className="navbar navbar-expand-md navbar-light bg-primary">
             <div className="container-fluid">
-                <Link className="navbar-brand flex-lg-fill w-lg-100" to="/">
+                <Link className="navbar-brand flex-md-fill w-md-100" to="/">
                     <StaticImage className={"logo-navbar"} src="../images/nickel-logo-2.svg" alt="logo"/><span className="nickel">Nickel</span>
                 </Link>
-                <button className="navbar-toggler" type="button" data-bs-toggle="collapse"
-                        data-bs-target="#navbarNavAltMarkup"
+                <button className="navbar-toggler" type="button" data-toggle="collapse"
+                        data-target="#navbarNavAltMarkup"
                         aria-controls="navbarNavAltMarkup" aria-expanded="false" aria-label="Toggle navigation">
                     <span className="navbar-toggler-icon"/>
                 </button>
@@ -22,7 +22,7 @@ const Header = ({ menuLinks }) => (
                         ))}
                     </div>
                 </div>
-                <ul className={'d-none d-lg-block w-100 justify-contend-end'}/>
+                <ul className={'d-none d-md-block w-100 justify-contend-end'}/>
             </div>
         </nav>
     </header>
