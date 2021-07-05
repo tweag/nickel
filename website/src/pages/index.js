@@ -74,9 +74,9 @@ const IndexPage = () => {
             </div>
           </section>
 
-          <hr className={'horizontal-sep d-none d-lg-block'}/>
+          <hr className={'horizontal-sep d-none d-md-block'}/>
 
-          <section className={'row section-block d-none d-lg-block'}>
+          <section className={'row section-block d-none d-md-block'}>
             <div className="col-12 text-center">
               <h2 className="mb-4">Try it out. Find the <span className={'landingpage-error'}>error</span>!</h2>
               <div className="mt-4 mb-4 main-text">
