@@ -7,23 +7,10 @@ readme = "README.md"
 description = "Programmable configuration files."
 edition = "2018"
 
-[lib]
-# The cdylib option is for WASM. Currently we only care about either the WASM
-# lib or the binary. But if we are to make nickel accessible as a library, we'll
-# have to have two different version of Cargo.toml (and maybe have a separate
-# branch with a different cargo file just for the WASM. See
-# https://github.com/rust-lang/cargo/issues/4881)
-crate-type = ["cdylib", "rlib"]
-
-[[bin]]
-name = "nickel"
-path = "src/main.rs"
-
 [features]
-default = ["markdown", "repl", "binary"]
-binary = ["structopt"]
-markdown = ["binary", "termimad", "minimad"]
-repl = ["binary", "rustyline", "rustyline-derive", "ansi_term"]
+default = ["markdown", "repl"]
+markdown = ["termimad", "minimad"]
+repl = ["rustyline", "rustyline-derive", "ansi_term"]
 repl-wasm = ["wasm-bindgen", "js-sys", "serde_repr"]
 
 [build-dependencies]
@@ -40,12 +27,11 @@ serde = "1.0.117"
 serde_json = "1.0.59"
 serde_yaml = "0.8.15"
 toml = "0.5.8"
+structopt = "0.3"
 void = "1"
 sha-1 = "0.9.3"
 sha2 = "0.9.3"
 md-5 = "0.9.1"
-
-structopt = { version = "0.3", optional = true }
 
 termimad = { version = "0.9.1", optional = true }
 # Use the same version as termimad
