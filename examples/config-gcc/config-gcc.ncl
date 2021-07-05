@@ -16,7 +16,7 @@ let GccFlag =
         //Normalize the tag to a string
         value.flag ++ value.arg
       else
-        contracts.blame (contracts.tag "unkown flag #{value.flag}")
+        contracts.blame (contracts.tag "unknown flag #{value.flag}")
     else
       contracts.blame (contracts.tag "bad record structure: missing field
         `flag` or `arg`" label)
