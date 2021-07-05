@@ -527,8 +527,7 @@ impl<'input> Iterator for Lexer<'input> {
     fn next(&mut self) -> Option<Self::Item> {
         use Token::*;
 
-        let (mut token, mut span) = if self.buffer.is_some() {
-            let (token, span) = self.buffer.take().unwrap();
+        let (mut token, mut span) = if let Some((token, span)) = self.buffer.take() {
             (Some(token), span)
         } else {
             let lexer = self.lexer.as_mut().unwrap();
@@ -536,8 +535,6 @@ impl<'input> Iterator for Lexer<'input> {
             let span = lexer.span();
             (token, span)
         };
-
-        println!("NEXT PRE-TOKEN: {}, {:#?}, {}", span.start, token, span.end);
 
         match token.as_ref() {
             Some(Normal(NormalToken::DoubleQuote)) => self.enter_str(),
@@ -587,7 +584,10 @@ impl<'input> Iterator for Lexer<'input> {
                 self.buffer.replace((next_token, next_span));
 
                 token = Some(MultiStr(MultiStringToken::Literal(&s[0..1])));
-                span = Range { start: span.start, end: span.start+1};
+                span = Range {
+                    start: span.start,
+                    end: span.start + 1,
+                };
                 self.enter_normal();
             }
             // Otherwise, it is just part of the string, so we transform the token into a
@@ -634,7 +634,6 @@ impl<'input> Iterator for Lexer<'input> {
             _ => (),
         }
 
-        println!("NEXT TOKEN: {}, {:#?}, {}", span.start, token, span.end);
         token.map(|t| Ok((span.start, t, span.end)))
     }
 }

@@ -1,4 +1,4 @@
-use super::lexer::{Lexer, LexicalError, NormalToken, StringToken, MultiStringToken, Token};
+use super::lexer::{Lexer, LexicalError, MultiStringToken, NormalToken, StringToken, Token};
 use crate::error::ParseError;
 use crate::identifier::Ident;
 use crate::term::make as mk_term;
@@ -262,7 +262,6 @@ fn string_lexing() {
             Token::MultiStr(MultiStringToken::End),
         ])
     );
-
 }
 
 #[test]
