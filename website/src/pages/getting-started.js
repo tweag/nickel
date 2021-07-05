@@ -49,7 +49,7 @@ nickel 0.1.0`,
     dep3 = "6.7"
   }
 }`,
-    export: `nickel -f example.ncl export --format yaml
+    export: `./result/bin/nickel -f example.ncl export --format yaml
 ---
 contributors:
   - email: johndoe@example.com
@@ -98,7 +98,7 @@ const IndexPage = () => {
                 <h1 id="getting-started" className={'main-title'}>Getting started</h1>
 
                 <p>Nickel is still young and the installation process is not yet optimal. Sorry about that! We are focused on improving the
-                    experience, so keep updated. </p>
+                    experience, so stay tuned. </p>
 
                 <h2 id="build-from-source-using-nix">Build from source using Nix</h2>
 
@@ -145,13 +145,13 @@ const IndexPage = () => {
                 </div>
                 <p/>This program is composed of <i>record</i>. A record is the same thing as an object in JSON. It is a list of
                     key-value pairs delimited
-                    by <code>{'{'}</code> and <code>{'}'}</code>. In general, the values of Nickel map directly to a
-                    corresponding value in JSON (excluding functions). Thus, the basic datatypes of Nickel are the same as in JSON:
+                    by <code>{'{'}</code> and <code>{'}'}</code>. In general, the values of Nickel map directly to
+                    corresponding values in JSON (excluding functions). Thus, the basic datatypes of Nickel are the same as in JSON:
                     <ul>
-                        <li>Records (objects) delimited by <code>{'{'}</code> and <code>{'}'}</code>.</li>
-                        <li>Strings, delimiter by <code>&quot;</code>. <code>m#&quot;</code> and <code>&quot;#m</code> delimit multiline strings.
+                        <li>Records (objects), delimited by <code>{'{'}</code> and <code>{'}'}</code>.</li>
+                        <li>Strings, delimited by <code>&quot;</code>. The sequence <code>m#&quot;</code> and <code>&quot;#m</code> delimits multiline strings.
                         </li>
-                        <li>Numbers (floats)</li>
+                        <li>Numbers</li>
                         <li>Lists, delimited by <code>[</code> and <code>]</code> and separated by <code>,</code>.</li>
                     </ul>
 
@@ -164,10 +164,9 @@ const IndexPage = () => {
                         <li>Write strings with special characters without having to escape them.</li>
                     </ul>
 
-                In our example, using a multiline string saves us from escaping the double quotes <code>"</code>.
+                In our example, using a multiline string saves us from escaping the recurring double quotes <code>"</code>.
                 <h2 id="export">Export</h2>
-                <p>The ultimate goal of a Nickel program is to produce a static configuration. To do so, save the content of our example above in <code>example.ncl</code> and run <code>nickel export</code> (or
-                    <code>./result/bin/nickel export</code> if you haven&#39;t made a symbolic link):</p>
+                <p>The ultimate goal of a Nickel program is to produce a static configuration. To do so, save the content of our example above in <code>example.ncl</code> and run <code>nickel export</code>:</p>
                 <pre className={'command-line language-bash'} data-user="devops" data-host="nickel:~/nickel"
                      data-output="2-21:"><code>{codeExamples.export}</code></pre>
 
@@ -197,7 +196,7 @@ const IndexPage = () => {
 
                 <p>This short introduction should get you started. Nickel is a
                     full-fledged programming language, featuring higher-order functions, gradual
-                    typing, contracts, and more! Additional resources are to come on this website, so stay tuned. In the meantime, you can find <a
+                    typing, contracts, and more! Additional resources are to come on this website. In the meantime, you can find <a
                         className={"link-primary"}
                         href="https://github.com/tweag/nickel/tree/master/examples">examples in the repository</a>. You will also find more details on the language and its design in the <a
                         className={"link-primary"}
