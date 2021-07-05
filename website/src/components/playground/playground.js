@@ -19,7 +19,14 @@ export default class Playground extends React.Component {
 
         if(this.props.fit === 'code' || this.props.fit === 'lines') {
             // In fit-to-code mode, fix the height of the output (terminal) element to the height of the current code
-            this.onEditorResize = (height) => this.terminalContainer.style.height = height + "px";
+            this.onEditorResize = (height) => {
+                if(this.terminalContainer) {
+                    this.terminalContainer.style.height = height + "px";
+                }
+                else {
+                    setTimeout(this.onEditorResize, 100)
+                }
+            }
         }
     }
 
