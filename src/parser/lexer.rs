@@ -30,6 +30,7 @@
 //! go back to string mode. In our example, this is the second `}`: at this point, the lexer knows
 //! that the coming characters must be lexed as string tokens, and not as normal tokens.
 use logos::Logos;
+use std::ops::Range;
 
 /// The tokens in normal mode.
 #[derive(Logos, Debug, PartialEq, Clone)]
@@ -305,22 +306,28 @@ pub enum MultiStringToken<'input> {
     #[regex("[^\"#]+")]
     // A token that starts as a multiline end delimiter or an interpolation sequence but is not
     // one.  These ones should have lowest matching priority according to Logos' rules, and
-    // CandidateEnd and CandidateInterpolation should be matched in priority.
-    #[regex("\"#+")]
+    // CandidateEnd and CandidateInterpolation should be matched first.
+    #[token("\"")]
     #[regex("#+")]
     Literal(&'input str),
 
-    // A candidate end. A multiline string starting delimiter `MultiStringStart` can have a
-    // variable number of `#` character, so the lexer matchs candidate end delimiter, compare the
-    // number of characters, and either emit the `End` token above, or turn the `CandidateEnd` to a
-    // `FalseEnd` otherwise
+    /// A candidate end. A multiline string starting delimiter `MultiStringStart` can have a
+    /// variable number of `#` character, so the lexer matches candidate end delimiter, compare the
+    /// number of characters, and either emit the `End` token above, or turn the `CandidateEnd` to a
+    /// `FalseEnd` otherwise
     #[regex("\"#+m")]
     CandidateEnd(&'input str),
-    // Same as CandidateEnd but for interpolation
+    /// Same as `CandidateEnd`, but for interpolation
     #[regex("#+\\{")]
     CandidateInterpolation(&'input str),
-    // Token emitted by the modal lexer for the parser once it has decided that a `CandidateEnd` is
-    // an actual end token.
+    /// Unfortunate consequence of Logos' issue #200 (https://github.com/maciejhirsz/logos/issues/200).
+    /// The other rules should be sufficient to match this as a double quote followed by a
+    /// `CandidateInterpolation`, but if we omit this token, the lexer can fail unexpectedly on
+    /// valid inputs because of #200.
+    #[token("\"#+\\{")]
+    QuotesCandidateInterpolation(&'input str),
+    /// Token emitted by the modal lexer for the parser once it has decided that a `CandidateEnd` is
+    /// an actual end token.
     End,
     Interpolation,
 }
@@ -408,6 +415,10 @@ pub struct Lexer<'input> {
     /// already inside an interpolated expression. In this case, once this string ends, we must
     /// restore the original brace counter, which is what this stack is used for.
     pub stack: Vec<ModeElt>,
+    /// A token that has been buffered and must be returned at the next call to `next()`. This is
+    /// made necessary by an issue of Logos (https://github.com/maciejhirsz/logos/issues/200). See
+    /// `MultiStringToken::QuotesCandidateInterpolation`.
+    pub buffer: Option<(Token<'input>, Range<usize>)>,
 }
 
 impl<'input> Lexer<'input> {
@@ -416,6 +427,7 @@ impl<'input> Lexer<'input> {
             lexer: Some(ModalLexer::Normal(NormalToken::lexer(s))),
             stack: Vec::new(),
             count: 0,
+            buffer: None,
         }
     }
 
@@ -515,9 +527,17 @@ impl<'input> Iterator for Lexer<'input> {
     fn next(&mut self) -> Option<Self::Item> {
         use Token::*;
 
-        let lexer = self.lexer.as_mut().unwrap();
-        let mut token = lexer.next();
-        let span = lexer.span();
+        let (mut token, mut span) = if self.buffer.is_some() {
+            let (token, span) = self.buffer.take().unwrap();
+            (Some(token), span)
+        } else {
+            let lexer = self.lexer.as_mut().unwrap();
+            let token = lexer.next();
+            let span = lexer.span();
+            (token, span)
+        };
+
+        println!("NEXT PRE-TOKEN: {}, {:#?}, {}", span.start, token, span.end);
 
         match token.as_ref() {
             Some(Normal(NormalToken::DoubleQuote)) => self.enter_str(),
@@ -550,9 +570,30 @@ impl<'input> Iterator for Lexer<'input> {
                 token = Some(MultiStr(MultiStringToken::Interpolation));
                 self.enter_normal();
             }
+            // If we encouter a `QuotesCandidateInterpolation` token with the right number of
+            // characters, we need to split it into two tokens:
+            // - a simple `"` literal
+            // - a interpolation token
+            // The interpolation token is put in the buffer such that it will be returned next
+            // time.
+            Some(MultiStr(MultiStringToken::QuotesCandidateInterpolation(s)))
+                if s.len() == self.count =>
+            {
+                let next_token = MultiStr(MultiStringToken::Interpolation);
+                let next_span = Range {
+                    start: span.start + 1,
+                    end: span.end,
+                };
+                self.buffer.replace((next_token, next_span));
+
+                token = Some(MultiStr(MultiStringToken::Literal(&s[0..1])));
+                span = Range { start: span.start, end: span.start+1};
+                self.enter_normal();
+            }
             // Otherwise, it is just part of the string, so we transform the token into a
             // `FalseInterpolation` one
-            Some(MultiStr(MultiStringToken::CandidateInterpolation(s))) => {
+            Some(MultiStr(MultiStringToken::CandidateInterpolation(s)))
+            | Some(MultiStr(MultiStringToken::QuotesCandidateInterpolation(s))) => {
                 token = Some(MultiStr(MultiStringToken::Literal(s)))
             }
             Some(Str(StringToken::HashBrace)) => self.enter_normal(),
@@ -593,7 +634,7 @@ impl<'input> Iterator for Lexer<'input> {
             _ => (),
         }
 
-        println!("NEXT TOKEN: {:#?}", token);
+        println!("NEXT TOKEN: {}, {:#?}, {}", span.start, token, span.end);
         token.map(|t| Ok((span.start, t, span.end)))
     }
 }
