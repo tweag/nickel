@@ -7,6 +7,10 @@ import reuseImage from '../images/reuse-2.png';
 import PlaygroundComponent from "../components/playground-clientside";
 import modes from "../components/playground/modes";
 import {Command} from "react-bootstrap-icons";
+import {
+  faChevronDown,
+} from '@fortawesome/free-solid-svg-icons';
+import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 
 const codeExample = `let conf = {
   name = "NiCl",
@@ -31,7 +35,29 @@ let AppSchema = {
 
 conf | #AppSchema`;
 
+/**
+ * Scroll offset after which the scrolldown arrow is hidden, in pixels.
+ * @type {number}
+ */
+const HIDE_SCROLLDOWN_ARROW_AFTER = 100;
+
 const IndexPage = () => {
+  const [isArrowVisible, setArrowVisible] = React.useState(true);
+
+  const onScroll = () => {
+    const currentScroll = document.body.scrollTop || document.documentElement.scrollTop;
+
+    if(isArrowVisible && currentScroll > HIDE_SCROLLDOWN_ARROW_AFTER) {
+      setArrowVisible(false);
+    }
+  };
+
+  React.useEffect(() => {
+    window.addEventListener('scroll', onScroll);
+    return () =>
+        window.removeEventListener('scroll', onScroll);
+  }, []);
+
   return (
       <Layout>
         <main className="container main-container">
@@ -93,6 +119,7 @@ const IndexPage = () => {
               </div>
             </div>
           </section>
+          {isArrowVisible && <FontAwesomeIcon icon={faChevronDown} className={'scroll-down-arrow'}/>}
         </main>
       </Layout>
   )

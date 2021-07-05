@@ -2,11 +2,13 @@
 @use "sass:color";
 
 $theme-colors: (
-        "primary": #e0c3fc,
-        "secondary": #8ec5fc
+  "primary": #e0c3fc,
+  "secondary": #8ec5fc
 );
 
 @import '~bootstrap/scss/bootstrap.scss';
+
+/* Correctly style links with our custom primary and secondary colors */
 
 @mixin link($color) {
   $selected: map.get($theme-colors, $color);
@@ -47,10 +49,50 @@ a:hover { text-decoration: none; }
   }
 }
 
+/* Augment bootstrap with breakpoint variants of w-100, w-50, and so on. */
+
 @each $breakpoint in map-keys($grid-breakpoints) {
   @each $size, $length in $sizes {
     @include media-breakpoint-up($breakpoint) {
       .w-#{$breakpoint}-#{$size} {width: $length !important;}
     }
   }
+}
+
+/* Animation of the landing page's scrolldown arrow */
+
+.scroll-down-arrow {
+  height: 60px;
+  width: 80px;
+  margin: 0px 0 0 -40px;
+  line-height: 60px;
+  position: absolute;
+  left: 50%;
+  bottom: 0px;
+  color: black;
+  text-align: center;
+  font-size: 70px;
+  z-index: 100;
+  text-decoration: none;
+  text-shadow: 0px 0px 3px rgba(0, 0, 0, 0.4);
+
+  -webkit-animation: ca3_fade_move_down 1.5s ease-in-out infinite;
+  -moz-animation:    ca3_fade_move_down 1.5s ease-in-out infinite;
+  animation:         ca3_fade_move_down 1.5s ease-in-out infinite;
+}
+
+@-webkit-keyframes ca3_fade_move_down {
+  0%   { -webkit-transform:translate(0,-20px); opacity: 0;  }
+  50%  { opacity: 1;  }
+  100% { -webkit-transform:translate(0,20px); opacity: 0; }
+}
+@-moz-keyframes ca3_fade_move_down {
+  0%   { -moz-transform:translate(0,-20px); opacity: 0;  }
+  50%  { opacity: 1;  }
+  100% { -moz-transform:translate(0,20px); opacity: 0; }
+}
+@keyframes ca3_fade_move_down {
+  0%   { transform:translate(0,-20px); opacity: 0;  }
+  50%  { opacity: 1;  }
+  100% { transform:translate(0,20px); opacity: 0; }
 }
