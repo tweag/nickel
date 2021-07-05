@@ -7,6 +7,7 @@ import "ace-builds/src-noconflict/theme-solarized_dark";
 import "../../ace-nickel-mode/ace-nickel-mode";
 import ReactDOMServer from "react-dom/server";
 import {wrapPageElement} from "gatsby/dist/utils/api-browser-docs";
+import modes from "./modes";
 
 /**
  * Nickel code editor component, based on the Ace editor.
@@ -15,10 +16,9 @@ export default class Editor extends React.Component {
     constructor(props) {
         super(props);
 
-        const value = this.props.value ? this.props.value : `let data = {value = "Hello," ++ " world!"} in data.value`;
-
         this.state = {
-            value,
+            value: this.props.value,
+            name: this.props.name,
             placeholder: 'Write your code. Press Ctrl+Enter (Cmd+Enter) to run it',
             theme: "solarized_dark",
             mode: "nickel",
@@ -37,7 +37,8 @@ export default class Editor extends React.Component {
         };
 
         if(this.props.fit && this.props.fit === 'code') {
-            const lines = value.split(/\r?\n/g).length;
+            // Taking more lines to account for potential wrapping
+            const lines = this.props.value.split(/\r?\n/g).length+2;
             this.state.maxLines = lines;
             this.state.minLines = lines;
         }
@@ -52,13 +53,25 @@ export default class Editor extends React.Component {
         this.aceEditorRef = React.createRef();
     }
 
+    static defaultProps = {
+        value: `let data = {value = "Hello," ++ " world!"} in data.value`,
+        name: 'nickel-repl-input',
+    };
+
     componentDidMount() {
         // Listen to the REPL's execution events, in order to update potential error messages.
         document.addEventListener(REPL_RUN_EVENT, this.onREPLRun);
         document.addEventListener(PLAYGROUND_SEND_EVENT, this.send);
 
-        console.log(AceEditor);
-    }
+        if(this.props.onResize) {
+            const ro = new ResizeObserver(entries => {
+                for(let entry of entries) {
+                    this.props.onResize(entry.target.clientHeight);
+                }
+            });
+            ro.observe(document.getElementById(this.state.name));
+        }
+     }
 
     onChange(newValue) {
         this.setState({
@@ -67,7 +80,7 @@ export default class Editor extends React.Component {
     }
 
     getHeight() {
-        return this.aceEditorRef.current.editor.getSession().getScreenLength() * this.aceEditorRef.current.editor.renderer.lineHeight - 17;
+        return document.getElementById(this.state.name).clientHeight;
     }
 
     /**
@@ -121,12 +134,17 @@ export default class Editor extends React.Component {
     }
 
     render() {
+        const setEditorMargin = (editor) => {
+            editor.renderer.setPadding(10);
+            editor.renderer.setScrollMargin(10, 10, 0, 0);
+        };
+
         return <AceEditor
             ref={this.aceEditorRef}
             placeholder={this.state.placeholder}
             mode={this.state.mode}
             theme={this.state.theme}
-            name={"nickel-repl-input"}
+            name={this.state.name}
             height={this.state.height}
             width={this.state.width}
             minLines={this.state.minLines}
@@ -142,6 +160,7 @@ export default class Editor extends React.Component {
             showGutter={this.state.showGutter}
             highlightActiveLine={this.state.highlightActiveLine}
             wrapEnabled={this.state.wrapEnabled}
+            onLoad={setEditorMargin}
             commands={[
                 {
                     name: 'send-repl',
