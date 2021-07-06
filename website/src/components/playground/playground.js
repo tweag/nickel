@@ -45,7 +45,7 @@ export default class Playground extends React.Component {
     setTerminalContainer = element => this.terminalContainer = element;
     setEditor = editor => this.editor = editor;
 
-    replTabStyle = (mode) => ('nav-link link-secondary' + (this.state.mode === mode ? ' active' : ''));
+    replTabStyle = (mode) => ('nav-link link-secondary playground-nav-item' + (this.state.mode === mode ? ' active' : ''));
 
     setMode = (mode) => {
         this.setState({mode});

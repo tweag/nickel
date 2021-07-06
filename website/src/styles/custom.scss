@@ -3,7 +3,7 @@
 
 $theme-colors: (
   "primary": #e0c3fc,
-  "secondary": #8ec5fc
+  "secondary": #8ec5fc,
 );
 
 @import '~bootstrap/scss/bootstrap.scss';
@@ -11,26 +11,34 @@ $theme-colors: (
 /* Correctly style links with our custom primary and secondary colors */
 
 @mixin link($color) {
-  $selected: map.get($theme-colors, $color);
-  color: color.adjust($selected, $lightness: -10%);
-
+  color: $color;
   &:hover, &:focus {
-    color: color.adjust($selected, $lightness: -40%);
+    color: color.adjust($color, $lightness: -30%);
   }
 
   &.active {
-    background-color: $selected !important;
+    background-color: color.adjust($color, $lightness: +10%) !important;
   }
 }
 
-a:hover { text-decoration: none; }
+@mixin link-theme($color) {
+  $selected: map.get($theme-colors, $color);
+  @include link(color.adjust($selected, $lightness: -20%));
+}
 
 .link-primary {
-  @include link("primary");
+  @include link-theme("primary");
 }
 
 .link-secondary {
-  @include link("secondary");
+  @include link-theme("secondary");
+}
+
+.link-footer {
+  color: #757575;
+  &:hover, &:focus {
+    color: black;
+  }
 }
 
 .horizontal-sep {

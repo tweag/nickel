@@ -60,6 +60,15 @@
     height: 100%;
 }
 
+.playground-nav-item {
+    color: black;
+    cursor: pointer;
+}
+
+.playground-nav-item.active {
+    color: black !important;
+}
+
 .navbar {
     font-size: 1.2em;
 }
@@ -239,20 +248,4 @@
 .ansi-bright-black-fg, .ansi-bright-red-fg, .ansi-bright-green-fg, .ansi-bright-yellow-fg,
 .ansi-bright-blue-fg, .ansi-bright-magenta-fg, .ansi-bright-cyan-fg, .ansi-bright-white-fg {
     font-weight: bold;
-}
-
-.nickel-primary {
-    color: #e0c3fc;
-}
-
-.nickel-bg-primary {
-    background-color: #e0c3fc;
-}
-
-.nickel-secondary {
-    color: #8ec5fc;
-}
-
-.nickel-bg-secondary {
-    background-color: #8ec5fc;
 }
