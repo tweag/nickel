@@ -92,14 +92,14 @@ const IndexPage = () => {
           <hr className={'horizontal-sep'}/>
 
           <section className="row last-section-block">
-            <div className="col-12 col-md-6 col-lg-4 mb-5 mb-lg-0 main-text text-center landingpage-column">
+            <div className="col-12 col-lg-4 mb-5 mb-lg-0 main-text text-center landingpage-column">
               <img src={mergeImage} className="abstract-illustration" alt={""}/>
                 <h3 className="mb-4 mt-4">Merge</h3>
                 <div className="text-left mt-4">
                     Write simple, modular blocks. Merge them into a complex configuration.
                 </div>
             </div>
-            <div className="col-12 col-md-6 col-lg-4 mb-5 mb-lg-0 main-text text-center landingpage-column">
+            <div className="col-12 col-lg-4 mb-5 mb-lg-0 main-text text-center landingpage-column">
               <img src={validateImage} className="abstract-illustration" alt={""}/>
                 <h3 className="mb-4 mt-4">Verify & Validate</h3>
               <div className="text-left mt-4">
@@ -110,7 +110,7 @@ const IndexPage = () => {
                   to validate your data and ensure they conform to a given schema.</p>
               </div>
             </div>
-            <div className="col-12 col-md-6 col-lg-4 main-text text-center landingpage-column">
+            <div className="col-12 col-lg-4 main-text text-center landingpage-column">
               <img src={reuseImage} className="abstract-illustration" alt={""}/>
                 <h3 className="mb-4 mt-4">Reuse</h3>
               <div className="text-left lt-4">

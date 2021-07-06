@@ -137,10 +137,10 @@ const IndexPage = () => {
                     But you'll only have to deal with any of this once you need to.
                     Writing a basic configuration is as simple as writing JSON or YAML. Let us write a manifest of a fictional app:</p>
 
-                <div className={'d-none d-lg-block'}>
+                <div className={'d-none d-md-block'}>
                     <Playground fit={'code'} mode={modes.YAML} value={codeExamples.firstConfig}/>
                 </div>
-                <div className={'d-block d-lg-none'}>
+                <div className={'d-block d-md-none'}>
                     <pre><code className={'language-nickel'}>{codeExamples.firstConfig}</code></pre>
                 </div>
                 <p/>This program is composed of <i>record</i>. A record is the same thing as an object in JSON. It is a list of
