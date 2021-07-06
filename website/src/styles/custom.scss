@@ -8,6 +8,8 @@ $theme-colors: (
 
 @import '~bootstrap/scss/bootstrap.scss';
 
+a:hover { text-decoration: none};
+
 /* Correctly style links with our custom primary and secondary colors */
 
 @mixin link($color) {
