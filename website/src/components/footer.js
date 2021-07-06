@@ -14,16 +14,16 @@ const Footer = () => (
     <footer className="bg-secondary text-center">
         <div className="container pt-3">
             <section>
-                <Link className="btn btn-outline-light btn-floating m-1" to="https://twitter.com/nickel_lang" role="button"
+                <Link className="btn text-black btn-outline btn-floating m-1" to="https://twitter.com/nickel_lang" role="button"
                 ><FontAwesomeIcon color="black" icon={faTwitter}/></Link>
 
-                <Link className="btn btn-outline-light btn-floating m-1" to="https://github.com/tweag/nickel" role="button"
+                <Link className="btn btn-outline btn-floating m-1" to="https://github.com/tweag/nickel" role="button"
                 ><FontAwesomeIcon color="black" icon={faGithub}/></Link>
 
-                <Link className="btn btn-outline-light btn-floating m-1" to="https://github.com/tweag/nickel/discussions" role="button"
+                <Link className="btn btn-outline btn-floating m-1" to="https://github.com/tweag/nickel/discussions" role="button"
                 ><FontAwesomeIcon color="black" icon={faComments}/></Link>
 
-                <Link className="btn btn-outline-light btn-floating m-1 ml-4" to="#" role="button"
+                <Link className="btn btn-outline-dark btn-floating m-1 ml-4" to="#" role="button"
                 ><FontAwesomeIcon color="black" icon={faArrowUp}/></Link>
             </section>
         </div>
