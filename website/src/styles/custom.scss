@@ -23,7 +23,7 @@ $theme-colors: (
 
 @mixin link-theme($color) {
   $selected: map.get($theme-colors, $color);
-  @include link(color.adjust($selected, $lightness: -20%));
+  @include link(color.adjust($selected, $lightness: -25%));
 }
 
 .link-primary {
