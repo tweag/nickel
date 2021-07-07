@@ -1,0 +1,38 @@
+name: Website
+on:
+  pull_request:
+  push:
+    branches:
+      - "master"
+jobs:
+  deploy-to-netlify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 14
+
+      - run: npm ci --only=production
+        working-directory: website/
+
+      - run: npm run build
+        working-directory: website/
+
+      - name: Deploy to Netlify
+        uses: nwtgck/actions-netlify@v1.2
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        with:
+          production-branch: 'master'
+          production-deploy: ${{ github.event_name == 'push' }}
+          publish-dir: './website/public'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          deploy-message: 'Deploy from GitHub Actions'
+          enable-pull-request-comment: true
+          enable-commit-comment: true
+          enable-commit-status: true
+          overwrites-pull-request-comment: false
+        if: github.repository == 'tweag/nickel'

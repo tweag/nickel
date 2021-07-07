@@ -1,0 +1,251 @@
+.main-title {
+    font-size: 3em;
+    line-height: 1.5;
+}
+
+.main-subtitle {
+    font-size: 2em;
+}
+
+.main-text {
+    font-size: 1.5em;
+    line-height: 1.3;
+}
+
+.secondary-text {
+    font-size: 1.3em;
+    line-height: 1.2;
+}
+
+.main-container {
+    padding-top: 5em;
+    padding-bottom: 5em;
+}
+
+.content-main-container {
+    margin-top: 5em;
+    padding-bottom: 5em;
+}
+
+.playground-main-container {
+    margin-top: 5em;
+    margin-bottom: 5em;
+    height: 80vh;
+}
+
+.playground-terminal {
+    height: 100%;
+    width: 100%;
+}
+
+.playground-tab {
+    margin-top: 2.5em;
+    margin-bottom: 0.5em;
+    width: 100%;
+}
+
+.playground-container {
+    width: 100%;
+}
+
+.playground-terminal-container {
+    max-height: 100%;
+    padding: 10px;
+    overflow-y: scroll;
+    overflow-x: hidden;
+}
+
+#playground-input {
+    width: 100%;
+    height: 100%;
+}
+
+.playground-nav-item {
+    color: black;
+    cursor: pointer;
+}
+
+.playground-nav-item.active {
+    color: black !important;
+}
+
+.navbar {
+    font-size: 1.2em;
+}
+
+.section-block {
+    padding-top: 12.5em;
+    padding-bottom: 12.5em;
+}
+
+.first-section-block {
+    padding-top: 7.5em;
+    padding-bottom: 12.5em;
+}
+
+.last-section-block {
+    padding-top: 12.5em;
+}
+
+.landingpage-column {
+    padding-left: 2em;
+    padding-right: 2em;
+}
+
+.landingpage-playground-wrapper {
+    margin-top: 5em;
+}
+
+.landingpage-error {
+    color: #D44045;
+}
+
+.logo {
+    height: auto;
+    width: 100px;
+    vertical-align: middle;
+    margin-right: 0.3em;
+}
+
+.logo-navbar {
+    height: auto;
+    width: 50px;
+    vertical-align: middle;
+    margin-right: 0.3em;
+}
+
+@font-face {
+    font-family: "Century Gothic";
+    src: url('../fonts/century-gothic.woff')
+}
+
+@font-face {
+    font-family: "Bureau Grotesque";
+    src: url('../fonts/bureau-grotesque-55-regular.woff')
+}
+
+.nickel {
+    font-family: "Century Gothic";
+}
+
+.title-font, h1, h2, h3 {
+    font-family: "Bureau Grotesque";
+}
+
+.list-elt {
+    padding-top: 0.2em;
+    padding-bottom: 0.2em;
+}
+
+.abstract-illustration {
+    height: 6em;
+}
+
+.code {
+    word-wrap: normal;
+    background-color: #f8f9fa;
+    padding: 1rem;
+}
+
+.code pre {
+    display: block;
+}
+
+.code pre > code {
+    padding: 0;
+    margin: 0;
+    word-break: normal;
+    white-space: pre;
+    border: 0;
+}
+
+.full-page {
+    min-height: 100vh;
+}
+
+.overflow-scroll {
+    overflow: scroll;
+}
+
+.asciinema-iframe {
+    width: 100%;
+    height: 100%;
+}
+
+.ansi-monokai {
+    background: #2F3129;
+    color: #8F908A;
+}
+
+.ansi-monokai code {
+    color: #8F908A;
+}
+
+.ansi-black-bg {
+    color: #002b36;
+}
+
+.ansi-black-fg .ansi-bright-black-fg {
+    color: #073642;
+}
+
+.ansi-green-bg {
+    color: #586e75;
+}
+
+.ansi-yellow-bg {
+    color: #657b83;
+}
+
+.ansi-blue-bg {
+    color: #839496;
+}
+
+.ansi-cyan-bg {
+    color: #93a1a1;
+}
+
+.ansi-white-fg .ansi-bright-white-fg {
+    color: #eee8d5;
+}
+
+.ansi-white-bg {
+    color: #fdf6e3;
+}
+
+.ansi-yellow-fg .ansi-bright-yellow-fg {
+    color: #b58900;
+}
+
+.ansi-red-bg {
+    color: #cb4b16;
+}
+
+.ansi-red-fg, .ansi-bright-red-fg {
+    color: #dc322f;
+}
+
+.ansi-magenta-fg, .ansi-bright-magenta-fg {
+    color: #d33682;
+}
+
+.ansi-magenta-fb {
+    color: #6c71c4;
+}
+
+.ansi-blue-fg, .ansi-bright-blue-fg {
+    color: #268bd2;
+}
+
+.ansi-cyan-fg, .ansi-bright-cyan-fg {
+    color: #2aa198;
+}
+
+.ansi-green-fg, .ansi-bright-green-fg {
+    color: #859900;
+}
+
+.ansi-bright-black-fg, .ansi-bright-red-fg, .ansi-bright-green-fg, .ansi-bright-yellow-fg,
+.ansi-bright-blue-fg, .ansi-bright-magenta-fg, .ansi-bright-cyan-fg, .ansi-bright-white-fg {
+    font-weight: bold;
+}

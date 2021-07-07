@@ -1,0 +1,48 @@
+{
+  "name": "nickel-lang.org",
+  "version": "1.0.0",
+  "private": true,
+  "description": "nickel-lang.org",
+  "author": "Yann Hamdaoui",
+  "keywords": [
+    "gatsby"
+  ],
+  "scripts": {
+    "develop": "gatsby develop",
+    "start": "gatsby develop",
+    "build": "gatsby build",
+    "serve": "gatsby serve",
+    "clean": "gatsby clean"
+  },
+  "dependencies": {
+    "@fortawesome/fontawesome-svg-core": "^1.2.35",
+    "@fortawesome/free-brands-svg-icons": "^5.15.3",
+    "@fortawesome/free-solid-svg-icons": "^5.15.3",
+    "@fortawesome/react-fontawesome": "^0.1.14",
+    "@loadable/component": "^5.15.0",
+    "ace-builds": "^1.4.12",
+    "ansi-to-react": "^6.1.5",
+    "bootstrap": "^4.6.0",
+    "create-react-class": "^15.7.0",
+    "gatsby": "^3.2.1",
+    "gatsby-plugin-fontawesome-css": "^1.1.0",
+    "gatsby-plugin-image": "^1.3.0",
+    "gatsby-plugin-react-helmet": "^4.3.0",
+    "gatsby-plugin-sass": "^4.8.0",
+    "gatsby-plugin-sharp": "^3.3.0",
+    "gatsby-remark-prismjs": "^5.0.0",
+    "gatsby-source-filesystem": "^3.3.0",
+    "gatsby-transformer-sharp": "^3.3.0",
+    "jquery": "^3.6.0",
+    "nickel-repl": "file:nickel-repl",
+    "popper.js": "^1.16.1",
+    "prismjs": "^1.23.0",
+    "react": "^17.0.1",
+    "react-ace": "^9.4.0",
+    "react-bootstrap": "^1.5.2",
+    "react-bootstrap-icons": "^1.5.0",
+    "react-dom": "^17.0.1",
+    "react-helmet": "^6.1.0",
+    "sass": "^1.35.1"
+  }
+}
