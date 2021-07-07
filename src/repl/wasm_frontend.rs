@@ -320,6 +320,7 @@ pub fn repl_input(state: &mut REPLState, line: &str) -> WASMInputResult {
 }
 
 /// Evaluate an input in the WASM REPL and serialize it.
+#[wasm_bindgen]
 pub fn repl_serialize(
     state: &mut REPLState,
     format: WASMExportFormat,
