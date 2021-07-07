@@ -52,7 +52,7 @@ impl From<Term> for EvalResult {
 pub trait REPL {
     /// Evaluate an expression, which can be either a standard term or a toplevel let-binding.
     fn eval(&mut self, exp: &str) -> Result<EvalResult, Error>;
-    /// Evaluate an expression fully, which can be either a standard term or a toplevel let-binding.
+    /// Fully evaluate an expression, which can be either a standard term or a toplevel let-binding.
     fn eval_full(&mut self, exp: &str) -> Result<EvalResult, Error>;
     /// Load the content of a file in the environment. Return the loaded record.
     fn load(&mut self, path: impl AsRef<OsStr>) -> Result<RichTerm, Error>;
@@ -99,47 +99,50 @@ impl REPLImpl {
         self.type_env = typecheck::Envs::mk_global(&self.eval_env);
         Ok(())
     }
-}
 
-fn generic_eval<F>(repl: &mut REPLImpl, eval_f: F, exp: &str) -> Result<EvalResult, Error>
-where
-    F: Fn(RichTerm, &Environment, &mut Cache) -> Result<Term, EvalError>,
-{
-    let file_id = repl.cache.add_string(
-        format!("repl-input-{}", InputNameCounter::next()),
-        String::from(exp),
-    );
+    fn eval_(&mut self, exp: &str, eval_full: bool) -> Result<EvalResult, Error> {
+        let eval_function = if eval_full {
+            eval::eval_full
+        } else {
+            eval::eval
+        };
 
-    match repl
-        .parser
-        .parse(file_id, lexer::Lexer::new(exp))
-        .map_err(|err| ParseError::from_lalrpop(err, file_id))?
-    {
-        ExtendedTerm::RichTerm(t) => {
-            typecheck::type_check_in_env(&t, &repl.type_env, &repl.cache)?;
-            let t = transformations::transform(t, &mut repl.cache)?;
-            Ok(eval_f(t, &repl.eval_env, &mut repl.cache)?.into())
-        }
-        ExtendedTerm::ToplevelLet(id, t) => {
-            typecheck::type_check_in_env(&t, &repl.type_env, &repl.cache)?;
-            typecheck::Envs::env_add(&mut repl.type_env, id.clone(), &t);
+        let file_id = self.cache.add_string(
+            format!("repl-input-{}", InputNameCounter::next()),
+            String::from(exp),
+        );
 
-            let t = transformations::transform(t, &mut repl.cache)?;
+        match self
+            .parser
+            .parse(file_id, lexer::Lexer::new(exp))
+            .map_err(|err| ParseError::from_lalrpop(err, file_id))?
+        {
+            ExtendedTerm::RichTerm(t) => {
+                typecheck::type_check_in_env(&t, &self.type_env, &self.cache)?;
+                let t = transformations::transform(t, &mut self.cache)?;
+                Ok(eval_function(t, &self.eval_env, &mut self.cache)?.into())
+            }
+            ExtendedTerm::ToplevelLet(id, t) => {
+                typecheck::type_check_in_env(&t, &self.type_env, &self.cache)?;
+                typecheck::Envs::env_add(&mut self.type_env, id.clone(), &t);
 
-            let local_env = repl.eval_env.clone();
-            eval::env_add(&mut repl.eval_env, id.clone(), t, local_env);
-            Ok(EvalResult::Bound(id))
+                let t = transformations::transform(t, &mut self.cache)?;
+
+                let local_env = self.eval_env.clone();
+                eval::env_add(&mut self.eval_env, id.clone(), t, local_env);
+                Ok(EvalResult::Bound(id))
+            }
         }
     }
 }
 
 impl REPL for REPLImpl {
     fn eval(&mut self, exp: &str) -> Result<EvalResult, Error> {
-        generic_eval(self, eval::eval, exp)
+        self.eval_(exp, false)
     }
 
     fn eval_full(&mut self, exp: &str) -> Result<EvalResult, Error> {
-        generic_eval(self, eval::eval_full, exp)
+        self.eval_(exp, true)
     }
 
     fn load(&mut self, path: impl AsRef<OsStr>) -> Result<RichTerm, Error> {

@@ -95,7 +95,7 @@ pub fn serialize<R: REPL>(
     format: ExportFormat,
     input: &str,
 ) -> Result<InputResult, InputError> {
-    repl.eval(input)
+    repl.eval_full(input)
         .and_then(|eval_res| match eval_res {
             EvalResult::Evaluated(t) => serialize::to_string(format, &t.into())
                 .map(InputResult::Success)
