@@ -47,29 +47,6 @@ function getStringFromWasm0(ptr, len) {
     return cachedTextDecoder.decode(getUint8Memory0().subarray(ptr, ptr + len));
 }
 
-let cachegetInt32Memory0 = null;
-function getInt32Memory0() {
-    if (cachegetInt32Memory0 === null || cachegetInt32Memory0.buffer !== wasm.memory.buffer) {
-        cachegetInt32Memory0 = new Int32Array(wasm.memory.buffer);
-    }
-    return cachegetInt32Memory0;
-}
-/**
-* Return a new instance of the WASM REPL, with the standard library loaded.
-* @returns {WASMInitResult}
-*/
-export function repl_init() {
-    var ret = wasm.repl_init();
-    return WASMInitResult.__wrap(ret);
-}
-
-function _assertClass(instance, klass) {
-    if (!(instance instanceof klass)) {
-        throw new Error(`expected instance of ${klass.name}`);
-    }
-    return instance.ptr;
-}
-
 let WASM_VECTOR_LEN = 0;
 
 const lTextEncoder = typeof TextEncoder === 'undefined' ? (0, module.require)('util').TextEncoder : TextEncoder;
@@ -126,6 +103,33 @@ function passStringToWasm0(arg, malloc, realloc) {
     WASM_VECTOR_LEN = offset;
     return ptr;
 }
+
+function isLikeNone(x) {
+    return x === undefined || x === null;
+}
+
+let cachegetInt32Memory0 = null;
+function getInt32Memory0() {
+    if (cachegetInt32Memory0 === null || cachegetInt32Memory0.buffer !== wasm.memory.buffer) {
+        cachegetInt32Memory0 = new Int32Array(wasm.memory.buffer);
+    }
+    return cachegetInt32Memory0;
+}
+/**
+* Return a new instance of the WASM REPL, with the standard library loaded.
+* @returns {WASMInitResult}
+*/
+export function repl_init() {
+    var ret = wasm.repl_init();
+    return WASMInitResult.__wrap(ret);
+}
+
+function _assertClass(instance, klass) {
+    if (!(instance instanceof klass)) {
+        throw new Error(`expected instance of ${klass.name}`);
+    }
+    return instance.ptr;
+}
 /**
 * Evaluate an input in the WASM REPL.
 * @param {REPLState} state
@@ -137,6 +141,21 @@ export function repl_input(state, line) {
     var ptr0 = passStringToWasm0(line, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     var len0 = WASM_VECTOR_LEN;
     var ret = wasm.repl_input(state.ptr, ptr0, len0);
+    return WASMInputResult.__wrap(ret);
+}
+
+/**
+* Evaluate an input in the WASM REPL and serialize it.
+* @param {REPLState} state
+* @param {any} format
+* @param {string} line
+* @returns {WASMInputResult}
+*/
+export function repl_serialize(state, format, line) {
+    _assertClass(state, REPLState);
+    var ptr0 = passStringToWasm0(line, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len0 = WASM_VECTOR_LEN;
+    var ret = wasm.repl_serialize(state.ptr, addHeapObject(format), ptr0, len0);
     return WASMInputResult.__wrap(ret);
 }
 
@@ -304,6 +323,15 @@ export function __wbindgen_object_clone_ref(arg0) {
 export function __wbindgen_json_parse(arg0, arg1) {
     var ret = JSON.parse(getStringFromWasm0(arg0, arg1));
     return addHeapObject(ret);
+};
+
+export function __wbindgen_string_get(arg0, arg1) {
+    const obj = getObject(arg1);
+    var ret = typeof(obj) === 'string' ? obj : undefined;
+    var ptr0 = isLikeNone(ret) ? 0 : passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len0 = WASM_VECTOR_LEN;
+    getInt32Memory0()[arg0 / 4 + 1] = len0;
+    getInt32Memory0()[arg0 / 4 + 0] = ptr0;
 };
 
 export function __wbindgen_throw(arg0, arg1) {

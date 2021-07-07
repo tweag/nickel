@@ -13,6 +13,14 @@ export function repl_init(): WASMInitResult;
 */
 export function repl_input(state: REPLState, line: string): WASMInputResult;
 /**
+* Evaluate an input in the WASM REPL and serialize it.
+* @param {REPLState} state
+* @param {any} format
+* @param {string} line
+* @returns {WASMInputResult}
+*/
+export function repl_serialize(state: REPLState, format: any, line: string): WASMInputResult;
+/**
 * Return codes of the WASM REPL.
 *
 * wasm-bindgen doesn't support exporting arbitrary enumeration. Thus we have to encode these
