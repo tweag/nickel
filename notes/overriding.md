@@ -772,7 +772,7 @@ This RFC proposes solution 2. This raises some difficulties:
     in practice, for the merge expression `val1 & val2` may be obfuscated by some
     program transformations or evaluation artifacts, but doable.
 
-  * (b) A more extreme take is to do to generalize this it to any term: a
+  * (b) A more extreme take is to generalize this to any term: a
     merge expression would behave like a lazy datatype `Merge(t1,t2)` with
     respect to evaluation. Evaluating it would amount to automatically apply
     `eval : Merge(t1,t2) -> t1 & t2` with a potential merge function, which
@@ -786,12 +786,111 @@ majority, and is still compatible with a future upgrade to (b).
 
 ## Operational semantics
 
-This section define more precisely the operational semantics of merging with the
+This section defines precisely the operational semantics of merging with the
 choices previously described.
+
+### Merge AST
+
+**THIS IS WORK IN PROGRESS FROM HERE**
+
+As explained in the [custom merge function section](custom-merge-function),
+supporting merge functions requires to re-interpret a merge expression a
+posteriori. Thus, in one way or another, we must keep track of the original AST
+of a merge expression if we want to implement this in all generality. Let us
+define the merge AST of an expression. A merge AST is a binary tree with nodes
+`Merge(ast1, meta1, ast2, meta2)`, that are labelled by meta-values `meta1` and
+`meta2`, and leafs `Exp(e)`, labeled with an expression `e`. In this context, a
+meta-value is a record which field names corresponds to meta attributes
+`custom,priority,default,Contract,etc.` and values are the corresponding value
+of the attribute. Field are not necessarily all defined, excepted `priority`,
+which must always be defined. In Rust syntax:
+
+```rust
+struct MetaData {
+    priority: Priority,
+    merge: Option<Expression>,
+    contracts: Option<Vec<Contract>>,
+    // ....
+}
+
+enum AbsMergeAST<T> {
+    Merge(T, T),
+    Exp(Expression)
+}
+
+// This kind of recursive type is illegal in Rust, but this is not important
+type MergeAST = AbsMergeAST<(MergeAST, MetaData)>;
+```
+
+We define `mergeAst: Expression -> MergeAST` in the following way:
+
+```
+// we maintain an environment
+env
+
+// if priority is not set, we add priority = normal in the RHS
+metaData (e | attr = val, ...) ::= { attr = val, ... }                  if priority is set
+                                   { piority = normal, attr = val, ...} otherwise
+
+mergeAst e ::= (mergeAstAux e, metaData e)
+
+mergeAstAux (e1 & e2) = Merge(mergeAst(e1), mergeAst(e2))
+
+mergeAstAux (const @ e)
+mergeAstAux (f x @ e)
+mergeAstAux (switch exp { bindings } @ e)
+mergeAstAux (whnf @ e)
+mergeAstAux (primop exp1 exp2 ... @ e) = Exp(e)
+
+mergeAstAux (let x = val in exp) = mergeAst(exp), env ::= env,x <- val
+mergeAstAux x = mergeAstAux (env(x))
+
+// Should merge AST cross import boundaries?
+mergeAstAux (import path) = ?
+```
+
+One important problem, stated in the [custom merge function
+section](custom-merge-function) (although put differently), is that the merge
+AST is not stable by reduction. In particular, evaluating the content of a
+variable may rewrite a whole subtree to a leaf. Hence, what we care about is the
+initial merge tree of an expression, before any reduction happens.
+
+Then, we need to extract a potential merge fonction from this AST:
+
+```
+mergeFunctions (Merge(ast1,_),Merge(ast2,_)) = mergeFunctions ast1 @ mergeFunctions ast2
+mergeFunctions (Leaf(e,meta)) = [f] if meta.merge == Some(f)
+                                []  otherwise
+```
+
+### Semantics
+
+Let us define the evaluation of merge AST parametrized by a
+merge function:
+
+```
+interpret (Merge(ast1,meta1),Merge(ast2,meta2)) f =
+    f {value = interpret(astMin), prio = metaMin.priority}
+      {value = interpret(astMax), prio = metaMax.priority}
+    where
+      i s.t min(meta1.priority, meta2.priority) = metai.priority 
+      astMin = asti, metaMin = metai
+      astMax = ast(3-i), metaMax = meta(3-i)
+```
+
+We can finally define the evaluation of a merge AST:
+
+```
+eval ast =
+  let custom = mergeFunctions ast in
+  if length custom > 1 then fail
+  else if length custom == 1 then
+    interpret ast (head custom)
+  else
+    interpret ast builtinMerge
+```
 
 **TODO**
 
-- delimit the AST of a merge expression
-- find out all the custom merge functions. They must all be the same in one AST,
-    or this is an error.
-- interpret the AST accordingly with this merge function and given priorities
+- implementation: separate merge AST/merge expression from values. Use a `force`
+    or `eval` semantics to be correct w.r.t lazy evaluation.
