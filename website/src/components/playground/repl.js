@@ -1,5 +1,5 @@
 import * as React from 'react';
-import {repl_init, repl_input} from "nickel-repl";
+import {repl_init, repl_input, repl_serialize} from "nickel-repl";
 import Ansi from "ansi-to-react";
 import {EDITOR_SEND_EVENT, REPL_RUN_EVENT} from "./events";
 import modes from './modes';
@@ -103,20 +103,6 @@ export default class Repl extends React.Component {
     };
 
     /**
-     * Unescape serialized output_repl. To serialize an input, the REPL component wraps the program in a call to `builtins.serialize`.
-     * The returned result is a Nickel string with escaped characters. This function unescapes them.
-     * @param result String
-     * @returns String
-     */
-    unescape = (result) => {
-        if (result.charAt(0) === '"' && result.slice(result.length - 2, result.length) === '"\n') {
-            return result.slice(1, result.length - 2).replaceAll('\\"', '"').replaceAll('\\\\', '\\')
-        } else {
-            return result;
-        }
-    };
-
-    /**
      * Run an input and write the result in the output.
      * @param input String
      * @returns {Promise<number>} A promise resolving to the return code of the execution of the Nickel REPL, or -1 if the REPL wasn't loaded.
@@ -129,12 +115,15 @@ export default class Repl extends React.Component {
 
         this.setState({lastInput: input});
 
+        let result;
+
         if (this.props.mode !== modes.REPL) {
-            const format = this.props.mode.charAt(0).toUpperCase() + this.props.mode.slice(1);
-            input = `builtins.serialize \`${format} (${input})`;
+            result = repl_serialize(this.repl, this.props.mode, input);
+        }
+        else {
+            result = repl_input(this.repl, input);
         }
 
-        let result = repl_input(this.repl, input);
         let task;
 
         if (this.props.mode === modes.REPL) {
@@ -149,11 +138,9 @@ export default class Repl extends React.Component {
                 if (resultAlone.tag === nickelCodes.result.ERROR) {
                     result = resultAlone;
                 }
-
-                task = this.write(result.msg);
-            } else {
-                task = this.write(this.unescape(result.msg));
             }
+
+            task = this.write(result.msg);
         }
 
         // Dispatch the result as an event, so that the editor or other components can react to the outcome of the last input
