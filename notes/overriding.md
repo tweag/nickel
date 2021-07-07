@@ -277,15 +277,15 @@ etc.) and their assignment must be made separately.
       type = types.listOf types.path;
     };
   }
-  
+
   # Config
   [..]
   someModule.paths = [foo/bar];
-  
+
   # Other config
   [..]
   someModule.paths = [/bar/baz];
-  
+
   # Resulting config: [foo/bar /bar/baz]
   ```
 
@@ -340,7 +340,7 @@ too limited for Nix use cases.
 #### Limits
 
 - ~~**(EXP)**~~: One can only replace a value by another one. It is not
-     possible to add one to the previous value, for example. 
+     possible to add one to the previous value, for example.
 - ~~**(COMP)**~~: Overriding a record a second time is not possible
 
 ### Jsonnet
@@ -622,7 +622,7 @@ Example:
 
   bar | Str,
   //equivalent to `bar | Str | priority 0`
-  
+
   baz.boo.bor | priority -4 = "value",
 
   final | force = `CantOverrideMe,
@@ -642,7 +642,7 @@ new meta-values `default rec` and `force rec`, whose semantics are defined as:
 
 - `eval(expr | default rec)`: case of `eval(expr)`:
   * `{field1 = value1, .., fieldn = valuen} | annots`: `{field1 = (value1 | default rec aux), .., fieldn =
-      (valuen | default rec aux)} | annots` 
+      (valuen | default rec aux)} | annots`
   * `v | annots` if `v` is not a record: `v | defaulted(annots)` where
       `defaulted(annots)` is defined below.
 
@@ -793,17 +793,17 @@ choices previously described.
 
 **THIS IS WORK IN PROGRESS FROM HERE**
 
-As explained in the [custom merge function section](custom-merge-function),
-supporting merge functions requires to re-interpret a merge expression a
-posteriori. Thus, in one way or another, we must keep track of the original AST
-of a merge expression if we want to implement this in all generality. Let us
-define the merge AST of an expression. A merge AST is a binary tree with nodes
-`Merge(ast1, meta1, ast2, meta2)`, that are labelled by meta-values `meta1` and
-`meta2`, and leafs `Exp(e)`, labeled with an expression `e`. In this context, a
-meta-value is a record which field names corresponds to meta attributes
-`custom,priority,default,Contract,etc.` and values are the corresponding value
-of the attribute. Field are not necessarily all defined, excepted `priority`,
-which must always be defined. In Rust syntax:
+As explained in the [custom merge function section](#custom-merge-functions-2),
+supporting merge functions requires to potentially re-interpret a merge
+expression a posteriori. Thus, in one way or another, we must keep track of the
+original AST of a merge expression if we want to implement this in all
+generality. Let us define the merge AST of an expression. A merge AST is a
+binary tree with nodes `Merge(ast1, meta1, ast2, meta2)`, that are labelled by
+meta-values `meta1` and `meta2`, and leafs `Exp(e)`, labeled with an expression
+`e`. In this context, a meta-value is a (meta-)record which field names
+corresponds to meta attributes `custom,priority,default,contract` etc. Field are
+not necessarily all defined, excepted `priority`, which must always be defined.
+In Rust syntax:
 
 ```rust
 struct MetaData {
@@ -818,19 +818,19 @@ enum AbsMergeAST<T> {
     Exp(Expression)
 }
 
-// This kind of recursive type is illegal in Rust, but this is not important
+// This kind of recursive type is illegal in Rust, but this is irrelevant
 type MergeAST = AbsMergeAST<(MergeAST, MetaData)>;
 ```
 
 We define `mergeAst: Expression -> MergeAST` in the following way:
 
 ```
-// we maintain an environment
+// we maintain an environment of bindings
 env
 
-// if priority is not set, we add priority = normal in the RHS
-metaData (e | attr = val, ...) ::= { attr = val, ... }                  if priority is set
-                                   { piority = normal, attr = val, ...} otherwise
+metaData (e | attr = val, ...) ::=
+  { attr = val, ... }                    if priority is set
+  { priority = normal, attr = val, ...}  otherwise
 
 mergeAst e ::= (mergeAstAux e, metaData e)
 
@@ -845,37 +845,45 @@ mergeAstAux (primop exp1 exp2 ... @ e) = Exp(e)
 mergeAstAux (let x = val in exp) = mergeAst(exp), env ::= env,x <- val
 mergeAstAux x = mergeAstAux (env(x))
 
-// Should merge AST cross import boundaries?
+// Should mergeAst cross import boundaries?
 mergeAstAux (import path) = ?
 ```
 
 One important problem, stated in the [custom merge function
-section](custom-merge-function) (although put differently), is that the merge
+section](#custom-merge-function) (although put differently), is that the merge
 AST is not stable by reduction. In particular, evaluating the content of a
-variable may rewrite a whole subtree to a leaf. Hence, what we care about is the
-initial merge tree of an expression, before any reduction happens.
+variable may rewrite a whole subtree to a leaf, forgetting the original
+information. Hence, what is important is the initial merge tree of an
+expression, before any reduction happens.
 
-Then, we need to extract a potential merge fonction from this AST:
+We then need to extract a potential merge fonction from this AST:
 
 ```
-mergeFunctions (Merge(ast1,_),Merge(ast2,_)) = mergeFunctions ast1 @ mergeFunctions ast2
+mergeFunction (Merge(ast1,_),Merge(ast2,_)) = mergeFunctions ast1 @ mergeFunctions ast2
 mergeFunctions (Leaf(e,meta)) = [f] if meta.merge == Some(f)
                                 []  otherwise
 ```
 
 ### Semantics
 
-Let us define the evaluation of merge AST parametrized by a
-merge function:
+We define the evaluation of merge AST parametrized by a merge function:
 
 ```
-interpret (Merge(ast1,meta1),Merge(ast2,meta2)) f =
+Priority = Number | -inf | +inf
+
+type MergeFunction =
+  {value: Dyn, priority: Priority} ->
+  {value: Dyn, priority: Priority} -> Dyn
+
+interpret (Merge(ast_1,meta_1),Merge(ast_2,meta_2)) f =
     f {value = interpret(astMin), prio = metaMin.priority}
       {value = interpret(astMax), prio = metaMax.priority}
     where
-      i s.t min(meta1.priority, meta2.priority) = metai.priority 
-      astMin = asti, metaMin = metai
-      astMax = ast(3-i), metaMax = meta(3-i)
+      i s.t min(meta_1.priority, meta_2.priority) = meta_i.priority
+      j = 1  if i == 0
+          0  otherwise
+      astMin = ast_i, metaMin = meta_i
+      astMax = ast_j, metaMax = meta_j
 ```
 
 We can finally define the evaluation of a merge AST:
@@ -892,5 +900,6 @@ eval ast =
 
 **TODO**
 
-- implementation: separate merge AST/merge expression from values. Use a `force`
-    or `eval` semantics to be correct w.r.t lazy evaluation.
+- implementation: separate merge AST/merge expression from values, as is already
+  the case with meta values. Use a `force` or `eval` semantics to be correct
+  w.r.t lazy evaluation.
