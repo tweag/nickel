@@ -1,8 +1,9 @@
 //! Web assembly interface to the REPL.
-use super::simple_frontend::{input, InputError, InputResult};
+use super::simple_frontend::{input, serialize, InputError, InputResult};
 use super::{REPLImpl, REPL};
 use crate::cache::Cache;
 use crate::error::ToDiagnostic;
+use crate::serialize::ExportFormat;
 use codespan::{FileId, Files};
 use codespan_reporting::{
     diagnostic::{Diagnostic, Label, LabelStyle, Severity},
@@ -10,6 +11,7 @@ use codespan_reporting::{
 };
 use serde::Serialize;
 use serde_repr::Serialize_repr;
+use std::convert::TryInto;
 use std::io::Cursor;
 use wasm_bindgen::prelude::*;
 
@@ -243,6 +245,31 @@ impl From<InputResult> for WASMInputResult {
 #[wasm_bindgen]
 pub struct REPLState(REPLImpl);
 
+/// WASM-compatible wrapper around `serialize::ExportFormat`.
+#[wasm_bindgen]
+pub enum WASMExportFormat {
+    Raw = "raw",
+    Json = "json",
+    Yaml = "yaml",
+    Toml = "toml",
+}
+
+pub type ExportFormaParseError = ();
+
+impl TryInto<ExportFormat> for WASMExportFormat {
+    type Error = ExportFormaParseError;
+
+    fn try_into(self) -> Result<ExportFormat, ExportFormaParseError> {
+        match self {
+            WASMExportFormat::Raw => Ok(ExportFormat::Raw),
+            WASMExportFormat::Json => Ok(ExportFormat::Json),
+            WASMExportFormat::Yaml => Ok(ExportFormat::Yaml),
+            WASMExportFormat::Toml => Ok(ExportFormat::Toml),
+            _ => Err(()),
+        }
+    }
+}
+
 /// Render error diagnostics as a string.
 pub fn diags_to_string(cache: &mut Cache, diags: &Vec<Diagnostic<FileId>>) -> String {
     let mut buffer = Ansi::new(Cursor::new(Vec::new()));
@@ -288,6 +315,17 @@ pub fn repl_init() -> WASMInitResult {
 #[wasm_bindgen]
 pub fn repl_input(state: &mut REPLState, line: &str) -> WASMInputResult {
     input(&mut state.0, line)
+        .map(WASMInputResult::from)
+        .unwrap_or_else(|err| WASMInputResult::error(state.0.cache_mut(), err))
+}
+
+/// Evaluate an input in the WASM REPL and serialize it.
+pub fn repl_serialize(
+    state: &mut REPLState,
+    format: WASMExportFormat,
+    line: &str,
+) -> WASMInputResult {
+    serialize(&mut state.0, format.try_into().unwrap_or_default(), line)
         .map(WASMInputResult::from)
         .unwrap_or_else(|err| WASMInputResult::error(state.0.cache_mut(), err))
 }

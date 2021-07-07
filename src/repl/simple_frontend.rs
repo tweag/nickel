@@ -2,6 +2,7 @@
 //! The output may contain ANSI escape codes.
 use super::{command::Command, *};
 use crate::error::Error;
+use crate::{serialize, serialize::ExportFormat};
 use std::io::Cursor;
 
 /// Add a failure mode to usual errors for features that are not supported by all REPLs (for
@@ -86,4 +87,20 @@ pub fn input<R: REPL>(repl: &mut R, line: &str) -> Result<InputResult, InputErro
             })
             .map_err(InputError::from)
     }
+}
+
+/// Evaluate an input and serialize the result.
+pub fn serialize<R: REPL>(
+    repl: &mut R,
+    format: ExportFormat,
+    input: &str,
+) -> Result<InputResult, InputError> {
+    repl.eval(input)
+        .and_then(|eval_res| match eval_res {
+            EvalResult::Evaluated(t) => serialize::to_string(format, &t.into())
+                .map(InputResult::Success)
+                .map_err(Error::from),
+            EvalResult::Bound(_) => Ok(InputResult::Success(String::new())),
+        })
+        .map_err(InputError::from)
 }
