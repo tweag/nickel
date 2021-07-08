@@ -43,7 +43,7 @@ This quickly becomes unmanageable for large records, which are common in Nix and
 Nixpkgs. In functional languages, this is usually better done using what's
 called functional update. Functional update is an operation that takes the
 original record, one or several field to update, the corresponding new value,
-and return a new updated record. It has the same semantics as our first snippet,
+and returns a new updated record. It has the same semantics as our first snippet,
 but doesn't require to rewrite all unchanged fields.
 
 It can have a builtin syntax, such as OCaml's `with`: `{record with field =
@@ -52,7 +52,8 @@ new_value}`, Haskell's `record {field = newValue}`, Nix `//` operator `record //
 ..record}`. There are more advanced programming techniques that make updating
 deeply nested records ergonomic such as
 [Lenses](https://www.fpcomplete.com/haskell/tutorial/lens/) in Haskell, but
-these rely too heavily on advanced language and typing features to be practical.
+these rely too heavily on advanced language and typing features to be practical
+in Nickel.
 
 In Nickel, we can already do a functional update using merging, although the
 updated field must have been marked as `default`:
@@ -101,12 +102,12 @@ languages. Let us sketch some general traits of such mechanisms as a framework
 for comparison:
 
 - **(ERG)**: Ergonomy. A mechanism is ergonomic if it avoids
-  complex encodings for overridable records, it doesn't require extra library
+  complex encodings for overridable records, if it doesn't require extra library
   functions, and so on.  It would ideally work out of the box with the native
   records of the language.
 - **(NEST)**: Nested field overriding. The ease of overriding nested fields,
-  such as `bar`'s value in `{foo = {bar = "baz"}}`.  Ideally, overriding nested
-  fields is no harder than standard fields.
+  such as the value of `bar` in `{foo = {bar = "baz"}}`.  Ideally, overriding
+  nested fields is no harder than standard fields.
 - **(COMP)**: Composability. Overriding is composable when one can seamlessly
     apply several overrides to an initial record.
 - **(EXPR)**: Expressivity. An expressive mechanism is one that allow to express
@@ -129,8 +130,8 @@ having it implemented in user code leads to some general well-known issues:
   vanilla native records.
 - Several competing mechanisms have been implemented in slightly different
   contexts. Overriding in general is already difficult for beginners, but having
-  to learn several ones, all similar but still different, is hard.
-- User land implementations don't have a first-class access to information such
+  to learn several ones, all similar but still different, is even harder.
+- User-land implementations don't have a first-class access to information such
   as source location and metavalues. In a dynamic language, this can make good
   error reporting much harder.
 - It is potentially harder to make user land implementations efficient.
@@ -159,7 +160,7 @@ rRepr = self: {
 `self` is a self-reference, in the style of `this` in object oriented languages.
 It is computed as a
 [fixpoint](https://en.wikipedia.org/wiki/Fixed-point_combinator), simply
-realized by auto-application thanks to laziness:
+realized by auto-application in Nix, thanks to laziness:
 
 ```nix
 r = rRepr r
@@ -179,11 +180,12 @@ resultRepr = self: (rRepr (self // extension)) // extension
 The second outer update ensures that the final result is also set to `a = 2`,
 and not only the `a` appearing in `b`.
 
-Some details are left out, but this is the gist of it. See also
-[this pill on overriding](https://nixos.org/guides/nix-pills/override-design-pattern.html)
-or [this article on fixpoints in Nix](http://r6.ca/blog/20140422T142911Z.html).
+Some details are left out, but this is the gist of it. See also [the Nix pill on
+overriding](https://nixos.org/guides/nix-pills/override-design-pattern.html) or
+[this article on fixpoints in Nix](http://r6.ca/blog/20140422T142911Z.html).
 
 #### Limits
+
 - ~~**(ERG)**~~ Use a specific representation, rather than handling good old plain records
   (although the actual representation in Nixpkgs is more ergonomic than a plain
   function).
@@ -232,11 +234,12 @@ dedicated helper functions.
 - **(COMP)**: Composition is first-class.
 
 #### Limits
+
 - ~~**(ERG)**~~ Users still need to manipulate representations.
 - **order-dependency**: The result is order-dependent. Applying both `self:
   super: {a = super.a + 1}` and `self: super: {a = super.a / 2}` can give two
   different results depending on which one is the first layer. This also means
-  that overrides must be regrouped by layers, which is not necessarily the most
+  that overrides must be grouped by layers, which is not necessarily the most
   logical structure.
 - ~~**(NEST)**~~ Overriding nested fields is still clumsy:
    ```nix
@@ -451,7 +454,7 @@ locations, to the AST, the memory layout, the metadata, and so on.
 
 We first describe the ideas at a high-level. Then, we review the issue and
 challenges of this approach, and propose concrete solutions to overcome or
-mitigate them. Finally, technical operational semantics are laid out in a
+mitigate them. Finally, the precise operational semantics is laid out in a
 dedicated section.
 
 ### Recursive records & merging
