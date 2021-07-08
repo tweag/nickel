@@ -929,3 +929,7 @@ We can finally define the evaluation of merge:
 eval [| e1 & e2 |] = let t = mergeTree (e1 & e2) in
   interpret t (mergeFunction t)
 ```
+
+Please keep in mind that `mergeTree (e1 & e2)` refers to the **original** merge
+tree of this expression. It needs to be accessible even after evaluation by the
+implementation.
