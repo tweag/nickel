@@ -789,21 +789,49 @@ majority, and is still compatible with a future upgrade to (b).
 This section defines precisely the operational semantics of merging with the
 choices previously described.
 
-### Merge AST
-
 **THIS IS WORK IN PROGRESS FROM HERE**
 
 As explained in the [custom merge function section](#custom-merge-functions-2),
 supporting merge functions requires to potentially re-interpret a merge
-expression a posteriori. Thus, in one way or another, we must keep track of the
-original AST of a merge expression if we want to implement this in all
-generality. Let us define the merge AST of an expression. A merge AST is a
-binary tree with nodes `Merge(ast1, meta1, ast2, meta2)`, that are labelled by
-meta-values `meta1` and `meta2`, and leafs `Exp(e)`, labeled with an expression
-`e`. In this context, a meta-value is a (meta-)record which field names
-corresponds to meta attributes `custom,priority,default,contract` etc. Field are
-not necessarily all defined, excepted `priority`, which must always be defined.
-In Rust syntax:
+expression a posteriori. If we want to implement the present proposal in all
+generality, we must keep track of the original merge expression.
+
+When a custom merge function is specified on a value that is then merged, we
+must answer the question: what operations do this function affect? For example:
+
+```
+let add = fun x y => x + y in
+
+let var = 1 & 1 in
+var & (1 | merge add) // result?
+(var | merge add) & 1 // result?
+
+((1 & 1) + (1 & 1)) & (1 | merge add) // result?
+((1 & 1) + (1 & 1) | merge add) & 1 // result?
+
+// file: somefile.ncl
+1 & 1
+// file: other.ncl
+(import "somefile") & (1 | merge add) // result?
+(import "somefile" | merge add) & 1 // result?
+```
+
+To do so, let us define the notion of *merge tree*.
+
+In the following, we will write "meta"-code (the code of the Nickel interpreter)
+in ML pseudo-code, with syntax as close as possible to Nickel (but more
+permissivie, allowing the definition of sum types for example). To distinguish
+this meta-code from Nickel expressions, we will use the quote syntax `[| exp
+|]`. For example, `eval [| 1 + 1 |] = 2` means that the value of the
+evaluation meta-function `eval` on the Nickel expression `e1 & e2` is `2`.
+
+### Merge tree
+
+A merge tree is a binary tree whose nodes are labelled by a `metadata`.  Leafs
+are labelled with both a `metadata` and an Nickel expression `e`. In this
+context, a `metadata` is a (meta)record which field names corresponds to meta
+attributes `custom,priority,default,contract` and so on. Fields are optional,
+excepted `priority`, which must always be defined. In Rust syntax:
 
 ```rust
 struct MetaData {
@@ -813,93 +841,91 @@ struct MetaData {
     // ....
 }
 
-enum AbsMergeAST<T> {
+enum AbsMergeTree<T> {
     Merge(T, T),
     Exp(Expression)
 }
 
-// This kind of recursive type is illegal in Rust, but this is irrelevant
-type MergeAST = AbsMergeAST<(MergeAST, MetaData)>;
+// This kind of recursive type is illegal in Rust but this is irrelevant here.
+type MergeTree = AbsMergeTree<(MergeTree, MetaData)>;
 ```
 
-We define `mergeAst: Expression -> MergeAST` in the following way:
+The function `mergeTree: Expression -> MergeTree` associates a merge tree to an
+expression:
 
 ```
-// we maintain an environment of bindings
-env
+// we maintain an environment of bindings in `env`
 
-metaData (e | attr = val, ...) ::=
+metaData [| e | attr = val, ... |] ::=
   { attr = val, ... }                    if priority is set
   { priority = normal, attr = val, ...}  otherwise
 
-mergeAst e ::= (mergeAstAux e, metaData e)
+mergeTree e ::= (absMergeTree e, metaData e)
 
-mergeAstAux (e1 & e2) = Merge(mergeAst(e1), mergeAst(e2))
+absMergeTree [| e1 & e2 |] = Merge(mergeTree(e1), mergeTree(e2))
 
-mergeAstAux (const @ e)
-mergeAstAux (f x @ e)
-mergeAstAux (switch exp { bindings } @ e)
-mergeAstAux (whnf @ e)
-mergeAstAux (primop exp1 exp2 ... @ e) = Exp(e)
+absMergeTree [| const @ e |]
+absMergeTree [| f x @ e |]
+absMergeTree [| switch exp { bindings } @ e |]
+absMergeTree [| whnf @ e |]
+absMergeTree [| primop exp1 exp2 ... @ e |] = Exp(e)
 
-mergeAstAux (let x = val in exp) = mergeAst(exp), env ::= env,x <- val
-mergeAstAux x = mergeAstAux (env(x))
+absMergeTree [| let x = val in exp |] = mergeTree exp; env := env,x <- val
+absMergeTree [| x |] = absMergeTree (env x) // Should we actually cross variables?
+                                      // or just have a leaf here?
 
-// Should mergeAst cross import boundaries?
-mergeAstAux (import path) = ?
+// Should mergeTree cross import boundaries?
+absMergeTree [| import path |] = ?
 ```
 
-One important problem, stated in the [custom merge function
-section](#custom-merge-function) (although put differently), is that the merge
-AST is not stable by reduction. In particular, evaluating the content of a
-variable may rewrite a whole subtree to a leaf, forgetting the original
-information. Hence, what is important is the initial merge tree of an
-expression, before any reduction happens.
-
-We then need to extract a potential merge fonction from this AST:
-
-```
-mergeFunction (Merge(ast1,_),Merge(ast2,_)) = mergeFunctions ast1 @ mergeFunctions ast2
-mergeFunctions (Leaf(e,meta)) = [f] if meta.merge == Some(f)
-                                []  otherwise
-```
+One crucial observation, already stated (although differently) in the [custom
+merge function section](#custom-merge-function), is that a merge tree is not
+stable by evaluation: `mergeTree (1 & 1) != mergeTree (1)`. As for record
+fields, we must always have access to the original merge tree associated with an
+expression so that.
 
 ### Semantics
 
-We define the evaluation of merge AST parametrized by a merge function:
+Now that we defined merge trees, we need to extract a potential merge fonction
+from it:
 
 ```
-Priority = Number | -inf | +inf
-
 type MergeFunction =
   {value: Dyn, priority: Priority} ->
   {value: Dyn, priority: Priority} -> Dyn
 
-interpret (Merge(ast_1,meta_1),Merge(ast_2,meta_2)) f =
-    f {value = interpret(astMin), prio = metaMin.priority}
-      {value = interpret(astMax), prio = metaMax.priority}
-    where
-      i s.t min(meta_1.priority, meta_2.priority) = meta_i.priority
-      j = 1  if i == 0
-          0  otherwise
-      astMin = ast_i, metaMin = meta_i
-      astMax = ast_j, metaMax = meta_j
-```
+extractMergeFuns : MergeTree -> List MergeFunction
 
-We can finally define the evaluation of a merge AST:
+extractMergeFuns (Merge(ast1,_),Merge(ast2,_)) = extractMergeFuns ast1 @ extractMergeFuns ast2
+extractMergeFuns (Leaf(e,meta)) = [f] if meta.merge == Some(f)
+                                []  otherwise
 
-```
-eval ast =
-  let custom = mergeFunctions ast in
-  if length custom > 1 then fail
-  else if length custom == 1 then
-    interpret ast (head custom)
+mergeFun : MergeTree -> Result (MergeFunction ()
+mergeFun t = let funs = extractMergeFuns t in
+  if lists.length t == 0 then
+    Ok(__builtinMerge) // the standard `&` merge function
+  else if lists.length t == 1 then
+    Ok(head t)
   else
-    interpret ast builtinMerge
+    Err(())
 ```
 
-**TODO**
+And the interpretation of a merge tree by a merge function:
 
-- implementation: separate merge AST/merge expression from values, as is already
-  the case with meta values. Use a `force` or `eval` semantics to be correct
-  w.r.t lazy evaluation.
+```
+// can be extended, as long as it is totally ordered
+Priority = Number | -inf | +inf | ...
+
+interpret (Merge(ast_1,meta_1),Merge(ast_2,meta_2)) f =
+    f {value = interpret ast_i f, prio = meta_i.priority}
+      {value = interpret ast_j f, prio = meta_j.priority}
+    where
+      i,j s.t meta_i.priority <= meta_j.priority
+```
+
+We can finally define the evaluation of merge:
+
+```
+eval [| e1 & e2 |] = let t = mergeTree (e1 & e2) in
+  interpret t (mergeFunction t)
+```
