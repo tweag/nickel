@@ -42,9 +42,9 @@ let record = {
 This quickly becomes unmanageable for large records, which are common in Nix and
 Nixpkgs. In functional languages, this is usually better done using what's
 called functional update. Functional update is an operation that takes the
-original record, one or several field to update, the corresponding new value,
-and returns a new updated record. It has the same semantics as our first snippet,
-but doesn't require to rewrite all unchanged fields.
+original record, one or several fields to update, the corresponding new value,
+and returns a new updated record. It has the same semantics as our first
+snippet, but doesn't require to rewrite all unchanged fields.
 
 It can have a builtin syntax, such as OCaml's `with`: `{record with field =
 new_value}`, Haskell's `record {field = newValue}`, Nix `//` operator `record //
@@ -93,13 +93,13 @@ expression depending on `protocol`, but it is not updated in the new version,
 which is something one could intuitively expect from a recursive record. Such
 recursive update is a pattern actively used in Nix, and is probably a common
 scenario for configurations in general: if I patch a base configuration by
-changing an option, I usually want other default values depending on this option
-to be updated as well.
+changing an option, I usually want other values depending on this option to be
+updated as well.
 
 ## Comparing override mechanisms
 We are going to review various overriding mechanisms of Nix and other related
-languages. Let us sketch some general traits of such mechanisms as a framework
-for comparison:
+languages. Let us sketch some general traits of overriding mechanisms as a
+framework for comparison:
 
 - **(ERG)**: Ergonomy. A mechanism is ergonomic if it avoids
   complex encodings for overridable records, if it doesn't require extra library
@@ -107,7 +107,7 @@ for comparison:
   records of the language.
 - **(NEST)**: Nested field overriding. The ease of overriding nested fields,
   such as the value of `bar` in `{foo = {bar = "baz"}}`.  Ideally, overriding
-  nested fields is no harder than standard fields.
+  nested fields is no harder than top-level fields.
 - **(COMP)**: Composability. Overriding is composable when one can seamlessly
     apply several overrides to an initial record.
 - **(EXPR)**: Expressivity. An expressive mechanism is one that allow to express
@@ -129,8 +129,8 @@ having it implemented in user code leads to some general well-known issues:
 - ~~**(ERG)**~~ Definition, update or field access is not as ergonomic as with
   vanilla native records.
 - Several competing mechanisms have been implemented in slightly different
-  contexts. Overriding in general is already difficult for beginners, but having
-  to learn several ones, all similar but still different, is even harder.
+  contexts. Overriding in general is already hard for beginners, but having to
+  learn several ones, all similar but still different, is even harder.
 - User-land implementations don't have a first-class access to information such
   as source location and metavalues. In a dynamic language, this can make good
   error reporting much harder.
@@ -143,7 +143,7 @@ related languages.
 ### Nixpkgs overriding
 
 The basic idea is to represent a recursive record explicitly as a function from
-a `self` record to the final record:
+a `self` record to the final record (here, in Nix syntax):
 
 ```nix
 r = rec {
@@ -157,10 +157,9 @@ rRepr = self: {
 }
 ```
 
-`self` is a self-reference, in the style of `this` in object oriented languages.
-It is computed as a
-[fixpoint](https://en.wikipedia.org/wiki/Fixed-point_combinator), simply
-realized by auto-application in Nix, thanks to laziness:
+`self` is a self-reference, akin to `this` in object oriented languages.  It is
+computed as a [fixpoint](https://en.wikipedia.org/wiki/Fixed-point_combinator),
+simply realized by auto-application in Nix, thanks to laziness:
 
 ```nix
 r = rRepr r
@@ -229,7 +228,7 @@ dedicated helper functions.
 
 #### Advantages
 
-- **(EXPR)**: The explicit representation of layers with the explicit `super`
+- **(EXPR)**: The explicit representation of layers by `super`
   and `self` gives a large control to the user.
 - **(COMP)**: Composition is first-class.
 
@@ -241,10 +240,11 @@ dedicated helper functions.
   different results depending on which one is the first layer. This also means
   that overrides must be grouped by layers, which is not necessarily the most
   logical structure.
-- ~~**(NEST)**~~ Overriding nested fields is still clumsy:
-   ```nix
-   self: super: { lib = (super.lib or {}) // { firefoxVersion = ...; }; }
-   ```
+- ~~**(NEST)**~~ Overriding nested fields is still clumsy. For example, to
+  override `lib.firefoxVersion`:
+  ```nix
+  self: super: { lib = (super.lib or {}) // { firefoxVersion = ...; }; }
+  ```
 
 ### NixOs module system
 
@@ -333,7 +333,7 @@ fields: {
 The basics of this overriding mechanism are close in spirit to what we want to
 achieve in this proposal. This is similar to Nickel's current `default`
 behavior, but with the desired late-bound merging. The expressivity is however
-too limited for Nix use cases.
+too limited to replace e.g. the NixOS module system.
 
 #### Advantages
 
@@ -344,7 +344,7 @@ too limited for Nix use cases.
 
 - ~~**(EXP)**~~: One can only replace a value by another one. It is not
      possible to add one to the previous value, for example.
-- ~~**(COMP)**~~: Overriding a record a second time is not possible
+- ~~**(COMP)**~~: Overriding a record a second time is not possible.
 
 ### Jsonnet
 
@@ -441,7 +441,7 @@ objects have access to the previous stage of extension via `super`. However, as
 in the NixOS module system, it is possible to address this issue using custom
 merge functions. This is a bit less expressive, but in a good way: it forces the
 merge strategy to be uniform along each field, while mechanisms like overlays or
-inheritance can do pretty much what they want.
+inheritance can do pretty much anything.
 
 ## Proposal overview
 
@@ -610,9 +610,10 @@ This RFC proposes to adopt the following ordered set of priorities:
 That is, `Priorities := default \/ {n | n integer} \/ top` with `default <= ...
 <= -1 <= 0 <= 1 <= ... <= force`.
 
-If not specified, the standard priority (no to be confused with the `default`
-priority) is `0`. This provides an infinite supply of priorities both below
-(`default \/ {n | n < 0}`) as well as above (`force \/ {n | n > 0}`).
+If not specified, the normal priority (the default priority, no to be confused
+with the `default` priority) is `0`. This provides an infinite supply of
+priorities both below (`default \/ {n | n < 0}`) as well as above (`force \/ {n
+| n > 0}`).
 
 Integer priorities are specified using the `priority` keyword. Defining more
 than one priority in the same meta-value is an error.
@@ -694,7 +695,7 @@ defaulted & {bar.baz = "shapoinkl"}
 // }
 // While
 
-neutralConf | default & {bar.baz = "shapoinkl"}
+(neutralConf | default) & {bar.baz = "shapoinkl"}
 // ^ This gives only:
 // {bar.baz = "shapoinkl"}
 ```
@@ -722,8 +723,8 @@ let add = fun args => args.lower + args.higher in
 {a | merge add = 1} & {a = 1} & {a = 1}
 ```
 
-However, this breaks commutativity, because it affects terms on the right but
-not on the left:
+But what about `{a = 1} & {a | merge add = 1} & {a = 2}`? If a merge annotation
+only affects terms on the right hand side, this breaks commutativity.
 
 ```
 let r1 = {a = 1} in
@@ -764,7 +765,7 @@ This RFC proposes solution 2. This raises some difficulties:
   What should `let x = val1 & val2 in x & (val3 | merge func)` evaluate to, or
   `let x = val1 & val2 in builtins.seq x (x & (val3 | merge func))`?
 
-  In some way, we would like to have a call-by-name semantics rather than a
+  In some sense, we would like to have a call-by-name semantics rather than a
   call-by-need.
 
   * (a) In the case of record fields, overriding has to solve the
@@ -782,25 +783,32 @@ This RFC proposes solution 2. This raises some difficulties:
     wouldn't erase the original top-level thunk `Merge(t1,t2)`.  This is in fact
     how default values are currently handled. Doing so, we don't need to
     restrict custom merge functions to record fields. This incurs an additional
-    cost though, of remembering all the ASTs of merge expressions.
+    cost though for merging (remembering all the original ASTs of merge
+    expressions), even when one doesn't actually use custom merge functions.
 
-We propose solution (a), as it is probably sufficient in the vast
-majority, and is still compatible with a future upgrade to (b).
+We propose to start with solution (a) in practice, as it is probably sufficient
+in the majority of cases, and is still compatible with a future upgrade to (b).
+Nonetheless, for the sake of completeness, the next section defines the
+semantics of the unrestricted option (b), for the sake of all generality.
 
 ## Operational semantics
 
-This section defines precisely the operational semantics of merging with the
-choices previously described.
+This section defines the operational semantics of merging with the choices
+previously described.
 
 **THIS IS WORK IN PROGRESS FROM HERE**
 
-As explained in the [custom merge function section](#custom-merge-functions-2),
-supporting merge functions requires to potentially re-interpret a merge
-expression a posteriori. If we want to implement the present proposal in all
-generality, we must keep track of the original merge expression.
+The choices made in [custom merge function section](#custom-merge-functions-2),
+in particular symmetrizing merge with respect to custom merge function
+annotations, require the evaluation process to:
 
-When a custom merge function is specified on a value that is then merged, we
-must answer the question: what operations do this function affect? For example:
+1. Determine the abstract syntax tree (AST) of a merge expression
+2. Decide the merge function to use
+3. Interpret it the tree with the given function
+
+Let us define the notion of a *merge tree*. The definition determines what is
+the area of influence of a merge function annotation, answering the following
+questions:
 
 ```
 let add = fun x y => x + y in
@@ -819,38 +827,33 @@ var & (1 | merge add) // result?
 (import "somefile" | merge add) & 1 // result?
 ```
 
-To do so, let us define the notion of *merge tree*.
-
-In the following, we will write "meta"-code (the code of the Nickel interpreter)
-in ML pseudo-code, with syntax as close as possible to Nickel (but more
-permissivie, allowing the definition of sum types for example). To distinguish
-this meta-code from Nickel expressions, we will use the quote syntax `[| exp
-|]`. For example, `eval [| 1 + 1 |] = 2` means that the value of the
-evaluation meta-function `eval` on the Nickel expression `e1 & e2` is `2`.
+In the following, we will write "meta"-code (think of the code of the Nickel
+interpreter) in ML pseudo-code. To distinguish this meta-code from Nickel
+expressions, we use the quote syntax `[| exp |]` to denote a Nickel expression.
+For example, `hasAnnot [| f (1 + 1) |] = false` means that the value of the
+`hasAnnot` (meta-)function on the Nickel expression `f (1 + 1)` is `false`.
 
 ### Merge tree
 
 A merge tree is a binary tree whose nodes are labelled by a `metadata`.  Leafs
-are labelled with both a `metadata` and an Nickel expression `e`. In this
-context, a `metadata` is a (meta)record which field names corresponds to meta
+are labelled with both a `metadata` and a Nickel expression `e`. In this
+context, a `metadata` is a (meta-)record which field names corresponds to meta
 attributes `custom,priority,default,contract` and so on. Fields are optional,
 excepted `priority`, which must always be defined. In Rust syntax:
 
-```rust
-struct MetaData {
-    priority: Priority,
-    merge: Option<Expression>,
-    contracts: Option<Vec<Contract>>,
-    // ....
+```haskell
+data Metadata = Metadata {
+  priority :: Priority,
+  merge :: Option Priority,
+  contracts :: Option (List Contract),
+  // ...
 }
 
-enum AbsMergeTree<T> {
-    Merge(T, T),
-    Exp(Expression)
-}
+data AbsMergeTree a =
+  Merge a a
+  | Exp Expression
 
-// This kind of recursive type is illegal in Rust but this is irrelevant here.
-type MergeTree = AbsMergeTree<(MergeTree, MetaData)>;
+type MergeTree = MergeTree (AbsMergeTree (MergeTree, Metadata))
 ```
 
 The function `mergeTree: Expression -> MergeTree` associates a merge tree to an
@@ -873,19 +876,20 @@ absMergeTree [| switch exp { bindings } @ e |]
 absMergeTree [| whnf @ e |]
 absMergeTree [| primop exp1 exp2 ... @ e |] = Exp(e)
 
-absMergeTree [| let x = val in exp |] = mergeTree exp; env := env,x <- val
+absMergeTree [| let x = val in exp |] = mergeTree exp; env := env ++ (x <- val)
 absMergeTree [| x |] = absMergeTree (env x) // Should we actually cross variables?
-                                      // or just have a leaf here?
+                                            // or just have a leaf here?
 
 // Should mergeTree cross import boundaries?
 absMergeTree [| import path |] = ?
 ```
 
-One crucial observation, already stated (although differently) in the [custom
-merge function section](#custom-merge-function), is that a merge tree is not
-stable by evaluation: `mergeTree (1 & 1) != mergeTree (1)`. As for record
-fields, we must always have access to the original merge tree associated with an
-expression so that.
+**WIP note: it actually depends on the rule for variable**
+
+One important observation is that a merge tree is not stable by thunk
+evaluation: `mergeTree ([| let x = 1 & 1 in x & 1 |] ) != mergeTree (1 & 1)`. We
+must have access to the original merge tree associated with an expression to be
+able to evaluate it correctly.
 
 ### Semantics
 
