@@ -70,7 +70,16 @@ pub fn bench_args(
     eval_mode: EvalMode,
     c: &mut Criterion,
 ) {
-    bench_args_expect(name, base_dir, subpath, subtest, args, eval_mode, |_| true, c)
+    bench_args_expect(
+        name,
+        base_dir,
+        subpath,
+        subtest,
+        args,
+        eval_mode,
+        |_| true,
+        c,
+    )
 }
 
 pub fn bench_args_expect<F>(
@@ -105,6 +114,11 @@ pub fn bench_args_expect<F>(
         content
     };
 
-    let mut p = Program::new_from_source(Cursor::new(content), name).unwrap();
-    c.bench_function(name, |b| b.iter(|| assert!(pred(p.eval().unwrap()))));
+    c.bench_function(name, |b| {
+        b.iter_batched_ref(
+            || Program::new_from_source(Cursor::new(content.clone()), name).unwrap(),
+            |p| assert!(pred(p.eval().unwrap())),
+            criterion::BatchSize::LargeInput,
+        )
+    });
 }
