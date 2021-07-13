@@ -307,10 +307,7 @@ StaticString: String = StringStart <s: ChunkLiteral> StringEnd => s;
 
 ChunkLiteralPart: ChunkLiteralPart<'input> = {
     "str literal" => ChunkLiteralPart::Str(<>),
-    "str #" => ChunkLiteralPart::Str(<>),
     "multstr literal" => ChunkLiteralPart::Str(<>),
-    "false interpolation" => ChunkLiteralPart::Str(<>),
-    "false end" => ChunkLiteralPart::Str(<>),
     "str esc char" => ChunkLiteralPart::Char(<>),
     };
 
@@ -568,11 +565,8 @@ extern {
     enum Token<'input> {
         "identifier" => Token::Normal(NormalToken::Identifier(<&'input str>)),
         "str literal" => Token::Str(StringToken::Literal(<&'input str>)),
-        "str #" => Token::Str(StringToken::Hash(<&'input str>)),
         "str esc char" => Token::Str(StringToken::EscapedChar(<char>)),
         "multstr literal" => Token::MultiStr(MultiStringToken::Literal(<&'input str>)),
-        "false end" => Token::MultiStr(MultiStringToken::FalseEnd(<&'input str>)),
-        "false interpolation" => Token::MultiStr(MultiStringToken::FalseInterpolation(<&'input str>)),
         "num literal" => Token::Normal(NormalToken::NumLiteral(<f64>)),
 
         "if" => Token::Normal(NormalToken::If),

@@ -1,4 +1,4 @@
-use super::lexer::{Lexer, LexicalError, NormalToken, StringToken, Token};
+use super::lexer::{Lexer, LexicalError, MultiStringToken, NormalToken, StringToken, Token};
 use crate::error::ParseError;
 use crate::identifier::Ident;
 use crate::term::make as mk_term;
@@ -250,6 +250,16 @@ fn string_lexing() {
             Token::Normal(NormalToken::RBrace),
             Token::Str(StringToken::Literal(" + 2")),
             Token::Normal(NormalToken::DoubleQuote),
+        ])
+    );
+
+    assert_eq!(
+        lex_without_pos(r##"m#""#"#m"##),
+        Ok(vec![
+            Token::Normal(NormalToken::MultiStringStart(3)),
+            Token::MultiStr(MultiStringToken::Literal("\"")),
+            Token::MultiStr(MultiStringToken::Literal("#")),
+            Token::MultiStr(MultiStringToken::End),
         ])
     );
 }

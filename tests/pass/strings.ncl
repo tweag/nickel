@@ -13,5 +13,11 @@ let Assert = fun l x => x || %blame% l in
 ((let x = "world" in
   "Hello, #{x}! Welcome in #{let y = "universe" in "the #{x}-#{y}"}")
   == "Hello, world! Welcome in the world-universe" | #Assert) &&
+
+// regression test for issue #361 (https://github.com/tweag/nickel/issues/361)
+(m#""#{"foo"}""#m == "\"foo\"" | #Assert) &&
+(m#"""#m == "\"" | #Assert) &&
+(m#""#"#"#"#m == "\"#\"#\"#" | #Assert) &&
+
 true
 
