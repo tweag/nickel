@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-
+use pprof::criterion::{Output, PProfProfiler};
 use utilities::{bench_args, EvalMode};
 
 fn count_letters(c: &mut Criterion) {
@@ -36,5 +36,9 @@ fn merge(c: &mut Criterion) {
     );
 }
 
-criterion_group!(benches, count_letters, merge);
+criterion_group! {
+    name = benches;
+    config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)));
+    targets = count_letters, merge
+}
 criterion_main!(benches);

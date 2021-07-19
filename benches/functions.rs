@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use nickel::term::Term;
-
+use pprof::criterion::{Output, PProfProfiler};
 use utilities::{bench_expect, EvalMode};
 
 fn church(c: &mut Criterion) {
@@ -17,5 +17,9 @@ fn church(c: &mut Criterion) {
     );
 }
 
-criterion_group!(benches, church);
+criterion_group! {
+    name = benches;
+    config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)));
+    targets = church
+}
 criterion_main!(benches);

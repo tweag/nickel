@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-
+use pprof::criterion::{Output, PProfProfiler};
 use utilities::{bench, EvalMode};
 
 fn fold_strings(c: &mut Criterion) {
@@ -218,25 +218,9 @@ fn pipe_deepseq(c: &mut Criterion) {
     );
 }
 
-criterion_group!(
-    benches,
-    fold_strings,
-    fold_strings_deep,
-    fold_nums,
-    fold_nums_deep,
-    fold_lists,
-    fold_lists_deep,
-    foldl_strings,
-    foldl_strings_deep,
-    foldl_nums,
-    foldl_nums_deep,
-    foldl_lists,
-    foldl_lists_deep,
-    generate_normal,
-    generate_deepseq,
-    map_normal,
-    map_deepseq,
-    pipe_normal,
-    pipe_deepseq
-);
+criterion_group! {
+    name = benches;
+    config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)));
+    targets = fold_strings, fold_strings_deep, fold_nums, fold_nums_deep, fold_lists, fold_lists_deep, foldl_strings, foldl_strings_deep, foldl_nums, foldl_nums_deep, foldl_lists, foldl_lists_deep, generate_normal, generate_deepseq, map_normal, map_deepseq, pipe_normal, pipe_deepseq
+}
 criterion_main!(benches);

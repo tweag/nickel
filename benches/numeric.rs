@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-
+use pprof::criterion::{Output, PProfProfiler};
 use utilities::{bench, EvalMode};
 
 fn fibonacci(c: &mut Criterion) {
@@ -62,5 +62,9 @@ fn scalar(c: &mut Criterion) {
     );
 }
 
-criterion_group!(benches, fibonacci, pidigits, sum, product, scalar);
+criterion_group! {
+    name = benches;
+    config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)));
+    targets = fibonacci, pidigits, sum, product, scalar
+}
 criterion_main!(benches);
