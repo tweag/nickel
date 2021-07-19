@@ -46,7 +46,11 @@ rustyline-derive = { version = "0.4.0", optional = true }
 pretty_assertions = "0.5.1"
 assert_matches = "1.4.0"
 criterion = "0.3"
+pprof = { version = "0.4.4", features = ["criterion", "flamegraph"] }
 utilities = {path = "utilities"}
+
+[profile.release]
+debug = true
 
 [lib]
 bench = false
