@@ -275,6 +275,15 @@ impl Environment {
         }
     }
 
+    pub fn new_with_previous_env(previous: Environment) -> Self {
+        Self {
+            inner: Rc::new(RefCell::new(InnerEnvironment {
+                current: HashMap::new(),
+                previous: Some(previous.clone()),
+            })),
+        }
+    }
+
     pub fn get(&self, ident: &Ident) -> Option<&Thunk> {
         if let Some(res) = self.inner.borrow().current.get(ident) {
             return Some(res);
