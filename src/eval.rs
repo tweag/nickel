@@ -254,7 +254,79 @@ impl ThunkUpdateFrame {
 }
 
 /// An environment, which is a mapping from identifiers to closures.
-pub type Environment = HashMap<Ident, Thunk>;
+#[derive(Debug, Clone, PartialEq)]
+pub struct Environment {
+    inner: Rc<RefCell<InnerEnvironment>>,
+}
+
+#[derive(Debug, PartialEq)]
+struct InnerEnvironment {
+    current: HashMap<Ident, Thunk>,
+    previous: Option<Environment>,
+}
+
+impl Environment {
+    pub fn new() -> Self {
+        Self {
+            inner: Rc::new(RefCell::new(InnerEnvironment {
+                current: HashMap::new(),
+                previous: None,
+            })),
+        }
+    }
+
+    pub fn get(&self, ident: &Ident) -> Option<&Thunk> {
+        if let Some(res) = self.inner.borrow().current.get(ident) {
+            return Some(res);
+        }
+        let mut current = self;
+        while let Some(actual) = current.inner.borrow().previous.as_ref() {
+            if let Some(res) = actual.inner.borrow().current.get(ident) {
+                return Some(res);
+            }
+            current = actual;
+        }
+        None
+    }
+
+    pub fn get_mut(&mut self, ident: &Ident) -> Option<&mut Thunk> {
+        if let Some(res) = self.inner.borrow_mut().current.get_mut(ident) {
+            return Some(res);
+        }
+        let mut current = self;
+        while let Some(actual) = current.inner.borrow_mut().previous.as_mut() {
+            if let Some(res) = actual.inner.borrow_mut().current.get_mut(ident) {
+                return Some(res);
+            }
+            current = actual;
+        }
+        None
+    }
+
+    pub fn insert(&mut self, ident: Ident, thunk: Thunk) -> Option<Thunk> {
+        self.inner.borrow_mut().current.insert(ident, thunk)
+    }
+
+    pub fn remove(&mut self, ident: &Ident) -> Option<Thunk> {
+        if let Some(res) = self.inner.borrow_mut().current.remove(ident) {
+            return Some(res);
+        }
+        let mut current = self;
+        while let Some(actual) = current.inner.borrow_mut().previous.as_mut() {
+            if let Some(res) = actual.inner.borrow_mut().current.remove(ident) {
+                return Some(res);
+            }
+            current = actual;
+        }
+        None
+    }
+}
+
+impl Extend<(Ident, Thunk)> for Environment {
+    fn extend<T: IntoIterator<Item = (Ident, Thunk)>>(&mut self, iter: T) {
+        self.inner.borrow_mut().current.extend(iter)
+    }
+}
 
 /// A call stack, saving the history of function calls.
 ///
