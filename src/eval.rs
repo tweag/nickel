@@ -329,11 +329,44 @@ impl Environment {
         }
         None
     }
+
+    pub fn iter(&self) -> IterEnv<'_> {
+        IterEnv {
+            current_level: self.downgrade(),
+            current_iter: self.inner.borrow().current.iter(),
+        }
+    }
+
+    fn downgrade(&self) -> Weak<RefCell<InnerEnvironment>> {
+        Rc::downgrade(&self.inner)
+    }
 }
 
 impl Extend<(Ident, Thunk)> for Environment {
     fn extend<T: IntoIterator<Item = (Ident, Thunk)>>(&mut self, iter: T) {
         self.inner.borrow_mut().current.extend(iter)
+    }
+}
+
+struct IterEnv<'a> {
+    current_level: Weak<RefCell<InnerEnvironment>>,
+    current_iter: std::collections::hash_map::Iter<'a, Ident, Thunk>,
+}
+
+impl<'a> Iterator for IterEnv<'a> {
+    type Item = (&'a Ident, &'a Thunk);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            match self.current_iter.next() {
+                None => {
+                    let previous_level = self.current_level.upgrade()?.borrow().previous?;
+                    self.current_iter = previous_level.inner.borrow().current.iter();
+                    self.current_level = previous_level.downgrade();
+                }
+                some => return some,
+            }
+        }
     }
 }
 
