@@ -348,6 +348,15 @@ impl Extend<(Ident, Thunk)> for Environment {
     }
 }
 
+impl<'a> Extend<(&'a Ident, &'a Thunk)> for &'a Environment {
+    fn extend<T: IntoIterator<Item = (&'a Ident, &'a Thunk)>>(&mut self, iter: T) {
+        self.inner
+            .borrow_mut()
+            .current
+            .extend(iter.into_iter().map(|(&a, &b)| (a, b)))
+    }
+}
+
 impl<'a> IntoIterator for &'a Environment {
     type Item = (&'a Ident, &'a Thunk);
 
