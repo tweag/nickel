@@ -416,7 +416,7 @@ impl Closure {
     pub fn atomic_closure(body: RichTerm) -> Closure {
         Closure {
             body,
-            env: HashMap::new(),
+            env: Environment::new(),
         }
     }
 }
@@ -707,7 +707,7 @@ where
             Term::StrChunks(mut chunks) => match chunks.pop() {
                 None => Closure {
                     body: Term::Str(String::new()).into(),
-                    env: HashMap::new(),
+                    env: Environment::new(),
                 },
                 Some(chunk) => {
                     let (arg, indent) = match chunk {
@@ -780,7 +780,7 @@ where
                             // We already checked for unbound identifier in the previous fold, so this
                             // get should always succeed.
                             let thunk = env.get_mut(&var_id).unwrap();
-                            thunk.borrow_mut().env.extend(rec_env.clone());
+                            thunk.borrow_mut().env.extend(&rec_env);
                             (
                                 id,
                                 RichTerm {
@@ -1112,7 +1112,7 @@ mod tests {
 
     /// Evaluate a term without import support.
     fn eval_no_import(t: RichTerm) -> Result<Term, EvalError> {
-        eval(t, &HashMap::new(), &mut DummyResolver {})
+        eval(t, &Environment::new(), &mut DummyResolver {})
     }
 
     fn parse(s: &str) -> Option<RichTerm> {
@@ -1297,7 +1297,7 @@ mod tests {
         assert_eq!(
             eval(
                 mk_import("x", "two", mk_term::var("x"), &mut resolver).unwrap(),
-                &HashMap::new(),
+                &Environment::new(),
                 &mut resolver
             )
             .unwrap(),
@@ -1308,7 +1308,7 @@ mod tests {
         assert_eq!(
             eval(
                 mk_import("x", "nested", mk_term::var("x"), &mut resolver).unwrap(),
-                &HashMap::new(),
+                &Environment::new(),
                 &mut resolver
             )
             .unwrap(),
@@ -1325,7 +1325,7 @@ mod tests {
                     &mut resolver,
                 )
                 .unwrap(),
-                &HashMap::new(),
+                &Environment::new(),
                 &mut resolver
             )
             .unwrap(),
@@ -1342,7 +1342,7 @@ mod tests {
                     &mut resolver,
                 )
                 .unwrap(),
-                &HashMap::new(),
+                &Environment::new(),
                 &mut resolver
             )
             .unwrap(),
@@ -1415,7 +1415,7 @@ mod tests {
 
     #[test]
     fn global_env() {
-        let mut global_env = HashMap::new();
+        let mut global_env = Environment::new();
         let mut resolver = DummyResolver {};
         global_env.insert(
             Ident::from("g"),
