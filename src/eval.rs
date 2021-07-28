@@ -348,6 +348,16 @@ impl Extend<(Ident, Thunk)> for Environment {
     }
 }
 
+impl<'a> IntoIterator for &'a Environment {
+    type Item = (&'a Ident, &'a Thunk);
+
+    type IntoIter = IterEnv<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
 struct IterEnv<'a> {
     current_level: Weak<RefCell<InnerEnvironment>>,
     current_iter: std::collections::hash_map::Iter<'a, Ident, Thunk>,
