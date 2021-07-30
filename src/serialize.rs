@@ -216,6 +216,7 @@ pub fn to_string(format: ExportFormat, rt: &RichTerm) -> Result<String, Serializ
 mod tests {
     use super::*;
     use crate::error::{Error, EvalError};
+    use crate::eval::Environment;
     use crate::position::TermPos;
     use crate::program::Program;
     use crate::term::{make as mk_term, BinaryOp};
@@ -280,7 +281,7 @@ mod tests {
             assert_eq!(
                 $crate::eval::eval(
                     mk_term::op2(BinaryOp::Eq(), from_json, evaluated.clone()),
-                    &HashMap::new(),
+                    &Environment::new(),
                     &mut $crate::cache::resolvers::DummyResolver {}
                 ),
                 Ok(Term::Bool(true))
@@ -288,7 +289,7 @@ mod tests {
             assert_eq!(
                 $crate::eval::eval(
                     mk_term::op2(BinaryOp::Eq(), from_yaml, evaluated.clone()),
-                    &HashMap::new(),
+                    &Environment::new(),
                     &mut $crate::cache::resolvers::DummyResolver {}
                 ),
                 Ok(Term::Bool(true))
@@ -296,7 +297,7 @@ mod tests {
             assert_eq!(
                 $crate::eval::eval(
                     mk_term::op2(BinaryOp::Eq(), from_toml, evaluated),
-                    &HashMap::new(),
+                    &Environment::new(),
                     &mut $crate::cache::resolvers::DummyResolver {}
                 ),
                 Ok(Term::Bool(true))
