@@ -96,6 +96,7 @@ use crate::stack::Stack;
 use crate::term::{make as mk_term, MetaValue, RichTerm, StrChunk, Term, UnaryOp};
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
+use std::ops::{Deref, DerefMut};
 use std::rc::{Rc, Weak};
 
 /// The state of a thunk.
@@ -284,30 +285,42 @@ impl Environment {
         }
     }
 
-    pub fn get(&self, ident: &Ident) -> Option<&Thunk> {
-        if let Some(res) = self.inner.borrow().current.get(ident) {
-            return Some(res);
+    fn get_current_layer(&self) -> impl Deref<Target = HashMap<Ident, Thunk>> + '_ {
+        Ref::map(self.inner.borrow(), |e| &e.current)
+    }
+
+    fn get_current_layer_mut(&self) -> impl DerefMut<Target = HashMap<Ident, Thunk>> + '_ {
+        RefMut::map(self.inner.borrow_mut(), |e| &mut e.current)
+    }
+
+    fn get_previous_layer(&self) -> Option<Environment> {
+        self.inner.borrow().previous.as_ref().map(|pe| pe.clone())
+    }
+
+    pub fn get(&self, ident: &Ident) -> Option<Thunk> {
+        if let Some(res) = self.get_current_layer().get(ident) {
+            return Some(res.clone());
         }
-        let mut current = self;
-        while let Some(actual) = current.inner.borrow().previous.as_ref() {
-            if let Some(res) = actual.inner.borrow().current.get(ident) {
-                return Some(res);
+        let mut current = self.clone();
+        while let Some(previous) = current.get_previous_layer() {
+            if let Some(res) = previous.get_current_layer().get(ident) {
+                return Some(res.clone());
             }
-            current = actual;
+            current = previous;
         }
         None
     }
 
-    pub fn get_mut(&mut self, ident: &Ident) -> Option<&mut Thunk> {
-        if let Some(res) = self.inner.borrow_mut().current.get_mut(ident) {
-            return Some(res);
+    pub fn get_mut(&mut self, ident: &Ident) -> Option<Thunk> {
+        if let Some(res) = self.get_current_layer_mut().get_mut(ident) {
+            return Some(res.clone());
         }
-        let mut current = self;
-        while let Some(actual) = current.inner.borrow_mut().previous.as_mut() {
-            if let Some(res) = actual.inner.borrow_mut().current.get_mut(ident) {
-                return Some(res);
+        let mut current = self.clone();
+        while let Some(previous) = current.get_previous_layer() {
+            if let Some(res) = previous.get_current_layer_mut().get_mut(ident) {
+                return Some(res.clone());
             }
-            current = actual;
+            current = previous;
         }
         None
     }
@@ -586,7 +599,7 @@ where
             Term::Var(x) => {
                 let mut thunk = env
                     .remove(&x)
-                    .or_else(|| global_env.get(&x).map(Thunk::clone))
+                    .or_else(|| global_env.get(&x))
                     .ok_or_else(|| EvalError::UnboundIdentifier(x.clone(), pos))?;
                 std::mem::drop(env); // thunk may be a 1RC pointer
 
@@ -788,8 +801,8 @@ where
                         Term::Var(var_id) => {
                             // We already checked for unbound identifier in the previous fold, so this
                             // get should always succeed.
-                            let thunk = env.get_mut(&var_id).unwrap();
-                            thunk.borrow_mut().env.extend(&rec_env);
+                            let _thunk = env.get_mut(&var_id).unwrap();
+                            //thunk.borrow_mut().env.extend(&rec_env);
                             (
                                 id,
                                 RichTerm {
