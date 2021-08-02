@@ -134,6 +134,7 @@ impl QueryPrinter for MarkdownRenderer {
 pub struct Attributes {
     pub doc: bool,
     pub contract: bool,
+    pub types: bool,
     pub default: bool,
     pub value: bool,
 }
@@ -144,6 +145,7 @@ impl Default for Attributes {
         Attributes {
             doc: true,
             contract: true,
+            types: true,
             default: true,
             value: true,
         }
@@ -198,7 +200,7 @@ fn write_query_result_<R: QueryPrinter>(
     match term {
         Term::MetaValue(meta) => {
             let mut found = false;
-            if !meta.contracts.is_empty() && selected_attrs.contract {
+            if selected_attrs.contract && !meta.contracts.is_empty()  {
                 let ctrs: Vec<String> = meta
                     .contracts
                     .iter()
@@ -208,6 +210,12 @@ fn write_query_result_<R: QueryPrinter>(
                     .map(|ctr| ctr.label.types.to_string())
                     .collect();
                 renderer.write_metadata(out, "contract", &ctrs.join(","))?;
+                found = true;
+            }
+
+            if selected_attrs.types && meta.types.is_some() {
+                renderer
+                    .print_metadata("type", &meta.types.as_ref().unwrap().types.to_string());
                 found = true;
             }
 
