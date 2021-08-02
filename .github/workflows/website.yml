@@ -31,8 +31,8 @@ jobs:
           publish-dir: './website/public'
           github-token: ${{ secrets.GITHUB_TOKEN }}
           deploy-message: 'Deploy from GitHub Actions'
-          enable-pull-request-comment: true
-          enable-commit-comment: true
+          enable-pull-request-comment: false
+          enable-commit-comment: false
           enable-commit-status: true
           overwrites-pull-request-comment: false
         if: github.repository == 'tweag/nickel'
