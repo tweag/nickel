@@ -14,16 +14,16 @@ repl = ["rustyline", "rustyline-derive", "ansi_term"]
 repl-wasm = ["wasm-bindgen", "js-sys", "serde_repr"]
 
 [build-dependencies]
-lalrpop = "0.16.2"
+lalrpop = "0.19.6"
 
 [dependencies]
-lalrpop-util = "0.16.2"
+lalrpop-util = "0.19.6"
 regex = "0.2.1"
 simple-counter = "0.1.0"
 codespan = "0.9.5"
 codespan-reporting = "0.9.5"
 logos = "0.11.4"
-serde = "1.0.117"
+serde = { version = "1.0.117", features = ["derive"] }
 serde_json = "1.0.59"
 serde_yaml = "0.8.15"
 toml = "0.5.8"
@@ -39,7 +39,7 @@ minimad = { version = "0.6.7", optional = true }
 
 ansi_term = { version = "0.12", optional = true }
 
-rustyline = {version = "7.1.0", optional = true}
+rustyline = { version = "7.1.0", optional = true}
 rustyline-derive = { version = "0.4.0", optional = true }
 
 wasm-bindgen = { version = "0.2", optional = true, features = ["serde-serialize"] }
