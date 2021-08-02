@@ -28,6 +28,8 @@ jobs:
             experimental: true
 
     runs-on: ${{ matrix.os }}
+    # The `== true` makes it work wether experimental has been defined or not.
+    continue-on-error: ${{ matrix.experimental == true }}
 
     steps:
 
