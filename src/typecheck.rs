@@ -1690,7 +1690,7 @@ pub fn get_bop_type(
             mk_typewrapper::num(),
         ),
         // Str -> Str -> Str
-        BinaryOp::PlusStr() => (
+        BinaryOp::StrConcat() => (
             mk_typewrapper::str(),
             mk_typewrapper::str(),
             mk_typewrapper::str(),
