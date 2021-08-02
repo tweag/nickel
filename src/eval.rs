@@ -285,6 +285,15 @@ impl Environment {
         }
     }
 
+    pub fn add_layer(&self) -> Self {
+        Self {
+            inner: Rc::new(RefCell::new(InnerEnvironment {
+                current: HashMap::new(),
+                previous: Some(self.clone()),
+            })),
+        }
+    }
+
     fn get_current_layer(&self) -> impl Deref<Target = HashMap<Ident, Thunk>> + '_ {
         Ref::map(self.inner.borrow(), |e| &e.current)
     }
