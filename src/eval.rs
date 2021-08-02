@@ -339,15 +339,15 @@ impl Environment {
     }
 
     pub fn remove(&mut self, ident: &Ident) -> Option<Thunk> {
-        if let Some(res) = self.inner.borrow_mut().current.remove(ident) {
+        if let Some(res) = self.get_current_layer_mut().remove(ident) {
             return Some(res);
         }
-        let mut current = self;
-        while let Some(actual) = current.inner.borrow_mut().previous.as_mut() {
-            if let Some(res) = actual.inner.borrow_mut().current.remove(ident) {
+        let mut current = self.clone();
+        while let Some(previous) = current.get_previous_layer() {
+            if let Some(res) = previous.get_current_layer_mut().remove(ident) {
                 return Some(res);
             }
-            current = actual;
+            current = previous;
         }
         None
     }
