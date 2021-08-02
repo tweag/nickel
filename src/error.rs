@@ -338,10 +338,9 @@ impl ParseError {
             lalrpop_util::ParseError::User {
                 error: LexicalError::Generic(start, end),
             } => ParseError::UnexpectedToken(mk_span(file_id, start, end), Vec::new()),
-            lalrpop_util::ParseError::UnrecognizedEOF {
-                expected,
-                ..
-            } => ParseError::UnexpectedEOF(file_id, expected),
+            lalrpop_util::ParseError::UnrecognizedEOF { expected, .. } => {
+                ParseError::UnexpectedEOF(file_id, expected)
+            }
             lalrpop_util::ParseError::ExtraToken {
                 token: (start, _, end),
             } => ParseError::ExtraToken(mk_span(file_id, start, end)),
