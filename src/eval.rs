@@ -96,6 +96,7 @@ use crate::stack::Stack;
 use crate::term::{make as mk_term, MetaValue, RichTerm, StrChunk, Term, UnaryOp};
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use std::rc::{Rc, Weak};
 
@@ -352,15 +353,30 @@ impl Environment {
         None
     }
 
-    pub fn iter(&self) -> IterEnv<'_> {
+    pub fn iter(&self) -> <IterEnv<'_> as IntoIterator>::IntoIter {
         IterEnv {
-            current_level: self.downgrade(),
-            current_iter: self.inner.borrow().current.iter(),
+            map: self.collapse(),
+            marker: PhantomData,
         }
+        .into_iter()
     }
 
-    fn downgrade(&self) -> Weak<RefCell<InnerEnvironment>> {
-        Rc::downgrade(&self.inner)
+    pub fn collapse(&self) -> HashMap<Ident, Thunk> {
+        let mut layers = vec![self.clone()];
+        let mut current = self.clone();
+        while let Some(prev) = current.get_previous_layer() {
+            layers.push(prev.clone());
+            current = prev;
+        }
+        layers.iter().rfold(HashMap::new(), |mut acc, layer| {
+            acc.extend(
+                layer
+                    .get_current_layer()
+                    .iter()
+                    .map(|(a, b)| (a.clone(), b.clone())),
+            );
+            acc
+        })
     }
 }
 
@@ -375,39 +391,22 @@ impl<'a> Extend<(&'a Ident, &'a Thunk)> for &'a Environment {
         self.inner
             .borrow_mut()
             .current
-            .extend(iter.into_iter().map(|(&a, &b)| (a, b)))
+            .extend(iter.into_iter().map(|(a, b)| (a.clone(), b.clone())))
     }
 }
 
-impl<'a> IntoIterator for &'a Environment {
-    type Item = (&'a Ident, &'a Thunk);
+pub struct IterEnv<'a> {
+    map: HashMap<Ident, Thunk>,
+    marker: PhantomData<&'a ()>,
+}
 
-    type IntoIter = IterEnv<'a>;
+impl<'a> IntoIterator for IterEnv<'a> {
+    type Item = (Ident, Thunk);
+
+    type IntoIter = std::collections::hash_map::IntoIter<Ident, Thunk>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.iter()
-    }
-}
-
-struct IterEnv<'a> {
-    current_level: Weak<RefCell<InnerEnvironment>>,
-    current_iter: std::collections::hash_map::Iter<'a, Ident, Thunk>,
-}
-
-impl<'a> Iterator for IterEnv<'a> {
-    type Item = (&'a Ident, &'a Thunk);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            match self.current_iter.next() {
-                None => {
-                    let previous_level = self.current_level.upgrade()?.borrow().previous?;
-                    self.current_iter = previous_level.inner.borrow().current.iter();
-                    self.current_level = previous_level.downgrade();
-                }
-                some => return some,
-            }
-        }
+        self.map.into_iter()
     }
 }
 
