@@ -809,8 +809,8 @@ where
                         Term::Var(var_id) => {
                             // We already checked for unbound identifier in the previous fold, so this
                             // get should always succeed.
-                            let _thunk = env.get_mut(&var_id).unwrap();
-                            //thunk.borrow_mut().env.extend(&rec_env);
+                            let mut thunk = env.get_mut(&var_id).unwrap();
+                            thunk.borrow_mut().env.extend(rec_env.iter());
                             (
                                 id,
                                 RichTerm {
