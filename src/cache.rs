@@ -550,8 +550,7 @@ impl Cache {
         Ok(CacheOp::Done(()))
     }
 
-    /// Typecheck the standard library. This function may be dropped once the standard library is
-    /// stable.
+    /// Typecheck the standard library. Currently only used in the test suite.
     pub fn typecheck_stdlib(&mut self) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
         // We have a small bootstraping problem: to typecheck the global environment, we already
         // need a global evaluation environment, since stdlib parts may reference each other). But
@@ -578,21 +577,10 @@ impl Cache {
         }
     }
 
-    /// Load, parse, typecheck and apply program transformations to the standard library.
+    /// Load, parse, and apply program transformations to the standard library. Do not typecheck
+    /// for performance reason: this is done in the test suite.
     pub fn prepare_stdlib(&mut self) -> Result<(), Error> {
-        // We have a small bootstraping problem: to typecheck the global environment, we already
-        // need a global evaluation environment, because stdlib parts may be mutually recursive.
-        // But typechecking is performed before program transformations, so this environment is not
-        // the final one. We have to create a temporary global environment just for typechecking,
-        // which is dropped right after. However:
-        // 1. The stdlib is meant to stay relatively light.
-        // 2. Typechecking the standard library ought to occur only during development. Ideally, we
-        //    should only typecheck it at every update, not at every execution.
         self.load_stdlib()?;
-        self.typecheck_stdlib().map_err(|cache_err| {
-            cache_err
-                .unwrap_error("cache::prepare_stdlib(): expected standard library to be parsed")
-        })?;
         self.stdlib_ids
             .as_ref()
             .cloned()
