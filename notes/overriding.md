@@ -503,10 +503,11 @@ Priorities have drawbacks. One is non-locality: the final result depends on
 other priorities of the field's values you are being merged with, potentially
 defined elsewhere. However, this can be mitigated by good defaults and an
 adapted set of priorities, such as a bottom `default`, a top `force`, and a
-infinite range of integers priorities in between. Doing so, it's easy to just
-use `default` or `force` to override or be overridden by anything, without
-knowing the precise integer priority. Integer priorities still gives freedom
-with an infinite supply of levels if required.
+infinite range of integers priorities in between, the default priority (when no
+priority is provided) being `0`. Doing so, it's easy to just use `default` or
+`force` to override or be overridden by anything, without knowing the precise
+integer priority. Integer priorities still gives freedom with an infinite supply
+of levels if required.
 
 ### Custom merge functions
 
@@ -839,7 +840,7 @@ A merge tree is a binary tree whose nodes are labelled by a `metadata`.  Leafs
 are labelled with both a `metadata` and a Nickel expression `e`. In this
 context, a `metadata` is a (meta-)record which field names corresponds to meta
 attributes `custom,priority,default,contract` and so on. Fields are optional,
-excepted `priority`, which must always be defined. In Rust syntax:
+excepted `priority`, which must always be defined.
 
 ```haskell
 data Metadata = Metadata {
