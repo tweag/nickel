@@ -363,20 +363,24 @@ impl Environment {
 
     pub fn collapse(&self) -> HashMap<Ident, Thunk> {
         let mut layers = vec![self.clone()];
+        let mut hashmap_size = self.get_current_layer().len();
         let mut current = self.clone();
         while let Some(prev) = current.get_previous_layer() {
+            hashmap_size += prev.get_current_layer().len();
             layers.push(prev.clone());
             current = prev;
         }
-        layers.iter().rfold(HashMap::new(), |mut acc, layer| {
-            acc.extend(
-                layer
-                    .get_current_layer()
-                    .iter()
-                    .map(|(a, b)| (a.clone(), b.clone())),
-            );
-            acc
-        })
+        layers
+            .iter()
+            .rfold(HashMap::with_capacity(hashmap_size), |mut acc, layer| {
+                acc.extend(
+                    layer
+                        .get_current_layer()
+                        .iter()
+                        .map(|(a, b)| (a.clone(), b.clone())),
+                );
+                acc
+            })
     }
 }
 
