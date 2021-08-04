@@ -249,10 +249,41 @@ dedicated helper functions.
 ### NixOs module system
 
 The NixOS module system takes a different approach. There, all the basic blocks
-- the modules - are merged together in an unspecified order. What's deciding
-the priority of one option over the other are attributes that are explicitly
-stated in the modules themselves. The declaration of options (type, priority,
-etc.) and their assignment must be made separately.
+— the modules — are merged together in an unspecified order. What's deciding the
+priority of one option over the other are attributes that are explicitly stated
+in the modules themselves. The declaration of options (type, priority, etc.) and
+their assignment must be made separately.
+
+Compared to overlays, the explicit reference to `super` has disappeared. This
+makes it look like modules can only override one value with another, instead of
+combining different pieces of data together.
+
+This apparent shortcoming is solved by custom merge functions, that can redefine
+how to combine different values of the field of a configuration. By default,
+when merging two list values, the module system only knows how to replace one
+value with the other, because there's no canonical and commutative way of
+merging two lists.  However, the user can specify that these lists should in
+fact be concatenated, resulting in the possibility of defining a list of paths
+by pieces:
+
+```nix
+# Some module
+{
+  paths = mkOption {
+    type = types.listOf types.path;
+  };
+}
+
+# Config
+[..]
+someModule.paths = [foo/bar];
+
+# Other config
+[..]
+someModule.paths = [/bar/baz];
+
+# Resulting config: [foo/bar /bar/baz]
+```
 
 #### Advantages
 
@@ -261,36 +292,19 @@ etc.) and their assignment must be made separately.
 
 #### Limits
 
-- ~~**(EXPR)**~~: As presented, modules can only override one value with
-  another, instead of combining different pieces of data together. Compared to
-  overlays, the explicit reference to `super` has disappeared.
+- ~~**(EXPR)**~~: Despite custom merge functions, this model is less powerful
+    than overlays which have access to an explicit reference to `super`.
+    Modules, on the other hand, are all merged at the same level in an
+    unspecified order.
 
-  The issue is mitigated by custom merge functions, that can redefine how to
-  combine different values of the field of a configuration. By default, when
-  merging two list values, the module system only knows how to replace one value
-  with the other, because there's no canonical and commutative way of merging
-  two lists.  However, the user can specify that these lists should in fact be
-  concatenated, resulting in the possibility of defining a list of paths by
-  pieces:
+    For example, the following has no equivalent in a merging model:
+    ```nix
+    let overlay = self: super: {b = self.c + 1; a = super.c + 1;}; in #...
+    ```
 
-  ```nix
-  # Some module
-  {
-    paths = mkOption {
-      type = types.listOf types.path;
-    };
-  }
-
-  # Config
-  [..]
-  someModule.paths = [foo/bar];
-
-  # Other config
-  [..]
-  someModule.paths = [/bar/baz];
-
-  # Resulting config: [foo/bar /bar/baz]
-  ```
+However, modules are quite capable in practice. Removing fields and being
+order-dependent as in the overlay example above is not necessarily a good idea,
+and this limitation of expressivity may in fact be a good thing.
 
 ## Overriding elsewhere
 
