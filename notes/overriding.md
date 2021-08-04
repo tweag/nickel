@@ -78,7 +78,7 @@ rather than data. Take the following example:
 
 ```nickel
 let record = {
-  protocol = `Http,
+  protocol | default = `Http,
   port | default = switch protocol {
     `Http => 80,
     `Ftp => 21,
