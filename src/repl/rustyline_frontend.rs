@@ -50,7 +50,7 @@ pub fn repl() -> Result<(), InitError> {
                 let cmd = line.chars().skip(1).collect::<String>().parse::<Command>();
                 let result = match cmd {
                     Ok(Command::Load(path)) => repl.load(&path).map(|term| match term.as_ref() {
-                        Term::Record(map) | Term::RecRecord(map) => {
+                        Term::Record(map, _) | Term::RecRecord(map, _) => {
                             println!("Loaded {} symbol(s) in the environment.", map.len())
                         }
                         _ => (),

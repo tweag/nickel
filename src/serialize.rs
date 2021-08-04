@@ -1,7 +1,7 @@
 //! Serialization of an evaluated program to various data format.
 use crate::error::SerializationError;
 use crate::identifier::Ident;
-use crate::term::{MetaValue, RichTerm, Term};
+use crate::term::{MetaValue, RecordAttrs, RichTerm, Term};
 use serde::de::{Deserialize, Deserializer};
 use serde::ser::{Error, Serialize, SerializeMap, Serializer};
 use std::collections::HashMap;
@@ -92,7 +92,11 @@ where
 
 /// Serializer for a record. Serialize fields in alphabetical order to get a deterministic output
 /// (by default, `HashMap`'s randomness implies a randomized order of fields in the output).
-pub fn serialize_record<S>(map: &HashMap<Ident, RichTerm>, serializer: S) -> Result<S::Ok, S::Error>
+pub fn serialize_record<S>(
+    map: &HashMap<Ident, RichTerm>,
+    _attrs: &RecordAttrs,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
@@ -105,6 +109,17 @@ where
     }
 
     map_ser.end()
+}
+
+/// Deserialize for a record. Required to set the record attributes to default.
+pub fn deserialize_record<'de, D>(
+    deserializer: D,
+) -> Result<(HashMap<Ident, RichTerm>, RecordAttrs), D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let map: HashMap<Ident, RichTerm> = HashMap::deserialize(deserializer)?;
+    Ok((map, Default::default()))
 }
 
 impl Serialize for RichTerm {
@@ -145,7 +160,7 @@ pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), SerializationE
             Null if format == ExportFormat::Json || format == ExportFormat::Yaml => Ok(()),
             Null => Err(SerializationError::UnsupportedNull(format, t.clone())),
             Bool(_) | Num(_) | Str(_) | Enum(_) => Ok(()),
-            Record(map) | RecRecord(map) => {
+            Record(map, _) => {
                 map.iter().try_for_each(|(_, t)| validate(format, t))?;
                 Ok(())
             }

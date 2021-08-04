@@ -372,7 +372,7 @@ impl<'a> Envs<'a> {
         let RichTerm { term, pos } = rt;
 
         match term.as_ref() {
-            Term::Record(bindings) | Term::RecRecord(bindings) => {
+            Term::Record(bindings, _) | Term::RecRecord(bindings, _) => {
                 for (id, t) in bindings {
                     let tyw: TypeWrapper =
                         apparent_type(t.as_ref(), Some(&Envs::from_global(env))).into();
@@ -605,10 +605,10 @@ fn type_check_(
             unify(state, strict, ty, mk_tyw_enum!(id.clone(), row))
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
-        Term::Record(stat_map) | Term::RecRecord(stat_map) => {
+        Term::Record(stat_map, _) | Term::RecRecord(stat_map, _) => {
             // For recursive records, we look at the apparent type of each field and bind it in
             // env before actually typechecking the content of fields
-            if let Term::RecRecord(_) = t.as_ref() {
+            if let Term::RecRecord(..) = t.as_ref() {
                 for (id, rt) in stat_map {
                     let tyw = binding_type(rt.as_ref(), &envs, state.table, strict);
                     envs.insert(id.clone(), tyw);
@@ -635,7 +635,7 @@ fn type_check_(
                         // In the case of a recursive record, new types (either type variables or
                         // annotations) have already be determined and put in the typing
                         // environment, and we need to use the same.
-                        let ty = if let Term::RecRecord(_) = t.as_ref() {
+                        let ty = if let Term::RecRecord(..) = t.as_ref() {
                             envs.get(&id).unwrap()
                         } else {
                             TypeWrapper::Ptr(new_var(state.table))
@@ -1781,7 +1781,7 @@ pub fn get_bop_type(
             )
         }
         // Dyn -> Dyn -> Dyn
-        BinaryOp::Merge() => (
+        BinaryOp::Merge() | BinaryOp::MergeContract() => (
             mk_typewrapper::dynamic(),
             mk_typewrapper::dynamic(),
             mk_typewrapper::dynamic(),

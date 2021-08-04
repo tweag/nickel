@@ -171,7 +171,8 @@ fn record_terms() {
                 (Ident::from("c"), Num(3.).into())
             ]
             .into_iter()
-            .collect()
+            .collect(),
+            Default::default()
         )
         .into()
     );
@@ -188,7 +189,8 @@ fn record_terms() {
                         (Ident::from("d"), Num(42.).into()),
                     ]
                     .into_iter()
-                    .collect()
+                    .collect(),
+                    Default::default(),
                 )
             ),
             mk_app!(mk_term::op1(UnaryOp::Ite(), Num(4.)), Num(5.), Num(6.))

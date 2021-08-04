@@ -58,7 +58,7 @@ pub mod share_normal_form {
     pub fn transform_one(rt: RichTerm) -> RichTerm {
         let RichTerm { term, pos } = rt;
         match *term {
-            Term::Record(map) => {
+            Term::Record(map, attrs) => {
                 let mut bindings = Vec::with_capacity(map.len());
 
                 let map = map
@@ -75,9 +75,9 @@ pub mod share_normal_form {
                     })
                     .collect();
 
-                with_bindings(Term::Record(map), bindings, pos)
+                with_bindings(Term::Record(map, attrs), bindings, pos)
             }
-            Term::RecRecord(map) => {
+            Term::RecRecord(map, attrs) => {
                 // When a recursive record is evaluated, all fields need to be turned to closures
                 // anyway (see the corresponding case in `eval::eval()`), which is what the share
                 // normal form transformation does. This is why the test is more lax here than for
@@ -100,7 +100,7 @@ pub mod share_normal_form {
                     })
                     .collect();
 
-                with_bindings(Term::RecRecord(map), bindings, pos)
+                with_bindings(Term::RecRecord(map, attrs), bindings, pos)
             }
             Term::List(ts) => {
                 let mut bindings = Vec::with_capacity(ts.len());

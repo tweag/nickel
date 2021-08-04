@@ -62,10 +62,10 @@ pub fn elaborate_field_path(
         FieldPathElem::Ident(id) => {
             let mut map = HashMap::new();
             map.insert(id, acc);
-            Term::Record(map).into()
+            Term::Record(map, Default::default()).into()
         }
         FieldPathElem::Expr(exp) => {
-            let empty = Term::Record(HashMap::new());
+            let empty = Term::Record(HashMap::new(), Default::default());
             mk_app!(mk_term::op2(BinaryOp::DynExtend(), exp, empty), acc)
         }
     });
@@ -98,12 +98,13 @@ where
         (FieldPathElem::Expr(e), t) => dynamic_fields.push((e, t)),
     });
 
-    dynamic_fields
-        .into_iter()
-        .fold(Term::RecRecord(static_map), |rec, field| {
+    dynamic_fields.into_iter().fold(
+        Term::RecRecord(static_map, Default::default()),
+        |rec, field| {
             let (id_t, t) = field;
             Term::App(mk_term::op2(BinaryOp::DynExtend(), id_t, rec), t)
-        })
+        },
+    )
 }
 
 /// Make a span from parser byte offsets.
