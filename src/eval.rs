@@ -256,12 +256,12 @@ impl ThunkUpdateFrame {
 }
 
 /// An environment, which is a mapping from identifiers to closures.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Environment {
     inner: Rc<RefCell<InnerEnvironment>>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Default)]
 struct InnerEnvironment {
     current: HashMap<Ident, Thunk>,
     previous: Option<Environment>,
@@ -269,15 +269,10 @@ struct InnerEnvironment {
 
 impl Environment {
     pub fn new() -> Self {
-        Self {
-            inner: Rc::new(RefCell::new(InnerEnvironment {
-                current: HashMap::new(),
-                previous: None,
-            })),
-        }
+        Default::default()
     }
 
-    pub fn new_with_previous_env(previous: Environment) -> Self {
+    pub fn new_with_previous_env(previous: &Environment) -> Self {
         Self {
             inner: Rc::new(RefCell::new(InnerEnvironment {
                 current: HashMap::new(),
@@ -304,7 +299,7 @@ impl Environment {
     }
 
     fn get_previous_layer(&self) -> Option<Environment> {
-        self.inner.borrow().previous.as_ref().map(|pe| pe.clone())
+        self.inner.borrow().previous.as_ref().cloned()
     }
 
     pub fn get(&self, ident: &Ident) -> Option<Thunk> {
@@ -371,7 +366,7 @@ impl Environment {
             current = prev;
         }
         layers
-            .iter()
+            .into_iter()
             .rfold(HashMap::with_capacity(hashmap_size), |mut acc, layer| {
                 acc.extend(
                     layer
