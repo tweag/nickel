@@ -1,13 +1,13 @@
 use crate::identifier::Ident;
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
-    MergePriority, Contract, NAryOp};
+    MergePriority, Contract, NAryOp, RecordAttrs};
 use crate::term::make as mk_term;
 use crate::{mk_app, mk_opn};
 use crate::types::{Types, AbsType};
 use super::ExtendedTerm;
 use super::utils::{StringKind, mk_pos, mk_label, strip_indent, SwitchCase,
     FieldPathElem, strip_indent_doc, build_record, elaborate_field_path,
-    ChunkLiteralPart};
+    ChunkLiteralPart, RecordLastField};
 use std::ffi::OsString;
 use super::lexer::{Token, NormalToken, StringToken, MultiStringToken, LexicalError};
 use std::collections::HashMap;
@@ -176,9 +176,16 @@ Atom: RichTerm = {
     StrChunks,
     Ident => RichTerm::from(Term::Var(<>)),
     "`" <Ident> => RichTerm::from(Term::Enum(<>)),
-    "{" <fields: (<RecordField> ",")*> <last: RecordField?> "}" => {
-        let fields = fields.into_iter().chain(last.into_iter());
-        RichTerm::from(build_record(fields))
+    "{" <fields: (<RecordField> ",")*> <last: RecordLastField?> "}" => {
+        let (last_field, attrs) = match last {
+            Some(RecordLastField::Field(f)) => (Some(f), Default::default()),
+            Some(RecordLastField::Ellipsis) =>
+                (None, RecordAttrs { open: true }),
+            None => (None, Default::default())
+        };
+
+        let fields = fields.into_iter().chain(last_field.into_iter());
+        RichTerm::from(build_record(fields, attrs))
     },
     "[" <terms: (<Term> ",")*> <last: Term?> "]" => {
         let terms : Vec<RichTerm> = terms.into_iter()
@@ -217,6 +224,11 @@ RecordField: (FieldPathElem, RichTerm) = {
         let t = RichTerm::new(Term::MetaValue(meta), pos);
         elaborate_field_path(path, t)
     }
+}
+
+RecordLastField: RecordLastField = {
+    <RecordField> => RecordLastField::Field(<>),
+    ".." <","?> => RecordLastField::Ellipsis,
 }
 
 FieldPath: Vec<FieldPathElem> = {
@@ -554,6 +566,7 @@ extern {
         "&&" => Token::Normal(NormalToken::DoubleAnd),
         "||" => Token::Normal(NormalToken::DoublePipe),
         "!" => Token::Normal(NormalToken::Bang),
+        ".." => Token::Normal(NormalToken::Ellipsis),
 
         "fun" => Token::Normal(NormalToken::Fun),
         "import" => Token::Normal(NormalToken::Import),

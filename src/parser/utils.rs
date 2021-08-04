@@ -3,7 +3,7 @@ use crate::identifier::Ident;
 use crate::label::Label;
 use crate::mk_app;
 use crate::position::{RawSpan, TermPos};
-use crate::term::{make as mk_term, BinaryOp, RichTerm, StrChunk, Term};
+use crate::term::{make as mk_term, BinaryOp, RecordAttrs, RichTerm, StrChunk, Term};
 use crate::types::Types;
 use codespan::FileId;
 use std::collections::hash_map::Entry;
@@ -46,6 +46,13 @@ pub enum ChunkLiteralPart<'input> {
     Char(char),
 }
 
+/// The last field of a record, that can either be a normal field declaration or an ellipsis.
+#[derive(Clone, Debug)]
+pub enum RecordLastField {
+    Field((FieldPathElem, RichTerm)),
+    Ellipsis,
+}
+
 /// Elaborate a record field definition specified as a path, like `a.b.c = foo`, into a regular
 /// flat definition `a = {b = {c = foo}}`.
 ///
@@ -75,7 +82,7 @@ pub fn elaborate_field_path(
 
 /// Build a record from a list of field definitions. If a field is defined several times, the
 /// different definitions are merged.
-pub fn build_record<I>(fields: I) -> Term
+pub fn build_record<I>(fields: I, attrs: RecordAttrs) -> Term
 where
     I: IntoIterator<Item = (FieldPathElem, RichTerm)>,
 {
@@ -98,13 +105,12 @@ where
         (FieldPathElem::Expr(e), t) => dynamic_fields.push((e, t)),
     });
 
-    dynamic_fields.into_iter().fold(
-        Term::RecRecord(static_map, Default::default()),
-        |rec, field| {
+    dynamic_fields
+        .into_iter()
+        .fold(Term::RecRecord(static_map, attrs), |rec, field| {
             let (id_t, t) = field;
             Term::App(mk_term::op2(BinaryOp::DynExtend(), id_t, rec), t)
-        },
-    )
+        })
 }
 
 /// Make a span from parser byte offsets.
