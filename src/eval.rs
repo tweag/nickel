@@ -316,14 +316,17 @@ impl Environment {
         None
     }
 
-    pub fn get_mut(&mut self, ident: &Ident) -> Option<Thunk> {
+    pub fn with_identifier<T, F>(&mut self, ident: &Ident, f: F) -> Option<T>
+    where
+        F: FnOnce(&mut Thunk) -> T,
+    {
         if let Some(res) = self.get_current_layer_mut().get_mut(ident) {
-            return Some(res.clone());
+            return Some(f(res));
         }
         let mut current = self.clone();
         while let Some(previous) = current.get_previous_layer() {
             if let Some(res) = previous.get_current_layer_mut().get_mut(ident) {
-                return Some(res.clone());
+                return Some(f(res));
             }
             current = previous;
         }
@@ -806,10 +809,11 @@ where
                     let RichTerm { term, pos } = rt;
                     match *term {
                         Term::Var(var_id) => {
-                            // We already checked for unbound identifier in the previous fold, so this
-                            // get should always succeed.
-                            let mut thunk = env.get_mut(&var_id).unwrap();
-                            thunk.borrow_mut().env.extend(rec_env.iter());
+                            // We already checked for unbound identifier in the previous fold,
+                            // so function should always succeed
+                            env.with_identifier(&var_id, |thunk| {
+                                thunk.borrow_mut().env.extend(rec_env.iter())
+                            });
                             (
                                 id,
                                 RichTerm {
