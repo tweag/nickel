@@ -1223,9 +1223,8 @@ fn process_binary_operation(
                         }
                         .closurize(&mut new_env, env1);
 
-                        // Convert the record to the function `fun l x => MergeContract(l) x
-                        // contract`. The `l` is the label given as an additional argument on the
-                        // stack.
+                        // Convert the record to the function `fun l x => MergeContract l x
+                        // contract`.
                         let body = mk_fun!(
                             "l",
                             "x",
