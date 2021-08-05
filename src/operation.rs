@@ -18,7 +18,7 @@ use crate::stack::Stack;
 use crate::term::make as mk_term;
 use crate::term::{BinaryOp, NAryOp, RichTerm, StrChunk, Term, UnaryOp};
 use crate::transformations::Closurizable;
-use crate::{mk_app, mk_fun};
+use crate::{mk_app, mk_fun, mk_opn};
 use crate::{serialize, serialize::ExportFormat};
 use md5::digest::Digest;
 use simple_counter::*;
@@ -1223,12 +1223,18 @@ fn process_binary_operation(
                         }
                         .closurize(&mut new_env, env1);
 
-                        // Convert the record to the function `fun l x => x & contract`. The merge
-                        // is done in contract mode.
+                        // Convert the record to the function `fun l x => MergeContract(l) x
+                        // contract`. The `l` is the label given as an additional argument on the
+                        // stack.
                         let body = mk_fun!(
-                            "_l",
+                            "l",
                             "x",
-                            mk_term::op2(BinaryOp::MergeContract(), mk_term::var("x"), closurized)
+                            mk_opn!(
+                                NAryOp::MergeContract(),
+                                mk_term::var("l"),
+                                mk_term::var("x"),
+                                closurized
+                            )
                         )
                         .with_pos(pos1.into_inherited());
 
@@ -1732,7 +1738,7 @@ fn process_binary_operation(
                 },
             )),
         },
-        BinaryOp::Merge() | BinaryOp::MergeContract() => merge(
+        BinaryOp::Merge() => merge(
             RichTerm {
                 term: t1,
                 pos: pos1,
@@ -1744,12 +1750,9 @@ fn process_binary_operation(
             },
             env2,
             pos_op,
-            if b_op == BinaryOp::Merge() {
-                MergeMode::Standard
-            } else {
-                MergeMode::Contract
-            },
+            MergeMode::Standard,
         ),
+
         BinaryOp::Hash() => {
             let mk_err_fst = |t1| {
                 Err(EvalError::TypeError(
@@ -2152,6 +2155,58 @@ fn process_nary_operation(
                     fst_pos,
                     RichTerm::new(t1, pos1),
                 )),
+            }
+        }
+        NAryOp::MergeContract() => {
+            let mut args_iter = args.into_iter();
+            let (
+                Closure {
+                    body: RichTerm { term: t1, pos: _ },
+                    env: _,
+                },
+                _,
+            ) = args_iter.next().unwrap();
+            let (
+                Closure {
+                    body:
+                        RichTerm {
+                            term: t2,
+                            pos: pos2,
+                        },
+                    env: env2,
+                },
+                _,
+            ) = args_iter.next().unwrap();
+            let (
+                Closure {
+                    body:
+                        RichTerm {
+                            term: t3,
+                            pos: pos3,
+                        },
+                    env: env3,
+                },
+                _,
+            ) = args_iter.next().unwrap();
+            debug_assert!(args_iter.next().is_none());
+
+            if let Term::Lbl(lbl) = *t1 {
+                merge(
+                    RichTerm {
+                        term: t2,
+                        pos: pos2,
+                    },
+                    env2,
+                    RichTerm {
+                        term: t3,
+                        pos: pos3,
+                    },
+                    env3,
+                    pos_op,
+                    MergeMode::Contract(lbl),
+                )
+            } else {
+                Err(EvalError::InternalError(format!("The MergeContract() operator was expecting a first argument of type Label, got {}", t1.type_of().unwrap_or(String::from("<unevaluated>"))), pos_op))
             }
         }
     }

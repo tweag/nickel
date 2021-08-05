@@ -52,7 +52,9 @@
 //! - *Contract check*: merging a `Contract` or a `ContractDefault` with a simple value `t`
 //! evaluates to a contract check, that is an `Assume(..., t)`
 use crate::error::EvalError;
+use crate::eval::CallStack;
 use crate::eval::{Closure, Environment};
+use crate::label::Label;
 use crate::position::TermPos;
 use crate::term::{make as mk_term, BinaryOp, Contract, MetaValue, RecordAttrs, RichTerm, Term};
 use crate::transformations::Closurizable;
@@ -60,12 +62,12 @@ use std::collections::HashMap;
 
 /// Merging mode. Merging is used both to combine standard data and to apply contracts defined as
 /// records.
-#[derive(Clone, Copy, Eq, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum MergeMode {
-    /// Standard merging for combining data.
+    /// Standard merging, for combining data.
     Standard,
-    /// Merging used to apply a record contract to a value.
-    Contract,
+    /// Merging to apply a record contract to a value, with the associated label.
+    Contract(Label),
 }
 
 impl Default for MergeMode {
@@ -330,16 +332,18 @@ pub fn merge(
             let mut env = HashMap::new();
             let (mut left, mut center, mut right) = hashmap::split(m1, m2);
 
-            if mode == MergeMode::Contract && !attrs2.open && !left.is_empty() {
-                let fields: Vec<String> = left
-                    .into_keys()
-                    .map(|field| format!("`{}`", field))
-                    .collect();
-                return Err(EvalError::Other(
-                    format!("additional field(s) {}", fields.join(", ")),
-                    pos1,
-                ));
-            }
+            match mode {
+                MergeMode::Contract(mut lbl) if !attrs2.open && !left.is_empty() => {
+                    let fields: Vec<String> = left
+                        .into_keys()
+                        .map(|field| format!("`{}`", field))
+                        .collect();
+                    let plural = if fields.len() == 1 { "" } else { "s" };
+                    lbl.tag = format!("extra field{} {}", plural, fields.join(","));
+                    return Err(EvalError::BlameError(lbl, CallStack::new()));
+                }
+                _ => (),
+            };
 
             for (field, t) in left.drain() {
                 m.insert(field, t.closurize(&mut env, env1.clone()));

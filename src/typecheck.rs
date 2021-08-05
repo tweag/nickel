@@ -1781,7 +1781,7 @@ pub fn get_bop_type(
             )
         }
         // Dyn -> Dyn -> Dyn
-        BinaryOp::Merge() | BinaryOp::MergeContract() => (
+        BinaryOp::Merge() => (
             mk_typewrapper::dynamic(),
             mk_typewrapper::dynamic(),
             mk_typewrapper::dynamic(),
@@ -1873,6 +1873,8 @@ pub fn get_nop_type(
             ],
             mk_typewrapper::str(),
         ),
+        // This should not happen, as Switch() is only produced during evaluation.
+        NAryOp::MergeContract() => panic!("cannot typecheck MergeContract()"),
     })
 }
 

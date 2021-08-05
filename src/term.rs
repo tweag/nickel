@@ -739,8 +739,6 @@ pub enum BinaryOp {
     ListElemAt(),
     /// The merge operator (see the [merge module](../merge/index.html)).
     Merge(),
-    /// The merge operator in contract mode (see the [merge module](../merge/index.html)).
-    MergeContract(),
 
     /// Hash a string.
     Hash(),
@@ -779,17 +777,27 @@ pub enum NAryOp {
     StrReplaceRegex(),
     /// Return a substring of an original string.
     StrSubstr(),
+    /// The merge operator in contract mode (see the [merge module](../merge/index.html)). The
+    /// arguments are in order the contract's label, the value to check, and the contract as a
+    /// record.
+    MergeContract(),
 }
 
 impl NAryOp {
     pub fn arity(&self) -> usize {
         match self {
-            NAryOp::StrReplace() | NAryOp::StrReplaceRegex() | NAryOp::StrSubstr() => 3,
+            NAryOp::StrReplace()
+            | NAryOp::StrReplaceRegex()
+            | NAryOp::StrSubstr()
+            | NAryOp::MergeContract() => 3,
         }
     }
 
     pub fn is_strict(&self) -> bool {
-        true
+        match self {
+            NAryOp::MergeContract() => false,
+            _ => true,
+        }
     }
 }
 
@@ -799,6 +807,7 @@ impl fmt::Display for NAryOp {
             NAryOp::StrReplace() => write!(f, "strReplace"),
             NAryOp::StrReplaceRegex() => write!(f, "strReplaceRegex"),
             NAryOp::StrSubstr() => write!(f, "substring"),
+            NAryOp::MergeContract() => write!(f, "mergeContract"),
         }
     }
 }
