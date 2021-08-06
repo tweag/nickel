@@ -102,7 +102,7 @@ pub mod share_normal_form {
 
                 let interpolated = interpolated
                     .into_iter()
-                    .map(|(id_t, t)|
+                    .map(|(id_t, t)| {
                         if !t.as_ref().is_constant() {
                             let fresh_var = fresh_var();
                             let pos_t = t.pos;
@@ -110,7 +110,8 @@ pub mod share_normal_form {
                             (id_t, RichTerm::new(Term::Var(fresh_var), pos_t))
                         } else {
                             (id_t, t)
-                        })
+                        }
+                    })
                     .collect();
 
                 with_bindings(Term::RecRecord(map, interpolated, attrs), bindings, pos)

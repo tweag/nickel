@@ -425,14 +425,15 @@ impl Cache {
                             std::mem::replace(interpolated, Vec::new())
                                 .into_iter()
                                 .map(|(id_t, t)| {
-                                    Ok((transformations::transform(id_t, self)?,
-                                       transformations::transform(t, self)?))
+                                    Ok((
+                                        transformations::transform(id_t, self)?,
+                                        transformations::transform(t, self)?,
+                                    ))
                                 })
                                 .collect();
 
                         *map = map_res?;
                         *interpolated = interpolated_res?;
-                        
                     }
                     _ => panic!("cache::transform_inner(): not a record"),
                 }
