@@ -94,7 +94,7 @@ use crate::mk_app;
 use crate::operation::{continuate_operation, OperationCont};
 use crate::position::TermPos;
 use crate::stack::Stack;
-use crate::term::{make as mk_term, MetaValue, RichTerm, StrChunk, Term, UnaryOp};
+use crate::term::{make as mk_term, BinaryOp, MetaValue, RichTerm, StrChunk, Term, UnaryOp};
 use std::cell::{Ref, RefCell, RefMut};
 use std::rc::{Rc, Weak};
 
@@ -672,11 +672,44 @@ where
                         _ => (id, RichTerm { term, pos }),
                     }
                 });
+
+                let static_part = RichTerm::new(Term::Record(new_ts.collect(), attrs), pos);
+
+                // Transform the static part `{stat1 = val1, ..., statn = valn}` and the dynamic
+                // part `{exp1 = dyn_val1, ..., expm = dyn_valm}` to a sequence of extensions
+                // `{stat1 = val1, ..., statn = valn} $[ exp1 = dyn_val1] ... $[ expn = dyn_valn ]`
+                // The `dyn_val` are given access to the recursive environment, but not the dynamic
+                // field names.
+                let extended = interpolated
+                    .into_iter()
+                    .try_fold::<_, _, Result<RichTerm, EvalError>>(
+                        static_part,
+                        |acc, (id_t, t)| {
+                            let RichTerm { term, pos } = t;
+                            match *term {
+                                Term::Var(var_id) => {
+                                    let thunk = env.get_mut(&var_id).ok_or_else(|| {
+                                        EvalError::UnboundIdentifier(var_id.clone(), pos)
+                                    })?;
+
+                                    thunk.borrow_mut().env.extend(rec_env.clone());
+                                    Ok(Term::App(
+                                        mk_term::op2(BinaryOp::DynExtend(), id_t, acc),
+                                        mk_term::var(var_id).with_pos(pos),
+                                    )
+                                    .into())
+                                }
+                                _ => Ok(Term::App(
+                                    mk_term::op2(BinaryOp::DynExtend(), id_t, acc),
+                                    RichTerm { term, pos },
+                                )
+                                .into()),
+                            }
+                        },
+                    )?;
+
                 Closure {
-                    body: RichTerm {
-                        term: Box::new(Term::Record(new_ts.collect(), attrs)),
-                        pos,
-                    },
+                    body: extended.with_pos(pos),
                     env,
                 }
             }
