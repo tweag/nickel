@@ -613,6 +613,24 @@ fn type_check_(
             unify(state, strict, ty, mk_tyw_enum!(id.clone(), row))
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
+        // If some fields are defined dynamically, the only potential type that works is `{_ : a}`
+        // for some `a`
+        Term::RecRecord(stat_map, dynamic, _) if !dynamic.is_empty() => {
+            let ty_dyn = TypeWrapper::Ptr(new_var(state.table));
+
+            for (id, _) in stat_map {
+                envs.insert(id.clone(), ty_dyn.clone());
+            }
+
+            stat_map
+                .iter()
+                .try_for_each(|(_, t)| -> Result<(), TypecheckError> {
+                    type_check_(state, envs.clone(), strict, t, ty_dyn.clone())
+                })?;
+
+            unify(state, strict, ty, mk_typewrapper::dyn_record(ty_dyn))
+                    .map_err(|err| err.into_typecheck_err(state, rt.pos))
+        }
         Term::Record(stat_map, _) | Term::RecRecord(stat_map, ..) => {
             // For recursive records, we look at the apparent type of each field and bind it in
             // env before actually typechecking the content of fields.

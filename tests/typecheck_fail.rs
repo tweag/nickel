@@ -262,3 +262,11 @@ fn shallow_type_inference() {
         Err(TypecheckError::TypeMismatch(..))
     );
 }
+
+#[test]
+fn dynamic_record_field() {
+    assert_matches!(
+        type_check_expr("let x = \"foo\" in {\"#{x}\" = 1} : {foo: Num}"),
+        Err(TypecheckError::TypeMismatch(..))
+    );
+}
