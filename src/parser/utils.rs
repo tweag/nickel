@@ -92,20 +92,56 @@ where
     let mut static_map = HashMap::new();
     let mut dynamic_fields = Vec::new();
 
-    fields.into_iter().for_each(|field| match field {
-        (FieldPathElem::Ident(id), t) => {
-            match static_map.entry(id) {
-                Entry::Occupied(mut occpd) => {
-                    // temporary putting null in the entry to take the previous value.
-                    let prev = occpd.insert(Term::Null.into());
-                    occpd.insert(mk_term::op2(BinaryOp::Merge(), prev, t));
-                }
-                Entry::Vacant(vac) => {
-                    vac.insert(t);
-                }
+    fn insert_static_field(static_map: &mut HashMap<Ident, RichTerm>, id: Ident, t: RichTerm) {
+        match static_map.entry(id) {
+            Entry::Occupied(mut occpd) => {
+                // temporary putting null in the entry to take the previous value.
+                let prev = occpd.insert(Term::Null.into());
+                occpd.insert(mk_term::op2(BinaryOp::Merge(), prev, t));
+            }
+            Entry::Vacant(vac) => {
+                vac.insert(t);
             }
         }
-        (FieldPathElem::Expr(e), t) => dynamic_fields.push((e, t)),
+    }
+
+    fields.into_iter().for_each(|field| match field {
+        (FieldPathElem::Ident(id), t) => insert_static_field(&mut static_map, id, t),
+        (FieldPathElem::Expr(e), t) => {
+            // Dynamic fields (whose name is defined by an interpolated string) have a different
+            // semantics than fields whose name can be determined statically. However, static
+            // fields with special characters are also parsed as an `Expr(e)`:
+            //
+            // ```
+            // let x = "dynamic" in {"I#am.static" = false, "#{x}" = true}
+            // ```
+            //
+            // Here, both fields are parsed as `Expr(e)`, but the first field is actually a static
+            // one, just with special characters. The following code determines which fields are
+            // actually static or not, and inserts them in the right location.
+            match e.term.as_ref() {
+                Term::StrChunks(chunks) => {
+                    let mut buffer = String::new();
+
+                    let is_static = chunks.iter().try_for_each(|chunk| match chunk {
+                        StrChunk::Literal(s) => {
+                            buffer.push_str(&s);
+                            Ok(())
+                        }
+                        StrChunk::Expr(..) => Err(()),
+                    });
+
+                    if is_static.is_ok() {
+                        insert_static_field(&mut static_map, Ident(buffer), t)
+                    } else {
+                        dynamic_fields.push((e, t));
+                    }
+                }
+                // Currently `e` can only be string chunks, and this case should be unreachable,
+                // but let's be future-proof
+                _ => dynamic_fields.push((e, t)),
+            }
+        }
     });
 
     Term::RecRecord(static_map, dynamic_fields, attrs)
