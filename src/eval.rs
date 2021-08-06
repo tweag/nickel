@@ -621,8 +621,7 @@ where
                     env,
                 }
             }
-            // TODO: implement interpolated fields
-            Term::RecRecord(ts, interpolated, attrs) => {
+            Term::RecRecord(ts, dyn_fields, attrs) => {
                 // Thanks to the share normal form transformation, the content is either a constant or a
                 // variable.
                 let rec_env = ts.iter().try_fold::<_, _, Result<Environment, EvalError>>(
@@ -680,7 +679,7 @@ where
                 // `{stat1 = val1, ..., statn = valn} $[ exp1 = dyn_val1] ... $[ expn = dyn_valn ]`
                 // The `dyn_val` are given access to the recursive environment, but not the dynamic
                 // field names.
-                let extended = interpolated
+                let extended = dyn_fields
                     .into_iter()
                     .try_fold::<_, _, Result<RichTerm, EvalError>>(
                         static_part,
@@ -922,7 +921,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
 
                 RichTerm::new(Term::Record(map, attrs), pos)
             }
-            Term::RecRecord(map, interpolated, attrs) => {
+            Term::RecRecord(map, dyn_fields, attrs) => {
                 let map = map
                     .into_iter()
                     .map(|(id, t)| {
@@ -933,7 +932,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
                     })
                     .collect();
 
-                let interpolated = interpolated
+                let dyn_fields = dyn_fields
                     .into_iter()
                     .map(|(id_t, t)| {
                         (
@@ -943,7 +942,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
                     })
                     .collect();
 
-                RichTerm::new(Term::RecRecord(map, interpolated, attrs), pos)
+                RichTerm::new(Term::RecRecord(map, dyn_fields, attrs), pos)
             }
             Term::List(ts) => {
                 let ts = ts

@@ -307,9 +307,9 @@ impl Term {
             Record(ref mut static_map, _) => {
                 static_map.iter_mut().for_each(|(_, t)| func(t));
             }
-            RecRecord(ref mut static_map, ref mut interpolated, _) => {
+            RecRecord(ref mut static_map, ref mut dyn_fields, _) => {
                 static_map.iter_mut().for_each(|(_, t)| func(t));
-                interpolated.iter_mut().for_each(|(t1, t2)| {
+                dyn_fields.iter_mut().for_each(|(t1, t2)| {
                     func(t1);
                     func(t2);
                 });
@@ -1000,7 +1000,7 @@ impl RichTerm {
                     state,
                 )
             }
-            Term::RecRecord(map, interpolated, attrs) => {
+            Term::RecRecord(map, dyn_fields, attrs) => {
                 // The annotation on `map_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
                 let map_res: Result<HashMap<Ident, RichTerm>, E> = map
@@ -1008,13 +1008,13 @@ impl RichTerm {
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
                     .map(|(id, t)| Ok((id, t.traverse(f, state)?)))
                     .collect();
-                let interpolated_res: Result<Vec<(RichTerm, RichTerm)>, E> = interpolated
+                let dyn_fields_res: Result<Vec<(RichTerm, RichTerm)>, E> = dyn_fields
                     .into_iter()
                     .map(|(id_t, t)| Ok((id_t.traverse(f, state)?, t.traverse(f, state)?)))
                     .collect();
                 f(
                     RichTerm {
-                        term: Box::new(Term::RecRecord(map_res?, interpolated_res?, attrs)),
+                        term: Box::new(Term::RecRecord(map_res?, dyn_fields_res?, attrs)),
                         pos,
                     },
                     state,
