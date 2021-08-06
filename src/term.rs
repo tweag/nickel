@@ -79,7 +79,11 @@ pub enum Term {
     Record(HashMap<Ident, RichTerm>, RecordAttrs),
     /// A recursive record, where the fields can reference each others.
     #[serde(skip)]
-    RecRecord(HashMap<Ident, RichTerm>, RecordAttrs),
+    RecRecord(
+        HashMap<Ident, RichTerm>,
+        Vec<(RichTerm, RichTerm)>, /* field whose name is defined by interpolation */
+        RecordAttrs,
+    ),
     /// A switch construct. The evaluation is done by the corresponding unary operator, but we
     /// still need this one for typechecking.
     Switch(
@@ -300,13 +304,16 @@ impl Term {
                     func(def)
                 }
             }
-            Record(ref mut static_map, _) | RecRecord(ref mut static_map, _) => {
-                static_map.iter_mut().for_each(|e| {
-                    let (_, t) = e;
-                    func(t);
+            Record(ref mut static_map, _) => {
+                static_map.iter_mut().for_each(|(_, t)| func(t));
+            }
+            RecRecord(ref mut static_map, ref mut interpolated, _) => {
+                static_map.iter_mut().for_each(|(_, t)| func(t));
+                interpolated.iter_mut().for_each(|(t1, t2)| {
+                    func(t1);
+                    func(t2);
                 });
             }
-
             Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | Sym(_) | Enum(_) | Import(_)
             | ResolvedImport(_) => {}
             Fun(_, ref mut t)
@@ -993,17 +1000,21 @@ impl RichTerm {
                     state,
                 )
             }
-            Term::RecRecord(map, attrs) => {
+            Term::RecRecord(map, interpolated, attrs) => {
                 // The annotation on `map_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
                 let map_res: Result<HashMap<Ident, RichTerm>, E> = map
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(id, t)| t.traverse(f, state).map(|t_ok| (id.clone(), t_ok)))
+                    .map(|(id, t)| Ok((id, t.traverse(f, state)?)))
+                    .collect();
+                let interpolated_res: Result<Vec<(RichTerm, RichTerm)>, E> = interpolated
+                    .into_iter()
+                    .map(|(id_t, t)| Ok((id_t.traverse(f, state)?, t.traverse(f, state)?)))
                     .collect();
                 f(
                     RichTerm {
-                        term: Box::new(Term::RecRecord(map_res?, attrs)),
+                        term: Box::new(Term::RecRecord(map_res?, interpolated_res?, attrs)),
                         pos,
                     },
                     state,

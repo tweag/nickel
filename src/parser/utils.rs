@@ -108,12 +108,7 @@ where
         (FieldPathElem::Expr(e), t) => dynamic_fields.push((e, t)),
     });
 
-    dynamic_fields
-        .into_iter()
-        .fold(Term::RecRecord(static_map, attrs), |rec, field| {
-            let (id_t, t) = field;
-            Term::App(mk_term::op2(BinaryOp::DynExtend(), id_t, rec), t)
-        })
+    Term::RecRecord(static_map, dynamic_fields, attrs)
 }
 
 /// Make a span from parser byte offsets.

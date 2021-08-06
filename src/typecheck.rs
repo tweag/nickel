@@ -376,13 +376,14 @@ impl<'a> Envs<'a> {
             .collect()
     }
 
-    /// Add the bindings of a record to a typing environment.
+    /// Add the bindings of a record to a typing environment. Ignore fields whose name are defined
+    /// through interpolation.
     //TODO: support the case of a record with a type annotation.
     pub fn env_add_term(env: &mut Environment, rt: &RichTerm) -> Result<(), eval::EnvBuildError> {
         let RichTerm { term, pos } = rt;
 
         match term.as_ref() {
-            Term::Record(bindings, _) | Term::RecRecord(bindings, _) => {
+            Term::Record(bindings, _) | Term::RecRecord(bindings, ..) => {
                 for (id, t) in bindings {
                     let tyw: TypeWrapper =
                         apparent_type(t.as_ref(), Some(&Envs::from_global(env))).into();
@@ -612,9 +613,10 @@ fn type_check_(
             unify(state, strict, ty, mk_tyw_enum!(id.clone(), row))
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
-        Term::Record(stat_map, _) | Term::RecRecord(stat_map, _) => {
+        Term::Record(stat_map, _) | Term::RecRecord(stat_map, ..) => {
             // For recursive records, we look at the apparent type of each field and bind it in
-            // env before actually typechecking the content of fields
+            // env before actually typechecking the content of fields.
+            // Fields defined by interpolation are ignored.
             if let Term::RecRecord(..) = t.as_ref() {
                 for (id, rt) in stat_map {
                     let tyw = binding_type(rt.as_ref(), &envs, state.table, strict);

@@ -401,7 +401,7 @@ impl Cache {
             Some(_) => {
                 let (mut t, _) = self.terms.remove(&file_id).unwrap();
                 match t.term.as_mut() {
-                    Term::Record(ref mut map, _) | Term::RecRecord(ref mut map, _) => {
+                    Term::Record(ref mut map, _) => {
                         let map_res: Result<HashMap<Ident, RichTerm>, ImportError> =
                             std::mem::replace(map, HashMap::new())
                                 .into_iter()
@@ -410,6 +410,29 @@ impl Cache {
                                 })
                                 .collect();
                         *map = map_res?;
+                    }
+                    Term::RecRecord(ref mut map, ref mut interpolated, _) => {
+                        let map_res: Result<HashMap<Ident, RichTerm>, ImportError> =
+                            std::mem::replace(map, HashMap::new())
+                                .into_iter()
+                                .map(|(id, t)| {
+                                    transformations::transform(t, self)
+                                        .map(|t_ok| (id.clone(), t_ok))
+                                })
+                                .collect();
+
+                        let interpolated_res: Result<Vec<(RichTerm, RichTerm)>, ImportError> =
+                            std::mem::replace(interpolated, Vec::new())
+                                .into_iter()
+                                .map(|(id_t, t)| {
+                                    Ok((transformations::transform(id_t, self)?,
+                                       transformations::transform(t, self)?))
+                                })
+                                .collect();
+
+                        *map = map_res?;
+                        *interpolated = interpolated_res?;
+                        
                     }
                     _ => panic!("cache::transform_inner(): not a record"),
                 }
