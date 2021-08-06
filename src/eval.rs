@@ -96,6 +96,7 @@ use crate::stack::Stack;
 use crate::term::{make as mk_term, MetaValue, RichTerm, StrChunk, Term, UnaryOp};
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
+use std::iter::FromIterator;
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use std::rc::{Rc, Weak};
@@ -394,6 +395,17 @@ impl<'a> Extend<(&'a Ident, &'a Thunk)> for &'a Environment {
             .borrow_mut()
             .current
             .extend(iter.into_iter().map(|(a, b)| (a.clone(), b.clone())))
+    }
+}
+
+impl FromIterator<(Ident, Thunk)> for Environment {
+    fn from_iter<T: IntoIterator<Item = (Ident, Thunk)>>(iter: T) -> Self {
+        Self {
+            inner: Rc::new(RefCell::new(InnerEnvironment {
+                current: HashMap::from_iter(iter),
+                previous: None,
+            })),
+        }
     }
 }
 
