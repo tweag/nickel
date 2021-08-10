@@ -84,20 +84,20 @@ abstractions or just feel ad hoc. Nickel buys you more for less.
      and extra `--` as in `cargo run -- -f program.ncl`.
 
 2. Run your first program:
-  ```
+  ```shell
   $ ./nickel <<< 'let x = 2 in x + x'
   Typechecked: Ok(Types(Dyn))
   Done: Num(4.0)
   ```
   Or load it from a file:
-  ```
+  ```shell
   $ echo 'let s = "world" in "Hello, " ++ s' > program.ncl
   $ ./nickel -f program.ncl
   Typechecked: Ok(Types(Dyn))
   Done: Str("Hello, world")
   ```
-3. Start an REPL:
-  ```
+3. Start a REPL:
+  ```shell
   $ ./nickel repl
   nickel> let x = 2 in x + x
   nickel> x
@@ -106,8 +106,9 @@ abstractions or just feel ad hoc. Nickel buys you more for less.
   nickel>
   ```
   Use `:help` for a list of available commands.
+
 4. Export your configuration to JSON, YAML or TOML:
-  ```
+  ```shell
   $ ./nickel export --format json <<< '{foo = "Hello, world!"}'
   {
     "foo": "Hello, world!"
@@ -123,35 +124,35 @@ for help about a specific subcommand.
 
 1. Download build dependencies:
    - **With Nix**: If you have [Nix](https://nixos.org/nix) installed:
-     ```
+     ```shell
      $ nix-shell shell.nix
      ```
      to be dropped in a shell, ready to build.
    - **Without Nix**: otherwise, follow [this guide][rust-guide] to install Rust
      and Cargo first.
 2. Build Nickel:
-   ```
+   ```shell
    $ cargo build
    ```
    And voilà! Generated files are placed in `target/debug`.
 
 
 1. *(optional)* make a symbolic link to the executable:
-  ```
+  ```shell
   $ ln -S nickel target/debug/nickel
   ```
 
 
 ### Tests
 
-```
+```shell
 $ cargo test
 ```
 
 ### Documentation
 
 1. Build the doc:
-  ```
+  ```shell
   $ cargo doc --no-deps
   ```
 2. Open the file `target/doc/nickel/index.html` in your browser.
@@ -159,14 +160,14 @@ $ cargo test
 ### Examples
 
 You can find examples in
-[`examples`](./examples). Note
+[`/examples`](./examples) directory. Note
 that as the syntax is not yet fixed, and some basic helpers are missing, they
 may seem a bit alien currently.
 
 ## Roadmap
 
 The design is settled and implemented for the most part, but the final syntax
-and others important practical aspects are still being debated. We aim to
+and other important practical aspects are still being debated. We aim to
 transition from an experimental stage to a minimum viable product stage.  The
 next points to deal with are:
 
@@ -188,7 +189,7 @@ next points to deal with are:
     does have general functions and is Turing-complete, they are necessarily
     different.
 - [Nix](https://nixos.org/): The Nix language, or *Nix expressions*, is one of
-    the main inspiration for Nickel. It is a very simple yet powerful lazy
+    the main inspirations for Nickel. It is a very simple yet powerful lazy
     functional language. We strive to retain this simplicity, while adding
     typing capabilities, modularity, and detaching the language from the Nix
     package manager.
