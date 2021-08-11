@@ -53,14 +53,14 @@ jobs:
       run: |
         nix build ./#checks.x86_64-linux.nickel-against-${{ matrix.rust_channel }}-rust-channel
 
-    - name: Commit `scripts/channel_${{ matrix.channel }}.toml`
+    - name: Commit `scripts/channel_${{ matrix.rust_channel }}.toml`
       uses: stefanzweifel/git-auto-commit-action@v4
       with:
-        commit_message: 'Update `${{ matrix.channel }}` Rust channel [ci skip]'
+        commit_message: 'Update `${{ matrix.rust_channel }}` Rust channel [ci skip]'
         branch: 'master'
-        file_pattern: scripts/channel_${{ matrix.channel }}.toml
+        file_pattern: scripts/channel_${{ matrix.rust_channel }}.toml
         # See https://github.community/t/github-actions-bot-email-address/17204/6
         commit_user_name: github-actions[bot]
         commit_user_email: 41898282+github-actions[bot]@users.noreply.github.com
-        commit_author: GitHub Actions
+        commit_author: GitHub Actions <41898282+github-actions[bot]@users.noreply.github.com>
       if: github.repository == 'tweag/nickel'
