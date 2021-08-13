@@ -620,7 +620,7 @@ where
         clos = match term {
             Term::Var(x) => {
                 let mut thunk = env
-                    .remove(&x)
+                    .get(&x)
                     .or_else(|| global_env.get(&x))
                     .ok_or_else(|| EvalError::UnboundIdentifier(x.clone(), pos))?;
                 std::mem::drop(env); // thunk may be a 1RC pointer
@@ -823,9 +823,8 @@ where
                         Term::Var(var_id) => {
                             // We already checked for unbound identifier in the previous fold,
                             // so function should always succeed
-                            env.with_identifier(&var_id, |thunk| {
-                                thunk.borrow_mut().env.extend(rec_env.iter())
-                            });
+                            let mut thunk = env.get(&var_id).unwrap();
+                            thunk.borrow_mut().env.extend(rec_env.iter());
                             (
                                 id,
                                 RichTerm {
