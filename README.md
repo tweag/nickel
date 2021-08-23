@@ -84,20 +84,20 @@ abstractions or just feel ad hoc. Nickel buys you more for less.
      and extra `--` as in `cargo run -- -f program.ncl`.
 
 2. Run your first program:
-  ```shell
+  ```console
   $ ./nickel <<< 'let x = 2 in x + x'
   Typechecked: Ok(Types(Dyn))
   Done: Num(4.0)
   ```
   Or load it from a file:
-  ```shell
+  ```console
   $ echo 'let s = "world" in "Hello, " ++ s' > program.ncl
   $ ./nickel -f program.ncl
   Typechecked: Ok(Types(Dyn))
   Done: Str("Hello, world")
   ```
 3. Start a REPL:
-  ```shell
+  ```console
   $ ./nickel repl
   nickel> let x = 2 in x + x
   nickel> x
@@ -108,7 +108,7 @@ abstractions or just feel ad hoc. Nickel buys you more for less.
   Use `:help` for a list of available commands.
 
 4. Export your configuration to JSON, YAML or TOML:
-  ```shell
+  ```console
   $ ./nickel export --format json <<< '{foo = "Hello, world!"}'
   {
     "foo": "Hello, world!"
@@ -124,35 +124,35 @@ for help about a specific subcommand.
 
 1. Download build dependencies:
    - **With Nix**: If you have [Nix](https://nixos.org/nix) installed:
-     ```shell
+     ```console
      $ nix-shell shell.nix
      ```
      to be dropped in a shell, ready to build.
    - **Without Nix**: otherwise, follow [this guide][rust-guide] to install Rust
      and Cargo first.
 2. Build Nickel:
-   ```shell
+   ```console
    $ cargo build
    ```
    And voilà! Generated files are placed in `target/debug`.
 
 
 1. *(optional)* make a symbolic link to the executable:
-  ```shell
+  ```console
   $ ln -S nickel target/debug/nickel
   ```
 
 
 ### Tests
 
-```shell
+```console
 $ cargo test
 ```
 
 ### Documentation
 
 1. Build the doc:
-  ```shell
+  ```console
   $ cargo doc --no-deps
   ```
 2. Open the file `target/doc/nickel/index.html` in your browser.
