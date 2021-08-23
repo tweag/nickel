@@ -160,7 +160,7 @@ $ cargo test
 ### Examples
 
 You can find examples in
-[`./examples`](./examples) directory. Note
+the [`./examples`](./examples) directory. Note
 that as the syntax is not yet fixed, and some basic helpers are missing, they
 may seem a bit alien currently.
 
