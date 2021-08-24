@@ -559,7 +559,7 @@ pub mod rustyline_frontend {
                 }
             }
         } else {
-            println!("Available commands: help query load typecheck exit");
+            println!("Available commands: help query load typecheck print exit");
         }
     }
 }
