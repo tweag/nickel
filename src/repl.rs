@@ -9,6 +9,7 @@
 use crate::cache::Cache;
 use crate::error::{Error, EvalError, IOError};
 use crate::error::{ParseError, REPLError};
+use crate::eval::Environment;
 use crate::identifier::Ident;
 use crate::parser::{grammar, lexer, ExtendedTerm};
 use crate::term::{RichTerm, Term};
@@ -39,6 +40,8 @@ impl From<Term> for EvalResult {
 pub trait REPL {
     /// Evaluate an expression, which can be either a standard term or a toplevel let-binding.
     fn eval(&mut self, exp: &str) -> Result<EvalResult, Error>;
+    /// Evaluate an expression fully, which can be either a standard term or a toplevel let-binding.
+    fn eval_full(&mut self, exp: &str) -> Result<EvalResult, Error>;
     /// Load the content of a file in the environment. Return the loaded record.
     fn load(&mut self, path: impl AsRef<OsStr>) -> Result<RichTerm, Error>;
     /// Typecheck an expression and return its [apparent type](../typecheck/fn.apparent_type.html).
@@ -86,34 +89,45 @@ impl REPLImpl {
     }
 }
 
+fn generic_eval<F>(repl: &mut REPLImpl, eval_f: F, exp: &str) -> Result<EvalResult, Error>
+where
+    F: Fn(RichTerm, &Environment, &mut Cache) -> Result<Term, EvalError>,
+{
+    let file_id = repl.cache.add_string(
+        format!("repl-input-{}", InputNameCounter::next()),
+        String::from(exp),
+    );
+
+    match repl
+        .parser
+        .parse(file_id, lexer::Lexer::new(exp))
+        .map_err(|err| ParseError::from_lalrpop(err, file_id))?
+    {
+        ExtendedTerm::RichTerm(t) => {
+            typecheck::type_check_in_env(&t, &repl.type_env, &repl.cache)?;
+            let t = transformations::transform(t, &mut repl.cache)?;
+            Ok(eval_f(t, &repl.eval_env, &mut repl.cache)?.into())
+        }
+        ExtendedTerm::ToplevelLet(id, t) => {
+            typecheck::type_check_in_env(&t, &repl.type_env, &repl.cache)?;
+            typecheck::Envs::env_add(&mut repl.type_env, id.clone(), &t);
+
+            let t = transformations::transform(t, &mut repl.cache)?;
+
+            let local_env = repl.eval_env.clone();
+            eval::env_add(&mut repl.eval_env, id.clone(), t, local_env);
+            Ok(EvalResult::Bound(id))
+        }
+    }
+}
+
 impl REPL for REPLImpl {
     fn eval(&mut self, exp: &str) -> Result<EvalResult, Error> {
-        let file_id = self.cache.add_string(
-            format!("repl-input-{}", InputNameCounter::next()),
-            String::from(exp),
-        );
+        generic_eval(self, eval::eval, exp)
+    }
 
-        match self
-            .parser
-            .parse(file_id, lexer::Lexer::new(exp))
-            .map_err(|err| ParseError::from_lalrpop(err, file_id))?
-        {
-            ExtendedTerm::RichTerm(t) => {
-                typecheck::type_check_in_env(&t, &self.type_env, &self.cache)?;
-                let t = transformations::transform(t, &mut self.cache)?;
-                Ok(eval::eval(t, &self.eval_env, &mut self.cache)?.into())
-            }
-            ExtendedTerm::ToplevelLet(id, t) => {
-                typecheck::type_check_in_env(&t, &self.type_env, &self.cache)?;
-                typecheck::Envs::env_add(&mut self.type_env, id.clone(), &t);
-
-                let t = transformations::transform(t, &mut self.cache)?;
-
-                let local_env = self.eval_env.clone();
-                eval::env_add(&mut self.eval_env, id.clone(), t, local_env);
-                Ok(EvalResult::Bound(id))
-            }
-        }
+    fn eval_full(&mut self, exp: &str) -> Result<EvalResult, Error> {
+        generic_eval(self, eval::eval_full, exp)
     }
 
     fn load(&mut self, path: impl AsRef<OsStr>) -> Result<RichTerm, Error> {
@@ -180,6 +194,7 @@ pub mod command {
         Load,
         Typecheck,
         Query,
+        Print,
         Help,
         Exit,
     }
@@ -191,6 +206,7 @@ pub mod command {
         Load(OsString),
         Typecheck(String),
         Query(String),
+        Print(String),
         Help(Option<String>),
         Exit,
     }
@@ -219,6 +235,7 @@ pub mod command {
                 "load" | "l" => Ok(Load),
                 "typecheck" | "tc" => Ok(Typecheck),
                 "query" | "q" => Ok(Query),
+                "print" | "p" => Ok(Print),
                 "help" | "?" | "h" => Ok(Help),
                 "exit" | "e" => Ok(Exit),
                 _ => Err(UnknownCommandError {}),
@@ -235,6 +252,7 @@ pub mod command {
                 Load => vec![String::from("l")],
                 Typecheck => vec![String::from("tc")],
                 Query => vec![String::from("q")],
+                Print => vec![String::from("p")],
                 Help => vec![String::from("h"), String::from("?")],
                 Exit => vec![String::from("e")],
             }
@@ -249,6 +267,7 @@ pub mod command {
                 Load => write!(f, "load"),
                 Typecheck => write!(f, "typecheck"),
                 Query => write!(f, "query"),
+                Print => write!(f, "print"),
                 Help => write!(f, "help"),
                 Exit => write!(f, "exit"),
             }
@@ -279,6 +298,10 @@ pub mod command {
                     require_arg(cmd, &arg, None)?;
                     Ok(Command::Query(arg))
                 }
+                CommandType::Print => {
+                    require_arg(cmd, &arg, None)?;
+                    Ok(Command::Print(arg))
+                }
                 CommandType::Exit => Ok(Command::Exit),
                 CommandType::Help => {
                     let arg_opt = if arg.trim().is_empty() {
@@ -301,6 +324,7 @@ pub mod command {
                 Load(..) => CommandType::Load,
                 Typecheck(..) => CommandType::Typecheck,
                 Query(..) => CommandType::Query,
+                Print(..) => CommandType::Print,
                 Help(..) => CommandType::Help,
                 Exit => CommandType::Exit,
             }
@@ -432,6 +456,14 @@ pub mod rustyline_frontend {
                         Ok(Command::Query(exp)) => repl.query(&exp).map(|t| {
                             query_print::print_query_result(&t, query_print::Attributes::default());
                         }),
+                        Ok(Command::Print(exp)) => {
+                            match repl.eval_full(&exp) {
+                                Ok(EvalResult::Evaluated(t)) => println!("{}\n", t.deep_repr()),
+                                Ok(EvalResult::Bound(_)) => (),
+                                Err(err) => program::report(repl.cache_mut(), err),
+                            };
+                            Ok(())
+                        }
                         Ok(Command::Help(arg)) => {
                             print_help(arg.as_deref());
                             Ok(())
@@ -511,6 +543,11 @@ pub mod rustyline_frontend {
                     print_aliases(c);
                     println!("Typecheck the given expression and print its top-level type");
                 }
+                Ok(c @ CommandType::Print) => {
+                    println!(":{} <expression>", c);
+                    print_aliases(c);
+                    println!("Evaluate and print <expression> recursively");
+                }
                 Ok(c @ CommandType::Exit) => {
                     println!(":{}", c);
                     print_aliases(c);
@@ -518,11 +555,11 @@ pub mod rustyline_frontend {
                 }
                 Err(UnknownCommandError {}) => {
                     println!("Unknown command `{}`.", arg);
-                    println!("Available commands: ? help query load typecheck");
+                    println!("Available commands: ? help query load typecheck print");
                 }
             }
         } else {
-            println!("Available commands: help query load typecheck exit");
+            println!("Available commands: help query load typecheck print exit");
         }
     }
 }

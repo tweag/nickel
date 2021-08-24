@@ -420,6 +420,27 @@ impl Term {
         }
     }
 
+    /// Return a deep string representation of a term, used for printing in the REPL
+    pub fn deep_repr(&self) -> String {
+        match self {
+            Term::Record(fields) | Term::RecRecord(fields) => {
+                let fields_str: Vec<String> = fields
+                    .iter()
+                    .map(|(ident, term)| format!("{} = {}", ident, term.as_ref().deep_repr()))
+                    .collect();
+                format!("{{ {} }}", fields_str.join(", "))
+            }
+            Term::List(elements) => {
+                let elements_str: Vec<String> = elements
+                    .iter()
+                    .map(|term| term.as_ref().deep_repr())
+                    .collect();
+                format!("[ {} ]", elements_str.join(", "))
+            }
+            _ => self.shallow_repr(),
+        }
+    }
+
     /// Determine if a term is in evaluated from, called weak head normal form (WHNF).
     pub fn is_whnf(&self) -> bool {
         match self {
