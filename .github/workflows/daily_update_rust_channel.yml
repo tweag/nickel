@@ -7,6 +7,8 @@ jobs:
   update-rust-channels:
 
     strategy:
+      # Run in sequence to prevent `git push` overlaps
+      max-parallel: 1
       matrix:
         rust_channel:
         - stable
