@@ -99,16 +99,16 @@
 
         For example:
         ```nickel
-          foldl (fun acc e => acc @ [e]) [] [ 1, 2, 3 ] =>
-            [ 3, 2, 1 ]
+          foldl (fun acc e => acc + e) 0 [ 1, 2, 3 ] =>
+            6
         ```
         "#m
-      = fun f fst l =>
+      = fun f acc l =>
         if %length% l == 0 then
-          fst
+          acc
         else
-          let rest = foldl f fst (%tail% l) in
-          %seq% rest (f rest (%head% l)),
+          let newAcc = f acc (%head% l) in
+          %seq% newAcc (foldl f newAcc (%tail% l)),
 
     fold : forall a b. (a -> b -> b) -> List a -> b -> b 
       | doc m#"
@@ -116,8 +116,8 @@
 
         For example:
         ```nickel
-          fold (fun e acc => e + acc) [ 1, 2, 3 ] 0 =>
-            6
+          fold (fun e acc => acc @ [e]) [ 1, 2, 3 ] [] =>
+            [ 3, 2, 1 ]
         ```
         "#m
       = fun f l fst =>
@@ -160,7 +160,7 @@
             [ 3, 2, 1 ]
         ```
         "#m
-      = fun pred l => reverse (fold (fun x acc => if pred x then acc @ [x] else acc) l []),
+      = fun pred l => fold (fun x acc => if pred x then acc @ [x] else acc) l [],
 
     flatten : forall a. List (List a) -> List a
       | doc m#"
