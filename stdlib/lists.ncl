@@ -160,7 +160,7 @@
             [ 3, 2, 1 ]
         ```
         "#m
-      = fun pred l => fold (fun x acc => if pred x then acc @ [x] else acc) l [],
+      = fun pred l => foldl (fun acc x => if pred x then acc @ [x] else acc) [] l,
 
     flatten : forall a. List (List a) -> List a
       | doc m#"
