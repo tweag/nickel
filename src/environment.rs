@@ -46,10 +46,7 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
     where
         V: Clone,
     {
-        self.current
-            .get(key)
-            .cloned()
-            .or_else(|| self.previous.borrow().as_ref().and_then(|p| p.get(key)))
+        self.iter_layers().find_map(|hmap| hmap.get(key).cloned())
     }
 
     pub fn iter_layers(&self) -> EnvLayerIter<'_, K, V> {
