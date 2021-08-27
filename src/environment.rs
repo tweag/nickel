@@ -69,6 +69,19 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
     }
 }
 
+/// ```compile_fail
+/// let env = Environment::<char, char>::new();
+/// let mut iter = env.iter_layers();
+/// drop(env);
+/// let _ = iter.next();
+/// ```
+///
+/// ```compile_fail
+/// let mut env = Environment::<char, char>::new();
+/// let mut iter = env.iter_layers();
+/// env.insert('a', 'a');
+/// let _ = iter.next();
+/// ```
 pub struct EnvLayerIter<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> {
     env: *const Environment<K, V>,
     _marker: PhantomData<&'a Environment<K, V>>,
