@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::marker::PhantomData;
+use std::ptr::NonNull;
 use std::rc::Rc;
 
 #[derive(Debug, PartialEq, Default)]
@@ -61,6 +62,17 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
         }
     }
 
+    pub fn iter_elems(&self) -> EnvElemIter<'_, K, V> {
+        let mut env: Vec<NonNull<HashMap<K, V>>> = self
+            .iter_layers()
+            // SAFETY: all NonNull::new_unchecked comes from pointers created from Rc, so cannot be null
+            .map(|hmap| unsafe { NonNull::new_unchecked(Rc::as_ptr(&hmap) as *mut HashMap<K, V>) })
+            .collect();
+        // SAFETY: by design, env cannot be empty, and coming from an Rc, it is well aligned and initialized
+        let current_map = unsafe { env.pop().unwrap().as_ref() }.iter();
+        EnvElemIter { env, current_map }
+    }
+
     fn was_cloned(&self) -> bool {
         Rc::strong_count(&self.current) > 1
     }
@@ -100,6 +112,37 @@ impl<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> Iterator for EnvLayerIter<'a, K, 
                 .as_ref()
                 .map_or(std::ptr::null(), Rc::as_ptr);
             Some(res)
+        }
+    }
+}
+
+/// ```compile_fail
+/// let env = Environment::<char, char>::new();
+/// let mut iter = env.iter_elems();
+/// drop(env);
+/// let _ = iter.next();
+/// ```
+///
+/// ```compile_fail
+/// let mut env = Environment::<char, char>::new();
+/// let mut iter = env.iter_elems();
+/// env.insert('a', 'a');
+/// let _ = iter.next();
+/// ```
+pub struct EnvElemIter<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> {
+    env: Vec<NonNull<HashMap<K, V>>>,
+    current_map: std::collections::hash_map::Iter<'a, K, V>,
+}
+
+impl<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> Iterator for EnvElemIter<'a, K, V> {
+    type Item = (&'a K, &'a V);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            match self.current_map.next() {
+                Some((k, v)) => return Some((k, v)),
+                None => self.current_map = unsafe { self.env.pop()?.as_ref() }.iter(),
+            }
         }
     }
 }
@@ -196,5 +239,50 @@ mod tests {
         assert_eq!(map2.get(&1), Some(&'a'));
         assert_eq!(map2.get(&2), None);
         assert!(iter.next().is_none());
+    }
+
+    #[test]
+    fn test_iter_elem() {
+        let env_base = Environment::<u8, char>::new();
+        assert!(env_base.iter_elems().next().is_none());
+
+        let mut env_base = Environment::new();
+        env_base.insert(1, 'a');
+        env_base.insert(2, 'b');
+        let mut iter_elems = env_base.iter_elems();
+        assert!(iter_elems.next().is_some());
+        assert!(iter_elems.next().is_some());
+        assert!(iter_elems.next().is_none());
+        assert!({
+            let mut vec: Vec<_> = env_base.iter_elems().collect();
+            vec.sort_unstable();
+            vec == vec![(&1, &'a'), (&2, &'b')]
+        });
+
+        let mut env2 = env_base.clone();
+        env_base.insert(1, 'z');
+        env2.insert(1, 'y');
+        assert_eq!(env_base.iter_elems().count(), 3);
+        assert_eq!(env2.iter_elems().count(), 3);
+        assert_eq!(env_base.iter_elems().skip(2).next(), Some((&1, &'z')));
+        assert_eq!(env2.iter_elems().skip(2).next(), Some((&1, &'y')));
+
+        let mut iter_elems_base = env_base.iter_elems();
+        let _ = iter_elems_base.next();
+        let mut iter_elems2 = env2.iter_elems();
+        let _ = iter_elems_base.next();
+        let _ = iter_elems2.next();
+
+        let mut env_base = Environment::new();
+        env_base.insert(1, 'a');
+        env_base.insert(2, 'b');
+        let _ = env_base.clone();
+        env_base.insert(1, 'z');
+        env_base.insert(3, 'c');
+        let hmap: HashMap<_, _> = env_base.iter_elems().collect();
+        assert_eq!(hmap.len(), 3);
+        assert_eq!(hmap[&1], &'z');
+        assert_eq!(hmap[&2], &'b');
+        assert_eq!(hmap[&3], &'c');
     }
 }
