@@ -143,7 +143,7 @@ impl<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> Iterator for EnvElemIter<'a, K, V
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             match self.current_map.next() {
-                Some((k, v)) => return Some((k, v)),
+                Some(res) => return Some(res),
                 None => self.current_map = unsafe { self.env.pop()?.as_ref() }.iter(),
             }
         }
