@@ -53,10 +53,14 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
     pub fn iter_layers(&self) -> EnvLayerIter<'_, K, V> {
         EnvLayerIter {
             env: if !self.was_cloned() {
-                self
+                Some(NonNull::from(self))
             } else {
                 // if was cloned, current is the same as first of previous (that cannot be empty then)
-                Rc::as_ptr(self.previous.borrow().as_ref().unwrap())
+                self.previous
+                    .borrow()
+                    .as_ref()
+                    // SAFETY: created from Rc, so cannot be null
+                    .map(|prev| unsafe { NonNull::new_unchecked(Rc::as_ptr(prev) as *mut _) })
             },
             _marker: PhantomData,
         }
@@ -66,7 +70,7 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
         let mut env: Vec<NonNull<HashMap<K, V>>> = self
             .iter_layers()
             // SAFETY: all NonNull::new_unchecked comes from pointers created from Rc, so cannot be null
-            .map(|hmap| unsafe { NonNull::new_unchecked(Rc::as_ptr(&hmap) as *mut HashMap<K, V>) })
+            .map(|hmap| unsafe { NonNull::new_unchecked(Rc::as_ptr(&hmap) as *mut _) })
             .collect();
         // SAFETY: by design, env cannot be empty, and coming from an Rc, it is well aligned and initialized
         let current_map = unsafe { env.pop().unwrap().as_ref() }.iter();
@@ -92,7 +96,7 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
 /// let _ = iter.next();
 /// ```
 pub struct EnvLayerIter<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> {
-    env: *const Environment<K, V>,
+    env: Option<NonNull<Environment<K, V>>>,
     _marker: PhantomData<&'a Environment<K, V>>,
 }
 
@@ -100,19 +104,18 @@ impl<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> Iterator for EnvLayerIter<'a, K, 
     type Item = Rc<HashMap<K, V>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.env.is_null() {
-            return None;
-        }
-        // SAFETY: we checked that that self is not null on previous lines
-        unsafe {
-            let res = (*self.env).current.clone();
-            self.env = (*self.env)
+        // SAFETY: NonNull being in an option, we know it cannot be null and can be dereferencable
+        self.env.map(|env| unsafe {
+            let res = env.as_ref().current.clone();
+            self.env = env
+                .as_ref()
                 .previous
                 .borrow()
                 .as_ref()
-                .map_or(std::ptr::null(), Rc::as_ptr);
-            Some(res)
-        }
+                // SAFETY: can safely create NonNull from Rc
+                .map(|prev| NonNull::new_unchecked(Rc::as_ptr(prev) as *mut _));
+            res
+        })
     }
 }
 
