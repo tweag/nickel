@@ -95,11 +95,15 @@
 
     foldl : forall a b. (a -> b -> a) -> a -> List b -> a
       | doc m#"
-        Fold a left-associative function over a list.
+        Fold a function over a list.
+        `foldl f init [x1, x2, ..., xn]` results in `f (... (f (f init x1) x2) ...) xn`.
+
+        This function is strict in the intermediate accumulator.
 
         For example:
         ```nickel
           foldl (fun acc e => acc + e) 0 [ 1, 2, 3 ] =>
+            (((0 + 1) + 2) 3) =>
             6
         ```
         "#m
@@ -112,11 +116,13 @@
 
     fold : forall a b. (a -> b -> b) -> List a -> b -> b 
       | doc m#"
-        Fold a right-associative function over a list.
+        Fold a function over a list.
+        `fold f [x1, x2, ..., xn] init` results in `f x1 (f x2 (... (f xn init) ...))`.
 
         For example:
         ```nickel
           fold (fun e acc => acc @ [e]) [ 1, 2, 3 ] [] =>
+            ((([] @ [3]) @ [2]) @ [1]) =>
             [ 3, 2, 1 ]
         ```
         "#m
