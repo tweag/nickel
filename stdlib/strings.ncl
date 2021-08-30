@@ -360,7 +360,7 @@
     // fromEnum | < | Dyn> -> Str = fun tag => %toStr% tag,
     fromEnum | Dyn -> Str
     | doc m#"
-      Converts any basic value to its string representation.
+      Converts an enum variant to its string representation.
 
       For example:
       ```nickel

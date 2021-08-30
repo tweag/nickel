@@ -114,8 +114,7 @@
 
     seq : forall a. Dyn -> a -> a
     | doc m#"
-      Forces the evaluation of the first argument, resulting in the second argument if the first did not evaluate to
-      bottom, bottom otherwise.
+      `seq x y` forces the evaluation of `x`, before resulting in `y`.
 
       For example:
       ```nickel
@@ -129,8 +128,7 @@
 
     deepSeq : forall a. Dyn -> a -> a
     | doc m#"
-      Forces a deep evaluation of the first argument, resulting in the second argument if the first did not evaluate to
-      bottom, bottom otherwise.
+      `deepSeq x y` forces a deep evaluation `x`, before resulting in `y`.
 
       For example:
       ```nickel
