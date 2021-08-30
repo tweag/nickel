@@ -2,7 +2,7 @@
   builtins = {
     isNum : Dyn -> Bool
     | doc m#"
-      Checks if the given dynamically typed value is a number.
+      Checks if the given value is a number.
 
       For example:
       ```nickel
@@ -16,7 +16,7 @@
 
     isBool : Dyn -> Bool
     | doc m#"
-      Checks if the given dynamically typed value is a bool.
+      Checks if the given value is a boolean.
 
       For example:
       ```nickel
@@ -30,7 +30,7 @@
 
     isStr : Dyn -> Bool 
     | doc m#"
-      Checks if the given dynamically typed value is a string.
+      Checks if the given value is a string.
 
       For example:
       ```nickel
@@ -44,7 +44,7 @@
 
     isFun : Dyn -> Bool
     | doc m#"
-      Checks if the given dynamically typed value is a function.
+      Checks if the given value is a function.
 
       For example
       ```nickel
@@ -58,7 +58,7 @@
 
     isList : Dyn -> Bool
     | doc m#"
-      Checks if the given dynamically typed value is a list.
+      Checks if the given value is a list.
 
       For example
       ```nickel
@@ -72,7 +72,7 @@
 
     isRecord : Dyn -> Bool 
     | doc m#"
-      Checks if the given dynamically typed value is a record.
+      Checks if the given value is a record.
 
       For example
       ```nickel
@@ -93,7 +93,7 @@
       TypeRecord,
       Other>
     | doc m#"
-      Results in a value representing the type of the given dynamically typed value.
+      Results in a value representing the type of the typed value.
 
       For example:
       ```nickel
@@ -144,7 +144,7 @@
 
     hash : <Md5, Sha1, Sha256, Sha512> -> Str -> Str
     | doc m#"
-      Hashes the given string provided the desired hash function.
+      Hashes the given string provided the desired hash algorithm.
 
       For example:
       ```nickel

@@ -59,7 +59,7 @@
 
     map : forall a b. (a -> b) -> List a -> List b
       | doc m#"
-        Applies a function to every element in the lists, resulting in the new lists.
+        Applies a function to every element in the list, resulting in the new list.
 
         For example:
         ```nickel
