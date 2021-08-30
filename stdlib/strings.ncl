@@ -384,7 +384,7 @@
 
     toNum | #NumLiteral -> Num
     | doc m#"
-      Convers a string that represents an integer to that integer.
+      Converts a string that represents an integer to that integer.
 
       For example:
       ```nickel
@@ -396,7 +396,7 @@
 
     toBool | #BoolLiteral -> Bool
     | doc m#"
-      Converts a string that represents a bool to that bool.
+      Converts a string that represents a boolean to that boolean.
 
       For example:
       ```nickel
@@ -412,7 +412,7 @@
     // toEnum | #Ident -> < | Dyn> = fun s => %enumFromStr% s,
     toEnum | #Ident -> Dyn
     | doc m#"
-      Converts any string that represents an identifier to an enum variant.
+      Converts any string that represents an enum variant to that enum variant.
 
       For example:
       ```nickel
