@@ -261,7 +261,7 @@
 
     replace: Str -> Str -> Str -> Str
     | doc m#"
-      Replaces a substring in the given string.
+      `replace str sub repl` replaces every occurence of `sub` in `str` with `repl`.
 
       For example:
       ```nickel
@@ -276,7 +276,7 @@
 
     replaceRegex: Str -> Str -> Str -> Str
     | doc m#"
-      Given a string s, regular expression p, and and substring r, replaces every match of p in s with r.
+      `replaceRegex str regex repl` replaces every match of `regex` in `str` with `repl`.
 
       For example:
       ```nickel
@@ -291,7 +291,7 @@
 
     isMatch : Str -> Str -> Bool
     | doc m#"
-      Checks if the string matches the regular expression.
+      `isMatch str regex` checks if `str` matches `regex`.
 
       For example:
       ```nickel
@@ -305,8 +305,8 @@
 
     match : Str -> Str -> {match: Str, index: Num, groups: List Str}
     | doc m#"
-      Matches a string given a regular expression. Results in the part of the string that matched, the index of the
-      first character that was part of the match in the original string, and a lists of all capture groups if any.
+      `match str regex` matches `str` given `regex`. Results in the part of `str` that matched, the index of the
+      first character that was part of the match in `str`, and a lists of all capture groups if any.
 
       For example:
       ```nickel

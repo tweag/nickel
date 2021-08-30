@@ -59,7 +59,8 @@
 
     map : forall a b. (a -> b) -> List a -> List b
       | doc m#"
-        Applies a function to every element in the list, resulting in the new list.
+        `map f [x1, x2, ..., xn]` applies function `f` to every element in the list,
+        resulting in `[f x1, f x2, ... f xn]`
 
         For example:
         ```nickel
@@ -158,7 +159,7 @@
 
     filter : forall a. (a -> Bool) -> List a -> List a
       | doc m#"
-        Filter all elements from a list given a predicate, keeping all elements that satisfy the predicate.
+        `filter f xs` keeps all elements from `xs` given that satisfy `f`.
 
         For example:
         ```nickel
@@ -242,8 +243,8 @@
 
     generate : forall a. (Num -> a) -> Num -> List a
       | doc m#"
-        Given a function f that produces an element given a number, and a number n that denotes the desired
-        length of the lists, results in a list [ f 0, f 1, ..., f (n - 1) ].
+        `generate f n` produces a list of length `n` by applying `f` on increasing numbers:
+         `[ f 0, f 1, ..., f (n - 1) ]`.
 
         For example:
         ```nickel
