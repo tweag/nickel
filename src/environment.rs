@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::iter::FromIterator;
 use std::marker::PhantomData;
 use std::ptr::NonNull;
 use std::rc::Rc;
@@ -79,6 +80,26 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
 
     fn was_cloned(&self) -> bool {
         Rc::strong_count(&self.current) > 1
+    }
+}
+
+impl<K: Hash + Eq, V: PartialEq> FromIterator<(K, V)> for Environment<K, V> {
+    fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
+        Self {
+            current: Rc::new(HashMap::from_iter(iter)),
+            previous: RefCell::new(None),
+        }
+    }
+}
+
+impl<K: Hash + Eq, V: PartialEq> Extend<(K, V)> for Environment<K, V> {
+    fn extend<T: IntoIterator<Item = (K, V)>>(&mut self, iter: T) {
+        // if can mut. borrow current, then we just extend, otherwise it means
+        // it was cloned, and we recreate a new map from iter for current
+        match Rc::get_mut(&mut self.current) {
+            Some(current) => current.extend(iter),
+            None => self.current = Rc::new(HashMap::from_iter(iter)),
+        }
     }
 }
 
