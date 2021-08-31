@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{hash_map, HashMap};
 use std::hash::Hash;
 use std::iter::FromIterator;
 use std::marker::PhantomData;
@@ -76,6 +76,12 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
         // SAFETY: by design, env cannot be empty, and coming from an Rc, it is well aligned and initialized
         let current_map = unsafe { env.pop().unwrap().as_ref() }.iter();
         EnvElemIter { env, current_map }
+    }
+
+    pub fn iter(&self) -> EnvIter<'_, K, V> {
+        EnvIter {
+            collapsed_map: self.iter_elems().collect::<HashMap<_, _>>().into_iter(),
+        }
     }
 
     fn was_cloned(&self) -> bool {
@@ -168,6 +174,18 @@ impl<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> Iterator for EnvElemIter<'a, K, V
                 None => self.current_map = unsafe { self.env.pop()?.as_ref() }.iter(),
             }
         }
+    }
+}
+
+pub struct EnvIter<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> {
+    collapsed_map: hash_map::IntoIter<&'a K, &'a V>,
+}
+
+impl<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> Iterator for EnvIter<'a, K, V> {
+    type Item = (&'a K, &'a V);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.collapsed_map.next()
     }
 }
 
