@@ -216,6 +216,11 @@
       });
 
       checks = forAllSystems (system:
+        {
+          # wasm-opt can take long: eschew optimizations in checks
+          wasm = buildNickelWASM { inherit system; channel = "stable"; optimize = false; };
+          specs = buildMakamSpecs { inherit system; };
+        } //
         (builtins.listToAttrs
           (map (channel:
             { name = "nickel-against-${channel}-rust-channel";
@@ -224,10 +229,6 @@
           )
           (builtins.attrNames RUST_CHANNELS))
         )
-      ) // {
-        # wasm-opt can take long: eschew optimizations in checks
-        wasm = buildNickelWASM { system = "x86_64-linux"; channel = "stable"; optimize = false; };
-        specs = buildMakamSpecs { system = "x86_64-linux"; };
-      };
+      );
     };
 }
