@@ -51,7 +51,7 @@
 
       buildNickel = { system, isShell ? false, channel ? "stable" }:
         let
-          pkgs = mkPkgs {inherit system;}; 
+          pkgs = mkPkgs {inherit system;};
 
           rust =
             (pkgs.rustChannelOf RUST_CHANNELS."${channel}").rust.override({
@@ -64,7 +64,7 @@
             });
 
           cargoHome = mkCargoHome {inherit pkgs;};
- 
+
         in pkgs.stdenv.mkDerivation {
           name = "nickel-${version}";
 
@@ -102,7 +102,7 @@
           pkgs = mkPkgs {inherit system;};
 
           rust = (pkgs.rustChannelOf RUST_CHANNELS."${channel}").rust.override({
-            targets = ["wasm32-unknown-unknown"]; 
+            targets = ["wasm32-unknown-unknown"];
           });
 
           cargoHome = mkCargoHome {inherit pkgs;};
