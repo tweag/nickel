@@ -801,10 +801,7 @@ This RFC proposes solution 2. This raises some difficulties:
     cost though for merging (remembering all the original ASTs of merge
     expressions), even when one doesn't actually use custom merge functions.
 
-We propose to start with solution (a) in practice, as it is probably sufficient
-in the majority of cases, and is still compatible with a future upgrade to (b).
-Nonetheless, for the sake of completeness, the next section defines the
-semantics of the unrestricted option (b), for the sake of all generality.
+We propose to implement directly the general solution of (b).
 
 ## Operational semantics
 
@@ -819,7 +816,7 @@ annotations, require the evaluation process to:
 
 1. Determine the abstract syntax tree (AST) of a merge expression
 2. Decide the merge function to use
-3. Interpret it the tree with the given function
+3. Interpret the tree with the given function
 
 Let us define the notion of a *merge tree*. The definition determines what is
 the area of influence of a merge function annotation, answering the following
@@ -851,10 +848,11 @@ For example, `hasAnnot [| f (1 + 1) |] = false` means that the value of the
 ### Merge tree
 
 A merge tree is a binary tree whose nodes are labelled by a `metadata`.  Leafs
-are labelled with both a `metadata` and a Nickel expression `e`. In this
-context, a `metadata` is a (meta-)record which field names corresponds to meta
-attributes `custom,priority,default,contract` and so on. Fields are optional,
-excepted `priority`, which must always be defined.
+are labelled with both a `metadata` and a Nickel expression `e` in WHNF (weak
+head normal form, that is, evaluated). In this context, a `metadata` is a
+(meta-)record which field names corresponds to meta attributes
+`custom,priority,default,contract` and so on. Fields are optional, excepted
+`priority`, which must always be defined.
 
 ```haskell
 data Metadata = Metadata {
@@ -871,8 +869,10 @@ data AbsMergeTree a =
 type MergeTree = MergeTree (AbsMergeTree (MergeTree, Metadata))
 ```
 
-The function `mergeTree: Expression -> MergeTree` associates a merge tree to an
-expression:
+The function `mergeTree: Expression -> MergeTree` compute the merge tree of an
+expression. It needs to evaluate leafs to see if they contains themselves merge
+expressions, such that `let x = a & b in x & c` and `a & b & c` has the same
+merge tree: that is, merge treee commute with evaluation.
 
 ```
 // we maintain an environment of bindings in `env`
@@ -885,26 +885,23 @@ mergeTree e ::= (absMergeTree e, metaData e)
 
 absMergeTree [| e1 & e2 |] = Merge(mergeTree(e1), mergeTree(e2))
 
-absMergeTree [| const @ e |]
-absMergeTree [| f x @ e |]
-absMergeTree [| switch exp { bindings } @ e |]
-absMergeTree [| whnf @ e |]
-absMergeTree [| primop exp1 exp2 ... @ e |] = Exp(e)
+// whnf = Weak head normal form, result of evaluation
+absMergeTree [| whnf |] @ e = Exp(e)
 
-absMergeTree [| let x = val in exp |] = mergeTree exp; env := env ++ (x <- val)
-absMergeTree [| x |] = absMergeTree (env x) // Should we actually cross variables?
-                                            // or just have a leaf here?
+// Should mergeTree cross import boundaries? Probably not
+absMergeTree [| import path |] @ e = Exp(e)
 
-// Should mergeTree cross import boundaries?
-absMergeTree [| import path |] = ?
+// All other cases
+absMergeTree e = weakEval e
+
+// weakEval is defined exactly as standard evaluation, excepted that it stops at
+// merge expressions, as if they were a lazy datatype in weak head normal form
+
+weakEval [| e1 & e2 |] @ e = e
+
+// all other cases are defined exactly as for eval
+weakEval e = ... 
 ```
-
-**WIP note: it actually depends on the rule for variable**
-
-One important observation is that a merge tree is not stable by thunk
-evaluation: `mergeTree ([| let x = 1 & 1 in x & 1 |] ) != mergeTree (1 & 1)`. We
-must have access to the original merge tree associated with an expression to be
-able to evaluate it correctly.
 
 ### Semantics
 
@@ -919,11 +916,11 @@ type MergeFunction =
 extractMergeFuns : MergeTree -> List MergeFunction
 
 extractMergeFuns (Merge(ast1,_),Merge(ast2,_)) = extractMergeFuns ast1 @ extractMergeFuns ast2
-extractMergeFuns (Leaf(e,meta)) = [f] if meta.merge == Some(f)
-                                []  otherwise
+extractMergeFuns (Leaf(e,meta)) = [f] if meta.merge == Some([| f |])
+                                  []  otherwise
 
-mergeFun : MergeTree -> Result (MergeFunction ()
-mergeFun t = let funs = extractMergeFuns t in
+mergeFunction : MergeTree -> Result MergeFunction ()
+mergeFunction t = let funs = extractMergeFuns t in
   if lists.length t == 0 then
     Ok(__builtinMerge) // the standard `&` merge function
   else if lists.length t == 1 then
@@ -935,7 +932,7 @@ mergeFun t = let funs = extractMergeFuns t in
 And the interpretation of a merge tree by a merge function:
 
 ```
-// can be extended, as long as it is totally ordered
+// can be extended, as long as it is a partially ordered set
 Priority = Number | -inf | +inf | ...
 
 interpret (Merge(ast_1,meta_1),Merge(ast_2,meta_2)) f =
@@ -948,10 +945,18 @@ interpret (Merge(ast_1,meta_1),Merge(ast_2,meta_2)) f =
 We can finally define the evaluation of merge:
 
 ```
-eval [| e1 & e2 |] = let t = mergeTree (e1 & e2) in
+eval [| e1 & e2 |] =
+  let t = mergeTree [| e1 & e2 |] in
   interpret t (mergeFunction t)
 ```
 
 Please keep in mind that `mergeTree (e1 & e2)` refers to the **original** merge
 tree of this expression. It needs to be accessible even after evaluation by the
 implementation.
+
+In practice, we can't update a thunk that contains `e1 & e2` with the result of
+the evaluation. This is already the case with `default` values currenlty
+(`default (1 + 1)` isn't updated to `2`, but to `default 2`, otherwise the
+semantics would change). A good view on this is that the semantics is inherently
+call-by-name, and that any caching mechanism (including call-by-need) is a
+practical semantics-preserving optimization.
