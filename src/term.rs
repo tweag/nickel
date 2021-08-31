@@ -673,7 +673,7 @@ pub enum BinaryOp {
     /// Raise a number to a power.
     Pow(),
     /// Concatenation of strings.
-    PlusStr(),
+    StrConcat(),
     /// Polymorphic equality.
     Eq(),
     /// Stricty less than comparison operator.

@@ -1162,7 +1162,7 @@ fn process_binary_operation(
                 ))
             }
         }
-        BinaryOp::PlusStr() => {
+        BinaryOp::StrConcat() => {
             if let Term::Str(s1) = *t1 {
                 if let Term::Str(s2) = *t2 {
                     Ok(Closure::atomic_closure(RichTerm::new(

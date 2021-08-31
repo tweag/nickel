@@ -62,9 +62,9 @@ fn strings() {
     assert_eq!(
         parse_without_pos("\"hello\" ++ \"World\" ++ \"!!\" "),
         Op2(
-            BinaryOp::PlusStr(),
+            BinaryOp::StrConcat(),
             Op2(
-                BinaryOp::PlusStr(),
+                BinaryOp::StrConcat(),
                 mk_single_chunk("hello"),
                 mk_single_chunk("World"),
             )

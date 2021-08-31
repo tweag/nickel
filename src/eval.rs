@@ -1232,7 +1232,7 @@ mod tests {
             StrChunk::Literal(String::from("Hello")),
             StrChunk::expr(
                 mk_term::op2(
-                    BinaryOp::PlusStr(),
+                    BinaryOp::StrConcat(),
                     mk_term::string(", "),
                     mk_term::string("World!"),
                 )
@@ -1261,7 +1261,7 @@ mod tests {
             StrChunk::Literal(String::from(" How")),
             StrChunk::expr(
                 Term::Op2(
-                    BinaryOp::PlusStr(),
+                    BinaryOp::StrConcat(),
                     mk_term::string(" ar"),
                     mk_term::string("e"),
                 )

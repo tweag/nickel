@@ -332,16 +332,15 @@ impl ParseError {
                 ParseError::UnexpectedToken(mk_span(file_id, location, location + 1), Vec::new())
             }
             lalrpop_util::ParseError::UnrecognizedToken {
-                token: Some((start, _, end)),
+                token: (start, _, end),
                 expected,
             } => ParseError::UnexpectedToken(mk_span(file_id, start, end), expected),
             lalrpop_util::ParseError::User {
                 error: LexicalError::Generic(start, end),
             } => ParseError::UnexpectedToken(mk_span(file_id, start, end), Vec::new()),
-            lalrpop_util::ParseError::UnrecognizedToken {
-                token: None,
-                expected,
-            } => ParseError::UnexpectedEOF(file_id, expected),
+            lalrpop_util::ParseError::UnrecognizedEOF { expected, .. } => {
+                ParseError::UnexpectedEOF(file_id, expected)
+            }
             lalrpop_util::ParseError::ExtraToken {
                 token: (start, _, end),
             } => ParseError::ExtraToken(mk_span(file_id, start, end)),
