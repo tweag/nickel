@@ -1,4 +1,4 @@
-name: "Update Nickel WASM REPL"
+name: "Update the Nickel WASM REPL"
 on:
   push:
     branches:
@@ -9,8 +9,6 @@ jobs:
   update-wasm-repl:
 
     runs-on: ubuntu-latest
-
-    if: "!contains(github.event.head_commit.message, '[ci skip]')"
 
     steps:
 
@@ -46,14 +44,13 @@ jobs:
 
     - name: Update the nickel-repl node package
       run: |
-        cp -r website/nickel-repl website/nickel-repl.old
-        cp -r result/nickel-repl website/
         rm -rf website/nickel-repl.old
+        cp -r result/nickel-repl website/
 
     - name: Commit update of the Nickel WASM REPL
       uses: stefanzweifel/git-auto-commit-action@v4
       with:
-        commit_message: 'Update the Nickel WASM REPL[ci skip]'
+        commit_message: '[Auto]Update the Nickel WASM REPL'
         branch: 'master'
         file_pattern: website/nickel-repl
         # See https://github.community/t/github-actions-bot-email-address/17204/6
