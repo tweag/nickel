@@ -75,8 +75,6 @@
             ++ missingSysPkgs {inherit system pkgs;} ++ (
             if isShell then
               [ pkgs.nodePackages.makam ]
-              # TMP for debu
-              ++ [ pkgs.wasm-pack pkgs.wasm-bindgen-cli ]
             else
               [ cargoHome ]
           );
