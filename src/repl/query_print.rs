@@ -214,7 +214,11 @@ fn write_query_result_<R: QueryPrinter>(
             }
 
             if selected_attrs.types && meta.types.is_some() {
-                renderer.print_metadata("type", &meta.types.as_ref().unwrap().types.to_string());
+                renderer.write_metadata(
+                    out,
+                    "type",
+                    &meta.types.as_ref().unwrap().types.to_string(),
+                )?;
                 found = true;
             }
 
