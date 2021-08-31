@@ -121,8 +121,6 @@
               rust
               pkgs.wasm-pack
               pkgsPinned.wasm-bindgen-cli
-              # Useless for now, as wasm-pack doesn't want to pick our wasm-opt
-              # version. See https://github.com/rustwasm/wasm-pack/issues/869
               pkgs.binaryen
               cargoHome
             ]
