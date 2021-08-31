@@ -1,7 +1,7 @@
 {
   inputs.nixpkgs.url = "nixpkgs/nixos-unstable";
   # We need a fixed version for wasm-bindgen-cli, that corresponds to
-  # Cargo.toml's one
+  # the version of wasm-bindgen in Cargo.toml
   inputs.nixpkgs-pinned.url = "nixpkgs/nixos-21.05";
   inputs.nixpkgs-mozilla.url = "github:nickel-lang/nixpkgs-mozilla/flake";
   inputs.import-cargo.url = "github:edolstra/import-cargo";
@@ -102,7 +102,7 @@
         };
 
 
-      buildNickelWASM = { system, channel ? "stable" }:
+      buildNickelWASM = { system, channel ? "stable", optimize ? true }:
         let
           pkgs = mkPkgs {inherit system;};
           pkgsPinned = import nixpkgs-pinned {inherit system;};
@@ -123,7 +123,7 @@
               pkgsPinned.wasm-bindgen-cli
               # Useless for now, as wasm-pack doesn't want to pick our wasm-opt
               # version. See https://github.com/rustwasm/wasm-pack/issues/869
-              # pkgs.binaryen
+              pkgs.binaryen
               cargoHome
             ]
             ++ missingSysPkgs {inherit system pkgs;};
@@ -141,13 +141,15 @@
             '';
 
           buildPhase =
-            ''
+            let optLevel = if optimize then "-O4 " else "-O0";
+            in ''
               printf '\n[lib]\ncrate-type = ["cdylib", "rlib"]' >> Cargo.toml
+              wasm-pack build --mode no-install -- --no-default-features --features repl-wasm --frozen --offline
               # Because of wasm-pack not using existing wasm-opt
               # (https://github.com/rustwasm/wasm-pack/issues/869), we have to
-              # break hermeticity and allow network install for now
-              # wasm-pack build --mode no-install -- --no-default-features --features repl-wasm --frozen --offline
-              wasm-pack build -- --no-default-features --features repl-wasm
+              # run wasm-opt manually
+              echo "[Nix build script]Manually running wasm-opt..."
+              wasm-opt ${optLevel} pkg/nickel_bg.wasm -o pkg/nickel_bg.wasm
             '';
 
           postBuild = ''
@@ -164,7 +166,7 @@
           installPhase =
             ''
               mkdir -p $out
-              cp -r pkg/* $out/nickel-repl
+              cp -r pkg $out/nickel-repl
             '';
         };
 
@@ -211,13 +213,11 @@
       devShell = forAllSystems (system: buildNickel { inherit system; isShell = true; });
       packages = forAllSystems (system: {
         build = buildNickel { inherit system; };
-        buildWasm = buildNickelWASM { inherit system; };
+        buildWasm = buildNickelWASM { inherit system; optimize = true; };
         dockerImage = buildDocker { inherit system; };
       });
 
       checks = forAllSystems (system:
-        { specs = buildMakamSpecs { inherit system; };
-        } //
         (builtins.listToAttrs
           (map (channel:
             { name = "nickel-against-${channel}-rust-channel";
@@ -226,6 +226,10 @@
           )
           (builtins.attrNames RUST_CHANNELS))
         )
-      );
+      ) // {
+        # wasm-opt can take long: eschew optimizations in checks
+        wasm = buildNickelWASM { system = "x86_64-linux"; channel = "stable"; optimize = false; };
+        specs = buildMakamSpecs { system = "x86_64-linux"; };
+      };
     };
 }
