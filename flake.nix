@@ -133,19 +133,22 @@
               # Wasm-pack requires to change the crate type. Cargo doesn't yet
               # support having different crate types depending on the target, so
               # we switch there
-              # printf '\n[lib]\ncrate-type = ["cdylib", "rlib"]' >> Cargo.toml
+              printf '\n[lib]\ncrate-type = ["cdylib", "rlib"]' >> Cargo.toml
             '';
 
           buildPhase =
             let optLevel = if optimize then "-O4 " else "-O0";
             in ''
-              printf '\n[lib]\ncrate-type = ["cdylib", "rlib"]' >> Cargo.toml
+              runHook preBuild
+
               wasm-pack build --mode no-install -- --no-default-features --features repl-wasm --frozen --offline
               # Because of wasm-pack not using existing wasm-opt
               # (https://github.com/rustwasm/wasm-pack/issues/869), we have to
               # run wasm-opt manually
               echo "[Nix build script]Manually running wasm-opt..."
               wasm-opt ${optLevel} pkg/nickel_bg.wasm -o pkg/nickel_bg.wasm
+
+              runHook postBuild
             '';
 
           postBuild = ''
@@ -153,10 +156,9 @@
             # generated NPM package to be the same. Unfortunately, there already
             # exists a nickel package in the NPM registry, so we use nickel-repl
             # instead
-            cd pkg
-            jq '.name = "nickel-repl"' package.json > package.json.patched \
-              && rm -f ./pkg/package.json \
-              && mv package.json.patched package.json
+            jq '.name = "nickel-repl"' pkg/package.json > package.json.patched \
+              && rm -f pkg/package.json \
+              && mv package.json.patched pkg/package.json
           '';
 
           installPhase =
