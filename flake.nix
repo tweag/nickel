@@ -1,9 +1,12 @@
 {
   inputs.nixpkgs.url = "nixpkgs/nixos-unstable";
-  inputs.nixpkgs-mozilla.url = "github:garbas/nixpkgs-mozilla/flake";
+  # We need a fixed version for wasm-bindgen-cli, that corresponds to
+  # Cargo.toml's one
+  inputs.nixpkgs-pinned.url = "nixpkgs/nixos-21.05";
+  inputs.nixpkgs-mozilla.url = "github:nickel-lang/nixpkgs-mozilla/flake";
   inputs.import-cargo.url = "github:edolstra/import-cargo";
 
-  outputs = { self, nixpkgs, nixpkgs-mozilla, import-cargo }:
+  outputs = { self, nixpkgs, nixpkgs-pinned, nixpkgs-mozilla, import-cargo }:
     let
 
       SYSTEMS = [
@@ -72,6 +75,8 @@
             ++ missingSysPkgs {inherit system pkgs;} ++ (
             if isShell then
               [ pkgs.nodePackages.makam ]
+              # TMP for debu
+              ++ [ pkgs.wasm-pack pkgs.wasm-bindgen-cli ]
             else
               [ cargoHome ]
           );
@@ -100,6 +105,7 @@
       buildNickelWASM = { system, channel ? "stable" }:
         let
           pkgs = mkPkgs {inherit system;};
+          pkgsPinned = import nixpkgs-pinned {inherit system;};
 
           rust = (pkgs.rustChannelOf RUST_CHANNELS."${channel}").rust.override({
             targets = ["wasm32-unknown-unknown"];
@@ -114,7 +120,10 @@
             [
               rust
               pkgs.wasm-pack
-              pkgs.wasm-bindgen-cli
+              pkgsPinned.wasm-bindgen-cli
+              # Useless for now, as wasm-pack doesn't want to pick our wasm-opt
+              # version. See https://github.com/rustwasm/wasm-pack/issues/869
+              # pkgs.binaryen
               cargoHome
             ]
             ++ missingSysPkgs {inherit system pkgs;};
@@ -123,17 +132,23 @@
 
           src = self;
 
-          preBuild = ''
-            # Wasm-pack requires to change the crate type. Cargo doesn't yet
-            # support having different crate types depending on the target, so
-            # we switch there
-            # printf '\n[lib]\ncrate-type = ["cdylib", "rlib"]' >> Cargo.toml
-          '';
+          preBuild =
+            ''
+              # Wasm-pack requires to change the crate type. Cargo doesn't yet
+              # support having different crate types depending on the target, so
+              # we switch there
+              # printf '\n[lib]\ncrate-type = ["cdylib", "rlib"]' >> Cargo.toml
+            '';
 
-          buildPhase = ''
-            printf '\n[lib]\ncrate-type = ["cdylib", "rlib"]' >> Cargo.toml
-            wasm-pack build -- --no-default-features --features repl-wasm --frozen --offline
-          '';
+          buildPhase =
+            ''
+              printf '\n[lib]\ncrate-type = ["cdylib", "rlib"]' >> Cargo.toml
+              # Because of wasm-pack not using existing wasm-opt
+              # (https://github.com/rustwasm/wasm-pack/issues/869), we have to
+              # break hermeticity and allow network install for now
+              # wasm-pack build --mode no-install -- --no-default-features --features repl-wasm --frozen --offline
+              wasm-pack build -- --no-default-features --features repl-wasm
+            '';
 
           postBuild = ''
             # Wasm-pack forces the name of both the normal crate and the
