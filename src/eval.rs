@@ -87,6 +87,7 @@
 //! appear inside recursive records in the future. An adapted garbage collector is probably
 //! something to consider at some point.
 use crate::cache::ImportResolver;
+use crate::environment::Environment as GenericEnvironment;
 use crate::error::EvalError;
 use crate::identifier::Ident;
 use crate::mk_app;
@@ -95,10 +96,6 @@ use crate::position::TermPos;
 use crate::stack::Stack;
 use crate::term::{make as mk_term, MetaValue, RichTerm, StrChunk, Term, UnaryOp};
 use std::cell::{Ref, RefCell, RefMut};
-use std::collections::HashMap;
-use std::iter::FromIterator;
-use std::marker::PhantomData;
-use std::ops::{Deref, DerefMut};
 use std::rc::{Rc, Weak};
 
 /// The state of a thunk.
@@ -256,174 +253,6 @@ impl ThunkUpdateFrame {
     }
 }
 
-/// An environment, which is a mapping from identifiers to closures.
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct Environment {
-    inner: Rc<RefCell<InnerEnvironment>>,
-}
-
-#[derive(Debug, PartialEq, Default)]
-struct InnerEnvironment {
-    current: HashMap<Ident, Thunk>,
-    previous: Option<Environment>,
-}
-
-impl Environment {
-    pub fn new() -> Self {
-        Default::default()
-    }
-
-    pub fn new_with_previous_env(previous: &Environment) -> Self {
-        Self {
-            inner: Rc::new(RefCell::new(InnerEnvironment {
-                current: HashMap::new(),
-                previous: Some(previous.clone()),
-            })),
-        }
-    }
-
-    pub fn add_layer(&self) -> Self {
-        Self {
-            inner: Rc::new(RefCell::new(InnerEnvironment {
-                current: HashMap::new(),
-                previous: Some(self.clone()),
-            })),
-        }
-    }
-
-    fn get_current_layer(&self) -> impl Deref<Target = HashMap<Ident, Thunk>> + '_ {
-        Ref::map(self.inner.borrow(), |e| &e.current)
-    }
-
-    fn get_current_layer_mut(&self) -> impl DerefMut<Target = HashMap<Ident, Thunk>> + '_ {
-        RefMut::map(self.inner.borrow_mut(), |e| &mut e.current)
-    }
-
-    fn get_previous_layer(&self) -> Option<Environment> {
-        self.inner.borrow().previous.as_ref().cloned()
-    }
-
-    pub fn get(&self, ident: &Ident) -> Option<Thunk> {
-        if let Some(res) = self.get_current_layer().get(ident) {
-            return Some(res.clone());
-        }
-        let mut current = self.clone();
-        while let Some(previous) = current.get_previous_layer() {
-            if let Some(res) = previous.get_current_layer().get(ident) {
-                return Some(res.clone());
-            }
-            current = previous;
-        }
-        None
-    }
-
-    pub fn with_identifier<T, F>(&mut self, ident: &Ident, f: F) -> Option<T>
-    where
-        F: FnOnce(&mut Thunk) -> T,
-    {
-        if let Some(res) = self.get_current_layer_mut().get_mut(ident) {
-            return Some(f(res));
-        }
-        let mut current = self.clone();
-        while let Some(previous) = current.get_previous_layer() {
-            if let Some(res) = previous.get_current_layer_mut().get_mut(ident) {
-                return Some(f(res));
-            }
-            current = previous;
-        }
-        None
-    }
-
-    pub fn insert(&mut self, ident: Ident, thunk: Thunk) -> Option<Thunk> {
-        self.inner.borrow_mut().current.insert(ident, thunk)
-    }
-
-    pub fn remove(&mut self, ident: &Ident) -> Option<Thunk> {
-        if let Some(res) = self.get_current_layer_mut().remove(ident) {
-            return Some(res);
-        }
-        let mut current = self.clone();
-        while let Some(previous) = current.get_previous_layer() {
-            if let Some(res) = previous.get_current_layer_mut().remove(ident) {
-                return Some(res);
-            }
-            current = previous;
-        }
-        None
-    }
-
-    pub fn iter(&self) -> <IterEnv<'_> as IntoIterator>::IntoIter {
-        IterEnv {
-            map: self.collapse(),
-            marker: PhantomData,
-        }
-        .into_iter()
-    }
-
-    pub fn collapse(&self) -> HashMap<Ident, Thunk> {
-        let mut layers = vec![self.clone()];
-        let mut hashmap_size = self.get_current_layer().len();
-        let mut current = self.clone();
-        while let Some(prev) = current.get_previous_layer() {
-            hashmap_size += prev.get_current_layer().len();
-            layers.push(prev.clone());
-            current = prev;
-        }
-        layers
-            .into_iter()
-            .rfold(HashMap::with_capacity(hashmap_size), |mut acc, layer| {
-                acc.extend(
-                    layer
-                        .get_current_layer()
-                        .iter()
-                        .map(|(a, b)| (a.clone(), b.clone())),
-                );
-                acc
-            })
-    }
-}
-
-impl Extend<(Ident, Thunk)> for Environment {
-    fn extend<T: IntoIterator<Item = (Ident, Thunk)>>(&mut self, iter: T) {
-        self.inner.borrow_mut().current.extend(iter)
-    }
-}
-
-impl<'a> Extend<(&'a Ident, &'a Thunk)> for &'a Environment {
-    fn extend<T: IntoIterator<Item = (&'a Ident, &'a Thunk)>>(&mut self, iter: T) {
-        self.inner
-            .borrow_mut()
-            .current
-            .extend(iter.into_iter().map(|(a, b)| (a.clone(), b.clone())))
-    }
-}
-
-impl FromIterator<(Ident, Thunk)> for Environment {
-    fn from_iter<T: IntoIterator<Item = (Ident, Thunk)>>(iter: T) -> Self {
-        Self {
-            inner: Rc::new(RefCell::new(InnerEnvironment {
-                current: HashMap::from_iter(iter),
-                previous: None,
-            })),
-        }
-    }
-}
-
-pub struct IterEnv<'a> {
-    map: HashMap<Ident, Thunk>,
-    marker: PhantomData<&'a ()>,
-}
-
-impl<'a> IntoIterator for IterEnv<'a> {
-    type Item = (Ident, Thunk);
-
-    type IntoIter = std::collections::hash_map::IntoIter<Ident, Thunk>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.map.into_iter()
-    }
-}
-
 /// A call stack, saving the history of function calls.
 ///
 /// In a lazy language as Nickel, there are no well delimited stack frames due to how function
@@ -464,6 +293,8 @@ impl Closure {
         }
     }
 }
+
+pub type Environment = GenericEnvironment<Ident, Thunk>;
 
 /// Raised when trying to build an environment from a term which is not a record.
 #[derive(Clone, Debug)]
@@ -824,7 +655,11 @@ where
                             // We already checked for unbound identifier in the previous fold,
                             // so function should always succeed
                             let mut thunk = env.get(&var_id).unwrap();
-                            thunk.borrow_mut().env.extend(rec_env.iter());
+                            thunk.borrow_mut().env.extend(
+                                rec_env
+                                    .iter_elems()
+                                    .map(|(id, thunk)| (id.clone(), thunk.clone())),
+                            );
                             (
                                 id,
                                 RichTerm {
