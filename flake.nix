@@ -26,49 +26,55 @@
 
       forAllSystems = f: genAttrs SYSTEMS (system: f system);
 
+      # Instantiate nixpkgs with the mozilla Rust overlay
+      mkPkgs = { system }:
+        import nixpkgs {
+          inherit system;
+          overlays = [ nixpkgs-mozilla.overlays.rust ];
+        };
+
+      mkCargoHome = { pkgs }:
+        (import-cargo.builders.importCargo {
+          lockFile = ./Cargo.lock;
+          inherit pkgs;
+        }).cargoHome;
+
+      # Additional packages required for some systems to build Nickel
+      missingSysPkgs = { system, pkgs }:
+        if system == "x86_64-darwin" then
+          [
+            pkgs.darwin.apple_sdk.frameworks.Security
+            pkgs.darwin.libiconv
+          ]
+        else
+          [];
+
       buildNickel = { system, isShell ? false, channel ? "stable" }:
         let
-          pkgs = import nixpkgs {
-            inherit system;
-            overlays = [ nixpkgs-mozilla.overlays.rust ];
-          };
+          pkgs = mkPkgs {inherit system;}; 
 
           rust =
             (pkgs.rustChannelOf RUST_CHANNELS."${channel}").rust.override({
-              # targets = [];
                extensions = if isShell then [
                 "rust-src"
                 "rust-analysis"
                 "rustfmt-preview"
                 "clippy-preview"
               ] else [];
-
             });
 
-          cargoHome =
-            (import-cargo.builders.importCargo {
-              lockFile = ./Cargo.lock;
-              inherit pkgs;
-            }).cargoHome;
-
+          cargoHome = mkCargoHome {inherit pkgs;};
+ 
         in pkgs.stdenv.mkDerivation {
           name = "nickel-${version}";
 
-          buildInputs =
-            [ rust ] ++ (
-              if system == "x86_64-darwin" then
-              [ 
-                pkgs.darwin.apple_sdk.frameworks.Security
-                pkgs.darwin.libiconv
-              ]
-              else
-                []
-            ) ++ (
-              if isShell then
-                [ pkgs.nodePackages.makam ]
-              else
-                [ cargoHome ]
-            );
+          buildInputs = [ rust ]
+            ++ missingSysPkgs {inherit system pkgs;} ++ (
+            if isShell then
+              [ pkgs.nodePackages.makam ]
+            else
+              [ cargoHome ]
+          );
 
           src = if isShell then null else self;
 
@@ -89,6 +95,64 @@
               rm $out/.crates.toml
             '';
         };
+
+
+      buildNickelWASM = { system, channel ? "stable" }:
+        let
+          pkgs = mkPkgs {inherit system;};
+
+          rust = (pkgs.rustChannelOf RUST_CHANNELS."${channel}").rust.override({
+            targets = ["wasm32-unknown-unknown"]; 
+          });
+
+          cargoHome = mkCargoHome {inherit pkgs;};
+
+        in pkgs.stdenv.mkDerivation {
+          name = "nickel-wasm-${version}";
+
+          buildInputs =
+            [
+              rust
+              pkgs.wasm-pack
+              pkgs.wasm-bindgen-cli
+              cargoHome
+            ]
+            ++ missingSysPkgs {inherit system pkgs;};
+
+          nativeBuildInputs = [pkgs.jq];
+
+          src = self;
+
+          preBuild = ''
+            # Wasm-pack requires to change the crate type. Cargo doesn't yet
+            # support having different crate types depending on the target, so
+            # we switch there
+            # printf '\n[lib]\ncrate-type = ["cdylib", "rlib"]' >> Cargo.toml
+          '';
+
+          buildPhase = ''
+            printf '\n[lib]\ncrate-type = ["cdylib", "rlib"]' >> Cargo.toml
+            wasm-pack build -- --no-default-features --features repl-wasm --frozen --offline
+          '';
+
+          postBuild = ''
+            # Wasm-pack forces the name of both the normal crate and the
+            # generated NPM package to be the same. Unfortunately, there already
+            # exists a nickel package in the NPM registry, so we use nickel-repl
+            # instead
+            cd pkg
+            jq '.name = "nickel-repl"' package.json > package.json.patched \
+              && rm -f ./pkg/package.json \
+              && mv package.json.patched package.json
+          '';
+
+          installPhase =
+            ''
+              mkdir -p $out
+              cp -r pkg/* $out/nickel-repl
+            '';
+        };
+
 
       buildDocker = { system }:
         let
@@ -132,10 +196,11 @@
       devShell = forAllSystems (system: buildNickel { inherit system; isShell = true; });
       packages = forAllSystems (system: {
         build = buildNickel { inherit system; };
+        buildWasm = buildNickelWASM { inherit system; };
         dockerImage = buildDocker { inherit system; };
       });
 
-      checks = forAllSystems (system: 
+      checks = forAllSystems (system:
         { specs = buildMakamSpecs { inherit system; };
         } //
         (builtins.listToAttrs
