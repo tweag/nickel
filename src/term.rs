@@ -441,7 +441,7 @@ impl Term {
     /// Return a deep string representation of a term, used for printing in the REPL
     pub fn deep_repr(&self) -> String {
         match self {
-            Term::Record(fields) | Term::RecRecord(fields) => {
+            Term::Record(fields, _) | Term::RecRecord(fields, _) => {
                 let fields_str: Vec<String> = fields
                     .iter()
                     .map(|(ident, term)| format!("{} = {}", ident, term.as_ref().deep_repr()))

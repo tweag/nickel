@@ -185,7 +185,7 @@ fn write_query_result_<R: QueryPrinter>(
     ) -> io::Result<()> {
         writeln!(out)?;
         match t {
-            Term::Record(map) | Term::RecRecord(map) if !map.is_empty() => {
+            Term::Record(map, _) | Term::RecRecord(map, _) if !map.is_empty() => {
                 let mut fields: Vec<_> = map.keys().collect();
                 fields.sort();
                 renderer.write_fields(out, fields.into_iter())
