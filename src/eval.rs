@@ -647,25 +647,19 @@ where
                 stack.push_arg(
                     Closure {
                         body: t2,
-                        env: env.add_layer(),
+                        env: env.clone(),
                     },
                     pos,
                 );
-                Closure {
-                    body: t1,
-                    env: env.add_layer(),
-                }
+                Closure { body: t1, env }
             }
             Term::Let(x, s, t) => {
                 let closure = Closure {
                     body: s,
-                    env: env.add_layer(),
+                    env: env.clone(),
                 };
                 env.insert(x, Thunk::new(closure, IdentKind::Let()));
-                Closure {
-                    body: t,
-                    env: env.add_layer(),
-                }
+                Closure { body: t, env }
             }
             Term::Switch(exp, cases, default) => {
                 let has_default = default.is_some();
@@ -674,7 +668,7 @@ where
                     stack.push_arg(
                         Closure {
                             body: t,
-                            env: env.add_layer(),
+                            env: env.clone(),
                         },
                         pos,
                     );
@@ -683,14 +677,14 @@ where
                 stack.push_arg(
                     Closure {
                         body: RichTerm::new(Term::Record(cases), pos),
-                        env: env.add_layer(),
+                        env: env.clone(),
                     },
                     pos,
                 );
 
                 Closure {
                     body: RichTerm::new(Term::Op1(UnaryOp::Switch(has_default), exp), pos),
-                    env: env.add_layer(),
+                    env,
                 }
             }
             Term::Op1(op, t) => {
@@ -701,10 +695,7 @@ where
                     call_stack.len(),
                     pos,
                 );
-                Closure {
-                    body: t,
-                    env: env.add_layer(),
-                }
+                Closure { body: t, env }
             }
             Term::Op2(op, fst, snd) => {
                 let prev_strict = enriched_strict;
@@ -714,7 +705,7 @@ where
                         op,
                         Closure {
                             body: snd,
-                            env: env.add_layer(),
+                            env: env.clone(),
                         },
                         fst.pos,
                         prev_strict,
@@ -722,10 +713,7 @@ where
                     call_stack.len(),
                     pos,
                 );
-                Closure {
-                    body: fst,
-                    env: env.add_layer(),
-                }
+                Closure { body: fst, env }
             }
             Term::OpN(op, mut args) => {
                 let prev_strict = enriched_strict;
@@ -742,7 +730,7 @@ where
                     .into_iter()
                     .map(|t| Closure {
                         body: t,
-                        env: env.add_layer(),
+                        env: env.clone(),
                     })
                     .collect();
 
@@ -758,10 +746,7 @@ where
                     pos,
                 );
 
-                Closure {
-                    body: fst,
-                    env: env.add_layer(),
-                }
+                Closure { body: fst, env }
             }
             Term::StrChunks(mut chunks) => match chunks.pop() {
                 None => Closure {
@@ -775,11 +760,11 @@ where
                     };
 
                     stack.push_str_chunks(chunks.into_iter());
-                    stack.push_str_acc(String::new(), indent, env.add_layer());
+                    stack.push_str_acc(String::new(), indent, env.clone());
 
                     Closure {
                         body: RichTerm::new(Term::Op1(UnaryOp::ChunksConcat(), arg), pos),
-                        env: env.add_layer(),
+                        env,
                     }
                 }
             },
@@ -788,7 +773,7 @@ where
                 let thunk = Thunk::new(
                     Closure {
                         body: t,
-                        env: env.add_layer(),
+                        env: env.clone(),
                     },
                     IdentKind::Lam(),
                 );
@@ -802,7 +787,7 @@ where
 
                 Closure {
                     body: ty.contract(),
-                    env: env.add_layer(),
+                    env,
                 }
             }
             Term::RecRecord(ts) => {
@@ -856,7 +841,7 @@ where
                         term: Box::new(Term::Record(new_ts.collect())),
                         pos,
                     },
-                    env: env.add_layer(),
+                    env,
                 }
             }
             // Unwrapping of enriched terms
@@ -873,7 +858,7 @@ where
                             term: Box::new(Term::MetaValue(meta)),
                             pos,
                         },
-                        env: env.add_layer(),
+                        env,
                     };
                     update_thunks(&mut stack, &update_closure);
 
@@ -885,10 +870,7 @@ where
                     match *term {
                         Term::MetaValue(MetaValue {
                             value: Some(inner), ..
-                        }) => Closure {
-                            body: inner,
-                            env: env.add_layer(),
-                        },
+                        }) => Closure { body: inner, env },
                         _ => unreachable!(),
                     }
                 }
@@ -920,7 +902,7 @@ where
                         term: Box::new(term),
                         pos,
                     },
-                    env: env.add_layer(),
+                    env,
                 };
                 if stack.is_top_thunk() {
                     update_thunks(&mut stack, &clos);
