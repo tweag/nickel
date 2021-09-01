@@ -399,7 +399,7 @@ impl Cache {
             Some(_) => {
                 let (mut t, _) = self.terms.remove(&file_id).unwrap();
                 match t.term.as_mut() {
-                    Term::Record(ref mut map) | Term::RecRecord(ref mut map) => {
+                    Term::Record(ref mut map, _) | Term::RecRecord(ref mut map, _) => {
                         let map_res: Result<HashMap<Ident, RichTerm>, ImportError> =
                             std::mem::replace(map, HashMap::new())
                                 .into_iter()

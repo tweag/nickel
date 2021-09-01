@@ -155,7 +155,7 @@ impl REPL for REPLImpl {
 
         // Check that the entry is a record, which is a precondition of transform_inner
         match term.as_ref() {
-            Term::Record(_) | Term::RecRecord(_) => (),
+            Term::Record(..) | Term::RecRecord(..) => (),
             _ => {
                 return Err(Error::EvalError(EvalError::Other(
                     String::from("load: expected a record"),

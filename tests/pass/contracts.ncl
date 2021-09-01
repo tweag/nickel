@@ -80,6 +80,14 @@ f `boo == 3) &&
 (((fun r => r.b) | {a: Num | Dyn} -> Dyn) {a = 1, b = 2} == 2
   | #Assert) &&
 
+// records_open_contracts
+(({a = 0, b = 0} | #{a | Num, ..}) == {a = 0, b = 0} | #Assert) &&
+(let Contract = {a | Num} & {..} in
+({a = 0, b = 0} | #Contract) == {a = 0, b = 0} | #Assert) &&
+(let Contract = {..} & {b | Num} in
+({a = 0, b = 0} | #Contract) == {a = 0, b = 0} | #Assert) &&
+(let Contract = {a | Num, ..} & {b | Num, ..} in
+({a = 0, b = 0, c = 0} | #Contract) == {a = 0, b = 0, c = 0} | #Assert) &&
 
 // lists
 (([1, "2", false] | List) == [1, "2", false] | #Assert) &&
@@ -91,6 +99,5 @@ f `boo == 3) &&
 // with the `default` attribute
 (({foo : {bar: Bool} | default = {bar = false}} & {foo.bar = true}).foo.bar
   | #Assert) &&
-
 
 true

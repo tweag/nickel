@@ -187,12 +187,12 @@ fn write_query_result_<R: QueryPrinter>(
     ) -> io::Result<()> {
         writeln!(out)?;
         match t {
-            Term::Record(map) | Term::RecRecord(map) if !map.is_empty() => {
+            Term::Record(map, _) | Term::RecRecord(map, _) if !map.is_empty() => {
                 let mut fields: Vec<_> = map.keys().collect();
                 fields.sort();
                 renderer.write_fields(out, fields.into_iter())
             }
-            Term::Record(_) | Term::RecRecord(_) => renderer.write_metadata(out, "value", "{}"),
+            Term::Record(..) | Term::RecRecord(..) => renderer.write_metadata(out, "value", "{}"),
             _ => Ok(()),
         }
     }
@@ -261,7 +261,7 @@ fn write_query_result_<R: QueryPrinter>(
                 .iter()
                 .try_for_each(|rt| write_fields(out, renderer, rt.as_ref()))?;
         }
-        t @ Term::Record(_) | t @ Term::RecRecord(_) => {
+        t @ Term::Record(..) | t @ Term::RecRecord(..) => {
             writeln!(out, "No metadata found for this value.")?;
             write_fields(out, renderer, &t)?;
         }

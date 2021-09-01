@@ -120,6 +120,8 @@ pub enum NormalToken<'input> {
     DoublePipe,
     #[token("!")]
     Bang,
+    #[token("..")]
+    Ellipsis,
 
     #[token("fun")]
     Fun,

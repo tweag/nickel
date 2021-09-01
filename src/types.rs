@@ -231,7 +231,7 @@ impl Types {
                                     "x",
                                     mk_app!(
                                         mk_term::op1(UnaryOp::Switch(true), mk_term::var("x")),
-                                        Term::Record(map),
+                                        Term::Record(map, Default::default()),
                                         Term::Bool(false)
                                     )
                                 )

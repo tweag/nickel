@@ -308,7 +308,7 @@ pub fn env_add_term(env: &mut Environment, rt: RichTerm) -> Result<(), EnvBuildE
     let RichTerm { term, pos } = rt;
 
     match *term {
-        Term::Record(bindings) | Term::RecRecord(bindings) => {
+        Term::Record(bindings, _) | Term::RecRecord(bindings, _) => {
             let ext = bindings.into_iter().map(|(id, t)| {
                 (
                     id,
@@ -337,7 +337,7 @@ pub fn env_add(env: &mut Environment, id: Ident, rt: RichTerm, local_env: Enviro
 /// Typically, WHNFs and enriched values will not be evaluated to a simpler expression and are not
 /// worth updating.
 fn should_update(t: &Term) -> bool {
-    !t.is_whnf() && !t.is_enriched()
+    !t.is_whnf() && !t.is_metavalue()
 }
 
 /// Evaluate a Nickel term. Wrapper around [eval_closure](fn.eval_closure.html) that starts from an
@@ -508,7 +508,7 @@ where
 
                 stack.push_arg(
                     Closure {
-                        body: RichTerm::new(Term::Record(cases), pos),
+                        body: RichTerm::new(Term::Record(cases, Default::default()), pos),
                         env: env.clone(),
                     },
                     pos,
@@ -622,7 +622,7 @@ where
                     env,
                 }
             }
-            Term::RecRecord(ts) => {
+            Term::RecRecord(ts, attrs) => {
                 // Thanks to the share normal form transformation, the content is either a constant or a
                 // variable.
                 let rec_env = ts.iter().try_fold::<_, _, Result<Environment, EvalError>>(
@@ -670,7 +670,7 @@ where
                 });
                 Closure {
                     body: RichTerm {
-                        term: Box::new(Term::Record(new_ts.collect())),
+                        term: Box::new(Term::Record(new_ts.collect(), attrs)),
                         pos,
                     },
                     env,
@@ -872,7 +872,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
 
                 RichTerm::new(Term::Wrapped(i, t), pos)
             }
-            Term::Record(map) => {
+            Term::Record(map, attrs) => {
                 let map = map
                     .into_iter()
                     .map(|(id, t)| {
@@ -883,9 +883,9 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
                     })
                     .collect();
 
-                RichTerm::new(Term::Record(map), pos)
+                RichTerm::new(Term::Record(map, attrs), pos)
             }
-            Term::RecRecord(map) => {
+            Term::RecRecord(map, attrs) => {
                 let map = map
                     .into_iter()
                     .map(|(id, t)| {
@@ -896,7 +896,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
                     })
                     .collect();
 
-                RichTerm::new(Term::RecRecord(map), pos)
+                RichTerm::new(Term::RecRecord(map, attrs), pos)
             }
             Term::List(ts) => {
                 let ts = ts
