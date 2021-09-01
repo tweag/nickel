@@ -41,7 +41,7 @@ jobs:
 
       - name: Update the nickel-repl node package
         run: |
-          rm -rf website/nickel-repl.old
+          rm -rf website/nickel-repl
           cp -r result/nickel-repl website/
 
       - run: npm ci --only=production
