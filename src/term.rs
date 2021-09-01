@@ -448,12 +448,18 @@ impl Term {
     /// Return a deep string representation of a term, used for printing in the REPL
     pub fn deep_repr(&self) -> String {
         match self {
-            Term::Record(fields, _) | Term::RecRecord(fields, _) => {
+            Term::Record(fields, _) | Term::RecRecord(fields, _, _) => {
                 let fields_str: Vec<String> = fields
                     .iter()
                     .map(|(ident, term)| format!("{} = {}", ident, term.as_ref().deep_repr()))
                     .collect();
-                format!("{{ {} }}", fields_str.join(", "))
+
+                let suffix = match self {
+                    Term::RecRecord(_, dyn_fields, _) if !dyn_fields.is_empty() => ", ..",
+                    _ => "",
+                };
+
+                format!("{{ {}{}}}", fields_str.join(", "), suffix)
             }
             Term::List(elements) => {
                 let elements_str: Vec<String> = elements
