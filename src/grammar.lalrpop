@@ -228,7 +228,7 @@ RecordField: (FieldPathElem, RichTerm) = {
 
 RecordLastField: RecordLastField = {
     <RecordField> => RecordLastField::Field(<>),
-    ".." <","?> => RecordLastField::Ellipsis,
+    ".." => RecordLastField::Ellipsis,
 }
 
 FieldPath: Vec<FieldPathElem> = {
