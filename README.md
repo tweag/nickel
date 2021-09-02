@@ -100,7 +100,6 @@ abstractions or just feel ad hoc. Nickel buys you more for less.
   ```console
   $ ./nickel repl
   nickel> let x = 2 in x + x
-  nickel> x
   4
 
   nickel>
