@@ -528,7 +528,7 @@ of levels if required.
 Custom merge functions would be specified by a `merge` metavalue attribute. In
 order to enforce commutativity, they would receive their arguments in an
 indistinguishable order, such as having the type `{lower: Dyn, higher: Dyn,
-priority: <Different, Equal> -> Dyn`.  If both have the same priority, the order
+priority: <Different, Equal>} -> Dyn`.  If both have the same priority, the order
 is not specified, and may even be randomized by the interpreter. The `priority`
 field indicates when it is the case, if this case needs special handling.
 
