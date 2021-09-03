@@ -8,7 +8,7 @@
 //! Some essential functions required for evaluation, such as builtin contracts, are written in
 //! pure Nickel. Standard library files must be record literals:
 //!
-//! ```ignore
+//! ```text
 //! {
 //!     val1 = ...
 //!     val2 = ...
