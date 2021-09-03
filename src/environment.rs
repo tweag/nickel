@@ -1,3 +1,4 @@
+//! An environment for storing variables with scopes.
 use std::cell::RefCell;
 use std::collections::{hash_map, HashMap};
 use std::hash::Hash;
@@ -6,6 +7,24 @@ use std::marker::PhantomData;
 use std::ptr::NonNull;
 use std::rc::Rc;
 
+/// An environment as a linked-list of hashmaps.
+///
+/// Each node of the linked-list corresponds to what is called
+/// "a layer", where only the current layer can be modified, the
+/// previous ones are only accessible for lookup.
+///
+/// For the generic parameters, `K` is the type for the environment
+/// keys, and `V` are their value.
+///
+/// The linked list is composed of the current layer and the previous layers.
+/// The current layes is stored as an `Rc<Hashmap>`, it is inserted in the previous layers
+/// by cloning.
+/// The insertion is made by trying to get the current as mutable using
+/// [`Rc::get_mut`]. If it can, it means it is the only owner of this layer
+/// in the environment, allowing it to mutate it. If it cannot, it means that
+/// the current has been clone and inserted in previous environment already,
+/// so it can safely be reset as a new hashmap.
+/// The previous layers are set in order from the most recent one to the oldest.
 #[derive(Debug, PartialEq, Default)]
 pub struct Environment<K: Hash + Eq, V: PartialEq> {
     current: Rc<HashMap<K, V>>,
@@ -13,6 +32,11 @@ pub struct Environment<K: Hash + Eq, V: PartialEq> {
 }
 
 impl<K: Hash + Eq, V: PartialEq> Clone for Environment<K, V> {
+    /// Clone has to create a new environment, while ensuring that previous
+    /// defined layers are accessible but not modifiable anymore.
+    /// For that, it checks if the current Environment has already be cloned,
+    /// and if it wasn't, it sets the `current` has the new head of `previous`.
+    /// Then a clone is an empty `current` and the clone of `self.previous`.
     fn clone(&self) -> Self {
         if !self.current.is_empty() && !self.was_cloned() {
             self.previous.replace_with(|old| {
@@ -30,6 +54,7 @@ impl<K: Hash + Eq, V: PartialEq> Clone for Environment<K, V> {
 }
 
 impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
+    /// Creates a new empty Environment.
     pub fn new() -> Self {
         Self {
             current: Rc::new(HashMap::new()),
@@ -37,6 +62,8 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
         }
     }
 
+    /// Inserts a key-value pair into the Environment.
+    /// If the key was present in the _current_ Environment, the previous value is returned.
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
         if self.was_cloned() {
             self.current = Rc::new(HashMap::new());
@@ -44,6 +71,7 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
         Rc::get_mut(&mut self.current).unwrap().insert(key, value)
     }
 
+    /// Tries to find the value of a key in the Environment.
     pub fn get(&self, key: &K) -> Option<V>
     where
         V: Clone,
@@ -51,6 +79,8 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
         self.iter_layers().find_map(|hmap| hmap.get(key).cloned())
     }
 
+    /// Creates an iterator that visits all layers from the most recent one to the oldest.
+    /// The element iterator type is `Rc<HashMap<K, V>>`.
     pub fn iter_layers(&self) -> EnvLayerIter<'_, K, V> {
         EnvLayerIter {
             env: if !self.was_cloned() {
@@ -67,6 +97,10 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
         }
     }
 
+    /// Creates an iterator that visits all elements from the Environment, from the oldest layer
+    /// to the most recent one. It uses this order, so calling `collect` on this iterator to create
+    /// a hashmap would have the same values as the Environment.
+    /// The element iterator type is `(&'env K, &'env V)`, with `'env` being the lifetime of the Environment.
     pub fn iter_elems(&self) -> EnvElemIter<'_, K, V> {
         let mut env: Vec<NonNull<HashMap<K, V>>> = self
             .iter_layers()
@@ -78,12 +112,21 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
         EnvElemIter { env, current_map }
     }
 
+    /// Creates an iterator that visits all elements from the Environment, from the current layer to the oldest one.
+    /// If values are present multiple times, only the most recent one appears.
+    /// [`iter_elems`] should be preferred, since it does not need to create an intermediary hashmap.
+    /// The element iterator type is `(&'env K, &'env V)`, with `'env` being the lifetime of the Environment.
+    ///
+    /// [`iter_elems`]: Environment::iter_elems
+    ///
     pub fn iter(&self) -> EnvIter<'_, K, V> {
         EnvIter {
             collapsed_map: self.iter_elems().collect::<HashMap<_, _>>().into_iter(),
         }
     }
 
+    /// Checks if `current` has been cloned. If it has, it is present both in current and in
+    /// previous, making it Rc strong count bigger than 1.
     fn was_cloned(&self) -> bool {
         Rc::strong_count(&self.current) > 1
     }
@@ -109,19 +152,12 @@ impl<K: Hash + Eq, V: PartialEq> Extend<(K, V)> for Environment<K, V> {
     }
 }
 
-/// ```compile_fail
-/// let env = Environment::<char, char>::new();
-/// let mut iter = env.iter_layers();
-/// drop(env);
-/// let _ = iter.next();
-/// ```
+/// An iterator over the layers of `Environment`.
 ///
-/// ```compile_fail
-/// let mut env = Environment::<char, char>::new();
-/// let mut iter = env.iter_layers();
-/// env.insert('a', 'a');
-/// let _ = iter.next();
-/// ```
+/// Created by the [`iter_layers`] method on [`Environment`].
+///
+/// [`iter_layers`]: Environment::iter_layers
+///
 pub struct EnvLayerIter<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> {
     env: Option<NonNull<Environment<K, V>>>,
     _marker: PhantomData<&'a Environment<K, V>>,
@@ -131,7 +167,7 @@ impl<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> Iterator for EnvLayerIter<'a, K, 
     type Item = Rc<HashMap<K, V>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // SAFETY: NonNull being in an option, we know it cannot be null and can be dereferencable
+        // SAFETY: NonNull being in an option, we know it cannot be null and can be dereferenceable
         self.env.map(|env| unsafe {
             let res = env.as_ref().current.clone();
             self.env = env
@@ -146,19 +182,10 @@ impl<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> Iterator for EnvLayerIter<'a, K, 
     }
 }
 
-/// ```compile_fail
-/// let env = Environment::<char, char>::new();
-/// let mut iter = env.iter_elems();
-/// drop(env);
-/// let _ = iter.next();
-/// ```
+/// An iterator over all the elements inside the `Environment`, from the oldest layer to the current one.
 ///
-/// ```compile_fail
-/// let mut env = Environment::<char, char>::new();
-/// let mut iter = env.iter_elems();
-/// env.insert('a', 'a');
-/// let _ = iter.next();
-/// ```
+/// Created by the [`iter_elems`] method on [`Environment`].
+///
 pub struct EnvElemIter<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> {
     env: Vec<NonNull<HashMap<K, V>>>,
     current_map: std::collections::hash_map::Iter<'a, K, V>,
@@ -177,6 +204,13 @@ impl<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> Iterator for EnvElemIter<'a, K, V
     }
 }
 
+/// An iterator over the elements of an `Environment`, from current layer to oldest one.
+/// Keys are guaranteed to appear only once, with actual value.
+///
+/// Created by the [`iter`] method on [`Environment`].
+///
+/// [`iter`]: Environment::iter
+///
 pub struct EnvIter<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> {
     collapsed_map: hash_map::IntoIter<&'a K, &'a V>,
 }
