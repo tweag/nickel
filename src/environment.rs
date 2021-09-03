@@ -17,12 +17,12 @@ use std::rc::Rc;
 /// keys, and `V` are their value.
 ///
 /// The linked list is composed of the current layer and the previous layers.
-/// The current layes is stored as an `Rc<Hashmap>`, it is inserted in the previous layers
+/// The current layer is stored as an `Rc<Hashmap>`. It is inserted in the previous layers
 /// by cloning.
-/// The insertion is made by trying to get the current as mutable using
+/// The insertion is made by trying to get the current layer as mutable using
 /// [`Rc::get_mut`]. If it can, it means it is the only owner of this layer
 /// in the environment, allowing it to mutate it. If it cannot, it means that
-/// the current has been clone and inserted in previous environment already,
+/// the current has been cloned and inserted in the previous environment already,
 /// so it can safely be reset as a new hashmap.
 /// The previous layers are set in order from the most recent one to the oldest.
 #[derive(Debug, PartialEq, Default)]
