@@ -227,8 +227,8 @@ mod tests {
     use super::*;
 
     impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
-        pub fn deepness(&self) -> usize {
-            1 + self.previous.borrow().as_ref().map_or(0, |p| p.deepness())
+        pub fn depth(&self) -> usize {
+            1 + self.previous.borrow().as_ref().map_or(0, |p| p.depth())
         }
     }
 
@@ -238,7 +238,7 @@ mod tests {
         env_base.insert(1, 'a');
         assert_eq!(env_base.get(&1), Some('a'));
         assert_eq!(env_base.get(&5), None);
-        assert_eq!(env_base.deepness(), 1);
+        assert_eq!(env_base.depth(), 1);
     }
 
     #[test]
@@ -256,41 +256,41 @@ mod tests {
         env_base.insert(2, 'z');
         assert_eq!(env_base.get(&2), Some('z'));
 
-        assert_eq!(env_base.deepness(), 2);
-        assert_eq!(env2.deepness(), 2);
+        assert_eq!(env_base.depth(), 2);
+        assert_eq!(env2.depth(), 2);
     }
 
     #[test]
     fn test_deepness() {
         let mut env_base = Environment::<u8, char>::new();
-        assert_eq!(env_base.deepness(), 1);
+        assert_eq!(env_base.depth(), 1);
 
         let mut env2 = env_base.clone();
-        assert_eq!(env_base.deepness(), 1);
-        assert_eq!(env_base.deepness(), 1);
+        assert_eq!(env_base.depth(), 1);
+        assert_eq!(env_base.depth(), 1);
 
         env2.insert(1, 'a');
         let env3 = env2.clone();
-        assert_eq!(env_base.deepness(), 1);
-        assert_eq!(env2.deepness(), 2);
-        assert_eq!(env3.deepness(), 2);
+        assert_eq!(env_base.depth(), 1);
+        assert_eq!(env2.depth(), 2);
+        assert_eq!(env3.depth(), 2);
 
         let env4 = env_base.clone();
-        assert_eq!(env_base.deepness(), 1);
-        assert_eq!(env4.deepness(), 1);
+        assert_eq!(env_base.depth(), 1);
+        assert_eq!(env4.depth(), 1);
 
         env_base.insert(1, 'z');
-        assert_eq!(env_base.deepness(), 1);
-        assert_eq!(env2.deepness(), 2);
-        assert_eq!(env3.deepness(), 2);
-        assert_eq!(env4.deepness(), 1);
+        assert_eq!(env_base.depth(), 1);
+        assert_eq!(env2.depth(), 2);
+        assert_eq!(env3.depth(), 2);
+        assert_eq!(env4.depth(), 1);
 
         let env5 = env_base.clone();
-        assert_eq!(env_base.deepness(), 2);
-        assert_eq!(env2.deepness(), 2);
-        assert_eq!(env3.deepness(), 2);
-        assert_eq!(env4.deepness(), 1);
-        assert_eq!(env5.deepness(), 2);
+        assert_eq!(env_base.depth(), 2);
+        assert_eq!(env2.depth(), 2);
+        assert_eq!(env3.depth(), 2);
+        assert_eq!(env4.depth(), 1);
+        assert_eq!(env5.depth(), 2);
     }
 
     #[test]
