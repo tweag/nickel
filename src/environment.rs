@@ -63,12 +63,11 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
     }
 
     /// Inserts a key-value pair into the Environment.
-    /// If the key was present in the _current_ Environment, the previous value is returned.
-    pub fn insert(&mut self, key: K, value: V) -> Option<V> {
+    pub fn insert(&mut self, key: K, value: V) {
         if self.was_cloned() {
             self.current = Rc::new(HashMap::new());
         }
-        Rc::get_mut(&mut self.current).unwrap().insert(key, value)
+        Rc::get_mut(&mut self.current).unwrap().insert(key, value);
     }
 
     /// Tries to find the value of a key in the Environment.
@@ -236,7 +235,7 @@ mod tests {
     #[test]
     fn test_env_base() {
         let mut env_base = Environment::new();
-        assert_eq!(env_base.insert(1, 'a'), None);
+        env_base.insert(1, 'a');
         assert_eq!(env_base.get(&1), Some('a'));
         assert_eq!(env_base.get(&5), None);
         assert_eq!(env_base.deepness(), 1);
@@ -248,13 +247,13 @@ mod tests {
         env_base.insert(1, 'a');
 
         let mut env2 = env_base.clone();
-        assert_eq!(env2.insert(2, 'b'), None);
+        env2.insert(2, 'b');
         assert_eq!(env2.get(&1), Some('a'));
         assert_eq!(env2.get(&2), Some('b'));
         env_base.insert(3, 'c');
         assert_eq!(env2.get(&3), None);
         assert_eq!(env_base.get(&3), Some('c'));
-        assert_eq!(env_base.insert(2, 'z'), None);
+        env_base.insert(2, 'z');
         assert_eq!(env_base.get(&2), Some('z'));
 
         assert_eq!(env_base.deepness(), 2);

@@ -404,8 +404,8 @@ impl<'a> Envs<'a> {
     }
 
     /// Wrapper to insert a new binding in the local environment.
-    pub fn insert(&mut self, ident: Ident, tyw: TypeWrapper) -> Option<TypeWrapper> {
-        self.local.insert(ident, tyw)
+    pub fn insert(&mut self, ident: Ident, tyw: TypeWrapper) {
+        self.local.insert(ident, tyw);
     }
 }
 
