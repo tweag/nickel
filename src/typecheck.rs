@@ -41,6 +41,7 @@
 //!
 //! In non-strict mode, all let-bound expressions are given type `Dyn`, unless annotated.
 use crate::cache::ImportResolver;
+use crate::environment::Environment as GenericEnvironment;
 use crate::error::TypecheckError;
 use crate::eval;
 use crate::identifier::Ident;
@@ -331,7 +332,7 @@ impl UnifError {
 }
 
 /// The typing environment.
-pub type Environment = HashMap<Ident, TypeWrapper>;
+pub type Environment = GenericEnvironment<Ident, TypeWrapper>;
 
 /// A structure holding the two typing environments, the global and the local.
 ///
@@ -399,15 +400,12 @@ impl<'a> Envs<'a> {
     /// Fetch a binding from the environment. Try first in the local environment, and then in the
     /// global.
     pub fn get(&self, ident: &Ident) -> Option<TypeWrapper> {
-        self.local
-            .get(ident)
-            .or_else(|| self.global.get(ident))
-            .cloned()
+        self.local.get(ident).or_else(|| self.global.get(ident))
     }
 
     /// Wrapper to insert a new binding in the local environment.
-    pub fn insert(&mut self, ident: Ident, tyw: TypeWrapper) -> Option<TypeWrapper> {
-        self.local.insert(ident, tyw)
+    pub fn insert(&mut self, ident: Ident, tyw: TypeWrapper) {
+        self.local.insert(ident, tyw);
     }
 }
 

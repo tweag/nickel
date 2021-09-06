@@ -87,6 +87,7 @@
 //! appear inside recursive records in the future. An adapted garbage collector is probably
 //! something to consider at some point.
 use crate::cache::ImportResolver;
+use crate::environment::Environment as GenericEnvironment;
 use crate::error::EvalError;
 use crate::identifier::Ident;
 use crate::mk_app;
@@ -95,7 +96,6 @@ use crate::position::TermPos;
 use crate::stack::Stack;
 use crate::term::{make as mk_term, MetaValue, RichTerm, StrChunk, Term, UnaryOp};
 use std::cell::{Ref, RefCell, RefMut};
-use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
 /// The state of a thunk.
@@ -253,9 +253,6 @@ impl ThunkUpdateFrame {
     }
 }
 
-/// An environment, which is a mapping from identifiers to closures.
-pub type Environment = HashMap<Ident, Thunk>;
-
 /// A call stack, saving the history of function calls.
 ///
 /// In a lazy language as Nickel, there are no well delimited stack frames due to how function
@@ -292,10 +289,12 @@ impl Closure {
     pub fn atomic_closure(body: RichTerm) -> Closure {
         Closure {
             body,
-            env: HashMap::new(),
+            env: Environment::new(),
         }
     }
 }
+
+pub type Environment = GenericEnvironment<Ident, Thunk>;
 
 /// Raised when trying to build an environment from a term which is not a record.
 #[derive(Clone, Debug)]
@@ -452,8 +451,8 @@ where
         clos = match term {
             Term::Var(x) => {
                 let mut thunk = env
-                    .remove(&x)
-                    .or_else(|| global_env.get(&x).map(Thunk::clone))
+                    .get(&x)
+                    .or_else(|| global_env.get(&x))
                     .ok_or_else(|| EvalError::UnboundIdentifier(x.clone(), pos))?;
                 std::mem::drop(env); // thunk may be a 1RC pointer
 
@@ -583,7 +582,7 @@ where
             Term::StrChunks(mut chunks) => match chunks.pop() {
                 None => Closure {
                     body: Term::Str(String::new()).into(),
-                    env: HashMap::new(),
+                    env: Environment::new(),
                 },
                 Some(chunk) => {
                     let (arg, indent) = match chunk {
@@ -653,10 +652,14 @@ where
                     let RichTerm { term, pos } = rt;
                     match *term {
                         Term::Var(var_id) => {
-                            // We already checked for unbound identifier in the previous fold, so this
-                            // get should always succeed.
-                            let thunk = env.get_mut(&var_id).unwrap();
-                            thunk.borrow_mut().env.extend(rec_env.clone());
+                            // We already checked for unbound identifier in the previous fold,
+                            // so function should always succeed
+                            let mut thunk = env.get(&var_id).unwrap();
+                            thunk.borrow_mut().env.extend(
+                                rec_env
+                                    .iter_elems()
+                                    .map(|(id, thunk)| (id.clone(), thunk.clone())),
+                            );
                             (
                                 id,
                                 RichTerm {
@@ -988,7 +991,7 @@ mod tests {
 
     /// Evaluate a term without import support.
     fn eval_no_import(t: RichTerm) -> Result<Term, EvalError> {
-        eval(t, &HashMap::new(), &mut DummyResolver {})
+        eval(t, &Environment::new(), &mut DummyResolver {})
     }
 
     fn parse(s: &str) -> Option<RichTerm> {
@@ -1173,7 +1176,7 @@ mod tests {
         assert_eq!(
             eval(
                 mk_import("x", "two", mk_term::var("x"), &mut resolver).unwrap(),
-                &HashMap::new(),
+                &Environment::new(),
                 &mut resolver
             )
             .unwrap(),
@@ -1184,7 +1187,7 @@ mod tests {
         assert_eq!(
             eval(
                 mk_import("x", "nested", mk_term::var("x"), &mut resolver).unwrap(),
-                &HashMap::new(),
+                &Environment::new(),
                 &mut resolver
             )
             .unwrap(),
@@ -1201,7 +1204,7 @@ mod tests {
                     &mut resolver,
                 )
                 .unwrap(),
-                &HashMap::new(),
+                &Environment::new(),
                 &mut resolver
             )
             .unwrap(),
@@ -1218,7 +1221,7 @@ mod tests {
                     &mut resolver,
                 )
                 .unwrap(),
-                &HashMap::new(),
+                &Environment::new(),
                 &mut resolver
             )
             .unwrap(),
@@ -1291,7 +1294,7 @@ mod tests {
 
     #[test]
     fn global_env() {
-        let mut global_env = HashMap::new();
+        let mut global_env = Environment::new();
         let mut resolver = DummyResolver {};
         global_env.insert(
             Ident::from("g"),

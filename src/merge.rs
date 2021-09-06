@@ -329,7 +329,7 @@ pub fn merge(
              * term by a variable bound to an appropriate closure in the environment
              */
             let mut m = HashMap::new();
-            let mut env = HashMap::new();
+            let mut env = Environment::new();
             let (mut left, mut center, mut right) = hashmap::split(m1, m2);
 
             match mode {
@@ -425,7 +425,7 @@ fn merge_closurize(
     t2: RichTerm,
     env2: Environment,
 ) -> RichTerm {
-    let mut local_env = HashMap::new();
+    let mut local_env = Environment::new();
     let body = RichTerm::from(Term::Op2(
         BinaryOp::Merge(),
         t1.closurize(&mut local_env, env1),
