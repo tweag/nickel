@@ -687,11 +687,15 @@ where
                             let RichTerm { term, pos } = t;
                             match *term {
                                 Term::Var(var_id) => {
-                                    let thunk = env.get_mut(&var_id).ok_or_else(|| {
+                                    let mut thunk = env.get(&var_id).ok_or_else(|| {
                                         EvalError::UnboundIdentifier(var_id.clone(), pos)
                                     })?;
 
-                                    thunk.borrow_mut().env.extend(rec_env.clone());
+                                    thunk.borrow_mut().env.extend(
+                                        rec_env
+                                            .iter_elems()
+                                            .map(|(id, thunk)| (id.clone(), thunk.clone())),
+                                    );
                                     Ok(Term::App(
                                         mk_term::op2(BinaryOp::DynExtend(), id_t, acc),
                                         mk_term::var(var_id).with_pos(pos),
