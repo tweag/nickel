@@ -311,6 +311,58 @@ where
             // We need to do contract generation before wrapping stuff in variables
             let rt = apply_contracts::transform_one(rt);
             let rt = share_normal_form::transform_one(rt);
+            Ok(rt)
+        },
+        &mut state,
+    )
+}
+
+/// Apply all program transformations, which are currently the share normal form transformation and
+/// import resolution.
+///
+/// All resolved imports are stacked during the transformation. Once the term has been traversed,
+/// the elements of this stack are processed (and so on, if these elements also have non resolved
+/// imports).
+pub fn resolve_imports<R>(rt: RichTerm, resolver: &mut R) -> Result<RichTerm, ImportError>
+where
+    R: ImportResolver,
+{
+    let mut stack = Vec::new();
+
+    let source_file: Option<PathBuf> = rt.pos.into_opt().map(|x| {
+        let path = resolver.get_path(x.src_id);
+        PathBuf::from(path)
+    });
+    let result = imports_pass(rt, resolver, &mut stack, source_file);
+
+    while let Some((t, file_id, parent)) = stack.pop() {
+        let result = imports_pass(t, resolver, &mut stack, Some(parent))?;
+        resolver.insert(file_id, result);
+    }
+
+    result
+}
+
+/// Perform one full transformation pass. Put all imports encountered for the first time in
+/// `stack`, but do not process them.
+fn imports_pass<R>(
+    rt: RichTerm,
+    resolver: &mut R,
+    stack: &mut Vec<PendingImport>,
+    parent: Option<PathBuf>,
+) -> Result<RichTerm, ImportError>
+where
+    R: ImportResolver,
+{
+    let mut state = TransformState {
+        resolver,
+        stack,
+        parent,
+    };
+
+    // Apply one step of each transformation. If an import is resolved, then stack it.
+    rt.traverse(
+        &mut |rt: RichTerm, state: &mut TransformState<R>| -> Result<RichTerm, ImportError> {
             let (rt, pending) =
                 import_resolution::transform_one(rt, state.resolver, &state.parent)?;
 

@@ -90,6 +90,8 @@ pub struct NameIdEntry {
 pub enum EntryState {
     /// The term have just been parsed.
     Parsed,
+    /// The term has been parsed and the imports resolved
+    ImportsResolved,
     /// The term have been parsed and typechecked.
     Typechecked,
     /// The term have been parsed, possibly typechecked (but not necessarily), and transformed.
@@ -420,6 +422,23 @@ impl Cache {
         }
     }
 
+    // Apply one step of each transformation. If an import is resolved, then stack it.
+    pub fn resolve_imports(
+        &mut self,
+        file_id: FileId,
+    ) -> Result<CacheOp<()>, CacheError<ImportError>> {
+        match self.entry_state(file_id) {
+            Some(EntryState::ImportsResolved) => Ok(CacheOp::Cached(())),
+            Some(_) => {
+                let (t, _) = self.terms.remove(&file_id).unwrap();
+                let t = transformations::resolve_imports(t, self)?;
+                self.terms.insert(file_id, (t, EntryState::ImportsResolved));
+                Ok(CacheOp::Done(()))
+            }
+            None => Err(CacheError::NotParsed),
+        }
+    }
+
     /// Prepare a source for evaluation: parse it, typecheck it and apply program transformations,
     /// if it was not already done.
     pub fn prepare(
@@ -428,8 +447,19 @@ impl Cache {
         global_env: &eval::Environment,
     ) -> Result<CacheOp<()>, Error> {
         let mut result = CacheOp::Cached(());
+        println!("imports done");
 
         if self.parse(file_id)? == CacheOp::Done(()) {
+            result = CacheOp::Done(());
+        };
+
+        let import_res = self.resolve_imports(file_id).map_err(|cache_err| {
+            cache_err.unwrap_error(
+                "cache::prepare(): expected source to be parsed before imports resolutions",
+            )
+        })?;
+        if import_res == CacheOp::Done(()) {
+            println!("imports done");
             result = CacheOp::Done(());
         };
 
@@ -461,6 +491,7 @@ impl Cache {
         global_env: &eval::Environment,
     ) -> Result<RichTerm, Error> {
         let term = self.parse_nocache(file_id)?;
+        let term = transformations::resolve_imports(term, self)?;
         type_check(&term, global_env, self)?;
         let term = transformations::transform(term, self)?;
         Ok(term)
