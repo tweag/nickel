@@ -352,7 +352,8 @@ impl Cache {
 
         if *state > EntryState::Typechecked {
             Ok(CacheOp::Cached(()))
-        } else if *state == EntryState::Parsed {
+        } else if [EntryState::Parsed,EntryState::ImportsResolved]
+            .contains(state) {
             type_check(t, global_env, self)?;
             self.update_state(file_id, EntryState::Typechecked);
             Ok(CacheOp::Done(()))
@@ -447,7 +448,6 @@ impl Cache {
         global_env: &eval::Environment,
     ) -> Result<CacheOp<()>, Error> {
         let mut result = CacheOp::Cached(());
-        println!("imports done");
 
         if self.parse(file_id)? == CacheOp::Done(()) {
             result = CacheOp::Done(());
@@ -459,7 +459,6 @@ impl Cache {
             )
         })?;
         if import_res == CacheOp::Done(()) {
-            println!("imports done");
             result = CacheOp::Done(());
         };
 
