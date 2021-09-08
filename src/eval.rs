@@ -985,7 +985,7 @@ mod tests {
     use crate::parser::{grammar, lexer};
     use crate::term::make as mk_term;
     use crate::term::{BinaryOp, StrChunk, UnaryOp};
-    use crate::transformations::transform;
+    use crate::transformations::{resolve_imports,transform};
     use crate::{mk_app, mk_fun};
     use codespan::Files;
 
@@ -1154,7 +1154,7 @@ mod tests {
         where
             R: ImportResolver,
         {
-            transform(
+            resolve_imports(
                 mk_term::let_in(var, mk_term::import(import), body),
                 resolver,
             )
