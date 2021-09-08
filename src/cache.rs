@@ -370,7 +370,7 @@ impl Cache {
             Some(EntryState::Transformed) => Ok(CacheOp::Cached(())),
             Some(_) => {
                 let (t, _) = self.terms.remove(&file_id).unwrap();
-                let t = transformations::transform(t, self)?;
+                let t = transformations::transform(t)?;
                 self.terms.insert(file_id, (t, EntryState::Transformed));
                 Ok(CacheOp::Done(()))
             }
@@ -407,7 +407,7 @@ impl Cache {
                             std::mem::replace(map, HashMap::new())
                                 .into_iter()
                                 .map(|(id, t)| {
-                                    transformations::transform(t, self)
+                                    transformations::transform(t)
                                         .map(|t_ok| (id.clone(), t_ok))
                                 })
                                 .collect();
@@ -423,7 +423,9 @@ impl Cache {
         }
     }
 
-    // Apply one step of each transformation. If an import is resolved, then stack it.
+    /// Resolve every imports of an entry of the cache, and update its state accordingly,
+    /// or do nothing if the entry has already been transformed. Require that the corresponding
+    /// source has been parsed.
     pub fn resolve_imports(
         &mut self,
         file_id: FileId,
@@ -440,7 +442,8 @@ impl Cache {
         }
     }
 
-    /// Prepare a source for evaluation: parse it, typecheck it and apply program transformations,
+    /// Prepare a source for evaluation: parse it, resolve the imports,
+    /// typecheck it and apply program transformations,
     /// if it was not already done.
     pub fn prepare(
         &mut self,
@@ -492,7 +495,7 @@ impl Cache {
         let term = self.parse_nocache(file_id)?;
         let term = transformations::resolve_imports(term, self)?;
         type_check(&term, global_env, self)?;
-        let term = transformations::transform(term, self)?;
+        let term = transformations::transform(term)?;
         Ok(term)
     }
 

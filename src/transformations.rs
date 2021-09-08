@@ -253,74 +253,31 @@ pub mod apply_contracts {
     }
 }
 
-/// The state passed around during the program transformation. It holds a reference to the import
+/// The state passed around during the imports resolution. It holds a reference to the import
 /// resolver, to a stack of pending imported term to be transformed and the path of the import
 /// currently being processed, if any.
-struct TransformState<'a, R> {
+struct ImportsResolutionState<'a, R> {
     resolver: &'a mut R,
     stack: &'a mut Vec<PendingImport>,
     parent: Option<PathBuf>,
 }
 
-/// Apply all program transformations, which are currently the share normal form transformation and
-/// import resolution.
-///
-/// All resolved imports are stacked during the transformation. Once the term has been traversed,
-/// the elements of this stack are processed (and so on, if these elements also have non resolved
-/// imports).
-pub fn transform<R>(rt: RichTerm, resolver: &mut R) -> Result<RichTerm, ImportError>
-where
-    R: ImportResolver,
-{
-    let mut stack = Vec::new();
-
-    let source_file: Option<PathBuf> = rt.pos.into_opt().map(|x| {
-        let path = resolver.get_path(x.src_id);
-        PathBuf::from(path)
-    });
-    let result = transform_pass(rt, resolver, &mut stack, source_file);
-
-    while let Some((t, file_id, parent)) = stack.pop() {
-        let result = transform_pass(t, resolver, &mut stack, Some(parent))?;
-        resolver.insert(file_id, result);
-    }
-
-    result
-}
-
-/// Perform one full transformation pass. Put all imports encountered for the first time in
-/// `stack`, but do not process them.
-fn transform_pass<R>(
-    rt: RichTerm,
-    resolver: &mut R,
-    stack: &mut Vec<PendingImport>,
-    parent: Option<PathBuf>,
-) -> Result<RichTerm, ImportError>
-where
-    R: ImportResolver,
-{
-    let mut state = TransformState {
-        resolver,
-        stack,
-        parent,
-    };
-
-    // Apply one step of each transformation. If an import is resolved, then stack it.
+/// Apply all program transformations, which are currently the share normal form transformations
+pub fn transform(rt: RichTerm) -> Result<RichTerm, ImportError> {
     rt.traverse(
-        &mut |rt: RichTerm, state: &mut TransformState<R>| -> Result<RichTerm, ImportError> {
+        &mut |rt: RichTerm,_| -> Result<RichTerm, ImportError> {
             // We need to do contract generation before wrapping stuff in variables
             let rt = apply_contracts::transform_one(rt);
             let rt = share_normal_form::transform_one(rt);
             Ok(rt)
         },
-        &mut state,
+        &mut (),
     )
 }
 
-/// Apply all program transformations, which are currently the share normal form transformation and
 /// import resolution.
 ///
-/// All resolved imports are stacked during the transformation. Once the term has been traversed,
+/// All resolved imports are stacked during the process. Once the term has been traversed,
 /// the elements of this stack are processed (and so on, if these elements also have non resolved
 /// imports).
 pub fn resolve_imports<R>(rt: RichTerm, resolver: &mut R) -> Result<RichTerm, ImportError>
@@ -343,7 +300,7 @@ where
     result
 }
 
-/// Perform one full transformation pass. Put all imports encountered for the first time in
+/// Perform one full imports resolution pass. Put all imports encountered for the first time in
 /// `stack`, but do not process them.
 fn imports_pass<R>(
     rt: RichTerm,
@@ -354,15 +311,15 @@ fn imports_pass<R>(
 where
     R: ImportResolver,
 {
-    let mut state = TransformState {
+    let mut state = ImportsResolutionState {
         resolver,
         stack,
         parent,
     };
 
-    // Apply one step of each transformation. If an import is resolved, then stack it.
+    // If an import is resolved, then stack it.
     rt.traverse(
-        &mut |rt: RichTerm, state: &mut TransformState<R>| -> Result<RichTerm, ImportError> {
+        &mut |rt: RichTerm, state: &mut ImportsResolutionState<R>| -> Result<RichTerm, ImportError> {
             let (rt, pending) =
                 import_resolution::transform_one(rt, state.resolver, &state.parent)?;
 
