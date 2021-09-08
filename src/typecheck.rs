@@ -1284,60 +1284,31 @@ pub fn check_sub_dyn_record(
     row: TypeWrapper,
     ty: TypeWrapper,
 ) -> Result<(), RowUnifError> {
-    println!("check_sub_dyn_record({:?}, {:?})", row, ty);
+    // println!("check_sub_dyn_record({:?}, {:?})", row, ty);
 
     match row {
-        TypeWrapper::Concrete(ty_row) => {
-            match ty_row {
-                AbsType::RowEmpty() => Ok(()),
-                AbsType::Dyn() => check_sub_(state, mk_typewrapper::dynamic(), ty)
-                    .map_err(|_| RowUnifError::ExtraDynTail()),
-                AbsType::RowExtend(id, ty_row, tail) => {
-                    ty_row
-                        .ok_or_else(|| {
-                            RowUnifError::IllformedRow(TypeWrapper::Concrete(AbsType::RowExtend(
-                                id.clone(),
-                                None,
-                                tail.clone(),
-                            )))
-                        })
-                        .and_then(|ty_row| {
-                            check_sub_(state, *ty_row, ty.clone())
-                                .map_err(|err| RowUnifError::RowMismatch(id.clone(), err))
-                        })?;
-                    // match ty_row {
-                    //     Some(ty_row) => check_sub_(state, ty_row, ty),
-                    //     None => Err(RowUnifError::IllformedRow(
-                    // };
+        TypeWrapper::Concrete(ty_row) => match ty_row {
+            AbsType::RowEmpty() => Ok(()),
+            AbsType::Dyn() => check_sub_(state, mk_typewrapper::dynamic(), ty)
+                .map_err(|_| RowUnifError::ExtraDynTail()),
+            AbsType::RowExtend(id, ty_row, tail) => {
+                ty_row
+                    .ok_or_else(|| {
+                        RowUnifError::IllformedRow(TypeWrapper::Concrete(AbsType::RowExtend(
+                            id.clone(),
+                            None,
+                            tail.clone(),
+                        )))
+                    })
+                    .and_then(|ty_row| {
+                        check_sub_(state, *ty_row, ty.clone())
+                            .map_err(|err| RowUnifError::RowMismatch(id.clone(), err))
+                    })?;
 
-                    check_sub_dyn_record(state, *tail, ty)
-                    // match *tail {
-                    //     TypeWrapper::Concrete(ty_tail) => check_sub_dyn_record(state, ty_tail, ty),
-                    //     tail => {
-                    //         // If one of the tail is not a concrete type, it is either a unification variable
-                    //         // or a constant (rigid type variable). `unify` already knows how to treat these
-                    //         // cases, so we delegate the work. However it returns `UnifError` instead of
-                    //         // `RowUnifError`, hence we have a bit of wrapping and unwrapping to do. Note that
-                    //         // since we are unifying types with a constant or a unification variable somewhere,
-                    //         // the only unification errors that should be possible are related to constants or
-                    //         // row constraints.
-                    //         check_sub_(state, tail, ty).map_err(|err| match err {
-                    //             UnifError::ConstMismatch(c1, c2) => RowUnifError::ConstMismatch(c1, c2),
-                    //             UnifError::WithConst(c1, tyw) => RowUnifError::WithConst(c1, tyw),
-                    //             UnifError::RowConflict(id, tyw_opt, _, _) => {
-                    //                 RowUnifError::UnsatConstr(id, tyw_opt)
-                    //             }
-                    //             err => panic!(
-                    //             "typechecker::check_sub_dyn_record(): unexpected error while comparing row tails {:?}",
-                    //             err
-                    //         ),
-                    //         })
-                    //     }
-                    // }
-                }
-                ty => Err(RowUnifError::IllformedRow(TypeWrapper::Concrete(ty))),
+                check_sub_dyn_record(state, *tail, ty)
             }
-        }
+            ty => Err(RowUnifError::IllformedRow(TypeWrapper::Concrete(ty))),
+        },
         // Currently, the tail of a record can only be one concrete type, Dyn. If the dynamic
         // record type is not Dyn, we can't unify the tail with it, so we just fail for now. In the
         // future, we can imagine having type constraints on row tails, keep the unification
@@ -1361,7 +1332,8 @@ pub fn check_sub_dyn_record(
     }
 }
 
-/// Try to unify two row types. Return an [`IllformedRow`](./enum.RowUnifError.html#variant.IllformedRow) error if one of the given type
+/// Try to unify two row types. Return an
+/// [`IllformedRow`](./enum.RowUnifError.html#variant.IllformedRow) error if one of the given type
 /// is not a row type.
 pub fn check_sub_rows(
     state: &mut State,
