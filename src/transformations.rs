@@ -265,7 +265,7 @@ struct ImportsResolutionState<'a, R> {
 /// Apply all program transformations, which are currently the share normal form transformations
 pub fn transform(rt: RichTerm) -> Result<RichTerm, ImportError> {
     rt.traverse(
-        &mut |rt: RichTerm,_| -> Result<RichTerm, ImportError> {
+        &mut |rt: RichTerm, _| -> Result<RichTerm, ImportError> {
             // We need to do contract generation before wrapping stuff in variables
             let rt = apply_contracts::transform_one(rt);
             let rt = share_normal_form::transform_one(rt);
@@ -319,7 +319,9 @@ where
 
     // If an import is resolved, then stack it.
     rt.traverse(
-        &mut |rt: RichTerm, state: &mut ImportsResolutionState<R>| -> Result<RichTerm, ImportError> {
+        &mut |rt: RichTerm,
+              state: &mut ImportsResolutionState<R>|
+         -> Result<RichTerm, ImportError> {
             let (rt, pending) =
                 import_resolution::transform_one(rt, state.resolver, &state.parent)?;
 

@@ -352,8 +352,7 @@ impl Cache {
 
         if *state > EntryState::Typechecked {
             Ok(CacheOp::Cached(()))
-        } else if [EntryState::Parsed,EntryState::ImportsResolved]
-            .contains(state) {
+        } else if [EntryState::Parsed, EntryState::ImportsResolved].contains(state) {
             type_check(t, global_env, self)?;
             self.update_state(file_id, EntryState::Typechecked);
             Ok(CacheOp::Done(()))
@@ -407,8 +406,7 @@ impl Cache {
                             std::mem::replace(map, HashMap::new())
                                 .into_iter()
                                 .map(|(id, t)| {
-                                    transformations::transform(t)
-                                        .map(|t_ok| (id.clone(), t_ok))
+                                    transformations::transform(t).map(|t_ok| (id.clone(), t_ok))
                                 })
                                 .collect();
                         *map = map_res?;
