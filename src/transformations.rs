@@ -262,7 +262,8 @@ struct ImportsResolutionState<'a, R> {
     parent: Option<PathBuf>,
 }
 
-/// Apply all program transformations, which are currently the share normal form transformations
+/// Apply all program transformations, which are currently the share normal form transformations and
+/// contracts application.
 pub fn transform(rt: RichTerm) -> Result<RichTerm, ImportError> {
     rt.traverse(
         &mut |rt: RichTerm,_| -> Result<RichTerm, ImportError> {
