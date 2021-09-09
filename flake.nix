@@ -2,11 +2,11 @@
   inputs.nixpkgs.url = "nixpkgs/nixos-unstable";
   # We need a fixed version for wasm-bindgen-cli, that corresponds to
   # the version of wasm-bindgen in Cargo.toml
-  inputs.nixpkgs-pinned.url = "nixpkgs/nixos-21.05";
+  inputs.nixpkgs-wasm.url = "nixpkgs/nixos-21.05";
   inputs.nixpkgs-mozilla.url = "github:nickel-lang/nixpkgs-mozilla/flake";
   inputs.import-cargo.url = "github:edolstra/import-cargo";
 
-  outputs = { self, nixpkgs, nixpkgs-pinned, nixpkgs-mozilla, import-cargo }:
+  outputs = { self, nixpkgs, nixpkgs-wasm, nixpkgs-mozilla, import-cargo }:
     let
 
       SYSTEMS = [
@@ -103,7 +103,7 @@
       buildNickelWASM = { system, channel ? "stable", optimize ? true }:
         let
           pkgs = mkPkgs {inherit system;};
-          pkgsPinned = import nixpkgs-pinned {inherit system;};
+          pkgsPinned = import nixpkgs-wasm {inherit system;};
 
           rust = (pkgs.rustChannelOf RUST_CHANNELS."${channel}").rust.override({
             targets = ["wasm32-unknown-unknown"];
