@@ -9,7 +9,6 @@
   "files": [
     "nickel_bg.wasm",
     "nickel.js",
-    "nickel_bg.js",
     "nickel.d.ts"
   ],
   "module": "nickel.js",

@@ -17,11 +17,11 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1611219034,
-        "narHash": "sha256-bgp8G3LcpvKs22/z5Cj4XQkmZq05Aa0vaP1bKl7X0zM=",
+        "lastModified": 1630248577,
+        "narHash": "sha256-9d/yq96TTrnF7qjA6wPYk+rYjWAXwfUmwk3qewezSeg=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "f217c0ea7c148ddc0103347051555c7c252dcafb",
+        "rev": "8d8a28b47b7c41aeb4ad01a2bd8b7d26986c3512",
         "type": "github"
       },
       "original": {
@@ -35,27 +35,42 @@
         "nixpkgs": "nixpkgs_2"
       },
       "locked": {
-        "lastModified": 1610699763,
-        "narHash": "sha256-Sf0A1KeMo461OEHQtoE8U7xLVBiLmwGwSZJiJDkq+38=",
-        "owner": "garbas",
+        "lastModified": 1630405024,
+        "narHash": "sha256-DvYmScld4IOj8DdIF4RI8B2POAD7BVgajdUviWpBhgM=",
+        "owner": "nickel-lang",
         "repo": "nixpkgs-mozilla",
-        "rev": "8305afa70d8b4ba45dae5b51e3b11122a44323cd",
+        "rev": "38af8eb25905bcece8c1adc5d80e3f26f5e533f8",
         "type": "github"
       },
       "original": {
-        "owner": "garbas",
+        "owner": "nickel-lang",
         "ref": "flake",
         "repo": "nixpkgs-mozilla",
         "type": "github"
       }
     },
-    "nixpkgs_2": {
+    "nixpkgs-pinned": {
       "locked": {
-        "lastModified": 1610219734,
-        "narHash": "sha256-hCsGe2nDz+SX4uO+lj0qPVcSGZdt52R9Yk5MOYs4djw=",
+        "lastModified": 1630076329,
+        "narHash": "sha256-mkxPL5pXZv8cfHgjSW0oWfZRGSSlGwXy/7KR+2Mgf3M=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "257cbbcd3ab7bd96f5d24d50adc807de7c82e06d",
+        "rev": "74d017edb6717ad76d38edc02ad3210d4ad66b96",
+        "type": "github"
+      },
+      "original": {
+        "id": "nixpkgs",
+        "ref": "nixos-21.05",
+        "type": "indirect"
+      }
+    },
+    "nixpkgs_2": {
+      "locked": {
+        "lastModified": 1630248577,
+        "narHash": "sha256-9d/yq96TTrnF7qjA6wPYk+rYjWAXwfUmwk3qewezSeg=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "8d8a28b47b7c41aeb4ad01a2bd8b7d26986c3512",
         "type": "github"
       },
       "original": {
@@ -68,7 +83,8 @@
       "inputs": {
         "import-cargo": "import-cargo",
         "nixpkgs": "nixpkgs",
-        "nixpkgs-mozilla": "nixpkgs-mozilla"
+        "nixpkgs-mozilla": "nixpkgs-mozilla",
+        "nixpkgs-pinned": "nixpkgs-pinned"
       }
     }
   },
