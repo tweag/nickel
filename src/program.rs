@@ -111,6 +111,11 @@ impl Program {
         self.cache.load_stdlib()?;
         let global_env = self.cache.mk_global_env().expect("program::typecheck(): stdlib has been loaded but was not found in cache on mk_global_env()");
         self.cache
+            .resolve_imports(self.main_id)
+            .map_err(|cache_err| {
+                cache_err.unwrap_error("program::typecheck(): expected source to be parsed")
+            })?;
+        self.cache
             .typecheck(self.main_id, &global_env)
             .map_err(|cache_err| {
                 cache_err.unwrap_error("program::typecheck(): expected source to be parsed")

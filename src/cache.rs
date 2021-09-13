@@ -90,6 +90,8 @@ pub struct NameIdEntry {
 pub enum EntryState {
     /// The term have just been parsed.
     Parsed,
+    /// The term has been parsed and the imports resolved
+    ImportsResolved,
     /// The term have been parsed and typechecked.
     Typechecked,
     /// The term have been parsed, possibly typechecked (but not necessarily), and transformed.
@@ -350,7 +352,7 @@ impl Cache {
 
         if *state > EntryState::Typechecked {
             Ok(CacheOp::Cached(()))
-        } else if *state == EntryState::Parsed {
+        } else if *state >= EntryState::Parsed {
             type_check(t, global_env, self)?;
             self.update_state(file_id, EntryState::Typechecked);
             Ok(CacheOp::Done(()))
@@ -367,7 +369,7 @@ impl Cache {
             Some(EntryState::Transformed) => Ok(CacheOp::Cached(())),
             Some(_) => {
                 let (t, _) = self.terms.remove(&file_id).unwrap();
-                let t = transformations::transform(t, self)?;
+                let t = transformations::transform(t)?;
                 self.terms.insert(file_id, (t, EntryState::Transformed));
                 Ok(CacheOp::Done(()))
             }
@@ -404,8 +406,7 @@ impl Cache {
                             std::mem::replace(map, HashMap::new())
                                 .into_iter()
                                 .map(|(id, t)| {
-                                    transformations::transform(t, self)
-                                        .map(|t_ok| (id.clone(), t_ok))
+                                    transformations::transform(t).map(|t_ok| (id.clone(), t_ok))
                                 })
                                 .collect();
                         *map = map_res?;
@@ -420,7 +421,27 @@ impl Cache {
         }
     }
 
-    /// Prepare a source for evaluation: parse it, typecheck it and apply program transformations,
+    /// Resolve every imports of an entry of the cache, and update its state accordingly,
+    /// or do nothing if the entry has already been transformed. Require that the corresponding
+    /// source has been parsed.
+    pub fn resolve_imports(
+        &mut self,
+        file_id: FileId,
+    ) -> Result<CacheOp<()>, CacheError<ImportError>> {
+        match self.entry_state(file_id) {
+            Some(EntryState::ImportsResolved) => Ok(CacheOp::Cached(())),
+            Some(_) => {
+                let (t, _) = self.terms.remove(&file_id).unwrap();
+                let t = transformations::resolve_imports(t, self)?;
+                self.terms.insert(file_id, (t, EntryState::ImportsResolved));
+                Ok(CacheOp::Done(()))
+            }
+            None => Err(CacheError::NotParsed),
+        }
+    }
+
+    /// Prepare a source for evaluation: parse it, resolve the imports,
+    /// typecheck it and apply program transformations,
     /// if it was not already done.
     pub fn prepare(
         &mut self,
@@ -430,6 +451,15 @@ impl Cache {
         let mut result = CacheOp::Cached(());
 
         if self.parse(file_id)? == CacheOp::Done(()) {
+            result = CacheOp::Done(());
+        };
+
+        let import_res = self.resolve_imports(file_id).map_err(|cache_err| {
+            cache_err.unwrap_error(
+                "cache::prepare(): expected source to be parsed before imports resolutions",
+            )
+        })?;
+        if import_res == CacheOp::Done(()) {
             result = CacheOp::Done(());
         };
 
@@ -461,8 +491,9 @@ impl Cache {
         global_env: &eval::Environment,
     ) -> Result<RichTerm, Error> {
         let term = self.parse_nocache(file_id)?;
+        let term = transformations::resolve_imports(term, self)?;
         type_check(&term, global_env, self)?;
-        let term = transformations::transform(term, self)?;
+        let term = transformations::transform(term)?;
         Ok(term)
     }
 
