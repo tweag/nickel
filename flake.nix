@@ -10,8 +10,10 @@
     let
 
       SYSTEMS = [
-        "x86_64-linux"
+        "aarch64-darwin"
+        "aarch64-linux"
         "x86_64-darwin"
+        "x86_64-linux"
       ];
 
       RUST_CHANNELS = readRustChannels [
@@ -43,8 +45,8 @@
         }).cargoHome;
 
       # Additional packages required for some systems to build Nickel
-      missingSysPkgs = { system, pkgs }:
-        if system == "x86_64-darwin" then
+      missingSysPkgs = { pkgs }:
+        if pkgs.stdenv.isDarwin then
           [
             pkgs.darwin.apple_sdk.frameworks.Security
             pkgs.darwin.libiconv
@@ -72,7 +74,7 @@
           name = "nickel-${version}";
 
           buildInputs = [ rust ]
-            ++ missingSysPkgs {inherit system pkgs;} ++ (
+            ++ missingSysPkgs {inherit pkgs;} ++ (
             if isShell then
               [ pkgs.nodePackages.makam ]
             else
@@ -122,7 +124,7 @@
               pkgs.binaryen
               cargoHome
             ]
-            ++ missingSysPkgs {inherit system pkgs;};
+            ++ missingSysPkgs {inherit pkgs;};
 
           nativeBuildInputs = [pkgs.jq];
 
