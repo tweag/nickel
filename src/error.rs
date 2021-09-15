@@ -214,7 +214,7 @@ pub enum ParseError {
     ),
     /// Unbound type variable
     // TODO: add relevant fields
-    UnboundTypeVariable
+    UnboundTypeVariable(Vec<Ident>)
 }
 
 /// An error occurring during the resolution of an import.
@@ -1155,9 +1155,9 @@ impl ToDiagnostic<FileId> for ParseError {
                     .with_labels(labels)
             },
             // TODO: add relevant fields
-            ParseError::UnboundTypeVariable => {
+            ParseError::UnboundTypeVariable(ident) => {
                 Diagnostic::error()
-                    .with_message(format!("Unbound type variable"))
+                    .with_message(format!("Unbound type variable(s): {:?}", ident))
             }
         };
 

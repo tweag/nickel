@@ -4,11 +4,11 @@ use crate::label::Label;
 use crate::mk_app;
 use crate::position::{RawSpan, TermPos};
 use crate::term::{make as mk_term, BinaryOp, RecordAttrs, RichTerm, StrChunk, Term};
-use crate::types::Types;
+use crate::types::{AbsType, Types};
 use crate::error::ParseError;
 use codespan::FileId;
 use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Distinguish between the standard string separators `"`/`"` and the multi-line string separators
 /// `m#"`/`"#m` in the parser.
@@ -364,6 +364,51 @@ pub fn strip_indent_doc(doc: String) -> String {
 }
 
 pub fn check_unbound(types: Types) -> Result<Types, ParseError> {
-    // TODO: add actual check
-    Ok(types)
+    fn find_unbound_vars(types: &Types, unbound_set: &mut HashSet<Ident>, bound_set: &mut HashSet<Ident>) {
+        match &types.0 {
+            AbsType::Var(ident) => {
+                if !bound_set.contains(ident) &&
+                    !unbound_set.contains(ident) {
+                    unbound_set.insert(ident.clone());
+                }
+            },
+            AbsType::Forall(ident, ty) => {
+                if !bound_set.contains(ident) {
+                    bound_set.insert(ident.clone());
+
+                    if unbound_set.contains(ident) {
+                        unbound_set.remove(ident);
+                    }
+                }
+
+                find_unbound_vars(&ty, unbound_set, bound_set);
+            },
+            AbsType::Arrow(s, t) => {
+                find_unbound_vars(&s, unbound_set, bound_set);
+                find_unbound_vars(&t, unbound_set, bound_set);
+            },
+            AbsType::DynRecord(ty) | AbsType::StaticRecord(ty) | AbsType::List(ty)=> {
+                find_unbound_vars(&ty, unbound_set, bound_set);
+            },
+            AbsType::RowExtend(_, opt_ty, ty) => {
+                if let Some(ty) = opt_ty {
+                    find_unbound_vars(&ty, unbound_set, bound_set);
+                }
+
+                find_unbound_vars(&ty, unbound_set, bound_set);
+            },
+            _ => {}
+        }
+    }
+
+    let mut bound_set : HashSet<Ident> = HashSet::new();
+    let mut unbound_set : HashSet<Ident> = HashSet::new();
+
+    find_unbound_vars(&types, &mut unbound_set, &mut bound_set);
+
+    if !unbound_set.is_empty() {
+        Err(ParseError::UnboundTypeVariable(unbound_set.into_iter().collect()))
+    } else {
+        Ok(types)
+    }
 }

@@ -27,7 +27,7 @@ TypeAnnot: MetaValue = ":" <l: @L> <ty_res: CheckUnbound<Types>> <r: @R> => matc
                 priority: Default::default(),
                 value: None,
               },
-    Err(e) => unimplemented!()
+    Err(e) => panic!("{:?}", e)
 };
 
 MetaAnnotAtom: MetaValue = {
@@ -39,7 +39,7 @@ MetaAnnotAtom: MetaValue = {
                 priority: Default::default(),
                 value: None,
         },
-        Err(e) => unimplemented!()
+        Err(e) => panic!("{:?}", e)
     },
     "|" "default" => MetaValue {
         doc: None,
