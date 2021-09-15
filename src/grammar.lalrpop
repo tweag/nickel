@@ -5,8 +5,9 @@ use crate::term::make as mk_term;
 use crate::{mk_app, mk_opn};
 use crate::types::{Types, AbsType};
 use super::ExtendedTerm;
+use crate::error::ParseError;
 use super::utils::{StringKind, mk_pos, mk_label, strip_indent, SwitchCase,
-    FieldPathElem, strip_indent_doc, build_record, elaborate_field_path,
+    FieldPathElem, strip_indent_doc, build_record, elaborate_field_path, check_unbound,
     ChunkLiteralPart, RecordLastField};
 use std::ffi::OsString;
 use super::lexer::{Token, NormalToken, StringToken, MultiStringToken, LexicalError};
@@ -16,22 +17,29 @@ use codespan::FileId;
 grammar<'input>(src_id: FileId);
 
 WithPos<Rule>: RichTerm = <l: @L> <t: Rule> <r: @R> => t.with_pos(mk_pos(src_id, l, r));
+CheckUnbound<Rule>: Result<Types, ParseError> = <Rule> => check_unbound(<>);
 
-TypeAnnot: MetaValue = ":" <l: @L> <ty: Types> <r: @R> => MetaValue {
-    doc: None,
-    types: Some(Contract {types: ty.clone(), label: mk_label(ty, src_id, l, r)}),
-    contracts: Vec::new(),
-    priority: Default::default(),
-    value: None,
+TypeAnnot: MetaValue = ":" <l: @L> <ty_res: CheckUnbound<Types>> <r: @R> => match ty_res {
+    Ok(ty) => MetaValue {
+                doc: None,
+                types: Some(Contract {types: ty.clone(), label: mk_label(ty, src_id, l, r)}),
+                contracts: Vec::new(),
+                priority: Default::default(),
+                value: None,
+              },
+    Err(e) => unimplemented!()
 };
 
 MetaAnnotAtom: MetaValue = {
-    "|" <l: @L> <ty: Types> <r: @R> => MetaValue {
-        doc: None,
-        types: None,
-        contracts: vec![Contract {types: ty.clone(), label: mk_label(ty, src_id, l, r)}],
-        priority: Default::default(),
-        value: None,
+    "|" <l: @L> <ty_res: CheckUnbound<Types>> <r: @R> => match ty_res {
+        Ok(ty) => MetaValue {
+                doc: None,
+                types: None,
+                contracts: vec![Contract {types: ty.clone(), label: mk_label(ty, src_id, l, r)}],
+                priority: Default::default(),
+                value: None,
+        },
+        Err(e) => unimplemented!()
     },
     "|" "default" => MetaValue {
         doc: None,
@@ -478,7 +486,7 @@ subType : Types = {
     },
     <Ident> => Types(AbsType::Var(<>)),
     "#" <WithPos<Atom>> => Types(AbsType::Flat(<>)),
-    "(" <Types> ")" => <>,
+    "(" <Types> ")",
     "<" <rows:(<Ident> ",")*> <last: (<Ident>)?> <tail: ("|" <Ident>)?> ">" => {
         let ty = rows.into_iter()
             .chain(last.into_iter())

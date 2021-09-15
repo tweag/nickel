@@ -5,6 +5,7 @@ use crate::mk_app;
 use crate::position::{RawSpan, TermPos};
 use crate::term::{make as mk_term, BinaryOp, RecordAttrs, RichTerm, StrChunk, Term};
 use crate::types::Types;
+use crate::error::ParseError;
 use codespan::FileId;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
@@ -360,4 +361,9 @@ pub fn strip_indent_doc(doc: String) -> String {
         })
         .next()
         .expect("expected non-empty chunks after indentation of documentation")
+}
+
+pub fn check_unbound(types: Types) -> Result<Types, ParseError> {
+    // TODO: add actual check
+    Ok(types)
 }

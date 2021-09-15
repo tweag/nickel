@@ -212,6 +212,9 @@ pub enum ParseError {
         String, /* error message */
         Option<RawSpan>,
     ),
+    /// Unbound type variable
+    // TODO: add relevant fields
+    UnboundTypeVariable
 }
 
 /// An error occurring during the resolution of an import.
@@ -1150,6 +1153,11 @@ impl ToDiagnostic<FileId> for ParseError {
                 Diagnostic::error()
                     .with_message(format!("{} parse error: {}", format, msg))
                     .with_labels(labels)
+            },
+            // TODO: add relevant fields
+            ParseError::UnboundTypeVariable => {
+                Diagnostic::error()
+                    .with_message(format!("Unbound type variable"))
             }
         };
 
