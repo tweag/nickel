@@ -554,6 +554,16 @@ fn type_check_(
             envs.insert(x.clone(), ty_let);
             type_check_(state, envs, strict, rt, ty)
         }
+        Term::LetPattern(x, pat, re, rt) => {
+            let ty_let = binding_type(re.as_ref(), &envs, state.table, strict);
+            type_check_(state, envs.clone(), strict, re, ty_let.clone())?;
+
+            // TODO typecheck the interior of the patern
+            if let Some(x) = x {
+                envs.insert(x.clone(), ty_let);
+            }
+            type_check_(state, envs, strict, rt, ty)
+        }
         Term::App(e, t) => {
             let src = TypeWrapper::Ptr(new_var(state.table));
             let arr = mk_tyw_arrow!(src.clone(), ty);

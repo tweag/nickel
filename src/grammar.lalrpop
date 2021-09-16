@@ -1,4 +1,5 @@
 use crate::identifier::Ident;
+use crate::destruct::{Match, Destruct};
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
     MergePriority, Contract, NAryOp, RecordAttrs};
 use crate::term::make as mk_term;
@@ -66,7 +67,7 @@ Annot: MetaValue = {
 pub Term: RichTerm = WithPos<RootTerm>;
 
 pub ExtendedTerm: ExtendedTerm = {
-    "let" <id:Ident> <meta: Annot?> "=" <t: Term> => {
+    "let" <pat:Pattern> <meta: Annot?> "=" <t: Term> => {
         let t = if let Some(mut meta) = meta {
             let pos = t.pos;
             meta.value = Some(t);
@@ -76,13 +77,13 @@ pub ExtendedTerm: ExtendedTerm = {
             t
         };
 
-        ExtendedTerm::ToplevelLet(id, t)
+        ExtendedTerm::ToplevelLet(pat.0.unwrap(), t)
     },
     Term => ExtendedTerm::RichTerm(<>),
 }
 
 RootTerm: RichTerm = {
-    "let" <id:Ident> <meta: Annot?> "=" <t1: Term> "in"
+    "let" <pat:Pattern> <meta: Annot?> "=" <t1: Term> "in"
         <t2: Term> => {
         let t1 = if let Some(mut meta) = meta {
             let pos = t1.pos;
@@ -93,11 +94,11 @@ RootTerm: RichTerm = {
             t1
         };
 
-        mk_term::let_in(id, t1, t2)
+        mk_term::let_in(pat.0, pat.1, t1, t2)
     },
-    <l: @L> "fun" <ps:Pattern+> "=>" <t: Term> <r: @R> => {
+    <l: @L> "fun" <ids:Ident+> "=>" <t: Term> <r: @R> => {
         let pos = mk_pos(src_id, l, r);
-        ps.into_iter().rev().fold(t, |t, p| RichTerm {
+        ids.into_iter().rev().fold(t, |t, p| RichTerm {
             term: Box::new(Term::Fun(p, t)),
             pos,
         })
@@ -244,8 +245,21 @@ FieldPathElem: FieldPathElem = {
     <StrChunks> => FieldPathElem::Expr(<>),
 };
 
-Pattern: Ident = {
-    Ident,
+Pattern: (Option<Ident>,Destruct) = {
+    Ident => (Some(<>),Destruct::Empty),
+    <id:(<Ident> "@")?> <pat:Destruct> => (id,pat),
+};
+
+Destruct: Destruct = {
+    "{" <mut matches: (<Match> ",")*> <last:Match> "}" => {
+        matches.push(last);
+	Destruct::Record(matches)
+    },
+};
+
+Match: Match = {
+    <id:Ident> "=" <right: Ident> => Match::Assign(id,right),
+    <id:Ident> => Match::Simple(id),
 };
 
 Ident: Ident = "identifier" => Ident(<>.to_string());

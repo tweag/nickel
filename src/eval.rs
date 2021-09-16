@@ -90,6 +90,7 @@ use crate::cache::ImportResolver;
 use crate::environment::Environment as GenericEnvironment;
 use crate::error::EvalError;
 use crate::identifier::Ident;
+use crate::destruct::Destruct;
 use crate::mk_app;
 use crate::operation::{continuate_operation, OperationCont};
 use crate::position::TermPos;
@@ -363,6 +364,7 @@ where
     // Desugar to let x = term in deepSeq x x
     let wrapper = mk_term::let_in(
         var.clone(),
+        Destruct::Empty,
         t0,
         mk_app!(
             mk_term::op1(UnaryOp::DeepSeq(), Term::Var(var.clone())),
@@ -824,6 +826,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
 
                 RichTerm::new(Term::Let(id, t1, t2), pos)
             }
+            Term::LetPattern(..) => unreachable!(),
             Term::App(t1, t2) => {
                 let t1 = subst_(t1, global_env, env, Cow::Borrowed(bound.as_ref()));
                 let t2 = subst_(t2, global_env, env, bound);
