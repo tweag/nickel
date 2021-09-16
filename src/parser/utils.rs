@@ -84,8 +84,8 @@ pub fn elaborate_field_path(
 /// Build a record from a list of field definitions. If a field is defined several times, the
 /// different definitions are merged.
 pub fn build_record<I>(fields: I, attrs: RecordAttrs) -> Term
-where
-    I: IntoIterator<Item = (FieldPathElem, RichTerm)>,
+    where
+        I: IntoIterator<Item=(FieldPathElem, RichTerm)>,
 {
     let mut static_map = HashMap::new();
     let mut dynamic_fields = Vec::new();
@@ -302,8 +302,8 @@ pub fn strip_indent(mut chunks: Vec<StrChunk<RichTerm>>) -> Vec<StrChunk<RichTer
                     if let Some(first_index) = buffer.find('\n') {
                         if first_index == 0
                             || buffer.as_bytes()[..first_index]
-                                .iter()
-                                .all(|c| *c == b' ' || *c == b'\t')
+                            .iter()
+                            .all(|c| *c == b' ' || *c == b'\t')
                         {
                             buffer = String::from(&buffer[(first_index + 1)..]);
                         }
@@ -315,8 +315,8 @@ pub fn strip_indent(mut chunks: Vec<StrChunk<RichTerm>>) -> Vec<StrChunk<RichTer
                     if let Some(last_index) = buffer.rfind('\n') {
                         if last_index == buffer.len() - 1
                             || buffer.as_bytes()[(last_index + 1)..]
-                                .iter()
-                                .all(|c| *c == b' ' || *c == b'\t')
+                            .iter()
+                            .all(|c| *c == b' ' || *c == b'\t')
                         {
                             buffer.truncate(last_index);
                         }
@@ -364,47 +364,41 @@ pub fn strip_indent_doc(doc: String) -> String {
 }
 
 pub fn check_unbound(types: Types) -> Result<Types, ParseError> {
-    fn find_unbound_vars(types: &Types, unbound_set: &mut HashSet<Ident>, bound_set: &mut HashSet<Ident>) {
+    fn find_unbound_vars(types: &Types, unbound_set: &mut HashSet<Ident>) {
         match &types.0 {
             AbsType::Var(ident) => {
-                if !bound_set.contains(ident) &&
-                    !unbound_set.contains(ident) {
+                if !unbound_set.contains(ident) {
                     unbound_set.insert(ident.clone());
                 }
-            },
+            }
             AbsType::Forall(ident, ty) => {
-                if !bound_set.contains(ident) {
-                    bound_set.insert(ident.clone());
+                find_unbound_vars(&ty, unbound_set);
 
-                    if unbound_set.contains(ident) {
-                        unbound_set.remove(ident);
-                    }
+                if unbound_set.contains(ident) {
+                    unbound_set.remove(ident);
                 }
-
-                find_unbound_vars(&ty, unbound_set, bound_set);
-            },
+            }
             AbsType::Arrow(s, t) => {
-                find_unbound_vars(&s, unbound_set, bound_set);
-                find_unbound_vars(&t, unbound_set, bound_set);
-            },
-            AbsType::DynRecord(ty) | AbsType::StaticRecord(ty) | AbsType::List(ty)=> {
-                find_unbound_vars(&ty, unbound_set, bound_set);
-            },
+                find_unbound_vars(&s, unbound_set);
+                find_unbound_vars(&t, unbound_set);
+            }
+            AbsType::DynRecord(ty) | AbsType::StaticRecord(ty) | AbsType::List(ty) => {
+                find_unbound_vars(&ty, unbound_set);
+            }
             AbsType::RowExtend(_, opt_ty, ty) => {
                 if let Some(ty) = opt_ty {
-                    find_unbound_vars(&ty, unbound_set, bound_set);
+                    find_unbound_vars(&ty, unbound_set);
                 }
 
-                find_unbound_vars(&ty, unbound_set, bound_set);
-            },
+                find_unbound_vars(&ty, unbound_set);
+            }
             _ => {}
         }
     }
 
-    let mut bound_set : HashSet<Ident> = HashSet::new();
-    let mut unbound_set : HashSet<Ident> = HashSet::new();
+    let mut unbound_set: HashSet<Ident> = HashSet::new();
 
-    find_unbound_vars(&types, &mut unbound_set, &mut bound_set);
+    find_unbound_vars(&types, &mut unbound_set);
 
     if !unbound_set.is_empty() {
         Err(ParseError::UnboundTypeVariables(unbound_set.into_iter().collect()))
