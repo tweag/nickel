@@ -187,6 +187,11 @@ pub enum TypecheckError {
         /* the error on the subtype unification */ Box<TypecheckError>,
         TermPos,
     ),
+    RowTailMismatch(
+        Types, /* the expected dynamic record type */
+        Types, /* the actual type of the row. For now, can only be Dyn, but this may change */
+        TermPos,
+    ),
 }
 
 /// An error occurring during parsing.
@@ -1391,6 +1396,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
 
                 diags
             }
+            TypecheckError::RowTailMismatch(..) => unimplemented!(),
         }
     }
 }

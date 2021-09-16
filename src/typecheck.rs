@@ -66,6 +66,7 @@ pub enum RowUnifError {
     ExtraDynTail(),
     /// There were two incompatible definitions for the same row.
     RowMismatch(Ident, UnifError),
+    RowTailMismatch(TypeWrapper, TypeWrapper),
     /// Tried to unify an enum row and a record row.
     RowKindMismatch(Ident, Option<TypeWrapper>, Option<TypeWrapper>),
     /// One of the row was ill-formed (typically, a tail was neither a row, a variable nor `Dyn`).
@@ -104,6 +105,7 @@ impl RowUnifError {
             RowUnifError::RowMismatch(id, err) => {
                 UnifError::RowMismatch(id, left, right, Box::new(err))
             }
+            RowUnifError::RowTailMismatch(tyw1, tyw2) => UnifError::RowTailMismatch(tyw1, tyw2),
             RowUnifError::IllformedRow(tyw) => UnifError::IllformedRow(tyw),
             RowUnifError::UnsatConstr(id, tyw) => UnifError::RowConflict(id, tyw, left, right),
             RowUnifError::WithConst(c, tyw) => UnifError::WithConst(c, tyw),
@@ -136,6 +138,7 @@ pub enum UnifError {
     /// Tried to unify a unification variable with a row type violating the [row
     /// constraints](./type.RowConstr.html) of the variable.
     RowConflict(Ident, Option<TypeWrapper>, TypeWrapper, TypeWrapper),
+    RowTailMismatch(TypeWrapper, TypeWrapper),
     /// Tried to unify a type constant with another different type.
     WithConst(usize, TypeWrapper),
     /// A flat type, which is an opaque type corresponding to custom contracts, contained a Nickel
@@ -195,6 +198,11 @@ impl UnifError {
                 reporting::to_type(state, names, tyw1),
                 reporting::to_type(state, names, tyw2),
                 Box::new((*err).into_typecheck_err_(state, names, TermPos::None)),
+                pos_opt,
+            ),
+            UnifError::RowTailMismatch(tyw1, tyw2) => TypecheckError::RowTailMismatch(
+                reporting::to_type(state, names, tyw1),
+                reporting::to_type(state, names, tyw2),
                 pos_opt,
             ),
             UnifError::RowKindMismatch(id, ty1, ty2) => TypecheckError::RowKindMismatch(
@@ -1289,8 +1297,8 @@ pub fn check_sub_dyn_record(
     match row {
         TypeWrapper::Concrete(ty_row) => match ty_row {
             AbsType::RowEmpty() => Ok(()),
-            AbsType::Dyn() => check_sub_(state, mk_typewrapper::dynamic(), ty)
-                .map_err(|_| RowUnifError::ExtraDynTail()),
+            AbsType::Dyn() => check_sub_(state, mk_typewrapper::dynamic(), ty.clone())
+                .map_err(|_| RowUnifError::RowTailMismatch(mk_typewrapper::dynamic(), ty)),
             AbsType::RowExtend(id, ty_row, tail) => {
                 ty_row
                     .ok_or_else(|| {
@@ -1318,10 +1326,8 @@ pub fn check_sub_dyn_record(
             match ty {
                 // We don't unify anything here, as a `Dyn` upper bound doesn't actually impose any constraint
                 TypeWrapper::Concrete(AbsType::Dyn()) => Ok(()),
-                // TODO: spin up a new error variant for the following cases. Using `UnsatConstr`
-                // is a temporary hack.
                 TypeWrapper::Concrete(_) | TypeWrapper::Ptr(_) | TypeWrapper::Constant(_) => {
-                    Err(RowUnifError::UnsatConstr(Ident::from("<tail>"), Some(ty)))
+                    Err(RowUnifError::RowTailMismatch(mk_typewrapper::dynamic(), ty))
                 }
             }
         }
