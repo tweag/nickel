@@ -9,9 +9,9 @@
         value = state.value & {"#{name}" = {}},
         prevName = name,
       } in
-    let topList = lists.generate builtins.id m in
+    let topList = lists.generate functions.id m in
     let makeRec = fun m =>
-      let l = lists.generate builtins.id n in
+      let l = lists.generate functions.id n in
       let result = lists.foldl makeRecStep {value = {}, prevName = prefix m} l in
       result.value in
     let l = lists.map makeRec topList in
