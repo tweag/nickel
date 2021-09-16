@@ -213,8 +213,7 @@ pub enum ParseError {
         Option<RawSpan>,
     ),
     /// Unbound type variable
-    // TODO: add relevant fields
-    UnboundTypeVariable(Vec<Ident>)
+    UnboundTypeVariables(Vec<Ident>)
 }
 
 /// An error occurring during the resolution of an import.
@@ -356,6 +355,9 @@ impl ParseError {
             lalrpop_util::ParseError::User {
                 error: LexicalError::InvalidAsciiEscapeCode(location),
             } => ParseError::InvalidAsciiEscapeCode(mk_span(file_id, location, location + 2)),
+            lalrpop_util::ParseError::User {
+                error: LexicalError::UnboundTypeVariables(idents),
+            } => ParseError::UnboundTypeVariables(idents),
         }
     }
 
@@ -1154,10 +1156,12 @@ impl ToDiagnostic<FileId> for ParseError {
                     .with_message(format!("{} parse error: {}", format, msg))
                     .with_labels(labels)
             },
-            // TODO: add relevant fields
-            ParseError::UnboundTypeVariable(ident) => {
+            ParseError::UnboundTypeVariables(idents) => {
                 Diagnostic::error()
-                    .with_message(format!("Unbound type variable(s): {:?}", ident))
+                    .with_message(format!("Unbound type variable(s): {}", idents.into_iter()
+                        .map(|x| format!("\"{}\"", x))
+                        .collect::<Vec<_>>()
+                        .join(",")))
             }
         };
 

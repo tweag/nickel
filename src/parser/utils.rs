@@ -5,10 +5,10 @@ use crate::mk_app;
 use crate::position::{RawSpan, TermPos};
 use crate::term::{make as mk_term, BinaryOp, RecordAttrs, RichTerm, StrChunk, Term};
 use crate::types::{AbsType, Types};
-use crate::error::ParseError;
 use codespan::FileId;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
+use crate::parser::lexer::LexicalError;
 
 /// Distinguish between the standard string separators `"`/`"` and the multi-line string separators
 /// `m#"`/`"#m` in the parser.
@@ -363,7 +363,7 @@ pub fn strip_indent_doc(doc: String) -> String {
         .expect("expected non-empty chunks after indentation of documentation")
 }
 
-pub fn check_unbound(types: Types) -> Result<Types, ParseError> {
+pub fn check_unbound(types: Types) -> Result<Types, LexicalError> {
     fn find_unbound_vars(types: &Types, unbound_set: &mut HashSet<Ident>, bound_set: &mut HashSet<Ident>) {
         match &types.0 {
             AbsType::Var(ident) => {
@@ -407,7 +407,7 @@ pub fn check_unbound(types: Types) -> Result<Types, ParseError> {
     find_unbound_vars(&types, &mut unbound_set, &mut bound_set);
 
     if !unbound_set.is_empty() {
-        Err(ParseError::UnboundTypeVariable(unbound_set.into_iter().collect()))
+        Err(LexicalError::UnboundTypeVariables(unbound_set.into_iter().collect()))
     } else {
         Ok(types)
     }

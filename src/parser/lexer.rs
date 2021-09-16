@@ -31,6 +31,7 @@
 //! that the coming characters must be lexed as string tokens, and not as normal tokens.
 use logos::Logos;
 use std::ops::Range;
+use crate::identifier::Ident;
 
 /// The tokens in normal mode.
 #[derive(Logos, Debug, PartialEq, Clone)]
@@ -386,6 +387,8 @@ pub enum LexicalError {
     InvalidAsciiEscapeCode(usize),
     /// Generic lexer error
     Generic(usize, usize),
+    /// Unbound type variable
+    UnboundTypeVariables(Vec<Ident>)
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Copy)]

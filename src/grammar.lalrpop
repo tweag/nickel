@@ -5,7 +5,6 @@ use crate::term::make as mk_term;
 use crate::{mk_app, mk_opn};
 use crate::types::{Types, AbsType};
 use super::ExtendedTerm;
-use crate::error::ParseError;
 use super::utils::{StringKind, mk_pos, mk_label, strip_indent, SwitchCase,
     FieldPathElem, strip_indent_doc, build_record, elaborate_field_path, check_unbound,
     ChunkLiteralPart, RecordLastField};
@@ -17,36 +16,30 @@ use codespan::FileId;
 grammar<'input>(src_id: FileId);
 
 WithPos<Rule>: RichTerm = <l: @L> <t: Rule> <r: @R> => t.with_pos(mk_pos(src_id, l, r));
-CheckUnbound<Rule>: Result<Types, ParseError> = <Rule> => check_unbound(<>);
+CheckUnbound<Rule>: Types = <Rule> =>? check_unbound(<>).map_err(|e| lalrpop_util::ParseError::User{error: e});
 
-TypeAnnot: MetaValue = ":" <l: @L> <ty_res: CheckUnbound<Types>> <r: @R> => match ty_res {
-    Ok(ty) => MetaValue {
-                doc: None,
-                types: Some(Contract {types: ty.clone(), label: mk_label(ty, src_id, l, r)}),
-                contracts: Vec::new(),
-                priority: Default::default(),
-                value: None,
-              },
-    Err(e) => panic!("{:?}", e)
+TypeAnnot: MetaValue = ":" <l: @L> <ty_res: CheckUnbound<Types>> <r: @R> => MetaValue {
+    doc: None,
+    types: Some(Contract {types: ty_res.clone(), label: mk_label(ty_res, src_id, l, r)}),
+    contracts: Vec::new(),
+    priority: Default::default(),
+    value: None,
 };
 
 MetaAnnotAtom: MetaValue = {
-    "|" <l: @L> <ty_res: CheckUnbound<Types>> <r: @R> => match ty_res {
-        Ok(ty) => MetaValue {
-                doc: None,
-                types: None,
-                contracts: vec![Contract {types: ty.clone(), label: mk_label(ty, src_id, l, r)}],
-                priority: Default::default(),
-                value: None,
-        },
-        Err(e) => panic!("{:?}", e)
+    "|" <l: @L> <ty_res: CheckUnbound<Types>> <r: @R> => MetaValue {
+        doc: None,
+        types: None,
+        contracts: vec![Contract {types: ty_res.clone(), label: mk_label(ty_res, src_id, l, r)}],
+        priority: Default::default(),
+        value: None,
     },
     "|" "default" => MetaValue {
         doc: None,
         types: None,
         contracts: Vec::new(),
         priority: MergePriority::Default,
-        value: None,
+        value: None
     },
     "|" "doc" <s: StaticString> => MetaValue {
         doc: Some(strip_indent_doc(s)),
