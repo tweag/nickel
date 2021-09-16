@@ -8,7 +8,7 @@ use crate::types::{AbsType, Types};
 use codespan::FileId;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
-use crate::parser::lexer::LexicalError;
+use crate::parser::error::ParseError;
 
 /// Distinguish between the standard string separators `"`/`"` and the multi-line string separators
 /// `m#"`/`"#m` in the parser.
@@ -363,7 +363,7 @@ pub fn strip_indent_doc(doc: String) -> String {
         .expect("expected non-empty chunks after indentation of documentation")
 }
 
-pub fn check_unbound(types: Types) -> Result<Types, LexicalError> {
+pub fn check_unbound(types: Types) -> Result<Types, ParseError> {
     fn find_unbound_vars(types: &Types, unbound_set: &mut HashSet<Ident>, bound_set: &mut HashSet<Ident>) {
         match &types.0 {
             AbsType::Var(ident) => {
@@ -407,7 +407,7 @@ pub fn check_unbound(types: Types) -> Result<Types, LexicalError> {
     find_unbound_vars(&types, &mut unbound_set, &mut bound_set);
 
     if !unbound_set.is_empty() {
-        Err(LexicalError::UnboundTypeVariables(unbound_set.into_iter().collect()))
+        Err(ParseError::UnboundTypeVariables(unbound_set.into_iter().collect()))
     } else {
         Ok(types)
     }
