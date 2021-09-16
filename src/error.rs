@@ -1150,7 +1150,7 @@ impl ToDiagnostic<FileId> for ParseError {
             ParseError::UnboundTypeVariables(idents) => {
                 Diagnostic::error()
                     .with_message(format!("Unbound type variable(s): {}", idents.into_iter()
-                        .map(|x| format!("\"{}\"", x))
+                        .map(|x| format!("`{}`", x))
                         .collect::<Vec<_>>()
                         .join(",")))
             }
