@@ -17,7 +17,7 @@ use crate::parser::error::ParseError;
 grammar<'input>(src_id: FileId);
 
 WithPos<Rule>: RichTerm = <l: @L> <t: Rule> <r: @R> => t.with_pos(mk_pos(src_id, l, r));
-CheckUnbound<Rule>: Types = <Rule> =>? check_unbound(<>).map_err(|e| lalrpop_util::ParseError::User{error: e});
+CheckUnbound<Rule>: Types = <r: Rule> =>? check_unbound(&r).map_err(|e| lalrpop_util::ParseError::User{error: e}).and(Ok(r));
 
 TypeAnnot: MetaValue = ":" <l: @L> <ty_res: CheckUnbound<Types>> <r: @R> => MetaValue {
     doc: None,

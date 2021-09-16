@@ -9,7 +9,6 @@ use codespan::FileId;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use crate::parser::error::ParseError;
-use crate::parser::lexer::NormalToken::Hash;
 
 /// Distinguish between the standard string separators `"`/`"` and the multi-line string separators
 /// `m#"`/`"#m` in the parser.
@@ -365,7 +364,7 @@ pub fn strip_indent_doc(doc: String) -> String {
 }
 
 /// Recursively checks for unbound type variables in a type
-pub fn check_unbound(types: Types) -> Result<Types, ParseError> {
+pub fn check_unbound(types: &Types) -> Result<(), ParseError> {
     // heavy lifting function, recurses into a type expression and returns a set of unbound vars
     fn find_unbound_vars(types: &Types, unbound_set: &mut HashSet<Ident>){
         match &types.0 {
@@ -417,6 +416,6 @@ pub fn check_unbound(types: Types) -> Result<Types, ParseError> {
     if !unbound_set.is_empty() {
         Err(ParseError::UnboundTypeVariables(unbound_set.into_iter().collect()))
     } else {
-        Ok(types)
+        Ok(())
     }
 }
