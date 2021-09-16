@@ -1,4 +1,4 @@
-use super::lexer::{Lexer, LexicalError, MultiStringToken, NormalToken, StringToken, Token};
+use super::lexer::{Lexer, MultiStringToken, NormalToken, StringToken, Token};
 use crate::error::ParseError;
 use crate::identifier::Ident;
 use crate::term::make as mk_term;
@@ -7,6 +7,7 @@ use crate::term::{BinaryOp, RichTerm, StrChunk, UnaryOp};
 use crate::{mk_app, mk_switch};
 use assert_matches::assert_matches;
 use codespan::Files;
+use crate::parser::error::ParseError as InternalParseError;
 
 fn parse(s: &str) -> Result<RichTerm, ParseError> {
     let id = Files::new().add("<test>", String::from(s));
@@ -22,11 +23,11 @@ fn parse_without_pos(s: &str) -> RichTerm {
     result
 }
 
-fn lex(s: &str) -> Result<Vec<(usize, Token, usize)>, LexicalError> {
+fn lex(s: &str) -> Result<Vec<(usize, Token, usize)>, InternalParseError> {
     Lexer::new(s).collect()
 }
 
-fn lex_without_pos(s: &str) -> Result<Vec<Token>, LexicalError> {
+fn lex_without_pos(s: &str) -> Result<Vec<Token>, InternalParseError> {
     lex(s).map(|v| v.into_iter().map(|(_, tok, _)| tok).collect())
 }
 
