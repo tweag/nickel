@@ -461,7 +461,7 @@ mod test {
         assert_format_eq("{_: (Str -> Str) -> Str}");
 
         assert_format_eq("{x: (Bool -> Bool) -> Bool, y: Bool}");
-        assert_format_eq("{x: Bool, y: Bool, z: Bool | r}");
+        assert_format_eq("forall r. {x: Bool, y: Bool, z: Bool | r}");
         assert_format_eq("{x: Bool, y: Bool, z: Bool}");
 
         assert_format_eq("<a, b, c, d>");
