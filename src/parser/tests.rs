@@ -378,7 +378,7 @@ fn unbound_type_variables() {
 
     // should fail, "a" is unbound
     assert_matches!(
-        parse("a -> (forall a. a -> a)"),
+        parse("null: a -> (forall a. a -> a)"),
         Err(ParseError::UnboundTypeVariables(unbound_vars)) if (unbound_vars.contains(&Ident("a".into())) && unbound_vars.len() == 1)
     );
 }
