@@ -363,14 +363,19 @@ pub fn strip_indent_doc(doc: String) -> String {
         .expect("expected non-empty chunks after indentation of documentation")
 }
 
+/// Recursively checks for unbound type variables in a type
 pub fn check_unbound(types: Types) -> Result<Types, ParseError> {
+    // heavy lifting function
     fn find_unbound_vars(types: &Types, unbound_set: &mut HashSet<Ident>) {
         match &types.0 {
+            // if the type is a var, we save the identifier in the unbound set
             AbsType::Var(ident) => {
                 if !unbound_set.contains(ident) {
                     unbound_set.insert(ident.clone());
                 }
             }
+            // if the type is a forall, we recurse in the node (to populate the unbound set)
+            // and then remove the bound identifier from the unbound set
             AbsType::Forall(ident, ty) => {
                 find_unbound_vars(&ty, unbound_set);
 
@@ -382,7 +387,7 @@ pub fn check_unbound(types: Types) -> Result<Types, ParseError> {
                 find_unbound_vars(&s, unbound_set);
                 find_unbound_vars(&t, unbound_set);
             }
-            AbsType::DynRecord(ty) | AbsType::StaticRecord(ty) | AbsType::List(ty) => {
+            AbsType::DynRecord(ty) | AbsType::StaticRecord(ty) | AbsType::List(ty) | AbsType::Enum(ty) => {
                 find_unbound_vars(&ty, unbound_set);
             }
             AbsType::RowExtend(_, opt_ty, ty) => {
@@ -391,13 +396,15 @@ pub fn check_unbound(types: Types) -> Result<Types, ParseError> {
                 }
 
                 find_unbound_vars(&ty, unbound_set);
-            }
-            _ => {}
+            },
+            // do nothing
+            AbsType::Dyn() | AbsType::Bool() | AbsType::Num() | AbsType::Str() | AbsType::Sym() | AbsType::Flat(_) | AbsType::RowEmpty() => {}
         }
     }
 
     let mut unbound_set: HashSet<Ident> = HashSet::new();
 
+    // recurse into type and find unbound type vars
     find_unbound_vars(&types, &mut unbound_set);
 
     if !unbound_set.is_empty() {
