@@ -20,7 +20,7 @@ generate_counter!(FreshVarCounter, usize);
 /// bindings put at the beginning of the WHNF.
 ///
 /// For example, take the expression
-/// ```ignore
+/// ```text
 /// let x = {a = (1 + 1);} in x.a + x.a
 /// ```
 ///
@@ -32,7 +32,7 @@ generate_counter!(FreshVarCounter, usize);
 /// of records and the elements of lists - `(1 + 1)` in our example -, with fresh variables
 /// introduced by `let`  added at the head of the term:
 ///
-/// ```ignore
+/// ```text
 /// let x = (let var = 1 + 1 in {a = var;}) in x.a + x.a
 /// ```
 ///
@@ -58,7 +58,7 @@ pub mod share_normal_form {
     pub fn transform_one(rt: RichTerm) -> RichTerm {
         let RichTerm { term, pos } = rt;
         match *term {
-            Term::Record(map) => {
+            Term::Record(map, attrs) => {
                 let mut bindings = Vec::with_capacity(map.len());
 
                 let map = map
@@ -75,9 +75,9 @@ pub mod share_normal_form {
                     })
                     .collect();
 
-                with_bindings(Term::Record(map), bindings, pos)
+                with_bindings(Term::Record(map, attrs), bindings, pos)
             }
-            Term::RecRecord(map) => {
+            Term::RecRecord(map, attrs) => {
                 // When a recursive record is evaluated, all fields need to be turned to closures
                 // anyway (see the corresponding case in `eval::eval()`), which is what the share
                 // normal form transformation does. This is why the test is more lax here than for
@@ -100,7 +100,7 @@ pub mod share_normal_form {
                     })
                     .collect();
 
-                with_bindings(Term::RecRecord(map), bindings, pos)
+                with_bindings(Term::RecRecord(map, attrs), bindings, pos)
             }
             Term::List(ts) => {
                 let mut bindings = Vec::with_capacity(ts.len());
@@ -253,22 +253,35 @@ pub mod apply_contracts {
     }
 }
 
-/// The state passed around during the program transformation. It holds a reference to the import
+/// The state passed around during the imports resolution. It holds a reference to the import
 /// resolver, to a stack of pending imported term to be transformed and the path of the import
 /// currently being processed, if any.
-struct TransformState<'a, R> {
+struct ImportsResolutionState<'a, R> {
     resolver: &'a mut R,
     stack: &'a mut Vec<PendingImport>,
     parent: Option<PathBuf>,
 }
 
-/// Apply all program transformations, which are currently the share normal form transformation and
+/// Apply all program transformations, which are currently the share normal form transformations and
+/// contracts application.
+pub fn transform(rt: RichTerm) -> Result<RichTerm, ImportError> {
+    rt.traverse(
+        &mut |rt: RichTerm, _| -> Result<RichTerm, ImportError> {
+            // We need to do contract generation before wrapping stuff in variables
+            let rt = apply_contracts::transform_one(rt);
+            let rt = share_normal_form::transform_one(rt);
+            Ok(rt)
+        },
+        &mut (),
+    )
+}
+
 /// import resolution.
 ///
-/// All resolved imports are stacked during the transformation. Once the term has been traversed,
+/// All resolved imports are stacked during the process. Once the term has been traversed,
 /// the elements of this stack are processed (and so on, if these elements also have non resolved
 /// imports).
-pub fn transform<R>(rt: RichTerm, resolver: &mut R) -> Result<RichTerm, ImportError>
+pub fn resolve_imports<R>(rt: RichTerm, resolver: &mut R) -> Result<RichTerm, ImportError>
 where
     R: ImportResolver,
 {
@@ -278,19 +291,19 @@ where
         let path = resolver.get_path(x.src_id);
         PathBuf::from(path)
     });
-    let result = transform_pass(rt, resolver, &mut stack, source_file);
+    let result = imports_pass(rt, resolver, &mut stack, source_file);
 
     while let Some((t, file_id, parent)) = stack.pop() {
-        let result = transform_pass(t, resolver, &mut stack, Some(parent))?;
+        let result = imports_pass(t, resolver, &mut stack, Some(parent))?;
         resolver.insert(file_id, result);
     }
 
     result
 }
 
-/// Perform one full transformation pass. Put all imports encountered for the first time in
+/// Perform one full imports resolution pass. Put all imports encountered for the first time in
 /// `stack`, but do not process them.
-fn transform_pass<R>(
+fn imports_pass<R>(
     rt: RichTerm,
     resolver: &mut R,
     stack: &mut Vec<PendingImport>,
@@ -299,18 +312,17 @@ fn transform_pass<R>(
 where
     R: ImportResolver,
 {
-    let mut state = TransformState {
+    let mut state = ImportsResolutionState {
         resolver,
         stack,
         parent,
     };
 
-    // Apply one step of each transformation. If an import is resolved, then stack it.
+    // If an import is resolved, then stack it.
     rt.traverse(
-        &mut |rt: RichTerm, state: &mut TransformState<R>| -> Result<RichTerm, ImportError> {
-            // We need to do contract generation before wrapping stuff in variables
-            let rt = apply_contracts::transform_one(rt);
-            let rt = share_normal_form::transform_one(rt);
+        &mut |rt: RichTerm,
+              state: &mut ImportsResolutionState<R>|
+         -> Result<RichTerm, ImportError> {
             let (rt, pending) =
                 import_resolution::transform_one(rt, state.resolver, &state.parent)?;
 

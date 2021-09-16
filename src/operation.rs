@@ -11,14 +11,14 @@ use crate::eval::{subst, CallStack, Closure, Environment};
 use crate::identifier::Ident;
 use crate::label::ty_path;
 use crate::merge;
-use crate::merge::merge;
+use crate::merge::{merge, MergeMode};
 use crate::mk_record;
 use crate::position::TermPos;
 use crate::stack::Stack;
 use crate::term::make as mk_term;
 use crate::term::{BinaryOp, NAryOp, RichTerm, StrChunk, Term, UnaryOp};
 use crate::transformations::Closurizable;
-use crate::{mk_app, mk_fun};
+use crate::{mk_app, mk_fun, mk_opn};
 use crate::{serialize, serialize::ExportFormat};
 use md5::digest::Digest;
 use simple_counter::*;
@@ -315,7 +315,7 @@ fn process_unary_operation(
                 } = cases_closure;
 
                 let mut cases = match *cases_term {
-                    Term::Record(map) => map,
+                    Term::Record(map, _) => map,
                     _ => panic!("invalid argument for switch"),
                 };
 
@@ -442,7 +442,7 @@ fn process_unary_operation(
             }
         }
         UnaryOp::StaticAccess(id) => {
-            if let Term::Record(mut static_map) = *t {
+            if let Term::Record(mut static_map, attrs) = *t {
                 match static_map.remove(&id) {
                     Some(e) => Ok(Closure { body: e, env }),
 
@@ -450,7 +450,7 @@ fn process_unary_operation(
                         id.0,
                         String::from("(.)"),
                         RichTerm {
-                            term: Box::new(Term::Record(static_map)),
+                            term: Box::new(Term::Record(static_map, attrs)),
                             pos,
                         },
                         pos_op,
@@ -466,7 +466,7 @@ fn process_unary_operation(
             }
         }
         UnaryOp::FieldsOf() => {
-            if let Term::Record(map) = *t {
+            if let Term::Record(map, _) = *t {
                 let mut fields: Vec<String> = map.keys().map(|Ident(id)| id.clone()).collect();
                 fields.sort();
                 let terms = fields.into_iter().map(mk_term::string).collect();
@@ -484,7 +484,7 @@ fn process_unary_operation(
             }
         }
         UnaryOp::ValuesOf() => {
-            if let Term::Record(map) = *t {
+            if let Term::Record(map, _) = *t {
                 let mut values: Vec<_> = map.into_iter().collect();
                 // Although it seems that sort_by_key would be easier here, it would actually
                 // require to copy the identifiers because of the lack of HKT. See
@@ -585,7 +585,7 @@ fn process_unary_operation(
                 .pop_arg()
                 .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("recordMap"), pos_op))?;
 
-            if let Term::Record(rec) = *t {
+            if let Term::Record(rec, attr) = *t {
                 let mut shared_env = Environment::new();
                 let f_as_var = f.body.closurize(&mut env, f.env);
 
@@ -605,7 +605,7 @@ fn process_unary_operation(
                     .collect();
 
                 Ok(Closure {
-                    body: RichTerm::new(Term::Record(rec), pos_op_inh),
+                    body: RichTerm::new(Term::Record(rec, attr), pos_op_inh),
                     env: shared_env,
                 })
             } else {
@@ -646,7 +646,7 @@ fn process_unary_operation(
             }
 
             match *t {
-                Term::Record(map) if !map.is_empty() => {
+                Term::Record(map, _) if !map.is_empty() => {
                     let terms = map.into_iter().map(|(_, t)| t);
                     Ok(seq_terms(terms, env, pos_op))
                 }
@@ -1162,7 +1162,7 @@ fn process_binary_operation(
                 ))
             }
         }
-        BinaryOp::PlusStr() => {
+        BinaryOp::StrConcat() => {
             if let Term::Str(s1) = *t1 {
                 if let Term::Str(s2) = *t2 {
                     Ok(Closure::atomic_closure(RichTerm::new(
@@ -1223,11 +1223,17 @@ fn process_binary_operation(
                         }
                         .closurize(&mut new_env, env1);
 
-                        // Convert the record to the function `fun l x => contract & x`.
+                        // Convert the record to the function `fun l x => MergeContract l x
+                        // contract`.
                         let body = mk_fun!(
-                            "_l",
+                            "l",
                             "x",
-                            mk_term::op2(BinaryOp::Merge(), closurized, mk_term::var("x"))
+                            mk_opn!(
+                                NAryOp::MergeContract(),
+                                mk_term::var("l"),
+                                mk_term::var("x"),
+                                closurized
+                            )
                         )
                         .with_pos(pos1.into_inherited());
 
@@ -1520,14 +1526,14 @@ fn process_binary_operation(
 
         BinaryOp::DynAccess() => {
             if let Term::Str(id) = *t1 {
-                if let Term::Record(mut static_map) = *t2 {
+                if let Term::Record(mut static_map, attrs) = *t2 {
                     match static_map.remove(&Ident(id.clone())) {
                         Some(e) => Ok(Closure { body: e, env: env2 }),
                         None => Err(EvalError::FieldMissing(
                             id,
                             String::from("(.$)"),
                             RichTerm {
-                                term: Box::new(Term::Record(static_map)),
+                                term: Box::new(Term::Record(static_map, attrs)),
                                 pos: pos2,
                             },
                             pos_op,
@@ -1562,12 +1568,12 @@ fn process_binary_operation(
                 .ok_or_else(|| EvalError::NotEnoughArgs(3, String::from("$[ .. ]"), pos_op))?;
 
             if let Term::Str(id) = *t1 {
-                if let Term::Record(mut static_map) = *t2 {
+                if let Term::Record(mut static_map, attrs) = *t2 {
                     let as_var = clos.body.closurize(&mut env2, clos.env);
                     match static_map.insert(Ident(id.clone()), as_var) {
                         Some(_) => Err(EvalError::Other(format!("$[ .. ]: tried to extend record with the field {}, but it already exists", id), pos_op)),
                         None => Ok(Closure {
-                            body: Term::Record(static_map).into(),
+                            body: Term::Record(static_map, attrs).into(),
                             env: env2,
                         }),
                     }
@@ -1596,19 +1602,19 @@ fn process_binary_operation(
         }
         BinaryOp::DynRemove() => {
             if let Term::Str(id) = *t1 {
-                if let Term::Record(mut static_map) = *t2 {
+                if let Term::Record(mut static_map, attrs) = *t2 {
                     match static_map.remove(&Ident(id.clone())) {
                         None => Err(EvalError::FieldMissing(
                             id,
                             String::from("(-$)"),
                             RichTerm {
-                                term: Box::new(Term::Record(static_map)),
+                                term: Box::new(Term::Record(static_map, attrs)),
                                 pos: pos2,
                             },
                             pos_op,
                         )),
                         Some(_) => Ok(Closure {
-                            body: RichTerm::new(Term::Record(static_map), pos_op_inh),
+                            body: RichTerm::new(Term::Record(static_map, attrs), pos_op_inh),
                             env: env2,
                         }),
                     }
@@ -1637,7 +1643,7 @@ fn process_binary_operation(
         }
         BinaryOp::HasField() => {
             if let Term::Str(id) = *t1 {
-                if let Term::Record(static_map) = *t2 {
+                if let Term::Record(static_map, _) = *t2 {
                     Ok(Closure::atomic_closure(RichTerm::new(
                         Term::Bool(static_map.contains_key(&Ident(id))),
                         pos_op_inh,
@@ -1743,7 +1749,9 @@ fn process_binary_operation(
             },
             env2,
             pos_op,
+            MergeMode::Standard,
         ),
+
         BinaryOp::Hash() => {
             let mk_err_fst = |t1| {
                 Err(EvalError::TypeError(
@@ -2148,6 +2156,58 @@ fn process_nary_operation(
                 )),
             }
         }
+        NAryOp::MergeContract() => {
+            let mut args_iter = args.into_iter();
+            let (
+                Closure {
+                    body: RichTerm { term: t1, pos: _ },
+                    env: _,
+                },
+                _,
+            ) = args_iter.next().unwrap();
+            let (
+                Closure {
+                    body:
+                        RichTerm {
+                            term: t2,
+                            pos: pos2,
+                        },
+                    env: env2,
+                },
+                _,
+            ) = args_iter.next().unwrap();
+            let (
+                Closure {
+                    body:
+                        RichTerm {
+                            term: t3,
+                            pos: pos3,
+                        },
+                    env: env3,
+                },
+                _,
+            ) = args_iter.next().unwrap();
+            debug_assert!(args_iter.next().is_none());
+
+            if let Term::Lbl(lbl) = *t1 {
+                merge(
+                    RichTerm {
+                        term: t2,
+                        pos: pos2,
+                    },
+                    env2,
+                    RichTerm {
+                        term: t3,
+                        pos: pos3,
+                    },
+                    env3,
+                    pos_op,
+                    MergeMode::Contract(lbl),
+                )
+            } else {
+                Err(EvalError::InternalError(format!("The MergeContract() operator was expecting a first argument of type Label, got {}", t1.type_of().unwrap_or(String::from("<unevaluated>"))), pos_op))
+            }
+        }
     }
 }
 
@@ -2214,7 +2274,7 @@ fn eq(env: &mut Environment, c1: Closure, c2: Closure) -> EqResult {
         (Term::Lbl(l1), Term::Lbl(l2)) => EqResult::Bool(l1 == l2),
         (Term::Sym(s1), Term::Sym(s2)) => EqResult::Bool(s1 == s2),
         (Term::Enum(id1), Term::Enum(id2)) => EqResult::Bool(id1 == id2),
-        (Term::Record(m1), Term::Record(m2)) => {
+        (Term::Record(m1, _), Term::Record(m2, _)) => {
             let (left, center, right) = merge::hashmap::split(m1, m2);
 
             if !left.is_empty() || !right.is_empty() {

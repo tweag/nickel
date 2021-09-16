@@ -52,23 +52,48 @@
 //! - *Contract check*: merging a `Contract` or a `ContractDefault` with a simple value `t`
 //! evaluates to a contract check, that is an `Assume(..., t)`
 use crate::error::EvalError;
+use crate::eval::CallStack;
 use crate::eval::{Closure, Environment};
+use crate::label::Label;
 use crate::position::TermPos;
-use crate::term::{make as mk_term, BinaryOp, Contract, MetaValue, RichTerm, Term};
+use crate::term::{make as mk_term, BinaryOp, Contract, MetaValue, RecordAttrs, RichTerm, Term};
 use crate::transformations::Closurizable;
 use std::collections::HashMap;
 
-/// Compute the merge of two evaluated operands.
+/// Merging mode. Merging is used both to combine standard data and to apply contracts defined as
+/// records.
+#[derive(Clone, PartialEq, Debug)]
+pub enum MergeMode {
+    /// Standard merging, for combining data.
+    Standard,
+    /// Merging to apply a record contract to a value, with the associated label.
+    Contract(Label),
+}
+
+impl Default for MergeMode {
+    fn default() -> Self {
+        MergeMode::Standard
+    }
+}
+
+/// Compute the merge of two evaluated operands. Support both standard merging and record contract
+/// application.
+///
+/// # Mode
+///
+/// In `Contract` mode (see [`MergingMode`]()), `t1` must be the value and `t2` must be the
+/// contract. It is important as `merge` is not commutative in this mode.
 pub fn merge(
     t1: RichTerm,
     env1: Environment,
     t2: RichTerm,
     env2: Environment,
     pos_op: TermPos,
+    mode: MergeMode,
 ) -> Result<Closure, EvalError> {
     // Merging a simple value and a metavalue is equivalent to first wrapping the simple value in a
     // new metavalue (with no attribute set excepted the value), and then merging the two
-    let (t1, t2) = match (t1.term.is_enriched(), t2.term.is_enriched()) {
+    let (t1, t2) = match (t1.term.is_metavalue(), t2.term.is_metavalue()) {
         (true, false) => {
             let pos = t2.pos;
             let t = Term::MetaValue(MetaValue::from(t2));
@@ -297,15 +322,28 @@ pub fn merge(
         }
         // Merge put together the fields of records, and recursively merge
         // fields that are present in both terms
-        (Term::Record(m1), Term::Record(m2)) => {
+        (Term::Record(m1, attrs1), Term::Record(m2, attrs2)) => {
             /* Terms inside m1 and m2 may capture variables of resp. env1 and env2.  Morally, we
              * need to store closures, or a merge of closures, inside the resulting record.  We use
              * the same trick as in the evaluation of the operator DynExtend, and replace each such
              * term by a variable bound to an appropriate closure in the environment
              */
             let mut m = HashMap::new();
-            let mut env = HashMap::new();
+            let mut env = Environment::new();
             let (mut left, mut center, mut right) = hashmap::split(m1, m2);
+
+            match mode {
+                MergeMode::Contract(mut lbl) if !attrs2.open && !left.is_empty() => {
+                    let fields: Vec<String> = left
+                        .into_keys()
+                        .map(|field| format!("`{}`", field))
+                        .collect();
+                    let plural = if fields.len() == 1 { "" } else { "s" };
+                    lbl.tag = format!("extra field{} {}", plural, fields.join(","));
+                    return Err(EvalError::BlameError(lbl, CallStack::new()));
+                }
+                _ => (),
+            };
 
             for (field, t) in left.drain() {
                 m.insert(field, t.closurize(&mut env, env1.clone()));
@@ -323,7 +361,10 @@ pub fn merge(
             }
 
             Ok(Closure {
-                body: RichTerm::new(Term::Record(m), pos_op.into_inherited()),
+                body: RichTerm::new(
+                    Term::Record(m, RecordAttrs::merge(attrs1, attrs2)),
+                    pos_op.into_inherited(),
+                ),
                 env,
             })
         }
@@ -384,7 +425,7 @@ fn merge_closurize(
     t2: RichTerm,
     env2: Environment,
 ) -> RichTerm {
-    let mut local_env = HashMap::new();
+    let mut local_env = Environment::new();
     let body = RichTerm::from(Term::Op2(
         BinaryOp::Merge(),
         t1.closurize(&mut local_env, env1),

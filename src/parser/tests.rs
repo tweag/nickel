@@ -1,4 +1,4 @@
-use super::lexer::{Lexer, LexicalError, NormalToken, StringToken, Token};
+use super::lexer::{Lexer, LexicalError, MultiStringToken, NormalToken, StringToken, Token};
 use crate::error::ParseError;
 use crate::identifier::Ident;
 use crate::term::make as mk_term;
@@ -62,9 +62,9 @@ fn strings() {
     assert_eq!(
         parse_without_pos("\"hello\" ++ \"World\" ++ \"!!\" "),
         Op2(
-            BinaryOp::PlusStr(),
+            BinaryOp::StrConcat(),
             Op2(
-                BinaryOp::PlusStr(),
+                BinaryOp::StrConcat(),
                 mk_single_chunk("hello"),
                 mk_single_chunk("World"),
             )
@@ -171,7 +171,8 @@ fn record_terms() {
                 (Ident::from("c"), Num(3.).into())
             ]
             .into_iter()
-            .collect()
+            .collect(),
+            Default::default()
         )
         .into()
     );
@@ -188,7 +189,8 @@ fn record_terms() {
                         (Ident::from("d"), Num(42.).into()),
                     ]
                     .into_iter()
-                    .collect()
+                    .collect(),
+                    Default::default(),
                 )
             ),
             mk_app!(mk_term::op1(UnaryOp::Ite(), Num(4.)), Num(5.), Num(6.))
@@ -250,6 +252,16 @@ fn string_lexing() {
             Token::Normal(NormalToken::RBrace),
             Token::Str(StringToken::Literal(" + 2")),
             Token::Normal(NormalToken::DoubleQuote),
+        ])
+    );
+
+    assert_eq!(
+        lex_without_pos(r##"m#""#"#m"##),
+        Ok(vec![
+            Token::Normal(NormalToken::MultiStringStart(3)),
+            Token::MultiStr(MultiStringToken::Literal("\"")),
+            Token::MultiStr(MultiStringToken::Literal("#")),
+            Token::MultiStr(MultiStringToken::End),
         ])
     );
 }

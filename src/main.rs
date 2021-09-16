@@ -41,6 +41,8 @@ enum Command {
         doc: bool,
         #[structopt(long)]
         contract: bool,
+        #[structopt(long = "type")]
+        types: bool,
         #[structopt(long)]
         default: bool,
         #[structopt(long)]
@@ -79,23 +81,26 @@ fn main() {
                 path,
                 doc,
                 contract,
+                types,
                 default,
                 value,
             }) => {
                 program.query(path).map(|term| {
                     // Print a default selection of attributes if no option is specified
-                    let attrs = if !doc && !contract && !default && !value {
+                    let attrs = if !doc && !contract && !types && !default && !value {
                         repl::query_print::Attributes::default()
                     } else {
                         repl::query_print::Attributes {
                             doc,
                             contract,
+                            types,
                             default,
                             value,
                         }
                     };
 
-                    repl::query_print::print_query_result(&term, attrs)
+                    repl::query_print::write_query_result(&mut std::io::stdout(), &term, attrs)
+                        .unwrap()
                 })
             }
             Some(Command::Typecheck) => program.typecheck().map(|_| ()),

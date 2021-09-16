@@ -8,7 +8,7 @@
 //! Some essential functions required for evaluation, such as builtin contracts, are written in
 //! pure Nickel. Standard library files must be record literals:
 //!
-//! ```ignore
+//! ```text
 //! {
 //!     val1 = ...
 //!     val2 = ...
@@ -109,8 +109,12 @@ impl Program {
     pub fn typecheck(&mut self) -> Result<(), Error> {
         self.cache.parse(self.main_id)?;
         self.cache.load_stdlib()?;
-        self.cache.typecheck_stdlib().map_err(|err| err.unwrap_error("program::typecheck(): stdlib has been loaded but was not found in cache on typechecking"))?;
         let global_env = self.cache.mk_global_env().expect("program::typecheck(): stdlib has been loaded but was not found in cache on mk_global_env()");
+        self.cache
+            .resolve_imports(self.main_id)
+            .map_err(|cache_err| {
+                cache_err.unwrap_error("program::typecheck(): expected source to be parsed")
+            })?;
         self.cache
             .typecheck(self.main_id, &global_env)
             .map_err(|cache_err| {

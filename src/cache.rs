@@ -90,6 +90,8 @@ pub struct NameIdEntry {
 pub enum EntryState {
     /// The term have just been parsed.
     Parsed,
+    /// The term has been parsed and the imports resolved
+    ImportsResolved,
     /// The term have been parsed and typechecked.
     Typechecked,
     /// The term have been parsed, possibly typechecked (but not necessarily), and transformed.
@@ -350,7 +352,7 @@ impl Cache {
 
         if *state > EntryState::Typechecked {
             Ok(CacheOp::Cached(()))
-        } else if *state == EntryState::Parsed {
+        } else if *state >= EntryState::Parsed {
             type_check(t, global_env, self)?;
             self.update_state(file_id, EntryState::Typechecked);
             Ok(CacheOp::Done(()))
@@ -367,7 +369,7 @@ impl Cache {
             Some(EntryState::Transformed) => Ok(CacheOp::Cached(())),
             Some(_) => {
                 let (t, _) = self.terms.remove(&file_id).unwrap();
-                let t = transformations::transform(t, self)?;
+                let t = transformations::transform(t)?;
                 self.terms.insert(file_id, (t, EntryState::Transformed));
                 Ok(CacheOp::Done(()))
             }
@@ -399,13 +401,12 @@ impl Cache {
             Some(_) => {
                 let (mut t, _) = self.terms.remove(&file_id).unwrap();
                 match t.term.as_mut() {
-                    Term::Record(ref mut map) | Term::RecRecord(ref mut map) => {
+                    Term::Record(ref mut map, _) | Term::RecRecord(ref mut map, _) => {
                         let map_res: Result<HashMap<Ident, RichTerm>, ImportError> =
                             std::mem::replace(map, HashMap::new())
                                 .into_iter()
                                 .map(|(id, t)| {
-                                    transformations::transform(t, self)
-                                        .map(|t_ok| (id.clone(), t_ok))
+                                    transformations::transform(t).map(|t_ok| (id.clone(), t_ok))
                                 })
                                 .collect();
                         *map = map_res?;
@@ -420,7 +421,27 @@ impl Cache {
         }
     }
 
-    /// Prepare a source for evaluation: parse it, typecheck it and apply program transformations,
+    /// Resolve every imports of an entry of the cache, and update its state accordingly,
+    /// or do nothing if the entry has already been transformed. Require that the corresponding
+    /// source has been parsed.
+    pub fn resolve_imports(
+        &mut self,
+        file_id: FileId,
+    ) -> Result<CacheOp<()>, CacheError<ImportError>> {
+        match self.entry_state(file_id) {
+            Some(EntryState::ImportsResolved) => Ok(CacheOp::Cached(())),
+            Some(_) => {
+                let (t, _) = self.terms.remove(&file_id).unwrap();
+                let t = transformations::resolve_imports(t, self)?;
+                self.terms.insert(file_id, (t, EntryState::ImportsResolved));
+                Ok(CacheOp::Done(()))
+            }
+            None => Err(CacheError::NotParsed),
+        }
+    }
+
+    /// Prepare a source for evaluation: parse it, resolve the imports,
+    /// typecheck it and apply program transformations,
     /// if it was not already done.
     pub fn prepare(
         &mut self,
@@ -430,6 +451,15 @@ impl Cache {
         let mut result = CacheOp::Cached(());
 
         if self.parse(file_id)? == CacheOp::Done(()) {
+            result = CacheOp::Done(());
+        };
+
+        let import_res = self.resolve_imports(file_id).map_err(|cache_err| {
+            cache_err.unwrap_error(
+                "cache::prepare(): expected source to be parsed before imports resolutions",
+            )
+        })?;
+        if import_res == CacheOp::Done(()) {
             result = CacheOp::Done(());
         };
 
@@ -461,8 +491,9 @@ impl Cache {
         global_env: &eval::Environment,
     ) -> Result<RichTerm, Error> {
         let term = self.parse_nocache(file_id)?;
+        let term = transformations::resolve_imports(term, self)?;
         type_check(&term, global_env, self)?;
-        let term = transformations::transform(term, self)?;
+        let term = transformations::transform(term)?;
         Ok(term)
     }
 
@@ -501,6 +532,13 @@ impl Cache {
                 Some(ts) if ts == timestamp => Some(entry.id),
                 _ => None,
             })
+    }
+
+    /// Get a reference to the underlying files. Required by
+    /// the WASM REPL error reporting code.
+    #[cfg(feature = "repl-wasm")]
+    pub fn files(&self) -> &Files<String> {
+        &self.files
     }
 
     /// Get a mutable reference to the underlying files. Required by
@@ -550,8 +588,7 @@ impl Cache {
         Ok(CacheOp::Done(()))
     }
 
-    /// Typecheck the standard library. This function may be dropped once the standard library is
-    /// stable.
+    /// Typecheck the standard library. Currently only used in the test suite.
     pub fn typecheck_stdlib(&mut self) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
         // We have a small bootstraping problem: to typecheck the global environment, we already
         // need a global evaluation environment, since stdlib parts may reference each other). But
@@ -578,21 +615,10 @@ impl Cache {
         }
     }
 
-    /// Load, parse, typecheck and apply program transformations to the standard library.
+    /// Load, parse, and apply program transformations to the standard library. Do not typecheck
+    /// for performance reason: this is done in the test suite.
     pub fn prepare_stdlib(&mut self) -> Result<(), Error> {
-        // We have a small bootstraping problem: to typecheck the global environment, we already
-        // need a global evaluation environment, because stdlib parts may be mutually recursive.
-        // But typechecking is performed before program transformations, so this environment is not
-        // the final one. We have to create a temporary global environment just for typechecking,
-        // which is dropped right after. However:
-        // 1. The stdlib is meant to stay relatively light.
-        // 2. Typechecking the standard library ought to occur only during development. Ideally, we
-        //    should only typecheck it at every update, not at every execution.
         self.load_stdlib()?;
-        self.typecheck_stdlib().map_err(|cache_err| {
-            cache_err
-                .unwrap_error("cache::prepare_stdlib(): expected standard library to be parsed")
-        })?;
         self.stdlib_ids
             .as_ref()
             .cloned()

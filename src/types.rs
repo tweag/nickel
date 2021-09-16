@@ -25,7 +25,7 @@
 //! can be abstracted over, leaving the row open for future extension. A simple and demonstrative
 //! example is field access:
 //!
-//! ```ignore
+//! ```text
 //! let f = Promise(forall a. { myField : Num, a} -> Num, fun rec => rec.myField)
 //! ```
 //!
@@ -231,7 +231,7 @@ impl Types {
                                     "x",
                                     mk_app!(
                                         mk_term::op1(UnaryOp::Switch(true), mk_term::var("x")),
-                                        Term::Record(map),
+                                        Term::Record(map, Default::default()),
                                         Term::Bool(false)
                                     )
                                 )

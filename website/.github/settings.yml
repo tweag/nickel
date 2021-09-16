@@ -1,0 +1,40 @@
+repository:
+  has_wiki: false
+
+labels:
+  - name: "duplicate"
+    color: cfd3d7
+  - name: "good first issue"
+    color: 7057ff
+  - name: "invalid"
+    color: cfd3d7
+  - name: "more data needed"
+    color: bfdadc
+  - name: "P0"
+    color: b60205
+    description: "blocker: fix immediately!"
+  - name: "P1"
+    color: d93f0b
+    description: "critical: next release"
+  - name: "P2"
+    color: e99695
+    description: "major: an upcoming release"
+  - name: "P3"
+    color: fbca04
+    description: "minor: not priorized"
+  - name: "P4"
+    color: fef2c0
+    description: "unimportant: consider wontfix or other priority"
+  - name: "question"
+    color: d876e3
+  - name: "type: bug"
+    color: 0052cc
+  - name: "type: documentation"
+    color: 0052cc
+  - name: "type: feature request"
+    color: 0052cc
+  - name: "wontfix"
+    color: ffffff
+  - name: "merge-queue"
+    color: 0e8a16
+    description: "merge on green CI"

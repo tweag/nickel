@@ -21,7 +21,7 @@
 //! expressions (the type of `bound_exp` in `let x = bound_exp in body`) is inferred in strict
 //! mode, but it is never implicitly generalized. For example, the following program is rejected:
 //!
-//! ```ignore
+//! ```text
 //! // Rejected
 //! let id = fun x => x in seq (id "a") (id 5) : Num
 //! ```
@@ -34,13 +34,14 @@
 //! can interact with other parts of type inference. If polymorphism is required, a simple
 //! annotation is sufficient:
 //!
-//! ```ignore
+//! ```text
 //! // Accepted
 //! let id : forall a. a -> a = fun x => x in seq (id "a") (id 5) : Num
 //! ```
 //!
 //! In non-strict mode, all let-bound expressions are given type `Dyn`, unless annotated.
 use crate::cache::ImportResolver;
+use crate::environment::Environment as GenericEnvironment;
 use crate::error::TypecheckError;
 use crate::eval;
 use crate::identifier::Ident;
@@ -331,7 +332,7 @@ impl UnifError {
 }
 
 /// The typing environment.
-pub type Environment = HashMap<Ident, TypeWrapper>;
+pub type Environment = GenericEnvironment<Ident, TypeWrapper>;
 
 /// A structure holding the two typing environments, the global and the local.
 ///
@@ -372,7 +373,7 @@ impl<'a> Envs<'a> {
         let RichTerm { term, pos } = rt;
 
         match term.as_ref() {
-            Term::Record(bindings) | Term::RecRecord(bindings) => {
+            Term::Record(bindings, _) | Term::RecRecord(bindings, _) => {
                 for (id, t) in bindings {
                     let tyw: TypeWrapper =
                         apparent_type(t.as_ref(), Some(&Envs::from_global(env))).into();
@@ -399,15 +400,12 @@ impl<'a> Envs<'a> {
     /// Fetch a binding from the environment. Try first in the local environment, and then in the
     /// global.
     pub fn get(&self, ident: &Ident) -> Option<TypeWrapper> {
-        self.local
-            .get(ident)
-            .or_else(|| self.global.get(ident))
-            .cloned()
+        self.local.get(ident).or_else(|| self.global.get(ident))
     }
 
     /// Wrapper to insert a new binding in the local environment.
-    pub fn insert(&mut self, ident: Ident, tyw: TypeWrapper) -> Option<TypeWrapper> {
-        self.local.insert(ident, tyw)
+    pub fn insert(&mut self, ident: Ident, tyw: TypeWrapper) {
+        self.local.insert(ident, tyw);
     }
 }
 
@@ -605,10 +603,10 @@ fn type_check_(
             unify(state, strict, ty, mk_tyw_enum!(id.clone(), row))
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
-        Term::Record(stat_map) | Term::RecRecord(stat_map) => {
+        Term::Record(stat_map, _) | Term::RecRecord(stat_map, _) => {
             // For recursive records, we look at the apparent type of each field and bind it in
             // env before actually typechecking the content of fields
-            if let Term::RecRecord(_) = t.as_ref() {
+            if let Term::RecRecord(..) = t.as_ref() {
                 for (id, rt) in stat_map {
                     let tyw = binding_type(rt.as_ref(), &envs, state.table, strict);
                     envs.insert(id.clone(), tyw);
@@ -635,7 +633,7 @@ fn type_check_(
                         // In the case of a recursive record, new types (either type variables or
                         // annotations) have already be determined and put in the typing
                         // environment, and we need to use the same.
-                        let ty = if let Term::RecRecord(_) = t.as_ref() {
+                        let ty = if let Term::RecRecord(..) = t.as_ref() {
                             envs.get(&id).unwrap()
                         } else {
                             TypeWrapper::Ptr(new_var(state.table))
@@ -1690,7 +1688,7 @@ pub fn get_bop_type(
             mk_typewrapper::num(),
         ),
         // Str -> Str -> Str
-        BinaryOp::PlusStr() => (
+        BinaryOp::StrConcat() => (
             mk_typewrapper::str(),
             mk_typewrapper::str(),
             mk_typewrapper::str(),
@@ -1873,6 +1871,8 @@ pub fn get_nop_type(
             ],
             mk_typewrapper::str(),
         ),
+        // This should not happen, as Switch() is only produced during evaluation.
+        NAryOp::MergeContract() => panic!("cannot typecheck MergeContract()"),
     })
 }
 

@@ -46,3 +46,5 @@ labels:
     color: 77dd77
   - name: "area: syntax"
     color: 77dd77
+  - name: "area: website"
+    color: 77dd77

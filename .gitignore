@@ -6,6 +6,9 @@
 /result*
 /scripts/tmp.toml
 
+# wasm-pack
+/pkg/
+
 # rustfmt Backup file
 **/*.rs.bk
 

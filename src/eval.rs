@@ -87,6 +87,7 @@
 //! appear inside recursive records in the future. An adapted garbage collector is probably
 //! something to consider at some point.
 use crate::cache::ImportResolver;
+use crate::environment::Environment as GenericEnvironment;
 use crate::error::EvalError;
 use crate::identifier::Ident;
 use crate::mk_app;
@@ -95,7 +96,6 @@ use crate::position::TermPos;
 use crate::stack::Stack;
 use crate::term::{make as mk_term, MetaValue, RichTerm, StrChunk, Term, UnaryOp};
 use std::cell::{Ref, RefCell, RefMut};
-use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
 /// The state of a thunk.
@@ -253,9 +253,6 @@ impl ThunkUpdateFrame {
     }
 }
 
-/// An environment, which is a mapping from identifiers to closures.
-pub type Environment = HashMap<Ident, Thunk>;
-
 /// A call stack, saving the history of function calls.
 ///
 /// In a lazy language as Nickel, there are no well delimited stack frames due to how function
@@ -292,10 +289,12 @@ impl Closure {
     pub fn atomic_closure(body: RichTerm) -> Closure {
         Closure {
             body,
-            env: HashMap::new(),
+            env: Environment::new(),
         }
     }
 }
+
+pub type Environment = GenericEnvironment<Ident, Thunk>;
 
 /// Raised when trying to build an environment from a term which is not a record.
 #[derive(Clone, Debug)]
@@ -308,7 +307,7 @@ pub fn env_add_term(env: &mut Environment, rt: RichTerm) -> Result<(), EnvBuildE
     let RichTerm { term, pos } = rt;
 
     match *term {
-        Term::Record(bindings) | Term::RecRecord(bindings) => {
+        Term::Record(bindings, _) | Term::RecRecord(bindings, _) => {
             let ext = bindings.into_iter().map(|(id, t)| {
                 (
                     id,
@@ -337,7 +336,7 @@ pub fn env_add(env: &mut Environment, id: Ident, rt: RichTerm, local_env: Enviro
 /// Typically, WHNFs and enriched values will not be evaluated to a simpler expression and are not
 /// worth updating.
 fn should_update(t: &Term) -> bool {
-    !t.is_whnf() && !t.is_enriched()
+    !t.is_whnf() && !t.is_metavalue()
 }
 
 /// Evaluate a Nickel term. Wrapper around [eval_closure](fn.eval_closure.html) that starts from an
@@ -452,8 +451,8 @@ where
         clos = match term {
             Term::Var(x) => {
                 let mut thunk = env
-                    .remove(&x)
-                    .or_else(|| global_env.get(&x).map(Thunk::clone))
+                    .get(&x)
+                    .or_else(|| global_env.get(&x))
                     .ok_or_else(|| EvalError::UnboundIdentifier(x.clone(), pos))?;
                 std::mem::drop(env); // thunk may be a 1RC pointer
 
@@ -508,7 +507,7 @@ where
 
                 stack.push_arg(
                     Closure {
-                        body: RichTerm::new(Term::Record(cases), pos),
+                        body: RichTerm::new(Term::Record(cases, Default::default()), pos),
                         env: env.clone(),
                     },
                     pos,
@@ -583,7 +582,7 @@ where
             Term::StrChunks(mut chunks) => match chunks.pop() {
                 None => Closure {
                     body: Term::Str(String::new()).into(),
-                    env: HashMap::new(),
+                    env: Environment::new(),
                 },
                 Some(chunk) => {
                     let (arg, indent) = match chunk {
@@ -622,7 +621,7 @@ where
                     env,
                 }
             }
-            Term::RecRecord(ts) => {
+            Term::RecRecord(ts, attrs) => {
                 // Thanks to the share normal form transformation, the content is either a constant or a
                 // variable.
                 let rec_env = ts.iter().try_fold::<_, _, Result<Environment, EvalError>>(
@@ -653,10 +652,14 @@ where
                     let RichTerm { term, pos } = rt;
                     match *term {
                         Term::Var(var_id) => {
-                            // We already checked for unbound identifier in the previous fold, so this
-                            // get should always succeed.
-                            let thunk = env.get_mut(&var_id).unwrap();
-                            thunk.borrow_mut().env.extend(rec_env.clone());
+                            // We already checked for unbound identifier in the previous fold,
+                            // so function should always succeed
+                            let mut thunk = env.get(&var_id).unwrap();
+                            thunk.borrow_mut().env.extend(
+                                rec_env
+                                    .iter_elems()
+                                    .map(|(id, thunk)| (id.clone(), thunk.clone())),
+                            );
                             (
                                 id,
                                 RichTerm {
@@ -670,7 +673,7 @@ where
                 });
                 Closure {
                     body: RichTerm {
-                        term: Box::new(Term::Record(new_ts.collect())),
+                        term: Box::new(Term::Record(new_ts.collect(), attrs)),
                         pos,
                     },
                     env,
@@ -872,7 +875,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
 
                 RichTerm::new(Term::Wrapped(i, t), pos)
             }
-            Term::Record(map) => {
+            Term::Record(map, attrs) => {
                 let map = map
                     .into_iter()
                     .map(|(id, t)| {
@@ -883,9 +886,9 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
                     })
                     .collect();
 
-                RichTerm::new(Term::Record(map), pos)
+                RichTerm::new(Term::Record(map, attrs), pos)
             }
-            Term::RecRecord(map) => {
+            Term::RecRecord(map, attrs) => {
                 let map = map
                     .into_iter()
                     .map(|(id, t)| {
@@ -896,7 +899,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
                     })
                     .collect();
 
-                RichTerm::new(Term::RecRecord(map), pos)
+                RichTerm::new(Term::RecRecord(map, attrs), pos)
             }
             Term::List(ts) => {
                 let ts = ts
@@ -982,13 +985,13 @@ mod tests {
     use crate::parser::{grammar, lexer};
     use crate::term::make as mk_term;
     use crate::term::{BinaryOp, StrChunk, UnaryOp};
-    use crate::transformations::transform;
+    use crate::transformations::resolve_imports;
     use crate::{mk_app, mk_fun};
     use codespan::Files;
 
     /// Evaluate a term without import support.
     fn eval_no_import(t: RichTerm) -> Result<Term, EvalError> {
-        eval(t, &HashMap::new(), &mut DummyResolver {})
+        eval(t, &Environment::new(), &mut DummyResolver {})
     }
 
     fn parse(s: &str) -> Option<RichTerm> {
@@ -1151,7 +1154,7 @@ mod tests {
         where
             R: ImportResolver,
         {
-            transform(
+            resolve_imports(
                 mk_term::let_in(var, mk_term::import(import), body),
                 resolver,
             )
@@ -1173,7 +1176,7 @@ mod tests {
         assert_eq!(
             eval(
                 mk_import("x", "two", mk_term::var("x"), &mut resolver).unwrap(),
-                &HashMap::new(),
+                &Environment::new(),
                 &mut resolver
             )
             .unwrap(),
@@ -1184,7 +1187,7 @@ mod tests {
         assert_eq!(
             eval(
                 mk_import("x", "nested", mk_term::var("x"), &mut resolver).unwrap(),
-                &HashMap::new(),
+                &Environment::new(),
                 &mut resolver
             )
             .unwrap(),
@@ -1201,7 +1204,7 @@ mod tests {
                     &mut resolver,
                 )
                 .unwrap(),
-                &HashMap::new(),
+                &Environment::new(),
                 &mut resolver
             )
             .unwrap(),
@@ -1218,7 +1221,7 @@ mod tests {
                     &mut resolver,
                 )
                 .unwrap(),
-                &HashMap::new(),
+                &Environment::new(),
                 &mut resolver
             )
             .unwrap(),
@@ -1232,7 +1235,7 @@ mod tests {
             StrChunk::Literal(String::from("Hello")),
             StrChunk::expr(
                 mk_term::op2(
-                    BinaryOp::PlusStr(),
+                    BinaryOp::StrConcat(),
                     mk_term::string(", "),
                     mk_term::string("World!"),
                 )
@@ -1261,7 +1264,7 @@ mod tests {
             StrChunk::Literal(String::from(" How")),
             StrChunk::expr(
                 Term::Op2(
-                    BinaryOp::PlusStr(),
+                    BinaryOp::StrConcat(),
                     mk_term::string(" ar"),
                     mk_term::string("e"),
                 )
@@ -1291,7 +1294,7 @@ mod tests {
 
     #[test]
     fn global_env() {
-        let mut global_env = HashMap::new();
+        let mut global_env = Environment::new();
         let mut resolver = DummyResolver {};
         global_env.insert(
             Ident::from("g"),

@@ -1,13 +1,13 @@
 use crate::identifier::Ident;
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
-    MergePriority, Contract, NAryOp};
+    MergePriority, Contract, NAryOp, RecordAttrs};
 use crate::term::make as mk_term;
 use crate::{mk_app, mk_opn};
 use crate::types::{Types, AbsType};
 use super::ExtendedTerm;
 use super::utils::{StringKind, mk_pos, mk_label, strip_indent, SwitchCase,
     FieldPathElem, strip_indent_doc, build_record, elaborate_field_path,
-    ChunkLiteralPart};
+    ChunkLiteralPart, RecordLastField};
 use std::ffi::OsString;
 use super::lexer::{Token, NormalToken, StringToken, MultiStringToken, LexicalError};
 use std::collections::HashMap;
@@ -62,12 +62,6 @@ Annot: MetaValue = {
         }
     }
 };
-
-LeftOp<Op, Current, Previous>: RichTerm =
-    <t1: WithPos<Current>> <op: Op> <t2: WithPos<Previous>> => mk_term::op2(op, t1, t2);
-
-LeftOpLazy<Op, Current, Previous>: RichTerm =
-    <t1: WithPos<Current>> <op: Op> <t2: WithPos<Previous>> => mk_app!(Term::Op1(op, t1), t2);
 
 pub Term: RichTerm = WithPos<RootTerm>;
 
@@ -182,9 +176,16 @@ Atom: RichTerm = {
     StrChunks,
     Ident => RichTerm::from(Term::Var(<>)),
     "`" <Ident> => RichTerm::from(Term::Enum(<>)),
-    "{" <fields: (<RecordField> ",")*> <last: RecordField?> "}" => {
-        let fields = fields.into_iter().chain(last.into_iter());
-        RichTerm::from(build_record(fields))
+    "{" <fields: (<RecordField> ",")*> <last: RecordLastField?> "}" => {
+        let (last_field, attrs) = match last {
+            Some(RecordLastField::Field(f)) => (Some(f), Default::default()),
+            Some(RecordLastField::Ellipsis) =>
+                (None, RecordAttrs { open: true }),
+            None => (None, Default::default())
+        };
+
+        let fields = fields.into_iter().chain(last_field.into_iter());
+        RichTerm::from(build_record(fields, attrs))
     },
     "[" <terms: (<Term> ",")*> <last: Term?> "]" => {
         let terms : Vec<RichTerm> = terms.into_iter()
@@ -223,6 +224,11 @@ RecordField: (FieldPathElem, RichTerm) = {
         let t = RichTerm::new(Term::MetaValue(meta), pos);
         elaborate_field_path(path, t)
     }
+}
+
+RecordLastField: RecordLastField = {
+    <RecordField> => RecordLastField::Field(<>),
+    ".." => RecordLastField::Ellipsis,
 }
 
 FieldPath: Vec<FieldPathElem> = {
@@ -307,10 +313,7 @@ StaticString: String = StringStart <s: ChunkLiteral> StringEnd => s;
 
 ChunkLiteralPart: ChunkLiteralPart<'input> = {
     "str literal" => ChunkLiteralPart::Str(<>),
-    "str #" => ChunkLiteralPart::Str(<>),
     "multstr literal" => ChunkLiteralPart::Str(<>),
-    "false interpolation" => ChunkLiteralPart::Str(<>),
-    "false end" => ChunkLiteralPart::Str(<>),
     "str esc char" => ChunkLiteralPart::Char(<>),
     };
 
@@ -356,108 +359,64 @@ switch_case: SwitchCase = {
     "_" "=>" <t: Term> => SwitchCase::Default(<>),
 }
 
-// TODO: convenience for messing with precedence levels during development. Once
-// operators are fixed, we can inline `InfixExpr0` into `InfixExpr1`
-InfixExpr0: RichTerm = {
-    Applicative,
-}
-
-PrefixExpr1: RichTerm = {
-    InfixExpr0,
-    "-" <t: PrefixExpr1> =>
-        mk_term::op2(BinaryOp::Sub(), Term::Num(0.0), t),
-}
-
-BinOp2: BinaryOp = {
-    "++" => BinaryOp::PlusStr(),
-    "@" => BinaryOp::ListConcat(),
-}
-
-InfixExpr2: RichTerm = {
-    PrefixExpr1,
-    LeftOp<BinOp2, InfixExpr2, PrefixExpr1> => <>,
-}
-
-BinOp3: BinaryOp = {
-    "*" => BinaryOp::Mult(),
-    "/" => BinaryOp::Div(),
-    "%" => BinaryOp::Modulo(),
-}
-
-InfixExpr3: RichTerm = {
-    InfixExpr2,
-    LeftOp<BinOp3, InfixExpr3, InfixExpr2> => <>,
-}
-
-BinOp4: BinaryOp = {
-    "+" => BinaryOp::Plus(),
-    "-" => BinaryOp::Sub(),
-}
-
-InfixExpr4: RichTerm = {
-    InfixExpr3,
-    LeftOp<BinOp4, InfixExpr4, InfixExpr3> => <>,
-}
-
-PrefixExpr5: RichTerm = {
-    InfixExpr4,
-    "!" <PrefixExpr5> => mk_term::op1(UnaryOp::BoolNot(), <>),
-}
-
-BinOp6: BinaryOp = {
-    "&" => BinaryOp::Merge(),
-}
-
-PrefixExpr6: RichTerm = {
-    PrefixExpr5,
-    LeftOp<BinOp6, PrefixExpr6, PrefixExpr5> => <>,
-}
-
-BinOp7: BinaryOp = {
-    "<" => BinaryOp::LessThan(),
-    "<=" => BinaryOp::LessOrEq(),
-    ">" => BinaryOp::GreaterThan(),
-    ">=" => BinaryOp::GreaterOrEq(),
-}
-
-InfixExpr7: RichTerm = {
-    PrefixExpr6,
-    LeftOp<BinOp7, InfixExpr7, PrefixExpr6> => <>,
-}
-
-BinOp8: BinaryOp = {
-    "==" => BinaryOp::Eq(),
-}
-
-InfixExpr8: RichTerm = {
-    InfixExpr7,
-    LeftOp<BinOp8, InfixExpr8, InfixExpr7> => <>,
-    <t1: InfixExpr8> "!=" <t2: InfixExpr7> =>
-        mk_term::op1( UnaryOp::BoolNot(), Term::Op2(BinaryOp::Eq(), t1, t2)),
-}
-
-LazyBinOp9: UnaryOp = {
-    "&&" => UnaryOp::BoolAnd(),
-}
-
-InfixExpr9: RichTerm = {
-    InfixExpr8,
-    LeftOpLazy<LazyBinOp9, InfixExpr9, InfixExpr8> => <>
-}
-
-LazyBinOp10: UnaryOp = {
-    "||" => UnaryOp::BoolOr(),
-}
-
-InfixExpr10: RichTerm = {
-    InfixExpr9,
-    LeftOpLazy<LazyBinOp10, InfixExpr10, InfixExpr9> => <>
-}
-
-// TODO: convenience for adding precedence levels during development. Once
-// operators are fixed, we should turn the last level into `InfixExpr` directly
 InfixExpr: RichTerm = {
-    InfixExpr10,
+    #[precedence(level="0")]
+    Applicative,
+
+    #[precedence(level="1")]
+    "-" <WithPos<InfixExpr>> =>
+        mk_term::op2(BinaryOp::Sub(), Term::Num(0.0), <>),
+
+    #[precedence(level="2")] #[assoc(side="left")]
+    <t1: WithPos<InfixExpr>> "++" <t2: WithPos<InfixExpr>> =>
+        mk_term::op2(BinaryOp::StrConcat(), t1, t2),
+    <t1: WithPos<InfixExpr>> "@" <t2: WithPos<InfixExpr>> =>
+        mk_term::op2(BinaryOp::ListConcat(), t1, t2),
+
+    #[precedence(level="3")] #[assoc(side="left")]
+    <t1: WithPos<InfixExpr>> "*" <t2: WithPos<InfixExpr>> =>
+        mk_term::op2(BinaryOp::Mult(), t1, t2),
+    <t1: WithPos<InfixExpr>> "/" <t2: WithPos<InfixExpr>> =>
+        mk_term::op2(BinaryOp::Div(), t1, t2),
+    <t1: WithPos<InfixExpr>> "%" <t2: WithPos<InfixExpr>> =>
+        mk_term::op2(BinaryOp::Modulo(), t1, t2),
+
+    #[precedence(level="4")] #[assoc(side="left")]
+    <t1: WithPos<InfixExpr>> "+" <t2: WithPos<InfixExpr>> =>
+        mk_term::op2(BinaryOp::Plus(), t1, t2),
+    <t1: WithPos<InfixExpr>> "-" <t2: WithPos<InfixExpr>> =>
+        mk_term::op2(BinaryOp::Sub(), t1, t2),
+
+    #[precedence(level="5")]
+    "!" <WithPos<InfixExpr>> => mk_term::op1(UnaryOp::BoolNot(), <>),
+
+    #[precedence(level="6")] #[assoc(side="left")]
+    <t1: WithPos<InfixExpr>> "&" <t2: WithPos<InfixExpr>> =>
+        mk_term::op2(BinaryOp::Merge(), t1, t2),
+
+    #[precedence(level="7")] #[assoc(side="left")]
+    <t1: WithPos<InfixExpr>> "<" <t2: WithPos<InfixExpr>> =>
+        mk_term::op2(BinaryOp::LessThan(), t1, t2),
+    <t1: WithPos<InfixExpr>> "<=" <t2: WithPos<InfixExpr>> =>
+        mk_term::op2(BinaryOp::LessOrEq(), t1, t2),
+    <t1: WithPos<InfixExpr>> ">" <t2: WithPos<InfixExpr>> =>
+        mk_term::op2(BinaryOp::GreaterThan(), t1, t2),
+    <t1: WithPos<InfixExpr>> ">=" <t2: WithPos<InfixExpr>> =>
+        mk_term::op2(BinaryOp::GreaterOrEq(), t1, t2),
+
+    #[precedence(level="8")] #[assoc(side="left")]
+    <t1: WithPos<InfixExpr>> "==" <t2: WithPos<InfixExpr>> =>
+        mk_term::op2(BinaryOp::Eq(), t1, t2),
+    <t1: WithPos<InfixExpr>> "!=" <t2: WithPos<InfixExpr>> =>
+        mk_term::op1(UnaryOp::BoolNot(), Term::Op2(BinaryOp::Eq(), t1, t2)),
+
+    #[precedence(level="9")] #[assoc(side="left")]
+    <t1: WithPos<InfixExpr>> "&&" <t2: WithPos<InfixExpr>> =>
+        mk_app!(mk_term::op1(UnaryOp::BoolAnd(), t1), t2),
+
+    #[precedence(level="10")] #[assoc(side="left")]
+    <t1: WithPos<InfixExpr>> "||" <t2: WithPos<InfixExpr>> =>
+        mk_app!(mk_term::op1(UnaryOp::BoolOr(), t1), t2),
 }
 
 BOpPre: BinaryOp = {
@@ -568,11 +527,8 @@ extern {
     enum Token<'input> {
         "identifier" => Token::Normal(NormalToken::Identifier(<&'input str>)),
         "str literal" => Token::Str(StringToken::Literal(<&'input str>)),
-        "str #" => Token::Str(StringToken::Hash(<&'input str>)),
         "str esc char" => Token::Str(StringToken::EscapedChar(<char>)),
         "multstr literal" => Token::MultiStr(MultiStringToken::Literal(<&'input str>)),
-        "false end" => Token::MultiStr(MultiStringToken::FalseEnd(<&'input str>)),
-        "false interpolation" => Token::MultiStr(MultiStringToken::FalseInterpolation(<&'input str>)),
         "num literal" => Token::Normal(NormalToken::NumLiteral(<f64>)),
 
         "if" => Token::Normal(NormalToken::If),
@@ -610,6 +566,7 @@ extern {
         "&&" => Token::Normal(NormalToken::DoubleAnd),
         "||" => Token::Normal(NormalToken::DoublePipe),
         "!" => Token::Normal(NormalToken::Bang),
+        ".." => Token::Normal(NormalToken::Ellipsis),
 
         "fun" => Token::Normal(NormalToken::Fun),
         "import" => Token::Normal(NormalToken::Import),

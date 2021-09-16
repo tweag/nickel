@@ -35,8 +35,6 @@ use std::fmt;
 #[serde(untagged)]
 pub enum Term {
     /// The null value.
-    // #[serde(serialize_with = "crate::serialize::serialize_null")]
-    // #[serde(deserialize_with = "crate::serialize::deserialize_null")]
     Null,
     /// A boolean value.
     Bool(bool),
@@ -77,10 +75,11 @@ pub enum Term {
 
     /// A record, mapping identifiers to terms.
     #[serde(serialize_with = "crate::serialize::serialize_record")]
-    Record(HashMap<Ident, RichTerm>),
+    #[serde(deserialize_with = "crate::serialize::deserialize_record")]
+    Record(HashMap<Ident, RichTerm>, RecordAttrs),
     /// A recursive record, where the fields can reference each others.
     #[serde(skip)]
-    RecRecord(HashMap<Ident, RichTerm>),
+    RecRecord(HashMap<Ident, RichTerm>, RecordAttrs),
     /// A switch construct. The evaluation is done by the corresponding unary operator, but we
     /// still need this one for typechecking.
     Switch(
@@ -118,7 +117,7 @@ pub enum Term {
     ///
     /// Wrapped terms are introduced by contracts on polymorphic types. Take the following example:
     ///
-    /// ```ignore
+    /// ```text
     /// let f = Assume(forall a. forall b. a -> b -> a, fun x y => y) in
     /// f true "a"
     /// ```
@@ -145,6 +144,25 @@ pub enum Term {
     /// A resolved import (which has already been loaded and parsed).
     #[serde(skip)]
     ResolvedImport(FileId),
+}
+
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
+pub struct RecordAttrs {
+    pub open: bool,
+}
+
+impl Default for RecordAttrs {
+    fn default() -> Self {
+        RecordAttrs { open: false }
+    }
+}
+
+impl RecordAttrs {
+    pub fn merge(attrs1: RecordAttrs, attrs2: RecordAttrs) -> RecordAttrs {
+        RecordAttrs {
+            open: attrs1.open || attrs2.open,
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Copy, Clone)]
@@ -282,7 +300,7 @@ impl Term {
                     func(def)
                 }
             }
-            Record(ref mut static_map) | RecRecord(ref mut static_map) => {
+            Record(ref mut static_map, _) | RecRecord(ref mut static_map, _) => {
                 static_map.iter_mut().for_each(|e| {
                     let (_, t) = e;
                     func(t);
@@ -337,7 +355,7 @@ impl Term {
             Term::Fun(_, _) => Some("Fun"),
             Term::Lbl(_) => Some("Label"),
             Term::Enum(_) => Some("Enum"),
-            Term::Record(_) | Term::RecRecord(_) => Some("Record"),
+            Term::Record(..) | Term::RecRecord(..) => Some("Record"),
             Term::List(_) => Some("List"),
             Term::Sym(_) => Some("Sym"),
             Term::Wrapped(_, _) => Some("Wrapped"),
@@ -380,7 +398,7 @@ impl Term {
             Term::Fun(_, _) => String::from("<func>"),
             Term::Lbl(_) => String::from("<label>"),
             Term::Enum(Ident(s)) => format!("`{}", s),
-            Term::Record(_) | Term::RecRecord(_) => String::from("{ ... }"),
+            Term::Record(..) | Term::RecRecord(..) => String::from("{ ... }"),
             Term::List(_) => String::from("[ ... ]"),
             Term::Sym(_) => String::from("<sym>"),
             Term::Wrapped(_, _) => String::from("<wrapped>"),
@@ -420,6 +438,27 @@ impl Term {
         }
     }
 
+    /// Return a deep string representation of a term, used for printing in the REPL
+    pub fn deep_repr(&self) -> String {
+        match self {
+            Term::Record(fields, _) | Term::RecRecord(fields, _) => {
+                let fields_str: Vec<String> = fields
+                    .iter()
+                    .map(|(ident, term)| format!("{} = {}", ident, term.as_ref().deep_repr()))
+                    .collect();
+                format!("{{ {} }}", fields_str.join(", "))
+            }
+            Term::List(elements) => {
+                let elements_str: Vec<String> = elements
+                    .iter()
+                    .map(|term| term.as_ref().deep_repr())
+                    .collect();
+                format!("[ {} ]", elements_str.join(", "))
+            }
+            _ => self.shallow_repr(),
+        }
+    }
+
     /// Determine if a term is in evaluated from, called weak head normal form (WHNF).
     pub fn is_whnf(&self) -> bool {
         match self {
@@ -430,7 +469,7 @@ impl Term {
             | Term::Fun(_, _)
             | Term::Lbl(_)
             | Term::Enum(_)
-            | Term::Record(_)
+            | Term::Record(..)
             | Term::List(_)
             | Term::Sym(_) => true,
             Term::Let(_, _, _)
@@ -446,12 +485,12 @@ impl Term {
             | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
-            | Term::RecRecord(_) => false,
+            | Term::RecRecord(..) => false,
         }
     }
 
-    /// Determine if a term is an enriched value.
-    pub fn is_enriched(&self) -> bool {
+    /// Determine if a term is a metavalue.
+    pub fn is_metavalue(&self) -> bool {
         matches!(self, Term::MetaValue(..))
     }
 
@@ -469,7 +508,7 @@ impl Term {
             | Term::Enum(_)
             | Term::Sym(_) => true,
             Term::Let(_, _, _)
-            | Term::Record(_)
+            | Term::Record(..)
             | Term::List(_)
             | Term::Fun(_, _)
             | Term::App(_, _)
@@ -484,7 +523,7 @@ impl Term {
             | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
-            | Term::RecRecord(_) => false,
+            | Term::RecRecord(..) => false,
         }
     }
 }
@@ -560,7 +599,7 @@ pub enum UnaryOp {
     /// If the argument is a label with a [type path](../label/enum.TyPath.html) representing some
     /// subtype of the type of the original contract, as in:
     ///
-    /// ```ignore
+    /// ```text
     /// (Num -> Num) -> Num
     ///  ^^^^^^^^^^ type path
     /// ------------------- original type
@@ -568,7 +607,7 @@ pub enum UnaryOp {
     ///
     /// Then `GoDom` evaluates to a copy of this label, where the path has gone forward into the domain:
     ///
-    /// ```ignore
+    /// ```text
     /// (Num -> Num) -> Num
     ///  ^^^ new type path
     /// ------------------- original type
@@ -652,7 +691,7 @@ pub enum BinaryOp {
     /// Raise a number to a power.
     Pow(),
     /// Concatenation of strings.
-    PlusStr(),
+    StrConcat(),
     /// Polymorphic equality.
     Eq(),
     /// Stricty less than comparison operator.
@@ -700,6 +739,7 @@ pub enum BinaryOp {
     ListElemAt(),
     /// The merge operator (see the [merge module](../merge/index.html)).
     Merge(),
+
     /// Hash a string.
     Hash(),
     /// Serialize a value to a string.
@@ -734,20 +774,32 @@ pub enum NAryOp {
     /// Replace a substring by another one in a string.
     StrReplace(),
     /// Same as [`StrReplace()`], but the pattern is interpreted as a regular expression.
+    ///
+    /// [`StrReplace()`]: NAryOp::StrReplace
     StrReplaceRegex(),
     /// Return a substring of an original string.
     StrSubstr(),
+    /// The merge operator in contract mode (see the [merge module](../merge/index.html)). The
+    /// arguments are in order the contract's label, the value to check, and the contract as a
+    /// record.
+    MergeContract(),
 }
 
 impl NAryOp {
     pub fn arity(&self) -> usize {
         match self {
-            NAryOp::StrReplace() | NAryOp::StrReplaceRegex() | NAryOp::StrSubstr() => 3,
+            NAryOp::StrReplace()
+            | NAryOp::StrReplaceRegex()
+            | NAryOp::StrSubstr()
+            | NAryOp::MergeContract() => 3,
         }
     }
 
     pub fn is_strict(&self) -> bool {
-        true
+        match self {
+            NAryOp::MergeContract() => false,
+            _ => true,
+        }
     }
 }
 
@@ -757,6 +809,7 @@ impl fmt::Display for NAryOp {
             NAryOp::StrReplace() => write!(f, "strReplace"),
             NAryOp::StrReplaceRegex() => write!(f, "strReplaceRegex"),
             NAryOp::StrSubstr() => write!(f, "substring"),
+            NAryOp::MergeContract() => write!(f, "mergeContract"),
         }
     }
 }
@@ -924,7 +977,7 @@ impl RichTerm {
                     state,
                 )
             }
-            Term::Record(map) => {
+            Term::Record(map, attrs) => {
                 // The annotation on `map_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
                 let map_res: Result<HashMap<Ident, RichTerm>, E> = map
@@ -934,13 +987,13 @@ impl RichTerm {
                     .collect();
                 f(
                     RichTerm {
-                        term: Box::new(Term::Record(map_res?)),
+                        term: Box::new(Term::Record(map_res?, attrs)),
                         pos,
                     },
                     state,
                 )
             }
-            Term::RecRecord(map) => {
+            Term::RecRecord(map, attrs) => {
                 // The annotation on `map_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
                 let map_res: Result<HashMap<Ident, RichTerm>, E> = map
@@ -950,7 +1003,7 @@ impl RichTerm {
                     .collect();
                 f(
                     RichTerm {
-                        term: Box::new(Term::RecRecord(map_res?)),
+                        term: Box::new(Term::RecRecord(map_res?, attrs)),
                         pos,
                     },
                     state,
@@ -1111,7 +1164,7 @@ pub mod make {
                 $(
                     map.insert($id.into(), $body.into());
                 )*
-                $crate::term::RichTerm::from($crate::term::Term::Record(map))
+                $crate::term::RichTerm::from($crate::term::Term::Record(map, Default::default()))
             }
         };
     }
