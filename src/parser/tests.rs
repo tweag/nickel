@@ -375,4 +375,10 @@ fn unbound_type_variables() {
         parse("null: forall a b c. a -> (b -> List c) -> {foo : List {_ : a}, bar: b | e}"),
         Err(ParseError::UnboundTypeVariables(unbound_vars)) if (unbound_vars.contains(&Ident("e".into())) && unbound_vars.len() == 1)
     );
+
+    // should fail, "a" is unbound
+    assert_matches!(
+        parse("a -> (forall a. a -> a)"),
+        Err(ParseError::UnboundTypeVariables(unbound_vars)) if (unbound_vars.contains(&Ident("a".into())) && unbound_vars.len() == 1)
+    );
 }
