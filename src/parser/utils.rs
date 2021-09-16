@@ -1,14 +1,16 @@
+use std::collections::{HashMap, HashSet};
+use std::collections::hash_map::Entry;
+
+use codespan::FileId;
+
 use crate::identifier::Ident;
 /// A few helpers to generate position spans and labels easily during parsing
 use crate::label::Label;
 use crate::mk_app;
-use crate::position::{RawSpan, TermPos};
-use crate::term::{make as mk_term, BinaryOp, RecordAttrs, RichTerm, StrChunk, Term};
-use crate::types::{AbsType, Types};
-use codespan::FileId;
-use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet};
 use crate::parser::error::ParseError;
+use crate::position::{RawSpan, TermPos};
+use crate::term::{BinaryOp, make as mk_term, RecordAttrs, RichTerm, StrChunk, Term};
+use crate::types::{AbsType, Types};
 
 /// Distinguish between the standard string separators `"`/`"` and the multi-line string separators
 /// `m#"`/`"#m` in the parser.

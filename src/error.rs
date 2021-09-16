@@ -2,19 +2,21 @@
 //!
 //! Define error types for different phases of the execution, together with functions to generate a
 //! [codespan](https://crates.io/crates/codespan-reporting) diagnostic from them.
+use std::fmt::Write;
+
+use codespan::{FileId, Files};
+use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
+
+use crate::{label, repl};
 use crate::eval::{CallStack, StackElem};
 use crate::identifier::Ident;
 use crate::label::ty_path;
+use crate::parser::error::{LexicalError, ParseError as InternalParseError};
 use crate::parser::utils::mk_span;
 use crate::position::{RawSpan, TermPos};
 use crate::serialize::ExportFormat;
 use crate::term::RichTerm;
 use crate::types::Types;
-use crate::{label, repl};
-use codespan::{FileId, Files};
-use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
-use std::fmt::Write;
-use crate::parser::error::{ParseError as InternalParseError, LexicalError};
 
 /// A general error occurring during either parsing or evaluation.
 #[derive(Debug, Clone, PartialEq)]
