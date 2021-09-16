@@ -9,6 +9,7 @@ use codespan::FileId;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use crate::parser::error::ParseError;
+use crate::parser::lexer::NormalToken::Hash;
 
 /// Distinguish between the standard string separators `"`/`"` and the multi-line string separators
 /// `m#"`/`"#m` in the parser.
@@ -365,8 +366,8 @@ pub fn strip_indent_doc(doc: String) -> String {
 
 /// Recursively checks for unbound type variables in a type
 pub fn check_unbound(types: Types) -> Result<Types, ParseError> {
-    // heavy lifting function
-    fn find_unbound_vars(types: &Types, unbound_set: &mut HashSet<Ident>) {
+    // heavy lifting function, recurses into a type expression and returns a set of unbound vars
+    fn find_unbound_vars(types: &Types, unbound_set: &mut HashSet<Ident>){
         match &types.0 {
             // if the type is a var, we save the identifier in the unbound set
             AbsType::Var(ident) => {
@@ -377,11 +378,17 @@ pub fn check_unbound(types: Types) -> Result<Types, ParseError> {
             // if the type is a forall, we recurse in the node (to populate the unbound set)
             // and then remove the bound identifier from the unbound set
             AbsType::Forall(ident, ty) => {
-                find_unbound_vars(&ty, unbound_set);
+                // forall needs a "scoped" set for the variables in its nodes
+                let mut forall_unbound_vars = HashSet::new();
+                find_unbound_vars(&ty, &mut forall_unbound_vars);
 
-                if unbound_set.contains(ident) {
-                    unbound_set.remove(ident);
+                if forall_unbound_vars.contains(ident) {
+                    forall_unbound_vars.remove(ident);
                 }
+
+                // once the forall vars are recursed into and analyzed, the parent set and
+                // the forall set are merged
+                unbound_set.extend(forall_unbound_vars);
             }
             AbsType::Arrow(s, t) => {
                 find_unbound_vars(&s, unbound_set);
