@@ -135,7 +135,7 @@ fn dynamic_record_simple() {
 #[test]
 fn simple_list() {
     assert_typecheck_fails!("[1, 2, false] : List Num");
-    assert_typecheck_fails!("[(1 : String), true, \"b\"] : List");
+    assert_typecheck_fails!("[(1 : Str), true, \"b\"] : List");
     assert_typecheck_fails!("[1, 2, \"3\"] : List Str");
 }
 
