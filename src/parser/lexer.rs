@@ -29,9 +29,9 @@
 //! `0`, this is the end of the current interpolated expressions, and we leave the normal mode and
 //! go back to string mode. In our example, this is the second `}`: at this point, the lexer knows
 //! that the coming characters must be lexed as string tokens, and not as normal tokens.
+use crate::parser::error::{LexicalError, ParseError};
 use logos::Logos;
 use std::ops::Range;
-use crate::parser::error::{LexicalError, ParseError};
 
 /// The tokens in normal mode.
 #[derive(Logos, Debug, PartialEq, Clone)]
@@ -377,7 +377,6 @@ impl<'input> ModalLexer<'input> {
     }
 }
 
-
 #[derive(Clone, PartialEq, Eq, Debug, Copy)]
 pub enum ModeElt {
     Str,
@@ -537,7 +536,9 @@ impl<'input> Iterator for Lexer<'input> {
             Some(Normal(NormalToken::RBrace)) => {
                 if self.count == 0 {
                     if self.stack.is_empty() {
-                        return Some(Err(ParseError::Lexical(LexicalError::UnmatchedCloseBrace(span.start))));
+                        return Some(Err(ParseError::Lexical(LexicalError::UnmatchedCloseBrace(
+                            span.start,
+                        ))));
                     }
 
                     self.leave_normal();
@@ -594,14 +595,18 @@ impl<'input> Iterator for Lexer<'input> {
                 if let Some(esc) = escape_char(*c) {
                     token = Some(Str(StringToken::EscapedChar(esc)));
                 } else {
-                    return Some(Err(ParseError::Lexical(LexicalError::InvalidEscapeSequence(span.start + 1))));
+                    return Some(Err(ParseError::Lexical(
+                        LexicalError::InvalidEscapeSequence(span.start + 1),
+                    )));
                 }
             }
             Some(Str(StringToken::EscapedAscii(code))) => {
                 if let Some(esc) = escape_ascii(code) {
                     token = Some(Str(StringToken::EscapedChar(esc)));
                 } else {
-                    return Some(Err(ParseError::Lexical(LexicalError::InvalidAsciiEscapeCode(span.start + 2))));
+                    return Some(Err(ParseError::Lexical(
+                        LexicalError::InvalidAsciiEscapeCode(span.start + 2),
+                    )));
                 }
             }
             // If we encounter a `CandidateEnd` token with the right number of characters, this is
@@ -619,7 +624,9 @@ impl<'input> Iterator for Lexer<'input> {
             Some(Normal(NormalToken::Error))
             | Some(Str(StringToken::Error))
             | Some(MultiStr(MultiStringToken::Error)) => {
-                return Some(Err(ParseError::Lexical(LexicalError::Generic(span.start, span.end))))
+                return Some(Err(ParseError::Lexical(LexicalError::Generic(
+                    span.start, span.end,
+                ))))
             }
             // Ignore comment
             Some(Normal(NormalToken::LineComment)) => return self.next(),

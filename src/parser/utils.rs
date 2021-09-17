@@ -1,5 +1,5 @@
-use std::collections::{HashMap, HashSet};
 use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet};
 
 use codespan::FileId;
 
@@ -9,7 +9,7 @@ use crate::label::Label;
 use crate::mk_app;
 use crate::parser::error::ParseError;
 use crate::position::{RawSpan, TermPos};
-use crate::term::{BinaryOp, make as mk_term, RecordAttrs, RichTerm, StrChunk, Term};
+use crate::term::{make as mk_term, BinaryOp, RecordAttrs, RichTerm, StrChunk, Term};
 use crate::types::{AbsType, Types};
 
 /// Distinguish between the standard string separators `"`/`"` and the multi-line string separators
@@ -86,8 +86,8 @@ pub fn elaborate_field_path(
 /// Build a record from a list of field definitions. If a field is defined several times, the
 /// different definitions are merged.
 pub fn build_record<I>(fields: I, attrs: RecordAttrs) -> Term
-    where
-        I: IntoIterator<Item=(FieldPathElem, RichTerm)>,
+where
+    I: IntoIterator<Item = (FieldPathElem, RichTerm)>,
 {
     let mut static_map = HashMap::new();
     let mut dynamic_fields = Vec::new();
@@ -304,8 +304,8 @@ pub fn strip_indent(mut chunks: Vec<StrChunk<RichTerm>>) -> Vec<StrChunk<RichTer
                     if let Some(first_index) = buffer.find('\n') {
                         if first_index == 0
                             || buffer.as_bytes()[..first_index]
-                            .iter()
-                            .all(|c| *c == b' ' || *c == b'\t')
+                                .iter()
+                                .all(|c| *c == b' ' || *c == b'\t')
                         {
                             buffer = String::from(&buffer[(first_index + 1)..]);
                         }
@@ -317,8 +317,8 @@ pub fn strip_indent(mut chunks: Vec<StrChunk<RichTerm>>) -> Vec<StrChunk<RichTer
                     if let Some(last_index) = buffer.rfind('\n') {
                         if last_index == buffer.len() - 1
                             || buffer.as_bytes()[(last_index + 1)..]
-                            .iter()
-                            .all(|c| *c == b' ' || *c == b'\t')
+                                .iter()
+                                .all(|c| *c == b' ' || *c == b'\t')
                         {
                             buffer.truncate(last_index);
                         }
@@ -368,7 +368,7 @@ pub fn strip_indent_doc(doc: String) -> String {
 /// Recursively checks for unbound type variables in a type
 pub fn check_unbound(types: &Types) -> Result<(), ParseError> {
     // heavy lifting function, recurses into a type expression and returns a set of unbound vars
-    fn find_unbound_vars(types: &Types, unbound_set: &mut HashSet<Ident>){
+    fn find_unbound_vars(types: &Types, unbound_set: &mut HashSet<Ident>) {
         match &types.0 {
             // if the type is a var, we save the identifier in the unbound set
             AbsType::Var(ident) => {
@@ -395,7 +395,10 @@ pub fn check_unbound(types: &Types) -> Result<(), ParseError> {
                 find_unbound_vars(&s, unbound_set);
                 find_unbound_vars(&t, unbound_set);
             }
-            AbsType::DynRecord(ty) | AbsType::StaticRecord(ty) | AbsType::List(ty) | AbsType::Enum(ty) => {
+            AbsType::DynRecord(ty)
+            | AbsType::StaticRecord(ty)
+            | AbsType::List(ty)
+            | AbsType::Enum(ty) => {
                 find_unbound_vars(&ty, unbound_set);
             }
             AbsType::RowExtend(_, opt_ty, ty) => {
@@ -404,9 +407,15 @@ pub fn check_unbound(types: &Types) -> Result<(), ParseError> {
                 }
 
                 find_unbound_vars(&ty, unbound_set);
-            },
+            }
             // do nothing
-            AbsType::Dyn() | AbsType::Bool() | AbsType::Num() | AbsType::Str() | AbsType::Sym() | AbsType::Flat(_) | AbsType::RowEmpty() => {}
+            AbsType::Dyn()
+            | AbsType::Bool()
+            | AbsType::Num()
+            | AbsType::Str()
+            | AbsType::Sym()
+            | AbsType::Flat(_)
+            | AbsType::RowEmpty() => {}
         }
     }
 
@@ -416,7 +425,9 @@ pub fn check_unbound(types: &Types) -> Result<(), ParseError> {
     find_unbound_vars(&types, &mut unbound_set);
 
     if !unbound_set.is_empty() {
-        Err(ParseError::UnboundTypeVariables(unbound_set.into_iter().collect()))
+        Err(ParseError::UnboundTypeVariables(
+            unbound_set.into_iter().collect(),
+        ))
     } else {
         Ok(())
     }

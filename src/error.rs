@@ -7,7 +7,6 @@ use std::fmt::Write;
 use codespan::{FileId, Files};
 use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 
-use crate::{label, repl};
 use crate::eval::{CallStack, StackElem};
 use crate::identifier::Ident;
 use crate::label::ty_path;
@@ -17,6 +16,7 @@ use crate::position::{RawSpan, TermPos};
 use crate::serialize::ExportFormat;
 use crate::term::RichTerm;
 use crate::types::Types;
+use crate::{label, repl};
 
 /// A general error occurring during either parsing or evaluation.
 #[derive(Debug, Clone, PartialEq)]
@@ -77,8 +77,8 @@ pub enum EvalError {
     SerializationError(SerializationError),
     /// A parse error occurred during a call to the builtin `deserialize`.
     DeserializationError(
-        String, /* format */
-        String, /* error message */
+        String,  /* format */
+        String,  /* error message */
         TermPos, /* position of the call to deserialize */
     ),
     /// An unexpected internal error.
@@ -317,7 +317,7 @@ pub fn escape(s: &str) -> String {
             .flat_map(std::ascii::escape_default)
             .collect::<Vec<u8>>(),
     )
-        .expect("escape(): converting from a string should give back a valid UTF8 string")
+    .expect("escape(): converting from a string should give back a valid UTF8 string")
 }
 
 impl From<REPLError> for Error {
@@ -346,12 +346,22 @@ impl ParseError {
                 token: (start, _, end),
             } => ParseError::ExtraToken(mk_span(file_id, start, end)),
             lalrpop_util::ParseError::User { error } => match error {
-                InternalParseError::Lexical(LexicalError::Generic(start, end)) => ParseError::UnexpectedToken(mk_span(file_id, start, end), Vec::new()),
-                InternalParseError::Lexical(LexicalError::UnmatchedCloseBrace(location)) => ParseError::UnmatchedCloseBrace(mk_span(file_id, location, location + 1)),
-                InternalParseError::Lexical(LexicalError::InvalidEscapeSequence(location)) => ParseError::InvalidEscapeSequence(mk_span(file_id, location, location + 1)),
-                InternalParseError::Lexical(LexicalError::InvalidAsciiEscapeCode(location)) => ParseError::InvalidAsciiEscapeCode(mk_span(file_id, location, location + 2)),
-                InternalParseError::UnboundTypeVariables(idents) => { ParseError::UnboundTypeVariables(idents) }
-            }
+                InternalParseError::Lexical(LexicalError::Generic(start, end)) => {
+                    ParseError::UnexpectedToken(mk_span(file_id, start, end), Vec::new())
+                }
+                InternalParseError::Lexical(LexicalError::UnmatchedCloseBrace(location)) => {
+                    ParseError::UnmatchedCloseBrace(mk_span(file_id, location, location + 1))
+                }
+                InternalParseError::Lexical(LexicalError::InvalidEscapeSequence(location)) => {
+                    ParseError::InvalidEscapeSequence(mk_span(file_id, location, location + 1))
+                }
+                InternalParseError::Lexical(LexicalError::InvalidAsciiEscapeCode(location)) => {
+                    ParseError::InvalidAsciiEscapeCode(mk_span(file_id, location, location + 2))
+                }
+                InternalParseError::UnboundTypeVariables(idents) => {
+                    ParseError::UnboundTypeVariables(idents)
+                }
+            },
         }
     }
 
@@ -660,7 +670,7 @@ fn report_ty_path(l: &label::Label, files: &mut Files<String>) -> (Label<FileId>
         files.add("", format!("{}", l.types)),
         start..end,
     )
-        .with_message(msg);
+    .with_message(msg);
     (label, notes)
 }
 
@@ -725,10 +735,10 @@ pub fn process_callstack(cs: &CallStack, contract_id: FileId) -> Vec<(Option<Ide
         | StackElem::Var(_, _, TermPos::Inherited(RawSpan { src_id, .. }))
         | StackElem::App(TermPos::Original(RawSpan { src_id, .. }))
         | StackElem::App(TermPos::Inherited(RawSpan { src_id, .. }))
-        if *src_id != contract_id =>
-            {
-                true
-            }
+            if *src_id != contract_id =>
+        {
+            true
+        }
         _ => false,
     });
 
@@ -762,11 +772,11 @@ pub fn process_callstack(cs: &CallStack, contract_id: FileId) -> Vec<(Option<Ide
             // call element.
             (StackElem::App(pos_app), Some(StackElem::Var(_, id, TermPos::Original(pos))))
             | (StackElem::App(pos_app), Some(StackElem::Var(_, id, TermPos::Inherited(pos))))
-            if pos_app.is_def() =>
-                {
-                    let old = std::mem::replace(&mut pending, (Some(id.clone()), *pos));
-                    acc.push(old);
-                }
+                if pos_app.is_def() =>
+            {
+                let old = std::mem::replace(&mut pending, (Some(id.clone()), *pos));
+                acc.push(old);
+            }
             // If a `Var` is followed by an `App`, they belong to the same call iff the position
             // span of the `Var` is included in the position span of the following `App`. In this
             // case, we fuse them. Otherwise, `Var` again does not correspond to any call, and we
@@ -899,20 +909,20 @@ impl ToDiagnostic<FileId> for EvalError {
                         // Do not show the same thing twice: if arg_pos and val_pos are the same,
                         // the first label "applied to this value" is sufficient.
                         (TermPos::Original(ref val_pos), Some(arg_pos), _)
-                        if val_pos == arg_pos => {}
+                            if val_pos == arg_pos => {}
                         (TermPos::Original(ref val_pos), ..) => labels
                             .push(secondary(val_pos).with_message("evaluated to this expression")),
                         // If the final thunk is a direct reduct of the original value, rather
                         // print the actual value than referring to the same position as
                         // before.
                         (TermPos::Inherited(ref val_pos), Some(arg_pos), _)
-                        if val_pos == arg_pos =>
-                            {
-                                val.pos = TermPos::None;
-                                labels.push(
-                                    secondary_term(&val, files).with_message("evaluated to this value"),
-                                );
-                            }
+                            if val_pos == arg_pos =>
+                        {
+                            val.pos = TermPos::None;
+                            labels.push(
+                                secondary_term(&val, files).with_message("evaluated to this value"),
+                            );
+                        }
                         // Finally, if the parameter reduced to a value which originates from a
                         // different expression, show both the expression and the value.
                         (TermPos::Inherited(ref val_pos), ..) => {
@@ -942,7 +952,8 @@ impl ToDiagnostic<FileId> for EvalError {
                         l.span.start.to_usize()..l.span.end.to_usize(),
                     ).with_message("bound here")]));
 
-                if ty_path::is_only_codom(&l.path) {} else if let Some(id) = contract_id {
+                if ty_path::is_only_codom(&l.path) {
+                } else if let Some(id) = contract_id {
                     let diags = process_callstack(call_stack, id)
                         .into_iter()
                         .enumerate()
@@ -997,7 +1008,7 @@ impl ToDiagnostic<FileId> for EvalError {
                         ),
                         files,
                     )
-                        .with_message("applied here"),
+                    .with_message("applied here"),
                 ])],
             EvalError::FieldMissing(field, op, t, span_opt) => {
                 let mut labels = Vec::new();
@@ -1149,13 +1160,14 @@ impl ToDiagnostic<FileId> for ParseError {
                     .with_message(format!("{} parse error: {}", format, msg))
                     .with_labels(labels)
             }
-            ParseError::UnboundTypeVariables(idents) => {
-                Diagnostic::error()
-                    .with_message(format!("Unbound type variable(s): {}", idents.into_iter()
-                        .map(|x| format!("`{}`", x))
-                        .collect::<Vec<_>>()
-                        .join(",")))
-            }
+            ParseError::UnboundTypeVariables(idents) => Diagnostic::error().with_message(format!(
+                "Unbound type variable(s): {}",
+                idents
+                    .into_iter()
+                    .map(|x| format!("`{}`", x))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )),
         };
 
         vec![diagnostic]

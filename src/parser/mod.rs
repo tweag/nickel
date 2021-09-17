@@ -7,11 +7,11 @@ lalrpop_mod!(
     #[allow(unused_parens)]
     pub grammar);
 
+pub mod error;
 pub mod lexer;
 #[cfg(test)]
 mod tests;
 pub mod utils;
-pub mod error;
 
 /// Either a term or a toplevel let declaration.
 pub enum ExtendedTerm {

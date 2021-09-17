@@ -1,13 +1,13 @@
 use super::lexer::{Lexer, MultiStringToken, NormalToken, StringToken, Token};
 use crate::error::ParseError;
 use crate::identifier::Ident;
+use crate::parser::error::ParseError as InternalParseError;
 use crate::term::make as mk_term;
 use crate::term::Term::*;
 use crate::term::{BinaryOp, RichTerm, StrChunk, UnaryOp};
 use crate::{mk_app, mk_switch};
 use assert_matches::assert_matches;
 use codespan::Files;
-use crate::parser::error::ParseError as InternalParseError;
 
 fn parse(s: &str) -> Result<RichTerm, ParseError> {
     let id = Files::new().add("<test>", String::from(s));
