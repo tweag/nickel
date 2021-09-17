@@ -69,10 +69,10 @@ fn strings() {
                 mk_single_chunk("hello"),
                 mk_single_chunk("World"),
             )
-                .into(),
+            .into(),
             mk_single_chunk("!!"),
         )
-            .into()
+        .into()
     )
 }
 
@@ -89,7 +89,7 @@ fn plus() {
             Op2(BinaryOp::Plus(), Bool(true).into(), Bool(false).into()).into(),
             Num(4.).into(),
         )
-            .into()
+        .into()
     );
 }
 
@@ -153,7 +153,7 @@ fn unary_op() {
 
 #[test]
 fn enum_terms() {
-    assert_eq!(parse_without_pos("`foo"), Enum(Ident::from("foo")).into(), );
+    assert_eq!(parse_without_pos("`foo"), Enum(Ident::from("foo")).into(),);
 
     assert_eq!(
         parse_without_pos("switch { foo => true, bar => false, _ => 456, } 123"),
@@ -171,11 +171,11 @@ fn record_terms() {
                 (Ident::from("b"), Num(2.).into()),
                 (Ident::from("c"), Num(3.).into()),
             ]
-                .into_iter()
-                .collect(),
+            .into_iter()
+            .collect(),
             Default::default(),
         )
-            .into()
+        .into()
     );
 
     assert_eq!(
