@@ -70,7 +70,7 @@ fn strings() {
                 mk_single_chunk("World"),
             )
             .into(),
-            mk_single_chunk("!!")
+            mk_single_chunk("!!"),
         )
         .into()
     )
@@ -87,7 +87,7 @@ fn plus() {
         Op2(
             BinaryOp::Plus(),
             Op2(BinaryOp::Plus(), Bool(true).into(), Bool(false).into()).into(),
-            Num(4.).into()
+            Num(4.).into(),
         )
         .into()
     );
@@ -169,11 +169,11 @@ fn record_terms() {
             vec![
                 (Ident::from("a"), Num(1.).into()),
                 (Ident::from("b"), Num(2.).into()),
-                (Ident::from("c"), Num(3.).into())
+                (Ident::from("c"), Num(3.).into()),
             ]
             .into_iter()
             .collect(),
-            Default::default()
+            Default::default(),
         )
         .into()
     );
@@ -361,24 +361,24 @@ fn unbound_type_variables() {
     // should fail, "a" is unbound
     assert_matches!(
         parse("1 | a"),
-        Err(ParseError::UnboundTypeVariables(unbound_vars)) if (unbound_vars.contains(&Ident("a".into())) && unbound_vars.len() == 1)
+        Err(ParseError::UnboundTypeVariables(unbound_vars, _)) if (unbound_vars.contains(&Ident("a".into())) && unbound_vars.len() == 1)
     );
 
     // should fail, "d" is unbound
     assert_matches!(
         parse("null: forall a b c. a -> (b -> List c) -> {foo : List {_ : d}, bar: b | Dyn}"),
-        Err(ParseError::UnboundTypeVariables(unbound_vars)) if (unbound_vars.contains(&Ident("d".into())) && unbound_vars.len() == 1)
+        Err(ParseError::UnboundTypeVariables(unbound_vars, _)) if (unbound_vars.contains(&Ident("d".into())) && unbound_vars.len() == 1)
     );
 
     // should fail, "e" is unbound
     assert_matches!(
         parse("null: forall a b c. a -> (b -> List c) -> {foo : List {_ : a}, bar: b | e}"),
-        Err(ParseError::UnboundTypeVariables(unbound_vars)) if (unbound_vars.contains(&Ident("e".into())) && unbound_vars.len() == 1)
+        Err(ParseError::UnboundTypeVariables(unbound_vars, _)) if (unbound_vars.contains(&Ident("e".into())) && unbound_vars.len() == 1)
     );
 
     // should fail, "a" is unbound
     assert_matches!(
         parse("null: a -> (forall a. a -> a)"),
-        Err(ParseError::UnboundTypeVariables(unbound_vars)) if (unbound_vars.contains(&Ident("a".into())) && unbound_vars.len() == 1)
+        Err(ParseError::UnboundTypeVariables(unbound_vars, _)) if (unbound_vars.contains(&Ident("a".into())) && unbound_vars.len() == 1)
     );
 }
