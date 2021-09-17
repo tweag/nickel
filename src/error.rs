@@ -215,7 +215,7 @@ pub enum ParseError {
         Option<RawSpan>,
     ),
     /// Unbound type variable
-    UnboundTypeVariables(Vec<Ident>),
+    UnboundTypeVariables(Vec<Ident>, RawSpan),
 }
 
 /// An error occurring during the resolution of an import.
@@ -358,8 +358,8 @@ impl ParseError {
                 InternalParseError::Lexical(LexicalError::InvalidAsciiEscapeCode(location)) => {
                     ParseError::InvalidAsciiEscapeCode(mk_span(file_id, location, location + 2))
                 }
-                InternalParseError::UnboundTypeVariables(idents) => {
-                    ParseError::UnboundTypeVariables(idents)
+                InternalParseError::UnboundTypeVariables(idents, span) => {
+                    ParseError::UnboundTypeVariables(idents, span)
                 }
             },
         }
@@ -1160,14 +1160,16 @@ impl ToDiagnostic<FileId> for ParseError {
                     .with_message(format!("{} parse error: {}", format, msg))
                     .with_labels(labels)
             }
-            ParseError::UnboundTypeVariables(idents) => Diagnostic::error().with_message(format!(
-                "Unbound type variable(s): {}",
-                idents
-                    .into_iter()
-                    .map(|x| format!("`{}`", x))
-                    .collect::<Vec<_>>()
-                    .join(",")
-            )),
+            ParseError::UnboundTypeVariables(idents, span) => Diagnostic::error()
+                .with_message(format!(
+                    "Unbound type variable(s): {}",
+                    idents
+                        .into_iter()
+                        .map(|x| format!("`{}`", x))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                ))
+                .with_labels(vec![primary(span)]),
         };
 
         vec![diagnostic]

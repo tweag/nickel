@@ -16,11 +16,12 @@ use crate::term::{BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
     MergePriority, Contract, NAryOp, RecordAttrs};
 use crate::term::make as mk_term;
 use crate::types::{Types, AbsType};
+use crate::parser::utils::mk_span;
 
 grammar<'input>(src_id: FileId);
 
 WithPos<Rule>: RichTerm = <l: @L> <t: Rule> <r: @R> => t.with_pos(mk_pos(src_id, l, r));
-CheckUnbound<Rule>: Types = <r: Rule> =>? check_unbound(&r).map_err(|e| lalrpop_util::ParseError::User{error: e}).and(Ok(r));
+CheckUnbound<Rule>: Types = <l: @L> <t: Rule> <r: @R> =>? check_unbound(&t, mk_span(src_id, l, r)).map_err(|e| lalrpop_util::ParseError::User{error: e}).and(Ok(t));
 
 TypeAnnot: MetaValue = ":" <l: @L> <ty_res: CheckUnbound<Types>> <r: @R> => MetaValue {
     doc: None,
