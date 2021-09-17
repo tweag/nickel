@@ -2,19 +2,21 @@
 //!
 //! Define error types for different phases of the execution, together with functions to generate a
 //! [codespan](https://crates.io/crates/codespan-reporting) diagnostic from them.
+use std::fmt::Write;
+
+use codespan::{FileId, Files};
+use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
+
 use crate::eval::{CallStack, StackElem};
 use crate::identifier::Ident;
 use crate::label::ty_path;
-use crate::parser::lexer::LexicalError;
+use crate::parser::error::{LexicalError, ParseError as InternalParseError};
 use crate::parser::utils::mk_span;
 use crate::position::{RawSpan, TermPos};
 use crate::serialize::ExportFormat;
 use crate::term::RichTerm;
 use crate::types::Types;
 use crate::{label, repl};
-use codespan::{FileId, Files};
-use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
-use std::fmt::Write;
 
 /// A general error occurring during either parsing or evaluation.
 #[derive(Debug, Clone, PartialEq)]
@@ -212,6 +214,8 @@ pub enum ParseError {
         String, /* error message */
         Option<RawSpan>,
     ),
+    /// Unbound type variable
+    UnboundTypeVariables(Vec<Ident>),
 }
 
 /// An error occurring during the resolution of an import.
@@ -324,7 +328,7 @@ impl From<REPLError> for Error {
 
 impl ParseError {
     pub fn from_lalrpop<T>(
-        error: lalrpop_util::ParseError<usize, T, LexicalError>,
+        error: lalrpop_util::ParseError<usize, T, InternalParseError>,
         file_id: FileId,
     ) -> ParseError {
         match error {
@@ -335,24 +339,29 @@ impl ParseError {
                 token: (start, _, end),
                 expected,
             } => ParseError::UnexpectedToken(mk_span(file_id, start, end), expected),
-            lalrpop_util::ParseError::User {
-                error: LexicalError::Generic(start, end),
-            } => ParseError::UnexpectedToken(mk_span(file_id, start, end), Vec::new()),
             lalrpop_util::ParseError::UnrecognizedEOF { expected, .. } => {
                 ParseError::UnexpectedEOF(file_id, expected)
             }
             lalrpop_util::ParseError::ExtraToken {
                 token: (start, _, end),
             } => ParseError::ExtraToken(mk_span(file_id, start, end)),
-            lalrpop_util::ParseError::User {
-                error: LexicalError::UnmatchedCloseBrace(location),
-            } => ParseError::UnmatchedCloseBrace(mk_span(file_id, location, location + 1)),
-            lalrpop_util::ParseError::User {
-                error: LexicalError::InvalidEscapeSequence(location),
-            } => ParseError::InvalidEscapeSequence(mk_span(file_id, location, location + 1)),
-            lalrpop_util::ParseError::User {
-                error: LexicalError::InvalidAsciiEscapeCode(location),
-            } => ParseError::InvalidAsciiEscapeCode(mk_span(file_id, location, location + 2)),
+            lalrpop_util::ParseError::User { error } => match error {
+                InternalParseError::Lexical(LexicalError::Generic(start, end)) => {
+                    ParseError::UnexpectedToken(mk_span(file_id, start, end), Vec::new())
+                }
+                InternalParseError::Lexical(LexicalError::UnmatchedCloseBrace(location)) => {
+                    ParseError::UnmatchedCloseBrace(mk_span(file_id, location, location + 1))
+                }
+                InternalParseError::Lexical(LexicalError::InvalidEscapeSequence(location)) => {
+                    ParseError::InvalidEscapeSequence(mk_span(file_id, location, location + 1))
+                }
+                InternalParseError::Lexical(LexicalError::InvalidAsciiEscapeCode(location)) => {
+                    ParseError::InvalidAsciiEscapeCode(mk_span(file_id, location, location + 2))
+                }
+                InternalParseError::UnboundTypeVariables(idents) => {
+                    ParseError::UnboundTypeVariables(idents)
+                }
+            },
         }
     }
 
@@ -607,52 +616,52 @@ fn report_ty_path(l: &label::Label, files: &mut Files<String>) -> (Label<FileId>
             .last()
             .unwrap();
         match last {
-                ty_path::Elem::Domain if l.polarity => {
-                    (String::from("expected type of an argument of an inner call"),
-                    vec![
-                        String::from("This error may happen in the following situation:
+            ty_path::Elem::Domain if l.polarity => {
+                (String::from("expected type of an argument of an inner call"),
+                 vec![
+                     String::from("This error may happen in the following situation:
 1. A function `f` is bound by a contract: e.g. `(Str -> Str) -> Str)`.
 2. `f` takes another function `g` as an argument: e.g. `f = fun g => g 0`.
 3. `f` calls `g` with an argument that does not respect the contract: e.g. `g 0` while `Str -> Str` is expected."),
-                        String::from("Either change the contract accordingly, or call `g` with a `Str` argument."),
-                        end_note,
-                    ])
-                }
-                ty_path::Elem::Codomain if l.polarity => {
-                    (String::from("expected return type of a sub-function passed as an argument of an inner call"),
-                    vec![
-                        String::from("This error may happen in the following situation:
+                     String::from("Either change the contract accordingly, or call `g` with a `Str` argument."),
+                     end_note,
+                 ])
+            }
+            ty_path::Elem::Codomain if l.polarity => {
+                (String::from("expected return type of a sub-function passed as an argument of an inner call"),
+                 vec![
+                     String::from("This error may happen in the following situation:
 1. A function `f` is bound by a contract: e.g. `((Num -> Num) -> Num) -> Num)`.
 2. `f` take another function `g` as an argument: e.g. `f = fun g => g (fun x => true)`.
 3. `g` itself takes a function as an argument.
 4. `f` passes a function that does not respect the contract to `g`: e.g. `g (fun x => true)` (expected to be of type `Num -> Num`)."),
-                        String::from("Either change the contract accordingly, or call `g` with a function that returns a value of type `Num`."),
-                        end_note,
-                    ])
-                }
-                ty_path::Elem::Domain => {
-                    (String::from("expected type of the argument provided by the caller"),
-                    vec![
-                        String::from("This error may happen in the following situation:
+                     String::from("Either change the contract accordingly, or call `g` with a function that returns a value of type `Num`."),
+                     end_note,
+                 ])
+            }
+            ty_path::Elem::Domain => {
+                (String::from("expected type of the argument provided by the caller"),
+                 vec![
+                     String::from("This error may happen in the following situation:
 1. A function `f` is bound by a contract: e.g. `Num -> Num`.
 2. `f` is called with an argument of the wrong type: e.g. `f false`."),
-                        String::from("Either change the contract accordingly, or call `f` with an argument of the right type."),
-                        end_note,
-                    ])
-                }
-                ty_path::Elem::Codomain => {
-                    (String::from("expected return type of a function provided by the caller"),
-                    vec![
-                        String::from("This error may happen in the following situation:
+                     String::from("Either change the contract accordingly, or call `f` with an argument of the right type."),
+                     end_note,
+                 ])
+            }
+            ty_path::Elem::Codomain => {
+                (String::from("expected return type of a function provided by the caller"),
+                 vec![
+                     String::from("This error may happen in the following situation:
 1. A function `f` is bound by a contract: e.g. `(Num -> Num) -> Num`.
 2. `f` takes another function `g` as an argument: e.g. `f = fun g => g 0`.
 3. `f` is called by with an argument `g` that does not respect the contract: e.g. `f (fun x => false)`."),
-                        String::from("Either change the contract accordingly, or call `f` with a function that returns a value of the right type."),
-                        end_note,
-                    ])
-                }
-                _ => panic!(),
+                     String::from("Either change the contract accordingly, or call `f` with a function that returns a value of the right type."),
+                     end_note,
+                 ])
             }
+            _ => panic!(),
+        }
     };
 
     let (start, end) = ty_path::span(l.path.iter().peekable(), &l.types);
@@ -938,10 +947,10 @@ impl ToDiagnostic<FileId> for EvalError {
                     .with_notes(notes)];
 
                 diagnostics.push(Diagnostic::note().with_labels(vec![
-                                                   Label::primary(
-                    l.span.src_id,
-                    l.span.start.to_usize()..l.span.end.to_usize(),
-                ).with_message("bound here")]));
+                    Label::primary(
+                        l.span.src_id,
+                        l.span.start.to_usize()..l.span.end.to_usize(),
+                    ).with_message("bound here")]));
 
                 if ty_path::is_only_codom(&l.path) {
                 } else if let Some(id) = contract_id {
@@ -1151,6 +1160,14 @@ impl ToDiagnostic<FileId> for ParseError {
                     .with_message(format!("{} parse error: {}", format, msg))
                     .with_labels(labels)
             }
+            ParseError::UnboundTypeVariables(idents) => Diagnostic::error().with_message(format!(
+                "Unbound type variable(s): {}",
+                idents
+                    .into_iter()
+                    .map(|x| format!("`{}`", x))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )),
         };
 
         vec![diagnostic]
@@ -1173,10 +1190,10 @@ impl ToDiagnostic<FileId> for TypecheckError {
         match self {
             TypecheckError::UnboundIdentifier(ident, pos_opt) =>
             // Use the same diagnostic as `EvalError::UnboundIdentifier` for consistency.
-            {
-                EvalError::UnboundIdentifier(ident.clone(), *pos_opt)
-                    .to_diagnostic(files, contract_id)
-            }
+                {
+                    EvalError::UnboundIdentifier(ident.clone(), *pos_opt)
+                        .to_diagnostic(files, contract_id)
+                }
             TypecheckError::IllformedType(ty) => {
                 let ty_fmted = format!("{}", ty);
                 let len = ty_fmted.len();
@@ -1194,7 +1211,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
                     .with_labels(mk_expr_label(span_opt))
                     .with_notes(vec![
                         format!("The type of the expression was expected to be `{}` which contains the field `{}`", expd, ident),
-                        format!("The type of the expression was inferred to be `{}`, which does not contain the field `{}`", actual,  ident),
+                        format!("The type of the expression was inferred to be `{}`, which does not contain the field `{}`", actual, ident),
                     ])]
             ,
             TypecheckError::MissingDynTail(expd, actual, span_opt) =>
@@ -1213,7 +1230,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
                     .with_labels(mk_expr_label(span_opt))
                     .with_notes(vec![
                         format!("The type of the expression was expected to be `{}`, which does not contain the field `{}`", expd, ident),
-                        format!("Tye type of the expression was inferred to be `{}`, which contains the extra field `{}`", actual,  ident),
+                        format!("Tye type of the expression was inferred to be `{}`, which contains the extra field `{}`", actual, ident),
                     ])]
             ,
             TypecheckError::ExtraDynTail(expd, actual, span_opt) =>
@@ -1227,7 +1244,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
             ,
 
             TypecheckError::UnboundTypeVariable(Ident(ident), span_opt) =>
-               vec![Diagnostic::error()
+                vec![Diagnostic::error()
                     .with_message(String::from("Unbound type variable"))
                     .with_labels(vec![primary_alt(span_opt.into_opt(), ident.clone(), files).with_message("this type variable is unbound")])
                     .with_notes(vec![
@@ -1240,10 +1257,10 @@ impl ToDiagnostic<FileId> for TypecheckError {
                         .with_message("Incompatible types")
                         .with_labels(mk_expr_label(span_opt))
                         .with_notes(vec![
-                        format!("The type of the expression was expected to be `{}`", expd),
-                        format!("The type of the expression was inferred to be `{}`", actual),
-                        String::from("These types are not compatible"),
-                    ])]
+                            format!("The type of the expression was expected to be `{}`", expd),
+                            format!("The type of the expression was inferred to be `{}`", actual),
+                            String::from("These types are not compatible"),
+                        ])]
             ,
             TypecheckError::RowKindMismatch(Ident(ident), expd, actual, span_opt) => {
                 let (expd_str, actual_str) = match (expd, actual) {
@@ -1252,15 +1269,14 @@ impl ToDiagnostic<FileId> for TypecheckError {
                     _ => panic!("error::to_diagnostic()::RowKindMismatch: unexpected configuration for `expd` and `actual`"),
                 };
 
-               vec![
+                vec![
                     Diagnostic::error()
                         .with_message("Incompatible row kinds.")
                         .with_labels(mk_expr_label(span_opt))
                         .with_notes(vec![
-                        format!("The row type of `{}` was expected to be `{}`, but was inferred to be `{}`", ident, expd_str, actual_str),
-                        String::from("Enum row types and record row types are not compatible"),
-                    ])]
-
+                            format!("The row type of `{}` was expected to be `{}`, but was inferred to be `{}`", ident, expd_str, actual_str),
+                            String::from("Enum row types and record row types are not compatible"),
+                        ])]
             }
             TypecheckError::RowMismatch(ident, expd, actual, err_, span_opt) => {
                 // If the unification error is on a nested field, we will have a succession of
@@ -1290,14 +1306,14 @@ impl ToDiagnostic<FileId> for TypecheckError {
                 };
 
                 let mut diags = vec![Diagnostic::error()
-                        .with_message("Incompatible rows declaration")
-                        .with_labels(mk_expr_label(span_opt))
-                        .with_notes(vec![
-                            note1,
-                            note2,
-                            format!("Could not match the two declaration of `{}`", field),
+                    .with_message("Incompatible rows declaration")
+                    .with_labels(mk_expr_label(span_opt))
+                    .with_notes(vec![
+                        note1,
+                        note2,
+                        format!("Could not match the two declaration of `{}`", field),
                     ])
-                    ];
+                ];
 
                 // We generate a diagnostic for the underlying error, but append a prefix to the
                 // error message to make it clear that this is not a separated error but a more
@@ -1310,32 +1326,31 @@ impl ToDiagnostic<FileId> for TypecheckError {
                 diags
             }
             TypecheckError::RowConflict(Ident(ident), conflict, _expd, _actual, span_opt) => {
-vec![
+                vec![
                     Diagnostic::error()
                         .with_message("Multiple rows declaration")
                         .with_labels(mk_expr_label(span_opt))
                         .with_notes(vec![
-                        format!("The type of the expression was inferred to have the row `{}: {}`", ident, conflict.as_ref().cloned().unwrap()),
-                        format!("But this type appears inside another row type, which already has a declaration for the field `{}`", ident),
-                        String::from("A type cannot have two conflicting declaration for the same row")
-                    ])]
-
-            },
+                            format!("The type of the expression was inferred to have the row `{}: {}`", ident, conflict.as_ref().cloned().unwrap()),
+                            format!("But this type appears inside another row type, which already has a declaration for the field `{}`", ident),
+                            String::from("A type cannot have two conflicting declaration for the same row"),
+                        ])]
+            }
             TypecheckError::ArrowTypeMismatch(expd, actual, path, err, span_opt) => {
                 let (expd_start, expd_end) = ty_path::span(path.iter().peekable(), expd);
                 let (actual_start, actual_end) = ty_path::span(path.iter().peekable(), actual);
 
                 let mut labels = vec![
-                  Label::secondary(
+                    Label::secondary(
                         files.add("", format!("{}", expd)),
                         expd_start..expd_end,
                     )
-                    .with_message("This part of the expected type"),
-                  Label::secondary(
+                        .with_message("This part of the expected type"),
+                    Label::secondary(
                         files.add("", format!("{}", actual)),
                         actual_start..actual_end,
                     )
-                    .with_message("does not match this part of the inferred type")
+                        .with_message("does not match this part of the inferred type"),
                 ];
                 labels.extend(mk_expr_label(span_opt));
 
@@ -1358,10 +1373,10 @@ vec![
                     TypecheckError::TypeMismatch(_, _, _) => (),
                     err => {
                         diags.extend(err.to_diagnostic(files, contract_id).into_iter()
-                           .map(|mut diag| {
-                               diag.message = format!("While matching function types: {}", diag.message);
-                               diag
-                           }));
+                            .map(|mut diag| {
+                                diag.message = format!("While matching function types: {}", diag.message);
+                                diag
+                            }));
                     }
                 }
 

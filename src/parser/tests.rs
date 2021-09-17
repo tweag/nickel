@@ -1,6 +1,7 @@
-use super::lexer::{Lexer, LexicalError, MultiStringToken, NormalToken, StringToken, Token};
+use super::lexer::{Lexer, MultiStringToken, NormalToken, StringToken, Token};
 use crate::error::ParseError;
 use crate::identifier::Ident;
+use crate::parser::error::ParseError as InternalParseError;
 use crate::term::make as mk_term;
 use crate::term::Term::*;
 use crate::term::{BinaryOp, RichTerm, StrChunk, UnaryOp};
@@ -22,11 +23,11 @@ fn parse_without_pos(s: &str) -> RichTerm {
     result
 }
 
-fn lex(s: &str) -> Result<Vec<(usize, Token, usize)>, LexicalError> {
+fn lex(s: &str) -> Result<Vec<(usize, Token, usize)>, InternalParseError> {
     Lexer::new(s).collect()
 }
 
-fn lex_without_pos(s: &str) -> Result<Vec<Token>, LexicalError> {
+fn lex_without_pos(s: &str) -> Result<Vec<Token>, InternalParseError> {
     lex(s).map(|v| v.into_iter().map(|(_, tok, _)| tok).collect())
 }
 
@@ -352,5 +353,32 @@ fn line_comments() {
             } // Some other"
         ),
         parse_without_pos("{field = foo}")
+    );
+}
+
+#[test]
+fn unbound_type_variables() {
+    // should fail, "a" is unbound
+    assert_matches!(
+        parse("1 | a"),
+        Err(ParseError::UnboundTypeVariables(unbound_vars)) if (unbound_vars.contains(&Ident("a".into())) && unbound_vars.len() == 1)
+    );
+
+    // should fail, "d" is unbound
+    assert_matches!(
+        parse("null: forall a b c. a -> (b -> List c) -> {foo : List {_ : d}, bar: b | Dyn}"),
+        Err(ParseError::UnboundTypeVariables(unbound_vars)) if (unbound_vars.contains(&Ident("d".into())) && unbound_vars.len() == 1)
+    );
+
+    // should fail, "e" is unbound
+    assert_matches!(
+        parse("null: forall a b c. a -> (b -> List c) -> {foo : List {_ : a}, bar: b | e}"),
+        Err(ParseError::UnboundTypeVariables(unbound_vars)) if (unbound_vars.contains(&Ident("e".into())) && unbound_vars.len() == 1)
+    );
+
+    // should fail, "a" is unbound
+    assert_matches!(
+        parse("null: a -> (forall a. a -> a)"),
+        Err(ParseError::UnboundTypeVariables(unbound_vars)) if (unbound_vars.contains(&Ident("a".into())) && unbound_vars.len() == 1)
     );
 }
