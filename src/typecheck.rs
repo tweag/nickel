@@ -480,7 +480,7 @@ pub fn type_check_in_env(
 /// - `state`: the unification state (see [`State`](struct.State.html)).
 /// - `env`: the typing environment, mapping free variable to types.
 /// - `strict`: the typechecking mode.
-/// - `t`: the term to check.
+/// - `rt`: the term to check.
 /// - `ty`: the type to check the term against.
 fn type_check_(
     state: &mut State,
