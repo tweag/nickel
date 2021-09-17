@@ -371,9 +371,7 @@ pub fn check_unbound(types: &Types) -> Result<(), ParseError> {
     fn find_unbound_vars(types: &Types, unbound_set: &mut HashSet<Ident>) {
         match &types.0 {
             AbsType::Var(ident) => {
-                if !unbound_set.contains(ident) {
-                    unbound_set.insert(ident.clone());
-                }
+                unbound_set.insert(ident.clone());
             }
             AbsType::Forall(ident, ty) => {
                 // forall needs a "scoped" set for the variables in its nodes
@@ -419,10 +417,10 @@ pub fn check_unbound(types: &Types) -> Result<(), ParseError> {
     find_unbound_vars(&types, &mut unbound_set);
 
     if !unbound_set.is_empty() {
-        Err(ParseError::UnboundTypeVariables(
+        return Err(ParseError::UnboundTypeVariables(
             unbound_set.into_iter().collect(),
-        ))
-    } else {
-        Ok(())
+        ));
     }
+
+    Ok(())
 }
