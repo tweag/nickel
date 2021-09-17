@@ -370,22 +370,17 @@ pub fn check_unbound(types: &Types) -> Result<(), ParseError> {
     // heavy lifting function, recurses into a type expression and returns a set of unbound vars
     fn find_unbound_vars(types: &Types, unbound_set: &mut HashSet<Ident>) {
         match &types.0 {
-            // if the type is a var, we save the identifier in the unbound set
             AbsType::Var(ident) => {
                 if !unbound_set.contains(ident) {
                     unbound_set.insert(ident.clone());
                 }
             }
-            // if the type is a forall, we recurse in the node (to populate the unbound set)
-            // and then remove the bound identifier from the unbound set
             AbsType::Forall(ident, ty) => {
                 // forall needs a "scoped" set for the variables in its nodes
                 let mut forall_unbound_vars = HashSet::new();
                 find_unbound_vars(&ty, &mut forall_unbound_vars);
 
-                if forall_unbound_vars.contains(ident) {
-                    forall_unbound_vars.remove(ident);
-                }
+                forall_unbound_vars.remove(ident);
 
                 // once the forall vars are recursed into and analyzed, the parent set and
                 // the forall set are merged
@@ -408,7 +403,6 @@ pub fn check_unbound(types: &Types) -> Result<(), ParseError> {
 
                 find_unbound_vars(&ty, unbound_set);
             }
-            // do nothing
             AbsType::Dyn()
             | AbsType::Bool()
             | AbsType::Num()
