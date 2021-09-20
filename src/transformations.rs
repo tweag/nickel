@@ -12,6 +12,88 @@ use std::path::PathBuf;
 
 generate_counter!(FreshVarCounter, usize);
 
+/// # Desugarise destructuring.usize
+///
+/// Replace the let patterns destructuring by the classical let in. 
+/// It will first destruct the pattern and create a new var for each field of the patternn. 
+/// After that, it will construct a new Record/List from the extracted fields. 
+///
+/// ## Example:
+///
+/// Taking the let pattern: 
+/// ```text
+/// let x {a,d=b} = {a=1,b=2,c="ignored"} in ...
+/// ```
+/// after transformation we will have:
+/// ```text
+/// let x = (let var = {a=1,b=2,c="ignored"} in {a=var.a,d=var.b}) in (
+///     let a = x.a in (
+///         let d = x.b in ...))
+/// ```
+pub mod desugar_destructuring {
+    use super::{RichTerm,Term,Ident};
+    use crate::destruct::{Destruct, Match};
+    use crate::term::RecordAttrs;
+    use crate::term::make::op1;
+    use crate::term::UnaryOp;
+
+    pub fn desugar(rt: RichTerm) -> RichTerm {
+        println!("desugaring: {:#?}",rt);
+        let RichTerm{term,pos} = rt;
+        if let Term::LetPattern(x, pat, t_, body) = *term {
+            let x = if let Some(x) = x {
+                        x
+                    } else {
+                        super::fresh_var().clone()
+                    };
+            let slice_var = slice_record(t_.clone(), pat.clone());
+            println!("{:#?}",slice_var);
+            destruct_term(x.clone(), pat.clone(), slice_var, body)
+        } else {
+            RichTerm::new(*term.clone(), pos)
+        }
+    }
+
+    fn slice_record(rt: RichTerm, pat: Destruct) -> RichTerm {
+        let RichTerm{term,pos} = rt;
+        let var = super::fresh_var();
+        let rec = match pat {
+            Destruct::Record(matches) => {
+                Term::Record(matches.iter().map(|m| match m {
+                    Match::Assign(id,f) => (id.clone(),op1(UnaryOp::StaticAccess(f.clone()),Term::Var(var.clone()))),
+                    Match::Simple(id)   => (id.clone(),op1(UnaryOp::StaticAccess(id.clone()),Term::Var(var.clone()))),
+                }).collect(), RecordAttrs::default())
+            },
+            _ => unimplemented!(),
+        };
+        RichTerm::new(Term::Let(var, RichTerm{term,pos}, rec.into()),pos)
+    }
+
+    fn destruct_term(x:Ident, pat: Destruct, var: RichTerm, t: RichTerm) -> RichTerm {
+        let pos = t.pos.clone();
+        match pat {
+            Destruct::Record(matches) => {
+                let mut matches = matches.clone();
+                let m = matches.pop();
+                if let Some(m) = m {
+                    let next_term = match m {
+                        Match::Simple(id) | Match::Assign(id,_) => RichTerm::new(Term::Let(
+                                id.clone(),
+                                op1(UnaryOp::StaticAccess(id.clone()), Term::Var(x.clone())),
+                                t.clone()
+                                ), pos),
+                    };
+                    destruct_term(x.clone(),Destruct::Record(matches),var,next_term)
+                } else {
+                    RichTerm::new(Term::Let(x,var,t),pos)
+                }
+            }
+            _ => unimplemented!(),
+        }
+    }
+
+}
+
 /// Share normal form.
 ///
 /// Replace the subexpressions of WHNFs that are not functions by thunks, such that they can be
@@ -270,6 +352,7 @@ pub fn transform(rt: RichTerm) -> Result<RichTerm, ImportError> {
             // We need to do contract generation before wrapping stuff in variables
             let rt = apply_contracts::transform_one(rt);
             let rt = share_normal_form::transform_one(rt);
+            let rt = desugar_destructuring::desugar(rt);
             Ok(rt)
         },
         &mut (),
