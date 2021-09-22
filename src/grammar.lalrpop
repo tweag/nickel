@@ -505,7 +505,7 @@ subType : Types = {
     },
     "{" <rows:(<Ident> ":" <Types> ",")*>
         <last:(<Ident> ":" <Types>)?>
-        <tail: ("|" <Types>)?> "}" => {
+        <tail: ("|" <RowTail>)?> "}" => {
         let ty = rows.into_iter()
             .chain(last.into_iter())
             // As we build row types as a linked list via a fold on the original
