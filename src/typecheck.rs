@@ -58,18 +58,16 @@ use std::convert::TryInto;
 pub enum RowUnifError {
     /// The LHS had a binding that was missing in the RHS.
     MissingRow(Ident),
-    /// The LHS had a constant tail that was missing in the RHS.
-    MissingTail(TypeWrapper),
+    /// The LHS had a dynamic tail that was missing in the RHS.
+    MissingDynTail(),
     /// The RHS had a binding that was not in the LHS.
     ExtraRow(Ident),
-    /// The RHS had a additional constant tail.
-    ExtraTail(TypeWrapper),
+    /// The RHS had a additional dynamic tail.
+    ExtraDynTail(),
     /// There were two incompatible definitions for the same row.
     RowMismatch(Ident, UnifError),
-    /// The LHS had a field that was not a subtype of the tail of the RHS.
-    RowFieldTailMismatch(Ident, TypeWrapper, UnifError),
     /// The two rows had incompatible tails.
-    RowTailMismatch(TypeWrapper, TypeWrapper, UnifError),
+    RowTailMismatch(TypeWrapper, TypeWrapper),
     /// Tried to unify an enum row and a record row.
     RowKindMismatch(Ident, Option<TypeWrapper>, Option<TypeWrapper>),
     /// One of the row was ill-formed (typically, a tail was neither a row, a variable nor `Dyn`).
@@ -99,21 +97,16 @@ impl RowUnifError {
     pub fn into_unif_err(self, left: TypeWrapper, right: TypeWrapper) -> UnifError {
         match self {
             RowUnifError::MissingRow(id) => UnifError::MissingRow(id, left, right),
-            RowUnifError::MissingTail(tyw) => UnifError::MissingTail(left, right, tyw),
+            RowUnifError::MissingDynTail() => UnifError::MissingDynTail(left, right),
             RowUnifError::ExtraRow(id) => UnifError::ExtraRow(id, left, right),
-            RowUnifError::ExtraTail(tyw) => UnifError::ExtraTail(left, right, tyw),
+            RowUnifError::ExtraDynTail() => UnifError::ExtraDynTail(left, right),
             RowUnifError::RowKindMismatch(id, tyw1, tyw2) => {
                 UnifError::RowKindMismatch(id, tyw1, tyw2)
             }
             RowUnifError::RowMismatch(id, err) => {
                 UnifError::RowMismatch(id, left, right, Box::new(err))
             }
-            RowUnifError::RowFieldTailMismatch(id, tyw, err) => {
-                UnifError::RowFieldTailMismatch(id, left, right, tyw, Box::new(err))
-            }
-            RowUnifError::RowTailMismatch(tyw1, tyw2, err) => {
-                UnifError::RowTailMismatch(tyw1, tyw2, Box::new(err))
-            }
+            RowUnifError::RowTailMismatch(tyw1, tyw2) => UnifError::RowTailMismatch(tyw1, tyw2),
             RowUnifError::IllformedRow(tyw) => UnifError::IllformedRow(tyw),
             RowUnifError::UnsatConstr(id, tyw) => UnifError::RowConflict(id, tyw, left, right),
             RowUnifError::WithConst(c, tyw) => UnifError::WithConst(c, tyw),
@@ -129,34 +122,24 @@ pub enum UnifError {
     TypeMismatch(TypeWrapper, TypeWrapper),
     /// There are two incompatible definitions for the same row.
     RowMismatch(Ident, TypeWrapper, TypeWrapper, Box<UnifError>),
-    /// The LHS had a field that was not a subtype of the tail of the RHS.
-    RowFieldTailMismatch(Ident, TypeWrapper, TypeWrapper, TypeWrapper, Box<UnifError>),
     /// Tried to unify an enum row and a record row.
     RowKindMismatch(Ident, Option<TypeWrapper>, Option<TypeWrapper>),
     /// Tried to unify two distinct type constants.
     ConstMismatch(usize, usize),
     /// Tried to unify two rows, but an identifier of the LHS was absent from the RHS.
     MissingRow(Ident, TypeWrapper, TypeWrapper),
-    /// Tried to unify two rows, but the tail of the RHS was absent from the LHS.
-    MissingTail(
-        TypeWrapper, /* Inferred type */
-        TypeWrapper, /* Expected type */
-        TypeWrapper, /* Type of the tail */
-    ),
+    /// Tried to unify two rows, but the dynamic tail of the RHS was absent from the LHS.
+    MissingDynTail(TypeWrapper, TypeWrapper),
     /// Tried to unify two rows, but an identifier of the RHS was absent from the LHS.
     ExtraRow(Ident, TypeWrapper, TypeWrapper),
-    /// Tried to unify two rows, but the constant tail of the RHS was absent from the LHS.
-    ExtraTail(
-        TypeWrapper, /* Inferred type */
-        TypeWrapper, /* Expected type */
-        TypeWrapper, /* Type of the tail */
-    ),
+    /// Tried to unify two rows, but the dynamic tail of the RHS was absent from the LHS.
+    ExtraDynTail(TypeWrapper, TypeWrapper),
     /// A row was ill-formed.
     IllformedRow(TypeWrapper),
     /// Tried to unify a unification variable with a row type violating the [row
     /// constraints](./type.RowConstr.html) of the variable.
     RowConflict(Ident, Option<TypeWrapper>, TypeWrapper, TypeWrapper),
-    RowTailMismatch(TypeWrapper, TypeWrapper, Box<UnifError>),
+    RowTailMismatch(TypeWrapper, TypeWrapper),
     /// Tried to unify a type constant with another different type.
     WithConst(usize, TypeWrapper),
     /// A flat type, which is an opaque type corresponding to custom contracts, contained a Nickel
@@ -218,13 +201,11 @@ impl UnifError {
                 Box::new((*err).into_typecheck_err_(state, names, TermPos::None)),
                 pos_opt,
             ),
-            UnifError::RowFieldTailMismatch(ident, tyw1, tyw2, tyw_tail, err) => unimplemented!(),
-            UnifError::RowTailMismatch(tyw1, tyw2, err) => unimplemented!(),
-            //     TypecheckError::RowTailMismatch(
-            //     reporting::to_type(state, names, tyw1),
-            //     reporting::to_type(state, names, tyw2),
-            //     pos_opt,
-            // ),
+            UnifError::RowTailMismatch(tyw1, tyw2) => TypecheckError::RowTailMismatch(
+                reporting::to_type(state, names, tyw1),
+                reporting::to_type(state, names, tyw2),
+                pos_opt,
+            ),
             UnifError::RowKindMismatch(id, ty1, ty2) => TypecheckError::RowKindMismatch(
                 id,
                 ty1.map(|tw| reporting::to_type(state, names, tw)),
@@ -256,7 +237,7 @@ impl UnifError {
                 reporting::to_type(state, names, tyw2),
                 pos_opt,
             ),
-            UnifError::MissingTail(tyw1, tyw2, tyw_tail) => TypecheckError::MissingDynTail(
+            UnifError::MissingDynTail(tyw1, tyw2) => TypecheckError::MissingDynTail(
                 reporting::to_type(state, names, tyw1),
                 reporting::to_type(state, names, tyw2),
                 pos_opt,
@@ -267,7 +248,7 @@ impl UnifError {
                 reporting::to_type(state, names, tyw2),
                 pos_opt,
             ),
-            UnifError::ExtraTail(tyw1, tyw2, tyw_tail) => TypecheckError::ExtraDynTail(
+            UnifError::ExtraDynTail(tyw1, tyw2) => TypecheckError::ExtraDynTail(
                 reporting::to_type(state, names, tyw1),
                 reporting::to_type(state, names, tyw2),
                 pos_opt,
@@ -1316,7 +1297,7 @@ pub fn check_sub_dyn_record(
         TypeWrapper::Concrete(ty_row) => match ty_row {
             AbsType::RowEmpty() => Ok(()),
             AbsType::Dyn() => check_sub_(state, mk_typewrapper::dynamic(), tyw.clone())
-                .map_err(|err| RowUnifError::RowTailMismatch(mk_typewrapper::dynamic(), tyw, err)),
+                .map_err(|_| RowUnifError::RowTailMismatch(mk_typewrapper::dynamic(), tyw)),
             AbsType::RowExtend(id, ty_row, tail) => {
                 ty_row
                     .ok_or_else(|| {
@@ -1335,22 +1316,25 @@ pub fn check_sub_dyn_record(
             }
             ty => Err(RowUnifError::IllformedRow(TypeWrapper::Concrete(ty))),
         },
-        // If the dynamic record type is not Dyn, we can't unify the tail with it, so we just fail
+        // If the dynamic record type is not `Dyn`, we can't unify the tail with it, so we just fail
         // for now. In the future, we can imagine having type constraints on row tails, keep the
         // unification variable and at the same time remembering the upper bound induced by this
         // particular subtyping constraint.
+        // Another possibility, as a middle-ground, would be to allow other types than `Dyn` in tail
+        // position, and unify the tail with this type.
         TypeWrapper::Ptr(_) => {
             match tyw {
                 // We don't unify anything here, as a `Dyn` upper bound doesn't actually impose any constraint
                 TypeWrapper::Concrete(AbsType::Dyn()) => Ok(()),
                 tyw @ TypeWrapper::Concrete(_)
                 | tyw @ TypeWrapper::Ptr(_)
-                | tyw @ TypeWrapper::Constant(_) => Err(
-                    RowUnifError::RowTailMismatch(mk_typewrapper::dynamic(), tyw.clone(), UnifError::TypeMismatch(mk_typewrapper::dynamic(), tyw)),
-                ),
+                | tyw @ TypeWrapper::Constant(_) => Err(RowUnifError::RowTailMismatch(
+                    mk_typewrapper::dynamic(),
+                    tyw.clone(),
+                )),
             }
         }
-        // Cannot constraint a rigid type variable, even if the upper bound is Dyn: otherwise, it
+        // Cannot constraint a rigid type variable, even if the upper bound is `Dyn`: otherwise, it
         // would violiate parametricity, which is enforced by contracts, and we would have
         // well-typed functions that could raise blame at runtime.
         TypeWrapper::Constant(var) => Err(RowUnifError::WithConst(var, tyw)),
@@ -1406,19 +1390,18 @@ pub fn check_sub_rows(
                 }
             }
         }
-        // A row is missing on the LHS: { | tail } </: {id : T, ..}
+        // A row is missing in the LHS:
+        // { | tail } </: {id : T, ..}
         (_, AbsType::RowExtend(ident, _, _)) => Err(RowUnifError::ExtraRow(ident)),
         // { } <: {_ : T} for any type T
-        (AbsType::RowEmpty(), _t) => Ok(()),
-        // {id : T} </: { }
-        (AbsType::RowExtend(ident, _, _), AbsType::RowEmpty()) => Err(RowUnifError::MissingRow(ident)),
-        // {id: T | rest} <: {_ : T'} iff T <: T' && {rest} <: {_ : T'}
-        (AbsType::RowExtend(id, Some(tyw1), tail), ty) => {
-            check_sub_(state, *tyw1, ty.clone().into()).map_err(|err| RowUnifError::RowMismatch(id.clone(), err))?;
-            check_sub_(state, *tail, ty.into()).map_err(|err| RowUnifError::RowMismatch(id.clone(), err))
-        },
-        (AbsType::RowExtend(_, None, _), _) => panic!("Incompatible enum row vs typed tail"),
-        (tail, AbsType::RowEmpty()) => Err(RowUnifError::MissingTail(tail.into())),
+        (AbsType::RowEmpty(), _tail) => Ok(()),
+        // There is an extra row in the LHS:
+        // {id : T, ..} </: { }
+        // {id : T, ..} </: { | tail}
+        (AbsType::RowExtend(ident, _, _), _) => Err(RowUnifError::MissingRow(ident)),
+        // There is an extra tail in the LHS:
+        // {tail} </: {}
+        (AbsType::Dyn(), AbsType::RowEmpty()) => Err(RowUnifError::MissingDynTail()),
         (ty, _) if !ty.is_row_type() => Err(RowUnifError::IllformedRow(ty.into())),
         (_, ty) => Err(RowUnifError::IllformedRow(ty.into())),
     }

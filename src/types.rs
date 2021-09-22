@@ -142,7 +142,10 @@ impl<Ty> AbsType<Ty> {
 
     /// Determine if a type is a row type.
     pub fn is_row_type(&self) -> bool {
-        matches!(self, AbsType::RowExtend(..) | AbsType::RowEmpty())
+        matches!(
+            self,
+            AbsType::RowExtend(..) | AbsType::RowEmpty() | AbsType::Dyn()
+        )
     }
 }
 
