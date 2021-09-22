@@ -177,7 +177,7 @@ pub mod share_normal_form {
 /// - The parsed term.
 /// - The id of the file in the database.
 /// - The path of the file, to resolve relative imports.
-type PendingImport = (RichTerm, FileId, PathBuf);
+pub type PendingImport = (RichTerm, FileId, PathBuf);
 
 pub mod import_resolution {
     use super::{ImportResolver, PathBuf, PendingImport, RichTerm, Term};
@@ -281,7 +281,7 @@ pub fn transform(rt: RichTerm) -> Result<RichTerm, ImportError> {
 /// All resolved imports are stacked during the process. Once the term has been traversed,
 /// the elements of this stack are processed (and so on, if these elements also have non resolved
 /// imports).
-pub fn resolve_imports<R>(rt: RichTerm, resolver: &mut R) -> Result<RichTerm, ImportError>
+pub fn resolve_imports<R>(rt: RichTerm, resolver: &mut R) -> Result<(RichTerm, Vec<PendingImport>), ImportError>
 where
     R: ImportResolver,
 {
@@ -291,14 +291,9 @@ where
         let path = resolver.get_path(x.src_id);
         PathBuf::from(path)
     });
-    let result = imports_pass(rt, resolver, &mut stack, source_file);
+    let result = imports_pass(rt, resolver, &mut stack, source_file)?;
 
-    while let Some((t, file_id, parent)) = stack.pop() {
-        let result = imports_pass(t, resolver, &mut stack, Some(parent))?;
-        resolver.insert(file_id, result);
-    }
-
-    result
+    Ok((result,stack))
 }
 
 /// Perform one full imports resolution pass. Put all imports encountered for the first time in

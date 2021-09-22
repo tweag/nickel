@@ -8,9 +8,10 @@ use crate::stdlib as nickel_stdlib;
 use crate::term::{RichTerm, Term};
 use crate::typecheck::type_check;
 use crate::{eval, parser, transformations};
+use crate::transformations::PendingImport;
 use codespan::{FileId, Files};
 use io::Read;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::io;
@@ -60,6 +61,8 @@ pub struct Cache {
     files: Files<String>,
     /// The name-id table, holding file ids stored in the database indexed by source names.
     file_ids: HashMap<OsString, NameIdEntry>,
+    /// Map containing for each FileIDs a list of files they import.
+    imports: HashMap<FileId, HashSet<FileId>>,
     /// The table storing parsed terms corresponding to the entries of the file database.
     terms: HashMap<FileId, (RichTerm, EntryState)>,
     /// The list of ids corresponding to the stdlib modules
@@ -149,6 +152,7 @@ impl Cache {
             files: Files::new(),
             file_ids: HashMap::new(),
             terms: HashMap::new(),
+            imports: HashMap::new(),
             stdlib_ids: None,
         }
     }
@@ -368,8 +372,17 @@ impl Cache {
         match self.entry_state(file_id) {
             Some(EntryState::Transformed) => Ok(CacheOp::Cached(())),
             Some(_) => {
+                println!("{:?}", file_id);
                 let (t, _) = self.terms.remove(&file_id).unwrap();
                 let t = transformations::transform(t)?;
+                // self.imports has to be cloned because self.transform  take self as mutable
+                // TODO: is this hack dangerous?
+                let imports = self.imports.clone();
+                if let Some(imports) = imports.get(&file_id) {
+                    for f in imports.iter() {
+                        self.transform(*f)?;
+                    }
+                }
                 self.terms.insert(file_id, (t, EntryState::Transformed));
                 Ok(CacheOp::Done(()))
             }
@@ -432,8 +445,12 @@ impl Cache {
             Some(EntryState::ImportsResolved) => Ok(CacheOp::Cached(())),
             Some(_) => {
                 let (t, _) = self.terms.remove(&file_id).unwrap();
-                let t = transformations::resolve_imports(t, self)?;
-                self.terms.insert(file_id, (t, EntryState::ImportsResolved));
+                let (t,pending) = transformations::resolve_imports(t, self)?;
+                for (t,id,path) in pending {
+                    self.terms.insert(id, (t, EntryState::Parsed));
+                    self.resolve_imports(id)?;
+                }
+                self.insert(file_id, t);
                 Ok(CacheOp::Done(()))
             }
             None => Err(CacheError::NotParsed),
@@ -489,12 +506,12 @@ impl Cache {
         &mut self,
         file_id: FileId,
         global_env: &eval::Environment,
-    ) -> Result<RichTerm, Error> {
+    ) -> Result<(RichTerm,Vec<PendingImport>), Error> {
         let term = self.parse_nocache(file_id)?;
-        let term = transformations::resolve_imports(term, self)?;
+        let (term, pending) = transformations::resolve_imports(term, self)?;
         type_check(&term, global_env, self)?;
         let term = transformations::transform(term)?;
-        Ok(term)
+        Ok((term, pending))
     }
 
     /// Retrieve the name of a source given an id.
@@ -708,7 +725,8 @@ impl ImportResolver for Cache {
         parent: Option<PathBuf>,
         pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError> {
-        let path_buf = with_parent(path, parent);
+        let path_buf = with_parent(path, parent.clone());
+        println!("{:#?}", path_buf);
         let format = InputFormat::from_path_buf(&path_buf).unwrap_or(InputFormat::Nickel);
         let id_op = self.get_or_add_file(&path_buf).map_err(|err| {
             ImportError::IOError(
@@ -719,7 +737,15 @@ impl ImportResolver for Cache {
         })?;
         let file_id = match id_op {
             CacheOp::Cached(id) => return Ok((ResolvedTerm::FromCache(), id)),
-            CacheOp::Done(id) => id,
+            CacheOp::Done(id) => {
+                if let Some(parent) = parent {
+                    let parent_id = self.id_of(parent).unwrap();
+                    self.imports.insert(parent_id, HashSet::new());
+                    self.imports.get_mut(&parent_id).unwrap().insert(id);
+                    println!("{:#?}", self.imports);
+                }
+                id
+            }
         };
 
         self.parse_multi(file_id, format)
@@ -742,7 +768,8 @@ impl ImportResolver for Cache {
     }
 
     fn insert(&mut self, file_id: FileId, term: RichTerm) {
-        self.terms.insert(file_id, (term, EntryState::Transformed));
+        self.terms
+            .insert(file_id, (term, EntryState::ImportsResolved));
     }
 
     fn get_path(&self, file_id: FileId) -> &OsStr {

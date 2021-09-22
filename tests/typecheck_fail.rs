@@ -166,10 +166,11 @@ fn imports() {
     where
         R: ImportResolver,
     {
-        resolve_imports(
+        let (t,pending) = resolve_imports(
             mk_term::let_in("x", mk_term::import(import), mk_term::var("x")),
             resolver,
-        )
+        )?;
+        Ok(t)
     }
 
     type_check_in_env(

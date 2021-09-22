@@ -118,13 +118,13 @@ impl REPLImpl {
             .map_err(|err| ParseError::from_lalrpop(err, file_id))?
         {
             ExtendedTerm::RichTerm(t) => {
-                let t = transformations::resolve_imports(t, &mut self.cache)?;
+                let (t,pending) = transformations::resolve_imports(t, &mut self.cache)?;
                 typecheck::type_check_in_env(&t, &self.type_env, &self.cache)?;
                 let t = transformations::transform(t)?;
                 Ok(eval_function(t, &self.eval_env, &mut self.cache)?.into())
             }
             ExtendedTerm::ToplevelLet(id, t) => {
-                let t = transformations::resolve_imports(t, &mut self.cache)?;
+                let (t,pending) = transformations::resolve_imports(t, &mut self.cache)?;
                 typecheck::type_check_in_env(&t, &self.type_env, &self.cache)?;
                 typecheck::Envs::env_add(&mut self.type_env, id.clone(), &t);
 

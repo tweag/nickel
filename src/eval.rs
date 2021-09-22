@@ -1157,7 +1157,7 @@ mod tests {
             resolve_imports(
                 mk_term::let_in(var, mk_term::import(import), body),
                 resolver,
-            )
+            ).map(|(t,pending)| t)
         }
 
         // let x = import "does_not_exist" in x
