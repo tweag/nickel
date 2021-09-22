@@ -102,12 +102,18 @@ impl RowUnifError {
             RowUnifError::MissingTail(tyw) => UnifError::MissingTail(left, right, tyw),
             RowUnifError::ExtraRow(id) => UnifError::ExtraRow(id, left, right),
             RowUnifError::ExtraTail(tyw) => UnifError::ExtraTail(left, right, tyw),
-            RowUnifError::RowKindMismatch(id, tyw1, tyw2) => UnifError::RowKindMismatch(id, tyw1, tyw2),
-            RowUnifError::RowMismatch(id, err) => UnifError::RowMismatch(id, left, right, Box::new(err)),
-            RowUnifError::RowFieldTailMismatch(id, tyw, err) =>
-                UnifError::RowFieldTailMismatch(id, left, right, tyw, Box::new(err)),
-            RowUnifError::RowTailMismatch(tyw1, tyw2, err) =>
-                UnifError::RowTailMismatch(tyw1, tyw2, Box::new(err)),
+            RowUnifError::RowKindMismatch(id, tyw1, tyw2) => {
+                UnifError::RowKindMismatch(id, tyw1, tyw2)
+            }
+            RowUnifError::RowMismatch(id, err) => {
+                UnifError::RowMismatch(id, left, right, Box::new(err))
+            }
+            RowUnifError::RowFieldTailMismatch(id, tyw, err) => {
+                UnifError::RowFieldTailMismatch(id, left, right, tyw, Box::new(err))
+            }
+            RowUnifError::RowTailMismatch(tyw1, tyw2, err) => {
+                UnifError::RowTailMismatch(tyw1, tyw2, Box::new(err))
+            }
             RowUnifError::IllformedRow(tyw) => UnifError::IllformedRow(tyw),
             RowUnifError::UnsatConstr(id, tyw) => UnifError::RowConflict(id, tyw, left, right),
             RowUnifError::WithConst(c, tyw) => UnifError::WithConst(c, tyw),
@@ -1235,8 +1241,7 @@ pub fn check_sub_(
                 (tyw1, tyw2) => check_sub_(state, tyw1, tyw2),
             },
             (AbsType::StaticRecord(tyw1), AbsType::StaticRecord(tyw2)) => match (*tyw1, *tyw2) {
-                (TypeWrapper::Concrete(r1), TypeWrapper::Concrete(r2)) =>
-                {
+                (TypeWrapper::Concrete(r1), TypeWrapper::Concrete(r2)) => {
                     check_sub_rows(state, r1.clone(), r2.clone()).map_err(|err| {
                         err.into_unif_err(mk_tyw_record!(; r1), mk_tyw_record!(; r2))
                     })
@@ -1305,15 +1310,13 @@ pub fn check_sub_(
 pub fn check_sub_dyn_record(
     state: &mut State,
     row: TypeWrapper,
-    ty: TypeWrapper,
+    tyw: TypeWrapper,
 ) -> Result<(), RowUnifError> {
-    // println!("check_sub_dyn_record({:?}, {:?})", row, ty);
-
     match row {
         TypeWrapper::Concrete(ty_row) => match ty_row {
             AbsType::RowEmpty() => Ok(()),
-            AbsType::Dyn() => check_sub_(state, mk_typewrapper::dynamic(), ty.clone())
-                .map_err(|err| RowUnifError::RowTailMismatch(mk_typewrapper::dynamic(), ty, err)),
+            AbsType::Dyn() => check_sub_(state, mk_typewrapper::dynamic(), tyw.clone())
+                .map_err(|err| RowUnifError::RowTailMismatch(mk_typewrapper::dynamic(), tyw, err)),
             AbsType::RowExtend(id, ty_row, tail) => {
                 ty_row
                     .ok_or_else(|| {
@@ -1324,33 +1327,33 @@ pub fn check_sub_dyn_record(
                         )))
                     })
                     .and_then(|ty_row| {
-                        check_sub_(state, *ty_row, ty.clone())
+                        check_sub_(state, *ty_row, tyw.clone())
                             .map_err(|err| RowUnifError::RowMismatch(id.clone(), err))
                     })?;
 
-                check_sub_dyn_record(state, *tail, ty)
+                check_sub_dyn_record(state, *tail, tyw)
             }
             ty => Err(RowUnifError::IllformedRow(TypeWrapper::Concrete(ty))),
         },
-        // Currently, the tail of a record can only be one concrete type, Dyn. If the dynamic
-        // record type is not Dyn, we can't unify the tail with it, so we just fail for now. In the
-        // future, we can imagine having type constraints on row tails, keep the unification
-        // variable and at the same time remembering the upper bound induced by this particular
-        // subtyping constraint.
-        TypeWrapper::Ptr(_p) => {
-            match ty {
+        // If the dynamic record type is not Dyn, we can't unify the tail with it, so we just fail
+        // for now. In the future, we can imagine having type constraints on row tails, keep the
+        // unification variable and at the same time remembering the upper bound induced by this
+        // particular subtyping constraint.
+        TypeWrapper::Ptr(_) => {
+            match tyw {
                 // We don't unify anything here, as a `Dyn` upper bound doesn't actually impose any constraint
                 TypeWrapper::Concrete(AbsType::Dyn()) => Ok(()),
-                TypeWrapper::Concrete(AbsType::Dyn())
-                TypeWrapper::Concrete(_) | TypeWrapper::Ptr(_) | TypeWrapper::Constant(_) => {
-                    Err(RowUnifError::RowTailMismatch(mk_typewrapper::dynamic(), ty, ))
-                }
+                tyw @ TypeWrapper::Concrete(_)
+                | tyw @ TypeWrapper::Ptr(_)
+                | tyw @ TypeWrapper::Constant(_) => Err(
+                    RowUnifError::RowTailMismatch(mk_typewrapper::dynamic(), tyw.clone(), UnifError::TypeMismatch(mk_typewrapper::dynamic(), tyw)),
+                ),
             }
         }
         // Cannot constraint a rigid type variable, even if the upper bound is Dyn: otherwise, it
         // would violiate parametricity, which is enforced by contracts, and we would have
         // well-typed functions that could raise blame at runtime.
-        TypeWrapper::Constant(var) => Err(RowUnifError::WithConst(var, ty)),
+        TypeWrapper::Constant(var) => Err(RowUnifError::WithConst(var, tyw)),
     }
 }
 
@@ -1416,9 +1419,8 @@ pub fn check_sub_rows(
         },
         (AbsType::RowExtend(_, None, _), _) => panic!("Incompatible enum row vs typed tail"),
         (tail, AbsType::RowEmpty()) => Err(RowUnifError::MissingTail(tail.into())),
-        (tyw1, tyw2) => check_sub_
-        // (ty, _) if !ty.is_row_type() => Err(RowUnifError::IllformedRow(ty.into())),
-        // (_, ty) => Err(RowUnifError::IllformedRow(ty.into())),
+        (ty, _) if !ty.is_row_type() => Err(RowUnifError::IllformedRow(ty.into())),
+        (_, ty) => Err(RowUnifError::IllformedRow(ty.into())),
     }
 }
 
@@ -2061,6 +2063,7 @@ fn constrain_var(state: &mut State, tyw: &TypeWrapper, p: usize) {
                     constrain_var_(state, HashSet::new(), tyw1.as_ref(), p);
                     constrain_var_(state, HashSet::new(), tyw2.as_ref(), p);
                 }
+                // FIXME: this is probably wrong, as we don't take shadowing into account.
                 AbsType::Forall(_, tyw) => constrain_var_(state, HashSet::new(), tyw.as_ref(), p),
                 AbsType::Dyn()
                 | AbsType::Num()
