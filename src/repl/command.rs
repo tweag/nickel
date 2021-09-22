@@ -49,6 +49,7 @@ impl FromStr for CommandType {
             "load" | "l" => Ok(Load),
             "typecheck" | "tc" => Ok(Typecheck),
             "query" | "q" => Ok(Query),
+            "print" | "p" => Ok(Print),
             "help" | "?" | "h" => Ok(Help),
             "exit" | "e" => Ok(Exit),
             _ => Err(UnknownCommandError {}),
