@@ -2,7 +2,9 @@
 use nickel::error::{Error, IOError};
 use nickel::program::Program;
 use nickel::term::RichTerm;
-use nickel::{repl, repl::rustyline_frontend};
+#[cfg(feature = "repl")]
+use nickel::repl::rustyline_frontend;
+use nickel::repl::query_print;
 use nickel::{serialize, serialize::ExportFormat};
 use std::path::PathBuf;
 use std::{fs, process};
@@ -88,9 +90,9 @@ fn main() {
                 program.query(path).map(|term| {
                     // Print a default selection of attributes if no option is specified
                     let attrs = if !doc && !contract && !types && !default && !value {
-                        repl::query_print::Attributes::default()
+                        query_print::Attributes::default()
                     } else {
-                        repl::query_print::Attributes {
+                        query_print::Attributes {
                             doc,
                             contract,
                             types,
@@ -99,7 +101,7 @@ fn main() {
                         }
                     };
 
-                    repl::query_print::write_query_result(&mut std::io::stdout(), &term, attrs)
+                    query_print::write_query_result(&mut std::io::stdout(), &term, attrs)
                         .unwrap()
                 })
             }
