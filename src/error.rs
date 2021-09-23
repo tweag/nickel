@@ -188,8 +188,10 @@ pub enum TypecheckError {
         TermPos,
     ),
     RowTailMismatch(
-        Types, /* the expected dynamic record type */
-        Types, /* the actual type of the row. For now, can only be Dyn, but this may change */
+        Types, /* the expected type of the tail */
+        Types, /* the actual type of the tail. For now, can only be Dyn, but this may change */
+        Types, /* the expected record type */
+        Types, /* the inferred record type */
         TermPos,
     ),
 }
@@ -1396,7 +1398,18 @@ impl ToDiagnostic<FileId> for TypecheckError {
 
                 diags
             }
-            TypecheckError::RowTailMismatch(..) => unimplemented!(),
+            TypecheckError::RowTailMismatch(tail_expd, tail_actual, expd, actual, span_opt) => {
+                vec![
+                    Diagnostic::error()
+                        .with_message("Row tails mismatch")
+                        .with_labels(mk_expr_label(span_opt))
+                        .with_notes(vec![
+                        format!("The type of the expression was inferred to be the record type `{}`", expd),
+                        format!("The type of the expression was expected to be the record type `{}`", actual),
+                        format!("The type of the tails `{}` and `{}` are not compatible", tail_expd, tail_actual),
+                        String::from("A type cannot have two conflicting declaration for the tail")
+                ])]
+            }
         }
     }
 }

@@ -17,9 +17,32 @@
 //!
 //! # Type inference
 //!
-//! Type inference is done via a standard unification algorithm. The type of unannotated let-bound
-//! expressions (the type of `bound_exp` in `let x = bound_exp in body`) is inferred in strict
-//! mode, but it is never implicitly generalized. For example, the following program is rejected:
+//! ## Algorithm
+//!
+//! Type inference is done via a mix of unification and bidirectional typechecking. Basically, an
+//! annotation triggers the traditional checking mode of bidirectional typechecking. When no
+//! checking rule applies anymore, and we need inference, the typechecker just spins up a
+//! unification variable and check against this type. At such interfaces between checking and
+//! inference, we take the occasion to apply a subtyping constraint, that is to check that
+//! `Inferred <: InitiallyChecked`, as customary in such systems (see [Bidirectional typing, Jana
+//! Dunfield and Neel Krishnaswami](https://arxiv.org/abs/1908.05839) for an good survey of
+//! bidirectional typing).
+//!
+//! Subtyping checks are implemented in `check_sub` and similar sub-functions. We don't perform any
+//! elaborate inference with respect to subtyping.  Solving subtyping equations is known to be hard
+//! and to result in more complex types being inferred. Instead, we decompose the constraints until
+//! we reach one that has a plain unification variable on one side.  Then, any such constraint of
+//! the form `a <: Type` or `Type <: a` results in the standard unification of `a` and `Type`,
+//! instead of recording e.g. lower and upper bounds and solving inequalities later. Doing so,
+//! inference is simpler and more predictable while retaining most of the practical convenience of
+//! subtyping, which is about being able to convert to a less precise type seamlessly (`Num` to
+//! `Dyn, or `{a : Num}` to `{_ : Num}`).
+//!
+//! ## Polymorphism and generalization
+//!
+//! The type of unannotated let-bound expressions (the type of `bound_exp` in `let x = bound_exp in
+//! body`) is inferred in strict mode, but it is never implicitly generalized. For example, the
+//! following program is rejected:
 //!
 //! ```text
 //! // Rejected
@@ -39,7 +62,8 @@
 //! let id : forall a. a -> a = fun x => x in seq (id "a") (id 5) : Num
 //! ```
 //!
-//! In non-strict mode, all let-bound expressions are given type `Dyn`, unless annotated.
+//! In return, higher-rank types are supported by default. In non-strict mode, all let-bound
+//! expressions are given type `Dyn`, unless annotated.
 use crate::cache::ImportResolver;
 use crate::environment::Environment as GenericEnvironment;
 use crate::error::TypecheckError;
@@ -106,7 +130,9 @@ impl RowUnifError {
             RowUnifError::RowMismatch(id, err) => {
                 UnifError::RowMismatch(id, left, right, Box::new(err))
             }
-            RowUnifError::RowTailMismatch(tyw1, tyw2) => UnifError::RowTailMismatch(tyw1, tyw2),
+            RowUnifError::RowTailMismatch(tyw1, tyw2) => {
+                UnifError::RowTailMismatch(tyw1, tyw2, left, right)
+            }
             RowUnifError::IllformedRow(tyw) => UnifError::IllformedRow(tyw),
             RowUnifError::UnsatConstr(id, tyw) => UnifError::RowConflict(id, tyw, left, right),
             RowUnifError::WithConst(c, tyw) => UnifError::WithConst(c, tyw),
@@ -139,7 +165,7 @@ pub enum UnifError {
     /// Tried to unify a unification variable with a row type violating the [row
     /// constraints](./type.RowConstr.html) of the variable.
     RowConflict(Ident, Option<TypeWrapper>, TypeWrapper, TypeWrapper),
-    RowTailMismatch(TypeWrapper, TypeWrapper),
+    RowTailMismatch(TypeWrapper, TypeWrapper, TypeWrapper, TypeWrapper),
     /// Tried to unify a type constant with another different type.
     WithConst(usize, TypeWrapper),
     /// A flat type, which is an opaque type corresponding to custom contracts, contained a Nickel
@@ -201,9 +227,11 @@ impl UnifError {
                 Box::new((*err).into_typecheck_err_(state, names, TermPos::None)),
                 pos_opt,
             ),
-            UnifError::RowTailMismatch(tyw1, tyw2) => TypecheckError::RowTailMismatch(
+            UnifError::RowTailMismatch(tyw1, tyw2, tyw3, tyw4) => TypecheckError::RowTailMismatch(
                 reporting::to_type(state, names, tyw1),
                 reporting::to_type(state, names, tyw2),
+                reporting::to_type(state, names, tyw3),
+                reporting::to_type(state, names, tyw4),
                 pos_opt,
             ),
             UnifError::RowKindMismatch(id, ty1, ty2) => TypecheckError::RowKindMismatch(
