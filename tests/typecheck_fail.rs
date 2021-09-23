@@ -265,8 +265,8 @@ fn dynamic_record_subtyping() {
         Err(TypecheckError::RowTailMismatch(..))
     );
     assert_matches!(
-        type_check_expr("({a = \"a\"} | {a: Str | Num}) : {_: Num}"),
-        Err(TypecheckError::RowTailMismatch(..))
+        type_check_expr("({a = \"a\"} | {a: Str | Dyn}) : {_: Num}"),
+        Err(TypecheckError::RowMismatch(..))
     );
     assert_typecheck_fails!("({a = 1} : {_ : Dyn}) : {_: Num}");
     assert_typecheck_fails!("({a = \"a\"} : {_ : Str}) : {_: Num}");
