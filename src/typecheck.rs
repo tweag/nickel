@@ -1379,11 +1379,13 @@ pub fn check_sub_rows(
 ) -> Result<(), RowUnifError> {
     match (t1, t2) {
         (t1, t2) if t1 == t2 => Ok(()),
-        (AbsType::RowExtend(id, ty, t), r2 @ AbsType::RowExtend(_, _, _)) => {
-            let (ty2, t2_tail) = row_add(state, &id, ty.clone(), TypeWrapper::Concrete(r2))?;
-            match (ty, ty2) {
+        // {rows} <: {id : T2, ..tail2} requires rows to be of the form (modulo reordering):
+        // rows ~ id : T1, ..tail1 with T1 <: T2 and {tail1} <: {tail2}
+        (r1 @ AbsType::RowExtend(..), AbsType::RowExtend(id, ty2, tail2)) => {
+            let (ty1, tail1) = row_add(state, &id, ty2.clone(), TypeWrapper::Concrete(r1))?;
+            match (ty1, ty2) {
                 (None, None) => Ok(()),
-                (Some(ty), Some(ty2)) => check_sub_(state, *ty, *ty2)
+                (Some(ty1), Some(ty2)) => check_sub_(state, *ty1, *ty2)
                     .map_err(|err| RowUnifError::RowMismatch(id.clone(), err)),
                 (ty1, ty2) => Err(RowUnifError::RowKindMismatch(
                     id,
@@ -1392,19 +1394,19 @@ pub fn check_sub_rows(
                 )),
             }?;
 
-            match (*t, t2_tail) {
-                (TypeWrapper::Concrete(r1_tail), TypeWrapper::Concrete(r2_tail)) => {
-                    check_sub_rows(state, r1_tail, r2_tail)
+            match (tail1, *tail2) {
+                (TypeWrapper::Concrete(tail1), TypeWrapper::Concrete(tail2)) => {
+                    check_sub_rows(state, tail1, tail2)
                 }
                 // If one of the tail is not a concrete type, it is either a unification variable
-                // or a constant (rigid type variable). `unify` already knows how to treat these
+                // or a constant (rigid type variable). `check_sub` already knows how to treat these
                 // cases, so we delegate the work. However it returns `UnifError` instead of
                 // `RowUnifError`, hence we have a bit of wrapping and unwrapping to do. Note that
                 // since we are unifying types with a constant or a unification variable somewhere,
                 // the only unification errors that should be possible are related to constants or
                 // row constraints.
-                (t1_tail, t2_tail) => {
-                    check_sub_(state, t1_tail, t2_tail).map_err(|err| match err {
+                (tail1, tail2) => {
+                    check_sub_(state, tail1, tail2).map_err(|err| match err {
                         UnifError::ConstMismatch(c1, c2) => RowUnifError::ConstMismatch(c1, c2),
                         UnifError::WithConst(c1, tyw) => RowUnifError::WithConst(c1, tyw),
                         UnifError::RowConflict(id, tyw_opt, _, _) => {
@@ -1419,17 +1421,17 @@ pub fn check_sub_rows(
             }
         }
         // A row is missing in the LHS:
-        // { | tail } </: {id : T, ..}
-        (_, AbsType::RowExtend(ident, _, _)) => Err(RowUnifError::ExtraRow(ident)),
+        // {..tail} </: {id : T, ..} with id : T' not in tail
+        (_, AbsType::RowExtend(ident, _, _)) => Err(RowUnifError::MissingRow(ident)),
         // { } <: {_ : T} for any type T
         (AbsType::RowEmpty(), _tail) => Ok(()),
         // There is an extra row in the LHS:
         // {id : T, ..} </: { }
         // {id : T, ..} </: { | tail}
-        (AbsType::RowExtend(ident, _, _), _) => Err(RowUnifError::MissingRow(ident)),
+        (AbsType::RowExtend(ident, _, _), _) => Err(RowUnifError::ExtraRow(ident)),
         // There is an extra tail in the LHS:
-        // {tail} </: {}
-        (AbsType::Dyn(), AbsType::RowEmpty()) => Err(RowUnifError::MissingDynTail()),
+        // {..tail} </: {}
+        (AbsType::Dyn(), AbsType::RowEmpty()) => Err(RowUnifError::ExtraDynTail()),
         (ty, _) if !ty.is_row_type() => Err(RowUnifError::IllformedRow(ty.into())),
         (_, ty) => Err(RowUnifError::IllformedRow(ty.into())),
     }

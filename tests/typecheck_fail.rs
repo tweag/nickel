@@ -247,12 +247,7 @@ fn polymorphic_row_constraints() {
 
 #[test]
 fn dynamic_row_tail() {
-    // Currently, typechecking is conservative wrt the dynamic row type, meaning it can't
-    // convert to a less precise type with a dynamic tail.
-    assert_typecheck_fails!("{a = 1, b = 2} : {a: Num | Dyn}");
-    assert_typecheck_fails!("{a = 1} : {a: Num | Dyn}");
-    assert_typecheck_fails!("({a = 1} | {a: Num | Dyn}) : {a: Num}");
-    assert_typecheck_fails!("{a = 1} : {a: Num | Dyn}");
+    assert_typecheck_fails!("({a = 1} : {a: Num | Dyn}) : {a: Num}");
 }
 
 #[test]
@@ -261,4 +256,18 @@ fn shallow_type_inference() {
         type_check_expr("let x = (1 + 1) in (x + 1 : Num)"),
         Err(TypecheckError::TypeMismatch(..))
     );
+}
+
+#[test]
+fn dynamic_record_subtyping() {
+    assert_matches!(
+        type_check_expr("({a = 1} | {a: Num | Dyn}) : {_: Num}"),
+        Err(TypecheckError::RowTailMismatch(..))
+    );
+    assert_matches!(
+        type_check_expr("({a = \"a\"} | {a: Str | Num}) : {_: Num}"),
+        Err(TypecheckError::RowTailMismatch(..))
+    );
+    assert_typecheck_fails!("({a = 1} : {_ : Dyn}) : {_: Num}");
+    assert_typecheck_fails!("({a = \"a\"} : {_ : Str}) : {_: Num}");
 }
