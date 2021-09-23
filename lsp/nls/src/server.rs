@@ -5,14 +5,12 @@ use lsp_types::{
     notification::{self, DidChangeTextDocument, DidOpenTextDocument},
     notification::{Notification as _, *},
     request::{Request as RequestTrait, *},
-    DidChangeTextDocumentParams, DidOpenTextDocumentParams, ServerCapabilities,
-    TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
+    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
+    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
 };
 use serde::Deserialize;
 
 use nickel::cache::Cache;
-
-
 
 pub struct Server {
     pub connection: Connection,
@@ -103,6 +101,15 @@ impl Server {
                 crate::files::handle_open(
                     self,
                     serde_json::from_value::<DidOpenTextDocumentParams>(notification.params)
+                        .unwrap(),
+                )
+                .unwrap();
+            }
+            DidChangeTextDocument::METHOD => {
+                trace!("handle save notification");
+                crate::files::handle_save(
+                    self,
+                    serde_json::from_value::<DidChangeTextDocumentParams>(notification.params)
                         .unwrap(),
                 )
                 .unwrap();

@@ -4,10 +4,16 @@ use lsp_types::{DiagnosticRelatedInformation, Location, NumberOrString, Position
 
 use nickel::error::TypecheckError;
 
+
+/// Convert [codespan_reporting::diagnostic::Diagnostic] into a list of another type
+/// Diagnostics tend to contain a list of labels pointing to errors in the code which
+/// we want to extract, hence a list of `Self`
 pub trait DiagnosticCompat: Sized {
     fn from_codespan(diagnostic: Diagnostic<FileId>, files: &mut Files<String>) -> Vec<Self>;
 }
 
+/// Determine the position of a [codespan_reporting::diagnostic::Label] by looking it up
+/// in the file cache
 pub trait LocationCompat {
     fn from_codespan(label: &Label<FileId>, files: &Files<String>) -> Self;
 }
