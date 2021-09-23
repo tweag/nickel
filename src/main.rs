@@ -1,10 +1,10 @@
 //! Entry point of the program.
 use nickel::error::{Error, IOError};
 use nickel::program::Program;
-use nickel::term::RichTerm;
+use nickel::repl::query_print;
 #[cfg(feature = "repl")]
 use nickel::repl::rustyline_frontend;
-use nickel::repl::query_print;
+use nickel::term::RichTerm;
 use nickel::{serialize, serialize::ExportFormat};
 use std::path::PathBuf;
 use std::{fs, process};
@@ -101,8 +101,7 @@ fn main() {
                         }
                     };
 
-                    query_print::write_query_result(&mut std::io::stdout(), &term, attrs)
-                        .unwrap()
+                    query_print::write_query_result(&mut std::io::stdout(), &term, attrs).unwrap()
                 })
             }
             Some(Command::Typecheck) => program.typecheck().map(|_| ()),
