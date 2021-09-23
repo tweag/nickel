@@ -5,6 +5,9 @@
 			"type": "npm",
 			"script": "compile",
 			"group": "build",
+			"options": {
+				"cwd": "${workspaceFolder}/lsp/client-extension"
+			},
 			"presentation": {
 				"panel": "dedicated",
 				"reveal": "never"
@@ -17,7 +20,10 @@
 			"type": "npm",
 			"script": "watch",
 			"isBackground": true,
-			"group":"build",
+			"group": "build",
+			"options": {
+				"cwd": "${workspaceFolder}/lsp/client-extension"
+			},
 			"presentation": {
 				"panel": "dedicated",
 				"reveal": "never"
@@ -30,7 +36,9 @@
 			"label": "make server",
 			"type": "cargo",
 			"command": "build",
-			"options": {"cwd": "${workspaceFolder}/lsp/nls"},
+			"options": {
+				"cwd": "${workspaceFolder}/lsp/nls"
+			},
 			"args": [],
 			"group": "build",
 			"problemMatcher": [

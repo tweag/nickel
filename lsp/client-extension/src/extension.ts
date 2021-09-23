@@ -3,6 +3,7 @@
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
 
+import { privateEncrypt } from 'crypto';
 import * as path from 'path';
 import { workspace, ExtensionContext } from 'vscode';
 
@@ -18,8 +19,12 @@ let client: LanguageClient;
 export function activate(context: ExtensionContext) {
 	// The server is implemented in node
 	const serverModule = context.asAbsolutePath(
-		path.join('target', 'debug', 'nls')
+		path.join('..','..','target', 'debug', 'nls')
 	);
+
+
+	console.error(serverModule)
+
 	// The debug options for the server
 	const debugOptions = { env: { "RUST_LOG": "trace" } };
 
@@ -27,14 +32,10 @@ export function activate(context: ExtensionContext) {
 	// Otherwise the run options are used
 	const serverOptions: ServerOptions = {
 		run: {
-			command: context.asAbsolutePath(
-				path.join('target', 'debug', 'nls')
-			), transport: TransportKind.stdio, options: { env: { "RUST_LOG": "trace" } }
+			command: serverModule, transport: TransportKind.stdio, options: { env: { "RUST_LOG": "trace" } }
 		},
 		debug: {
-			command: context.asAbsolutePath(
-				path.join('target', 'debug', 'nls')
-			),
+			command: serverModule,
 			transport: TransportKind.stdio,
 			options: debugOptions
 		}
@@ -59,7 +60,7 @@ export function activate(context: ExtensionContext) {
 	);
 
 	// Start the client. This will also launch the server
-	client.start();
+	client.start()
 }
 
 export function deactivate(): Thenable<void> | undefined {

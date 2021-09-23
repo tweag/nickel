@@ -7,9 +7,10 @@
 			"request": "launch",
 			"name": "Launch Client",
 			"runtimeExecutable": "${execPath}",
-			"args": ["--extensionDevelopmentPath=${workspaceRoot}"],
-			"outFiles": ["${workspaceRoot}/language-server/client-extension/out/**/*.js"],
-			"preLaunchTask": "make server"
+			"args": ["--extensionDevelopmentPath=${workspaceRoot}/lsp/client-extension"],
+			"outFiles": ["${workspaceRoot}/lsp/client-extension/out/**/*.js"],
+			"preLaunchTask": "make server",
+			"localRoot":  "${workspaceFolder}/lsp/client-extension"
 		},
 		{
 			"name": "Language Server E2E Test",
