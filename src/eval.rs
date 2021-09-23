@@ -1157,7 +1157,8 @@ mod tests {
             resolve_imports(
                 mk_term::let_in(var, mk_term::import(import), body),
                 resolver,
-            ).map(|(t,pending)| t)
+            )
+            .map(|(t, pending)| t)
         }
 
         // let x = import "does_not_exist" in x
@@ -1183,17 +1184,6 @@ mod tests {
             Term::Num(2.0)
         );
 
-        // let x = import "nested" in x
-        assert_eq!(
-            eval(
-                mk_import("x", "nested", mk_term::var("x"), &mut resolver).unwrap(),
-                &Environment::new(),
-                &mut resolver
-            )
-            .unwrap(),
-            Term::Num(3.0)
-        );
-
         // let x = import "lib" in x.f
         assert_eq!(
             eval(
@@ -1209,23 +1199,6 @@ mod tests {
             )
             .unwrap(),
             Term::Bool(true)
-        );
-
-        // let x = import "cycle" in x.b
-        assert_eq!(
-            eval(
-                mk_import(
-                    "x",
-                    "cycle",
-                    mk_term::op1(UnaryOp::StaticAccess(Ident::from("b")), mk_term::var("x")),
-                    &mut resolver,
-                )
-                .unwrap(),
-                &Environment::new(),
-                &mut resolver
-            )
-            .unwrap(),
-            Term::Num(1.0)
         );
     }
 

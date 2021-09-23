@@ -281,7 +281,10 @@ pub fn transform(rt: RichTerm) -> Result<RichTerm, ImportError> {
 /// All resolved imports are stacked during the process. Once the term has been traversed,
 /// the elements of this stack are processed (and so on, if these elements also have non resolved
 /// imports).
-pub fn resolve_imports<R>(rt: RichTerm, resolver: &mut R) -> Result<(RichTerm, Vec<PendingImport>), ImportError>
+pub fn resolve_imports<R>(
+    rt: RichTerm,
+    resolver: &mut R,
+) -> Result<(RichTerm, Vec<PendingImport>), ImportError>
 where
     R: ImportResolver,
 {
@@ -293,7 +296,7 @@ where
     });
     let result = imports_pass(rt, resolver, &mut stack, source_file)?;
 
-    Ok((result,stack))
+    Ok((result, stack))
 }
 
 /// Perform one full imports resolution pass. Put all imports encountered for the first time in

@@ -6,9 +6,9 @@ use crate::parser::lexer::Lexer;
 use crate::position::TermPos;
 use crate::stdlib as nickel_stdlib;
 use crate::term::{RichTerm, Term};
+use crate::transformations::PendingImport;
 use crate::typecheck::type_check;
 use crate::{eval, parser, transformations};
-use crate::transformations::PendingImport;
 use codespan::{FileId, Files};
 use io::Read;
 use std::collections::{HashMap, HashSet};
@@ -372,17 +372,19 @@ impl Cache {
         match self.entry_state(file_id) {
             Some(EntryState::Transformed) => Ok(CacheOp::Cached(())),
             Some(_) => {
-                println!("{:?}", file_id);
                 let (t, _) = self.terms.remove(&file_id).unwrap();
-                let t = transformations::transform(t)?;
+                println!("{:?} transformation", file_id);
                 // self.imports has to be cloned because self.transform  take self as mutable
                 // TODO: is this hack dangerous?
                 let imports = self.imports.clone();
                 if let Some(imports) = imports.get(&file_id) {
+                    println!("{:?}", imports);
                     for f in imports.iter() {
+                        println!("{:?}", f);
                         self.transform(*f)?;
                     }
                 }
+                let t = transformations::transform(t)?;
                 self.terms.insert(file_id, (t, EntryState::Transformed));
                 Ok(CacheOp::Done(()))
             }
@@ -445,8 +447,8 @@ impl Cache {
             Some(EntryState::ImportsResolved) => Ok(CacheOp::Cached(())),
             Some(_) => {
                 let (t, _) = self.terms.remove(&file_id).unwrap();
-                let (t,pending) = transformations::resolve_imports(t, self)?;
-                for (t,id,path) in pending {
+                let (t, pending) = transformations::resolve_imports(t, self)?;
+                for (t, id, path) in pending {
                     self.terms.insert(id, (t, EntryState::Parsed));
                     self.resolve_imports(id)?;
                 }
@@ -506,7 +508,7 @@ impl Cache {
         &mut self,
         file_id: FileId,
         global_env: &eval::Environment,
-    ) -> Result<(RichTerm,Vec<PendingImport>), Error> {
+    ) -> Result<(RichTerm, Vec<PendingImport>), Error> {
         let term = self.parse_nocache(file_id)?;
         let (term, pending) = transformations::resolve_imports(term, self)?;
         type_check(&term, global_env, self)?;
@@ -762,7 +764,7 @@ impl ImportResolver for Cache {
 
     fn get(&self, file_id: FileId) -> Option<RichTerm> {
         self.terms.get(&file_id).map(|(term, state)| {
-            debug_assert!(*state == EntryState::Transformed);
+            debug_assert!(*state >= EntryState::ImportsResolved);
             term.clone()
         })
     }
@@ -834,7 +836,7 @@ pub mod resolvers {
     pub struct SimpleResolver {
         files: Files<String>,
         file_cache: HashMap<String, FileId>,
-        term_cache: HashMap<FileId, Option<RichTerm>>,
+        term_cache: HashMap<FileId, RichTerm>,
     }
 
     impl SimpleResolver {
@@ -875,12 +877,12 @@ pub mod resolvers {
             if self.term_cache.contains_key(&file_id) {
                 Ok((ResolvedTerm::FromCache(), file_id))
             } else {
-                self.term_cache.insert(file_id, None);
                 let buf = self.files.source(file_id);
                 let term = parser::grammar::TermParser::new()
                     .parse(file_id, Lexer::new(&buf))
                     .map_err(|e| ParseError::from_lalrpop(e, file_id))
                     .map_err(|e| ImportError::ParseError(e, *pos))?;
+                self.insert(file_id, term.clone());
                 Ok((
                     ResolvedTerm::FromFile {
                         term,
@@ -892,15 +894,11 @@ pub mod resolvers {
         }
 
         fn insert(&mut self, file_id: FileId, term: RichTerm) {
-            self.term_cache.insert(file_id, Some(term));
+            self.term_cache.insert(file_id, term);
         }
 
         fn get(&self, file_id: FileId) -> Option<RichTerm> {
-            self.term_cache
-                .get(&file_id)
-                .map(|opt| opt.as_ref())
-                .flatten()
-                .cloned()
+            self.term_cache.get(&file_id).cloned()
         }
 
         fn get_path(&self, file_id: FileId) -> &OsStr {
