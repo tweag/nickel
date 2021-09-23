@@ -13,3 +13,6 @@
 
 # Makam cache
 .makam-cache/
+node_modules
+lsp-client/node_modules
+lsp-client/out
