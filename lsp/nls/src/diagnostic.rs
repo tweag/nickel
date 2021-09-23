@@ -2,7 +2,7 @@ use codespan::{FileId, Files};
 use codespan_reporting::diagnostic::{self, Diagnostic, Label};
 use lsp_types::{DiagnosticRelatedInformation, Location, NumberOrString, Position, Range, Url};
 
-use crate::error::TypecheckError;
+use nickel::error::TypecheckError;
 
 pub trait DiagnosticCompat: Sized {
     fn from_codespan(diagnostic: Diagnostic<FileId>, files: &mut Files<String>) -> Vec<Self>;

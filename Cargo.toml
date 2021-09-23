@@ -56,3 +56,9 @@ anyhow = "1.0"
 [dev-dependencies]
 pretty_assertions = "0.5.1"
 assert_matches = "1.4.0"
+
+[workspace]
+members = [
+    ".",
+    "lsp/nls"
+]

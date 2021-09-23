@@ -30,7 +30,8 @@
 			"label": "make server",
 			"type": "cargo",
 			"command": "build",
-			"args": ["--bin", "nls"],
+			"options": {"cwd": "${workspaceFolder}/lsp/nls"},
+			"args": [],
 			"group": "build",
 			"problemMatcher": [
 				"$rustc"

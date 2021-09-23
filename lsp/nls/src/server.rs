@@ -10,9 +10,10 @@ use lsp_types::{
 };
 use serde::Deserialize;
 
-use crate::cache::Cache;
+use nickel::cache::Cache;
 
-#[derive()]
+
+
 pub struct Server {
     pub connection: Connection,
     pub cache: Cache,
@@ -99,7 +100,7 @@ impl Server {
         match notification.method.as_str() {
             DidOpenTextDocument::METHOD => {
                 trace!("handle open notification");
-                super::files::handle_open(
+                crate::files::handle_open(
                     self,
                     serde_json::from_value::<DidOpenTextDocumentParams>(notification.params)
                         .unwrap(),

@@ -1,6 +1,6 @@
 use std::borrow::BorrowMut;
 
-use crate::{
+use nickel::{
     cache::{self, CacheError, CacheOp},
     environment::Environment,
     error::{self, ToDiagnostic},

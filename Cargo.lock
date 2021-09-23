@@ -727,6 +727,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "nls"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "assert_matches",
+ "codespan",
+ "codespan-reporting",
+ "env_logger",
+ "lalrpop",
+ "lalrpop-util",
+ "log",
+ "lsp-server",
+ "lsp-types",
+ "nickel",
+ "pretty_assertions",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "ntapi"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"

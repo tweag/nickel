@@ -14,5 +14,5 @@
 # Makam cache
 .makam-cache/
 node_modules
-lsp-client/node_modules
-lsp-client/out
+lsp/client-extension/node_modules
+lsp/client-extension/out
