@@ -1255,12 +1255,12 @@ pub fn check_sub_(
                         err.into_unif_err(mk_tyw_record!(; r1), mk_tyw_record!(; r2))
                     })
                 }
-                // (TypeWrapper::Concrete(r), _) if !r.is_row_type() => {
-                //     Err(UnifError::IllformedType(mk_tyw_record!(; r)))
-                // }
-                // (_, TypeWrapper::Concrete(r)) if !r.is_row_type() => {
-                //     Err(UnifError::IllformedType(mk_tyw_record!(; r)))
-                // }
+                (TypeWrapper::Concrete(r), _) if !r.is_row_type() => {
+                    Err(UnifError::IllformedType(mk_tyw_record!(; r)))
+                }
+                (_, TypeWrapper::Concrete(r)) if !r.is_row_type() => {
+                    Err(UnifError::IllformedType(mk_tyw_record!(; r)))
+                }
                 (tyw1, tyw2) => check_sub_(state, tyw1, tyw2),
             },
             (AbsType::DynRecord(t), AbsType::DynRecord(t2)) => check_sub_(state, *t, *t2),
@@ -1272,6 +1272,8 @@ pub fn check_sub_(
             }
             (AbsType::Forall(i1, t1t), AbsType::Forall(i2, t2t)) => {
                 // Very stupid (slow) implementation
+                // WONTFIX: the implementation of polymorphic bidirectional typing will take care
+                // of this case in a better way.
                 let constant_type = TypeWrapper::Constant(new_var(state.table));
 
                 check_sub_(
@@ -1280,6 +1282,7 @@ pub fn check_sub_(
                     t2t.subst(i2, constant_type),
                 )
             }
+            // This should'nt happen anymore, as unbound type variables are checked for during parsing.
             (AbsType::Var(ident), _) | (_, AbsType::Var(ident)) => {
                 Err(UnifError::UnboundTypeVariable(ident))
             }

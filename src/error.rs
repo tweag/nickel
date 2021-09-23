@@ -97,27 +97,27 @@ pub enum TypecheckError {
     /// A specific row was expected to be in the type of an expression, but was not.
     MissingRow(
         Ident,
-        /* the expected type */ Types,
-        /* the inferred/annotated type */ Types,
+        Types, /* the inferred/annotated type */
+        Types, /* the expected type */
         TermPos,
     ),
     /// A dynamic tail was expected to be in the type of an expression, but was not.
     MissingDynTail(
-        /* the expected type */ Types,
-        /* the inferred/annotated type */ Types,
+        Types, /* the inferred/annotated type */
+        Types, /* the expected type */
         TermPos,
     ),
     /// A specific row was not expected to be in the type of an expression.
     ExtraRow(
         Ident,
-        /* the expected type */ Types,
-        /* the inferred/annotated type */ Types,
+        Types, /* the inferred/annotated type */
+        Types, /* the expected type */
         TermPos,
     ),
     /// A additional dynamic tail was not expected to be in the type of an expression.
     ExtraDynTail(
-        /* the expected type */ Types,
-        /* the inferred/annotated type */ Types,
+        Types, /* the inferred/annotated type */
+        Types, /* the expected type */
         TermPos,
     ),
 
@@ -126,23 +126,23 @@ pub enum TypecheckError {
     /// The actual (inferred or annotated) type of an expression is incompatible with its expected
     /// type.
     TypeMismatch(
-        /* the expected type */ Types,
-        /* the actual type */ Types,
+        Types, /* the actual type */
+        Types, /* the expected type */
         TermPos,
     ),
     /// Two incompatible kind (enum vs record) have been deduced for the same identifier of a row type.
     RowKindMismatch(
         Ident,
-        /* the expected type */ Option<Types>,
-        /* the actual type */ Option<Types>,
+        Option<Types>, /* the actual type */
+        Option<Types>, /* the expected type */
         TermPos,
     ),
     /// Two incompatible types have been deduced for the same identifier in a row type.
     RowMismatch(
         Ident,
-        /* the expected row type (whole) */ Types,
-        /* the actual row type (whole) */ Types,
-        /* error at the given row */ Box<TypecheckError>,
+        Types,               /* the actual row type (whole) */
+        Types,               /* the expected row type (whole) */
+        Box<TypecheckError>, /* error at the given row */
         TermPos,
     ),
     /// Two incompatible types have been deduced for the same identifier of a row type.
@@ -160,9 +160,9 @@ pub enum TypecheckError {
     /// direct failure to unify `{ .. , x: T1, .. }` and `{ .., x: T2, .. }`.
     RowConflict(
         Ident,
-        /* the second type assignment which violates the constraint */ Option<Types>,
-        /* the expected type of the subexpression */ Types,
-        /* the actual type of the subexpression */ Types,
+        Option<Types>, /* the second type assignment which violates the constraint */
+        Types,         /* the actual type of the subexpression */
+        Types,         /* the expected type of the subexpression */
         TermPos,
     ),
     /// Type mismatch on a subtype of an an arrow type.
@@ -181,17 +181,17 @@ pub enum TypecheckError {
     /// This specific error stores additionally the [type path](../label/ty_path/index.html) that
     /// identifies the subtype where unification failed and the corresponding error.
     ArrowTypeMismatch(
-        /* the expected arrow type */ Types,
-        /* the actual arrow type */ Types,
-        /* the path to the incompatible subtypes */ ty_path::Path,
-        /* the error on the subtype unification */ Box<TypecheckError>,
+        Types,               /* the actual arrow type */
+        Types,               /* the expected arrow type */
+        ty_path::Path,       /* the path to the incompatible subtypes */
+        Box<TypecheckError>, /* the error on the subtype unification */
         TermPos,
     ),
     RowTailMismatch(
-        Types, /* the expected type of the tail */
         Types, /* the actual type of the tail. For now, can only be Dyn, but this may change */
-        Types, /* the expected record type */
+        Types, /* the expected type of the tail */
         Types, /* the inferred record type */
+        Types, /* the expected record type */
         TermPos,
     ),
 }
@@ -1221,7 +1221,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
                     .with_message("Ill-formed type")
                     .with_labels(vec![label])]
             }
-            TypecheckError::MissingRow(Ident(ident), expd, actual, span_opt) =>
+            TypecheckError::MissingRow(Ident(ident), actual, expd, span_opt) =>
                 vec![Diagnostic::error()
                     .with_message(format!("Type error: missing row `{}`", ident))
                     .with_labels(mk_expr_label(span_opt))
@@ -1230,7 +1230,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
                         format!("The type of the expression was inferred to be `{}`, which does not contain the field `{}`", actual, ident),
                     ])]
             ,
-            TypecheckError::MissingDynTail(expd, actual, span_opt) =>
+            TypecheckError::MissingDynTail(actual, expd, span_opt) =>
                 vec![Diagnostic::error()
                     .with_message(String::from("Type error: missing dynamic tail `| Dyn`"))
                     .with_labels(mk_expr_label(span_opt))
@@ -1239,8 +1239,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
                         format!("The type of the expression was inferred to be `{}`, which does not contain the tail `| Dyn`", actual),
                     ])]
             ,
-
-            TypecheckError::ExtraRow(Ident(ident), expd, actual, span_opt) =>
+            TypecheckError::ExtraRow(Ident(ident), actual, expd, span_opt) =>
                 vec![Diagnostic::error()
                     .with_message(format!("Type error: extra row `{}`", ident))
                     .with_labels(mk_expr_label(span_opt))
@@ -1249,7 +1248,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
                         format!("Tye type of the expression was inferred to be `{}`, which contains the extra field `{}`", actual, ident),
                     ])]
             ,
-            TypecheckError::ExtraDynTail(expd, actual, span_opt) =>
+            TypecheckError::ExtraDynTail(actual, expd, span_opt) =>
                 vec![Diagnostic::error()
                     .with_message(String::from("Type error: extra dynamic tail `| Dyn`"))
                     .with_labels(mk_expr_label(span_opt))
@@ -1267,7 +1266,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
                         format!("Maybe you forgot to put a `forall {}.` somewhere in the enclosing type ?", ident),
                     ])]
             ,
-            TypecheckError::TypeMismatch(expd, actual, span_opt) =>
+            TypecheckError::TypeMismatch(actual, expd, span_opt) =>
                 vec![
                     Diagnostic::error()
                         .with_message("Incompatible types")
@@ -1278,7 +1277,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
                             String::from("These types are not compatible"),
                         ])]
             ,
-            TypecheckError::RowKindMismatch(Ident(ident), expd, actual, span_opt) => {
+            TypecheckError::RowKindMismatch(Ident(ident), actual, expd, span_opt) => {
                 let (expd_str, actual_str) = match (expd, actual) {
                     (Some(_), None) => ("an enum type", "a record type"),
                     (None, Some(_)) => ("a record type", "an enum type"),
@@ -1294,7 +1293,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
                             String::from("Enum row types and record row types are not compatible"),
                         ])]
             }
-            TypecheckError::RowMismatch(ident, expd, actual, err_, span_opt) => {
+            TypecheckError::RowMismatch(ident, actual, expd, err_, span_opt) => {
                 // If the unification error is on a nested field, we will have a succession of
                 // `RowMismatch` errors wrapping the underlying error. In this case, instead of
                 // showing a cascade of similar error messages, we determine the full path of the
@@ -1341,18 +1340,18 @@ impl ToDiagnostic<FileId> for TypecheckError {
                     }));
                 diags
             }
-            TypecheckError::RowConflict(Ident(ident), conflict, _expd, _actual, span_opt) => {
+            TypecheckError::RowConflict(Ident(ident), conflict, _actual, _expd, span_opt) => {
                 vec![
                     Diagnostic::error()
                         .with_message("Multiple rows declaration")
                         .with_labels(mk_expr_label(span_opt))
                         .with_notes(vec![
-                            format!("The type of the expression was inferred to have the row `{}: {}`", ident, conflict.as_ref().cloned().unwrap()),
-                            format!("But this type appears inside another row type, which already has a declaration for the field `{}`", ident),
-                            String::from("A type cannot have two conflicting declaration for the same row"),
-                        ])]
-            }
-            TypecheckError::ArrowTypeMismatch(expd, actual, path, err, span_opt) => {
+                        format!("The type of the expression was inferred to have the row `{}: {}`", ident, conflict.as_ref().cloned().unwrap()),
+                        format!("But this type appears inside another row type, which already has a declaration for the field `{}`", ident),
+                        String::from("A type cannot have two conflicting declaration for the same row")
+                    ])]
+            },
+            TypecheckError::ArrowTypeMismatch(actual, expd, path, err, span_opt) => {
                 let (expd_start, expd_end) = ty_path::span(path.iter().peekable(), expd);
                 let (actual_start, actual_end) = ty_path::span(path.iter().peekable(), actual);
 
@@ -1398,7 +1397,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
 
                 diags
             }
-            TypecheckError::RowTailMismatch(tail_expd, tail_actual, expd, actual, span_opt) => {
+            TypecheckError::RowTailMismatch(tail_actual, tail_expd, actual, expd, span_opt) => {
                 vec![
                     Diagnostic::error()
                         .with_message("Row tails mismatch")
