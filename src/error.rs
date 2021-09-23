@@ -1403,8 +1403,8 @@ impl ToDiagnostic<FileId> for TypecheckError {
                         .with_message("Row tails mismatch")
                         .with_labels(mk_expr_label(span_opt))
                         .with_notes(vec![
-                        format!("The type of the expression was inferred to be the record type `{}`", expd),
-                        format!("The type of the expression was expected to be the record type `{}`", actual),
+                        format!("The type of the expression was expected to be the record type `{}`", expd),
+                        format!("The type of the expression was inferred to be the record type `{}`", actual),
                         format!("The type of the tails `{}` and `{}` are not compatible", tail_expd, tail_actual),
                         String::from("A type cannot have two conflicting declaration for the tail")
                 ])]
