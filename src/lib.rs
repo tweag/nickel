@@ -17,3 +17,5 @@ pub mod term;
 pub mod transformations;
 pub mod typecheck;
 pub mod types;
+
+pub mod language_server;
