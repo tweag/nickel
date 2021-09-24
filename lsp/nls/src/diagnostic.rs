@@ -4,7 +4,6 @@ use lsp_types::{DiagnosticRelatedInformation, Location, NumberOrString, Position
 
 use nickel::error::TypecheckError;
 
-
 /// Convert [codespan_reporting::diagnostic::Diagnostic] into a list of another type
 /// Diagnostics tend to contain a list of labels pointing to errors in the code which
 /// we want to extract, hence a list of `Self`

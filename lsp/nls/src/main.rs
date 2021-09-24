@@ -2,11 +2,9 @@ use anyhow::Result;
 use log::trace;
 use lsp_server::Connection;
 
-mod server;
 mod diagnostic;
 mod files;
-
-
+mod server;
 
 use server::Server;
 

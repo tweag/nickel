@@ -1,5 +1,14 @@
 use std::borrow::BorrowMut;
 
+use anyhow::Result;
+use codespan::FileId;
+use codespan_reporting::diagnostic::Diagnostic;
+use log::{info, trace};
+use lsp_server::{Message, Notification, Response};
+use lsp_types::{
+    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams, Position,
+    PublishDiagnosticsParams,
+};
 use nickel::{
     cache::{self, CacheError, CacheOp},
     environment::Environment,
@@ -7,12 +16,6 @@ use nickel::{
     position::RawSpan,
     typecheck,
 };
-use anyhow::Result;
-use codespan::FileId;
-use codespan_reporting::diagnostic::Diagnostic;
-use log::{info, trace};
-use lsp_server::{Message, Notification, Response};
-use lsp_types::{DidChangeTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams, Position, PublishDiagnosticsParams};
 
 use super::diagnostic::DiagnosticCompat;
 use super::server::Server;
@@ -54,11 +57,11 @@ pub fn handle_open(server: &mut Server, params: DidOpenTextDocumentParams) -> Re
     Ok(())
 }
 
-
 pub fn handle_save(server: &mut Server, params: DidChangeTextDocumentParams) -> Result<()> {
-    let file_id = server
-        .cache
-        .add_string(params.text_document.uri.as_str(), params.content_changes[0].text.to_owned());
+    let file_id = server.cache.add_string(
+        params.text_document.uri.as_str(),
+        params.content_changes[0].text.to_owned(),
+    );
 
     // TODO: make this part more abstracted
     //       implement typecheck (at least) as part of a persistent AST representation
@@ -94,7 +97,6 @@ pub fn handle_save(server: &mut Server, params: DidChangeTextDocumentParams) -> 
 
     Ok(())
 }
-
 
 fn typecheck(server: &mut Server, file_id: FileId) -> Result<CacheOp<()>, Vec<Diagnostic<FileId>>> {
     server
