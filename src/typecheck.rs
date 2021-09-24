@@ -575,10 +575,31 @@ fn check_(
             check_(state, envs, strict, t, trg)
         }
         Term::List(terms) => {
-            let ty_elts = TypeWrapper::Ptr(new_var(state.table));
+            let ty_elts = match ty {
+                // The following allows to type heterogenuous lists with `List Dyn`.
+                //
+                // Consider the following example:
+                // `[1, "a"] : List Dyn`
+                //
+                // The generic code below in the second match branch would spin up a type `List _a` for
+                // a fresh `_a` and apply a subtyping constraint `List _a <: List Dyn`. But because
+                // `_a <: Dyn` doesn't constrain `_a`, the unification variable would stay unresolved,
+                // and the list would be checked against `List _a`. This would fail because of the
+                // incompatible constraints `_a = Num` and `_a = Str` following from typing `1 : _a` and
+                // `"a": _a`.
+                //
+                // Thus, we specialize the checking of a list when checked against `List T`, to
+                // directly check the elements of the list against `T` without introducing an
+                // intermediate unification variable, which is more general.
+                TypeWrapper::Concrete(AbsType::List(ty_elts)) => *ty_elts,
+                ty => {
+                    let ty_elts = TypeWrapper::Ptr(new_var(state.table));
 
-            check_sub(state, strict, mk_typewrapper::list(ty_elts.clone()), ty)
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+                    check_sub(state, strict, mk_typewrapper::list(ty_elts.clone()), ty)
+                        .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+                    ty_elts
+                }
+            };
 
             terms
                 .iter()
