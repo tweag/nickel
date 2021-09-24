@@ -1163,10 +1163,10 @@ fn row_add(
     }
 }
 
-/// Try to unify two types.
+/// Enforce a subtyping constraint.
 ///
-/// A wrapper around `unify_` which just checks if `strict` is set to true. If not, it directly
-/// returns `Ok(())` without unifying anything.
+/// Wrapper around `check_sub_` which just checks if `strict` is set to true. If not, it directly
+/// returns `Ok(())` without enforcing anything.
 pub fn check_sub(
     state: &mut State,
     strict: bool,
@@ -1180,7 +1180,8 @@ pub fn check_sub(
     }
 }
 
-/// Try to unify two types.
+/// Enforce a subtyping constraint. `check_sub(state, t1, t2)` checks that `t1 <: t2`, performing
+/// unification when required.
 pub fn check_sub_(
     state: &mut State,
     mut t1: TypeWrapper,
@@ -1319,6 +1320,8 @@ pub fn check_sub_(
     }
 }
 
+/// Enforce a subtyping constraint between a static record type (standard row type) and a dynamic
+/// record type of the form `{_ : T}`.
 pub fn check_sub_dyn_record(
     state: &mut State,
     row: TypeWrapper,
@@ -1372,9 +1375,12 @@ pub fn check_sub_dyn_record(
     }
 }
 
-/// Try to unify two row types. Return an
-/// [`IllformedRow`](./enum.RowUnifError.html#variant.IllformedRow) error if one of the given type
-/// is not a row type.
+/// Enforce a subtyping constraint between two row types.
+///
+/// # Return
+///
+/// Return an [`IllformedRow`](./enum.RowUnifError.html#variant.IllformedRow) error if one of the
+/// given type is not a row type.
 pub fn check_sub_rows(
     state: &mut State,
     t1: AbsType<Box<TypeWrapper>>,
@@ -1755,15 +1761,14 @@ pub fn get_uop_type(
         // This should not happen, as ChunksConcat() is only produced during evaluation.
         UnaryOp::ChunksConcat() => panic!("cannot type ChunksConcat()"),
         // BEFORE: forall rows. { rows } -> List
-        // Dyn -> List Str
+        // {_ : Dyn} -> List Str
         UnaryOp::FieldsOf() => (
-            mk_typewrapper::dynamic(),
-            //mk_tyw_record!(; TypeWrapper::Ptr(new_var(state.table))),
+            mk_typewrapper::dyn_record(mk_typewrapper::dynamic()),
             mk_typewrapper::list(AbsType::Str()),
         ),
-        // Dyn -> List
+        // {_ : Dyn} -> List
         UnaryOp::ValuesOf() => (
-            mk_typewrapper::dynamic(),
+            mk_typewrapper::dyn_record(mk_typewrapper::dynamic()),
             mk_typewrapper::list(AbsType::Dyn()),
         ),
         // Str -> Str
@@ -1881,10 +1886,10 @@ pub fn get_bop_type(
                 mk_typewrapper::dyn_record(res),
             )
         }
-        // Str -> Dyn -> Bool
+        // Str -> {_ : Dyn} -> Bool
         BinaryOp::HasField() => (
             mk_typewrapper::str(),
-            mk_typewrapper::dynamic(),
+            mk_typewrapper::dyn_record(mk_typewrapper::dynamic()),
             mk_typewrapper::bool(),
         ),
         // forall a. List a -> List a -> List a

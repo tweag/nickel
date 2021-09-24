@@ -15,7 +15,7 @@
       "#m
     = fun f r => %recordMap% r f,
 
-    fieldsOf | { | Dyn} -> List Str
+    fieldsOf : {_: Dyn} -> List Str
     | doc m#"
       Given a record, results in a list of the string representation of all fields in the record.
 
@@ -26,7 +26,7 @@
       "#m
     = fun r => %fieldsOf% r,
 
-    valuesOf | { | Dyn} -> List
+    valuesOf : {_ : Dyn} -> List
     | doc m#"
       Given a record, results in a list containing all the values in that record.
 
@@ -37,7 +37,7 @@
       "#m
     = fun r => %valuesOf% r,
 
-    hasField : Str -> Dyn -> Bool
+    hasField : Str -> {_ : Dyn} -> Bool
     | doc m#"
       Given the name of a field and a record, checks if the record contains the given field.
 
