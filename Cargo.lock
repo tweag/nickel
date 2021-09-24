@@ -682,18 +682,13 @@ name = "nickel"
 version = "0.1.0"
 dependencies = [
  "ansi_term 0.12.1",
- "anyhow",
  "assert_matches",
  "codespan",
  "codespan-reporting",
- "env_logger",
  "js-sys",
  "lalrpop",
  "lalrpop-util",
- "log",
  "logos",
- "lsp-server",
- "lsp-types",
  "md-5",
  "minimad",
  "pretty_assertions",

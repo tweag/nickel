@@ -7,8 +7,6 @@ readme = "README.md"
 description = "Programmable configuration files."
 edition = "2018"
 
-[features]
-
 [build-dependencies]
 lalrpop = "0.19.6"
 
