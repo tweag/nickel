@@ -271,3 +271,20 @@ fn dynamic_record_subtyping() {
     assert_typecheck_fails!("({a = 1} : {_ : Dyn}) : {_: Num}");
     assert_typecheck_fails!("({a = \"a\"} : {_ : Str}) : {_: Num}");
 }
+
+#[test]
+fn record_ops() {
+    // Before bidirectional typechecking, %valuesOf% and %fieldsOf% used to take a `Dyn` argument,
+    // which would have accepted this program.
+    assert_typecheck_fails!("%valuesOf% [1, 2] : Dyn");
+    assert_typecheck_fails!("%fieldsOf% [1, 2] : Dyn");
+    assert_typecheck_fails!(
+        "%recordMap% (fun s x => x : Str -> Num -> Num) {foo = 1, bar = 2} : List Bool"
+    );
+}
+
+#[test]
+fn functions_subtyping() {
+    assert_typecheck_fails!("(fun x => x : Num -> Num) : Dyn -> Dyn");
+    assert_typecheck_fails!("(fun f => f 0 : (Num -> Num) -> Num) : (Dyn -> Dyn) -> Dyn");
+}
