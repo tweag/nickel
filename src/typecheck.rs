@@ -1350,9 +1350,12 @@ pub fn check_sub_dyn_record(
 ) -> Result<(), RowUnifError> {
     match row {
         TypeWrapper::Concrete(ty_row) => match ty_row {
+            // { } <: {_ : T}
             AbsType::RowEmpty() => Ok(()),
+            // { | Dyn} <: {_ : T} iff Dyn <: T
             AbsType::Dyn() => check_sub_(state, mk_typewrapper::dynamic(), tyw.clone())
                 .map_err(|_| RowUnifError::RowTailMismatch(mk_typewrapper::dynamic(), tyw)),
+            // {id : T1, ..tail} <: {_ : T2} if T1 <: T2 and {tail} <: {_ : T2}
             AbsType::RowExtend(id, ty_row, tail) => {
                 ty_row
                     .ok_or_else(|| {
@@ -1408,7 +1411,6 @@ pub fn check_sub_rows(
     t2: AbsType<Box<TypeWrapper>>,
 ) -> Result<(), RowUnifError> {
     match (t1, t2) {
-        (t1, t2) if t1 == t2 => Ok(()),
         // {rows} <: {id : T2, ..tail2} requires rows to be of the form (modulo reordering):
         // rows ~ id : T1, ..tail1 with T1 <: T2 and {tail1} <: {tail2}
         (r1 @ AbsType::RowExtend(..), AbsType::RowExtend(id, ty2, tail2)) => {
@@ -1459,7 +1461,7 @@ pub fn check_sub_rows(
         (AbsType::RowEmpty(), _tail) => Ok(()),
         // There is an extra row in the LHS:
         // {id : T, ..} </: { }
-        // {id : T, ..} </: { | tail}
+        // {id : T, ..} </: { | tail} with tail != Dyn
         (AbsType::RowExtend(ident, _, _), _) => Err(RowUnifError::ExtraRow(ident)),
         // There is an extra tail in the LHS:
         // {..tail} </: {}
@@ -2107,7 +2109,6 @@ fn constrain_var(state: &mut State, tyw: &TypeWrapper, p: usize) {
                     constrain_var_(state, HashSet::new(), tyw1.as_ref(), p);
                     constrain_var_(state, HashSet::new(), tyw2.as_ref(), p);
                 }
-                // FIXME: this is probably wrong, as we don't take shadowing into account.
                 AbsType::Forall(_, tyw) => constrain_var_(state, HashSet::new(), tyw.as_ref(), p),
                 AbsType::Dyn()
                 | AbsType::Num()
