@@ -2,6 +2,7 @@ use anyhow::Result;
 use log::trace;
 use lsp_server::Connection;
 
+mod cache;
 mod diagnostic;
 mod files;
 mod server;

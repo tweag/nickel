@@ -2,7 +2,7 @@ use std::borrow::BorrowMut;
 
 use anyhow::Result;
 use codespan::FileId;
-use codespan_reporting::diagnostic::Diagnostic;
+use codespan_reporting::diagnostic::{self, Diagnostic};
 use log::{info, trace};
 use lsp_server::{Message, Notification, Response};
 use lsp_types::{
@@ -17,6 +17,7 @@ use nickel::{
     typecheck,
 };
 
+use super::cache::CacheExt;
 use super::diagnostic::DiagnosticCompat;
 use super::server::Server;
 
@@ -42,26 +43,28 @@ pub fn handle_open(server: &mut Server, params: DidOpenTextDocumentParams) -> Re
                 .collect()
         });
 
-    if let Err(diagnostics) = checked {
-        info!("Problems detected: {:?}", diagnostics);
-        server.notify(Notification::new(
-            "textDocument/publishDiagnostics".into(),
-            PublishDiagnosticsParams {
-                uri: params.text_document.uri,
-                diagnostics,
-                version: None,
-            },
-        ));
+    match checked.map(|_| Vec::new()) {
+        Ok(diagnostics) | Err(diagnostics) => {
+            server.notify(Notification::new(
+                "textDocument/publishDiagnostics".into(),
+                PublishDiagnosticsParams {
+                    uri: params.text_document.uri,
+
+                    diagnostics,
+                    version: None,
+                },
+            ));
+        }
     }
 
     Ok(())
 }
 
 pub fn handle_save(server: &mut Server, params: DidChangeTextDocumentParams) -> Result<()> {
-    let file_id = server.cache.add_string(
+    let file_id = server.cache.update_content(
         params.text_document.uri.as_str(),
         params.content_changes[0].text.to_owned(),
-    );
+    )?;
 
     // TODO: make this part more abstracted
     //       implement typecheck (at least) as part of a persistent AST representation
@@ -83,16 +86,17 @@ pub fn handle_save(server: &mut Server, params: DidChangeTextDocumentParams) -> 
                 .collect()
         });
 
-    if let Err(diagnostics) = checked {
-        info!("Problems detected: {:?}", diagnostics);
-        server.notify(Notification::new(
-            "textDocument/publishDiagnostics".into(),
-            PublishDiagnosticsParams {
-                uri: params.text_document.uri,
-                diagnostics,
-                version: None,
-            },
-        ));
+    match checked.map(|_| Vec::new()) {
+        Ok(diagnostics) | Err(diagnostics) => {
+            server.notify(Notification::new(
+                "textDocument/publishDiagnostics".into(),
+                PublishDiagnosticsParams {
+                    uri: params.text_document.uri,
+                    diagnostics,
+                    version: None,
+                },
+            ));
+        }
     }
 
     Ok(())
