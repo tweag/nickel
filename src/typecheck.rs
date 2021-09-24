@@ -1429,6 +1429,8 @@ pub fn check_sub_rows(
                 }
             }
         }
+        // {..} <: { | Dyn}, and this doesn't constrain anything
+        (_, AbsType::Dyn()) => Ok(()),
         // A row is missing in the LHS:
         // {..tail} </: {id : T, ..} with id : T' not in tail
         (_, AbsType::RowExtend(ident, _, _)) => Err(RowUnifError::MissingRow(ident)),
