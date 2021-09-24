@@ -8,7 +8,7 @@ let typecheck = [
   // record ops
   (%valuesOf% {foo = 1, bar = 2}) : List,
   (%fieldsOf% {foo = 1, bar = "a"}) : List Str,
-  (let map = fun field val => field in
+  (let f = fun field val => field in
    let r = {foo = true, bar = false} in
    %recordMap% r f) : {_ : Str},
 
@@ -23,7 +23,7 @@ let typecheck = [
   (let higherOrder : ({foo : Num} -> {_ : Num}) -> Dyn = fun f => f {foo = 1} in
    let id : {_ : Num} -> {bar : Num} = fun x => {bar = 1} in
    higherOrder id) : Dyn,
-   (fun f => f 0 : (Num -> Num) -> Num) : (Dyn -> Num) -> Dyn,
+   ((fun f => f 0) : (Num -> Num) -> Num) : (Dyn -> Num) -> Dyn,
 ] in
 
 true
