@@ -105,7 +105,7 @@ pub fn handle_save(server: &mut Server, params: DidChangeTextDocumentParams) -> 
 fn typecheck(server: &mut Server, file_id: FileId) -> Result<CacheOp<()>, Vec<Diagnostic<FileId>>> {
     server
         .cache
-        .typecheck(file_id, &Environment::new())
+        .typecheck(file_id, &server.global_env)
         .map_err(|error| match error {
             CacheError::Error(tc_error) => tc_error.to_diagnostic(server.cache.files_mut(), None),
             CacheError::NotParsed => unreachable!(),

@@ -10,11 +10,12 @@ use lsp_types::{
 };
 use serde::Deserialize;
 
-use nickel::cache::Cache;
+use nickel::{cache::Cache, environment::Environment, eval::Thunk, identifier::Ident};
 
 pub struct Server {
     pub connection: Connection,
     pub cache: Cache,
+    pub global_env: Environment<Ident, Thunk>,
 }
 
 impl Server {
@@ -33,8 +34,9 @@ impl Server {
 
     pub fn new(connection: Connection) -> Server {
         let mut cache = Cache::new();
-        cache.load_stdlib().unwrap();
-        Server { connection, cache }
+        cache.prepare_stdlib().unwrap();
+        let global_env = cache.mk_global_env().unwrap();
+        Server { connection, cache, global_env }
     }
 
     pub(crate) fn reply(&mut self, response: Response) {
