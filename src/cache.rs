@@ -391,7 +391,7 @@ impl Cache {
     /// # Preconditions
     ///
     /// - the entry must syntactically be a record (`Record` or `RecRecord`). Otherwise, this
-    /// function panic
+    /// function panics
     pub fn transform_inner(
         &mut self,
         file_id: FileId,
@@ -416,8 +416,7 @@ impl Cache {
                             std::mem::replace(map, HashMap::new())
                                 .into_iter()
                                 .map(|(id, t)| {
-                                    transformations::transform(t, self)
-                                        .map(|t_ok| (id.clone(), t_ok))
+                                    transformations::transform(t).map(|t_ok| (id.clone(), t_ok))
                                 })
                                 .collect();
 
@@ -426,8 +425,8 @@ impl Cache {
                                 .into_iter()
                                 .map(|(id_t, t)| {
                                     Ok((
-                                        transformations::transform(id_t, self)?,
-                                        transformations::transform(t, self)?,
+                                        transformations::transform(id_t)?,
+                                        transformations::transform(t)?,
                                     ))
                                 })
                                 .collect();
