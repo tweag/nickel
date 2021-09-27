@@ -62,10 +62,7 @@ impl DiagnosticCompat for lsp_types::Diagnostic {
                 let range = lsp_types::Range::from_codespan(&label, files);
 
                 let code = diagnostic.code.clone().map(NumberOrString::String);
-                let mut message = label.message.clone();
-                if message.is_empty() {
-                    message = diagnostic.message.clone();
-                }
+                let message = format!("{}\n{}", diagnostic.message, diagnostic.notes.join("\n"));
 
                 lsp_types::Diagnostic {
                     range,
