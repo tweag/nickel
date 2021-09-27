@@ -1130,10 +1130,17 @@ impl ToDiagnostic<FileId> for ParseError {
     ) -> Vec<Diagnostic<FileId>> {
         let diagnostic = match self {
             ParseError::UnexpectedEOF(file_id, _expected) => {
-                Diagnostic::error().with_message(format!(
-                    "Unexpected end of file when parsing {}",
-                    files.name(*file_id).to_string_lossy()
-                ))
+                let end = files.source_span(*file_id).end();
+                Diagnostic::error()
+                    .with_message(format!(
+                        "Unexpected end of file when parsing {}",
+                        files.name(*file_id).to_string_lossy()
+                    ))
+                    .with_labels(vec![primary(&RawSpan {
+                        start: end,
+                        end: end,
+                        src_id: *file_id,
+                    })])
             }
             ParseError::UnexpectedToken(span, _expected) => Diagnostic::error()
                 .with_message("Unexpected token")

@@ -547,6 +547,12 @@ impl Cache {
         &mut self.files
     }
 
+    /// Get a mutable reference to the cached term roots
+    /// (used by the language server to invalidate previously parsed entries)
+    pub fn terms_mut(&mut self) -> &mut HashMap<FileId, (RichTerm, EntryState)> {
+        &mut self.terms
+    }
+
     /// Update the state of an entry. Return the previous state.
     pub fn update_state(&mut self, file_id: FileId, new: EntryState) -> Option<EntryState> {
         self.terms
