@@ -36,7 +36,11 @@ impl Server {
         let mut cache = Cache::new();
         cache.prepare_stdlib().unwrap();
         let global_env = cache.mk_global_env().unwrap();
-        Server { connection, cache, global_env }
+        Server {
+            connection,
+            cache,
+            global_env,
+        }
     }
 
     pub(crate) fn reply(&mut self, response: Response) {
