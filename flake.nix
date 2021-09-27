@@ -212,9 +212,12 @@
       let 
         pkgs = mkPkgs { inherit system; };
         nickel = buildNickel { inherit system; isShell = true; };
+        rust = (pkgs.rustChannelOf RUST_CHANNELS."${channel}").rust.override({
+          extensions = [ "rustfmt-preview" ];
+        });
         rustFormatHook = pkgs.writeShellScriptBin "check-rust-format-hook"
           ''
-            cargo fmt -- --check
+            ${rust}/bin/cargo fmt -- --check
             RESULT=$?
             [ $RESULT != 0 ] && echo "Please run \`cargo fmt\` before"
             exit $RESULT
