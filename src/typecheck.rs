@@ -354,6 +354,15 @@ impl<'a> Envs<'a> {
         }
     }
 
+    /// Similar to [`from_global`](./struct.Envs.html#method.from_global), but
+    /// use another `Envs` to provide the global environment.
+    pub fn from_envs(envs: &'a Envs) -> Self {
+        Envs {
+            global: envs.global,
+            local: Environment::new(),
+        }
+    }
+
     /// Populate a new global typing environment from a global term environment.
     pub fn mk_global(eval_env: &eval::Environment) -> Environment {
         eval_env
@@ -361,7 +370,7 @@ impl<'a> Envs<'a> {
             .map(|(id, thunk)| {
                 (
                     id.clone(),
-                    to_typewrapper(apparent_type(thunk.borrow().body.as_ref(), None).into()),
+                    apparent_type(thunk.borrow().body.as_ref(), None).into(),
                 )
             })
             .collect()
@@ -393,7 +402,7 @@ impl<'a> Envs<'a> {
     pub fn env_add(env: &mut Environment, id: Ident, rt: &RichTerm) {
         env.insert(
             id,
-            to_typewrapper(apparent_type(rt.as_ref(), Some(&Envs::from_global(env))).into()),
+            apparent_type(rt.as_ref(), Some(&Envs::from_global(env))).into(),
         );
     }
 
@@ -687,7 +696,7 @@ fn type_check_(
             value: Some(t),
             ..
         }) => {
-            let tyw2 = to_typewrapper(ty2.clone());
+            let tyw2 = TypeWrapper::from(ty2.clone());
 
             let instantiated = instantiate_foralls(state, tyw2.clone(), ForallInst::Constant);
 
@@ -704,7 +713,7 @@ fn type_check_(
             let ctr = contracts.get(0).unwrap();
             let Contract { types: ty2, .. } = ctr;
 
-            unify(state, strict, ty, to_typewrapper(ty2.clone()))
+            unify(state, strict, ty, ty2.clone().into())
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
             // if there's an inner value, we have to recursively typecheck it, but in non strict
@@ -732,12 +741,16 @@ fn type_check_(
         },
         Term::Import(_) => unify(state, strict, ty, mk_typewrapper::dynamic())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
+        // We typecheck the import in a fresh typing environment, and then use its apparent type
+        // for checking. 
         Term::ResolvedImport(file_id) => {
             let t = state
                 .resolver
                 .get(*file_id)
                 .expect("Internal error: resolved import not found ({:?}) during typechecking.");
-            type_check_in_env(&t, envs.global, state.resolver).map(|_ty| ())
+            let _ = type_check_in_env(&t, envs.global, state.resolver)?;
+            let ty_import : TypeWrapper = apparent_type(t.as_ref(), Some(&Envs::from_envs(&envs))).into();
+            unify(state, strict, ty, ty_import).map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
     }
 }
@@ -796,7 +809,7 @@ impl From<ApparentType> for TypeWrapper {
         match at {
             ApparentType::Annotated(ty)
             | ApparentType::Inferred(ty)
-            | ApparentType::Approximated(ty) => to_typewrapper(ty),
+            | ApparentType::Approximated(ty) => ty.into(),
             ApparentType::FromEnv(tyw) => tyw,
         }
     }
@@ -924,6 +937,12 @@ impl TypeWrapper {
 impl From<AbsType<Box<TypeWrapper>>> for TypeWrapper {
     fn from(ty: AbsType<Box<TypeWrapper>>) -> Self {
         TypeWrapper::Concrete(ty)
+    }
+}
+
+impl From<Types> for TypeWrapper {
+    fn from(ty: Types) -> Self {
+        TypeWrapper::Concrete(ty.0.map(|ty_| Box::new(TypeWrapper::from(*ty_))))
     }
 }
 
@@ -1305,15 +1324,6 @@ pub fn unify_rows(
         (ty, _) if !ty.is_row_type() => Err(RowUnifError::IllformedRow(TypeWrapper::Concrete(ty))),
         (_, ty) => Err(RowUnifError::IllformedRow(TypeWrapper::Concrete(ty))),
     }
-}
-
-/// Convert a vanilla Nickel type to a type wrapper.
-fn to_typewrapper(t: Types) -> TypeWrapper {
-    let Types(t2) = t;
-
-    let t3 = t2.map(|x| Box::new(to_typewrapper(*x)));
-
-    TypeWrapper::Concrete(t3)
 }
 
 /// Extract the concrete type corresponding to a type wrapper. Free unification variables as well

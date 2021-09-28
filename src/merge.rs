@@ -334,10 +334,8 @@ pub fn merge(
 
             match mode {
                 MergeMode::Contract(mut lbl) if !attrs2.open && !left.is_empty() => {
-                    let fields: Vec<String> = left
-                        .into_keys()
-                        .map(|field| format!("`{}`", field))
-                        .collect();
+                    let fields: Vec<String> =
+                        left.keys().map(|field| format!("`{}`", field)).collect();
                     let plural = if fields.len() == 1 { "" } else { "s" };
                     lbl.tag = format!("extra field{} {}", plural, fields.join(","));
                     return Err(EvalError::BlameError(lbl, CallStack::new()));
