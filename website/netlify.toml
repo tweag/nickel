@@ -1,0 +1,29 @@
+[[redirects]]
+  from = "https://nickel-lang.netlify.com/*"
+  to = "https://nickel-lang.org/:splat"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "http://nickel-lang.netlify.com/*"
+  to = "http://nickel-lang.org/:splat"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "http://www.nickel-lang.org/*"
+  to = "https://nickel-lang.org/:splat"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://www.nickel-lang.org/*"
+  to = "https://nickel-lang.org/:splat"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "http://nickel-lang.org/*"
+  to = "https://nickel-lang.org/:splat"
+  status = 301
+  force = true
