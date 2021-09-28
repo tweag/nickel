@@ -29,7 +29,7 @@ let Assert = fun l x => x || %blame% l in
 ({foo.bar.baz = 1, bar.baz.foo = foo.bar.baz + 1}
   == {foo = {bar = {baz = 1}}, bar = {baz = {foo = 2}}}
   | #Assert) &&
-({foo.bar.baz = 1, bar.baz.foo = foo.bar.baz + 1}
+({foo."bar"."baz" = 1, "bar"."baz"."foo" = foo.bar."baz" + 1}
   == {foo = {bar = {baz = 1}}, bar = {baz = {foo = 2}}}
   | #Assert) &&
 
