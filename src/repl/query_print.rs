@@ -187,9 +187,16 @@ fn write_query_result_<R: QueryPrinter>(
     ) -> io::Result<()> {
         writeln!(out)?;
         match t {
-            Term::Record(map, _) | Term::RecRecord(map, _) if !map.is_empty() => {
+            Term::Record(map, _) if !map.is_empty() => {
                 let mut fields: Vec<_> = map.keys().collect();
                 fields.sort();
+                renderer.write_fields(out, fields.into_iter())
+            }
+            Term::RecRecord(map, dyn_fields, _) if !map.is_empty() => {
+                let mut fields: Vec<_> = map.keys().collect();
+                fields.sort();
+                let dynamic = Ident::from("<dynamic>");
+                fields.extend(dyn_fields.iter().map(|_| &dynamic));
                 renderer.write_fields(out, fields.into_iter())
             }
             Term::Record(..) | Term::RecRecord(..) => renderer.write_metadata(out, "value", "{}"),

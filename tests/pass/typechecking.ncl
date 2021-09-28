@@ -167,6 +167,9 @@ let typecheck = [
 
   // Typed import
   import "typed-import.ncl" : Num,
+
+  // recursive_records_quoted
+  {"foo" = 1} : {foo : Num},
 ] in
 
 
