@@ -49,7 +49,7 @@ jobs:
 
       - run: |
           npm run build
-          cp netlify.toml publish/
+          cp netlify.toml public/
         working-directory: website/
 
       - name: Deploy to Netlify
