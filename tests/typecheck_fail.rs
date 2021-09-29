@@ -157,11 +157,14 @@ fn imports() {
     let mut resolver = SimpleResolver::new();
     resolver.add_source(String::from("good"), String::from("1 + 1 : Num"));
     resolver.add_source(String::from("bad"), String::from("false : Num"));
-    // TODO should be mooved
-    // resolver.add_source(
-    //    String::from("proxy"),
-    //    String::from("let x = import \"bad\" in x"),
-    //);
+    resolver.add_source(
+        String::from("proxy-bad"),
+        String::from("let x = import \"bad\" in x"),
+    );
+    resolver.add_source(
+        String::from("proxy-wrong-type"),
+        String::from("let x : Str = import \"good\" in x"),
+    );
 
     fn mk_import<R>(import: &str, resolver: &mut R) -> Result<RichTerm, ImportError>
     where
@@ -174,20 +177,23 @@ fn imports() {
         .map(|(t, pending)| t)
     }
 
-    type_check_in_env(
-        &mk_import("good", &mut resolver).unwrap(),
-        &Environment::new(),
-        &mut resolver,
-    )
-    .unwrap();
+    assert_matches!(
+        type_check_in_env(
+            &mk_import("proxy-wrong-type", &mut resolver).unwrap(),
+            &Environment::new(),
+            &mut resolver,
+        ),
+        Err(TypecheckError::TypeMismatch(..))
+    );
 
-    // does not test simple feature should be moved in tests/fail/
-    // type_check_in_env(
-    //    &mk_import("proxy", &mut resolver).unwrap(),
-    //    &Environment::new(),
-    //    &mut resolver,
-    //)
-    //.unwrap_err();
+    assert_matches!(
+        type_check_in_env(
+            &mk_import("proxy-bad", &mut resolver).unwrap(),
+            &Environment::new(),
+            &mut resolver,
+        ),
+        Err(TypecheckError::TypeMismatch(..))
+    );
 }
 
 #[test]
@@ -254,6 +260,14 @@ fn dynamic_row_tail() {
 fn shallow_type_inference() {
     assert_matches!(
         type_check_expr("let x = (1 + 1) in (x + 1 : Num)"),
+        Err(TypecheckError::TypeMismatch(..))
+    );
+}
+
+#[test]
+fn dynamic_record_field() {
+    assert_matches!(
+        type_check_expr("let x = \"foo\" in {\"#{x}\" = 1} : {foo: Num}"),
         Err(TypecheckError::TypeMismatch(..))
     );
 }

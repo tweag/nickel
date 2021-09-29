@@ -77,7 +77,7 @@ pub mod share_normal_form {
 
                 with_bindings(Term::Record(map, attrs), bindings, pos)
             }
-            Term::RecRecord(map, attrs) => {
+            Term::RecRecord(map, dyn_fields, attrs) => {
                 // When a recursive record is evaluated, all fields need to be turned to closures
                 // anyway (see the corresponding case in `eval::eval()`), which is what the share
                 // normal form transformation does. This is why the test is more lax here than for
@@ -100,7 +100,21 @@ pub mod share_normal_form {
                     })
                     .collect();
 
-                with_bindings(Term::RecRecord(map, attrs), bindings, pos)
+                let dyn_fields = dyn_fields
+                    .into_iter()
+                    .map(|(id_t, t)| {
+                        if !t.as_ref().is_constant() {
+                            let fresh_var = fresh_var();
+                            let pos_t = t.pos;
+                            bindings.push((fresh_var.clone(), t));
+                            (id_t, RichTerm::new(Term::Var(fresh_var), pos_t))
+                        } else {
+                            (id_t, t)
+                        }
+                    })
+                    .collect();
+
+                with_bindings(Term::RecRecord(map, dyn_fields, attrs), bindings, pos)
             }
             Term::List(ts) => {
                 let mut bindings = Vec::with_capacity(ts.len());

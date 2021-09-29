@@ -94,7 +94,7 @@ use crate::mk_app;
 use crate::operation::{continuate_operation, OperationCont};
 use crate::position::TermPos;
 use crate::stack::Stack;
-use crate::term::{make as mk_term, MetaValue, RichTerm, StrChunk, Term, UnaryOp};
+use crate::term::{make as mk_term, BinaryOp, MetaValue, RichTerm, StrChunk, Term, UnaryOp};
 use std::cell::{Ref, RefCell, RefMut};
 use std::rc::{Rc, Weak};
 
@@ -302,12 +302,12 @@ pub enum EnvBuildError {
     NotARecord(RichTerm),
 }
 
-/// Add the bindings of a record to an environment.
+/// Add the bindings of a record to an environment. Ignore the fields defined by interpolation.
 pub fn env_add_term(env: &mut Environment, rt: RichTerm) -> Result<(), EnvBuildError> {
     let RichTerm { term, pos } = rt;
 
     match *term {
-        Term::Record(bindings, _) | Term::RecRecord(bindings, _) => {
+        Term::Record(bindings, _) | Term::RecRecord(bindings, ..) => {
             let ext = bindings.into_iter().map(|(id, t)| {
                 (
                     id,
@@ -621,7 +621,7 @@ where
                     env,
                 }
             }
-            Term::RecRecord(ts, attrs) => {
+            Term::RecRecord(ts, dyn_fields, attrs) => {
                 // Thanks to the share normal form transformation, the content is either a constant or a
                 // variable.
                 let rec_env = ts.iter().try_fold::<_, _, Result<Environment, EvalError>>(
@@ -671,11 +671,48 @@ where
                         _ => (id, RichTerm { term, pos }),
                     }
                 });
+
+                let static_part = RichTerm::new(Term::Record(new_ts.collect(), attrs), pos);
+
+                // Transform the static part `{stat1 = val1, ..., statn = valn}` and the dynamic
+                // part `{exp1 = dyn_val1, ..., expm = dyn_valm}` to a sequence of extensions
+                // `{stat1 = val1, ..., statn = valn} $[ exp1 = dyn_val1] ... $[ expn = dyn_valn ]`
+                // The `dyn_val` are given access to the recursive environment, but not the dynamic
+                // field names.
+                let extended = dyn_fields
+                    .into_iter()
+                    .try_fold::<_, _, Result<RichTerm, EvalError>>(
+                        static_part,
+                        |acc, (id_t, t)| {
+                            let RichTerm { term, pos } = t;
+                            match *term {
+                                Term::Var(var_id) => {
+                                    let mut thunk = env.get(&var_id).ok_or_else(|| {
+                                        EvalError::UnboundIdentifier(var_id.clone(), pos)
+                                    })?;
+
+                                    thunk.borrow_mut().env.extend(
+                                        rec_env
+                                            .iter_elems()
+                                            .map(|(id, thunk)| (id.clone(), thunk.clone())),
+                                    );
+                                    Ok(Term::App(
+                                        mk_term::op2(BinaryOp::DynExtend(), id_t, acc),
+                                        mk_term::var(var_id).with_pos(pos),
+                                    )
+                                    .into())
+                                }
+                                _ => Ok(Term::App(
+                                    mk_term::op2(BinaryOp::DynExtend(), id_t, acc),
+                                    RichTerm { term, pos },
+                                )
+                                .into()),
+                            }
+                        },
+                    )?;
+
                 Closure {
-                    body: RichTerm {
-                        term: Box::new(Term::Record(new_ts.collect(), attrs)),
-                        pos,
-                    },
+                    body: extended.with_pos(pos),
                     env,
                 }
             }
@@ -888,7 +925,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
 
                 RichTerm::new(Term::Record(map, attrs), pos)
             }
-            Term::RecRecord(map, attrs) => {
+            Term::RecRecord(map, dyn_fields, attrs) => {
                 let map = map
                     .into_iter()
                     .map(|(id, t)| {
@@ -899,7 +936,17 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
                     })
                     .collect();
 
-                RichTerm::new(Term::RecRecord(map, attrs), pos)
+                let dyn_fields = dyn_fields
+                    .into_iter()
+                    .map(|(id_t, t)| {
+                        (
+                            subst_(id_t, global_env, env, Cow::Borrowed(bound.as_ref())),
+                            subst_(t, global_env, env, Cow::Borrowed(bound.as_ref())),
+                        )
+                    })
+                    .collect();
+
+                RichTerm::new(Term::RecRecord(map, dyn_fields, attrs), pos)
             }
             Term::List(ts) => {
                 let ts = ts

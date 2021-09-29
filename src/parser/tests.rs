@@ -173,29 +173,43 @@ fn record_terms() {
             ]
             .into_iter()
             .collect(),
-            Default::default(),
+            Vec::new(),
+            Default::default()
         )
         .into()
     );
 
     assert_eq!(
         parse_without_pos("{ a = 1, \"#{123}\" = (if 4 then 5 else 6), d = 42}"),
-        mk_app!(
-            mk_term::op2(
-                BinaryOp::DynExtend(),
-                StrChunks(vec![StrChunk::expr(RichTerm::from(Num(123.)))]),
-                RecRecord(
-                    vec![
-                        (Ident::from("a"), Num(1.).into()),
-                        (Ident::from("d"), Num(42.).into()),
-                    ]
-                    .into_iter()
-                    .collect(),
-                    Default::default(),
-                )
-            ),
-            mk_app!(mk_term::op1(UnaryOp::Ite(), Num(4.)), Num(5.), Num(6.))
+        RecRecord(
+            vec![
+                (Ident::from("a"), Num(1.).into()),
+                (Ident::from("d"), Num(42.).into()),
+            ]
+            .into_iter()
+            .collect(),
+            vec![(
+                StrChunks(vec![StrChunk::expr(RichTerm::from(Num(123.)))]).into(),
+                mk_app!(mk_term::op1(UnaryOp::Ite(), Num(4.)), Num(5.), Num(6.))
+            )],
+            Default::default(),
         )
+        .into()
+    );
+
+    assert_eq!(
+        parse_without_pos("{ a = 1, \"\\\"#}#\" = 2}"),
+        RecRecord(
+            vec![
+                (Ident::from("a"), Num(1.).into()),
+                (Ident::from("\"#}#"), Num(2.).into()),
+            ]
+            .into_iter()
+            .collect(),
+            Vec::new(),
+            Default::default(),
+        )
+        .into()
     );
 }
 

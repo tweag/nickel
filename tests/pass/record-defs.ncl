@@ -29,6 +29,10 @@ let Assert = fun l x => x || %blame% l in
 ({foo.bar.baz = 1, bar.baz.foo = foo.bar.baz + 1}
   == {foo = {bar = {baz = 1}}, bar = {baz = {foo = 2}}}
   | #Assert) &&
+({foo."bar"."baz" = 1, "bar"."baz"."foo" = foo.bar."baz" + 1}
+  == {foo = {bar = {baz = 1}}, bar = {baz = {foo = 2}}}
+  | #Assert) &&
+
 
 // piecewise_annotations
 ({foo.bar | default = 1, foo.baz = 2}
@@ -36,6 +40,11 @@ let Assert = fun l x => x || %blame% l in
   | #Assert) &&
 ({foo.bar | default = 1, foo.bar = 2} == {foo = {bar = 2}} | #Assert) &&
 ({foo.bar.baz | Bool = true}.foo.bar.baz | #Assert) &&
+
+// recursive_dynamic_fields
+(let x = "foo" in
+  {"#{x}" = bar, bar = 1} == {foo = 1, bar = 1} | #Assert) &&
+({"#foo"."#bar".baz = other + 1, other = 0}."#foo"."#bar".baz == 1) &&
 
 
 true

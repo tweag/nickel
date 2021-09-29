@@ -406,7 +406,7 @@ impl Cache {
     /// # Preconditions
     ///
     /// - the entry must syntactically be a record (`Record` or `RecRecord`). Otherwise, this
-    /// function panic
+    /// function panics
     pub fn transform_inner(
         &mut self,
         file_id: FileId,
@@ -416,7 +416,7 @@ impl Cache {
             Some(_) => {
                 let (mut t, _) = self.terms.remove(&file_id).unwrap();
                 match t.term.as_mut() {
-                    Term::Record(ref mut map, _) | Term::RecRecord(ref mut map, _) => {
+                    Term::Record(ref mut map, _) => {
                         let map_res: Result<HashMap<Ident, RichTerm>, ImportError> =
                             std::mem::replace(map, HashMap::new())
                                 .into_iter()
@@ -425,6 +425,29 @@ impl Cache {
                                 })
                                 .collect();
                         *map = map_res?;
+                    }
+                    Term::RecRecord(ref mut map, ref mut dyn_fields, _) => {
+                        let map_res: Result<HashMap<Ident, RichTerm>, ImportError> =
+                            std::mem::replace(map, HashMap::new())
+                                .into_iter()
+                                .map(|(id, t)| {
+                                    transformations::transform(t).map(|t_ok| (id.clone(), t_ok))
+                                })
+                                .collect();
+
+                        let dyn_fields_res: Result<Vec<(RichTerm, RichTerm)>, ImportError> =
+                            std::mem::replace(dyn_fields, Vec::new())
+                                .into_iter()
+                                .map(|(id_t, t)| {
+                                    Ok((
+                                        transformations::transform(id_t)?,
+                                        transformations::transform(t)?,
+                                    ))
+                                })
+                                .collect();
+
+                        *map = map_res?;
+                        *dyn_fields = dyn_fields_res?;
                     }
                     _ => panic!("cache::transform_inner(): not a record"),
                 }
@@ -564,6 +587,12 @@ impl Cache {
     /// [`to_diagnostic`](../error/trait.ToDiagnostic.html#tymethod.to_diagnostic).
     pub fn files_mut(&mut self) -> &mut Files<String> {
         &mut self.files
+    }
+
+    /// Get a mutable reference to the cached term roots
+    /// (used by the language server to invalidate previously parsed entries)
+    pub fn terms_mut(&mut self) -> &mut HashMap<FileId, (RichTerm, EntryState)> {
+        &mut self.terms
     }
 
     /// Update the state of an entry. Return the previous state.

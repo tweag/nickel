@@ -1,0 +1,42 @@
+// A launch configuration that compiles the extension and then opens it inside a new window
+{
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"type": "extensionHost",
+			"request": "launch",
+			"name": "Launch Client",
+			"runtimeExecutable": "${execPath}",
+			"args": ["--extensionDevelopmentPath=${workspaceRoot}/lsp/client-extension"],
+			"outFiles": ["${workspaceRoot}/lsp/client-extension/out/**/*.js"],
+			"preLaunchTask": "make server",
+			"localRoot":  "${workspaceFolder}/lsp/client-extension"
+		},
+		{
+			"name": "Language Server E2E Test",
+			"type": "extensionHost",
+			"request": "launch",
+			"runtimeExecutable": "${execPath}",
+			"args": [
+				"--extensionDevelopmentPath=${workspaceRoot}",
+				"--extensionTestsPath=${workspaceRoot}/client/out/test/index",
+				"${workspaceRoot}/client/testFixture"
+			],
+			"outFiles": ["${workspaceRoot}/client/out/test/**/*.js"]
+		},
+
+		{
+			"type": "lldb",
+			"request": "attach",
+			"name": "Attach to Server",
+			"program": "${workspaceFolder}/target/debug/nls"
+		}
+		
+	],
+	"compounds": [
+		{
+			"name": "Client + Server",
+			"configurations": ["Launch Client", "Attach to Server"]
+		}
+	]
+}
