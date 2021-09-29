@@ -23,7 +23,7 @@
 //! annotation triggers the traditional checking mode of bidirectional typechecking. When no
 //! checking rule applies anymore, and we need inference, the typechecker just spins up a
 //! unification variable and check against this type. At such interfaces between checking and
-//! inference, we take the occasion to apply a subtyping constraint, that is to check that
+//! inference, we take the opportunity to apply a subtyping constraint, that is to check that
 //! `Inferred <: InitiallyChecked`, as customary in such systems (see [Bidirectional typing, Jana
 //! Dunfield and Neel Krishnaswami](https://arxiv.org/abs/1908.05839) for an good survey of
 //! bidirectional typing).
