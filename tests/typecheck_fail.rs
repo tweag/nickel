@@ -176,7 +176,8 @@ fn imports() {
         )
         .map(|(t, pending)| t)
     }
-
+    // pass but should not...assert_matches
+    // TODO aparently the typechecker give the Num type in the case of a not resolved import...
     assert_matches!(
         type_check_in_env(
             &mk_import("proxy-wrong-type", &mut resolver).unwrap(),
@@ -185,15 +186,16 @@ fn imports() {
         ),
         Err(TypecheckError::TypeMismatch(..))
     );
-
-    assert_matches!(
-        type_check_in_env(
-            &mk_import("proxy-bad", &mut resolver).unwrap(),
-            &Environment::new(),
-            &mut resolver,
-        ),
-        Err(TypecheckError::TypeMismatch(..))
-    );
+    // deactivated, the import resolution is not anymore recursive if not using cache.
+    // moved in tests/imports.rs
+    // assert_matches!(
+    //        type_check_in_env(
+    //            &mk_import("proxy-bad", &mut resolver).unwrap(),
+    //            &Environment::new(),
+    //            &mut resolver,
+    //        ),
+    //        Err(TypecheckError::TypeMismatch(..))
+    //    );
 }
 
 #[test]
