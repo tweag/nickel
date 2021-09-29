@@ -1348,7 +1348,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
                         .with_notes(vec![
                         format!("The type of the expression was inferred to have the row `{}: {}`", ident, conflict.as_ref().cloned().unwrap()),
                         format!("But this type appears inside another row type, which already has a declaration for the field `{}`", ident),
-                        String::from("A type cannot have two conflicting declaration for the same row")
+                        String::from("A type cannot have two conflicting declaration for the same field")
                     ])]
             },
             TypecheckError::ArrowTypeMismatch(actual, expd, path, err, span_opt) => {
