@@ -278,6 +278,10 @@ struct ImportsResolutionState<'a, R> {
 
 /// Apply all program transformations, which are currently the share normal form transformations and
 /// contracts application.
+/// Do not perform transformation on the imported files.
+/// If needed, either do it yourself using pending imports returned by
+/// [`resolve_imports`](../fn.resolve_imports.html)
+/// either use the [`Cache`](../../cache/struct.Cache.html)
 pub fn transform(rt: RichTerm) -> Result<RichTerm, ImportError> {
     rt.traverse(
         &mut |rt: RichTerm, _| -> Result<RichTerm, ImportError> {
@@ -293,8 +297,9 @@ pub fn transform(rt: RichTerm) -> Result<RichTerm, ImportError> {
 /// import resolution.
 ///
 /// All resolved imports are stacked during the process. Once the term has been traversed,
-/// the elements of this stack are processed (and so on, if these elements also have non resolved
-/// imports).
+/// the elements of this stack are returned. The caller is responsible
+/// to recursively resolve imports of this stack and or to perform
+/// transformations on it.
 pub fn resolve_imports<R>(
     rt: RichTerm,
     resolver: &mut R,

@@ -368,6 +368,7 @@ impl Cache {
     /// Apply program transformations to an entry of the cache, and update its state accordingly,
     /// or do nothing if the entry has already been transformed. Require that the corresponding
     /// source has been parsed.
+    /// if imports where resolved, perform transformations recursively on thoes.
     pub fn transform(&mut self, file_id: FileId) -> Result<CacheOp<()>, CacheError<ImportError>> {
         match self.entry_state(file_id) {
             Some(EntryState::Transformed) => Ok(CacheOp::Cached(())),
@@ -375,7 +376,7 @@ impl Cache {
                 let (t, _) = self.terms.remove(&file_id).unwrap();
                 println!("{:?} transformation", file_id);
                 // self.imports has to be cloned because self.transform  take self as mutable
-                // TODO: is this hack dangerous?
+                // TODO: is it good way to do?
                 let imports = self.imports.clone();
                 if let Some(imports) = imports.get(&file_id) {
                     println!("{:?}", imports);
@@ -462,6 +463,7 @@ impl Cache {
     /// Resolve every imports of an entry of the cache, and update its state accordingly,
     /// or do nothing if the entry has already been transformed. Require that the corresponding
     /// source has been parsed.
+    /// If resolved imports contains themself imports, resolve them and soo on.
     pub fn resolve_imports(
         &mut self,
         file_id: FileId,
@@ -527,6 +529,11 @@ impl Cache {
 
     /// Same as [`prepare`](#method.prepare), but do not use nor populate the cache. Used for
     /// inputs which are known to not be reused.
+    /// In this case, the caller has to treat himself the imports:
+    /// - typechecking
+    /// - resolve imports performed insid these imports.
+    /// - transform them.
+    /// as needed.
     pub fn prepare_nocache(
         &mut self,
         file_id: FileId,
