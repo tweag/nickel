@@ -473,7 +473,7 @@ pub struct State<'a> {
 /// Typecheck a term.
 ///
 /// Return the inferred type in case of success. This is just a wrapper that calls
-/// [`type_check_`](fn.type_check_.html) with a fresh unification variable as goal.
+/// [`check`](fn.check.html) with a fresh unification variable as goal.
 pub fn type_check(
     t: &RichTerm,
     global_eval_env: &eval::Environment,
@@ -487,7 +487,7 @@ pub fn type_check(
     };
     let ty = TypeWrapper::Ptr(new_var(state.table));
     let global = Envs::mk_global(global_eval_env);
-    check_(&mut state, Envs::from_global(&global), false, t, ty.clone())?;
+    check(&mut state, Envs::from_global(&global), false, t, ty.clone())?;
 
     Ok(to_type(&state.table, ty))
 }
@@ -501,7 +501,7 @@ pub fn type_check(
 /// already have built a global typing environment.
 ///
 /// Return the inferred type in case of success. This is just a wrapper that calls
-/// [`type_check_`](fn.type_check_.html) with a fresh unification variable as goal.
+/// [`check`](fn.check.html) with a fresh unification variable as goal.
 pub fn type_check_in_env(
     t: &RichTerm,
     global: &Environment,
@@ -514,7 +514,7 @@ pub fn type_check_in_env(
         names: &mut HashMap::new(),
     };
     let ty = TypeWrapper::Ptr(new_var(state.table));
-    check_(&mut state, Envs::from_global(global), false, t, ty.clone())?;
+    check(&mut state, Envs::from_global(global), false, t, ty.clone())?;
 
     Ok(to_type(&state.table, ty))
 }
@@ -528,7 +528,7 @@ pub fn type_check_in_env(
 /// - `strict`: the typechecking mode.
 /// - `t`: the term to check.
 /// - `ty`: the type to check the term against.
-fn check_(
+fn check(
     state: &mut State,
     mut envs: Envs,
     strict: bool,
@@ -557,7 +557,7 @@ fn check_(
                     match chunk {
                         StrChunk::Literal(_) => Ok(()),
                         StrChunk::Expr(t, _) => {
-                            check_(state, envs.clone(), strict, t, mk_typewrapper::str())
+                            check(state, envs.clone(), strict, t, mk_typewrapper::str())
                         }
                     }
                 })
@@ -572,11 +572,11 @@ fn check_(
             check_sub(state, strict, arr, ty).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
             envs.insert(x.clone(), src);
-            check_(state, envs, strict, t, trg)
+            check(state, envs, strict, t, trg)
         }
         Term::List(terms) => {
             let ty_elts = match ty {
-                // The following allows to type heterogenuous lists with `List Dyn`.
+                // The following make it possible to type heterogenuous lists with `List Dyn`.
                 //
                 // Consider the following example:
                 // `[1, "a"] : List Dyn`
@@ -604,7 +604,7 @@ fn check_(
             terms
                 .iter()
                 .try_for_each(|t| -> Result<(), TypecheckError> {
-                    check_(state, envs.clone(), strict, t, ty_elts.clone())
+                    check(state, envs.clone(), strict, t, ty_elts.clone())
                 })
         }
         Term::Lbl(_) => {
@@ -614,11 +614,11 @@ fn check_(
         }
         Term::Let(x, re, rt) => {
             let ty_let = binding_type(re.as_ref(), &envs, state.table, strict);
-            check_(state, envs.clone(), strict, re, ty_let.clone())?;
+            check(state, envs.clone(), strict, re, ty_let.clone())?;
 
             // TODO move this up once lets are rec
             envs.insert(x.clone(), ty_let);
-            check_(state, envs, strict, rt, ty)
+            check(state, envs, strict, rt, ty)
         }
         Term::App(e, t) => {
             let src = TypeWrapper::Ptr(new_var(state.table));
@@ -628,12 +628,8 @@ fn check_(
             check_sub(state, strict, tgt, ty)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
-            // This order shouldn't be changed, since applying a function to a record
-            // may change how it's typed (static or dynamic)
-            // This is good hint a bidirectional algorithm would make sense...
-            // ^ Yes, indeed :)
-            check_(state, envs.clone(), strict, e, arr)?;
-            check_(state, envs, strict, t, src)
+            check(state, envs.clone(), strict, e, arr)?;
+            check(state, envs, strict, t, src)
         }
         Term::Switch(exp, cases, default) => {
             // Currently, if it has a default value, we typecheck the whole thing as
@@ -641,12 +637,12 @@ fn check_(
             let res = TypeWrapper::Ptr(new_var(state.table));
 
             for case in cases.values() {
-                check_(state, envs.clone(), strict, case, res.clone())?;
+                check(state, envs.clone(), strict, case, res.clone())?;
             }
 
             let row = match default {
                 Some(t) => {
-                    check_(state, envs.clone(), strict, t, res.clone())?;
+                    check(state, envs.clone(), strict, t, res.clone())?;
                     TypeWrapper::Ptr(new_var(state.table))
                 }
                 None => cases.iter().try_fold(
@@ -658,7 +654,7 @@ fn check_(
             };
 
             check_sub(state, strict, res, ty).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            check_(state, envs, strict, exp, mk_tyw_enum!(row))
+            check(state, envs, strict, exp, mk_tyw_enum!(row))
         }
         Term::Var(x) => {
             let x_ty = envs
@@ -695,7 +691,7 @@ fn check_(
                 stat_map
                     .iter()
                     .try_for_each(|(_, t)| -> Result<(), TypecheckError> {
-                        check_(state, envs.clone(), strict, t, (*rec_ty).clone())
+                        check(state, envs.clone(), strict, t, (*rec_ty).clone())
                     })
             } else {
                 let row = stat_map.iter().try_fold(
@@ -710,7 +706,7 @@ fn check_(
                             TypeWrapper::Ptr(new_var(state.table))
                         };
 
-                        check_(state, envs.clone(), strict, field, ty.clone())?;
+                        check(state, envs.clone(), strict, field, ty.clone())?;
 
                         Ok(mk_tyw_row!((id.clone(), ty); acc))
                     },
@@ -725,15 +721,15 @@ fn check_(
 
             check_sub(state, strict, ty_res, ty)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            check_(state, envs.clone(), strict, t, ty_arg)
+            check(state, envs.clone(), strict, t, ty_arg)
         }
         Term::Op2(op, t1, t2) => {
             let (ty_arg1, ty_arg2, ty_res) = get_bop_type(state, op)?;
 
             check_sub(state, strict, ty_res, ty)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            check_(state, envs.clone(), strict, t1, ty_arg1)?;
-            check_(state, envs, strict, t2, ty_arg2)
+            check(state, envs.clone(), strict, t1, ty_arg1)?;
+            check(state, envs, strict, t2, ty_arg2)
         }
         Term::OpN(op, args) => {
             let (tys_op, ty_ret) = get_nop_type(state, op)?;
@@ -745,7 +741,7 @@ fn check_(
                 .into_iter()
                 .zip(args.iter())
                 .try_for_each(|(ty_t, t)| {
-                    check_(state, envs.clone(), strict, t, ty_t)?;
+                    check(state, envs.clone(), strict, t, ty_t)?;
                     Ok(())
                 })?;
 
@@ -763,7 +759,7 @@ fn check_(
             let instantiated = instantiate_foralls(state, tyw2.clone(), ForallInst::Constant);
 
             check_sub(state, strict, tyw2, ty).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            check_(state, envs, true, t, instantiated)
+            check(state, envs, true, t, instantiated)
         }
         // A metavalue with at least one contract is an assume. If there's several
         // contracts, we arbitrarily chose the first one as the type annotation.
@@ -781,7 +777,7 @@ fn check_(
             // if there's an inner value, we have to recursively typecheck it, but in non strict
             // mode.
             if let Some(t) = value {
-                check_(state, envs, false, t, mk_typewrapper::dynamic())
+                check(state, envs, false, t, mk_typewrapper::dynamic())
             }
             else {
                 Ok(())
@@ -789,10 +785,10 @@ fn check_(
         }
         Term::Sym(_) => check_sub(state, strict, mk_typewrapper::sym(), ty)
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
-        Term::Wrapped(_, t) => check_(state, envs, strict, t, ty),
+        Term::Wrapped(_, t) => check(state, envs, strict, t, ty),
         // A non-empty metavalue without a type or contract annotation is typechecked in the same way as its inner value
         Term::MetaValue(MetaValue { value: Some(t), .. }) => {
-            check_(state, envs, strict, t, ty)
+            check(state, envs, strict, t, ty)
         }
         // A metavalue without a body nor a type annotation is a record field without definition.
         // This should probably be non representable in the syntax, as it doesn't really make
@@ -804,7 +800,7 @@ fn check_(
         Term::Import(_) => check_sub(state, strict, mk_typewrapper::dynamic(), ty)
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
         // We typecheck the import in a fresh typing environment, and then use its apparent type
-        // for checking. 
+        // for checking.
         Term::ResolvedImport(file_id) => {
             let t = state
                 .resolver
