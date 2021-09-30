@@ -44,7 +44,18 @@ fn typecheck_fail() {
         .unwrap();
 }
 
-// produce a stack overflow
+#[test]
+fn nested() {
+    use nickel::term::Term;
+    let mut prog = Program::new_from_source(
+        BufReader::new(mk_import("nested.ncl").as_bytes()),
+        "should_be = 3",
+    )
+    .unwrap();
+    assert_eq!(prog.eval(), Ok(Term::Num(3.)));
+}
+
+// TODO produce a stack overflow
 //#[test]
 //fn circular_imports_fail() {
 //    let mut prog = Program::new_from_source(
