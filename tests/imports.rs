@@ -55,6 +55,20 @@ fn nested() {
     assert_eq!(prog.eval(), Ok(Term::Num(3.)));
 }
 
+#[test]
+fn serialize() {
+    use nickel::term::Term;
+    let mut prog = Program::new_from_source(
+        BufReader::new(format!(
+                "(builtins.serialize `Json ({})) == (builtins.serialize `Json ({{foo = \"ab\"}}))",
+                mk_import("record.ncl")
+        ).as_bytes()),
+        "shoud success",
+    )
+    .unwrap();
+    assert_eq!(prog.eval(), Ok(Term::Bool(true)));
+}
+
 // TODO produce a stack overflow
 //#[test]
 //fn circular_imports_fail() {
