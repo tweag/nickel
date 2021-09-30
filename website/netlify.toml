@@ -6,7 +6,7 @@
 
 [[redirects]]
   from = "http://nickel-lang.netlify.com/*"
-  to = "http://nickel-lang.org/:splat"
+  to = "https://nickel-lang.org/:splat"
   status = 301
   force = true
 
