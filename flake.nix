@@ -208,9 +208,99 @@
           '';
         };
 
+      buildDevShell = { system, channel ? "stable" }: 
+      let 
+        pkgs = mkPkgs { inherit system; };
+        nickel = buildNickel { inherit system; isShell = true; };
+        rust = (pkgs.rustChannelOf RUST_CHANNELS."${channel}").rust.override({
+          extensions = [ "rustfmt-preview" ];
+        });
+        rustFormatHook = pkgs.writeShellScriptBin "check-rust-format-hook"
+          ''
+            ${rust}/bin/cargo fmt -- --check
+            RESULT=$?
+            [ $RESULT != 0 ] && echo "Please run \`cargo fmt\` before"
+            exit $RESULT
+          '';
+        
+        installGitHooks = hookTypes:
+          let mkHook = type: hooks: {
+            hook = pkgs.writeShellScript type
+            ''
+              for hook in ${pkgs.symlinkJoin { name = "${type}-git-hooks"; paths = hooks; }}/bin/*; do
+                $hook
+                RESULT=$?
+                if [ $RESULT != 0 ]; then
+                  echo "$hook returned non-zero: $RESULT, abort operation"
+                exit $RESULT
+                fi
+              done
+              echo "$INSTALLED_GIT_HOOKS $type"
+              exit 0
+            '';
+            inherit type;
+          };
+
+          installHookScript = { type, hook }: ''
+            if [[ -e .git/hooks/${type} ]]; then
+                echo "Warn: ${type} hook already present, skipping"
+            else
+                ln -s ${hook} $PWD/.git/hooks/${type}
+                INSTALLED_GIT_HOOKS+=(${type})
+            fi
+          '';
+          in
+
+          pkgs.writeShellScriptBin "install-git-hooks" 
+          ''
+
+            if [[ ! -d .git ]] || [[ ! -f flake.nix ]]; then
+              echo "Invocate \`nix develop\` from the project root directory."
+              exit 1
+            fi
+
+            if [[ -e .git/hooks/nix-installed-hooks ]]; then
+               echo "Hooks already installed, reinstalling"
+               ${uninstallGitHooks.name}
+            fi
+
+            mkdir -p ./.git/hooks
+            
+            ${pkgs.lib.concatStringsSep "\n" (pkgs.lib.mapAttrsToList (type: hooks: installHookScript (mkHook type hooks)) hookTypes )}
+
+            echo "Installed git hooks: $INSTALLED_GIT_HOOKS"
+            printf "%s\n" "''${INSTALLED_GIT_HOOKS[@]}" > .git/hooks/nix-installed-hooks
+          '';
+        
+        uninstallGitHooks = pkgs.writeShellScriptBin "uninstall-git-hooks" 
+          ''
+          if [[ ! -e "$PWD/.git/hooks/nix-installed-hooks" ]]; then
+            echo "Error: could find list of installed hooks."
+            exit 1
+          fi
+
+          while read -r hook
+          do
+            echo "Uninstalling $hook"
+            rm "$PWD/.git/hooks/$hook"
+          done < "$PWD/.git/hooks/nix-installed-hooks"
+
+          rm "$PWD/.git/hooks/nix-installed-hooks"
+          '';
+
+      in pkgs.mkShell {
+        packages = [ (installGitHooks { pre-commit = [rustFormatHook]; } ) uninstallGitHooks ];
+        inputsFrom = [ nickel ];
+
+        shellHook = ''
+        echo "=== Nickel development shell ==="
+        echo "Info: Git hooks can be installed using \`install-git-hooks\`"
+        '';
+      };
+
     in rec {
       defaultPackage = forAllSystems (system: packages."${system}".build);
-      devShell = forAllSystems (system: buildNickel { inherit system; isShell = true; });
+      devShell = forAllSystems (system: buildDevShell { inherit system; });
       packages = forAllSystems (system: {
         build = buildNickel { inherit system; };
         buildWasm = buildNickelWASM { inherit system; optimize = true; };
