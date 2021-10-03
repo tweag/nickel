@@ -500,7 +500,7 @@ fn type_check_(
     ty: TypeWrapper,
 ) -> Result<(), TypecheckError> {
     let RichTerm { term: t, pos } = rt;
-
+    
     match t.as_ref() {
         // null is inferred to be of type Dyn
         Term::Null => unify(state, strict, ty, mk_typewrapper::dynamic())
@@ -773,6 +773,9 @@ fn type_check_(
             unify(state, strict, ty, ty_import).map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
     }
+
+    
+
 }
 
 /// Determine the type of a let-bound expression, or more generally of any binding (e.g. fields)
