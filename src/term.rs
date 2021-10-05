@@ -25,6 +25,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fmt;
+use std::rc::Rc;
 
 /// The AST of a Nickel expression.
 ///
@@ -538,6 +539,26 @@ impl Term {
             | Term::StrChunks(_)
             | Term::RecRecord(..) => false,
         }
+    }
+}
+
+pub struct SharedTerm {
+    term: Rc<Term>,
+}
+
+impl SharedTerm {
+    pub fn new(term: Term) -> Self {
+        Self {
+            term: Rc::new(term),
+        }
+    }
+
+    pub fn as_ref(&self) -> &Term {
+        self.term.as_ref()
+    }
+
+    pub fn as_mut(&mut self) -> &mut Term {
+        Rc::make_mut(&mut self.term)
     }
 }
 
