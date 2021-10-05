@@ -56,7 +56,9 @@ use crate::eval::CallStack;
 use crate::eval::{Closure, Environment};
 use crate::label::Label;
 use crate::position::TermPos;
-use crate::term::{make as mk_term, BinaryOp, Contract, MetaValue, RecordAttrs, RichTerm, Term};
+use crate::term::{
+    make as mk_term, BinaryOp, Contract, MetaValue, RecordAttrs, RichTerm, SharedTerm, Term,
+};
 use crate::transformations::Closurizable;
 use std::collections::HashMap;
 
@@ -127,11 +129,11 @@ pub fn merge(
             } else {
                 Err(EvalError::MergeIncompatibleArgs(
                     RichTerm {
-                        term: Box::new(Term::Bool(b1)),
+                        term: SharedTerm::new(Term::Bool(b1)),
                         pos: pos1,
                     },
                     RichTerm {
-                        term: Box::new(Term::Bool(b2)),
+                        term: SharedTerm::new(Term::Bool(b2)),
                         pos: pos2,
                     },
                     pos_op,
@@ -147,11 +149,11 @@ pub fn merge(
             } else {
                 Err(EvalError::MergeIncompatibleArgs(
                     RichTerm {
-                        term: Box::new(Term::Num(n1)),
+                        term: SharedTerm::new(Term::Num(n1)),
                         pos: pos1,
                     },
                     RichTerm {
-                        term: Box::new(Term::Num(n2)),
+                        term: SharedTerm::new(Term::Num(n2)),
                         pos: pos2,
                     },
                     pos_op,
@@ -167,11 +169,11 @@ pub fn merge(
             } else {
                 Err(EvalError::MergeIncompatibleArgs(
                     RichTerm {
-                        term: Box::new(Term::Str(s1)),
+                        term: SharedTerm::new(Term::Str(s1)),
                         pos: pos1,
                     },
                     RichTerm {
-                        term: Box::new(Term::Str(s2)),
+                        term: SharedTerm::new(Term::Str(s2)),
                         pos: pos2,
                     },
                     pos_op,
@@ -187,11 +189,11 @@ pub fn merge(
             } else {
                 Err(EvalError::MergeIncompatibleArgs(
                     RichTerm {
-                        term: Box::new(Term::Lbl(l1)),
+                        term: SharedTerm::new(Term::Lbl(l1)),
                         pos: pos1,
                     },
                     RichTerm {
-                        term: Box::new(Term::Lbl(l2)),
+                        term: SharedTerm::new(Term::Lbl(l2)),
                         pos: pos2,
                     },
                     pos_op,
@@ -369,11 +371,11 @@ pub fn merge(
         //The following cases are either errors or not yet implemented
         (t1_, t2_) => Err(EvalError::MergeIncompatibleArgs(
             RichTerm {
-                term: Box::new(t1_),
+                term: SharedTerm::new(t1_),
                 pos: pos1,
             },
             RichTerm {
-                term: Box::new(t2_),
+                term: SharedTerm::new(t2_),
                 pos: pos2,
             },
             pos_op,

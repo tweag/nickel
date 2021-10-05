@@ -13,7 +13,7 @@ use crate::{mk_app, mk_opn};
 use crate::identifier::Ident;
 use crate::parser::error::ParseError;
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
-    MergePriority, Contract, NAryOp, RecordAttrs};
+    MergePriority, Contract, NAryOp, RecordAttrs, SharedTerm};
 use crate::term::make as mk_term;
 use crate::types::{Types, AbsType};
 
@@ -103,7 +103,7 @@ RootTerm: RichTerm = {
     <l: @L> "fun" <ps:Pattern+> "=>" <t: Term> <r: @R> => {
         let pos = mk_pos(src_id, l, r);
         ps.into_iter().rev().fold(t, |t, p| RichTerm {
-            term: Box::new(Term::Fun(p, t)),
+            term: SharedTerm::new(Term::Fun(p, t)),
             pos,
         })
     },

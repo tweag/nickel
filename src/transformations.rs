@@ -45,7 +45,7 @@ pub mod share_normal_form {
     use super::fresh_var;
     use crate::identifier::Ident;
     use crate::position::TermPos;
-    use crate::term::{MetaValue, RichTerm, Term};
+    use crate::term::{MetaValue, RichTerm, SharedTerm, Term};
 
     /// Transform the top-level term of an AST to a share normal form, if it can.
     ///
@@ -179,7 +179,7 @@ pub mod share_normal_form {
     fn with_bindings(body: Term, bindings: Vec<(Ident, RichTerm)>, pos: TermPos) -> RichTerm {
         bindings.into_iter().fold(
             RichTerm {
-                term: Box::new(body),
+                term: SharedTerm::new(body),
                 pos: pos.into_inherited(),
             },
             |acc, (id, t)| RichTerm::new(Term::Let(id, t, acc), pos),

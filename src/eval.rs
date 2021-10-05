@@ -94,7 +94,9 @@ use crate::mk_app;
 use crate::operation::{continuate_operation, OperationCont};
 use crate::position::TermPos;
 use crate::stack::Stack;
-use crate::term::{make as mk_term, BinaryOp, MetaValue, RichTerm, StrChunk, Term, UnaryOp};
+use crate::term::{
+    make as mk_term, BinaryOp, MetaValue, RichTerm, SharedTerm, StrChunk, Term, UnaryOp,
+};
 use std::cell::{Ref, RefCell, RefMut};
 use std::rc::{Rc, Weak};
 
@@ -663,7 +665,7 @@ where
                             (
                                 id,
                                 RichTerm {
-                                    term: Box::new(Term::Var(var_id)),
+                                    term: SharedTerm::new(Term::Var(var_id)),
                                     pos,
                                 },
                             )
@@ -727,7 +729,7 @@ where
                      */
                     let update_closure = Closure {
                         body: RichTerm {
-                            term: Box::new(Term::MetaValue(meta)),
+                            term: SharedTerm::new(Term::MetaValue(meta)),
                             pos,
                         },
                         env,
@@ -771,7 +773,7 @@ where
             _ if stack.is_top_thunk() || stack.is_top_cont() => {
                 clos = Closure {
                     body: RichTerm {
-                        term: Box::new(term),
+                        term: SharedTerm::new(term),
                         pos,
                     },
                     env,
@@ -798,7 +800,7 @@ where
                 if let Some((arg, pos_app)) = stack.pop_arg() {
                     return Err(EvalError::NotAFunc(
                         RichTerm {
-                            term: Box::new(t),
+                            term: SharedTerm::new(t),
                             pos,
                         },
                         arg.body,

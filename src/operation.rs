@@ -15,7 +15,7 @@ use crate::merge::{merge, MergeMode};
 use crate::mk_record;
 use crate::position::TermPos;
 use crate::stack::Stack;
-use crate::term::make as mk_term;
+use crate::term::{make as mk_term, SharedTerm};
 use crate::term::{BinaryOp, NAryOp, RichTerm, StrChunk, Term, UnaryOp};
 use crate::transformations::Closurizable;
 use crate::{mk_app, mk_fun, mk_opn};
@@ -333,7 +333,7 @@ fn process_unary_operation(
                             String::from("switch"),
                             arg_pos,
                             RichTerm {
-                                term: Box::new(Term::Enum(en)),
+                                term: SharedTerm::new(Term::Enum(en)),
                                 pos,
                             },
                         ))
@@ -450,7 +450,7 @@ fn process_unary_operation(
                         id.0,
                         String::from("(.)"),
                         RichTerm {
-                            term: Box::new(Term::Record(static_map, attrs)),
+                            term: SharedTerm::new(Term::Record(static_map, attrs)),
                             pos,
                         },
                         pos_op,
@@ -1533,7 +1533,7 @@ fn process_binary_operation(
                             id,
                             String::from("(.$)"),
                             RichTerm {
-                                term: Box::new(Term::Record(static_map, attrs)),
+                                term: SharedTerm::new(Term::Record(static_map, attrs)),
                                 pos: pos2,
                             },
                             pos_op,
@@ -1608,7 +1608,7 @@ fn process_binary_operation(
                             id,
                             String::from("(-$)"),
                             RichTerm {
-                                term: Box::new(Term::Record(static_map, attrs)),
+                                term: SharedTerm::new(Term::Record(static_map, attrs)),
                                 pos: pos2,
                             },
                             pos_op,
@@ -1690,7 +1690,7 @@ fn process_binary_operation(
                 String::from("@, 2nd operand"),
                 snd_pos,
                 RichTerm {
-                    term: Box::new(t2),
+                    term: SharedTerm::new(t2),
                     pos: pos2,
                 },
             )),
@@ -1699,7 +1699,7 @@ fn process_binary_operation(
                 String::from("@, 1st operand"),
                 fst_pos,
                 RichTerm {
-                    term: Box::new(t1),
+                    term: SharedTerm::new(t1),
                     pos: pos1,
                 },
             )),
@@ -1723,7 +1723,7 @@ fn process_binary_operation(
                 String::from("elemAt, 2nd argument"),
                 snd_pos,
                 RichTerm {
-                    term: Box::new(t2),
+                    term: SharedTerm::new(t2),
                     pos: pos2,
                 },
             )),
@@ -1732,7 +1732,7 @@ fn process_binary_operation(
                 String::from("elemAt, 1st argument"),
                 fst_pos,
                 RichTerm {
-                    term: Box::new(t1),
+                    term: SharedTerm::new(t1),
                     pos: pos1,
                 },
             )),
@@ -1923,7 +1923,7 @@ fn process_binary_operation(
                 String::from("strSplit, 2nd argument"),
                 snd_pos,
                 RichTerm {
-                    term: Box::new(t2),
+                    term: SharedTerm::new(t2),
                     pos: pos2,
                 },
             )),
@@ -1932,7 +1932,7 @@ fn process_binary_operation(
                 String::from("strSplit, 1st argument"),
                 fst_pos,
                 RichTerm {
-                    term: Box::new(t1),
+                    term: SharedTerm::new(t1),
                     pos: pos1,
                 },
             )),
@@ -1947,7 +1947,7 @@ fn process_binary_operation(
                 String::from("strContains, 2nd argument"),
                 snd_pos,
                 RichTerm {
-                    term: Box::new(t2),
+                    term: SharedTerm::new(t2),
                     pos: pos2,
                 },
             )),
@@ -1956,7 +1956,7 @@ fn process_binary_operation(
                 String::from("strContains, 1st argument"),
                 fst_pos,
                 RichTerm {
-                    term: Box::new(t1),
+                    term: SharedTerm::new(t1),
                     pos: pos1,
                 },
             )),
@@ -1976,7 +1976,7 @@ fn process_binary_operation(
                 String::from("strIsMatch, 2nd argument"),
                 snd_pos,
                 RichTerm {
-                    term: Box::new(t2),
+                    term: SharedTerm::new(t2),
                     pos: pos2,
                 },
             )),
@@ -1985,7 +1985,7 @@ fn process_binary_operation(
                 String::from("strIsMatch, 1st argument"),
                 fst_pos,
                 RichTerm {
-                    term: Box::new(t1),
+                    term: SharedTerm::new(t1),
                     pos: pos1,
                 },
             )),
@@ -2029,7 +2029,7 @@ fn process_binary_operation(
                     String::from("strMatch, 2nd argument"),
                     snd_pos,
                     RichTerm {
-                        term: Box::new(t2),
+                        term: SharedTerm::new(t2),
                         pos: pos2,
                     },
                 )),
@@ -2038,7 +2038,7 @@ fn process_binary_operation(
                     String::from("strMatch, 1st argument"),
                     fst_pos,
                     RichTerm {
-                        term: Box::new(t1),
+                        term: SharedTerm::new(t1),
                         pos: pos1,
                     },
                 )),
