@@ -58,7 +58,7 @@ fn typecheck_fail() {
 #[test]
 fn static_typing_fail() {
     let mut prog = Program::new_from_source(
-        BufReader::new(format!("let x : Str = {} in x", mk_import("two.ncl")).as_bytes()),
+        BufReader::new(format!("(let x = {} in x) : Num", mk_import("two.ncl")).as_bytes()),
         "should_fail",
     )
     .unwrap();

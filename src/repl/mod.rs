@@ -119,14 +119,26 @@ impl REPLImpl {
         {
             ExtendedTerm::RichTerm(t) => {
                 let (t, pending) = transformations::resolve_imports(t, &mut self.cache)?;
+                for (_,id,_) in &pending {
+                    self.cache.resolve_imports(*id).unwrap();
+                }
                 typecheck::type_check_in_env(&t, &self.type_env, &self.cache)?;
+                for (_,id,_) in &pending {
+                    self.cache.transform(*id).unwrap();
+                }
                 let t = transformations::transform(t)?;
                 Ok(eval_function(t, &self.eval_env, &mut self.cache)?.into())
             }
             ExtendedTerm::ToplevelLet(id, t) => {
                 let (t, pending) = transformations::resolve_imports(t, &mut self.cache)?;
+                for (_,id,_) in &pending {
+                    self.cache.resolve_imports(*id).unwrap();
+                }
                 typecheck::type_check_in_env(&t, &self.type_env, &self.cache)?;
                 typecheck::Envs::env_add(&mut self.type_env, id.clone(), &t);
+                for (_,id,_) in &pending {
+                    self.cache.transform(*id).unwrap();
+                }
 
                 let t = transformations::transform(t)?;
 
