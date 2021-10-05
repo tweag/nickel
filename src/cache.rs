@@ -6,6 +6,7 @@ use crate::parser::lexer::Lexer;
 use crate::position::TermPos;
 use crate::stdlib as nickel_stdlib;
 use crate::term::{RichTerm, Term};
+use crate::typecheck::linearization::StubHost;
 use crate::typecheck::type_check;
 use crate::{eval, parser, transformations};
 use codespan::{FileId, Files};
@@ -355,7 +356,7 @@ impl Cache {
         if *state > EntryState::Typechecked {
             Ok(CacheOp::Cached(()))
         } else if *state >= EntryState::Parsed {
-            type_check(t, global_env, self)?;
+            type_check(t, global_env, self, StubHost)?;
             self.update_state(file_id, EntryState::Typechecked);
             Ok(CacheOp::Done(()))
         } else {
@@ -530,8 +531,8 @@ impl Cache {
         global_env: &eval::Environment,
     ) -> Result<(RichTerm, Vec<FileId>), Error> {
         let term = self.parse_nocache(file_id)?;
+        type_check(&term, global_env, self, StubHost)?;
         let (term, pending) = transformations::resolve_imports(term, self)?;
-        type_check(&term, global_env, self)?;
         let term = transformations::transform(term)?;
         Ok((term, pending))
     }
@@ -590,6 +591,12 @@ impl Cache {
     /// (used by the language server to invalidate previously parsed entries)
     pub fn terms_mut(&mut self) -> &mut HashMap<FileId, (RichTerm, EntryState)> {
         &mut self.terms
+    }
+
+    /// Get a mutable reference to the cached term roots
+    /// (used by the language server to invalidate previously parsed entries)
+    pub fn terms(&self) -> &HashMap<FileId, (RichTerm, EntryState)> {
+        &self.terms
     }
 
     /// Update the state of an entry. Return the previous state.

@@ -1,4 +1,7 @@
+use std::collections::HashMap;
+
 use anyhow::Result;
+use codespan::FileId;
 use log::{trace, warn};
 use lsp_server::{Connection, ErrorCode, Message, Notification, RequestId, Response};
 use lsp_types::{
@@ -10,11 +13,18 @@ use lsp_types::{
 };
 use serde::Deserialize;
 
-use nickel::{cache::Cache, environment::Environment, eval::Thunk, identifier::Ident};
+use nickel::{
+    cache::Cache,
+    environment::Environment,
+    eval::Thunk,
+    identifier::Ident,
+    typecheck::linearization::{self, Linearization},
+};
 
 pub struct Server {
     pub connection: Connection,
     pub cache: Cache,
+    pub lin_cache: HashMap<FileId, Linearization>,
     pub global_env: Environment<Ident, Thunk>,
 }
 
@@ -35,10 +45,12 @@ impl Server {
     pub fn new(connection: Connection) -> Server {
         let mut cache = Cache::new();
         cache.prepare_stdlib().unwrap();
+        let lin_cache = HashMap::new();
         let global_env = cache.mk_global_env().unwrap();
         Server {
             connection,
             cache,
+            lin_cache,
             global_env,
         }
     }
