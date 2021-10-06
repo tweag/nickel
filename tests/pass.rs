@@ -107,3 +107,8 @@ fn serialize() {
 fn annot_parsing() {
     check_file("annotations.ncl");
 }
+
+#[test]
+fn importing() {
+    check_file("import.ncl");
+}
