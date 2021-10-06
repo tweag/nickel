@@ -65,7 +65,6 @@ impl MarkdownRenderer {
 fn termimad_to_io(err: termimad::Error) -> io::Error {
     match err {
         termimad::Error::IO(err) => err,
-        termimad::Error::Crossterm(err) => io::Error::new(io::ErrorKind::Other, err.to_string()),
     }
 }
 
