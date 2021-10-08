@@ -526,7 +526,7 @@ impl Cache {
 
     /// Same as [`prepare`](#method.prepare), but do not use nor populate the cache. Used for
     /// inputs which are known to not be reused.
-    /// In this case, the caller has to treat himself the imports:
+    /// In this case, the caller has to process the imports themselves as needed:
     /// - typechecking
     /// - resolve imports performed insid these imports.
     /// - transform them.
