@@ -374,14 +374,11 @@ impl Cache {
             Some(EntryState::Transformed) => Ok(CacheOp::Cached(())),
             Some(_) => {
                 let (t, _) = self.terms.remove(&file_id).unwrap();
-                println!("{:?} transformation", file_id);
                 // self.imports has to be cloned because self.transform  take self as mutable
                 // TODO: is it good way to do?
                 let imports = self.imports.clone();
                 if let Some(imports) = imports.get(&file_id) {
-                    println!("{:?}", imports);
                     for f in imports.iter() {
-                        println!("{:?}", f);
                         self.transform(*f)?;
                     }
                 }
@@ -764,7 +761,6 @@ impl ImportResolver for Cache {
         pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError> {
         let path_buf = with_parent(path, parent.clone());
-        println!("{:#?}", path_buf);
         let format = InputFormat::from_path_buf(&path_buf).unwrap_or(InputFormat::Nickel);
         let id_op = self.get_or_add_file(&path_buf).map_err(|err| {
             ImportError::IOError(
@@ -780,7 +776,6 @@ impl ImportResolver for Cache {
                     let parent_id = self.id_of(parent).unwrap();
                     self.imports.insert(parent_id, HashSet::new());
                     self.imports.get_mut(&parent_id).unwrap().insert(id);
-                    println!("{:#?}", self.imports);
                 }
                 id
             }
