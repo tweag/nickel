@@ -460,7 +460,7 @@ impl Cache {
     /// Resolve every imports of an entry of the cache, and update its state accordingly,
     /// or do nothing if the entry has already been transformed. Require that the corresponding
     /// source has been parsed.
-    /// If resolved imports contains themself imports, resolve them and soo on.
+    /// If resolved imports contain imports themselves, resolve them recursively.
     pub fn resolve_imports(
         &mut self,
         file_id: FileId,
