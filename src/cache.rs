@@ -528,9 +528,8 @@ impl Cache {
     /// inputs which are known to not be reused.
     /// In this case, the caller has to process the imports themselves as needed:
     /// - typechecking
-    /// - resolve imports performed insid these imports.
-    /// - transform them.
-    /// as needed.
+    /// - resolve imports performed inside these imports.
+    /// - apply program transformations.
     pub fn prepare_nocache(
         &mut self,
         file_id: FileId,
