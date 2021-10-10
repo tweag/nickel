@@ -1,30 +1,33 @@
 use std::collections::HashMap;
 
 use anyhow::Result;
-use codespan::FileId;
-use log::{trace, warn};
+use codespan::{ByteIndex, FileId};
+use log::{debug, trace, warn};
 use lsp_server::{Connection, ErrorCode, Message, Notification, RequestId, Response};
 use lsp_types::{
     notification::{self, DidChangeTextDocument, DidOpenTextDocument},
     notification::{Notification as _, *},
     request::{Request as RequestTrait, *},
-    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
+    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams, Hover,
+    HoverContents, HoverOptions, HoverParams, HoverProviderCapability, MarkedString,
     ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
+    WorkDoneProgress, WorkDoneProgressOptions,
 };
 use serde::Deserialize;
 
+use nickel::typecheck::linearization::Completed;
 use nickel::{
-    cache::Cache,
+    cache::{Cache, ImportResolver},
     environment::Environment,
     eval::Thunk,
     identifier::Ident,
-    typecheck::linearization::{self, Linearization},
+    position::{self, TermPos},
 };
 
 pub struct Server {
     pub connection: Connection,
     pub cache: Cache,
-    pub lin_cache: HashMap<FileId, Linearization>,
+    pub lin_cache: HashMap<FileId, Completed>,
     pub global_env: Environment<Ident, Thunk>,
 }
 
@@ -38,6 +41,11 @@ impl Server {
                     ..TextDocumentSyncOptions::default()
                 },
             )),
+            hover_provider: Some(HoverProviderCapability::Options(HoverOptions {
+                work_done_progress_options: WorkDoneProgressOptions {
+                    work_done_progress: Some(false),
+                },
+            })),
             ..ServerCapabilities::default()
         }
     }
@@ -136,7 +144,59 @@ impl Server {
         }
     }
 
-    fn handle_request(&self, req: lsp_server::Request) {
-        todo!()
+    fn handle_request(&mut self, req: lsp_server::Request) {
+        match req.method.as_str() {
+            HoverRequest::METHOD => {
+                let params: HoverParams = serde_json::from_value(req.params).unwrap();
+                let file_id = self
+                    .cache
+                    .id_of(
+                        params
+                            .text_document_position_params
+                            .text_document
+                            .uri
+                            .as_str(),
+                    )
+                    .unwrap();
+
+                let mut lines = params.text_document_position_params.position.line;
+                let mut position: u32 = 0;
+                for (idx, byte) in self.cache.files_mut().source(file_id).bytes().enumerate() {
+                    if byte == '\n' as u8 {
+                        lines -= 1
+                    }
+                    if lines == 0 {
+                        position = idx as u32;
+                        break;
+                    }
+                }
+                position += params.text_document_position_params.position.character;
+                let locator = (file_id, ByteIndex(position));
+
+                debug!("{:?}", self.lin_cache);
+
+                match self
+                    .lin_cache
+                    .get(&file_id)
+                    .unwrap()
+                    .lin
+                    .binary_search_by_key(&locator, |item| match item.pos {
+                        TermPos::Original(span) | TermPos::Inherited(span) => {
+                            (span.src_id, span.start)
+                        }
+                        TermPos::None => unreachable!(),
+                    }) {
+                    Ok(index) | Err(index) => {
+                        let item = &self.lin_cache.get(&file_id).unwrap().lin[index];
+                        let ty = item.ty.clone();
+                        self.reply(Response::new_ok(
+                            req.id,
+                            HoverContents::Scalar(MarkedString::String(format!("{:?}", ty))),
+                        ))
+                    }
+                };
+            }
+            _ => {}
+        }
     }
 }
