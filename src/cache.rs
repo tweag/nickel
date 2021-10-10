@@ -6,8 +6,8 @@ use crate::parser::lexer::Lexer;
 use crate::position::TermPos;
 use crate::stdlib as nickel_stdlib;
 use crate::term::{RichTerm, Term};
-use crate::typecheck::linearization::StubHost;
-use crate::typecheck::type_check;
+use crate::typecheck::linearization::{Linearization, StubHost};
+use crate::typecheck::{type_check, UnifTable};
 use crate::{eval, parser, transformations};
 use codespan::{FileId, Files};
 use io::Read;
@@ -356,7 +356,7 @@ impl Cache {
         if *state > EntryState::Typechecked {
             Ok(CacheOp::Cached(()))
         } else if *state >= EntryState::Parsed {
-            type_check(t, global_env, self, StubHost)?;
+            type_check(t, global_env, self, StubHost::<()>::new())?;
             self.update_state(file_id, EntryState::Typechecked);
             Ok(CacheOp::Done(()))
         } else {
@@ -531,8 +531,8 @@ impl Cache {
         global_env: &eval::Environment,
     ) -> Result<(RichTerm, Vec<FileId>), Error> {
         let term = self.parse_nocache(file_id)?;
+        type_check(&term, global_env, self, StubHost::<()>::new())?;
         type_check(&term, global_env, self, StubHost)?;
-        let (term, pending) = transformations::resolve_imports(term, self)?;
         let term = transformations::transform(term)?;
         Ok((term, pending))
     }

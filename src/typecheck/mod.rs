@@ -53,10 +53,12 @@ use crate::{mk_tyw_arrow, mk_tyw_enum, mk_tyw_enum_row, mk_tyw_record, mk_tyw_ro
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 
-pub mod linearization;
-use linearization::LinearizationHost;
+use self::linearization::{
+    Building, Completed, Environment as LinEnv, Linearization, Linearizer, StubHost,
+};
+use self::reporting::NameResolution;
 
-use self::linearization::{AnalysisHost, Linearization, StubHost};
+pub mod linearization;
 
 /// Error during the unification of two row types.
 #[derive(Debug, PartialEq)]
@@ -425,6 +427,7 @@ impl<'a> Envs<'a> {
 }
 
 /// The shared state of unification.
+
 pub struct State<'a> {
     /// The import resolver, to retrieve and typecheck imports.
     resolver: &'a dyn ImportResolver,
@@ -437,24 +440,22 @@ pub struct State<'a> {
     ///
     /// Used for error reporting.
     names: &'a mut HashMap<usize, Ident>,
-    // / A linearized representation of the program
-    // / Contains term metadata (usages, reference target, type)
-    // /
-    // / Used solely in the language server
-    // linear: &'a dyn Linearization
 }
 
 /// Typecheck a term.
 ///
 /// Return the inferred type in case of success. This is just a wrapper that calls
 /// [`type_check_`](fn.type_check_.html) with a fresh unification variable as goal.
-pub fn type_check(
+pub fn type_check<'a, L>(
     t: &RichTerm,
     global_eval_env: &eval::Environment,
-    resolver: &dyn ImportResolver,
-    lin: impl LinearizationHost,
-) -> Result<Types, TypecheckError> {
-    let mut state = State {
+    resolver: &'a impl ImportResolver,
+    linearizer: impl Linearizer<L, UnifTable>,
+) -> Result<(Types, Completed), TypecheckError>
+where
+    L: Default,
+{
+    let mut state: State = State {
         resolver,
         table: &mut UnifTable::new(),
         constr: &mut RowConstr::new(),
@@ -463,16 +464,21 @@ pub fn type_check(
     let ty = TypeWrapper::Ptr(new_var(state.table));
     let global = Envs::mk_global(global_eval_env);
 
+    let mut building = Linearization::building();
+
     type_check_(
         &mut state,
         Envs::from_global(&global),
-        lin,
+        &mut building,
+        linearizer.scope(),
         false,
         t,
         ty.clone(),
     )?;
 
-    Ok(to_type(&state.table, ty))
+    let lin = linearizer.linearize(building, &state.table).state;
+
+    Ok((to_type(&state.table, ty), lin))
 }
 
 /// Typecheck a term using the given global typing environment. Same as
@@ -500,7 +506,8 @@ pub fn type_check_in_env(
     check(
         &mut state,
         Envs::from_global(global),
-        StubHost,
+        &mut Linearization::building::<()>(),
+        StubHost::<()>::new(),
         false,
         t,
         ty.clone(),
@@ -521,13 +528,14 @@ pub fn type_check_in_env(
 fn type_check_(
     state: &mut State,
     mut envs: Envs,
-    mut lin: impl LinearizationHost,
+    lin: &mut Linearization<Building<S>>,
+    mut linearizer: impl Linearizer<S, UnifTable>,
     strict: bool,
     rt: &RichTerm,
     ty: TypeWrapper,
 ) -> Result<(), TypecheckError> {
     let RichTerm { term: t, pos } = rt;
-
+    linearizer.add_term(lin, t, *pos, ty.clone());
     match t.as_ref() {
         // null is inferred to be of type Dyn
         Term::Null => unify(state, strict, ty, mk_typewrapper::dynamic())
@@ -1395,6 +1403,20 @@ mod reporting {
     use super::*;
     use std::collections::HashSet;
 
+    pub trait NameResolution {
+        fn table(&self) -> &UnifTable;
+        fn names(&self) -> &HashMap<usize, Ident>;
+    }
+
+    impl NameResolution for State<'_> {
+        fn table(&self) -> &UnifTable {
+            self.table
+        }
+
+        fn names(&self) -> &HashMap<usize, Ident> {
+            self.names
+        }
+    }
     /// A name registry used to replace unification variables and type constants with human-readable
     /// and distinct names when reporting errors.
     pub struct NameReg {
