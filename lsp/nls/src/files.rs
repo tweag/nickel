@@ -14,7 +14,7 @@ use nickel::{
     environment::Environment,
     error::{self, ToDiagnostic},
     position::RawSpan,
-    typecheck::{self, linearization::Linearization},
+    typecheck::{self},
 };
 
 use super::cache::CacheExt;

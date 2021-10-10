@@ -7,7 +7,7 @@ use nickel::{
     eval,
     typecheck::{
         self,
-        linearization::{AnalysisHost, Linearization, LinearizationHost},
+        linearization::{AnalysisHost, Completed},
     },
 };
 
@@ -17,7 +17,7 @@ pub trait CacheExt {
         &mut self,
         file_id: FileId,
         global_env: &eval::Environment,
-        lin_cache: &mut HashMap<FileId, Linearization>,
+        lin_cache: &mut HashMap<FileId, Completed>,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>>;
 }
 
@@ -37,7 +37,7 @@ impl CacheExt for Cache {
         &mut self,
         file_id: FileId,
         global_env: &eval::Environment,
-        lin_cache: &mut HashMap<FileId, Linearization>,
+        lin_cache: &mut HashMap<FileId, Completed>,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
         if !self.terms_mut().contains_key(&file_id) {
             return Err(CacheError::NotParsed);
@@ -50,9 +50,9 @@ impl CacheExt for Cache {
             Ok(CacheOp::Cached(()))
         } else if *state >= EntryState::Parsed {
             let mut host = AnalysisHost::new();
-            typecheck::type_check(t, global_env, self, host.scope())?;
+            let (_, linearized) = typecheck::type_check(t, global_env, self, host)?;
             self.update_state(file_id, EntryState::Typechecked);
-            lin_cache.insert(file_id, host.linearize());
+            lin_cache.insert(file_id, linearized);
             Ok(CacheOp::Done(()))
         } else {
             panic!()
