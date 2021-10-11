@@ -376,8 +376,7 @@ impl Cache {
                 let (t, _) = self.terms.remove(&file_id).unwrap();
                 // self.imports has to be cloned because self.transform  take self as mutable
                 // TODO: is it good way to do?
-                let imports = self.imports.clone();
-                if let Some(imports) = imports.get(&file_id) {
+                if let Some(imports) = self.imports.get(&file_id).cloned() {
                     for f in imports.iter() {
                         self.transform(*f)?;
                     }
@@ -474,7 +473,7 @@ impl Cache {
                     self.terms.insert(id, (t, EntryState::Parsed));
                     self.resolve_imports(id)?;
                 }
-                self.insert(file_id, t);
+                self.insert_resolved(file_id, t);
                 Ok(CacheOp::Done(()))
             }
             None => Err(CacheError::NotParsed),
@@ -744,7 +743,7 @@ pub trait ImportResolver {
     ) -> Result<(ResolvedTerm, FileId), ImportError>;
 
     /// Insert an entry in the term cache after transformation.
-    fn insert(&mut self, file_id: FileId, term: RichTerm);
+    fn insert_resolved(&mut self, file_id: FileId, term: RichTerm);
 
     /// Get a resolved import from the term cache.
     fn get(&self, file_id: FileId) -> Option<RichTerm>;
@@ -799,7 +798,7 @@ impl ImportResolver for Cache {
         })
     }
 
-    fn insert(&mut self, file_id: FileId, term: RichTerm) {
+    fn insert_resolved(&mut self, file_id: FileId, term: RichTerm) {
         self.terms
             .insert(file_id, (term, EntryState::ImportsResolved));
     }
@@ -847,7 +846,7 @@ pub mod resolvers {
             panic!("cache::resolvers: dummy resolver should not have been invoked");
         }
 
-        fn insert(&mut self, _file_id: FileId, _term: RichTerm) {
+        fn insert_resolved(&mut self, _file_id: FileId, _term: RichTerm) {
             panic!("cache::resolvers: dummy resolver should not have been invoked");
         }
 
@@ -912,7 +911,7 @@ pub mod resolvers {
                     .parse(file_id, Lexer::new(&buf))
                     .map_err(|e| ParseError::from_lalrpop(e, file_id))
                     .map_err(|e| ImportError::ParseError(e, *pos))?;
-                self.insert(file_id, term.clone());
+                self.insert_resolved(file_id, term.clone());
                 Ok((
                     ResolvedTerm::FromFile {
                         term,
@@ -923,7 +922,7 @@ pub mod resolvers {
             }
         }
 
-        fn insert(&mut self, file_id: FileId, term: RichTerm) {
+        fn insert_resolved(&mut self, file_id: FileId, term: RichTerm) {
             self.term_cache.insert(file_id, term);
         }
 
