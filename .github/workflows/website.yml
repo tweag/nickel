@@ -47,7 +47,9 @@ jobs:
       - run: npm ci --only=production
         working-directory: website/
 
-      - run: npm run build
+      - run: |
+          npm run build
+          cp netlify.toml public/
         working-directory: website/
 
       - name: Deploy to Netlify

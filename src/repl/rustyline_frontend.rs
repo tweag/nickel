@@ -50,7 +50,14 @@ pub fn repl() -> Result<(), InitError> {
                 let cmd = line.chars().skip(1).collect::<String>().parse::<Command>();
                 let result = match cmd {
                     Ok(Command::Load(path)) => repl.load(&path).map(|term| match term.as_ref() {
-                        Term::Record(map, _) | Term::RecRecord(map, _) => {
+                        Term::Record(map, _) => {
+                             println!("Loaded {} symbol(s) in the environment.", map.len())
+                        }
+                        Term::RecRecord(map, dyn_fields, _) => {
+                            if !dyn_fields.is_empty() {
+                                println!("Warning: loading dynamic fields is currently not supported. {} symbols ignored", dyn_fields.len());
+                            }
+
                             println!("Loaded {} symbol(s) in the environment.", map.len())
                         }
                         _ => (),

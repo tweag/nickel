@@ -1,0 +1,15 @@
+.vscode/**
+**/*.ts
+**/*.map
+.gitignore
+**/tsconfig.json
+**/tsconfig.base.json
+contributing.md
+.travis.yml
+lsp/client-extension/node_modules/**
+!lsp/client-extension/node_modules/vscode-jsonrpc/**
+!lsp/client-extension/node_modules/vscode-languageclient/**
+!lsp/client-extension/node_modules/vscode-languageserver-protocol/**
+!lsp/client-extension/node_modules/vscode-languageserver-types/**
+!lsp/client-extension/node_modules/{minimatch,brace-expansion,concat-map,balanced-match}/**
+!lsp/client-extension/node_modules/{semver,lru-cache,yallist}/**

@@ -1,4 +1,5 @@
 pub mod cache;
+pub mod destruct;
 pub mod environment;
 pub mod error;
 pub mod eval;
@@ -17,4 +18,3 @@ pub mod term;
 pub mod transformations;
 pub mod typecheck;
 pub mod types;
-pub mod destruct;

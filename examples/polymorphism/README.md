@@ -1,9 +1,9 @@
 # Polymorphism
 
 This example shows the usage of (statically typed) polymorphism in Nickel
-through `forall`. Polymorphic functions are the one operating on generic values.
+through `forall`. Polymorphic functions are the ones operating on generic values.
 Polymorphic types can be nested in Nickel, although it is rarely needed. Note
-that they must always be written explcitily: the typechecker never infers
+that they must always be written explicitly: the typechecker never infers
 polymorphic types for you.
 
 ## Run

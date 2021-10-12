@@ -7,6 +7,7 @@ lalrpop_mod!(
     #[allow(unused_parens)]
     pub grammar);
 
+pub mod error;
 pub mod lexer;
 #[cfg(test)]
 mod tests;

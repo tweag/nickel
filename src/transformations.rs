@@ -14,13 +14,13 @@ generate_counter!(FreshVarCounter, usize);
 
 /// # Desugarise destructuring.usize
 ///
-/// Replace the let patterns destructuring by the classical let in. 
-/// It will first destruct the pattern and create a new var for each field of the patternn. 
-/// After that, it will construct a new Record/List from the extracted fields. 
+/// Replace the let patterns destructuring by the classical let in.
+/// It will first destruct the pattern and create a new var for each field of the patternn.
+/// After that, it will construct a new Record/List from the extracted fields.
 ///
 /// ## Example:
 ///
-/// Taking the let pattern: 
+/// Taking the let pattern:
 /// ```text
 /// let x {a,d=b} = {a=1,b=2,c="ignored"} in ...
 /// ```
@@ -31,23 +31,23 @@ generate_counter!(FreshVarCounter, usize);
 ///         let d = x.b in ...))
 /// ```
 pub mod desugar_destructuring {
-    use super::{RichTerm,Term,Ident};
+    use super::{Ident, RichTerm, Term};
     use crate::destruct::{Destruct, Match};
-    use crate::term::RecordAttrs;
     use crate::term::make::op1;
+    use crate::term::RecordAttrs;
     use crate::term::UnaryOp;
 
     pub fn desugar(rt: RichTerm) -> RichTerm {
-        println!("desugaring: {:#?}",rt);
-        let RichTerm{term,pos} = rt;
+        println!("desugaring: {:#?}", rt);
+        let RichTerm { term, pos } = rt;
         if let Term::LetPattern(x, pat, t_, body) = *term {
             let x = if let Some(x) = x {
-                        x
-                    } else {
-                        super::fresh_var().clone()
-                    };
+                x
+            } else {
+                super::fresh_var().clone()
+            };
             let slice_var = slice_record(t_.clone(), pat.clone());
-            println!("{:#?}",slice_var);
+            println!("{:#?}", slice_var);
             destruct_term(x.clone(), pat.clone(), slice_var, body)
         } else {
             RichTerm::new(*term.clone(), pos)
@@ -55,21 +55,31 @@ pub mod desugar_destructuring {
     }
 
     fn slice_record(rt: RichTerm, pat: Destruct) -> RichTerm {
-        let RichTerm{term,pos} = rt;
+        let RichTerm { term, pos } = rt;
         let var = super::fresh_var();
         let rec = match pat {
-            Destruct::Record(matches) => {
-                Term::Record(matches.iter().map(|m| match m {
-                    Match::Assign(id,f) => (id.clone(),op1(UnaryOp::StaticAccess(f.clone()),Term::Var(var.clone()))),
-                    Match::Simple(id)   => (id.clone(),op1(UnaryOp::StaticAccess(id.clone()),Term::Var(var.clone()))),
-                }).collect(), RecordAttrs::default())
-            },
+            Destruct::Record(matches) => Term::Record(
+                matches
+                    .iter()
+                    .map(|m| match m {
+                        Match::Assign(id, f) => (
+                            id.clone(),
+                            op1(UnaryOp::StaticAccess(f.clone()), Term::Var(var.clone())),
+                        ),
+                        Match::Simple(id) => (
+                            id.clone(),
+                            op1(UnaryOp::StaticAccess(id.clone()), Term::Var(var.clone())),
+                        ),
+                    })
+                    .collect(),
+                RecordAttrs::default(),
+            ),
             _ => unimplemented!(),
         };
-        RichTerm::new(Term::Let(var, RichTerm{term,pos}, rec.into()),pos)
+        RichTerm::new(Term::Let(var, RichTerm { term, pos }, rec.into()), pos)
     }
 
-    fn destruct_term(x:Ident, pat: Destruct, var: RichTerm, t: RichTerm) -> RichTerm {
+    fn destruct_term(x: Ident, pat: Destruct, var: RichTerm, t: RichTerm) -> RichTerm {
         let pos = t.pos.clone();
         match pat {
             Destruct::Record(matches) => {
@@ -77,21 +87,23 @@ pub mod desugar_destructuring {
                 let m = matches.pop();
                 if let Some(m) = m {
                     let next_term = match m {
-                        Match::Simple(id) | Match::Assign(id,_) => RichTerm::new(Term::Let(
+                        Match::Simple(id) | Match::Assign(id, _) => RichTerm::new(
+                            Term::Let(
                                 id.clone(),
                                 op1(UnaryOp::StaticAccess(id.clone()), Term::Var(x.clone())),
-                                t.clone()
-                                ), pos),
+                                t.clone(),
+                            ),
+                            pos,
+                        ),
                     };
-                    destruct_term(x.clone(),Destruct::Record(matches),var,next_term)
+                    destruct_term(x.clone(), Destruct::Record(matches), var, next_term)
                 } else {
-                    RichTerm::new(Term::Let(x,var,t),pos)
+                    RichTerm::new(Term::Let(x, var, t), pos)
                 }
             }
             _ => unimplemented!(),
         }
     }
-
 }
 
 /// Share normal form.
@@ -159,7 +171,7 @@ pub mod share_normal_form {
 
                 with_bindings(Term::Record(map, attrs), bindings, pos)
             }
-            Term::RecRecord(map, attrs) => {
+            Term::RecRecord(map, dyn_fields, attrs) => {
                 // When a recursive record is evaluated, all fields need to be turned to closures
                 // anyway (see the corresponding case in `eval::eval()`), which is what the share
                 // normal form transformation does. This is why the test is more lax here than for
@@ -182,7 +194,21 @@ pub mod share_normal_form {
                     })
                     .collect();
 
-                with_bindings(Term::RecRecord(map, attrs), bindings, pos)
+                let dyn_fields = dyn_fields
+                    .into_iter()
+                    .map(|(id_t, t)| {
+                        if !t.as_ref().is_constant() {
+                            let fresh_var = fresh_var();
+                            let pos_t = t.pos;
+                            bindings.push((fresh_var.clone(), t));
+                            (id_t, RichTerm::new(Term::Var(fresh_var), pos_t))
+                        } else {
+                            (id_t, t)
+                        }
+                    })
+                    .collect();
+
+                with_bindings(Term::RecRecord(map, dyn_fields, attrs), bindings, pos)
             }
             Term::List(ts) => {
                 let mut bindings = Vec::with_capacity(ts.len());

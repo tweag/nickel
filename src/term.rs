@@ -16,8 +16,8 @@
 //! contracts, default values, documentation, etc. They bring such usually external object down to
 //! the term level, and together with [merge](../merge/index.html), they allow for flexible and
 //! modular definitions of contracts, record and metadata all together.
-use crate::identifier::Ident;
 use crate::destruct::Destruct;
+use crate::identifier::Ident;
 use crate::label::Label;
 use crate::position::TermPos;
 use crate::types::{AbsType, Types};
@@ -63,9 +63,9 @@ pub enum Term {
 
     /// A let binding.
     #[serde(skip)]
-    Let(Ident,RichTerm, RichTerm),
+    Let(Ident, RichTerm, RichTerm),
     #[serde(skip)]
-    LetPattern(Option<Ident>,Destruct, RichTerm, RichTerm),
+    LetPattern(Option<Ident>, Destruct, RichTerm, RichTerm),
     /// An application.
     #[serde(skip)]
     App(RichTerm, RichTerm),
@@ -82,7 +82,11 @@ pub enum Term {
     Record(HashMap<Ident, RichTerm>, RecordAttrs),
     /// A recursive record, where the fields can reference each others.
     #[serde(skip)]
-    RecRecord(HashMap<Ident, RichTerm>, RecordAttrs),
+    RecRecord(
+        HashMap<Ident, RichTerm>,
+        Vec<(RichTerm, RichTerm)>, /* field whose name is defined by interpolation */
+        RecordAttrs,
+    ),
     /// A switch construct. The evaluation is done by the corresponding unary operator, but we
     /// still need this one for typechecking.
     Switch(
@@ -303,13 +307,16 @@ impl Term {
                     func(def)
                 }
             }
-            Record(ref mut static_map, _) | RecRecord(ref mut static_map, _) => {
-                static_map.iter_mut().for_each(|e| {
-                    let (_, t) = e;
-                    func(t);
+            Record(ref mut static_map, _) => {
+                static_map.iter_mut().for_each(|(_, t)| func(t));
+            }
+            RecRecord(ref mut static_map, ref mut dyn_fields, _) => {
+                static_map.iter_mut().for_each(|(_, t)| func(t));
+                dyn_fields.iter_mut().for_each(|(t1, t2)| {
+                    func(t1);
+                    func(t2);
                 });
             }
-
             Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | Sym(_) | Enum(_) | Import(_)
             | ResolvedImport(_) => {}
             Fun(_, ref mut t)
@@ -432,7 +439,7 @@ impl Term {
             }
             Term::Var(Ident(id)) => id.clone(),
             Term::Let(_, _, _)
-            | Term::LetPattern(_,_, _, _)
+            | Term::LetPattern(_, _, _, _)
             | Term::App(_, _)
             | Term::Switch(..)
             | Term::Op1(_, _)
@@ -447,12 +454,18 @@ impl Term {
     /// Return a deep string representation of a term, used for printing in the REPL
     pub fn deep_repr(&self) -> String {
         match self {
-            Term::Record(fields, _) | Term::RecRecord(fields, _) => {
+            Term::Record(fields, _) | Term::RecRecord(fields, _, _) => {
                 let fields_str: Vec<String> = fields
                     .iter()
                     .map(|(ident, term)| format!("{} = {}", ident, term.as_ref().deep_repr()))
                     .collect();
-                format!("{{ {} }}", fields_str.join(", "))
+
+                let suffix = match self {
+                    Term::RecRecord(_, dyn_fields, _) if !dyn_fields.is_empty() => ", ..",
+                    _ => "",
+                };
+
+                format!("{{ {}{}}}", fields_str.join(", "), suffix)
             }
             Term::List(elements) => {
                 let elements_str: Vec<String> = elements
@@ -1012,17 +1025,21 @@ impl RichTerm {
                     state,
                 )
             }
-            Term::RecRecord(map, attrs) => {
+            Term::RecRecord(map, dyn_fields, attrs) => {
                 // The annotation on `map_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
                 let map_res: Result<HashMap<Ident, RichTerm>, E> = map
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(id, t)| t.traverse(f, state).map(|t_ok| (id.clone(), t_ok)))
+                    .map(|(id, t)| Ok((id, t.traverse(f, state)?)))
+                    .collect();
+                let dyn_fields_res: Result<Vec<(RichTerm, RichTerm)>, E> = dyn_fields
+                    .into_iter()
+                    .map(|(id_t, t)| Ok((id_t.traverse(f, state)?, t.traverse(f, state)?)))
                     .collect();
                 f(
                     RichTerm {
-                        term: Box::new(Term::RecRecord(map_res?, attrs)),
+                        term: Box::new(Term::RecRecord(map_res?, dyn_fields_res?, attrs)),
                         pos,
                     },
                     state,
@@ -1220,7 +1237,7 @@ pub mod make {
         Term::Var(v.into()).into()
     }
 
-    pub fn let_in<I, D, T1, T2>(id: I, pat:D, t1: T1, t2: T2) -> RichTerm
+    pub fn let_in<I, D, T1, T2>(id: I, pat: D, t1: T1, t2: T2) -> RichTerm
     where
         T1: Into<RichTerm>,
         T2: Into<RichTerm>,
@@ -1228,12 +1245,16 @@ pub mod make {
         I: Into<Option<Ident>>,
     {
         match pat.into() {
-            d@(Destruct::Record(_) | Destruct::List(_)) => Term::LetPattern(id.into(), d.into(), t1.into(), t2.into()).into(),
-            Destruct::Empty => if let Some(id) = id.into() {
-                Term::Let(id.into(), t1.into(), t2.into()).into()
-            } else {
-                Term::Null.into()
-            },
+            d @ (Destruct::Record(_) | Destruct::List(_)) => {
+                Term::LetPattern(id.into(), d.into(), t1.into(), t2.into()).into()
+            }
+            Destruct::Empty => {
+                if let Some(id) = id.into() {
+                    Term::Let(id.into(), t1.into(), t2.into()).into()
+                } else {
+                    Term::Null.into()
+                }
+            }
         }
     }
 
