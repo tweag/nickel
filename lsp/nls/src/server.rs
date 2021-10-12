@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, ops, os::unix::prelude::FileExt};
 
 use anyhow::Result;
-use codespan::{ByteIndex, FileId};
+use codespan::{ByteIndex, FileId, Files};
 use log::{debug, trace, warn};
 use lsp_server::{Connection, ErrorCode, Message, Notification, RequestId, Response};
 use lsp_types::{
@@ -9,9 +9,9 @@ use lsp_types::{
     notification::{Notification as _, *},
     request::{Request as RequestTrait, *},
     DidChangeTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams, Hover,
-    HoverContents, HoverOptions, HoverParams, HoverProviderCapability, MarkedString,
-    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
-    WorkDoneProgress, WorkDoneProgressOptions,
+    HoverContents, HoverOptions, HoverParams, HoverProviderCapability, MarkedString, Position,
+    Range, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
+    TextDocumentSyncOptions, WorkDoneProgress, WorkDoneProgressOptions,
 };
 use serde::Deserialize;
 
@@ -23,6 +23,8 @@ use nickel::{
     identifier::Ident,
     position::{self, TermPos},
 };
+
+use crate::{diagnostic::LocationCompat, requests::hover};
 
 pub struct Server {
     pub connection: Connection,
@@ -148,55 +150,33 @@ impl Server {
         match req.method.as_str() {
             HoverRequest::METHOD => {
                 let params: HoverParams = serde_json::from_value(req.params).unwrap();
-                let file_id = self
-                    .cache
-                    .id_of(
-                        params
-                            .text_document_position_params
-                            .text_document
-                            .uri
-                            .as_str(),
-                    )
-                    .unwrap();
+                hover::handle(params, req.id, self)
+            }
 
-                let mut lines = params.text_document_position_params.position.line;
-                let mut position: u32 = 0;
-                for (idx, byte) in self.cache.files_mut().source(file_id).bytes().enumerate() {
-                    if byte == '\n' as u8 {
-                        lines -= 1
-                    }
-                    if lines == 0 {
-                        position = idx as u32;
-                        break;
-                    }
-                }
-                position += params.text_document_position_params.position.character;
-                let locator = (file_id, ByteIndex(position));
-
-                debug!("{:?}", self.lin_cache);
-
-                match self
-                    .lin_cache
-                    .get(&file_id)
-                    .unwrap()
-                    .lin
-                    .binary_search_by_key(&locator, |item| match item.pos {
-                        TermPos::Original(span) | TermPos::Inherited(span) => {
-                            (span.src_id, span.start)
-                        }
-                        TermPos::None => unreachable!(),
-                    }) {
-                    Ok(index) | Err(index) => {
-                        let item = &self.lin_cache.get(&file_id).unwrap().lin[index];
-                        let ty = item.ty.clone();
-                        self.reply(Response::new_ok(
-                            req.id,
-                            HoverContents::Scalar(MarkedString::String(format!("{:?}", ty))),
-                        ))
-                    }
-                };
+            GotoDefinition::METHOD => {
+                let params: GotoDeclarationParams = serde_json::from_value(req.params).unwrap();
             }
             _ => {}
         }
     }
+}
+
+pub fn positon_to_byte_index(
+    position: Position,
+    file_id: FileId,
+    files: &Files<String>,
+) -> ByteIndex {
+    let mut index = 0;
+    let mut lines = position.line;
+    for (idx, byte) in files.source(file_id).bytes().enumerate() {
+        if byte == '\n' as u8 {
+            lines -= 1
+        }
+        if lines == 0 {
+            index = idx as u32;
+            break;
+        }
+    }
+    index += position.character;
+    return ByteIndex(index);
 }
