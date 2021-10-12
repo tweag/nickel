@@ -1,3 +1,4 @@
+use assert_matches::assert_matches;
 use nickel::error::{Error, EvalError, TypecheckError};
 use nickel::program::Program;
 use std::io::BufReader;
@@ -41,13 +42,10 @@ fn contract_fail() {
         "should_fail",
     )
     .unwrap();
-    prog.eval()
-        .map_err(|e| match e {
-            Error::EvalError(EvalError::BlameError(_, _)) => Ok(()),
-            r => Err(r),
-        })
-        .unwrap_err()
-        .unwrap();
+    assert_matches!(
+        prog.eval(),
+        Err(Error::EvalError(EvalError::BlameError(..)))
+    );
 }
 
 #[test]
@@ -57,13 +55,10 @@ fn typecheck_fail() {
         "should_fail",
     )
     .unwrap();
-    prog.eval()
-        .map_err(|e| match e {
-            Error::TypecheckError(TypecheckError::TypeMismatch(..)) => Ok(()),
-            r => Err(r),
-        })
-        .unwrap_err()
-        .unwrap();
+    assert_matches!(
+        prog.eval(),
+        Err(Error::TypecheckError(TypecheckError::TypeMismatch(..)))
+    );
 }
 
 #[test]
@@ -73,13 +68,10 @@ fn static_typing_fail() {
         "should_fail",
     )
     .unwrap();
-    prog.eval()
-        .map_err(|e| match e {
-            Error::TypecheckError(TypecheckError::TypeMismatch(..)) => Ok(()),
-            r => Err(r),
-        })
-        .unwrap_err()
-        .unwrap();
+    assert_matches!(
+        prog.eval(),
+        Err(Error::TypecheckError(TypecheckError::TypeMismatch(..)))
+    );
 }
 
 #[test]
