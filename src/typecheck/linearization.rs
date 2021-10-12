@@ -58,7 +58,7 @@ pub struct LinearizationItem<ResolutionState> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TermKind {
     Structure,
-    Declaration(Vec<usize>),
+    Declaration(String, Vec<usize>),
     Usage(Option<usize>),
 }
 
@@ -131,7 +131,7 @@ impl Linearizer<Vec<LinearizationItem<Unresolved>>, UnifTable> for AnalysisHost 
                     id,
                     pos,
                     ty,
-                    kind: TermKind::Declaration(Vec::new()),
+                    kind: TermKind::Declaration(ident.to_string(), Vec::new()),
                 });
             }
             Term::Var(ident) => {
@@ -219,7 +219,7 @@ impl Linearization<Building<Vec<LinearizationItem<Unresolved>>>> {
         {
             TermKind::Structure => unreachable!(),
             TermKind::Usage(_) => unreachable!(),
-            TermKind::Declaration(ref mut usages) => usages.push(usage),
+            TermKind::Declaration(_, ref mut usages) => usages.push(usage),
         };
     }
 }
