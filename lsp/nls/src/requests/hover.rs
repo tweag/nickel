@@ -1,11 +1,12 @@
 use codespan::ByteIndex;
 use log::debug;
 use lsp_server::{ErrorCode, Request, RequestId, Response};
-use lsp_types::{Hover, HoverContents, HoverParams, MarkedString, Range};
+use lsp_types::{Hover, HoverContents, HoverParams, MarkedString, MarkupContent, Range};
 use nickel::{
     position::TermPos,
     typecheck::linearization::{self, Linearization},
 };
+use serde_json::Value;
 
 use crate::{
     diagnostic::LocationCompat,
@@ -72,11 +73,7 @@ pub fn handle(params: HoverParams, id: RequestId, server: &mut Server) {
     };
 
     if index == None {
-        server.reply(Response::new_err(
-            id,
-            ErrorCode::InvalidParams as i32,
-            "Invalid Position".to_string(),
-        ));
+        server.reply(Response::new_ok(id, Value::Null));
         return;
     }
 
@@ -94,10 +91,15 @@ pub fn handle(params: HoverParams, id: RequestId, server: &mut Server) {
     server.reply(Response::new_ok(
         id,
         Hover {
-            contents: HoverContents::Scalar(MarkedString::String(format!(
-                "{:?} @ {:?}",
-                item, range
-            ))),
+            contents: HoverContents::Markup(MarkupContent {
+                kind: lsp_types::MarkupKind::Markdown,
+                value: format!(
+                    "{}
+{:?} @ {:?}
+                    ",
+                    item.ty, item, range
+                ),
+            }),
 
             range,
         },
