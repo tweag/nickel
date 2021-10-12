@@ -16,3 +16,6 @@
 node_modules
 lsp/client-extension/node_modules
 lsp/client-extension/out
+
+# Ctags output
+/tags
