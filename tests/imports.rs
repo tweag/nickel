@@ -24,6 +24,17 @@ fn nested() {
 }
 
 #[test]
+fn multi_imports() {
+    use nickel::term::Term;
+    let mut prog = Program::new_from_source(
+        BufReader::new(mk_import("multi_imports.ncl").as_bytes()),
+        "should_be = 5",
+    )
+    .unwrap();
+    assert_eq!(prog.eval(), Ok(Term::Num(5.)));
+}
+
+#[test]
 fn contract_fail() {
     let mut prog = Program::new_from_source(
         BufReader::new(mk_import("contract-fail.ncl").as_bytes()),

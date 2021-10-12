@@ -772,8 +772,13 @@ impl ImportResolver for Cache {
             CacheOp::Done(id) => {
                 if let Some(parent) = parent {
                     let parent_id = self.id_of(parent).unwrap();
-                    self.imports.insert(parent_id, HashSet::new());
-                    self.imports.get_mut(&parent_id).unwrap().insert(id);
+                    if let Some(imports) = self.imports.get_mut(&parent_id) {
+                        imports.insert(id);
+                    } else {
+                        let mut imports = HashSet::new();
+                        imports.insert(id);
+                        self.imports.insert(parent_id, imports);
+                    }
                 }
                 id
             }
