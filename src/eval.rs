@@ -87,7 +87,6 @@
 //! appear inside recursive records in the future. An adapted garbage collector is probably
 //! something to consider at some point.
 use crate::cache::ImportResolver;
-use crate::destruct::Destruct;
 use crate::environment::Environment as GenericEnvironment;
 use crate::error::EvalError;
 use crate::identifier::Ident;
@@ -364,7 +363,6 @@ where
     // Desugar to let x = term in deepSeq x x
     let wrapper = mk_term::let_in(
         var.clone(),
-        Destruct::Empty,
         t0,
         mk_app!(
             mk_term::op1(UnaryOp::DeepSeq(), Term::Var(var.clone())),

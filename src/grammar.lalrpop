@@ -99,7 +99,7 @@ RootTerm: RichTerm = {
             t1
         };
 
-        mk_term::let_in(pat.0, pat.1, t1, t2)
+        mk_term::let_pat(pat.0, pat.1, t1, t2)
     },
     <l: @L> "fun" <ids:Ident+> "=>" <t: Term> <r: @R> => {
         let pos = mk_pos(src_id, l, r);
@@ -251,13 +251,15 @@ FieldPathElem: FieldPathElem = {
 };
 
 Pattern: (Option<Ident>,Destruct) = {
-    Ident => (Some(<>),Destruct::Empty),
     <id:(<Ident> "@")?> <pat:Destruct> => (id,pat),
+    Ident => (Some(<>),Destruct::Empty),
 };
 
 Destruct: Destruct = {
-    "{" <mut matches: (<Match> ",")*> <last:Match> "}" => {
-        matches.push(last);
+    "{" <mut matches: (<Match> ",")*> <last:Match?> "}" => {
+        if let Some(last) = last {
+	    matches.push(last);
+	}
 	Destruct::Record(matches)
     },
 };

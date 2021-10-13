@@ -38,7 +38,7 @@ pub mod desugar_destructuring {
     use crate::term::UnaryOp;
 
     pub fn desugar(rt: RichTerm) -> RichTerm {
-        println!("desugaring: {:#?}", rt);
+        println!("desugaring"); //: {:#?}", rt);
         let RichTerm { term, pos } = rt;
         if let Term::LetPattern(x, pat, t_, body) = *term {
             let x = if let Some(x) = x {

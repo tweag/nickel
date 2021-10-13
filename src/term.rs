@@ -1237,20 +1237,31 @@ pub mod make {
         Term::Var(v.into()).into()
     }
 
-    pub fn let_in<I, D, T1, T2>(id: I, pat: D, t1: T1, t2: T2) -> RichTerm
+    pub fn let_in<I, T1, T2>(id: I, t1: T1, t2: T2) -> RichTerm
+    where
+        T1: Into<RichTerm>,
+        T2: Into<RichTerm>,
+        I: Into<Ident>,
+    {
+        Term::Let(id.into(), t1.into(), t2.into()).into()
+    }
+
+    pub fn let_pat<I, D, T1, T2>(id: Option<I>, pat: D, t1: T1, t2: T2) -> RichTerm
     where
         T1: Into<RichTerm>,
         T2: Into<RichTerm>,
         D: Into<Destruct>,
-        I: Into<Option<Ident>>,
+        I: Into<Ident>,
     {
         match pat.into() {
             d @ (Destruct::Record(_) | Destruct::List(_)) => {
-                Term::LetPattern(id.into(), d.into(), t1.into(), t2.into()).into()
+                println!("{:?}", d);
+                Term::LetPattern(id.map(|i| i.into()), d.into(), t1.into(), t2.into()).into()
             }
             Destruct::Empty => {
-                if let Some(id) = id.into() {
-                    Term::Let(id.into(), t1.into(), t2.into()).into()
+                println!("not a pattern");
+                if let Some(id) = id {
+                    let_in(id, t1, t2)
                 } else {
                     Term::Null.into()
                 }
