@@ -8,10 +8,11 @@ use lsp_types::{
     notification::{self, DidChangeTextDocument, DidOpenTextDocument},
     notification::{Notification as _, *},
     request::{Request as RequestTrait, *},
-    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams, Hover,
-    HoverContents, HoverOptions, HoverParams, HoverProviderCapability, MarkedString, Position,
-    Range, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
-    TextDocumentSyncOptions, WorkDoneProgress, WorkDoneProgressOptions,
+    DeclarationCapability, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
+    DidSaveTextDocumentParams, GotoDefinitionParams, Hover, HoverContents, HoverOptions,
+    HoverParams, HoverProviderCapability, MarkedString, OneOf, Position, Range, ServerCapabilities,
+    TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions, WorkDoneProgress,
+    WorkDoneProgressOptions,
 };
 use serde::Deserialize;
 
@@ -24,7 +25,10 @@ use nickel::{
     position::{self, TermPos},
 };
 
-use crate::{diagnostic::LocationCompat, requests::hover};
+use crate::{
+    diagnostic::LocationCompat,
+    requests::{goto, hover},
+};
 
 pub struct Server {
     pub connection: Connection,
@@ -48,6 +52,7 @@ impl Server {
                     work_done_progress: Some(false),
                 },
             })),
+            definition_provider: Some(OneOf::Left(true)),
             ..ServerCapabilities::default()
         }
     }
@@ -154,8 +159,11 @@ impl Server {
             }
 
             GotoDefinition::METHOD => {
-                let params: GotoDeclarationParams = serde_json::from_value(req.params).unwrap();
+                debug!("handle goto defnition");
+                let params: GotoDefinitionParams = serde_json::from_value(req.params).unwrap();
+                goto::handle_to_definition(params, req.id, self)
             }
+
             _ => {}
         }
     }
