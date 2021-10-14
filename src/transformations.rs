@@ -38,19 +38,19 @@ pub mod desugar_destructuring {
     use crate::term::UnaryOp;
 
     pub fn desugar(rt: RichTerm) -> RichTerm {
-        println!("desugaring"); //: {:#?}", rt);
-        let RichTerm { term, pos } = rt;
-        if let Term::LetPattern(x, pat, t_, body) = *term {
+        if let Term::LetPattern(x, pat, t_, body) = *rt.term {
             let x = if let Some(x) = x {
                 x
             } else {
-                super::fresh_var().clone()
+                super::fresh_var()
             };
             let slice_var = slice_record(t_.clone(), pat.clone());
-            println!("{:#?}", slice_var);
-            destruct_term(x.clone(), pat.clone(), slice_var, body)
+            RichTerm::new(
+                Term::Let(x.clone(), slice_var, destruct_term(x, pat, body.clone())),
+                body.pos.clone(),
+            )
         } else {
-            RichTerm::new(*term.clone(), pos)
+            rt
         }
     }
 
@@ -79,8 +79,9 @@ pub mod desugar_destructuring {
         RichTerm::new(Term::Let(var, RichTerm { term, pos }, rec.into()), pos)
     }
 
-    fn destruct_term(x: Ident, pat: Destruct, var: RichTerm, t: RichTerm) -> RichTerm {
+    fn destruct_term(x: Ident, pat: Destruct, t: RichTerm) -> RichTerm {
         let pos = t.pos.clone();
+        println!("destruct term {:?} with {:?}", x, pat);
         match pat {
             Destruct::Record(matches) => {
                 let mut matches = matches.clone();
@@ -96,9 +97,12 @@ pub mod desugar_destructuring {
                             pos,
                         ),
                     };
-                    destruct_term(x.clone(), Destruct::Record(matches), var, next_term)
+                    println!("{:?}", x.clone());
+                    destruct_term(x.clone(), Destruct::Record(matches), next_term)
                 } else {
-                    RichTerm::new(Term::Let(x, var, t), pos)
+                    println!("{:?}", m);
+                    println!("{:#?}", t);
+                    t
                 }
             }
             _ => unimplemented!(),
@@ -375,10 +379,10 @@ struct ImportsResolutionState<'a, R> {
 pub fn transform(rt: RichTerm) -> Result<RichTerm, ImportError> {
     rt.traverse(
         &mut |rt: RichTerm, _| -> Result<RichTerm, ImportError> {
+            let rt = desugar_destructuring::desugar(rt);
             // We need to do contract generation before wrapping stuff in variables
             let rt = apply_contracts::transform_one(rt);
             let rt = share_normal_form::transform_one(rt);
-            let rt = desugar_destructuring::desugar(rt);
             Ok(rt)
         },
         &mut (),

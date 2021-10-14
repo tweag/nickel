@@ -1251,16 +1251,17 @@ pub mod make {
         T1: Into<RichTerm>,
         T2: Into<RichTerm>,
         D: Into<Destruct>,
-        I: Into<Ident>,
+        I: Into<Ident> + fmt::Debug,
     {
+        println!("");
         match pat.into() {
             d @ (Destruct::Record(_) | Destruct::List(_)) => {
-                println!("{:?}", d);
+                println!("pattern: {:?}", d);
                 Term::LetPattern(id.map(|i| i.into()), d.into(), t1.into(), t2.into()).into()
             }
             Destruct::Empty => {
-                println!("not a pattern");
                 if let Some(id) = id {
+                    println!("{:?} is not a pattern", id);
                     let_in(id, t1, t2)
                 } else {
                     Term::Null.into()
