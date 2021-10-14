@@ -431,7 +431,7 @@ mod test {
 
         let rt = TermParser::new().parse(id, Lexer::new(&wrapper)).unwrap();
 
-        match *rt.term {
+        match rt.term.as_value() {
             Term::MetaValue(MetaValue { mut contracts, .. }) if contracts.len() == 1 => {
                 contracts.remove(0).types
             }

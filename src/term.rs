@@ -25,6 +25,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fmt;
+use std::hint::unreachable_unchecked;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
@@ -562,6 +563,10 @@ impl SharedTerm {
     pub fn as_mut(&mut self) -> &mut Term {
         Rc::make_mut(&mut self.term)
     }
+
+    pub fn as_value(self) -> Term {
+        Rc::try_unwrap(self.term).unwrap_or_else(|rc| Term::clone(&rc))
+    }
 }
 
 impl Deref for SharedTerm {
@@ -904,23 +909,22 @@ impl RichTerm {
         F: FnMut(RichTerm, &mut S) -> Result<RichTerm, E>,
     {
         let RichTerm { term, pos } = self;
-        match *term {
-            v @ Term::Null
-            | v @ Term::Bool(_)
-            | v @ Term::Num(_)
-            | v @ Term::Str(_)
-            | v @ Term::Lbl(_)
-            | v @ Term::Sym(_)
-            | v @ Term::Var(_)
-            | v @ Term::Enum(_)
-            | v @ Term::Import(_)
-            | v @ Term::ResolvedImport(_) => f(
-                RichTerm {
-                    term: SharedTerm::new(v),
-                    pos,
-                },
-                state,
-            ),
+        if matches!(
+            &*term,
+            Term::Null
+                | Term::Bool(_)
+                | Term::Num(_)
+                | Term::Str(_)
+                | Term::Lbl(_)
+                | Term::Sym(_)
+                | Term::Var(_)
+                | Term::Enum(_)
+                | Term::Import(_)
+                | Term::ResolvedImport(_)
+        ) {
+            return f(RichTerm { term, pos }, state);
+        }
+        match term.as_value() {
             Term::Fun(id, t) => {
                 let t = t.traverse(f, state)?;
                 f(
@@ -1142,13 +1146,14 @@ impl RichTerm {
                     state,
                 )
             }
+            _ => unsafe { unreachable_unchecked() },
         }
     }
 }
 
 impl From<RichTerm> for Term {
     fn from(rt: RichTerm) -> Self {
-        *rt.term
+        rt.term.as_value()
     }
 }
 

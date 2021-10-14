@@ -251,7 +251,7 @@ mod tests {
         fn clean_pos(t: Term) -> Term {
             let mut tmp = RichTerm::new(t, TermPos::None);
             tmp.clean_pos();
-            *tmp.term
+            tmp.term.as_value()
         }
 
         let t = clean_pos(eval_full("[(1 + 1), (\"a\" ++ \"b\"), ([ 1, [1 + 2] ])]").unwrap());

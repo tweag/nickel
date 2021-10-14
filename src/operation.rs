@@ -9,7 +9,7 @@
 use crate::error::EvalError;
 use crate::eval::{subst, CallStack, Closure, Environment};
 use crate::identifier::Ident;
-use crate::label::ty_path;
+use crate::label::{ty_path, Label};
 use crate::merge;
 use crate::merge::{merge, MergeMode};
 use crate::mk_record;
@@ -22,6 +22,7 @@ use crate::{mk_app, mk_fun, mk_opn};
 use crate::{serialize, serialize::ExportFormat};
 use md5::digest::Digest;
 use simple_counter::*;
+use std::hint::unreachable_unchecked;
 use std::iter::Extend;
 
 generate_counter!(FreshVariableCounter, usize);
@@ -206,16 +207,17 @@ fn process_unary_operation(
         // The syntax should not allow partially applied boolean operators.
         {
             if let Some((next, ..)) = stack.pop_arg() {
-                match *t {
+                match &*t {
                     Term::Bool(true) => Ok(next),
                     // FIXME: this does not check that the second argument is actually a boolean.
                     // This means `true && 2` silently evaluates to `2`. This is simpler and more
                     // efficient, but can make debugging harder. In any case, it should be solved
                     // only once primary operators have better support for laziness in some
                     // arguments.
-                    b @ Term::Bool(false) => {
-                        Ok(Closure::atomic_closure(RichTerm::new(b, pos_op_inh)))
-                    }
+                    Term::Bool(false) => Ok(Closure::atomic_closure(RichTerm {
+                        term: t,
+                        pos: pos_op_inh,
+                    })),
                     _ => Err(EvalError::TypeError(
                         String::from("Bool"),
                         String::from("&&"),
@@ -229,10 +231,11 @@ fn process_unary_operation(
         }
         UnaryOp::BoolOr() => {
             if let Some((next, ..)) = stack.pop_arg() {
-                match *t {
-                    b @ Term::Bool(true) => {
-                        Ok(Closure::atomic_closure(RichTerm::new(b, pos_op_inh)))
-                    }
+                match &*t {
+                    Term::Bool(true) => Ok(Closure::atomic_closure(RichTerm {
+                        term: t,
+                        pos: pos_op_inh,
+                    })),
                     // FIXME: this does not check that the second argument is actually a boolean.
                     // This means `false || 2` silently evaluates to `2`. This is simpler and more
                     // efficient, but can make debugging harder. In any case, it should be solved
@@ -266,9 +269,9 @@ fn process_unary_operation(
             }
         }
         UnaryOp::Blame() => {
-            if let Term::Lbl(label) = *t {
+            if let Term::Lbl(label) = &*t {
                 Err(EvalError::BlameError(
-                    label,
+                    label.clone(),
                     std::mem::replace(call_stack, Vec::new()),
                 ))
             } else {
@@ -281,8 +284,11 @@ fn process_unary_operation(
             }
         }
         UnaryOp::Embed(_id) => {
-            if let en @ Term::Enum(_) = *t {
-                Ok(Closure::atomic_closure(RichTerm::new(en, pos_op_inh)))
+            if let Term::Enum(_) = &*t {
+                Ok(Closure::atomic_closure(RichTerm {
+                    term: t,
+                    pos: pos_op_inh,
+                }))
             } else {
                 Err(EvalError::TypeError(
                     String::from("Enum"),
@@ -305,7 +311,7 @@ fn process_unary_operation(
                 None
             };
 
-            if let Term::Enum(en) = *t {
+            if let Term::Enum(en) = &*t {
                 let Closure {
                     body:
                         RichTerm {
@@ -314,13 +320,13 @@ fn process_unary_operation(
                     env: cases_env,
                 } = cases_closure;
 
-                let mut cases = match *cases_term {
+                let mut cases = match cases_term.as_value() {
                     Term::Record(map, _) => map,
                     _ => panic!("invalid argument for switch"),
                 };
 
                 cases
-                    .remove(&en)
+                    .remove(en)
                     .map(|body| Closure {
                         body,
                         env: cases_env,
@@ -333,7 +339,7 @@ fn process_unary_operation(
                             String::from("switch"),
                             arg_pos,
                             RichTerm {
-                                term: SharedTerm::new(Term::Enum(en)),
+                                term: t,
                                 pos,
                             },
                         ))
@@ -349,7 +355,8 @@ fn process_unary_operation(
             }
         }
         UnaryOp::ChangePolarity() => {
-            if let Term::Lbl(mut l) = *t {
+            if let Term::Lbl(l) = &*t {
+                let mut l = l.clone();
                 l.polarity = !l.polarity;
                 Ok(Closure::atomic_closure(RichTerm::new(
                     Term::Lbl(l),
@@ -365,7 +372,7 @@ fn process_unary_operation(
             }
         }
         UnaryOp::Pol() => {
-            if let Term::Lbl(l) = *t {
+            if let Term::Lbl(l) = &*t {
                 Ok(Closure::atomic_closure(RichTerm::new(
                     Term::Bool(l.polarity),
                     pos_op_inh,
@@ -380,7 +387,8 @@ fn process_unary_operation(
             }
         }
         UnaryOp::GoDom() => {
-            if let Term::Lbl(mut l) = *t {
+            if let Term::Lbl(l) = &*t {
+                let mut l = l.clone();
                 l.path.push(ty_path::Elem::Domain);
                 Ok(Closure::atomic_closure(RichTerm::new(
                     Term::Lbl(l),
@@ -396,7 +404,8 @@ fn process_unary_operation(
             }
         }
         UnaryOp::GoCodom() => {
-            if let Term::Lbl(mut l) = *t {
+            if let Term::Lbl(l) = &*t {
+                let mut l = l.clone();
                 l.path.push(ty_path::Elem::Codomain);
                 Ok(Closure::atomic_closure(RichTerm::new(
                     Term::Lbl(l),
@@ -412,7 +421,8 @@ fn process_unary_operation(
             }
         }
         UnaryOp::GoList() => {
-            if let Term::Lbl(mut l) = *t {
+            if let Term::Lbl(l) = &*t {
+                let mut l = l.clone();
                 l.path.push(ty_path::Elem::List);
                 Ok(Closure::atomic_closure(RichTerm::new(
                     Term::Lbl(l),
@@ -442,17 +452,17 @@ fn process_unary_operation(
             }
         }
         UnaryOp::StaticAccess(id) => {
-            if let Term::Record(mut static_map, attrs) = *t {
-                match static_map.remove(&id) {
-                    Some(e) => Ok(Closure { body: e, env }),
+            if let Term::Record(static_map, ..) = &*t {
+                match static_map.get(&id) {
+                    Some(e) => Ok(Closure {
+                        body: e.clone(),
+                        env,
+                    }),
 
                     None => Err(EvalError::FieldMissing(
                         id.0,
                         String::from("(.)"),
-                        RichTerm {
-                            term: SharedTerm::new(Term::Record(static_map, attrs)),
-                            pos,
-                        },
+                        RichTerm { term: t, pos },
                         pos_op,
                     )), //TODO include the position of operators on the stack
                 }
@@ -466,7 +476,7 @@ fn process_unary_operation(
             }
         }
         UnaryOp::FieldsOf() => {
-            if let Term::Record(map, _) = *t {
+            if let Term::Record(map, _) = &*t {
                 let mut fields: Vec<String> = map.keys().map(|Ident(id)| id.clone()).collect();
                 fields.sort();
                 let terms = fields.into_iter().map(mk_term::string).collect();
@@ -484,13 +494,13 @@ fn process_unary_operation(
             }
         }
         UnaryOp::ValuesOf() => {
-            if let Term::Record(map, _) = *t {
+            if let Term::Record(map, _) = &*t {
                 let mut values: Vec<_> = map.into_iter().collect();
                 // Although it seems that sort_by_key would be easier here, it would actually
                 // require to copy the identifiers because of the lack of HKT. See
                 // https://github.com/rust-lang/rust/issues/34162.
                 values.sort_by(|(id1, _), (id2, _)| id1.cmp(id2));
-                let terms = values.into_iter().map(|(_, t)| t).collect();
+                let terms = values.into_iter().map(|(_, t)| t.clone()).collect();
                 Ok(Closure {
                     body: RichTerm::new(Term::List(terms), pos_op_inh),
                     env,
@@ -509,7 +519,7 @@ fn process_unary_operation(
                 .pop_arg()
                 .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("map"), pos_op))?;
 
-            if let Term::List(ts) = *t {
+            if let Term::List(ts) = &*t {
                 let mut shared_env = Environment::new();
                 let f_as_var = f.body.closurize(&mut env, f.env);
 
@@ -519,7 +529,7 @@ fn process_unary_operation(
                 let ts = ts
                     .into_iter()
                     .map(|t| {
-                        RichTerm::new(Term::App(f_as_var.clone(), t), pos_op_inh)
+                        RichTerm::new(Term::App(f_as_var.clone(), t.clone()), pos_op_inh)
                             .closurize(&mut shared_env, env.clone())
                     })
                     .collect();
@@ -585,7 +595,7 @@ fn process_unary_operation(
                 .pop_arg()
                 .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("recordMap"), pos_op))?;
 
-            if let Term::Record(rec, attr) = *t {
+            if let Term::Record(rec, attr) = &*t {
                 let mut shared_env = Environment::new();
                 let f_as_var = f.body.closurize(&mut env, f.env);
 
@@ -597,7 +607,7 @@ fn process_unary_operation(
                         let pos = t.pos.into_inherited();
                         (
                             Ident(s.clone()),
-                            mk_app!(f_as_var.clone(), mk_term::string(s), t)
+                            mk_app!(f_as_var.clone(), mk_term::string(s), t.clone())
                                 .closurize(&mut shared_env, env.clone())
                                 .with_pos(pos),
                         )
@@ -605,7 +615,7 @@ fn process_unary_operation(
                     .collect();
 
                 Ok(Closure {
-                    body: RichTerm::new(Term::Record(rec, attr), pos_op_inh),
+                    body: RichTerm::new(Term::Record(rec, *attr), pos_op_inh),
                     env: shared_env,
                 })
             } else {
@@ -645,7 +655,7 @@ fn process_unary_operation(
                 Closure { body, env }
             }
 
-            match *t {
+            match t.as_value() {
                 Term::Record(map, _) if !map.is_empty() => {
                     let terms = map.into_iter().map(|(_, t)| t);
                     Ok(seq_terms(terms, env, pos_op))
@@ -661,10 +671,12 @@ fn process_unary_operation(
             }
         }
         UnaryOp::ListHead() => {
-            if let Term::List(ts) = *t {
-                let mut ts_it = ts.into_iter();
-                if let Some(head) = ts_it.next() {
-                    Ok(Closure { body: head, env })
+            if let Term::List(ts) = &*t {
+                if let Some(head) = ts.first() {
+                    Ok(Closure {
+                        body: head.clone(),
+                        env,
+                    })
                 } else {
                     Err(EvalError::Other(String::from("head: empty list"), pos_op))
                 }
@@ -678,11 +690,11 @@ fn process_unary_operation(
             }
         }
         UnaryOp::ListTail() => {
-            if let Term::List(ts) = *t {
+            if let Term::List(ts) = &*t {
                 let mut ts_it = ts.into_iter();
                 if ts_it.next().is_some() {
                     Ok(Closure {
-                        body: RichTerm::new(Term::List(ts_it.collect()), pos_op_inh),
+                        body: RichTerm::new(Term::List(ts_it.cloned().collect()), pos_op_inh),
                         env,
                     })
                 } else {
@@ -698,7 +710,7 @@ fn process_unary_operation(
             }
         }
         UnaryOp::ListLength() => {
-            if let Term::List(ts) = *t {
+            if let Term::List(ts) = &*t {
                 // A num does not have any free variable so we can drop the environment
                 Ok(Closure {
                     body: RichTerm::new(Term::Num(ts.len() as f64), pos_op_inh),
@@ -716,14 +728,14 @@ fn process_unary_operation(
         UnaryOp::ChunksConcat() => {
             let (mut acc, indent, env_chunks) = stack.pop_str_acc().unwrap();
 
-            if let Term::Str(s) = *t {
+            if let Term::Str(s) = &*t {
                 let s = if indent != 0 {
                     let indent_str: String = std::iter::once('\n')
                         .chain((0..indent).map(|_| ' '))
                         .collect();
                     s.replace("\n", &indent_str)
                 } else {
-                    s
+                    s.clone()
                 };
 
                 acc.push_str(&s);
@@ -761,7 +773,7 @@ fn process_unary_operation(
             }
         }
         UnaryOp::StrTrim() => {
-            if let Term::Str(s) = *t {
+            if let Term::Str(s) = &*t {
                 Ok(Closure::atomic_closure(RichTerm::new(
                     Term::Str(String::from(s.trim())),
                     pos_op_inh,
@@ -776,7 +788,7 @@ fn process_unary_operation(
             }
         }
         UnaryOp::StrChars() => {
-            if let Term::Str(s) = *t {
+            if let Term::Str(s) = &*t {
                 let ts = s
                     .chars()
                     .map(|c| RichTerm::from(Term::Str(c.to_string())))
@@ -795,7 +807,7 @@ fn process_unary_operation(
             }
         }
         UnaryOp::CharCode() => {
-            if let Term::Str(s) = *t {
+            if let Term::Str(s) = &*t {
                 if s.len() == 1 {
                     let code = (s.chars().next().unwrap() as u32) as f64;
                     Ok(Closure::atomic_closure(RichTerm::new(
@@ -844,7 +856,7 @@ fn process_unary_operation(
             }
         }
         UnaryOp::StrUppercase() => {
-            if let Term::Str(s) = *t {
+            if let Term::Str(s) = &*t {
                 Ok(Closure::atomic_closure(RichTerm::new(
                     Term::Str(s.to_uppercase()),
                     pos_op_inh,
@@ -859,7 +871,7 @@ fn process_unary_operation(
             }
         }
         UnaryOp::StrLowercase() => {
-            if let Term::Str(s) = *t {
+            if let Term::Str(s) = &*t {
                 Ok(Closure::atomic_closure(RichTerm::new(
                     Term::Str(s.to_lowercase()),
                     pos_op_inh,
@@ -874,7 +886,7 @@ fn process_unary_operation(
             }
         }
         UnaryOp::StrLength() => {
-            if let Term::Str(s) = *t {
+            if let Term::Str(s) = &*t {
                 Ok(Closure::atomic_closure(RichTerm::new(
                     Term::Num(s.len() as f64),
                     pos_op_inh,
@@ -889,9 +901,9 @@ fn process_unary_operation(
             }
         }
         UnaryOp::ToStr() => {
-            let result = match *t {
+            let result = match &*t {
                 Term::Num(n) => Ok(Term::Str(n.to_string())),
-                Term::Str(s) => Ok(Term::Str(s)),
+                Term::Str(s) => Ok(Term::Str(s.clone())),
                 Term::Bool(b) => Ok(Term::Str(b.to_string())),
                 Term::Enum(id) => Ok(Term::Str(id.to_string())),
                 t => Err(EvalError::Other(
@@ -905,7 +917,7 @@ fn process_unary_operation(
             Ok(Closure::atomic_closure(RichTerm::new(result, pos_op_inh)))
         }
         UnaryOp::NumFromStr() => {
-            if let Term::Str(s) = *t {
+            if let Term::Str(s) = &*t {
                 let n = s.parse::<f64>().map_err(|_| {
                     EvalError::Other(format!("numFrom: invalid num literal `{}`", s), pos)
                 })?;
@@ -923,11 +935,11 @@ fn process_unary_operation(
             }
         }
         UnaryOp::EnumFromStr() => {
-            if let Term::Str(s) = *t {
+            if let Term::Str(s) = &*t {
                 let re = regex::Regex::new("_?[a-zA-Z][_a-zA-Z0-9]*").unwrap();
-                if re.is_match(&s) {
+                if re.is_match(s) {
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Enum(Ident(s)),
+                        Term::Enum(Ident(s.clone())),
                         pos_op_inh,
                     )))
                 } else {
@@ -1163,10 +1175,11 @@ fn process_binary_operation(
             }
         }
         BinaryOp::StrConcat() => {
-            if let Term::Str(s1) = *t1 {
-                if let Term::Str(s2) = *t2 {
+            if let Term::Str(s1) = &*t1 {
+                if let Term::Str(s2) = &*t2 {
+                    let ss: [&str; 2] = [s1, s2];
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Str(s1 + &s2),
+                        Term::Str(ss.concat()),
                         pos_op_inh,
                     )))
                 } else {
@@ -1193,12 +1206,13 @@ fn process_binary_operation(
             }
         }
         BinaryOp::Assume() => {
-            if let Term::Lbl(mut l) = *t2 {
+            if let Term::Lbl(l) = &*t2 {
                 // Track the contract argument for better error reporting, and push back the label
                 // on the stack, so that it becomes the first argument of the contract.
                 let thunk = stack
                     .track_arg()
                     .ok_or_else(|| EvalError::NotEnoughArgs(3, String::from("assume"), pos_op))?;
+                let mut l = l.clone();
                 l.arg_pos = thunk.borrow().body.pos;
                 l.arg_thunk = Some(thunk);
 
@@ -1262,14 +1276,14 @@ fn process_binary_operation(
             }
         }
         BinaryOp::Unwrap() => {
-            if let Term::Sym(s1) = *t1 {
+            if let Term::Sym(s1) = &*t1 {
                 // Return a function that either behaves like the identity or
                 // const unwrapped_term
 
-                Ok(if let Term::Wrapped(s2, t) = *t2 {
+                Ok(if let Term::Wrapped(s2, t) = &*t2 {
                     if s1 == s2 {
                         Closure {
-                            body: mk_fun!("-invld", t),
+                            body: mk_fun!("-invld", t.clone()),
                             env: env2,
                         }
                     } else {
@@ -1291,9 +1305,12 @@ fn process_binary_operation(
             }
         }
         BinaryOp::Tag() => {
-            if let Term::Str(s) = *t1 {
-                if let Term::Lbl(mut l) = *t2 {
-                    l.tag = s;
+            if let Term::Str(s) = &*t1 {
+                if let Term::Lbl(l) = &*t2 {
+                    let l = Label {
+                        tag: s.clone(),
+                        ..l.clone()
+                    };
                     Ok(Closure::atomic_closure(RichTerm::new(
                         Term::Lbl(l),
                         pos_op_inh,
@@ -1493,9 +1510,10 @@ fn process_binary_operation(
             }
         }
         BinaryOp::GoField() => {
-            if let Term::Str(field) = *t1 {
-                if let Term::Lbl(mut l) = *t2 {
-                    l.path.push(ty_path::Elem::Field(Ident(field)));
+            if let Term::Str(field) = &*t1 {
+                if let Term::Lbl(l) = &*t2 {
+                    let mut l = l.clone();
+                    l.path.push(ty_path::Elem::Field(Ident(field.clone())));
                     Ok(Closure::atomic_closure(RichTerm::new(
                         Term::Lbl(l),
                         pos_op_inh,
@@ -1525,15 +1543,18 @@ fn process_binary_operation(
         }
 
         BinaryOp::DynAccess() => {
-            if let Term::Str(id) = *t1 {
-                if let Term::Record(mut static_map, attrs) = *t2 {
-                    match static_map.remove(&Ident(id.clone())) {
-                        Some(e) => Ok(Closure { body: e, env: env2 }),
+            if let Term::Str(id) = &*t1 {
+                if let Term::Record(static_map, _attrs) = &*t2 {
+                    match static_map.get(&Ident(id.clone())) {
+                        Some(e) => Ok(Closure {
+                            body: e.clone(),
+                            env: env2,
+                        }),
                         None => Err(EvalError::FieldMissing(
-                            id,
+                            id.clone(),
                             String::from("(.$)"),
                             RichTerm {
-                                term: SharedTerm::new(Term::Record(static_map, attrs)),
+                                term: t2,
                                 pos: pos2,
                             },
                             pos_op,
@@ -1567,15 +1588,21 @@ fn process_binary_operation(
                 .pop_arg()
                 .ok_or_else(|| EvalError::NotEnoughArgs(3, String::from("$[ .. ]"), pos_op))?;
 
-            if let Term::Str(id) = *t1 {
-                if let Term::Record(mut static_map, attrs) = *t2 {
-                    let as_var = clos.body.closurize(&mut env2, clos.env);
-                    match static_map.insert(Ident(id.clone()), as_var) {
-                        Some(_) => Err(EvalError::Other(format!("$[ .. ]: tried to extend record with the field {}, but it already exists", id), pos_op)),
-                        None => Ok(Closure {
-                            body: Term::Record(static_map, attrs).into(),
-                            env: env2,
-                        }),
+            if let Term::Str(id) = &*t1 {
+                if let Term::Record(..) = &*t2 {
+                    // TODO: macroize
+                    match t2.as_value() {
+                        Term::Record(mut static_map, attrs) => {
+                            let as_var = clos.body.closurize(&mut env2, clos.env);
+                            match static_map.insert(Ident(id.clone()), as_var) {
+                                Some(_) => Err(EvalError::Other(format!("$[ .. ]: tried to extend record with the field {}, but it already exists", id), pos_op)),
+                                None => Ok(Closure {
+                                    body: Term::Record(static_map, attrs).into(),
+                                    env: env2,
+                                }),
+                            }
+                        }
+                        _ => unsafe { unreachable_unchecked() },
                     }
                 } else {
                     Err(EvalError::TypeError(
@@ -1601,22 +1628,27 @@ fn process_binary_operation(
             }
         }
         BinaryOp::DynRemove() => {
-            if let Term::Str(id) = *t1 {
-                if let Term::Record(mut static_map, attrs) = *t2 {
-                    match static_map.remove(&Ident(id.clone())) {
-                        None => Err(EvalError::FieldMissing(
-                            id,
-                            String::from("(-$)"),
-                            RichTerm {
-                                term: SharedTerm::new(Term::Record(static_map, attrs)),
-                                pos: pos2,
-                            },
-                            pos_op,
-                        )),
-                        Some(_) => Ok(Closure {
-                            body: RichTerm::new(Term::Record(static_map, attrs), pos_op_inh),
-                            env: env2,
-                        }),
+            if let Term::Str(id) = &*t1 {
+                if let Term::Record(_static_map, _attrs) = &*t2 {
+                    match t2.as_value() {
+                        Term::Record(mut static_map, attrs) => match static_map
+                            .remove(&Ident(id.clone()))
+                        {
+                            None => Err(EvalError::FieldMissing(
+                                id.clone(),
+                                String::from("(-$)"),
+                                RichTerm {
+                                    term: SharedTerm::new(Term::Record(static_map, attrs)),
+                                    pos: pos2,
+                                },
+                                pos_op,
+                            )),
+                            Some(_) => Ok(Closure {
+                                body: RichTerm::new(Term::Record(static_map, attrs), pos_op_inh),
+                                env: env2,
+                            }),
+                        },
+                        _ => unsafe { unreachable_unchecked() },
                     }
                 } else {
                     Err(EvalError::TypeError(
@@ -1642,10 +1674,10 @@ fn process_binary_operation(
             }
         }
         BinaryOp::HasField() => {
-            if let Term::Str(id) = *t1 {
-                if let Term::Record(static_map, _) = *t2 {
+            if let Term::Str(id) = &*t1 {
+                if let Term::Record(static_map, _) = &*t2 {
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Bool(static_map.contains_key(&Ident(id))),
+                        Term::Bool(static_map.contains_key(&Ident(id.clone()))),
                         pos_op_inh,
                     )))
                 } else {
@@ -1671,68 +1703,73 @@ fn process_binary_operation(
                 ))
             }
         }
-        BinaryOp::ListConcat() => match (*t1, *t2) {
+        BinaryOp::ListConcat() => match (&*t1, &*t2) {
             (Term::List(ts1), Term::List(ts2)) => {
                 let mut env = Environment::new();
-                let mut ts: Vec<RichTerm> = ts1
-                    .into_iter()
-                    .map(|t| t.closurize(&mut env, env1.clone()))
-                    .collect();
-                ts.extend(ts2.into_iter().map(|t| t.closurize(&mut env, env2.clone())));
+                let mut ts: Vec<RichTerm> = Vec::with_capacity(ts1.len() + ts2.len());
+                ts.extend(
+                    ts1.into_iter()
+                        .map(|t| t.clone().closurize(&mut env, env1.clone())),
+                );
+                ts.extend(
+                    ts2.into_iter()
+                        .map(|t| t.clone().closurize(&mut env, env2.clone())),
+                );
 
                 Ok(Closure {
                     body: RichTerm::new(Term::List(ts), pos_op_inh),
                     env,
                 })
             }
-            (Term::List(_), t2) => Err(EvalError::TypeError(
+            (Term::List(_), _) => Err(EvalError::TypeError(
                 String::from("List"),
                 String::from("@, 2nd operand"),
                 snd_pos,
                 RichTerm {
-                    term: SharedTerm::new(t2),
+                    term: t2,
                     pos: pos2,
                 },
             )),
-            (t1, _) => Err(EvalError::TypeError(
+            (_, _) => Err(EvalError::TypeError(
                 String::from("List"),
                 String::from("@, 1st operand"),
                 fst_pos,
                 RichTerm {
-                    term: SharedTerm::new(t1),
+                    term: t1,
                     pos: pos1,
                 },
             )),
         },
-        BinaryOp::ListElemAt() => match (*t1, *t2) {
-            (Term::List(mut ts), Term::Num(n)) => {
-                let n_int = n as usize;
+        BinaryOp::ListElemAt() => match (&*t1, &*t2) {
+            (Term::List(ts), Term::Num(n)) => {
+                let n_int = *n as usize;
                 if n.fract() != 0.0 {
                     Err(EvalError::Other(format!("elemAt: expected the 2nd agument to be an integer, got the floating-point value {}", n), pos_op))
-                } else if n < 0.0 || n_int >= ts.len() {
+                } else if *n < 0.0 || n_int >= ts.len() {
                     Err(EvalError::Other(format!("elemAt: index out of bounds. Expected a value between 0 and {}, got {}", ts.len(), n), pos_op))
                 } else {
                     Ok(Closure {
-                        body: ts.swap_remove(n_int),
+                        // SAFETY: bound checking done in the previous step
+                        body: unsafe { ts.get_unchecked(n_int).clone() },
                         env: env1,
                     })
                 }
             }
-            (Term::List(_), t2) => Err(EvalError::TypeError(
+            (Term::List(_), _) => Err(EvalError::TypeError(
                 String::from("Num"),
                 String::from("elemAt, 2nd argument"),
                 snd_pos,
                 RichTerm {
-                    term: SharedTerm::new(t2),
+                    term: t2,
                     pos: pos2,
                 },
             )),
-            (t1, _) => Err(EvalError::TypeError(
+            (_, _) => Err(EvalError::TypeError(
                 String::from("List"),
                 String::from("elemAt, 1st argument"),
                 fst_pos,
                 RichTerm {
-                    term: SharedTerm::new(t1),
+                    term: t1,
                     pos: pos1,
                 },
             )),
@@ -1765,9 +1802,9 @@ fn process_binary_operation(
                 ))
             };
 
-            if let Term::Enum(ref id) = t1.as_ref() {
-                if let Term::Str(s) = *t2 {
-                    let result = match id.to_string().as_str() {
+            if let Term::Enum(id) = &*t1 {
+                if let Term::Str(s) = &*t2 {
+                    let result = match id.as_ref() {
                         "Md5" => {
                             let mut hasher = md5::Md5::new();
                             hasher.update(s);
@@ -1864,24 +1901,24 @@ fn process_binary_operation(
                 ))
             };
 
-            if let Term::Enum(ref id) = t1.as_ref() {
-                if let Term::Str(s) = *t2 {
-                    let rt: RichTerm = match id.to_string().as_str() {
-                        "Json" => serde_json::from_str(&s).map_err(|err| {
+            if let Term::Enum(id) = &*t1 {
+                if let Term::Str(s) = &*t2 {
+                    let rt: RichTerm = match id.as_ref() {
+                        "Json" => serde_json::from_str(s).map_err(|err| {
                             EvalError::DeserializationError(
                                 String::from("json"),
                                 format!("{}", err),
                                 pos_op,
                             )
                         })?,
-                        "Yaml" => serde_yaml::from_str(&s).map_err(|err| {
+                        "Yaml" => serde_yaml::from_str(s).map_err(|err| {
                             EvalError::DeserializationError(
                                 String::from("yaml"),
                                 format!("{}", err),
                                 pos_op,
                             )
                         })?,
-                        "Toml" => toml::from_str(&s).map_err(|err| {
+                        "Toml" => toml::from_str(s).map_err(|err| {
                             EvalError::DeserializationError(
                                 String::from("toml"),
                                 format!("{}", err),
@@ -1907,10 +1944,10 @@ fn process_binary_operation(
                 mk_err_fst(t1)
             }
         }
-        BinaryOp::StrSplit() => match (*t1, *t2) {
+        BinaryOp::StrSplit() => match (&*t1, &*t2) {
             (Term::Str(s1), Term::Str(s2)) => {
                 let list: Vec<RichTerm> = s1
-                    .split(&s2)
+                    .split(s2)
                     .map(|s| Term::Str(String::from(s)).into())
                     .collect();
                 Ok(Closure::atomic_closure(RichTerm::new(
@@ -1918,84 +1955,84 @@ fn process_binary_operation(
                     pos_op_inh,
                 )))
             }
-            (Term::Str(_), t2) => Err(EvalError::TypeError(
+            (Term::Str(_), _) => Err(EvalError::TypeError(
                 String::from("Str"),
                 String::from("strSplit, 2nd argument"),
                 snd_pos,
                 RichTerm {
-                    term: SharedTerm::new(t2),
+                    term: t2,
                     pos: pos2,
                 },
             )),
-            (t1, _) => Err(EvalError::TypeError(
+            (_, _) => Err(EvalError::TypeError(
                 String::from("Str"),
                 String::from("strSplit, 1st argument"),
                 fst_pos,
                 RichTerm {
-                    term: SharedTerm::new(t1),
+                    term: t1,
                     pos: pos1,
                 },
             )),
         },
-        BinaryOp::StrContains() => match (*t1, *t2) {
+        BinaryOp::StrContains() => match (&*t1, &*t2) {
             (Term::Str(s1), Term::Str(s2)) => Ok(Closure::atomic_closure(RichTerm::new(
-                Term::Bool(s1.contains(&s2)),
+                Term::Bool(s1.contains(s2)),
                 pos_op_inh,
             ))),
-            (Term::Str(_), t2) => Err(EvalError::TypeError(
+            (Term::Str(_), _) => Err(EvalError::TypeError(
                 String::from("Str"),
                 String::from("strContains, 2nd argument"),
                 snd_pos,
                 RichTerm {
-                    term: SharedTerm::new(t2),
+                    term: t2,
                     pos: pos2,
                 },
             )),
-            (t1, _) => Err(EvalError::TypeError(
+            (_, _) => Err(EvalError::TypeError(
                 String::from("Str"),
                 String::from("strContains, 1st argument"),
                 fst_pos,
                 RichTerm {
-                    term: SharedTerm::new(t1),
+                    term: t1,
                     pos: pos1,
                 },
             )),
         },
-        BinaryOp::StrIsMatch() => match (*t1, *t2) {
+        BinaryOp::StrIsMatch() => match (&*t1, &*t2) {
             (Term::Str(s1), Term::Str(s2)) => {
-                let re = regex::Regex::new(&s2)
+                let re = regex::Regex::new(s2)
                     .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
 
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Bool(re.is_match(&s1)),
+                    Term::Bool(re.is_match(s1)),
                     pos_op_inh,
                 )))
             }
-            (Term::Str(_), t2) => Err(EvalError::TypeError(
+            (Term::Str(_), _) => Err(EvalError::TypeError(
                 String::from("Str"),
                 String::from("strIsMatch, 2nd argument"),
                 snd_pos,
                 RichTerm {
-                    term: SharedTerm::new(t2),
+                    term: t2,
                     pos: pos2,
                 },
             )),
-            (t1, _) => Err(EvalError::TypeError(
+            (_, _) => Err(EvalError::TypeError(
                 String::from("Str"),
                 String::from("strIsMatch, 1st argument"),
                 fst_pos,
                 RichTerm {
-                    term: SharedTerm::new(t1),
+                    term: t1,
                     pos: pos1,
                 },
             )),
         },
         BinaryOp::StrMatch() => {
-            match (*t1, *t2) {
+            match (&*t1, &*t2) {
                 (Term::Str(s1), Term::Str(s2)) => {
-                    let re = regex::Regex::new(&s2)
+                    let re = regex::Regex::new(s2)
                         .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
-                    let capt = re.captures(&s1);
+                    let capt = re.captures(s1);
 
                     let result = if let Some(capt) = capt {
                         let first_match = capt.get(0).unwrap();
@@ -2024,21 +2061,21 @@ fn process_binary_operation(
 
                     Ok(Closure::atomic_closure(result))
                 }
-                (Term::Str(_), t2) => Err(EvalError::TypeError(
+                (Term::Str(_), _) => Err(EvalError::TypeError(
                     String::from("Str"),
                     String::from("strMatch, 2nd argument"),
                     snd_pos,
                     RichTerm {
-                        term: SharedTerm::new(t2),
+                        term: t2,
                         pos: pos2,
                     },
                 )),
-                (t1, _) => Err(EvalError::TypeError(
+                (_, _) => Err(EvalError::TypeError(
                     String::from("Str"),
                     String::from("strMatch, 1st argument"),
                     fst_pos,
                     RichTerm {
-                        term: SharedTerm::new(t1),
+                        term: t1,
                         pos: pos1,
                     },
                 )),
@@ -2071,15 +2108,15 @@ fn process_nary_operation(
             let (thd, pos3, thd_pos) = args_wo_env.next().unwrap();
             debug_assert!(args_wo_env.next().is_none());
 
-            match (*fst, *snd, *thd) {
+            match (&*fst, &*snd, &*thd) {
                 (Term::Str(s), Term::Str(from), Term::Str(to)) => {
                     let result = if let NAryOp::StrReplace() = n_op {
-                        str::replace(&s, &from, &to)
+                        str::replace(s, from, to)
                     } else {
-                        let re = regex::Regex::new(&from)
+                        let re = regex::Regex::new(from)
                             .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
 
-                        re.replace_all(&s, to.as_str()).into_owned()
+                        re.replace_all(s, to.as_str()).into_owned()
                     };
 
                     Ok(Closure::atomic_closure(RichTerm::new(
@@ -2087,23 +2124,32 @@ fn process_nary_operation(
                         pos_op_inh,
                     )))
                 }
-                (Term::Str(_), Term::Str(_), t3) => Err(EvalError::TypeError(
+                (Term::Str(_), Term::Str(_), _) => Err(EvalError::TypeError(
                     String::from("Str"),
                     format!("{}, 3rd argument", n_op),
                     thd_pos,
-                    RichTerm::new(t3, pos3),
+                    RichTerm {
+                        term: thd,
+                        pos: pos3,
+                    },
                 )),
-                (Term::Str(_), t2, _) => Err(EvalError::TypeError(
+                (Term::Str(_), _, _) => Err(EvalError::TypeError(
                     String::from("Str"),
                     format!("{}, 2nd argument", n_op),
                     snd_pos,
-                    RichTerm::new(t2, pos2),
+                    RichTerm {
+                        term: snd,
+                        pos: pos2,
+                    },
                 )),
-                (t1, _, _) => Err(EvalError::TypeError(
+                (_, _, _) => Err(EvalError::TypeError(
                     String::from("Str"),
                     format!("{}, 1st argument", n_op),
                     fst_pos,
-                    RichTerm::new(t1, pos1),
+                    RichTerm {
+                        term: fst,
+                        pos: pos1,
+                    },
                 )),
             }
         }
@@ -2116,43 +2162,53 @@ fn process_nary_operation(
             let (thd, pos3, thd_pos) = args_wo_env.next().unwrap();
             debug_assert!(args_wo_env.next().is_none());
 
-            match (*fst, *snd, *thd) {
+            match (&*fst, &*snd, &*thd) {
                 (Term::Str(s), Term::Num(start), Term::Num(end)) => {
-                    let start_int = start as usize;
-                    let end_int = end as usize;
+                    let start_int = *start as usize;
+                    let end_int = *end as usize;
 
                     if start.fract() != 0.0 {
                         Err(EvalError::Other(format!("substring: expected the 2nd agument (start) to be an integer, got the floating-point value {}", start), pos_op))
-                    } else if start < 0.0 || start_int >= s.len() {
+                    } else if !s.is_char_boundary(start_int) {
                         Err(EvalError::Other(format!("substring: index out of bounds. Expected the 2nd argument (start) to be between 0 and {}, got {}", s.len(), start), pos_op))
                     } else if end.fract() != 0.0 {
                         Err(EvalError::Other(format!("substring: expected the 3nd argument (end) to be an integer, got the floating-point value {}", end), pos_op))
-                    } else if end <= start || end_int >= s.len() {
+                    } else if end <= start || !s.is_char_boundary(end_int) {
                         Err(EvalError::Other(format!("substring: index out of bounds. Expected the 3rd argument (end) to be between {} and {}, got {}", start+1., s.len(), end), pos_op))
                     } else {
                         Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Str(String::from(&s[start_int..end_int])),
+                            // SAFETY: checked already that we have correct range for utf-8 string
+                            Term::Str(String::from(unsafe { s.get_unchecked(start_int..end_int) })),
                             pos_op_inh,
                         )))
                     }
                 }
-                (Term::Str(_), Term::Str(_), t3) => Err(EvalError::TypeError(
+                (Term::Str(_), Term::Num(_), _) => Err(EvalError::TypeError(
                     String::from("Str"),
                     String::from("strReplace, 3rd argument"),
                     thd_pos,
-                    RichTerm::new(t3, pos3),
+                    RichTerm {
+                        term: thd,
+                        pos: pos3,
+                    },
                 )),
-                (Term::Str(_), t2, _) => Err(EvalError::TypeError(
+                (Term::Str(_), _, _) => Err(EvalError::TypeError(
                     String::from("Str"),
                     String::from("strReplace, 2nd argument"),
                     snd_pos,
-                    RichTerm::new(t2, pos2),
+                    RichTerm {
+                        term: snd,
+                        pos: pos2,
+                    },
                 )),
-                (t1, _, _) => Err(EvalError::TypeError(
+                (_, _, _) => Err(EvalError::TypeError(
                     String::from("Str"),
                     String::from("strReplace, 1st argument"),
                     fst_pos,
-                    RichTerm::new(t1, pos1),
+                    RichTerm {
+                        term: fst,
+                        pos: pos1,
+                    },
                 )),
             }
         }
@@ -2189,7 +2245,7 @@ fn process_nary_operation(
             ) = args_iter.next().unwrap();
             debug_assert!(args_iter.next().is_none());
 
-            if let Term::Lbl(lbl) = *t1 {
+            if let Term::Lbl(lbl) = &*t1 {
                 merge(
                     RichTerm {
                         term: t2,
@@ -2202,7 +2258,7 @@ fn process_nary_operation(
                     },
                     env3,
                     pos_op,
-                    MergeMode::Contract(lbl),
+                    MergeMode::Contract(lbl.clone()),
                 )
             } else {
                 Err(EvalError::InternalError(format!("The MergeContract() operator was expecting a first argument of type Label, got {}", t1.type_of().unwrap_or(String::from("<unevaluated>"))), pos_op))
@@ -2266,7 +2322,7 @@ fn eq(env: &mut Environment, c1: Closure, c2: Closure) -> EqResult {
         }
     }
 
-    match (*t1, *t2) {
+    match (t1.as_value(), t2.as_value()) {
         (Term::Null, Term::Null) => EqResult::Bool(true),
         (Term::Bool(b1), Term::Bool(b2)) => EqResult::Bool(b1 == b2),
         (Term::Num(n1), Term::Num(n2)) => EqResult::Bool(n1 == n2),

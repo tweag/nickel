@@ -20,3 +20,9 @@ where
         Ident(String::from(val))
     }
 }
+
+impl AsRef<str> for Ident {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}

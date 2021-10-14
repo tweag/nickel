@@ -42,6 +42,8 @@ generate_counter!(FreshVarCounter, usize);
 /// Newly introduced variables begin with a special character to avoid clashing with user-defined
 /// variables.
 pub mod share_normal_form {
+    use std::hint::unreachable_unchecked;
+
     use super::fresh_var;
     use crate::identifier::Ident;
     use crate::position::TermPos;
@@ -56,8 +58,15 @@ pub mod share_normal_form {
     /// the transformation is implemented as rewrite rules, and must be used in conjunction a
     /// traversal to obtain a full transformation.
     pub fn transform_one(rt: RichTerm) -> RichTerm {
+        // TODO: macro match term
+        if !matches!(
+            &*rt.term,
+            Term::Record(_, _) | Term::RecRecord(_, _, _) | Term::List(_) | Term::MetaValue(_)
+        ) {
+            return rt;
+        }
         let RichTerm { term, pos } = rt;
-        match *term {
+        match term.as_value() {
             Term::Record(map, attrs) => {
                 let mut bindings = Vec::with_capacity(map.len());
 
@@ -147,7 +156,7 @@ pub mod share_normal_form {
                     RichTerm::new(Term::MetaValue(meta), pos)
                 }
             }
-            t => RichTerm::new(t, pos),
+            _ => unsafe { unreachable_unchecked() },
         }
     }
 
@@ -194,6 +203,8 @@ pub mod share_normal_form {
 type PendingImport = (RichTerm, FileId, PathBuf);
 
 pub mod import_resolution {
+    use std::hint::unreachable_unchecked;
+
     use super::{ImportResolver, PathBuf, PendingImport, RichTerm, Term};
     use crate::cache::ResolvedTerm;
     use crate::error::ImportError;
@@ -212,18 +223,21 @@ pub mod import_resolution {
     where
         R: ImportResolver,
     {
-        let RichTerm { term, pos } = rt;
-        match *term {
+        // TODO: macro match term
+        if !matches!(&*rt.term, Term::Import(_)) {
+            return Ok((rt, None));
+        }
+        match rt.term.as_value() {
             Term::Import(path) => {
-                let (res_term, file_id) = resolver.resolve(&path, parent.clone(), &pos)?;
+                let (res_term, file_id) = resolver.resolve(&path, parent.clone(), &rt.pos)?;
                 let ret = match res_term {
                     ResolvedTerm::FromCache() => None,
                     ResolvedTerm::FromFile { term, path } => Some((term, file_id, path)),
                 };
 
-                Ok((RichTerm::new(Term::ResolvedImport(file_id), pos), ret))
+                Ok((RichTerm::new(Term::ResolvedImport(file_id), rt.pos), ret))
             }
-            t => Ok((RichTerm::new(t, pos), None)),
+            _ => unsafe { unreachable_unchecked() },
         }
     }
 }
@@ -237,15 +251,20 @@ pub mod import_resolution {
 /// It must be run before `share_normal_form` to avoid rechecking contracts each time the inner
 /// value is unwrapped.
 pub mod apply_contracts {
+    use std::hint::unreachable_unchecked;
+
     use super::{RichTerm, Term};
     use crate::mk_app;
 
     /// If the top-level node of the AST is a meta-value, apply the meta-value's contracts to the
     /// inner value.  Otherwise, return the term unchanged.
     pub fn transform_one(rt: RichTerm) -> RichTerm {
-        let RichTerm { term, pos } = rt;
-
-        match *term {
+        // TODO: macro match term
+        if !matches!(&*rt.term, Term::MetaValue(_)) {
+            return rt;
+        }
+        let pos = rt.pos;
+        match rt.term.as_value() {
             Term::MetaValue(mut meta) if meta.value.is_some() => {
                 let inner = meta.types.iter().chain(meta.contracts.iter()).fold(
                     meta.value.take().unwrap(),
@@ -262,7 +281,7 @@ pub mod apply_contracts {
                 meta.value.replace(inner);
                 RichTerm::new(Term::MetaValue(meta), pos)
             }
-            t => RichTerm::new(t, pos),
+            _ => unsafe { unreachable_unchecked() },
         }
     }
 }
