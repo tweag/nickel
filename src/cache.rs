@@ -374,8 +374,6 @@ impl Cache {
             Some(EntryState::Transformed) => Ok(CacheOp::Cached(())),
             Some(_) => {
                 let (t, _) = self.terms.remove(&file_id).unwrap();
-                // self.imports has to be cloned because self.transform  take self as mutable
-                // TODO: is it good way to do?
                 if let Some(imports) = self.imports.get(&file_id).cloned() {
                     for f in imports.iter() {
                         self.transform(*f)?;
