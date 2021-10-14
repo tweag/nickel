@@ -1,7 +1,9 @@
 use codespan::ByteIndex;
 use log::debug;
 use lsp_server::{ErrorCode, Request, RequestId, Response};
-use lsp_types::{Hover, HoverContents, HoverParams, MarkedString, MarkupContent, Range};
+use lsp_types::{
+    Hover, HoverContents, HoverParams, LanguageString, MarkedString, MarkupContent, Range,
+};
 use nickel::{
     position::TermPos,
     typecheck::linearization::{self, Linearization},
@@ -56,15 +58,16 @@ pub fn handle(params: HoverParams, id: RequestId, server: &mut Server) {
     server.reply(Response::new_ok(
         id,
         Hover {
-            contents: HoverContents::Markup(MarkupContent {
-                kind: lsp_types::MarkupKind::Markdown,
-                value: format!(
-                    "{}
-{:?} @ {:?}
-                    ",
-                    item.ty, item, range
-                ),
-            }),
+            contents: HoverContents::Array(vec![
+                MarkedString::LanguageString(LanguageString {
+                    language: "nickel".into(),
+                    value: item.ty.to_string(),
+                }),
+                MarkedString::LanguageString(LanguageString {
+                    language: "plain".into(),
+                    value: format!("{:?} @ {:?}", item, range,),
+                }),
+            ]),
 
             range,
         },
