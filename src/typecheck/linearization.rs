@@ -125,12 +125,12 @@ impl Linearizer<Vec<LinearizationItem<Unresolved>>, UnifTable> for AnalysisHost 
         }
         let id = lin.state.resource.len();
         match term {
-            Term::Let(ident, _, _) => {
+            Term::Let(ident, definition, _) => {
                 self.env.insert(ident.to_owned(), lin.state.resource.len());
                 lin.push(LinearizationItem {
                     id,
-                    pos,
                     ty,
+                    pos: definition.pos,
                     kind: TermKind::Declaration(ident.to_string(), Vec::new()),
                 });
             }
