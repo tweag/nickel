@@ -473,7 +473,7 @@ impl Cache {
                     self.terms.insert(id, (t, EntryState::Parsed));
                     self.resolve_imports(id)?;
                 }
-                self.insert_resolved(file_id, t);
+                self.terms.insert(file_id, (t, EntryState::ImportsResolved));
                 Ok(CacheOp::Done(()))
             }
             None => Err(CacheError::NotParsed),
@@ -742,9 +742,6 @@ pub trait ImportResolver {
         pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError>;
 
-    /// Insert an entry in the term cache after transformation.
-    fn insert_resolved(&mut self, file_id: FileId, term: RichTerm);
-
     /// Get a resolved import from the term cache.
     fn get(&self, file_id: FileId) -> Option<RichTerm>;
 
@@ -803,11 +800,6 @@ impl ImportResolver for Cache {
         })
     }
 
-    fn insert_resolved(&mut self, file_id: FileId, term: RichTerm) {
-        self.terms
-            .insert(file_id, (term, EntryState::ImportsResolved));
-    }
-
     fn get_path(&self, file_id: FileId) -> &OsStr {
         self.files.name(file_id)
     }
@@ -848,10 +840,6 @@ pub mod resolvers {
             _parent: Option<PathBuf>,
             _pos: &TermPos,
         ) -> Result<(ResolvedTerm, FileId), ImportError> {
-            panic!("cache::resolvers: dummy resolver should not have been invoked");
-        }
-
-        fn insert_resolved(&mut self, _file_id: FileId, _term: RichTerm) {
             panic!("cache::resolvers: dummy resolver should not have been invoked");
         }
 
@@ -916,7 +904,7 @@ pub mod resolvers {
                     .parse(file_id, Lexer::new(&buf))
                     .map_err(|e| ParseError::from_lalrpop(e, file_id))
                     .map_err(|e| ImportError::ParseError(e, *pos))?;
-                self.insert_resolved(file_id, term.clone());
+                self.term_cache.insert(file_id, term.clone());
                 Ok((
                     ResolvedTerm::FromFile {
                         term,
@@ -925,10 +913,6 @@ pub mod resolvers {
                     file_id,
                 ))
             }
-        }
-
-        fn insert_resolved(&mut self, file_id: FileId, term: RichTerm) {
-            self.term_cache.insert(file_id, term);
         }
 
         fn get(&self, file_id: FileId) -> Option<RichTerm> {
