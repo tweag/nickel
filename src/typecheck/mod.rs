@@ -54,7 +54,7 @@ use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 
 use self::linearization::{
-    Building, Completed, Environment as LinEnv, Linearization, Linearizer, StubHost,
+    Building, Completed, Environment as LinEnv, Linearization, Linearizer, ScopeId, StubHost,
 };
 use self::reporting::NameResolution;
 
@@ -470,7 +470,7 @@ where
         &mut state,
         Envs::from_global(&global),
         &mut building,
-        linearizer.scope(),
+        linearizer.scope(linearization::ScopeId::Right),
         false,
         t,
         ty.clone(),
@@ -554,11 +554,12 @@ fn type_check_<S>(
 
             chunks
                 .iter()
-                .try_for_each(|chunk| -> Result<(), TypecheckError> {
+                .enumerate()
+                .try_for_each(|(choice, chunk)| -> Result<(), TypecheckError> {
                     match chunk {
                         StrChunk::Literal(_) => Ok(()),
                         StrChunk::Expr(t, _) => {
-                            type_check_(state, envs.clone(), lin, linearizer.scope(), strict, t, mk_typewrapper::str())
+                            type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Choice(choice)), strict, t, mk_typewrapper::str())
                         }
                     }
                 })
@@ -584,8 +585,9 @@ fn type_check_<S>(
 
             terms
                 .iter()
-                .try_for_each(|t| -> Result<(), TypecheckError> {
-                    type_check_(state, envs.clone(), lin, linearizer.scope(), strict, t, ty_elts.clone())
+                .enumerate()
+                .try_for_each(|(choice, t)| -> Result<(), TypecheckError> {
+                    type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Choice(choice)), strict, t, ty_elts.clone())
                 })
         }
         Term::Lbl(_) => {
@@ -595,7 +597,7 @@ fn type_check_<S>(
         }
         Term::Let(x, re, rt) => {
             let ty_let = binding_type(re.as_ref(), &envs, state.table, strict);
-            type_check_(state, envs.clone(), lin, linearizer.scope(), strict, re, ty_let.clone())?;
+            type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Left), strict, re, ty_let.clone())?;
 
             // TODO move this up once lets are rec
             envs.insert(x.clone(), ty_let);
@@ -605,7 +607,7 @@ fn type_check_<S>(
             let src = TypeWrapper::Ptr(new_var(state.table));
             let arr = mk_tyw_arrow!(src.clone(), ty);
 
-            type_check_(state, envs.clone(), lin, linearizer.scope(), strict, e, arr)?;
+            type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Left), strict, e, arr)?;
             type_check_(state, envs, lin, linearizer, strict, t, src)
         }
         Term::Switch(exp, cases, default) => {
@@ -613,13 +615,13 @@ fn type_check_<S>(
             // taking ANY enum, since it's more permissive and there's no loss of information
             let res = TypeWrapper::Ptr(new_var(state.table));
 
-            for case in cases.values() {
-                type_check_(state, envs.clone(), lin, linearizer.scope(), strict, case, res.clone())?;
+            for (choice, case) in cases.values().enumerate() {
+                type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Choice(choice)), strict, case, res.clone())?;
             }
 
             let row = match default {
                 Some(t) => {
-                    type_check_(state, envs.clone(), lin, linearizer.scope(),strict, t, res.clone())?;
+                    type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Right),strict, t, res.clone())?;
                     TypeWrapper::Ptr(new_var(state.table))
                 }
                 None => cases.iter().try_fold(
@@ -658,8 +660,9 @@ fn type_check_<S>(
 
             stat_map
                 .iter()
-                .try_for_each(|(_, t)| -> Result<(), TypecheckError> {
-                    type_check_(state, envs.clone(),lin , linearizer.scope(), strict,t, ty_dyn.clone())
+                .enumerate()
+                .try_for_each(|(choice, (_, t))| -> Result<(), TypecheckError> {
+                    type_check_(state, envs.clone(),lin , linearizer.scope(ScopeId::Choice(choice)), strict,t, ty_dyn.clone())
                 })?;
 
             unify(state, strict, ty, mk_typewrapper::dyn_record(ty_dyn))
@@ -686,13 +689,14 @@ fn type_check_<S>(
                 // Checking for a dynamic record
                 stat_map
                     .iter()
-                    .try_for_each(|(_, t)| -> Result<(), TypecheckError> {
-                        type_check_(state, envs.clone(), lin, linearizer.scope(), strict, t, (*rec_ty).clone())
+                    .enumerate()
+                    .try_for_each(|(choice, (_, t))| -> Result<(), TypecheckError> {
+                        type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Choice(choice)), strict, t, (*rec_ty).clone())
                     })
             } else {
-                let row = stat_map.iter().try_fold(
+                let row = stat_map.iter().enumerate().try_fold(
                     mk_tyw_row!(),
-                    |acc, (id, field)| -> Result<TypeWrapper, TypecheckError> {
+                    |acc, (choice, (id, field))| -> Result<TypeWrapper, TypecheckError> {
                         // In the case of a recursive record, new types (either type variables or
                         // annotations) have already be determined and put in the typing
                         // environment, and we need to use the same.
@@ -702,7 +706,7 @@ fn type_check_<S>(
                             TypeWrapper::Ptr(new_var(state.table))
                         };
 
-                        type_check_(state, envs.clone(), lin, linearizer.scope(), strict, field, ty.clone())?;
+                        type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Choice(choice)), strict, field, ty.clone())?;
 
                         Ok(mk_tyw_row!((id.clone(), ty); acc))
                     },
@@ -717,14 +721,14 @@ fn type_check_<S>(
 
             unify(state, strict, ty, ty_res)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            type_check_(state, envs.clone(), lin, linearizer.scope(),strict, t, ty_arg)
+            type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Right),strict, t, ty_arg)
         }
         Term::Op2(op, t1, t2) => {
             let (ty_arg1, ty_arg2, ty_res) = get_bop_type(state, op)?;
 
             unify(state, strict, ty, ty_res)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            type_check_(state, envs.clone(), lin, linearizer.scope(), strict, t1, ty_arg1)?;
+            type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Left), strict, t1, ty_arg1)?;
             type_check_(state, envs, lin, linearizer, strict, t2, ty_arg2)
         }
         Term::OpN(op, args) => {
@@ -735,9 +739,10 @@ fn type_check_<S>(
 
             tys_op
                 .into_iter()
+                .enumerate()
                 .zip(args.iter())
-                .try_for_each(|(ty_t, t)| {
-                    type_check_(state, envs.clone(), lin, linearizer.scope(), strict, t, ty_t)?;
+                .try_for_each(|((choice, ty_t), t)| {
+                    type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Choice(choice)), strict, t, ty_t)?;
                     Ok(())
                 })?;
 
