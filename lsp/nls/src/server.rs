@@ -10,9 +10,9 @@ use lsp_types::{
     request::{Request as RequestTrait, *},
     DeclarationCapability, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
     DidSaveTextDocumentParams, GotoDefinitionParams, Hover, HoverContents, HoverOptions,
-    HoverParams, HoverProviderCapability, MarkedString, OneOf, Position, Range, ServerCapabilities,
-    TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions, WorkDoneProgress,
-    WorkDoneProgressOptions,
+    HoverParams, HoverProviderCapability, MarkedString, OneOf, Position, Range, ReferenceParams,
+    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
+    WorkDoneProgress, WorkDoneProgressOptions,
 };
 use serde::Deserialize;
 
@@ -53,6 +53,7 @@ impl Server {
                 },
             })),
             definition_provider: Some(OneOf::Left(true)),
+            references_provider: Some(OneOf::Left(true)),
             ..ServerCapabilities::default()
         }
     }
@@ -162,6 +163,12 @@ impl Server {
                 debug!("handle goto defnition");
                 let params: GotoDefinitionParams = serde_json::from_value(req.params).unwrap();
                 goto::handle_to_definition(params, req.id, self)
+            }
+
+            References::METHOD => {
+                debug!("handle goto defnition");
+                let params: ReferenceParams = serde_json::from_value(req.params).unwrap();
+                goto::handle_to_usages(params, req.id, self)
             }
 
             _ => {}
