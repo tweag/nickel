@@ -224,13 +224,13 @@ impl Linearizer<BuildingResource, UnifTable> for AnalysisHost {
         }
         let id = lin.state.resource.linearization.len();
         match term {
-            Term::Let(ident, definition, _) => {
+            Term::Let(ident, _, _) => {
                 self.env
                     .insert(ident.to_owned(), lin.state.resource.linearization.len());
                 lin.push(LinearizationItem {
                     id,
                     ty,
-                    pos: definition.pos,
+                    pos,
                     scope: self.scope.clone(),
                     kind: TermKind::Declaration(ident.to_string(), Vec::new()),
                 });
@@ -242,7 +242,9 @@ impl Linearizer<BuildingResource, UnifTable> for AnalysisHost {
                     pos,
                     ty,
                     scope: self.scope.clone(),
-                    kind: TermKind::Usage(parent),
+                    // id = parent: full let binding including the body
+                    // id = parent + 1: actual delcaration scope, i.e. _ = < definition >
+                    kind: TermKind::Usage(parent.map(|id| id + 1)),
                 });
                 if let Some(parent) = parent {
                     lin.add_usage(parent, id);
