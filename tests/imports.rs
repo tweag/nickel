@@ -25,6 +25,17 @@ fn nested() {
 }
 
 #[test]
+fn root_path() {
+    use nickel::term::Term;
+    let mut prog = Program::new_from_source(
+        BufReader::new(mk_import("root_path.ncl").as_bytes()),
+        "should_be = 44",
+    )
+    .unwrap();
+    assert_eq!(prog.eval(), Ok(Term::Num(44.)));
+}
+
+#[test]
 fn multi_imports() {
     use nickel::term::Term;
     let mut prog = Program::new_from_source(
