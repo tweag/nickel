@@ -595,7 +595,7 @@ where
             }
             Term::StrChunks(chunks) => {
                 let mut chunks_iter = chunks.iter();
-                match chunks_iter.next() {
+                match chunks_iter.next_back() {
                     None => Closure {
                         body: Term::Str(String::new()).into(),
                         env: Environment::new(),
