@@ -25,6 +25,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fmt;
+use std::hint::unreachable_unchecked;
+use std::ops::{Deref, DerefMut};
+use std::rc::Rc;
 
 /// The AST of a Nickel expression.
 ///
@@ -541,6 +544,45 @@ impl Term {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct SharedTerm {
+    term: Rc<Term>,
+}
+
+impl SharedTerm {
+    pub fn new(term: Term) -> Self {
+        Self {
+            term: Rc::new(term),
+        }
+    }
+
+    pub fn as_ref(&self) -> &Term {
+        self.term.as_ref()
+    }
+
+    pub fn as_mut(&mut self) -> &mut Term {
+        Rc::make_mut(&mut self.term)
+    }
+
+    pub fn as_value(self) -> Term {
+        Rc::try_unwrap(self.term).unwrap_or_else(|rc| Term::clone(&rc))
+    }
+}
+
+impl Deref for SharedTerm {
+    type Target = Term;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_ref()
+    }
+}
+
+impl DerefMut for SharedTerm {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.as_mut()
+    }
+}
+
 /// Primitive unary operators.
 ///
 /// Some operators, such as if-then-else or `seq`, actually take several arguments but are only
@@ -830,7 +872,7 @@ impl fmt::Display for NAryOp {
 /// Wrap [terms](type.Term.html) with positional information.
 #[derive(Debug, PartialEq, Clone)]
 pub struct RichTerm {
-    pub term: Box<Term>,
+    pub term: SharedTerm,
     pub pos: TermPos,
 }
 
@@ -838,7 +880,7 @@ impl RichTerm {
     /// Create a new value from a term and an optional position.
     pub fn new(t: Term, pos: TermPos) -> Self {
         RichTerm {
-            term: Box::new(t),
+            term: SharedTerm::new(t),
             pos,
         }
     }
@@ -867,28 +909,27 @@ impl RichTerm {
         F: FnMut(RichTerm, &mut S) -> Result<RichTerm, E>,
     {
         let RichTerm { term, pos } = self;
-        match *term {
-            v @ Term::Null
-            | v @ Term::Bool(_)
-            | v @ Term::Num(_)
-            | v @ Term::Str(_)
-            | v @ Term::Lbl(_)
-            | v @ Term::Sym(_)
-            | v @ Term::Var(_)
-            | v @ Term::Enum(_)
-            | v @ Term::Import(_)
-            | v @ Term::ResolvedImport(_) => f(
-                RichTerm {
-                    term: Box::new(v),
-                    pos,
-                },
-                state,
-            ),
+        if matches!(
+            &*term,
+            Term::Null
+                | Term::Bool(_)
+                | Term::Num(_)
+                | Term::Str(_)
+                | Term::Lbl(_)
+                | Term::Sym(_)
+                | Term::Var(_)
+                | Term::Enum(_)
+                | Term::Import(_)
+                | Term::ResolvedImport(_)
+        ) {
+            return f(RichTerm { term, pos }, state);
+        }
+        match term.as_value() {
             Term::Fun(id, t) => {
                 let t = t.traverse(f, state)?;
                 f(
                     RichTerm {
-                        term: Box::new(Term::Fun(id, t)),
+                        term: SharedTerm::new(Term::Fun(id, t)),
                         pos,
                     },
                     state,
@@ -899,7 +940,7 @@ impl RichTerm {
                 let t2 = t2.traverse(f, state)?;
                 f(
                     RichTerm {
-                        term: Box::new(Term::Let(id, t1, t2)),
+                        term: SharedTerm::new(Term::Let(id, t1, t2)),
                         pos,
                     },
                     state,
@@ -910,7 +951,7 @@ impl RichTerm {
                 let t2 = t2.traverse(f, state)?;
                 f(
                     RichTerm {
-                        term: Box::new(Term::App(t1, t2)),
+                        term: SharedTerm::new(Term::App(t1, t2)),
                         pos,
                     },
                     state,
@@ -942,7 +983,7 @@ impl RichTerm {
                 let t = t.traverse(f, state)?;
                 f(
                     RichTerm {
-                        term: Box::new(Term::Op1(op, t)),
+                        term: SharedTerm::new(Term::Op1(op, t)),
                         pos,
                     },
                     state,
@@ -953,7 +994,7 @@ impl RichTerm {
                 let t2 = t2.traverse(f, state)?;
                 f(
                     RichTerm {
-                        term: Box::new(Term::Op2(op, t1, t2)),
+                        term: SharedTerm::new(Term::Op2(op, t1, t2)),
                         pos,
                     },
                     state,
@@ -964,7 +1005,7 @@ impl RichTerm {
                     ts.into_iter().map(|t| t.traverse(f, state)).collect();
                 f(
                     RichTerm {
-                        term: Box::new(Term::OpN(op, ts_res?)),
+                        term: SharedTerm::new(Term::OpN(op, ts_res?)),
                         pos,
                     },
                     state,
@@ -974,7 +1015,7 @@ impl RichTerm {
                 let t = t.traverse(f, state)?;
                 f(
                     RichTerm {
-                        term: Box::new(Term::Promise(ty, l, t)),
+                        term: SharedTerm::new(Term::Promise(ty, l, t)),
                         pos,
                     },
                     state,
@@ -984,7 +1025,7 @@ impl RichTerm {
                 let t = t.traverse(f, state)?;
                 f(
                     RichTerm {
-                        term: Box::new(Term::Wrapped(i, t)),
+                        term: SharedTerm::new(Term::Wrapped(i, t)),
                         pos,
                     },
                     state,
@@ -1000,7 +1041,7 @@ impl RichTerm {
                     .collect();
                 f(
                     RichTerm {
-                        term: Box::new(Term::Record(map_res?, attrs)),
+                        term: SharedTerm::new(Term::Record(map_res?, attrs)),
                         pos,
                     },
                     state,
@@ -1020,7 +1061,7 @@ impl RichTerm {
                     .collect();
                 f(
                     RichTerm {
-                        term: Box::new(Term::RecRecord(map_res?, dyn_fields_res?, attrs)),
+                        term: SharedTerm::new(Term::RecRecord(map_res?, dyn_fields_res?, attrs)),
                         pos,
                     },
                     state,
@@ -1032,7 +1073,7 @@ impl RichTerm {
 
                 f(
                     RichTerm {
-                        term: Box::new(Term::List(ts_res?)),
+                        term: SharedTerm::new(Term::List(ts_res?)),
                         pos,
                     },
                     state,
@@ -1051,7 +1092,7 @@ impl RichTerm {
 
                 f(
                     RichTerm {
-                        term: Box::new(Term::StrChunks(chunks_res?)),
+                        term: SharedTerm::new(Term::StrChunks(chunks_res?)),
                         pos,
                     },
                     state,
@@ -1099,19 +1140,20 @@ impl RichTerm {
 
                 f(
                     RichTerm {
-                        term: Box::new(Term::MetaValue(meta)),
+                        term: SharedTerm::new(Term::MetaValue(meta)),
                         pos,
                     },
                     state,
                 )
             }
+            _ => unsafe { unreachable_unchecked() },
         }
     }
 }
 
 impl From<RichTerm> for Term {
     fn from(rt: RichTerm) -> Self {
-        *rt.term
+        rt.term.as_value()
     }
 }
 
@@ -1124,7 +1166,7 @@ impl AsRef<Term> for RichTerm {
 impl From<Term> for RichTerm {
     fn from(t: Term) -> Self {
         RichTerm {
-            term: Box::new(t),
+            term: SharedTerm::new(t),
             pos: TermPos::None,
         }
     }

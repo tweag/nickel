@@ -94,7 +94,9 @@ use crate::mk_app;
 use crate::operation::{continuate_operation, OperationCont};
 use crate::position::TermPos;
 use crate::stack::Stack;
-use crate::term::{make as mk_term, BinaryOp, MetaValue, RichTerm, StrChunk, Term, UnaryOp};
+use crate::term::{
+    make as mk_term, BinaryOp, MetaValue, RichTerm, SharedTerm, StrChunk, Term, UnaryOp,
+};
 use std::cell::{Ref, RefCell, RefMut};
 use std::rc::{Rc, Weak};
 
@@ -306,7 +308,7 @@ pub enum EnvBuildError {
 pub fn env_add_term(env: &mut Environment, rt: RichTerm) -> Result<(), EnvBuildError> {
     let RichTerm { term, pos } = rt;
 
-    match *term {
+    match term.as_value() {
         Term::Record(bindings, _) | Term::RecRecord(bindings, ..) => {
             let ext = bindings.into_iter().map(|(id, t)| {
                 (
@@ -441,18 +443,17 @@ where
     loop {
         let Closure {
             body: RichTerm {
-                term: boxed_term,
+                term: shared_term,
                 pos,
             },
             mut env,
         } = clos;
-        let term = *boxed_term;
 
-        clos = match term {
+        clos = match &*shared_term {
             Term::Var(x) => {
                 let mut thunk = env
-                    .get(&x)
-                    .or_else(|| global_env.get(&x))
+                    .get(x)
+                    .or_else(|| global_env.get(x))
                     .ok_or_else(|| EvalError::UnboundIdentifier(x.clone(), pos))?;
                 std::mem::drop(env); // thunk may be a 1RC pointer
 
@@ -471,26 +472,32 @@ where
                     }
                 }
 
-                call_stack.push(StackElem::Var(thunk.ident_kind(), x, pos));
+                call_stack.push(StackElem::Var(thunk.ident_kind(), x.clone(), pos));
                 thunk.into_closure()
             }
             Term::App(t1, t2) => {
                 stack.push_arg(
                     Closure {
-                        body: t2,
+                        body: t2.clone(),
                         env: env.clone(),
                     },
                     pos,
                 );
-                Closure { body: t1, env }
+                Closure {
+                    body: t1.clone(),
+                    env,
+                }
             }
             Term::Let(x, s, t) => {
                 let closure = Closure {
-                    body: s,
+                    body: s.clone(),
                     env: env.clone(),
                 };
-                env.insert(x, Thunk::new(closure, IdentKind::Let()));
-                Closure { body: t, env }
+                env.insert(x.clone(), Thunk::new(closure, IdentKind::Let()));
+                Closure {
+                    body: t.clone(),
+                    env,
+                }
             }
             Term::Switch(exp, cases, default) => {
                 let has_default = default.is_some();
@@ -498,7 +505,7 @@ where
                 if let Some(t) = default {
                     stack.push_arg(
                         Closure {
-                            body: t,
+                            body: t.clone(),
                             env: env.clone(),
                         },
                         pos,
@@ -507,14 +514,14 @@ where
 
                 stack.push_arg(
                     Closure {
-                        body: RichTerm::new(Term::Record(cases, Default::default()), pos),
+                        body: RichTerm::new(Term::Record(cases.clone(), Default::default()), pos),
                         env: env.clone(),
                     },
                     pos,
                 );
 
                 Closure {
-                    body: RichTerm::new(Term::Op1(UnaryOp::Switch(has_default), exp), pos),
+                    body: RichTerm::new(Term::Op1(UnaryOp::Switch(has_default), exp.clone()), pos),
                     env,
                 }
             }
@@ -522,20 +529,23 @@ where
                 let prev_strict = enriched_strict;
                 enriched_strict = true;
                 stack.push_op_cont(
-                    OperationCont::Op1(op, t.pos, prev_strict),
+                    OperationCont::Op1(op.clone(), t.pos, prev_strict),
                     call_stack.len(),
                     pos,
                 );
-                Closure { body: t, env }
+                Closure {
+                    body: t.clone(),
+                    env,
+                }
             }
             Term::Op2(op, fst, snd) => {
                 let prev_strict = enriched_strict;
                 enriched_strict = op.is_strict();
                 stack.push_op_cont(
                     OperationCont::Op2First(
-                        op,
+                        op.clone(),
                         Closure {
-                            body: snd,
+                            body: snd.clone(),
                             env: env.clone(),
                         },
                         fst.pos,
@@ -544,30 +554,34 @@ where
                     call_stack.len(),
                     pos,
                 );
-                Closure { body: fst, env }
+                Closure {
+                    body: fst.clone(),
+                    env,
+                }
             }
-            Term::OpN(op, mut args) => {
+            Term::OpN(op, args) => {
                 let prev_strict = enriched_strict;
                 enriched_strict = op.is_strict();
 
                 // Arguments are passed as a stack to the operation continuation, so we reverse the
                 // original list.
-                args.reverse();
-                let fst = args
-                    .pop()
+                let mut args_iter = args.iter();
+                let fst = args_iter
+                    .next()
+                    .cloned()
                     .ok_or_else(|| EvalError::NotEnoughArgs(op.arity(), op.to_string(), pos))?;
 
-                let pending: Vec<Closure> = args
-                    .into_iter()
+                let pending: Vec<Closure> = args_iter
+                    .rev()
                     .map(|t| Closure {
-                        body: t,
+                        body: t.clone(),
                         env: env.clone(),
                     })
                     .collect();
 
                 stack.push_op_cont(
                     OperationCont::OpN {
-                        op,
+                        op: op.clone(),
                         evaluated: Vec::with_capacity(pending.len() + 1),
                         pending,
                         current_pos: fst.pos,
@@ -579,31 +593,35 @@ where
 
                 Closure { body: fst, env }
             }
-            Term::StrChunks(mut chunks) => match chunks.pop() {
-                None => Closure {
-                    body: Term::Str(String::new()).into(),
-                    env: Environment::new(),
-                },
-                Some(chunk) => {
-                    let (arg, indent) = match chunk {
-                        StrChunk::Literal(s) => (Term::Str(s).into(), 0),
-                        StrChunk::Expr(e, indent) => (e, indent),
-                    };
+            Term::StrChunks(chunks) => {
+                let mut chunks_iter = chunks.iter();
+                match chunks_iter.next_back() {
+                    None => Closure {
+                        body: Term::Str(String::new()).into(),
+                        env: Environment::new(),
+                    },
+                    Some(chunk) => {
+                        let (arg, indent) = match chunk {
+                            StrChunk::Literal(s) => (Term::Str(s.clone()).into(), 0),
+                            StrChunk::Expr(e, indent) => (e.clone(), *indent),
+                        };
 
-                    stack.push_str_chunks(chunks.into_iter());
-                    stack.push_str_acc(String::new(), indent, env.clone());
+                        stack.push_str_chunks(chunks_iter.cloned());
+                        stack.push_str_acc(String::new(), indent, env.clone());
 
-                    Closure {
-                        body: RichTerm::new(Term::Op1(UnaryOp::ChunksConcat(), arg), pos),
-                        env,
+                        Closure {
+                            body: RichTerm::new(Term::Op1(UnaryOp::ChunksConcat(), arg), pos),
+                            env,
+                        }
                     }
                 }
-            },
-            Term::Promise(ty, mut l, t) => {
+            }
+            Term::Promise(ty, l, t) => {
+                let mut l = l.clone();
                 l.arg_pos = t.pos;
                 let thunk = Thunk::new(
                     Closure {
-                        body: t,
+                        body: t.clone(),
                         env: env.clone(),
                     },
                     IdentKind::Lam(),
@@ -649,30 +667,30 @@ where
                 )?;
 
                 let new_ts = ts.into_iter().map(|(id, rt)| {
-                    let RichTerm { term, pos } = rt;
-                    match *term {
+                    let pos = rt.pos;
+                    match &*rt.term {
                         Term::Var(var_id) => {
                             // We already checked for unbound identifier in the previous fold,
                             // so function should always succeed
-                            let mut thunk = env.get(&var_id).unwrap();
+                            let mut thunk = env.get(var_id).unwrap();
                             thunk.borrow_mut().env.extend(
                                 rec_env
                                     .iter_elems()
                                     .map(|(id, thunk)| (id.clone(), thunk.clone())),
                             );
                             (
-                                id,
+                                id.clone(),
                                 RichTerm {
-                                    term: Box::new(Term::Var(var_id)),
+                                    term: SharedTerm::new(Term::Var(var_id.clone())),
                                     pos,
                                 },
                             )
                         }
-                        _ => (id, RichTerm { term, pos }),
+                        _ => (id.clone(), rt.clone()),
                     }
                 });
 
-                let static_part = RichTerm::new(Term::Record(new_ts.collect(), attrs), pos);
+                let static_part = RichTerm::new(Term::Record(new_ts.collect(), attrs.clone()), pos);
 
                 // Transform the static part `{stat1 = val1, ..., statn = valn}` and the dynamic
                 // part `{exp1 = dyn_val1, ..., expm = dyn_valm}` to a sequence of extensions
@@ -684,10 +702,11 @@ where
                     .try_fold::<_, _, Result<RichTerm, EvalError>>(
                         static_part,
                         |acc, (id_t, t)| {
-                            let RichTerm { term, pos } = t;
-                            match *term {
+                            let id_t = id_t.clone();
+                            let pos = t.pos;
+                            match &*t.term {
                                 Term::Var(var_id) => {
-                                    let mut thunk = env.get(&var_id).ok_or_else(|| {
+                                    let mut thunk = env.get(var_id).ok_or_else(|| {
                                         EvalError::UnboundIdentifier(var_id.clone(), pos)
                                     })?;
 
@@ -698,13 +717,13 @@ where
                                     );
                                     Ok(Term::App(
                                         mk_term::op2(BinaryOp::DynExtend(), id_t, acc),
-                                        mk_term::var(var_id).with_pos(pos),
+                                        mk_term::var(var_id.clone()).with_pos(pos),
                                     )
                                     .into())
                                 }
                                 _ => Ok(Term::App(
                                     mk_term::op2(BinaryOp::DynExtend(), id_t, acc),
-                                    RichTerm { term, pos },
+                                    t.clone(),
                                 )
                                 .into()),
                             }
@@ -727,7 +746,7 @@ where
                      */
                     let update_closure = Closure {
                         body: RichTerm {
-                            term: Box::new(Term::MetaValue(meta)),
+                            term: shared_term.clone(),
                             pos,
                         },
                         env,
@@ -739,7 +758,7 @@ where
                         env,
                     } = update_closure;
 
-                    match *term {
+                    match term.as_value() {
                         Term::MetaValue(MetaValue {
                             value: Some(inner), ..
                         }) => Closure { body: inner, env },
@@ -752,7 +771,7 @@ where
                 }
             }
             Term::ResolvedImport(id) => {
-                if let Some(t) = resolver.get(id) {
+                if let Some(t) = resolver.get(*id) {
                     Closure::atomic_closure(t)
                 } else {
                     return Err(EvalError::InternalError(
@@ -771,7 +790,7 @@ where
             _ if stack.is_top_thunk() || stack.is_top_cont() => {
                 clos = Closure {
                     body: RichTerm {
-                        term: Box::new(term),
+                        term: shared_term,
                         pos,
                     },
                     env,
@@ -787,10 +806,13 @@ where
             Term::Fun(x, t) => {
                 if let Some((thunk, pos_app)) = stack.pop_arg_as_thunk() {
                     call_stack.push(StackElem::App(pos_app));
-                    env.insert(x, thunk);
-                    Closure { body: t, env }
+                    env.insert(x.clone(), thunk);
+                    Closure {
+                        body: t.clone(),
+                        env,
+                    }
                 } else {
-                    return Ok((Term::Fun(x, t), env));
+                    return Ok((Term::Fun(x.clone(), t.clone()), env));
                 }
             }
             // Otherwise, this is either an ill-formed application, or we are done
@@ -798,14 +820,14 @@ where
                 if let Some((arg, pos_app)) = stack.pop_arg() {
                     return Err(EvalError::NotAFunc(
                         RichTerm {
-                            term: Box::new(t),
+                            term: shared_term.clone(),
                             pos,
                         },
                         arg.body,
                         pos_app,
                     ));
                 } else {
-                    return Ok((t, env));
+                    return Ok((t.clone(), env));
                 }
             }
         }
@@ -833,7 +855,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
         bound: Cow<HashSet<Ident>>,
     ) -> RichTerm {
         let RichTerm { term, pos } = rt;
-        match *term {
+        match term.as_value() {
             Term::Var(id) if !bound.as_ref().contains(&id) => env
                 .get(&id)
                 .or_else(|| global_env.get(&id))
