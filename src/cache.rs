@@ -476,6 +476,7 @@ impl Cache {
         if self.parse(file_id)? == CacheOp::Done(()) {
             result = CacheOp::Done(());
         };
+        println!("parsed");
 
         let import_res = self.resolve_imports(file_id).map_err(|cache_err| {
             cache_err.unwrap_error(
@@ -485,14 +486,16 @@ impl Cache {
         if import_res == CacheOp::Done(()) {
             result = CacheOp::Done(());
         };
+        println!("resolved");
 
-        let typecheck_res = self.typecheck(file_id, global_env).map_err(|cache_err| {
-            cache_err
-                .unwrap_error("cache::prepare(): expected source to be parsed before typechecking")
-        })?;
-        if typecheck_res == CacheOp::Done(()) {
-            result = CacheOp::Done(());
-        };
+        //let typecheck_res = self.typecheck(file_id, global_env).map_err(|cache_err| {
+        //    cache_err
+        //        .unwrap_error("cache::prepare(): expected source to be parsed before typechecking")
+        //})?;
+        //if typecheck_res == CacheOp::Done(()) {
+        //    result = CacheOp::Done(());
+        //};
+        println!("typechecked");
 
         let transform_res = self.transform(file_id).map_err(|cache_err| {
             cache_err.unwrap_error(
@@ -502,6 +505,7 @@ impl Cache {
         if transform_res == CacheOp::Done(()) {
             result = CacheOp::Done(());
         };
+        println!("transformed");
 
         Ok(result)
     }
