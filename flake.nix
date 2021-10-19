@@ -83,7 +83,7 @@
 
           src = if isShell then null else self;
 
-          buildPhase = "cargo build --release --frozen --offline";
+          buildPhase = "cargo build --workspace --release --frozen --offline";
 
           doCheck = true;
 
@@ -97,6 +97,7 @@
             ''
               mkdir -p $out
               cargo install --frozen --offline --path . --root $out
+              cargo install --frozen --offline --path lsp/nls --root $out
               rm $out/.crates.toml
             '';
         };
