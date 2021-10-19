@@ -61,7 +61,10 @@ pub mod share_normal_form {
         // TODO: macro match term
         if !matches!(
             &*rt.term,
-            Term::Record(_, _) | Term::RecRecord(_, _, _) | Term::List(_) | Term::MetaValue(_)
+            Term::Record(_, _)
+                | Term::RecRecord(_, _, _)
+                | Term::List(_)
+                | Term::MetaValue(MetaValue { value: Some(_), .. })
         ) {
             return rt;
         }
@@ -260,7 +263,7 @@ pub mod apply_contracts {
     /// inner value.  Otherwise, return the term unchanged.
     pub fn transform_one(rt: RichTerm) -> RichTerm {
         // TODO: macro match term
-        if !matches!(&*rt.term, Term::MetaValue(_)) {
+        if !matches!(&*rt.term, Term::MetaValue(meta) if meta.value.is_some()) {
             return rt;
         }
         let pos = rt.pos;
