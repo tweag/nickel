@@ -191,7 +191,7 @@ pub mod share_normal_form {
 /// - The parsed term.
 /// - The id of the file in the database.
 /// - The path of the file, to resolve relative imports.
-pub type PendingImport = (RichTerm, FileId, PathBuf);
+pub type PendingImport = (FileId, PathBuf);
 
 pub mod import_resolution {
     use super::{ImportResolver, PathBuf, PendingImport, RichTerm, Term};
@@ -218,7 +218,7 @@ pub mod import_resolution {
                 let (res_term, file_id) = resolver.resolve(&path, parent.clone(), &pos)?;
                 let ret = match res_term {
                     ResolvedTerm::FromCache() => None,
-                    ResolvedTerm::FromFile { term, path } => Some((term, file_id, path)),
+                    ResolvedTerm::FromFile { path } => Some((file_id, path)),
                 };
 
                 Ok((RichTerm::new(Term::ResolvedImport(file_id), pos), ret))
@@ -343,8 +343,8 @@ where
             let (rt, pending) =
                 import_resolution::transform_one(rt, state.resolver, &state.parent)?;
 
-            if let Some((t, file_id, p)) = pending {
-                state.stack.push((t, file_id, p));
+            if let Some((file_id, p)) = pending {
+                state.stack.push((file_id, p));
             }
 
             Ok(rt)

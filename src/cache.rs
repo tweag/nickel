@@ -140,8 +140,7 @@ impl<E> CacheError<E> {
 #[derive(Debug, PartialEq)]
 pub enum ResolvedTerm {
     FromFile {
-        term: RichTerm, /* the parsed term */
-        path: PathBuf,  /* the loaded path */
+        path: PathBuf, /* the loaded path */
     },
     FromCache(),
 }
@@ -467,8 +466,7 @@ impl Cache {
             Some(_) => {
                 let (t, _) = self.terms.remove(&file_id).unwrap();
                 let (t, pending) = transformations::resolve_imports(t, self)?;
-                for (t, id, path) in pending {
-                    self.terms.insert(id, (t, EntryState::Parsed));
+                for (id, path) in pending {
                     self.resolve_imports(id)?;
                 }
                 self.terms.insert(file_id, (t, EntryState::ImportsResolved));
@@ -782,13 +780,7 @@ impl ImportResolver for Cache {
         self.parse_multi(file_id, format)
             .map_err(|err| ImportError::ParseError(err, *pos))?;
 
-        Ok((
-            ResolvedTerm::FromFile {
-                term: self.get_owned(file_id).unwrap(),
-                path: path_buf,
-            },
-            file_id,
-        ))
+        Ok((ResolvedTerm::FromFile { path: path_buf }, file_id))
     }
 
     fn get(&self, file_id: FileId) -> Option<RichTerm> {
@@ -902,10 +894,9 @@ pub mod resolvers {
                     .parse(file_id, Lexer::new(&buf))
                     .map_err(|e| ParseError::from_lalrpop(e, file_id))
                     .map_err(|e| ImportError::ParseError(e, *pos))?;
-                self.term_cache.insert(file_id, term.clone());
+                self.term_cache.insert(file_id, term);
                 Ok((
                     ResolvedTerm::FromFile {
-                        term,
                         path: PathBuf::new(),
                     },
                     file_id,
