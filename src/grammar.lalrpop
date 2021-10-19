@@ -1,35 +1,40 @@
+use std::collections::HashMap;
+use std::ffi::OsString;
+
+use codespan::FileId;
+
+use super::ExtendedTerm;
+use super::utils::{StringKind, mk_pos, mk_label, mk_span, strip_indent, SwitchCase,
+    FieldPathElem, strip_indent_doc, build_record, elaborate_field_path, check_unbound,
+    ChunkLiteralPart, RecordLastField};
+use super::lexer::{Token, NormalToken, StringToken, MultiStringToken};
+
+use crate::{mk_app, mk_opn};
 use crate::identifier::Ident;
+use crate::parser::error::ParseError;
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
     MergePriority, Contract, NAryOp, RecordAttrs};
 use crate::term::make as mk_term;
-use crate::{mk_app, mk_opn};
 use crate::types::{Types, AbsType};
-use super::ExtendedTerm;
-use super::utils::{StringKind, mk_pos, mk_label, strip_indent, SwitchCase,
-    FieldPathElem, strip_indent_doc, build_record, elaborate_field_path,
-    ChunkLiteralPart, RecordLastField};
-use std::ffi::OsString;
-use super::lexer::{Token, NormalToken, StringToken, MultiStringToken, LexicalError};
-use std::collections::HashMap;
-use codespan::FileId;
 
 grammar<'input>(src_id: FileId);
 
 WithPos<Rule>: RichTerm = <l: @L> <t: Rule> <r: @R> => t.with_pos(mk_pos(src_id, l, r));
+CheckUnbound<Rule>: Types = <l: @L> <t: Rule> <r: @R> =>? check_unbound(&t, mk_span(src_id, l, r)).map_err(|e| lalrpop_util::ParseError::User{error: e}).and(Ok(t));
 
-TypeAnnot: MetaValue = ":" <l: @L> <ty: Types> <r: @R> => MetaValue {
+TypeAnnot: MetaValue = ":" <l: @L> <ty_res: CheckUnbound<Types>> <r: @R> => MetaValue {
     doc: None,
-    types: Some(Contract {types: ty.clone(), label: mk_label(ty, src_id, l, r)}),
+    types: Some(Contract {types: ty_res.clone(), label: mk_label(ty_res, src_id, l, r)}),
     contracts: Vec::new(),
     priority: Default::default(),
     value: None,
 };
 
 MetaAnnotAtom: MetaValue = {
-    "|" <l: @L> <ty: Types> <r: @R> => MetaValue {
+    "|" <l: @L> <ty_res: CheckUnbound<Types>> <r: @R> => MetaValue {
         doc: None,
         types: None,
-        contracts: vec![Contract {types: ty.clone(), label: mk_label(ty, src_id, l, r)}],
+        contracts: vec![Contract {types: ty_res.clone(), label: mk_label(ty_res, src_id, l, r)}],
         priority: Default::default(),
         value: None,
     },
@@ -38,7 +43,7 @@ MetaAnnotAtom: MetaValue = {
         types: None,
         contracts: Vec::new(),
         priority: MergePriority::Default,
-        value: None,
+        value: None
     },
     "|" "doc" <s: StaticString> => MetaValue {
         doc: Some(strip_indent_doc(s)),
@@ -143,11 +148,11 @@ AnnotatedTerm: RichTerm = {
 };
 
 Infix: RichTerm = {
-    "import" <s: StaticString> => RichTerm::from(Term::Import(OsString::from(s))),
     InfixExpr,
 };
 
 Applicative: RichTerm = {
+    "import" <s: StaticString> => RichTerm::from(Term::Import(OsString::from(s))),
     <t1:WithPos<Applicative>> <t2: WithPos<RecordOperand>> => mk_app!(t1, t2),
     <op: UOp> <t: WithPos<RecordOperand>> => mk_term::op1(op, t),
     <op: BOpPre> <t1: WithPos<RecordOperand>> <t2: WithPos<Atom>> => mk_term::op2(op, t1, t2),
@@ -478,7 +483,7 @@ subType : Types = {
     },
     <Ident> => Types(AbsType::Var(<>)),
     "#" <WithPos<Atom>> => Types(AbsType::Flat(<>)),
-    "(" <Types> ")" => <>,
+    "(" <Types> ")",
     "<" <rows:(<Ident> ",")*> <last: (<Ident>)?> <tail: ("|" <Ident>)?> ">" => {
         let ty = rows.into_iter()
             .chain(last.into_iter())
@@ -522,7 +527,7 @@ subType : Types = {
 
 extern {
     type Location = usize;
-    type Error = LexicalError;
+    type Error = ParseError;
 
     enum Token<'input> {
         "identifier" => Token::Normal(NormalToken::Identifier(<&'input str>)),

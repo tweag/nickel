@@ -135,7 +135,7 @@ fn dynamic_record_simple() {
 #[test]
 fn simple_list() {
     assert_typecheck_fails!("[1, 2, false] : List Num");
-    assert_typecheck_fails!("[(1 : String), true, \"b\"] : List");
+    assert_typecheck_fails!("[(1 : Str), true, \"b\"] : List");
     assert_typecheck_fails!("[1, 2, \"3\"] : List Str");
 }
 
@@ -158,8 +158,12 @@ fn imports() {
     resolver.add_source(String::from("good"), String::from("1 + 1 : Num"));
     resolver.add_source(String::from("bad"), String::from("false : Num"));
     resolver.add_source(
-        String::from("proxy"),
+        String::from("proxy-bad"),
         String::from("let x = import \"bad\" in x"),
+    );
+    resolver.add_source(
+        String::from("proxy-wrong-type"),
+        String::from("let x : Str = import \"good\" in x"),
     );
 
     fn mk_import<R>(import: &str, resolver: &mut R) -> Result<RichTerm, ImportError>
@@ -172,18 +176,23 @@ fn imports() {
         )
     }
 
-    type_check_in_env(
-        &mk_import("good", &mut resolver).unwrap(),
-        &Environment::new(),
-        &mut resolver,
-    )
-    .unwrap();
-    type_check_in_env(
-        &mk_import("proxy", &mut resolver).unwrap(),
-        &Environment::new(),
-        &mut resolver,
-    )
-    .unwrap_err();
+    assert_matches!(
+        type_check_in_env(
+            &mk_import("proxy-wrong-type", &mut resolver).unwrap(),
+            &Environment::new(),
+            &mut resolver,
+        ),
+        Err(TypecheckError::TypeMismatch(..))
+    );
+
+    assert_matches!(
+        type_check_in_env(
+            &mk_import("proxy-bad", &mut resolver).unwrap(),
+            &Environment::new(),
+            &mut resolver,
+        ),
+        Err(TypecheckError::TypeMismatch(..))
+    );
 }
 
 #[test]
@@ -250,6 +259,14 @@ fn dynamic_row_tail() {
 fn shallow_type_inference() {
     assert_matches!(
         type_check_expr("let x = (1 + 1) in (x + 1 : Num)"),
+        Err(TypecheckError::TypeMismatch(..))
+    );
+}
+
+#[test]
+fn dynamic_record_field() {
+    assert_matches!(
+        type_check_expr("let x = \"foo\" in {\"#{x}\" = 1} : {foo: Num}"),
         Err(TypecheckError::TypeMismatch(..))
     );
 }

@@ -461,11 +461,11 @@ mod test {
         assert_format_eq("{_: (Str -> Str) -> Str}");
 
         assert_format_eq("{x: (Bool -> Bool) -> Bool, y: Bool}");
-        assert_format_eq("{x: Bool, y: Bool, z: Bool | r}");
+        assert_format_eq("forall r. {x: Bool, y: Bool, z: Bool | r}");
         assert_format_eq("{x: Bool, y: Bool, z: Bool}");
 
         assert_format_eq("<a, b, c, d>");
-        assert_format_eq("<tag1, tag2, tag3 | r>");
+        assert_format_eq("forall r. <tag1, tag2, tag3 | r>");
 
         assert_format_eq("List");
         assert_format_eq("List Num");

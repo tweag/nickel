@@ -1,5 +1,5 @@
 use assert_matches::assert_matches;
-use nickel::error::{Error, EvalError};
+use nickel::error::{Error, EvalError, TypecheckError};
 
 use utilities::eval;
 
@@ -39,5 +39,13 @@ fn non_mergeable_piecewise() {
     assert_matches!(
         eval("({a.b = {}} & {a.b.c = []} & {a.b.c = {}}).a.b.c"),
         Err(Error::EvalError(EvalError::MergeIncompatibleArgs(..)))
+    );
+}
+
+#[test]
+fn dynamic_not_recursive() {
+    assert_matches!(
+        eval("let x = \"foo\" in {\"#{x}\" = 1, bar = foo}.bar"),
+        Err(Error::TypecheckError(TypecheckError::UnboundIdentifier(..)))
     );
 }
