@@ -1,5 +1,3 @@
-//! Program transformations.
-
 use crate::cache::ImportResolver;
 use crate::error::ImportError;
 use crate::eval::{Closure, Environment, IdentKind, Thunk};
@@ -187,15 +185,8 @@ pub mod share_normal_form {
     }
 }
 
-/// A pending import to be processed, consisting of
-/// - The parsed term.
-/// - The id of the file in the database.
-/// - The path of the file, to resolve relative imports.
-pub type PendingImport = (FileId, PathBuf);
-
 pub mod import_resolution {
-    use super::{ImportResolver, PathBuf, PendingImport, RichTerm, Term};
-    use crate::cache::ResolvedTerm;
+    use super::{ImportResolver, PathBuf, RichTerm, Term};
     use crate::error::ImportError;
 
     /// Resolve the import if the term is an unresolved import, or return the term unchanged.
@@ -208,22 +199,17 @@ pub mod import_resolution {
         rt: RichTerm,
         resolver: &mut R,
         parent: &Option<PathBuf>,
-    ) -> Result<(RichTerm, Option<PendingImport>), ImportError>
+    ) -> Result<RichTerm, ImportError>
     where
         R: ImportResolver,
     {
-        let RichTerm { term, pos } = rt;
-        match *term {
+        let term = rt.as_ref();
+        match term {
             Term::Import(path) => {
-                let (res_term, file_id) = resolver.resolve(&path, parent.clone(), &pos)?;
-                let ret = match res_term {
-                    ResolvedTerm::FromCache() => None,
-                    ResolvedTerm::FromFile { path } => Some((file_id, path)),
-                };
-
-                Ok((RichTerm::new(Term::ResolvedImport(file_id), pos), ret))
+                let (_, file_id) = resolver.resolve(&path, parent.clone(), &rt.pos)?;
+                Ok(RichTerm::new(Term::ResolvedImport(file_id), rt.pos))
             }
-            t => Ok((RichTerm::new(t, pos), None)),
+            _ => Ok(rt),
         }
     }
 }
@@ -272,7 +258,7 @@ pub mod apply_contracts {
 /// currently being processed, if any.
 struct ImportsResolutionState<'a, R> {
     resolver: &'a mut R,
-    stack: &'a mut Vec<PendingImport>,
+    stack: &'a mut Vec<FileId>,
     parent: Option<PathBuf>,
 }
 
@@ -303,13 +289,13 @@ pub fn transform(rt: RichTerm) -> Result<RichTerm, ImportError> {
 pub fn resolve_imports<R>(
     rt: RichTerm,
     resolver: &mut R,
-) -> Result<(RichTerm, Vec<PendingImport>), ImportError>
+) -> Result<(RichTerm, Vec<FileId>), ImportError>
 where
     R: ImportResolver,
 {
     let mut stack = Vec::new();
 
-    let source_file: Option<PathBuf> = rt.pos.into_opt().map(|x| {
+    let source_file: Option<PathBuf> = rt.pos.as_opt_ref().map(|x| {
         let path = resolver.get_path(x.src_id);
         PathBuf::from(path)
     });
@@ -323,7 +309,7 @@ where
 fn imports_pass<R>(
     rt: RichTerm,
     resolver: &mut R,
-    stack: &mut Vec<PendingImport>,
+    stack: &mut Vec<FileId>,
     parent: Option<PathBuf>,
 ) -> Result<RichTerm, ImportError>
 where
@@ -340,13 +326,11 @@ where
         &mut |rt: RichTerm,
               state: &mut ImportsResolutionState<R>|
          -> Result<RichTerm, ImportError> {
-            let (rt, pending) =
-                import_resolution::transform_one(rt, state.resolver, &state.parent)?;
+            let rt = import_resolution::transform_one(rt, state.resolver, &state.parent)?;
 
-            if let Some((file_id, p)) = pending {
-                state.stack.push((file_id, p));
+            if let Term::ResolvedImport(file_id) = rt.term.as_ref() {
+                state.stack.push(*file_id);
             }
-
             Ok(rt)
         },
         &mut state,

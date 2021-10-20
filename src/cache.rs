@@ -6,7 +6,6 @@ use crate::parser::lexer::Lexer;
 use crate::position::TermPos;
 use crate::stdlib as nickel_stdlib;
 use crate::term::{RichTerm, Term};
-use crate::transformations::PendingImport;
 use crate::typecheck::type_check;
 use crate::{eval, parser, transformations};
 use codespan::{FileId, Files};
@@ -466,7 +465,7 @@ impl Cache {
             Some(_) => {
                 let (t, _) = self.terms.remove(&file_id).unwrap();
                 let (t, pending) = transformations::resolve_imports(t, self)?;
-                for (id, path) in pending {
+                for id in pending {
                     self.resolve_imports(id)?;
                 }
                 self.terms.insert(file_id, (t, EntryState::ImportsResolved));
@@ -529,7 +528,7 @@ impl Cache {
         &mut self,
         file_id: FileId,
         global_env: &eval::Environment,
-    ) -> Result<(RichTerm, Vec<PendingImport>), Error> {
+    ) -> Result<(RichTerm, Vec<FileId>), Error> {
         let term = self.parse_nocache(file_id)?;
         let (term, pending) = transformations::resolve_imports(term, self)?;
         type_check(&term, global_env, self)?;
