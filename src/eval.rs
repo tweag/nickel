@@ -386,7 +386,7 @@ pub fn eval_meta<R>(
 where
     R: ImportResolver,
 {
-    let (term, env) = eval_closure(Closure::atomic_closure(t), &global_env, resolver, false)?;
+    let (term, env) = eval_closure(Closure::atomic_closure(t), &global_env, resolver, true)?;
 
     match term {
         Term::MetaValue(mut meta) => {
