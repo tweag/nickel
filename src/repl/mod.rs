@@ -182,6 +182,10 @@ impl REPL for REPLImpl {
         })?;
 
         let term = self.cache.get_owned(file_id).unwrap();
+        let (term, pending) = transformations::resolve_imports(term, &mut self.cache)?;
+        for id in &pending {
+            self.cache.resolve_imports(*id).unwrap();
+        }
         typecheck::Envs::env_add_term(&mut self.type_env, &term).unwrap();
         eval::env_add_term(&mut self.eval_env, term.clone()).unwrap();
 
@@ -191,6 +195,10 @@ impl REPL for REPLImpl {
     fn typecheck(&mut self, exp: &str) -> Result<Types, Error> {
         let file_id = self.cache.add_tmp("<repl-typecheck>", String::from(exp));
         let term = self.cache.parse_nocache(file_id)?;
+        let (term, pending) = transformations::resolve_imports(term, &mut self.cache)?;
+        for id in &pending {
+            self.cache.resolve_imports(*id).unwrap();
+        }
         typecheck::type_check_in_env(&term, &self.type_env, &self.cache)?;
 
         Ok(typecheck::apparent_type(
