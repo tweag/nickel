@@ -11,7 +11,19 @@ pub fn find_linearizaion_index(
         TermPos::Original(span) | TermPos::Inherited(span) => (span.src_id, span.start),
         TermPos::None => unreachable!(),
     }) {
-        Ok(index) => Some(index),
+        Ok(index) => linearization[index..]
+            .iter()
+            .enumerate()
+            .take_while(|(_, item)| {
+                let pos = match item.pos {
+                    TermPos::Original(span) | TermPos::Inherited(span) => (span.src_id, span.start),
+                    TermPos::None => unreachable!(),
+                };
+                pos == (file_id, start)
+            })
+            .inspect(|(offset, item)| debug!("taken: {:?} @ {}", item, index + offset))
+            .map(|(offset, _)| index + offset)
+            .last(),
         Err(index) => {
             linearization[..index]
                 .iter()
