@@ -264,7 +264,7 @@ struct ImportsResolutionState<'a, R> {
 /// Do not perform transformation on the imported files.
 /// If needed, either do it yourself using pending imports returned by
 /// [`resolve_imports`](../fn.resolve_imports.html)
-/// either use the [`Cache`](../../cache/struct.Cache.html)
+/// or use the [`Cache`](../../cache/struct.Cache.html)
 pub fn transform(rt: RichTerm) -> Result<RichTerm, ImportError> {
     rt.traverse(
         &mut |rt: RichTerm, _| -> Result<RichTerm, ImportError> {
