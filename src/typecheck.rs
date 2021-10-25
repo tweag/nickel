@@ -572,7 +572,8 @@ fn type_check_(
             if let Some(x) = x {
                 envs.insert(x.clone(), ty_let);
             }
-            type_check_(state, envs, strict, rt, ty)
+            //type_check_(state, envs, strict, rt, ty)
+            Ok(())
         }
         Term::App(e, t) => {
             let src = TypeWrapper::Ptr(new_var(state.table));

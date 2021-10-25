@@ -62,7 +62,7 @@ pub mod desugar_destructuring {
                 matches
                     .iter()
                     .map(|m| match m {
-                        Match::Assign(id, f) => (
+                        Match::Assign(f, id) => (
                             id.clone(),
                             op1(UnaryOp::StaticAccess(f.clone()), Term::Var(var.clone())),
                         ),
@@ -88,7 +88,7 @@ pub mod desugar_destructuring {
                 let m = matches.pop();
                 if let Some(m) = m {
                     let next_term = match m {
-                        Match::Simple(id) | Match::Assign(id, _) => RichTerm::new(
+                        Match::Simple(id) | Match::Assign(_, id) => RichTerm::new(
                             Term::Let(
                                 id.clone(),
                                 op1(UnaryOp::StaticAccess(id.clone()), Term::Var(x.clone())),
