@@ -148,54 +148,6 @@ fn lists_operations() {
 }
 
 #[test]
-fn imports() {
-    use nickel::cache::{resolvers::SimpleResolver, ImportResolver};
-    use nickel::error::ImportError;
-    use nickel::term::{make as mk_term, RichTerm};
-    use nickel::transformations::resolve_imports;
-
-    let mut resolver = SimpleResolver::new();
-    resolver.add_source(String::from("good"), String::from("1 + 1 : Num"));
-    resolver.add_source(String::from("bad"), String::from("false : Num"));
-    resolver.add_source(
-        String::from("proxy-bad"),
-        String::from("let x = import \"bad\" in x"),
-    );
-    resolver.add_source(
-        String::from("proxy-wrong-type"),
-        String::from("let x : Str = import \"good\" in x"),
-    );
-
-    fn mk_import<R>(import: &str, resolver: &mut R) -> Result<RichTerm, ImportError>
-    where
-        R: ImportResolver,
-    {
-        resolve_imports(
-            mk_term::let_in("x", mk_term::import(import), mk_term::var("x")),
-            resolver,
-        )
-    }
-
-    assert_matches!(
-        type_check_in_env(
-            &mk_import("proxy-wrong-type", &mut resolver).unwrap(),
-            &Environment::new(),
-            &mut resolver,
-        ),
-        Err(TypecheckError::TypeMismatch(..))
-    );
-
-    assert_matches!(
-        type_check_in_env(
-            &mk_import("proxy-bad", &mut resolver).unwrap(),
-            &Environment::new(),
-            &mut resolver,
-        ),
-        Err(TypecheckError::TypeMismatch(..))
-    );
-}
-
-#[test]
 fn recursive_records() {
     assert_typecheck_fails!("{a : Num = true, b = a + 1} : {a : Num, b : Num}");
     assert_typecheck_fails!("{a = 1, b : Bool = a} : {a : Num, b : Bool}");
