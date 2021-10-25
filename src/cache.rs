@@ -366,7 +366,7 @@ impl Cache {
     /// Apply program transformations to an entry of the cache, and update its state accordingly,
     /// or do nothing if the entry has already been transformed. Require that the corresponding
     /// source has been parsed.
-    /// if imports where resolved, perform transformations recursively on thoes.
+    /// If the source contains imports, recursively perform transformations on the imports too.
     pub fn transform(&mut self, file_id: FileId) -> Result<CacheOp<()>, CacheError<ImportError>> {
         match self.entry_state(file_id) {
             Some(EntryState::Transformed) => Ok(CacheOp::Cached(())),
