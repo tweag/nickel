@@ -367,12 +367,11 @@ impl Linearization<Building<BuildingResource>> {
     }
 }
 
-impl Linearization<Completed> {
+impl Completed {
     pub fn get_item(&self, id: usize) -> Option<&LinearizationItem<Resolved>> {
-        self.state
-            .id_mapping
+        self.id_mapping
             .get(&id)
-            .and_then(|index| self.state.lin.get(*index))
+            .and_then(|index| self.lin.get(*index))
     }
 
     pub fn get_in_scope(
@@ -381,10 +380,11 @@ impl Linearization<Completed> {
     ) -> Vec<&LinearizationItem<Resolved>> {
         (0..scope.len())
             .into_iter()
-            .map(|end| &scope[..end])
+            .map(|end| &scope[..=end])
             .flat_map(|scope| {
-                self.state
-                    .scope_mapping
+                eprintln!("in scope {:?}: {:?}", scope, self.scope_mapping.get(scope));
+
+                self.scope_mapping
                     .get(scope)
                     .map_or_else(|| Vec::new(), Clone::clone)
             })

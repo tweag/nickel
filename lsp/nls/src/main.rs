@@ -7,7 +7,6 @@ mod diagnostic;
 mod files;
 mod requests;
 mod server;
-
 use server::Server;
 
 fn main() -> Result<()> {

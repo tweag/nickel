@@ -8,11 +8,11 @@ use lsp_types::{
     notification::{self, DidChangeTextDocument, DidOpenTextDocument},
     notification::{Notification as _, *},
     request::{Request as RequestTrait, *},
-    DeclarationCapability, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
-    DidSaveTextDocumentParams, GotoDefinitionParams, Hover, HoverContents, HoverOptions,
-    HoverParams, HoverProviderCapability, MarkedString, OneOf, Position, Range, ReferenceParams,
-    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
-    WorkDoneProgress, WorkDoneProgressOptions,
+    CompletionOptions, CompletionParams, DeclarationCapability, DidChangeTextDocumentParams,
+    DidOpenTextDocumentParams, DidSaveTextDocumentParams, GotoDefinitionParams, Hover,
+    HoverContents, HoverOptions, HoverParams, HoverProviderCapability, MarkedString, OneOf,
+    Position, Range, ReferenceParams, ServerCapabilities, TextDocumentSyncCapability,
+    TextDocumentSyncKind, TextDocumentSyncOptions, WorkDoneProgress, WorkDoneProgressOptions,
 };
 use serde::Deserialize;
 
@@ -27,7 +27,7 @@ use nickel::{
 
 use crate::{
     diagnostic::LocationCompat,
-    requests::{goto, hover},
+    requests::{completion, goto, hover},
 };
 
 pub struct Server {
@@ -54,6 +54,10 @@ impl Server {
             })),
             definition_provider: Some(OneOf::Left(true)),
             references_provider: Some(OneOf::Left(true)),
+            completion_provider: Some(CompletionOptions {
+                trigger_characters: Some(vec![]),
+                ..Default::default()
+            }),
             ..ServerCapabilities::default()
         }
     }
@@ -169,6 +173,12 @@ impl Server {
                 debug!("handle goto defnition");
                 let params: ReferenceParams = serde_json::from_value(req.params).unwrap();
                 goto::handle_to_usages(params, req.id, self)
+            }
+
+            Completion::METHOD => {
+                debug!("handle completion");
+                let params: CompletionParams = serde_json::from_value(req.params).unwrap();
+                completion::handle_completion(params, req.id, self)
             }
 
             _ => {}
