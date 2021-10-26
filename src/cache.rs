@@ -592,7 +592,7 @@ impl Cache {
         &mut self.terms
     }
 
-    /// Get a mutable reference to the cached term roots
+    /// Get a immutable reference to the cached term roots
     /// (used by the language server to invalidate previously parsed entries)
     pub fn terms(&self) -> &HashMap<FileId, (RichTerm, EntryState)> {
         &self.terms
