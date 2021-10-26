@@ -73,6 +73,9 @@ pub struct REPLImpl {
     /// The eval environment. Contain the global environment with the stdlib, plus toplevel
     /// declarations and loadings made inside the REPL.
     eval_env: eval::Environment,
+    /// The initial eval environment, without the toplevel declarations made inside the REPL. Used
+    /// to typecheck imports in a fresh environment.
+    init_eval_env: eval::Environment,
     /// The typing environment, counterpart of the eval environment for typechecking. Entries are
     /// [`TypeWrapper`](../typecheck/enum.TypeWrapper.html) for the ease of interacting with the
     /// typechecker, but there are not any unification variable in it.
@@ -86,6 +89,7 @@ impl REPLImpl {
             cache: Cache::new(),
             parser: grammar::ExtendedTermParser::new(),
             eval_env: eval::Environment::new(),
+            init_eval_env: eval::Environment::new(),
             type_env: typecheck::Environment::new(),
         }
     }
@@ -96,6 +100,7 @@ impl REPLImpl {
         self.cache.prepare_stdlib()?;
 
         self.eval_env = self.cache.mk_global_env().unwrap();
+        self.init_eval_env = self.eval_env.clone();
         self.type_env = typecheck::Envs::mk_global(&self.eval_env);
         Ok(())
     }
@@ -122,9 +127,12 @@ impl REPLImpl {
                 for id in &pending {
                     self.cache.resolve_imports(*id).unwrap();
                 }
+
                 typecheck::type_check_in_env(&t, &self.type_env, &self.cache)?;
+
                 for id in &pending {
-                    self.cache.transform(*id).unwrap();
+                    self.cache.typecheck(*id, &self.init_eval_env)?;
+                    self.cache.transform(*id);
                 }
                 let t = transformations::transform(t)?;
                 Ok(eval_function(t, &self.eval_env, &mut self.cache)?.into())

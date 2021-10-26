@@ -1,7 +1,6 @@
 //! Source cache.
 
 use crate::error::{Error, ImportError, ParseError, TypecheckError};
-use crate::identifier::Ident;
 use crate::parser::lexer::Lexer;
 use crate::position::TermPos;
 use crate::stdlib as nickel_stdlib;
@@ -341,23 +340,26 @@ impl Cache {
 
     /// Typecheck an entry of the cache and update its state accordingly, or do nothing if the
     /// entry has already been typechecked. Require that the corresponding source has been parsed.
+    /// If the source contains imports, recursively typecheck on the imports too.
     pub fn typecheck(
         &mut self,
         file_id: FileId,
         global_env: &eval::Environment,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
-        if !self.terms.contains_key(&file_id) {
-            return Err(CacheError::NotParsed);
-        }
-
-        // After self.parse(), the cache must be populated
-        let (t, state) = self.terms.get(&file_id).unwrap();
+        let (t, state) = self.terms.get(&file_id).ok_or(CacheError::NotParsed)?;
 
         if *state > EntryState::Typechecked {
             Ok(CacheOp::Cached(()))
         } else if *state >= EntryState::Parsed {
             type_check(t, global_env, self, StubHost::<(), _>::new())?;
             self.update_state(file_id, EntryState::Typechecked);
+
+            if let Some(imports) = self.imports.get(&file_id).cloned() {
+                for f in imports.into_iter() {
+                    self.typecheck(f, global_env)?;
+                }
+            }
+
             Ok(CacheOp::Done(()))
         } else {
             panic!()
@@ -368,18 +370,20 @@ impl Cache {
     /// or do nothing if the entry has already been transformed. Require that the corresponding
     /// source has been parsed.
     /// If the source contains imports, recursively perform transformations on the imports too.
-    pub fn transform(&mut self, file_id: FileId) -> Result<CacheOp<()>, CacheError<ImportError>> {
+    pub fn transform(&mut self, file_id: FileId) -> Result<CacheOp<()>, CacheError<()>> {
         match self.entry_state(file_id) {
             Some(EntryState::Transformed) => Ok(CacheOp::Cached(())),
             Some(_) => {
                 let (t, _) = self.terms.remove(&file_id).unwrap();
+                let t = transformations::transform(t);
+                self.terms.insert(file_id, (t, EntryState::Transformed));
+
                 if let Some(imports) = self.imports.get(&file_id).cloned() {
-                    for f in imports.iter() {
-                        self.transform(*f)?;
+                    for f in imports.into_iter() {
+                        self.transform(f)?;
                     }
                 }
-                let t = transformations::transform(t)?;
-                self.terms.insert(file_id, (t, EntryState::Transformed));
+
                 Ok(CacheOp::Done(()))
             }
             None => Err(CacheError::NotParsed),
@@ -411,37 +415,30 @@ impl Cache {
                 let (mut t, _) = self.terms.remove(&file_id).unwrap();
                 match t.term.as_mut() {
                     Term::Record(ref mut map, _) => {
-                        let map_res: Result<HashMap<Ident, RichTerm>, ImportError> =
-                            std::mem::replace(map, HashMap::new())
-                                .into_iter()
-                                .map(|(id, t)| {
-                                    transformations::transform(t).map(|t_ok| (id.clone(), t_ok))
-                                })
-                                .collect();
-                        *map = map_res?;
+                        let map_res = std::mem::replace(map, HashMap::new())
+                            .into_iter()
+                            .map(|(id, t)| (id.clone(), transformations::transform(t)))
+                            .collect();
+                        *map = map_res;
                     }
                     Term::RecRecord(ref mut map, ref mut dyn_fields, _) => {
-                        let map_res: Result<HashMap<Ident, RichTerm>, ImportError> =
-                            std::mem::replace(map, HashMap::new())
-                                .into_iter()
-                                .map(|(id, t)| {
-                                    transformations::transform(t).map(|t_ok| (id.clone(), t_ok))
-                                })
-                                .collect();
+                        let map_res = std::mem::replace(map, HashMap::new())
+                            .into_iter()
+                            .map(|(id, t)| (id.clone(), transformations::transform(t)))
+                            .collect();
 
-                        let dyn_fields_res: Result<Vec<(RichTerm, RichTerm)>, ImportError> =
-                            std::mem::replace(dyn_fields, Vec::new())
-                                .into_iter()
-                                .map(|(id_t, t)| {
-                                    Ok((
-                                        transformations::transform(id_t)?,
-                                        transformations::transform(t)?,
-                                    ))
-                                })
-                                .collect();
+                        let dyn_fields_res = std::mem::replace(dyn_fields, Vec::new())
+                            .into_iter()
+                            .map(|(id_t, t)| {
+                                (
+                                    transformations::transform(id_t),
+                                    transformations::transform(t),
+                                )
+                            })
+                            .collect();
 
-                        *map = map_res?;
-                        *dyn_fields = dyn_fields_res?;
+                        *map = map_res;
+                        *dyn_fields = dyn_fields_res;
                     }
                     _ => panic!("cache::transform_inner(): not a record"),
                 }
@@ -507,11 +504,10 @@ impl Cache {
             result = CacheOp::Done(());
         };
 
-        let transform_res = self.transform(file_id).map_err(|cache_err| {
-            cache_err.unwrap_error(
-                "cache::prepare(): expected source to be parsed before transformations",
-            )
-        })?;
+        let transform_res = self.transform(file_id).unwrap_or_else(|_| {
+            panic!("cache::prepare(): expected source to be parsed before transformations",)
+        });
+
         if transform_res == CacheOp::Done(()) {
             result = CacheOp::Done(());
         };
@@ -533,7 +529,7 @@ impl Cache {
         let term = self.parse_nocache(file_id)?;
         let (term, pending) = transformations::resolve_imports(term, self)?;
         type_check(&term, global_env, self, StubHost::<(), _>::new())?;
-        let term = transformations::transform(term)?;
+        let term = transformations::transform(term);
         Ok((term, pending))
     }
 

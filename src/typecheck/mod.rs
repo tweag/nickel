@@ -449,6 +449,9 @@ pub struct State<'a> {
 ///
 /// Return the inferred type in case of success. This is just a wrapper that calls
 /// [`type_check_`](fn.type_check_.html) with a fresh unification variable as goal.
+///
+/// Note that this function doesn't recursively typecheck imports (anymore), but just the current
+/// file. It however still needs the resolver to get the apparent type of imports.
 pub fn type_check<L>(
     t: &RichTerm,
     global_eval_env: &eval::Environment,
