@@ -64,7 +64,7 @@ pub fn handle_to_definition(params: GotoDefinitionParams, id: RequestId, server:
                     end: ByteIndex(end),
                     src_id,
                 }) => Some(Location {
-                    uri: Url::parse(server.cache.name(src_id).to_str().unwrap()).unwrap(),
+                    uri: Url::parse(&server.cache.name(src_id).to_string_lossy()).unwrap(),
                     range: Range::from_codespan(
                         &src_id,
                         &(start as usize..end as usize),
@@ -131,7 +131,7 @@ pub fn handle_to_usages(params: ReferenceParams, id: RequestId, server: &mut Ser
                         end: ByteIndex(end),
                         src_id,
                     }) => Some(Location {
-                        uri: Url::parse(server.cache.name(src_id).to_str().unwrap()).unwrap(),
+                        uri: Url::parse(&server.cache.name(src_id).to_string_lossy()).unwrap(),
                         range: Range::from_codespan(
                             &src_id,
                             &(start as usize..end as usize),
