@@ -470,7 +470,7 @@ pub struct State<'a> {
 pub fn type_check<L>(
     t: &RichTerm,
     global_eval_env: &eval::Environment,
-    resolver: &'a impl ImportResolver,
+    resolver: &impl ImportResolver,
     linearizer: impl Linearizer<L, (UnifTable, HashMap<usize, Ident>)>,
 ) -> Result<(Types, Completed), TypecheckError>
 where
@@ -500,7 +500,9 @@ where
         )?;
     }
 
-    let lin = linearizer.linearize(building, (table.clone(), names)).into();
+    let lin = linearizer
+        .linearize(building, (table.clone(), names))
+        .into();
     Ok((to_type(&table, ty), lin))
 }
 
@@ -550,6 +552,9 @@ pub fn type_check_in_env(
 /// - `strict`: the typechecking mode.
 /// - `t`: the term to check.
 /// - `ty`: the type to check the term against.
+///
+/// Registers every term with the `linearizer` and makes sure to scope the
+/// liearizer accordingly
 fn type_check_<S, E>(
     state: &mut State,
     mut envs: Envs,

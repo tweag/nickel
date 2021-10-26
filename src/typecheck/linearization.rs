@@ -20,6 +20,7 @@
 //!                    The state holds context while building or the finalized linearization
 //! - [StubHost]: The purpose of this is to do nothing. It serves as an implementation used
 //!               outside the LSP context meaning to cause as little runtime impact as possible.
+//! - [LinearizationItem]: Abstract information for each term.
 
 use std::{collections::HashMap, marker::PhantomData, str::EncodeUtf16};
 
