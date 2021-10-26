@@ -810,14 +810,14 @@ fn type_check_<S, E>(
         },
         Term::Import(_) => unify(state, strict, ty, mk_typewrapper::dynamic())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
-        // We typecheck the import in a fresh typing environment, and then use its apparent type
-        // for checking. 
+        // We use the apparent type of the import for checking. This function doesn't recursively
+        // typecheck imports: this is the responsibility of the caller.
         Term::ResolvedImport(file_id) => {
             let t = state
                 .resolver
                 .get(*file_id)
                 .expect("Internal error: resolved import not found ({:?}) during typechecking.");
-            let _ = type_check_in_env(&t, envs.global, state.resolver)?;
+            // let _ = type_check_in_env(&t, envs.global, state.resolver)?;
             let ty_import : TypeWrapper = apparent_type(t.as_ref(), Some(&Envs::from_envs(&envs))).into();
             unify(state, strict, ty, ty_import).map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
