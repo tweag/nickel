@@ -476,7 +476,7 @@ where
         ty.clone(),
     )?;
 
-    let lin = linearizer.linearize(building, &state.table).state;
+    let lin = linearizer.linearize(building, &state.table).into();
 
     Ok((to_type(&state.table, ty), lin))
 }

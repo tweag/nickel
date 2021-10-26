@@ -1,17 +1,43 @@
+//! Linearization interface and Empty implementation
+//!
+//! The linearization module mainly serves to assist the LSP.
+//!
+//! **Like the LSP crate, this part of nickel is currently **under heavy development**
+//! and may change unadvertedly.**
+//!
+//! At this point it is integrated into the typechecking allowing to trace an AST
+//! into a linear representation. This representation, being separate from the
+//! AST can include additional meta information about types, references, and
+//! possibly more in the future.
+//!
+//! # Components
+//!
+//! - [Linearizer]: Implements functionality to record terms (integrated into typechecking)
+//!                 into a temporary [Building] structure and linearize them into a
+//!                 [Completed] Linearization.
+//!                 Additionally handles registration in different scopes.
+//! - [Linearization]: Linearization in a given state.
+//!                    The state holds context while building or the finalized linearization
+//! - [StubHost]: The purpose of this is to do nothing. It serves as an implementation used
+//!               outside the LSP context meaning to cause as little runtime impact as possible.
+
 use std::{collections::HashMap, marker::PhantomData, str::EncodeUtf16};
 
-use super::reporting::NameResolution;
 use super::{State, TypeWrapper, UnifTable};
 use crate::environment::Environment as GenericEnvironment;
 use crate::typecheck::to_type;
 use crate::types::{AbsType, Types};
 use crate::{identifier::Ident, position::TermPos, term::Term};
 
-pub struct Linearization<LinearizationState> {
-    pub state: LinearizationState,
+/// Holds the state of a linearization, either in progress or finalized
+/// Restricts the possible states of a linearization to entities marked
+/// as [LinearizationState]
+pub struct Linearization<S: LinearizationState> {
+    state: S,
 }
 
-impl Linearization<()> {
+/// Constructors for different phases
+impl Linearization<Uninit> {
     pub fn completed(completed: Completed) -> Linearization<Completed> {
         Linearization { state: completed }
     }
@@ -24,37 +50,62 @@ impl Linearization<()> {
     }
 }
 
+/// A concrete [LinearizationState]
+/// Holds any inner datatype that can be used as stable resource
+/// while recording terms.
 pub struct Building<T> {
     resource: T,
 }
 
+/// Finalized linearization
 #[derive(Debug)]
 pub struct Completed {
     pub lin: Vec<LinearizationItem<Resolved>>,
     pub id_mapping: HashMap<usize, usize>,
 }
 
-pub trait ResolutionState {}
-type Resolved = Types;
-impl ResolutionState for Resolved {}
+pub struct Uninit;
 
+/// Marker trait for possible states of the linearization
+pub trait LinearizationState {}
+impl<T> LinearizationState for Building<T> {}
+impl LinearizationState for Completed {}
+impl LinearizationState for Uninit {}
+
+/// Possible resolution states of a LinearizationItem.
+///
+/// [LinearizationItem]s are initialized as [Unresolved] and are
+/// being resolved when completing the linearization
+///
+/// As implementors are used as typestate items of the [LinearizationItem]
+/// to determine the type of the Item.
+pub trait ResolutionState {}
+/// Types are available as [TypeWrapper] only during recording
+/// They are resolved after typechecking has collected all terms into concrete
+/// [Types]
 type Unresolved = TypeWrapper;
 impl ResolutionState for Unresolved {}
 
-trait LinearizationState {}
-impl<T> LinearizationState for Building<T> {}
+/// When resolved a concrete [Types] is known
+type Resolved = Types;
+impl ResolutionState for Resolved {}
 
-impl LinearizationState for () {}
-
+/// A recorded item of a given state of resolution state
+/// Tracks a unique id used to build a reference table after finalizing
+/// the linearization using the LSP [AnalysisHost]
 #[derive(Debug, Clone, PartialEq)]
-pub struct LinearizationItem<ResolutionState> {
+pub struct LinearizationItem<S: ResolutionState> {
     //term_: Box<Term>,
     pub id: usize,
     pub pos: TermPos,
-    pub ty: ResolutionState,
+    pub ty: S,
     pub kind: TermKind,
 }
 
+/// Abstact term kinds.
+/// Currently only tracks Declaration and Usages, with Structure being a
+/// wildcard for any other kind of term.
+/// Can be extended later to represent Contracts, Records, etc.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TermKind {
     Structure,
@@ -62,7 +113,21 @@ pub enum TermKind {
     Usage(Option<usize>),
 }
 
+/// The linearizer trait is what is refered to during typechecking.
+/// It is the interface to recording terms (while tracking their scope)
+/// and finalizing a linearization using generically defined external information
+///
+/// **Generic Terms**
+/// `L`: The data type available during build
+/// `S`: Type of external state passed into the linearization
 pub trait Linearizer<L, S> {
+    /// Record a new type
+    ///
+    /// `self` is assumed to be _scope stable_ meaning, it can hold information
+    /// valid in the current scope.
+    ///
+    /// In practice this mainly includes environment information. Providing this
+    /// state is the responsibility of [Linearizer::scope]
     fn add_term(
         &mut self,
         lin: &mut Linearization<Building<L>>,
@@ -71,6 +136,10 @@ pub trait Linearizer<L, S> {
         ty: TypeWrapper,
     ) {
     }
+
+    /// Defines how to turn a [Building] Linearization of the tracked type into
+    /// a [Completed] linearization.
+    /// By default creates an entirely empty [Completed] object
     fn linearize(self, lin: Linearization<Building<L>>, extra: &S) -> Linearization<Completed>
     where
         Self: Sized,
@@ -85,6 +154,9 @@ pub trait Linearizer<L, S> {
     fn scope(&self) -> Self;
 }
 
+/// [Linearizer] that deliberately does not maintain any state or act
+/// in any way.
+/// Ideally the compiler would eliminate code using this [Linearizer]
 pub struct StubHost<L>(PhantomData<L>);
 impl<L, S> Linearizer<L, S> for StubHost<L> {
     fn scope(&self) -> Self {
@@ -99,6 +171,11 @@ impl<L> StubHost<L> {
 }
 
 pub type Environment = GenericEnvironment<Ident, usize>;
+
+/// [Linearizer] used by the LSP
+///
+/// Tracks a _scope stable_ environment managing variable ident
+/// resolution
 pub struct AnalysisHost {
     env: Environment,
 }
@@ -155,6 +232,12 @@ impl Linearizer<Vec<LinearizationItem<Unresolved>>, UnifTable> for AnalysisHost 
         }
     }
 
+    /// [Self::add_term] produces a depth first representation or the
+    /// traversed AST. This function indexes items by _source position_.
+    /// Elements are reorderd to allow efficient lookup of elemts by
+    /// their location in the source.
+    ///
+    /// Additionally, resolves concrete types for all items.
     fn linearize(
         self,
         lin: Linearization<Building<Vec<LinearizationItem<Unresolved>>>>,
@@ -201,6 +284,12 @@ impl Linearizer<Vec<LinearizationItem<Unresolved>>, UnifTable> for AnalysisHost 
         AnalysisHost {
             env: self.env.clone(),
         }
+    }
+}
+
+impl Into<Completed> for Linearization<Completed> {
+    fn into(self) -> Completed {
+        self.state
     }
 }
 
