@@ -1,4 +1,5 @@
 use codespan::ByteIndex;
+use codespan_lsp::position_to_byte_index;
 use log::debug;
 use lsp_server::{ErrorCode, Request, RequestId, Response};
 use lsp_types::{
@@ -28,13 +29,16 @@ pub fn handle(params: HoverParams, id: RequestId, server: &mut Server) {
         )
         .unwrap();
 
-    let start = positon_to_byte_index(
-        params.text_document_position_params.position,
-        file_id,
+    let start = position_to_byte_index(
         server.cache.files_mut(),
-    );
+        file_id,
+        &params.text_document_position_params.position,
+    )
+    .unwrap();
 
-    let locator = (file_id, start);
+    debug!("start of hovered item: ByteIndex({})", start);
+
+    let locator = (file_id, ByteIndex(start as u32));
     let linearization = &server.lin_cache.get(&file_id).unwrap().lin;
 
     let index = find_linearizaion_index(linearization, locator);
