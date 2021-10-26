@@ -23,9 +23,11 @@
 
 use std::{collections::HashMap, marker::PhantomData, str::EncodeUtf16};
 
+use super::reporting::{NameReg, NameResolution};
 use super::{State, TypeWrapper, UnifTable};
 use crate::environment::Environment as GenericEnvironment;
-use crate::typecheck::to_type;
+use crate::term::RecordAttrs;
+use crate::typecheck::reporting::to_type;
 use crate::types::{AbsType, Types};
 use crate::{identifier::Ident, position::TermPos, term::Term};
 
@@ -113,6 +115,7 @@ pub enum TermKind {
     Structure,
     Declaration(String, Vec<usize>),
     Usage(Option<usize>),
+    Record(RecordAttrs),
 }
 
 /// The linearizer trait is what is refered to during typechecking.
@@ -138,11 +141,10 @@ pub trait Linearizer<L, S> {
         ty: TypeWrapper,
     ) {
     }
-
     /// Defines how to turn a [Building] Linearization of the tracked type into
     /// a [Completed] linearization.
     /// By default creates an entirely empty [Completed] object
-    fn linearize(self, lin: Linearization<Building<L>>, extra: &S) -> Linearization<Completed>
+    fn linearize(self, lin: Linearization<Building<L>>, extra: S) -> Linearization<Completed>
     where
         Self: Sized,
     {
@@ -160,16 +162,16 @@ pub trait Linearizer<L, S> {
 /// [Linearizer] that deliberately does not maintain any state or act
 /// in any way.
 /// Ideally the compiler would eliminate code using this [Linearizer]
-pub struct StubHost<L>(PhantomData<L>);
-impl<L, S> Linearizer<L, S> for StubHost<L> {
+pub struct StubHost<L, S>(PhantomData<L>, PhantomData<S>);
+impl<L, S> Linearizer<L, S> for StubHost<L, S> {
     fn scope(&self, _: ScopeId) -> Self {
         StubHost::new()
     }
 }
 
-impl<L> StubHost<L> {
-    pub fn new() -> StubHost<L> {
-        StubHost(PhantomData)
+impl<L, S> StubHost<L, S> {
+    pub fn new() -> StubHost<L, S> {
+        StubHost(PhantomData, PhantomData)
     }
 }
 
@@ -210,7 +212,7 @@ pub struct BuildingResource {
     scope: HashMap<Vec<ScopeId>, Vec<usize>>,
 }
 
-impl Linearizer<BuildingResource, UnifTable> for AnalysisHost {
+impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for AnalysisHost {
     fn add_term(
         &mut self,
         lin: &mut Linearization<Building<BuildingResource>>,
@@ -250,6 +252,14 @@ impl Linearizer<BuildingResource, UnifTable> for AnalysisHost {
                     lin.add_usage(parent, id);
                 }
             }
+            Term::Record(_, attrs) | Term::RecRecord(_, _, attrs) => lin.push(LinearizationItem {
+                id,
+                pos,
+                ty,
+                kind: TermKind::Record(attrs.clone()),
+                scope: self.scope.clone(),
+            }),
+
             _ => lin.push(LinearizationItem {
                 id,
                 pos,
@@ -269,7 +279,7 @@ impl Linearizer<BuildingResource, UnifTable> for AnalysisHost {
     fn linearize(
         self,
         lin: Linearization<Building<BuildingResource>>,
-        extra: &UnifTable,
+        (mut table, reported_names): (UnifTable, HashMap<usize, Ident>),
     ) -> Linearization<Completed> {
         let mut lin_ = lin.state.resource.linearization;
         eprintln!("linearizing");
@@ -300,7 +310,7 @@ impl Linearizer<BuildingResource, UnifTable> for AnalysisHost {
                      kind,
                      scope,
                  }| LinearizationItem {
-                    ty: to_type(extra, ty),
+                    ty: to_type(&table, &reported_names, &mut NameReg::new(), ty),
                     id,
                     pos,
                     kind,
@@ -308,6 +318,8 @@ impl Linearizer<BuildingResource, UnifTable> for AnalysisHost {
                 },
             )
             .collect();
+
+        eprintln!("Linearized {:#?}", &lin_);
 
         Linearization::completed(Completed {
             lin: lin_,
@@ -362,6 +374,7 @@ impl Linearization<Building<BuildingResource>> {
         {
             TermKind::Structure => unreachable!(),
             TermKind::Usage(_) => unreachable!(),
+            TermKind::Record(_) => unreachable!(),
             TermKind::Declaration(_, ref mut usages) => usages.push(usage),
         };
     }

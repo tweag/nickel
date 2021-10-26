@@ -356,7 +356,7 @@ impl Cache {
         if *state > EntryState::Typechecked {
             Ok(CacheOp::Cached(()))
         } else if *state >= EntryState::Parsed {
-            type_check(t, global_env, StubHost::<()>::new(), self)?;
+            type_check(t, global_env, self, StubHost::<(), _>::new())?;
             self.update_state(file_id, EntryState::Typechecked);
             Ok(CacheOp::Done(()))
         } else {
@@ -532,7 +532,7 @@ impl Cache {
     ) -> Result<(RichTerm, Vec<FileId>), Error> {
         let term = self.parse_nocache(file_id)?;
         let (term, pending) = transformations::resolve_imports(term, self)?;
-        type_check(&term, global_env, StubHost::<()>::new(), self)?;
+        type_check(&term, global_env, self, StubHost::<(), _>::new())?;
         let term = transformations::transform(term)?;
         Ok((term, pending))
     }

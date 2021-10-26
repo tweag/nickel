@@ -56,7 +56,7 @@ use std::convert::TryInto;
 use self::linearization::{
     Building, Completed, Environment as LinEnv, Linearization, Linearizer, ScopeId, StubHost,
 };
-use self::reporting::NameResolution;
+use self::reporting::{NameReg, NameResolution};
 
 pub mod linearization;
 
@@ -193,72 +193,93 @@ impl UnifError {
     ) -> TypecheckError {
         match self {
             UnifError::TypeMismatch(ty1, ty2) => TypecheckError::TypeMismatch(
-                reporting::to_type(state, names, ty1),
-                reporting::to_type(state, names, ty2),
+                reporting::to_type(state.table(), state.names(), names, ty1),
+                reporting::to_type(state.table(), state.names(), names, ty2),
                 pos_opt,
             ),
             UnifError::RowMismatch(ident, tyw1, tyw2, err) => TypecheckError::RowMismatch(
                 ident,
-                reporting::to_type(state, names, tyw1),
-                reporting::to_type(state, names, tyw2),
+                reporting::to_type(state.table(), state.names(), names, tyw1),
+                reporting::to_type(state.table(), state.names(), names, tyw2),
                 Box::new((*err).into_typecheck_err_(state, names, TermPos::None)),
                 pos_opt,
             ),
             UnifError::RowKindMismatch(id, ty1, ty2) => TypecheckError::RowKindMismatch(
                 id,
-                ty1.map(|tw| reporting::to_type(state, names, tw)),
-                ty2.map(|tw| reporting::to_type(state, names, tw)),
+                ty1.map(|tw| reporting::to_type(state.table(), state.names(), names, tw)),
+                ty2.map(|tw| reporting::to_type(state.table(), state.names(), names, tw)),
                 pos_opt,
             ),
             // TODO: for now, failure to unify with a type constant causes the same error as a
             // usual type mismatch. It could be nice to have a specific error message in the
             // future.
             UnifError::ConstMismatch(c1, c2) => TypecheckError::TypeMismatch(
-                reporting::to_type(state, names, TypeWrapper::Constant(c1)),
-                reporting::to_type(state, names, TypeWrapper::Constant(c2)),
+                reporting::to_type(
+                    state.table(),
+                    state.names(),
+                    names,
+                    TypeWrapper::Constant(c1),
+                ),
+                reporting::to_type(
+                    state.table(),
+                    state.names(),
+                    names,
+                    TypeWrapper::Constant(c2),
+                ),
                 pos_opt,
             ),
             UnifError::WithConst(c, ty) => TypecheckError::TypeMismatch(
-                reporting::to_type(state, names, TypeWrapper::Constant(c)),
-                reporting::to_type(state, names, ty),
+                reporting::to_type(
+                    state.table(),
+                    state.names(),
+                    names,
+                    TypeWrapper::Constant(c),
+                ),
+                reporting::to_type(state.table(), state.names(), names, ty),
                 pos_opt,
             ),
             UnifError::IllformedFlatType(rt) => {
                 TypecheckError::IllformedType(Types(AbsType::Flat(rt)))
             }
-            UnifError::IllformedType(tyw) => {
-                TypecheckError::IllformedType(reporting::to_type(state, names, tyw))
-            }
+            UnifError::IllformedType(tyw) => TypecheckError::IllformedType(reporting::to_type(
+                state.table(),
+                state.names(),
+                names,
+                tyw,
+            )),
             UnifError::MissingRow(id, tyw1, tyw2) => TypecheckError::MissingRow(
                 id,
-                reporting::to_type(state, names, tyw1),
-                reporting::to_type(state, names, tyw2),
+                reporting::to_type(state.table(), state.names(), names, tyw1),
+                reporting::to_type(state.table(), state.names(), names, tyw2),
                 pos_opt,
             ),
             UnifError::MissingDynTail(tyw1, tyw2) => TypecheckError::MissingDynTail(
-                reporting::to_type(state, names, tyw1),
-                reporting::to_type(state, names, tyw2),
+                reporting::to_type(state.table(), state.names(), names, tyw1),
+                reporting::to_type(state.table(), state.names(), names, tyw2),
                 pos_opt,
             ),
             UnifError::ExtraRow(id, tyw1, tyw2) => TypecheckError::ExtraRow(
                 id,
-                reporting::to_type(state, names, tyw1),
-                reporting::to_type(state, names, tyw2),
+                reporting::to_type(state.table(), state.names(), names, tyw1),
+                reporting::to_type(state.table(), state.names(), names, tyw2),
                 pos_opt,
             ),
             UnifError::ExtraDynTail(tyw1, tyw2) => TypecheckError::ExtraDynTail(
-                reporting::to_type(state, names, tyw1),
-                reporting::to_type(state, names, tyw2),
+                reporting::to_type(state.table(), state.names(), names, tyw1),
+                reporting::to_type(state.table(), state.names(), names, tyw2),
                 pos_opt,
             ),
-            UnifError::IllformedRow(tyw) => {
-                TypecheckError::IllformedType(reporting::to_type(state, names, tyw))
-            }
+            UnifError::IllformedRow(tyw) => TypecheckError::IllformedType(reporting::to_type(
+                state.table(),
+                state.names(),
+                names,
+                tyw,
+            )),
             UnifError::RowConflict(id, tyw, left, right) => TypecheckError::RowConflict(
                 id,
-                tyw.map(|tyw| reporting::to_type(state, names, tyw)),
-                reporting::to_type(state, names, left),
-                reporting::to_type(state, names, right),
+                tyw.map(|tyw| reporting::to_type(state.table(), state.names(), names, tyw)),
+                reporting::to_type(state.table(), state.names(), names, left),
+                reporting::to_type(state.table(), state.names(), names, right),
                 pos_opt,
             ),
             UnifError::UnboundTypeVariable(ident) => {
@@ -268,8 +289,8 @@ impl UnifError {
             | err @ UnifError::DomainMismatch(_, _, _) => {
                 let (expd, actual, path, err_final) = err.into_type_path().unwrap();
                 TypecheckError::ArrowTypeMismatch(
-                    reporting::to_type(state, names, expd),
-                    reporting::to_type(state, names, actual),
+                    reporting::to_type(state.table(), state.names(), names, expd),
+                    reporting::to_type(state.table(), state.names(), names, actual),
                     path,
                     Box::new(err_final.into_typecheck_err_(state, names, TermPos::None)),
                     pos_opt,
@@ -449,36 +470,38 @@ pub struct State<'a> {
 pub fn type_check<L>(
     t: &RichTerm,
     global_eval_env: &eval::Environment,
-    linearizer: impl Linearizer<L, UnifTable>,
-    resolver: &impl ImportResolver,
+    resolver: &'a impl ImportResolver,
+    linearizer: impl Linearizer<L, (UnifTable, HashMap<usize, Ident>)>,
 ) -> Result<(Types, Completed), TypecheckError>
 where
     L: Default,
 {
-    let mut state: State = State {
-        resolver,
-        table: &mut UnifTable::new(),
-        constr: &mut RowConstr::new(),
-        names: &mut HashMap::new(),
-    };
-    let ty = TypeWrapper::Ptr(new_var(state.table));
-    let global = Envs::mk_global(global_eval_env);
-
+    let (mut table, mut names) = (UnifTable::new(), HashMap::new());
     let mut building = Linearization::building();
+    let global = Envs::mk_global(global_eval_env);
+    let ty = TypeWrapper::Ptr(new_var(&mut table));
 
-    type_check_(
-        &mut state,
-        Envs::from_global(&global),
-        &mut building,
-        linearizer.scope(linearization::ScopeId::Right),
-        false,
-        t,
-        ty.clone(),
-    )?;
+    {
+        let mut state: State = State {
+            resolver,
+            table: &mut table,
+            constr: &mut RowConstr::new(),
+            names: &mut names,
+        };
 
-    let lin = linearizer.linearize(building, &state.table).into();
+        type_check_(
+            &mut state,
+            Envs::from_global(&global),
+            &mut building,
+            linearizer.scope(linearization::ScopeId::Right),
+            false,
+            t,
+            ty.clone(),
+        )?;
+    }
 
-    Ok((to_type(&state.table, ty), lin))
+    let lin = linearizer.linearize(building, (table.clone(), names)).into();
+    Ok((to_type(&table, ty), lin))
 }
 
 /// Typecheck a term using the given global typing environment. Same as
@@ -507,7 +530,7 @@ pub fn type_check_in_env(
         &mut state,
         Envs::from_global(global),
         &mut Linearization::building::<()>(),
-        StubHost::<()>::new(),
+        StubHost::<(), ()>::new(),
         false,
         t,
         ty.clone(),
@@ -527,11 +550,11 @@ pub fn type_check_in_env(
 /// - `strict`: the typechecking mode.
 /// - `t`: the term to check.
 /// - `ty`: the type to check the term against.
-fn type_check_<S>(
+fn type_check_<S, E>(
     state: &mut State,
     mut envs: Envs,
     lin: &mut Linearization<Building<S>>,
-    mut linearizer: impl Linearizer<S, UnifTable>,
+    mut linearizer: impl Linearizer<S, E>,
     strict: bool,
     rt: &RichTerm,
     ty: TypeWrapper,
@@ -1526,15 +1549,20 @@ mod reporting {
     /// [`var_to_type`](./fn.var_to_type.html) and [`cst_to_type`](./fn.cst_tot_type.html).
     /// Distinguishing occurrences of unification variables and type constants is more informative
     /// than having `Dyn` everywhere.
-    pub fn to_type(state: &State, names: &mut NameReg, ty: TypeWrapper) -> Types {
+    pub fn to_type(
+        table: &UnifTable,
+        reported_names: &HashMap<usize, Ident>,
+        names: &mut NameReg,
+        ty: TypeWrapper,
+    ) -> Types {
         match ty {
-            TypeWrapper::Ptr(p) => match get_root(state.table, p) {
-                TypeWrapper::Ptr(p) => var_to_type(state.names, names, p),
-                tyw => to_type(state, names, tyw),
+            TypeWrapper::Ptr(p) => match get_root(table, p) {
+                TypeWrapper::Ptr(p) => var_to_type(reported_names, names, p),
+                tyw => to_type(table, reported_names, names, tyw),
             },
-            TypeWrapper::Constant(c) => cst_to_type(state.names, names, c),
+            TypeWrapper::Constant(c) => cst_to_type(reported_names, names, c),
             TypeWrapper::Concrete(t) => {
-                let mapped = t.map(|btyp| Box::new(to_type(state, names, *btyp)));
+                let mapped = t.map(|btyp| Box::new(to_type(table, reported_names, names, *btyp)));
                 Types(mapped)
             }
         }
