@@ -32,7 +32,7 @@ pub fn handle_to_definition(params: GotoDefinitionParams, id: RequestId, server:
     let start = positon_to_byte_index(
         params.text_document_position_params.position,
         file_id,
-        server.cache.files_mut(),
+        server.cache.files(),
     );
 
     let locator = (file_id, start);
@@ -68,7 +68,7 @@ pub fn handle_to_definition(params: GotoDefinitionParams, id: RequestId, server:
                     range: Range::from_codespan(
                         &src_id,
                         &(start as usize..end as usize),
-                        server.cache.files_mut(),
+                        server.cache.files(),
                     ),
                 }),
                 TermPos::None => None,
@@ -96,7 +96,7 @@ pub fn handle_to_usages(params: ReferenceParams, id: RequestId, server: &mut Ser
     let start = positon_to_byte_index(
         params.text_document_position.position,
         file_id,
-        server.cache.files_mut(),
+        server.cache.files(),
     );
 
     let locator = (file_id, start);
@@ -135,7 +135,7 @@ pub fn handle_to_usages(params: ReferenceParams, id: RequestId, server: &mut Ser
                         range: Range::from_codespan(
                             &src_id,
                             &(start as usize..end as usize),
-                            server.cache.files_mut(),
+                            server.cache.files(),
                         ),
                     }),
                     TermPos::None => None,

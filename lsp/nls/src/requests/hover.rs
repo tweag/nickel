@@ -30,7 +30,7 @@ pub fn handle(params: HoverParams, id: RequestId, server: &mut Server) {
         .unwrap();
 
     let start = position_to_byte_index(
-        server.cache.files_mut(),
+        server.cache.files(),
         file_id,
         &params.text_document_position_params.position,
     )
@@ -55,7 +55,7 @@ pub fn handle(params: HoverParams, id: RequestId, server: &mut Server) {
         TermPos::Original(span) | TermPos::Inherited(span) => Some(Range::from_codespan(
             &file_id,
             &(span.start.0 as usize..span.end.0 as usize),
-            server.cache.files_mut(),
+            server.cache.files(),
         )),
         TermPos::None => None,
     };

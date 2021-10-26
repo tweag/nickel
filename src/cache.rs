@@ -575,8 +575,7 @@ impl Cache {
     }
 
     /// Get a reference to the underlying files. Required by
-    /// the WASM REPL error reporting code.
-    #[cfg(feature = "repl-wasm")]
+    /// the WASM REPL error reporting code and LSP functions.
     pub fn files(&self) -> &Files<String> {
         &self.files
     }

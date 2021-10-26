@@ -14,7 +14,7 @@ pub fn handle_completion(params: CompletionParams, id: RequestId, server: &mut S
         .unwrap();
 
     let start = position_to_byte_index(
-        server.cache.files_mut(),
+        server.cache.files(),
         file_id,
         &params.text_document_position.position,
     )
