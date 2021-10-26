@@ -463,10 +463,12 @@ impl Cache {
             Some(_) => {
                 let (t, _) = self.terms.remove(&file_id).unwrap();
                 let (t, pending) = transformations::resolve_imports(t, self)?;
+                self.terms.insert(file_id, (t, EntryState::ImportsResolved));
+
                 for id in pending {
                     self.resolve_imports(id)?;
                 }
-                self.terms.insert(file_id, (t, EntryState::ImportsResolved));
+
                 Ok(CacheOp::Done(()))
             }
             None => Err(CacheError::NotParsed),
