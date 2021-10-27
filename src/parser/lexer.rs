@@ -78,6 +78,8 @@ pub enum NormalToken<'input> {
     #[token("false")]
     False,
 
+    #[token("?")]
+    Question,
     #[token(",")]
     Comma,
     #[token(":")]

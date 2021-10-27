@@ -265,8 +265,8 @@ Destruct: Destruct = {
 };
 
 Match: Match = {
-    <id:Ident> "=" <right: Ident> => Match::Assign(id,right),
-    <id:Ident> => Match::Simple(id),
+    <left:Ident> <default: ("?" <Term>)?> "=" <right: Pattern> => Match::Assign(left,right),
+    <id:Ident> <default: ("?" <Term>)?> => Match::Simple(id),
 };
 
 Ident: Ident = "identifier" => Ident(<>.to_string());
@@ -564,6 +564,7 @@ extern {
         "true" => Token::Normal(NormalToken::True),
         "false" => Token::Normal(NormalToken::False),
 
+        "?" => Token::Normal(NormalToken::Question),
         "," => Token::Normal(NormalToken::Comma),
         ":" => Token::Normal(NormalToken::Colon),
         "$" => Token::Normal(NormalToken::Dollar),

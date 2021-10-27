@@ -39,56 +39,27 @@ pub mod desugar_destructuring {
 
     pub fn desugar(rt: RichTerm) -> RichTerm {
         if let Term::LetPattern(x, pat, t_, body) = *rt.term {
+            let pos = body.pos.clone();
             let x = if let Some(x) = x {
                 x
             } else {
                 super::fresh_var()
             };
-            let slice_var = slice_record(t_.clone(), pat.clone());
-            RichTerm::new(
-                Term::Let(x.clone(), slice_var, destruct_term(x, pat, body.clone())),
-                body.pos.clone(),
-            )
+            RichTerm::new(Term::Let(x.clone(), t_, destruct_term(x, pat, body)), pos)
         } else {
             rt
         }
-    }
-
-    fn slice_record(rt: RichTerm, pat: Destruct) -> RichTerm {
-        let RichTerm { term, pos } = rt;
-        let var = super::fresh_var();
-        let rec = match pat {
-            Destruct::Record(matches) => Term::Record(
-                matches
-                    .iter()
-                    .map(|m| match m {
-                        Match::Assign(f, id) => (
-                            id.clone(),
-                            op1(UnaryOp::StaticAccess(f.clone()), Term::Var(var.clone())),
-                        ),
-                        Match::Simple(id) => (
-                            id.clone(),
-                            op1(UnaryOp::StaticAccess(id.clone()), Term::Var(var.clone())),
-                        ),
-                    })
-                    .collect(),
-                RecordAttrs::default(),
-            ),
-            _ => unimplemented!(),
-        };
-        RichTerm::new(Term::Let(var, RichTerm { term, pos }, rec.into()), pos)
     }
 
     fn destruct_term(x: Ident, pat: Destruct, t: RichTerm) -> RichTerm {
         let pos = t.pos.clone();
         println!("destruct term {:?} with {:?}", x, pat);
         match pat {
-            Destruct::Record(matches) => {
-                let mut matches = matches.clone();
+            Destruct::Record(mut matches) => {
                 let m = matches.pop();
                 if let Some(m) = m {
                     let next_term = match m {
-                        Match::Simple(id) | Match::Assign(_, id) => RichTerm::new(
+                        Match::Simple(id) => RichTerm::new(
                             Term::Let(
                                 id.clone(),
                                 op1(UnaryOp::StaticAccess(id.clone()), Term::Var(x.clone())),
@@ -96,6 +67,15 @@ pub mod desugar_destructuring {
                             ),
                             pos,
                         ),
+                        Match::Assign(f, (id, pat)) => desugar(RichTerm::new(
+                            Term::LetPattern(
+                                id,
+                                pat,
+                                op1(UnaryOp::StaticAccess(f.clone()), Term::Var(x.clone())),
+                                t.clone(),
+                            ),
+                            pos,
+                        )),
                     };
                     println!("{:?}", x.clone());
                     destruct_term(x.clone(), Destruct::Record(matches), next_term)
@@ -105,7 +85,7 @@ pub mod desugar_destructuring {
                     t
                 }
             }
-            _ => unimplemented!(),
+            _ => t,
         }
     }
 }

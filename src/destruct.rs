@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Eq, Hash, PartialEq, Ord, PartialOrd, Clone, Serialize, Deserialize)]
 pub enum Match {
-    Assign(Ident, Ident),
+    Assign(Ident, (Option<Ident>, Destruct)),
     Simple(Ident),
 }
 
