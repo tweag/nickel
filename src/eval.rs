@@ -448,6 +448,10 @@ where
         } = clos;
         let term = *boxed_term;
 
+        if let Some(strict) = stack.pop_strictness_marker() {
+            enriched_strict = strict;
+        }
+
         clos = match term {
             Term::Var(x) => {
                 let mut thunk = env
@@ -475,6 +479,10 @@ where
                 thunk.into_closure()
             }
             Term::App(t1, t2) => {
+                if !enriched_strict {
+                    stack.push_strictness(enriched_strict);
+                }
+                enriched_strict = true;
                 stack.push_arg(
                     Closure {
                         body: t2,
