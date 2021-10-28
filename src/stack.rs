@@ -327,7 +327,7 @@ mod tests {
     }
 
     #[test]
-    fn pushing_and_poping_args() {
+    fn pushing_and_popping_args() {
         let mut s = Stack::new();
         assert_eq!(0, s.count_args());
 
@@ -339,7 +339,7 @@ mod tests {
     }
 
     #[test]
-    fn pushing_and_poping_thunks() {
+    fn pushing_and_popping_thunks() {
         let mut s = Stack::new();
         assert_eq!(0, s.count_thunks());
 
@@ -364,7 +364,7 @@ mod tests {
     }
 
     #[test]
-    fn pushing_and_poping_conts() {
+    fn pushing_and_popping_conts() {
         let mut s = Stack::new();
         assert_eq!(0, s.count_conts());
 
