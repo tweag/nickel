@@ -48,6 +48,34 @@ pub fn handle(
     let item = linearization[index.unwrap()].to_owned();
     debug!("{:?}", item);
 
+    let mut extra = vec![];
+    if let Some(MetaValue {
+        doc,
+        types,
+        contracts,
+        priority,
+        ..
+    }) = item.meta.clone()
+    {
+        if let Some(doc) = doc {
+            extra.push(doc);
+        }
+        if let Some(types) = types {
+            extra.push(format!("{}", types.label.tag));
+        }
+        if !contracts.is_empty() {
+            extra.push(
+                contracts
+                    .iter()
+                    .map(|contract| format!("{}", contract.label.types,))
+                    .collect::<Vec<_>>()
+                    .join(","),
+            );
+        }
+
+        extra.push(format!("Merge Priority: {:?}", priority));
+    }
+
     let range = match item.pos {
         TermPos::Original(span) | TermPos::Inherited(span) => Some(Range::from_codespan(
             &file_id,
@@ -63,6 +91,10 @@ pub fn handle(
                 MarkedString::LanguageString(LanguageString {
                     language: "nickel".into(),
                     value: item.ty.to_string(),
+                }),
+                MarkedString::LanguageString(LanguageString {
+                    language: "plain".into(),
+                    value: extra.join("\n"),
                 }),
                 MarkedString::LanguageString(LanguageString {
                     language: "plain".into(),
