@@ -531,8 +531,8 @@ impl Cache {
         global_env: &eval::Environment,
     ) -> Result<(RichTerm, Vec<FileId>), Error> {
         let term = self.parse_nocache(file_id)?;
+        let (term, pending) = transformations::resolve_imports(term, self)?;
         type_check(&term, global_env, self, StubHost::<()>::new())?;
-        type_check(&term, global_env, self, StubHost)?;
         let term = transformations::transform(term)?;
         Ok((term, pending))
     }
