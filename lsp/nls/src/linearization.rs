@@ -12,7 +12,6 @@ use nickel::{
         reporting::{to_type, NameReg},
         TypeWrapper, UnifTable,
     },
-    types::AbsType,
 };
 
 #[derive(Default)]
@@ -24,7 +23,6 @@ pub struct BuildingResource {
 trait BuildingExt {
     fn push(&mut self, item: LinearizationItem<Unresolved>);
     fn add_usage(&mut self, decl: usize, usage: usize);
-    fn mk_id(&self) -> usize;
 }
 
 impl BuildingExt for Linearization<Building<BuildingResource>> {
@@ -60,10 +58,6 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
             TermKind::Declaration(_, ref mut usages) => usages.push(usage),
         };
     }
-
-    fn mk_id(&self) -> usize {
-        self.state.resource.linearization.len()
-    }
 }
 
 /// [Linearizer] used by the LSP
@@ -98,10 +92,11 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
             eprintln!("{:?}", term);
             return;
         }
-        let id = lin.mk_id();
+        let id = lin.state.resource.linearization.len();
         match term {
             Term::Let(ident, _, _) => {
-                self.env.insert(ident.to_owned(), id);
+                self.env
+                    .insert(ident.to_owned(), lin.state.resource.linearization.len());
                 lin.push(LinearizationItem {
                     id,
                     ty,
@@ -145,33 +140,6 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                     value: None,
                     ..meta.to_owned()
                 };
-
-                for contract in meta.contracts.iter().cloned() {
-                    match contract.types.0 {
-                        nickel::types::AbsType::Flat(RichTerm { term, pos: _ }) => {
-                            match *term {
-                                Term::Var(ident) => {
-                                    let parent = self.env.get(&ident);
-                                    lin.push(LinearizationItem {
-                                        id: lin.mk_id(),
-                                        pos,
-                                        ty: TypeWrapper::Concrete(AbsType::Var(ident)),
-                                        scope: self.scope.clone(),
-                                        // id = parent: full let binding including the body
-                                        // id = parent + 1: actual delcaration scope, i.e. _ = < definition >
-                                        kind: TermKind::Usage(parent.map(|id| id + 1)),
-                                        meta: None,
-                                    });
-                                    if let Some(parent) = parent {
-                                        lin.add_usage(parent, id);
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                        _ => {}
-                    }
-                }
 
                 self.meta.insert(meta);
             }
