@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use nickel::{
     identifier::Ident,
     position::TermPos,
-    term::Term,
+    term::{MetaValue, Term},
     typecheck::{
         linearization::{
             Building, Completed, Environment, Linearization, LinearizationItem, Linearizer,
@@ -67,6 +67,7 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
 pub struct AnalysisHost {
     env: Environment,
     scope: Vec<ScopeId>,
+    meta: Option<MetaValue>,
 }
 
 impl AnalysisHost {
@@ -74,6 +75,7 @@ impl AnalysisHost {
         AnalysisHost {
             env: Environment::new(),
             scope: Vec::new(),
+            meta: None,
         }
     }
 }
@@ -101,6 +103,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                     pos,
                     scope: self.scope.clone(),
                     kind: TermKind::Declaration(ident.to_string(), Vec::new()),
+                    meta: self.meta.take(),
                 });
             }
             Term::Var(ident) => {
@@ -113,6 +116,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                     // id = parent: full let binding including the body
                     // id = parent + 1: actual delcaration scope, i.e. _ = < definition >
                     kind: TermKind::Usage(parent.map(|id| id + 1)),
+                    meta: self.meta.take(),
                 });
                 if let Some(parent) = parent {
                     lin.add_usage(parent, id);
@@ -124,7 +128,21 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                 ty,
                 kind: TermKind::Record(attrs.clone()),
                 scope: self.scope.clone(),
+                meta: self.meta.take(),
             }),
+
+            Term::MetaValue(meta) => {
+                // Notice 1: No push to lin
+                // Notice 2: we discard the encoded value as anything we
+                //           would do with the value will be handled in the following
+                //           call to [Self::add_term]
+                let meta = MetaValue {
+                    value: None,
+                    ..meta.to_owned()
+                };
+
+                self.meta.insert(meta);
+            }
 
             _ => lin.push(LinearizationItem {
                 id,
@@ -132,6 +150,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                 ty,
                 scope: self.scope.clone(),
                 kind: TermKind::Structure,
+                meta: self.meta.take(),
             }),
         }
     }
@@ -175,12 +194,14 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                      ty,
                      kind,
                      scope,
+                     meta,
                  }| LinearizationItem {
                     ty: to_type(&table, &reported_names, &mut NameReg::new(), ty),
                     id,
                     pos,
                     kind,
                     scope,
+                    meta,
                 },
             )
             .collect();
@@ -201,6 +222,9 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
         AnalysisHost {
             scope,
             env: self.env.clone(),
+            /// when opening a new scope `meta` is assumed to be `None` as meta data
+            /// is immediately followed by a term without opening a scope
+            meta: None,
         }
     }
 }
