@@ -36,7 +36,7 @@ use crate::{identifier::Ident, position::TermPos, term::Term};
 /// Restricts the possible states of a linearization to entities marked
 /// as [LinearizationState]
 pub struct Linearization<S: LinearizationState> {
-    state: S,
+    pub state: S,
 }
 
 /// Constructors for different phases
@@ -57,7 +57,7 @@ impl Linearization<Uninit> {
 /// Holds any inner datatype that can be used as stable resource
 /// while recording terms.
 pub struct Building<T> {
-    resource: T,
+    pub resource: T,
 }
 
 /// Finalized linearization
@@ -87,11 +87,11 @@ pub trait ResolutionState {}
 /// Types are available as [TypeWrapper] only during recording
 /// They are resolved after typechecking has collected all terms into concrete
 /// [Types]
-type Unresolved = TypeWrapper;
+pub type Unresolved = TypeWrapper;
 impl ResolutionState for Unresolved {}
 
 /// When resolved a concrete [Types] is known
-type Resolved = Types;
+pub type Resolved = Types;
 impl ResolutionState for Resolved {}
 
 /// A recorded item of a given state of resolution state
@@ -104,7 +104,7 @@ pub struct LinearizationItem<S: ResolutionState> {
     pub pos: TermPos,
     pub ty: S,
     pub kind: TermKind,
-    scope: Vec<ScopeId>,
+    pub scope: Vec<ScopeId>,
 }
 
 /// Abstact term kinds.
@@ -178,24 +178,6 @@ impl<L, S> StubHost<L, S> {
 
 pub type Environment = GenericEnvironment<Ident, usize>;
 
-/// [Linearizer] used by the LSP
-///
-/// Tracks a _scope stable_ environment managing variable ident
-/// resolution
-pub struct AnalysisHost {
-    env: Environment,
-    scope: Vec<ScopeId>,
-}
-
-impl AnalysisHost {
-    pub fn new() -> Self {
-        AnalysisHost {
-            env: Environment::new(),
-            scope: Vec::new(),
-        }
-    }
-}
-
 trait ScopeIdElem: Clone + Eq {}
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -209,135 +191,8 @@ impl ScopeIdElem for ScopeId {}
 
 #[derive(Default)]
 pub struct BuildingResource {
-    linearization: Vec<LinearizationItem<Unresolved>>,
-    scope: HashMap<Vec<ScopeId>, Vec<usize>>,
-}
-
-impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for AnalysisHost {
-    fn add_term(
-        &mut self,
-        lin: &mut Linearization<Building<BuildingResource>>,
-        term: &Term,
-        pos: TermPos,
-        ty: TypeWrapper,
-    ) {
-        if pos == TermPos::None {
-            eprintln!("{:?}", term);
-            return;
-        }
-        let id = lin.state.resource.linearization.len();
-        match term {
-            Term::Let(ident, _, _) => {
-                self.env
-                    .insert(ident.to_owned(), lin.state.resource.linearization.len());
-                lin.push(LinearizationItem {
-                    id,
-                    ty,
-                    pos,
-                    scope: self.scope.clone(),
-                    kind: TermKind::Declaration(ident.to_string(), Vec::new()),
-                });
-            }
-            Term::Var(ident) => {
-                let parent = self.env.get(ident);
-                lin.push(LinearizationItem {
-                    id,
-                    pos,
-                    ty,
-                    scope: self.scope.clone(),
-                    // id = parent: full let binding including the body
-                    // id = parent + 1: actual delcaration scope, i.e. _ = < definition >
-                    kind: TermKind::Usage(parent.map(|id| id + 1)),
-                });
-                if let Some(parent) = parent {
-                    lin.add_usage(parent, id);
-                }
-            }
-            Term::Record(_, attrs) | Term::RecRecord(_, _, attrs) => lin.push(LinearizationItem {
-                id,
-                pos,
-                ty,
-                kind: TermKind::Record(attrs.clone()),
-                scope: self.scope.clone(),
-            }),
-
-            _ => lin.push(LinearizationItem {
-                id,
-                pos,
-                ty,
-                scope: self.scope.clone(),
-                kind: TermKind::Structure,
-            }),
-        }
-    }
-
-    /// [Self::add_term] produces a depth first representation or the
-    /// traversed AST. This function indexes items by _source position_.
-    /// Elements are reorderd to allow efficient lookup of elemts by
-    /// their location in the source.
-    ///
-    /// Additionally, resolves concrete types for all items.
-    fn linearize(
-        self,
-        lin: Linearization<Building<BuildingResource>>,
-        (mut table, reported_names): (UnifTable, HashMap<usize, Ident>),
-    ) -> Linearization<Completed> {
-        let mut lin_ = lin.state.resource.linearization;
-        eprintln!("linearizing");
-        lin_.sort_by_key(|item| match item.pos {
-            TermPos::Original(span) => (span.src_id, span.start),
-            TermPos::Inherited(span) => (span.src_id, span.start),
-            TermPos::None => {
-                eprintln!("{:?}", item);
-
-                unreachable!()
-            }
-        });
-
-        let mut id_mapping = HashMap::new();
-        lin_.iter()
-            .enumerate()
-            .for_each(|(index, LinearizationItem { id, .. })| {
-                id_mapping.insert(*id, index);
-            });
-
-        let lin_ = lin_
-            .into_iter()
-            .map(
-                |LinearizationItem {
-                     id,
-                     pos,
-                     ty,
-                     kind,
-                     scope,
-                 }| LinearizationItem {
-                    ty: to_type(&table, &reported_names, &mut NameReg::new(), ty),
-                    id,
-                    pos,
-                    kind,
-                    scope,
-                },
-            )
-            .collect();
-
-        eprintln!("Linearized {:#?}", &lin_);
-
-        Linearization::completed(Completed {
-            lin: lin_,
-            id_mapping,
-            scope_mapping: lin.state.resource.scope,
-        })
-    }
-
-    fn scope(&self, scope_id: ScopeId) -> Self {
-        let mut scope = self.scope.clone();
-        scope.push(scope_id);
-
-        AnalysisHost {
-            scope,
-            env: self.env.clone(),
-        }
-    }
+    pub linearization: Vec<LinearizationItem<Unresolved>>,
+    pub scope: HashMap<Vec<ScopeId>, Vec<usize>>,
 }
 
 impl Into<Completed> for Linearization<Completed> {
@@ -347,7 +202,7 @@ impl Into<Completed> for Linearization<Completed> {
 }
 
 impl Linearization<Building<BuildingResource>> {
-    fn push(&mut self, item: LinearizationItem<Unresolved>) {
+    pub fn push(&mut self, item: LinearizationItem<Unresolved>) {
         self.state
             .resource
             .scope
@@ -364,7 +219,7 @@ impl Linearization<Building<BuildingResource>> {
         self.state.resource.linearization.push(item);
     }
 
-    fn add_usage(&mut self, decl: usize, usage: usize) {
+    pub fn add_usage(&mut self, decl: usize, usage: usize) {
         match self
             .state
             .resource

@@ -1416,7 +1416,7 @@ fn to_type(table: &UnifTable, ty: TypeWrapper) -> Types {
 
 /// Helpers to convert a `TypeWrapper` to a human-readable `Types` representation for error
 /// reporting purpose.
-mod reporting {
+pub mod reporting {
     use super::*;
     use std::collections::HashSet;
     /// A name registry used to replace unification variables and type constants with human-readable

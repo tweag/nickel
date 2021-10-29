@@ -5,11 +5,10 @@ use nickel::{
     cache::{Cache, CacheError, CacheOp, EntryState},
     error::TypecheckError,
     eval,
-    typecheck::{
-        self,
-        linearization::{AnalysisHost, Completed},
-    },
+    typecheck::{self, linearization::Completed},
 };
+
+use crate::linearization::AnalysisHost;
 
 pub trait CacheExt {
     fn update_content(&mut self, path: impl Into<OsString>, s: String) -> io::Result<FileId>;
@@ -49,8 +48,8 @@ impl CacheExt for Cache {
         if *state > EntryState::Typechecked && lin_cache.contains_key(&file_id) {
             Ok(CacheOp::Cached(()))
         } else if *state >= EntryState::Parsed {
-            let mut host = AnalysisHost::new();
-            let (_, linearized) = typecheck::type_check(t, global_env, host, self)?;
+            let host = AnalysisHost::new();
+            let (_, linearized) = typecheck::type_check(t, global_env, self, host)?;
             self.update_state(file_id, EntryState::Typechecked);
             lin_cache.insert(file_id, linearized);
             Ok(CacheOp::Done(()))

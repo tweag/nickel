@@ -5,6 +5,7 @@ use lsp_server::Connection;
 mod cache;
 mod diagnostic;
 mod files;
+mod linearization;
 mod requests;
 mod server;
 use server::Server;
