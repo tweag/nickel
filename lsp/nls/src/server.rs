@@ -11,8 +11,8 @@ use lsp_types::{
     notification::{DidChangeTextDocument, DidOpenTextDocument},
     request::{Request as RequestTrait, *},
     CompletionOptions, CompletionParams, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
-    GotoDefinitionParams, HoverOptions, HoverParams, HoverProviderCapability, OneOf,
-    ReferenceParams, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
+    DocumentSymbolParams, GotoDefinitionParams, HoverOptions, HoverParams, HoverProviderCapability,
+    OneOf, ReferenceParams, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
     TextDocumentSyncOptions, WorkDoneProgressOptions,
 };
 
@@ -52,6 +52,7 @@ impl Server {
                 trigger_characters: Some(vec![]),
                 ..Default::default()
             }),
+            document_symbol_provider: Some(OneOf::Left(true)),
             ..ServerCapabilities::default()
         }
     }
@@ -173,6 +174,12 @@ impl Server {
                 debug!("handle completion");
                 let params: CompletionParams = serde_json::from_value(req.params).unwrap();
                 completion::handle_completion(params, req.id.clone(), self)
+            }
+
+            DocumentSymbolRequest::METHOD => {
+                debug!("handle completion");
+                let params: DocumentSymbolParams = serde_json::from_value(req.params).unwrap();
+                symbols::handle_document_symbols(params, req.id.clone(), self)
             }
 
             _ => Ok(()),
