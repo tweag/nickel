@@ -446,8 +446,6 @@ pub struct State<'a> {
 ///
 /// Return the inferred type in case of success. This is just a wrapper that calls
 /// [`type_check_`](fn.type_check_.html) with a fresh unification variable as goal.
-///
-/// Passes a Linearizer of some generic [linearization::Building] state.
 pub fn type_check<L>(
     t: &RichTerm,
     global_eval_env: &eval::Environment,
