@@ -28,7 +28,7 @@ Nickel's salient traits are:
     only a burden. Whereas reusable code - that is, *functions* - is evaluated
     on potentially infinitely many different inputs, and is impossible to test
     exhaustively. There, types are precious. Nickel has types, but you get to
-    chose when you want it or not, and it handles safely the interaction between
+    choose when you want it or not, and it handles safely the interaction between
     the typed and the untyped world.
 - **Design by contract**: complementary to the type system, contracts are
     a principled approach to checking assertions. The interpreter automatically
@@ -45,7 +45,7 @@ beyond.
 
 ## Use cases
 
-Nickel is a good fit is any situation where you need to generate a complex
+Nickel is a good fit in any situation where you need to generate a complex
 configuration, be it for a single app, a machine, whole infrastructure, or a
 build system.
 
