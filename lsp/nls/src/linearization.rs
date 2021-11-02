@@ -102,7 +102,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                     ty,
                     pos,
                     scope: self.scope.clone(),
-                    kind: TermKind::Declaration(ident.to_string(), Vec::new()),
+                    kind: TermKind::Declaration(ident.to_owned(), Vec::new()),
                     meta: self.meta.take(),
                 });
             }

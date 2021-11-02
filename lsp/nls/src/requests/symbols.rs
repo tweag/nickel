@@ -31,7 +31,7 @@ pub fn handle_document_symbols(
                         })
                         .unwrap();
                     Some(DocumentSymbol {
-                        name: name.to_owned(),
+                        name: name.0.to_owned(),
                         detail: Some(format!("{}", item.ty)),
                         kind: SymbolKind::Variable,
                         tags: None,
