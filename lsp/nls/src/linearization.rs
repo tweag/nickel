@@ -23,6 +23,7 @@ pub struct BuildingResource {
 trait BuildingExt {
     fn push(&mut self, item: LinearizationItem<Unresolved>);
     fn add_usage(&mut self, decl: usize, usage: usize);
+    fn id_gen(&self) -> IdGen;
 }
 
 impl BuildingExt for Linearization<Building<BuildingResource>> {
@@ -58,6 +59,10 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
             TermKind::Declaration(_, ref mut usages) => usages.push(usage),
         };
     }
+
+    fn id_gen(&self) -> IdGen {
+        IdGen::new(self.state.resource.linearization.len())
+    }
 }
 
 /// [Linearizer] used by the LSP
@@ -92,7 +97,8 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
             eprintln!("{:?}", term);
             return;
         }
-        let id = lin.state.resource.linearization.len();
+        let mut id_gen = lin.id_gen();
+        let id = id_gen.id();
         match term {
             Term::Let(ident, _, _) => {
                 self.env
@@ -140,6 +146,34 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                     value: None,
                     ..meta.to_owned()
                 };
+
+                for contract in meta.contracts.iter().cloned() {
+                    match contract.types.0 {
+                        nickel::types::AbsType::Flat(RichTerm { term, pos: _ }) => {
+                            match *term {
+                                Term::Var(ident) => {
+                                    let parent = self.env.get(&ident);
+                                    let id = id_gen.take();
+                                    lin.push(LinearizationItem {
+                                        id,
+                                        pos,
+                                        ty: TypeWrapper::Concrete(AbsType::Var(ident)),
+                                        scope: self.scope.clone(),
+                                        // id = parent: full let binding including the body
+                                        // id = parent + 1: actual delcaration scope, i.e. _ = < definition >
+                                        kind: TermKind::Usage(parent.map(|id| id + 1)),
+                                        meta: None,
+                                    });
+                                    if let Some(parent) = parent {
+                                        lin.add_usage(parent, id);
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                        _ => {}
+                    }
+                }
 
                 self.meta.insert(meta);
             }
@@ -226,5 +260,23 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
             /// is immediately followed by a term without opening a scope
             meta: None,
         }
+    }
+}
+
+struct IdGen(usize);
+
+impl IdGen {
+    fn new(base: usize) -> Self {
+        IdGen(base)
+    }
+
+    fn take(&mut self) -> usize {
+        let current_id = self.0;
+        self.0 += 1;
+        current_id
+    }
+
+    fn id(&self) -> usize {
+        self.0
     }
 }
