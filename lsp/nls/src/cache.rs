@@ -1,10 +1,24 @@
-use std::{borrow::BorrowMut, ffi::OsString, io};
+use std::{borrow::BorrowMut, collections::HashMap, ffi::OsString, io};
 
 use codespan::FileId;
-use nickel::cache::{Cache, CacheOp};
+use nickel::{
+    cache::{Cache, CacheError, CacheOp, EntryState},
+    error::TypecheckError,
+    eval,
+    typecheck::{
+        self,
+        linearization::{AnalysisHost, Completed},
+    },
+};
 
 pub trait CacheExt {
     fn update_content(&mut self, path: impl Into<OsString>, s: String) -> io::Result<FileId>;
+    fn typecheck_with_analysis(
+        &mut self,
+        file_id: FileId,
+        global_env: &eval::Environment,
+        lin_cache: &mut HashMap<FileId, Completed>,
+    ) -> Result<CacheOp<()>, CacheError<TypecheckError>>;
 }
 
 impl CacheExt for Cache {
@@ -17,6 +31,31 @@ impl CacheExt for Cache {
             Ok(file_id)
         } else {
             Ok(self.add_string(path, source))
+        }
+    }
+    fn typecheck_with_analysis<'a>(
+        &mut self,
+        file_id: FileId,
+        global_env: &eval::Environment,
+        lin_cache: &mut HashMap<FileId, Completed>,
+    ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
+        if !self.terms_mut().contains_key(&file_id) {
+            return Err(CacheError::NotParsed);
+        }
+
+        // After self.parse(), the cache must be populated
+        let (t, state) = self.terms().get(&file_id).unwrap();
+
+        if *state > EntryState::Typechecked && lin_cache.contains_key(&file_id) {
+            Ok(CacheOp::Cached(()))
+        } else if *state >= EntryState::Parsed {
+            let mut host = AnalysisHost::new();
+            let (_, linearized) = typecheck::type_check(t, global_env, host, self)?;
+            self.update_state(file_id, EntryState::Typechecked);
+            lin_cache.insert(file_id, linearized);
+            Ok(CacheOp::Done(()))
+        } else {
+            panic!()
         }
     }
 }

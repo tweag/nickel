@@ -1,4 +1,4 @@
-use std::borrow::BorrowMut;
+use std::{borrow::BorrowMut, collections::HashMap};
 
 use anyhow::Result;
 use codespan::FileId;
@@ -14,7 +14,7 @@ use nickel::{
     environment::Environment,
     error::{self, ToDiagnostic},
     position::RawSpan,
-    typecheck,
+    typecheck::{self},
 };
 
 use super::cache::CacheExt;
@@ -105,7 +105,7 @@ pub fn handle_save(server: &mut Server, params: DidChangeTextDocumentParams) -> 
 fn typecheck(server: &mut Server, file_id: FileId) -> Result<CacheOp<()>, Vec<Diagnostic<FileId>>> {
     server
         .cache
-        .typecheck(file_id, &server.global_env)
+        .typecheck_with_analysis(file_id, &server.global_env, &mut server.lin_cache)
         .map_err(|error| match error {
             CacheError::Error(tc_error) => tc_error.to_diagnostic(server.cache.files_mut(), None),
             CacheError::NotParsed => unreachable!(),

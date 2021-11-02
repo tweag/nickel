@@ -1,6 +1,8 @@
+use std::ops::Range;
+
 use codespan::{FileId, Files};
 use codespan_reporting::diagnostic::{self, Diagnostic, Label};
-use lsp_types::{DiagnosticRelatedInformation, Location, NumberOrString, Position, Range, Url};
+use lsp_types::{DiagnosticRelatedInformation, Location, NumberOrString, Position, Url};
 
 use nickel::error::TypecheckError;
 
@@ -14,13 +16,13 @@ pub trait DiagnosticCompat: Sized {
 /// Determine the position of a [codespan_reporting::diagnostic::Label] by looking it up
 /// in the file cache
 pub trait LocationCompat {
-    fn from_codespan(label: &Label<FileId>, files: &Files<String>) -> Self;
+    fn from_codespan(file_id: &FileId, range: &Range<usize>, files: &Files<String>) -> Self;
 }
 
 impl LocationCompat for lsp_types::Range {
-    fn from_codespan(label: &Label<FileId>, files: &Files<String>) -> Self {
-        let start = files.location(label.file_id, label.range.start as u32);
-        let end = files.location(label.file_id, label.range.start as u32);
+    fn from_codespan(file_id: &FileId, range: &Range<usize>, files: &Files<String>) -> Self {
+        let start = files.location(file_id.clone(), range.start as u32);
+        let end = files.location(file_id.clone(), range.end as u32);
 
         let (line_start, col_start, line_end, col_end) = match (start, end) {
             (Ok(start_loc), Ok(end_loc)) => (
@@ -32,7 +34,7 @@ impl LocationCompat for lsp_types::Range {
             (Ok(loc), _) | (_, Ok(loc)) => (loc.line.0, loc.column.0, loc.line.0, loc.column.0),
             _ => (0, 0, 0, 0),
         };
-        Range {
+        lsp_types::Range {
             start: Position {
                 line: line_start,
                 character: col_start,
@@ -59,7 +61,7 @@ impl DiagnosticCompat for lsp_types::Diagnostic {
             .labels
             .iter()
             .map(|label| {
-                let range = lsp_types::Range::from_codespan(&label, files);
+                let range = lsp_types::Range::from_codespan(&label.file_id, &label.range, files);
 
                 let code = diagnostic.code.clone().map(NumberOrString::String);
                 let message = format!("{}\n{}", diagnostic.message, diagnostic.notes.join("\n"));

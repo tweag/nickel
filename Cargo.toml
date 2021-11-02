@@ -9,7 +9,7 @@ edition = "2018"
 
 [features]
 default = ["markdown", "repl"]
-markdown = ["termimad", "minimad"]
+markdown = ["termimad"]
 repl = ["rustyline", "rustyline-derive", "ansi_term"]
 repl-wasm = ["wasm-bindgen", "js-sys", "serde_repr"]
 
@@ -34,9 +34,6 @@ sha2 = "0.9.3"
 md-5 = "0.9.1"
 
 termimad = { version = "0.16.2", optional = true }
-# Use the same version as termimad
-minimad = { version = "0.8.0", optional = true }
-
 ansi_term = { version = "0.12", optional = true }
 
 rustyline = { version = "7.1.0", optional = true}
