@@ -1,6 +1,5 @@
-use assert_matches::assert_matches;
 use nickel::program::Program;
-use nickel::term::{MetaValue, RichTerm, Term};
+use nickel::term::Term;
 
 #[test]
 pub fn test_query_metadata_basic() {
@@ -8,14 +7,6 @@ pub fn test_query_metadata_basic() {
         Program::new_from_source("(1+1) | doc \"Test basic\"".as_bytes(), "regr_tests").unwrap();
     let result = program.query(None).unwrap();
 
-    assert_matches!(
-        result,
-        Term::MetaValue(MetaValue {
-            doc: Some(_),
-            value: Some(_),
-            ..
-        })
-    );
     if let Term::MetaValue(meta) = result {
         assert_eq!(meta.doc, Some(String::from("Test basic")));
         assert_eq!(meta.value.unwrap().term, Box::new(Term::Num(2.0)));
@@ -33,14 +24,6 @@ pub fn test_query_metadata_from_func() {
     .unwrap();
     let result = program.query(None).unwrap();
 
-    assert_matches!(
-        result,
-        Term::MetaValue(MetaValue {
-            doc: Some(_),
-            value: Some(_),
-            ..
-        })
-    );
     if let Term::MetaValue(meta) = result {
         assert_eq!(meta.doc, Some(String::from("Test from func")));
         assert_eq!(meta.value.unwrap().term, Box::new(Term::Num(4.0)));
