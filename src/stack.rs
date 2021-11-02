@@ -7,7 +7,6 @@ use crate::position::TermPos;
 use crate::term::{RichTerm, StrChunk};
 
 /// An element of the stack.
-#[derive(Debug)]
 pub enum Marker {
     /// An equality to test.
     ///
@@ -47,6 +46,21 @@ pub enum Marker {
         Environment, /* the common environment of chunks */
     ),
     Strictness(bool),
+}
+
+impl std::fmt::Debug for Marker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Marker::Eq(_, _) => write!(f, "Eq"),
+            Marker::Arg(_, _) => write!(f, "Arg"),
+            Marker::TrackedArg(_, _) => write!(f, "TrackedArg"),
+            Marker::Thunk(_) => write!(f, "Thunk"),
+            Marker::Cont(op, sz, _) => write!(f, "Cont {:?} (callstack size {})", op, sz),
+            Marker::StrChunk(_) => write!(f, "StrChunk"),
+            Marker::StrAcc(_, _, _) => write!(f, "StrAcc"),
+            Marker::Strictness(s) => write!(f, "Strictness = {}", s),
+        }
+    }
 }
 
 impl Marker {
