@@ -34,8 +34,29 @@ pub mod desugar_destructuring {
     use super::{Ident, RichTerm, Term};
     use crate::destruct::{Destruct, Match};
     use crate::term::make::op1;
+    use crate::term::MetaValue;
     use crate::term::RecordAttrs;
     use crate::term::UnaryOp;
+
+    pub fn desugar_with_contract(rt: RichTerm) -> RichTerm {
+        if let Term::LetPattern(x, pat, t_, body) = *rt.term {
+            let pos = body.pos.clone();
+            let meta = pat.clone().as_contract();
+            let t_ = {
+                let t_pos = t_.pos.clone();
+                RichTerm::new(
+                    Term::MetaValue(MetaValue {
+                        value: Some(t_),
+                        ..meta
+                    }),
+                    t_pos,
+                )
+            };
+            desugar(RichTerm::new(Term::LetPattern(x, pat, t_, body), pos))
+        } else {
+            rt
+        }
+    }
 
     pub fn desugar(rt: RichTerm) -> RichTerm {
         if let Term::LetPattern(x, pat, t_, body) = *rt.term {
@@ -359,7 +380,7 @@ struct ImportsResolutionState<'a, R> {
 pub fn transform(rt: RichTerm) -> Result<RichTerm, ImportError> {
     rt.traverse(
         &mut |rt: RichTerm, _| -> Result<RichTerm, ImportError> {
-            let rt = desugar_destructuring::desugar(rt);
+            let rt = desugar_destructuring::desugar_with_contract(rt);
             // We need to do contract generation before wrapping stuff in variables
             let rt = apply_contracts::transform_one(rt);
             let rt = share_normal_form::transform_one(rt);
