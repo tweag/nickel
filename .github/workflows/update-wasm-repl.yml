@@ -20,20 +20,14 @@ jobs:
         fetch-depth: 0
 
     - name: Installing Nix
-      uses: cachix/install-nix-action@v12
+      uses: cachix/install-nix-action@v14
       with:
         nix_path: nixpkgs=channel:nixos-unstable
+        extra_nix_config: |
+          experimental-features = nix-command flakes
 
-    - name: Add `unstable` Nix channel
-      run: |
-        nix-channel --add https://nixos.org/channels/nixpkgs-unstable
-        nix-channel --update
-    - name: Installing nixFlakes
-      run: |
-        nix-env -iA nixpkgs.nixFlakes
-        echo 'experimental-features = nix-command flakes' | sudo tee -a /etc/nix/nix.conf
-        echo "$HOME/.nix-profile/bin" >> $GITHUB_PATH
-    - uses: cachix/cachix-action@v8
+    - name: Setup Cachix
+      uses: cachix/cachix-action@v10
       with:
         name: nickel
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
