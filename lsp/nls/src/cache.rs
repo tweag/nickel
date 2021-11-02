@@ -50,7 +50,7 @@ impl CacheExt for Cache {
             Ok(CacheOp::Cached(()))
         } else if *state >= EntryState::Parsed {
             let mut host = AnalysisHost::new();
-            let (_, linearized) = typecheck::type_check(t, global_env, self, host)?;
+            let (_, linearized) = typecheck::type_check(t, global_env, host, self)?;
             self.update_state(file_id, EntryState::Typechecked);
             lin_cache.insert(file_id, linearized);
             Ok(CacheOp::Done(()))

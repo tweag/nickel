@@ -446,11 +446,13 @@ pub struct State<'a> {
 ///
 /// Return the inferred type in case of success. This is just a wrapper that calls
 /// [`type_check_`](fn.type_check_.html) with a fresh unification variable as goal.
-pub fn type_check<'a, L>(
+///
+/// Passes a Linearizer of some generic [linearization::Building] state.
+pub fn type_check<L>(
     t: &RichTerm,
     global_eval_env: &eval::Environment,
-    resolver: &'a impl ImportResolver,
     linearizer: impl Linearizer<L, UnifTable>,
+    resolver: &impl ImportResolver,
 ) -> Result<(Types, Completed), TypecheckError>
 where
     L: Default,
@@ -522,6 +524,8 @@ pub fn type_check_in_env(
 ///
 /// - `state`: the unification state (see [`State`](struct.State.html)).
 /// - `env`: the typing environment, mapping free variable to types.
+/// - `lin`: The current building linearization of building state `S`
+/// - `linearizer`: A linearizer that can madify the linearization
 /// - `strict`: the typechecking mode.
 /// - `t`: the term to check.
 /// - `ty`: the type to check the term against.
