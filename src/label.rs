@@ -92,7 +92,7 @@ pub mod ty_path {
             (AbsType::Forall(_, _), Some(_)) => {
                 // The length of "forall" plus the final separating dot and whitespace ". "
                 let mut result = 8;
-                while let AbsType::Forall(Ident(id), body) = &ty.0 {
+                while let AbsType::Forall(Ident(id, _), body) = &ty.0 {
                     // The length of the identifier plus the preceding whitespace
                     result += id.len() + 1;
                     ty = body.as_ref();

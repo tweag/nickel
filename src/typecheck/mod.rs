@@ -1485,7 +1485,7 @@ pub mod reporting {
             name = format!("{}{}", name, suffix);
         }
 
-        let ident = Ident(name);
+        let ident = Ident(name, None);
         name_reg.reg.insert(id, ident.clone());
         ident
     }

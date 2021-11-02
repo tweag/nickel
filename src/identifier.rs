@@ -1,13 +1,41 @@
 //! Define the type of an identifier.
 use serde::{Deserialize, Serialize};
-use std::fmt;
+use std::{fmt, hash::Hash};
 
-#[derive(Debug, Eq, Hash, PartialEq, Ord, PartialOrd, Clone, Serialize, Deserialize)]
-pub struct Ident(pub String);
+use crate::position::TermPos;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Ident(pub String, #[serde(skip)] pub Option<TermPos>);
+
+impl PartialOrd for Ident {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.0.partial_cmp(&other.0)
+    }
+}
+
+impl Ord for Ident {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.cmp(&other.0)
+    }
+}
+
+impl PartialEq for Ident {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl Eq for Ident {}
+
+impl Hash for Ident {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
+    }
+}
 
 impl fmt::Display for Ident {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let Ident(ident) = self;
+        let Ident(ident, _) = self;
         write!(f, "{}", ident)
     }
 }
@@ -17,6 +45,6 @@ where
     String: From<F>,
 {
     fn from(val: F) -> Self {
-        Ident(String::from(val))
+        Ident(String::from(val), None)
     }
 }

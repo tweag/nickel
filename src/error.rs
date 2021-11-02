@@ -959,7 +959,7 @@ impl ToDiagnostic<FileId> for EvalError {
                         .enumerate()
                         .map(|(i, (id_opt, pos))| {
                             let name = id_opt
-                                .map(|Ident(id)| id)
+                                .map(|Ident(id, _)| id)
                                 .unwrap_or_else(|| String::from("<func>"));
                             Diagnostic::note().with_labels(vec![secondary(&pos)
                                 .with_message(format!("({}) calling {}", i + 1, name))])
@@ -1073,7 +1073,7 @@ impl ToDiagnostic<FileId> for EvalError {
                     .with_message("Non mergeable terms")
                     .with_labels(labels)]
             }
-            EvalError::UnboundIdentifier(Ident(ident), span_opt) => vec![Diagnostic::error()
+            EvalError::UnboundIdentifier(Ident(ident, _), span_opt) => vec![Diagnostic::error()
                 .with_message("Unbound identifier")
                 .with_labels(vec![primary_alt(span_opt.into_opt(), ident.clone(), files)
                     .with_message("this identifier is unbound")])],
@@ -1214,7 +1214,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
                     .with_message("Ill-formed type")
                     .with_labels(vec![label])]
             }
-            TypecheckError::MissingRow(Ident(ident), expd, actual, span_opt) =>
+            TypecheckError::MissingRow(Ident(ident,_), expd, actual, span_opt) =>
                 vec![Diagnostic::error()
                     .with_message(format!("Type error: missing row `{}`", ident))
                     .with_labels(mk_expr_label(span_opt))
@@ -1233,7 +1233,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
                     ])]
             ,
 
-            TypecheckError::ExtraRow(Ident(ident), expd, actual, span_opt) =>
+            TypecheckError::ExtraRow(Ident(ident,_), expd, actual, span_opt) =>
                 vec![Diagnostic::error()
                     .with_message(format!("Type error: extra row `{}`", ident))
                     .with_labels(mk_expr_label(span_opt))
@@ -1252,7 +1252,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
                     ])]
             ,
 
-            TypecheckError::UnboundTypeVariable(Ident(ident), span_opt) =>
+            TypecheckError::UnboundTypeVariable(Ident(ident,_), span_opt) =>
                 vec![Diagnostic::error()
                     .with_message(String::from("Unbound type variable"))
                     .with_labels(vec![primary_alt(span_opt.into_opt(), ident.clone(), files).with_message("this type variable is unbound")])
@@ -1271,7 +1271,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
                             String::from("These types are not compatible"),
                         ])]
             ,
-            TypecheckError::RowKindMismatch(Ident(ident), expd, actual, span_opt) => {
+            TypecheckError::RowKindMismatch(Ident(ident,_), expd, actual, span_opt) => {
                 let (expd_str, actual_str) = match (expd, actual) {
                     (Some(_), None) => ("an enum type", "a record type"),
                     (None, Some(_)) => ("a record type", "an enum type"),
@@ -1334,7 +1334,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
                     }));
                 diags
             }
-            TypecheckError::RowConflict(Ident(ident), conflict, _expd, _actual, span_opt) => {
+            TypecheckError::RowConflict(Ident(ident,_), conflict, _expd, _actual, span_opt) => {
                 vec![
                     Diagnostic::error()
                         .with_message("Multiple rows declaration")
