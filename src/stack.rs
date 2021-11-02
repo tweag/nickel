@@ -94,7 +94,6 @@ impl Marker {
 }
 
 /// The evaluation stack.
-#[derive(Debug)]
 pub struct Stack(Vec<Marker>);
 
 impl IntoIterator for Stack {
@@ -310,6 +309,16 @@ impl Stack {
             }
             _ => None,
         }
+    }
+}
+
+impl std::fmt::Debug for Stack {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "--- STACK ---")?;
+        for marker in self.0.iter().rev() {
+            write!(f, "| {:?}", marker)?;
+        }
+        write!(f, "---  END  ---")
     }
 }
 
