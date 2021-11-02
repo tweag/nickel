@@ -107,15 +107,24 @@ pub struct LinearizationItem<S: ResolutionState> {
 }
 
 /// Abstact term kinds.
-/// Currently only tracks Declaration and Usages, with Structure being a
-/// wildcard for any other kind of term.
+/// Currently tracks
+/// 1. Declarations
+/// 2. Usages, with Structure being a
+/// 3. Records, listing their fields
+/// 4. wildcard for any other kind of term.
 /// Can be extended later to represent Contracts, Records, etc.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TermKind {
-    Structure,
-    Declaration(String, Vec<usize>),
+    Declaration(Ident, Vec<usize>),
     Usage(Option<usize>),
-    Record(RecordAttrs),
+    Record(Vec<usize>),
+    RecordField {
+        ident: Ident,
+        body_pos: TermPos,
+        record: usize,
+        usages: Vec<usize>,
+    },
+    Structure,
 }
 
 /// The linearizer trait is what is refered to during typechecking.

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use log::debug;
 use nickel::{
     identifier::Ident,
     position::TermPos,
@@ -50,13 +51,14 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
             .resource
             .linearization
             .get_mut(decl)
-            .expect("Coundt find parent")
+            .expect("Could not find parent")
             .kind
         {
             TermKind::Structure => unreachable!(),
             TermKind::Usage(_) => unreachable!(),
             TermKind::Record(_) => unreachable!(),
-            TermKind::Declaration(_, ref mut usages) => usages.push(usage),
+            TermKind::Declaration(_, ref mut usages)
+            | TermKind::RecordField { ref mut usages, .. } => usages.push(usage),
         };
     }
 
@@ -93,8 +95,9 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
         pos: TermPos,
         ty: TypeWrapper,
     ) {
+        debug!("adding term: {:?} @ {:?}", term, pos);
         if pos == TermPos::None {
-            eprintln!("{:?}", term);
+            debug!("Term missing pos!");
             return;
         }
         let mut id_gen = lin.id_gen();
@@ -128,14 +131,46 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                     lin.add_usage(parent, id);
                 }
             }
-            Term::Record(_, attrs) | Term::RecRecord(_, _, attrs) => lin.push(LinearizationItem {
-                id,
-                pos,
-                ty,
-                kind: TermKind::Record(attrs.clone()),
-                scope: self.scope.clone(),
-                meta: self.meta.take(),
-            }),
+            Term::Record(fields, _) | Term::RecRecord(fields, _, _) => {
+                let fields = fields
+                    .iter()
+                    .map(|(ident, term)| LinearizationItem {
+                        id: id_gen.take(),
+                        // TODO: Should alwasy be some
+                        pos: ident.1.unwrap_or(pos.to_owned()),
+                        ty: ty.clone(),
+                        kind: TermKind::RecordField {
+                            ident: ident.to_owned(),
+                            body_pos: term.pos,
+
+                            record: id,
+                            usages: Vec::new(),
+                        },
+                        scope: self.scope.clone(),
+                        meta: match &*term.term {
+                            Term::MetaValue(meta) => Some(MetaValue {
+                                value: None,
+                                ..meta.to_owned()
+                            }),
+                            _ => None,
+                        },
+                    })
+                    .collect::<Vec<_>>();
+
+                let ids = fields.iter().map(|item| item.id).collect::<Vec<usize>>();
+
+                lin.push(LinearizationItem {
+                    id,
+                    pos,
+                    ty,
+                    kind: TermKind::Record(ids.clone()),
+                    scope: self.scope.clone(),
+                    meta: self.meta.take(),
+                });
+
+                // add all fields
+                fields.into_iter().for_each(|item| lin.push(item));
+            }
 
             Term::MetaValue(meta) => {
                 // Notice 1: No push to lin
@@ -149,6 +184,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
 
                 for contract in meta.contracts.iter().cloned() {
                     match contract.types.0 {
+                        // Note: we extract the
                         nickel::types::AbsType::Flat(RichTerm { term, pos: _ }) => {
                             match *term {
                                 Term::Var(ident) => {
@@ -178,14 +214,18 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                 self.meta.insert(meta);
             }
 
-            _ => lin.push(LinearizationItem {
-                id,
-                pos,
-                ty,
-                scope: self.scope.clone(),
-                kind: TermKind::Structure,
-                meta: self.meta.take(),
-            }),
+            other @ _ => {
+                debug!("Add wildcard item: {:?}", other);
+
+                lin.push(LinearizationItem {
+                    id,
+                    pos,
+                    ty,
+                    scope: self.scope.clone(),
+                    kind: TermKind::Structure,
+                    meta: self.meta.take(),
+                })
+            }
         }
     }
 
