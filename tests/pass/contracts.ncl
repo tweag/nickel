@@ -100,4 +100,12 @@ f `boo == 3) &&
 (({foo : {bar: Bool} | default = {bar = false}} & {foo.bar = true}).foo.bar
   | #Assert) &&
 
+// nested_metavalues
+// Regression test for #420
+(let myContract = { x | Str } in
+{
+  foo | #myContract | default = { x = "From foo" },
+  bar | #{..} | default = foo
+} == { foo.x = "From foo", bar.x = "From foo"} | #Assert) &&
+
 true

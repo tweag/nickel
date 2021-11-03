@@ -810,7 +810,6 @@ impl NAryOp {
 
     pub fn is_strict(&self) -> bool {
         match self {
-            NAryOp::MergeContract() => false,
             _ => true,
         }
     }
