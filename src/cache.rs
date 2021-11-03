@@ -88,11 +88,23 @@ pub struct NameIdEntry {
 }
 
 /// The state of an entry of the term cache.
+///
+/// # Imports
+///
+/// Usually, when we apply a procedure to an entry (typechecking, transformation, ...), we also
+/// process all of its transitive imports. However, note that the state is guaranteed to be correct
+/// only for the entry, and not necessarily for its transitive imports. Under normal conditions, if
+/// the state of an entry is `Typechecked`, then all of its transitive imports should also be at
+/// least in the state `Typechecked`. This is not true if an import fails to typecheck, leaving the
+/// entry `Typechecked` while the import stays as `Parsed`.
+///
+/// Thus, the state (e.g. `Typechecked`) only guarantees in general that the corresponding
+/// procedure have been successfully applied to the entry, not to all of its transitive imports.
 #[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Copy, Clone)]
 pub enum EntryState {
     /// The term have just been parsed.
     Parsed,
-    /// The term has been parsed and the imports resolved
+    /// The term has been parsed and the imports resolved.
     ImportsResolved,
     /// The term have been parsed and typechecked.
     Typechecked,
