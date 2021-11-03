@@ -48,3 +48,5 @@ labels:
     color: 77dd77
   - name: "area: website"
     color: 77dd77
+  - name: "area: lsp"
+    color: 77dd77
