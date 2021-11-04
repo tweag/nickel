@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use nickel::{
     identifier::Ident,
     position::TermPos,
-    term::{self, MetaValue, RichTerm, Term},
+    term::{MetaValue, RichTerm, Term},
     typecheck::{
         linearization::{
             Building, Completed, Environment, Linearization, LinearizationItem, Linearizer,
