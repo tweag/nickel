@@ -1,34 +1,23 @@
-use std::{collections::HashMap, ops, os::unix::prelude::FileExt};
+use std::collections::HashMap;
 
 use anyhow::Result;
-use codespan::{ByteIndex, FileId, Files};
+use codespan::FileId;
 use log::{debug, trace, warn};
 use lsp_server::{Connection, ErrorCode, Message, Notification, RequestId, Response};
 use lsp_types::{
-    notification::{self, DidChangeTextDocument, DidOpenTextDocument},
-    notification::{Notification as _, *},
+    notification::Notification as _,
+    notification::{DidChangeTextDocument, DidOpenTextDocument},
     request::{Request as RequestTrait, *},
-    DeclarationCapability, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
-    DidSaveTextDocumentParams, GotoDefinitionParams, Hover, HoverContents, HoverOptions,
-    HoverParams, HoverProviderCapability, MarkedString, OneOf, Position, Range, ReferenceParams,
-    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
-    WorkDoneProgress, WorkDoneProgressOptions,
+    CompletionOptions, CompletionParams, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
+    GotoDefinitionParams, HoverOptions, HoverParams, HoverProviderCapability, OneOf,
+    ReferenceParams, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
+    TextDocumentSyncOptions, WorkDoneProgressOptions,
 };
-use serde::Deserialize;
 
 use nickel::typecheck::linearization::Completed;
-use nickel::{
-    cache::{Cache, ImportResolver},
-    environment::Environment,
-    eval::Thunk,
-    identifier::Ident,
-    position::{self, TermPos},
-};
+use nickel::{cache::Cache, environment::Environment, eval::Thunk, identifier::Ident};
 
-use crate::{
-    diagnostic::LocationCompat,
-    requests::{goto, hover},
-};
+use crate::requests::{completion, goto, hover};
 
 pub struct Server {
     pub connection: Connection,
@@ -54,6 +43,10 @@ impl Server {
             })),
             definition_provider: Some(OneOf::Left(true)),
             references_provider: Some(OneOf::Left(true)),
+            completion_provider: Some(CompletionOptions {
+                trigger_characters: Some(vec![]),
+                ..Default::default()
+            }),
             ..ServerCapabilities::default()
         }
     }
@@ -171,27 +164,13 @@ impl Server {
                 goto::handle_to_usages(params, req.id, self)
             }
 
+            Completion::METHOD => {
+                debug!("handle completion");
+                let params: CompletionParams = serde_json::from_value(req.params).unwrap();
+                completion::handle_completion(params, req.id, self)
+            }
+
             _ => {}
         }
     }
-}
-
-pub fn positon_to_byte_index(
-    position: Position,
-    file_id: FileId,
-    files: &Files<String>,
-) -> ByteIndex {
-    let mut index = 0;
-    let mut lines = position.line;
-    for (idx, byte) in files.source(file_id).bytes().enumerate() {
-        if byte == '\n' as u8 {
-            lines -= 1
-        }
-        if lines == 0 {
-            index = idx as u32;
-            break;
-        }
-    }
-    index += position.character;
-    return ByteIndex(index);
 }

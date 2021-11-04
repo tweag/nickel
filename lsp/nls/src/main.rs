@@ -5,9 +5,9 @@ use lsp_server::Connection;
 mod cache;
 mod diagnostic;
 mod files;
+mod linearization;
 mod requests;
 mod server;
-
 use server::Server;
 
 fn main() -> Result<()> {
@@ -15,13 +15,13 @@ fn main() -> Result<()> {
 
     trace!("hello");
 
-    let (connection, threads) = Connection::stdio();
+    let (connection, _threads) = Connection::stdio();
 
     let capabilities = Server::capabilities();
 
     connection.initialize(serde_json::to_value(&capabilities)?)?;
 
-    let server = Server::new(connection).run();
+    let _server = Server::new(connection).run();
 
     Ok(())
 }

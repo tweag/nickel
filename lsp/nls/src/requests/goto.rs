@@ -1,20 +1,18 @@
 use codespan::ByteIndex;
+use codespan_lsp::position_to_byte_index;
 use log::debug;
-use lsp_server::{ErrorCode, Request, RequestId, Response};
+use lsp_server::{RequestId, Response};
 use lsp_types::{
-    request::GotoDeclarationResponse, GotoDefinitionParams, GotoDefinitionResponse, Hover,
-    HoverContents, HoverParams, Location, MarkedString, MarkupContent, Range, ReferenceParams, Url,
+    GotoDefinitionParams, GotoDefinitionResponse, Location, Range, ReferenceParams, Url,
 };
 use nickel::{
     position::{RawSpan, TermPos},
-    typecheck::linearization::{self, Linearization},
+    typecheck::linearization::{self},
 };
 use serde_json::Value;
 
 use crate::{
-    diagnostic::LocationCompat,
-    requests::utils::find_linearizaion_index,
-    server::{positon_to_byte_index, Server},
+    diagnostic::LocationCompat, requests::utils::find_linearization_index, server::Server,
 };
 
 pub fn handle_to_definition(params: GotoDefinitionParams, id: RequestId, server: &mut Server) {
@@ -29,16 +27,17 @@ pub fn handle_to_definition(params: GotoDefinitionParams, id: RequestId, server:
         )
         .unwrap();
 
-    let start = positon_to_byte_index(
-        params.text_document_position_params.position,
+    let start = position_to_byte_index(
+        server.cache.files(),
         file_id,
-        server.cache.files_mut(),
-    );
+        &params.text_document_position_params.position,
+    )
+    .unwrap();
 
-    let locator = (file_id, start);
+    let locator = (file_id, ByteIndex(start as u32));
     let linearization = &server.lin_cache.get(&file_id).unwrap();
 
-    let index = find_linearizaion_index(&linearization.lin, locator);
+    let index = find_linearization_index(&linearization.lin, locator);
 
     if index == None {
         server.reply(Response::new_ok(id, Value::Null));
@@ -64,11 +63,11 @@ pub fn handle_to_definition(params: GotoDefinitionParams, id: RequestId, server:
                     end: ByteIndex(end),
                     src_id,
                 }) => Some(Location {
-                    uri: Url::parse(server.cache.name(src_id).to_str().unwrap()).unwrap(),
+                    uri: Url::parse(&server.cache.name(src_id).to_string_lossy()).unwrap(),
                     range: Range::from_codespan(
                         &src_id,
                         &(start as usize..end as usize),
-                        server.cache.files_mut(),
+                        server.cache.files(),
                     ),
                 }),
                 TermPos::None => None,
@@ -93,16 +92,17 @@ pub fn handle_to_usages(params: ReferenceParams, id: RequestId, server: &mut Ser
         .id_of(params.text_document_position.text_document.uri.as_str())
         .unwrap();
 
-    let start = positon_to_byte_index(
-        params.text_document_position.position,
+    let start = position_to_byte_index(
+        server.cache.files(),
         file_id,
-        server.cache.files_mut(),
-    );
+        &params.text_document_position.position,
+    )
+    .unwrap();
 
-    let locator = (file_id, start);
+    let locator = (file_id, ByteIndex(start as u32));
     let linearization = server.lin_cache.get(&file_id).unwrap();
 
-    let index = find_linearizaion_index(&linearization.lin, locator);
+    let index = find_linearization_index(&linearization.lin, locator);
 
     if index == None {
         server.reply(Response::new_ok(id, Value::Null));
@@ -131,11 +131,11 @@ pub fn handle_to_usages(params: ReferenceParams, id: RequestId, server: &mut Ser
                         end: ByteIndex(end),
                         src_id,
                     }) => Some(Location {
-                        uri: Url::parse(server.cache.name(src_id).to_str().unwrap()).unwrap(),
+                        uri: Url::parse(&server.cache.name(src_id).to_string_lossy()).unwrap(),
                         range: Range::from_codespan(
                             &src_id,
                             &(start as usize..end as usize),
-                            server.cache.files_mut(),
+                            server.cache.files(),
                         ),
                     }),
                     TermPos::None => None,

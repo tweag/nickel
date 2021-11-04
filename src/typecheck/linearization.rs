@@ -20,20 +20,21 @@
 //!                    The state holds context while building or the finalized linearization
 //! - [StubHost]: The purpose of this is to do nothing. It serves as an implementation used
 //!               outside the LSP context meaning to cause as little runtime impact as possible.
+//! - [LinearizationItem]: Abstract information for each term.
 
-use std::{collections::HashMap, marker::PhantomData, str::EncodeUtf16};
+use std::{collections::HashMap, marker::PhantomData};
 
-use super::{State, TypeWrapper, UnifTable};
+use super::TypeWrapper;
 use crate::environment::Environment as GenericEnvironment;
-use crate::typecheck::to_type;
-use crate::types::{AbsType, Types};
+use crate::term::RecordAttrs;
+use crate::types::Types;
 use crate::{identifier::Ident, position::TermPos, term::Term};
 
 /// Holds the state of a linearization, either in progress or finalized
 /// Restricts the possible states of a linearization to entities marked
 /// as [LinearizationState]
 pub struct Linearization<S: LinearizationState> {
-    state: S,
+    pub state: S,
 }
 
 /// Constructors for different phases
@@ -54,7 +55,7 @@ impl Linearization<Uninit> {
 /// Holds any inner datatype that can be used as stable resource
 /// while recording terms.
 pub struct Building<T> {
-    resource: T,
+    pub resource: T,
 }
 
 /// Finalized linearization
@@ -62,6 +63,7 @@ pub struct Building<T> {
 pub struct Completed {
     pub lin: Vec<LinearizationItem<Resolved>>,
     pub id_mapping: HashMap<usize, usize>,
+    pub scope_mapping: HashMap<Vec<ScopeId>, Vec<usize>>,
 }
 
 pub struct Uninit;
@@ -83,11 +85,11 @@ pub trait ResolutionState {}
 /// Types are available as [TypeWrapper] only during recording
 /// They are resolved after typechecking has collected all terms into concrete
 /// [Types]
-type Unresolved = TypeWrapper;
+pub type Unresolved = TypeWrapper;
 impl ResolutionState for Unresolved {}
 
 /// When resolved a concrete [Types] is known
-type Resolved = Types;
+pub type Resolved = Types;
 impl ResolutionState for Resolved {}
 
 /// A recorded item of a given state of resolution state
@@ -100,6 +102,7 @@ pub struct LinearizationItem<S: ResolutionState> {
     pub pos: TermPos,
     pub ty: S,
     pub kind: TermKind,
+    pub scope: Vec<ScopeId>,
 }
 
 /// Abstact term kinds.
@@ -111,6 +114,7 @@ pub enum TermKind {
     Structure,
     Declaration(String, Vec<usize>),
     Usage(Option<usize>),
+    Record(RecordAttrs),
 }
 
 /// The linearizer trait is what is refered to during typechecking.
@@ -130,17 +134,16 @@ pub trait Linearizer<L, S> {
     /// state is the responsibility of [Linearizer::scope]
     fn add_term(
         &mut self,
-        lin: &mut Linearization<Building<L>>,
-        term: &Term,
-        pos: TermPos,
-        ty: TypeWrapper,
+        _lin: &mut Linearization<Building<L>>,
+        _term: &Term,
+        _pos: TermPos,
+        _ty: TypeWrapper,
     ) {
     }
-
     /// Defines how to turn a [Building] Linearization of the tracked type into
     /// a [Completed] linearization.
     /// By default creates an entirely empty [Completed] object
-    fn linearize(self, lin: Linearization<Building<L>>, extra: &S) -> Linearization<Completed>
+    fn linearize(self, _lin: Linearization<Building<L>>, _extra: S) -> Linearization<Completed>
     where
         Self: Sized,
     {
@@ -148,143 +151,46 @@ pub trait Linearizer<L, S> {
             state: Completed {
                 lin: Vec::new(),
                 id_mapping: HashMap::new(),
+                scope_mapping: HashMap::new(),
             },
         }
     }
-    fn scope(&self) -> Self;
+    fn scope(&self, branch: ScopeId) -> Self;
 }
 
 /// [Linearizer] that deliberately does not maintain any state or act
 /// in any way.
 /// Ideally the compiler would eliminate code using this [Linearizer]
-pub struct StubHost<L>(PhantomData<L>);
-impl<L, S> Linearizer<L, S> for StubHost<L> {
-    fn scope(&self) -> Self {
+pub struct StubHost<L, S>(PhantomData<L>, PhantomData<S>);
+impl<L, S> Linearizer<L, S> for StubHost<L, S> {
+    fn scope(&self, _: ScopeId) -> Self {
         StubHost::new()
     }
 }
 
-impl<L> StubHost<L> {
-    pub fn new() -> StubHost<L> {
-        StubHost(PhantomData)
+impl<L, S> StubHost<L, S> {
+    pub fn new() -> StubHost<L, S> {
+        StubHost(PhantomData, PhantomData)
     }
 }
 
 pub type Environment = GenericEnvironment<Ident, usize>;
 
-/// [Linearizer] used by the LSP
-///
-/// Tracks a _scope stable_ environment managing variable ident
-/// resolution
-pub struct AnalysisHost {
-    env: Environment,
+trait ScopeIdElem: Clone + Eq {}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum ScopeId {
+    Left,
+    Right,
+    Choice(usize),
 }
 
-impl AnalysisHost {
-    pub fn new() -> Self {
-        AnalysisHost {
-            env: Environment::new(),
-        }
-    }
-}
+impl ScopeIdElem for ScopeId {}
 
-impl Linearizer<Vec<LinearizationItem<Unresolved>>, UnifTable> for AnalysisHost {
-    fn add_term(
-        &mut self,
-        lin: &mut Linearization<Building<Vec<LinearizationItem<Unresolved>>>>,
-        term: &Term,
-        pos: TermPos,
-        ty: TypeWrapper,
-    ) {
-        if pos == TermPos::None {
-            eprintln!("{:?}", term);
-            return;
-        }
-        let id = lin.state.resource.len();
-        match term {
-            Term::Let(ident, definition, _) => {
-                self.env.insert(ident.to_owned(), lin.state.resource.len());
-                lin.push(LinearizationItem {
-                    id,
-                    ty,
-                    pos: definition.pos,
-                    kind: TermKind::Declaration(ident.to_string(), Vec::new()),
-                });
-            }
-            Term::Var(ident) => {
-                let parent = self.env.get(ident);
-                lin.push(LinearizationItem {
-                    id,
-                    pos,
-                    ty,
-                    kind: TermKind::Usage(parent),
-                });
-                if let Some(parent) = parent {
-                    lin.add_usage(parent, id);
-                }
-            }
-            _ => lin.push(LinearizationItem {
-                id,
-                pos,
-                ty,
-                kind: TermKind::Structure,
-            }),
-        }
-    }
-
-    /// [Self::add_term] produces a depth first representation or the
-    /// traversed AST. This function indexes items by _source position_.
-    /// Elements are reorderd to allow efficient lookup of elemts by
-    /// their location in the source.
-    ///
-    /// Additionally, resolves concrete types for all items.
-    fn linearize(
-        self,
-        lin: Linearization<Building<Vec<LinearizationItem<Unresolved>>>>,
-        extra: &UnifTable,
-    ) -> Linearization<Completed> {
-        let mut lin_ = lin.state.resource;
-        eprintln!("linearizing");
-        lin_.sort_by_key(|item| match item.pos {
-            TermPos::Original(span) => (span.src_id, span.start),
-            TermPos::Inherited(span) => (span.src_id, span.start),
-            TermPos::None => {
-                eprintln!("{:?}", item);
-
-                unreachable!()
-            }
-        });
-
-        let mut id_mapping = HashMap::new();
-        lin_.iter()
-            .enumerate()
-            .for_each(|(index, LinearizationItem { id, .. })| {
-                id_mapping.insert(*id, index);
-            });
-
-        let lin_ = lin_
-            .into_iter()
-            .map(
-                |LinearizationItem { id, pos, ty, kind }| LinearizationItem {
-                    ty: to_type(extra, ty),
-                    id,
-                    pos,
-                    kind,
-                },
-            )
-            .collect();
-
-        Linearization::completed(Completed {
-            lin: lin_,
-            id_mapping,
-        })
-    }
-
-    fn scope(&self) -> Self {
-        AnalysisHost {
-            env: self.env.clone(),
-        }
-    }
+#[derive(Default)]
+pub struct BuildingResource {
+    pub linearization: Vec<LinearizationItem<Unresolved>>,
+    pub scope: HashMap<Vec<ScopeId>, Vec<usize>>,
 }
 
 impl Into<Completed> for Linearization<Completed> {
@@ -293,22 +199,65 @@ impl Into<Completed> for Linearization<Completed> {
     }
 }
 
-impl Linearization<Building<Vec<LinearizationItem<Unresolved>>>> {
-    fn push(&mut self, item: LinearizationItem<Unresolved>) {
-        self.state.resource.push(item);
+impl Linearization<Building<BuildingResource>> {
+    pub fn push(&mut self, item: LinearizationItem<Unresolved>) {
+        self.state
+            .resource
+            .scope
+            .remove(&item.scope)
+            .map(|mut s| {
+                s.push(item.id);
+                s
+            })
+            .or_else(|| Some(vec![item.id]))
+            .into_iter()
+            .for_each(|l| {
+                self.state.resource.scope.insert(item.scope.clone(), l);
+            });
+        self.state.resource.linearization.push(item);
     }
 
-    fn add_usage(&mut self, decl: usize, usage: usize) {
+    pub fn add_usage(&mut self, decl: usize, usage: usize) {
         match self
             .state
             .resource
+            .linearization
             .get_mut(decl)
             .expect("Coundt find parent")
             .kind
         {
             TermKind::Structure => unreachable!(),
             TermKind::Usage(_) => unreachable!(),
+            TermKind::Record(_) => unreachable!(),
             TermKind::Declaration(_, ref mut usages) => usages.push(usage),
         };
+    }
+}
+
+impl Completed {
+    pub fn get_item(&self, id: usize) -> Option<&LinearizationItem<Resolved>> {
+        self.id_mapping
+            .get(&id)
+            .and_then(|index| self.lin.get(*index))
+    }
+
+    pub fn get_in_scope(
+        &self,
+        LinearizationItem { scope, .. }: &LinearizationItem<Resolved>,
+    ) -> Vec<&LinearizationItem<Resolved>> {
+        (0..scope.len())
+            .into_iter()
+            .map(|end| &scope[..=end])
+            .flat_map(|scope| {
+                eprintln!("in scope {:?}: {:?}", scope, self.scope_mapping.get(scope));
+
+                self.scope_mapping
+                    .get(scope)
+                    .map_or_else(|| Vec::new(), Clone::clone)
+            })
+            .map(|id| self.get_item(id))
+            .filter(Option::is_some)
+            .map(Option::unwrap)
+            .collect()
     }
 }

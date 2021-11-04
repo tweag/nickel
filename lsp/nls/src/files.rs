@@ -1,20 +1,12 @@
-use std::{borrow::BorrowMut, collections::HashMap};
-
 use anyhow::Result;
 use codespan::FileId;
-use codespan_reporting::diagnostic::{self, Diagnostic};
-use log::{info, trace};
-use lsp_server::{Message, Notification, Response};
-use lsp_types::{
-    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams, Position,
-    PublishDiagnosticsParams,
-};
+use codespan_reporting::diagnostic::Diagnostic;
+use log::trace;
+use lsp_server::Notification;
+use lsp_types::{DidChangeTextDocumentParams, DidOpenTextDocumentParams, PublishDiagnosticsParams};
 use nickel::{
-    cache::{self, CacheError, CacheOp},
-    environment::Environment,
-    error::{self, ToDiagnostic},
-    position::RawSpan,
-    typecheck::{self},
+    cache::{CacheError, CacheOp},
+    error::ToDiagnostic,
 };
 
 use super::cache::CacheExt;
