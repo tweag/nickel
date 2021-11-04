@@ -34,7 +34,7 @@ pub fn handle(params: HoverParams, id: RequestId, server: &mut Server) {
     let locator = (file_id, ByteIndex(start as u32));
     let linearization = &server.lin_cache.get(&file_id).unwrap().lin;
 
-    let index = find_linearizaion_index(linearization, locator);
+    let index = find_linearization_index(linearization, locator);
 
     if index == None {
         server.reply(Response::new_ok(id, Value::Null));
