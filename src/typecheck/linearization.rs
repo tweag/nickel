@@ -24,7 +24,7 @@
 
 use std::{collections::HashMap, marker::PhantomData, str::EncodeUtf16};
 
-use super::reporting::{NameReg, NameResolution};
+use super::reporting::NameReg;
 use super::{State, TypeWrapper, UnifTable};
 use crate::environment::Environment as GenericEnvironment;
 use crate::term::RecordAttrs;
