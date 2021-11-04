@@ -7,7 +7,6 @@ use crate::position::TermPos;
 use crate::term::{RichTerm, StrChunk};
 
 /// An element of the stack.
-#[derive(Debug)]
 pub enum Marker {
     /// An equality to test.
     ///
@@ -49,6 +48,21 @@ pub enum Marker {
     Strictness(bool),
 }
 
+impl std::fmt::Debug for Marker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Marker::Eq(_, _) => write!(f, "Eq"),
+            Marker::Arg(_, _) => write!(f, "Arg"),
+            Marker::TrackedArg(_, _) => write!(f, "TrackedArg"),
+            Marker::Thunk(_) => write!(f, "Thunk"),
+            Marker::Cont(op, sz, _) => write!(f, "Cont {:?} (callstack size {})", op, sz),
+            Marker::StrChunk(_) => write!(f, "StrChunk"),
+            Marker::StrAcc(_, _, _) => write!(f, "StrAcc"),
+            Marker::Strictness(s) => write!(f, "Strictness = {}", s),
+        }
+    }
+}
+
 impl Marker {
     pub fn is_arg(&self) -> bool {
         matches!(*self, Marker::Arg(..) | Marker::TrackedArg(..))
@@ -80,7 +94,6 @@ impl Marker {
 }
 
 /// The evaluation stack.
-#[derive(Debug)]
 pub struct Stack(Vec<Marker>);
 
 impl IntoIterator for Stack {
@@ -296,6 +309,16 @@ impl Stack {
             }
             _ => None,
         }
+    }
+}
+
+impl std::fmt::Debug for Stack {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "--- STACK ---")?;
+        for marker in self.0.iter().rev() {
+            write!(f, "| {:?}", marker)?;
+        }
+        write!(f, "---  END  ---")
     }
 }
 

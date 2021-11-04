@@ -42,7 +42,7 @@ enum EqResult {
 }
 
 /// An operation continuation as stored on the stack.
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 pub enum OperationCont {
     Op1(
         /* unary operation */ UnaryOp,
@@ -71,6 +71,17 @@ pub enum OperationCont {
                               of arguments yet to be evaluated */
         prev_enriched_strict: bool,
     },
+}
+
+impl std::fmt::Debug for OperationCont {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OperationCont::Op1(op, _, _) => write!(f, "Op1 {:?}", op),
+            OperationCont::Op2First(op, _, _, _) => write!(f, "Op2First {:?}", op),
+            OperationCont::Op2Second(op, _, _, _, _) => write!(f, "Op2Second {:?}", op),
+            OperationCont::OpN { op, .. } => write!(f, "OpN {:?}", op),
+        }
+    }
 }
 
 /// Process to the next step of the evaluation of an operation.
