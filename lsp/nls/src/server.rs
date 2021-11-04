@@ -185,23 +185,3 @@ impl Server {
         }
     }
 }
-
-pub fn positon_to_byte_index(
-    position: Position,
-    file_id: FileId,
-    files: &Files<String>,
-) -> ByteIndex {
-    let mut index = 0;
-    let mut lines = position.line;
-    for (idx, byte) in files.source(file_id).bytes().enumerate() {
-        if byte == '\n' as u8 {
-            lines -= 1
-        }
-        if lines == 0 {
-            index = idx as u32;
-            break;
-        }
-    }
-    index += position.character;
-    return ByteIndex(index);
-}

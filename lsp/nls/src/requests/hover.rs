@@ -11,11 +11,7 @@ use nickel::{
 };
 use serde_json::Value;
 
-use crate::{
-    diagnostic::LocationCompat,
-    requests::utils::find_linearizaion_index,
-    server::{positon_to_byte_index, Server},
-};
+use crate::{diagnostic::LocationCompat, requests::utils::find_linearizaion_index, server::Server};
 
 pub fn handle(params: HoverParams, id: RequestId, server: &mut Server) {
     let file_id = server

@@ -1,4 +1,5 @@
 use codespan::ByteIndex;
+use codespan_lsp::position_to_byte_index;
 use log::debug;
 use lsp_server::{ErrorCode, Request, RequestId, Response};
 use lsp_types::{
@@ -11,11 +12,7 @@ use nickel::{
 };
 use serde_json::Value;
 
-use crate::{
-    diagnostic::LocationCompat,
-    requests::utils::find_linearizaion_index,
-    server::{positon_to_byte_index, Server},
-};
+use crate::{diagnostic::LocationCompat, requests::utils::find_linearizaion_index, server::Server};
 
 pub fn handle_to_definition(params: GotoDefinitionParams, id: RequestId, server: &mut Server) {
     let file_id = server
@@ -29,13 +26,14 @@ pub fn handle_to_definition(params: GotoDefinitionParams, id: RequestId, server:
         )
         .unwrap();
 
-    let start = positon_to_byte_index(
-        params.text_document_position_params.position,
-        file_id,
+    let start = position_to_byte_index(
         server.cache.files(),
-    );
+        file_id,
+        &params.text_document_position_params.position,
+    )
+    .unwrap();
 
-    let locator = (file_id, start);
+    let locator = (file_id, ByteIndex(start as u32));
     let linearization = &server.lin_cache.get(&file_id).unwrap();
 
     let index = find_linearizaion_index(&linearization.lin, locator);
@@ -93,13 +91,14 @@ pub fn handle_to_usages(params: ReferenceParams, id: RequestId, server: &mut Ser
         .id_of(params.text_document_position.text_document.uri.as_str())
         .unwrap();
 
-    let start = positon_to_byte_index(
-        params.text_document_position.position,
-        file_id,
+    let start = position_to_byte_index(
         server.cache.files(),
-    );
+        file_id,
+        &params.text_document_position.position,
+    )
+    .unwrap();
 
-    let locator = (file_id, start);
+    let locator = (file_id, ByteIndex(start as u32));
     let linearization = server.lin_cache.get(&file_id).unwrap();
 
     let index = find_linearizaion_index(&linearization.lin, locator);
