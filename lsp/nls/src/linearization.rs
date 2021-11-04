@@ -92,12 +92,12 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
         &mut self,
         lin: &mut Linearization<Building<BuildingResource>>,
         term: &Term,
-        pos: TermPos,
+        mut pos: TermPos,
         ty: TypeWrapper,
     ) {
         debug!("adding term: {:?} @ {:?}", term, pos);
+
         if pos == TermPos::None {
-            debug!("Term missing pos!");
             return;
         }
         let mut id_gen = lin.id_gen();
@@ -132,32 +132,35 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                 }
             }
             Term::Record(fields, _) | Term::RecRecord(fields, _, _) => {
-                let fields = fields
+                let id = id_gen.take();
+                let items = fields
                     .iter()
-                    .map(|(ident, term)| LinearizationItem {
-                        id: id_gen.take(),
-                        // TODO: Should alwasy be some
-                        pos: ident.1.unwrap_or(pos.to_owned()),
-                        ty: ty.clone(),
-                        kind: TermKind::RecordField {
-                            ident: ident.to_owned(),
-                            body_pos: term.pos,
+                    .map(|(ident, term)| {
+                        LinearizationItem {
+                            id: id_gen.take(),
+                            // TODO: Should alwasy be some
+                            pos: ident.1.unwrap_or(pos.to_owned()),
+                            ty: ty.clone(),
+                            kind: TermKind::RecordField {
+                                ident: ident.to_owned(),
+                                body_pos: term.pos,
 
-                            record: id,
-                            usages: Vec::new(),
-                        },
-                        scope: self.scope.clone(),
-                        meta: match &*term.term {
-                            Term::MetaValue(meta) => Some(MetaValue {
-                                value: None,
-                                ..meta.to_owned()
-                            }),
-                            _ => None,
-                        },
+                                record: id,
+                                usages: Vec::new(),
+                            },
+                            scope: self.scope.clone(),
+                            meta: match &*term.term {
+                                Term::MetaValue(meta) => Some(MetaValue {
+                                    value: None,
+                                    ..meta.to_owned()
+                                }),
+                                _ => None,
+                            },
+                        }
                     })
                     .collect::<Vec<_>>();
 
-                let ids = fields.iter().map(|item| item.id).collect::<Vec<usize>>();
+                let ids = items.iter().map(|item| item.id).collect::<Vec<usize>>();
 
                 lin.push(LinearizationItem {
                     id,
@@ -169,7 +172,16 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                 });
 
                 // add all fields
-                fields.into_iter().for_each(|item| lin.push(item));
+                items.into_iter().for_each(|item| lin.push(item));
+
+                for (Ident(_, pos), term) in fields.iter() {
+                    match (&*term.term, pos) {
+                        (record @ Term::Record(_, _), Some(pos)) => {
+                            self.add_term(lin, record, *pos, TypeWrapper::Concrete(AbsType::Sym()))
+                        }
+                        _ => {}
+                    }
+                }
             }
 
             Term::MetaValue(meta) => {
