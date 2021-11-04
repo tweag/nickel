@@ -11,7 +11,9 @@ use nickel::{
 };
 use serde_json::Value;
 
-use crate::{diagnostic::LocationCompat, requests::utils::find_linearizaion_index, server::Server};
+use crate::{
+    diagnostic::LocationCompat, requests::utils::find_linearization_index, server::Server,
+};
 
 pub fn handle_to_definition(params: GotoDefinitionParams, id: RequestId, server: &mut Server) {
     let file_id = server
@@ -35,7 +37,7 @@ pub fn handle_to_definition(params: GotoDefinitionParams, id: RequestId, server:
     let locator = (file_id, ByteIndex(start as u32));
     let linearization = &server.lin_cache.get(&file_id).unwrap();
 
-    let index = find_linearizaion_index(&linearization.lin, locator);
+    let index = find_linearization_index(&linearization.lin, locator);
 
     if index == None {
         server.reply(Response::new_ok(id, Value::Null));
@@ -100,7 +102,7 @@ pub fn handle_to_usages(params: ReferenceParams, id: RequestId, server: &mut Ser
     let locator = (file_id, ByteIndex(start as u32));
     let linearization = server.lin_cache.get(&file_id).unwrap();
 
-    let index = find_linearizaion_index(&linearization.lin, locator);
+    let index = find_linearization_index(&linearization.lin, locator);
 
     if index == None {
         server.reply(Response::new_ok(id, Value::Null));

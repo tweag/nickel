@@ -5,7 +5,7 @@ use lsp_server::{RequestId, Response};
 use lsp_types::{CompletionItem, CompletionParams};
 use serde_json::Value;
 
-use crate::{requests::utils::find_linearizaion_index, server::Server};
+use crate::{requests::utils::find_linearization_index, server::Server};
 
 pub fn handle_completion(params: CompletionParams, id: RequestId, server: &mut Server) {
     let file_id = server
@@ -23,7 +23,7 @@ pub fn handle_completion(params: CompletionParams, id: RequestId, server: &mut S
     let locator = (file_id, ByteIndex(start as u32));
     let linearization = server.lin_cache.get(&file_id).unwrap();
 
-    let index = find_linearizaion_index(&linearization.lin, locator);
+    let index = find_linearization_index(&linearization.lin, locator);
 
     if index == None {
         server.reply(Response::new_ok(id, Value::Null));

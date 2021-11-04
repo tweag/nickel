@@ -6,7 +6,9 @@ use lsp_types::{Hover, HoverContents, HoverParams, LanguageString, MarkedString,
 use nickel::position::TermPos;
 use serde_json::Value;
 
-use crate::{diagnostic::LocationCompat, requests::utils::find_linearizaion_index, server::Server};
+use crate::{
+    diagnostic::LocationCompat, requests::utils::find_linearization_index, server::Server,
+};
 
 pub fn handle(params: HoverParams, id: RequestId, server: &mut Server) {
     let file_id = server

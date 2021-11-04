@@ -2,7 +2,7 @@ use codespan::ByteIndex;
 use log::debug;
 use nickel::{position::TermPos, typecheck::linearization};
 
-pub fn find_linearizaion_index(
+pub fn find_linearization_index(
     linearization: &Vec<linearization::LinearizationItem<nickel::types::Types>>,
     locator: (codespan::FileId, ByteIndex),
 ) -> Option<usize> {
