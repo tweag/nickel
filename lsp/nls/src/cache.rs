@@ -1,4 +1,4 @@
-use std::{borrow::BorrowMut, collections::HashMap, ffi::OsString, io};
+use std::{collections::HashMap, ffi::OsString, io};
 
 use codespan::FileId;
 use nickel::{

@@ -1,14 +1,13 @@
 use codespan::ByteIndex;
 use codespan_lsp::position_to_byte_index;
 use log::debug;
-use lsp_server::{ErrorCode, Request, RequestId, Response};
+use lsp_server::{RequestId, Response};
 use lsp_types::{
-    request::GotoDeclarationResponse, GotoDefinitionParams, GotoDefinitionResponse, Hover,
-    HoverContents, HoverParams, Location, MarkedString, MarkupContent, Range, ReferenceParams, Url,
+    GotoDefinitionParams, GotoDefinitionResponse, Location, Range, ReferenceParams, Url,
 };
 use nickel::{
     position::{RawSpan, TermPos},
-    typecheck::linearization::{self, Linearization},
+    typecheck::linearization::{self},
 };
 use serde_json::Value;
 

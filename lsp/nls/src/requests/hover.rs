@@ -1,14 +1,9 @@
 use codespan::ByteIndex;
 use codespan_lsp::position_to_byte_index;
 use log::debug;
-use lsp_server::{ErrorCode, Request, RequestId, Response};
-use lsp_types::{
-    Hover, HoverContents, HoverParams, LanguageString, MarkedString, MarkupContent, Range,
-};
-use nickel::{
-    position::TermPos,
-    typecheck::linearization::{self, Linearization},
-};
+use lsp_server::{RequestId, Response};
+use lsp_types::{Hover, HoverContents, HoverParams, LanguageString, MarkedString, Range};
+use nickel::position::TermPos;
 use serde_json::Value;
 
 use crate::{diagnostic::LocationCompat, requests::utils::find_linearizaion_index, server::Server};

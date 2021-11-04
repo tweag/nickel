@@ -1,10 +1,8 @@
 use std::ops::Range;
 
 use codespan::{FileId, Files};
-use codespan_reporting::diagnostic::{self, Diagnostic, Label};
-use lsp_types::{DiagnosticRelatedInformation, Location, NumberOrString, Position, Url};
-
-use nickel::error::TypecheckError;
+use codespan_reporting::diagnostic::{self, Diagnostic};
+use lsp_types::{NumberOrString, Position};
 
 /// Convert [codespan_reporting::diagnostic::Diagnostic] into a list of another type
 /// Diagnostics tend to contain a list of labels pointing to errors in the code which

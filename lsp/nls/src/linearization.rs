@@ -145,7 +145,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
     fn linearize(
         self,
         lin: Linearization<Building<BuildingResource>>,
-        (mut table, reported_names): (UnifTable, HashMap<usize, Ident>),
+        (table, reported_names): (UnifTable, HashMap<usize, Ident>),
     ) -> Linearization<Completed> {
         let mut lin_ = lin.state.resource.linearization;
         eprintln!("linearizing");

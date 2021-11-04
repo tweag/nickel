@@ -22,14 +22,12 @@
 //!               outside the LSP context meaning to cause as little runtime impact as possible.
 //! - [LinearizationItem]: Abstract information for each term.
 
-use std::{collections::HashMap, marker::PhantomData, str::EncodeUtf16};
+use std::{collections::HashMap, marker::PhantomData};
 
-use super::reporting::NameReg;
-use super::{State, TypeWrapper, UnifTable};
+use super::TypeWrapper;
 use crate::environment::Environment as GenericEnvironment;
 use crate::term::RecordAttrs;
-use crate::typecheck::reporting::to_type;
-use crate::types::{AbsType, Types};
+use crate::types::Types;
 use crate::{identifier::Ident, position::TermPos, term::Term};
 
 /// Holds the state of a linearization, either in progress or finalized
@@ -136,16 +134,16 @@ pub trait Linearizer<L, S> {
     /// state is the responsibility of [Linearizer::scope]
     fn add_term(
         &mut self,
-        lin: &mut Linearization<Building<L>>,
-        term: &Term,
-        pos: TermPos,
-        ty: TypeWrapper,
+        _lin: &mut Linearization<Building<L>>,
+        _term: &Term,
+        _pos: TermPos,
+        _ty: TypeWrapper,
     ) {
     }
     /// Defines how to turn a [Building] Linearization of the tracked type into
     /// a [Completed] linearization.
     /// By default creates an entirely empty [Completed] object
-    fn linearize(self, lin: Linearization<Building<L>>, extra: S) -> Linearization<Completed>
+    fn linearize(self, _lin: Linearization<Building<L>>, _extra: S) -> Linearization<Completed>
     where
         Self: Sized,
     {

@@ -2,7 +2,7 @@ use codespan::ByteIndex;
 use codespan_lsp::position_to_byte_index;
 use log::debug;
 use lsp_server::{RequestId, Response};
-use lsp_types::{request::Completion, CompletionItem, CompletionParams};
+use lsp_types::{CompletionItem, CompletionParams};
 use serde_json::Value;
 
 use crate::{requests::utils::find_linearizaion_index, server::Server};

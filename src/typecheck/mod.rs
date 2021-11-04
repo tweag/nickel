@@ -53,10 +53,7 @@ use crate::{mk_tyw_arrow, mk_tyw_enum, mk_tyw_enum_row, mk_tyw_record, mk_tyw_ro
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 
-use self::linearization::{
-    Building, Completed, Environment as LinEnv, Linearization, Linearizer, ScopeId, StubHost,
-};
-use self::reporting::NameReg;
+use self::linearization::{Building, Completed, Linearization, Linearizer, ScopeId, StubHost};
 
 pub mod linearization;
 
