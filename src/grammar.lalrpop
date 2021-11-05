@@ -482,7 +482,7 @@ subType : Types = {
         Types(AbsType::List(ty))
     },
     <Ident> => Types(AbsType::Var(<>)),
-    "#" <WithPos<Atom>> => Types(AbsType::Flat(<>)),
+    "#" <WithPos<RecordOperand>> => Types(AbsType::Flat(<>)),
     "(" <Types> ")",
     "<" <rows:(<Ident> ",")*> <last: (<Ident>)?> <tail: ("|" <Ident>)?> ">" => {
         let ty = rows.into_iter()
