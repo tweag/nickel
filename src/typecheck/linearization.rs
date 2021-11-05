@@ -117,7 +117,7 @@ pub struct LinearizationItem<S: ResolutionState> {
 pub enum TermKind {
     Declaration(Ident, Vec<usize>),
     Usage(Option<usize>),
-    Record(Vec<usize>),
+    Record(HashMap<Ident, usize>),
     RecordField {
         ident: Ident,
         body_pos: TermPos,
