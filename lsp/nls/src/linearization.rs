@@ -13,6 +13,7 @@ use nickel::{
         reporting::{to_type, NameReg},
         TypeWrapper, UnifTable,
     },
+    types::AbsType,
 };
 
 #[derive(Default)]
@@ -75,6 +76,7 @@ pub struct AnalysisHost {
     env: Environment,
     scope: Vec<ScopeId>,
     meta: Option<MetaValue>,
+    record_fields: Option<(usize, Vec<Ident>)>,
 }
 
 impl AnalysisHost {
@@ -83,6 +85,7 @@ impl AnalysisHost {
             env: Environment::new(),
             scope: Vec::new(),
             meta: None,
+            record_fields: None,
         }
     }
 }
@@ -96,11 +99,53 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
         ty: TypeWrapper,
     ) {
         debug!("adding term: {:?} @ {:?}", term, pos);
+        let mut id_gen = lin.id_gen();
+
+        // Register record field if appropriate
+        if let Some((record, field)) = self
+            .record_fields
+            .take()
+            .map(|(record, mut fields)| (record, fields.pop().unwrap()))
+        {
+            // 0. If the record_fields field is set, it is set by [Self::scope]
+            //    such that exactly one element/field is present
+            // 1. record fields have a position
+            // 2. the type of the field is the type of its value
+            // 3. the scope of the field is the scope of its parent (the record)
+            let meta = match term {
+                Term::MetaValue(meta) => Some(MetaValue {
+                    value: None,
+                    ..meta.clone()
+                }),
+                _ => None,
+            };
+
+            lin.push(LinearizationItem {
+                id: id_gen.take(),
+                pos: field.1.unwrap(),
+                ty: ty.clone(),
+                kind: TermKind::RecordField {
+                    record,
+                    body_pos: match pos {
+                        TermPos::None => field.1.unwrap(),
+                        _ => pos.clone(),
+                    },
+                    ident: field.clone(),
+                    usages: Vec::new(),
+                },
+                scope: self.scope[..self.scope.len() - 1].to_vec(),
+                meta,
+            });
+
+            if pos == TermPos::None {
+                pos = field.1.unwrap();
+            }
+        }
 
         if pos == TermPos::None {
             return;
         }
-        let mut id_gen = lin.id_gen();
+
         let id = id_gen.id();
         match term {
             Term::Let(ident, _, _) => {
@@ -132,56 +177,16 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                 }
             }
             Term::Record(fields, _) | Term::RecRecord(fields, _, _) => {
-                let id = id_gen.take();
-                let items = fields
-                    .iter()
-                    .map(|(ident, term)| {
-                        LinearizationItem {
-                            id: id_gen.take(),
-                            // TODO: Should alwasy be some
-                            pos: ident.1.unwrap_or(pos.to_owned()),
-                            ty: ty.clone(),
-                            kind: TermKind::RecordField {
-                                ident: ident.to_owned(),
-                                body_pos: term.pos,
-
-                                record: id,
-                                usages: Vec::new(),
-                            },
-                            scope: self.scope.clone(),
-                            meta: match &*term.term {
-                                Term::MetaValue(meta) => Some(MetaValue {
-                                    value: None,
-                                    ..meta.to_owned()
-                                }),
-                                _ => None,
-                            },
-                        }
-                    })
-                    .collect::<Vec<_>>();
-
-                let ids = items.iter().map(|item| item.id).collect::<Vec<usize>>();
+                self.record_fields = Some((id, fields.keys().cloned().collect()));
 
                 lin.push(LinearizationItem {
                     id,
                     pos,
                     ty,
-                    kind: TermKind::Record(ids.clone()),
+                    kind: TermKind::Record(Vec::new()),
                     scope: self.scope.clone(),
                     meta: self.meta.take(),
                 });
-
-                // add all fields
-                items.into_iter().for_each(|item| lin.push(item));
-
-                for (Ident(_, pos), term) in fields.iter() {
-                    match (&*term.term, pos) {
-                        (record @ Term::Record(_, _), Some(pos)) => {
-                            self.add_term(lin, record, *pos, TypeWrapper::Concrete(AbsType::Sym()))
-                        }
-                        _ => {}
-                    }
-                }
             }
 
             Term::MetaValue(meta) => {
@@ -301,7 +306,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
         })
     }
 
-    fn scope(&self, scope_id: ScopeId) -> Self {
+    fn scope(&mut self, scope_id: ScopeId) -> Self {
         let mut scope = self.scope.clone();
         scope.push(scope_id);
 
@@ -311,6 +316,9 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
             /// when opening a new scope `meta` is assumed to be `None` as meta data
             /// is immediately followed by a term without opening a scope
             meta: None,
+            record_fields: self.record_fields.as_mut().and_then(|(record, fields)| {
+                Some(*record).zip(fields.pop().map(|field| vec![field]))
+            }),
         }
     }
 }

@@ -165,7 +165,7 @@ pub trait Linearizer<L, S> {
             },
         }
     }
-    fn scope(&self, branch: ScopeId) -> Self;
+    fn scope(&mut self, branch: ScopeId) -> Self;
 }
 
 /// [Linearizer] that deliberately does not maintain any state or act
@@ -173,7 +173,7 @@ pub trait Linearizer<L, S> {
 /// Ideally the compiler would eliminate code using this [Linearizer]
 pub struct StubHost<L, S>(PhantomData<L>, PhantomData<S>);
 impl<L, S> Linearizer<L, S> for StubHost<L, S> {
-    fn scope(&self, _: ScopeId) -> Self {
+    fn scope(&mut self, _: ScopeId) -> Self {
         StubHost::new()
     }
 }

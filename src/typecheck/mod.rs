@@ -456,7 +456,7 @@ pub fn type_check<L>(
     t: &RichTerm,
     global_eval_env: &eval::Environment,
     resolver: &impl ImportResolver,
-    linearizer: impl Linearizer<L, (UnifTable, HashMap<usize, Ident>)>,
+    mut linearizer: impl Linearizer<L, (UnifTable, HashMap<usize, Ident>)>,
 ) -> Result<(Types, Completed), TypecheckError>
 where
     L: Default,
