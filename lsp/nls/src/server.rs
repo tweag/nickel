@@ -146,31 +146,39 @@ impl Server {
     }
 
     fn handle_request(&mut self, req: lsp_server::Request) {
-        match req.method.as_str() {
+        let res = match req.method.as_str() {
             HoverRequest::METHOD => {
                 let params: HoverParams = serde_json::from_value(req.params).unwrap();
-                hover::handle(params, req.id, self)
+                hover::handle(params, req.id.clone(), self)
             }
 
             GotoDefinition::METHOD => {
                 debug!("handle goto defnition");
                 let params: GotoDefinitionParams = serde_json::from_value(req.params).unwrap();
-                goto::handle_to_definition(params, req.id, self)
+                Ok(goto::handle_to_definition(params, req.id.clone(), self))
             }
 
             References::METHOD => {
                 debug!("handle goto defnition");
                 let params: ReferenceParams = serde_json::from_value(req.params).unwrap();
-                goto::handle_to_usages(params, req.id, self)
+                Ok(goto::handle_to_usages(params, req.id.clone(), self))
             }
 
             Completion::METHOD => {
                 debug!("handle completion");
                 let params: CompletionParams = serde_json::from_value(req.params).unwrap();
-                completion::handle_completion(params, req.id, self)
+                Ok(completion::handle_completion(params, req.id.clone(), self))
             }
 
-            _ => {}
+            _ => Ok(()),
+        };
+
+        if let Err(error) = res {
+            self.reply(Response {
+                id: req.id,
+                result: None,
+                error: Some(error),
+            })
         }
     }
 }
