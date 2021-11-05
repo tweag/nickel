@@ -57,7 +57,7 @@ builtins.serialize `Json (
   {
     name = "nickel",
     buildInputs = [{package = "hello"}],
-  } | #(ctr.Shell)
+  } | #ctr.Shell
 ) == builtins.serialize `Json {
   name = "nickel",
   buildInputs = [{input = "nixpkgs", package = "hello", "_type" = "package"}],
