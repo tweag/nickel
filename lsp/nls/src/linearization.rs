@@ -272,10 +272,6 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                 // Notice 2: we discard the encoded value as anything we
                 //           would do with the value will be handled in the following
                 //           call to [Self::add_term]
-                let meta = MetaValue {
-                    value: None,
-                    ..meta.to_owned()
-                };
 
                 for contract in meta.contracts.iter().cloned() {
                     match contract.types.0 {
@@ -307,7 +303,10 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                 }
 
                 if meta.value.is_some() {
-                    self.meta.insert(meta);
+                    self.meta.insert(MetaValue {
+                        value: None,
+                        ..meta.to_owned()
+                    });
                 }
             }
 
