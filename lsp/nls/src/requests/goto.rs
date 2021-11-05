@@ -123,10 +123,11 @@ pub fn handle_to_usages(
     debug!("found referencing item: {:?}", item);
 
     let locations = match item.kind {
-        linearization::TermKind::Declaration(_, references) => {
+        linearization::TermKind::Declaration(_, usages)
+        | linearization::TermKind::RecordField { usages, .. } => {
             let mut locations = Vec::new();
 
-            for reference_id in references.iter() {
+            for reference_id in usages.iter() {
                 let reference = linearization.id_mapping[&reference_id];
                 let reference = linearization.lin[reference].clone();
                 let location = match reference.pos {
