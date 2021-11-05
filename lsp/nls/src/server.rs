@@ -19,10 +19,7 @@ use lsp_types::{
 use nickel::typecheck::linearization::Completed;
 use nickel::{cache::Cache, environment::Environment, eval::Thunk, identifier::Ident};
 
-use crate::{
-    diagnostic::LocationCompat,
-    requests::{completion, goto, hover, symbols},
-};
+use crate::requests::{completion, goto, hover, symbols};
 
 pub struct Server {
     pub connection: Connection,

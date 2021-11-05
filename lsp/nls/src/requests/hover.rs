@@ -3,7 +3,12 @@ use codespan_lsp::position_to_byte_index;
 use log::debug;
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{Hover, HoverContents, HoverParams, LanguageString, MarkedString, Range};
-use nickel::{position::TermPos, term::MetaValue, typecheck::linearization};
+use nickel::{
+    position::TermPos,
+    term::MetaValue,
+    typecheck::linearization::{self, Completed, TermKind},
+    types::Types,
+};
 use serde_json::Value;
 
 use crate::{
@@ -49,7 +54,53 @@ pub fn handle(
     let item = linearization[index.unwrap()].to_owned();
     debug!("{:?}", item);
 
-    let mut extra = vec![];
+    let (ty, meta) = resolve_type_meta(&item, &completed);
+
+    let range = match item.pos {
+        TermPos::Original(span) | TermPos::Inherited(span) => Some(Range::from_codespan(
+            &file_id,
+            &(span.start.0 as usize..span.end.0 as usize),
+            server.cache.files(),
+        )),
+        TermPos::None => None,
+    };
+    server.reply(Response::new_ok(
+        id,
+        Hover {
+            contents: HoverContents::Array(vec![
+                MarkedString::LanguageString(LanguageString {
+                    language: "nickel".into(),
+                    value: ty.to_string(),
+                }),
+                MarkedString::LanguageString(LanguageString {
+                    language: "plain".into(),
+                    value: meta.join("\n"),
+                }),
+                MarkedString::LanguageString(LanguageString {
+                    language: "plain".into(),
+                    value: format!("{:?} @ {:?}", item, range,),
+                }),
+            ]),
+
+            range,
+        },
+    ));
+    Ok(())
+}
+
+fn resolve_type_meta(
+    item: &linearization::LinearizationItem<Types>,
+    completed: &Completed,
+) -> (Types, Vec<String>) {
+    let mut extra = Vec::new();
+
+    let item = match item.kind {
+        TermKind::Usage(usage) => usage
+            .and_then(|u| completed.get_item(u + 1))
+            .unwrap_or(item),
+        TermKind::Declaration(_, _) => completed.get_item(item.id + 1).unwrap_or(item),
+        _ => item,
+    };
 
     if let Some(MetaValue {
         ref doc,
@@ -57,12 +108,8 @@ pub fn handle(
         ref contracts,
         priority,
         ..
-    }) = item.meta.as_ref().or_else(|| match item.kind {
-        linearization::TermKind::Usage(usage) => usage
-            .and_then(|u| completed.get_item(u))
-            .and_then(|i| i.meta.as_ref()),
-        _ => None,
-    }) {
+    }) = item.meta.as_ref()
+    {
         if let Some(doc) = doc {
             extra.push(doc.to_owned());
         }
@@ -82,34 +129,5 @@ pub fn handle(
         extra.push(format!("Merge Priority: {:?}", priority));
     }
 
-    let range = match item.pos {
-        TermPos::Original(span) | TermPos::Inherited(span) => Some(Range::from_codespan(
-            &file_id,
-            &(span.start.0 as usize..span.end.0 as usize),
-            server.cache.files(),
-        )),
-        TermPos::None => None,
-    };
-    server.reply(Response::new_ok(
-        id,
-        Hover {
-            contents: HoverContents::Array(vec![
-                MarkedString::LanguageString(LanguageString {
-                    language: "nickel".into(),
-                    value: item.ty.to_string(),
-                }),
-                MarkedString::LanguageString(LanguageString {
-                    language: "plain".into(),
-                    value: extra.join("\n"),
-                }),
-                MarkedString::LanguageString(LanguageString {
-                    language: "plain".into(),
-                    value: format!("{:?} @ {:?}", item, range,),
-                }),
-            ]),
-
-            range,
-        },
-    ));
-    Ok(())
+    (item.ty.to_owned(), extra)
 }

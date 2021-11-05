@@ -154,7 +154,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                 lin.push(LinearizationItem {
                     id,
                     ty,
-                    pos,
+                    pos: ident.1.unwrap(),
                     scope: self.scope.clone(),
                     kind: TermKind::Declaration(ident.to_owned(), Vec::new()),
                     meta: self.meta.take(),
@@ -169,7 +169,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                     scope: self.scope.clone(),
                     // id = parent: full let binding including the body
                     // id = parent + 1: actual delcaration scope, i.e. _ = < definition >
-                    kind: TermKind::Usage(parent.map(|id| id + 1)),
+                    kind: TermKind::Usage(parent.map(|id| id)),
                     meta: self.meta.take(),
                 });
                 if let Some(parent) = parent {
@@ -177,7 +177,16 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                 }
             }
             Term::Record(fields, _) | Term::RecRecord(fields, _, _) => {
-                self.record_fields = Some((id, fields.keys().cloned().collect()));
+                self.record_fields = Some((
+                    id,
+                    fields
+                        .keys()
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .rev()
+                        .collect(),
+                ));
 
                 lin.push(LinearizationItem {
                     id,
@@ -209,12 +218,12 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                                     let id = id_gen.take();
                                     lin.push(LinearizationItem {
                                         id,
-                                        pos,
+                                        pos: ident.1.unwrap(),
                                         ty: TypeWrapper::Concrete(AbsType::Var(ident)),
                                         scope: self.scope.clone(),
                                         // id = parent: full let binding including the body
                                         // id = parent + 1: actual delcaration scope, i.e. _ = < definition >
-                                        kind: TermKind::Usage(parent.map(|id| id + 1)),
+                                        kind: TermKind::Usage(parent.map(|id| id)),
                                         meta: None,
                                     });
                                     if let Some(parent) = parent {
@@ -228,7 +237,9 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                     }
                 }
 
-                self.meta.insert(meta);
+                if meta.value.is_some() {
+                    self.meta.insert(meta);
+                }
             }
 
             other @ _ => {
