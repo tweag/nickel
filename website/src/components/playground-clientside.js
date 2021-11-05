@@ -1,5 +1,5 @@
-import Loadable from "@loadable/component";
-import React, { Suspense } from 'react'
+import {lazy} from "@loadable/component";
+import React from 'react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
     faSpinner,
@@ -10,14 +10,18 @@ import {
  * This is made necessary by the code editor, based on react-ace and ace-builds, which use `window` and don't seem to fully support SSR yet.
  * @type {React.ForwardRefExoticComponent<React.PropsWithoutRef<{}> & React.RefAttributes<unknown>>}
  */
-const LoadablePlayground = Loadable(() => import("./playground/playground"));
+const LoadablePlayground = lazy(() => import("./playground/playground"));
 
 export default function ClientSidePlayground(props) {
+    const isSSR = typeof window === "undefined";
+
     return (
-        <React.Suspense fallback={<FontAwesomeIcon icon={faSpinner} spin/>}>
-            <div>
+        <>
+            {!isSSR && (
+                <React.Suspense fallback={<FontAwesomeIcon icon={faSpinner} spin/>}>
                 <LoadablePlayground {...props}/>
-            </div>
-        </React.Suspense>
+                </React.Suspense>
+            )}
+        </>
     );
 }
