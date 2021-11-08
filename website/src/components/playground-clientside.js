@@ -18,7 +18,12 @@ export default function ClientSidePlayground(props) {
     return (
         <>
             {!isSSR && (
-                <React.Suspense fallback={<FontAwesomeIcon icon={faSpinner} spin/>}>
+                <React.Suspense fallback={
+                    <div className={faAlignCenter}>
+                        Loading playground...<br/>
+                        <FontAwesomeIcon icon={faSpinner} size={"lg"} spin/>
+                    </div>
+                }>
                 <LoadablePlayground {...props}/>
                 </React.Suspense>
             )}
