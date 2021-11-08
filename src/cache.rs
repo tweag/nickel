@@ -1,13 +1,11 @@
 //! Source cache.
 
 use crate::error::{Error, ImportError, ParseError, TypecheckError};
-use crate::identifier::Ident;
 use crate::parser::lexer::Lexer;
 use crate::position::TermPos;
 use crate::stdlib as nickel_stdlib;
 use crate::term::{RichTerm, Term};
-use crate::typecheck::linearization::StubHost;
-use crate::typecheck::type_check;
+use crate::typecheck::{linearization::StubHost, type_check};
 use crate::{eval, parser, transformations};
 use codespan::{FileId, Files};
 use io::Read;
@@ -89,15 +87,28 @@ pub struct NameIdEntry {
 }
 
 /// The state of an entry of the term cache.
+///
+/// # Imports
+///
+/// Usually, when applying a procedure to an entry (typechecking, transformation, ...), we process
+/// all of its transitive imports as well. We start by processing the entry, updating the state to
+/// `XXXing` (ex: `Typechecking`) upon success. Only when all the imports have been successfully
+/// processed, the state is updated to `XXXed` (ex: `Typechecked`).
 #[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Copy, Clone)]
 pub enum EntryState {
     /// The term have just been parsed.
     Parsed,
-    /// The term has been parsed and the imports resolved
+    /// The imports of the entry have been resolved, and the imports of its (transitive) imports are being resolved.
+    ImportsResolving,
+    /// The imports of the entry and its transitive dependencies has been resolved.
     ImportsResolved,
-    /// The term have been parsed and typechecked.
+    /// The entry have been typechecked, and its (transitive) imports are being typechecked.
+    Typechecking,
+    /// The entry and its transitive imports have been typechecked.
     Typechecked,
-    /// The term have been parsed, possibly typechecked (but not necessarily), and transformed.
+    /// The entry have been transformed, and its (transitive) imports are being transformed.
+    Transforming,
+    /// The entry and its transitive imports have been transformed.
     Transformed,
 }
 
@@ -290,7 +301,7 @@ impl Cache {
     }
 
     /// Parse a source and populate the corresponding entry in the cache, or do nothing if the
-    /// entry has already been parsed.
+    /// entry has already been parsed. Support multiple formats.
     pub fn parse_multi(
         &mut self,
         file_id: FileId,
@@ -341,26 +352,30 @@ impl Cache {
 
     /// Typecheck an entry of the cache and update its state accordingly, or do nothing if the
     /// entry has already been typechecked. Require that the corresponding source has been parsed.
+    /// If the source contains imports, recursively typecheck on the imports too.
     pub fn typecheck(
         &mut self,
         file_id: FileId,
         global_env: &eval::Environment,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
-        if !self.terms.contains_key(&file_id) {
-            return Err(CacheError::NotParsed);
-        }
+        match self.terms.get(&file_id) {
+            Some((_, state)) if *state >= EntryState::Typechecked => Ok(CacheOp::Cached(())),
+            Some((t, state)) if *state >= EntryState::Parsed => {
+                if *state < EntryState::Typechecking {
+                    type_check(t, global_env, self, StubHost::<(), _>::new())?;
+                    self.update_state(file_id, EntryState::Typechecking);
+                }
 
-        // After self.parse(), the cache must be populated
-        let (t, state) = self.terms.get(&file_id).unwrap();
+                if let Some(imports) = self.imports.get(&file_id).cloned() {
+                    for f in imports.into_iter() {
+                        self.typecheck(f, global_env)?;
+                    }
+                }
 
-        if *state > EntryState::Typechecked {
-            Ok(CacheOp::Cached(()))
-        } else if *state >= EntryState::Parsed {
-            type_check(t, global_env, self, StubHost::<(), _>::new())?;
-            self.update_state(file_id, EntryState::Typechecked);
-            Ok(CacheOp::Done(()))
-        } else {
-            panic!()
+                self.update_state(file_id, EntryState::Typechecked);
+                Ok(CacheOp::Done(()))
+            }
+            _ => Err(CacheError::NotParsed),
         }
     }
 
@@ -368,21 +383,26 @@ impl Cache {
     /// or do nothing if the entry has already been transformed. Require that the corresponding
     /// source has been parsed.
     /// If the source contains imports, recursively perform transformations on the imports too.
-    pub fn transform(&mut self, file_id: FileId) -> Result<CacheOp<()>, CacheError<ImportError>> {
+    pub fn transform(&mut self, file_id: FileId) -> Result<CacheOp<()>, CacheError<()>> {
         match self.entry_state(file_id) {
-            Some(EntryState::Transformed) => Ok(CacheOp::Cached(())),
-            Some(_) => {
-                let (t, _) = self.terms.remove(&file_id).unwrap();
+            Some(state) if state >= EntryState::Transformed => Ok(CacheOp::Cached(())),
+            Some(state) if state >= EntryState::Parsed => {
+                if state < EntryState::Transforming {
+                    let (t, _) = self.terms.remove(&file_id).unwrap();
+                    let t = transformations::transform(t);
+                    self.terms.insert(file_id, (t, EntryState::Transforming));
+                }
+
                 if let Some(imports) = self.imports.get(&file_id).cloned() {
-                    for f in imports.iter() {
-                        self.transform(*f)?;
+                    for f in imports.into_iter() {
+                        self.transform(f)?;
                     }
                 }
-                let t = transformations::transform(t)?;
-                self.terms.insert(file_id, (t, EntryState::Transformed));
+
+                self.update_state(file_id, EntryState::Transformed);
                 Ok(CacheOp::Done(()))
             }
-            None => Err(CacheError::NotParsed),
+            _ => Err(CacheError::NotParsed),
         }
     }
 
@@ -406,73 +426,89 @@ impl Cache {
         file_id: FileId,
     ) -> Result<CacheOp<()>, CacheError<ImportError>> {
         match self.entry_state(file_id) {
-            Some(EntryState::Transformed) => Ok(CacheOp::Cached(())),
+            Some(state) if state >= EntryState::Transformed => Ok(CacheOp::Cached(())),
             Some(_) => {
-                let (mut t, _) = self.terms.remove(&file_id).unwrap();
-                match t.term.as_mut() {
-                    Term::Record(ref mut map, _) => {
-                        let map_res: Result<HashMap<Ident, RichTerm>, ImportError> =
-                            std::mem::replace(map, HashMap::new())
+                let (mut t, state) = self.terms.remove(&file_id).unwrap();
+
+                if state < EntryState::Transforming {
+                    match t.term.as_mut() {
+                        Term::Record(ref mut map, _) => {
+                            let map_res = std::mem::replace(map, HashMap::new())
                                 .into_iter()
-                                .map(|(id, t)| {
-                                    transformations::transform(t).map(|t_ok| (id.clone(), t_ok))
-                                })
+                                .map(|(id, t)| (id.clone(), transformations::transform(t)))
                                 .collect();
-                        *map = map_res?;
-                    }
-                    Term::RecRecord(ref mut map, ref mut dyn_fields, _) => {
-                        let map_res: Result<HashMap<Ident, RichTerm>, ImportError> =
-                            std::mem::replace(map, HashMap::new())
+                            *map = map_res;
+                        }
+                        Term::RecRecord(ref mut map, ref mut dyn_fields, _) => {
+                            let map_res = std::mem::replace(map, HashMap::new())
                                 .into_iter()
-                                .map(|(id, t)| {
-                                    transformations::transform(t).map(|t_ok| (id.clone(), t_ok))
-                                })
+                                .map(|(id, t)| (id.clone(), transformations::transform(t)))
                                 .collect();
 
-                        let dyn_fields_res: Result<Vec<(RichTerm, RichTerm)>, ImportError> =
-                            std::mem::replace(dyn_fields, Vec::new())
+                            let dyn_fields_res = std::mem::replace(dyn_fields, Vec::new())
                                 .into_iter()
                                 .map(|(id_t, t)| {
-                                    Ok((
-                                        transformations::transform(id_t)?,
-                                        transformations::transform(t)?,
-                                    ))
+                                    (
+                                        transformations::transform(id_t),
+                                        transformations::transform(t),
+                                    )
                                 })
                                 .collect();
 
-                        *map = map_res?;
-                        *dyn_fields = dyn_fields_res?;
+                            *map = map_res;
+                            *dyn_fields = dyn_fields_res;
+                        }
+                        _ => panic!("cache::transform_inner(): not a record"),
                     }
-                    _ => panic!("cache::transform_inner(): not a record"),
+
+                    self.terms.insert(file_id, (t, EntryState::Transforming));
                 }
 
-                self.terms.insert(file_id, (t, EntryState::Transformed));
+                if let Some(imports) = self.imports.get(&file_id).cloned() {
+                    for f in imports.into_iter() {
+                        self.transform(f).map_err(|_| CacheError::NotParsed)?;
+                    }
+                }
+
+                self.update_state(file_id, EntryState::Transformed);
                 Ok(CacheOp::Done(()))
             }
             None => Err(CacheError::NotParsed),
         }
     }
 
-    /// Resolve every imports of an entry of the cache, and update its state accordingly,
-    /// or do nothing if the entry has already been transformed. Require that the corresponding
-    /// source has been parsed.
+    /// Resolve every imports of an entry of the cache, and update its state accordingly, or do
+    /// nothing if the imports of the entry have already been resolved. Require that the
+    /// corresponding source has been parsed.
     /// If resolved imports contain imports themselves, resolve them recursively.
     pub fn resolve_imports(
         &mut self,
         file_id: FileId,
     ) -> Result<CacheOp<()>, CacheError<ImportError>> {
         match self.entry_state(file_id) {
-            Some(EntryState::ImportsResolved) => Ok(CacheOp::Cached(())),
-            Some(_) => {
-                let (t, _) = self.terms.remove(&file_id).unwrap();
-                let (t, pending) = transformations::resolve_imports(t, self)?;
-                for id in pending {
-                    self.resolve_imports(id)?;
+            Some(state) if state >= EntryState::ImportsResolved => Ok(CacheOp::Cached(())),
+            Some(state) if state >= EntryState::Parsed => {
+                if state < EntryState::ImportsResolving {
+                    let (t, _) = self.terms.remove(&file_id).unwrap();
+                    let (t, pending) = transformations::resolve_imports(t, self)?;
+                    self.terms
+                        .insert(file_id, (t, EntryState::ImportsResolving));
+
+                    for id in pending {
+                        self.resolve_imports(id)?;
+                    }
+                } else {
+                    let pending = self.imports.get(&file_id).cloned().unwrap_or_default();
+
+                    for id in pending {
+                        self.resolve_imports(id)?;
+                    }
                 }
-                self.terms.insert(file_id, (t, EntryState::ImportsResolved));
+
+                self.update_state(file_id, EntryState::ImportsResolved);
                 Ok(CacheOp::Done(()))
             }
-            None => Err(CacheError::NotParsed),
+            _ => Err(CacheError::NotParsed),
         }
     }
 
@@ -507,11 +543,10 @@ impl Cache {
             result = CacheOp::Done(());
         };
 
-        let transform_res = self.transform(file_id).map_err(|cache_err| {
-            cache_err.unwrap_error(
-                "cache::prepare(): expected source to be parsed before transformations",
-            )
-        })?;
+        let transform_res = self.transform(file_id).unwrap_or_else(|_| {
+            panic!("cache::prepare(): expected source to be parsed before transformations",)
+        });
+
         if transform_res == CacheOp::Done(()) {
             result = CacheOp::Done(());
         };
@@ -533,7 +568,7 @@ impl Cache {
         let term = self.parse_nocache(file_id)?;
         let (term, pending) = transformations::resolve_imports(term, self)?;
         type_check(&term, global_env, self, StubHost::<(), _>::new())?;
-        let term = transformations::transform(term)?;
+        let term = transformations::transform(term);
         Ok((term, pending))
     }
 
@@ -642,7 +677,7 @@ impl Cache {
     /// Typecheck the standard library. Currently only used in the test suite.
     pub fn typecheck_stdlib(&mut self) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
         // We have a small bootstraping problem: to typecheck the global environment, we already
-        // need a global evaluation environment, since stdlib parts may reference each other). But
+        // need a global evaluation environment, since stdlib parts may reference each other. But
         // typechecking is performed before program transformations, so this environment is not
         // final one. We have create a temporary global environment just for typechecking, which is dropped
         // right after. However:

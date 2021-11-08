@@ -265,9 +265,9 @@ struct ImportsResolutionState<'a, R> {
 /// If needed, either do it yourself using pending imports returned by
 /// [`resolve_imports`](../fn.resolve_imports.html)
 /// or use the [`Cache`](../../cache/struct.Cache.html)
-pub fn transform(rt: RichTerm) -> Result<RichTerm, ImportError> {
+pub fn transform(rt: RichTerm) -> RichTerm {
     rt.traverse(
-        &mut |rt: RichTerm, _| -> Result<RichTerm, ImportError> {
+        &mut |rt: RichTerm, _| -> Result<RichTerm, ()> {
             // We need to do contract generation before wrapping stuff in variables
             let rt = apply_contracts::transform_one(rt);
             let rt = share_normal_form::transform_one(rt);
@@ -275,6 +275,7 @@ pub fn transform(rt: RichTerm) -> Result<RichTerm, ImportError> {
         },
         &mut (),
     )
+    .unwrap()
 }
 
 /// import resolution.
