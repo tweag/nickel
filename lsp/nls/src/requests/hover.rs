@@ -1,7 +1,7 @@
 use codespan::ByteIndex;
 use codespan_lsp::position_to_byte_index;
 use log::debug;
-use lsp_server::{ErrorCode, RequestId, Response, ResponseError};
+use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{Hover, HoverContents, HoverParams, LanguageString, MarkedString, Range};
 use nickel::position::TermPos;
 use serde_json::Value;
@@ -36,15 +36,7 @@ pub fn handle(
     debug!("start of hovered item: ByteIndex({})", start);
 
     let locator = (file_id, ByteIndex(start as u32));
-    let linearization = &server
-        .lin_cache
-        .get(&file_id)
-        .ok_or_else(|| ResponseError {
-            data: None,
-            message: "File has not yet been parsed or cached.".to_owned(),
-            code: ErrorCode::ParseError as i32,
-        })?
-        .lin;
+    let linearization = &server.lin_cache_get(&file_id)?.lin;
 
     let index = find_linearization_index(linearization, locator);
 
