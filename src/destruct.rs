@@ -19,6 +19,7 @@ pub enum Destruct {
 
 impl Destruct {
     pub fn as_contract(self) -> MetaValue {
+        println!("{:#?}", self);
         MetaValue {
             contracts: vec![Contract {
                 types: Types(AbsType::Flat(

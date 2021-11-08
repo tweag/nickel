@@ -72,7 +72,6 @@ pub mod desugar_destructuring {
 
     fn destruct_term(x: Ident, pat: Destruct, t: RichTerm) -> RichTerm {
         let pos = t.pos.clone();
-        println!("destruct term {:?} with {:?}", x, pat);
         match pat {
             Destruct::Record(mut matches) => {
                 let m = matches.pop();
@@ -96,11 +95,8 @@ pub mod desugar_destructuring {
                             pos,
                         )),
                     };
-                    println!("{:?}", x.clone());
                     destruct_term(x.clone(), Destruct::Record(matches), next_term)
                 } else {
-                    println!("{:?}", m);
-                    println!("{:#?}", t);
                     t
                 }
             }
