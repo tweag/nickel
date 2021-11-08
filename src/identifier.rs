@@ -4,8 +4,9 @@ use std::{fmt, hash::Hash};
 
 use crate::position::TermPos;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Ident(pub String, #[serde(skip)] pub Option<TermPos>);
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(into = "String", from = "String")]
+pub struct Ident(pub String, pub Option<TermPos>);
 
 impl PartialOrd for Ident {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -46,5 +47,11 @@ where
 {
     fn from(val: F) -> Self {
         Ident(String::from(val), None)
+    }
+}
+
+impl Into<String> for Ident {
+    fn into(self) -> String {
+        self.0
     }
 }
