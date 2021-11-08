@@ -9,8 +9,8 @@ use nickel::{serialize, serialize::ExportFormat};
 use std::path::PathBuf;
 use std::{fs, process};
 // use std::ffi::OsStr;
+use directories::BaseDirs;
 use structopt::StructOpt;
-
 /// Command-line options and subcommands.
 #[derive(StructOpt, Debug)]
 /// The interpreter of the Nickel language.
@@ -53,15 +53,26 @@ enum Command {
     /// Typecheck a program, but do not run it
     Typecheck,
     /// Start an REPL session
-    REPL,
+    REPL {
+        #[structopt(long)]
+        history_file: Option<PathBuf>,
+    },
 }
 
 fn main() {
     let opts = Opt::from_args();
 
-    if let Some(Command::REPL) = opts.command {
+    if let Some(Command::REPL { history_file }) = opts.command {
+        let histfile = if let Some(h) = history_file {
+            h
+        } else {
+            BaseDirs::new()
+                .expect("Cannot retrieve home directory path")
+                .home_dir()
+                .join(".nickel_history")
+        };
         #[cfg(feature = "repl")]
-        if rustyline_frontend::repl().is_err() {
+        if rustyline_frontend::repl(histfile).is_err() {
             process::exit(1);
         }
 
@@ -105,7 +116,7 @@ fn main() {
                 })
             }
             Some(Command::Typecheck) => program.typecheck().map(|_| ()),
-            Some(Command::REPL) => unreachable!(),
+            Some(Command::REPL { .. }) => unreachable!(),
             None => program.eval().map(|t| println!("Done: {:?}", t)),
         };
 

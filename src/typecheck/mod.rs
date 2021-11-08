@@ -53,6 +53,10 @@ use crate::{mk_tyw_arrow, mk_tyw_enum, mk_tyw_enum_row, mk_tyw_record, mk_tyw_ro
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 
+use self::linearization::{Building, Completed, Linearization, Linearizer, ScopeId, StubHost};
+
+pub mod linearization;
+
 /// Error during the unification of two row types.
 #[derive(Debug, PartialEq)]
 pub enum RowUnifError {
@@ -186,72 +190,78 @@ impl UnifError {
     ) -> TypecheckError {
         match self {
             UnifError::TypeMismatch(ty1, ty2) => TypecheckError::TypeMismatch(
-                reporting::to_type(state, names, ty1),
-                reporting::to_type(state, names, ty2),
+                reporting::to_type(state.table, state.names, names, ty1),
+                reporting::to_type(state.table, state.names, names, ty2),
                 pos_opt,
             ),
             UnifError::RowMismatch(ident, tyw1, tyw2, err) => TypecheckError::RowMismatch(
                 ident,
-                reporting::to_type(state, names, tyw1),
-                reporting::to_type(state, names, tyw2),
+                reporting::to_type(state.table, state.names, names, tyw1),
+                reporting::to_type(state.table, state.names, names, tyw2),
                 Box::new((*err).into_typecheck_err_(state, names, TermPos::None)),
                 pos_opt,
             ),
             UnifError::RowKindMismatch(id, ty1, ty2) => TypecheckError::RowKindMismatch(
                 id,
-                ty1.map(|tw| reporting::to_type(state, names, tw)),
-                ty2.map(|tw| reporting::to_type(state, names, tw)),
+                ty1.map(|tw| reporting::to_type(state.table, state.names, names, tw)),
+                ty2.map(|tw| reporting::to_type(state.table, state.names, names, tw)),
                 pos_opt,
             ),
             // TODO: for now, failure to unify with a type constant causes the same error as a
             // usual type mismatch. It could be nice to have a specific error message in the
             // future.
             UnifError::ConstMismatch(c1, c2) => TypecheckError::TypeMismatch(
-                reporting::to_type(state, names, TypeWrapper::Constant(c1)),
-                reporting::to_type(state, names, TypeWrapper::Constant(c2)),
+                reporting::to_type(state.table, state.names, names, TypeWrapper::Constant(c1)),
+                reporting::to_type(state.table, state.names, names, TypeWrapper::Constant(c2)),
                 pos_opt,
             ),
             UnifError::WithConst(c, ty) => TypecheckError::TypeMismatch(
-                reporting::to_type(state, names, TypeWrapper::Constant(c)),
-                reporting::to_type(state, names, ty),
+                reporting::to_type(state.table, state.names, names, TypeWrapper::Constant(c)),
+                reporting::to_type(state.table, state.names, names, ty),
                 pos_opt,
             ),
             UnifError::IllformedFlatType(rt) => {
                 TypecheckError::IllformedType(Types(AbsType::Flat(rt)))
             }
-            UnifError::IllformedType(tyw) => {
-                TypecheckError::IllformedType(reporting::to_type(state, names, tyw))
-            }
+            UnifError::IllformedType(tyw) => TypecheckError::IllformedType(reporting::to_type(
+                state.table,
+                state.names,
+                names,
+                tyw,
+            )),
             UnifError::MissingRow(id, tyw1, tyw2) => TypecheckError::MissingRow(
                 id,
-                reporting::to_type(state, names, tyw1),
-                reporting::to_type(state, names, tyw2),
+                reporting::to_type(state.table, state.names, names, tyw1),
+                reporting::to_type(state.table, state.names, names, tyw2),
                 pos_opt,
             ),
             UnifError::MissingDynTail(tyw1, tyw2) => TypecheckError::MissingDynTail(
-                reporting::to_type(state, names, tyw1),
-                reporting::to_type(state, names, tyw2),
+                reporting::to_type(state.table, state.names, names, tyw1),
+                reporting::to_type(state.table, state.names, names, tyw2),
                 pos_opt,
             ),
             UnifError::ExtraRow(id, tyw1, tyw2) => TypecheckError::ExtraRow(
                 id,
-                reporting::to_type(state, names, tyw1),
-                reporting::to_type(state, names, tyw2),
+                reporting::to_type(state.table, state.names, names, tyw1),
+                reporting::to_type(state.table, state.names, names, tyw2),
                 pos_opt,
             ),
             UnifError::ExtraDynTail(tyw1, tyw2) => TypecheckError::ExtraDynTail(
-                reporting::to_type(state, names, tyw1),
-                reporting::to_type(state, names, tyw2),
+                reporting::to_type(state.table, state.names, names, tyw1),
+                reporting::to_type(state.table, state.names, names, tyw2),
                 pos_opt,
             ),
-            UnifError::IllformedRow(tyw) => {
-                TypecheckError::IllformedType(reporting::to_type(state, names, tyw))
-            }
+            UnifError::IllformedRow(tyw) => TypecheckError::IllformedType(reporting::to_type(
+                state.table,
+                state.names,
+                names,
+                tyw,
+            )),
             UnifError::RowConflict(id, tyw, left, right) => TypecheckError::RowConflict(
                 id,
-                tyw.map(|tyw| reporting::to_type(state, names, tyw)),
-                reporting::to_type(state, names, left),
-                reporting::to_type(state, names, right),
+                tyw.map(|tyw| reporting::to_type(state.table, state.names, names, tyw)),
+                reporting::to_type(state.table, state.names, names, left),
+                reporting::to_type(state.table, state.names, names, right),
                 pos_opt,
             ),
             UnifError::UnboundTypeVariable(ident) => {
@@ -261,8 +271,8 @@ impl UnifError {
             | err @ UnifError::DomainMismatch(_, _, _) => {
                 let (expd, actual, path, err_final) = err.into_type_path().unwrap();
                 TypecheckError::ArrowTypeMismatch(
-                    reporting::to_type(state, names, expd),
-                    reporting::to_type(state, names, actual),
+                    reporting::to_type(state.table, state.names, names, expd),
+                    reporting::to_type(state.table, state.names, names, actual),
                     path,
                     Box::new(err_final.into_typecheck_err_(state, names, TermPos::None)),
                     pos_opt,
@@ -420,6 +430,7 @@ impl<'a> Envs<'a> {
 }
 
 /// The shared state of unification.
+
 pub struct State<'a> {
     /// The import resolver, to retrieve and typecheck imports.
     resolver: &'a dyn ImportResolver,
@@ -438,22 +449,43 @@ pub struct State<'a> {
 ///
 /// Return the inferred type in case of success. This is just a wrapper that calls
 /// [`type_check_`](fn.type_check_.html) with a fresh unification variable as goal.
-pub fn type_check(
+pub fn type_check<L>(
     t: &RichTerm,
     global_eval_env: &eval::Environment,
-    resolver: &dyn ImportResolver,
-) -> Result<Types, TypecheckError> {
-    let mut state = State {
-        resolver,
-        table: &mut UnifTable::new(),
-        constr: &mut RowConstr::new(),
-        names: &mut HashMap::new(),
-    };
-    let ty = TypeWrapper::Ptr(new_var(state.table));
+    resolver: &impl ImportResolver,
+    linearizer: impl Linearizer<L, (UnifTable, HashMap<usize, Ident>)>,
+) -> Result<(Types, Completed), TypecheckError>
+where
+    L: Default,
+{
+    let (mut table, mut names) = (UnifTable::new(), HashMap::new());
+    let mut building = Linearization::building();
     let global = Envs::mk_global(global_eval_env);
-    type_check_(&mut state, Envs::from_global(&global), false, t, ty.clone())?;
+    let ty = TypeWrapper::Ptr(new_var(&mut table));
 
-    Ok(to_type(&state.table, ty))
+    {
+        let mut state: State = State {
+            resolver,
+            table: &mut table,
+            constr: &mut RowConstr::new(),
+            names: &mut names,
+        };
+
+        type_check_(
+            &mut state,
+            Envs::from_global(&global),
+            &mut building,
+            linearizer.scope(linearization::ScopeId::Right),
+            false,
+            t,
+            ty.clone(),
+        )?;
+    }
+
+    let lin = linearizer
+        .linearize(building, (table.clone(), names))
+        .into();
+    Ok((to_type(&table, ty), lin))
 }
 
 /// Typecheck a term using the given global typing environment. Same as
@@ -478,7 +510,15 @@ pub fn type_check_in_env(
         names: &mut HashMap::new(),
     };
     let ty = TypeWrapper::Ptr(new_var(state.table));
-    type_check_(&mut state, Envs::from_global(global), false, t, ty.clone())?;
+    type_check_(
+        &mut state,
+        Envs::from_global(global),
+        &mut Linearization::building::<()>(),
+        StubHost::<(), ()>::new(),
+        false,
+        t,
+        ty.clone(),
+    )?;
 
     Ok(to_type(&state.table, ty))
 }
@@ -489,18 +529,25 @@ pub fn type_check_in_env(
 ///
 /// - `state`: the unification state (see [`State`](struct.State.html)).
 /// - `env`: the typing environment, mapping free variable to types.
+/// - `lin`: The current building linearization of building state `S`
+/// - `linearizer`: A linearizer that can modify the linearization
 /// - `strict`: the typechecking mode.
 /// - `t`: the term to check.
 /// - `ty`: the type to check the term against.
-fn type_check_(
+///
+/// Registers every term with the `linearizer` and makes sure to scope the
+/// liearizer accordingly
+fn type_check_<S, E>(
     state: &mut State,
     mut envs: Envs,
+    lin: &mut Linearization<Building<S>>,
+    mut linearizer: impl Linearizer<S, E>,
     strict: bool,
     rt: &RichTerm,
     ty: TypeWrapper,
 ) -> Result<(), TypecheckError> {
     let RichTerm { term: t, pos } = rt;
-
+    linearizer.add_term(lin, t, *pos, ty.clone());
     match t.as_ref() {
         // null is inferred to be of type Dyn
         Term::Null => unify(state, strict, ty, mk_typewrapper::dynamic())
@@ -517,11 +564,12 @@ fn type_check_(
 
             chunks
                 .iter()
-                .try_for_each(|chunk| -> Result<(), TypecheckError> {
+                .enumerate()
+                .try_for_each(|(choice, chunk)| -> Result<(), TypecheckError> {
                     match chunk {
                         StrChunk::Literal(_) => Ok(()),
                         StrChunk::Expr(t, _) => {
-                            type_check_(state, envs.clone(), strict, t, mk_typewrapper::str())
+                            type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Choice(choice)), strict, t, mk_typewrapper::str())
                         }
                     }
                 })
@@ -537,7 +585,7 @@ fn type_check_(
             unify(state, strict, ty, arr).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
             envs.insert(x.clone(), src);
-            type_check_(state, envs, strict, t, trg)
+            type_check_(state, envs, lin, linearizer, strict, t, trg)
         }
         Term::List(terms) => {
             let ty_elts = TypeWrapper::Ptr(new_var(state.table));
@@ -547,8 +595,9 @@ fn type_check_(
 
             terms
                 .iter()
-                .try_for_each(|t| -> Result<(), TypecheckError> {
-                    type_check_(state, envs.clone(), strict, t, ty_elts.clone())
+                .enumerate()
+                .try_for_each(|(choice, t)| -> Result<(), TypecheckError> {
+                    type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Choice(choice)), strict, t, ty_elts.clone())
                 })
         }
         Term::Lbl(_) => {
@@ -558,11 +607,11 @@ fn type_check_(
         }
         Term::Let(x, re, rt) => {
             let ty_let = binding_type(re.as_ref(), &envs, state.table, strict);
-            type_check_(state, envs.clone(), strict, re, ty_let.clone())?;
+            type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Left), strict, re, ty_let.clone())?;
 
             // TODO move this up once lets are rec
             envs.insert(x.clone(), ty_let);
-            type_check_(state, envs, strict, rt, ty)
+            type_check_(state, envs, lin, linearizer, strict, rt, ty)
         }
         Term::LetPattern(x, pat, re, rt) => {
             let ty_let = binding_type(re.as_ref(), &envs, state.table, strict);
@@ -579,24 +628,21 @@ fn type_check_(
             let src = TypeWrapper::Ptr(new_var(state.table));
             let arr = mk_tyw_arrow!(src.clone(), ty);
 
-            // This order shouldn't be changed, since applying a function to a record
-            // may change how it's typed (static or dynamic)
-            // This is good hint a bidirectional algorithm would make sense...
-            type_check_(state, envs.clone(), strict, e, arr)?;
-            type_check_(state, envs, strict, t, src)
+            type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Left), strict, e, arr)?;
+            type_check_(state, envs, lin, linearizer, strict, t, src)
         }
         Term::Switch(exp, cases, default) => {
             // Currently, if it has a default value, we typecheck the whole thing as
             // taking ANY enum, since it's more permissive and there's no loss of information
             let res = TypeWrapper::Ptr(new_var(state.table));
 
-            for case in cases.values() {
-                type_check_(state, envs.clone(), strict, case, res.clone())?;
+            for (choice, case) in cases.values().enumerate() {
+                type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Choice(choice)), strict, case, res.clone())?;
             }
 
             let row = match default {
                 Some(t) => {
-                    type_check_(state, envs.clone(), strict, t, res.clone())?;
+                    type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Right),strict, t, res.clone())?;
                     TypeWrapper::Ptr(new_var(state.table))
                 }
                 None => cases.iter().try_fold(
@@ -608,7 +654,7 @@ fn type_check_(
             };
 
             unify(state, strict, ty, res).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            type_check_(state, envs, strict, exp, mk_tyw_enum!(row))
+            type_check_(state, envs, lin, linearizer, strict, exp, mk_tyw_enum!(row))
         }
         Term::Var(x) => {
             let x_ty = envs
@@ -635,8 +681,9 @@ fn type_check_(
 
             stat_map
                 .iter()
-                .try_for_each(|(_, t)| -> Result<(), TypecheckError> {
-                    type_check_(state, envs.clone(), strict, t, ty_dyn.clone())
+                .enumerate()
+                .try_for_each(|(choice, (_, t))| -> Result<(), TypecheckError> {
+                    type_check_(state, envs.clone(),lin , linearizer.scope(ScopeId::Choice(choice)), strict,t, ty_dyn.clone())
                 })?;
 
             unify(state, strict, ty, mk_typewrapper::dyn_record(ty_dyn))
@@ -663,13 +710,14 @@ fn type_check_(
                 // Checking for a dynamic record
                 stat_map
                     .iter()
-                    .try_for_each(|(_, t)| -> Result<(), TypecheckError> {
-                        type_check_(state, envs.clone(), strict, t, (*rec_ty).clone())
+                    .enumerate()
+                    .try_for_each(|(choice, (_, t))| -> Result<(), TypecheckError> {
+                        type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Choice(choice)), strict, t, (*rec_ty).clone())
                     })
             } else {
-                let row = stat_map.iter().try_fold(
+                let row = stat_map.iter().enumerate().try_fold(
                     mk_tyw_row!(),
-                    |acc, (id, field)| -> Result<TypeWrapper, TypecheckError> {
+                    |acc, (choice, (id, field))| -> Result<TypeWrapper, TypecheckError> {
                         // In the case of a recursive record, new types (either type variables or
                         // annotations) have already be determined and put in the typing
                         // environment, and we need to use the same.
@@ -679,7 +727,7 @@ fn type_check_(
                             TypeWrapper::Ptr(new_var(state.table))
                         };
 
-                        type_check_(state, envs.clone(), strict, field, ty.clone())?;
+                        type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Choice(choice)), strict, field, ty.clone())?;
 
                         Ok(mk_tyw_row!((id.clone(), ty); acc))
                     },
@@ -694,15 +742,15 @@ fn type_check_(
 
             unify(state, strict, ty, ty_res)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            type_check_(state, envs.clone(), strict, t, ty_arg)
+            type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Right),strict, t, ty_arg)
         }
         Term::Op2(op, t1, t2) => {
             let (ty_arg1, ty_arg2, ty_res) = get_bop_type(state, op)?;
 
             unify(state, strict, ty, ty_res)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            type_check_(state, envs.clone(), strict, t1, ty_arg1)?;
-            type_check_(state, envs, strict, t2, ty_arg2)
+            type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Left), strict, t1, ty_arg1)?;
+            type_check_(state, envs, lin, linearizer, strict, t2, ty_arg2)
         }
         Term::OpN(op, args) => {
             let (tys_op, ty_ret) = get_nop_type(state, op)?;
@@ -712,9 +760,10 @@ fn type_check_(
 
             tys_op
                 .into_iter()
+                .enumerate()
                 .zip(args.iter())
-                .try_for_each(|(ty_t, t)| {
-                    type_check_(state, envs.clone(), strict, t, ty_t)?;
+                .try_for_each(|((choice, ty_t), t)| {
+                    type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Choice(choice)), strict, t, ty_t)?;
                     Ok(())
                 })?;
 
@@ -731,8 +780,8 @@ fn type_check_(
 
             let instantiated = instantiate_foralls(state, tyw2.clone(), ForallInst::Constant);
 
-            unify(state, strict, ty, tyw2).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            type_check_(state, envs, true, t, instantiated)
+            unify(state, strict, tyw2, ty).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+            type_check_(state, envs, lin, linearizer, true, t, instantiated)
         }
         // A metavalue with at least one contract is an assume. If there's several
         // contracts, we arbitrarily chose the first one as the type annotation.
@@ -750,7 +799,7 @@ fn type_check_(
             // if there's an inner value, we have to recursively typecheck it, but in non strict
             // mode.
             if let Some(t) = value {
-                type_check_(state, envs, false, t, mk_typewrapper::dynamic())
+                type_check_(state, envs, lin, linearizer, false, t, mk_typewrapper::dynamic())
             }
             else {
                 Ok(())
@@ -758,10 +807,10 @@ fn type_check_(
         }
         Term::Sym(_) => unify(state, strict, ty, mk_typewrapper::sym())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
-        Term::Wrapped(_, t) => type_check_(state, envs, strict, t, ty),
+        Term::Wrapped(_, t) => type_check_(state, envs, lin, linearizer, strict, t, ty),
         // A non-empty metavalue without a type or contract annotation is typechecked in the same way as its inner value
         Term::MetaValue(MetaValue { value: Some(t), .. }) => {
-            type_check_(state, envs, strict, t, ty)
+            type_check_(state, envs, lin, linearizer, strict, t, ty)
         }
         // A metavalue without a body nor a type annotation is a record field without definition.
         // This should probably be non representable in the syntax, as it doesn't really make
@@ -1375,10 +1424,9 @@ fn to_type(table: &UnifTable, ty: TypeWrapper) -> Types {
 
 /// Helpers to convert a `TypeWrapper` to a human-readable `Types` representation for error
 /// reporting purpose.
-mod reporting {
+pub mod reporting {
     use super::*;
     use std::collections::HashSet;
-
     /// A name registry used to replace unification variables and type constants with human-readable
     /// and distinct names when reporting errors.
     pub struct NameReg {
@@ -1484,15 +1532,20 @@ mod reporting {
     /// [`var_to_type`](./fn.var_to_type.html) and [`cst_to_type`](./fn.cst_tot_type.html).
     /// Distinguishing occurrences of unification variables and type constants is more informative
     /// than having `Dyn` everywhere.
-    pub fn to_type(state: &State, names: &mut NameReg, ty: TypeWrapper) -> Types {
+    pub fn to_type(
+        table: &UnifTable,
+        reported_names: &HashMap<usize, Ident>,
+        names: &mut NameReg,
+        ty: TypeWrapper,
+    ) -> Types {
         match ty {
-            TypeWrapper::Ptr(p) => match get_root(state.table, p) {
-                TypeWrapper::Ptr(p) => var_to_type(state.names, names, p),
-                tyw => to_type(state, names, tyw),
+            TypeWrapper::Ptr(p) => match get_root(table, p) {
+                TypeWrapper::Ptr(p) => var_to_type(reported_names, names, p),
+                tyw => to_type(table, reported_names, names, tyw),
             },
-            TypeWrapper::Constant(c) => cst_to_type(state.names, names, c),
+            TypeWrapper::Constant(c) => cst_to_type(reported_names, names, c),
             TypeWrapper::Concrete(t) => {
-                let mapped = t.map(|btyp| Box::new(to_type(state, names, *btyp)));
+                let mapped = t.map(|btyp| Box::new(to_type(table, reported_names, names, *btyp)));
                 Types(mapped)
             }
         }

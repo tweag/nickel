@@ -7,7 +7,6 @@ use crate::position::TermPos;
 use crate::term::{RichTerm, StrChunk};
 
 /// An element of the stack.
-#[derive(Debug)]
 pub enum Marker {
     /// An equality to test.
     ///
@@ -46,6 +45,22 @@ pub enum Marker {
         usize,       /* the indentation level of the chunk currently evaluated */
         Environment, /* the common environment of chunks */
     ),
+    Strictness(bool),
+}
+
+impl std::fmt::Debug for Marker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Marker::Eq(_, _) => write!(f, "Eq"),
+            Marker::Arg(_, _) => write!(f, "Arg"),
+            Marker::TrackedArg(_, _) => write!(f, "TrackedArg"),
+            Marker::Thunk(_) => write!(f, "Thunk"),
+            Marker::Cont(op, sz, _) => write!(f, "Cont {:?} (callstack size {})", op, sz),
+            Marker::StrChunk(_) => write!(f, "StrChunk"),
+            Marker::StrAcc(_, _, _) => write!(f, "StrAcc"),
+            Marker::Strictness(s) => write!(f, "Strictness = {}", s),
+        }
+    }
 }
 
 impl Marker {
@@ -72,10 +87,13 @@ impl Marker {
     pub fn is_str_acc(&self) -> bool {
         matches!(*self, Marker::StrAcc(..))
     }
+
+    pub fn is_strictness(&self) -> bool {
+        matches!(*self, Marker::Strictness(..))
+    }
 }
 
 /// The evaluation stack.
-#[derive(Debug)]
 pub struct Stack(Vec<Marker>);
 
 impl IntoIterator for Stack {
@@ -148,6 +166,10 @@ impl Stack {
     /// Push a string accumulator on the stack.
     pub fn push_str_acc(&mut self, acc: String, indent: usize, env: Environment) {
         self.0.push(Marker::StrAcc(acc, indent, env));
+    }
+
+    pub fn push_strictness(&mut self, strict: bool) {
+        self.0.push(Marker::Strictness(strict));
     }
 
     /// Try to pop an argument from the top of the stack. If `None` is returned, the top element
@@ -247,6 +269,17 @@ impl Stack {
         }
     }
 
+    pub fn pop_strictness_marker(&mut self) -> Option<bool> {
+        if self.0.last().map(Marker::is_strictness).unwrap_or(false) {
+            match self.0.pop() {
+                Some(Marker::Strictness(s)) => Some(s),
+                _ => panic!(),
+            }
+        } else {
+            None
+        }
+    }
+
     /// Check if the top element is a thunk.
     pub fn is_top_thunk(&self) -> bool {
         self.0.last().map(Marker::is_thunk).unwrap_or(false)
@@ -276,6 +309,16 @@ impl Stack {
             }
             _ => None,
         }
+    }
+}
+
+impl std::fmt::Debug for Stack {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "--- STACK ---")?;
+        for marker in self.0.iter().rev() {
+            write!(f, "| {:?}", marker)?;
+        }
+        write!(f, "---  END  ---")
     }
 }
 
@@ -327,7 +370,7 @@ mod tests {
     }
 
     #[test]
-    fn pushing_and_poping_args() {
+    fn pushing_and_popping_args() {
         let mut s = Stack::new();
         assert_eq!(0, s.count_args());
 
@@ -339,7 +382,7 @@ mod tests {
     }
 
     #[test]
-    fn pushing_and_poping_thunks() {
+    fn pushing_and_popping_thunks() {
         let mut s = Stack::new();
         assert_eq!(0, s.count_thunks());
 
@@ -364,7 +407,7 @@ mod tests {
     }
 
     #[test]
-    fn pushing_and_poping_conts() {
+    fn pushing_and_popping_conts() {
         let mut s = Stack::new();
         assert_eq!(0, s.count_conts());
 
@@ -376,5 +419,28 @@ mod tests {
             s.pop_op_cont().expect("Already checked")
         );
         assert_eq!(1, s.count_conts());
+    }
+
+    #[test]
+    fn pushing_and_poping_strictness_markers() {
+        let mut s = Stack::new();
+        assert_eq!(0, s.count_args());
+
+        s.push_strictness(true);
+        assert_eq!(0, s.count_args());
+        s.push_arg(some_closure(), TermPos::None);
+        s.push_arg(some_closure(), TermPos::None);
+        assert_eq!(2, s.count_args());
+        s.push_strictness(false);
+        assert_eq!(0, s.count_args());
+
+        assert_eq!(s.pop_strictness_marker(), Some(false));
+        assert_eq!(2, s.count_args());
+        assert_matches!(s.pop_arg(), Some(..));
+        assert_matches!(s.pop_arg(), Some(..));
+        assert_eq!(s.pop_arg(), None);
+        assert_eq!(0, s.count_args());
+        assert_eq!(s.pop_strictness_marker(), Some(true));
+        assert_eq!(0, s.count_args());
     }
 }

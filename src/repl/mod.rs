@@ -118,15 +118,27 @@ impl REPLImpl {
             .map_err(|err| ParseError::from_lalrpop(err, file_id))?
         {
             ExtendedTerm::RichTerm(t) => {
-                let t = transformations::resolve_imports(t, &mut self.cache)?;
+                let (t, pending) = transformations::resolve_imports(t, &mut self.cache)?;
+                for id in &pending {
+                    self.cache.resolve_imports(*id).unwrap();
+                }
                 typecheck::type_check_in_env(&t, &self.type_env, &self.cache)?;
+                for id in &pending {
+                    self.cache.transform(*id).unwrap();
+                }
                 let t = transformations::transform(t)?;
                 Ok(eval_function(t, &self.eval_env, &mut self.cache)?.into())
             }
             ExtendedTerm::ToplevelLet(id, t) => {
-                let t = transformations::resolve_imports(t, &mut self.cache)?;
+                let (t, pending) = transformations::resolve_imports(t, &mut self.cache)?;
+                for id in &pending {
+                    self.cache.resolve_imports(*id).unwrap();
+                }
                 typecheck::type_check_in_env(&t, &self.type_env, &self.cache)?;
                 typecheck::Envs::env_add(&mut self.type_env, id.clone(), &t);
+                for id in &pending {
+                    self.cache.transform(*id).unwrap();
+                }
 
                 let t = transformations::transform(t)?;
 
@@ -170,6 +182,10 @@ impl REPL for REPLImpl {
         })?;
 
         let term = self.cache.get_owned(file_id).unwrap();
+        let (term, pending) = transformations::resolve_imports(term, &mut self.cache)?;
+        for id in &pending {
+            self.cache.resolve_imports(*id).unwrap();
+        }
         typecheck::Envs::env_add_term(&mut self.type_env, &term).unwrap();
         eval::env_add_term(&mut self.eval_env, term.clone()).unwrap();
 
@@ -179,6 +195,10 @@ impl REPL for REPLImpl {
     fn typecheck(&mut self, exp: &str) -> Result<Types, Error> {
         let file_id = self.cache.add_tmp("<repl-typecheck>", String::from(exp));
         let term = self.cache.parse_nocache(file_id)?;
+        let (term, pending) = transformations::resolve_imports(term, &mut self.cache)?;
+        for id in &pending {
+            self.cache.resolve_imports(*id).unwrap();
+        }
         typecheck::type_check_in_env(&term, &self.type_env, &self.cache)?;
 
         Ok(typecheck::apparent_type(
