@@ -90,7 +90,7 @@ pub fn repl(histfile: PathBuf) -> Result<(), InitError> {
                     }
                     Ok(Command::Exit) => {
                         println!("{}", Style::new().bold().paint("Exiting"));
-                        return Ok(());
+                        break Ok(());
                     }
                     Err(err) => Err(Error::from(err)),
                 };
