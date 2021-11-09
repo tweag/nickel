@@ -95,10 +95,8 @@ fn resolve_type_meta(
     let mut extra = Vec::new();
 
     let item = match item.kind {
-        TermKind::Usage(usage) => usage
-            .and_then(|u| completed.get_item(u + 1))
-            .unwrap_or(item),
-        TermKind::Declaration(_, _) => completed.get_item(item.id + 1).unwrap_or(item),
+        TermKind::Usage(usage) => usage.and_then(|u| completed.get_item(u)).unwrap_or(item),
+        TermKind::Declaration(_, _) => completed.get_item(item.id).unwrap_or(item),
         _ => item,
     };
 
