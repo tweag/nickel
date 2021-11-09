@@ -415,6 +415,21 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
             access: self.access.clone(),
         }
     }
+
+    fn retype_ident(
+        &mut self,
+        lin: &mut Linearization<Building<BuildingResource>>,
+        ident: &Ident,
+        new_type: TypeWrapper,
+    ) {
+        if let Some(item) = self
+            .env
+            .get(ident)
+            .and_then(|index| lin.state.resource.linearization.get_mut(index))
+        {
+            item.ty = new_type;
+        }
+    }
 }
 
 struct IdGen(usize);
