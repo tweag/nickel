@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use anyhow::Result;
 use codespan::FileId;
 use log::{debug, trace, warn};
-use lsp_server::{Connection, ErrorCode, Message, Notification, RequestId, Response};
+use lsp_server::{
+    Connection, ErrorCode, Message, Notification, RequestId, Response, ResponseError,
+};
 use lsp_types::{
     notification::Notification as _,
     notification::{DidChangeTextDocument, DidOpenTextDocument},
@@ -146,31 +148,47 @@ impl Server {
     }
 
     fn handle_request(&mut self, req: lsp_server::Request) {
-        match req.method.as_str() {
+        let res = match req.method.as_str() {
             HoverRequest::METHOD => {
                 let params: HoverParams = serde_json::from_value(req.params).unwrap();
-                hover::handle(params, req.id, self)
+                hover::handle(params, req.id.clone(), self)
             }
 
             GotoDefinition::METHOD => {
                 debug!("handle goto defnition");
                 let params: GotoDefinitionParams = serde_json::from_value(req.params).unwrap();
-                goto::handle_to_definition(params, req.id, self)
+                goto::handle_to_definition(params, req.id.clone(), self)
             }
 
             References::METHOD => {
                 debug!("handle goto defnition");
                 let params: ReferenceParams = serde_json::from_value(req.params).unwrap();
-                goto::handle_to_usages(params, req.id, self)
+                goto::handle_to_usages(params, req.id.clone(), self)
             }
 
             Completion::METHOD => {
                 debug!("handle completion");
                 let params: CompletionParams = serde_json::from_value(req.params).unwrap();
-                completion::handle_completion(params, req.id, self)
+                completion::handle_completion(params, req.id.clone(), self)
             }
 
-            _ => {}
+            _ => Ok(()),
+        };
+
+        if let Err(error) = res {
+            self.reply(Response {
+                id: req.id,
+                result: None,
+                error: Some(error),
+            })
         }
+    }
+
+    pub fn lin_cache_get(&self, file_id: &FileId) -> Result<&Completed, ResponseError> {
+        self.lin_cache.get(&file_id).ok_or_else(|| ResponseError {
+            data: None,
+            message: "File has not yet been parsed or cached.".to_owned(),
+            code: ErrorCode::ParseError as i32,
+        })
     }
 }

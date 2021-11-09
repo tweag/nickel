@@ -1,13 +1,13 @@
 use codespan::ByteIndex;
 use codespan_lsp::position_to_byte_index;
 use log::debug;
-use lsp_server::{RequestId, Response};
+use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{
     GotoDefinitionParams, GotoDefinitionResponse, Location, Range, ReferenceParams, Url,
 };
 use nickel::{
     position::{RawSpan, TermPos},
-    typecheck::linearization::{self},
+    typecheck::linearization,
 };
 use serde_json::Value;
 
@@ -15,7 +15,11 @@ use crate::{
     diagnostic::LocationCompat, requests::utils::find_linearization_index, server::Server,
 };
 
-pub fn handle_to_definition(params: GotoDefinitionParams, id: RequestId, server: &mut Server) {
+pub fn handle_to_definition(
+    params: GotoDefinitionParams,
+    id: RequestId,
+    server: &mut Server,
+) -> Result<(), ResponseError> {
     let file_id = server
         .cache
         .id_of(
@@ -35,13 +39,13 @@ pub fn handle_to_definition(params: GotoDefinitionParams, id: RequestId, server:
     .unwrap();
 
     let locator = (file_id, ByteIndex(start as u32));
-    let linearization = &server.lin_cache.get(&file_id).unwrap();
+    let linearization = &server.lin_cache_get(&file_id)?;
 
     let index = find_linearization_index(&linearization.lin, locator);
 
     if index == None {
         server.reply(Response::new_ok(id, Value::Null));
-        return;
+        return Ok(());
     }
 
     let item = linearization.lin[index.unwrap()].to_owned();
@@ -84,9 +88,14 @@ pub fn handle_to_definition(params: GotoDefinitionParams, id: RequestId, server:
     } else {
         server.reply(Response::new_ok(id, Value::Null));
     }
+    Ok(())
 }
 
-pub fn handle_to_usages(params: ReferenceParams, id: RequestId, server: &mut Server) {
+pub fn handle_to_usages(
+    params: ReferenceParams,
+    id: RequestId,
+    server: &mut Server,
+) -> Result<(), ResponseError> {
     let file_id = server
         .cache
         .id_of(params.text_document_position.text_document.uri.as_str())
@@ -100,13 +109,13 @@ pub fn handle_to_usages(params: ReferenceParams, id: RequestId, server: &mut Ser
     .unwrap();
 
     let locator = (file_id, ByteIndex(start as u32));
-    let linearization = server.lin_cache.get(&file_id).unwrap();
+    let linearization = server.lin_cache_get(&file_id)?;
 
     let index = find_linearization_index(&linearization.lin, locator);
 
     if index == None {
         server.reply(Response::new_ok(id, Value::Null));
-        return;
+        return Ok(());
     }
 
     let item = linearization.lin[index.unwrap()].to_owned();
@@ -156,4 +165,5 @@ pub fn handle_to_usages(params: ReferenceParams, id: RequestId, server: &mut Ser
     } else {
         server.reply(Response::new_ok(id, Value::Null));
     }
+    Ok(())
 }
