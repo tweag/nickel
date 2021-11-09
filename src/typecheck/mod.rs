@@ -584,6 +584,7 @@ fn type_check_<S, E>(
             // let src = TypeWrapper::The(AbsType::Dyn());
             let trg = TypeWrapper::Ptr(new_var(state.table));
             let arr = mk_tyw_arrow!(src.clone(), trg.clone());
+            linearizer.retype_ident(lin, x, src.clone());
 
             unify(state, strict, ty, arr).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
@@ -610,6 +611,7 @@ fn type_check_<S, E>(
         }
         Term::Let(x, re, rt) => {
             let ty_let = binding_type(re.as_ref(), &envs, state.table, strict);
+            linearizer.retype_ident(lin, x, ty_let.clone());
             type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Left), strict, re, ty_let.clone())?;
 
             // TODO move this up once lets are rec
