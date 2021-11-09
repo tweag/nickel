@@ -26,8 +26,8 @@ use std::{collections::HashMap, marker::PhantomData};
 
 use super::TypeWrapper;
 use crate::environment::Environment as GenericEnvironment;
-use crate::types::{AbsType, Types};
 use crate::term::{MetaValue, RecordAttrs};
+use crate::types::{AbsType, Types};
 use crate::{identifier::Ident, position::TermPos, term::Term};
 
 /// Holds the state of a linearization, either in progress or finalized
