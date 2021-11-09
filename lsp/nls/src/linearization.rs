@@ -273,18 +273,18 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                 //           would do with the value will be handled in the following
                 //           call to [Self::add_term]
 
-                for contract in meta.contracts.iter().cloned() {
-                    match contract.types.0 {
+                for contract in meta.contracts.iter() {
+                    match &contract.types.0 {
                         // Note: we extract the
                         nickel::types::AbsType::Flat(RichTerm { term, pos: _ }) => {
-                            match *term {
+                            match &**term {
                                 Term::Var(ident) => {
                                     let parent = self.env.get(&ident);
                                     let id = id_gen.take();
                                     lin.push(LinearizationItem {
                                         id,
                                         pos: ident.1.unwrap(),
-                                        ty: TypeWrapper::Concrete(AbsType::Var(ident)),
+                                        ty: TypeWrapper::Concrete(AbsType::Var(ident.to_owned())),
                                         scope: self.scope.clone(),
                                         // id = parent: full let binding including the body
                                         // id = parent + 1: actual delcaration scope, i.e. _ = < definition >
