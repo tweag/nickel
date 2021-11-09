@@ -317,10 +317,10 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                 }
 
                 if meta.value.is_some() {
-                    self.meta.insert(MetaValue {
+                    self.meta = Some(MetaValue {
                         value: None,
                         ..meta.to_owned()
-                    });
+                    })
                 }
             }
 
