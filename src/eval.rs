@@ -600,6 +600,10 @@ where
                         StrChunk::Expr(e, indent) => (e, indent),
                     };
 
+                    if !enriched_strict {
+                        stack.push_strictness(enriched_strict);
+                    }
+                    enriched_strict = true;
                     stack.push_str_chunks(chunks.into_iter());
                     stack.push_str_acc(String::new(), indent, env.clone());
 

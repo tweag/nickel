@@ -72,9 +72,9 @@ pub enum OperationCont {
 impl std::fmt::Debug for OperationCont {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            OperationCont::Op1(op, _, _) => write!(f, "Op1 {:?}", op),
-            OperationCont::Op2First(op, _, _, _) => write!(f, "Op2First {:?}", op),
-            OperationCont::Op2Second(op, _, _, _, _) => write!(f, "Op2Second {:?}", op),
+            OperationCont::Op1(op, _) => write!(f, "Op1 {:?}", op),
+            OperationCont::Op2First(op, _, _) => write!(f, "Op2First {:?}", op),
+            OperationCont::Op2Second(op, _, _, _) => write!(f, "Op2Second {:?}", op),
             OperationCont::OpN { op, .. } => write!(f, "OpN {:?}", op),
         }
     }
@@ -88,7 +88,7 @@ impl std::fmt::Debug for OperationCont {
 pub fn continuate_operation(
     mut clos: Closure,
     stack: &mut Stack,
-    call_stack: &mut CallStack
+    call_stack: &mut CallStack,
 ) -> Result<Closure, EvalError> {
     let (cont, cs_len, pos) = stack.pop_op_cont().expect("Condition already checked");
     call_stack.truncate(cs_len);
@@ -2322,7 +2322,6 @@ mod tests {
 
         stack.push_op_cont(cont, 0, TermPos::None);
         let mut call_stack = CallStack::new();
-        let mut strict = true;
 
         clos = continuate_operation(clos, &mut stack, &mut call_stack).unwrap();
 
@@ -2354,7 +2353,6 @@ mod tests {
         let mut stack = Stack::new();
         stack.push_op_cont(cont, 0, TermPos::None);
         let mut call_stack = CallStack::new();
-        let mut strict = true;
 
         clos = continuate_operation(clos, &mut stack, &mut call_stack).unwrap();
 
@@ -2403,7 +2401,6 @@ mod tests {
         let mut stack = Stack::new();
         stack.push_op_cont(cont, 0, TermPos::None);
         let mut call_stack = CallStack::new();
-        let mut strict = false;
 
         clos = continuate_operation(clos, &mut stack, &mut call_stack).unwrap();
 
