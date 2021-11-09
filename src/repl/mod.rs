@@ -119,7 +119,7 @@ impl REPLImpl {
 
         match self
             .parser
-            .parse(file_id, lexer::Lexer::new(exp))
+            .parse(file_id, &mut Vec::new(), lexer::Lexer::new(exp))
             .map_err(|err| ParseError::from_lalrpop(err, file_id))?
         {
             // Because we don't use the cache for input, we have to perform recursive import
@@ -302,7 +302,7 @@ impl InputParser {
 
         let result = self
             .parser
-            .parse(self.file_id, lexer::Lexer::new(input))
+            .parse(self.file_id, &mut Vec::new(), lexer::Lexer::new(input))
             .map_err(|err| ParseError::from_lalrpop(err, self.file_id));
 
         match result {

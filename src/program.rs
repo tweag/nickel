@@ -160,7 +160,7 @@ pub fn query(
         let source = format!("x.{}", p);
         let query_file_id = cache.add_tmp("<query>", source.clone());
         let new_term = parser::grammar::TermParser::new()
-            .parse(query_file_id, Lexer::new(&source))
+            .parse(query_file_id, &mut Vec::new(), Lexer::new(&source))
             .map_err(|err| ParseError::from_lalrpop(err, query_file_id))?;
 
         // Substituting `y` for `t`
@@ -219,7 +219,7 @@ mod tests {
         let id = Files::new().add("<test>", String::from(s));
 
         grammar::TermParser::new()
-            .parse(id, lexer::Lexer::new(&s))
+            .parse(id, &mut Vec::new(), lexer::Lexer::new(&s))
             .map(|mut t| {
                 t.clean_pos();
                 t

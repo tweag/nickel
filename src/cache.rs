@@ -337,7 +337,7 @@ impl Cache {
         match format {
             InputFormat::Nickel => {
                 let t = parser::grammar::TermParser::new()
-                    .parse(file_id, Lexer::new(&buf))
+                    .parse(file_id, &mut Vec::new(), Lexer::new(&buf))
                     .map_err(|err| ParseError::from_lalrpop(err, file_id))?;
                 Ok(t)
             }
@@ -931,7 +931,7 @@ pub mod resolvers {
             } else {
                 let buf = self.files.source(file_id);
                 let term = parser::grammar::TermParser::new()
-                    .parse(file_id, Lexer::new(&buf))
+                    .parse(file_id, &mut Vec::new(), Lexer::new(&buf))
                     .map_err(|e| ParseError::from_lalrpop(e, file_id))
                     .map_err(|e| ImportError::ParseError(e, *pos))?;
                 self.term_cache.insert(file_id, term);

@@ -552,8 +552,8 @@ fn type_check_<S, E>(
     let RichTerm { term: t, pos } = rt;
     linearizer.add_term(lin, t, *pos, ty.clone());
     match t.as_ref() {
-        // null is inferred to be of type Dyn
-        Term::Null => unify(state, strict, ty, mk_typewrapper::dynamic())
+        // null and parse errors are inferred to be of type Dyn
+        Term::Null | Term::ParseError => unify(state, strict, ty, mk_typewrapper::dynamic())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
         Term::Bool(_) => unify(state, strict, ty, mk_typewrapper::bool())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
