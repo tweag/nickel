@@ -50,7 +50,10 @@ pub mod desugar_destructuring {
                     t_pos,
                 )
             };
-            desugar(RichTerm::new(Term::LetPattern(x, pat, t_, body), pos))
+            desugar(RichTerm::new(
+                Term::LetPattern(x, pat, super::apply_contracts::transform_one(t_), body),
+                pos,
+            ))
         } else {
             rt
         }

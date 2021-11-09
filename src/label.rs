@@ -261,7 +261,7 @@ impl Label {
             },
             arg_thunk: None,
             arg_pos: TermPos::None,
-            polarity: false,
+            polarity: true,
             path: Vec::new(),
         }
     }
