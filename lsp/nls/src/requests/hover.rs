@@ -3,7 +3,7 @@ use codespan_lsp::position_to_byte_index;
 use log::debug;
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{Hover, HoverContents, HoverParams, LanguageString, MarkedString, Range};
-use nickel::position::TermPos;
+use nickel::{position::TermPos, term::MetaValue, typecheck::linearization};
 use serde_json::Value;
 
 use crate::{
@@ -36,8 +36,9 @@ pub fn handle(
     debug!("start of hovered item: ByteIndex({})", start);
 
     let locator = (file_id, ByteIndex(start as u32));
-    let linearization = &server.lin_cache_get(&file_id)?.lin;
 
+    let completed = server.lin_cache_get(&file_id)?;
+    let linearization = &completed.lin;
     let index = find_linearization_index(linearization, locator);
 
     if index == None {
@@ -47,6 +48,39 @@ pub fn handle(
 
     let item = linearization[index.unwrap()].to_owned();
     debug!("{:?}", item);
+
+    let mut extra = vec![];
+
+    if let Some(MetaValue {
+        ref doc,
+        ref types,
+        ref contracts,
+        priority,
+        ..
+    }) = item.meta.as_ref().or_else(|| match item.kind {
+        linearization::TermKind::Usage(usage) => usage
+            .and_then(|u| completed.get_item(u))
+            .and_then(|i| i.meta.as_ref()),
+        _ => None,
+    }) {
+        if let Some(doc) = doc {
+            extra.push(doc.to_owned());
+        }
+        if let Some(types) = types {
+            extra.push(format!("{}", types.label.tag));
+        }
+        if !contracts.is_empty() {
+            extra.push(
+                contracts
+                    .iter()
+                    .map(|contract| format!("{}", contract.label.types,))
+                    .collect::<Vec<_>>()
+                    .join(","),
+            );
+        }
+
+        extra.push(format!("Merge Priority: {:?}", priority));
+    }
 
     let range = match item.pos {
         TermPos::Original(span) | TermPos::Inherited(span) => Some(Range::from_codespan(
@@ -63,6 +97,10 @@ pub fn handle(
                 MarkedString::LanguageString(LanguageString {
                     language: "nickel".into(),
                     value: item.ty.to_string(),
+                }),
+                MarkedString::LanguageString(LanguageString {
+                    language: "plain".into(),
+                    value: extra.join("\n"),
                 }),
                 MarkedString::LanguageString(LanguageString {
                     language: "plain".into(),
