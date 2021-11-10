@@ -398,6 +398,8 @@ InfixExpr: RichTerm = {
     #[precedence(level="6")] #[assoc(side="left")]
     <t1: WithPos<InfixExpr>> "&" <t2: WithPos<InfixExpr>> =>
         mk_term::op2(BinaryOp::Merge(), t1, t2),
+    <t1: WithPos<InfixExpr>> "|>" <t2: WithPos<InfixExpr>> =>
+        mk_app!(t2, t1),
 
     #[precedence(level="7")] #[assoc(side="left")]
     <t1: WithPos<InfixExpr>> "<" <t2: WithPos<InfixExpr>> =>
@@ -576,6 +578,7 @@ extern {
         "fun" => Token::Normal(NormalToken::Fun),
         "import" => Token::Normal(NormalToken::Import),
         "|" => Token::Normal(NormalToken::Pipe),
+        "|>" => Token::Normal(NormalToken::RightPipe),
         "->" => Token::Normal(NormalToken::SimpleArrow),
         "=>" => Token::Normal(NormalToken::DoubleArrow),
         "#" => Token::Normal(NormalToken::Hash),

@@ -130,6 +130,8 @@ pub enum NormalToken<'input> {
     Import,
     #[token("|")]
     Pipe,
+    #[token("|>")]
+    RightPipe,
     #[token("->")]
     SimpleArrow,
     #[token("=>")]
