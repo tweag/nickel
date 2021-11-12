@@ -583,6 +583,18 @@ impl DerefMut for SharedTerm {
     }
 }
 
+macro_rules! match_term {
+    ($rt:ident, $($pat:pat => $arm:expr),*) => (
+        match $rt.term.as_ref() {
+            $($pat => match $rt.term.as_value() {
+                $pat => $arm,
+                _ => unsafe {::core::hint::unreachable_unchecked()}
+            }),*
+            _ => rt,
+        }
+    );
+}
+
 /// Primitive unary operators.
 ///
 /// Some operators, such as if-then-else or `seq`, actually take several arguments but are only
