@@ -1,5 +1,6 @@
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
+use std::fmt::Debug;
 
 use codespan::FileId;
 
@@ -75,8 +76,31 @@ pub fn elaborate_field_path(
             Term::Record(map, Default::default()).into()
         }
         FieldPathElem::Expr(exp) => {
-            let empty = Term::Record(HashMap::new(), Default::default());
-            mk_app!(mk_term::op2(BinaryOp::DynExtend(), exp, empty), acc)
+            let static_access = match exp.term.as_ref() {
+                Term::StrChunks(chunks) => {
+                    chunks
+                        .into_iter()
+                        .fold(Some(String::new()), |acc, next| match (acc, next) {
+                            (Some(mut acc), StrChunk::Literal(lit)) => {
+                                acc.push_str(lit);
+                                Some(acc)
+                            }
+                            _ => None,
+                        })
+                }
+                _ => None,
+            };
+
+            if let Some(static_access) = static_access {
+                let id = Ident(static_access, Some(exp.pos));
+
+                let mut map = HashMap::new();
+                map.insert(id, acc);
+                Term::Record(map, Default::default()).into()
+            } else {
+                let empty = Term::Record(HashMap::new(), Default::default());
+                mk_app!(mk_term::op2(BinaryOp::DynExtend(), exp, empty), acc)
+            }
         }
     });
 
@@ -87,7 +111,7 @@ pub fn elaborate_field_path(
 /// different definitions are merged.
 pub fn build_record<I>(fields: I, attrs: RecordAttrs) -> Term
 where
-    I: IntoIterator<Item = (FieldPathElem, RichTerm)>,
+    I: IntoIterator<Item = (FieldPathElem, RichTerm)> + Debug,
 {
     let mut static_map = HashMap::new();
     let mut dynamic_fields = Vec::new();
@@ -130,6 +154,8 @@ where
                         }
                         StrChunk::Expr(..) => Err(()),
                     });
+
+                    eprintln!("record field is string `{:?}", e);
 
                     if is_static.is_ok() {
                         insert_static_field(&mut static_map, Ident(buffer, Some(e.pos)), t)
