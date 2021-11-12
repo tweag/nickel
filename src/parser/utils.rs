@@ -132,7 +132,7 @@ where
                     });
 
                     if is_static.is_ok() {
-                        insert_static_field(&mut static_map, Ident(buffer, None), t)
+                        insert_static_field(&mut static_map, Ident(buffer, Some(e.pos)), t)
                     } else {
                         dynamic_fields.push((e, t));
                     }

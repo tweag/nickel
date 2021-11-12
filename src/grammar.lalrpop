@@ -261,8 +261,8 @@ Bool: bool = {
 };
 
 StrChunks : RichTerm = {
-  <start: StringStart> <fst: ChunkLiteral?> <chunks: (ChunkExpr+ChunkLiteral)*> <lasts:
-    ChunkExpr*> <end: StringEnd> => {
+  <l:@L><start: StringStart> <fst: ChunkLiteral?> <chunks: (ChunkExpr+ChunkLiteral)*> <lasts:
+    ChunkExpr*> <end: StringEnd><r:@R> => {
         debug_assert_eq!(start, end);
 
         let chunks: Vec<StrChunk<RichTerm>> = fst.into_iter()
@@ -284,7 +284,7 @@ StrChunks : RichTerm = {
         };
         chunks.reverse();
 
-        RichTerm::from(Term::StrChunks(chunks))
+        RichTerm::new(Term::StrChunks(chunks), mk_pos(src_id, l, r))
     },
 };
 
