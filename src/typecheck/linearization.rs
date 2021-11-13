@@ -24,7 +24,7 @@
 
 use std::{collections::HashMap, marker::PhantomData};
 
-use super::TypeWrapper;
+use super::{TypeWrapper, UnifTable};
 use crate::environment::Environment as GenericEnvironment;
 use crate::term::MetaValue;
 use crate::types::Types;
@@ -65,6 +65,8 @@ pub struct Completed {
     pub id_mapping: HashMap<usize, usize>,
     pub scope_mapping: HashMap<Vec<ScopeId>, Vec<usize>>,
 }
+
+pub type CompletionSalt = (UnifTable, HashMap<usize, Ident>);
 
 pub struct Uninit;
 
@@ -120,9 +122,9 @@ pub enum TermKind {
     Record(HashMap<Ident, usize>),
     RecordField {
         ident: Ident,
-        body_pos: TermPos,
         record: usize,
         usages: Vec<usize>,
+        value: Option<usize>,
     },
     Structure,
 }
