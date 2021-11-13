@@ -671,6 +671,7 @@ fn type_check_<S, E>(
 
             for (id, _) in stat_map {
                 envs.insert(id.clone(), ty_dyn.clone());
+                linearizer.retype_ident(lin, id, ty_dyn.clone())
             }
 
             stat_map
@@ -690,7 +691,8 @@ fn type_check_<S, E>(
             if let Term::RecRecord(..) = t.as_ref() {
                 for (id, rt) in stat_map {
                     let tyw = binding_type(rt.as_ref(), &envs, state.table, strict);
-                    envs.insert(id.clone(), tyw);
+                    envs.insert(id.clone(), tyw.clone());
+                    linearizer.retype_ident(lin, id, tyw);
                 }
             }
 
