@@ -556,16 +556,26 @@ impl SharedTerm {
         }
     }
 
-    pub fn as_ref(&self) -> &Term {
-        self.term.as_ref()
-    }
-
-    pub fn as_mut(&mut self) -> &mut Term {
-        Rc::make_mut(&mut self.term)
-    }
-
     pub fn as_value(self) -> Term {
         Rc::try_unwrap(self.term).unwrap_or_else(|rc| Term::clone(&rc))
+    }
+}
+
+impl AsRef<Term> for SharedTerm {
+    fn as_ref(&self) -> &Term {
+        self.term.as_ref()
+    }
+}
+
+impl AsMut<Term> for SharedTerm {
+    fn as_mut(&mut self) -> &mut Term {
+        Rc::make_mut(&mut self.term)
+    }
+}
+
+impl From<SharedTerm> for Term {
+    fn from(st: SharedTerm) -> Self {
+        st.as_value()
     }
 }
 
@@ -581,18 +591,6 @@ impl DerefMut for SharedTerm {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.as_mut()
     }
-}
-
-macro_rules! match_term {
-    ($rt:ident, $($pat:pat => $arm:expr),*) => (
-        match $rt.term.as_ref() {
-            $($pat => match $rt.term.as_value() {
-                $pat => $arm,
-                _ => unsafe {::core::hint::unreachable_unchecked()}
-            }),*
-            _ => rt,
-        }
-    );
 }
 
 /// Primitive unary operators.
@@ -1180,6 +1178,39 @@ impl From<Term> for RichTerm {
         RichTerm {
             term: SharedTerm::new(t),
             pos: TermPos::None,
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! match_richterm {
+    (
+        with $rt: ident {
+            $($($pat: pat_param)|+ $(if $if_expr: expr)? => $expr: expr),+
+        } else $else_clause: expr
+    ) => {
+        match $rt.as_ref() {
+            $(
+                #[allow(unused_variables)]
+                $($pat)|+ $(if $if_expr)? =>
+                    match $rt.into() {
+                        $($pat)|+ => $expr,
+                        _ => unsafe {::core::hint::unreachable_unchecked()}
+                    },
+            )+
+            _ => $else_clause
+        }
+    };
+
+    (
+        with $rt: ident {
+            $($($pat: pat_param)|+ $(if $if_expr: expr)? => $expr: expr),+
+        }
+    ) => {
+        $crate::match_richterm!{
+            with $rt {
+                $($($pat)|+ $(if $if_expr)? => $expr),+
+            } else $rt
         }
     }
 }
