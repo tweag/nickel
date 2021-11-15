@@ -1231,7 +1231,7 @@ mod tests {
 
         // let x = import "bad" in x
         match mk_import("x", "bad", mk_term::var("x"), &mut resolver).unwrap_err() {
-            ImportError::ParseError(_, _) => (),
+            ImportError::ParseErrors(_, _) => (),
             _ => assert!(false),
         };
 

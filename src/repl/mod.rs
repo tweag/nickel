@@ -223,7 +223,7 @@ impl REPL for REPLImpl {
 
     fn typecheck(&mut self, exp: &str) -> Result<Types, Error> {
         let file_id = self.cache.add_tmp("<repl-typecheck>", String::from(exp));
-        let term = self.cache.parse_nocache(file_id)?;
+        let term = self.cache.parse_nocache(file_id).map_err(|e| e.1)?;
         let (term, pending) = transformations::resolve_imports(term, &mut self.cache)?;
         for id in &pending {
             self.cache.resolve_imports(*id).unwrap();

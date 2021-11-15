@@ -1,6 +1,6 @@
 //! Source cache.
 
-use crate::error::{Error, ImportError, ParseError, TypecheckError};
+use crate::error::{Error, ImportError, ParseError, ParseErrors, TypecheckError};
 use crate::parser::lexer::Lexer;
 use crate::position::TermPos;
 use crate::stdlib as nickel_stdlib;
@@ -290,12 +290,17 @@ impl Cache {
 
     /// Parse a source and populate the corresponding entry in the cache, or do nothing if the
     /// entry has already been parsed.
-    pub fn parse(&mut self, file_id: FileId) -> Result<CacheOp<()>, ParseError> {
+    pub fn parse(&mut self, file_id: FileId) -> Result<CacheOp<()>, ParseErrors> {
         if self.terms.contains_key(&file_id) {
             Ok(CacheOp::Cached(()))
         } else {
-            self.terms
-                .insert(file_id, (self.parse_nocache(file_id)?, EntryState::Parsed));
+            self.terms.insert(
+                file_id,
+                (
+                    self.parse_nocache(file_id).map_err(|e| e.1)?,
+                    EntryState::Parsed,
+                ),
+            );
             Ok(CacheOp::Done(()))
         }
     }
@@ -306,14 +311,14 @@ impl Cache {
         &mut self,
         file_id: FileId,
         format: InputFormat,
-    ) -> Result<CacheOp<()>, ParseError> {
+    ) -> Result<CacheOp<()>, ParseErrors> {
         if self.terms.contains_key(&file_id) {
             Ok(CacheOp::Cached(()))
         } else {
             self.terms.insert(
                 file_id,
                 (
-                    self.parse_nocache_multi(file_id, format)?,
+                    self.parse_nocache_multi(file_id, format).map_err(|e| e.1)?,
                     EntryState::Parsed,
                 ),
             );
@@ -322,7 +327,10 @@ impl Cache {
     }
 
     /// Parse a source without querying nor populating the cache.
-    pub fn parse_nocache(&self, file_id: FileId) -> Result<RichTerm, ParseError> {
+    pub fn parse_nocache(
+        &self,
+        file_id: FileId,
+    ) -> Result<RichTerm, (Option<RichTerm>, ParseErrors)> {
         self.parse_nocache_multi(file_id, InputFormat::Nickel)
     }
 
@@ -331,22 +339,43 @@ impl Cache {
         &self,
         file_id: FileId,
         format: InputFormat,
-    ) -> Result<RichTerm, ParseError> {
+    ) -> Result<RichTerm, (Option<RichTerm>, ParseErrors)> {
         let buf = self.files.source(file_id);
 
         match format {
             InputFormat::Nickel => {
+                let mut parse_err_rec = Vec::new();
                 let t = parser::grammar::TermParser::new()
-                    .parse(file_id, &mut Vec::new(), Lexer::new(&buf))
-                    .map_err(|err| ParseError::from_lalrpop(err, file_id))?;
-                Ok(t)
+                    .parse(file_id, &mut parse_err_rec, Lexer::new(&buf))
+                    .map_err(|err| (None, ParseError::from_lalrpop(err, file_id).into()))?;
+
+                if parse_err_rec.is_empty() {
+                    Ok(t)
+                } else {
+                    Err((
+                        Some(t),
+                        parse_err_rec
+                            .into_iter()
+                            .map(|e| ParseError::from_lalrpop(e.error, file_id))
+                            .collect::<Vec<_>>()
+                            .into(),
+                    ))
+                }
             }
-            InputFormat::Json => serde_json::from_str(self.files.source(file_id))
-                .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files)),
+            InputFormat::Json => serde_json::from_str(self.files.source(file_id)).map_err(|err| {
+                (
+                    None,
+                    ParseError::from_serde_json(err, file_id, &self.files).into(),
+                )
+            }),
             InputFormat::Yaml => serde_yaml::from_str(self.files.source(file_id))
-                .map_err(|err| ParseError::from_serde_yaml(err, file_id)),
-            InputFormat::Toml => toml::from_str(self.files.source(file_id))
-                .map_err(|err| ParseError::from_toml(err, file_id, &self.files)),
+                .map_err(|err| (None, ParseError::from_serde_yaml(err, file_id).into())),
+            InputFormat::Toml => toml::from_str(self.files.source(file_id)).map_err(|err| {
+                (
+                    None,
+                    ParseError::from_toml(err, file_id, &self.files).into(),
+                )
+            }),
         }
     }
 
@@ -565,7 +594,7 @@ impl Cache {
         file_id: FileId,
         global_env: &eval::Environment,
     ) -> Result<(RichTerm, Vec<FileId>), Error> {
-        let term = self.parse_nocache(file_id)?;
+        let term = self.parse_nocache(file_id).map_err(|e| e.1)?;
         let (term, pending) = transformations::resolve_imports(term, self)?;
         type_check(&term, global_env, self, StubHost::<(), _>::new())?;
         let term = transformations::transform(term);
@@ -818,7 +847,7 @@ impl ImportResolver for Cache {
         };
 
         self.parse_multi(file_id, format)
-            .map_err(|err| ImportError::ParseError(err, *pos))?;
+            .map_err(|err| ImportError::ParseErrors(err, *pos))?;
 
         Ok((ResolvedTerm::FromFile { path: path_buf }, file_id))
     }
@@ -933,7 +962,7 @@ pub mod resolvers {
                 let term = parser::grammar::TermParser::new()
                     .parse(file_id, &mut Vec::new(), Lexer::new(&buf))
                     .map_err(|e| ParseError::from_lalrpop(e, file_id))
-                    .map_err(|e| ImportError::ParseError(e, *pos))?;
+                    .map_err(|e| ImportError::ParseErrors(e.into(), *pos))?;
                 self.term_cache.insert(file_id, term);
                 Ok((
                     ResolvedTerm::FromFile {
