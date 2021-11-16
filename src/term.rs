@@ -1182,11 +1182,31 @@ impl From<Term> for RichTerm {
     }
 }
 
+/// Allows to match on RichTerm without taking ownership of the matched part.
+/// It is used somehow as a match statement, going from
+/// ```
+/// match rt {
+///     case_1 => do_something_1(),
+///     case_2 => do_something_2(),
+///     _ => do_fallback()
+/// }
+/// ```
+/// to
+/// ```
+/// with rt, do {
+///     case_1 => do_something_1(),
+///     case_2 => do_something_2(),
+/// } else do_fallback()
+/// ```
+///
+/// The `else` part is optional and returns the RichTerm if absent.
+///
+/// NOTE: This macro has been made to be used on RichTer, but it can work on any Type that would implement `Deref<T>` and `Into<T>`.
 #[macro_export]
 macro_rules! match_richterm {
     (
-        with $rt: ident {
-            $($($pat: pat_param)|+ $(if $if_expr: expr)? => $expr: expr),+
+        with $rt: expr, do {
+            $($($pat: pat_param)|+ $(if $if_expr: expr)? => $expr: expr),+ $(,)?
         } else $else_clause: expr
     ) => {
         match $rt.as_ref() {
@@ -1203,12 +1223,12 @@ macro_rules! match_richterm {
     };
 
     (
-        with $rt: ident {
-            $($($pat: pat_param)|+ $(if $if_expr: expr)? => $expr: expr),+
+        with $rt: expr, do {
+            $($($pat: pat_param)|+ $(if $if_expr: expr)? => $expr: expr),+ $(,)?
         }
     ) => {
         $crate::match_richterm!{
-            with $rt {
+            with $rt, do {
                 $($($pat)|+ $(if $if_expr)? => $expr),+
             } else $rt
         }
