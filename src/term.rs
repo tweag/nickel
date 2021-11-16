@@ -1182,10 +1182,10 @@ impl From<Term> for RichTerm {
     }
 }
 
-/// Allows to match on RichTerm without taking ownership of the matched part.
+/// Allows to match on SharedTerm without taking ownership of the matched part.
 /// It is used somehow as a match statement, going from
 /// ```
-/// match rt {
+/// match st {
 ///     case_1 => do_something_1(),
 ///     case_2 => do_something_2(),
 ///     _ => do_fallback()
@@ -1193,27 +1193,27 @@ impl From<Term> for RichTerm {
 /// ```
 /// to
 /// ```
-/// with rt, do {
+/// with st, do {
 ///     case_1 => do_something_1(),
 ///     case_2 => do_something_2(),
 /// } else do_fallback()
 /// ```
 ///
-/// The `else` part is optional and returns the RichTerm if absent.
+/// The `else` part is optional and returns the SharedTerm if absent.
 ///
-/// NOTE: This macro has been made to be used on RichTer, but it can work on any Type that would implement `Deref<T>` and `Into<T>`.
+/// NOTE: This macro has been made to be used on SharedTerm, but it can work on any Type that would implement `Deref<T>` and `Into<T>`.
 #[macro_export]
-macro_rules! match_richterm {
+macro_rules! match_sharedterm {
     (
-        with $rt: expr, do {
+        with $st: expr, do {
             $($($pat: pat_param)|+ $(if $if_expr: expr)? => $expr: expr),+ $(,)?
         } else $else_clause: expr
     ) => {
-        match $rt.as_ref() {
+        match $st.as_ref() {
             $(
                 #[allow(unused_variables)]
                 $($pat)|+ $(if $if_expr)? =>
-                    match $rt.into() {
+                    match $st.into() {
                         $($pat)|+ => $expr,
                         _ => unsafe {::core::hint::unreachable_unchecked()}
                     },
@@ -1223,14 +1223,14 @@ macro_rules! match_richterm {
     };
 
     (
-        with $rt: expr, do {
+        with $st: expr, do {
             $($($pat: pat_param)|+ $(if $if_expr: expr)? => $expr: expr),+ $(,)?
         }
     ) => {
         $crate::match_richterm!{
-            with $rt, do {
+            with $st, do {
                 $($($pat)|+ $(if $if_expr)? => $expr),+
-            } else $rt
+            } else $st
         }
     }
 }
