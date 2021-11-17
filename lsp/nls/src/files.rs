@@ -20,8 +20,13 @@ pub fn handle_open(server: &mut Server, params: DidOpenTextDocumentParams) -> Re
 
     let checked = server
         .cache
-        .parse(file_id)
+        .parse_tolerate_errors(file_id)
         .map_err(|parse_err| parse_err.to_diagnostic(server.cache.files_mut(), None))
+        .map_err(|mut d| {
+            trace!("Parsed with errors, checking types");
+            let _ = typecheck(server, file_id).map_err(|mut ty_d| d.append(&mut ty_d));
+            d
+        })
         .and_then(|_| {
             trace!("Parsed, checking types");
             typecheck(server, file_id)

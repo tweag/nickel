@@ -306,6 +306,28 @@ impl Cache {
     }
 
     /// Parse a source and populate the corresponding entry in the cache, or do nothing if the
+    /// entry has already been parsed.
+    ///
+    /// The cache will be populated even if there are parse errors.
+    pub fn parse_tolerate_errors(&mut self, file_id: FileId) -> Result<CacheOp<()>, ParseErrors> {
+        if self.terms.contains_key(&file_id) {
+            Ok(CacheOp::Cached(()))
+        } else {
+            let (term, e) = match self.parse_nocache(file_id) {
+                Ok(t) => (t, None),
+                Err((Some(t), e)) => (t, Some(e)),
+                Err((None, e)) => return Err(e),
+            };
+            self.terms.insert(file_id, (term, EntryState::Parsed));
+            if let Some(e) = e {
+                Err(e)
+            } else {
+                Ok(CacheOp::Done(()))
+            }
+        }
+    }
+
+    /// Parse a source and populate the corresponding entry in the cache, or do nothing if the
     /// entry has already been parsed. Support multiple formats.
     pub fn parse_multi(
         &mut self,
