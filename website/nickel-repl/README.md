@@ -75,9 +75,11 @@ abstractions or just feel ad hoc. Nickel buys you more for less.
 
 1. Start Nickel
    * with [flake-enabled](https://nixos.wiki/wiki/Flakes) Nix directly
-     with `nix run nickel` (which pulls it from the global flakes registry), or
-     with `nix run github:tweag/nickel` (which pulls it from the repo). You
-     pass in arguments with an extra `--` as in `nix run nickel -- repl`,
+     with `nix run nickel` (which pulls it from the global flakes
+     registry), or with `nix run github:tweag/nickel` (which pulls it
+     from the repo). You can use [our binary cache](https://nickel.cachix.org) to
+     prevent rebuilding a lot of packages. You pass in arguments with
+     an extra `--` as in `nix run nickel -- repl`,
    * with `./nickel`, after [building](#Build) this repo, depending on the
      location of the executable and passing in arguments directly,
    * or with `cargo run` after [building](#Build), passing in arguments with
@@ -126,7 +128,9 @@ for help about a specific subcommand.
      ```console
      $ nix-shell shell.nix
      ```
-     to be dropped in a shell, ready to build.
+     to be dropped in a shell, ready to build. You can use [our binary
+     cache](https://nickel.cachix.org) to prevent rebuilding a lot of
+     packages.
    - **Without Nix**: otherwise, follow [this guide][rust-guide] to install Rust
      and Cargo first.
 2. Build Nickel:
