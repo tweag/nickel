@@ -260,6 +260,11 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                                     _ => None,
                                 }
                             }
+                            TermKind::Record(fields) => {
+                                fields.get(accessor).and_then(|accessor_id| {
+                                    lin.state.resource.linearization.get(*accessor_id)
+                                })
+                            }
                             // stop if not a field
                             kind @ _ => {
                                 debug!("expected record or record field, was: {:?}", kind);
@@ -277,7 +282,19 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
 
                     let id = id_gen.take();
                     let child_id = child.map(|r| r.id);
-
+                    let referenced_value = child.as_ref().and_then(|child| match child {
+                        child
+                        @
+                        LinearizationItem {
+                            kind: TermKind::Declaration(..),
+                            ..
+                        } => Some(child.id),
+                        LinearizationItem {
+                            kind: TermKind::RecordField { value, .. },
+                            ..
+                        } => value.to_owned(),
+                        _ => None,
+                    });
                     lin.push(LinearizationItem {
                         id,
                         pos: accessor.1,
@@ -290,7 +307,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                     if let Some(child_id) = child_id {
                         lin.add_usage(child_id, id);
                     }
-                    root = child_id;
+                    root = referenced_value;
                 }
             }
             Term::Record(fields, _) | Term::RecRecord(fields, _, _) => {
@@ -311,8 +328,8 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                         .cloned()
                         .collect::<Vec<_>>()
                         .into_iter()
-                        .rev()
                         .enumerate()
+                        .rev()
                         .collect(),
                 ));
             }
