@@ -134,7 +134,7 @@ RootTerm: RichTerm = {
     "if" <cond: Term> "then" <t1: Term> "else" <t2: Term> =>
         mk_app!(Term::Op1(UnaryOp::Ite(), cond), t1, t2),
     AnnotatedTerm,
-    <t: !> <l: @L> <r: @R> => { errors.push(t); RichTerm { term: Box::new(Term::ParseError), pos: mk_pos(src_id, l, r)} },
+    <l: @L> <t: !> <r: @R> => { errors.push(t); RichTerm { term: Box::new(Term::ParseError), pos: mk_pos(src_id, l, r)} },
 };
 
 AnnotatedTerm: RichTerm = {
