@@ -191,13 +191,15 @@ pub struct Contract {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct MetaValue {
+pub struct AbsMetaValue<V> {
     pub doc: Option<String>,
     pub types: Option<Contract>,
     pub contracts: Vec<Contract>,
     pub priority: MergePriority,
-    pub value: Option<RichTerm>,
+    pub value: V,
 }
+
+pub type MetaValue = AbsMetaValue<Option<RichTerm>>;
 
 impl From<RichTerm> for MetaValue {
     fn from(rt: RichTerm) -> Self {
@@ -1254,7 +1256,7 @@ pub mod make {
     {
         println!("");
         match pat.into() {
-            d @ (Destruct::Record(_) | Destruct::List(_)) => {
+            d @ (Destruct::Record(_, _, _) | Destruct::List(_)) => {
                 println!("pattern: {:?}", d);
                 Term::LetPattern(id.map(|i| i.into()), d.into(), t1.into(), t2.into()).into()
             }

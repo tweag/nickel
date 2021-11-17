@@ -11,7 +11,7 @@ use super::lexer::{Token, NormalToken, StringToken, MultiStringToken};
 
 use crate::{mk_app, mk_opn};
 use crate::identifier::Ident;
-use crate::destruct::{Match, Destruct};
+use crate::destruct::{Match, LastMatch, Destruct};
 use crate::parser::error::ParseError;
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
     MergePriority, Contract, NAryOp, RecordAttrs};
@@ -256,17 +256,27 @@ Pattern: (Option<Ident>,Destruct) = {
 };
 
 Destruct: Destruct = {
-    "{" <mut matches: (<Match> ",")*> <last:Match?> "}" => {
-        if let Some(last) = last {
-	    matches.push(last);
-	}
-	Destruct::Record(matches)
+    "{" <mut matches: (<Match> ",")*> <last:LastMatch?> "}" => {
+        let (open, rst) = match last {
+	    Some(LastMatch::Match(m)) => {
+	        matches.push(m);
+	        (false,None)
+	    },
+	    Some(LastMatch::Ellipsis(rst)) => (true, rst),
+	    _ => (false, None),
+	};
+	Destruct::Record(matches, open, rst)
     },
 };
 
 Match: Match = {
     <left:Ident> <default: ("?" <Term>)?> "=" <right: Pattern> => Match::Assign(left,right),
     <id:Ident> <default: ("?" <Term>)?> => Match::Simple(id),
+};
+
+LastMatch: LastMatch = {
+    Match => LastMatch::Match(<>),
+    ".."<Ident?> => LastMatch::Ellipsis(<>),
 };
 
 Ident: Ident = "identifier" => Ident(<>.to_string());

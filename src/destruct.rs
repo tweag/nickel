@@ -11,8 +11,14 @@ pub enum Match {
 }
 
 #[derive(Debug, Eq, Hash, PartialEq, Ord, PartialOrd, Clone, Serialize, Deserialize)]
+pub enum LastMatch {
+    Match(Match),
+    Ellipsis(Option<Ident>),
+}
+
+#[derive(Debug, Eq, Hash, PartialEq, Ord, PartialOrd, Clone, Serialize, Deserialize)]
 pub enum Destruct {
-    Record(Vec<Match>),
+    Record(Vec<Match>, bool, Option<Ident>),
     List(Vec<Match>),
     Empty,
 }
@@ -20,6 +26,7 @@ pub enum Destruct {
 impl Destruct {
     pub fn as_contract(self) -> MetaValue {
         println!("{:#?}", self);
+        let open = self.opened().clone();
         MetaValue {
             contracts: vec![Contract {
                 types: Types(AbsType::Flat(
@@ -28,7 +35,7 @@ impl Destruct {
                             .iter()
                             .map(|m| (m.ident(), m.as_meta()))
                             .collect(),
-                        RecordAttrs { open: false },
+                        RecordAttrs { open },
                     )
                     .into(),
                 )),
@@ -40,8 +47,15 @@ impl Destruct {
 
     fn inner(self) -> Vec<Match> {
         match self {
-            Destruct::Record(i) | Destruct::List(i) => i,
+            Destruct::Record(i, _, _) | Destruct::List(i) => i,
             Destruct::Empty => unreachable!(),
+        }
+    }
+
+    pub fn opened(&self) -> bool {
+        match self {
+            Destruct::Record(_, o, _) => *o,
+            _ => false,
         }
     }
 }

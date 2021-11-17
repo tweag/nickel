@@ -31,10 +31,9 @@ generate_counter!(FreshVarCounter, usize);
 pub mod desugar_destructuring {
     use super::{Ident, RichTerm, Term};
     use crate::destruct::{Destruct, Match};
-    use crate::term::make::op1;
+    use crate::term::make::{op1, op2};
     use crate::term::MetaValue;
-    use crate::term::RecordAttrs;
-    use crate::term::UnaryOp;
+    use crate::term::{BinaryOp::DynRemove, UnaryOp::StaticAccess};
 
     pub fn desugar_with_contract(rt: RichTerm) -> RichTerm {
         if let Term::LetPattern(x, pat, t_, body) = *rt.term {
@@ -67,23 +66,50 @@ pub mod desugar_destructuring {
             } else {
                 super::fresh_var()
             };
-            RichTerm::new(Term::Let(x.clone(), t_, destruct_term(x, pat, body)), pos)
+            RichTerm::new(
+                Term::Let(
+                    x.clone(),
+                    t_,
+                    destruct_term(x.clone(), pat.clone(), drop_fields(x, pat, body)),
+                ),
+                pos,
+            )
         } else {
             rt
         }
     }
 
+    fn drop_fields(x: Ident, pat: Destruct, body: RichTerm) -> RichTerm {
+        println!("{:?}", pat);
+        let (matches, var) = match pat {
+            Destruct::Record(matches, true, Some(x)) => (matches, x),
+            Destruct::Record(matches, true, None) => (matches, super::fresh_var()),
+            Destruct::Record(_, false, None) | Destruct::Empty => return body,
+            _ => panic!("A closed pattern can not have a rest binding"),
+        };
+        Term::Let(
+            var,
+            matches.iter().fold(Term::Var(x).into(), |x, m| match m {
+                Match::Simple(i) | Match::Assign(i, _) => {
+                    op2(DynRemove(), Term::Str(i.to_string()), x)
+                }
+            }),
+            body,
+        )
+        .into()
+    }
+
     fn destruct_term(x: Ident, pat: Destruct, t: RichTerm) -> RichTerm {
         let pos = t.pos.clone();
         match pat {
-            Destruct::Record(mut matches) => {
+            Destruct::Record(mut matches, open, rst) => {
                 let m = matches.pop();
                 if let Some(m) = m {
                     let next_term = match m {
                         Match::Simple(id) => RichTerm::new(
                             Term::Let(
                                 id.clone(),
-                                op1(UnaryOp::StaticAccess(id.clone()), Term::Var(x.clone())),
+                                op1(StaticAccess(id.clone()), Term::Var(x.clone())),
                                 t.clone(),
                             ),
                             pos,
@@ -92,13 +118,13 @@ pub mod desugar_destructuring {
                             Term::LetPattern(
                                 id,
                                 pat,
-                                op1(UnaryOp::StaticAccess(f.clone()), Term::Var(x.clone())),
+                                op1(StaticAccess(f.clone()), Term::Var(x.clone())),
                                 t.clone(),
                             ),
                             pos,
                         )),
                     };
-                    destruct_term(x.clone(), Destruct::Record(matches), next_term)
+                    destruct_term(x.clone(), Destruct::Record(matches, open, rst), next_term)
                 } else {
                     t
                 }
