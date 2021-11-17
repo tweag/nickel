@@ -83,7 +83,7 @@ abstractions or just feel ad hoc. Nickel buys you more for less.
    * with `./nickel`, after [building](#Build) this repo, depending on the
      location of the executable and passing in arguments directly,
    * or with `cargo run` after [building](#Build), passing in arguments with
-     and extra `--` as in `cargo run -- -f program.ncl`.
+     an extra `--` as in `cargo run -- -f program.ncl`.
 
 2. Run your first program:
   ```console
