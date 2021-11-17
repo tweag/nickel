@@ -4,19 +4,19 @@ use crate::term::{Contract, MetaValue, RecordAttrs, RichTerm, Term};
 use crate::types::{AbsType, Types};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Eq, Hash, PartialEq, Ord, PartialOrd, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Match {
-    Assign(Ident, (Option<Ident>, Destruct)),
-    Simple(Ident),
+    Assign(Ident, MetaValue, (Option<Ident>, Destruct)),
+    Simple(Ident, MetaValue),
 }
 
-#[derive(Debug, Eq, Hash, PartialEq, Ord, PartialOrd, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum LastMatch {
     Match(Match),
     Ellipsis(Option<Ident>),
 }
 
-#[derive(Debug, Eq, Hash, PartialEq, Ord, PartialOrd, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Destruct {
     Record(Vec<Match>, bool, Option<Ident>),
     List(Vec<Match>),
@@ -62,19 +62,15 @@ impl Destruct {
 
 impl Match {
     pub fn as_meta(&self) -> RichTerm {
-        Term::MetaValue(MetaValue {
-            contracts: vec![Contract {
-                types: Types(AbsType::Dyn()),
-                label: Label::dummy(),
-            }],
-            ..MetaValue::new()
-        })
+        match self {
+            Match::Assign(_, m, _) | Match::Simple(_, m) => Term::MetaValue(m.clone()),
+        }
         .into()
     }
 
     pub fn ident(&self) -> Ident {
         match self {
-            Match::Simple(id) | Match::Assign(id, _) => id.clone(),
+            Match::Simple(id, _) | Match::Assign(id, _, _) => id.clone(),
         }
     }
 }

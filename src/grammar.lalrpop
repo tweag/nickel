@@ -55,6 +55,14 @@ MetaAnnotAtom: MetaValue = {
     },
 };
 
+DefaultAnnot: MetaValue = "?" <t: Term> => MetaValue {
+    doc: None,
+    types: None,
+    contracts: Vec::new(),
+    priority: MergePriority::Default,
+    value: Some(t)
+};
+
 MetaAnnot: MetaValue = <anns: MetaAnnotAtom+> => anns.into_iter().fold(MetaValue::new(), MetaValue::flatten);
 
 Annot: MetaValue = {
@@ -270,8 +278,11 @@ Destruct: Destruct = {
 };
 
 Match: Match = {
-    <left:Ident> <default: ("?" <Term>)?> "=" <right: Pattern> => Match::Assign(left,right),
-    <id:Ident> <default: ("?" <Term>)?> => Match::Simple(id),
+    <left:Ident> <default: DefaultAnnot?> "=" <right: Pattern> => Match::Assign(left,
+    										if let Some(m) = default {m} else {MetaValue::new()},
+										right),
+    <id:Ident> <default: DefaultAnnot?> => Match::Simple(id,
+		    					 if let Some(m) = default {m} else {MetaValue::new()}),
 };
 
 LastMatch: LastMatch = {

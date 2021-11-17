@@ -90,7 +90,7 @@ pub mod desugar_destructuring {
         Term::Let(
             var,
             matches.iter().fold(Term::Var(x).into(), |x, m| match m {
-                Match::Simple(i) | Match::Assign(i, _) => {
+                Match::Simple(i, _) | Match::Assign(i, _, _) => {
                     op2(DynRemove(), Term::Str(i.to_string()), x)
                 }
             }),
@@ -106,7 +106,7 @@ pub mod desugar_destructuring {
                 let m = matches.pop();
                 if let Some(m) = m {
                     let next_term = match m {
-                        Match::Simple(id) => RichTerm::new(
+                        Match::Simple(id, _) => RichTerm::new(
                             Term::Let(
                                 id.clone(),
                                 op1(StaticAccess(id.clone()), Term::Var(x.clone())),
@@ -114,7 +114,7 @@ pub mod desugar_destructuring {
                             ),
                             pos,
                         ),
-                        Match::Assign(f, (id, pat)) => desugar(RichTerm::new(
+                        Match::Assign(f, _, (id, pat)) => desugar(RichTerm::new(
                             Term::LetPattern(
                                 id,
                                 pat,
