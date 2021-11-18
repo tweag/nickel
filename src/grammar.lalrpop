@@ -278,11 +278,22 @@ Destruct: Destruct = {
 };
 
 Match: Match = {
-    <left:Ident> <default: DefaultAnnot?> "=" <right: Pattern> => Match::Assign(left,
-    										if let Some(m) = default {m} else {MetaValue::new()},
-										right),
-    <id:Ident> <default: DefaultAnnot?> => Match::Simple(id,
-		    					 if let Some(m) = default {m} else {MetaValue::new()}),
+    <left:Ident> <anns: MetaAnnot?> <default: DefaultAnnot?> "=" <right: Pattern> => {
+	let meta = match (default, anns) {
+	    (Some(d), Some(m)) => MetaValue::flatten(d,m),
+	    (Some(m),_) | (_,Some(m)) => m,
+  	    _ => MetaValue::new(),
+	};
+	Match::Assign(left, meta, right)
+    },
+    <id:Ident> <anns: MetaAnnot?> <default: DefaultAnnot?> => {
+	let meta = match (default, anns) {
+	    (Some(d), Some(m)) => MetaValue::flatten(d,m),
+	    (Some(m),_) | (_,Some(m)) => m,
+  	    _ => MetaValue::new(),
+	};
+	Match::Simple(id, meta)
+    },
 };
 
 LastMatch: LastMatch = {
