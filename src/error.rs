@@ -189,7 +189,7 @@ pub enum TypecheckError {
     ),
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Default)]
 pub struct ParseErrors {
     pub errors: Vec<ParseError>,
 }

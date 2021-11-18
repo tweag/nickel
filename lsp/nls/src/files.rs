@@ -20,7 +20,7 @@ pub fn handle_open(server: &mut Server, params: DidOpenTextDocumentParams) -> Re
 
     let checked = server
         .cache
-        .parse_tolerate_errors(file_id)
+        .parse(file_id)
         .map_err(|parse_err| parse_err.to_diagnostic(server.cache.files_mut(), None))
         .map_err(|mut d| {
             trace!("Parsed with errors, checking types");
