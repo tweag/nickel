@@ -18,6 +18,7 @@
 //! modular definitions of contracts, record and metadata all together.
 use crate::identifier::Ident;
 use crate::label::Label;
+use crate::match_sharedterm;
 use crate::position::TermPos;
 use crate::types::{AbsType, Types};
 use codespan::FileId;
@@ -25,7 +26,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fmt;
-use std::hint::unreachable_unchecked;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
@@ -919,244 +919,231 @@ impl RichTerm {
         F: FnMut(RichTerm, &mut S) -> Result<RichTerm, E>,
     {
         let RichTerm { term, pos } = self;
-        if matches!(
-            &*term,
-            Term::Null
-                | Term::Bool(_)
-                | Term::Num(_)
-                | Term::Str(_)
-                | Term::Lbl(_)
-                | Term::Sym(_)
-                | Term::Var(_)
-                | Term::Enum(_)
-                | Term::Import(_)
-                | Term::ResolvedImport(_)
-        ) {
-            return f(RichTerm { term, pos }, state);
-        }
-        match term.as_value() {
-            Term::Fun(id, t) => {
-                let t = t.traverse(f, state)?;
-                f(
-                    RichTerm {
-                        term: SharedTerm::new(Term::Fun(id, t)),
-                        pos,
-                    },
-                    state,
-                )
-            }
-            Term::Let(id, t1, t2) => {
-                let t1 = t1.traverse(f, state)?;
-                let t2 = t2.traverse(f, state)?;
-                f(
-                    RichTerm {
-                        term: SharedTerm::new(Term::Let(id, t1, t2)),
-                        pos,
-                    },
-                    state,
-                )
-            }
-            Term::App(t1, t2) => {
-                let t1 = t1.traverse(f, state)?;
-                let t2 = t2.traverse(f, state)?;
-                f(
-                    RichTerm {
-                        term: SharedTerm::new(Term::App(t1, t2)),
-                        pos,
-                    },
-                    state,
-                )
-            }
-            Term::Switch(t, cases, default) => {
-                // The annotation on `map_res` use Result's corresponding trait to convert from
-                // Iterator<Result> to a Result<Iterator>
-                let cases_res: Result<HashMap<Ident, RichTerm>, E> = cases
-                    .into_iter()
-                    // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(id, t)| t.traverse(f, state).map(|t_ok| (id.clone(), t_ok)))
-                    .collect();
+        match_sharedterm! {
+            with term, do {
 
-                let default = default
-                    .map(|t| t.traverse(f, state))
-                    // Transpose from Option<Result> to Result<Option>. There is a `transpose`
-                    // method in Rust, but it has currently not made it to the stable version yet
-                    .map_or(Ok(None), |res| res.map(Some))?;
+                Term::Fun(id, t) => {
+                    let t = t.traverse(f, state)?;
+                    f(
+                        RichTerm {
+                            term: SharedTerm::new(Term::Fun(id, t)),
+                            pos,
+                        },
+                        state,
+                    )
+                },
+                Term::Let(id, t1, t2) => {
+                    let t1 = t1.traverse(f, state)?;
+                    let t2 = t2.traverse(f, state)?;
+                    f(
+                        RichTerm {
+                            term: SharedTerm::new(Term::Let(id, t1, t2)),
+                            pos,
+                        },
+                        state,
+                    )
+                },
+                Term::App(t1, t2) => {
+                    let t1 = t1.traverse(f, state)?;
+                    let t2 = t2.traverse(f, state)?;
+                    f(
+                        RichTerm {
+                            term: SharedTerm::new(Term::App(t1, t2)),
+                            pos,
+                        },
+                        state,
+                    )
+                },
+                Term::Switch(t, cases, default) => {
+                    // The annotation on `map_res` use Result's corresponding trait to convert from
+                    // Iterator<Result> to a Result<Iterator>
+                    let cases_res: Result<HashMap<Ident, RichTerm>, E> = cases
+                        .into_iter()
+                        // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
+                        .map(|(id, t)| t.traverse(f, state).map(|t_ok| (id.clone(), t_ok)))
+                        .collect();
 
-                let t = t.traverse(f, state)?;
+                    let default = default
+                        .map(|t| t.traverse(f, state))
+                        // Transpose from Option<Result> to Result<Option>. There is a `transpose`
+                        // method in Rust, but it has currently not made it to the stable version yet
+                        .map_or(Ok(None), |res| res.map(Some))?;
 
-                f(
-                    RichTerm::new(Term::Switch(t, cases_res?, default), pos),
-                    state,
-                )
-            }
-            Term::Op1(op, t) => {
-                let t = t.traverse(f, state)?;
-                f(
-                    RichTerm {
-                        term: SharedTerm::new(Term::Op1(op, t)),
-                        pos,
-                    },
-                    state,
-                )
-            }
-            Term::Op2(op, t1, t2) => {
-                let t1 = t1.traverse(f, state)?;
-                let t2 = t2.traverse(f, state)?;
-                f(
-                    RichTerm {
-                        term: SharedTerm::new(Term::Op2(op, t1, t2)),
-                        pos,
-                    },
-                    state,
-                )
-            }
-            Term::OpN(op, ts) => {
-                let ts_res: Result<Vec<RichTerm>, E> =
-                    ts.into_iter().map(|t| t.traverse(f, state)).collect();
-                f(
-                    RichTerm {
-                        term: SharedTerm::new(Term::OpN(op, ts_res?)),
-                        pos,
-                    },
-                    state,
-                )
-            }
-            Term::Promise(ty, l, t) => {
-                let t = t.traverse(f, state)?;
-                f(
-                    RichTerm {
-                        term: SharedTerm::new(Term::Promise(ty, l, t)),
-                        pos,
-                    },
-                    state,
-                )
-            }
-            Term::Wrapped(i, t) => {
-                let t = t.traverse(f, state)?;
-                f(
-                    RichTerm {
-                        term: SharedTerm::new(Term::Wrapped(i, t)),
-                        pos,
-                    },
-                    state,
-                )
-            }
-            Term::Record(map, attrs) => {
-                // The annotation on `map_res` uses Result's corresponding trait to convert from
-                // Iterator<Result> to a Result<Iterator>
-                let map_res: Result<HashMap<Ident, RichTerm>, E> = map
-                    .into_iter()
-                    // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(id, t)| t.traverse(f, state).map(|t_ok| (id.clone(), t_ok)))
-                    .collect();
-                f(
-                    RichTerm {
-                        term: SharedTerm::new(Term::Record(map_res?, attrs)),
-                        pos,
-                    },
-                    state,
-                )
-            }
-            Term::RecRecord(map, dyn_fields, attrs) => {
-                // The annotation on `map_res` uses Result's corresponding trait to convert from
-                // Iterator<Result> to a Result<Iterator>
-                let map_res: Result<HashMap<Ident, RichTerm>, E> = map
-                    .into_iter()
-                    // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(id, t)| Ok((id, t.traverse(f, state)?)))
-                    .collect();
-                let dyn_fields_res: Result<Vec<(RichTerm, RichTerm)>, E> = dyn_fields
-                    .into_iter()
-                    .map(|(id_t, t)| Ok((id_t.traverse(f, state)?, t.traverse(f, state)?)))
-                    .collect();
-                f(
-                    RichTerm {
-                        term: SharedTerm::new(Term::RecRecord(map_res?, dyn_fields_res?, attrs)),
-                        pos,
-                    },
-                    state,
-                )
-            }
-            Term::List(ts) => {
-                let ts_res: Result<Vec<RichTerm>, E> =
-                    ts.into_iter().map(|t| t.traverse(f, state)).collect();
+                    let t = t.traverse(f, state)?;
 
-                f(
-                    RichTerm {
-                        term: SharedTerm::new(Term::List(ts_res?)),
-                        pos,
-                    },
-                    state,
-                )
-            }
-            Term::StrChunks(chunks) => {
-                let chunks_res: Result<Vec<StrChunk<RichTerm>>, E> = chunks
-                    .into_iter()
-                    .map(|chunk| match chunk {
-                        chunk @ StrChunk::Literal(_) => Ok(chunk),
-                        StrChunk::Expr(t, indent) => {
-                            Ok(StrChunk::Expr(t.traverse(f, state)?, indent))
-                        }
-                    })
-                    .collect();
+                    f(
+                        RichTerm::new(Term::Switch(t, cases_res?, default), pos),
+                        state,
+                    )
+                },
+                Term::Op1(op, t) => {
+                    let t = t.traverse(f, state)?;
+                    f(
+                        RichTerm {
+                            term: SharedTerm::new(Term::Op1(op, t)),
+                            pos,
+                        },
+                        state,
+                    )
+                },
+                Term::Op2(op, t1, t2) => {
+                    let t1 = t1.traverse(f, state)?;
+                    let t2 = t2.traverse(f, state)?;
+                    f(
+                        RichTerm {
+                            term: SharedTerm::new(Term::Op2(op, t1, t2)),
+                            pos,
+                        },
+                        state,
+                    )
+                },
+                Term::OpN(op, ts) => {
+                    let ts_res: Result<Vec<RichTerm>, E> =
+                        ts.into_iter().map(|t| t.traverse(f, state)).collect();
+                    f(
+                        RichTerm {
+                            term: SharedTerm::new(Term::OpN(op, ts_res?)),
+                            pos,
+                        },
+                        state,
+                    )
+                },
+                Term::Promise(ty, l, t) => {
+                    let t = t.traverse(f, state)?;
+                    f(
+                        RichTerm {
+                            term: SharedTerm::new(Term::Promise(ty, l, t)),
+                            pos,
+                        },
+                        state,
+                    )
+                },
+                Term::Wrapped(i, t) => {
+                    let t = t.traverse(f, state)?;
+                    f(
+                        RichTerm {
+                            term: SharedTerm::new(Term::Wrapped(i, t)),
+                            pos,
+                        },
+                        state,
+                    )
+                },
+                Term::Record(map, attrs) => {
+                    // The annotation on `map_res` uses Result's corresponding trait to convert from
+                    // Iterator<Result> to a Result<Iterator>
+                    let map_res: Result<HashMap<Ident, RichTerm>, E> = map
+                        .into_iter()
+                        // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
+                        .map(|(id, t)| t.traverse(f, state).map(|t_ok| (id.clone(), t_ok)))
+                        .collect();
+                    f(
+                        RichTerm {
+                            term: SharedTerm::new(Term::Record(map_res?, attrs)),
+                            pos,
+                        },
+                        state,
+                    )
+                },
+                Term::RecRecord(map, dyn_fields, attrs) => {
+                    // The annotation on `map_res` uses Result's corresponding trait to convert from
+                    // Iterator<Result> to a Result<Iterator>
+                    let map_res: Result<HashMap<Ident, RichTerm>, E> = map
+                        .into_iter()
+                        // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
+                        .map(|(id, t)| Ok((id, t.traverse(f, state)?)))
+                        .collect();
+                    let dyn_fields_res: Result<Vec<(RichTerm, RichTerm)>, E> = dyn_fields
+                        .into_iter()
+                        .map(|(id_t, t)| Ok((id_t.traverse(f, state)?, t.traverse(f, state)?)))
+                        .collect();
+                    f(
+                        RichTerm {
+                            term: SharedTerm::new(Term::RecRecord(map_res?, dyn_fields_res?, attrs)),
+                            pos,
+                        },
+                        state,
+                    )
+                },
+                Term::List(ts) => {
+                    let ts_res: Result<Vec<RichTerm>, E> =
+                        ts.into_iter().map(|t| t.traverse(f, state)).collect();
 
-                f(
-                    RichTerm {
-                        term: SharedTerm::new(Term::StrChunks(chunks_res?)),
-                        pos,
-                    },
-                    state,
-                )
-            }
-            Term::MetaValue(meta) => {
-                let contracts: Result<Vec<Contract>, _> = meta
-                    .contracts
-                    .into_iter()
-                    .map(|ctr| {
-                        let types = match ctr.types {
-                            Types(AbsType::Flat(t)) => Types(AbsType::Flat(t.traverse(f, state)?)),
-                            ty => ty,
-                        };
-                        Ok(Contract { types, ..ctr })
-                    })
-                    .collect();
-                let contracts = contracts?;
+                    f(
+                        RichTerm {
+                            term: SharedTerm::new(Term::List(ts_res?)),
+                            pos,
+                        },
+                        state,
+                    )
+                },
+                Term::StrChunks(chunks) => {
+                    let chunks_res: Result<Vec<StrChunk<RichTerm>>, E> = chunks
+                        .into_iter()
+                        .map(|chunk| match chunk {
+                            chunk @ StrChunk::Literal(_) => Ok(chunk),
+                            StrChunk::Expr(t, indent) => {
+                                Ok(StrChunk::Expr(t.traverse(f, state)?, indent))
+                            }
+                        })
+                        .collect();
 
-                let types = meta
-                    .types
-                    .map(|ctr| {
-                        let types = match ctr.types {
-                            Types(AbsType::Flat(t)) => Types(AbsType::Flat(t.traverse(f, state)?)),
-                            ty => ty,
-                        };
-                        Ok(Contract { types, ..ctr })
-                    })
-                    // Transpose from Option<Result> to Result<Option>. There is a `transpose`
-                    // method in Rust, but it has currently not made it to the stable version yet
-                    .map_or(Ok(None), |res| res.map(Some))?;
+                    f(
+                        RichTerm {
+                            term: SharedTerm::new(Term::StrChunks(chunks_res?)),
+                            pos,
+                        },
+                        state,
+                    )
+                },
+                Term::MetaValue(meta) => {
+                    let contracts: Result<Vec<Contract>, _> = meta
+                        .contracts
+                        .into_iter()
+                        .map(|ctr| {
+                            let types = match ctr.types {
+                                Types(AbsType::Flat(t)) => Types(AbsType::Flat(t.traverse(f, state)?)),
+                                ty => ty,
+                            };
+                            Ok(Contract { types, ..ctr })
+                        })
+                        .collect();
+                    let contracts = contracts?;
 
-                let value = meta
-                    .value
-                    .map(|t| t.traverse(f, state))
-                    .map_or(Ok(None), |res| res.map(Some))?;
+                    let types = meta
+                        .types
+                        .map(|ctr| {
+                            let types = match ctr.types {
+                                Types(AbsType::Flat(t)) => Types(AbsType::Flat(t.traverse(f, state)?)),
+                                ty => ty,
+                            };
+                            Ok(Contract { types, ..ctr })
+                        })
+                        // Transpose from Option<Result> to Result<Option>. There is a `transpose`
+                        // method in Rust, but it has currently not made it to the stable version yet
+                        .map_or(Ok(None), |res| res.map(Some))?;
 
-                let meta = MetaValue {
-                    doc: meta.doc,
-                    types,
-                    contracts,
-                    priority: meta.priority,
-                    value,
-                };
+                    let value = meta
+                        .value
+                        .map(|t| t.traverse(f, state))
+                        .map_or(Ok(None), |res| res.map(Some))?;
 
-                f(
-                    RichTerm {
-                        term: SharedTerm::new(Term::MetaValue(meta)),
-                        pos,
-                    },
-                    state,
-                )
-            }
-            _ => unsafe { unreachable_unchecked() },
+                    let meta = MetaValue {
+                        doc: meta.doc,
+                        types,
+                        contracts,
+                        priority: meta.priority,
+                        value,
+                    };
+
+                    f(
+                        RichTerm {
+                            term: SharedTerm::new(Term::MetaValue(meta)),
+                            pos,
+                        },
+                        state,
+                    )
+                }
+            } else f(RichTerm { term, pos }, state)
         }
     }
 }
@@ -1182,26 +1169,35 @@ impl From<Term> for RichTerm {
     }
 }
 
-/// Allows to match on SharedTerm without taking ownership of the matched part.
+/// Allows to match on SharedTerm without taking ownership of the matched part until the match.
 /// It is used somehow as a match statement, going from
 /// ```
-/// match st {
-///     case_1 => do_something_1(),
-///     case_2 => do_something_2(),
-///     _ => do_fallback()
-/// }
+/// # use nickel::term::{RichTerm, Term};
+/// let rt = RichTerm::from(Term::Num(5.0));
+///
+/// match rt.term.as_value() {
+///     Term::Num(x) => x as usize,
+///     Term::Str(s) => s.len(),
+///     _ => 42,
+/// };
 /// ```
 /// to
 /// ```
-/// with st, do {
-///     case_1 => do_something_1(),
-///     case_2 => do_something_2(),
-/// } else do_fallback()
+/// # use nickel::term::{RichTerm, Term};
+/// # use nickel::match_sharedterm;
+/// let rt = RichTerm::from(Term::Num(5.0));
+///
+/// match_sharedterm! {
+///     with rt.term, do {
+///         Term::Num(x) => x as usize,
+///         Term::Str(s) => s.len(),
+///     } else 42
+/// };
 /// ```
 ///
 /// The `else` part is optional and returns the SharedTerm if absent.
 ///
-/// NOTE: This macro has been made to be used on SharedTerm, but it can work on any Type that would implement `Deref<T>` and `Into<T>`.
+/// Known limitation: cannot use a `mut` inside the patterns.
 #[macro_export]
 macro_rules! match_sharedterm {
     (
@@ -1211,9 +1207,9 @@ macro_rules! match_sharedterm {
     ) => {
         match $st.as_ref() {
             $(
-                #[allow(unused_variables)]
+                #[allow(unused_variables, unreachable_patterns, unused_mut)]
                 $($pat)|+ $(if $if_expr)? =>
-                    match $st.into() {
+                    match Term::from($st) {
                         $($pat)|+ => $expr,
                         _ => unsafe {::core::hint::unreachable_unchecked()}
                     },
@@ -1227,12 +1223,12 @@ macro_rules! match_sharedterm {
             $($($pat: pat_param)|+ $(if $if_expr: expr)? => $expr: expr),+ $(,)?
         }
     ) => {
-        $crate::match_richterm!{
+        $crate::match_sharedterm!{
             with $st, do {
                 $($($pat)|+ $(if $if_expr)? => $expr),+
             } else $st
         }
-    }
+    };
 }
 
 #[macro_use]

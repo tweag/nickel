@@ -42,12 +42,11 @@ generate_counter!(FreshVarCounter, usize);
 /// Newly introduced variables begin with a special character to avoid clashing with user-defined
 /// variables.
 pub mod share_normal_form {
-    use std::hint::unreachable_unchecked;
-
     use super::fresh_var;
     use crate::identifier::Ident;
+    use crate::match_sharedterm;
     use crate::position::TermPos;
-    use crate::term::{MetaValue, RichTerm, SharedTerm, Term};
+    use crate::term::{RichTerm, SharedTerm, Term};
 
     /// Transform the top-level term of an AST to a share normal form, if it can.
     ///
@@ -58,108 +57,96 @@ pub mod share_normal_form {
     /// the transformation is implemented as rewrite rules, and must be used in conjunction a
     /// traversal to obtain a full transformation.
     pub fn transform_one(rt: RichTerm) -> RichTerm {
-        // TODO: macro match term
-        if !matches!(
-            &*rt.term,
-            Term::Record(_, _)
-                | Term::RecRecord(_, _, _)
-                | Term::List(_)
-                | Term::MetaValue(MetaValue { value: Some(_), .. })
-        ) {
-            return rt;
-        }
-        let RichTerm { term, pos } = rt;
-        match term.as_value() {
-            Term::Record(map, attrs) => {
-                let mut bindings = Vec::with_capacity(map.len());
+        let pos = rt.pos;
+        match_sharedterm! {
+            with rt.term, do {
+                Term::Record(map, attrs) => {
+                    let mut bindings = Vec::with_capacity(map.len());
 
-                let map = map
-                    .into_iter()
-                    .map(|(id, t)| {
-                        if should_share(&t.term) {
-                            let fresh_var = fresh_var();
-                            let pos_t = t.pos;
-                            bindings.push((fresh_var.clone(), t));
-                            (id, RichTerm::new(Term::Var(fresh_var), pos_t))
-                        } else {
-                            (id, t)
-                        }
-                    })
-                    .collect();
+                    let map = map
+                        .into_iter()
+                        .map(|(id, t)| {
+                            if should_share(&t.term) {
+                                let fresh_var = fresh_var();
+                                let pos_t = t.pos;
+                                bindings.push((fresh_var.clone(), t));
+                                (id, RichTerm::new(Term::Var(fresh_var), pos_t))
+                            } else {
+                                (id, t)
+                            }
+                        })
+                        .collect();
 
-                with_bindings(Term::Record(map, attrs), bindings, pos)
-            }
-            Term::RecRecord(map, dyn_fields, attrs) => {
-                // When a recursive record is evaluated, all fields need to be turned to closures
-                // anyway (see the corresponding case in `eval::eval()`), which is what the share
-                // normal form transformation does. This is why the test is more lax here than for
-                // other constructors: it is not only about sharing, but also about the future
-                // evaluation of recursive records. Only constant are not required to be
-                // closurized.
-                let mut bindings = Vec::with_capacity(map.len());
+                    with_bindings(Term::Record(map, attrs), bindings, pos)
+                },
+                Term::RecRecord(map, dyn_fields, attrs) => {
+                    // When a recursive record is evaluated, all fields need to be turned to closures
+                    // anyway (see the corresponding case in `eval::eval()`), which is what the share
+                    // normal form transformation does. This is why the test is more lax here than for
+                    // other constructors: it is not only about sharing, but also about the future
+                    // evaluation of recursive records. Only constant are not required to be
+                    // closurized.
+                    let mut bindings = Vec::with_capacity(map.len());
 
-                let map = map
-                    .into_iter()
-                    .map(|(id, t)| {
-                        if !t.as_ref().is_constant() {
-                            let fresh_var = fresh_var();
-                            let pos_t = t.pos;
-                            bindings.push((fresh_var.clone(), t));
-                            (id, RichTerm::new(Term::Var(fresh_var), pos_t))
-                        } else {
-                            (id, t)
-                        }
-                    })
-                    .collect();
+                    let map = map
+                        .into_iter()
+                        .map(|(id, t)| {
+                            if !t.as_ref().is_constant() {
+                                let fresh_var = fresh_var();
+                                let pos_t = t.pos;
+                                bindings.push((fresh_var.clone(), t));
+                                (id, RichTerm::new(Term::Var(fresh_var), pos_t))
+                            } else {
+                                (id, t)
+                            }
+                        })
+                        .collect();
 
-                let dyn_fields = dyn_fields
-                    .into_iter()
-                    .map(|(id_t, t)| {
-                        if !t.as_ref().is_constant() {
-                            let fresh_var = fresh_var();
-                            let pos_t = t.pos;
-                            bindings.push((fresh_var.clone(), t));
-                            (id_t, RichTerm::new(Term::Var(fresh_var), pos_t))
-                        } else {
-                            (id_t, t)
-                        }
-                    })
-                    .collect();
+                    let dyn_fields = dyn_fields
+                        .into_iter()
+                        .map(|(id_t, t)| {
+                            if !t.as_ref().is_constant() {
+                                let fresh_var = fresh_var();
+                                let pos_t = t.pos;
+                                bindings.push((fresh_var.clone(), t));
+                                (id_t, RichTerm::new(Term::Var(fresh_var), pos_t))
+                            } else {
+                                (id_t, t)
+                            }
+                        })
+                        .collect();
 
-                with_bindings(Term::RecRecord(map, dyn_fields, attrs), bindings, pos)
-            }
-            Term::List(ts) => {
-                let mut bindings = Vec::with_capacity(ts.len());
+                    with_bindings(Term::RecRecord(map, dyn_fields, attrs), bindings, pos)
+                },
+                Term::List(ts) => {
+                    let mut bindings = Vec::with_capacity(ts.len());
 
-                let ts = ts
-                    .into_iter()
-                    .map(|t| {
-                        if should_share(&t.term) {
-                            let fresh_var = fresh_var();
-                            let pos_t = t.pos;
-                            bindings.push((fresh_var.clone(), t));
-                            RichTerm::new(Term::Var(fresh_var), pos_t)
-                        } else {
-                            t
-                        }
-                    })
-                    .collect();
+                    let ts = ts
+                        .into_iter()
+                        .map(|t| {
+                            if should_share(&t.term) {
+                                let fresh_var = fresh_var();
+                                let pos_t = t.pos;
+                                bindings.push((fresh_var.clone(), t));
+                                RichTerm::new(Term::Var(fresh_var), pos_t)
+                            } else {
+                                t
+                            }
+                        })
+                        .collect();
 
-                with_bindings(Term::List(ts), bindings, pos)
-            }
-            Term::MetaValue(mut meta @ MetaValue { value: Some(_), .. }) => {
-                if meta.value.as_ref().map(|t| should_share(&t.term)).unwrap() {
-                    let fresh_var = fresh_var();
-                    let t = meta.value.take().unwrap();
-                    meta.value
-                        .replace(RichTerm::new(Term::Var(fresh_var.clone()), t.pos));
-                    let inner = RichTerm::new(Term::MetaValue(meta), pos);
-                    RichTerm::new(Term::Let(fresh_var, t, inner), pos)
-                } else {
-                    RichTerm::new(Term::MetaValue(meta), pos)
+                    with_bindings(Term::List(ts), bindings, pos)
+                },
+                Term::MetaValue(meta) if meta.value.as_ref().map(|t| should_share(&t.term)).unwrap_or(false) => {
+                        let mut meta = meta;
+                        let fresh_var = fresh_var();
+                        let t = meta.value.take().unwrap();
+                        meta.value
+                            .replace(RichTerm::new(Term::Var(fresh_var.clone()), t.pos));
+                        let inner = RichTerm::new(Term::MetaValue(meta), pos);
+                        RichTerm::new(Term::Let(fresh_var, t, inner), pos)
                 }
-            }
-            _ => unsafe { unreachable_unchecked() },
+            } else rt
         }
     }
 
@@ -206,11 +193,10 @@ pub mod share_normal_form {
 type PendingImport = (RichTerm, FileId, PathBuf);
 
 pub mod import_resolution {
-    use std::hint::unreachable_unchecked;
-
     use super::{ImportResolver, PathBuf, PendingImport, RichTerm, Term};
     use crate::cache::ResolvedTerm;
     use crate::error::ImportError;
+    use crate::match_sharedterm;
 
     /// Resolve the import if the term is an unresolved import, or return the term unchanged.
     ///
@@ -226,21 +212,18 @@ pub mod import_resolution {
     where
         R: ImportResolver,
     {
-        // TODO: macro match term
-        if !matches!(&*rt.term, Term::Import(_)) {
-            return Ok((rt, None));
-        }
-        match rt.term.as_value() {
-            Term::Import(path) => {
-                let (res_term, file_id) = resolver.resolve(&path, parent.clone(), &rt.pos)?;
-                let ret = match res_term {
-                    ResolvedTerm::FromCache() => None,
-                    ResolvedTerm::FromFile { term, path } => Some((term, file_id, path)),
-                };
+        match_sharedterm! {
+            with rt.term, do {
+                Term::Import(path) => {
+                    let (res_term, file_id) = resolver.resolve(&path, parent.clone(), &rt.pos)?;
+                    let ret = match res_term {
+                        ResolvedTerm::FromCache() => None,
+                        ResolvedTerm::FromFile { term, path } => Some((term, file_id, path)),
+                    };
 
-                Ok((RichTerm::new(Term::ResolvedImport(file_id), rt.pos), ret))
-            }
-            _ => unsafe { unreachable_unchecked() },
+                    Ok((RichTerm::new(Term::ResolvedImport(file_id), rt.pos), ret))
+                }
+            } else Ok((rt, None))
         }
     }
 }
@@ -254,37 +237,33 @@ pub mod import_resolution {
 /// It must be run before `share_normal_form` to avoid rechecking contracts each time the inner
 /// value is unwrapped.
 pub mod apply_contracts {
-    use std::hint::unreachable_unchecked;
-
     use super::{RichTerm, Term};
-    use crate::mk_app;
+    use crate::{match_sharedterm, mk_app};
 
     /// If the top-level node of the AST is a meta-value, apply the meta-value's contracts to the
     /// inner value.  Otherwise, return the term unchanged.
     pub fn transform_one(rt: RichTerm) -> RichTerm {
-        // TODO: macro match term
-        if !matches!(&*rt.term, Term::MetaValue(meta) if meta.value.is_some()) {
-            return rt;
-        }
         let pos = rt.pos;
-        match rt.term.as_value() {
-            Term::MetaValue(mut meta) if meta.value.is_some() => {
-                let inner = meta.types.iter().chain(meta.contracts.iter()).fold(
-                    meta.value.take().unwrap(),
-                    |acc, ctr| {
-                        mk_app!(
-                            ctr.types.clone().contract(),
-                            Term::Lbl(ctr.label.clone()),
-                            acc
-                        )
-                        .with_pos(pos)
-                    },
-                );
+        match_sharedterm! {
+            with rt.term, do {
+                Term::MetaValue(meta) if meta.value.is_some() => {
+                    let mut meta = meta;
+                    let inner = meta.types.iter().chain(meta.contracts.iter()).fold(
+                        meta.value.take().unwrap(),
+                        |acc, ctr| {
+                            mk_app!(
+                                ctr.types.clone().contract(),
+                                Term::Lbl(ctr.label.clone()),
+                                acc
+                            )
+                            .with_pos(pos)
+                        },
+                    );
 
-                meta.value.replace(inner);
-                RichTerm::new(Term::MetaValue(meta), pos)
-            }
-            _ => unsafe { unreachable_unchecked() },
+                    meta.value.replace(inner);
+                    RichTerm::new(Term::MetaValue(meta), pos)
+                }
+            } else rt
         }
     }
 }

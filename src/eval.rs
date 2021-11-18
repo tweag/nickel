@@ -90,13 +90,13 @@ use crate::cache::ImportResolver;
 use crate::environment::Environment as GenericEnvironment;
 use crate::error::EvalError;
 use crate::identifier::Ident;
-use crate::mk_app;
 use crate::operation::{continuate_operation, OperationCont};
 use crate::position::TermPos;
 use crate::stack::Stack;
 use crate::term::{
     make as mk_term, BinaryOp, MetaValue, RichTerm, SharedTerm, StrChunk, Term, UnaryOp,
 };
+use crate::{match_sharedterm, mk_app};
 use std::cell::{Ref, RefCell, RefMut};
 use std::rc::{Rc, Weak};
 
@@ -306,22 +306,21 @@ pub enum EnvBuildError {
 
 /// Add the bindings of a record to an environment. Ignore the fields defined by interpolation.
 pub fn env_add_term(env: &mut Environment, rt: RichTerm) -> Result<(), EnvBuildError> {
-    let RichTerm { term, pos } = rt;
+    match_sharedterm!(
+        with rt.term, do {
+            Term::Record(bindings, _) | Term::RecRecord(bindings, ..) => {
+                let ext = bindings.into_iter().map(|(id, t)| {
+                    (
+                        id,
+                        Thunk::new(Closure::atomic_closure(t), IdentKind::Record()),
+                    )
+                });
 
-    match term.as_value() {
-        Term::Record(bindings, _) | Term::RecRecord(bindings, ..) => {
-            let ext = bindings.into_iter().map(|(id, t)| {
-                (
-                    id,
-                    Thunk::new(Closure::atomic_closure(t), IdentKind::Record()),
-                )
-            });
-
-            env.extend(ext);
-            Ok(())
-        }
-        t => Err(EnvBuildError::NotARecord(RichTerm::new(t, pos))),
-    }
+                env.extend(ext);
+                Ok(())
+            },
+        } else Err(EnvBuildError::NotARecord(rt))
+    )
 }
 
 /// Bind a closure in an environment.
