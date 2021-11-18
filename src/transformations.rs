@@ -99,37 +99,22 @@ pub mod desugar_destructuring {
         .into()
     }
 
-    fn destruct_term(x: Ident, pat: Destruct, t: RichTerm) -> RichTerm {
-        let pos = t.pos.clone();
+    fn destruct_term(x: Ident, pat: Destruct, body: RichTerm) -> RichTerm {
+        let pos = body.pos.clone();
         match pat {
             Destruct::Record(mut matches, open, rst) => {
-                let m = matches.pop();
-                if let Some(m) = m {
-                    let next_term = match m {
-                        Match::Simple(id, _) => RichTerm::new(
-                            Term::Let(
-                                id.clone(),
-                                op1(StaticAccess(id.clone()), Term::Var(x.clone())),
-                                t.clone(),
-                            ),
-                            pos,
-                        ),
-                        Match::Assign(f, _, (id, pat)) => desugar(RichTerm::new(
-                            Term::LetPattern(
-                                id,
-                                pat,
-                                op1(StaticAccess(f.clone()), Term::Var(x.clone())),
-                                t.clone(),
-                            ),
-                            pos,
-                        )),
-                    };
-                    destruct_term(x.clone(), Destruct::Record(matches, open, rst), next_term)
-                } else {
-                    t
-                }
+                matches.into_iter().fold(body, move |t, m| match m {
+                    Match::Simple(id, _) => RichTerm::new(
+                        Term::Let(id.clone(), op1(StaticAccess(id), Term::Var(x.clone())), t),
+                        pos,
+                    ),
+                    Match::Assign(f, _, (id, pat)) => desugar(RichTerm::new(
+                        Term::LetPattern(id, pat, op1(StaticAccess(f), Term::Var(x.clone())), t),
+                        pos,
+                    )),
+                })
             }
-            _ => t,
+            _ => body,
         }
     }
 }
