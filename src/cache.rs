@@ -338,7 +338,7 @@ impl Cache {
                     .parse(file_id, &mut parse_err_rec, Lexer::new(&buf))
                     .map_err(|err| (ParseError::from_lalrpop(err, file_id).into()))?;
 
-                let parse_errs = parse_err_rec
+                let parse_errs: ParseErrors = parse_err_rec
                     .into_iter()
                     .map(|e| ParseError::from_lalrpop(e.error, file_id))
                     .collect::<Vec<_>>()
@@ -530,7 +530,7 @@ impl Cache {
     ) -> Result<CacheOp<()>, Error> {
         let mut result = CacheOp::Cached(());
 
-        if self.parse(file_id)? == CacheOp::Done(()) {
+        if self.parse(file_id)? == CacheOp::Done(ParseErrors::default()) {
             result = CacheOp::Done(());
         };
 
@@ -574,7 +574,7 @@ impl Cache {
         global_env: &eval::Environment,
     ) -> Result<(RichTerm, Vec<FileId>), Error> {
         let (term, errs) = self.parse_nocache(file_id)?;
-        if !errs.errors.is_empty() {
+        if errs.no_errors() {
             return Err(Error::ParseErrors(errs));
         }
         let (term, pending) = transformations::resolve_imports(term, self)?;

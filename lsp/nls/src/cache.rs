@@ -43,7 +43,7 @@ impl CacheExt for Cache {
         }
 
         // After self.parse(), the cache must be populated
-        let (t, state) = self.terms().get(&file_id).unwrap();
+        let (t, state, _) = self.terms().get(&file_id).unwrap();
 
         if *state > EntryState::Typechecked && lin_cache.contains_key(&file_id) {
             Ok(CacheOp::Cached(()))

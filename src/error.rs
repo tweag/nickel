@@ -191,7 +191,28 @@ pub enum TypecheckError {
 
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct ParseErrors {
-    pub errors: Vec<ParseError>,
+    errors: Vec<ParseError>,
+}
+
+impl ParseErrors {
+    pub fn new(errors: Vec<ParseError>) -> ParseErrors {
+        ParseErrors { errors }
+    }
+    pub fn errors(self) -> Option<Vec<ParseError>> {
+        if self.errors.is_empty() {
+            None
+        } else {
+            Some(self.errors)
+        }
+    }
+
+    pub fn no_errors(&self) -> bool {
+        self.errors.is_empty()
+    }
+
+    pub const fn none() -> ParseErrors {
+        ParseErrors { errors: Vec::new() }
+    }
 }
 
 impl From<ParseError> for ParseErrors {
