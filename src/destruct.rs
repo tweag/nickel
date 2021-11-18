@@ -32,8 +32,8 @@ impl Destruct {
                 types: Types(AbsType::Flat(
                     Term::Record(
                         self.inner()
-                            .iter()
-                            .map(|m| (m.ident(), m.as_meta()))
+                            .into_iter()
+                            .map(|m| m.as_meta_field())
                             .collect(),
                         RecordAttrs { open },
                     )
@@ -61,16 +61,16 @@ impl Destruct {
 }
 
 impl Match {
-    pub fn as_meta(&self) -> RichTerm {
+    pub fn as_meta_field(self) -> (Ident, RichTerm) {
         match self {
-            Match::Assign(_, m, _) | Match::Simple(_, m) => Term::MetaValue(m.clone()),
-        }
-        .into()
-    }
-
-    pub fn ident(&self) -> Ident {
-        match self {
-            Match::Simple(id, _) | Match::Assign(id, _, _) => id.clone(),
+            Match::Assign(id, m, (_, Destruct::Empty)) | Match::Simple(id, m) => {
+                (id, Term::MetaValue(m).into())
+            }
+            Match::Assign(id, m, (_, d @ Destruct::Record(..))) => (
+                id.clone(),
+                Term::MetaValue(MetaValue::flatten(m, d.as_contract())).into(),
+            ),
+            _ => unimplemented!(),
         }
     }
 }
