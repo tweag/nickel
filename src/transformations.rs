@@ -2,7 +2,7 @@ use crate::cache::ImportResolver;
 use crate::error::ImportError;
 use crate::eval::{Closure, Environment, IdentKind, Thunk};
 use crate::identifier::Ident;
-use crate::term::{Contract, RichTerm, Term};
+use crate::term::{Contract, RichTerm, Term, TraverseMethod};
 use crate::types::{AbsType, Types};
 use codespan::FileId;
 use simple_counter::*;
@@ -266,14 +266,24 @@ struct ImportsResolutionState<'a, R> {
 /// [`resolve_imports`](../fn.resolve_imports.html)
 /// or use the [`Cache`](../../cache/struct.Cache.html)
 pub fn transform(rt: RichTerm) -> RichTerm {
+    let rt = rt
+        .traverse(
+            &mut |rt: RichTerm, _| -> Result<RichTerm, ()> {
+                // We need to do contract generation before wrapping stuff in variables
+                let rt = apply_contracts::transform_one(rt);
+                Ok(rt)
+            },
+            &mut (),
+            TraverseMethod::TopDown,
+        )
+        .unwrap();
     rt.traverse(
         &mut |rt: RichTerm, _| -> Result<RichTerm, ()> {
-            // We need to do contract generation before wrapping stuff in variables
-            let rt = apply_contracts::transform_one(rt);
             let rt = share_normal_form::transform_one(rt);
             Ok(rt)
         },
         &mut (),
+        TraverseMethod::BottomUp,
     )
     .unwrap()
 }
@@ -332,6 +342,7 @@ where
             Ok(rt)
         },
         &mut state,
+        TraverseMethod::BottomUp,
     )
 }
 
