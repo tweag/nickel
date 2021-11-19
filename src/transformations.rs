@@ -1,5 +1,3 @@
-//! Program transformations.
-
 use crate::cache::ImportResolver;
 use crate::error::ImportError;
 use crate::eval::{Closure, Environment, IdentKind, Thunk};
@@ -186,44 +184,28 @@ pub mod share_normal_form {
     }
 }
 
-/// A pending import to be processed, consisting of
-/// - The parsed term.
-/// - The id of the file in the database.
-/// - The path of the file, to resolve relative imports.
-type PendingImport = (RichTerm, FileId, PathBuf);
-
 pub mod import_resolution {
-    use super::{ImportResolver, PathBuf, PendingImport, RichTerm, Term};
-    use crate::cache::ResolvedTerm;
+    use super::{ImportResolver, PathBuf, RichTerm, Term};
     use crate::error::ImportError;
-    use crate::match_sharedterm;
 
     /// Resolve the import if the term is an unresolved import, or return the term unchanged.
-    ///
-    /// If an import was resolved, the corresponding `FileId` is returned in the second component
-    /// of the result, and the file path as the third. If the import has been already resolved, or
-    /// if the term was not an import, `None` is returned. As
-    /// [`share_normal_form::transform_one`](../share_normal_form/fn.transform_one.html), this function is not recursive.
+    /// As [`share_normal_form::transform_one`](../share_normal_form/fn.transform_one.html),
+    /// this function is not recursive.
     pub fn transform_one<R>(
         rt: RichTerm,
         resolver: &mut R,
         parent: &Option<PathBuf>,
-    ) -> Result<(RichTerm, Option<PendingImport>), ImportError>
+    ) -> Result<RichTerm, ImportError>
     where
         R: ImportResolver,
     {
-        match_sharedterm! {
-            with rt.term, do {
-                Term::Import(path) => {
-                    let (res_term, file_id) = resolver.resolve(&path, parent.clone(), &rt.pos)?;
-                    let ret = match res_term {
-                        ResolvedTerm::FromCache() => None,
-                        ResolvedTerm::FromFile { term, path } => Some((term, file_id, path)),
-                    };
-
-                    Ok((RichTerm::new(Term::ResolvedImport(file_id), rt.pos), ret))
-                }
-            } else Ok((rt, None))
+        let term = rt.as_ref();
+        match term {
+            Term::Import(path) => {
+                let (_, file_id) = resolver.resolve(path, parent.clone(), &rt.pos)?;
+                Ok(RichTerm::new(Term::ResolvedImport(file_id), rt.pos))
+            }
+            _ => Ok(rt),
         }
     }
 }
@@ -273,15 +255,19 @@ pub mod apply_contracts {
 /// currently being processed, if any.
 struct ImportsResolutionState<'a, R> {
     resolver: &'a mut R,
-    stack: &'a mut Vec<PendingImport>,
+    stack: &'a mut Vec<FileId>,
     parent: Option<PathBuf>,
 }
 
 /// Apply all program transformations, which are currently the share normal form transformations and
 /// contracts application.
-pub fn transform(rt: RichTerm) -> Result<RichTerm, ImportError> {
+/// Do not perform transformation on the imported files.
+/// If needed, either do it yourself using pending imports returned by
+/// [`resolve_imports`](../fn.resolve_imports.html)
+/// or use the [`Cache`](../../cache/struct.Cache.html)
+pub fn transform(rt: RichTerm) -> RichTerm {
     rt.traverse(
-        &mut |rt: RichTerm, _| -> Result<RichTerm, ImportError> {
+        &mut |rt: RichTerm, _| -> Result<RichTerm, ()> {
             // We need to do contract generation before wrapping stuff in variables
             let rt = apply_contracts::transform_one(rt);
             let rt = share_normal_form::transform_one(rt);
@@ -289,31 +275,31 @@ pub fn transform(rt: RichTerm) -> Result<RichTerm, ImportError> {
         },
         &mut (),
     )
+    .unwrap()
 }
 
 /// import resolution.
 ///
 /// All resolved imports are stacked during the process. Once the term has been traversed,
-/// the elements of this stack are processed (and so on, if these elements also have non resolved
-/// imports).
-pub fn resolve_imports<R>(rt: RichTerm, resolver: &mut R) -> Result<RichTerm, ImportError>
+/// the elements of this stack are returned. The caller is responsible
+/// to recursively resolve imports of this stack and or to perform
+/// transformations on it.
+pub fn resolve_imports<R>(
+    rt: RichTerm,
+    resolver: &mut R,
+) -> Result<(RichTerm, Vec<FileId>), ImportError>
 where
     R: ImportResolver,
 {
     let mut stack = Vec::new();
 
-    let source_file: Option<PathBuf> = rt.pos.into_opt().map(|x| {
+    let source_file: Option<PathBuf> = rt.pos.as_opt_ref().map(|x| {
         let path = resolver.get_path(x.src_id);
         PathBuf::from(path)
     });
-    let result = imports_pass(rt, resolver, &mut stack, source_file);
+    let result = imports_pass(rt, resolver, &mut stack, source_file)?;
 
-    while let Some((t, file_id, parent)) = stack.pop() {
-        let result = imports_pass(t, resolver, &mut stack, Some(parent))?;
-        resolver.insert(file_id, result);
-    }
-
-    result
+    Ok((result, stack))
 }
 
 /// Perform one full imports resolution pass. Put all imports encountered for the first time in
@@ -321,7 +307,7 @@ where
 fn imports_pass<R>(
     rt: RichTerm,
     resolver: &mut R,
-    stack: &mut Vec<PendingImport>,
+    stack: &mut Vec<FileId>,
     parent: Option<PathBuf>,
 ) -> Result<RichTerm, ImportError>
 where
@@ -338,13 +324,11 @@ where
         &mut |rt: RichTerm,
               state: &mut ImportsResolutionState<R>|
          -> Result<RichTerm, ImportError> {
-            let (rt, pending) =
-                import_resolution::transform_one(rt, state.resolver, &state.parent)?;
+            let rt = import_resolution::transform_one(rt, state.resolver, &state.parent)?;
 
-            if let Some((t, file_id, p)) = pending {
-                state.stack.push((t, file_id, p));
+            if let Term::ResolvedImport(file_id) = rt.term.as_ref() {
+                state.stack.push(*file_id);
             }
-
             Ok(rt)
         },
         &mut state,

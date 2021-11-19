@@ -65,7 +65,6 @@ impl MarkdownRenderer {
 fn termimad_to_io(err: termimad::Error) -> io::Error {
     match err {
         termimad::Error::IO(err) => err,
-        termimad::Error::Crossterm(err) => io::Error::new(io::ErrorKind::Other, err.to_string()),
     }
 }
 
@@ -273,7 +272,7 @@ fn write_query_result_<R: QueryPrinter>(
             write_fields(out, renderer, &t)?;
         }
         t => {
-            writeln!(out, "jo metadata found for this value.\n")?;
+            writeln!(out, "No metadata found for this value.\n")?;
             if selected_attrs.value {
                 renderer.write_metadata(out, "value", &t.shallow_repr())?;
             }

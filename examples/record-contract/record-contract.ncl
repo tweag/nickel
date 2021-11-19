@@ -38,7 +38,7 @@ let KubernetesConfig = {
   },
 
   spec = {
-    replicas | #(nums.PosNat)
+    replicas | #nums.PosNat
              | doc "The number of replicas"
              | default = 1,
 

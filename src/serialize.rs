@@ -10,6 +10,7 @@ use std::io;
 use std::str::FromStr;
 
 /// Available export formats.
+// If you add or remove variants, remember to update the CLI docs in `src/bin/nickel.rs'
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum ExportFormat {
     Raw,

@@ -448,6 +448,10 @@ where
             mut env,
         } = clos;
 
+        if let Some(strict) = stack.pop_strictness_marker() {
+            enriched_strict = strict;
+        }
+
         clos = match &*shared_term {
             Term::Var(x) => {
                 let mut thunk = env
@@ -475,6 +479,10 @@ where
                 thunk.into_closure()
             }
             Term::App(t1, t2) => {
+                if !enriched_strict {
+                    stack.push_strictness(enriched_strict);
+                }
+                enriched_strict = true;
                 stack.push_arg(
                     Closure {
                         body: t2.clone(),
@@ -525,21 +533,22 @@ where
                 }
             }
             Term::Op1(op, t) => {
-                let prev_strict = enriched_strict;
+                if !enriched_strict {
+                    stack.push_strictness(enriched_strict);
+                }
                 enriched_strict = true;
-                stack.push_op_cont(
-                    OperationCont::Op1(op.clone(), t.pos, prev_strict),
-                    call_stack.len(),
-                    pos,
-                );
+                stack.push_op_cont(OperationCont::Op1(op.clone(), t.pos), call_stack.len(), pos);
                 Closure {
                     body: t.clone(),
                     env,
                 }
             }
             Term::Op2(op, fst, snd) => {
-                let prev_strict = enriched_strict;
-                enriched_strict = op.is_strict();
+                let strict_op = op.is_strict();
+                if enriched_strict != strict_op {
+                    stack.push_strictness(enriched_strict);
+                }
+                enriched_strict = strict_op;
                 stack.push_op_cont(
                     OperationCont::Op2First(
                         op.clone(),
@@ -548,7 +557,6 @@ where
                             env: env.clone(),
                         },
                         fst.pos,
-                        prev_strict,
                     ),
                     call_stack.len(),
                     pos,
@@ -559,8 +567,11 @@ where
                 }
             }
             Term::OpN(op, args) => {
-                let prev_strict = enriched_strict;
-                enriched_strict = op.is_strict();
+                let strict_op = op.is_strict();
+                if enriched_strict != strict_op {
+                    stack.push_strictness(enriched_strict);
+                }
+                enriched_strict = strict_op;
 
                 // Arguments are passed as a stack to the operation continuation, so we reverse the
                 // original list.
@@ -584,7 +595,6 @@ where
                         evaluated: Vec::with_capacity(pending.len() + 1),
                         pending,
                         current_pos: fst.pos,
-                        prev_enriched_strict: prev_strict,
                     },
                     call_stack.len(),
                     pos,
@@ -605,6 +615,10 @@ where
                             StrChunk::Expr(e, indent) => (e.clone(), *indent),
                         };
 
+                        if !enriched_strict {
+                            stack.push_strictness(enriched_strict);
+                        }
+                        enriched_strict = true;
                         stack.push_str_chunks(chunks_iter.cloned());
                         stack.push_str_acc(String::new(), indent, env.clone());
 
@@ -798,7 +812,7 @@ where
                     update_thunks(&mut stack, &clos);
                     clos
                 } else {
-                    continuate_operation(clos, &mut stack, &mut call_stack, &mut enriched_strict)?
+                    continuate_operation(clos, &mut stack, &mut call_stack)?
                 }
             }
             // Function call
@@ -1226,6 +1240,7 @@ mod tests {
                 mk_term::let_in(var, mk_term::import(import), body),
                 resolver,
             )
+            .map(|(t, _)| t)
         }
 
         // let x = import "does_not_exist" in x
@@ -1251,17 +1266,6 @@ mod tests {
             Term::Num(2.0)
         );
 
-        // let x = import "nested" in x
-        assert_eq!(
-            eval(
-                mk_import("x", "nested", mk_term::var("x"), &mut resolver).unwrap(),
-                &Environment::new(),
-                &mut resolver
-            )
-            .unwrap(),
-            Term::Num(3.0)
-        );
-
         // let x = import "lib" in x.f
         assert_eq!(
             eval(
@@ -1277,23 +1281,6 @@ mod tests {
             )
             .unwrap(),
             Term::Bool(true)
-        );
-
-        // let x = import "cycle" in x.b
-        assert_eq!(
-            eval(
-                mk_import(
-                    "x",
-                    "cycle",
-                    mk_term::op1(UnaryOp::StaticAccess(Ident::from("b")), mk_term::var("x")),
-                    &mut resolver,
-                )
-                .unwrap(),
-                &Environment::new(),
-                &mut resolver
-            )
-            .unwrap(),
-            Term::Num(1.0)
         );
     }
 

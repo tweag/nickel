@@ -77,10 +77,8 @@ impl Program {
             .cache
             .mk_global_env()
             .expect("program::prepare_eval(): expected event to be ready");
-        Ok((
-            self.cache.prepare_nocache(self.main_id, &global_env)?,
-            global_env,
-        ))
+        self.cache.prepare(self.main_id, &global_env)?;
+        Ok((self.cache.get(self.main_id).unwrap(), global_env))
     }
 
     /// Parse if necessary, typecheck and then evaluate the program.

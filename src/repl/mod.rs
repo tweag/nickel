@@ -73,6 +73,9 @@ pub struct REPLImpl {
     /// The eval environment. Contain the global environment with the stdlib, plus toplevel
     /// declarations and loadings made inside the REPL.
     eval_env: eval::Environment,
+    /// The initial eval environment, without the toplevel declarations made inside the REPL. Used
+    /// to typecheck imports in a fresh environment.
+    init_eval_env: eval::Environment,
     /// The typing environment, counterpart of the eval environment for typechecking. Entries are
     /// [`TypeWrapper`](../typecheck/enum.TypeWrapper.html) for the ease of interacting with the
     /// typechecker, but there are not any unification variable in it.
@@ -86,6 +89,7 @@ impl REPLImpl {
             cache: Cache::new(),
             parser: grammar::ExtendedTermParser::new(),
             eval_env: eval::Environment::new(),
+            init_eval_env: eval::Environment::new(),
             type_env: typecheck::Environment::new(),
         }
     }
@@ -96,6 +100,7 @@ impl REPLImpl {
         self.cache.prepare_stdlib()?;
 
         self.eval_env = self.cache.mk_global_env().unwrap();
+        self.init_eval_env = self.eval_env.clone();
         self.type_env = typecheck::Envs::mk_global(&self.eval_env);
         Ok(())
     }
@@ -117,18 +122,54 @@ impl REPLImpl {
             .parse(file_id, lexer::Lexer::new(exp))
             .map_err(|err| ParseError::from_lalrpop(err, file_id))?
         {
+            // Because we don't use the cache for input, we have to perform recursive import
+            // resolution/typechecking/transformation by oursleves.
             ExtendedTerm::RichTerm(t) => {
-                let t = transformations::resolve_imports(t, &mut self.cache)?;
+                let (t, pending) = transformations::resolve_imports(t, &mut self.cache)?;
+                for id in &pending {
+                    self.cache.resolve_imports(*id).unwrap();
+                }
+
                 typecheck::type_check_in_env(&t, &self.type_env, &self.cache)?;
-                let t = transformations::transform(t)?;
+                for id in &pending {
+                    self.cache
+                        .typecheck(*id, &self.init_eval_env)
+                        .map_err(|cache_err| {
+                            cache_err.unwrap_error("repl::eval_(): expected imports to be parsed")
+                        })?;
+                }
+
+                let t = transformations::transform(t);
+                for id in &pending {
+                    self.cache
+                        .transform(*id)
+                        .unwrap_or_else(|_| panic!("repl::eval_(): expected imports to be parsed"));
+                }
+
                 Ok(eval_function(t, &self.eval_env, &mut self.cache)?.into())
             }
             ExtendedTerm::ToplevelLet(id, t) => {
-                let t = transformations::resolve_imports(t, &mut self.cache)?;
+                let (t, pending) = transformations::resolve_imports(t, &mut self.cache)?;
+                for id in &pending {
+                    self.cache.resolve_imports(*id).unwrap();
+                }
+
                 typecheck::type_check_in_env(&t, &self.type_env, &self.cache)?;
                 typecheck::Envs::env_add(&mut self.type_env, id.clone(), &t);
+                for id in &pending {
+                    self.cache
+                        .typecheck(*id, &self.init_eval_env)
+                        .map_err(|cache_err| {
+                            cache_err.unwrap_error("repl::eval_(): expected imports to be parsed")
+                        })?;
+                }
 
-                let t = transformations::transform(t)?;
+                let t = transformations::transform(t);
+                for id in &pending {
+                    self.cache
+                        .transform(*id)
+                        .unwrap_or_else(|_| panic!("repl::eval_(): expected imports to be parsed"));
+                }
 
                 let local_env = self.eval_env.clone();
                 eval::env_add(&mut self.eval_env, id.clone(), t, local_env);
@@ -170,6 +211,10 @@ impl REPL for REPLImpl {
         })?;
 
         let term = self.cache.get_owned(file_id).unwrap();
+        let (term, pending) = transformations::resolve_imports(term, &mut self.cache)?;
+        for id in &pending {
+            self.cache.resolve_imports(*id).unwrap();
+        }
         typecheck::Envs::env_add_term(&mut self.type_env, &term).unwrap();
         eval::env_add_term(&mut self.eval_env, term.clone()).unwrap();
 
@@ -179,6 +224,10 @@ impl REPL for REPLImpl {
     fn typecheck(&mut self, exp: &str) -> Result<Types, Error> {
         let file_id = self.cache.add_tmp("<repl-typecheck>", String::from(exp));
         let term = self.cache.parse_nocache(file_id)?;
+        let (term, pending) = transformations::resolve_imports(term, &mut self.cache)?;
+        for id in &pending {
+            self.cache.resolve_imports(*id).unwrap();
+        }
         typecheck::type_check_in_env(&term, &self.type_env, &self.cache)?;
 
         Ok(typecheck::apparent_type(

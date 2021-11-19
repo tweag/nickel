@@ -28,7 +28,7 @@ Nickel's salient traits are:
     only a burden. Whereas reusable code - that is, *functions* - is evaluated
     on potentially infinitely many different inputs, and is impossible to test
     exhaustively. There, types are precious. Nickel has types, but you get to
-    chose when you want it or not, and it handles safely the interaction between
+    choose when you want it or not, and it handles safely the interaction between
     the typed and the untyped world.
 - **Design by contract**: complementary to the type system, contracts are
     a principled approach to checking assertions. The interpreter automatically
@@ -45,7 +45,7 @@ beyond.
 
 ## Use cases
 
-Nickel is a good fit is any situation where you need to generate a complex
+Nickel is a good fit in any situation where you need to generate a complex
 configuration, be it for a single app, a machine, whole infrastructure, or a
 build system.
 
@@ -75,13 +75,15 @@ abstractions or just feel ad hoc. Nickel buys you more for less.
 
 1. Start Nickel
    * with [flake-enabled](https://nixos.wiki/wiki/Flakes) Nix directly
-     with `nix run nickel` (which pulls it from the global flakes registry), or
-     with `nix run github:tweag/nickel` (which pulls it from the repo). You
-     pass in arguments with an extra `--` as in `nix run nickel -- repl`,
+     with `nix run nickel` (which pulls it from the global flakes
+     registry), or with `nix run github:tweag/nickel` (which pulls it
+     from the repo). You can use [our binary cache](https://nickel.cachix.org) to
+     prevent rebuilding a lot of packages. You pass in arguments with
+     an extra `--` as in `nix run nickel -- repl`,
    * with `./nickel`, after [building](#Build) this repo, depending on the
      location of the executable and passing in arguments directly,
    * or with `cargo run` after [building](#Build), passing in arguments with
-     and extra `--` as in `cargo run -- -f program.ncl`.
+     an extra `--` as in `cargo run -- -f program.ncl`.
 
 2. Run your first program:
   ```console
@@ -126,7 +128,9 @@ for help about a specific subcommand.
      ```console
      $ nix-shell shell.nix
      ```
-     to be dropped in a shell, ready to build.
+     to be dropped in a shell, ready to build. You can use [our binary
+     cache](https://nickel.cachix.org) to prevent rebuilding a lot of
+     packages.
    - **Without Nix**: otherwise, follow [this guide][rust-guide] to install Rust
      and Cargo first.
 2. Build Nickel:

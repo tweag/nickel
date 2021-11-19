@@ -1,4 +1,6 @@
 //! Native terminal implementation of an REPL frontend using rustyline.
+use std::path::PathBuf;
+
 use super::command::Command;
 use super::*;
 
@@ -18,7 +20,7 @@ pub fn config() -> Config {
 }
 
 /// Main loop of the REPL.
-pub fn repl() -> Result<(), InitError> {
+pub fn repl(histfile: PathBuf) -> Result<(), InitError> {
     let mut repl = REPLImpl::new();
 
     match repl.load_stdlib() {
@@ -32,10 +34,11 @@ pub fn repl() -> Result<(), InitError> {
     let validator = InputParser::new(repl.cache_mut().add_tmp("<repl-input>", String::new()));
 
     let mut editor = Editor::with_config(config());
+    let _ = editor.load_history(&histfile);
     editor.set_helper(Some(validator));
     let prompt = Style::new().fg(Colour::Green).paint("nickel> ").to_string();
 
-    loop {
+    let result = loop {
         let line = editor.readline(&prompt);
 
         if let Ok(line) = line.as_ref() {
@@ -87,7 +90,7 @@ pub fn repl() -> Result<(), InitError> {
                     }
                     Ok(Command::Exit) => {
                         println!("{}", Style::new().bold().paint("Exiting"));
-                        return Ok(());
+                        break Ok(());
                     }
                     Err(err) => Err(Error::from(err)),
                 };
@@ -111,11 +114,14 @@ pub fn repl() -> Result<(), InitError> {
             }
             Err(ReadlineError::Interrupted) => (),
             Err(err) => {
+                let _ = editor.save_history(&histfile);
                 program::report(
                     repl.cache_mut(),
                     Error::IOError(IOError(format!("{}", err))),
                 );
             }
         }
-    }
+    };
+    let _ = editor.save_history(&histfile);
+    result
 }

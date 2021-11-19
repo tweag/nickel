@@ -6,6 +6,11 @@
   inputs.nixpkgs-mozilla.url = "github:nickel-lang/nixpkgs-mozilla/flake";
   inputs.import-cargo.url = "github:edolstra/import-cargo";
 
+  nixConfig = {
+    substituters = [ "https://nickel.cachix.org" ];
+    trusted-public-keys = [ "nickel.cachix.org-1:ABoCOGpTJbAum7U6c+04VbjvLxG9f0gJP5kYihRRdQs=" ];
+  };
+
   outputs = { self, nixpkgs, nixpkgs-wasm, nixpkgs-mozilla, import-cargo }:
     let
 
@@ -83,7 +88,7 @@
 
           src = if isShell then null else self;
 
-          buildPhase = "cargo build --release --frozen --offline";
+          buildPhase = "cargo build --workspace --release --frozen --offline";
 
           doCheck = true;
 
@@ -97,6 +102,7 @@
             ''
               mkdir -p $out
               cargo install --frozen --offline --path . --root $out
+              cargo install --frozen --offline --path lsp/nls --root $out
               rm $out/.crates.toml
             '';
         };

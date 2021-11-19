@@ -42,26 +42,23 @@ enum EqResult {
 }
 
 /// An operation continuation as stored on the stack.
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 pub enum OperationCont {
     Op1(
         /* unary operation */ UnaryOp,
         /* original position of the argument before evaluation */ TermPos,
-        /* previous value of enriched_strict */ bool,
     ),
     // The last parameter saves the strictness mode before the evaluation of the operator
     Op2First(
         /* the binary operation */ BinaryOp,
         /* second argument, to evaluate next */ Closure,
         /* original position of the first argument */ TermPos,
-        /* previous value of enriched_strict */ bool,
     ),
     Op2Second(
         /* binary operation */ BinaryOp,
         /* first argument, evaluated */ Closure,
         /* original position of the first argument before evaluation */ TermPos,
         /* original position of the second argument before evaluation */ TermPos,
-        /* previous value of enriched_strict */ bool,
     ),
     OpN {
         op: NAryOp,                         /* the n-ary operation */
@@ -69,8 +66,18 @@ pub enum OperationCont {
         current_pos: TermPos, /* original position of the argument being currently evaluated */
         pending: Vec<Closure>, /* a stack (meaning the order of arguments is to be reversed)
                               of arguments yet to be evaluated */
-        prev_enriched_strict: bool,
     },
+}
+
+impl std::fmt::Debug for OperationCont {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OperationCont::Op1(op, _) => write!(f, "Op1 {:?}", op),
+            OperationCont::Op2First(op, _, _) => write!(f, "Op2First {:?}", op),
+            OperationCont::Op2Second(op, _, _, _) => write!(f, "Op2Second {:?}", op),
+            OperationCont::OpN { op, .. } => write!(f, "OpN {:?}", op),
+        }
+    }
 }
 
 /// Process to the next step of the evaluation of an operation.
@@ -82,29 +89,26 @@ pub fn continuate_operation(
     mut clos: Closure,
     stack: &mut Stack,
     call_stack: &mut CallStack,
-    enriched_strict: &mut bool,
 ) -> Result<Closure, EvalError> {
     let (cont, cs_len, pos) = stack.pop_op_cont().expect("Condition already checked");
     call_stack.truncate(cs_len);
     match cont {
-        OperationCont::Op1(u_op, arg_pos, prev_strict) => {
+        OperationCont::Op1(u_op, arg_pos) => {
             let result = process_unary_operation(u_op, clos, arg_pos, stack, call_stack, pos);
-            *enriched_strict = prev_strict;
             result
         }
-        OperationCont::Op2First(b_op, mut snd_clos, fst_pos, prev_strict) => {
+        OperationCont::Op2First(b_op, mut snd_clos, fst_pos) => {
             std::mem::swap(&mut clos, &mut snd_clos);
             stack.push_op_cont(
-                OperationCont::Op2Second(b_op, snd_clos, fst_pos, clos.body.pos, prev_strict),
+                OperationCont::Op2Second(b_op, snd_clos, fst_pos, clos.body.pos),
                 cs_len,
                 pos,
             );
             Ok(clos)
         }
-        OperationCont::Op2Second(b_op, fst_clos, fst_pos, snd_pos, prev_strict) => {
+        OperationCont::Op2Second(b_op, fst_clos, fst_pos, snd_pos) => {
             let result =
                 process_binary_operation(b_op, fst_clos, fst_pos, clos, snd_pos, stack, pos);
-            *enriched_strict = prev_strict;
             result
         }
         OperationCont::OpN {
@@ -112,7 +116,6 @@ pub fn continuate_operation(
             mut evaluated,
             current_pos,
             mut pending,
-            prev_enriched_strict,
         } => {
             evaluated.push((clos, current_pos));
 
@@ -124,7 +127,6 @@ pub fn continuate_operation(
                         evaluated,
                         current_pos,
                         pending,
-                        prev_enriched_strict,
                     },
                     cs_len,
                     pos,
@@ -133,7 +135,6 @@ pub fn continuate_operation(
                 Ok(next)
             } else {
                 let result = process_nary_operation(op, evaluated, stack, pos);
-                *enriched_strict = prev_enriched_strict;
                 result
             }
         }
@@ -2442,7 +2443,7 @@ mod tests {
 
     #[test]
     fn ite_operation() {
-        let cont = OperationCont::Op1(UnaryOp::Ite(), TermPos::None, true);
+        let cont = OperationCont::Op1(UnaryOp::Ite(), TermPos::None);
         let mut stack = Stack::new();
         stack.push_arg(
             Closure::atomic_closure(Term::Num(5.0).into()),
@@ -2460,9 +2461,8 @@ mod tests {
 
         stack.push_op_cont(cont, 0, TermPos::None);
         let mut call_stack = CallStack::new();
-        let mut strict = true;
 
-        clos = continuate_operation(clos, &mut stack, &mut call_stack, &mut strict).unwrap();
+        clos = continuate_operation(clos, &mut stack, &mut call_stack).unwrap();
 
         assert_eq!(
             clos,
@@ -2483,7 +2483,6 @@ mod tests {
                 env: Environment::new(),
             },
             TermPos::None,
-            true,
         );
 
         let mut clos = Closure {
@@ -2493,9 +2492,8 @@ mod tests {
         let mut stack = Stack::new();
         stack.push_op_cont(cont, 0, TermPos::None);
         let mut call_stack = CallStack::new();
-        let mut strict = true;
 
-        clos = continuate_operation(clos, &mut stack, &mut call_stack, &mut strict).unwrap();
+        clos = continuate_operation(clos, &mut stack, &mut call_stack).unwrap();
 
         assert_eq!(
             clos,
@@ -2516,7 +2514,6 @@ mod tests {
                     },
                     TermPos::None,
                     TermPos::None,
-                    true
                 ),
                 0,
                 TermPos::None
@@ -2535,7 +2532,6 @@ mod tests {
             },
             TermPos::None,
             TermPos::None,
-            true,
         );
         let mut clos = Closure {
             body: Term::Num(6.0).into(),
@@ -2544,9 +2540,8 @@ mod tests {
         let mut stack = Stack::new();
         stack.push_op_cont(cont, 0, TermPos::None);
         let mut call_stack = CallStack::new();
-        let mut strict = false;
 
-        clos = continuate_operation(clos, &mut stack, &mut call_stack, &mut strict).unwrap();
+        clos = continuate_operation(clos, &mut stack, &mut call_stack).unwrap();
 
         assert_eq!(
             clos,

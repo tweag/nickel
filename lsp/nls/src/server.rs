@@ -1,20 +1,30 @@
-use anyhow::Result;
-use log::{trace, warn};
-use lsp_server::{Connection, ErrorCode, Message, Notification, RequestId, Response};
-use lsp_types::{
-    notification::{self, DidChangeTextDocument, DidOpenTextDocument},
-    notification::{Notification as _, *},
-    request::{Request as RequestTrait, *},
-    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
-    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
-};
-use serde::Deserialize;
+use std::collections::HashMap;
 
+use anyhow::Result;
+use codespan::FileId;
+use log::{debug, trace, warn};
+use lsp_server::{
+    Connection, ErrorCode, Message, Notification, RequestId, Response, ResponseError,
+};
+use lsp_types::{
+    notification::Notification as _,
+    notification::{DidChangeTextDocument, DidOpenTextDocument},
+    request::{Request as RequestTrait, *},
+    CompletionOptions, CompletionParams, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
+    GotoDefinitionParams, HoverOptions, HoverParams, HoverProviderCapability, OneOf,
+    ReferenceParams, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
+    TextDocumentSyncOptions, WorkDoneProgressOptions,
+};
+
+use nickel::typecheck::linearization::Completed;
 use nickel::{cache::Cache, environment::Environment, eval::Thunk, identifier::Ident};
+
+use crate::requests::{completion, goto, hover};
 
 pub struct Server {
     pub connection: Connection,
     pub cache: Cache,
+    pub lin_cache: HashMap<FileId, Completed>,
     pub global_env: Environment<Ident, Thunk>,
 }
 
@@ -28,6 +38,17 @@ impl Server {
                     ..TextDocumentSyncOptions::default()
                 },
             )),
+            hover_provider: Some(HoverProviderCapability::Options(HoverOptions {
+                work_done_progress_options: WorkDoneProgressOptions {
+                    work_done_progress: Some(false),
+                },
+            })),
+            definition_provider: Some(OneOf::Left(true)),
+            references_provider: Some(OneOf::Left(true)),
+            completion_provider: Some(CompletionOptions {
+                trigger_characters: Some(vec![]),
+                ..Default::default()
+            }),
             ..ServerCapabilities::default()
         }
     }
@@ -35,10 +56,12 @@ impl Server {
     pub fn new(connection: Connection) -> Server {
         let mut cache = Cache::new();
         cache.prepare_stdlib().unwrap();
+        let lin_cache = HashMap::new();
         let global_env = cache.mk_global_env().unwrap();
         Server {
             connection,
             cache,
+            lin_cache,
             global_env,
         }
     }
@@ -124,7 +147,48 @@ impl Server {
         }
     }
 
-    fn handle_request(&self, req: lsp_server::Request) {
-        todo!()
+    fn handle_request(&mut self, req: lsp_server::Request) {
+        let res = match req.method.as_str() {
+            HoverRequest::METHOD => {
+                let params: HoverParams = serde_json::from_value(req.params).unwrap();
+                hover::handle(params, req.id.clone(), self)
+            }
+
+            GotoDefinition::METHOD => {
+                debug!("handle goto defnition");
+                let params: GotoDefinitionParams = serde_json::from_value(req.params).unwrap();
+                goto::handle_to_definition(params, req.id.clone(), self)
+            }
+
+            References::METHOD => {
+                debug!("handle goto defnition");
+                let params: ReferenceParams = serde_json::from_value(req.params).unwrap();
+                goto::handle_to_usages(params, req.id.clone(), self)
+            }
+
+            Completion::METHOD => {
+                debug!("handle completion");
+                let params: CompletionParams = serde_json::from_value(req.params).unwrap();
+                completion::handle_completion(params, req.id.clone(), self)
+            }
+
+            _ => Ok(()),
+        };
+
+        if let Err(error) = res {
+            self.reply(Response {
+                id: req.id,
+                result: None,
+                error: Some(error),
+            })
+        }
+    }
+
+    pub fn lin_cache_get(&self, file_id: &FileId) -> Result<&Completed, ResponseError> {
+        self.lin_cache.get(&file_id).ok_or_else(|| ResponseError {
+            data: None,
+            message: "File has not yet been parsed or cached.".to_owned(),
+            code: ErrorCode::ParseError as i32,
+        })
     }
 }
