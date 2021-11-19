@@ -17,6 +17,4 @@ pub enum LexicalError {
 pub enum ParseError {
     /// A specific lexical error
     Lexical(LexicalError),
-    /// Unbound type variable(s)
-    UnboundTypeVariables(Vec<Ident>, RawSpan),
 }
