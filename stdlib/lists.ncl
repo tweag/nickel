@@ -155,7 +155,7 @@
             [ 3, 2, 1 ]
         ```
         "#m
-      = fun l => foldl (fun acc e => acc @ [e]) [] l,
+      = fun l => foldl (fun acc e => [e] @ acc) [] l,
 
     filter : forall a. (a -> Bool) -> List a -> List a
       | doc m#"
