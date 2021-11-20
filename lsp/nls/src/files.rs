@@ -18,41 +18,35 @@ pub fn handle_open(server: &mut Server, params: DidOpenTextDocumentParams) -> Re
         .cache
         .add_string(params.text_document.uri.as_str(), params.text_document.text);
 
-    let checked = server
+    let diagnostics = server
         .cache
         .parse(file_id)
         .map_err(|parse_err| parse_err.to_diagnostic(server.cache.files_mut(), None))
-        .map_err(|mut d| {
-            trace!("Parsed with errors, checking types");
-            let _ = typecheck(server, file_id).map_err(|mut ty_d| d.append(&mut ty_d));
-            d
-        })
-        .and_then(|_| {
+        .and_then(|parse_errs| {
+            // Parse errors are not fatal
+            let mut d = parse_errs
+                .inner()
+                .to_diagnostic(server.cache.files_mut(), None);
             trace!("Parsed, checking types");
-            typecheck(server, file_id)
+            let _ = typecheck(server, file_id).map_err(|mut ty_d| d.append(&mut ty_d));
+            Ok(d)
         })
-        .map_err(|diagnostics| {
-            trace!("Parsing or typechecking caused an error!");
-            diagnostics
-                .into_iter()
-                .map(|d| lsp_types::Diagnostic::from_codespan(d, server.cache.files_mut()))
-                .flatten()
-                .collect()
-        });
+        .unwrap_or_else(|d| d);
 
-    match checked.map(|_| Vec::new()) {
-        Ok(diagnostics) | Err(diagnostics) => {
-            server.notify(Notification::new(
-                "textDocument/publishDiagnostics".into(),
-                PublishDiagnosticsParams {
-                    uri: params.text_document.uri,
+    let diagnostics = diagnostics
+        .into_iter()
+        .map(|d| lsp_types::Diagnostic::from_codespan(d, server.cache.files_mut()))
+        .flatten()
+        .collect();
+    server.notify(Notification::new(
+        "textDocument/publishDiagnostics".into(),
+        PublishDiagnosticsParams {
+            uri: params.text_document.uri,
 
-                    diagnostics,
-                    version: None,
-                },
-            ));
-        }
-    }
+            diagnostics,
+            version: None,
+        },
+    ));
 
     Ok(())
 }

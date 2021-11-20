@@ -121,6 +121,14 @@ pub enum CacheOp<T> {
     Cached(T),
 }
 
+impl<T> CacheOp<T> {
+    pub fn inner(self: CacheOp<T>) -> T {
+        match self {
+            CacheOp::Done(t) | CacheOp::Cached(t) => t,
+        }
+    }
+}
+
 /// Wrapper around other errors to indicate that typechecking or applying program transformations
 /// failed because the source has not been parsed yet.
 #[derive(Eq, PartialEq, Debug, Clone)]
@@ -290,7 +298,7 @@ impl Cache {
 
     /// Parse a source and populate the corresponding entry in the cache, or do nothing if the
     /// entry has already been parsed.
-    pub fn parse(&mut self, file_id: FileId) -> Result<CacheOp<ParseErrors>, ParseErrors> {
+    pub fn parse(&mut self, file_id: FileId) -> Result<CacheOp<ParseErrors>, ParseError> {
         if let Some((_, _, e)) = self.terms.get(&file_id) {
             Ok(CacheOp::Cached(e.clone()))
         } else {
