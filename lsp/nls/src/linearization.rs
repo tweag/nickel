@@ -323,6 +323,10 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                     if let Some(child_id) = child_id {
                         lin.add_usage(child_id, id);
                     }
+
+                    if referenced_value == None {
+                        break;
+                    }
                     root = referenced_value;
                 }
             }
