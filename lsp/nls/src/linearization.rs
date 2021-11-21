@@ -176,6 +176,9 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
         let mut id_gen = lin.id_gen();
 
         // Register record field if appropriate
+        // `record` is the id [LinearizatonItem] of the enclosing record
+        // `offset` is used to find the [LinearizationItem] representing the field
+        // Field items are inserted immediately after the record
         if let Some((record, (offset, Ident(_, field_pos)))) = self
             .record_fields
             .take()
@@ -195,7 +198,9 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                     TermKind::RecordField { ref mut value, .. } => {
                         *value = Some(id_gen.id());
                     }
-                    _ => {}
+                    // The linearization item of a record with n fields is expected to be
+                    // followed by n linearization items representing each field
+                    _ => unreachable!(),
                 }
             }
         }
@@ -228,6 +233,17 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
 
                 for accessor in accessors.iter().rev() {
                     debug!("root id is: {:?}", root);
+                    // Determine current accessor node
+                    // root should be the topmost declaration or record
+                    //
+                    // root.accessor1.accessor2
+                    //
+                    // If such an accessor chain is used in a record whiere the
+                    // linearization order of fields is not deterministic resolving a variable
+                    // declared in a sibling branch of the record may fail if that branch is
+                    // linearized after the current one.
+                    //
+                    // TODO: can/should we resolve accessor chains as a post-processing step?
                     let child = if let Some(root_id) = root {
                         match &lin.state.resource.linearization.get(root_id).unwrap().kind {
                             // resolve referenced field of record
