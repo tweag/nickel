@@ -298,7 +298,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
 
                     let id = id_gen.take();
                     let child_id = child.map(|r| r.id);
-                    let referenced_value = child.as_ref().and_then(|child| match child {
+                    let referenced_value = child.and_then(|child| match child {
                         child
                         @
                         LinearizationItem {
