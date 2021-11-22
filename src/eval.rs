@@ -114,18 +114,111 @@ pub enum ThunkState {
     Evaluated,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum InnerThunkData {
+    Standard(Closure),
+    Reversible {
+        orig: Closure,
+        cached: Option<Closure>,
+    }
+}
+
+impl InnerThunkData {
+    pub fn new_rev(orig: Closure) -> Self {
+        InnerThunkData::Reversible { orig, cached: None }
+    }
+
+    pub fn closure(&self) -> &Closure {
+        match self {
+            Self::Standard(closure) => closure,
+            Self::Reversible { orig, cached: None } => &orig,
+            Self::Reversible { cached: Some(closure), ..} => closure,
+        }
+    }
+
+    pub fn closure_mut(&mut self) -> &mut Closure {
+        match self {
+            Self::Standard(ref mut closure) => closure,
+            Self::Reversible { ref mut orig, cached: None } => orig,
+            Self::Reversible { cached: Some(ref mut closure), ..} => closure,
+        }
+    }
+
+    pub fn into_closure(self) -> Closure {
+        match self {
+            Self::Standard(closure) => closure,
+            Self::Reversible { orig, cached: None} => orig,
+            Self::Reversible { cached: Some(cached), ..} => cached,
+        }
+    }
+
+    pub fn update(&mut self, new: Closure) {
+        match self {
+            Self::Standard(ref mut closure) => *closure = new,
+            Self::Reversible { ref mut cached, .. } => *cached = Some(new),
+        }
+    }
+}
+
 /// The mutable data stored inside a thunk.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ThunkData {
-    closure: Closure,
+    inner: InnerThunkData,
     state: ThunkState,
 }
 
 impl ThunkData {
     pub fn new(closure: Closure) -> Self {
         ThunkData {
-            closure,
+            inner: InnerThunkData::Standard(closure),
             state: ThunkState::Suspended,
+        }
+    }
+
+    pub fn new_rev(orig: Closure) -> Self {
+        ThunkData {
+            inner: InnerThunkData::Reversible {orig, cached: None},
+            state: ThunkState::Suspended,
+        }
+    }
+
+    pub fn closure(&self) -> &Closure {
+        match self.inner {
+            InnerThunkData::Standard(ref closure) => closure,
+            InnerThunkData::Reversible { ref orig, cached: None } => orig,
+            InnerThunkData::Reversible { cached: Some(ref closure), ..} => closure,
+        }
+    }
+
+    pub fn closure_mut(&mut self) -> &mut Closure {
+        match self.inner {
+            InnerThunkData::Standard(ref mut closure) => closure,
+            InnerThunkData::Reversible { ref mut orig, cached: None } => orig,
+            InnerThunkData::Reversible { cached: Some(ref mut closure), ..} => closure,
+        }
+    }
+
+    pub fn into_closure(self) -> Closure {
+        match self.inner {
+            InnerThunkData::Standard(closure) => closure,
+            InnerThunkData::Reversible { orig, cached: None} => orig,
+            InnerThunkData::Reversible { cached: Some(cached), ..} => cached,
+        }
+    }
+
+    pub fn update(&mut self, new: Closure) {
+        match self.inner {
+            InnerThunkData::Standard(ref mut closure) => *closure = new,
+            InnerThunkData::Reversible { ref mut cached, .. } => *cached = Some(new),
+        }
+
+        self.state = ThunkState::Evaluated;
+    }
+
+    pub fn revert(&self) -> Self {
+        match self.inner {
+            InnerThunkData::Standard(ref closure) => ThunkData::new(closure.clone()),
+            InnerThunkData::Reversible { ref orig, .. } => ThunkData::new_rev(orig.clone()),
         }
     }
 }
@@ -148,6 +241,13 @@ impl Thunk {
     pub fn new(closure: Closure, ident_kind: IdentKind) -> Self {
         Thunk {
             data: Rc::new(RefCell::new(ThunkData::new(closure))),
+            ident_kind,
+        }
+    }
+
+    pub fn new_rev(closure: Closure, ident_kind: IdentKind) -> Self {
+        Thunk {
+            data: Rc::new(RefCell::new(ThunkData::new_rev(closure))),
             ident_kind,
         }
     }
@@ -178,33 +278,17 @@ impl Thunk {
 
     /// Immutably borrow the inner closure. Panic if there is another active mutable borrow.
     pub fn borrow(&self) -> Ref<'_, Closure> {
-        let (closure, _) = Ref::map_split(self.data.borrow(), |data| {
-            let ThunkData {
-                ref closure,
-                ref state,
-            } = data;
-            (closure, state)
-        });
-
-        closure
+        Ref::map(self.data.borrow(), |data| data.inner.closure())
     }
 
     /// Mutably borrow the inner closure. Panic if there is any other active borrow.
     pub fn borrow_mut(&mut self) -> RefMut<'_, Closure> {
-        let (closure, _) = RefMut::map_split(self.data.borrow_mut(), |data| {
-            let ThunkData {
-                ref mut closure,
-                ref mut state,
-            } = data;
-            (closure, state)
-        });
-
-        closure
+        RefMut::map(self.data.borrow_mut(), |data| data.inner.closure_mut())
     }
 
     /// Get an owned clone of the inner closure.
     pub fn get_owned(&self) -> Closure {
-        self.data.borrow().closure.clone()
+        self.data.borrow().closure().clone()
     }
 
     pub fn ident_kind(&self) -> IdentKind {
@@ -215,8 +299,8 @@ impl Thunk {
     /// reference to the inner closure.
     pub fn into_closure(self) -> Closure {
         match Rc::try_unwrap(self.data) {
-            Ok(inner) => inner.into_inner().closure,
-            Err(rc) => rc.borrow().clone().closure,
+            Ok(inner) => inner.into_inner().into_closure(),
+            Err(rc) => rc.borrow().closure().clone(),
         }
     }
 }
@@ -242,10 +326,7 @@ impl ThunkUpdateFrame {
     /// - `false` if the corresponding closure has been dropped since
     pub fn update(self, closure: Closure) -> bool {
         if let Some(data) = Weak::upgrade(&self.data) {
-            *data.borrow_mut() = ThunkData {
-                closure,
-                state: ThunkState::Evaluated,
-            };
+            data.borrow_mut().update(closure);
             true
         } else {
             false
