@@ -114,52 +114,6 @@ pub enum ThunkState {
     Evaluated,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum InnerThunkData {
-    Standard(Closure),
-    Reversible {
-        orig: Closure,
-        cached: Option<Closure>,
-    }
-}
-
-impl InnerThunkData {
-    pub fn new_rev(orig: Closure) -> Self {
-        InnerThunkData::Reversible { orig, cached: None }
-    }
-
-    pub fn closure(&self) -> &Closure {
-        match self {
-            Self::Standard(closure) => closure,
-            Self::Reversible { orig, cached: None } => &orig,
-            Self::Reversible { cached: Some(closure), ..} => closure,
-        }
-    }
-
-    pub fn closure_mut(&mut self) -> &mut Closure {
-        match self {
-            Self::Standard(ref mut closure) => closure,
-            Self::Reversible { ref mut orig, cached: None } => orig,
-            Self::Reversible { cached: Some(ref mut closure), ..} => closure,
-        }
-    }
-
-    pub fn into_closure(self) -> Closure {
-        match self {
-            Self::Standard(closure) => closure,
-            Self::Reversible { orig, cached: None} => orig,
-            Self::Reversible { cached: Some(cached), ..} => cached,
-        }
-    }
-
-    pub fn update(&mut self, new: Closure) {
-        match self {
-            Self::Standard(ref mut closure) => *closure = new,
-            Self::Reversible { ref mut cached, .. } => *cached = Some(new),
-        }
-    }
-}
-
 /// The mutable data stored inside a thunk.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ThunkData {
@@ -167,7 +121,22 @@ pub struct ThunkData {
     state: ThunkState,
 }
 
+/// The part of [ThunkData] responsible for storing the closure itself. It can either be:
+/// - A standard thunk, that is destructively updated once and for all
+/// - A reversible thunk, that can be restored to its original expression. Used to implement
+/// recursive merging of records and overriding (see the [RFC
+/// overriding](https://github.com/tweag/nickel/pull/330))
+#[derive(Clone, Debug, PartialEq)]
+pub enum InnerThunkData {
+    Standard(Closure),
+    Reversible {
+        orig: Closure,
+        cached: Option<Closure>,
+    },
+}
+
 impl ThunkData {
+    /// Create new standard thunk data.
     pub fn new(closure: Closure) -> Self {
         ThunkData {
             inner: InnerThunkData::Standard(closure),
@@ -175,37 +144,57 @@ impl ThunkData {
         }
     }
 
+    /// Create new reversible thunk data.
     pub fn new_rev(orig: Closure) -> Self {
         ThunkData {
-            inner: InnerThunkData::Reversible {orig, cached: None},
+            inner: InnerThunkData::Reversible { orig, cached: None },
             state: ThunkState::Suspended,
         }
     }
 
+    /// Return a reference to the closure currently cached.
     pub fn closure(&self) -> &Closure {
         match self.inner {
             InnerThunkData::Standard(ref closure) => closure,
-            InnerThunkData::Reversible { ref orig, cached: None } => orig,
-            InnerThunkData::Reversible { cached: Some(ref closure), ..} => closure,
+            InnerThunkData::Reversible {
+                ref orig,
+                cached: None,
+            } => orig,
+            InnerThunkData::Reversible {
+                cached: Some(ref closure),
+                ..
+            } => closure,
         }
     }
 
+    /// Return a mutable reference to the closure currently cached.
     pub fn closure_mut(&mut self) -> &mut Closure {
         match self.inner {
             InnerThunkData::Standard(ref mut closure) => closure,
-            InnerThunkData::Reversible { ref mut orig, cached: None } => orig,
-            InnerThunkData::Reversible { cached: Some(ref mut closure), ..} => closure,
+            InnerThunkData::Reversible {
+                ref mut orig,
+                cached: None,
+            } => orig,
+            InnerThunkData::Reversible {
+                cached: Some(ref mut closure),
+                ..
+            } => closure,
         }
     }
 
+    /// Consume the data and return the cached closure.
     pub fn into_closure(self) -> Closure {
         match self.inner {
             InnerThunkData::Standard(closure) => closure,
-            InnerThunkData::Reversible { orig, cached: None} => orig,
-            InnerThunkData::Reversible { cached: Some(cached), ..} => cached,
+            InnerThunkData::Reversible { orig, cached: None } => orig,
+            InnerThunkData::Reversible {
+                cached: Some(cached),
+                ..
+            } => cached,
         }
     }
 
+    /// Update the cached closure.
     pub fn update(&mut self, new: Closure) {
         match self.inner {
             InnerThunkData::Standard(ref mut closure) => *closure = new,
@@ -215,9 +204,15 @@ impl ThunkData {
         self.state = ThunkState::Evaluated;
     }
 
-    pub fn revert(&self) -> Self {
+    /// Create fresh unevaluated thunk data from `self`, restored to its original state before the
+    /// first update. For standard thunk data, the content is unchanged and the state is conserved: in
+    /// this case, `restore()` is the same as `clone()`.
+    pub fn restore(&self) -> Self {
         match self.inner {
-            InnerThunkData::Standard(ref closure) => ThunkData::new(closure.clone()),
+            InnerThunkData::Standard(ref closure) => ThunkData {
+                inner: InnerThunkData::Standard(closure.clone()),
+                state: self.state,
+            },
             InnerThunkData::Reversible { ref orig, .. } => ThunkData::new_rev(orig.clone()),
         }
     }
@@ -227,6 +222,13 @@ impl ThunkData {
 ///
 /// A thunk is a shared suspended computation. It is the primary device for the implementation of
 /// lazy evaluation.
+///
+/// For the implementation of recursive merging, some thunks need to be revertible, in the sense
+/// that we must be able to restore the original expression before update. Those are called
+/// reversible thunks. Most expressions don't need reversible thunks as their evaluation will
+/// always give the same result, but some others, such as the ones containing recursive references
+/// inside a record may be invalidated by merging, and thus need to store the unaltered original
+/// expression. Those aspects are mainly handled in [InnerThunkData].
 #[derive(Clone, Debug, PartialEq)]
 pub struct Thunk {
     data: Rc<RefCell<ThunkData>>,
@@ -238,6 +240,7 @@ pub struct Thunk {
 pub struct BlackholedError;
 
 impl Thunk {
+    /// Create a new standard thunk.
     pub fn new(closure: Closure, ident_kind: IdentKind) -> Self {
         Thunk {
             data: Rc::new(RefCell::new(ThunkData::new(closure))),
@@ -245,6 +248,7 @@ impl Thunk {
         }
     }
 
+    /// Create a new revertible thunk.
     pub fn new_rev(closure: Closure, ident_kind: IdentKind) -> Self {
         Thunk {
             data: Rc::new(RefCell::new(ThunkData::new_rev(closure))),
@@ -278,12 +282,12 @@ impl Thunk {
 
     /// Immutably borrow the inner closure. Panic if there is another active mutable borrow.
     pub fn borrow(&self) -> Ref<'_, Closure> {
-        Ref::map(self.data.borrow(), |data| data.inner.closure())
+        Ref::map(self.data.borrow(), |data| data.closure())
     }
 
     /// Mutably borrow the inner closure. Panic if there is any other active borrow.
     pub fn borrow_mut(&mut self) -> RefMut<'_, Closure> {
-        RefMut::map(self.data.borrow_mut(), |data| data.inner.closure_mut())
+        RefMut::map(self.data.borrow_mut(), |data| data.closure_mut())
     }
 
     /// Get an owned clone of the inner closure.
@@ -301,6 +305,16 @@ impl Thunk {
         match Rc::try_unwrap(self.data) {
             Ok(inner) => inner.into_inner().into_closure(),
             Err(rc) => rc.borrow().closure().clone(),
+        }
+    }
+
+    /// Create a fresh unevaluated thunk from `self`, restored to its original state before the
+    /// first update. For a standard thunk, the content is unchanged and the state is conserved: in
+    /// this case, `restore()` is the same as `clone()`.
+    pub fn restore(&self) -> Self {
+        Thunk {
+            data: Rc::new(RefCell::new(self.data.borrow().restore())),
+            ident_kind: self.ident_kind,
         }
     }
 }
