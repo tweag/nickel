@@ -43,6 +43,17 @@
           overlays = [ nixpkgs-mozilla.overlays.rust ];
         };
 
+      mkRust = pkgs: channel:
+        let
+          manifestFile = builtins.fetchurl {
+            url = pkgs.lib.rustLib.manifest_v2_url RUST_CHANNELS.${channel};
+            sha256 = RUST_CHANNELS.${channel}.sha256;
+          };
+        in
+        pkgs.lib.rustLib.fromManifestFile manifestFile {
+          inherit (pkgs) lib stdenv fetchurl patchelf;
+        };
+
       mkCargoHome = { pkgs }:
         (import-cargo.builders.importCargo {
           lockFile = ./Cargo.lock;
@@ -64,7 +75,7 @@
           pkgs = mkPkgs {inherit system;};
 
           rust =
-            (pkgs.rustChannelOf RUST_CHANNELS."${channel}").rust.override({
+            (mkRust pkgs channel).rust.override({
                extensions = if isShell then [
                 "rust-src"
                 "rust-analysis"
@@ -113,7 +124,7 @@
           pkgs = mkPkgs {inherit system;};
           pkgsPinned = import nixpkgs-wasm {inherit system;};
 
-          rust = (pkgs.rustChannelOf RUST_CHANNELS."${channel}").rust.override({
+          rust = (mkRust pkgs channel).rust.override({
             targets = ["wasm32-unknown-unknown"];
           });
 
@@ -218,7 +229,7 @@
       let 
         pkgs = mkPkgs { inherit system; };
         nickel = buildNickel { inherit system; isShell = true; };
-        rust = (pkgs.rustChannelOf RUST_CHANNELS."${channel}").rust.override({
+        rust = (mkRust pkgs channel).rust.override({
           extensions = [ "rustfmt-preview" ];
         });
         rustFormatHook = pkgs.writeShellScriptBin "check-rust-format-hook"
