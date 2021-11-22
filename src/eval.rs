@@ -223,7 +223,7 @@ impl ThunkData {
 /// A thunk is a shared suspended computation. It is the primary device for the implementation of
 /// lazy evaluation.
 ///
-/// For the implementation of recursive merging, some thunks need to be revertible, in the sense
+/// For the implementation of recursive merging, some thunks need to be reversible, in the sense
 /// that we must be able to restore the original expression before update. Those are called
 /// reversible thunks. Most expressions don't need reversible thunks as their evaluation will
 /// always give the same result, but some others, such as the ones containing recursive references
@@ -248,7 +248,7 @@ impl Thunk {
         }
     }
 
-    /// Create a new revertible thunk.
+    /// Create a new reversible thunk.
     pub fn new_rev(closure: Closure, ident_kind: IdentKind) -> Self {
         Thunk {
             data: Rc::new(RefCell::new(ThunkData::new_rev(closure))),
