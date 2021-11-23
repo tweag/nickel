@@ -71,7 +71,6 @@ fn parse_and_typecheck(server: &mut Server, uri: Url, file_id: FileId) -> Result
         "textDocument/publishDiagnostics".into(),
         PublishDiagnosticsParams {
             uri,
-
             diagnostics,
             version: None,
         },
