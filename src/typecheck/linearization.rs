@@ -109,9 +109,9 @@ pub struct LinearizationItem<S: ResolutionState> {
 /// Abstact term kinds.
 /// Currently tracks
 /// 1. Declarations
-/// 2. Usages, with Structure being a
+/// 2. Usages
 /// 3. Records, listing their fields
-/// 4. wildcard for any other kind of term.
+/// 4. wildcard (Structure) for any other kind of term.
 /// Can be extended later to represent Contracts, Records, etc.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TermKind {
