@@ -478,7 +478,7 @@ fn process_unary_operation(
         }
         UnaryOp::FieldsOf() => {
             if let Term::Record(map, _) = *t {
-                let mut fields: Vec<String> = map.keys().map(|Ident(id, _)| id.clone()).collect();
+                let mut fields: Vec<String> = map.keys().map(|id| id.to_string()).collect();
                 fields.sort();
                 let terms = fields.into_iter().map(mk_term::string).collect();
                 Ok(Closure::atomic_closure(RichTerm::new(

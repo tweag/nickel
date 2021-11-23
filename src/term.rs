@@ -404,7 +404,7 @@ impl Term {
             }
             Term::Fun(_, _) => String::from("<func>"),
             Term::Lbl(_) => String::from("<label>"),
-            Term::Enum(Ident(s, _)) => format!("`{}", s),
+            Term::Enum(s) => format!("`{}", s),
             Term::Record(..) | Term::RecRecord(..) => String::from("{ ... }"),
             Term::List(_) => String::from("[ ... ]"),
             Term::Sym(_) => String::from("<sym>"),
@@ -432,7 +432,7 @@ impl Term {
 
                 format!("<{}{}={}>", content, value_label, value)
             }
-            Term::Var(Ident(id, _)) => id.clone(),
+            Term::Var(id) => id.to_string(),
             Term::Let(_, _, _)
             | Term::App(_, _)
             | Term::Switch(..)

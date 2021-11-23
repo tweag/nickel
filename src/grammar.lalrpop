@@ -167,7 +167,7 @@ RecordOperand: RichTerm = {
 
 RecordOperationChain: RichTerm = {
     <t: WithPos<RecordOperand>> "." <id: Ident> => mk_term::op1(UnaryOp::StaticAccess(id), t),
-    <t: WithPos<RecordOperand>> "." <t_id: StrChunks> => mk_term::op2(BinaryOp::DynAccess(), t_id, t),
+    <t: WithPos<RecordOperand>> "." <t_id: WithPos<StrChunks>> => mk_term::op2(BinaryOp::DynAccess(), t_id, t),
     <t: WithPos<RecordOperand>> "-$" <t_id: WithPos<Atom>> => mk_term::op2(BinaryOp::DynRemove(), t_id, t),
     <r: WithPos<RecordOperand>> "$[" <id: Term> "=" <t: Term> "]" =>
         mk_app!(mk_term::op2(BinaryOp::DynExtend(), id, r), t),
@@ -246,7 +246,7 @@ FieldPath: Vec<FieldPathElem> = {
 
 FieldPathElem: FieldPathElem = {
     <Ident> => FieldPathElem::Ident(<>),
-    <StrChunks> => FieldPathElem::Expr(<>),
+    <WithPos<StrChunks>> => FieldPathElem::Expr(<>),
 };
 
 Pattern: Ident = {
@@ -261,8 +261,7 @@ Bool: bool = {
 };
 
 StrChunks : RichTerm = {
-  <l:@L><start: StringStart> <fst: ChunkLiteral?> <chunks: (ChunkExpr+ChunkLiteral)*> <lasts:
-    ChunkExpr*> <end: StringEnd> <r:@R> => {
+  <start: StringStart> <fst: ChunkLiteral?> <chunks: (ChunkExpr+ChunkLiteral)*> <lasts:ChunkExpr*> <end: StringEnd> => {
         debug_assert_eq!(start, end);
 
         let chunks: Vec<StrChunk<RichTerm>> = fst.into_iter()
@@ -284,7 +283,7 @@ StrChunks : RichTerm = {
         };
         chunks.reverse();
 
-        RichTerm::new(Term::StrChunks(chunks), mk_pos(src_id, l, r))
+        RichTerm::from(Term::StrChunks(chunks))
     },
 };
 
