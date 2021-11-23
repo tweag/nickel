@@ -938,7 +938,7 @@ fn process_unary_operation(
                 let re = regex::Regex::new("_?[a-zA-Z][_a-zA-Z0-9]*").unwrap();
                 if re.is_match(&s) {
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Enum(Ident(s, None)),
+                        Term::Enum(s.into()),
                         pos_op_inh,
                     )))
                 } else {
@@ -1506,7 +1506,7 @@ fn process_binary_operation(
         BinaryOp::GoField() => {
             if let Term::Str(field) = *t1 {
                 if let Term::Lbl(mut l) = *t2 {
-                    l.path.push(ty_path::Elem::Field(Ident(field, None)));
+                    l.path.push(ty_path::Elem::Field(Ident::from(field)));
                     Ok(Closure::atomic_closure(RichTerm::new(
                         Term::Lbl(l),
                         pos_op_inh,
@@ -1538,7 +1538,7 @@ fn process_binary_operation(
         BinaryOp::DynAccess() => {
             if let Term::Str(id) = *t1 {
                 if let Term::Record(mut static_map, attrs) = *t2 {
-                    match static_map.remove(&Ident(id.clone(), None)) {
+                    match static_map.remove(&Ident::from(&id)) {
                         Some(e) => Ok(Closure { body: e, env: env2 }),
                         None => Err(EvalError::FieldMissing(
                             id,
@@ -1581,7 +1581,7 @@ fn process_binary_operation(
             if let Term::Str(id) = *t1 {
                 if let Term::Record(mut static_map, attrs) = *t2 {
                     let as_var = clos.body.closurize(&mut env2, clos.env);
-                    match static_map.insert(Ident(id.clone(), None), as_var) {
+                    match static_map.insert(Ident::from(&id), as_var) {
                         Some(_) => Err(EvalError::Other(format!("$[ .. ]: tried to extend record with the field {}, but it already exists", id), pos_op)),
                         None => Ok(Closure {
                             body: Term::Record(static_map, attrs).into(),
@@ -1614,7 +1614,7 @@ fn process_binary_operation(
         BinaryOp::DynRemove() => {
             if let Term::Str(id) = *t1 {
                 if let Term::Record(mut static_map, attrs) = *t2 {
-                    match static_map.remove(&Ident(id.clone(), None)) {
+                    match static_map.remove(&Ident::from(&id)) {
                         None => Err(EvalError::FieldMissing(
                             id,
                             String::from("(-$)"),
@@ -1656,7 +1656,7 @@ fn process_binary_operation(
             if let Term::Str(id) = *t1 {
                 if let Term::Record(static_map, _) = *t2 {
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Bool(static_map.contains_key(&Ident(id, None))),
+                        Term::Bool(static_map.contains_key(&Ident::from(id))),
                         pos_op_inh,
                     )))
                 } else {

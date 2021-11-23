@@ -253,7 +253,7 @@ Pattern: Ident = {
     Ident,
 };
 
-Ident: Ident = <l:@L> <i: "identifier"> <r:@R> => Ident(i.to_string(), Some(mk_pos(src_id, l, r)));
+Ident: Ident = <l:@L> <i: "identifier"> <r:@R> => Ident(i.to_string(), mk_pos(src_id, l, r));
 
 Bool: bool = {
     "true" => true,

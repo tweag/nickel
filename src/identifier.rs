@@ -6,7 +6,7 @@ use crate::position::TermPos;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(into = "String", from = "String")]
-pub struct Ident(pub String, pub Option<TermPos>);
+pub struct Ident(pub String, pub TermPos);
 
 impl PartialOrd for Ident {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -46,7 +46,7 @@ where
     String: From<F>,
 {
     fn from(val: F) -> Self {
-        Ident(String::from(val), None)
+        Ident(String::from(val), TermPos::None)
     }
 }
 

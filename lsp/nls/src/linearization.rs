@@ -155,12 +155,12 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
             let id = id_gen.take();
             lin.push(LinearizationItem {
                 id,
-                pos: field.1.unwrap(),
+                pos: field.1,
                 ty: ty.clone(),
                 kind: TermKind::RecordField {
                     record,
                     body_pos: match pos {
-                        TermPos::None => field.1.unwrap(),
+                        TermPos::None => field.1,
                         _ => pos.clone(),
                     },
                     ident: field.clone(),
@@ -171,7 +171,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
             });
 
             if pos == TermPos::None {
-                pos = field.1.unwrap();
+                pos = field.1;
             }
 
             lin.add_record_field(record, (field, id));
@@ -189,7 +189,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                 lin.push(LinearizationItem {
                     id,
                     ty,
-                    pos: ident.1.unwrap(),
+                    pos: ident.1,
                     scope: self.scope.clone(),
                     kind: TermKind::Declaration(ident.to_owned(), Vec::new()),
                     meta: self.meta.take(),
@@ -241,7 +241,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
 
                     lin.push(LinearizationItem {
                         id,
-                        pos: accessor.1.unwrap(),
+                        pos: accessor.1,
                         ty: TypeWrapper::Concrete(AbsType::Dyn()),
                         scope: self.scope.clone(),
                         kind: TermKind::Usage(child_id),
@@ -297,7 +297,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                                     let id = id_gen.take();
                                     lin.push(LinearizationItem {
                                         id,
-                                        pos: ident.1.unwrap(),
+                                        pos: ident.1,
                                         ty: TypeWrapper::Concrete(AbsType::Var(ident.to_owned())),
                                         scope: self.scope.clone(),
                                         // id = parent: full let binding including the body
