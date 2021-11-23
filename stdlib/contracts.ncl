@@ -107,7 +107,7 @@
         ```nickel
         let IsZero = fun label value =>
           if value == 0 then value
-          else contracts.blame label in
+          else contracts.blameWith "Not zero" label in
         0 | #IsZero
         ```
         "#m
