@@ -262,7 +262,7 @@ Bool: bool = {
 
 StrChunks : RichTerm = {
   <l:@L><start: StringStart> <fst: ChunkLiteral?> <chunks: (ChunkExpr+ChunkLiteral)*> <lasts:
-    ChunkExpr*> <end: StringEnd><r:@R> => {
+    ChunkExpr*> <end: StringEnd> <r:@R> => {
         debug_assert_eq!(start, end);
 
         let chunks: Vec<StrChunk<RichTerm>> = fst.into_iter()
