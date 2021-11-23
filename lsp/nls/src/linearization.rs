@@ -1,5 +1,6 @@
-use std::{borrow::BorrowMut, collections::HashMap};
+use std::{borrow::BorrowMut, cell::UnsafeCell, collections::HashMap};
 
+use codespan::ByteIndex;
 use log::{debug, Record};
 use nickel::{
     identifier::Ident,
@@ -8,7 +9,7 @@ use nickel::{
     typecheck::{
         linearization::{
             Building, Completed, Environment, Linearization, LinearizationItem, Linearizer,
-            ScopeId, TermKind, Unresolved,
+            ScopeId, TermKind, Unresolved, UsageState,
         },
         reporting::{to_type, NameReg},
         TypeWrapper, UnifTable,
@@ -179,28 +180,44 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
         // `record` is the id [LinearizatonItem] of the enclosing record
         // `offset` is used to find the [LinearizationItem] representing the field
         // Field items are inserted immediately after the record
-        if let Some((record, (offset, Ident(_, field_pos)))) = self
-            .record_fields
-            .take()
-            .map(|(record, mut fields)| (record, fields.pop().unwrap()))
-        {
-            pos = field_pos;
-
-            for field in lin
-                .state
-                .resource
-                .linearization
-                .get_mut(record + offset)
-                .into_iter()
+        if !matches!(term, Term::Op1(UnaryOp::StaticAccess(_), _)) {
+            if let Some((record, (offset, Ident(_, field_pos)))) = self
+                .record_fields
+                .take()
+                .map(|(record, mut fields)| (record, fields.pop().unwrap()))
             {
-                debug!("{:?}", field.kind);
-                match field.kind {
-                    TermKind::RecordField { ref mut value, .. } => {
-                        *value = Some(id_gen.id());
+                pos = field_pos.map(|mut pos| {
+                    pos.start = ByteIndex(0);
+                    pos.end = ByteIndex(0);
+                    pos
+                });
+
+                for field in lin
+                    .state
+                    .resource
+                    .linearization
+                    .get_mut(record + offset)
+                    .into_iter()
+                {
+                    debug!("{:?}", field.kind);
+                    let usage_offset = if matches!(term, Term::Var(_)) {
+                        debug!(
+                            "associating nested field {:?} with chain {:?}",
+                            term,
+                            self.access.as_ref()
+                        );
+                        self.access.as_ref().map(|v| v.len()).unwrap_or(0)
+                    } else {
+                        0
+                    };
+                    match field.kind {
+                        TermKind::RecordField { ref mut value, .. } => {
+                            *value = Some(id_gen.id() + usage_offset);
+                        }
+                        // The linearization item of a record with n fields is expected to be
+                        // followed by n linearization items representing each field
+                        _ => unreachable!(),
                     }
-                    // The linearization item of a record with n fields is expected to be
-                    // followed by n linearization items representing each field
-                    _ => unreachable!(),
                 }
             }
         }
@@ -224,110 +241,43 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                 });
             }
             Term::Var(ident) => {
-                debug!("accessor chain: {:?}", self.access);
+                let root_id = id_gen.take();
 
-                let mut accessors = self.access.take().unwrap_or_default();
-                accessors.push(ident.to_owned());
+                debug!(
+                    "adding usage of variable {} followed by chain {:?}",
+                    ident, self.access
+                );
 
-                let mut root: Option<usize> = None;
+                lin.push(LinearizationItem {
+                    id: root_id,
+                    pos: ident.1,
+                    ty: TypeWrapper::Concrete(AbsType::Dyn()),
+                    scope: self.scope.clone(),
+                    kind: TermKind::Usage(UsageState::Resolved(self.env.get(ident))),
+                    meta: self.meta.take(),
+                });
 
-                for accessor in accessors.iter().rev() {
-                    debug!("root id is: {:?}", root);
-                    // Determine current accessor node
-                    // root should be the topmost declaration or record
-                    //
-                    // root.accessor1.accessor2
-                    //
-                    // If such an accessor chain is used in a record whiere the
-                    // linearization order of fields is not deterministic resolving a variable
-                    // declared in a sibling branch of the record may fail if that branch is
-                    // linearized after the current one.
-                    //
-                    // TODO: can/should we resolve accessor chains as a post-processing step?
-                    let child = if let Some(root_id) = root {
-                        match &lin.state.resource.linearization.get(root_id).unwrap().kind {
-                            // resolve referenced field of record
-                            TermKind::RecordField { value, .. } => value
-                                .and_then(|value_index| {
-                                    lin.state.resource.linearization.get(value_index)
-                                })
-                                .and_then(|record| match &record.kind {
-                                    TermKind::Record(fields) => {
-                                        fields.get(accessor).and_then(|accessor_id| {
-                                            lin.state.resource.linearization.get(*accessor_id)
-                                        })
-                                    }
-                                    _ => None,
-                                }),
-                            TermKind::Declaration(_, _) => {
-                                match &lin
-                                    .state
-                                    .resource
-                                    .linearization
-                                    .get(root_id + 1)
-                                    .unwrap()
-                                    .kind
-                                {
-                                    TermKind::Record(fields) => {
-                                        fields.get(accessor).and_then(|accessor_id| {
-                                            lin.state.resource.linearization.get(*accessor_id)
-                                        })
-                                    }
-                                    _ => None,
-                                }
-                            }
-                            TermKind::Record(fields) => {
-                                fields.get(accessor).and_then(|accessor_id| {
-                                    lin.state.resource.linearization.get(*accessor_id)
-                                })
-                            }
-                            // stop if not a field
-                            kind @ _ => {
-                                debug!("expected record or record field, was: {:?}", kind);
-                                None
-                            }
-                        }
-                    } else {
-                        // resolve referenced top level variable
-                        self.env.get(accessor).and_then(|accessor_id| {
-                            lin.state.resource.linearization.get(accessor_id)
-                        })
-                    };
+                if let Some(referenced) = self.env.get(ident) {
+                    lin.add_usage(referenced, root_id)
+                }
 
-                    debug!("registering child element for '{}': {:?}", accessor, child);
+                if let Some(chain) = self.access.take() {
+                    let chain: Vec<_> = chain.into_iter().rev().collect();
 
-                    let id = id_gen.take();
-                    let child_id = child.map(|r| r.id);
-                    let referenced_value = child.and_then(|child| match child {
-                        child
-                        @
-                        LinearizationItem {
-                            kind: TermKind::Declaration(..),
-                            ..
-                        } => Some(child.id),
-                        LinearizationItem {
-                            kind: TermKind::RecordField { value, .. },
-                            ..
-                        } => value.to_owned(),
-                        _ => None,
-                    });
-                    lin.push(LinearizationItem {
-                        id,
-                        pos: accessor.1,
-                        ty: TypeWrapper::Concrete(AbsType::Dyn()),
-                        scope: self.scope.clone(),
-                        kind: TermKind::Usage(child_id),
-                        meta: self.meta.take(),
-                    });
-
-                    if let Some(child_id) = child_id {
-                        lin.add_usage(child_id, id);
+                    for accessor in chain.iter() {
+                        let id = id_gen.take();
+                        lin.push(LinearizationItem {
+                            id,
+                            pos: accessor.1,
+                            ty: TypeWrapper::Concrete(AbsType::Dyn()),
+                            scope: self.scope.clone(),
+                            kind: TermKind::Usage(UsageState::Deferred {
+                                parent: id - 1,
+                                child: accessor.to_owned(),
+                            }),
+                            meta: self.meta.take(),
+                        });
                     }
-
-                    if referenced_value == None {
-                        break;
-                    }
-                    root = referenced_value;
                 }
             }
             Term::Record(fields, _) | Term::RecRecord(fields, _, _) => {
@@ -374,7 +324,9 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                                         scope: self.scope.clone(),
                                         // id = parent: full let binding including the body
                                         // id = parent + 1: actual delcaration scope, i.e. _ = < definition >
-                                        kind: TermKind::Usage(parent.map(|id| id)),
+                                        kind: TermKind::Usage(UsageState::Resolved(
+                                            parent.map(|id| id),
+                                        )),
                                         meta: None,
                                     });
                                     if let Some(parent) = parent {
@@ -419,11 +371,178 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
     /// Additionally, resolves concrete types for all items.
     fn linearize(
         self,
-        lin: Linearization<Building<BuildingResource>>,
+        mut lin: Linearization<Building<BuildingResource>>,
         (table, reported_names): (UnifTable, HashMap<usize, Ident>),
     ) -> Linearization<Completed> {
-        let mut lin_ = lin.state.resource.linearization;
         eprintln!("linearizing");
+
+        let defers: Vec<(usize, usize, Ident)> = lin
+            .state
+            .resource
+            .linearization
+            .iter()
+            .filter_map(|item| match &item.kind {
+                TermKind::Usage(UsageState::Deferred { parent, child }) => {
+                    Some((item.id, *parent, child.clone()))
+                }
+                _ => None,
+            })
+            .collect();
+
+        for (child_item, parent_accessor_id, child_ident) in defers {
+            // the value referenced by the parent accessor element
+            let parent_referenced = lin
+                .state
+                .resource
+                .linearization
+                .get(parent_accessor_id)
+                .and_then(|parent_accessor| match parent_accessor {
+                    LinearizationItem {
+                        kind: TermKind::Usage(UsageState::Resolved(parent_referenced)),
+                        ..
+                    } => parent_referenced.clone(),
+                    _ => None,
+                });
+
+            // Determine current accessor node
+            // root should be the topmost declaration or record
+            //
+            // root.accessor1.accessor2
+            //
+            // If such an accessor chain is used in a record whiere the
+            // linearization order of fields is not deterministic resolving a variable
+            // declared in a sibling branch of the record may fail if that branch is
+            // linearized after the current one.
+            let referenced_declaration = parent_referenced.and_then(|parent_id| {
+                match &lin
+                    .state
+                    .resource
+                    .linearization
+                    .get(parent_id)
+                    .unwrap()
+                    .kind
+                {
+                    // resolve referenced field of record
+                    TermKind::RecordField { value, .. } => {
+                        debug!("parent referenced a record field {:?}", value);
+                        value
+                            // retrieve record
+                            .and_then(|value_index| {
+                                lin.state.resource.linearization.get(value_index)
+                            })
+                            // retrieve field
+                            .and_then(|record| match &record.kind {
+                                TermKind::Record(fields) => {
+                                    debug!("parent referenced a nested record: {:?}", fields);
+                                    fields.get(&child_ident).and_then(|accessor_id| {
+                                        lin.state.resource.linearization.get(*accessor_id)
+                                    })
+                                }
+                                TermKind::Usage(UsageState::Resolved(Some(pointed))) => {
+                                    lin.state.resource.linearization.get(*pointed)
+                                }
+
+                                _ => None,
+                            })
+                    }
+                    TermKind::Declaration(_, _) => {
+                        match &lin
+                            .state
+                            .resource
+                            .linearization
+                            .get(parent_id + 1)
+                            .unwrap()
+                            .kind
+                        {
+                            TermKind::Record(fields) => {
+                                fields.get(&child_ident).and_then(|accessor_id| {
+                                    lin.state.resource.linearization.get(*accessor_id)
+                                })
+                            }
+                            TermKind::Usage(UsageState::Resolved(Some(pointed))) => {
+                                lin.state.resource.linearization.get(*pointed)
+                            }
+
+                            _ => None,
+                        }
+                    }
+                    TermKind::Record(fields) => fields
+                        .get(&child_ident)
+                        .and_then(|accessor_id| lin.state.resource.linearization.get(*accessor_id)),
+                    // stop if not a field
+                    kind @ _ => {
+                        debug!("expected record or record field, was: {:?}", kind);
+                        None
+                    }
+                }
+            });
+
+            let referenced_declaration =
+                referenced_declaration.and_then(|referenced| match referenced.kind {
+                    TermKind::Usage(UsageState::Resolved(Some(pointed))) => {
+                        lin.state.resource.linearization.get(pointed)
+                    }
+                    TermKind::RecordField { value, .. } => value
+                        // retrieve record
+                        .and_then(|value_index| lin.state.resource.linearization.get(value_index))
+                        // retrieve field
+                        .and_then(|record| match &record.kind {
+                            TermKind::Record(fields) => {
+                                debug!(
+                                    "parent referenced a nested record indirectly`: {:?}",
+                                    fields
+                                );
+                                fields.get(&child_ident).and_then(|accessor_id| {
+                                    lin.state.resource.linearization.get(*accessor_id)
+                                })
+                            }
+                            _ => None,
+                        })
+                        .or(Some(referenced)),
+
+                    _ => Some(referenced),
+                });
+
+            let referenced_id = referenced_declaration.map(|reference| reference.id);
+
+            // let id = id_gen.take();
+            // let child_id = child.map(|r| r.id);
+            // let referenced_value = referenced_idlin.state.resource.linearization.get().and_then(|child| match child {
+            //     child
+            //     @
+            //     LinearizationItem {
+            //         kind: TermKind::Declaration(..),
+            //         ..
+            //     } => Some(child.id),
+            //     LinearizationItem {
+            //         kind: TermKind::RecordField { value, .. },
+            //         ..
+            //     } => value.to_owned(),
+            //     _ => None,
+            // });
+
+            debug!(
+                "Associating child {} to value {:?}",
+                child_ident, referenced_declaration
+            );
+
+            {
+                let child: &mut LinearizationItem<TypeWrapper> = lin
+                    .state
+                    .resource
+                    .linearization
+                    .get_mut(child_item)
+                    .unwrap();
+                child.kind = TermKind::Usage(UsageState::Resolved(referenced_id));
+            }
+
+            if let Some(referenced_id) = referenced_id {
+                lin.add_usage(referenced_id, child_item);
+            }
+        }
+
+        let mut lin_ = lin.state.resource.linearization;
+
         lin_.sort_by_key(|item| match item.pos {
             TermPos::Original(span) => (span.src_id, span.start),
             TermPos::Inherited(span) => (span.src_id, span.start),
@@ -434,6 +553,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
             }
         });
 
+        // create an index of id -> new position
         let mut id_mapping = HashMap::new();
         lin_.iter()
             .enumerate()
@@ -441,6 +561,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                 id_mapping.insert(*id, index);
             });
 
+        // resolve types
         let lin_ = lin_
             .into_iter()
             .map(

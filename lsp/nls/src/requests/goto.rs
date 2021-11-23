@@ -7,7 +7,7 @@ use lsp_types::{
 };
 use nickel::{
     position::{RawSpan, TermPos},
-    typecheck::linearization,
+    typecheck::linearization::{self, UsageState},
 };
 use serde_json::Value;
 
@@ -53,7 +53,7 @@ pub fn handle_to_definition(
     debug!("found referencing item: {:?}", item);
 
     let location = match item.kind {
-        linearization::TermKind::Usage(Some(usage_id)) => {
+        linearization::TermKind::Usage(UsageState::Resolved(Some(usage_id))) => {
             let definition = linearization.id_mapping[&usage_id];
             let definition = linearization.lin[definition].clone();
             let location = match definition.pos {

@@ -118,7 +118,7 @@ pub struct LinearizationItem<S: ResolutionState> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TermKind {
     Declaration(Ident, Vec<usize>),
-    Usage(Option<usize>),
+    Usage(UsageState),
     Record(HashMap<Ident, usize>),
     RecordField {
         ident: Ident,
@@ -127,6 +127,14 @@ pub enum TermKind {
         value: Option<usize>,
     },
     Structure,
+}
+
+/// Some usages cannot be fully resolved in a first pass (i.e. recursive record fields)
+/// In these cases we defer the resolution to a second pass during linearization
+#[derive(Debug, Clone, PartialEq)]
+pub enum UsageState {
+    Resolved(Option<usize>),
+    Deferred { parent: usize, child: Ident },
 }
 
 /// The linearizer trait is what is refered to during typechecking.
