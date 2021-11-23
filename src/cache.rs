@@ -69,10 +69,10 @@ pub struct Cache {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CachedTerm {
-    term: RichTerm,
-    state: EntryState,
+    pub term: RichTerm,
+    pub state: EntryState,
     /// Any non fatal parse errors.
-    parse_errs: ParseErrors,
+    pub parse_errs: ParseErrors,
 }
 
 /// Cache keys for sources.
