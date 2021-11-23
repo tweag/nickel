@@ -78,11 +78,11 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
         scope: Vec<ScopeId>,
         env: &mut Environment,
     ) {
-        for (ident @ Ident(_, pos), value) in record_fields.into_iter() {
+        for (ident, value) in record_fields.into_iter() {
             let id = self.id_gen().take();
             self.push(LinearizationItem {
                 id,
-                pos: pos.unwrap(),
+                pos: ident.1,
                 // temporary, the actual type is resolved later and the item retyped
                 ty: TypeWrapper::Concrete(AbsType::RowEmpty()),
                 kind: TermKind::RecordField {
@@ -341,17 +341,11 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                 });
 
                 lin.register_fields(fields, id, self.scope.clone(), &mut self.env);
-                self.record_fields = Some((
-                    id + 1,
-                    fields
-                        .keys()
-                        .cloned()
-                        .collect::<Vec<_>>()
-                        .into_iter()
-                        .enumerate()
-                        .rev()
-                        .collect(),
-                ));
+                let mut field_names = fields.keys().cloned().collect::<Vec<_>>();
+                field_names.sort_unstable();
+
+                self.record_fields =
+                    Some((id + 1, field_names.into_iter().enumerate().rev().collect()));
             }
 
             Term::Op1(UnaryOp::StaticAccess(ident), _) => {
