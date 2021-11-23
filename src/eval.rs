@@ -527,18 +527,19 @@ where
                 }
             }
             Term::Op1(op, t) => {
-                let prev_strict = enriched_strict;
+                if !enriched_strict {
+                    stack.push_strictness(enriched_strict);
+                }
                 enriched_strict = true;
-                stack.push_op_cont(
-                    OperationCont::Op1(op, t.pos, prev_strict),
-                    call_stack.len(),
-                    pos,
-                );
+                stack.push_op_cont(OperationCont::Op1(op, t.pos), call_stack.len(), pos);
                 Closure { body: t, env }
             }
             Term::Op2(op, fst, snd) => {
-                let prev_strict = enriched_strict;
-                enriched_strict = op.is_strict();
+                let strict_op = op.is_strict();
+                if enriched_strict != strict_op {
+                    stack.push_strictness(enriched_strict);
+                }
+                enriched_strict = strict_op;
                 stack.push_op_cont(
                     OperationCont::Op2First(
                         op,
@@ -547,7 +548,6 @@ where
                             env: env.clone(),
                         },
                         fst.pos,
-                        prev_strict,
                     ),
                     call_stack.len(),
                     pos,
@@ -555,8 +555,11 @@ where
                 Closure { body: fst, env }
             }
             Term::OpN(op, mut args) => {
-                let prev_strict = enriched_strict;
-                enriched_strict = op.is_strict();
+                let strict_op = op.is_strict();
+                if enriched_strict != strict_op {
+                    stack.push_strictness(enriched_strict);
+                }
+                enriched_strict = strict_op;
 
                 // Arguments are passed as a stack to the operation continuation, so we reverse the
                 // original list.
@@ -579,7 +582,6 @@ where
                         evaluated: Vec::with_capacity(pending.len() + 1),
                         pending,
                         current_pos: fst.pos,
-                        prev_enriched_strict: prev_strict,
                     },
                     call_stack.len(),
                     pos,
@@ -598,6 +600,10 @@ where
                         StrChunk::Expr(e, indent) => (e, indent),
                     };
 
+                    if !enriched_strict {
+                        stack.push_strictness(enriched_strict);
+                    }
+                    enriched_strict = true;
                     stack.push_str_chunks(chunks.into_iter());
                     stack.push_str_acc(String::new(), indent, env.clone());
 
@@ -788,7 +794,7 @@ where
                     update_thunks(&mut stack, &clos);
                     clos
                 } else {
-                    continuate_operation(clos, &mut stack, &mut call_stack, &mut enriched_strict)?
+                    continuate_operation(clos, &mut stack, &mut call_stack)?
                 }
             }
             // Function call

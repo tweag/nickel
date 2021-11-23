@@ -1239,7 +1239,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
                     .with_labels(mk_expr_label(span_opt))
                     .with_notes(vec![
                         format!("The type of the expression was expected to be `{}`, which does not contain the field `{}`", expd, ident),
-                        format!("Tye type of the expression was inferred to be `{}`, which contains the extra field `{}`", actual, ident),
+                        format!("The type of the expression was inferred to be `{}`, which contains the extra field `{}`", actual, ident),
                     ])]
             ,
             TypecheckError::ExtraDynTail(expd, actual, span_opt) =>
@@ -1248,7 +1248,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
                     .with_labels(mk_expr_label(span_opt))
                     .with_notes(vec![
                         format!("The type of the expression was expected to be `{}`, which does not contain the tail `| Dyn`", expd),
-                        format!("Tye type of the expression was inferred to be `{}`, which contains the extra tail `| Dyn`", actual),
+                        format!("The type of the expression was inferred to be `{}`, which contains the extra tail `| Dyn`", actual),
                     ])]
             ,
 

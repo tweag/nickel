@@ -28,7 +28,7 @@ struct Opt {
 enum Command {
     /// Export the result to a different format
     Export {
-        /// Available formats: `raw, json`. Default format: `json`.
+        /// Available formats: `raw, json, yaml, toml`. Default format: `json`.
         #[structopt(long)]
         format: Option<ExportFormat>,
         /// Output file. Standard output by default

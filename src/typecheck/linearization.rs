@@ -26,7 +26,7 @@ use std::{collections::HashMap, marker::PhantomData};
 
 use super::TypeWrapper;
 use crate::environment::Environment as GenericEnvironment;
-use crate::term::RecordAttrs;
+use crate::term::{MetaValue, RecordAttrs};
 use crate::types::Types;
 use crate::{identifier::Ident, position::TermPos, term::Term};
 
@@ -103,6 +103,7 @@ pub struct LinearizationItem<S: ResolutionState> {
     pub ty: S,
     pub kind: TermKind,
     pub scope: Vec<ScopeId>,
+    pub meta: Option<MetaValue>,
 }
 
 /// Abstact term kinds.
@@ -187,50 +188,9 @@ pub enum ScopeId {
 
 impl ScopeIdElem for ScopeId {}
 
-#[derive(Default)]
-pub struct BuildingResource {
-    pub linearization: Vec<LinearizationItem<Unresolved>>,
-    pub scope: HashMap<Vec<ScopeId>, Vec<usize>>,
-}
-
 impl Into<Completed> for Linearization<Completed> {
     fn into(self) -> Completed {
         self.state
-    }
-}
-
-impl Linearization<Building<BuildingResource>> {
-    pub fn push(&mut self, item: LinearizationItem<Unresolved>) {
-        self.state
-            .resource
-            .scope
-            .remove(&item.scope)
-            .map(|mut s| {
-                s.push(item.id);
-                s
-            })
-            .or_else(|| Some(vec![item.id]))
-            .into_iter()
-            .for_each(|l| {
-                self.state.resource.scope.insert(item.scope.clone(), l);
-            });
-        self.state.resource.linearization.push(item);
-    }
-
-    pub fn add_usage(&mut self, decl: usize, usage: usize) {
-        match self
-            .state
-            .resource
-            .linearization
-            .get_mut(decl)
-            .expect("Coundt find parent")
-            .kind
-        {
-            TermKind::Structure => unreachable!(),
-            TermKind::Usage(_) => unreachable!(),
-            TermKind::Record(_) => unreachable!(),
-            TermKind::Declaration(_, ref mut usages) => usages.push(usage),
-        };
     }
 }
 

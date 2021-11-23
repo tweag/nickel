@@ -314,11 +314,11 @@ impl Stack {
 
 impl std::fmt::Debug for Stack {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "--- STACK ---")?;
+        write!(f, "--- STACK ---\n")?;
         for marker in self.0.iter().rev() {
-            write!(f, "| {:?}", marker)?;
+            write!(f, "| {:?}\n", marker)?;
         }
-        write!(f, "---  END  ---")
+        write!(f, "---  END  ---\n")
     }
 }
 
@@ -346,7 +346,7 @@ mod tests {
     }
 
     fn some_cont() -> OperationCont {
-        OperationCont::Op1(UnaryOp::IsNum(), TermPos::None, true)
+        OperationCont::Op1(UnaryOp::IsNum(), TermPos::None)
     }
 
     fn some_arg_marker() -> Marker {

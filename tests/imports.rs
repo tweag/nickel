@@ -1,6 +1,7 @@
 use assert_matches::assert_matches;
 use nickel::error::{Error, EvalError, TypecheckError};
 use nickel::program::Program;
+use nickel::term::Term;
 use std::io::BufReader;
 use std::path::PathBuf;
 
@@ -15,7 +16,6 @@ fn mk_import(file: &str) -> String {
 
 #[test]
 fn nested() {
-    use nickel::term::Term;
     let mut prog = Program::new_from_source(
         BufReader::new(mk_import("nested.ncl").as_bytes()),
         "should_be = 3",
@@ -26,7 +26,6 @@ fn nested() {
 
 #[test]
 fn root_path() {
-    use nickel::term::Term;
     let mut prog = Program::new_from_source(
         BufReader::new(mk_import("root_path.ncl").as_bytes()),
         "should_be = 44",
@@ -37,7 +36,6 @@ fn root_path() {
 
 #[test]
 fn multi_imports() {
-    use nickel::term::Term;
     let mut prog = Program::new_from_source(
         BufReader::new(mk_import("multi_imports.ncl").as_bytes()),
         "should_be = 5",
@@ -102,19 +100,12 @@ fn serialize() {
     assert_eq!(prog.eval(), Ok(Term::Bool(true)));
 }
 
-// TODO produce a stack overflow
-//#[test]
-//fn circular_imports_fail() {
-//    let mut prog = Program::new_from_source(
-//        BufReader::new(mk_import("cycle.ncl").as_bytes()),
-//        "should_fail",
-//    )
-//    .unwrap();
-//    prog.eval()
-//        .map_err(|e| match e {
-//            Error::TypecheckError(TypecheckError::TypeMismatch(..)) => Ok(()),
-//            r => Err(r),
-//        })
-//        .unwrap_err()
-//        .unwrap();
-//}
+#[test]
+fn circular_imports_fail() {
+    let mut prog = Program::new_from_source(
+        BufReader::new(mk_import("cycle.ncl").as_bytes()),
+        "should_fail",
+    )
+    .unwrap();
+    assert_matches!(prog.eval(), Ok(Term::RecRecord(..)) | Ok(Term::Record(..)));
+}
