@@ -62,9 +62,17 @@ pub struct Cache {
     /// Map containing for each FileIDs a list of files they import.
     imports: HashMap<FileId, HashSet<FileId>>,
     /// The table storing parsed terms corresponding to the entries of the file database.
-    terms: HashMap<FileId, (RichTerm, EntryState, ParseErrors)>,
+    terms: HashMap<FileId, CachedTerm>,
     /// The list of ids corresponding to the stdlib modules
     stdlib_ids: Option<Vec<FileId>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CachedTerm {
+    term: RichTerm,
+    state: EntryState,
+    /// Any non fatal parse errors.
+    parse_errs: ParseErrors,
 }
 
 /// Cache keys for sources.
@@ -299,13 +307,19 @@ impl Cache {
     /// Parse a source and populate the corresponding entry in the cache, or do nothing if the
     /// entry has already been parsed.
     pub fn parse(&mut self, file_id: FileId) -> Result<CacheOp<ParseErrors>, ParseError> {
-        if let Some((_, _, e)) = self.terms.get(&file_id) {
-            Ok(CacheOp::Cached(e.clone()))
+        if let Some(CachedTerm { parse_errs, .. }) = self.terms.get(&file_id) {
+            Ok(CacheOp::Cached(parse_errs.clone()))
         } else {
-            let (t, e) = self.parse_nocache(file_id)?;
-            self.terms
-                .insert(file_id, (t, EntryState::Parsed, e.clone()));
-            Ok(CacheOp::Done(e.clone()))
+            let (term, parse_errs) = self.parse_nocache(file_id)?;
+            self.terms.insert(
+                file_id,
+                CachedTerm {
+                    term,
+                    state: EntryState::Parsed,
+                    parse_errs: parse_errs.clone(),
+                },
+            );
+            Ok(CacheOp::Done(parse_errs.clone()))
         }
     }
 
@@ -316,13 +330,19 @@ impl Cache {
         file_id: FileId,
         format: InputFormat,
     ) -> Result<CacheOp<ParseErrors>, ParseError> {
-        if let Some((_, _, e)) = self.terms.get(&file_id) {
-            Ok(CacheOp::Cached(e.clone()))
+        if let Some(CachedTerm { parse_errs, .. }) = self.terms.get(&file_id) {
+            Ok(CacheOp::Cached(parse_errs.clone()))
         } else {
-            let (t, e) = self.parse_nocache_multi(file_id, format)?;
-            self.terms
-                .insert(file_id, (t, EntryState::Parsed, e.clone()));
-            Ok(CacheOp::Done(e.clone()))
+            let (term, parse_errs) = self.parse_nocache_multi(file_id, format)?;
+            self.terms.insert(
+                file_id,
+                CachedTerm {
+                    term,
+                    state: EntryState::Parsed,
+                    parse_errs: parse_errs.clone(),
+                },
+            );
+            Ok(CacheOp::Done(parse_errs.clone()))
         }
     }
 
@@ -375,10 +395,12 @@ impl Cache {
         global_env: &eval::Environment,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
         match self.terms.get(&file_id) {
-            Some((_, state, _)) if *state >= EntryState::Typechecked => Ok(CacheOp::Cached(())),
-            Some((t, state, _)) if *state >= EntryState::Parsed => {
+            Some(CachedTerm { state, .. }) if *state >= EntryState::Typechecked => {
+                Ok(CacheOp::Cached(()))
+            }
+            Some(CachedTerm { term, state, .. }) if *state >= EntryState::Parsed => {
                 if *state < EntryState::Typechecking {
-                    type_check(t, global_env, self, StubHost::<(), _>::new())?;
+                    type_check(term, global_env, self, StubHost::<(), _>::new())?;
                     self.update_state(file_id, EntryState::Typechecking);
                 }
 
@@ -404,9 +426,18 @@ impl Cache {
             Some(state) if state >= EntryState::Transformed => Ok(CacheOp::Cached(())),
             Some(state) if state >= EntryState::Parsed => {
                 if state < EntryState::Transforming {
-                    let (t, _, e) = self.terms.remove(&file_id).unwrap();
-                    let t = transformations::transform(t);
-                    self.terms.insert(file_id, (t, EntryState::Transforming, e));
+                    let CachedTerm {
+                        term, parse_errs, ..
+                    } = self.terms.remove(&file_id).unwrap();
+                    let term = transformations::transform(term);
+                    self.terms.insert(
+                        file_id,
+                        CachedTerm {
+                            term,
+                            state: EntryState::Transforming,
+                            parse_errs,
+                        },
+                    );
                 }
 
                 if let Some(imports) = self.imports.get(&file_id).cloned() {
@@ -444,10 +475,14 @@ impl Cache {
         match self.entry_state(file_id) {
             Some(state) if state >= EntryState::Transformed => Ok(CacheOp::Cached(())),
             Some(_) => {
-                let (mut t, state, e) = self.terms.remove(&file_id).unwrap();
+                let CachedTerm {
+                    mut term,
+                    state,
+                    parse_errs,
+                } = self.terms.remove(&file_id).unwrap();
 
                 if state < EntryState::Transforming {
-                    match t.term.as_mut() {
+                    match term.term.as_mut() {
                         Term::Record(ref mut map, _) => {
                             let map_res = std::mem::replace(map, HashMap::new())
                                 .into_iter()
@@ -477,7 +512,14 @@ impl Cache {
                         _ => panic!("cache::transform_inner(): not a record"),
                     }
 
-                    self.terms.insert(file_id, (t, EntryState::Transforming, e));
+                    self.terms.insert(
+                        file_id,
+                        CachedTerm {
+                            term,
+                            state: EntryState::Transforming,
+                            parse_errs,
+                        },
+                    );
                 }
 
                 if let Some(imports) = self.imports.get(&file_id).cloned() {
@@ -505,10 +547,18 @@ impl Cache {
             Some(state) if state >= EntryState::ImportsResolved => Ok(CacheOp::Cached(())),
             Some(state) if state >= EntryState::Parsed => {
                 if state < EntryState::ImportsResolving {
-                    let (t, _, e) = self.terms.remove(&file_id).unwrap();
-                    let (t, pending) = transformations::resolve_imports(t, self)?;
-                    self.terms
-                        .insert(file_id, (t, EntryState::ImportsResolving, e));
+                    let CachedTerm {
+                        term, parse_errs, ..
+                    } = self.terms.remove(&file_id).unwrap();
+                    let (term, pending) = transformations::resolve_imports(term, self)?;
+                    self.terms.insert(
+                        file_id,
+                        CachedTerm {
+                            term,
+                            state: EntryState::ImportsResolving,
+                            parse_errs,
+                        },
+                    );
 
                     for id in pending {
                         self.resolve_imports(id)?;
@@ -642,13 +692,13 @@ impl Cache {
 
     /// Get a mutable reference to the cached term roots
     /// (used by the language server to invalidate previously parsed entries)
-    pub fn terms_mut(&mut self) -> &mut HashMap<FileId, (RichTerm, EntryState, ParseErrors)> {
+    pub fn terms_mut(&mut self) -> &mut HashMap<FileId, CachedTerm> {
         &mut self.terms
     }
 
     /// Get an immutable reference to the cached term roots
     /// (used by the language server to invalidate previously parsed entries)
-    pub fn terms(&self) -> &HashMap<FileId, (RichTerm, EntryState, ParseErrors)> {
+    pub fn terms(&self) -> &HashMap<FileId, CachedTerm> {
         &self.terms
     }
 
@@ -656,23 +706,28 @@ impl Cache {
     pub fn update_state(&mut self, file_id: FileId, new: EntryState) -> Option<EntryState> {
         self.terms
             .get_mut(&file_id)
-            .map(|(_, old, _)| std::mem::replace(old, new))
+            .map(|CachedTerm { state, .. }| std::mem::replace(state, new))
     }
 
     /// Retrieve the state of an entry. Return `None` if the entry is not in the term cache,
     /// meaning that the content of the source has been loaded but has not been parsed yet.
     pub fn entry_state(&self, file_id: FileId) -> Option<EntryState> {
-        self.terms.get(&file_id).map(|(_, state, _)| state).copied()
+        self.terms
+            .get(&file_id)
+            .map(|CachedTerm { state, .. }| state)
+            .copied()
     }
 
     /// Retrieve a fresh clone of a cached term.
     pub fn get_owned(&self, file_id: FileId) -> Option<RichTerm> {
-        self.terms.get(&file_id).map(|(t, _, _)| t.clone())
+        self.terms
+            .get(&file_id)
+            .map(|CachedTerm { term, .. }| term.clone())
     }
 
     /// Retrieve a reference to a cached term.
     pub fn get_ref(&self, file_id: FileId) -> Option<&RichTerm> {
-        self.terms.get(&file_id).map(|(t, _, _)| t)
+        self.terms.get(&file_id).map(|CachedTerm { term, .. }| term)
     }
 
     /// Load and parse the standard library in the cache.
@@ -844,10 +899,12 @@ impl ImportResolver for Cache {
     }
 
     fn get(&self, file_id: FileId) -> Option<RichTerm> {
-        self.terms.get(&file_id).map(|(term, state, _)| {
-            debug_assert!(*state >= EntryState::ImportsResolved);
-            term.clone()
-        })
+        self.terms
+            .get(&file_id)
+            .map(|CachedTerm { term, state, .. }| {
+                debug_assert!(*state >= EntryState::ImportsResolved);
+                term.clone()
+            })
     }
 
     fn get_path(&self, file_id: FileId) -> &OsStr {
