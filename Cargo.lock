@@ -352,16 +352,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "56899898ce76aaf4a0f24d914c97ea6ed976d42fec6ad33fcbb0a1103e07b2b0"
 
 [[package]]
-name = "duplicate"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3cdaf23abc9bcc47fda1ae3af68425a22b4dfbd745f9077be0eaad5320f75f52"
-dependencies = [
- "heck",
- "proc-macro-error",
-]
-
-[[package]]
 name = "either"
 version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -721,7 +711,6 @@ dependencies = [
  "codespan",
  "codespan-reporting",
  "directories",
- "duplicate",
  "js-sys",
  "lalrpop",
  "lalrpop-util",
