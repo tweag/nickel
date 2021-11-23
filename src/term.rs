@@ -148,6 +148,8 @@ pub enum Term {
     /// A resolved import (which has already been loaded and parsed).
     #[serde(skip)]
     ResolvedImport(FileId),
+    #[serde(skip)]
+    ParseError,
 }
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
@@ -293,7 +295,7 @@ impl Term {
     {
         use self::Term::*;
         match self {
-            Null => (),
+            Null | ParseError => (),
             Switch(ref mut t, ref mut cases, ref mut def) => {
                 cases.iter_mut().for_each(|c| {
                     let (_, t) = c;
@@ -377,7 +379,8 @@ impl Term {
             | Term::Promise(_, _, _)
             | Term::Import(_)
             | Term::ResolvedImport(_)
-            | Term::StrChunks(_) => None,
+            | Term::StrChunks(_)
+            | Term::ParseError => None,
         }
         .map(String::from)
     }
@@ -433,6 +436,7 @@ impl Term {
                 format!("<{}{}={}>", content, value_label, value)
             }
             Term::Var(Ident(id)) => id.clone(),
+            Term::ParseError => String::from("<parse error>"),
             Term::Let(_, _, _)
             | Term::App(_, _)
             | Term::Switch(..)
@@ -498,7 +502,8 @@ impl Term {
             | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
-            | Term::RecRecord(..) => false,
+            | Term::RecRecord(..)
+            | Term::ParseError => false,
         }
     }
 
@@ -536,7 +541,8 @@ impl Term {
             | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
-            | Term::RecRecord(..) => false,
+            | Term::RecRecord(..)
+            | Term::ParseError => false,
         }
     }
 }
@@ -882,7 +888,8 @@ impl RichTerm {
         };
 
         let result = match *term {
-            v @ Term::Null
+            v @ Term::ParseError
+            | v @ Term::Null
             | v @ Term::Bool(_)
             | v @ Term::Num(_)
             | v @ Term::Str(_)

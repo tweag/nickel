@@ -119,7 +119,7 @@ impl REPLImpl {
 
         match self
             .parser
-            .parse(file_id, lexer::Lexer::new(exp))
+            .parse(file_id, &mut Vec::new(), lexer::Lexer::new(exp))
             .map_err(|err| ParseError::from_lalrpop(err, file_id))?
         {
             // Because we don't use the cache for input, we have to perform recursive import
@@ -223,7 +223,8 @@ impl REPL for REPLImpl {
 
     fn typecheck(&mut self, exp: &str) -> Result<Types, Error> {
         let file_id = self.cache.add_tmp("<repl-typecheck>", String::from(exp));
-        let term = self.cache.parse_nocache(file_id)?;
+        // We ignore non fatal errors while type checking.
+        let (term, _) = self.cache.parse_nocache(file_id)?;
         let (term, pending) = transformations::resolve_imports(term, &mut self.cache)?;
         for id in &pending {
             self.cache.resolve_imports(*id).unwrap();
@@ -302,7 +303,7 @@ impl InputParser {
 
         let result = self
             .parser
-            .parse(self.file_id, lexer::Lexer::new(input))
+            .parse(self.file_id, &mut Vec::new(), lexer::Lexer::new(input))
             .map_err(|err| ParseError::from_lalrpop(err, self.file_id));
 
         match result {

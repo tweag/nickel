@@ -857,6 +857,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
                 })
                 .unwrap_or_else(|| RichTerm::new(Term::Var(id), pos)),
             v @ Term::Null
+            | v @ Term::ParseError
             | v @ Term::Bool(_)
             | v @ Term::Num(_)
             | v @ Term::Str(_)
@@ -1059,7 +1060,7 @@ mod tests {
         let id = Files::new().add("<test>", String::from(s));
 
         grammar::TermParser::new()
-            .parse(id, lexer::Lexer::new(&s))
+            .parse(id, &mut Vec::new(), lexer::Lexer::new(&s))
             .map(|mut t| {
                 t.clean_pos();
                 t
@@ -1230,7 +1231,7 @@ mod tests {
 
         // let x = import "bad" in x
         match mk_import("x", "bad", mk_term::var("x"), &mut resolver).unwrap_err() {
-            ImportError::ParseError(_, _) => (),
+            ImportError::ParseErrors(_, _) => (),
             _ => assert!(false),
         };
 

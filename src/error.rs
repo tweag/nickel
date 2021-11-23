@@ -23,7 +23,7 @@ use crate::{label, repl};
 pub enum Error {
     EvalError(EvalError),
     TypecheckError(TypecheckError),
-    ParseError(ParseError),
+    ParseErrors(ParseErrors),
     ImportError(ImportError),
     SerializationError(SerializationError),
     IOError(IOError),
@@ -189,6 +189,58 @@ pub enum TypecheckError {
     ),
 }
 
+#[derive(Debug, PartialEq, Clone, Default)]
+pub struct ParseErrors {
+    errors: Vec<ParseError>,
+}
+
+impl ParseErrors {
+    pub fn new(errors: Vec<ParseError>) -> ParseErrors {
+        ParseErrors { errors }
+    }
+    pub fn errors(self) -> Option<Vec<ParseError>> {
+        if self.errors.is_empty() {
+            None
+        } else {
+            Some(self.errors)
+        }
+    }
+
+    pub fn no_errors(&self) -> bool {
+        self.errors.is_empty()
+    }
+
+    pub const fn none() -> ParseErrors {
+        ParseErrors { errors: Vec::new() }
+    }
+}
+
+impl From<ParseError> for ParseErrors {
+    fn from(e: ParseError) -> ParseErrors {
+        ParseErrors { errors: vec![e] }
+    }
+}
+
+impl From<Vec<ParseError>> for ParseErrors {
+    fn from(errors: Vec<ParseError>) -> ParseErrors {
+        ParseErrors { errors }
+    }
+}
+
+impl ToDiagnostic<FileId> for ParseErrors {
+    fn to_diagnostic(
+        &self,
+        files: &mut Files<String>,
+        contract_id: Option<FileId>,
+    ) -> Vec<Diagnostic<FileId>> {
+        self.errors
+            .iter()
+            .map(|e| e.to_diagnostic(files, contract_id))
+            .flatten()
+            .collect()
+    }
+}
+
 /// An error occurring during parsing.
 #[derive(Debug, PartialEq, Clone)]
 pub enum ParseError {
@@ -228,8 +280,8 @@ pub enum ImportError {
         /* import position */ TermPos,
     ),
     /// A parse error occurred during an import.
-    ParseError(
-        /* error */ ParseError,
+    ParseErrors(
+        /* error */ ParseErrors,
         /* import position */ TermPos,
     ),
 }
@@ -268,7 +320,15 @@ impl From<EvalError> for Error {
 
 impl From<ParseError> for Error {
     fn from(error: ParseError) -> Error {
-        Error::ParseError(error)
+        Error::ParseErrors(ParseErrors {
+            errors: vec![error],
+        })
+    }
+}
+
+impl From<ParseErrors> for Error {
+    fn from(errors: ParseErrors) -> Error {
+        Error::ParseErrors(errors)
     }
 }
 
@@ -835,7 +895,12 @@ impl ToDiagnostic<FileId> for Error {
         contract_id: Option<FileId>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
-            Error::ParseError(err) => err.to_diagnostic(files, contract_id),
+            Error::ParseErrors(errs) => errs
+                .errors
+                .iter()
+                .map(|e| e.to_diagnostic(files, contract_id))
+                .flatten()
+                .collect(),
             Error::TypecheckError(err) => err.to_diagnostic(files, contract_id),
             Error::EvalError(err) => err.to_diagnostic(files, contract_id),
             Error::ImportError(err) => err.to_diagnostic(files, contract_id),
@@ -1412,8 +1477,13 @@ impl ToDiagnostic<FileId> for ImportError {
                     .with_message(format!("Import of {} failed: {}", path, error))
                     .with_labels(labels)]
             }
-            ImportError::ParseError(error, span_opt) => {
-                let mut diagnostic = error.to_diagnostic(files, contract_id);
+            ImportError::ParseErrors(error, span_opt) => {
+                let mut diagnostic: Vec<Diagnostic<FileId>> = error
+                    .errors
+                    .iter()
+                    .map(|e| e.to_diagnostic(files, contract_id))
+                    .flatten()
+                    .collect();
 
                 if let Some(span) = span_opt.as_opt_ref() {
                     diagnostic[0]
