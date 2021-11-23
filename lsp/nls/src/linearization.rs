@@ -105,7 +105,7 @@ pub struct AnalysisHost {
     /// ```
     /// outer.middle.inner -> inner(middle(outer))
     /// ```
-    /// To resolve those inner fields, accessors (`inner`, `mddle`)
+    /// To resolve those inner fields, accessors (`inner`, `middle`)
     /// are recorded first until a variable (`outer`). is found.
     /// Then, access to all nested records are resolved at once.
     access: Option<Vec<Ident>>,
