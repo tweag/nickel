@@ -1239,15 +1239,12 @@ pub mod make {
         D: Into<Destruct>,
         I: Into<Ident> + fmt::Debug,
     {
-        println!("");
         match pat.into() {
-            d @ (Destruct::Record(_, _, _) | Destruct::List(_)) => {
-                println!("pattern: {:?}", d);
+            d @ (Destruct::Record(..) | Destruct::List(_)) => {
                 Term::LetPattern(id.map(|i| i.into()), d.into(), t1.into(), t2.into()).into()
             }
             Destruct::Empty => {
                 if let Some(id) = id {
-                    println!("{:?} is not a pattern", id);
                     let_in(id, t1, t2)
                 } else {
                     Term::Null.into()

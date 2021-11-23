@@ -77,7 +77,6 @@ pub mod desugar_destructuring {
     }
 
     fn drop_fields(x: Ident, pat: Destruct, body: RichTerm) -> RichTerm {
-        println!("{:?}", pat);
         let (matches, var) = match pat {
             Destruct::Record(matches, true, Some(x)) => (matches, x),
             Destruct::Record(matches, true, None) => (matches, super::fresh_var()),

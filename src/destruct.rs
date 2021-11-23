@@ -25,7 +25,6 @@ pub enum Destruct {
 
 impl Destruct {
     pub fn as_contract(self) -> MetaValue {
-        println!("{:#?}", self);
         let open = self.opened().clone();
         MetaValue {
             contracts: vec![Contract {
