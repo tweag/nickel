@@ -149,13 +149,13 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                 for contract in meta.contracts.iter().cloned() {
                     match contract.types.0 {
                         nickel::types::AbsType::Flat(RichTerm { term, pos: _ }) => {
-                            match *term {
+                            match &*term {
                                 Term::Var(ident) => {
                                     let parent = self.env.get(&ident);
                                     lin.push(LinearizationItem {
                                         id: lin.mk_id(),
                                         pos,
-                                        ty: TypeWrapper::Concrete(AbsType::Var(ident)),
+                                        ty: TypeWrapper::Concrete(AbsType::Var(ident.clone())),
                                         scope: self.scope.clone(),
                                         // id = parent: full let binding including the body
                                         // id = parent + 1: actual delcaration scope, i.e. _ = < definition >
