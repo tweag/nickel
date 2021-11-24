@@ -3,6 +3,8 @@ use std::ffi::OsString;
 
 use codespan::FileId;
 
+use lalrpop_util::ErrorRecovery;
+
 use super::ExtendedTerm;
 use super::utils::{StringKind, mk_pos, mk_label, mk_span, strip_indent, SwitchCase,
     FieldPathElem, strip_indent_doc, build_record, elaborate_field_path, check_unbound,
@@ -17,7 +19,7 @@ use crate::term::{BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
 use crate::term::make as mk_term;
 use crate::types::{Types, AbsType};
 
-grammar<'input>(src_id: FileId);
+grammar<'input, 'err>(src_id: FileId, errors: &'err mut Vec<ErrorRecovery<usize, Token<'input>, ParseError>>);
 
 WithPos<Rule>: RichTerm = <l: @L> <t: Rule> <r: @R> => t.with_pos(mk_pos(src_id, l, r));
 CheckUnbound<Rule>: Types = <l: @L> <t: Rule> <r: @R> =>? check_unbound(&t, mk_span(src_id, l, r)).map_err(|e| lalrpop_util::ParseError::User{error: e}).and(Ok(t));
@@ -132,6 +134,7 @@ RootTerm: RichTerm = {
     "if" <cond: Term> "then" <t1: Term> "else" <t2: Term> =>
         mk_app!(Term::Op1(UnaryOp::Ite(), cond), t1, t2),
     AnnotatedTerm,
+    <l: @L> <t: !> <r: @R> => { errors.push(t); RichTerm { term: Box::new(Term::ParseError), pos: mk_pos(src_id, l, r)} },
 };
 
 AnnotatedTerm: RichTerm = {
@@ -397,6 +400,8 @@ InfixExpr: RichTerm = {
     #[precedence(level="6")] #[assoc(side="left")]
     <t1: WithPos<InfixExpr>> "&" <t2: WithPos<InfixExpr>> =>
         mk_term::op2(BinaryOp::Merge(), t1, t2),
+    <t1: WithPos<InfixExpr>> "|>" <t2: WithPos<InfixExpr>> =>
+        mk_app!(t2, t1),
 
     #[precedence(level="7")] #[assoc(side="left")]
     <t1: WithPos<InfixExpr>> "<" <t2: WithPos<InfixExpr>> =>
@@ -575,6 +580,7 @@ extern {
         "fun" => Token::Normal(NormalToken::Fun),
         "import" => Token::Normal(NormalToken::Import),
         "|" => Token::Normal(NormalToken::Pipe),
+        "|>" => Token::Normal(NormalToken::RightPipe),
         "->" => Token::Normal(NormalToken::SimpleArrow),
         "=>" => Token::Normal(NormalToken::DoubleArrow),
         "#" => Token::Normal(NormalToken::Hash),
