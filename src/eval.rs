@@ -190,10 +190,9 @@ impl ThunkData {
     pub fn into_closure(self) -> Closure {
         match self.inner {
             InnerThunkData::Standard(closure) => closure,
-            InnerThunkData::Reversible { orig, cached: None } => match Rc::try_unwrap(orig) {
-                Ok(inner) => inner,
-                Err(rc) => (*rc).clone(),
-            },
+            InnerThunkData::Reversible { orig, cached: None } => {
+                Rc::try_unwrap(orig).unwrap_or_else(|rc| (*rc).clone())
+            }
             InnerThunkData::Reversible {
                 cached: Some(cached),
                 ..
