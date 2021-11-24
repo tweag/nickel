@@ -130,7 +130,7 @@ pub struct ThunkData {
 pub enum InnerThunkData {
     Standard(Closure),
     Reversible {
-        orig: Closure,
+        orig: Rc<Closure>,
         cached: Option<Closure>,
     },
 }
@@ -147,7 +147,10 @@ impl ThunkData {
     /// Create new reversible thunk data.
     pub fn new_rev(orig: Closure) -> Self {
         ThunkData {
-            inner: InnerThunkData::Reversible { orig, cached: None },
+            inner: InnerThunkData::Reversible {
+                orig: Rc::new(orig),
+                cached: None,
+            },
             state: ThunkState::Suspended,
         }
     }
@@ -172,13 +175,14 @@ impl ThunkData {
         match self.inner {
             InnerThunkData::Standard(ref mut closure) => closure,
             InnerThunkData::Reversible {
-                ref mut orig,
-                cached: None,
-            } => orig,
-            InnerThunkData::Reversible {
-                cached: Some(ref mut closure),
-                ..
-            } => closure,
+                ref orig,
+                ref mut cached,
+            } => {
+                if cached.is_none() {
+                    *cached = Some((**orig).clone());
+                }
+                cached.as_mut().unwrap()
+            }
         }
     }
 
@@ -186,7 +190,10 @@ impl ThunkData {
     pub fn into_closure(self) -> Closure {
         match self.inner {
             InnerThunkData::Standard(closure) => closure,
-            InnerThunkData::Reversible { orig, cached: None } => orig,
+            InnerThunkData::Reversible { orig, cached: None } => match Rc::try_unwrap(orig) {
+                Ok(inner) => inner,
+                Err(rc) => (*rc).clone(),
+            },
             InnerThunkData::Reversible {
                 cached: Some(cached),
                 ..
@@ -213,7 +220,13 @@ impl ThunkData {
                 inner: InnerThunkData::Standard(closure.clone()),
                 state: self.state,
             },
-            InnerThunkData::Reversible { ref orig, .. } => ThunkData::new_rev(orig.clone()),
+            InnerThunkData::Reversible { ref orig, .. } => ThunkData {
+                inner: InnerThunkData::Reversible {
+                    orig: Rc::clone(orig),
+                    cached: None,
+                },
+                state: self.state,
+            },
         }
     }
 }
