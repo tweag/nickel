@@ -143,13 +143,13 @@
 
       For example:
       ```nickel
-      split "1,2,3" "," =>
+      split "," "1,2,3" =>
         [ "1", "2", "3" ]
-      split "1,2,3" "." =>
+      split "." "1,2,3" =>
         [ "1,2,3" ]
       ```
       "#m
-    = fun s sep => %strSplit% s sep,
+    = fun sep s => %strSplit% s sep,
 
     trim : Str -> Str
     | doc m#"
