@@ -70,7 +70,7 @@
         "#m
       = fun f l => %map% l f,
 
-    elemAt : forall a. List a -> Num -> a
+    elemAt : forall a. Num -> List a -> a
       | doc m#"
         Retrieves the n'th element from a list (0-indexed).
 
@@ -80,7 +80,7 @@
             "three"
         ```
         "#m
-      = fun l n => %elemAt% l n,
+      = fun n l => %elemAt% l n,
 
     concat : forall a. List a -> List a -> List a
       | doc m#"

@@ -28,11 +28,11 @@ fn elem_at() {
     );
 
     assert_matches!(
-        eval("lists.elemAt {} 0"),
+        eval("lists.elemAt 0 {} 0"),
         Err(Error::EvalError(EvalError::BlameError(..)))
     );
     assert_matches!(
-        eval("lists.elemAt [] \"a\""),
+        eval("lists.elemAt \"a\" []"),
         Err(Error::EvalError(EvalError::BlameError(..)))
     );
 }
