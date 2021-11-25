@@ -305,18 +305,18 @@
 
     match : Str -> Str -> {match: Str, index: Num, groups: List Str}
     | doc m#"
-      `match str regex` matches `str` given `regex`. Results in the part of `str` that matched, the index of the
+      `match regex str` matches `str` given `regex`. Results in the part of `str` that matched, the index of the
       first character that was part of the match in `str`, and a lists of all capture groups if any.
 
       For example:
       ```nickel
-        match "5 apples, 6 pears and 0 grapes" "^(\\d).*(\\d).*(\\d).*$" =>
+        match "^(\\d).*(\\d).*(\\d).*$" "5 apples, 6 pears and 0 grapes" =>
           { match = "5 apples, 6 pears and 0 grapes", index = 0, groups = [ "5", "6", "0" ] }
-        match "01234" "3" =>
+        match "3" "01234" =>
           { match = "3", index = 3, groups = [ ] }
       ```
       "#m
-    = fun s regex => %strMatch% s regex,
+    = fun regex s => %strMatch% s regex,
 
     length : Str -> Num
     | doc m#"
