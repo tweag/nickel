@@ -28,7 +28,7 @@ let Path =
   let pattern = m#"^(.+)/([^/]+)$"#m in
   fun label value =>
     if builtins.isStr value then
-      if strings.isMatch value pattern then
+      if strings.isMatch pattern value then
         value
       else
         contracts.blameWith "invalid path" label
@@ -37,7 +37,7 @@ let Path =
 
 let SharedObjectFile = fun label value =>
   if builtins.isStr value then
-    if strings.isMatch value m#"\.so$"#m then
+    if strings.isMatch m#"\.so$"#m value then
       value
     else
       contracts.blameWith "not an .so file" label

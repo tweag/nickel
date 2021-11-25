@@ -291,17 +291,17 @@
 
     isMatch : Str -> Str -> Bool
     | doc m#"
-      `isMatch str regex` checks if `str` matches `regex`.
+      `isMatch regex str` checks if `str` matches `regex`.
 
       For example:
       ```nickel
-        isMatch "123" "^\\d+$" =>
+        isMatch "^\\d+$" "123" =>
           true
-        isMatch "123" "\\d{4}" =>
+        isMatch "\\d{4}" "123" =>
           false
       ```
       "#m
-    = fun s regex => %strIsMatch% s regex,
+    = fun regex s => %strIsMatch% s regex,
 
     match : Str -> Str -> {match: Str, index: Num, groups: List Str}
     | doc m#"
