@@ -115,23 +115,23 @@
           let newAcc = f acc (%head% l) in
           %seq% newAcc (foldl f newAcc (%tail% l)),
 
-    fold : forall a b. (a -> b -> b) -> List a -> b -> b
+    fold : forall a b. (a -> b -> b) -> b -> List a -> b
       | doc m#"
         Fold a function over a list.
-        `fold f [x1, x2, ..., xn] init` results in `f x1 (f x2 (... (f xn init) ...))`.
+        `fold f init [x1, x2, ..., xn]` results in `f x1 (f x2 (... (f xn init) ...))`.
 
         For example:
         ```nickel
-          fold (fun e acc => acc @ [e]) [ 1, 2, 3 ] [] =>
+          fold (fun e acc => acc @ [e]) [] [ 1, 2, 3 ] =>
             ((([] @ [3]) @ [2]) @ [1]) =>
             [ 3, 2, 1 ]
         ```
         "#m
-      = fun f l fst =>
+      = fun f fst l =>
         if %length% l == 0 then
           fst
         else
-          f (%head% l) (fold f (%tail% l) fst),
+          f (%head% l) (fold f fst (%tail% l)),
 
     cons : forall a. a -> List a -> List a
       | doc m#"
@@ -179,7 +179,7 @@
             [1, 2, 3, 4]
         ```
         "#m
-      = fun l => fold (fun l acc => l @ acc) l [],
+      = fun l => fold (fun l acc => l @ acc) [] l,
 
     all : forall a. (a -> Bool) -> List a -> Bool
       | doc m#"
@@ -193,7 +193,7 @@
             false
         ```
         "#m
-      = fun pred l => fold (fun x acc => if pred x then acc else false) l true,
+      = fun pred l => fold (fun x acc => if pred x then acc else false) true l,
 
     any : forall a. (a -> Bool) -> List a -> Bool
       | doc m#"
@@ -207,7 +207,7 @@
             false
         ```
         "#m
-      = fun pred l => fold (fun x acc => if pred x then true else acc) l false,
+      = fun pred l => fold (fun x acc => if pred x then true else acc) false l,
 
     elem : Dyn -> List -> Bool
       | doc m#"
