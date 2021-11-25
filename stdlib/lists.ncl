@@ -115,7 +115,7 @@
           let newAcc = f acc (%head% l) in
           %seq% newAcc (foldl f newAcc (%tail% l)),
 
-    fold : forall a b. (a -> b -> b) -> List a -> b -> b 
+    fold : forall a b. (a -> b -> b) -> List a -> b -> b
       | doc m#"
         Fold a function over a list.
         `fold f [x1, x2, ..., xn] init` results in `f x1 (f x2 (... (f xn init) ...))`.
