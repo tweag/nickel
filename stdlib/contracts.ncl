@@ -92,6 +92,7 @@
         ```
         "#m
       = fun l => %blame% l,
+
     blameWith
       | doc m#"
         Raise blame with respect to a given label and a custom error message.
@@ -112,6 +113,7 @@
         ```
         "#m
       = fun msg l => %blame% (%tag% msg l),
+
     fromPred
       | doc m#"
         Generate a contract from a boolean predicate.
@@ -126,6 +128,7 @@
         ```
         "#m
       = fun pred l v => if pred v then v else %blame% l,
+
     tag
       | doc m#"
         Attach a tag, or a custom error message, to a label. If a tag was
