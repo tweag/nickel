@@ -276,17 +276,17 @@
 
     replaceRegex: Str -> Str -> Str -> Str
     | doc m#"
-      `replaceRegex str regex repl` replaces every match of `regex` in `str` with `repl`.
+      `replaceRegex regex repl str` replaces every match of `regex` in `str` with `repl`.
 
       For example:
       ```nickel
-        replaceRegex "Hello!" "l+." "j" =>
+        replaceRegex "l+." "j" "Hello!" =>
           "Hej!"
-        replaceRegex "This 37 is a number." "\\d+" "\"a\" is not" =>
-          "This "a" is not a number."
+        replaceRegex "\\d+" "\"a\" is not" "This 37 is a number." =>
+          "This \"a\" is not a number."
       ```
       "#m
-    = fun s pattern replace =>
+    = fun pattern replace s =>
        %strReplaceRegex% s pattern replace,
 
     isMatch : Str -> Str -> Bool
