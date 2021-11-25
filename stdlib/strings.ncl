@@ -332,21 +332,21 @@
       "#m
     = fun s => %strLength% s,
 
-    substring: Str -> Num -> Num -> Str
+    substring: Num -> Num -> Str -> Str
     | doc m#"
       Takes a slice from the string. Errors if either index is out of range.
 
       For example:
       ```nickel
-        substring "abcdef" 3 5 =>
+        substring 3 5 "abcdef" =>
           "de"
-        substring "abcdef" 3 10 =>
+        substring 3 10 "abcdef" =>
           error
-        substring "abcdef" (-3) 4 =>
+        substring (-3) 4 "abcdef" =>
           error
       ```
       "#m
-    = fun s start end => %strSubstr% s start end,
+    = fun start end s => %strSubstr% s start end,
 
     fromNum | Num -> Str
     | doc m#"

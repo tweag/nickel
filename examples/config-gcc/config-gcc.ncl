@@ -6,7 +6,7 @@ let GccFlag =
   fun label value =>
   if builtins.isStr value then
     if strings.length value > 0 &&
-      lists.any (fun x => x == strings.substring value 0 1) available then
+      lists.any (fun x => x == strings.substring 0 1 value) available then
       value
     else
       contracts.blameWith "unknown flag #{value}" label
