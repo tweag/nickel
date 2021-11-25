@@ -58,6 +58,8 @@ use crate::{mk_app, mk_fun};
 use std::collections::HashMap;
 use std::fmt;
 
+pub type TypeAliasMap = HashMap<Ident, Types>;
+
 /// A Nickel type.
 #[derive(Clone, PartialEq, Debug)]
 pub enum AbsType<Ty> {
@@ -154,6 +156,37 @@ impl<Ty> AbsType<Ty> {
 pub struct Types(pub AbsType<Box<Types>>);
 
 impl Types {
+    pub fn resolve_types(self, typemap: &TypeAliasMap) -> Types {
+        match &self.0 {
+            AbsType::Var(id) => {
+                if let Some(ty) = typemap.get(id) {
+                    ty.clone().resolve_types(typemap)
+                } else {
+                    self
+                }
+            }
+
+            AbsType::Enum(ty) => Types(AbsType::Enum(Box::new(ty.clone().resolve_types(typemap)))),
+            AbsType::List(ty) => Types(AbsType::List(Box::new(ty.clone().resolve_types(typemap)))),
+
+            AbsType::Arrow(src, dst) => Types(AbsType::Arrow(
+                Box::new(src.clone().resolve_types(typemap)),
+                Box::new(dst.clone().resolve_types(typemap)),
+            )),
+            AbsType::RowExtend(id, opt_ty, ty) => Types(AbsType::RowExtend(
+                id.clone(),
+                opt_ty.clone().map(|ty| Box::new(ty.resolve_types(typemap))),
+                Box::new(ty.clone().resolve_types(typemap)),
+            )),
+            AbsType::StaticRecord(ty) => Types(AbsType::StaticRecord(Box::new(
+                ty.clone().resolve_types(typemap),
+            ))),
+            AbsType::DynRecord(ty) => Types(AbsType::DynRecord(Box::new(
+                ty.clone().resolve_types(typemap),
+            ))),
+            _ => self,
+        }
+    }
     /// Return the contract corresponding to a type.
     ///
     /// Wrapper for [`contract_open`](fn.contract_open.html).

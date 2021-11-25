@@ -56,6 +56,8 @@ pub enum NormalToken<'input> {
     #[token("List")]
     List,
 
+    #[token("typealias")]
+    TypeDef,
     #[token("if")]
     If,
     #[token("then")]

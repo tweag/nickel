@@ -3,7 +3,7 @@ use crate::error::ImportError;
 use crate::eval::{Closure, Environment, IdentKind, Thunk};
 use crate::identifier::Ident;
 use crate::term::{Contract, RichTerm, Term, TraverseMethod};
-use crate::types::{AbsType, Types};
+use crate::types::{AbsType, TypeAliasMap, Types};
 use codespan::FileId;
 use simple_counter::*;
 use std::path::PathBuf;
@@ -222,10 +222,11 @@ pub mod import_resolution {
 pub mod apply_contracts {
     use super::{RichTerm, Term};
     use crate::mk_app;
+    use crate::types::TypeAliasMap;
 
     /// If the top-level node of the AST is a meta-value, apply the meta-value's contracts to the
     /// inner value.  Otherwise, return the term unchanged.
-    pub fn transform_one(rt: RichTerm) -> RichTerm {
+    pub fn transform_one(rt: RichTerm, typemap: &mut TypeAliasMap) -> RichTerm {
         let RichTerm { term, pos } = rt;
 
         match *term {
@@ -234,8 +235,8 @@ pub mod apply_contracts {
                     meta.value.take().unwrap(),
                     |acc, ctr| {
                         mk_app!(
-                            ctr.types.clone().contract(),
-                            Term::Lbl(ctr.label.clone()),
+                            ctr.clone().types.resolve_types(&typemap).contract(),
+                            Term::Lbl(ctr.clone().label),
                             acc
                         )
                         .with_pos(pos)
@@ -244,6 +245,14 @@ pub mod apply_contracts {
 
                 meta.value.replace(inner);
                 RichTerm::new(Term::MetaValue(meta), pos)
+            }
+            v @ Term::TypeAlias(_, _) => {
+                if let Term::TypeAlias(id, ty) = v.clone() {
+                    typemap.insert(id.clone(), ty.clone());
+                } else {
+                    unreachable!();
+                }
+                RichTerm::new(v, pos)
             }
             t => RichTerm::new(t, pos),
         }
@@ -266,14 +275,15 @@ struct ImportsResolutionState<'a, R> {
 /// [`resolve_imports`](../fn.resolve_imports.html)
 /// or use the [`Cache`](../../cache/struct.Cache.html)
 pub fn transform(rt: RichTerm) -> RichTerm {
+    let mut typemap = TypeAliasMap::new();
     let rt = rt
         .traverse(
-            &mut |rt: RichTerm, _| -> Result<RichTerm, ()> {
+            &mut |rt: RichTerm, tye: &mut TypeAliasMap| -> Result<RichTerm, ()> {
                 // We need to do contract generation before wrapping stuff in variables
-                let rt = apply_contracts::transform_one(rt);
+                let rt = apply_contracts::transform_one(rt, tye);
                 Ok(rt)
             },
-            &mut (),
+            &mut typemap,
             TraverseMethod::TopDown,
         )
         .unwrap();

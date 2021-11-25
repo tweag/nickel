@@ -88,6 +88,10 @@ pub ExtendedTerm: ExtendedTerm = {
 }
 
 RootTerm: RichTerm = {
+    "typealias" <id:Ident> "=" <ty: Types> "in" <rest: Term> => {
+        mk_term::let_in(id.clone(), Term::TypeAlias(id, ty), rest)
+    },
+
     "let" <id:Ident> <meta: Annot?> "=" <t1: Term> "in"
         <t2: Term> => {
         let t1 = if let Some(mut meta) = meta {
@@ -540,6 +544,7 @@ extern {
         "multstr literal" => Token::MultiStr(MultiStringToken::Literal(<&'input str>)),
         "num literal" => Token::Normal(NormalToken::NumLiteral(<f64>)),
 
+        "typealias" => Token::Normal(NormalToken::TypeDef),
         "if" => Token::Normal(NormalToken::If),
         "then" => Token::Normal(NormalToken::Then),
         "else" => Token::Normal(NormalToken::Else),

@@ -43,6 +43,9 @@ pub enum Term {
     Num(f64),
     /// A literal string.
     Str(String),
+
+    #[serde(skip)]
+    TypeAlias(Ident, Types),
     /// A string containing interpolated expressions, represented as a list of either literals or
     /// expressions.
     ///
@@ -317,7 +320,7 @@ impl Term {
                 });
             }
             Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | Sym(_) | Enum(_) | Import(_)
-            | ResolvedImport(_) => {}
+            | TypeAlias(..) | ResolvedImport(_) => {}
             Fun(_, ref mut t)
             | Op1(_, ref mut t)
             | Promise(_, _, ref mut t)
@@ -379,6 +382,7 @@ impl Term {
             | Term::Promise(_, _, _)
             | Term::Import(_)
             | Term::ResolvedImport(_)
+            | Term::TypeAlias(..)
             | Term::StrChunks(_)
             | Term::ParseError => None,
         }
@@ -405,6 +409,7 @@ impl Term {
 
                 format!("\"{}\"", chunks_str.join(""))
             }
+            Term::TypeAlias(Ident(id), _) => format!("<typealias {}>", id),
             Term::Fun(_, _) => String::from("<func>"),
             Term::Lbl(_) => String::from("<label>"),
             Term::Enum(Ident(s)) => format!("`{}", s),
@@ -502,6 +507,7 @@ impl Term {
             | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
+            | Term::TypeAlias(..)
             | Term::RecRecord(..)
             | Term::ParseError => false,
         }
@@ -541,6 +547,7 @@ impl Term {
             | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
+            | Term::TypeAlias(..)
             | Term::RecRecord(..)
             | Term::ParseError => false,
         }
@@ -898,6 +905,7 @@ impl RichTerm {
             | v @ Term::Var(_)
             | v @ Term::Enum(_)
             | v @ Term::Import(_)
+            | v @ Term::TypeAlias(..)
             | v @ Term::ResolvedImport(_) => RichTerm {
                 term: Box::new(v),
                 pos,
