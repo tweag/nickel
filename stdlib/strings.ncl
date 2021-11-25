@@ -121,17 +121,17 @@
         %blame% (%tag% "not a string" l),
 
     // using a contract instead of type for now because of https://github.com/tweag/nickel/issues/226
-    join | List Str -> Str -> Str
+    join | Str -> List Str -> Str
     | doc m#"
       Joins a list of strings given a seperator.
 
       For example:
       ```nickel
-        join [ "Hello", "World!" ] ", " =>
+        join ", " [ "Hello", "World!" ] =>
           "Hello, World!"
       ```
       "#m
-    = fun l sep =>
+    = fun sep l =>
       if %length% l == 0 then
         ""
       else
