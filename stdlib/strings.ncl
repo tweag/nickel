@@ -245,19 +245,19 @@
 
     contains: Str -> Str -> Bool
     | doc m#"
-      Checks if the second string is part of the first string.
+      Checks if the first string is part of the second string.
 
       For example:
       ```nickel
-        contains "abcdef" "cde" =>
+        contains "cde" "abcdef" =>
           true
-        contains "abcdef" "" =>
+        contains "" "abcdef" =>
           true
-        contains "abcdef" "ghj" =>
+        contains "ghj" "abcdef" =>
           false
       ```
       "#m
-    = fun s subs => %strContains% s subs,
+    = fun subs s => %strContains% s subs,
 
     replace: Str -> Str -> Str -> Str
     | doc m#"
