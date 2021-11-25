@@ -261,17 +261,17 @@
 
     replace: Str -> Str -> Str -> Str
     | doc m#"
-      `replace str sub repl` replaces every occurence of `sub` in `str` with `repl`.
+      `replace sub repl str` replaces every occurence of `sub` in `str` with `repl`.
 
       For example:
       ```nickel
-        replace "abcdef" "cd" "   " =>
+        replace "cd" "   " "abcdef" =>
           "ab   ef"
-        replace "abcdef" "" "A" =>
+        replace "" "A" "abcdef" =>
           "AaAbAcAdAeAfA"
       ```
       "#m
-    = fun s pattern replace =>
+    = fun pattern replace s =>
        %strReplace% s pattern replace,
 
     replaceRegex: Str -> Str -> Str -> Str
