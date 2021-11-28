@@ -34,7 +34,10 @@ trait BuildingExt {
         env: &mut Environment,
     );
     fn add_record_field(&mut self, record: usize, field: (Ident, usize));
-
+    fn resolve_reference<'a>(
+        &'a self,
+        item: &'a LinearizationItem<TypeWrapper>,
+    ) -> Option<&'a LinearizationItem<TypeWrapper>>;
     fn resolve_record_references(&mut self, defers: &[(usize, usize, Ident)]);
 
     fn id_gen(&self) -> IdGen;
@@ -125,6 +128,38 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
         }
     }
 
+    fn resolve_reference<'a>(
+        &'a self,
+        item: &'a LinearizationItem<TypeWrapper>,
+    ) -> Option<&'a LinearizationItem<TypeWrapper>> {
+        // if item is a usage, resolve the usage first
+        match item.kind {
+            TermKind::Usage(UsageState::Resolved(Some(pointed))) => {
+                self.state.resource.linearization.get(pointed)
+            }
+            _ => Some(item),
+        }
+        // load referneced value, either from record field or declaration
+        .and_then(|item_pointer| {
+            match item_pointer.kind {
+                // if declaration is a record field, resolve its value
+                TermKind::RecordField { value, .. } => {
+                    debug!("parent referenced a record field {:?}", value);
+                    value
+                        // retrieve record
+                        .and_then(|value_index| self.state.resource.linearization.get(value_index))
+                }
+                // if declaration is a let biding resolve its value
+                TermKind::Declaration(_, _) => {
+                    self.state.resource.linearization.get(item_pointer.id + 1)
+                }
+
+                // if something else was referenced, stop.
+                _ => Some(item_pointer),
+            }
+        })
+    }
+
     fn resolve_record_references(&mut self, defers: &[(usize, usize, Ident)]) {
         let mut unresolved: Vec<(usize, usize, Ident)> = Vec::new();
 
@@ -149,51 +184,9 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
                 continue;
             }
 
-            // check the resolved reference
-            // parent needs to reference a declaration (i.e.: a declaration or record field term) such that
-            // a child can even exist
-            // if the parent resolves to a record, directly or through a usage, try resolve the child ident
+            // load the parent referenced declaration (i.e.: a declaration or record field term)
             let parent_declaration = parent_referenced
-                .and_then(|parent_accessor| match parent_accessor {
-                    LinearizationItem {
-                        kind: TermKind::Usage(UsageState::Resolved(parent_referenced)),
-                        ..
-                    } => parent_referenced.clone(),
-
-                    _ => None,
-                })
-                .and_then(|parent_declaration_id| {
-                    match &self
-                        .state
-                        .resource
-                        .linearization
-                        .get(parent_declaration_id)
-                        .unwrap()
-                        .kind
-                    {
-                        // if declaration is a record field, resolve its value
-                        TermKind::RecordField { value, .. } => {
-                            debug!("parent referenced a record field {:?}", value);
-                            value
-                                // retrieve record
-                                .and_then(|value_index| {
-                                    self.state.resource.linearization.get(value_index)
-                                })
-                        }
-                        // if declaration is a let biding resolve its value
-                        TermKind::Declaration(_, _) => self
-                            .state
-                            .resource
-                            .linearization
-                            .get(parent_declaration_id + 1),
-
-                        // if something else was referenced, stop.
-                        kind @ _ => {
-                            debug!("expected record or record field, was: {:?}", kind);
-                            None
-                        }
-                    }
-                });
+                .and_then(|parent_usage_value| self.resolve_reference(parent_usage_value));
 
             if let Some(LinearizationItem {
                 kind: TermKind::Usage(UsageState::Deferred { .. }),
@@ -207,36 +200,7 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
 
             let referenced_declaration = parent_declaration
                 // resolve indirection by following the usage
-                .and_then(|parent_declaration| {
-                    match parent_declaration.kind {
-                        TermKind::Usage(UsageState::Resolved(Some(pointed))) => {
-                            self.state.resource.linearization.get(pointed)
-                        }
-                        _ => Some(parent_declaration),
-                    }
-                    .and_then(|parent_declaration_pointer| {
-                        match &parent_declaration_pointer.kind {
-                            // if declaration is a record field, resolve its value
-                            TermKind::RecordField { value, .. } => {
-                                debug!("parent referenced a record field {:?}", value);
-                                value
-                                    // retrieve record
-                                    .and_then(|value_index| {
-                                        self.state.resource.linearization.get(value_index)
-                                    })
-                            }
-                            // if declaration is a let biding resolve its value
-                            TermKind::Declaration(_, _) => self
-                                .state
-                                .resource
-                                .linearization
-                                .get(parent_declaration_pointer.id + 1),
-
-                            // if something else was referenced, stop.
-                            _ => Some(parent_declaration_pointer),
-                        }
-                    })
-                })
+                .and_then(|parent_declaration| self.resolve_reference(parent_declaration))
                 // get record field
                 .and_then(|parent_declaration| match &parent_declaration.kind {
                     TermKind::Record(fields) => {
@@ -296,7 +260,7 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
         }
 
         if !unresolved.is_empty() {
-            debug!("unresolved: {:?}", unresolved);
+            debug!("unresolved references: {:?}", unresolved);
             self.resolve_record_references(&unresolved);
         }
     }
