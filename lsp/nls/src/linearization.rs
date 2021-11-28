@@ -230,6 +230,9 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
                                     self.state.resource.linearization.get(*accessor_id)
                                 })
                             }
+                            TermKind::Usage(UsageState::Resolved(Some(pointed))) => {
+                                self.state.resource.linearization.get(*pointed)
+                            }
                             _ => None,
                         })
                         .or(Some(referenced)),
