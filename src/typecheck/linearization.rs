@@ -26,7 +26,7 @@ use std::{collections::HashMap, marker::PhantomData};
 
 use super::TypeWrapper;
 use crate::environment::Environment as GenericEnvironment;
-use crate::term::{MetaValue, RecordAttrs};
+use crate::term::MetaValue;
 use crate::types::Types;
 use crate::{identifier::Ident, position::TermPos, term::Term};
 
@@ -107,15 +107,24 @@ pub struct LinearizationItem<S: ResolutionState> {
 }
 
 /// Abstact term kinds.
-/// Currently only tracks Declaration and Usages, with Structure being a
-/// wildcard for any other kind of term.
+/// Currently tracks
+/// 1. Declarations
+/// 2. Usages
+/// 3. Records, listing their fields
+/// 4. wildcard (Structure) for any other kind of term.
 /// Can be extended later to represent Contracts, Records, etc.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TermKind {
-    Structure,
-    Declaration(String, Vec<usize>),
+    Declaration(Ident, Vec<usize>),
     Usage(Option<usize>),
-    Record(RecordAttrs),
+    Record(HashMap<Ident, usize>),
+    RecordField {
+        ident: Ident,
+        body_pos: TermPos,
+        record: usize,
+        usages: Vec<usize>,
+    },
+    Structure,
 }
 
 /// The linearizer trait is what is refered to during typechecking.
@@ -156,7 +165,7 @@ pub trait Linearizer<L, S> {
             },
         }
     }
-    fn scope(&self, branch: ScopeId) -> Self;
+    fn scope(&mut self, branch: ScopeId) -> Self;
 }
 
 /// [Linearizer] that deliberately does not maintain any state or act
@@ -164,7 +173,7 @@ pub trait Linearizer<L, S> {
 /// Ideally the compiler would eliminate code using this [Linearizer]
 pub struct StubHost<L, S>(PhantomData<L>, PhantomData<S>);
 impl<L, S> Linearizer<L, S> for StubHost<L, S> {
-    fn scope(&self, _: ScopeId) -> Self {
+    fn scope(&mut self, _: ScopeId) -> Self {
         StubHost::new()
     }
 }

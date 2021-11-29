@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 
+use log::debug;
 use nickel::{
     identifier::Ident,
     position::TermPos,
-    term::{MetaValue, RichTerm, Term},
+    term::{MetaValue, RichTerm, Term, UnaryOp},
     typecheck::{
         linearization::{
             Building, Completed, Environment, Linearization, LinearizationItem, Linearizer,
@@ -24,7 +25,8 @@ pub struct BuildingResource {
 trait BuildingExt {
     fn push(&mut self, item: LinearizationItem<Unresolved>);
     fn add_usage(&mut self, decl: usize, usage: usize);
-    fn mk_id(&self) -> usize;
+    fn add_record_field(&mut self, record: usize, field: (Ident, usize));
+    fn id_gen(&self) -> IdGen;
 }
 
 impl BuildingExt for Linearization<Building<BuildingResource>> {
@@ -51,18 +53,35 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
             .resource
             .linearization
             .get_mut(decl)
-            .expect("Coundt find parent")
+            .expect("Could not find parent")
             .kind
         {
             TermKind::Structure => unreachable!(),
             TermKind::Usage(_) => unreachable!(),
             TermKind::Record(_) => unreachable!(),
-            TermKind::Declaration(_, ref mut usages) => usages.push(usage),
+            TermKind::Declaration(_, ref mut usages)
+            | TermKind::RecordField { ref mut usages, .. } => usages.push(usage),
         };
     }
 
-    fn mk_id(&self) -> usize {
-        self.state.resource.linearization.len()
+    fn add_record_field(&mut self, record: usize, (field_ident, reference_id): (Ident, usize)) {
+        match self
+            .state
+            .resource
+            .linearization
+            .get_mut(record)
+            .expect("Could not find record")
+            .kind
+        {
+            TermKind::Record(ref mut fields) => {
+                fields.insert(field_ident, reference_id);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    fn id_gen(&self) -> IdGen {
+        IdGen::new(self.state.resource.linearization.len())
     }
 }
 
@@ -74,6 +93,22 @@ pub struct AnalysisHost {
     env: Environment,
     scope: Vec<ScopeId>,
     meta: Option<MetaValue>,
+    /// Indexing a record will store a reference to the record as
+    /// well as its fields.
+    /// [Self::Scope] will produce a host with a single **`pop`ed**
+    /// Ident. As fields are typechecked in the same order, each
+    /// in their own scope immediately after the record, which
+    /// gives the corresponding record field _term_ to the ident
+    /// useable to construct a vale declaration.
+    record_fields: Option<(usize, Vec<Ident>)>,
+    /// Accesses to nested records are recorded recursively.
+    /// ```
+    /// outer.middle.inner -> inner(middle(outer))
+    /// ```
+    /// To resolve those inner fields, accessors (`inner`, `middle`)
+    /// are recorded first until a variable (`outer`). is found.
+    /// Then, access to all nested records are resolved at once.
+    access: Option<Vec<Ident>>,
 }
 
 impl AnalysisHost {
@@ -82,6 +117,8 @@ impl AnalysisHost {
             env: Environment::new(),
             scope: Vec::new(),
             meta: None,
+            record_fields: None,
+            access: None,
         }
     }
 }
@@ -91,75 +128,181 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
         &mut self,
         lin: &mut Linearization<Building<BuildingResource>>,
         term: &Term,
-        pos: TermPos,
+        mut pos: TermPos,
         ty: TypeWrapper,
     ) {
+        debug!("adding term: {:?} @ {:?}", term, pos);
+        let mut id_gen = lin.id_gen();
+
+        // Register record field if appropriate
+        if let Some((record, field)) = self
+            .record_fields
+            .take()
+            .map(|(record, mut fields)| (record, fields.pop().unwrap()))
+        {
+            // 0. If the record_fields field is set, it is set by [Self::scope]
+            //    such that exactly one element/field is present
+            // 1. record fields have a position
+            // 2. the type of the field is the type of its value
+            // 3. the scope of the field is the scope of its parent (the record)
+            let meta = match term {
+                Term::MetaValue(meta) => Some(MetaValue {
+                    value: None,
+                    ..meta.clone()
+                }),
+                _ => None,
+            };
+            let id = id_gen.take();
+            lin.push(LinearizationItem {
+                id,
+                pos: field.1,
+                ty: ty.clone(),
+                kind: TermKind::RecordField {
+                    record,
+                    body_pos: match pos {
+                        TermPos::None => field.1,
+                        _ => pos.clone(),
+                    },
+                    ident: field.clone(),
+                    usages: Vec::new(),
+                },
+                scope: self.scope[..self.scope.len() - 1].to_vec(),
+                meta,
+            });
+
+            if pos == TermPos::None {
+                pos = field.1;
+            }
+
+            lin.add_record_field(record, (field, id));
+        }
+
         if pos == TermPos::None {
-            eprintln!("{:?}", term);
             return;
         }
-        let id = lin.mk_id();
+
+        let id = id_gen.id();
         match term {
             Term::Let(ident, _, _) => {
-                self.env.insert(ident.to_owned(), id);
+                self.env
+                    .insert(ident.to_owned(), lin.state.resource.linearization.len());
                 lin.push(LinearizationItem {
                     id,
                     ty,
-                    pos,
+                    pos: ident.1,
                     scope: self.scope.clone(),
-                    kind: TermKind::Declaration(ident.to_string(), Vec::new()),
+                    kind: TermKind::Declaration(ident.to_owned(), Vec::new()),
                     meta: self.meta.take(),
                 });
             }
             Term::Var(ident) => {
-                let parent = self.env.get(ident);
+                debug!("accessor chain: {:?}", self.access);
+
+                let mut accessors = self.access.take().unwrap_or_default();
+                accessors.push(ident.to_owned());
+
+                let mut root: Option<usize> = None;
+
+                for accessor in accessors.iter().rev() {
+                    debug!("root id is: {:?}", root);
+                    let child = if let Some(root_id) = root {
+                        match &lin
+                            .state
+                            .resource
+                            .linearization
+                            .get(root_id + 1)
+                            .unwrap()
+                            .kind
+                        {
+                            // resolve referenced field of record
+                            TermKind::Record(fields) => {
+                                debug!("referenced record: {:?}", fields);
+                                fields.get(accessor).and_then(|accessor_id| {
+                                    lin.state.resource.linearization.get(*accessor_id)
+                                })
+                            }
+                            // stop if not a field
+                            kind @ _ => {
+                                debug!("expected record, was: {:?}", kind);
+                                None
+                            }
+                        }
+                    } else {
+                        // resolve referenced top level variable
+                        self.env.get(accessor).and_then(|accessor_id| {
+                            lin.state.resource.linearization.get(accessor_id)
+                        })
+                    };
+
+                    debug!("registering child element for '{}': {:?}", accessor, child);
+
+                    let id = id_gen.take();
+                    let child_id = child.map(|r| r.id);
+
+                    lin.push(LinearizationItem {
+                        id,
+                        pos: accessor.1,
+                        ty: TypeWrapper::Concrete(AbsType::Dyn()),
+                        scope: self.scope.clone(),
+                        kind: TermKind::Usage(child_id),
+                        meta: self.meta.take(),
+                    });
+
+                    if let Some(child_id) = child_id {
+                        lin.add_usage(child_id, id);
+                    }
+                    root = child_id;
+                }
+            }
+            Term::Record(fields, _) | Term::RecRecord(fields, _, _) => {
+                self.record_fields = Some((
+                    id,
+                    fields
+                        .keys()
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .rev()
+                        .collect(),
+                ));
+
                 lin.push(LinearizationItem {
                     id,
                     pos,
                     ty,
+                    kind: TermKind::Record(HashMap::new()),
                     scope: self.scope.clone(),
-                    // id = parent: full let binding including the body
-                    // id = parent + 1: actual delcaration scope, i.e. _ = < definition >
-                    kind: TermKind::Usage(parent.map(|id| id + 1)),
                     meta: self.meta.take(),
                 });
-                if let Some(parent) = parent {
-                    lin.add_usage(parent, id);
-                }
             }
-            Term::Record(_, attrs) | Term::RecRecord(_, _, attrs) => lin.push(LinearizationItem {
-                id,
-                pos,
-                ty,
-                kind: TermKind::Record(attrs.clone()),
-                scope: self.scope.clone(),
-                meta: self.meta.take(),
-            }),
+
+            Term::Op1(UnaryOp::StaticAccess(ident), _) => {
+                let x = self.access.get_or_insert(Vec::with_capacity(1));
+                x.push(ident.to_owned())
+            }
 
             Term::MetaValue(meta) => {
                 // Notice 1: No push to lin
                 // Notice 2: we discard the encoded value as anything we
                 //           would do with the value will be handled in the following
                 //           call to [Self::add_term]
-                let meta = MetaValue {
-                    value: None,
-                    ..meta.to_owned()
-                };
 
-                for contract in meta.contracts.iter().cloned() {
-                    match contract.types.0 {
+                for contract in meta.contracts.iter() {
+                    match &contract.types.0 {
+                        // Note: we extract the
                         nickel::types::AbsType::Flat(RichTerm { term, pos: _ }) => {
-                            match *term {
+                            match &**term {
                                 Term::Var(ident) => {
                                     let parent = self.env.get(&ident);
+                                    let id = id_gen.take();
                                     lin.push(LinearizationItem {
-                                        id: lin.mk_id(),
-                                        pos,
-                                        ty: TypeWrapper::Concrete(AbsType::Var(ident)),
+                                        id,
+                                        pos: ident.1,
+                                        ty: TypeWrapper::Concrete(AbsType::Var(ident.to_owned())),
                                         scope: self.scope.clone(),
                                         // id = parent: full let binding including the body
                                         // id = parent + 1: actual delcaration scope, i.e. _ = < definition >
-                                        kind: TermKind::Usage(parent.map(|id| id + 1)),
+                                        kind: TermKind::Usage(parent.map(|id| id)),
                                         meta: None,
                                     });
                                     if let Some(parent) = parent {
@@ -173,17 +316,26 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                     }
                 }
 
-                self.meta.insert(meta);
+                if meta.value.is_some() {
+                    self.meta.insert(MetaValue {
+                        value: None,
+                        ..meta.to_owned()
+                    });
+                }
             }
 
-            _ => lin.push(LinearizationItem {
-                id,
-                pos,
-                ty,
-                scope: self.scope.clone(),
-                kind: TermKind::Structure,
-                meta: self.meta.take(),
-            }),
+            other @ _ => {
+                debug!("Add wildcard item: {:?}", other);
+
+                lin.push(LinearizationItem {
+                    id,
+                    pos,
+                    ty,
+                    scope: self.scope.clone(),
+                    kind: TermKind::Structure,
+                    meta: self.meta.take(),
+                })
+            }
         }
     }
 
@@ -247,7 +399,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
         })
     }
 
-    fn scope(&self, scope_id: ScopeId) -> Self {
+    fn scope(&mut self, scope_id: ScopeId) -> Self {
         let mut scope = self.scope.clone();
         scope.push(scope_id);
 
@@ -257,6 +409,28 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
             /// when opening a new scope `meta` is assumed to be `None` as meta data
             /// is immediately followed by a term without opening a scope
             meta: None,
+            record_fields: self.record_fields.as_mut().and_then(|(record, fields)| {
+                Some(*record).zip(fields.pop().map(|field| vec![field]))
+            }),
+            access: self.access.clone(),
         }
+    }
+}
+
+struct IdGen(usize);
+
+impl IdGen {
+    fn new(base: usize) -> Self {
+        IdGen(base)
+    }
+
+    fn take(&mut self) -> usize {
+        let current_id = self.0;
+        self.0 += 1;
+        current_id
+    }
+
+    fn id(&self) -> usize {
+        self.0
     }
 }

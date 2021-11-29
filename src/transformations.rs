@@ -348,7 +348,7 @@ where
 
 /// Generate a new fresh variable which do not clash with user-defined variables.
 pub fn fresh_var() -> Ident {
-    Ident(format!("%{}", FreshVarCounter::next()))
+    format!("%{}", FreshVarCounter::next()).into()
 }
 
 /// Structures which can be packed together with their environment as a closure.

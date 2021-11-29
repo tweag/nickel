@@ -16,7 +16,7 @@ pub struct RawPos {
 /// A position span identified by a starting byte offset and an ending byte offset in a file.
 ///
 /// `end` is the offset of the last character plus one.
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub struct RawSpan {
     pub src_id: FileId,
     pub start: ByteIndex,
@@ -24,7 +24,7 @@ pub struct RawSpan {
 }
 
 /// The position span of a term.
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum TermPos {
     /// The term exactly corresponds to an original expression in the source, or is a construct
     /// introduced by program transformation that correponds to an original span in the source.
