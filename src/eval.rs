@@ -613,28 +613,6 @@ where
                     }
                 }
             },
-            Term::Promise(ty, mut l, t) => {
-                l.arg_pos = t.pos;
-                let thunk = Thunk::new(
-                    Closure {
-                        body: t,
-                        env: env.clone(),
-                    },
-                    IdentKind::Lam(),
-                );
-                l.arg_thunk = Some(thunk.clone());
-
-                stack.push_tracked_arg(thunk, pos.into_inherited());
-                stack.push_arg(
-                    Closure::atomic_closure(Term::Lbl(l).into()),
-                    pos.into_inherited(),
-                );
-
-                Closure {
-                    body: ty.contract(),
-                    env,
-                }
-            }
             Term::RecRecord(ts, dyn_fields, attrs) => {
                 // Thanks to the share normal form transformation, the content is either a constant or a
                 // variable.
@@ -916,11 +894,6 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
                     .collect();
 
                 RichTerm::new(Term::OpN(op, ts), pos)
-            }
-            Term::Promise(ty, l, t) => {
-                let t = subst_(t, global_env, env, bound);
-
-                RichTerm::new(Term::Promise(ty, l, t), pos)
             }
             Term::Wrapped(i, t) => {
                 let t = subst_(t, global_env, env, bound);
