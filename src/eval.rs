@@ -131,7 +131,7 @@ pub enum InnerThunkData {
     Standard(Closure),
     Reversible {
         orig: Rc<Closure>,
-        cached: Option<Closure>,
+        cached: Rc<Closure>,
     },
 }
 
@@ -146,10 +146,12 @@ impl ThunkData {
 
     /// Create new reversible thunk data.
     pub fn new_rev(orig: Closure) -> Self {
+        let rc = Rc::new(orig);
+
         ThunkData {
             inner: InnerThunkData::Reversible {
-                orig: Rc::new(orig),
-                cached: None,
+                orig: rc.clone(),
+                cached: rc,
             },
             state: ThunkState::Suspended,
         }
@@ -159,14 +161,7 @@ impl ThunkData {
     pub fn closure(&self) -> &Closure {
         match self.inner {
             InnerThunkData::Standard(ref closure) => closure,
-            InnerThunkData::Reversible {
-                ref orig,
-                cached: None,
-            } => orig,
-            InnerThunkData::Reversible {
-                cached: Some(ref closure),
-                ..
-            } => closure,
+            InnerThunkData::Reversible { ref cached, .. } => cached,
         }
     }
 
@@ -174,15 +169,7 @@ impl ThunkData {
     pub fn closure_mut(&mut self) -> &mut Closure {
         match self.inner {
             InnerThunkData::Standard(ref mut closure) => closure,
-            InnerThunkData::Reversible {
-                ref orig,
-                ref mut cached,
-            } => {
-                if cached.is_none() {
-                    *cached = Some((**orig).clone());
-                }
-                cached.as_mut().unwrap()
-            }
+            InnerThunkData::Reversible { ref mut cached, .. } => Rc::make_mut(cached),
         }
     }
 
@@ -190,13 +177,10 @@ impl ThunkData {
     pub fn into_closure(self) -> Closure {
         match self.inner {
             InnerThunkData::Standard(closure) => closure,
-            InnerThunkData::Reversible { orig, cached: None } => {
-                Rc::try_unwrap(orig).unwrap_or_else(|rc| (*rc).clone())
+            InnerThunkData::Reversible { orig, cached } => {
+                std::mem::drop(orig);
+                Rc::try_unwrap(cached).unwrap_or_else(|rc| (*rc).clone())
             }
-            InnerThunkData::Reversible {
-                cached: Some(cached),
-                ..
-            } => cached,
         }
     }
 
@@ -204,7 +188,7 @@ impl ThunkData {
     pub fn update(&mut self, new: Closure) {
         match self.inner {
             InnerThunkData::Standard(ref mut closure) => *closure = new,
-            InnerThunkData::Reversible { ref mut cached, .. } => *cached = Some(new),
+            InnerThunkData::Reversible { ref mut cached, .. } => *cached = Rc::new(new),
         }
 
         self.state = ThunkState::Evaluated;
@@ -222,7 +206,7 @@ impl ThunkData {
             InnerThunkData::Reversible { ref orig, .. } => ThunkData {
                 inner: InnerThunkData::Reversible {
                     orig: Rc::clone(orig),
-                    cached: None,
+                    cached: Rc::clone(orig),
                 },
                 state: self.state,
             },
