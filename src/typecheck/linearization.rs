@@ -150,6 +150,16 @@ pub trait Linearizer<L, S> {
         _ty: TypeWrapper,
     ) {
     }
+
+    /// Allows to amend the type of an ident in scope
+    fn retype_ident(
+        &mut self,
+        _lin: &mut Linearization<Building<L>>,
+        _ident: &Ident,
+        _new_type: TypeWrapper,
+    ) {
+    }
+
     /// Defines how to turn a [Building] Linearization of the tracked type into
     /// a [Completed] linearization.
     /// By default creates an entirely empty [Completed] object
@@ -165,6 +175,14 @@ pub trait Linearizer<L, S> {
             },
         }
     }
+
+    /// Ensures the scope structure of the source can be represented in the
+    /// linearization.
+    /// The specific implementations need to take care of how to represent
+    /// decending into a lower scope.
+    /// Notice, the resulting instance is a fresh value, any resource that is
+    /// required or produced in parallel instances should therefore be put
+    /// into the Building State `L` which is passed
     fn scope(&mut self, branch: ScopeId) -> Self;
 }
 

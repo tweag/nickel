@@ -590,6 +590,7 @@ fn type_check_<S, E>(
             // let src = TypeWrapper::The(AbsType::Dyn());
             let trg = TypeWrapper::Ptr(new_var(state.table));
             let arr = mk_tyw_arrow!(src.clone(), trg.clone());
+            linearizer.retype_ident(lin, x, src.clone());
 
             unify(state, strict, ty, arr).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
@@ -624,6 +625,7 @@ fn type_check_<S, E>(
         }
         Term::Let(x, re, rt) => {
             let ty_let = binding_type(re.as_ref(), &envs, state.table, strict);
+            linearizer.retype_ident(lin, x, ty_let.clone());
             type_check_(
                 state,
                 envs.clone(),
@@ -715,6 +717,7 @@ fn type_check_<S, E>(
 
             for (id, _) in stat_map {
                 envs.insert(id.clone(), ty_dyn.clone());
+                linearizer.retype_ident(lin, id, ty_dyn.clone())
             }
 
             stat_map.iter().enumerate().try_for_each(
@@ -741,7 +744,8 @@ fn type_check_<S, E>(
             if let Term::RecRecord(..) = t.as_ref() {
                 for (id, rt) in stat_map {
                     let tyw = binding_type(rt.as_ref(), &envs, state.table, strict);
-                    envs.insert(id.clone(), tyw);
+                    envs.insert(id.clone(), tyw.clone());
+                    linearizer.retype_ident(lin, id, tyw);
                 }
             }
 

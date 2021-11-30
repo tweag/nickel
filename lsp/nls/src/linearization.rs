@@ -183,7 +183,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
 
         let id = id_gen.id();
         match term {
-            Term::Let(ident, _, _) => {
+            Term::Let(ident, _, _) | Term::Fun(ident, _) => {
                 self.env
                     .insert(ident.to_owned(), lin.state.resource.linearization.len());
                 lin.push(LinearizationItem {
@@ -317,10 +317,10 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                 }
 
                 if meta.value.is_some() {
-                    self.meta.insert(MetaValue {
+                    self.meta = Some(MetaValue {
                         value: None,
                         ..meta.to_owned()
-                    });
+                    })
                 }
             }
 
@@ -413,6 +413,21 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                 Some(*record).zip(fields.pop().map(|field| vec![field]))
             }),
             access: self.access.clone(),
+        }
+    }
+
+    fn retype_ident(
+        &mut self,
+        lin: &mut Linearization<Building<BuildingResource>>,
+        ident: &Ident,
+        new_type: TypeWrapper,
+    ) {
+        if let Some(item) = self
+            .env
+            .get(ident)
+            .and_then(|index| lin.state.resource.linearization.get_mut(index))
+        {
+            item.ty = new_type;
         }
     }
 }
