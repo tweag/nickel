@@ -2,7 +2,7 @@ use std::{collections::HashMap, ffi::OsString, io};
 
 use codespan::FileId;
 use nickel::{
-    cache::{Cache, CacheError, CacheOp, EntryState},
+    cache::{Cache, CacheError, CacheOp, CachedTerm, EntryState},
     error::TypecheckError,
     eval,
     typecheck::{self, linearization::Completed},
@@ -43,13 +43,13 @@ impl CacheExt for Cache {
         }
 
         // After self.parse(), the cache must be populated
-        let (t, state) = self.terms().get(&file_id).unwrap();
+        let CachedTerm { term, state, .. } = self.terms().get(&file_id).unwrap();
 
         if *state > EntryState::Typechecked && lin_cache.contains_key(&file_id) {
             Ok(CacheOp::Cached(()))
         } else if *state >= EntryState::Parsed {
             let host = AnalysisHost::new();
-            let (_, linearized) = typecheck::type_check(t, global_env, self, host)?;
+            let (_, linearized) = typecheck::type_check(term, global_env, self, host)?;
             self.update_state(file_id, EntryState::Typechecked);
             lin_cache.insert(file_id, linearized);
             Ok(CacheOp::Done(()))

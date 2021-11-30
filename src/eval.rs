@@ -527,18 +527,19 @@ where
                 }
             }
             Term::Op1(op, t) => {
-                let prev_strict = enriched_strict;
+                if !enriched_strict {
+                    stack.push_strictness(enriched_strict);
+                }
                 enriched_strict = true;
-                stack.push_op_cont(
-                    OperationCont::Op1(op, t.pos, prev_strict),
-                    call_stack.len(),
-                    pos,
-                );
+                stack.push_op_cont(OperationCont::Op1(op, t.pos), call_stack.len(), pos);
                 Closure { body: t, env }
             }
             Term::Op2(op, fst, snd) => {
-                let prev_strict = enriched_strict;
-                enriched_strict = op.is_strict();
+                let strict_op = op.is_strict();
+                if enriched_strict != strict_op {
+                    stack.push_strictness(enriched_strict);
+                }
+                enriched_strict = strict_op;
                 stack.push_op_cont(
                     OperationCont::Op2First(
                         op,
@@ -547,7 +548,6 @@ where
                             env: env.clone(),
                         },
                         fst.pos,
-                        prev_strict,
                     ),
                     call_stack.len(),
                     pos,
@@ -555,8 +555,11 @@ where
                 Closure { body: fst, env }
             }
             Term::OpN(op, mut args) => {
-                let prev_strict = enriched_strict;
-                enriched_strict = op.is_strict();
+                let strict_op = op.is_strict();
+                if enriched_strict != strict_op {
+                    stack.push_strictness(enriched_strict);
+                }
+                enriched_strict = strict_op;
 
                 // Arguments are passed as a stack to the operation continuation, so we reverse the
                 // original list.
@@ -579,7 +582,6 @@ where
                         evaluated: Vec::with_capacity(pending.len() + 1),
                         pending,
                         current_pos: fst.pos,
-                        prev_enriched_strict: prev_strict,
                     },
                     call_stack.len(),
                     pos,
@@ -598,6 +600,10 @@ where
                         StrChunk::Expr(e, indent) => (e, indent),
                     };
 
+                    if !enriched_strict {
+                        stack.push_strictness(enriched_strict);
+                    }
+                    enriched_strict = true;
                     stack.push_str_chunks(chunks.into_iter());
                     stack.push_str_acc(String::new(), indent, env.clone());
 
@@ -607,28 +613,6 @@ where
                     }
                 }
             },
-            Term::Promise(ty, mut l, t) => {
-                l.arg_pos = t.pos;
-                let thunk = Thunk::new(
-                    Closure {
-                        body: t,
-                        env: env.clone(),
-                    },
-                    IdentKind::Lam(),
-                );
-                l.arg_thunk = Some(thunk.clone());
-
-                stack.push_tracked_arg(thunk, pos.into_inherited());
-                stack.push_arg(
-                    Closure::atomic_closure(Term::Lbl(l).into()),
-                    pos.into_inherited(),
-                );
-
-                Closure {
-                    body: ty.contract(),
-                    env,
-                }
-            }
             Term::RecRecord(ts, dyn_fields, attrs) => {
                 // Thanks to the share normal form transformation, the content is either a constant or a
                 // variable.
@@ -788,7 +772,7 @@ where
                     update_thunks(&mut stack, &clos);
                     clos
                 } else {
-                    continuate_operation(clos, &mut stack, &mut call_stack, &mut enriched_strict)?
+                    continuate_operation(clos, &mut stack, &mut call_stack)?
                 }
             }
             // Function call
@@ -851,6 +835,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
                 })
                 .unwrap_or_else(|| RichTerm::new(Term::Var(id), pos)),
             v @ Term::Null
+            | v @ Term::ParseError
             | v @ Term::Bool(_)
             | v @ Term::Num(_)
             | v @ Term::Str(_)
@@ -909,11 +894,6 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
                     .collect();
 
                 RichTerm::new(Term::OpN(op, ts), pos)
-            }
-            Term::Promise(ty, l, t) => {
-                let t = subst_(t, global_env, env, bound);
-
-                RichTerm::new(Term::Promise(ty, l, t), pos)
             }
             Term::Wrapped(i, t) => {
                 let t = subst_(t, global_env, env, bound);
@@ -1053,7 +1033,7 @@ mod tests {
         let id = Files::new().add("<test>", String::from(s));
 
         grammar::TermParser::new()
-            .parse(id, lexer::Lexer::new(&s))
+            .parse(id, &mut Vec::new(), lexer::Lexer::new(&s))
             .map(|mut t| {
                 t.clean_pos();
                 t
@@ -1224,7 +1204,7 @@ mod tests {
 
         // let x = import "bad" in x
         match mk_import("x", "bad", mk_term::var("x"), &mut resolver).unwrap_err() {
-            ImportError::ParseError(_, _) => (),
+            ImportError::ParseErrors(_, _) => (),
             _ => assert!(false),
         };
 

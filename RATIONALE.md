@@ -42,7 +42,7 @@ objects as a primary structuring block.
 
 Nickel (and other languages of the list, for that matter) uses *functions* as a
 basic computational block. Functions are simple and well understood (some inputs
-give an output), pervasive (as macros, procedure, methods, etc.), and
+give an output), pervasive (as macros, procedures, methods, etc.), and
 composable.  Nickel is *functional*, in the sense that functions are moreover
 first-class: they can be created everywhere, passed around as any other value,
 and called at will.

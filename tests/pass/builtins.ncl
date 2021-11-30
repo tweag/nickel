@@ -19,4 +19,12 @@ let Assert = fun l x => x || %blame% l in
   let r = {a=(inj 1),b=(cat "a" "b")} in
   %deepSeq% r (r.a.b) == 3 | #Assert) &&
 
+([1,2,3]
+ |> lists.map (fun x => x + 1)
+ |> lists.filter (fun x => x > 2)
+ |> builtins.serialize `Json
+ |> builtins.deserialize `Json
+ == [3,4]
+ | #Assert) &&
+
 true

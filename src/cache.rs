@@ -1,6 +1,6 @@
 //! Source cache.
 
-use crate::error::{Error, ImportError, ParseError, TypecheckError};
+use crate::error::{Error, ImportError, ParseError, ParseErrors, TypecheckError};
 use crate::parser::lexer::Lexer;
 use crate::position::TermPos;
 use crate::stdlib as nickel_stdlib;
@@ -62,9 +62,17 @@ pub struct Cache {
     /// Map containing for each FileIDs a list of files they import.
     imports: HashMap<FileId, HashSet<FileId>>,
     /// The table storing parsed terms corresponding to the entries of the file database.
-    terms: HashMap<FileId, (RichTerm, EntryState)>,
+    terms: HashMap<FileId, CachedTerm>,
     /// The list of ids corresponding to the stdlib modules
     stdlib_ids: Option<Vec<FileId>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CachedTerm {
+    pub term: RichTerm,
+    pub state: EntryState,
+    /// Any non fatal parse errors.
+    pub parse_errs: ParseErrors,
 }
 
 /// Cache keys for sources.
@@ -119,6 +127,14 @@ pub enum EntryState {
 pub enum CacheOp<T> {
     Done(T),
     Cached(T),
+}
+
+impl<T> CacheOp<T> {
+    pub fn inner(self: CacheOp<T>) -> T {
+        match self {
+            CacheOp::Done(t) | CacheOp::Cached(t) => t,
+        }
+    }
 }
 
 /// Wrapper around other errors to indicate that typechecking or applying program transformations
@@ -290,13 +306,20 @@ impl Cache {
 
     /// Parse a source and populate the corresponding entry in the cache, or do nothing if the
     /// entry has already been parsed.
-    pub fn parse(&mut self, file_id: FileId) -> Result<CacheOp<()>, ParseError> {
-        if self.terms.contains_key(&file_id) {
-            Ok(CacheOp::Cached(()))
+    pub fn parse(&mut self, file_id: FileId) -> Result<CacheOp<ParseErrors>, ParseError> {
+        if let Some(CachedTerm { parse_errs, .. }) = self.terms.get(&file_id) {
+            Ok(CacheOp::Cached(parse_errs.clone()))
         } else {
-            self.terms
-                .insert(file_id, (self.parse_nocache(file_id)?, EntryState::Parsed));
-            Ok(CacheOp::Done(()))
+            let (term, parse_errs) = self.parse_nocache(file_id)?;
+            self.terms.insert(
+                file_id,
+                CachedTerm {
+                    term,
+                    state: EntryState::Parsed,
+                    parse_errs: parse_errs.clone(),
+                },
+            );
+            Ok(CacheOp::Done(parse_errs.clone()))
         }
     }
 
@@ -306,23 +329,25 @@ impl Cache {
         &mut self,
         file_id: FileId,
         format: InputFormat,
-    ) -> Result<CacheOp<()>, ParseError> {
-        if self.terms.contains_key(&file_id) {
-            Ok(CacheOp::Cached(()))
+    ) -> Result<CacheOp<ParseErrors>, ParseError> {
+        if let Some(CachedTerm { parse_errs, .. }) = self.terms.get(&file_id) {
+            Ok(CacheOp::Cached(parse_errs.clone()))
         } else {
+            let (term, parse_errs) = self.parse_nocache_multi(file_id, format)?;
             self.terms.insert(
                 file_id,
-                (
-                    self.parse_nocache_multi(file_id, format)?,
-                    EntryState::Parsed,
-                ),
+                CachedTerm {
+                    term,
+                    state: EntryState::Parsed,
+                    parse_errs: parse_errs.clone(),
+                },
             );
-            Ok(CacheOp::Done(()))
+            Ok(CacheOp::Done(parse_errs.clone()))
         }
     }
 
     /// Parse a source without querying nor populating the cache.
-    pub fn parse_nocache(&self, file_id: FileId) -> Result<RichTerm, ParseError> {
+    pub fn parse_nocache(&self, file_id: FileId) -> Result<(RichTerm, ParseErrors), ParseError> {
         self.parse_nocache_multi(file_id, InputFormat::Nickel)
     }
 
@@ -331,22 +356,33 @@ impl Cache {
         &self,
         file_id: FileId,
         format: InputFormat,
-    ) -> Result<RichTerm, ParseError> {
+    ) -> Result<(RichTerm, ParseErrors), ParseError> {
         let buf = self.files.source(file_id);
 
         match format {
             InputFormat::Nickel => {
+                let mut parse_err_rec = Vec::new();
                 let t = parser::grammar::TermParser::new()
-                    .parse(file_id, Lexer::new(&buf))
-                    .map_err(|err| ParseError::from_lalrpop(err, file_id))?;
-                Ok(t)
+                    .parse(file_id, &mut parse_err_rec, Lexer::new(&buf))
+                    .map_err(|err| (ParseError::from_lalrpop(err, file_id).into()))?;
+
+                let parse_errs: ParseErrors = parse_err_rec
+                    .into_iter()
+                    .map(|e| ParseError::from_lalrpop(e.error, file_id))
+                    .collect::<Vec<_>>()
+                    .into();
+
+                Ok((t, parse_errs))
             }
             InputFormat::Json => serde_json::from_str(self.files.source(file_id))
-                .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files)),
+                .map(|t| (t, ParseErrors::default()))
+                .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files).into()),
             InputFormat::Yaml => serde_yaml::from_str(self.files.source(file_id))
-                .map_err(|err| ParseError::from_serde_yaml(err, file_id)),
+                .map(|t| (t, ParseErrors::default()))
+                .map_err(|err| (ParseError::from_serde_yaml(err, file_id).into())),
             InputFormat::Toml => toml::from_str(self.files.source(file_id))
-                .map_err(|err| ParseError::from_toml(err, file_id, &self.files)),
+                .map(|t| (t, ParseErrors::default()))
+                .map_err(|err| (ParseError::from_toml(err, file_id, &self.files).into())),
         }
     }
 
@@ -359,10 +395,12 @@ impl Cache {
         global_env: &eval::Environment,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
         match self.terms.get(&file_id) {
-            Some((_, state)) if *state >= EntryState::Typechecked => Ok(CacheOp::Cached(())),
-            Some((t, state)) if *state >= EntryState::Parsed => {
+            Some(CachedTerm { state, .. }) if *state >= EntryState::Typechecked => {
+                Ok(CacheOp::Cached(()))
+            }
+            Some(CachedTerm { term, state, .. }) if *state >= EntryState::Parsed => {
                 if *state < EntryState::Typechecking {
-                    type_check(t, global_env, self, StubHost::<(), _>::new())?;
+                    type_check(term, global_env, self, StubHost::<(), _>::new())?;
                     self.update_state(file_id, EntryState::Typechecking);
                 }
 
@@ -388,9 +426,18 @@ impl Cache {
             Some(state) if state >= EntryState::Transformed => Ok(CacheOp::Cached(())),
             Some(state) if state >= EntryState::Parsed => {
                 if state < EntryState::Transforming {
-                    let (t, _) = self.terms.remove(&file_id).unwrap();
-                    let t = transformations::transform(t);
-                    self.terms.insert(file_id, (t, EntryState::Transforming));
+                    let CachedTerm {
+                        term, parse_errs, ..
+                    } = self.terms.remove(&file_id).unwrap();
+                    let term = transformations::transform(term);
+                    self.terms.insert(
+                        file_id,
+                        CachedTerm {
+                            term,
+                            state: EntryState::Transforming,
+                            parse_errs,
+                        },
+                    );
                 }
 
                 if let Some(imports) = self.imports.get(&file_id).cloned() {
@@ -428,10 +475,14 @@ impl Cache {
         match self.entry_state(file_id) {
             Some(state) if state >= EntryState::Transformed => Ok(CacheOp::Cached(())),
             Some(_) => {
-                let (mut t, state) = self.terms.remove(&file_id).unwrap();
+                let CachedTerm {
+                    mut term,
+                    state,
+                    parse_errs,
+                } = self.terms.remove(&file_id).unwrap();
 
                 if state < EntryState::Transforming {
-                    match t.term.as_mut() {
+                    match term.term.as_mut() {
                         Term::Record(ref mut map, _) => {
                             let map_res = std::mem::replace(map, HashMap::new())
                                 .into_iter()
@@ -461,7 +512,14 @@ impl Cache {
                         _ => panic!("cache::transform_inner(): not a record"),
                     }
 
-                    self.terms.insert(file_id, (t, EntryState::Transforming));
+                    self.terms.insert(
+                        file_id,
+                        CachedTerm {
+                            term,
+                            state: EntryState::Transforming,
+                            parse_errs,
+                        },
+                    );
                 }
 
                 if let Some(imports) = self.imports.get(&file_id).cloned() {
@@ -489,10 +547,18 @@ impl Cache {
             Some(state) if state >= EntryState::ImportsResolved => Ok(CacheOp::Cached(())),
             Some(state) if state >= EntryState::Parsed => {
                 if state < EntryState::ImportsResolving {
-                    let (t, _) = self.terms.remove(&file_id).unwrap();
-                    let (t, pending) = transformations::resolve_imports(t, self)?;
-                    self.terms
-                        .insert(file_id, (t, EntryState::ImportsResolving));
+                    let CachedTerm {
+                        term, parse_errs, ..
+                    } = self.terms.remove(&file_id).unwrap();
+                    let (term, pending) = transformations::resolve_imports(term, self)?;
+                    self.terms.insert(
+                        file_id,
+                        CachedTerm {
+                            term,
+                            state: EntryState::ImportsResolving,
+                            parse_errs,
+                        },
+                    );
 
                     for id in pending {
                         self.resolve_imports(id)?;
@@ -522,7 +588,7 @@ impl Cache {
     ) -> Result<CacheOp<()>, Error> {
         let mut result = CacheOp::Cached(());
 
-        if self.parse(file_id)? == CacheOp::Done(()) {
+        if self.parse(file_id)? == CacheOp::Done(ParseErrors::default()) {
             result = CacheOp::Done(());
         };
 
@@ -565,7 +631,10 @@ impl Cache {
         file_id: FileId,
         global_env: &eval::Environment,
     ) -> Result<(RichTerm, Vec<FileId>), Error> {
-        let term = self.parse_nocache(file_id)?;
+        let (term, errs) = self.parse_nocache(file_id)?;
+        if errs.no_errors() {
+            return Err(Error::ParseErrors(errs));
+        }
         let (term, pending) = transformations::resolve_imports(term, self)?;
         type_check(&term, global_env, self, StubHost::<(), _>::new())?;
         let term = transformations::transform(term);
@@ -623,13 +692,13 @@ impl Cache {
 
     /// Get a mutable reference to the cached term roots
     /// (used by the language server to invalidate previously parsed entries)
-    pub fn terms_mut(&mut self) -> &mut HashMap<FileId, (RichTerm, EntryState)> {
+    pub fn terms_mut(&mut self) -> &mut HashMap<FileId, CachedTerm> {
         &mut self.terms
     }
 
     /// Get an immutable reference to the cached term roots
     /// (used by the language server to invalidate previously parsed entries)
-    pub fn terms(&self) -> &HashMap<FileId, (RichTerm, EntryState)> {
+    pub fn terms(&self) -> &HashMap<FileId, CachedTerm> {
         &self.terms
     }
 
@@ -637,23 +706,28 @@ impl Cache {
     pub fn update_state(&mut self, file_id: FileId, new: EntryState) -> Option<EntryState> {
         self.terms
             .get_mut(&file_id)
-            .map(|(_, old)| std::mem::replace(old, new))
+            .map(|CachedTerm { state, .. }| std::mem::replace(state, new))
     }
 
     /// Retrieve the state of an entry. Return `None` if the entry is not in the term cache,
     /// meaning that the content of the source has been loaded but has not been parsed yet.
     pub fn entry_state(&self, file_id: FileId) -> Option<EntryState> {
-        self.terms.get(&file_id).map(|(_, state)| state).copied()
+        self.terms
+            .get(&file_id)
+            .map(|CachedTerm { state, .. }| state)
+            .copied()
     }
 
     /// Retrieve a fresh clone of a cached term.
     pub fn get_owned(&self, file_id: FileId) -> Option<RichTerm> {
-        self.terms.get(&file_id).map(|(t, _)| t.clone())
+        self.terms
+            .get(&file_id)
+            .map(|CachedTerm { term, .. }| term.clone())
     }
 
     /// Retrieve a reference to a cached term.
     pub fn get_ref(&self, file_id: FileId) -> Option<&RichTerm> {
-        self.terms.get(&file_id).map(|(t, _)| t)
+        self.terms.get(&file_id).map(|CachedTerm { term, .. }| term)
     }
 
     /// Load and parse the standard library in the cache.
@@ -817,17 +891,20 @@ impl ImportResolver for Cache {
             }
         };
 
+        // We ignore non fatal parse errors while importing.
         self.parse_multi(file_id, format)
-            .map_err(|err| ImportError::ParseError(err, *pos))?;
+            .map_err(|err| ImportError::ParseErrors(err.into(), *pos))?;
 
         Ok((ResolvedTerm::FromFile { path: path_buf }, file_id))
     }
 
     fn get(&self, file_id: FileId) -> Option<RichTerm> {
-        self.terms.get(&file_id).map(|(term, state)| {
-            debug_assert!(*state >= EntryState::ImportsResolved);
-            term.clone()
-        })
+        self.terms
+            .get(&file_id)
+            .map(|CachedTerm { term, state, .. }| {
+                debug_assert!(*state >= EntryState::ImportsResolved);
+                term.clone()
+            })
     }
 
     fn get_path(&self, file_id: FileId) -> &OsStr {
@@ -931,9 +1008,9 @@ pub mod resolvers {
             } else {
                 let buf = self.files.source(file_id);
                 let term = parser::grammar::TermParser::new()
-                    .parse(file_id, Lexer::new(&buf))
+                    .parse(file_id, &mut Vec::new(), Lexer::new(&buf))
                     .map_err(|e| ParseError::from_lalrpop(e, file_id))
-                    .map_err(|e| ImportError::ParseError(e, *pos))?;
+                    .map_err(|e| ImportError::ParseErrors(e.into(), *pos))?;
                 self.term_cache.insert(file_id, term);
                 Ok((
                     ResolvedTerm::FromFile {

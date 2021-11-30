@@ -122,6 +122,8 @@
           error
         seq (42 / 2) 37 =>
           37
+        seq { tooFar = 42 / 0 } 37 =>
+          37
       ```
       "#m
     = fun x y => %seq% x y,
@@ -136,6 +138,8 @@
           error
         deepSeq (42 / 2) 37 =>
           37
+        deepSeq { tooFar = 42 / 0 } 37 =>
+          error
       ```
       "#m
     = fun x y => %deepSeq% x y,
