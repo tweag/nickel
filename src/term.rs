@@ -921,11 +921,7 @@ impl RichTerm {
                     .map(|(id, t)| t.traverse(f, state, method).map(|t_ok| (id.clone(), t_ok)))
                     .collect();
 
-                let default = default
-                    .map(|t| t.traverse(f, state, method))
-                    // Transpose from Option<Result> to Result<Option>. There is a `transpose`
-                    // method in Rust, but it has currently not made it to the stable version yet
-                    .map_or(Ok(None), |res| res.map(Some))?;
+                let default = default.map(|t| t.traverse(f, state, method)).transpose()?;
 
                 let t = t.traverse(f, state, method)?;
 
@@ -1052,9 +1048,7 @@ impl RichTerm {
                         };
                         Ok(Contract { types, ..ctr })
                     })
-                    // Transpose from Option<Result> to Result<Option>. There is a `transpose`
-                    // method in Rust, but it has currently not made it to the stable version yet
-                    .map_or(Ok(None), |res| res.map(Some))?;
+                    .transpose()?;
 
                 let value = meta
                     .value
