@@ -20,7 +20,7 @@ const codeExample = `let conf = {
 
 let SemanticVersion = fun label value =>
   let pattern = "^\\\\d{1,2}\\\\.\\\\d{1,2}(\\\\.\\\\d{1,2})?$" in
-  if strings.isMatch value pattern then
+  if strings.isMatch pattern value then
     value
   else
     let msg = "invalid version number" in

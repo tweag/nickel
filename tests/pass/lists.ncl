@@ -1,8 +1,8 @@
 let Assert = fun l x => x || %blame% l in
 
 // accesses
-(lists.elemAt [1,2,3] 1 == 2 | #Assert) &&
-(lists.elemAt (lists.map (fun x => x + 1) [1,2,3]) 1 == 3 | #Assert) &&
+(lists.elemAt 1 [1,2,3] == 2 | #Assert) &&
+(lists.elemAt 1 (lists.map (fun x => x + 1) [1,2,3]) == 3 | #Assert) &&
 
 // length
 (lists.length [] == 0 | #Assert) &&

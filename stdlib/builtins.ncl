@@ -28,7 +28,7 @@
       "#m
     = fun x => %isBool% x,
 
-    isStr : Dyn -> Bool 
+    isStr : Dyn -> Bool
     | doc m#"
       Checks if the given value is a string.
 
@@ -70,7 +70,7 @@
       "#m
     = fun x => %isList% x,
 
-    isRecord : Dyn -> Bool 
+    isRecord : Dyn -> Bool
     | doc m#"
       Checks if the given value is a record.
 
