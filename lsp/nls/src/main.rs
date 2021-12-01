@@ -10,6 +10,7 @@ mod requests;
 mod server;
 use server::Server;
 mod term;
+mod trace;
 
 fn main() -> Result<()> {
     env_logger::init();

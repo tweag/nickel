@@ -24,6 +24,7 @@ log = "0.4"
 env_logger = "0.9"
 anyhow = "1.0"
 nickel = {path = "../../"}
+derive_more = "0.99"
 
 [dev-dependencies]
 pretty_assertions = "0.5.1"
