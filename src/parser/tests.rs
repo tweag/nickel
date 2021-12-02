@@ -154,6 +154,10 @@ fn unary_op() {
 #[test]
 fn enum_terms() {
     assert_eq!(parse_without_pos("`foo"), Enum(Ident::from("foo")).into(),);
+    assert_eq!(
+        parse_without_pos("`\"foo:bar\""),
+        Enum(Ident::from("foo:bar")).into(),
+    );
 
     assert_eq!(
         parse_without_pos("switch { foo => true, bar => false, _ => 456, } 123"),

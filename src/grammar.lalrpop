@@ -183,7 +183,7 @@ Atom: RichTerm = {
     Bool => RichTerm::from(Term::Bool(<>)),
     StrChunks,
     Ident => RichTerm::from(Term::Var(<>)),
-    "`" <Ident> => RichTerm::from(Term::Enum(<>)),
+    "`" <EnumField> => RichTerm::from(Term::Enum(<>)),
     "{" <fields: (<RecordField> ",")*> <last: RecordLastField?> "}" => {
         let (last_field, attrs) = match last {
             Some(RecordLastField::Field(f)) => (Some(f), Default::default()),
@@ -317,6 +317,12 @@ ChunkExpr: StrChunk<RichTerm> = HashBrace <t: WithPos<Term>> "}" => StrChunk::Ex
 HashBrace = { "#{", "multstr #{" };
 
 StaticString: String = StringStart <s: ChunkLiteral> StringEnd => s;
+
+EnumField: Ident = {
+    <Ident>,
+    <StaticString> => <>.into(),
+}
+
 
 ChunkLiteralPart: ChunkLiteralPart<'input> = {
     "str literal" => ChunkLiteralPart::Str(<>),
@@ -488,7 +494,7 @@ subType : Types = {
     <Ident> => Types(AbsType::Var(<>)),
     "#" <WithPos<RecordOperand>> => Types(AbsType::Flat(<>)),
     "(" <Types> ")",
-    "<" <rows:(<Ident> ",")*> <last: (<Ident>)?> <tail: ("|" <Ident>)?> ">" => {
+    "<" <rows:(<EnumField> ",")*> <last: (<EnumField>)?> <tail: ("|" <EnumField>)?> ">" => {
         let ty = rows.into_iter()
             .chain(last.into_iter())
             // As we build row types as a linked list via a fold on the original
@@ -499,7 +505,7 @@ subType : Types = {
             .fold(
                 Types(
                     match tail {
-                        Some(id) => AbsType::Var(id),
+                        Some(s) => AbsType::Var(s),
                         None => AbsType::RowEmpty(),
                     }
                 ),

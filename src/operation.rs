@@ -321,7 +321,7 @@ fn process_unary_operation(
                 };
 
                 cases
-                    .remove(&en)
+                    .remove(&en.clone().into())
                     .map(|body| Closure {
                         body,
                         env: cases_env,
@@ -894,7 +894,7 @@ fn process_unary_operation(
                 Term::Num(n) => Ok(Term::Str(n.to_string())),
                 Term::Str(s) => Ok(Term::Str(s)),
                 Term::Bool(b) => Ok(Term::Str(b.to_string())),
-                Term::Enum(id) => Ok(Term::Str(id.to_string())),
+                Term::Enum(s) => Ok(Term::Str(s.to_string())),
                 t => Err(EvalError::Other(
                     format!(
                         "strFrom: can't convert the argument of type {} to string",
@@ -925,18 +925,10 @@ fn process_unary_operation(
         }
         UnaryOp::EnumFromStr() => {
             if let Term::Str(s) = *t {
-                let re = regex::Regex::new("_?[a-zA-Z][_a-zA-Z0-9]*").unwrap();
-                if re.is_match(&s) {
-                    Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Enum(s.into()),
-                        pos_op_inh,
-                    )))
-                } else {
-                    Err(EvalError::Other(
-                        format!("enumFrom: invalid enum tag `{}`", s),
-                        pos,
-                    ))
-                }
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Enum(s.into()),
+                    pos_op_inh,
+                )))
             } else {
                 Err(EvalError::TypeError(
                     String::from("Str"),
