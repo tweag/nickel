@@ -321,7 +321,7 @@ fn process_unary_operation(
                 };
 
                 cases
-                    .remove(&en.clone().into())
+                    .remove(&en)
                     .map(|body| Closure {
                         body,
                         env: cases_env,
@@ -894,7 +894,7 @@ fn process_unary_operation(
                 Term::Num(n) => Ok(Term::Str(n.to_string())),
                 Term::Str(s) => Ok(Term::Str(s)),
                 Term::Bool(b) => Ok(Term::Str(b.to_string())),
-                Term::Enum(s) => Ok(Term::Str(s.to_string())),
+                Term::Enum(id) => Ok(Term::Str(id.to_string())),
                 t => Err(EvalError::Other(
                     format!(
                         "strFrom: can't convert the argument of type {} to string",

@@ -397,8 +397,9 @@ impl Term {
             }
             Term::Fun(_, _) => String::from("<func>"),
             Term::Lbl(_) => String::from("<label>"),
-            Term::Enum(Ident(s, _)) => {
+            Term::Enum(id) => {
                 let re = regex::Regex::new("_?[a-zA-Z][_a-zA-Z0-9]*").unwrap();
+                let s = id.to_string();
                 if re.is_match(&s) {
                     format!("`{}", s)
                 } else {

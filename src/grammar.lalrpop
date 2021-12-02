@@ -505,7 +505,7 @@ subType : Types = {
             .fold(
                 Types(
                     match tail {
-                        Some(s) => AbsType::Var(s),
+                        Some(id) => AbsType::Var(id),
                         None => AbsType::RowEmpty(),
                     }
                 ),
