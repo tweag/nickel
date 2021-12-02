@@ -155,8 +155,6 @@ where
                         StrChunk::Expr(..) => Err(()),
                     });
 
-                    eprintln!("record field is string `{:?}", e);
-
                     if is_static.is_ok() {
                         insert_static_field(&mut static_map, Ident(buffer, e.pos), t)
                     } else {
