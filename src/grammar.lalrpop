@@ -368,7 +368,7 @@ UOp: UnaryOp = {
 };
 
 switch_case: SwitchCase = {
-    <id: Ident> "=>" <t: Term> => SwitchCase::Normal(id, t),
+    "`" <id: EnumTag> "=>" <t: Term> => SwitchCase::Normal(id, t),
     "_" "=>" <t: Term> => SwitchCase::Default(<>),
 }
 

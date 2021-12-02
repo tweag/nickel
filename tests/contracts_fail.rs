@@ -182,7 +182,7 @@ fn records_contracts_closed() {
 // fn enum_complex() {
 //     eval(
 //         "let f : <foo, bar> -> Num =
-//             fun x => switch { foo => 1, bar => 2, } x in
+//             fun x => switch { `foo => 1, `bar => 2, } x in
 //             f `boo",
 //     )
 //     .unwrap_err();

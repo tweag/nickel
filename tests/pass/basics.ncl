@@ -32,6 +32,6 @@ let Assert = fun l x => x || %blame% l in
 (1/4 + 1/4 - 1/4 + 1/4 < 1/2 == false | #Assert) &&
 
 // This test checks that the terms of a switch are closured
-(let x = 3 in (switch { foo => 1, _ => x, } (3 + 2)) == 3) &&
+(let x = 3 in (switch { `foo => 1, _ => x, } (3 + 2)) == 3) &&
 
 true

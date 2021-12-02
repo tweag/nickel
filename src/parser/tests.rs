@@ -160,7 +160,7 @@ fn enum_terms() {
     );
 
     assert_eq!(
-        parse_without_pos("switch { foo => true, bar => false, _ => 456, } 123"),
+        parse_without_pos("switch { `foo => true, `bar => false, _ => 456, } 123"),
         mk_switch!(Num(123.), ("foo", Bool(true)), ("bar", Bool(false)) ; Num(456.))
     )
 }
