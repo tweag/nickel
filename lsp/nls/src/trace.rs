@@ -116,6 +116,20 @@ impl Tracer {
             Ok(())
         })?
     }
+
+    pub fn reset_replied() -> anyhow::Result<()> {
+        Self::with_trace(|mut t| {
+            t.replied.clear();
+            Ok(())
+        })?
+    }
+
+    pub fn drop_received() -> anyhow::Result<()> {
+        Self::with_trace(|mut t| {
+            t.received.clear();
+            Ok(())
+        })?
+    }
 }
 
 pub(crate) trait Enrich<E: Enrichment> {
