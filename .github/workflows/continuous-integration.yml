@@ -7,6 +7,14 @@ on:
 
 
 jobs:
+  run-benchmark:
+    name: run benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - uses: jasonwilliams/criterion-compare-action@move_to_actions
 
   build-and-test:
 

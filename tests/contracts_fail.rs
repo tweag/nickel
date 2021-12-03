@@ -2,8 +2,7 @@ use assert_matches::assert_matches;
 use codespan::Files;
 use nickel::error::{Error, EvalError, ToDiagnostic};
 
-mod common;
-use common::eval;
+use utilities::eval;
 
 macro_rules! assert_raise_blame {
     ($term:expr) => {{
