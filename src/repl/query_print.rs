@@ -31,7 +31,7 @@ impl QueryPrinter for SimpleRenderer {
 
     fn write_doc(&self, out: &mut impl Write, content: &str) -> io::Result<()> {
         if content.find('\n').is_none() {
-            self.write_metadata(out, "documentation", &content)
+            self.write_metadata(out, "documentation", content)
         } else {
             writeln!(out, "* documentation\n")?;
             writeln!(out, "{}", content)
@@ -269,7 +269,7 @@ fn write_query_result_<R: QueryPrinter>(
         }
         t @ Term::Record(..) | t @ Term::RecRecord(..) => {
             writeln!(out, "No metadata found for this value.")?;
-            write_fields(out, renderer, &t)?;
+            write_fields(out, renderer, t)?;
         }
         t => {
             writeln!(out, "No metadata found for this value.\n")?;

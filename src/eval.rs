@@ -461,7 +461,7 @@ where
         ),
     );
     eval_closure(Closure::atomic_closure(wrapper), global_env, resolver, true)
-        .map(|(term, env)| subst(term.into(), &global_env, &env).into())
+        .map(|(term, env)| subst(term.into(), global_env, &env).into())
 }
 
 /// Evaluate a Nickel Term, stopping when a meta value is encountered at the top-level without
@@ -477,7 +477,7 @@ pub fn eval_meta<R>(
 where
     R: ImportResolver,
 {
-    let (term, env) = eval_closure(Closure::atomic_closure(t), &global_env, resolver, false)?;
+    let (term, env) = eval_closure(Closure::atomic_closure(t), global_env, resolver, false)?;
 
     match term {
         Term::MetaValue(mut meta) => {
@@ -714,7 +714,7 @@ where
                             let thunk = env.get(var_id).ok_or_else(|| {
                                 EvalError::UnboundIdentifier(var_id.clone(), rt.pos)
                             })?;
-                            rec_env.insert(id.clone(), thunk.clone());
+                            rec_env.insert(id.clone(), thunk);
                             Ok(rec_env)
                         }
                         _ => {
