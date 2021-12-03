@@ -925,18 +925,10 @@ fn process_unary_operation(
         }
         UnaryOp::EnumFromStr() => {
             if let Term::Str(s) = *t {
-                let re = regex::Regex::new("_?[a-zA-Z][_a-zA-Z0-9]*").unwrap();
-                if re.is_match(&s) {
-                    Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Enum(s.into()),
-                        pos_op_inh,
-                    )))
-                } else {
-                    Err(EvalError::Other(
-                        format!("enumFrom: invalid enum tag `{}`", s),
-                        pos,
-                    ))
-                }
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Enum(s.into()),
+                    pos_op_inh,
+                )))
             } else {
                 Err(EvalError::TypeError(
                     String::from("Str"),

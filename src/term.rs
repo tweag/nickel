@@ -397,7 +397,15 @@ impl Term {
             }
             Term::Fun(_, _) => String::from("<func>"),
             Term::Lbl(_) => String::from("<label>"),
-            Term::Enum(s) => format!("`{}", s),
+            Term::Enum(id) => {
+                let re = regex::Regex::new("_?[a-zA-Z][_a-zA-Z0-9]*").unwrap();
+                let s = id.to_string();
+                if re.is_match(&s) {
+                    format!("`{}", s)
+                } else {
+                    format!("`\"{}\"", s)
+                }
+            }
             Term::Record(..) | Term::RecRecord(..) => String::from("{ ... }"),
             Term::List(_) => String::from("[ ... ]"),
             Term::Sym(_) => String::from("<sym>"),
