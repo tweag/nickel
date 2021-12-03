@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    io::Write,
     sync::{Mutex, MutexGuard},
     time::{Duration, Instant},
 };
@@ -7,6 +8,7 @@ use std::{
 use anyhow::Result;
 use lazy_static::lazy_static;
 use lsp_server::RequestId;
+use serde::Serialize;
 use serde_json::Value;
 
 use self::param::Enrichment;
@@ -15,13 +17,23 @@ lazy_static! {
     static ref TRACE: Mutex<Trace> = Mutex::new(Trace::default());
 }
 
-#[derive(Debug)]
-struct TraceItem<T> {
+#[derive(Debug, Serialize)]
+struct TraceItem<T: Serialize> {
     time: T,
     params: TraceItemParams,
 }
 
-#[derive(Debug, Default)]
+impl Serialize for Received {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // 3 is the number of fields in the struct.
+        serializer.serialize_none()
+    }
+}
+
+#[derive(Debug, Default, Serialize)]
 pub struct TraceItemParams {
     method: String,
     linearization_size: Option<usize>,
@@ -29,8 +41,9 @@ pub struct TraceItemParams {
 
 #[derive(Debug)]
 struct Received(Instant);
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 struct Replied {
+    #[serde(skip)]
     ingress: Instant,
     duration: Duration,
     with_error: bool,
@@ -90,6 +103,18 @@ impl Tracer {
             })?;
         }
         Ok(())
+    }
+
+    pub fn write_trace(w: impl Write) -> anyhow::Result<()> {
+        let mut writer = csv::Writer::from_writer(w);
+
+        Self::with_trace(|t| {
+            for item in t.replied.iter() {
+                writer.serialize(item)?;
+            }
+            writer.flush()?;
+            Ok(())
+        })?
     }
 }
 

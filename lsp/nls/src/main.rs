@@ -9,6 +9,7 @@ mod linearization;
 mod requests;
 mod server;
 use server::Server;
+
 mod term;
 mod trace;
 
