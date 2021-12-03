@@ -71,7 +71,7 @@ let typecheck = [
             (f `bli : Num),
 
   let f : forall r. (forall p. <blo, ble | r> -> <bla, bli | p>) =
-    fun x => switch {`blo => `bla, `ble => `bli, _ => `bla, } x in
+    fun x => switch {`blo => `bla, `ble => `bli, _ => `bla} x in
     f `bli,
 
   // static records
