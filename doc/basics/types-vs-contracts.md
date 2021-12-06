@@ -9,7 +9,7 @@ If your expression is:
 ## A function
 
 Most of the time, you should use **type annotations** for functions. Typing is
-most often more adapted than than contracts for functions. You can exceptionally
+most often more adapted than contracts for functions. You can exceptionally
 use contracts when types are not expressive enough to encode the property you
 want (as in `#ValidUrl -> #Port -> #ValidUrl`) or if the type system is not
 powerful enough to see that the code is fine.
