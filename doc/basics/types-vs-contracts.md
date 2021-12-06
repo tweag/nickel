@@ -17,8 +17,8 @@ powerful enough to see that the code is fine.
 Type annotations do have a runtime cost. If you hit contracts-related
 performances issues, you can always disable some contract checks using specific
 flags. With annotations, code is still typechecked, and you can still turn
-contract back on for debugging mean when a problem arises. Without annotations,
-you're out of luck.
+contracts checking back on for debugging mean when a problem arises. Without
+annotations, you're out of luck.
 
 What to do depends on the context:
 
