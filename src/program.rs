@@ -176,7 +176,7 @@ pub fn query(
         cache.get_owned(file_id).unwrap()
     };
 
-    Ok(eval::eval_meta(t, &global_env, cache)?)
+    Ok(eval::eval_meta(t, global_env, cache)?)
 }
 
 /// Pretty-print an error.
@@ -195,7 +195,7 @@ where
     let diagnostics = error.to_diagnostic(cache.files_mut(), contracts_id);
 
     let result = diagnostics.iter().try_for_each(|d| {
-        codespan_reporting::term::emit(&mut writer.lock(), &config, cache.files_mut(), &d)
+        codespan_reporting::term::emit(&mut writer.lock(), &config, cache.files_mut(), d)
     });
     match result {
         Ok(()) => (),
