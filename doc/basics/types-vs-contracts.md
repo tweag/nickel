@@ -122,8 +122,8 @@ let Schema = {
 ## Computation (compound expressions)
 
 Some expressions are neither immediate data nor functions. Take for example the
-application of a function such as `lists.map (fun s => "http://#{s}/index")
-servers`. Usually, you should do **nothing**.
+function application `lists.map (fun s => "http://#{s}/index") servers`.
+Usually, you should do **nothing**.
 
 - *Inside configuration: nothing*. The function or operator you are using should
   be typed, and thus protected by a contract. The final value should also be
@@ -135,7 +135,7 @@ servers`. Usually, you should do **nothing**.
 
 ## Debugging
 
-At last, both type annotations and contracts come in handy for debugging.  In
+At last, both type annotations and contracts come in handy for debugging. In
 this case, you don't have to follow the previous advices, and you can drop
 random annotations or contract applications pretty much everywhere you see fit
 to help better locate when something is going wrong.
