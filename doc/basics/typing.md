@@ -4,20 +4,20 @@
 
 Static typing or dynamic typing? Here comes the eternal debate of languages
 aficionados. While the idea that static typing is pretty much a necessity for
-standard large codebases, the case of an interpreted configuration language may
-appear less clear-cut.
+standard large codebases is well established, the case of an interpreted
+configuration language may appear less clear-cut.
 
-Nevertheless, whoever has ever faced puzzling dynamic type errors (as in
-[Nix]()) may have felt the strong need for something better. Standard dynamic
-typing is prone to error messages removed from the actual issue and a location
-that doesn't point at the offending code . This is especially true when working
+Nevertheless, who has ever faced puzzling dynamic type errors (as in [Nix]())
+may have felt the strong need for something better. Standard dynamic typing is
+prone to error messages being far removed from the actual issue with a location
+that doesn't point at the offending code. This is especially true when working
 with functions, that tends to delay type errors by passing around ill-formed
-values until it finally breaks when used in a totally different location.
+values until it eventually breaks somewhere else.
 
 On the other hand, for pure configuration code, static typing is less useful.
 First, a configuration is a terminating program run once on fixed inputs: here,
-basic type errors will show up at evaluation anyway. What's more, Nickel has a
-powerful validation system, contracts, that can already do more.
+basic type errors will show up at runtime anyway. What's more, Nickel has a
+powerful validation system, contracts, that can do more than types.
 
 For those reasons, Nickel takes an hybrid approach called *gradual typing*.
 Gradual typing enables to mix both static typing and dynamic typing.
@@ -36,8 +36,9 @@ By default, Nickel code is assumed to be configuration code. It is thus run in
 
 Ex:
 
-While this is fine for configuration code, especially when checked against a
-schema by a contract, it doesn't work so well once we are using functions.
+While this is fine for configuration code, especially when finally checked
+against a schema by a contract, it doesn't work so well once we are using
+functions.
 
 Ex: flatten
 
@@ -46,19 +47,20 @@ diagnose. Here, `flatten` is fine, but the error still points at its
 implementation. The actual problem is that the caller provided an argument of
 the wrong type: the last element should be a list, but it's a number. Alas, the
 user (who is most probably not even the author of `flatten`) would have a hard
-time reaching this conclusion from the error report in a similar but more
-involved real situation.
+time reaching this conclusion from the error report in a larger real-world
+codebase.
 
 ### Typed blocks
 
 The `flatten` example is the poster child for static typing. The typechecker
 will catch the error earlier as the type expected by `flatten` and the type of
-the argument don't match.
+the argument don't match (in fact, it even fails on `[[1,2], 3]` alone, because
+list elements have different types).
 
 We use `:` to introduce a *type annotation*.  This annotation switches the
 typechecker on for the annotated expression, be it a variable definition, a
-record field or any expression using inline annotations. We will call such an
-expression under a type annotation a *typed block*.
+record field or any expression using an inline annotation. We will refer to such
+an annotated expression as a *typed block*.
 
 Examples:
 
@@ -71,13 +73,12 @@ That's already much better! The error now points at the call site. What's more,
 we just had to give the top-level annotation `List Num`. Nickel performs type
 inference, so that you don't have to write the type of `flatten` or `[[1,2],
 3]`. Although there's a twist about type inference and polymorphism (see
-[dedicated section](#Polymorphism), but we'll come back to this later.
+the [dedicated section](#Polymorphism)), but we'll come back to this later.
 
-**Take-away**: Nickel has an hybrid approach to typing that mixes both static
+**Take-away**: Nickel takes an hybrid approach to typing that mixes both static
 typing and dynamic typing. The default is dynamic typing. The static typechecker
-kicks in when you write a type annotation using `:`. This delimits a typed
-block. Nickel has type inference, that spares you writing unnecessary type
-annotations.
+kicks in when using a type annotation `exp : Type`. This delimits a typed block.
+Nickel has type inference, sparing you writing unnecessary type annotations.
 
 Now, let us have a quick tour of the type system.
 
@@ -96,6 +97,7 @@ Nickel features the following type constructors:
 
 - **List**: `List T`. A list of elements of type `T`. When no `T` is specified, `List`
   alone is an alias for `List Dyn`.
+
   Example:
   ```nickel
   let x : List (List Num) = [[1,2], [3,4]] in
@@ -104,6 +106,7 @@ Nickel features the following type constructors:
 - **Record**: `{field1: T1, .., fieldn: Tn}`. A record whose field
   names are known statically as `field1`, .., `fieldn`, respectively of type
   `T1`, .., `Tn`.
+
   Example:
   ```nickel
   let pair : {fst: Num, snd: Str} = {fst = 1, snd = "a"} in
@@ -128,9 +131,9 @@ Nickel features the following type constructors:
   ```nickel
   let protocol : <http, ftp, sftp> = `http in
   switch {
-    http -> 1,
-    ftp -> 2,
-    sftp -> 3
+    `http -> 1,
+    `ftp -> 2,
+    `sftp -> 3
   } protocol : Num
   ```
 - **Arrow (function)**: `S -> T`. A function taking arguments of type `S` and returning a value of
@@ -173,9 +176,9 @@ result) : List Num
 
 That's too bad, because in practice the code of `flatten` is agnostic with
 respect to the type of elements of the list. That is, `flatten` is *generic*.
-This is expressed in Nickel with so-calleds *parametric polymorphism*. This is
+This is expressed in Nickel with so-called *parametric polymorphism*. This is
 really just a pedantic label for some flavour of generics. Generic parameters
-are introduced by the keyword `forall` followed by an identifier. We can now fix
+are introduced by the keyword `forall`, followed by an identifier. We can now fix
 our example:
 
 ```nickel
@@ -185,9 +188,9 @@ let dummy = flatten [["a","b"], []] in
 result) : List Num
 ```
 
-And now it works! `forall a. List (List a) -> List a` means it is ok to
+And now it works! `forall a. List (List a) -> List a` means it is OK to
 substitute `a` for any other type. You can use as many generic parameters as you
-wish:
+need:
 
 ```nickel
 let fst : forall a b. a -> b -> a = fun x y => x in
@@ -233,15 +236,17 @@ let r3 = {may = 1300, june = 400, total = may + june} in
 }) : {partial1: Num, partial2: Num} 
 ```
 
-The problem here is that the requirement of `addTotal` is that both arguments
-have a field `total: Num`, but could very well have other fields, for all we
-care. Unfortunately, we don't know right now how to express this constraint. The
-type signature is too restrictive here, because it imposes that arguments have
-exactly one field `total: Num`, and nothing more.
+The problem here is that for this code to run fine, the requirement of
+`addTotal` should be that both arguments have a field `total: Num`, but could
+very well have other fields, for all we care. Unfortunately, we don't know right
+now how to express this constraint. The current annotation is too restrictive,
+because it imposes that arguments have exactly one field `total: Num`, and
+nothing more.
 
-To solve the issue, Nickel has *row polymorphism*. The idea is similar to
-polymorphism, but instead substituting a parameter for a single type, we can
-substitute it for a sequence of fields. Let us first fix our working example:
+To express such constraints, Nickel features *row polymorphism*. The idea is
+similar to polymorphism, but instead substituting a parameter for a single type,
+we can substitute a parameter for a sequence of fields. Let us first fix our
+working example:
 
 ```nickel
 (let addTotal: forall a b. {total: Num | a} -> {total: Num | b} -> Num
@@ -280,7 +285,7 @@ switch {
 } protocol
 ```
 
-**Take-away**: The type system of Nickel has a few basic types (`Num`, `Str`,
+**Take-away**: The type system of Nickel has a few basic types (`Dyn`, `Num`, `Str`,
 and `Bool`) and type constructors for lists, records, enums and functions.
 Nickel features generics via polymorphism, introduced by the `forall` keyword. A
 type can not only be generic in other types, but records and enums types can
@@ -400,9 +405,10 @@ type annotation switches the typechecking mode to typed, a contract annotation
 switches it back to untyped.
 
 At this point, you may feel confused. We have static types on one side, we have
-contracts on the other, but static type annotations actually behaves the same at
+contracts on the other, but static type annotation actually behaves the same at
 runtime, and contract annotations also have an effect on the typechecker. What's
 more, they look like they cover similar use cases (check that some value has a
 specific shape or behavior), and the annotations are written in the same type
-syntax. How do we know when to use one and not the other? Take a look at [Type
-versus contracts: when to?](./types-vs-contracts.md)!
+syntax, differing only in the symbols `:` and `|`. How do we know when to use
+one or the other in practice? Take a look at [Type versus contracts: when
+to?](./types-vs-contracts.md)!
