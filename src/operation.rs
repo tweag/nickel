@@ -94,8 +94,7 @@ pub fn continuate_operation(
     call_stack.truncate(cs_len);
     match cont {
         OperationCont::Op1(u_op, arg_pos) => {
-            let result = process_unary_operation(u_op, clos, arg_pos, stack, call_stack, pos);
-            result
+            process_unary_operation(u_op, clos, arg_pos, stack, call_stack, pos)
         }
         OperationCont::Op2First(b_op, mut snd_clos, fst_pos) => {
             std::mem::swap(&mut clos, &mut snd_clos);
@@ -107,9 +106,7 @@ pub fn continuate_operation(
             Ok(clos)
         }
         OperationCont::Op2Second(b_op, fst_clos, fst_pos, snd_pos) => {
-            let result =
-                process_binary_operation(b_op, fst_clos, fst_pos, clos, snd_pos, stack, pos);
-            result
+            process_binary_operation(b_op, fst_clos, fst_pos, clos, snd_pos, stack, pos)
         }
         OperationCont::OpN {
             op,
@@ -134,8 +131,7 @@ pub fn continuate_operation(
 
                 Ok(next)
             } else {
-                let result = process_nary_operation(op, evaluated, stack, pos);
-                result
+                process_nary_operation(op, evaluated, stack, pos)
             }
         }
     }
@@ -268,10 +264,7 @@ fn process_unary_operation(
         }
         UnaryOp::Blame() => {
             if let Term::Lbl(label) = *t {
-                Err(EvalError::BlameError(
-                    label,
-                    std::mem::replace(call_stack, Vec::new()),
-                ))
+                Err(EvalError::BlameError(label, std::mem::take(call_stack)))
             } else {
                 Err(EvalError::TypeError(
                     String::from("Label"),
@@ -539,9 +532,9 @@ fn process_unary_operation(
             }
         }
         UnaryOp::ListGen() => {
-            let (f, _) = stack.pop_arg().ok_or_else(|| {
-                EvalError::NotEnoughArgs(2, String::from("generate"), pos_op.clone())
-            })?;
+            let (f, _) = stack
+                .pop_arg()
+                .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("generate"), pos_op))?;
 
             if let Term::Num(n) = *t {
                 let n_int = n as usize;
@@ -1998,7 +1991,7 @@ fn process_binary_operation(
                             .map(|s_opt| {
                                 s_opt.map(|s| RichTerm::from(Term::Str(String::from(s.as_str()))))
                             })
-                            .filter_map(|x| x)
+                            .flatten()
                             .collect();
 
                         mk_record!(
@@ -2198,7 +2191,7 @@ fn process_nary_operation(
                     MergeMode::Contract(lbl),
                 )
             } else {
-                Err(EvalError::InternalError(format!("The MergeContract() operator was expecting a first argument of type Label, got {}", t1.type_of().unwrap_or(String::from("<unevaluated>"))), pos_op))
+                Err(EvalError::InternalError(format!("The MergeContract() operator was expecting a first argument of type Label, got {}", t1.type_of().unwrap_or_else(|| String::from("<unevaluated>"))), pos_op))
             }
         }
     }

@@ -314,11 +314,11 @@ impl Stack {
 
 impl std::fmt::Debug for Stack {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "--- STACK ---\n")?;
+        writeln!(f, "--- STACK ---")?;
         for marker in self.0.iter().rev() {
-            write!(f, "| {:?}\n", marker)?;
+            writeln!(f, "| {:?}", marker)?;
         }
-        write!(f, "---  END  ---\n")
+        writeln!(f, "---  END  ---")
     }
 }
 
