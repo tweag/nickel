@@ -96,7 +96,7 @@ implemented in the future: type holes.
 
 Conversely, for data inside configuration code, you should use **contracts**.
 Types are not adding much over contracts for configuration data, while contracts
-are much more flexible and expressive.
+are more flexible and expressive.
 
 Example:
 ```nickel
