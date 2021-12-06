@@ -378,10 +378,8 @@ impl<'a> Envs<'a> {
         eval_env
             .iter()
             .map(|(id, thunk)| {
-                (
-                    id.clone(),
-                    apparent_type(thunk.borrow().body.as_ref(), None).into(),
-                )
+                println!("{:?}", id);
+                (id.clone(), infer_type(thunk.borrow().body.as_ref()))
             })
             .collect()
     }
@@ -1021,6 +1019,25 @@ pub fn apparent_type(t: &Term, envs: Option<&Envs>) -> ApparentType {
             .map(ApparentType::FromEnv)
             .unwrap_or(ApparentType::Approximated(Types(AbsType::Dyn()))),
         _ => ApparentType::Approximated(Types(AbsType::Dyn())),
+    }
+}
+
+/// Infer type of a more complex structure.
+/// For now, it's implemented only to infer the type of a record on wich fields are typed.
+/// It's use esencialy to type the stdlib, but could be use in a future for types placeholders for
+/// instence.
+pub fn infer_type(t: &Term) -> TypeWrapper {
+    match t {
+        Term::Record(rec, _) => TypeWrapper::Concrete(AbsType::StaticRecord(Box::new(
+            rec.iter().fold(AbsType::RowEmpty().into(), |r, (id, rt)| {
+                TypeWrapper::Concrete(AbsType::RowExtend(
+                    id.clone(),
+                    Some(infer_type(rt.term.as_ref()).into()),
+                    r.into(),
+                ))
+            }),
+        ))),
+        _ => apparent_type(t, None).into(),
     }
 }
 
