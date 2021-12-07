@@ -30,7 +30,7 @@ What to do depends on the context:
 
     Example: `lists.map (fun x => x + 1) [1,2,3]`
 - *Let-bound function outside of typed block: use a type annotation.* Even if
-    local to a file, if your function is bound to a variable, it means it can 
+    local to a file, if your function is bound to a variable, it means it can
     be potentially used in several places.
 
     Example: `let appendTm: Str -> Str = fun s => s ++ "(TM)" in ...`
@@ -45,7 +45,7 @@ What to do depends on the context:
     ```nickel
     let foo : Num =
       let addTwo = fun x => x + 2 in
-      addTwo 4 
+      addTwo 4
     ```
 
 ## Library (record of functions)
