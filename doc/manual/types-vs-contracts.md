@@ -1,37 +1,37 @@
 # Type vs contracts: when to?
 
 You are writing Nickel code and wonder how it should be annotated. Leave it
-without annotation ? Add type annotations? Use contracts? Here is a quick guide
-when you don't know what to do!
+alone? Add type annotations? Use contracts? Here is a quick guide when you don't
+know what to do!
 
-If your expression is:
+What is the nature of the expression you are considering?
 
 ## A function
 
-Most of the time, you should use **type annotations** for functions. Typing is
-most often more adapted than contracts for functions. You can exceptionally
-use contracts when types are not expressive enough to encode the property you
-want (as in `#ValidUrl -> #Port -> #ValidUrl`) or if the type system is not
-powerful enough to see that the code is fine.
+Most of the time, you should use **type annotations** for functions. For
+reusable code, typing is often more adapted than contracts. You can
+exceptionally use contracts when types are not expressive enough to encode the
+property you want (such as in `#ValidUrl -> #Port -> #ValidUrl`) or if the type
+system is not powerful enough to see that your code is correct.
 
 Type annotations do have a runtime cost. If you hit contracts-related
 performances issues, you can always disable some contract checks using specific
-flags. With annotations, code is still typechecked, and you can still turn
-contracts checking back on for debugging mean when a problem arises. Without
+flags (TO BE PRECISED ONCE WE HAVE THOSE FLAGS). With annotations, code is still
+typechecked, and you can turn contracts checking back on for debugging. Without
 annotations, you're out of luck.
 
 What to do depends on the context:
 
-- *Anonymous function: nothing*. Short functions outsife of a let-binding can
+- *Anonymous function: nothing*. Short, anonymous functions can
     usually live without annotation. Inside a typed block, they will be
-    typechecked anyway. Outside, they won't be reused elsewhere, and are
-    generally small functions passed as arguments to others typed higher-order
-    functions, that will apply a guarding contract.
+    typechecked anyway. Outside, anonymous function can't be reused elsewhere,
+    and are generally short functions passed as arguments to typed higher-order
+    functions, which will apply a guarding contract.
 
     Example: `lists.map (fun x => x + 1) [1,2,3]`
 - *Let-bound function outside of typed block: use a type annotation.* Even if
-    local to a file, if your function is bound to a variable, it means it can
-    be potentially used in several places.
+    local to a file, if your function is bound to a variable, it can be
+    potentially reused in different places.
 
     Example: `let appendTm: Str -> Str = fun s => s ++ "(TM)" in ...`
 - *Let-bound function inside a typed block: nothing or type annotation*. Inside a
@@ -46,16 +46,23 @@ What to do depends on the context:
     let foo : Num =
       let addTwo = fun x => x + 2 in
       addTwo 4
+    in ...
+
+    let foo : Num =
+      let ev : ((Num -> Num) -> Num) -> Num -> Num
+        = fun f x => f (functions.const x) in
+      ev (fun f => f 0) 1
+    in ...
     ```
 
 ## Library (record of functions)
 
 You should use **type annoations** for records of functions. Currently Nickel
 doesn't have a specific notion of a library or a module. You can just put
-functions inside a record. Given the function case, you should also use a type
-annotation on your record to make the type of the functions accessible to the
-outside. Otherwise, the record is typed as `Dyn` and will shadow the type
-information, making your library basically unusable inside typed code.
+functions inside a record. In accordance with the previous section, you should
+also use a type annotation on your record to make the type of the functions
+accessible to the outside. Otherwise, the record is typed as `Dyn` and will
+obliterate the types, making your library basically unusable inside typed code.
 
 ### Example
 
@@ -78,11 +85,12 @@ BUT DO
 }
 ```
 
-Alternatively, you can repeat your types both at the function level
-and at the record level. It makes code more navigable and `query`-friendly, but at the expense of
-repetition and duplicated contract checks. It is also currently required for
-polymorphic functions because of [the following bug](). A better solution will probably be
-implemented in the future: type holes.
+Alternatively, you can repeat your types both at the function level and at the
+record level. It makes code more navigable and `query`-friendly, but at the
+expense of repetition and duplicated contract checks. It is also currently
+required for polymorphic functions because of [the following
+bug](https://github.com/tweag/nickel/issues/360). A better solution will
+probably be implemented in the future: type holes (TODO: MAY ACTUALLY BE AVAILABLE FOR RELEASE)
 
 (NOT YET POSSIBLE)
 ```
@@ -95,8 +103,8 @@ implemented in the future: type holes.
 ## Data (record, list)
 
 Conversely, for data inside configuration code, you should use **contracts**.
-Types are not adding much over contracts for configuration data, while contracts
-are more flexible and expressive.
+Types are not adding much for configuration data, while contracts are more
+flexible and expressive.
 
 Example:
 ```nickel
@@ -115,7 +123,7 @@ let Schema = {
   build = [
     command "gcc hello.c -o hello",
     command "mv hello $out"
-  ]
+  ],
 } | #Schema
 ```
 
@@ -137,5 +145,4 @@ Usually, you should do **nothing**.
 
 At last, both type annotations and contracts come in handy for debugging. In
 this case, you don't have to follow the previous advices, and you can drop
-random annotations or contract applications pretty much everywhere you see fit
-to help better locate when something is going wrong.
+random annotations or contract applications pretty much everywhere you see fit.
