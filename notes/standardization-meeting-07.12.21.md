@@ -3,7 +3,7 @@ object: 1st standardization meeting
 attending:
   - Arnaud Spiwack
   - Eelco Dolstra
-  - Thépohane Huschmitt
+  - Théophane Hufschmitt
   - Yann Hamdaoui
 author: Yann Hamdaoui (yann.hamdaoui@tweag.io)
 date: "Dec 7, 2021"
@@ -14,7 +14,7 @@ date: "Dec 7, 2021"
 Attending:
 - Arnaud Spiwack
 - Eelco Dolstra
-- Théophane Huschmitt
+- Théophane Hufschmitt
 - ~~Rok Garbas~~
 - Yann Hamdaoui
 
