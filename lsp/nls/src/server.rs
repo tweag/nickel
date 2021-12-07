@@ -17,7 +17,7 @@ use lsp_types::{
 };
 
 use nickel::cache::Cache;
-use nickel::typecheck::{linearization::Completed, Environment};
+use nickel::typecheck::{linearization::Completed, GlobalEnvironment};
 
 use crate::{
     requests::{completion, goto, hover, symbols},
@@ -28,7 +28,7 @@ pub struct Server {
     pub connection: Connection,
     pub cache: Cache,
     pub lin_cache: HashMap<FileId, Completed>,
-    pub global_env: Environment,
+    pub global_env: GlobalEnvironment,
 }
 
 impl Server {

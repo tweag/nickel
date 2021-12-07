@@ -1,7 +1,7 @@
 //! Various helpers and companion code for the parser are put here to keep the grammar definition
 //! uncluttered.
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::Debug;
 
 use codespan::FileId;
@@ -10,10 +10,9 @@ use crate::{
     identifier::Ident,
     label::Label,
     mk_app, mk_fun,
-    parser::error::ParseError,
     position::{RawSpan, TermPos},
     term::{make as mk_term, BinaryOp, RecordAttrs, RichTerm, StrChunk, Term, UnaryOp},
-    types::{AbsType, Types},
+    types::Types,
 };
 
 /// Distinguish between the standard string separators `"`/`"` and the multi-line string separators
@@ -37,7 +36,7 @@ pub enum FieldPathElem {
     /// A static field declaration: `{ foo = .. }`
     Ident(Ident),
     /// A quoted field declaration: `{ "#{protocol}" = .. }`
-    ///
+    ///HashMap
     /// In practice, the argument must always be `StrChunks`, but since we also need to keep track
     /// of the associated span it's handier to just use a `RichTerm`.
     Expr(RichTerm),
@@ -466,65 +465,4 @@ pub fn strip_indent_doc(doc: String) -> String {
         })
         .next()
         .expect("expected non-empty chunks after indentation of documentation")
-}
-
-/// Recursively checks for unbound type variables in a type
-pub fn check_unbound(types: &Types, span: RawSpan) -> Result<(), ParseError> {
-    // heavy lifting function, recurses into a type expression and returns a set of unbound vars
-    fn find_unbound_vars(types: &Types, unbound_set: &mut HashSet<Ident>) {
-        match &types.0 {
-            AbsType::Var(ident) => {
-                unbound_set.insert(ident.clone());
-            }
-            AbsType::Forall(ident, ty) => {
-                // forall needs a "scoped" set for the variables in its nodes
-                let mut forall_unbound_vars = HashSet::new();
-                find_unbound_vars(ty, &mut forall_unbound_vars);
-
-                forall_unbound_vars.remove(ident);
-
-                // once the forall vars are recursed into and analyzed, the parent set and
-                // the forall set are merged
-                unbound_set.extend(forall_unbound_vars);
-            }
-            AbsType::Arrow(s, t) => {
-                find_unbound_vars(s, unbound_set);
-                find_unbound_vars(t, unbound_set);
-            }
-            AbsType::DynRecord(ty)
-            | AbsType::StaticRecord(ty)
-            | AbsType::List(ty)
-            | AbsType::Enum(ty) => {
-                find_unbound_vars(ty, unbound_set);
-            }
-            AbsType::RowExtend(_, opt_ty, ty) => {
-                if let Some(ty) = opt_ty {
-                    find_unbound_vars(ty, unbound_set);
-                }
-
-                find_unbound_vars(ty, unbound_set);
-            }
-            AbsType::Dyn()
-            | AbsType::Bool()
-            | AbsType::Num()
-            | AbsType::Str()
-            | AbsType::Sym()
-            | AbsType::Flat(_)
-            | AbsType::RowEmpty() => {}
-        }
-    }
-
-    let mut unbound_set: HashSet<Ident> = HashSet::new();
-
-    // recurse into type and find unbound type vars
-    find_unbound_vars(types, &mut unbound_set);
-
-    if !unbound_set.is_empty() {
-        return Err(ParseError::UnboundTypeVariables(
-            unbound_set.into_iter().collect(),
-            span,
-        ));
-    }
-
-    Ok(())
 }

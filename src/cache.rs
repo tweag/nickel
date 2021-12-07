@@ -77,14 +77,14 @@ pub struct GlobalEnv {
     /// The typing environment, counterpart of the eval environment for typechecking. Entries are
     /// [`TypeWrapper`](../typecheck/enum.TypeWrapper.html) for the ease of interacting with the
     /// typechecker, but there are not any unification variable in it.
-    pub type_env: typecheck::Environment,
+    pub type_env: typecheck::GlobalEnvironment,
 }
 
 impl GlobalEnv {
     pub fn new() -> Self {
         GlobalEnv {
             eval_env: eval::Environment::new(),
-            type_env: typecheck::Environment::new(),
+            type_env: typecheck::GlobalEnvironment::new(),
         }
     }
 }
@@ -406,7 +406,7 @@ impl Cache {
     pub fn typecheck(
         &mut self,
         file_id: FileId,
-        global_env: &typecheck::Environment,
+        global_env: &typecheck::GlobalEnvironment,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
         match self.terms.get(&file_id) {
             Some(CachedTerm { state, .. }) if *state >= EntryState::Typechecked => {
@@ -598,7 +598,7 @@ impl Cache {
     pub fn prepare(
         &mut self,
         file_id: FileId,
-        global_env: &typecheck::Environment,
+        global_env: &typecheck::GlobalEnvironment,
     ) -> Result<CacheOp<()>, Error> {
         let mut result = CacheOp::Cached(());
 
@@ -643,7 +643,7 @@ impl Cache {
     pub fn prepare_nocache(
         &mut self,
         file_id: FileId,
-        global_env: &typecheck::Environment,
+        global_env: &typecheck::GlobalEnvironment,
     ) -> Result<(RichTerm, Vec<FileId>), Error> {
         let (term, errs) = self.parse_nocache(file_id)?;
         if errs.no_errors() {
@@ -814,7 +814,7 @@ impl Cache {
 
     /// Generate a global typing environment from the list of `file_ids` corresponding to the standard
     /// library parts.
-    pub fn mk_types_env(&self) -> Result<typecheck::Environment, CacheError<Void>> {
+    pub fn mk_types_env(&self) -> Result<typecheck::GlobalEnvironment, CacheError<Void>> {
         let stdlib_terms_vec =
             self.stdlib_ids
                 .as_ref()
@@ -828,7 +828,7 @@ impl Cache {
                         })
                         .collect())
                 })?;
-        Ok(typecheck::Envs::mk_global(stdlib_terms_vec).unwrap())
+        Ok(typecheck::mk_global(stdlib_terms_vec).unwrap())
     }
 
     /// Generate a global evaluation environment from the list of `file_ids` corresponding to the standard

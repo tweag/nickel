@@ -75,7 +75,7 @@ pub struct REPLImpl {
     env: GlobalEnv,
     /// The initial type environment, without the toplevel declarations made inside the REPL. Used
     /// to typecheck imports in a fresh environment.
-    init_type_env: typecheck::Environment,
+    init_type_env: typecheck::GlobalEnvironment,
 }
 
 impl REPLImpl {
@@ -85,7 +85,7 @@ impl REPLImpl {
             cache: Cache::new(),
             parser: grammar::ExtendedTermParser::new(),
             env: GlobalEnv::new(),
-            init_type_env: typecheck::Environment::new(),
+            init_type_env: typecheck::GlobalEnvironment::new(),
         }
     }
 
@@ -229,7 +229,8 @@ impl REPL for REPLImpl {
 
         Ok(typecheck::apparent_type(
             term.as_ref(),
-            Some(&typecheck::Envs::from_global(&self.env.type_env)),
+            Some((&typecheck::Envs::new(), &self.init_type_env)),
+            //&typecheck::Envs::from_global(&self.env.type_env)),
         )
         .into())
     }

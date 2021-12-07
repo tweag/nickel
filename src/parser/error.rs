@@ -1,6 +1,3 @@
-use crate::identifier::Ident;
-use crate::position::RawSpan;
-
 #[derive(Clone, PartialEq, Debug)]
 pub enum LexicalError {
     /// A closing brace '}' does not match an opening brace '{'.
@@ -17,6 +14,4 @@ pub enum LexicalError {
 pub enum ParseError {
     /// A specific lexical error
     Lexical(LexicalError),
-    /// Unbound type variable(s)
-    UnboundTypeVariables(Vec<Ident>, RawSpan),
 }
