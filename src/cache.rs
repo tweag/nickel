@@ -9,6 +9,7 @@ use crate::typecheck::{linearization::StubHost, type_check};
 use crate::{eval, parser, transformations};
 use codespan::{FileId, Files};
 use io::Read;
+use std::collections::hash_map;
 use std::collections::{HashMap, HashSet};
 use std::ffi::{OsStr, OsString};
 use std::fs;
@@ -319,7 +320,7 @@ impl Cache {
                     parse_errs: parse_errs.clone(),
                 },
             );
-            Ok(CacheOp::Done(parse_errs.clone()))
+            Ok(CacheOp::Done(parse_errs))
         }
     }
 
@@ -342,7 +343,7 @@ impl Cache {
                     parse_errs: parse_errs.clone(),
                 },
             );
-            Ok(CacheOp::Done(parse_errs.clone()))
+            Ok(CacheOp::Done(parse_errs))
         }
     }
 
@@ -368,13 +369,13 @@ impl Cache {
             }
             InputFormat::Json => serde_json::from_str(self.files.source(file_id))
                 .map(|t| (t, ParseErrors::default()))
-                .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files).into()),
+                .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files)),
             InputFormat::Yaml => serde_yaml::from_str(self.files.source(file_id))
                 .map(|t| (t, ParseErrors::default()))
-                .map_err(|err| (ParseError::from_serde_yaml(err, file_id).into())),
+                .map_err(|err| (ParseError::from_serde_yaml(err, file_id))),
             InputFormat::Toml => toml::from_str(self.files.source(file_id))
                 .map(|t| (t, ParseErrors::default()))
-                .map_err(|err| (ParseError::from_toml(err, file_id, &self.files).into())),
+                .map_err(|err| (ParseError::from_toml(err, file_id, &self.files))),
         }
     }
 
@@ -476,19 +477,19 @@ impl Cache {
                 if state < EntryState::Transforming {
                     match term.term.as_mut() {
                         Term::Record(ref mut map, _) => {
-                            let map_res = std::mem::replace(map, HashMap::new())
+                            let map_res = std::mem::take(map)
                                 .into_iter()
-                                .map(|(id, t)| (id.clone(), transformations::transform(t)))
+                                .map(|(id, t)| (id, transformations::transform(t)))
                                 .collect();
                             *map = map_res;
                         }
                         Term::RecRecord(ref mut map, ref mut dyn_fields, _) => {
-                            let map_res = std::mem::replace(map, HashMap::new())
+                            let map_res = std::mem::take(map)
                                 .into_iter()
-                                .map(|(id, t)| (id.clone(), transformations::transform(t)))
+                                .map(|(id, t)| (id, transformations::transform(t)))
                                 .collect();
 
-                            let dyn_fields_res = std::mem::replace(dyn_fields, Vec::new())
+                            let dyn_fields_res = std::mem::take(dyn_fields)
                                 .into_iter()
                                 .map(|(id_t, t)| {
                                     (
@@ -995,20 +996,20 @@ pub mod resolvers {
                     )
                 })?;
 
-            if self.term_cache.contains_key(&file_id) {
-                Ok((ResolvedTerm::FromCache(), file_id))
-            } else {
+            if let hash_map::Entry::Vacant(e) = self.term_cache.entry(file_id) {
                 let buf = self.files.source(file_id);
                 let term = parser::grammar::TermParser::new()
                     .parse_term(file_id, Lexer::new(&buf))
                     .map_err(|e| ImportError::ParseErrors(e.into(), *pos))?;
-                self.term_cache.insert(file_id, term);
+                e.insert(term);
                 Ok((
                     ResolvedTerm::FromFile {
                         path: PathBuf::new(),
                     },
                     file_id,
                 ))
+            } else {
+                Ok((ResolvedTerm::FromCache(), file_id))
             }
         }
 
