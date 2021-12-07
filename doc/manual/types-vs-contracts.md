@@ -57,7 +57,7 @@ What to do depends on the context:
 
 ## Library (record of functions)
 
-You should use **type annoations** for records of functions. Currently Nickel
+You should use **type annotations** for records of functions. Currently Nickel
 doesn't have a specific notion of a library or a module. You can just put
 functions inside a record. In accordance with the previous section, you should
 also use a type annotation on your record to make the type of the functions
