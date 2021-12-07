@@ -16,7 +16,7 @@ use crate::position::{RawSpan, TermPos};
 use crate::serialize::ExportFormat;
 use crate::term::RichTerm;
 use crate::types::Types;
-use crate::{label, repl};
+use crate::{label, parser, repl};
 
 /// A general error occurring during either parsing or evaluation.
 #[derive(Debug, Clone, PartialEq)]
@@ -191,7 +191,7 @@ pub enum TypecheckError {
 
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct ParseErrors {
-    errors: Vec<ParseError>,
+    pub errors: Vec<ParseError>,
 }
 
 impl ParseErrors {
@@ -212,6 +212,20 @@ impl ParseErrors {
 
     pub const fn none() -> ParseErrors {
         ParseErrors { errors: Vec::new() }
+    }
+
+    pub fn from_recoverable<'a>(
+        errs: Vec<
+            lalrpop_util::ErrorRecovery<usize, parser::lexer::Token<'a>, parser::error::ParseError>,
+        >,
+        file_id: FileId,
+    ) -> Self {
+        ParseErrors {
+            errors: errs
+                .into_iter()
+                .map(|e| ParseError::from_lalrpop(e.error, file_id))
+                .collect(),
+        }
     }
 }
 

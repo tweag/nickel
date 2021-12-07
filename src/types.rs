@@ -430,7 +430,7 @@ mod test {
         let id = Files::new().add("<test>", wrapper.clone());
 
         let rt = TermParser::new()
-            .parse(id, &mut Vec::new(), Lexer::new(&wrapper))
+            .parse_term(id, Lexer::new(&wrapper))
             .unwrap();
 
         match *rt.term {
