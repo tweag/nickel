@@ -241,6 +241,7 @@ open_contract(#(open_contract(T))) =  open_contract(T)
   Example:
   ```nickel
   //Naive intersection via merging. Would be nice. Work for records but not for
+  //contracts as functions
   //Currently can only do "point-wise" val | C1 | C2 | C3
   let Ctr1 = C1 & C2 & C3
   ```
