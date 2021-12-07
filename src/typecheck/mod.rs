@@ -69,19 +69,19 @@ pub enum RowUnifError {
     /// The RHS had a additional `Dyn` tail.
     ExtraDynTail(),
     /// There were two incompatible definitions for the same row.
-    RowMismatch(Ident, Box<UnifError>),
+    RowMismatch(Ident, UnifError),
     /// Tried to unify an enum row and a record row.
-    RowKindMismatch(Ident, Option<TypeWrapper>, Option<TypeWrapper>),
+    RowKindMismatch(Ident, Option<Closure>, Option<Closure>),
     /// One of the row was ill-formed (typically, a tail was neither a row, a variable nor `Dyn`).
     ///
     /// This should probably not happen with proper restrictions on the parser and a correct
     /// typechecking algorithm. We let it as an error for now, but it could be removed in the
     /// future.
-    IllformedRow(TypeWrapper),
+    IllformedRow(Closure),
     /// A [row constraint](./type.RowConstr.html) was violated.
-    UnsatConstr(Ident, Option<TypeWrapper>),
+    UnsatConstr(Ident, Option<Closure>),
     /// Tried to unify a type constant with another different type.
-    WithConst(usize, TypeWrapper),
+    WithConst(usize, Closure),
     /// Tried to unify two distinct type constants.
     ConstMismatch(usize, usize),
 }
@@ -96,7 +96,7 @@ impl RowUnifError {
     ///
     /// Each level usually adds information (such as types or positions) and group different
     /// specific errors into most general ones.
-    pub fn into_unif_err(self, left: TypeWrapper, right: TypeWrapper) -> UnifError {
+    pub fn into_unif_err(self, left: Closure, right: Closure) -> UnifError {
         match self {
             RowUnifError::MissingRow(id) => UnifError::MissingRow(id, left, right),
             RowUnifError::MissingDynTail() => UnifError::MissingDynTail(left, right),
@@ -105,7 +105,9 @@ impl RowUnifError {
             RowUnifError::RowKindMismatch(id, tyw1, tyw2) => {
                 UnifError::RowKindMismatch(id, tyw1, tyw2)
             }
-            RowUnifError::RowMismatch(id, err) => UnifError::RowMismatch(id, left, right, err),
+            RowUnifError::RowMismatch(id, err) => {
+                UnifError::RowMismatch(id, left, right, Box::new(err))
+            }
             RowUnifError::IllformedRow(tyw) => UnifError::IllformedRow(tyw),
             RowUnifError::UnsatConstr(id, tyw) => UnifError::RowConflict(id, tyw, left, right),
             RowUnifError::WithConst(c, tyw) => UnifError::WithConst(c, tyw),
@@ -118,40 +120,40 @@ impl RowUnifError {
 #[derive(Debug, PartialEq)]
 pub enum UnifError {
     /// Tried to unify two incompatible types.
-    TypeMismatch(TypeWrapper, TypeWrapper),
+    TypeMismatch(Closure, Closure),
     /// There are two incompatible definitions for the same row.
-    RowMismatch(Ident, TypeWrapper, TypeWrapper, Box<UnifError>),
+    RowMismatch(Ident, Closure, Closure, Box<UnifError>),
     /// Tried to unify an enum row and a record row.
-    RowKindMismatch(Ident, Option<TypeWrapper>, Option<TypeWrapper>),
+    RowKindMismatch(Ident, Option<Closure>, Option<Closure>),
     /// Tried to unify two distinct type constants.
     ConstMismatch(usize, usize),
     /// Tried to unify two rows, but an identifier of the LHS was absent from the RHS.
-    MissingRow(Ident, TypeWrapper, TypeWrapper),
+    MissingRow(Ident, Closure, Closure),
     /// Tried to unify two rows, but the `Dyn` tail of the RHS was absent from the LHS.
-    MissingDynTail(TypeWrapper, TypeWrapper),
+    MissingDynTail(Closure, Closure),
     /// Tried to unify two rows, but an identifier of the RHS was absent from the LHS.
-    ExtraRow(Ident, TypeWrapper, TypeWrapper),
+    ExtraRow(Ident, Closure, Closure),
     /// Tried to unify two rows, but the `Dyn` tail of the RHS was absent from the LHS.
-    ExtraDynTail(TypeWrapper, TypeWrapper),
+    ExtraDynTail(Closure, Closure),
     /// A row was ill-formed.
-    IllformedRow(TypeWrapper),
+    IllformedRow(Closure),
     /// Tried to unify a unification variable with a row type violating the [row
     /// constraints](./type.RowConstr.html) of the variable.
-    RowConflict(Ident, Option<TypeWrapper>, TypeWrapper, TypeWrapper),
+    RowConflict(Ident, Option<Closure>, Closure, Closure),
     /// Tried to unify a type constant with another different type.
-    WithConst(usize, TypeWrapper),
+    WithConst(usize, Closure),
     /// A flat type, which is an opaque type corresponding to custom contracts, contained a Nickel
     /// term different from a variable. Only a variables is a legal inner term of a flat type.
     IllformedFlatType(RichTerm),
     /// A generic type was ill-formed. Currently, this happens if a `StatRecord` or `Enum` type
     /// does not contain a row type.
-    IllformedType(TypeWrapper),
+    IllformedType(Closure),
     /// An unbound type variable was referenced.
     UnboundTypeVariable(Ident),
     /// An error occurred when unifying the domains of two arrows.
-    DomainMismatch(TypeWrapper, TypeWrapper, Box<UnifError>),
+    DomainMismatch(Closure, Closure, Box<UnifError>),
     /// An error occurred when unifying the codomains of two arrows.
-    CodomainMismatch(TypeWrapper, TypeWrapper, Box<UnifError>),
+    CodomainMismatch(Closure, Closure, Box<UnifError>),
 }
 
 impl UnifError {
@@ -187,35 +189,59 @@ impl UnifError {
         pos_opt: TermPos,
     ) -> TypecheckError {
         match self {
-            UnifError::TypeMismatch(ty1, ty2) => TypecheckError::TypeMismatch(
-                reporting::to_type(state.table, state.names, names, ty1),
-                reporting::to_type(state.table, state.names, names, ty2),
+            UnifError::TypeMismatch(c1, c2) => TypecheckError::TypeMismatch(
+                reporting::to_type(state.table, state.names, names, c1),
+                reporting::to_type(state.table, state.names, names, c2),
                 pos_opt,
             ),
-            UnifError::RowMismatch(ident, tyw1, tyw2, err) => TypecheckError::RowMismatch(
+            UnifError::RowMismatch(ident, c1, c2, err) => TypecheckError::RowMismatch(
                 ident,
-                reporting::to_type(state.table, state.names, names, tyw1),
-                reporting::to_type(state.table, state.names, names, tyw2),
+                reporting::to_type(state.table, state.names, names, c1),
+                reporting::to_type(state.table, state.names, names, c2),
                 Box::new((*err).into_typecheck_err_(state, names, TermPos::None)),
                 pos_opt,
             ),
-            UnifError::RowKindMismatch(id, ty1, ty2) => TypecheckError::RowKindMismatch(
+            UnifError::RowKindMismatch(id, c1, c2) => TypecheckError::RowKindMismatch(
                 id,
-                ty1.map(|tw| reporting::to_type(state.table, state.names, names, tw)),
-                ty2.map(|tw| reporting::to_type(state.table, state.names, names, tw)),
+                c1.map(|c| reporting::to_type(state.table, state.names, names, c)),
+                c2.map(|c| reporting::to_type(state.table, state.names, names, c)),
                 pos_opt,
             ),
             // TODO: for now, failure to unify with a type constant causes the same error as a
             // usual type mismatch. It could be nice to have a specific error message in the
             // future.
             UnifError::ConstMismatch(c1, c2) => TypecheckError::TypeMismatch(
-                reporting::to_type(state.table, state.names, names, TypeWrapper::Constant(c1)),
-                reporting::to_type(state.table, state.names, names, TypeWrapper::Constant(c2)),
+                reporting::to_type(
+                    state.table,
+                    state.names,
+                    names,
+                    Closure {
+                        ty: TypeWrapper::Constant(c1),
+                        env: Envs::new(),
+                    },
+                ),
+                reporting::to_type(
+                    state.table,
+                    state.names,
+                    names,
+                    Closure {
+                        ty: TypeWrapper::Constant(c2),
+                        env: Envs::new(),
+                    },
+                ),
                 pos_opt,
             ),
-            UnifError::WithConst(c, ty) => TypecheckError::TypeMismatch(
-                reporting::to_type(state.table, state.names, names, TypeWrapper::Constant(c)),
-                reporting::to_type(state.table, state.names, names, ty),
+            UnifError::WithConst(c, clos) => TypecheckError::TypeMismatch(
+                reporting::to_type(
+                    state.table,
+                    state.names,
+                    names,
+                    Closure {
+                        ty: TypeWrapper::Constant(c),
+                        env: Envs::new(),
+                    },
+                ),
+                reporting::to_type(state.table, state.names, names, clos),
                 pos_opt,
             ),
             UnifError::IllformedFlatType(rt) => {
@@ -298,21 +324,31 @@ impl UnifError {
     ///  - the original actual type.
     ///  - a type path pointing at the subtypes which failed to be unified.
     ///  - the final error, which is the actual cause of that failure.
-    pub fn into_type_path(self) -> Option<(TypeWrapper, TypeWrapper, ty_path::Path, Self)> {
+    pub fn into_type_path(self) -> Option<(Closure, Closure, ty_path::Path, Self)> {
         let mut curr: Self = self;
         let mut path = ty_path::Path::new();
         // The original expected and actual type. They are just updated once, in the first
         // iteration of the loop below.
-        let mut tyws: Option<(TypeWrapper, TypeWrapper)> = None;
+        let mut tyws: Option<(Closure, Closure)> = None;
 
         loop {
             match curr {
                 UnifError::DomainMismatch(
-                    tyw1 @ TypeWrapper::Concrete(AbsType::Arrow(_, _)),
-                    tyw2 @ TypeWrapper::Concrete(AbsType::Arrow(_, _)),
+                    c1
+                    @
+                    Closure {
+                        ty: TypeWrapper::Concrete(AbsType::Arrow(_, _)),
+                        ..
+                    },
+                    c2
+                    @
+                    Closure {
+                        ty: TypeWrapper::Concrete(AbsType::Arrow(_, _)),
+                        ..
+                    },
                     err,
                 ) => {
-                    tyws = tyws.or(Some((tyw1, tyw2)));
+                    tyws = tyws.or(Some((c1, c2)));
                     path.push(ty_path::Elem::Domain);
                     curr = *err;
                 }
@@ -320,11 +356,21 @@ impl UnifError {
                     "typechecking::to_type_path(): domain mismatch error on a non arrow type"
                 ),
                 UnifError::CodomainMismatch(
-                    tyw1 @ TypeWrapper::Concrete(AbsType::Arrow(_, _)),
-                    tyw2 @ TypeWrapper::Concrete(AbsType::Arrow(_, _)),
+                    c1
+                    @
+                    Closure {
+                        ty: TypeWrapper::Concrete(AbsType::Arrow(_, _)),
+                        ..
+                    },
+                    c2
+                    @
+                    Closure {
+                        ty: TypeWrapper::Concrete(AbsType::Arrow(_, _)),
+                        ..
+                    },
                     err,
                 ) => {
-                    tyws = tyws.or(Some((tyw1, tyw2)));
+                    tyws = tyws.or(Some((c1, c2)));
                     path.push(ty_path::Elem::Codomain);
                     curr = *err;
                 }
@@ -339,65 +385,75 @@ impl UnifError {
     }
 }
 
-/// The typing environment.
-pub type Environment = GenericEnvironment<Ident, TypeWrapper>;
+/// Populate a new global typing environment from a global term environment.
+pub fn mk_global(eval_env: &eval::Environment) -> GlobalEnvironment {
+    eval_env
+        .iter()
+        .map(|(id, thunk)| {
+            (
+                id.clone(),
+                apparent_type(thunk.borrow().body.as_ref(), None).into(),
+            )
+        })
+        .collect()
+}
 
+/// The typing environment.
+pub type GlobalEnvironment = GenericEnvironment<Ident, TypeWrapper>;
+pub type TypeEnvironment = GenericEnvironment<Ident, Closure>;
+
+impl From<&GlobalEnvironment> for TypeEnvironment {
+    fn from(g: &GlobalEnvironment) -> Self {
+        let mut env = TypeEnvironment::new();
+        for (id, tw) in g.iter() {
+            env.insert(id.clone(), tw.into());
+        }
+        env
+    }
+}
 /// A structure holding the two typing environments, the global and the local.
 ///
 /// The global typing environment is constructed from the global term environment (see
 /// [`eval`](../eval/fn.eval.html)) which holds the Nickel builtin functions. It is a read-only
 /// shared environment used to retrieve the type of such functions.
 #[derive(Debug, PartialEq, Clone)]
-pub struct Envs<'a> {
-    global: &'a Environment,
-    local: Environment,
+pub struct Envs {
+    local: TypeEnvironment,
+    types: TypeEnvironment,
 }
 
-impl<'a> Envs<'a> {
-    /// Create an `Envs` value with an empty local environment from a global environment.
-    pub fn from_global(global: &'a Environment) -> Self {
+impl Envs {
+    pub fn new() -> Envs {
         Envs {
-            global,
-            local: Environment::new(),
+            local: TypeEnvironment::new(),
+            types: TypeEnvironment::new(),
         }
     }
 
-    /// Similar to [`from_global`](./struct.Envs.html#method.from_global), but
-    /// use another `Envs` to provide the global environment.
-    pub fn from_envs(envs: &'a Envs) -> Self {
+    pub fn from_global(global: &GlobalEnvironment) -> Envs {
         Envs {
-            global: envs.global,
-            local: Environment::new(),
+            local: TypeEnvironment::from(global),
+            types: TypeEnvironment::new(),
         }
-    }
-
-    /// Populate a new global typing environment from a global term environment.
-    pub fn mk_global(eval_env: &eval::Environment) -> Environment {
-        eval_env
-            .iter()
-            .map(|(id, thunk)| {
-                (
-                    id.clone(),
-                    apparent_type(thunk.borrow().body.as_ref(), None).into(),
-                )
-            })
-            .collect()
     }
 
     /// Add the bindings of a record to a typing environment. Ignore fields whose name are defined
     /// through interpolation.
     //TODO: support the case of a record with a type annotation.
-    pub fn env_add_term(env: &mut Environment, rt: &RichTerm) -> Result<(), eval::EnvBuildError> {
+    pub fn env_add_term(
+        global: &mut GlobalEnvironment,
+        rt: &RichTerm,
+    ) -> Result<(), eval::EnvBuildError> {
         let RichTerm { term, pos } = rt;
 
         match term.as_ref() {
             Term::Record(bindings, _) | Term::RecRecord(bindings, ..) => {
                 for (id, t) in bindings {
+                    let clos_env = Envs::from_global(global);
                     let tyw: TypeWrapper =
-                        apparent_type(t.as_ref(), Some(&Envs::from_global(env))).into();
-                    env.insert(id.clone(), tyw);
+                        apparent_type(t.as_ref(), Some((&clos_env, global))).into();
+                    global.insert(id.clone(), tyw);
                 }
-
                 Ok(())
             }
             t => Err(eval::EnvBuildError::NotARecord(RichTerm::new(
@@ -408,22 +464,35 @@ impl<'a> Envs<'a> {
     }
 
     /// Bind one term in a typing environment.
-    pub fn env_add(env: &mut Environment, id: Ident, rt: &RichTerm) {
+    pub fn env_add(env: &mut GlobalEnvironment, id: Ident, rt: &RichTerm) {
         env.insert(
             id,
-            apparent_type(rt.as_ref(), Some(&Envs::from_global(env))).into(),
+            apparent_type(rt.as_ref(), Some((&Envs::from_global(env), env))).into(),
         );
     }
 
     /// Fetch a binding from the environment. Try first in the local environment, and then in the
     /// global.
-    pub fn get(&self, ident: &Ident) -> Option<TypeWrapper> {
-        self.local.get(ident).or_else(|| self.global.get(ident))
+    pub fn get(&self, ident: &Ident, global: &GlobalEnvironment) -> Option<Closure> {
+        self.local.get(ident).or_else(|| {
+            global.get(ident).map(|ty| Closure {
+                ty,
+                env: Envs::new(),
+            })
+        })
     }
 
     /// Wrapper to insert a new binding in the local environment.
-    pub fn insert(&mut self, ident: Ident, tyw: TypeWrapper) {
-        self.local.insert(ident, tyw);
+    pub fn insert(&mut self, ident: Ident, tyc: Closure) {
+        self.local.insert(ident, tyc);
+    }
+
+    pub fn register_typedef(&mut self, ident: Ident, tyw: TypeWrapper) {
+        self.types.insert(ident, Closure::new(tyw, self.clone()));
+    }
+
+    pub fn get_typedef(&self, ident: &Ident) -> Option<Closure> {
+        self.types.get(ident)
     }
 }
 
@@ -441,6 +510,55 @@ pub struct State<'a> {
     ///
     /// Used for error reporting.
     names: &'a mut HashMap<usize, Ident>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Closure {
+    ty: TypeWrapper,
+    env: Envs,
+}
+
+impl From<&TypeWrapper> for Closure {
+    fn from(ty: &TypeWrapper) -> Self {
+        Closure {
+            ty: ty.clone(),
+            env: Envs::new(),
+        }
+    }
+}
+
+impl Closure {
+    pub fn new(ty: TypeWrapper, env: Envs) -> Closure {
+        Closure { ty, env }
+    }
+
+    pub fn from_type(ty: Types, env: Envs) -> Closure {
+        Closure {
+            ty: TypeWrapper::from(ty),
+            env,
+        }
+    }
+
+    pub fn from_abs(ty: AbsType<Box<TypeWrapper>>, env: Envs) -> Closure {
+        Closure {
+            ty: TypeWrapper::Concrete(ty),
+            env,
+        }
+    }
+
+    pub fn try_get_root(self, state: &State) -> Closure {
+        if let TypeWrapper::Ptr(pt) = &self.ty {
+            get_root(state.table, *pt, &self.env)
+        } else {
+            self
+        }
+    }
+
+    pub fn register_typedef(&self, id: Ident, def: TypeWrapper) -> Closure {
+        let mut env = self.env.clone();
+        env.register_typedef(id, def);
+        Closure::new(self.ty.clone(), env)
+    }
 }
 
 /// Typecheck a term.
@@ -461,7 +579,7 @@ where
 {
     let (mut table, mut names) = (UnifTable::new(), HashMap::new());
     let mut building = Linearization::building();
-    let global = Envs::mk_global(global_eval_env);
+    let global = mk_global(global_eval_env);
     let ty = TypeWrapper::Ptr(new_var(&mut table));
 
     {
@@ -474,19 +592,31 @@ where
 
         type_check_(
             &mut state,
-            Envs::from_global(&global),
+            &global,
             &mut building,
             linearizer.scope(linearization::ScopeId::Right),
             false,
             t,
-            ty.clone(),
+            Closure {
+                ty: ty.clone(),
+                env: Envs::new(),
+            },
         )?;
     }
 
     let lin = linearizer
         .linearize(building, (table.clone(), names))
         .into();
-    Ok((to_type(&table, ty), lin))
+    Ok((
+        to_type(
+            &table,
+            Closure {
+                ty,
+                env: Envs::new(),
+            },
+        ),
+        lin,
+    ))
 }
 
 /// Typecheck a term using the given global typing environment. Same as
@@ -501,7 +631,7 @@ where
 /// [`type_check_`](fn.type_check_.html) with a fresh unification variable as goal.
 pub fn type_check_in_env(
     t: &RichTerm,
-    global: &Environment,
+    global: &GlobalEnvironment,
     resolver: &dyn ImportResolver,
 ) -> Result<Types, TypecheckError> {
     let mut state = State {
@@ -513,15 +643,24 @@ pub fn type_check_in_env(
     let ty = TypeWrapper::Ptr(new_var(state.table));
     type_check_(
         &mut state,
-        Envs::from_global(global),
+        global,
         &mut Linearization::building::<()>(),
         StubHost::<(), ()>::new(),
         false,
         t,
-        ty.clone(),
+        Closure {
+            ty: ty.clone(),
+            env: Envs::new(),
+        },
     )?;
 
-    Ok(to_type(state.table, ty))
+    Ok(to_type(
+        &state.table,
+        Closure {
+            ty,
+            env: Envs::new(),
+        },
+    ))
 }
 
 /// Typecheck a term against a specific type.
@@ -540,30 +679,61 @@ pub fn type_check_in_env(
 /// liearizer accordingly
 fn type_check_<S, E>(
     state: &mut State,
-    mut envs: Envs,
+    global: &GlobalEnvironment,
     lin: &mut Linearization<Building<S>>,
     mut linearizer: impl Linearizer<S, E>,
     strict: bool,
     rt: &RichTerm,
-    ty: TypeWrapper,
+    tcc: Closure,
 ) -> Result<(), TypecheckError> {
     let RichTerm { term: t, pos } = rt;
+    let Closure { ty, mut env } = tcc;
+
     linearizer.add_term(lin, t, *pos, ty.clone());
 
     match t.as_ref() {
-        Term::ParseError => Ok(()),
+        Term::ParseError => return Ok(()),
         // null is inferred to be of type Dyn
-        Term::Null => unify(state, strict, ty, mk_typewrapper::dynamic())
-            .map_err(|err| err.into_typecheck_err(state, rt.pos)),
-        Term::Bool(_) => unify(state, strict, ty, mk_typewrapper::bool())
-            .map_err(|err| err.into_typecheck_err(state, rt.pos)),
-        Term::Num(_) => unify(state, strict, ty, mk_typewrapper::num())
-            .map_err(|err| err.into_typecheck_err(state, rt.pos)),
-        Term::Str(_) => unify(state, strict, ty, mk_typewrapper::str())
-            .map_err(|err| err.into_typecheck_err(state, rt.pos)),
+        Term::Null => unify(
+            state,
+            strict,
+            Closure::new(TypeWrapper::from(ty), env.clone()),
+            Closure::new(mk_typewrapper::dynamic(), env),
+        )
+        .map_err(|err| err.into_typecheck_err(state, rt.pos)),
+
+        Term::Bool(_) => unify(
+            state,
+            strict,
+            Closure::new(TypeWrapper::from(ty), env.clone()),
+            Closure::new(mk_typewrapper::bool(), env),
+        )
+        .map_err(|err| err.into_typecheck_err(state, rt.pos)),
+
+        Term::Num(_) => unify(
+            state,
+            strict,
+            Closure::new(TypeWrapper::from(ty), env.clone()),
+            Closure::new(mk_typewrapper::num(), env),
+        )
+        .map_err(|err| err.into_typecheck_err(state, rt.pos)),
+
+        Term::Str(_) => unify(
+            state,
+            strict,
+            Closure::new(TypeWrapper::from(ty), env.clone()),
+            Closure::new(mk_typewrapper::str(), env),
+        )
+        .map_err(|err| err.into_typecheck_err(state, rt.pos)),
+
         Term::StrChunks(chunks) => {
-            unify(state, strict, ty, mk_typewrapper::str())
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+            unify(
+                state,
+                strict,
+                Closure::new(TypeWrapper::from(ty), env.clone()),
+                Closure::new(mk_typewrapper::str(), env.clone()),
+            )
+            .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
             chunks.iter().enumerate().try_for_each(
                 |(choice, chunk)| -> Result<(), TypecheckError> {
@@ -571,12 +741,12 @@ fn type_check_<S, E>(
                         StrChunk::Literal(_) => Ok(()),
                         StrChunk::Expr(t, _) => type_check_(
                             state,
-                            envs.clone(),
+                            global,
                             lin,
                             linearizer.scope(ScopeId::Choice(choice)),
                             strict,
                             t,
-                            mk_typewrapper::str(),
+                            Closure::new(mk_typewrapper::str(), env.clone()),
                         ),
                     }
                 },
@@ -589,18 +759,36 @@ fn type_check_<S, E>(
             // let src = TypeWrapper::The(AbsType::Dyn());
             let trg = TypeWrapper::Ptr(new_var(state.table));
             let arr = mk_tyw_arrow!(src.clone(), trg.clone());
-            linearizer.retype_ident(lin, x, src.clone());
 
-            unify(state, strict, ty, arr).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+            unify(
+                state,
+                strict,
+                Closure::new(ty, env.clone()),
+                Closure::new(arr, env.clone()),
+            )
+            .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
-            envs.insert(x.clone(), src);
-            type_check_(state, envs, lin, linearizer, strict, t, trg)
+            env.insert(x.clone(), Closure::new(src, env.clone()));
+            type_check_(
+                state,
+                global,
+                lin,
+                linearizer,
+                strict,
+                t,
+                Closure::new(trg, env),
+            )
         }
         Term::List(terms) => {
             let ty_elts = TypeWrapper::Ptr(new_var(state.table));
 
-            unify(state, strict, ty, mk_typewrapper::list(ty_elts.clone()))
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+            unify(
+                state,
+                strict,
+                Closure::new(TypeWrapper::from(ty), env.clone()),
+                Closure::new(mk_typewrapper::list(ty_elts.clone()), env.clone()),
+            )
+            .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
             terms
                 .iter()
@@ -608,36 +796,51 @@ fn type_check_<S, E>(
                 .try_for_each(|(choice, t)| -> Result<(), TypecheckError> {
                     type_check_(
                         state,
-                        envs.clone(),
+                        &global,
                         lin,
                         linearizer.scope(ScopeId::Choice(choice)),
                         strict,
                         t,
-                        ty_elts.clone(),
+                        Closure {
+                            ty: ty_elts.clone(),
+                            env: env.clone(),
+                        },
                     )
                 })
         }
         Term::Lbl(_) => {
             // TODO implement lbl type
-            unify(state, strict, ty, mk_typewrapper::dynamic())
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))
+            unify(
+                state,
+                strict,
+                Closure::new(ty, env.clone()),
+                Closure::new(mk_typewrapper::dynamic(), env),
+            )
+            .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Let(x, re, rt) => {
-            let ty_let = binding_type(re.as_ref(), &envs, state.table, strict);
-            linearizer.retype_ident(lin, x, ty_let.clone());
+            let ty_let = binding_type(re.as_ref(), &mut env, global, state.table, strict);
             type_check_(
                 state,
-                envs.clone(),
+                global,
                 lin,
                 linearizer.scope(ScopeId::Left),
                 strict,
                 re,
-                ty_let.clone(),
+                Closure::new(ty_let.clone(), env.clone()),
             )?;
 
             // TODO move this up once lets are rec
-            envs.insert(x.clone(), ty_let);
-            type_check_(state, envs, lin, linearizer, strict, rt, ty)
+            env.insert(x.clone(), Closure::new(ty_let, env.clone()));
+            type_check_(
+                state,
+                global,
+                lin,
+                linearizer,
+                strict,
+                rt,
+                Closure::new(ty, env),
+            )
         }
         Term::App(e, t) => {
             let src = TypeWrapper::Ptr(new_var(state.table));
@@ -645,14 +848,25 @@ fn type_check_<S, E>(
 
             type_check_(
                 state,
-                envs.clone(),
+                global,
                 lin,
                 linearizer.scope(ScopeId::Left),
                 strict,
                 e,
-                arr,
+                Closure {
+                    ty: arr,
+                    env: env.clone(),
+                },
             )?;
-            type_check_(state, envs, lin, linearizer, strict, t, src)
+            type_check_(
+                state,
+                global,
+                lin,
+                linearizer,
+                strict,
+                t,
+                Closure { ty: src, env },
+            )
         }
         Term::Switch(exp, cases, default) => {
             // Currently, if it has a default value, we typecheck the whole thing as
@@ -662,12 +876,15 @@ fn type_check_<S, E>(
             for (choice, case) in cases.values().enumerate() {
                 type_check_(
                     state,
-                    envs.clone(),
+                    &global,
                     lin,
                     linearizer.scope(ScopeId::Choice(choice)),
                     strict,
                     case,
-                    res.clone(),
+                    Closure {
+                        ty: res.clone(),
+                        env: env.clone(),
+                    },
                 )?;
             }
 
@@ -675,12 +892,15 @@ fn type_check_<S, E>(
                 Some(t) => {
                     type_check_(
                         state,
-                        envs.clone(),
+                        global,
                         lin,
                         linearizer.scope(ScopeId::Right),
                         strict,
                         t,
-                        res.clone(),
+                        Closure {
+                            ty: res.clone(),
+                            env: env.clone(),
+                        },
                     )?;
                     TypeWrapper::Ptr(new_var(state.table))
                 }
@@ -692,49 +912,75 @@ fn type_check_<S, E>(
                 )?,
             };
 
-            unify(state, strict, ty, res).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            type_check_(state, envs, lin, linearizer, strict, exp, mk_tyw_enum!(row))
+            unify(
+                state,
+                strict,
+                Closure::new(ty, env.clone()),
+                Closure::new(res, env.clone()),
+            )
+            .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+            type_check_(
+                state,
+                global,
+                lin,
+                linearizer,
+                strict,
+                exp,
+                Closure::new(mk_tyw_enum!(row), env),
+            )
         }
         Term::Var(x) => {
-            let x_ty = envs
-                .get(x)
+            let x_ty = env
+                .get(&x, global)
                 .ok_or_else(|| TypecheckError::UnboundIdentifier(x.clone(), *pos))?;
 
             let instantiated = instantiate_foralls(state, x_ty, ForallInst::Ptr);
-            unify(state, strict, ty, instantiated)
+            unify(state, strict, Closure::new(ty, env.clone()), instantiated)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Enum(id) => {
             let row = TypeWrapper::Ptr(new_var(state.table));
-            unify(state, strict, ty, mk_tyw_enum!(id.clone(), row))
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))
+            unify(
+                state,
+                strict,
+                Closure::new(ty, env.clone()),
+                Closure::new(mk_tyw_enum!(id.clone(), row), env),
+            )
+            .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         // If some fields are defined dynamically, the only potential type that works is `{_ : a}`
         // for some `a`
         Term::RecRecord(stat_map, dynamic, _) if !dynamic.is_empty() => {
             let ty_dyn = TypeWrapper::Ptr(new_var(state.table));
 
-            for id in stat_map.keys() {
-                envs.insert(id.clone(), ty_dyn.clone());
-                linearizer.retype_ident(lin, id, ty_dyn.clone())
+            for (id, _) in stat_map {
+                env.insert(id.clone(), Closure::new(ty_dyn.clone(), env.clone()));
             }
 
             stat_map.iter().enumerate().try_for_each(
                 |(choice, (_, t))| -> Result<(), TypecheckError> {
                     type_check_(
                         state,
-                        envs.clone(),
+                        global,
                         lin,
                         linearizer.scope(ScopeId::Choice(choice)),
                         strict,
                         t,
-                        ty_dyn.clone(),
+                        Closure {
+                            ty: ty_dyn.clone(),
+                            env: env.clone(),
+                        },
                     )
                 },
             )?;
 
-            unify(state, strict, ty, mk_typewrapper::dyn_record(ty_dyn))
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))
+            unify(
+                state,
+                strict,
+                Closure::new(ty, env.clone()),
+                Closure::new(mk_typewrapper::dyn_record(ty_dyn), env),
+            )
+            .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Record(stat_map, _) | Term::RecRecord(stat_map, ..) => {
             // For recursive records, we look at the apparent type of each field and bind it in
@@ -742,30 +988,39 @@ fn type_check_<S, E>(
             // Fields defined by interpolation are ignored.
             if let Term::RecRecord(..) = t.as_ref() {
                 for (id, rt) in stat_map {
-                    let tyw = binding_type(rt.as_ref(), &envs, state.table, strict);
-                    envs.insert(id.clone(), tyw.clone());
-                    linearizer.retype_ident(lin, id, tyw);
+                    let tyw = binding_type(rt.as_ref(), &mut env, global, state.table, strict);
+                    env.insert(id.clone(), Closure::new(tyw, env.clone()));
                 }
             }
 
             let root_ty = if let TypeWrapper::Ptr(p) = ty {
-                get_root(state.table, p)
+                get_root(state.table, p, &env)
             } else {
-                ty.clone()
+                Closure {
+                    ty: ty.clone(),
+                    env: env.clone(),
+                }
             };
 
-            if let TypeWrapper::Concrete(AbsType::DynRecord(rec_ty)) = root_ty {
+            if let Closure {
+                ty: TypeWrapper::Concrete(AbsType::DynRecord(rec_ty)),
+                ..
+            } = root_ty
+            {
                 // Checking for a dynamic record
                 stat_map.iter().enumerate().try_for_each(
                     |(choice, (_, t))| -> Result<(), TypecheckError> {
                         type_check_(
                             state,
-                            envs.clone(),
+                            global,
                             lin,
                             linearizer.scope(ScopeId::Choice(choice)),
                             strict,
                             t,
-                            (*rec_ty).clone(),
+                            Closure {
+                                ty: (*rec_ty).clone(),
+                                env: env.clone(),
+                            },
                         )
                     },
                 )
@@ -777,65 +1032,83 @@ fn type_check_<S, E>(
                         // annotations) have already be determined and put in the typing
                         // environment, and we need to use the same.
                         let ty = if let Term::RecRecord(..) = t.as_ref() {
-                            envs.get(id).unwrap()
+                            env.get(&id, global).unwrap().ty
                         } else {
                             TypeWrapper::Ptr(new_var(state.table))
                         };
 
                         type_check_(
                             state,
-                            envs.clone(),
+                            global,
                             lin,
                             linearizer.scope(ScopeId::Choice(choice)),
                             strict,
                             field,
-                            ty.clone(),
+                            Closure {
+                                ty: ty.clone(),
+                                env: env.clone(),
+                            },
                         )?;
 
                         Ok(mk_tyw_row!((id.clone(), ty); acc))
                     },
                 )?;
 
-                unify(state, strict, ty, mk_tyw_record!(; row))
-                    .map_err(|err| err.into_typecheck_err(state, rt.pos))
+                unify(
+                    state,
+                    strict,
+                    Closure::new(ty, env.clone()),
+                    Closure::new(mk_tyw_record!(; row), env),
+                )
+                .map_err(|err| err.into_typecheck_err(state, rt.pos))
             }
         }
         Term::Op1(op, t) => {
             let (ty_arg, ty_res) = get_uop_type(state, op)?;
 
-            unify(state, strict, ty, ty_res)
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+            unify(
+                state,
+                strict,
+                Closure::new(ty, env.clone()),
+                Closure::new(ty_res, env.clone()),
+            )
+            .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
             type_check_(
                 state,
-                envs.clone(),
+                global,
                 lin,
                 linearizer.scope(ScopeId::Right),
                 strict,
                 t,
-                ty_arg,
+                Closure { ty: ty_arg, env },
             )
         }
         Term::Op2(op, t1, t2) => {
-            let (ty_arg1, ty_arg2, ty_res) = get_bop_type(state, op)?;
+            let (ty_arg1, ty_arg2, ty_res) = get_bop_type(state, op, &env)?;
 
-            unify(state, strict, ty, ty_res)
+            unify(state, strict, Closure::new(ty, env.clone()), ty_res)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
             type_check_(
                 state,
-                envs.clone(),
+                global,
                 lin,
                 linearizer.scope(ScopeId::Left),
                 strict,
                 t1,
                 ty_arg1,
             )?;
-            type_check_(state, envs, lin, linearizer, strict, t2, ty_arg2)
+            type_check_(state, global, lin, linearizer, strict, t2, ty_arg2)
         }
         Term::OpN(op, args) => {
             let (tys_op, ty_ret) = get_nop_type(state, op)?;
 
-            unify(state, strict, ty, ty_ret)
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+            unify(
+                state,
+                strict,
+                Closure::new(ty, env.clone()),
+                Closure::new(ty_ret, env.clone()),
+            )
+            .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
             tys_op
                 .into_iter()
@@ -844,12 +1117,15 @@ fn type_check_<S, E>(
                 .try_for_each(|((choice, ty_t), t)| {
                     type_check_(
                         state,
-                        envs.clone(),
+                        global,
                         lin,
                         linearizer.scope(ScopeId::Choice(choice)),
                         strict,
                         t,
-                        ty_t,
+                        Closure {
+                            ty: ty_t,
+                            env: env.clone(),
+                        },
                     )?;
                     Ok(())
                 })?;
@@ -861,12 +1137,21 @@ fn type_check_<S, E>(
             value: Some(t),
             ..
         }) => {
-            let tyw2 = TypeWrapper::from(ty2.clone());
+            let clos = if let Types(AbsType::Var(ident)) = ty2 {
+                if let Some(replace_type) = env.get_typedef(ident) {
+                    Closure::new(replace_type.ty.clone(), env.clone())
+                } else {
+                    Closure::new(TypeWrapper::from(ty2.clone()), env.clone())
+                }
+            } else {
+                Closure::new(TypeWrapper::from(ty2.clone()), env.clone())
+            };
 
-            let instantiated = instantiate_foralls(state, tyw2.clone(), ForallInst::Constant);
+            let instantiated = instantiate_foralls(state, clos.clone(), ForallInst::Constant);
 
-            unify(state, strict, tyw2, ty).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            type_check_(state, envs, lin, linearizer, true, t, instantiated)
+            unify(state, strict, clos, Closure::new(ty, env.clone()))
+                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+            type_check_(state, global, lin, linearizer, true, t, instantiated)
         }
         // A metavalue with at least one contract is an assume. If there's several
         // contracts, we arbitrarily chose the first one as the type annotation.
@@ -876,39 +1161,77 @@ fn type_check_<S, E>(
             let ctr = contracts.get(0).unwrap();
             let Contract { types: ty2, .. } = ctr;
 
-            unify(state, strict, ty, ty2.clone().into())
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+            unify(
+                state,
+                strict,
+                Closure::new(ty, env.clone()),
+                Closure::new(ty2.clone().into(), env.clone()),
+            )
+            .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
             // if there's an inner value, we have to recursively typecheck it, but in non strict
             // mode.
             if let Some(t) = value {
                 type_check_(
                     state,
-                    envs,
+                    global,
                     lin,
                     linearizer,
                     false,
                     t,
-                    mk_typewrapper::dynamic(),
+                    Closure {
+                        ty: mk_typewrapper::dynamic(),
+                        env,
+                    },
                 )
             } else {
                 Ok(())
             }
         }
-        Term::Sym(_) => unify(state, strict, ty, mk_typewrapper::sym())
-            .map_err(|err| err.into_typecheck_err(state, rt.pos)),
-        Term::Wrapped(_, t) => type_check_(state, envs, lin, linearizer, strict, t, ty),
+        Term::Sym(_) => unify(
+            state,
+            strict,
+            Closure::new(ty, env.clone()),
+            Closure::new(mk_typewrapper::sym(), env),
+        )
+        .map_err(|err| err.into_typecheck_err(state, rt.pos)),
+
+        Term::Wrapped(_, t) => type_check_(
+            state,
+            global,
+            lin,
+            linearizer,
+            strict,
+            t,
+            Closure { ty, env },
+        ),
         // A non-empty metavalue without a type or contract annotation is typechecked in the same way as its inner value
-        Term::MetaValue(MetaValue { value: Some(t), .. }) => {
-            type_check_(state, envs, lin, linearizer, strict, t, ty)
-        }
+        Term::MetaValue(MetaValue { value: Some(t), .. }) => type_check_(
+            state,
+            global,
+            lin,
+            linearizer,
+            strict,
+            t,
+            Closure { ty, env },
+        ),
         // A metavalue without a body nor a type annotation is a record field without definition.
         // This should probably be non representable in the syntax, as it doesn't really make
         // sense. In any case, we infer it to be of type `Dyn` for now.
-        Term::MetaValue(_) => unify(state, strict, ty, mk_typewrapper::dynamic())
-            .map_err(|err| err.into_typecheck_err(state, rt.pos)),
-        Term::Import(_) => unify(state, strict, ty, mk_typewrapper::dynamic())
-            .map_err(|err| err.into_typecheck_err(state, rt.pos)),
+        Term::MetaValue(_) => unify(
+            state,
+            strict,
+            Closure::new(ty, env.clone()),
+            Closure::new(mk_typewrapper::dynamic(), env),
+        )
+        .map_err(|err| err.into_typecheck_err(state, rt.pos)),
+        Term::Import(_) => unify(
+            state,
+            strict,
+            Closure::new(ty, env.clone()),
+            Closure::new(mk_typewrapper::dynamic(), env),
+        )
+        .map_err(|err| err.into_typecheck_err(state, rt.pos)),
         // We use the apparent type of the import for checking. This function doesn't recursively
         // typecheck imports: this is the responsibility of the caller.
         Term::ResolvedImport(file_id) => {
@@ -916,9 +1239,14 @@ fn type_check_<S, E>(
                 .resolver
                 .get(*file_id)
                 .expect("Internal error: resolved import not found ({:?}) during typechecking.");
-            let ty_import: TypeWrapper =
-                apparent_type(t.as_ref(), Some(&Envs::from_envs(&envs))).into();
-            unify(state, strict, ty, ty_import).map_err(|err| err.into_typecheck_err(state, rt.pos))
+            let ty_import: TypeWrapper = apparent_type(t.as_ref(), Some((&env, global))).into();
+            unify(
+                state,
+                strict,
+                Closure::new(ty, env.clone()),
+                Closure::new(ty_import, env),
+            )
+            .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
     }
 }
@@ -932,8 +1260,14 @@ fn type_check_<S, E>(
 ///       return `Dyn`.
 ///     * in strict mode, we will typecheck `bound_exp`: return a new unification variable to be
 ///       associated to `bound_exp`.
-fn binding_type(t: &Term, envs: &Envs, table: &mut UnifTable, strict: bool) -> TypeWrapper {
-    let ty_apt = apparent_type(t, Some(envs));
+fn binding_type(
+    t: &Term,
+    envs: &mut Envs,
+    global: &GlobalEnvironment,
+    table: &mut UnifTable,
+    strict: bool,
+) -> TypeWrapper {
+    let ty_apt = apparent_type(t, Some((envs, global)));
 
     match ty_apt {
         ApparentType::Approximated(_) if strict => TypeWrapper::Ptr(new_var(table)),
@@ -948,6 +1282,7 @@ fn binding_type(t: &Term, envs: &Envs, table: &mut UnifTable, strict: bool) -> T
 /// generating a fresh unification variable.  In non-strict mode, however, the approximation is the
 /// best we can do. This type allows the caller of `apparent_type` to determine which situation it
 /// is.
+#[derive(Debug)]
 pub enum ApparentType {
     /// The apparent type is given by a user-provided annotation, such as an `Assume`, a `Promise`,
     /// or a metavalue.
@@ -997,7 +1332,7 @@ impl From<ApparentType> for TypeWrapper {
 /// - if `bound_exp` is a list, return `List Dyn`.
 /// - Otherwise, return an approximation of the type (currently `Dyn`, but could be more precise in
 ///   the future, such as `Dyn -> Dyn` for functions, `{ | Dyn}` for records, and so on).
-pub fn apparent_type(t: &Term, envs: Option<&Envs>) -> ApparentType {
+pub fn apparent_type(t: &Term, envs: Option<(&Envs, &GlobalEnvironment)>) -> ApparentType {
     match t {
         Term::MetaValue(MetaValue {
             types: Some(Contract { types: ty, .. }),
@@ -1016,7 +1351,7 @@ pub fn apparent_type(t: &Term, envs: Option<&Envs>) -> ApparentType {
             ApparentType::Approximated(Types(AbsType::List(Box::new(Types(AbsType::Dyn())))))
         }
         Term::Var(id) => envs
-            .and_then(|envs| envs.get(id))
+            .and_then(|(envs, glob)| envs.get(id, glob).map(|clos| clos.ty))
             .map(ApparentType::FromEnv)
             .unwrap_or(ApparentType::Approximated(Types(AbsType::Dyn()))),
         _ => ApparentType::Approximated(Types(AbsType::Dyn())),
@@ -1247,11 +1582,12 @@ fn row_add(
     state: &mut State,
     id: &Ident,
     ty: Option<Box<TypeWrapper>>,
-    mut r: TypeWrapper,
+    mut c: Closure,
 ) -> Result<(Option<Box<TypeWrapper>>, TypeWrapper), RowUnifError> {
-    if let TypeWrapper::Ptr(p) = r {
-        r = get_root(state.table, p);
+    if let TypeWrapper::Ptr(p) = c.ty {
+        c = get_root(state.table, p, &c.env);
     }
+    let Closure { ty: r, env } = c;
     match r {
         TypeWrapper::Concrete(AbsType::RowEmpty()) | TypeWrapper::Concrete(AbsType::Dyn()) => {
             Err(RowUnifError::MissingRow(id.clone()))
@@ -1260,7 +1596,7 @@ fn row_add(
             if *id == id2 {
                 Ok((ty2, *r2))
             } else {
-                let (extracted_type, subrow) = row_add(state, id, ty, *r2)?;
+                let (extracted_type, subrow) = row_add(state, id, ty, Closure { ty: *r2, env })?;
                 Ok((
                     extracted_type,
                     TypeWrapper::Concrete(AbsType::RowExtend(id2, ty2, Box::new(subrow))),
@@ -1269,23 +1605,33 @@ fn row_add(
         }
         TypeWrapper::Ptr(root) => {
             if let Some(set) = state.constr.get(&root) {
-                if set.contains(id) {
-                    return Err(RowUnifError::UnsatConstr(id.clone(), ty.map(|tyw| *tyw)));
+                if set.contains(&id) {
+                    return Err(RowUnifError::UnsatConstr(
+                        id.clone(),
+                        ty.map(|tyw| Closure::new(*tyw, env)),
+                    ));
                 }
             }
             let new_row = TypeWrapper::Ptr(new_var(state.table));
-            constraint(state, new_row.clone(), id.clone())?;
+            constraint(
+                state,
+                Closure::new(new_row.clone(), env.clone()),
+                id.clone(),
+            )?;
             state.table.insert(
                 root,
-                Some(TypeWrapper::Concrete(AbsType::RowExtend(
-                    id.clone(),
-                    ty.clone(),
-                    Box::new(new_row.clone()),
-                ))),
+                Some(Closure {
+                    ty: TypeWrapper::Concrete(AbsType::RowExtend(
+                        id.clone(),
+                        ty.clone(),
+                        Box::new(new_row.clone()),
+                    )),
+                    env,
+                }),
             );
             Ok((ty, new_row))
         }
-        other => Err(RowUnifError::IllformedRow(other)),
+        other => Err(RowUnifError::IllformedRow(Closure::new(other, env))),
     }
 }
 
@@ -1293,31 +1639,18 @@ fn row_add(
 ///
 /// A wrapper around `unify_` which just checks if `strict` is set to true. If not, it directly
 /// returns `Ok(())` without unifying anything.
-pub fn unify(
-    state: &mut State,
-    strict: bool,
-    t1: TypeWrapper,
-    t2: TypeWrapper,
-) -> Result<(), UnifError> {
+pub fn unify(state: &mut State, strict: bool, t1c: Closure, t2c: Closure) -> Result<(), UnifError> {
     if strict {
-        unify_(state, t1, t2)
+        unify_(state, t1c, t2c)
     } else {
         Ok(())
     }
 }
 
 /// Try to unify two types.
-pub fn unify_(
-    state: &mut State,
-    mut t1: TypeWrapper,
-    mut t2: TypeWrapper,
-) -> Result<(), UnifError> {
-    if let TypeWrapper::Ptr(pt1) = t1 {
-        t1 = get_root(state.table, pt1);
-    }
-    if let TypeWrapper::Ptr(pt2) = t2 {
-        t2 = get_root(state.table, pt2);
-    }
+pub fn unify_(state: &mut State, t1c: Closure, t2c: Closure) -> Result<(), UnifError> {
+    let Closure { ty: t1, env: env1 } = t1c.try_get_root(state);
+    let Closure { ty: t2, env: env2 } = t2c.try_get_root(state);
 
     // t1 and t2 are roots of the type
     match (t1, t2) {
@@ -1326,20 +1659,41 @@ pub fn unify_(
             (AbsType::Num(), AbsType::Num()) => Ok(()),
             (AbsType::Bool(), AbsType::Bool()) => Ok(()),
             (AbsType::Str(), AbsType::Str()) => Ok(()),
-            (AbsType::List(tyw1), AbsType::List(tyw2)) => unify_(state, *tyw1, *tyw2),
+            (AbsType::Var(Ident(..)), _) | (_, AbsType::Var(Ident(..))) => {
+                unreachable!()
+            }
+            (AbsType::List(tyw1), AbsType::List(tyw2)) => {
+                unify_(state, Closure::new(*tyw1, env1), Closure::new(*tyw2, env2))
+            }
             (AbsType::Sym(), AbsType::Sym()) => Ok(()),
             (AbsType::Arrow(s1s, s1t), AbsType::Arrow(s2s, s2t)) => {
-                unify_(state, (*s1s).clone(), (*s2s).clone()).map_err(|err| {
+                unify_(
+                    state,
+                    Closure::new((*s1s).clone(), env1.clone()),
+                    Closure::new((*s2s).clone(), env2.clone()),
+                )
+                .map_err(|err| {
                     UnifError::DomainMismatch(
-                        TypeWrapper::Concrete(AbsType::Arrow(s1s.clone(), s1t.clone())),
-                        TypeWrapper::Concrete(AbsType::Arrow(s2s.clone(), s2t.clone())),
+                        Closure::new(
+                            TypeWrapper::Concrete(AbsType::Arrow(s1s.clone(), s1t.clone())),
+                            env1.clone(),
+                        ),
+                        Closure::new(
+                            TypeWrapper::Concrete(AbsType::Arrow(s2s.clone(), s2t.clone())),
+                            env2.clone(),
+                        ),
                         Box::new(err),
                     )
                 })?;
-                unify_(state, (*s1t).clone(), (*s2t).clone()).map_err(|err| {
+                unify_(
+                    state,
+                    Closure::new((*s1t).clone(), env1.clone()),
+                    Closure::new((*s2t).clone(), env2.clone()),
+                )
+                .map_err(|err| {
                     UnifError::CodomainMismatch(
-                        TypeWrapper::Concrete(AbsType::Arrow(s1s, s1t)),
-                        TypeWrapper::Concrete(AbsType::Arrow(s2s, s2t)),
+                        Closure::new(TypeWrapper::Concrete(AbsType::Arrow(s1s, s1t)), env1),
+                        Closure::new(TypeWrapper::Concrete(AbsType::Arrow(s2s, s2t)), env2),
                         Box::new(err),
                     )
                 })
@@ -1347,65 +1701,91 @@ pub fn unify_(
             (AbsType::Flat(s), AbsType::Flat(t)) => match (s.as_ref(), t.as_ref()) {
                 (Term::Var(vs), Term::Var(ts)) if vs == ts => Ok(()),
                 (Term::Var(_), Term::Var(_)) => Err(UnifError::TypeMismatch(
-                    TypeWrapper::Concrete(AbsType::Flat(s)),
-                    TypeWrapper::Concrete(AbsType::Flat(t)),
+                    Closure::new(TypeWrapper::Concrete(AbsType::Flat(s)), env1),
+                    Closure::new(TypeWrapper::Concrete(AbsType::Flat(t)), env2),
                 )),
                 (Term::Var(_), _) => Err(UnifError::IllformedFlatType(t)),
                 _ => Err(UnifError::IllformedFlatType(s)),
             },
-            (r1, r2) if r1.is_row_type() && r2.is_row_type() => {
-                unify_rows(state, r1.clone(), r2.clone()).map_err(|err| {
-                    err.into_unif_err(TypeWrapper::Concrete(r1), TypeWrapper::Concrete(r2))
-                })
-            }
+            (r1, r2) if r1.is_row_type() && r2.is_row_type() => unify_rows(
+                state,
+                Closure::from_abs(r1.clone(), env1.clone()),
+                Closure::from_abs(r2.clone(), env2.clone()),
+            )
+            .map_err(|err| {
+                err.into_unif_err(
+                    Closure::new(TypeWrapper::Concrete(r1), env1),
+                    Closure::new(TypeWrapper::Concrete(r2), env2),
+                )
+            }),
             (AbsType::Enum(tyw1), AbsType::Enum(tyw2)) => match (*tyw1, *tyw2) {
                 (TypeWrapper::Concrete(r1), TypeWrapper::Concrete(r2))
                     if r1.is_row_type() && r2.is_row_type() =>
                 {
-                    unify_rows(state, r1.clone(), r2.clone())
-                        .map_err(|err| err.into_unif_err(mk_tyw_enum!(r1), mk_tyw_enum!(r2)))
+                    unify_rows(
+                        state,
+                        Closure::from_abs(r1.clone(), env1.clone()),
+                        Closure::from_abs(r2.clone(), env2.clone()),
+                    )
+                    .map_err(|err| {
+                        err.into_unif_err(
+                            Closure::new(mk_tyw_enum!(r1), env1),
+                            Closure::new(mk_tyw_enum!(r2), env2),
+                        )
+                    })
                 }
-                (TypeWrapper::Concrete(r), _) if !r.is_row_type() => {
-                    Err(UnifError::IllformedType(mk_tyw_enum!(r)))
-                }
-                (_, TypeWrapper::Concrete(r)) if !r.is_row_type() => {
-                    Err(UnifError::IllformedType(mk_tyw_enum!(r)))
-                }
-                (tyw1, tyw2) => unify_(state, tyw1, tyw2),
+                (TypeWrapper::Concrete(r), _) if !r.is_row_type() => Err(UnifError::IllformedType(
+                    Closure::new(mk_tyw_enum!(r), env1),
+                )),
+                (_, TypeWrapper::Concrete(r)) if !r.is_row_type() => Err(UnifError::IllformedType(
+                    Closure::new(mk_tyw_enum!(r), env2),
+                )),
+                (tyw1, tyw2) => unify_(state, Closure::new(tyw1, env1), Closure::new(tyw2, env2)),
             },
             (AbsType::StaticRecord(tyw1), AbsType::StaticRecord(tyw2)) => match (*tyw1, *tyw2) {
                 (TypeWrapper::Concrete(r1), TypeWrapper::Concrete(r2))
                     if r1.is_row_type() && r2.is_row_type() =>
                 {
-                    unify_rows(state, r1.clone(), r2.clone()).map_err(|err| {
-                        err.into_unif_err(mk_tyw_record!(; r1), mk_tyw_record!(; r2))
+                    unify_rows(
+                        state,
+                        Closure::from_abs(r1.clone(), env1.clone()),
+                        Closure::from_abs(r2.clone(), env2.clone()),
+                    )
+                    .map_err(|err| {
+                        err.into_unif_err(
+                            Closure::new(mk_tyw_record!(; r1), env1),
+                            Closure::new(mk_tyw_record!(; r2), env2),
+                        )
                     })
                 }
-                (TypeWrapper::Concrete(r), _) if !r.is_row_type() => {
-                    Err(UnifError::IllformedType(mk_tyw_record!(; r)))
-                }
-                (_, TypeWrapper::Concrete(r)) if !r.is_row_type() => {
-                    Err(UnifError::IllformedType(mk_tyw_record!(; r)))
-                }
-                (tyw1, tyw2) => unify_(state, tyw1, tyw2),
+                (TypeWrapper::Concrete(r), _) if !r.is_row_type() => Err(UnifError::IllformedType(
+                    Closure::new(mk_tyw_record!(; r), env1),
+                )),
+                (_, TypeWrapper::Concrete(r)) if !r.is_row_type() => Err(UnifError::IllformedType(
+                    Closure::new(mk_tyw_record!(; r), env2),
+                )),
+                (tyw1, tyw2) => unify_(state, Closure::new(tyw1, env1), Closure::new(tyw2, env2)),
             },
-            (AbsType::DynRecord(t), AbsType::DynRecord(t2)) => unify_(state, *t, *t2),
+            (AbsType::DynRecord(t), AbsType::DynRecord(t2)) => {
+                unify_(state, Closure::new(*t, env1), Closure::new(*t2, env2))
+            }
             (AbsType::Forall(i1, t1t), AbsType::Forall(i2, t2t)) => {
                 // Very stupid (slow) implementation
                 let constant_type = TypeWrapper::Constant(new_var(state.table));
 
                 unify_(
                     state,
-                    t1t.subst(i1, constant_type.clone()),
-                    t2t.subst(i2, constant_type),
+                    Closure::new(t1t.subst(i1, constant_type.clone()), env1),
+                    Closure::new(t2t.subst(i2, constant_type), env2),
                 )
             }
+            #[allow(unreachable_patterns)]
             (AbsType::Var(ident), _) | (_, AbsType::Var(ident)) => {
                 Err(UnifError::UnboundTypeVariable(ident))
             }
             (ty1, ty2) => Err(UnifError::TypeMismatch(
-                TypeWrapper::Concrete(ty1),
-                TypeWrapper::Concrete(ty2),
+                Closure::new(TypeWrapper::Concrete(ty1), env1),
+                Closure::new(TypeWrapper::Concrete(ty2), env2),
             )),
         },
         (TypeWrapper::Ptr(p1), TypeWrapper::Ptr(p2)) if p1 == p2 => Ok(()),
@@ -1413,24 +1793,31 @@ pub fn unify_(
         // expected type (first component of the tuple) and the inferred type when reporting a row
         // unification error.
         (TypeWrapper::Ptr(p), tyw) => {
-            constr_unify(state.constr, p, &tyw)
-                .map_err(|err| err.into_unif_err(TypeWrapper::Ptr(p), tyw.clone()))?;
-            state.table.insert(p, Some(tyw));
+            constr_unify(state.constr, p, &tyw, &env2).map_err(|err| {
+                err.into_unif_err(
+                    Closure::new(TypeWrapper::Ptr(p), env1),
+                    Closure::new(tyw.clone(), env2.clone()),
+                )
+            })?;
+            state.table.insert(p, Some(Closure { ty: tyw, env: env2 }));
             Ok(())
         }
         (tyw, TypeWrapper::Ptr(p)) => {
-            constr_unify(state.constr, p, &tyw)
-                .map_err(|err| err.into_unif_err(tyw.clone(), TypeWrapper::Ptr(p)))?;
-            state.table.insert(p, Some(tyw));
+            constr_unify(state.constr, p, &tyw, &env1).map_err(|err| {
+                err.into_unif_err(
+                    Closure::new(tyw.clone(), env1.clone()),
+                    Closure::new(TypeWrapper::Ptr(p), env2),
+                )
+            })?;
+            state.table.insert(p, Some(Closure { ty: tyw, env: env1 }));
             Ok(())
         }
         (TypeWrapper::Constant(i1), TypeWrapper::Constant(i2)) if i1 == i2 => Ok(()),
         (TypeWrapper::Constant(i1), TypeWrapper::Constant(i2)) => {
             Err(UnifError::ConstMismatch(i1, i2))
         }
-        (ty, TypeWrapper::Constant(i)) | (TypeWrapper::Constant(i), ty) => {
-            Err(UnifError::WithConst(i, ty))
-        }
+        (ty, TypeWrapper::Constant(i)) => Err(UnifError::WithConst(i, Closure::new(ty, env1))),
+        (TypeWrapper::Constant(i), ty) => Err(UnifError::WithConst(i, Closure::new(ty, env2))),
     }
 }
 
@@ -1438,9 +1825,23 @@ pub fn unify_(
 /// is not a row type.
 pub fn unify_rows(
     state: &mut State,
-    t1: AbsType<Box<TypeWrapper>>,
-    t2: AbsType<Box<TypeWrapper>>,
+    t1c: Closure, //AbsType<Box<TypeWrapper>>,
+    t2c: Closure, //AbsType<Box<TypeWrapper>>,
+                  //env: TypeEnvironment
 ) -> Result<(), RowUnifError> {
+    let Closure { ty: t1w, env: env1 } = t1c;
+    let Closure { ty: t2w, env: env2 } = t2c;
+    let t1 = if let TypeWrapper::Concrete(absty) = t1w {
+        absty
+    } else {
+        unreachable!("Not concreate abstype unify_rows (1)")
+    };
+    let t2 = if let TypeWrapper::Concrete(absty) = t2w {
+        absty
+    } else {
+        unreachable!("Not concreat abstype unify_rows (2)")
+    };
+
     match (t1, t2) {
         (AbsType::RowEmpty(), AbsType::RowEmpty()) | (AbsType::Dyn(), AbsType::Dyn()) => Ok(()),
         (AbsType::RowEmpty(), AbsType::Dyn()) => Err(RowUnifError::ExtraDynTail()),
@@ -1452,22 +1853,36 @@ pub fn unify_rows(
             Err(RowUnifError::MissingRow(ident))
         }
         (AbsType::RowExtend(id, ty, t), r2 @ AbsType::RowExtend(_, _, _)) => {
-            let (ty2, t2_tail) = row_add(state, &id, ty.clone(), TypeWrapper::Concrete(r2))?;
+            let (ty2, t2_tail) = row_add(
+                state,
+                &id,
+                ty.clone(),
+                Closure {
+                    ty: TypeWrapper::Concrete(r2),
+                    env: env1.clone(),
+                },
+            )?;
             match (ty, ty2) {
                 (None, None) => Ok(()),
-                (Some(ty), Some(ty2)) => unify_(state, *ty, *ty2)
-                    .map_err(|err| RowUnifError::RowMismatch(id.clone(), Box::new(err))),
+                (Some(ty), Some(ty2)) => unify_(
+                    state,
+                    Closure::new(*ty, env1.clone()),
+                    Closure::new(*ty2, env2.clone()),
+                )
+                .map_err(|err| RowUnifError::RowMismatch(id.clone(), err)),
                 (ty1, ty2) => Err(RowUnifError::RowKindMismatch(
                     id,
-                    ty1.map(|t| *t),
-                    ty2.map(|t| *t),
+                    ty1.map(|t| Closure::new(*t, env1.clone())),
+                    ty2.map(|t| Closure::new(*t, env2.clone())),
                 )),
             }?;
 
             match (*t, t2_tail) {
-                (TypeWrapper::Concrete(r1_tail), TypeWrapper::Concrete(r2_tail)) => {
-                    unify_rows(state, r1_tail, r2_tail)
-                }
+                (TypeWrapper::Concrete(r1_tail), TypeWrapper::Concrete(r2_tail)) => unify_rows(
+                    state,
+                    Closure::from_abs(r1_tail, env1.clone()),
+                    Closure::from_abs(r2_tail, env2.clone()),
+                ),
                 // If one of the tail is not a concrete type, it is either a unification variable
                 // or a constant (rigid type variable). `unify` already knows how to treat these
                 // cases, so we delegate the work. However it returns `UnifError` instead of
@@ -1475,7 +1890,12 @@ pub fn unify_rows(
                 // since we are unifying types with a constant or a unification variable somewhere,
                 // the only unification errors that should be possible are related to constants or
                 // row constraints.
-                (t1_tail, t2_tail) => unify_(state, t1_tail, t2_tail).map_err(|err| match err {
+                (t1_tail, t2_tail) => unify_(
+                    state,
+                    Closure::new(t1_tail, env1),
+                    Closure::new(t2_tail, env2),
+                )
+                .map_err(|err| match err {
                     UnifError::ConstMismatch(c1, c2) => RowUnifError::ConstMismatch(c1, c2),
                     UnifError::WithConst(c1, tyw) => RowUnifError::WithConst(c1, tyw),
                     UnifError::RowConflict(id, tyw_opt, _, _) => {
@@ -1488,22 +1908,39 @@ pub fn unify_rows(
                 }),
             }
         }
-        (ty, _) if !ty.is_row_type() => Err(RowUnifError::IllformedRow(TypeWrapper::Concrete(ty))),
-        (_, ty) => Err(RowUnifError::IllformedRow(TypeWrapper::Concrete(ty))),
+        (ty, _) if !ty.is_row_type() => Err(RowUnifError::IllformedRow(Closure::new(
+            TypeWrapper::Concrete(ty),
+            env1,
+        ))),
+        (_, ty) => Err(RowUnifError::IllformedRow(Closure::new(
+            TypeWrapper::Concrete(ty),
+            env2,
+        ))),
     }
 }
 
 /// Extract the concrete type corresponding to a type wrapper. Free unification variables as well
 /// as type constants are replaced with the type `Dyn`.
-fn to_type(table: &UnifTable, ty: TypeWrapper) -> Types {
-    match ty {
-        TypeWrapper::Ptr(p) => match get_root(table, p) {
-            t @ TypeWrapper::Concrete(_) => to_type(table, t),
-            _ => Types(AbsType::Dyn()),
-        },
+fn to_type(table: &UnifTable, c: Closure) -> Types {
+    match c.ty.clone() {
+        TypeWrapper::Ptr(p) => {
+            let root = get_root(table, p, &c.env);
+            match root.ty {
+                TypeWrapper::Concrete(_) => to_type(table, c),
+                _ => Types(AbsType::Dyn()),
+            }
+        }
         TypeWrapper::Constant(_) => Types(AbsType::Dyn()),
         TypeWrapper::Concrete(t) => {
-            let mapped = t.map(|btyp| Box::new(to_type(table, *btyp)));
+            let mapped = t.map(|btyp| {
+                Box::new(to_type(
+                    table,
+                    Closure {
+                        ty: *btyp,
+                        env: c.env.clone(),
+                    },
+                ))
+            });
             Types(mapped)
         }
     }
@@ -1623,16 +2060,30 @@ pub mod reporting {
         table: &UnifTable,
         reported_names: &HashMap<usize, Ident>,
         names: &mut NameReg,
-        ty: TypeWrapper,
+        c: Closure,
     ) -> Types {
-        match ty {
-            TypeWrapper::Ptr(p) => match get_root(table, p) {
-                TypeWrapper::Ptr(p) => var_to_type(reported_names, names, p),
-                tyw => to_type(table, reported_names, names, tyw),
-            },
+        match c.ty.clone() {
+            TypeWrapper::Ptr(p) => {
+                let root = get_root(table, p, &c.env);
+                if let TypeWrapper::Ptr(ref p) = root.ty {
+                    var_to_type(reported_names, names, *p)
+                } else {
+                    to_type(table, reported_names, names, root)
+                }
+            }
             TypeWrapper::Constant(c) => cst_to_type(reported_names, names, c),
             TypeWrapper::Concrete(t) => {
-                let mapped = t.map(|btyp| Box::new(to_type(table, reported_names, names, *btyp)));
+                let mapped = t.map(|btyp| {
+                    Box::new(to_type(
+                        table,
+                        reported_names,
+                        names,
+                        Closure {
+                            ty: *btyp,
+                            env: c.env.clone(),
+                        },
+                    ))
+                });
                 Types(mapped)
             }
         }
@@ -1662,26 +2113,25 @@ enum ForallInst {
 /// - `state`: the unification state
 /// - `ty`: the polymorphic type to instantiate
 /// - `inst`: the type of instantiation, either by a type constant or by a unification variable
-fn instantiate_foralls(state: &mut State, mut ty: TypeWrapper, inst: ForallInst) -> TypeWrapper {
-    if let TypeWrapper::Ptr(p) = ty {
-        ty = get_root(state.table, p);
+fn instantiate_foralls(state: &mut State, mut clos: Closure, inst: ForallInst) -> Closure {
+    if let TypeWrapper::Ptr(p) = &clos.ty {
+        clos = get_root(state.table, *p, &clos.env);
     }
-
-    while let TypeWrapper::Concrete(AbsType::Forall(id, forall_ty)) = ty {
+    while let TypeWrapper::Concrete(AbsType::Forall(id, forall_ty)) = clos.ty {
         let fresh_id = new_var(state.table);
         let var = match inst {
             ForallInst::Constant => TypeWrapper::Constant(fresh_id),
             ForallInst::Ptr => TypeWrapper::Ptr(fresh_id),
         };
         state.names.insert(fresh_id, id.clone());
-        ty = forall_ty.subst(id, var);
+        clos.ty = forall_ty.subst(id, var);
 
         if inst == ForallInst::Ptr {
-            constrain_var(state, &ty, fresh_id)
+            constrain_var(state, &clos.ty, &clos.env, fresh_id)
         }
     }
 
-    ty
+    clos
 }
 
 /// Type of unary operations.
@@ -1728,7 +2178,7 @@ pub fn get_uop_type(
         UnaryOp::Embed(id) => {
             let row = TypeWrapper::Ptr(new_var(state.table));
             // Constraining a freshly created variable should never fail.
-            constraint(state, row.clone(), id.clone()).unwrap();
+            constraint(state, Closure::new(row.clone(), Envs::new()), id.clone()).unwrap();
             (mk_tyw_enum!(row.clone()), mk_tyw_enum!(id.clone(), row))
         }
         // This should not happen, as Switch() is only produced during evaluation.
@@ -1856,7 +2306,8 @@ pub fn get_uop_type(
 pub fn get_bop_type(
     state: &mut State,
     op: &BinaryOp,
-) -> Result<(TypeWrapper, TypeWrapper, TypeWrapper), TypecheckError> {
+    env: &Envs,
+) -> Result<(Closure, Closure, Closure), TypecheckError> {
     Ok(match op {
         // Num -> Num -> Num
         BinaryOp::Plus()
@@ -1864,68 +2315,71 @@ pub fn get_bop_type(
         | BinaryOp::Mult()
         | BinaryOp::Div()
         | BinaryOp::Modulo() => (
-            mk_typewrapper::num(),
-            mk_typewrapper::num(),
-            mk_typewrapper::num(),
+            Closure::new(mk_typewrapper::num(), env.clone()),
+            Closure::new(mk_typewrapper::num(), env.clone()),
+            Closure::new(mk_typewrapper::num(), env.clone()),
         ),
         // Str -> Str -> Str
         BinaryOp::StrConcat() => (
-            mk_typewrapper::str(),
-            mk_typewrapper::str(),
-            mk_typewrapper::str(),
+            Closure::new(mk_typewrapper::str(), env.clone()),
+            Closure::new(mk_typewrapper::str(), env.clone()),
+            Closure::new(mk_typewrapper::str(), env.clone()),
         ),
         // Sym -> Dyn -> Dyn -> Dyn
         // This should not happen, as `ApplyContract()` is only produced during evaluation.
         BinaryOp::Assume() => panic!("cannot typecheck assume"),
         BinaryOp::Unwrap() => (
-            mk_typewrapper::sym(),
-            mk_typewrapper::dynamic(),
-            mk_tyw_arrow!(AbsType::Dyn(), AbsType::Dyn()),
+            Closure::new(mk_typewrapper::sym(), env.clone()),
+            Closure::new(mk_typewrapper::dynamic(), env.clone()),
+            Closure::new(mk_tyw_arrow!(AbsType::Dyn(), AbsType::Dyn()), env.clone()),
         ),
         // Str -> Dyn -> Dyn
         BinaryOp::Tag() => (
-            mk_typewrapper::str(),
-            mk_typewrapper::dynamic(),
-            mk_typewrapper::dynamic(),
+            Closure::new(mk_typewrapper::str(), env.clone()),
+            Closure::new(mk_typewrapper::dynamic(), env.clone()),
+            Closure::new(mk_typewrapper::dynamic(), env.clone()),
         ),
         // forall a b. a -> b -> Bool
         BinaryOp::Eq() => (
-            TypeWrapper::Ptr(new_var(state.table)),
-            TypeWrapper::Ptr(new_var(state.table)),
-            mk_typewrapper::bool(),
+            Closure::new(TypeWrapper::Ptr(new_var(state.table)), env.clone()),
+            Closure::new(TypeWrapper::Ptr(new_var(state.table)), env.clone()),
+            Closure::new(mk_typewrapper::bool(), env.clone()),
         ),
         // Num -> Num -> Bool
         BinaryOp::LessThan()
         | BinaryOp::LessOrEq()
         | BinaryOp::GreaterThan()
         | BinaryOp::GreaterOrEq() => (
-            mk_typewrapper::num(),
-            mk_typewrapper::num(),
-            mk_typewrapper::bool(),
+            Closure::new(mk_typewrapper::num(), env.clone()),
+            Closure::new(mk_typewrapper::num(), env.clone()),
+            Closure::new(mk_typewrapper::bool(), env.clone()),
         ),
         // Str -> Dyn -> Dyn
         BinaryOp::GoField() => (
-            mk_typewrapper::str(),
-            mk_typewrapper::dynamic(),
-            mk_typewrapper::dynamic(),
+            Closure::new(mk_typewrapper::str(), env.clone()),
+            Closure::new(mk_typewrapper::dynamic(), env.clone()),
+            Closure::new(mk_typewrapper::dynamic(), env.clone()),
         ),
         // forall a. Str -> { _ : a} -> a
         BinaryOp::DynAccess() => {
             let res = TypeWrapper::Ptr(new_var(state.table));
 
             (
-                mk_typewrapper::str(),
-                mk_typewrapper::dyn_record(res.clone()),
-                res,
+                Closure::new(mk_typewrapper::str(), env.clone()),
+                Closure::new(mk_typewrapper::dyn_record(res.clone()), env.clone()),
+                Closure::new(res, env.clone()),
             )
         }
         // forall a. Str -> { _ : a } -> a -> { _ : a }
         BinaryOp::DynExtend() => {
             let res = TypeWrapper::Ptr(new_var(state.table));
             (
-                mk_typewrapper::str(),
-                mk_typewrapper::dyn_record(res.clone()),
-                mk_tyw_arrow!(res.clone(), mk_typewrapper::dyn_record(res)),
+                Closure::new(mk_typewrapper::str(), env.clone()),
+                Closure::new(mk_typewrapper::dyn_record(res.clone()), env.clone()),
+                Closure::new(
+                    mk_tyw_arrow!(res.clone(), mk_typewrapper::dyn_record(res)),
+                    env.clone(),
+                ),
             )
         }
         // forall a. Str -> { _ : a } -> { _ : a}
@@ -1933,98 +2387,110 @@ pub fn get_bop_type(
             let res = TypeWrapper::Ptr(new_var(state.table));
 
             (
-                mk_typewrapper::str(),
-                mk_typewrapper::dyn_record(res.clone()),
-                mk_typewrapper::dyn_record(res),
+                Closure::new(mk_typewrapper::str(), env.clone()),
+                Closure::new(mk_typewrapper::dyn_record(res.clone()), env.clone()),
+                Closure::new(mk_typewrapper::dyn_record(res), env.clone()),
             )
         }
         // Str -> Dyn -> Bool
         BinaryOp::HasField() => (
-            mk_typewrapper::str(),
-            mk_typewrapper::dynamic(),
-            mk_typewrapper::bool(),
+            Closure::new(mk_typewrapper::str(), env.clone()),
+            Closure::new(mk_typewrapper::dynamic(), env.clone()),
+            Closure::new(mk_typewrapper::bool(), env.clone()),
         ),
         // forall a. List a -> List a -> List a
         BinaryOp::ListConcat() => {
-            let ty_elt = TypeWrapper::Ptr(new_var(state.table));
-            let ty_list = mk_typewrapper::list(ty_elt);
+            let ty_elt = Closure::new(TypeWrapper::Ptr(new_var(state.table)), env.clone());
+            let ty_list = Closure::new(mk_typewrapper::list(ty_elt.ty), env.clone());
             (ty_list.clone(), ty_list.clone(), ty_list)
         }
         // forall a. List a -> Num -> a
         BinaryOp::ListElemAt() => {
             let ty_elt = TypeWrapper::Ptr(new_var(state.table));
             (
-                mk_typewrapper::list(ty_elt.clone()),
-                mk_typewrapper::num(),
-                ty_elt,
+                Closure::new(mk_typewrapper::list(ty_elt.clone()), env.clone()),
+                Closure::new(mk_typewrapper::num(), env.clone()),
+                Closure::new(ty_elt, env.clone()),
             )
         }
         // Dyn -> Dyn -> Dyn
         BinaryOp::Merge() => (
-            mk_typewrapper::dynamic(),
-            mk_typewrapper::dynamic(),
-            mk_typewrapper::dynamic(),
+            Closure::new(mk_typewrapper::dynamic(), env.clone()),
+            Closure::new(mk_typewrapper::dynamic(), env.clone()),
+            Closure::new(mk_typewrapper::dynamic(), env.clone()),
         ),
         // <Md5, Sha1, Sha256, Sha512> -> Str -> Str
         BinaryOp::Hash() => (
-            mk_tyw_enum!(
-                "Md5",
-                "Sha1",
-                "Sha256",
-                "Sha512",
-                mk_typewrapper::row_empty()
+            Closure::new(
+                mk_tyw_enum!(
+                    "Md5",
+                    "Sha1",
+                    "Sha256",
+                    "Sha512",
+                    mk_typewrapper::row_empty()
+                ),
+                env.clone(),
             ),
-            mk_typewrapper::str(),
-            mk_typewrapper::str(),
+            Closure::new(mk_typewrapper::str(), env.clone()),
+            Closure::new(mk_typewrapper::str(), env.clone()),
         ),
         // forall a. <Json, Yaml, Toml> -> a -> Str
         BinaryOp::Serialize() => {
             let ty_input = TypeWrapper::Ptr(new_var(state.table));
             (
-                mk_tyw_enum!("Json", "Yaml", "Toml", mk_typewrapper::row_empty()),
-                ty_input,
-                mk_typewrapper::str(),
+                Closure::new(
+                    mk_tyw_enum!("Json", "Yaml", "Toml", mk_typewrapper::row_empty()),
+                    env.clone(),
+                ),
+                Closure::new(ty_input, env.clone()),
+                Closure::new(mk_typewrapper::str(), env.clone()),
             )
         }
         // <Json, Yaml, Toml> -> Str -> Dyn
         BinaryOp::Deserialize() => (
-            mk_tyw_enum!("Json", "Yaml", "Toml", mk_typewrapper::row_empty()),
-            mk_typewrapper::str(),
-            mk_typewrapper::dynamic(),
+            Closure::new(
+                mk_tyw_enum!("Json", "Yaml", "Toml", mk_typewrapper::row_empty()),
+                env.clone(),
+            ),
+            Closure::new(mk_typewrapper::str(), env.clone()),
+            Closure::new(mk_typewrapper::dynamic(), env.clone()),
         ),
         // Num -> Num -> Num
         BinaryOp::Pow() => (
-            mk_typewrapper::num(),
-            mk_typewrapper::num(),
-            mk_typewrapper::num(),
+            Closure::new(mk_typewrapper::num(), env.clone()),
+            Closure::new(mk_typewrapper::num(), env.clone()),
+            Closure::new(mk_typewrapper::num(), env.clone()),
         ),
         // Str -> Str -> Bool
         BinaryOp::StrContains() => (
-            mk_typewrapper::str(),
-            mk_typewrapper::str(),
-            mk_typewrapper::bool(),
+            Closure::new(mk_typewrapper::str(), env.clone()),
+            Closure::new(mk_typewrapper::str(), env.clone()),
+            Closure::new(mk_typewrapper::bool(), env.clone()),
         ),
         // Str -> Str -> Bool
         BinaryOp::StrIsMatch() => (
-            mk_typewrapper::str(),
-            mk_typewrapper::str(),
-            mk_typewrapper::bool(),
+            Closure::new(mk_typewrapper::str(), env.clone()),
+            Closure::new(mk_typewrapper::str(), env.clone()),
+            Closure::new(mk_typewrapper::bool(), env.clone()),
         ),
         // Str -> Str -> {match: Str, index: Num, groups: List Str}
         BinaryOp::StrMatch() => (
-            mk_typewrapper::str(),
-            mk_typewrapper::str(),
-            mk_tyw_record!(
-                ("match", AbsType::Str()),
-                ("index", AbsType::Num()),
-                ("groups", mk_typewrapper::list(AbsType::Str()))
+            Closure::new(mk_typewrapper::str(), env.clone()),
+            Closure::new(mk_typewrapper::str(), env.clone()),
+            Closure::new(
+                mk_tyw_record!(
+                    ("match", AbsType::Str()),
+                    ("index", AbsType::Num()),
+                    ("groups", mk_typewrapper::list(AbsType::Str()))
+                ),
+                env.clone(),
             ),
         ),
         // Str -> Str -> List Str
         BinaryOp::StrSplit() => (
-            mk_typewrapper::str(),
-            mk_typewrapper::str(),
-            mk_typewrapper::list(AbsType::Str()),
+            Closure::new(mk_typewrapper::str(), env.clone()),
+            Closure::new(mk_typewrapper::str(), env.clone()),
+            Closure::new(mk_typewrapper::list(AbsType::Str()), env.clone()),
         ),
     })
 }
@@ -2062,7 +2528,7 @@ pub fn get_nop_type(
 /// Map each unification variable to either another type variable or a concrete type it has been
 /// unified with. Each binding `(ty, var)` in this map should be thought of an edge in a
 /// unification graph.
-pub type UnifTable = HashMap<usize, Option<TypeWrapper>>;
+pub type UnifTable = HashMap<usize, Option<Closure>>;
 
 /// Row constraints.
 ///
@@ -2082,11 +2548,19 @@ fn new_var(table: &mut UnifTable) -> usize {
 /// Add a row constraint on a type.
 ///
 /// See [`RowConstr`](type.RowConstr.html).
-fn constraint(state: &mut State, x: TypeWrapper, id: Ident) -> Result<(), RowUnifError> {
-    match x {
-        TypeWrapper::Ptr(p) => match get_root(state.table, p) {
-            ty @ TypeWrapper::Concrete(_) => constraint(state, ty, id),
-            TypeWrapper::Ptr(root) => {
+fn constraint(state: &mut State, x: Closure, id: Ident) -> Result<(), RowUnifError> {
+    match x.ty.clone() {
+        TypeWrapper::Ptr(p) => match get_root(state.table, p, &x.env) {
+            clos
+            @
+            Closure {
+                ty: TypeWrapper::Concrete(_),
+                ..
+            } => constraint(state, clos, id),
+            Closure {
+                ty: TypeWrapper::Ptr(root),
+                ..
+            } => {
                 if let Some(v) = state.constr.get_mut(&root) {
                     v.insert(id);
                 } else {
@@ -2094,17 +2568,25 @@ fn constraint(state: &mut State, x: TypeWrapper, id: Ident) -> Result<(), RowUni
                 }
                 Ok(())
             }
-            c @ TypeWrapper::Constant(_) => Err(RowUnifError::IllformedRow(c)),
+            c
+            @
+            Closure {
+                ty: TypeWrapper::Constant(_),
+                ..
+            } => Err(RowUnifError::IllformedRow(c)),
         },
         TypeWrapper::Concrete(AbsType::RowEmpty()) => Ok(()),
         TypeWrapper::Concrete(AbsType::RowExtend(id2, tyw, t)) => {
             if id2 == id {
-                Err(RowUnifError::UnsatConstr(id, tyw.map(|tyw| *tyw)))
+                Err(RowUnifError::UnsatConstr(
+                    id,
+                    tyw.map(|tyw| Closure::new(*tyw, x.env.clone())),
+                ))
             } else {
-                constraint(state, *t, id)
+                constraint(state, Closure::new(*t, x.env.clone()), id)
             }
         }
-        other => Err(RowUnifError::IllformedRow(other)),
+        other => Err(RowUnifError::IllformedRow(x.clone())),
     }
 }
 
@@ -2121,22 +2603,33 @@ fn constraint(state: &mut State, x: TypeWrapper, id: Ident) -> Result<(), RowUni
 /// assumed:
 /// - `get_root(state.table, p) == p`
 /// - `state.constr.get(&p) == None`
-fn constrain_var(state: &mut State, tyw: &TypeWrapper, p: usize) {
-    fn constrain_var_(state: &mut State, mut constr: HashSet<Ident>, tyw: &TypeWrapper, p: usize) {
+fn constrain_var(state: &mut State, tyw: &TypeWrapper, env: &Envs, p: usize) {
+    fn constrain_var_(
+        state: &mut State,
+        mut constr: HashSet<Ident>,
+        tyw: &TypeWrapper,
+        env: &Envs,
+        p: usize,
+    ) {
         match tyw {
             TypeWrapper::Ptr(u) if p == *u && !constr.is_empty() => {
                 state.constr.insert(p, constr);
             }
-            TypeWrapper::Ptr(u) => match get_root(state.table, *u) {
-                TypeWrapper::Ptr(_) => (),
-                tyw => constrain_var_(state, constr, &tyw, p),
+            TypeWrapper::Ptr(u) => match get_root(state.table, *u, env) {
+                Closure {
+                    ty: TypeWrapper::Ptr(_),
+                    ..
+                } => (),
+                clos => constrain_var_(state, constr, &clos.ty, &clos.env, p),
             },
             TypeWrapper::Concrete(ty) => match ty {
                 AbsType::Arrow(tyw1, tyw2) => {
-                    constrain_var_(state, HashSet::new(), tyw1.as_ref(), p);
-                    constrain_var_(state, HashSet::new(), tyw2.as_ref(), p);
+                    constrain_var_(state, HashSet::new(), tyw1.as_ref(), env, p);
+                    constrain_var_(state, HashSet::new(), tyw2.as_ref(), env, p);
                 }
-                AbsType::Forall(_, tyw) => constrain_var_(state, HashSet::new(), tyw.as_ref(), p),
+                AbsType::Forall(_, tyw) => {
+                    constrain_var_(state, HashSet::new(), tyw.as_ref(), env, p)
+                }
                 AbsType::Dyn()
                 | AbsType::Num()
                 | AbsType::Bool()
@@ -2145,22 +2638,23 @@ fn constrain_var(state: &mut State, tyw: &TypeWrapper, p: usize) {
                 | AbsType::Flat(_)
                 | AbsType::RowEmpty()
                 | AbsType::Var(_) => (),
-                AbsType::List(tyw) => constrain_var_(state, HashSet::new(), tyw.as_ref(), p),
+                AbsType::List(tyw) => constrain_var_(state, HashSet::new(), tyw.as_ref(), env, p),
                 AbsType::RowExtend(id, tyw, rest) => {
                     constr.insert(id.clone());
-                    tyw.iter()
-                        .for_each(|tyw| constrain_var_(state, HashSet::new(), tyw.as_ref(), p));
-                    constrain_var_(state, constr, rest, p)
+                    tyw.iter().for_each(|tyw| {
+                        constrain_var_(state, HashSet::new(), tyw.as_ref(), env, p)
+                    });
+                    constrain_var_(state, constr, rest, env, p)
                 }
-                AbsType::Enum(row) => constrain_var_(state, constr, row, p),
-                AbsType::StaticRecord(row) => constrain_var_(state, constr, row, p),
-                AbsType::DynRecord(tyw) => constrain_var_(state, constr, tyw, p),
+                AbsType::Enum(row) => constrain_var_(state, constr, row, env, p),
+                AbsType::StaticRecord(row) => constrain_var_(state, constr, row, env, p),
+                AbsType::DynRecord(tyw) => constrain_var_(state, constr, tyw, env, p),
             },
             TypeWrapper::Constant(_) => (),
         }
     }
 
-    constrain_var_(state, HashSet::new(), tyw, p);
+    constrain_var_(state, HashSet::new(), tyw, env, p);
 }
 
 /// Check that unifying a variable with a type doesn't violate row constraints, and update the row
@@ -2185,6 +2679,7 @@ pub fn constr_unify(
     constr: &mut RowConstr,
     p: usize,
     mut tyw: &TypeWrapper,
+    env: &Envs,
 ) -> Result<(), RowUnifError> {
     if let Some(p_constr) = constr.remove(&p) {
         loop {
@@ -2194,12 +2689,13 @@ pub fn constr_unify(
                 {
                     break Err(RowUnifError::UnsatConstr(
                         ident.clone(),
-                        ty.as_ref().map(|boxed| (**boxed).clone()),
+                        ty.as_ref()
+                            .map(|boxed| Closure::new((**boxed).clone(), env.clone())),
                     ))
                 }
                 TypeWrapper::Concrete(AbsType::RowExtend(_, _, tail)) => tyw = tail,
                 TypeWrapper::Ptr(u) if *u != p => {
-                    if let Some(u_constr) = constr.get_mut(u) {
+                    if let Some(u_constr) = constr.get_mut(&u) {
                         u_constr.extend(p_constr.into_iter());
                     } else {
                         constr.insert(*u, p_constr);
@@ -2220,14 +2716,20 @@ pub fn constr_unify(
 ///
 /// This corresponds to the find in union-find.
 // TODO This should be a union find like algorithm
-pub fn get_root(table: &UnifTable, x: usize) -> TypeWrapper {
+pub fn get_root(table: &UnifTable, x: usize, env: &Envs) -> Closure {
     // All queried variable must have been introduced by `new_var` and thus a corresponding entry
     // must always exist in `state`. If not, the typechecking algorithm is not correct, and we
     // panic.
-    match table.get(&x).unwrap() {
-        None => TypeWrapper::Ptr(x),
-        Some(TypeWrapper::Ptr(y)) => get_root(table, *y),
-        Some(ty @ TypeWrapper::Concrete(_)) => ty.clone(),
-        Some(k @ TypeWrapper::Constant(_)) => k.clone(),
+    if let Some(c) = table.get(&x).unwrap() {
+        match &c.ty {
+            TypeWrapper::Ptr(y) => get_root(table, *y, env),
+            TypeWrapper::Concrete(_) => c.clone(),
+            TypeWrapper::Constant(_) => c.clone(),
+        }
+    } else {
+        Closure {
+            ty: TypeWrapper::Ptr(x),
+            env: env.clone(),
+        }
     }
 }

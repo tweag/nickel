@@ -12,7 +12,7 @@ use nickel::{
             ScopeId, TermKind, Unresolved, UsageState,
         },
         reporting::{to_type, NameReg},
-        TypeWrapper, UnifTable,
+        Closure, Envs, TypeWrapper, UnifTable,
     },
     types::AbsType,
 };
@@ -569,7 +569,12 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                      scope,
                      meta,
                  }| LinearizationItem {
-                    ty: to_type(&table, &reported_names, &mut NameReg::new(), ty),
+                    ty: to_type(
+                        &table,
+                        &reported_names,
+                        &mut NameReg::new(),
+                        Closure::new(ty, Envs::new()),
+                    ),
                     id,
                     pos,
                     kind,

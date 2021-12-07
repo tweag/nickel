@@ -432,9 +432,6 @@ impl ParseError {
                 InternalParseError::Lexical(LexicalError::InvalidAsciiEscapeCode(location)) => {
                     ParseError::InvalidAsciiEscapeCode(mk_span(file_id, location, location + 2))
                 }
-                InternalParseError::UnboundTypeVariables(idents, span) => {
-                    ParseError::UnboundTypeVariables(idents, span)
-                }
             },
         }
     }

@@ -79,7 +79,7 @@ pub struct REPLImpl {
     /// The typing environment, counterpart of the eval environment for typechecking. Entries are
     /// [`TypeWrapper`](../typecheck/enum.TypeWrapper.html) for the ease of interacting with the
     /// typechecker, but there are not any unification variable in it.
-    type_env: typecheck::Environment,
+    type_env: typecheck::GlobalEnvironment,
 }
 
 impl REPLImpl {
@@ -90,7 +90,7 @@ impl REPLImpl {
             parser: grammar::ExtendedTermParser::new(),
             eval_env: eval::Environment::new(),
             init_eval_env: eval::Environment::new(),
-            type_env: typecheck::Environment::new(),
+            type_env: typecheck::GlobalEnvironment::new(),
         }
     }
 
@@ -101,7 +101,7 @@ impl REPLImpl {
 
         self.eval_env = self.cache.mk_global_env().unwrap();
         self.init_eval_env = self.eval_env.clone();
-        self.type_env = typecheck::Envs::mk_global(&self.eval_env);
+        self.type_env = typecheck::mk_global(&self.eval_env);
         Ok(())
     }
 
@@ -237,7 +237,10 @@ impl REPL for REPLImpl {
 
         Ok(typecheck::apparent_type(
             term.as_ref(),
-            Some(&typecheck::Envs::from_global(&self.type_env)),
+            Some((
+                &typecheck::Envs::from_global(&self.type_env),
+                &self.type_env,
+            )),
         )
         .into())
     }
