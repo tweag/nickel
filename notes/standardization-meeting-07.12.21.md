@@ -94,7 +94,7 @@ in
 ### Type hole syntax
 [#226](https://github.com/tweag/nickel/issues/226)
 
-Currently, one has to write explicitly type signature to turn typechecking on:
+Currently, one has to write explicitly the type signature to turn typechecking on:
 `let foo : SomeType = ... in ...`
 
 **Proposal**
