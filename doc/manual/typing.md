@@ -497,7 +497,7 @@ whole expression. Maybe the expression is not typeable in Nickel, but we still
 know it will evaluate to a number. In any of these situations, we can trade the
 type annotation for a contract application:
 
-Exmaple:
+Example:
 ```
 let x | Num = if true then 0 else "a" in
 (1 + x : Num)
