@@ -1,15 +1,14 @@
 use std::{
     collections::HashMap,
     io::Write,
-    sync::{Mutex, MutexGuard},
+    sync::{Arc, Mutex, MutexGuard},
     time::{Duration, Instant},
 };
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use lazy_static::lazy_static;
 use lsp_server::RequestId;
 use serde::Serialize;
-use serde_json::Value;
 
 use self::param::Enrichment;
 
@@ -17,11 +16,68 @@ lazy_static! {
     static ref TRACE: Mutex<Trace> = Mutex::new(Trace::default());
 }
 
-#[derive(Debug, Serialize)]
-struct TraceItem<T: Serialize> {
-    time: T,
-    params: TraceItemParams,
+#[derive(Debug)]
+pub struct TraceItem<T> {
+    pub time: T,
+    pub params: TraceItemParams,
 }
+
+impl TraceItem<Received> {
+    fn into_replied(self, with_error: bool) -> TraceItem<Replied> {
+        let Received(ingress) = self.time;
+        let egress = Instant::now();
+        let duration = egress - ingress;
+        TraceItem {
+            time: Replied {
+                ingress,
+                duration,
+                with_error,
+            },
+            params: self.params,
+        }
+    }
+}
+
+#[derive(Debug, Default, Serialize)]
+pub struct TraceItemParams {
+    method: String,
+    linearization_size: Option<usize>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CsvTraceItem {
+    duration_micros: u128,
+    with_error: bool,
+
+    method: String,
+    linearization_size: Option<usize>,
+}
+
+impl From<TraceItem<Replied>> for CsvTraceItem {
+    fn from(replied: TraceItem<Replied>) -> Self {
+        CsvTraceItem {
+            duration_micros: replied.time.duration.as_micros(),
+            with_error: replied.time.with_error,
+            method: replied.params.method,
+            linearization_size: replied.params.linearization_size,
+        }
+    }
+}
+
+impl<W: Write> Writer for csv::Writer<W> {
+    fn write_item(&mut self, item: TraceItem<Replied>) -> Result<()> {
+        self.serialize(CsvTraceItem::from(item))
+            .with_context(|| "Could not serialize Trace item to CSV")
+            .and_then(|_| <Self as Writer>::flush(self))
+    }
+
+    fn flush(&mut self) -> Result<()> {
+        self.flush().with_context(|| "Could not flush writer")
+    }
+}
+
+#[derive(Debug)]
+struct Received(Instant);
 
 impl Serialize for Received {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -32,103 +88,106 @@ impl Serialize for Received {
         serializer.serialize_none()
     }
 }
-
-#[derive(Debug, Default, Serialize)]
-pub struct TraceItemParams {
-    method: String,
-    linearization_size: Option<usize>,
-}
-
-#[derive(Debug)]
-struct Received(Instant);
 #[derive(Debug, Serialize)]
-struct Replied {
+pub struct Replied {
     #[serde(skip)]
     ingress: Instant,
     duration: Duration,
     with_error: bool,
 }
 
-#[derive(Debug, Default)]
-struct Trace {
+#[derive(Default)]
+pub(crate) struct Trace {
     received: HashMap<RequestId, TraceItem<Received>>,
-    replied: Vec<TraceItem<Replied>>,
+    writer: Option<Box<dyn Writer + Send>>,
 }
 
-pub struct Tracer;
+pub trait Writer {
+    fn write_item(&mut self, item: TraceItem<Replied>) -> Result<()>;
+    fn flush(&mut self) -> Result<()>;
+}
 
-impl Tracer {
-    fn with_trace<F, O>(f: F) -> anyhow::Result<O>
+impl Writer for Trace {
+    fn write_item(&mut self, item: TraceItem<Replied>) -> Result<()> {
+        if let Some(writer) = self.writer.as_mut() {
+            writer.write_item(item)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn flush(&mut self) -> Result<()> {
+        if let Some(writer) = self.writer.as_mut() {
+            writer.flush()
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl Trace {
+    pub fn set_writer<W>(writer: W) -> Result<()>
     where
-        F: FnOnce(MutexGuard<Trace>) -> O,
+        W: Writer + Send + 'static,
+    {
+        Self::with_trace(|mut trace| {
+            let old = trace.writer.replace(Box::new(writer));
+            if let Some(mut writer) = old {
+                writer.flush()?;
+            }
+            Ok(())
+        })
+    }
+
+    pub fn remove_writer() -> Result<()> {
+        Self::with_trace(|mut trace| {
+            if let Some(ref mut writer) = trace.writer {
+                writer.flush()?;
+            }
+            trace.writer = None;
+            Ok(())
+        })
+    }
+
+    fn with_trace<F>(f: F) -> anyhow::Result<()>
+    where
+        F: FnOnce(MutexGuard<Trace>) -> Result<()>,
     {
         TRACE
             .lock()
-            .map(f)
             .or_else(|_| anyhow::bail!("Could not lock tracer mutex"))
+            .and_then(f)
     }
 
-    pub fn receive(id: RequestId, method: impl ToString) {
+    pub fn receive(id: RequestId, method: impl ToString) -> Result<()> {
+        // let lock not affect receive time
         let time = Received(Instant::now());
-        let params = TraceItemParams {
-            method: method.to_string().into(),
-            ..Default::default()
-        };
 
-        Tracer::with_trace(|mut trace| trace.received.insert(id, TraceItem { time, params }))
-            .unwrap();
-    }
-
-    pub fn reply(&mut self, id: RequestId) -> anyhow::Result<()> {
-        let received = Self::with_trace(|mut t| t.received.remove(&id))?;
-
-        for TraceItem {
-            time: Received(ingress),
-            params,
-        } in received
-        {
-            let egress = Instant::now();
-
-            let duration = egress - ingress;
-
-            Self::with_trace(|mut t| {
-                t.replied.push(TraceItem {
-                    time: Replied {
-                        ingress,
-                        duration,
-                        with_error: false,
-                    },
-                    params,
-                })
-            })?;
-        }
-        Ok(())
-    }
-
-    pub fn write_trace(w: impl Write) -> anyhow::Result<()> {
-        let mut writer = csv::Writer::from_writer(w);
-
-        Self::with_trace(|t| {
-            for item in t.replied.iter() {
-                writer.serialize(item)?;
-            }
-            writer.flush()?;
+        Self::with_trace(|mut trace| {
+            let params = TraceItemParams {
+                method: method.to_string().into(),
+                ..Default::default()
+            };
+            trace.received.insert(id, TraceItem { time, params });
             Ok(())
-        })?
+        })
     }
 
-    pub fn reset_replied() -> anyhow::Result<()> {
+    pub fn reply(id: RequestId) -> anyhow::Result<()> {
         Self::with_trace(|mut t| {
-            t.replied.clear();
-            Ok(())
-        })?
+            t.received
+                .remove(&id)
+                .map(|received| received.into_replied(false))
+                .map(|item| t.write_item(item))
+                .unwrap_or(Ok(()))
+        })
     }
 
     pub fn drop_received() -> anyhow::Result<()> {
         Self::with_trace(|mut t| {
             t.received.clear();
             Ok(())
-        })?
+        })
     }
 }
 
@@ -138,7 +197,7 @@ pub(crate) trait Enrich<E: Enrichment> {
 
 pub mod param {
 
-    use super::{Enrich, Tracer};
+    use super::{Enrich, Trace};
     use lsp_server::RequestId;
     use nickel::typecheck::linearization::Completed;
 
@@ -146,12 +205,13 @@ pub mod param {
 
     impl Enrichment for &Completed {}
 
-    impl Enrich<&Completed> for Tracer {
+    impl Enrich<&Completed> for Trace {
         fn enrich(id: &RequestId, param: &Completed) -> anyhow::Result<()> {
             Self::with_trace(|mut t| {
                 t.received.entry(id.to_owned()).and_modify(|item| {
-                    item.params.linearization_size.insert(param.lin.len());
+                    item.params.linearization_size = Some(param.lin.len());
                 });
+                Ok(())
             })
         }
     }

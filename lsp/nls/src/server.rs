@@ -19,7 +19,7 @@ use lsp_types::{
 use nickel::typecheck::linearization::Completed;
 use nickel::{cache::Cache, environment::Environment, eval::Thunk, identifier::Ident};
 
-use crate::requests::{completion, goto, hover, symbols};
+use crate::{requests::{completion, goto, hover, symbols}, trace::Trace};
 
 pub struct Server {
     pub connection: Connection,
@@ -69,6 +69,8 @@ impl Server {
 
     pub(crate) fn reply(&mut self, response: Response) {
         trace!("Sending response: {:#?}", response);
+        Trace::reply(response.id.clone()).unwrap();
+
         self.connection
             .sender
             .send(Message::Response(response))
@@ -149,6 +151,9 @@ impl Server {
     }
 
     fn handle_request(&mut self, req: lsp_server::Request) {
+        Trace::receive(req.id.clone(), req.method.clone());
+
+
         let res = match req.method.as_str() {
             HoverRequest::METHOD => {
                 let params: HoverParams = serde_json::from_value(req.params).unwrap();

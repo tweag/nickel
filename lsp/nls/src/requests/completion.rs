@@ -8,7 +8,7 @@ use serde_json::Value;
 use crate::{
     requests::utils::find_linearization_index,
     server::Server,
-    trace::{Enrich, Tracer},
+    trace::{Enrich, Trace},
 };
 
 pub fn handle_completion(
@@ -31,7 +31,7 @@ pub fn handle_completion(
     let locator = (file_id, ByteIndex(start as u32));
     let linearization = server.lin_cache_get(&file_id)?;
 
-    Tracer::enrich(&id, linearization);
+    Trace::enrich(&id, linearization);
 
     let index = find_linearization_index(&linearization.lin, locator);
 
