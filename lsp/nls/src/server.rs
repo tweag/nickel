@@ -69,7 +69,7 @@ impl Server {
 
     pub(crate) fn reply(&mut self, response: Response) {
         trace!("Sending response: {:#?}", response);
-        Trace::reply(response.id.clone()).unwrap();
+        Trace::reply(response.id.clone());
 
         self.connection
             .sender
@@ -147,7 +147,7 @@ impl Server {
     }
 
     fn handle_request(&mut self, req: lsp_server::Request) -> Result<()> {
-        Trace::receive(req.id.clone(), req.method.clone())?;
+        Trace::receive(req.id.clone(), req.method.clone());
 
         let res = match req.method.as_str() {
             HoverRequest::METHOD => {

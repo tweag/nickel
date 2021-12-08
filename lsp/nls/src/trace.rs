@@ -2,11 +2,12 @@ use std::{
     collections::HashMap,
     io::Write,
     sync::{Arc, Mutex, MutexGuard},
-    time::{Duration, Instant},
+    time::{Duration, Instant}, fmt::Display,
 };
 
 use anyhow::{Context, Result};
 use lazy_static::lazy_static;
+use log::error;
 use lsp_server::RequestId;
 use serde::Serialize;
 
@@ -159,7 +160,7 @@ impl Trace {
             .and_then(f)
     }
 
-    pub fn receive(id: RequestId, method: impl ToString) -> Result<()> {
+    pub fn receive(id: RequestId, method: impl ToString) {
         // let lock not affect receive time
         let time = Received(Instant::now());
 
@@ -170,17 +171,17 @@ impl Trace {
             };
             trace.received.insert(id, TraceItem { time, params });
             Ok(())
-        })
+        }).report();
     }
 
-    pub fn reply(id: RequestId) -> anyhow::Result<()> {
+    pub fn reply(id: RequestId) {
         Self::with_trace(|mut t| {
             t.received
                 .remove(&id)
                 .map(|received| received.into_replied(false))
                 .map(|item| t.write_item(item))
                 .unwrap_or(Ok(()))
-        })
+        }).report()
     }
 
     pub fn drop_received() -> anyhow::Result<()> {
@@ -192,12 +193,26 @@ impl Trace {
 }
 
 pub(crate) trait Enrich<E: Enrichment> {
-    fn enrich(id: &RequestId, param: E) -> anyhow::Result<()>;
+    fn enrich(id: &RequestId, param: E);
+}
+
+fn report<T, E>(result: Result<T, E>) {}
+
+trait ResultExt<E> {
+    fn report(&self);
+}
+
+impl<T, E:Display> ResultExt<E> for Result<T, E> {
+    fn report(&self) {
+        if let Err(e) = self {
+            error!("{}", e);
+        };
+    }
 }
 
 pub mod param {
 
-    use super::{Enrich, Trace};
+    use super::{Enrich, Trace, ResultExt};
     use lsp_server::RequestId;
     use nickel::typecheck::linearization::Completed;
 
@@ -206,13 +221,13 @@ pub mod param {
     impl Enrichment for &Completed {}
 
     impl Enrich<&Completed> for Trace {
-        fn enrich(id: &RequestId, param: &Completed) -> anyhow::Result<()> {
+        fn enrich(id: &RequestId, param: &Completed) {
             Self::with_trace(|mut t| {
                 t.received.entry(id.to_owned()).and_modify(|item| {
                     item.params.linearization_size = Some(param.lin.len());
                 });
                 Ok(())
-            })
+            }).report();
         }
     }
 }
