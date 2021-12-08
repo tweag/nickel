@@ -105,7 +105,7 @@ impl Server {
                     let id = req.id.clone();
                     match self.connection.handle_shutdown(&req) {
                         Ok(true) => break,
-                        Ok(false) => self.handle_request(req),
+                        Ok(false) => self.handle_request(req)?,
                         Err(err) => {
                             // This only fails if a shutdown was
                             // requested in the first place, so it
@@ -126,33 +126,28 @@ impl Server {
         Ok(())
     }
 
-    fn handle_notification(&mut self, notification: Notification) {
+    fn handle_notification(&mut self, notification: Notification) -> Result<()> {
         match notification.method.as_str() {
             DidOpenTextDocument::METHOD => {
                 trace!("handle open notification");
                 crate::files::handle_open(
                     self,
-                    serde_json::from_value::<DidOpenTextDocumentParams>(notification.params)
-                        .unwrap(),
+                    serde_json::from_value::<DidOpenTextDocumentParams>(notification.params)?,
                 )
-                .unwrap();
             }
             DidChangeTextDocument::METHOD => {
                 trace!("handle save notification");
                 crate::files::handle_save(
                     self,
-                    serde_json::from_value::<DidChangeTextDocumentParams>(notification.params)
-                        .unwrap(),
+                    serde_json::from_value::<DidChangeTextDocumentParams>(notification.params)?
                 )
-                .unwrap();
             }
-            _ => {}
+            _ => {Ok(())}
         }
     }
 
-    fn handle_request(&mut self, req: lsp_server::Request) {
-        Trace::receive(req.id.clone(), req.method.clone());
-
+    fn handle_request(&mut self, req: lsp_server::Request) -> Result<()> {
+        Trace::receive(req.id.clone(), req.method.clone())?;
 
         let res = match req.method.as_str() {
             HoverRequest::METHOD => {
@@ -192,8 +187,9 @@ impl Server {
                 id: req.id,
                 result: None,
                 error: Some(error),
-            })
+            });
         }
+        Ok(())
     }
 
     pub fn lin_cache_get(&self, file_id: &FileId) -> Result<&Completed, ResponseError> {
