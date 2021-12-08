@@ -393,7 +393,7 @@ I invite to you come back to our beloved `filter` example. In the
 previous section, we included everything -- both the definition of `filter` and
 the call site -- in a typed block. More realistically, `filter` would be a typed
 library function (it is actually part of the stdlib as `lists.filter`), but is
-likely to be called from untyped configuration code. Without an additional
+likely to be called from untyped configuration file. Without an additional
 mechanism, this would just ensure that the implementation of `filter` is without
 flaws, but since the call site still escapes the typechecker, we may end up with
 the very same initial problem. Remember, the caller passes an unchecked, invalid
