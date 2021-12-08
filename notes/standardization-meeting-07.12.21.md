@@ -99,7 +99,7 @@ Currently, one has to write explicitly the type signature to turn typechecking o
 
 **Proposal**
 `let foo : _ = ... in ...`. Each type hole would be substituted for a
-unification variable at and resolvesd at typechecking. Unconstrained variables
+unification variable and resolved during typechecking. Unconstrained variables
 are substituted for `Dyn`.
 
 **Usages**
