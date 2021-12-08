@@ -1,4 +1,8 @@
-use std::{io::{Stderr, self}, sync::Arc,fs::{self, File, OpenOptions}};
+use std::{
+    fs::{self, File, OpenOptions},
+    io::{self, Stderr},
+    sync::Arc,
+};
 
 use anyhow::Result;
 use log::trace;
@@ -12,7 +16,7 @@ mod requests;
 mod server;
 use server::Server;
 
-use crate::trace::{Trace, CsvTraceItem};
+use crate::trace::{CsvTraceItem, Trace};
 
 mod term;
 mod trace;
@@ -21,7 +25,6 @@ fn main() -> Result<()> {
     env_logger::init();
 
     Trace::set_writer(csv::Writer::from_path("./trace.csv")?)?;
-
 
     trace!("hello");
 

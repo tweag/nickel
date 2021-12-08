@@ -1,8 +1,9 @@
 use std::{
     collections::HashMap,
+    fmt::Display,
     io::Write,
     sync::{Arc, Mutex, MutexGuard},
-    time::{Duration, Instant}, fmt::Display,
+    time::{Duration, Instant},
 };
 
 use anyhow::{Context, Result};
@@ -171,7 +172,8 @@ impl Trace {
             };
             trace.received.insert(id, TraceItem { time, params });
             Ok(())
-        }).report();
+        })
+        .report();
     }
 
     pub fn reply(id: RequestId) {
@@ -181,7 +183,8 @@ impl Trace {
                 .map(|received| received.into_replied(false))
                 .map(|item| t.write_item(item))
                 .unwrap_or(Ok(()))
-        }).report()
+        })
+        .report()
     }
 
     pub fn drop_received() -> anyhow::Result<()> {
@@ -202,7 +205,7 @@ trait ResultExt<E> {
     fn report(&self);
 }
 
-impl<T, E:Display> ResultExt<E> for Result<T, E> {
+impl<T, E: Display> ResultExt<E> for Result<T, E> {
     fn report(&self) {
         if let Err(e) = self {
             error!("{}", e);
@@ -212,7 +215,7 @@ impl<T, E:Display> ResultExt<E> for Result<T, E> {
 
 pub mod param {
 
-    use super::{Enrich, Trace, ResultExt};
+    use super::{Enrich, ResultExt, Trace};
     use lsp_server::RequestId;
     use nickel::typecheck::linearization::Completed;
 
@@ -227,7 +230,8 @@ pub mod param {
                     item.params.linearization_size = Some(param.lin.len());
                 });
                 Ok(())
-            }).report();
+            })
+            .report();
         }
     }
 }

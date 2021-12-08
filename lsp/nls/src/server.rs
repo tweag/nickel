@@ -19,7 +19,10 @@ use lsp_types::{
 use nickel::typecheck::linearization::Completed;
 use nickel::{cache::Cache, environment::Environment, eval::Thunk, identifier::Ident};
 
-use crate::{requests::{completion, goto, hover, symbols}, trace::Trace};
+use crate::{
+    requests::{completion, goto, hover, symbols},
+    trace::Trace,
+};
 
 pub struct Server {
     pub connection: Connection,
@@ -139,10 +142,10 @@ impl Server {
                 trace!("handle save notification");
                 crate::files::handle_save(
                     self,
-                    serde_json::from_value::<DidChangeTextDocumentParams>(notification.params)?
+                    serde_json::from_value::<DidChangeTextDocumentParams>(notification.params)?,
                 )
             }
-            _ => {Ok(())}
+            _ => Ok(()),
         }
     }
 
