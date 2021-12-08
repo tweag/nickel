@@ -127,7 +127,7 @@ error: Incompatible types
   = These types are not compatible
 ```
 
-That's already better! The error now points at the call site, and inside our
+This is already better! The error now points at the call site, and inside our
 anonymous functions, telling us it is expected to return a boolean. What's more,
 we just had to give the top-level annotation `List Num`. Nickel performs type
 inference, so that you don't have to write the type for `filter`, the filtering
