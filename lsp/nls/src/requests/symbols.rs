@@ -1,4 +1,7 @@
-use crate::term::TermPosExt;
+use crate::{
+    term::TermPosExt,
+    trace::{Enrich, Trace},
+};
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{DocumentSymbol, DocumentSymbolParams, SymbolKind};
 use serde_json::Value;
@@ -16,6 +19,7 @@ pub fn handle_document_symbols(
         .unwrap();
 
     if let Some(completed) = server.lin_cache.get(&file_id) {
+        Trace::enrich(&id, completed);
         let symbols = completed
             .lin
             .iter()

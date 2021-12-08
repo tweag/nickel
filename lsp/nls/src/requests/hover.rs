@@ -12,7 +12,10 @@ use nickel::{
 use serde_json::Value;
 
 use crate::{
-    diagnostic::LocationCompat, requests::utils::find_linearization_index, server::Server,
+    diagnostic::LocationCompat,
+    requests::utils::find_linearization_index,
+    server::Server,
+    trace::{Enrich, Trace},
 };
 
 pub fn handle(
@@ -45,6 +48,8 @@ pub fn handle(
     let completed = server.lin_cache_get(&file_id)?;
     let linearization = &completed.lin;
     let index = find_linearization_index(linearization, locator);
+
+    Trace::enrich(&id, completed);
 
     if index == None {
         server.reply(Response::new_ok(id, Value::Null));

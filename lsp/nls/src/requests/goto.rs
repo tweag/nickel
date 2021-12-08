@@ -12,7 +12,10 @@ use nickel::{
 use serde_json::Value;
 
 use crate::{
-    diagnostic::LocationCompat, requests::utils::find_linearization_index, server::Server,
+    diagnostic::LocationCompat,
+    requests::utils::find_linearization_index,
+    server::Server,
+    trace::{Enrich, Trace},
 };
 
 pub fn handle_to_definition(
@@ -39,7 +42,9 @@ pub fn handle_to_definition(
     .unwrap();
 
     let locator = (file_id, ByteIndex(start as u32));
-    let linearization = &server.lin_cache_get(&file_id)?;
+    let linearization = server.lin_cache_get(&file_id)?;
+
+    Trace::enrich(&id, linearization);
 
     let index = find_linearization_index(&linearization.lin, locator);
 
