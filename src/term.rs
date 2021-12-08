@@ -66,6 +66,9 @@ pub enum Term {
     Let(Ident, RichTerm, RichTerm),
     #[serde(skip)]
     LetPattern(Option<Ident>, Destruct, RichTerm, RichTerm),
+    /// A reversible let binding.
+    #[serde(skip)]
+    LetRev(Ident, RichTerm, RichTerm),
     /// An application.
     #[serde(skip)]
     App(RichTerm, RichTerm),
@@ -335,6 +338,7 @@ impl Term {
             }
             Let(_, ref mut t1, ref mut t2)
             | LetPattern(_, _, ref mut t1, ref mut t2)
+            | LetRev(_, ref mut t1, ref mut t2)
             | App(ref mut t1, ref mut t2)
             | Op2(_, ref mut t1, ref mut t2) => {
                 func(t1);
@@ -372,6 +376,7 @@ impl Term {
             Term::MetaValue(_) => Some("Metavalue"),
             Term::Let(_, _, _)
             | Term::LetPattern(_, _, _, _)
+            | Term::LetRev(_, _, _)
             | Term::App(_, _)
             | Term::Var(_)
             | Term::Switch(..)
@@ -448,6 +453,7 @@ impl Term {
             Term::ParseError => String::from("<parse error>"),
             Term::Let(_, _, _)
             | Term::LetPattern(_, _, _, _)
+            | Term::LetRev(_, _, _)
             | Term::App(_, _)
             | Term::Switch(..)
             | Term::Op1(_, _)
@@ -500,6 +506,7 @@ impl Term {
             | Term::Sym(_) => true,
             Term::Let(_, _, _)
             | Term::LetPattern(_, _, _, _)
+            | Term::LetRev(_, _, _)
             | Term::App(_, _)
             | Term::Var(_)
             | Term::Switch(..)
@@ -536,6 +543,7 @@ impl Term {
             | Term::Sym(_) => true,
             Term::Let(_, _, _)
             | Term::LetPattern(_, _, _, _)
+            | Term::LetRev(_, _, _)
             | Term::Record(..)
             | Term::List(_)
             | Term::Fun(_, _)
@@ -934,6 +942,14 @@ impl RichTerm {
                 let t2 = t2.traverse(f, state, method)?;
                 RichTerm {
                     term: Box::new(Term::LetPattern(id, pat, t1, t2)),
+                    pos,
+                }
+            }
+            Term::LetRev(id, t1, t2) => {
+                let t1 = t1.traverse(f, state, method)?;
+                let t2 = t2.traverse(f, state, method)?;
+                RichTerm {
+                    term: Box::new(Term::LetRev(id, t1, t2)),
                     pos,
                 }
             }
