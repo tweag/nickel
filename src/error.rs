@@ -6,11 +6,13 @@ use std::fmt::Write;
 
 use codespan::{FileId, Files};
 use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
+use lalrpop_util::ErrorRecovery;
 
 use crate::eval::{CallStack, StackElem};
 use crate::identifier::Ident;
 use crate::label::ty_path;
 use crate::parser::error::{LexicalError, ParseError as InternalParseError};
+use crate::parser::lexer::Token;
 use crate::parser::utils::mk_span;
 use crate::position::{RawSpan, TermPos};
 use crate::serialize::ExportFormat;
@@ -215,9 +217,7 @@ impl ParseErrors {
     }
 
     pub fn from_recoverable<'a>(
-        errs: Vec<
-            lalrpop_util::ErrorRecovery<usize, parser::lexer::Token<'a>, parser::error::ParseError>,
-        >,
+        errs: Vec<ErrorRecovery<usize, Token<'a>, parser::error::ParseError>>,
         file_id: FileId,
     ) -> Self {
         ParseErrors {
