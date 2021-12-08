@@ -362,16 +362,8 @@ impl Cache {
 
         match format {
             InputFormat::Nickel => {
-                let mut parse_err_rec = Vec::new();
-                let t = parser::grammar::TermParser::new()
-                    .parse(file_id, &mut parse_err_rec, Lexer::new(buf))
-                    .map_err(|err| (ParseError::from_lalrpop(err, file_id)))?;
-
-                let parse_errs: ParseErrors = parse_err_rec
-                    .into_iter()
-                    .map(|e| ParseError::from_lalrpop(e.error, file_id))
-                    .collect::<Vec<_>>()
-                    .into();
+                let (t, parse_errs) = parser::grammar::TermParser::new()
+                    .parse_term_tolerant(file_id, Lexer::new(&buf))?;
 
                 Ok((t, parse_errs))
             }
@@ -1007,8 +999,7 @@ pub mod resolvers {
             if let hash_map::Entry::Vacant(e) = self.term_cache.entry(file_id) {
                 let buf = self.files.source(file_id);
                 let term = parser::grammar::TermParser::new()
-                    .parse(file_id, &mut Vec::new(), Lexer::new(buf))
-                    .map_err(|e| ParseError::from_lalrpop(e, file_id))
+                    .parse_term(file_id, Lexer::new(&buf))
                     .map_err(|e| ImportError::ParseErrors(e.into(), *pos))?;
                 e.insert(term);
                 Ok((

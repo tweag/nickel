@@ -22,7 +22,7 @@
 //! [`mk_global_env`](./struct.Program.html#method.mk_global_env)).  Each such value is added to
 //! the global environment before the evaluation of the program.
 use crate::cache::*;
-use crate::error::{Error, ParseError, ToDiagnostic};
+use crate::error::{Error, ToDiagnostic};
 use crate::identifier::Ident;
 use crate::parser::lexer::Lexer;
 use crate::term::{RichTerm, Term};
@@ -159,9 +159,8 @@ pub fn query(
         // errors.
         let source = format!("x.{}", p);
         let query_file_id = cache.add_tmp("<query>", source.clone());
-        let new_term = parser::grammar::TermParser::new()
-            .parse(query_file_id, &mut Vec::new(), Lexer::new(&source))
-            .map_err(|err| ParseError::from_lalrpop(err, query_file_id))?;
+        let new_term =
+            parser::grammar::TermParser::new().parse_term(query_file_id, Lexer::new(&source))?;
 
         // Substituting `y` for `t`
         let mut env = eval::Environment::new();
@@ -219,7 +218,7 @@ mod tests {
         let id = Files::new().add("<test>", String::from(s));
 
         grammar::TermParser::new()
-            .parse(id, &mut Vec::new(), lexer::Lexer::new(&s))
+            .parse_term(id, lexer::Lexer::new(&s))
             .map(|mut t| {
                 t.clean_pos();
                 t

@@ -13,8 +13,8 @@ fn parse(s: &str) -> Result<RichTerm, ParseError> {
     let id = Files::new().add("<test>", String::from(s));
 
     super::grammar::TermParser::new()
-        .parse(id, &mut Vec::new(), Lexer::new(&s))
-        .map_err(|err| ParseError::from_lalrpop(err, id))
+        .parse_term(id, Lexer::new(&s))
+        .map_err(|errs| errs.errors.first().unwrap().clone())
 }
 
 fn parse_without_pos(s: &str) -> RichTerm {

@@ -6,17 +6,19 @@ use std::fmt::Write;
 
 use codespan::{FileId, Files};
 use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
+use lalrpop_util::ErrorRecovery;
 
 use crate::eval::{CallStack, StackElem};
 use crate::identifier::Ident;
 use crate::label::ty_path;
 use crate::parser::error::{LexicalError, ParseError as InternalParseError};
+use crate::parser::lexer::Token;
 use crate::parser::utils::mk_span;
 use crate::position::{RawSpan, TermPos};
 use crate::serialize::ExportFormat;
 use crate::term::RichTerm;
 use crate::types::Types;
-use crate::{label, repl};
+use crate::{label, parser, repl};
 
 /// A general error occurring during either parsing or evaluation.
 #[derive(Debug, Clone, PartialEq)]
@@ -191,7 +193,7 @@ pub enum TypecheckError {
 
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct ParseErrors {
-    errors: Vec<ParseError>,
+    pub errors: Vec<ParseError>,
 }
 
 impl ParseErrors {
@@ -212,6 +214,18 @@ impl ParseErrors {
 
     pub const fn none() -> ParseErrors {
         ParseErrors { errors: Vec::new() }
+    }
+
+    pub fn from_recoverable<'a>(
+        errs: Vec<ErrorRecovery<usize, Token<'a>, parser::error::ParseError>>,
+        file_id: FileId,
+    ) -> Self {
+        ParseErrors {
+            errors: errs
+                .into_iter()
+                .map(|e| ParseError::from_lalrpop(e.error, file_id))
+                .collect(),
+        }
     }
 }
 
