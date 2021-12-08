@@ -389,7 +389,7 @@ see how typed and untyped code interact.
 
 ### Using typed code inside untyped code
 
-I invite to you come back to our first love, the `filter` example. In the
+I invite to you come back to our beloved `filter` example. In the
 previous section, we included everything -- both the definition of `filter` and
 the call site -- in a typed block. More realistically, `filter` would be a typed
 library function (it is actually part of the stdlib as `lists.filter`), but is
