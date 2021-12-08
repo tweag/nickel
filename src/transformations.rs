@@ -197,7 +197,7 @@ pub mod share_normal_form {
                     })
                     .collect();
 
-                with_bindings(Term::Record(map, attrs), bindings, pos)
+                with_bindings(Term::Record(map, attrs), bindings, pos, BindingType::Normal)
             }
             Term::RecRecord(map, dyn_fields, attrs) => {
                 // When a recursive record is evaluated, all fields need to be turned to closures
@@ -236,7 +236,14 @@ pub mod share_normal_form {
                     })
                     .collect();
 
-                with_bindings(Term::RecRecord(map, dyn_fields, attrs), bindings, pos)
+                // Recursive records are the reason why we need reversible thunks, since when
+                // merged, we may have to revert back to the fields to their original expression.
+                with_bindings(
+                    Term::RecRecord(map, dyn_fields, attrs),
+                    bindings,
+                    pos,
+                    BindingType::Reversible,
+                )
             }
             Term::List(ts) => {
                 let mut bindings = Vec::with_capacity(ts.len());
@@ -255,7 +262,7 @@ pub mod share_normal_form {
                     })
                     .collect();
 
-                with_bindings(Term::List(ts), bindings, pos)
+                with_bindings(Term::List(ts), bindings, pos, BindingType::Normal)
             }
             Term::MetaValue(mut meta @ MetaValue { value: Some(_), .. }) => {
                 if meta.value.as_ref().map(|t| should_share(&t.term)).unwrap() {
@@ -293,18 +300,38 @@ pub mod share_normal_form {
         }
     }
 
+    /// Type of let-binding to introduce during the share normal form pass.
+    enum BindingType {
+        Normal,
+        Reversible,
+    }
+
+    impl Default for BindingType {
+        fn default() -> Self {
+            BindingType::Normal
+        }
+    }
+
     /// Bind a list of pairs `(identifier, term)` in a term.
     ///
     /// Given the term `body` and bindings of identifiers to terms represented as a list of pairs
     /// `(id_1, term_1), .., (id_n, term_n)`, return the new term `let id_n = term_n in ... let
     /// id_1 = term_1 in body`.
-    fn with_bindings(body: Term, bindings: Vec<(Ident, RichTerm)>, pos: TermPos) -> RichTerm {
+    fn with_bindings(
+        body: Term,
+        bindings: Vec<(Ident, RichTerm)>,
+        pos: TermPos,
+        btype: BindingType,
+    ) -> RichTerm {
         bindings.into_iter().fold(
             RichTerm {
                 term: Box::new(body),
                 pos: pos.into_inherited(),
             },
-            |acc, (id, t)| RichTerm::new(Term::Let(id, t, acc), pos),
+            |acc, (id, t)| match btype {
+                BindingType::Normal => RichTerm::new(Term::Let(id, t, acc), pos),
+                BindingType::Reversible => RichTerm::new(Term::LetRev(id, t, acc), pos),
+            },
         )
     }
 }
