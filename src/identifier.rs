@@ -11,6 +11,8 @@ pub struct Ident {
     pub pos: TermPos,
 }
 
+pub const UNIQUE_PREFIX: char = '%';
+
 impl PartialOrd for Ident {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         self.label.partial_cmp(&other.label)
@@ -64,5 +66,11 @@ impl Into<String> for Ident {
 impl Ident {
     pub fn is_generated(&self) -> bool {
         self.label.starts_with('%')
+    }
+}
+
+impl Ident {
+    pub fn is_unique(&self) -> bool {
+        self.0.starts_with(UNIQUE_PREFIX)
     }
 }

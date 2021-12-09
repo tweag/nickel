@@ -52,8 +52,7 @@
 //! - *Contract check*: merging a `Contract` or a `ContractDefault` with a simple value `t`
 //! evaluates to a contract check, that is an `Assume(..., t)`
 use crate::error::EvalError;
-use crate::eval::CallStack;
-use crate::eval::{Closure, Environment};
+use crate::eval::{CallStack, Closure, Environment, IdentKind, Thunk};
 use crate::label::Label;
 use crate::position::TermPos;
 use crate::term::{make as mk_term, BinaryOp, Contract, MetaValue, RecordAttrs, RichTerm, Term};
@@ -332,7 +331,7 @@ pub fn merge(
             let mut env = Environment::new();
             rev_thunks(m1.values_mut(), &mut env1);
             rev_thunks(m2.values_mut(), &mut env2);
-            let (mut left, mut center, mut right) = hashmap::split(m1, m2);
+            let (left, center, right) = hashmap::split(m1, m2);
 
             match mode {
                 MergeMode::Contract(mut lbl) if !attrs2.open && !left.is_empty() => {
@@ -345,15 +344,15 @@ pub fn merge(
                 _ => (),
             };
 
-            for (field, t) in left.drain() {
+            for (field, t) in left.into_iter() {
                 m.insert(field, t.closurize(&mut env, env1.clone()));
             }
 
-            for (field, t) in right.drain() {
+            for (field, t) in right.into_iter() {
                 m.insert(field, t.closurize(&mut env, env2.clone()));
             }
 
-            for (field, (t1, t2)) in center.drain() {
+            for (field, (t1, t2)) in center.into_iter() {
                 m.insert(
                     field,
                     merge_closurize(&mut env, t1, env1.clone(), t2, env2.clone()),
@@ -362,7 +361,7 @@ pub fn merge(
 
             Ok(Closure {
                 body: RichTerm::new(
-                    Term::Record(m, RecordAttrs::merge(attrs1, attrs2)),
+                    Term::RecRecord(m, Vec::new(), RecordAttrs::merge(attrs1, attrs2)),
                     pos_op.into_inherited(),
                 ),
                 env,
@@ -438,14 +437,15 @@ fn rev_thunks<'a, I: Iterator<Item = &'a mut RichTerm>>(map: I, env: &mut Enviro
     use crate::transformations::fresh_var;
 
     for rt in map {
-        if let Term::Var(id) = std::mem::take(&mut *rt.term) {
+        if let Term::Var(id) = rt.as_ref() {
             // This create a fresh variable which is bound to a reversed copy of the original thunk
             let reversed = env.get(&id).unwrap().restore();
             let fresh_id = fresh_var();
             env.insert(fresh_id.clone(), reversed);
             *rt.term = Term::Var(fresh_id);
         }
-        // Otherwise, after the share normal form transformations, it should be a constant
+        // Otherwise, if it is not a variable after the share normal form transformations, it
+        // should be a constant and we don't need to reverse anything
     }
 }
 
