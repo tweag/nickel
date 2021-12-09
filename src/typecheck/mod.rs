@@ -355,6 +355,11 @@ pub struct Envs<'a> {
     local: Environment,
 }
 
+#[derive(Clone, Debug)]
+pub enum EnvBuildError {
+    NotARecord(RichTerm),
+}
+
 impl<'a> Envs<'a> {
     /// Create an `Envs` value with an empty local environment from a global environment.
     pub fn from_global(global: &'a Environment) -> Self {
@@ -374,14 +379,22 @@ impl<'a> Envs<'a> {
     }
 
     /// Populate a new global typing environment from a global term environment.
-    pub fn mk_global(eval_env: &eval::Environment) -> Environment {
-        eval_env
+    pub fn mk_global(envs: Vec<RichTerm>) -> Result<Environment, EnvBuildError> {
+        Ok(envs
             .iter()
-            .map(|(id, thunk)| {
-                println!("{:?}", id);
-                (id.clone(), infer_type(thunk.borrow().body.as_ref()))
+            .map(|rt| {
+                if let Term::RecRecord(rec, ..) = rt.as_ref() {
+                    Ok(rec
+                        .iter()
+                        .map(|(id, rt)| (id.clone(), infer_type(rt.as_ref()))))
+                } else {
+                    Err(EnvBuildError::NotARecord(rt.clone()))
+                }
             })
-            .collect()
+            .collect::<Result<Vec<_>, EnvBuildError>>()?
+            .into_iter()
+            .flatten()
+            .collect())
     }
 
     /// Add the bindings of a record to a typing environment. Ignore fields whose name are defined
@@ -452,7 +465,7 @@ pub struct State<'a> {
 /// file. It however still needs the resolver to get the apparent type of imports.
 pub fn type_check<L>(
     t: &RichTerm,
-    global_eval_env: &eval::Environment,
+    global_env: &Environment,
     resolver: &impl ImportResolver,
     mut linearizer: impl Linearizer<L, (UnifTable, HashMap<usize, Ident>)>,
 ) -> Result<(Types, Completed), TypecheckError>
@@ -461,7 +474,6 @@ where
 {
     let (mut table, mut names) = (UnifTable::new(), HashMap::new());
     let mut building = Linearization::building();
-    let global = Envs::mk_global(global_eval_env);
     let ty = TypeWrapper::Ptr(new_var(&mut table));
 
     {
@@ -474,7 +486,7 @@ where
 
         type_check_(
             &mut state,
-            Envs::from_global(&global),
+            Envs::from_global(&global_env),
             &mut building,
             linearizer.scope(linearization::ScopeId::Right),
             false,
@@ -1028,16 +1040,22 @@ pub fn apparent_type(t: &Term, envs: Option<&Envs>) -> ApparentType {
 /// instence.
 pub fn infer_type(t: &Term) -> TypeWrapper {
     match t {
-        Term::Record(rec, _) => TypeWrapper::Concrete(AbsType::StaticRecord(Box::new(
-            rec.iter().fold(AbsType::RowEmpty().into(), |r, (id, rt)| {
-                TypeWrapper::Concrete(AbsType::RowExtend(
+        Term::Record(rec, ..) | Term::RecRecord(rec, ..) => AbsType::StaticRecord(Box::new(
+            TypeWrapper::Concrete(rec.iter().fold(AbsType::RowEmpty(), |r, (id, rt)| {
+                println!("{:?}", id);
+                let t = AbsType::RowExtend(
                     id.clone(),
-                    Some(infer_type(rt.term.as_ref()).into()),
-                    r.into(),
-                ))
-            }),
-        ))),
-        _ => apparent_type(t, None).into(),
+                    Some(Box::new(infer_type(rt.term.as_ref()))),
+                    Box::new(r.into()),
+                );
+                t
+            })),
+        ))
+        .into(),
+        Term::MetaValue(MetaValue {
+            value: Some(rt), ..
+        }) => infer_type(rt.as_ref()),
+        t => apparent_type(t, None).into(),
     }
 }
 

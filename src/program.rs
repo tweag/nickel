@@ -72,13 +72,9 @@ impl Program {
     /// Retrieve the parsed term and typecheck it, and generate a fresh global environment. Return
     /// both.
     fn prepare_eval(&mut self) -> Result<(RichTerm, eval::Environment), Error> {
-        self.cache.prepare_stdlib()?;
-        let global_env = self
-            .cache
-            .mk_global_env()
-            .expect("program::prepare_eval(): expected event to be ready");
-        self.cache.prepare(self.main_id, &global_env)?;
-        Ok((self.cache.get(self.main_id).unwrap(), global_env))
+        let GlobalEnv { eval_env, type_env } = self.cache.prepare_stdlib()?;
+        self.cache.prepare(self.main_id, &type_env)?;
+        Ok((self.cache.get(self.main_id).unwrap(), eval_env))
     }
 
     /// Parse if necessary, typecheck and then evaluate the program.
@@ -95,11 +91,7 @@ impl Program {
 
     /// Wrapper for [`query`](./fn.query.html).
     pub fn query(&mut self, path: Option<String>) -> Result<Term, Error> {
-        self.cache.prepare_stdlib()?;
-        let global_env = self
-            .cache
-            .mk_global_env()
-            .expect("program::prepare_eval(): expected event to be ready");
+        let global_env = self.cache.prepare_stdlib()?;
         query(&mut self.cache, self.main_id, &global_env, path)
     }
 
@@ -107,7 +99,7 @@ impl Program {
     pub fn typecheck(&mut self) -> Result<(), Error> {
         self.cache.parse(self.main_id)?;
         self.cache.load_stdlib()?;
-        let global_env = self.cache.mk_global_env().expect("program::typecheck(): stdlib has been loaded but was not found in cache on mk_global_env()");
+        let global_env = self.cache.mk_global_types().unwrap();
         self.cache
             .resolve_imports(self.main_id)
             .map_err(|cache_err| {
@@ -148,10 +140,10 @@ impl Program {
 pub fn query(
     cache: &mut Cache,
     file_id: FileId,
-    global_env: &eval::Environment,
+    global_env: &GlobalEnv,
     path: Option<String>,
 ) -> Result<Term, Error> {
-    cache.prepare(file_id, global_env)?;
+    cache.prepare(file_id, &global_env.type_env)?;
 
     let t = if let Some(p) = path {
         // Parsing `y.path`. We `seq` it to force the evaluation of the underlying value,
@@ -176,7 +168,7 @@ pub fn query(
         cache.get_owned(file_id).unwrap()
     };
 
-    Ok(eval::eval_meta(t, &global_env, cache)?)
+    Ok(eval::eval_meta(t, &global_env.eval_env, cache)?)
 }
 
 /// Pretty-print an error.
