@@ -519,7 +519,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
         mut lin: Linearization<Building<BuildingResource>>,
         (table, reported_names): (UnifTable, HashMap<usize, Ident>),
     ) -> Linearization<Completed> {
-        eprintln!("linearizing");
+        debug!("linearizing");
 
         // TODO: Storing defers while linearizing?
         let defers: Vec<(usize, usize, Ident)> = lin
