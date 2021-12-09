@@ -13,8 +13,8 @@ fn parse(s: &str) -> Result<RichTerm, ParseError> {
     let id = Files::new().add("<test>", String::from(s));
 
     super::grammar::TermParser::new()
-        .parse(id, Lexer::new(&s))
-        .map_err(|err| ParseError::from_lalrpop(err, id))
+        .parse_term(id, Lexer::new(&s))
+        .map_err(|errs| errs.errors.first().unwrap().clone())
 }
 
 fn parse_without_pos(s: &str) -> RichTerm {
@@ -154,9 +154,13 @@ fn unary_op() {
 #[test]
 fn enum_terms() {
     assert_eq!(parse_without_pos("`foo"), Enum(Ident::from("foo")).into(),);
+    assert_eq!(
+        parse_without_pos("`\"foo:bar\""),
+        Enum(Ident::from("foo:bar")).into(),
+    );
 
     assert_eq!(
-        parse_without_pos("switch { foo => true, bar => false, _ => 456, } 123"),
+        parse_without_pos("switch { `foo => true, `bar => false, _ => 456, } 123"),
         mk_switch!(Num(123.), ("foo", Bool(true)), ("bar", Bool(false)) ; Num(456.))
     )
 }

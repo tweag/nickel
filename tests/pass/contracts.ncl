@@ -30,14 +30,26 @@ twice (fun x => x + 1) 3 == 5) &&
 (`foo | <foo, bar>) == `foo &&
 (`bar | forall r. <foo, bar | r>) == `bar &&
 
+// enums_escaped
+(`"foo:baz" | <"foo:baz", "bar:baz">) == `"foo:baz" &&
+(`"bar:baz" | forall r. <"foo:baz", "bar:baz" | r>) == `"bar:baz" &&
+
 // enums_complex
 (let f : forall r. <foo, bar | r> -> Num =
-  fun x => switch { foo => 1, bar => 2, _ => 3, } x in
+  fun x => switch { `foo => 1, `bar => 2, _ => 3, } x in
 f `bar == 2) &&
 
 (let f : forall r. <foo, bar | r> -> Num =
-  fun x => switch { foo => 1, bar => 2, _ => 3, } x in
+  fun x => switch { `foo => 1, `bar => 2, _ => 3, } x in
 f `boo == 3) &&
+
+(let f : forall r. <foo, "bar:baz" | r> -> Num =
+  fun x => switch { `foo => 1, `"bar:baz" => 2, _ => 3, } x in
+f `"bar:baz" == 2) &&
+
+(let f : forall r. <foo, "bar:baz" | r> -> Num =
+  fun x => switch { `foo => 1, `"bar:baz" => 2, _ => 3, } x in
+f `"boo,grr" == 3) &&
 
 // records_simple
 (({} | {}) == {} | #Assert) &&

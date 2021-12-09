@@ -6,24 +6,26 @@ use std::fmt::Write;
 
 use codespan::{FileId, Files};
 use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
+use lalrpop_util::ErrorRecovery;
 
 use crate::eval::{CallStack, StackElem};
 use crate::identifier::Ident;
 use crate::label::ty_path;
 use crate::parser::error::{LexicalError, ParseError as InternalParseError};
+use crate::parser::lexer::Token;
 use crate::parser::utils::mk_span;
 use crate::position::{RawSpan, TermPos};
 use crate::serialize::ExportFormat;
 use crate::term::RichTerm;
 use crate::types::Types;
-use crate::{label, repl};
+use crate::{label, parser, repl};
 
 /// A general error occurring during either parsing or evaluation.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Error {
     EvalError(EvalError),
     TypecheckError(TypecheckError),
-    ParseError(ParseError),
+    ParseErrors(ParseErrors),
     ImportError(ImportError),
     SerializationError(SerializationError),
     IOError(IOError),
@@ -189,6 +191,70 @@ pub enum TypecheckError {
     ),
 }
 
+#[derive(Debug, PartialEq, Clone, Default)]
+pub struct ParseErrors {
+    pub errors: Vec<ParseError>,
+}
+
+impl ParseErrors {
+    pub fn new(errors: Vec<ParseError>) -> ParseErrors {
+        ParseErrors { errors }
+    }
+    pub fn errors(self) -> Option<Vec<ParseError>> {
+        if self.errors.is_empty() {
+            None
+        } else {
+            Some(self.errors)
+        }
+    }
+
+    pub fn no_errors(&self) -> bool {
+        self.errors.is_empty()
+    }
+
+    pub const fn none() -> ParseErrors {
+        ParseErrors { errors: Vec::new() }
+    }
+
+    pub fn from_recoverable<'a>(
+        errs: Vec<ErrorRecovery<usize, Token<'a>, parser::error::ParseError>>,
+        file_id: FileId,
+    ) -> Self {
+        ParseErrors {
+            errors: errs
+                .into_iter()
+                .map(|e| ParseError::from_lalrpop(e.error, file_id))
+                .collect(),
+        }
+    }
+}
+
+impl From<ParseError> for ParseErrors {
+    fn from(e: ParseError) -> ParseErrors {
+        ParseErrors { errors: vec![e] }
+    }
+}
+
+impl From<Vec<ParseError>> for ParseErrors {
+    fn from(errors: Vec<ParseError>) -> ParseErrors {
+        ParseErrors { errors }
+    }
+}
+
+impl ToDiagnostic<FileId> for ParseErrors {
+    fn to_diagnostic(
+        &self,
+        files: &mut Files<String>,
+        contract_id: Option<FileId>,
+    ) -> Vec<Diagnostic<FileId>> {
+        self.errors
+            .iter()
+            .map(|e| e.to_diagnostic(files, contract_id))
+            .flatten()
+            .collect()
+    }
+}
+
 /// An error occurring during parsing.
 #[derive(Debug, PartialEq, Clone)]
 pub enum ParseError {
@@ -228,8 +294,8 @@ pub enum ImportError {
         /* import position */ TermPos,
     ),
     /// A parse error occurred during an import.
-    ParseError(
-        /* error */ ParseError,
+    ParseErrors(
+        /* error */ ParseErrors,
         /* import position */ TermPos,
     ),
 }
@@ -268,7 +334,15 @@ impl From<EvalError> for Error {
 
 impl From<ParseError> for Error {
     fn from(error: ParseError) -> Error {
-        Error::ParseError(error)
+        Error::ParseErrors(ParseErrors {
+            errors: vec![error],
+        })
+    }
+}
+
+impl From<ParseErrors> for Error {
+    fn from(errors: ParseErrors) -> Error {
+        Error::ParseErrors(errors)
     }
 }
 
@@ -835,7 +909,12 @@ impl ToDiagnostic<FileId> for Error {
         contract_id: Option<FileId>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
-            Error::ParseError(err) => err.to_diagnostic(files, contract_id),
+            Error::ParseErrors(errs) => errs
+                .errors
+                .iter()
+                .map(|e| e.to_diagnostic(files, contract_id))
+                .flatten()
+                .collect(),
             Error::TypecheckError(err) => err.to_diagnostic(files, contract_id),
             Error::EvalError(err) => err.to_diagnostic(files, contract_id),
             Error::ImportError(err) => err.to_diagnostic(files, contract_id),
@@ -874,7 +953,7 @@ impl ToDiagnostic<FileId> for EvalError {
                     write!(&mut msg, ".").unwrap();
                 }
 
-                let (path_label, notes) = report_ty_path(&l, files);
+                let (path_label, notes) = report_ty_path(l, files);
                 let mut labels = vec![path_label];
 
                 if let Some(ref arg_pos) = l.arg_pos.into_opt() {
@@ -887,7 +966,7 @@ impl ToDiagnostic<FileId> for EvalError {
                         .map(|ctrs_id| arg_pos.src_id != ctrs_id)
                         .unwrap_or(true)
                     {
-                        labels.push(primary(&arg_pos).with_message("applied to this expression"));
+                        labels.push(primary(arg_pos).with_message("applied to this expression"));
                     }
                 }
 
@@ -983,10 +1062,10 @@ impl ToDiagnostic<FileId> for EvalError {
                     TermPos::Original(pos) | TermPos::Inherited(pos) if orig_pos_opt != &t.pos => {
                         vec![
                             primary(pos).with_message(label),
-                            secondary_term(&t, files).with_message("evaluated to this"),
+                            secondary_term(t, files).with_message("evaluated to this"),
                         ]
                     }
-                    _ => vec![primary_term(&t, files).with_message(label)],
+                    _ => vec![primary_term(t, files).with_message(label)],
                 };
 
                 vec![Diagnostic::error()
@@ -997,7 +1076,7 @@ impl ToDiagnostic<FileId> for EvalError {
             EvalError::NotAFunc(t, arg, pos_opt) => vec![Diagnostic::error()
                 .with_message("Not a function")
                 .with_labels(vec![
-                    primary_term(&t, files)
+                    primary_term(t, files)
                         .with_message("this term is applied, but it is not a function"),
                     secondary_alt(
                         *pos_opt,
@@ -1061,12 +1140,12 @@ impl ToDiagnostic<FileId> for EvalError {
             }
             EvalError::MergeIncompatibleArgs(t1, t2, span_opt) => {
                 let mut labels = vec![
-                    primary_term(&t1, files).with_message("cannot merge this expression"),
-                    primary_term(&t2, files).with_message("with this expression"),
+                    primary_term(t1, files).with_message("cannot merge this expression"),
+                    primary_term(t2, files).with_message("with this expression"),
                 ];
 
                 if let TermPos::Original(span) | TermPos::Inherited(span) = span_opt {
-                    labels.push(secondary(&span).with_message("merged here"));
+                    labels.push(secondary(span).with_message("merged here"));
                 }
 
                 vec![Diagnostic::error()
@@ -1142,7 +1221,7 @@ impl ToDiagnostic<FileId> for ParseError {
                     ))
                     .with_labels(vec![primary(&RawSpan {
                         start: end,
-                        end: end,
+                        end,
                         src_id: *file_id,
                     })])
             }
@@ -1175,7 +1254,7 @@ impl ToDiagnostic<FileId> for ParseError {
                 .with_message(format!(
                     "Unbound type variable(s): {}",
                     idents
-                        .into_iter()
+                        .iter()
                         .map(|x| format!("`{}`", x))
                         .collect::<Vec<_>>()
                         .join(",")
@@ -1416,8 +1495,13 @@ impl ToDiagnostic<FileId> for ImportError {
                     .with_message(format!("Import of {} failed: {}", path, error))
                     .with_labels(labels)]
             }
-            ImportError::ParseError(error, span_opt) => {
-                let mut diagnostic = error.to_diagnostic(files, contract_id);
+            ImportError::ParseErrors(error, span_opt) => {
+                let mut diagnostic: Vec<Diagnostic<FileId>> = error
+                    .errors
+                    .iter()
+                    .map(|e| e.to_diagnostic(files, contract_id))
+                    .flatten()
+                    .collect();
 
                 if let Some(span) = span_opt.as_opt_ref() {
                     diagnostic[0]
@@ -1445,13 +1529,13 @@ impl ToDiagnostic<FileId> for SerializationError {
                         .type_of()
                         .unwrap_or_else(|| String::from("<unevaluated>"))
                 ))
-                .with_labels(vec![primary_term(&rt, files)])],
+                .with_labels(vec![primary_term(rt, files)])],
             SerializationError::UnsupportedNull(format, rt) => vec![Diagnostic::error()
                 .with_message(format!("{} doesn't support null values", format))
-                .with_labels(vec![primary_term(&rt, files)])],
+                .with_labels(vec![primary_term(rt, files)])],
             SerializationError::NonSerializable(rt) => vec![Diagnostic::error()
                 .with_message("non serializable term")
-                .with_labels(vec![primary_term(&rt, files)])],
+                .with_labels(vec![primary_term(rt, files)])],
             SerializationError::Other(msg) => vec![Diagnostic::error()
                 .with_message("error during serialization")
                 .with_notes(vec![msg.clone()])],

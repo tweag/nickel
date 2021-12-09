@@ -47,6 +47,6 @@
         hasField "one" { one = 1, two = 2 } =>
           true
       "#m
-    = fun r field => %hasField% r field,
+    = fun field r => %hasField% field r,
   }
 }

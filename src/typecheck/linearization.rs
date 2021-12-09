@@ -188,7 +188,7 @@ pub trait Linearizer<L, S> {
 
     /// Ensures the scope structure of the source can be represented in the
     /// linearization.
-    /// The specific implementations need to take care of how to represenr
+    /// The specific implementations need to take care of how to represent
     /// decending into a lower scope.
     /// Notice, the resulting instance is a fresh value, any resource that is
     /// required or produced in parallel instances should therefore be put
@@ -225,9 +225,9 @@ pub enum ScopeId {
 
 impl ScopeIdElem for ScopeId {}
 
-impl Into<Completed> for Linearization<Completed> {
-    fn into(self) -> Completed {
-        self.state
+impl From<Linearization<Completed>> for Completed {
+    fn from(lin: Linearization<Completed>) -> Self {
+        lin.state
     }
 }
 
@@ -250,11 +250,10 @@ impl Completed {
 
                 self.scope_mapping
                     .get(scope)
-                    .map_or_else(|| Vec::new(), Clone::clone)
+                    .map_or_else(Vec::new, Clone::clone)
             })
             .map(|id| self.get_item(id))
-            .filter(Option::is_some)
-            .map(Option::unwrap)
+            .flatten()
             .collect()
     }
 }

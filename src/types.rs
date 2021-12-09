@@ -429,7 +429,9 @@ mod test {
         println!("{}", wrapper);
         let id = Files::new().add("<test>", wrapper.clone());
 
-        let rt = TermParser::new().parse(id, Lexer::new(&wrapper)).unwrap();
+        let rt = TermParser::new()
+            .parse_term(id, Lexer::new(&wrapper))
+            .unwrap();
 
         match *rt.term {
             Term::MetaValue(MetaValue { mut contracts, .. }) if contracts.len() == 1 => {

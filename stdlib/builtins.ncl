@@ -28,7 +28,7 @@
       "#m
     = fun x => %isBool% x,
 
-    isStr : Dyn -> Bool 
+    isStr : Dyn -> Bool
     | doc m#"
       Checks if the given value is a string.
 
@@ -70,7 +70,7 @@
       "#m
     = fun x => %isList% x,
 
-    isRecord : Dyn -> Bool 
+    isRecord : Dyn -> Bool
     | doc m#"
       Checks if the given value is a record.
 
@@ -122,6 +122,8 @@
           error
         seq (42 / 2) 37 =>
           37
+        seq { tooFar = 42 / 0 } 37 =>
+          37
       ```
       "#m
     = fun x y => %seq% x y,
@@ -136,6 +138,8 @@
           error
         deepSeq (42 / 2) 37 =>
           37
+        deepSeq { tooFar = 42 / 0 } 37 =>
+          error
       ```
       "#m
     = fun x y => %deepSeq% x y,
