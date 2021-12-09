@@ -90,7 +90,7 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
                 id,
                 pos: ident.1,
                 // temporary, the actual type is resolved later and the item retyped
-                ty: TypeWrapper::Concrete(AbsType::RowEmpty()),
+                ty: TypeWrapper::Concrete(AbsType::Dyn()),
                 kind: TermKind::RecordField {
                     record,
                     ident: ident.clone(),
