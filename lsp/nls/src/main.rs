@@ -1,6 +1,7 @@
 use std::{
     fs::{self, File, OpenOptions},
     io::{self, Stderr},
+    path::PathBuf,
     sync::Arc,
 };
 
@@ -15,18 +16,30 @@ mod linearization;
 mod requests;
 mod server;
 use server::Server;
+use structopt::StructOpt;
 
 use crate::trace::{CsvTraceItem, Trace};
 
 mod term;
 mod trace;
 
+#[derive(StructOpt, Debug)]
+/// The interpreter of the Nickel language.
+struct Opt {
+    /// The trace output file, disables tracing if not given
+    #[structopt(short = "t", long)]
+    #[structopt(parse(from_os_str))]
+    trace: Option<PathBuf>,
+}
+
 fn main() -> Result<()> {
     env_logger::init();
 
-    Trace::set_writer(csv::Writer::from_path("./trace.csv")?)?;
+    let options = Opt::from_args();
 
-    trace!("hello");
+    if let Some(file) = options.trace {
+        Trace::set_writer(csv::Writer::from_path(file)?)?;
+    }
 
     let (connection, _threads) = Connection::stdio();
 
