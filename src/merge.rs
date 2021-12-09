@@ -85,9 +85,9 @@ impl Default for MergeMode {
 /// contract. It is important as `merge` is not commutative in this mode.
 pub fn merge(
     t1: RichTerm,
-    env1: Environment,
+    mut env1: Environment,
     t2: RichTerm,
-    env2: Environment,
+    mut env2: Environment,
     pos_op: TermPos,
     mode: MergeMode,
 ) -> Result<Closure, EvalError> {
@@ -330,8 +330,8 @@ pub fn merge(
              */
             let mut m = HashMap::new();
             let mut env = Environment::new();
-            rev_thunks(m1.values_mut());
-            rev_thunks(m2.values_mut());
+            rev_thunks(m1.values_mut(), &mut env1);
+            rev_thunks(m2.values_mut(), &mut env2);
             let (mut left, mut center, mut right) = hashmap::split(m1, m2);
 
             match mode {
@@ -434,11 +434,18 @@ fn merge_closurize(
     body.closurize(env, local_env)
 }
 
-fn rev_thunks<'a, I: Iterator<Item = &'a mut RichTerm>>(map: I) {
+fn rev_thunks<'a, I: Iterator<Item = &'a mut RichTerm>>(map: I, env: &mut Environment) {
+    use crate::transformations::fresh_var;
+
     for rt in map {
         if let Term::Var(id) = std::mem::take(&mut *rt.term) {
-            *rt.term = Term::VarRev(id);
+            // This create a fresh variable which is bound to a reversed copy of the original thunk
+            let reversed = env.get(&id).unwrap().restore();
+            let fresh_id = fresh_var();
+            env.insert(fresh_id.clone(), reversed);
+            *rt.term = Term::Var(fresh_id);
         }
+        // Otherwise, after the share normal form transformations, it should be a constant
     }
 }
 

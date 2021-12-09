@@ -373,7 +373,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
 
         let id = id_gen.get();
         match term {
-            Term::Let(ident, _, _) | Term::LetRev(ident, _, _) | Term::Fun(ident, _) => {
+            Term::Let(ident, _, _) | Term::Fun(ident, _) => {
                 self.env
                     .insert(ident.to_owned(), lin.state.resource.linearization.len());
                 lin.push(LinearizationItem {
@@ -385,7 +385,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                     meta: self.meta.take(),
                 });
             }
-            Term::Var(ident) | Term::VarRev(ident) => {
+            Term::Var(ident) => {
                 let root_id = id_gen.get_and_advance();
 
                 debug!(
@@ -442,12 +442,10 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                 self.record_fields =
                     Some((id + 1, field_names.into_iter().enumerate().rev().collect()));
             }
-
             Term::Op1(UnaryOp::StaticAccess(ident), _) => {
                 let x = self.access.get_or_insert(Vec::with_capacity(1));
                 x.push(ident.to_owned())
             }
-
             Term::MetaValue(meta) => {
                 // Notice 1: No push to lin
                 // Notice 2: we discard the encoded value as anything we
@@ -485,7 +483,6 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                     })
                 }
             }
-
             other => {
                 debug!("Add wildcard item: {:?}", other);
 

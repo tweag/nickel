@@ -742,7 +742,7 @@ fn type_check_<S, E>(
             unify(state, strict, ty, res).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
             type_check_(state, envs, lin, linearizer, strict, exp, mk_tyw_enum!(row))
         }
-        Term::Var(x) | Term::VarRev(x) => {
+        Term::Var(x) => {
             let x_ty = envs
                 .get(x)
                 .ok_or_else(|| TypecheckError::UnboundIdentifier(x.clone(), *pos))?;
