@@ -523,31 +523,29 @@ impl Closurizable for RichTerm {
     /// Generate a fresh variable, bind it to the corresponding closure `(t,with_env)` in `env`,
     /// and return this variable as a fresh term.
     fn closurize(self, env: &mut Environment, with_env: Environment) -> RichTerm {
-        // If the term is already a variable with a unique name (that is, introduced by the share
-        // normal form transformation), we don't have to create an useless intermediate variable
-        // and thunks. We just transfer the original thunk to the new environment.  This is not
-        // only an optimization: this is relied upon by recursive record merging to guarantee
-        // correctness. Change carefully.
-        let reuse_binding = match self.as_ref() {
-            Term::Var(id) if id.is_unique() => with_env.get(&id).map(|t| (id.clone(), t)),
+        // If the term is already a variable (that is, introduced by the share normal form
+        // transformation), we don't have to create an useless intermediate closure. We just
+        // transfer the original thunk to the new environment. This is not only an optimization:
+        // this is relied upon by recursive record merging when computing the fixpoint. Change
+        // carefully.
+        let reuse_thunk = match self.as_ref() {
+            Term::Var(id) => with_env.get(&id),
             _ => None,
         };
 
-        if let Some((id, thunk)) = reuse_binding {
-            // Because the id is unique, this won't shadow anything
-            env.insert(id, thunk);
-            self
-        } else {
-            let var = fresh_var();
-            let pos = self.pos;
+        let var = fresh_var();
+        let pos = self.pos;
+
+        let thunk = reuse_thunk.unwrap_or_else(|| {
             let closure = Closure {
                 body: self,
                 env: with_env,
             };
-            env.insert(var.clone(), Thunk::new(closure, IdentKind::Record));
+            Thunk::new(closure, IdentKind::Record)
+        });
 
-            RichTerm::new(Term::Var(var), pos.into_inherited())
-        }
+        env.insert(var.clone(), thunk);
+        RichTerm::new(Term::Var(var), pos.into_inherited())
     }
 }
 
