@@ -85,7 +85,7 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
         env: &mut Environment,
     ) {
         for (ident, value) in record_fields.into_iter() {
-            let id = self.id_gen().take();
+            let id = self.id_gen().get_and_advance();
             self.push(LinearizationItem {
                 id,
                 pos: ident.1,
@@ -357,7 +357,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                     };
                     match field.kind {
                         TermKind::RecordField { ref mut value, .. } => {
-                            *value = Some(id_gen.id() + usage_offset);
+                            *value = Some(id_gen.get() + usage_offset);
                         }
                         // The linearization item of a record with n fields is expected to be
                         // followed by n linearization items representing each field
@@ -371,7 +371,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
             return;
         }
 
-        let id = id_gen.id();
+        let id = id_gen.get();
         match term {
             Term::Let(ident, _, _) | Term::Fun(ident, _) => {
                 self.env
@@ -386,7 +386,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                 });
             }
             Term::Var(ident) => {
-                let root_id = id_gen.take();
+                let root_id = id_gen.get_and_advance();
 
                 debug!(
                     "adding usage of variable {} followed by chain {:?}",
@@ -410,7 +410,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                     let chain: Vec<_> = chain.into_iter().rev().collect();
 
                     for accessor in chain.iter() {
-                        let id = id_gen.take();
+                        let id = id_gen.get_and_advance();
                         lin.push(LinearizationItem {
                             id,
                             pos: accessor.1,
@@ -461,7 +461,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                             match &**term {
                                 Term::Var(ident) => {
                                     let parent = self.env.get(&ident);
-                                    let id = id_gen.take();
+                                    let id = id_gen.get_and_advance();
                                     lin.push(LinearizationItem {
                                         id,
                                         pos: ident.1,
@@ -625,17 +625,21 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
 struct IdGen(usize);
 
 impl IdGen {
+    /// Make new Generator starting at `base`
     fn new(base: usize) -> Self {
         IdGen(base)
     }
 
-    fn take(&mut self) -> usize {
+    /// Get the current id
+    fn get(&self) -> usize {
+        self.0
+    }
+
+    /// Return the **current id** and advance the generator.
+    /// Following calls to get (and get_and_advance) will return a new id
+    fn get_and_advance(&mut self) -> usize {
         let current_id = self.0;
         self.0 += 1;
         current_id
-    }
-
-    fn id(&self) -> usize {
-        self.0
     }
 }
