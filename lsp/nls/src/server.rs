@@ -1,4 +1,8 @@
-use std::collections::HashMap;
+use std::{
+    collections::{hash_map::DefaultHasher, HashMap},
+    hash::Hash,
+    time::{Instant, SystemTime, UNIX_EPOCH},
+};
 
 use anyhow::Result;
 use codespan::FileId;
@@ -146,7 +150,9 @@ impl Server {
                 )
             }
             _ => Ok(()),
-        }
+        }?;
+
+        Ok(())
     }
 
     fn handle_request(&mut self, req: lsp_server::Request) -> Result<()> {

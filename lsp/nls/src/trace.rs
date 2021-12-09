@@ -27,11 +27,9 @@ pub struct TraceItem<T> {
 impl TraceItem<Received> {
     fn into_replied(self, with_error: bool) -> TraceItem<Replied> {
         let Received(ingress) = self.time;
-        let egress = Instant::now();
-        let duration = egress - ingress;
+        let duration = ingress.elapsed();
         TraceItem {
             time: Replied {
-                ingress,
                 duration,
                 with_error,
             },
@@ -44,6 +42,7 @@ impl TraceItem<Received> {
 pub struct TraceItemParams {
     method: String,
     linearization_size: Option<usize>,
+    file_size: Option<usize>,
 }
 
 #[derive(Debug, Serialize)]
@@ -53,6 +52,7 @@ pub struct CsvTraceItem {
 
     method: String,
     linearization_size: Option<usize>,
+    file_size: Option<usize>,
 }
 
 impl From<TraceItem<Replied>> for CsvTraceItem {
@@ -62,6 +62,7 @@ impl From<TraceItem<Replied>> for CsvTraceItem {
             with_error: replied.time.with_error,
             method: replied.params.method,
             linearization_size: replied.params.linearization_size,
+            file_size: replied.params.file_size,
         }
     }
 }
@@ -92,8 +93,6 @@ impl Serialize for Received {
 }
 #[derive(Debug, Serialize)]
 pub struct Replied {
-    #[serde(skip)]
-    ingress: Instant,
     duration: Duration,
     with_error: bool,
 }
@@ -155,10 +154,10 @@ impl Trace {
     where
         F: FnOnce(MutexGuard<Trace>) -> Result<()>,
     {
-        TRACE
+        return TRACE
             .lock()
             .or_else(|_| anyhow::bail!("Could not lock tracer mutex"))
-            .and_then(f)
+            .and_then(f);
     }
 
     pub fn receive(id: RequestId, method: impl ToString) {
@@ -199,8 +198,6 @@ pub(crate) trait Enrich<E: Enrichment> {
     fn enrich(id: &RequestId, param: E);
 }
 
-fn report<T, E>(result: Result<T, E>) {}
-
 trait ResultExt<E> {
     fn report(&self);
 }
@@ -228,6 +225,24 @@ pub mod param {
             Self::with_trace(|mut t| {
                 t.received.entry(id.to_owned()).and_modify(|item| {
                     item.params.linearization_size = Some(param.lin.len());
+                });
+                Ok(())
+            })
+            .report();
+        }
+    }
+
+    pub struct FileUpdate<'a> {
+        pub content: &'a str,
+    }
+
+    impl Enrichment for FileUpdate<'_> {}
+
+    impl<'a> Enrich<FileUpdate<'a>> for Trace {
+        fn enrich(id: &RequestId, param: FileUpdate<'a>) {
+            Self::with_trace(|mut t| {
+                t.received.entry(id.to_owned()).and_modify(|item| {
+                    item.params.file_size = Some(param.content.len());
                 });
                 Ok(())
             })
