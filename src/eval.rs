@@ -203,16 +203,13 @@ impl ThunkData {
     /// this case, `restore()` is the same as `clone()`.
     pub fn restore(&self) -> Self {
         match self.inner {
-            InnerThunkData::Standard(ref closure) => ThunkData {
-                inner: InnerThunkData::Standard(closure.clone()),
-                state: self.state,
-            },
+            InnerThunkData::Standard(_) => self.clone(),
             InnerThunkData::Reversible { ref orig, .. } => ThunkData {
                 inner: InnerThunkData::Reversible {
                     orig: Rc::clone(orig),
                     cached: Rc::clone(orig),
                 },
-                state: self.state,
+                state: ThunkState::Suspended,
             },
         }
     }
