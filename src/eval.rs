@@ -763,7 +763,7 @@ where
         }
 
         clos = match term {
-            Term::Var(x) => {
+            Term::Var(x) | Term::VarRev(x) => {
                 let mut thunk = env
                     .get(&x)
                     .or_else(|| global_env.get(&x))
@@ -939,7 +939,7 @@ where
                 let rec_env = ts.iter().try_fold::<_, _, Result<Environment, EvalError>>(
                     Environment::new(),
                     |mut rec_env, (id, rt)| match rt.as_ref() {
-                        Term::Var(ref var_id) => {
+                        Term::Var(ref var_id) | Term::VarRev(ref var_id) => {
                             let thunk = env.get(var_id).ok_or_else(|| {
                                 EvalError::UnboundIdentifier(var_id.clone(), rt.pos)
                             })?;
@@ -963,7 +963,7 @@ where
                 let new_ts = ts.into_iter().map(|(id, rt)| {
                     let RichTerm { term, pos } = rt;
                     match *term {
-                        Term::Var(var_id) => {
+                        var @ Term::Var(var_id) | var @ Term::VarRev(var_id) => {
                             // We already checked for unbound identifier in the previous fold,
                             // so function should always succeed
                             let mut thunk = env.get(&var_id).unwrap();
@@ -975,6 +975,7 @@ where
                             (
                                 id,
                                 RichTerm {
+                                    //TODO WE SHOULD PUT THE RIGHT THING
                                     term: Box::new(Term::Var(var_id)),
                                     pos,
                                 },
@@ -998,7 +999,7 @@ where
                         |acc, (id_t, t)| {
                             let RichTerm { term, pos } = t;
                             match *term {
-                                Term::Var(var_id) => {
+                                Term::Var(var_id) | Term::VarRev(var_id) => {
                                     let mut thunk = env.get(&var_id).ok_or_else(|| {
                                         EvalError::UnboundIdentifier(var_id.clone(), pos)
                                     })?;

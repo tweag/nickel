@@ -75,6 +75,9 @@ pub enum Term {
     /// A variable.
     #[serde(skip)]
     Var(Ident),
+    /// The original expression of a variable.
+    #[serde(skip)]
+    VarRev(Ident),
 
     /// An enum variant.
     Enum(Ident),
@@ -155,6 +158,12 @@ pub enum Term {
 impl From<MetaValue> for Term {
     fn from(m: MetaValue) -> Self {
         Term::MetaValue(m)
+    }
+}
+
+impl Default for Term {
+    fn default() -> Self {
+        Term::Null
     }
 }
 
@@ -322,8 +331,8 @@ impl Term {
                     func(t2);
                 });
             }
-            Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | Sym(_) | Enum(_) | Import(_)
-            | ResolvedImport(_) => {}
+            Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | VarRev(_) | Sym(_) | Enum(_)
+            | Import(_) | ResolvedImport(_) => {}
             Fun(_, ref mut t) | Op1(_, ref mut t) | Wrapped(_, ref mut t) => {
                 func(t);
             }
@@ -379,6 +388,7 @@ impl Term {
             | Term::LetRev(_, _, _)
             | Term::App(_, _)
             | Term::Var(_)
+            | Term::VarRev(_)
             | Term::Switch(..)
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
@@ -449,7 +459,7 @@ impl Term {
 
                 format!("<{}{}={}>", content, value_label, value)
             }
-            Term::Var(id) => id.to_string(),
+            Term::Var(id) | Term::VarRev(id) => id.to_string(),
             Term::ParseError => String::from("<parse error>"),
             Term::Let(_, _, _)
             | Term::LetPattern(_, _, _, _)
@@ -509,6 +519,7 @@ impl Term {
             | Term::LetRev(_, _, _)
             | Term::App(_, _)
             | Term::Var(_)
+            | Term::VarRev(_)
             | Term::Switch(..)
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
@@ -550,6 +561,7 @@ impl Term {
             | Term::App(_, _)
             | Term::Switch(..)
             | Term::Var(_)
+            | Term::VarRev(_)
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
@@ -916,6 +928,7 @@ impl RichTerm {
             | v @ Term::Lbl(_)
             | v @ Term::Sym(_)
             | v @ Term::Var(_)
+            | v @ Term::VarRev(_)
             | v @ Term::Enum(_)
             | v @ Term::Import(_)
             | v @ Term::ResolvedImport(_) => RichTerm {

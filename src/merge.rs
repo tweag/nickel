@@ -322,7 +322,7 @@ pub fn merge(
         }
         // Merge put together the fields of records, and recursively merge
         // fields that are present in both terms
-        (Term::Record(m1, attrs1), Term::Record(m2, attrs2)) => {
+        (Term::Record(mut m1, attrs1), Term::Record(mut m2, attrs2)) => {
             /* Terms inside m1 and m2 may capture variables of resp. env1 and env2.  Morally, we
              * need to store closures, or a merge of closures, inside the resulting record.  We use
              * the same trick as in the evaluation of the operator DynExtend, and replace each such
@@ -330,6 +330,8 @@ pub fn merge(
              */
             let mut m = HashMap::new();
             let mut env = Environment::new();
+            rev_thunks(m1.values_mut());
+            rev_thunks(m2.values_mut());
             let (mut left, mut center, mut right) = hashmap::split(m1, m2);
 
             match mode {
@@ -430,6 +432,14 @@ fn merge_closurize(
         t2.closurize(&mut local_env, env2),
     ));
     body.closurize(env, local_env)
+}
+
+fn rev_thunks<'a, I: Iterator<Item = &'a mut RichTerm>>(map: I) {
+    for rt in map {
+        if let Term::Var(id) = std::mem::take(&mut *rt.term) {
+            *rt.term = Term::VarRev(id);
+        }
+    }
 }
 
 pub mod hashmap {

@@ -385,7 +385,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                     meta: self.meta.take(),
                 });
             }
-            Term::Var(ident) => {
+            Term::Var(ident) | Term::VarRev(ident) => {
                 let root_id = id_gen.get_and_advance();
 
                 debug!(
