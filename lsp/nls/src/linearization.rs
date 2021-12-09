@@ -1,4 +1,4 @@
-use std::{borrow::BorrowMut, cell::UnsafeCell, collections::HashMap};
+use std::{borrow::BorrowMut, cell::UnsafeCell, collections::HashMap, mem};
 
 use codespan::ByteIndex;
 use log::{debug, error, Record};
@@ -38,8 +38,7 @@ trait BuildingExt {
         &'a self,
         item: &'a LinearizationItem<TypeWrapper>,
     ) -> Option<&'a LinearizationItem<TypeWrapper>>;
-    fn resolve_record_references(&mut self, defers: &[(usize, usize, Ident)]);
-
+    fn resolve_record_references(&mut self, defers: Vec<(usize, usize, Ident)>);
     fn id_gen(&self) -> IdGen;
 }
 
@@ -139,7 +138,7 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
             }
             _ => Some(item),
         }
-        // load referneced value, either from record field or declaration
+        // load referenced value, either from record field or declaration
         .and_then(|item_pointer| {
             match item_pointer.kind {
                 // if declaration is a record field, resolve its value
@@ -160,15 +159,15 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
         })
     }
 
-    fn resolve_record_references(&mut self, defers: &[(usize, usize, Ident)]) {
+    fn resolve_record_references(&mut self, mut defers: Vec<(usize, usize, Ident)>) {
         let mut unresolved: Vec<(usize, usize, Ident)> = Vec::new();
 
-        // child_item: current deferred usage item
-        //       i.e.: root.<child>
-        // parent_accessor_id: id of the parent usage
-        //               i.e.: <parent>.child
-        // child_ident: identifier the child item references
-        for deferred in defers.into_iter() {
+        while let Some(deferred) = defers.pop() {
+            // child_item: current deferred usage item
+            //       i.e.: root.<child>
+            // parent_accessor_id: id of the parent usage
+            //               i.e.: <parent>.child
+            // child_ident: identifier the child item references
             let (child_item, parent_accessor_id, child_ident) = &deferred;
             // resolve the value referenced by the parent accessor element
             // get the parent accessor, and read its resolved reference
@@ -260,11 +259,11 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
             if let Some(referenced_id) = referenced_id {
                 self.add_usage(referenced_id, *child_item);
             }
-        }
 
-        if !unresolved.is_empty() {
-            debug!("unresolved references: {:?}", unresolved);
-            self.resolve_record_references(&unresolved);
+            if defers.is_empty() && !unresolved.is_empty() {
+                debug!("unresolved references: {:?}", unresolved);
+                defers = mem::replace(&mut unresolved, Vec::new());
+            }
         }
     }
 
@@ -522,6 +521,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
     ) -> Linearization<Completed> {
         eprintln!("linearizing");
 
+        // TODO: Storing defers while linearizing?
         let defers: Vec<(usize, usize, Ident)> = lin
             .state
             .resource
@@ -535,7 +535,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
             })
             .collect();
 
-        lin.resolve_record_references(&defers);
+        lin.resolve_record_references(defers);
 
         let mut lin_ = lin.state.resource.linearization;
 
