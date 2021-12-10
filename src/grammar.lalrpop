@@ -598,7 +598,7 @@ extern {
         "true" => Token::Normal(NormalToken::True),
         "false" => Token::Normal(NormalToken::False),
 
-        "?" => Token::Normal(NormalToken::Question),
+        "?" => Token::Normal(NormalToken::QuestionMark),
         "," => Token::Normal(NormalToken::Comma),
         ":" => Token::Normal(NormalToken::Colon),
         "$" => Token::Normal(NormalToken::Dollar),
