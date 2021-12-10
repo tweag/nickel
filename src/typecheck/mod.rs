@@ -1053,7 +1053,9 @@ pub fn infer_type(t: &Term) -> TypeWrapper {
         ))
         .into(),
         Term::MetaValue(MetaValue {
-            value: Some(rt), ..
+            value: Some(rt),
+            types: None,
+            ..
         }) => infer_type(rt.as_ref()),
         t => apparent_type(t, None).into(),
     }
