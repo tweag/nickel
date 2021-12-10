@@ -1037,12 +1037,11 @@ pub fn infer_type(t: &Term) -> TypeWrapper {
     match t {
         Term::Record(rec, ..) | Term::RecRecord(rec, ..) => AbsType::StaticRecord(Box::new(
             TypeWrapper::Concrete(rec.iter().fold(AbsType::RowEmpty(), |r, (id, rt)| {
-                let t = AbsType::RowExtend(
+                AbsType::RowExtend(
                     id.clone(),
                     Some(Box::new(infer_type(rt.term.as_ref()))),
                     Box::new(r.into()),
-                );
-                t
+                )
             })),
         ))
         .into(),
