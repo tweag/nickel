@@ -112,3 +112,8 @@ fn annot_parsing() {
 fn importing() {
     check_file("import.ncl");
 }
+
+#[test]
+fn overriding() {
+    check_file("overriding.ncl");
+}
