@@ -7,7 +7,7 @@ use lalrpop_util::ErrorRecovery;
 
 use super::ExtendedTerm;
 use super::utils::{StringKind, mk_pos, mk_label, strip_indent, SwitchCase,
-    FieldPathElem, strip_indent_doc, build_record, elaborate_field_path,
+    FieldPathElem, strip_indent_doc, build_letblock, build_record, elaborate_field_path,
     ChunkLiteralPart, RecordLastField};
 use super::lexer::{Token, NormalToken, StringToken, MultiStringToken};
 
@@ -87,19 +87,24 @@ pub ExtendedTerm: ExtendedTerm = {
     Term => ExtendedTerm::RichTerm(<>),
 }
 
-RootTerm: RichTerm = {
-    "let" <id:Ident> <meta: Annot?> "=" <t1: Term> "in"
-        <t2: Term> => {
-        let t1 = if let Some(mut meta) = meta {
-            let pos = t1.pos;
-            meta.value = Some(t1);
+LetBlockField : (Ident, RichTerm) = {
+    <id: Ident> <meta: Annot?> "=" <term: Term> => {
+        let term = if let Some(mut meta) = meta {
+            let pos = term.pos;
+            meta.value = Some(term);
             RichTerm::new(Term::MetaValue(meta), pos)
         }
         else {
-            t1
+            term
         };
+        (id, term)
+    }
+}
 
-        mk_term::let_in(id, t1, t2)
+RootTerm: RichTerm = {
+    "let" <defs: (<LetBlockField> ",")*> <last: LetBlockField?> "in" <term: Term> => {
+        let lets = defs.into_iter().chain(last.into_iter());
+        RichTerm::from(build_letblock(lets, term))
     },
     <l: @L> "fun" <ps:Pattern+> "=>" <t: Term> <r: @R> => {
         let pos = mk_pos(src_id, l, r);

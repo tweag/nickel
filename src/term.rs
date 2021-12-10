@@ -63,6 +63,11 @@ pub enum Term {
     /// A let binding.
     #[serde(skip)]
     Let(Ident, RichTerm, RichTerm),
+
+    /// A block let binding
+    #[serde(skip)]
+    LetBlock(Vec<(Ident, RichTerm)>, RichTerm),
+
     /// An application.
     #[serde(skip)]
     App(RichTerm, RichTerm),
@@ -330,6 +335,12 @@ impl Term {
                 func(t1);
                 func(t2);
             }
+            LetBlock(ref mut defs, ref mut rest) => {
+                for (_, term) in defs.iter_mut() {
+                    func(term);
+                }
+                func(rest);
+            }
             OpN(_, ref mut terms) | List(ref mut terms) => terms.iter_mut().for_each(|t| {
                 func(t);
             }),
@@ -361,6 +372,7 @@ impl Term {
             Term::Wrapped(_, _) => Some("Wrapped"),
             Term::MetaValue(_) => Some("Metavalue"),
             Term::Let(_, _, _)
+            | Term::LetBlock(..)
             | Term::App(_, _)
             | Term::Var(_)
             | Term::Switch(..)
@@ -436,6 +448,7 @@ impl Term {
             Term::Var(id) => id.to_string(),
             Term::ParseError => String::from("<parse error>"),
             Term::Let(_, _, _)
+            | Term::LetBlock(..)
             | Term::App(_, _)
             | Term::Switch(..)
             | Term::Op1(_, _)
@@ -487,6 +500,7 @@ impl Term {
             | Term::List(_)
             | Term::Sym(_) => true,
             Term::Let(_, _, _)
+            | Term::LetBlock(..)
             | Term::App(_, _)
             | Term::Var(_)
             | Term::Switch(..)
@@ -522,6 +536,7 @@ impl Term {
             | Term::Enum(_)
             | Term::Sym(_) => true,
             Term::Let(_, _, _)
+            | Term::LetBlock(..)
             | Term::Record(..)
             | Term::List(_)
             | Term::Fun(_, _)
@@ -909,6 +924,17 @@ impl RichTerm {
                 let t2 = t2.traverse(f, state, method)?;
                 RichTerm {
                     term: Box::new(Term::Let(id, t1, t2)),
+                    pos,
+                }
+            }
+            Term::LetBlock(defs, rest) => {
+                let data: Result<Vec<_>, _> = defs
+                    .into_iter()
+                    .map(|(id, t)| Ok((id, t.traverse(f, state, method)?)))
+                    .collect();
+                let rest = rest.traverse(f, state, method)?;
+                RichTerm {
+                    term: Box::new(Term::LetBlock(data?, rest)),
                     pos,
                 }
             }

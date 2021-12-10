@@ -106,6 +106,24 @@ pub fn elaborate_field_path(
     (fst, content)
 }
 
+pub fn build_letblock<I>(fields: I, rest: RichTerm) -> Term
+where
+    I: IntoIterator<Item = (Ident, RichTerm)>,
+{
+    let fields = fields.into_iter().collect::<Vec<(Ident, RichTerm)>>();
+
+    if fields.len() == 1 {
+        let (id, term) = fields[0].clone();
+        Term::Let(id, term, rest)
+    } else {
+        let mut data = vec![];
+        for (id, term) in fields.iter() {
+            data.push((id.clone(), term.clone()));
+        }
+        Term::LetBlock(data, rest)
+    }
+}
+
 /// Build a record from a list of field definitions. If a field is defined several times, the
 /// different definitions are merged.
 pub fn build_record<I>(fields: I, attrs: RecordAttrs) -> Term

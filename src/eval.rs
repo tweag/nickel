@@ -591,6 +591,16 @@ where
                 env.insert(x, Thunk::new(closure, IdentKind::Let()));
                 Closure { body: t, env }
             }
+            Term::LetBlock(defs, rest) => {
+                for (id, term) in defs.into_iter() {
+                    let closure = Closure {
+                        body: term,
+                        env: env.clone(),
+                    };
+                    env.insert(id, Thunk::new(closure, IdentKind::Let()));
+                }
+                Closure { body: rest, env }
+            }
             Term::Switch(exp, cases, default) => {
                 let has_default = default.is_some();
 
@@ -944,6 +954,14 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
                 let t2 = subst_(t2, global_env, env, bound);
 
                 RichTerm::new(Term::Let(id, t1, t2), pos)
+            }
+            Term::LetBlock(defs, rest) => {
+                let mut data = vec![];
+                for (id, term) in defs.into_iter() {
+                    data.push((id, subst_(term, global_env, env, Cow::Borrowed(bound.as_ref()))));
+                }
+                RichTerm::new(Term::LetBlock(
+                        data, subst_(rest, global_env, env, bound)), pos)
             }
             Term::App(t1, t2) => {
                 let t1 = subst_(t1, global_env, env, Cow::Borrowed(bound.as_ref()));

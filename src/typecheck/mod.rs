@@ -842,6 +842,32 @@ fn type_check_<S, E>(
                 Closure::new(ty, env),
             )
         }
+        Term::LetBlock(defs, rest) => {
+            for (id, term) in defs.iter() {
+                let ty_let = binding_type(term.as_ref(), &mut env, global, state.table, strict);
+                type_check_(
+                    state,
+                    global,
+                    lin,
+                    linearizer.scope(ScopeId::Left),
+                    strict,
+                    term,
+                    Closure::new(ty_let.clone(), env.clone()),
+                )?;
+                env.insert(id.clone(), Closure::new(ty_let, env.clone()));
+            }
+
+            type_check_(
+                state,
+                global,
+                lin,
+                linearizer,
+                strict,
+                rest,
+                Closure::new(ty, env),
+            )
+        }
+
         Term::App(e, t) => {
             let src = TypeWrapper::Ptr(new_var(state.table));
             let arr = mk_tyw_arrow!(src.clone(), ty);
