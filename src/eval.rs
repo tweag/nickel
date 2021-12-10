@@ -461,7 +461,7 @@ where
         ),
     );
     eval_closure(Closure::atomic_closure(wrapper), global_env, resolver, true)
-        .map(|(term, env)| subst(term.into(), &global_env, &env).into())
+        .map(|(term, env)| subst(term.into(), global_env, &env).into())
 }
 
 /// Evaluate a Nickel Term, stopping when a meta value is encountered at the top-level without
@@ -477,7 +477,7 @@ pub fn eval_meta<R>(
 where
     R: ImportResolver,
 {
-    let (term, env) = eval_closure(Closure::atomic_closure(t), &global_env, resolver, false)?;
+    let (term, env) = eval_closure(Closure::atomic_closure(t), global_env, resolver, false)?;
 
     match term {
         Term::MetaValue(mut meta) => {
@@ -714,7 +714,7 @@ where
                             let thunk = env.get(var_id).ok_or_else(|| {
                                 EvalError::UnboundIdentifier(var_id.clone(), rt.pos)
                             })?;
-                            rec_env.insert(id.clone(), thunk.clone());
+                            rec_env.insert(id.clone(), thunk);
                             Ok(rec_env)
                         }
                         _ => {
@@ -1124,7 +1124,7 @@ mod tests {
         let id = Files::new().add("<test>", String::from(s));
 
         grammar::TermParser::new()
-            .parse(id, &mut Vec::new(), lexer::Lexer::new(&s))
+            .parse_term(id, lexer::Lexer::new(&s))
             .map(|mut t| {
                 t.clean_pos();
                 t
@@ -1445,11 +1445,12 @@ mod tests {
                 .unwrap()
         );
 
-        let t = parse("switch {x => [1, glob1], y => loc2, z => {id = true, other = glob3}} loc1")
-            .unwrap();
+        let t =
+            parse("switch {`x => [1, glob1], `y => loc2, `z => {id = true, other = glob3}} loc1")
+                .unwrap();
         assert_eq!(
             subst(t, &global_env, &env),
-            parse("switch {x => [1, 1], y => (if false then 1 else \"Glob2\"), z => {id = true, other = false}} true").unwrap()
+            parse("switch {`x => [1, 1], `y => (if false then 1 else \"Glob2\"), `z => {id = true, other = false}} true").unwrap()
         );
     }
 }

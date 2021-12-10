@@ -203,7 +203,7 @@ pub mod import_resolution {
         let term = rt.as_ref();
         match term {
             Term::Import(path) => {
-                let (_, file_id) = resolver.resolve(&path, parent.clone(), &rt.pos)?;
+                let (_, file_id) = resolver.resolve(path, parent.clone(), &rt.pos)?;
                 Ok(RichTerm::new(Term::ResolvedImport(file_id), rt.pos))
             }
             _ => Ok(rt),

@@ -215,9 +215,9 @@ pub enum ScopeId {
 
 impl ScopeIdElem for ScopeId {}
 
-impl Into<Completed> for Linearization<Completed> {
-    fn into(self) -> Completed {
-        self.state
+impl From<Linearization<Completed>> for Completed {
+    fn from(lin: Linearization<Completed>) -> Self {
+        lin.state
     }
 }
 
@@ -240,11 +240,10 @@ impl Completed {
 
                 self.scope_mapping
                     .get(scope)
-                    .map_or_else(|| Vec::new(), Clone::clone)
+                    .map_or_else(Vec::new, Clone::clone)
             })
             .map(|id| self.get_item(id))
-            .filter(Option::is_some)
-            .map(Option::unwrap)
+            .flatten()
             .collect()
     }
 }

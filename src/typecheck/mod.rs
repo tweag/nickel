@@ -68,7 +68,7 @@ pub enum RowUnifError {
     /// The RHS had a additional `Dyn` tail.
     ExtraDynTail(),
     /// There were two incompatible definitions for the same row.
-    RowMismatch(Ident, UnifError),
+    RowMismatch(Ident, Box<UnifError>),
     /// Tried to unify an enum row and a record row.
     RowKindMismatch(Ident, Option<TypeWrapper>, Option<TypeWrapper>),
     /// One of the row was ill-formed (typically, a tail was neither a row, a variable nor `Dyn`).
@@ -104,9 +104,7 @@ impl RowUnifError {
             RowUnifError::RowKindMismatch(id, tyw1, tyw2) => {
                 UnifError::RowKindMismatch(id, tyw1, tyw2)
             }
-            RowUnifError::RowMismatch(id, err) => {
-                UnifError::RowMismatch(id, left, right, Box::new(err))
-            }
+            RowUnifError::RowMismatch(id, err) => UnifError::RowMismatch(id, left, right, err),
             RowUnifError::IllformedRow(tyw) => UnifError::IllformedRow(tyw),
             RowUnifError::UnsatConstr(id, tyw) => UnifError::RowConflict(id, tyw, left, right),
             RowUnifError::WithConst(c, tyw) => UnifError::WithConst(c, tyw),
@@ -529,7 +527,7 @@ pub fn type_check_in_env(
         ty.clone(),
     )?;
 
-    Ok(to_type(&state.table, ty))
+    Ok(to_type(state.table, ty))
 }
 
 /// Typecheck a term against a specific type.
@@ -557,8 +555,9 @@ fn type_check_<S, E>(
 ) -> Result<(), TypecheckError> {
     let RichTerm { term: t, pos } = rt;
     linearizer.add_term(lin, t, *pos, ty.clone());
+
     match t.as_ref() {
-        Term::ParseError => return Ok(()),
+        Term::ParseError => Ok(()),
         // null is inferred to be of type Dyn
         Term::Null => unify(state, strict, ty, mk_typewrapper::dynamic())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
@@ -704,7 +703,7 @@ fn type_check_<S, E>(
         }
         Term::Var(x) => {
             let x_ty = envs
-                .get(&x)
+                .get(x)
                 .ok_or_else(|| TypecheckError::UnboundIdentifier(x.clone(), *pos))?;
 
             let instantiated = instantiate_foralls(state, x_ty, ForallInst::Ptr);
@@ -721,7 +720,7 @@ fn type_check_<S, E>(
         Term::RecRecord(stat_map, dynamic, _) if !dynamic.is_empty() => {
             let ty_dyn = TypeWrapper::Ptr(new_var(state.table));
 
-            for (id, _) in stat_map {
+            for id in stat_map.keys() {
                 envs.insert(id.clone(), ty_dyn.clone());
                 linearizer.retype_ident(lin, id, ty_dyn.clone())
             }
@@ -784,7 +783,7 @@ fn type_check_<S, E>(
                         // annotations) have already be determined and put in the typing
                         // environment, and we need to use the same.
                         let ty = if let Term::RecRecord(..) = t.as_ref() {
-                            envs.get(&id).unwrap()
+                            envs.get(id).unwrap()
                         } else {
                             TypeWrapper::Ptr(new_var(state.table))
                         };
@@ -1302,7 +1301,7 @@ fn row_add(
         }
         TypeWrapper::Ptr(root) => {
             if let Some(set) = state.constr.get(&root) {
-                if set.contains(&id) {
+                if set.contains(id) {
                     return Err(RowUnifError::UnsatConstr(id.clone(), ty.map(|tyw| *tyw)));
                 }
             }
@@ -1489,7 +1488,7 @@ pub fn unify_rows(
             match (ty, ty2) {
                 (None, None) => Ok(()),
                 (Some(ty), Some(ty2)) => unify_(state, *ty, *ty2)
-                    .map_err(|err| RowUnifError::RowMismatch(id.clone(), err)),
+                    .map_err(|err| RowUnifError::RowMismatch(id.clone(), Box::new(err))),
                 (ty1, ty2) => Err(RowUnifError::RowKindMismatch(
                     id,
                     ty1.map(|t| *t),
@@ -2232,7 +2231,7 @@ pub fn constr_unify(
                 }
                 TypeWrapper::Concrete(AbsType::RowExtend(_, _, tail)) => tyw = tail,
                 TypeWrapper::Ptr(u) if *u != p => {
-                    if let Some(u_constr) = constr.get_mut(&u) {
+                    if let Some(u_constr) = constr.get_mut(u) {
                         u_constr.extend(p_constr.into_iter());
                     } else {
                         constr.insert(*u, p_constr);

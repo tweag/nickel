@@ -248,7 +248,7 @@
 
         For example:
         ```nickel
-          generate builtins.id 4 =>
+          generate functions.id 4 =>
             [ 0, 1, 2, 3 ]
         ```
         "#m
