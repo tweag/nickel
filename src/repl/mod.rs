@@ -14,7 +14,6 @@ use crate::term::{RichTerm, Term};
 use crate::types::Types;
 use crate::{eval, transformations, typecheck};
 use codespan::FileId;
-use md5::digest::generic_array::functional::FunctionalSequence;
 use simple_counter::*;
 use std::ffi::{OsStr, OsString};
 use std::io::Write;

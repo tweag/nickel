@@ -24,6 +24,7 @@ let Assert = fun l x => x || %blame% l in
   {"#{x}-bar" = "foo"}."foo-bar" == "foo" | #Assert) &&
 
 ({"foo-bar"."baz+baz" = false}."foo-bar"."baz+baz" == false | #Assert) &&
+({foo-bar.baz-baz = false}.foo-bar.baz-baz == false | #Assert) &&
 
 // recursive_paths
 ({foo.bar.baz = 1, bar.baz.foo = foo.bar.baz + 1}
