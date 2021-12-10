@@ -24,7 +24,7 @@
 
 use std::{collections::HashMap, marker::PhantomData};
 
-use super::TypeWrapper;
+use super::{TypeWrapper, UnifTable};
 use crate::environment::Environment as GenericEnvironment;
 use crate::term::MetaValue;
 use crate::types::Types;
@@ -65,6 +65,8 @@ pub struct Completed {
     pub id_mapping: HashMap<usize, usize>,
     pub scope_mapping: HashMap<Vec<ScopeId>, Vec<usize>>,
 }
+
+pub type CompletionSalt = (UnifTable, HashMap<usize, Ident>);
 
 pub struct Uninit;
 
@@ -116,15 +118,23 @@ pub struct LinearizationItem<S: ResolutionState> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TermKind {
     Declaration(Ident, Vec<usize>),
-    Usage(Option<usize>),
+    Usage(UsageState),
     Record(HashMap<Ident, usize>),
     RecordField {
         ident: Ident,
-        body_pos: TermPos,
         record: usize,
         usages: Vec<usize>,
+        value: Option<usize>,
     },
     Structure,
+}
+
+/// Some usages cannot be fully resolved in a first pass (i.e. recursive record fields)
+/// In these cases we defer the resolution to a second pass during linearization
+#[derive(Debug, Clone, PartialEq)]
+pub enum UsageState {
+    Resolved(Option<usize>),
+    Deferred { parent: usize, child: Ident },
 }
 
 /// The linearizer trait is what is refered to during typechecking.
