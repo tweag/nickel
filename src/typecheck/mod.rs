@@ -43,7 +43,6 @@
 use crate::cache::ImportResolver;
 use crate::environment::Environment as GenericEnvironment;
 use crate::error::TypecheckError;
-use crate::eval;
 use crate::identifier::Ident;
 use crate::label::ty_path;
 use crate::position::TermPos;
@@ -378,7 +377,7 @@ impl<'a> Envs<'a> {
         }
     }
 
-    /// Populate a new global typing environment from a global term environment.
+    /// Populate a new global typing environment from a `Vec` of parsed files.
     pub fn mk_global(envs: Vec<RichTerm>) -> Result<Environment, EnvBuildError> {
         Ok(envs
             .iter()
@@ -400,7 +399,7 @@ impl<'a> Envs<'a> {
     /// Add the bindings of a record to a typing environment. Ignore fields whose name are defined
     /// through interpolation.
     //TODO: support the case of a record with a type annotation.
-    pub fn env_add_term(env: &mut Environment, rt: &RichTerm) -> Result<(), eval::EnvBuildError> {
+    pub fn env_add_term(env: &mut Environment, rt: &RichTerm) -> Result<(), EnvBuildError> {
         let RichTerm { term, pos } = rt;
 
         match term.as_ref() {
@@ -413,10 +412,7 @@ impl<'a> Envs<'a> {
 
                 Ok(())
             }
-            t => Err(eval::EnvBuildError::NotARecord(RichTerm::new(
-                t.clone(),
-                *pos,
-            ))),
+            t => Err(EnvBuildError::NotARecord(RichTerm::new(t.clone(), *pos))),
         }
     }
 
@@ -1042,7 +1038,6 @@ pub fn infer_type(t: &Term) -> TypeWrapper {
     match t {
         Term::Record(rec, ..) | Term::RecRecord(rec, ..) => AbsType::StaticRecord(Box::new(
             TypeWrapper::Concrete(rec.iter().fold(AbsType::RowEmpty(), |r, (id, rt)| {
-                println!("{:?}", id);
                 let t = AbsType::RowExtend(
                     id.clone(),
                     Some(Box::new(infer_type(rt.term.as_ref()))),
