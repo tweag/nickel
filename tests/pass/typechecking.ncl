@@ -170,7 +170,15 @@ let typecheck = [
 
   // recursive_records_quoted
   {"foo" = 1} : {foo : Num},
-] in
 
+  // stdlib typechecking:
+  strings.length : Str -> Num,
+  (strings.length "Ok") : Num,
+  (strings.length "Ok" == 2) : Bool,
+  // parcial application
+  (strings.split ".") : Str -> List Str,
+  // TODO: fix issue with `forall`
+  // (lists.length [] == 0) : Bool,
+] in
 
 true
