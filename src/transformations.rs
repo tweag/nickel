@@ -12,7 +12,7 @@ generate_counter!(FreshVarCounter, usize);
 
 /// # Desugarise destructuring.usize
 ///
-/// Replace the let patterns destructuring by the classical let in.
+/// Replace a let-binding with destructuring by a classical let-binding.
 /// It will first destruct the pattern and create a new var for each field of the patternn.
 /// After that, it will construct a new Record/List from the extracted fields.
 ///
@@ -40,7 +40,7 @@ pub mod desugar_destructuring {
             let pos = body.pos.clone();
             let meta = pat.clone().as_contract();
             let t_ = {
-                let t_pos = t_.pos.clone();
+                let t_pos = t_.pos;
                 RichTerm::new(
                     Term::MetaValue(MetaValue {
                         value: Some(t_),
@@ -57,7 +57,7 @@ pub mod desugar_destructuring {
 
     pub fn desugar(rt: RichTerm) -> RichTerm {
         if let Term::LetPattern(x, pat, t_, body) = *rt.term {
-            let pos = body.pos.clone();
+            let pos = body.pos;
             let x = if let Some(x) = x {
                 x
             } else {
@@ -96,7 +96,7 @@ pub mod desugar_destructuring {
     }
 
     fn destruct_term(x: Ident, pat: Destruct, body: RichTerm) -> RichTerm {
-        let pos = body.pos.clone();
+        let pos = body.pos;
         match pat {
             Destruct::Record(mut matches, open, rst) => {
                 matches.into_iter().fold(body, move |t, m| match m {
