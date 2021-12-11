@@ -12,7 +12,7 @@ use crate::{
     mk_app, mk_fun,
     parser::error::ParseError,
     position::{RawSpan, TermPos},
-    term::{make as mk_term, BinaryOp, NAryOp, RecordAttrs, RichTerm, StrChunk, Term, UnaryOp},
+    term::{make as mk_term, BinaryOp, RecordAttrs, RichTerm, StrChunk, Term, UnaryOp},
     types::{AbsType, Types},
 };
 
@@ -64,7 +64,6 @@ pub enum RecordLastField {
 pub enum InfixOp {
     Unary(UnaryOp),
     Binary(BinaryOp),
-    NAry(NAryOp),
 }
 
 impl InfixOp {
@@ -80,13 +79,6 @@ impl InfixOp {
                 "x2",
                 mk_term::op2(op, mk_term::var("x1"), mk_term::var("x2")).with_pos(pos)
             ),
-            InfixOp::NAry(op) => {
-                let var_names = (1..=op.arity()).map(|i| format!("x{}", i));
-                let args: Vec<_> = var_names.clone().map(mk_term::var).collect();
-                var_names.rfold(mk_term::opn(op, args).with_pos(pos), |term, var| {
-                    mk_fun!(var, term)
-                })
-            }
         }
     }
 }
