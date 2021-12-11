@@ -6,12 +6,10 @@ use codespan::FileId;
 use lalrpop_util::ErrorRecovery;
 
 use super::ExtendedTerm;
-use super::utils::{StringKind, mk_pos, mk_label, mk_span, strip_indent, SwitchCase,
-    FieldPathElem, strip_indent_doc, build_record, elaborate_field_path, check_unbound,
-    ChunkLiteralPart, RecordLastField};
+use super::utils::*;
 use super::lexer::{Token, NormalToken, StringToken, MultiStringToken};
 
-use crate::{mk_app, mk_opn};
+use crate::{mk_app, mk_opn, mk_fun};
 use crate::identifier::Ident;
 use crate::parser::error::ParseError;
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
@@ -177,6 +175,7 @@ RecordOperationChain: RichTerm = {
 };
 
 Atom: RichTerm = {
+    "(" <CurriedOp> ")",
     "(" <Term> ")",
     "num literal" => RichTerm::from(Term::Num(<>)),
     "null" => RichTerm::from(Term::Null),
@@ -370,6 +369,43 @@ UOp: UnaryOp = {
 switch_case: SwitchCase = {
     "`" <id: EnumTag> "=>" <t: Term> => SwitchCase::Normal(id, t),
     "_" "=>" <t: Term> => SwitchCase::Default(<>),
+}
+
+InfixOp: InfixOp = {
+    "++" => InfixOp::Binary(BinaryOp::StrConcat()),
+    "@" => InfixOp::Binary(BinaryOp::ListConcat()),
+
+    "*" => InfixOp::Binary(BinaryOp::Mult()),
+    "/" => InfixOp::Binary(BinaryOp::Div()),
+    "%" => InfixOp::Binary(BinaryOp::Modulo()),
+
+    "+" => InfixOp::Binary(BinaryOp::Plus()),
+    "-" => InfixOp::Binary(BinaryOp::Sub()),
+
+    "!" => InfixOp::Unary(UnaryOp::BoolNot()),
+
+    "&" => InfixOp::Binary(BinaryOp::Merge()),
+
+    "<" => InfixOp::Binary(BinaryOp::LessThan()),
+    "<=" => InfixOp::Binary(BinaryOp::LessOrEq()),
+    ">" => InfixOp::Binary(BinaryOp::GreaterThan()),
+    ">=" => InfixOp::Binary(BinaryOp::GreaterOrEq()),
+
+    "==" => InfixOp::Binary(BinaryOp::Eq()),
+    "!=" => InfixOp::Unary(UnaryOp::BoolNot()),
+
+    "&&" => InfixOp::Unary(UnaryOp::BoolAnd()),
+
+    "||" => InfixOp::Unary(UnaryOp::BoolOr()),
+}
+
+CurriedOp: RichTerm = {
+    <l: @L> <op: InfixOp> <r: @R> => op.eta_expand(mk_pos(src_id, l, r)),
+    <l: @L> "|>" <r: @R> =>
+        mk_fun!("x1", "x2",
+            mk_app!(mk_term::var("x2"), mk_term::var("x1"))
+            .with_pos(mk_pos(src_id, l, r))
+        ),
 }
 
 InfixExpr: RichTerm = {
