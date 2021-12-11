@@ -501,9 +501,9 @@ where
 
 /// Generate a new fresh variable which do not clash with user-defined variables.
 pub fn fresh_var() -> Ident {
-    use crate::identifier::UNIQUE_PREFIX;
+    use crate::identifier::GEN_PREFIX;
 
-    format!("{}{}", UNIQUE_PREFIX, FreshVarCounter::next()).into()
+    format!("{}{}", GEN_PREFIX, FreshVarCounter::next()).into()
 }
 
 /// Structures which can be packed together with their environment as a closure.
@@ -523,13 +523,17 @@ impl Closurizable for RichTerm {
     /// Generate a fresh variable, bind it to the corresponding closure `(t,with_env)` in `env`,
     /// and return this variable as a fresh term.
     fn closurize(self, env: &mut Environment, with_env: Environment) -> RichTerm {
-        // If the term is already a variable (that is, introduced by the share normal form
-        // transformation), we don't have to create an useless intermediate closure. We just
+        // If the term is already a generated variable (that is, introduced by the share normal
+        // form transformation), we don't have to create an useless intermediate closure. We just
         // transfer the original thunk to the new environment. This is not only an optimization:
         // this is relied upon by recursive record merging when computing the fixpoint. Change
         // carefully.
+        //
+        // We could do it for non-generated ident as well, but be we would be renaming
+        // user-supplied variables by giberrish generated names. It may hamper error reporting, so
+        // for the time being, we restrict ourselves to generated identifier.
         let reuse_thunk = match self.as_ref() {
-            Term::Var(id) => with_env.get(&id),
+            Term::Var(id) if id.is_generated() => with_env.get(&id),
             _ => None,
         };
 
