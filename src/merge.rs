@@ -52,7 +52,7 @@
 //! - *Contract check*: merging a `Contract` or a `ContractDefault` with a simple value `t`
 //! evaluates to a contract check, that is an `Assume(..., t)`
 use crate::error::EvalError;
-use crate::eval::{CallStack, Closure, Environment, IdentKind, Thunk};
+use crate::eval::{CallStack, Closure, Environment};
 use crate::label::Label;
 use crate::position::TermPos;
 use crate::term::{make as mk_term, BinaryOp, Contract, MetaValue, RecordAttrs, RichTerm, Term};
@@ -438,14 +438,14 @@ fn rev_thunks<'a, I: Iterator<Item = &'a mut RichTerm>>(map: I, env: &mut Enviro
 
     for rt in map {
         if let Term::Var(id) = rt.as_ref() {
-            // This create a fresh variable which is bound to a reversed copy of the original thunk
-            let reversed = env.get(&id).unwrap().restore();
+            // This create a fresh variable which is bound to a reverted copy of the original thunk
+            let reverted = env.get(&id).unwrap().revert();
             let fresh_id = fresh_var();
-            env.insert(fresh_id.clone(), reversed);
+            env.insert(fresh_id.clone(), reverted);
             *rt.term = Term::Var(fresh_id);
         }
         // Otherwise, if it is not a variable after the share normal form transformations, it
-        // should be a constant and we don't need to reverse anything
+        // should be a constant and we don't need to revert anything
     }
 }
 

@@ -237,7 +237,7 @@ pub mod share_normal_form {
                     .collect();
 
                 // Recursive records are the reason why we need reversible thunks, since when
-                // merged, we may have to revert back to the fields to their original expression.
+                // merged, we may have to revert the fields back to their original expression.
                 with_bindings(
                     Term::RecRecord(map, dyn_fields, attrs),
                     bindings,
@@ -524,7 +524,7 @@ impl Closurizable for RichTerm {
     /// and return this variable as a fresh term.
     fn closurize(self, env: &mut Environment, with_env: Environment) -> RichTerm {
         // If the term is already a generated variable (that is, introduced by the share normal
-        // form transformation), we don't have to create an useless intermediate closure. We just
+        // form transformation), we don't have to create a useless intermediate closure. We just
         // transfer the original thunk to the new environment. This is not only an optimization:
         // this is relied upon by recursive record merging when computing the fixpoint. Change
         // carefully.
