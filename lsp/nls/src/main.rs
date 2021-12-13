@@ -38,7 +38,9 @@ fn main() -> Result<()> {
     let options = Opt::from_args();
 
     if let Some(file) = options.trace {
-        Trace::set_writer(csv::Writer::from_path(file)?)?;
+        Trace::set_writer(csv::Writer::from_writer(io::BufWriter::new(
+            fs::OpenOptions::new().append(true).open(file)?,
+        )))?;
     }
 
     let (connection, _threads) = Connection::stdio();
