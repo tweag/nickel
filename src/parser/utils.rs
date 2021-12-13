@@ -1,5 +1,6 @@
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
+use std::fmt::Debug;
 
 use codespan::FileId;
 
@@ -75,8 +76,31 @@ pub fn elaborate_field_path(
             Term::Record(map, Default::default()).into()
         }
         FieldPathElem::Expr(exp) => {
-            let empty = Term::Record(HashMap::new(), Default::default());
-            mk_app!(mk_term::op2(BinaryOp::DynExtend(), exp, empty), acc)
+            let static_access = match exp.term.as_ref() {
+                Term::StrChunks(chunks) => {
+                    chunks
+                        .iter()
+                        .fold(Some(String::new()), |acc, next| match (acc, next) {
+                            (Some(mut acc), StrChunk::Literal(lit)) => {
+                                acc.push_str(lit);
+                                Some(acc)
+                            }
+                            _ => None,
+                        })
+                }
+                _ => None,
+            };
+
+            if let Some(static_access) = static_access {
+                let id = Ident(static_access, exp.pos);
+
+                let mut map = HashMap::new();
+                map.insert(id, acc);
+                Term::Record(map, Default::default()).into()
+            } else {
+                let empty = Term::Record(HashMap::new(), Default::default());
+                mk_app!(mk_term::op2(BinaryOp::DynExtend(), exp, empty), acc)
+            }
         }
     });
 
@@ -87,7 +111,7 @@ pub fn elaborate_field_path(
 /// different definitions are merged.
 pub fn build_record<I>(fields: I, attrs: RecordAttrs) -> Term
 where
-    I: IntoIterator<Item = (FieldPathElem, RichTerm)>,
+    I: IntoIterator<Item = (FieldPathElem, RichTerm)> + Debug,
 {
     let mut static_map = HashMap::new();
     let mut dynamic_fields = Vec::new();
@@ -125,14 +149,14 @@ where
 
                     let is_static = chunks.iter().try_for_each(|chunk| match chunk {
                         StrChunk::Literal(s) => {
-                            buffer.push_str(&s);
+                            buffer.push_str(s);
                             Ok(())
                         }
                         StrChunk::Expr(..) => Err(()),
                     });
 
                     if is_static.is_ok() {
-                        insert_static_field(&mut static_map, Ident(buffer), t)
+                        insert_static_field(&mut static_map, Ident(buffer, e.pos), t)
                     } else {
                         dynamic_fields.push((e, t));
                     }
@@ -407,7 +431,7 @@ pub fn check_unbound(types: &Types, span: RawSpan) -> Result<(), ParseError> {
             AbsType::Forall(ident, ty) => {
                 // forall needs a "scoped" set for the variables in its nodes
                 let mut forall_unbound_vars = HashSet::new();
-                find_unbound_vars(&ty, &mut forall_unbound_vars);
+                find_unbound_vars(ty, &mut forall_unbound_vars);
 
                 forall_unbound_vars.remove(ident);
 
@@ -416,21 +440,21 @@ pub fn check_unbound(types: &Types, span: RawSpan) -> Result<(), ParseError> {
                 unbound_set.extend(forall_unbound_vars);
             }
             AbsType::Arrow(s, t) => {
-                find_unbound_vars(&s, unbound_set);
-                find_unbound_vars(&t, unbound_set);
+                find_unbound_vars(s, unbound_set);
+                find_unbound_vars(t, unbound_set);
             }
             AbsType::DynRecord(ty)
             | AbsType::StaticRecord(ty)
             | AbsType::List(ty)
             | AbsType::Enum(ty) => {
-                find_unbound_vars(&ty, unbound_set);
+                find_unbound_vars(ty, unbound_set);
             }
             AbsType::RowExtend(_, opt_ty, ty) => {
                 if let Some(ty) = opt_ty {
-                    find_unbound_vars(&ty, unbound_set);
+                    find_unbound_vars(ty, unbound_set);
                 }
 
-                find_unbound_vars(&ty, unbound_set);
+                find_unbound_vars(ty, unbound_set);
             }
             AbsType::Dyn()
             | AbsType::Bool()
@@ -445,7 +469,7 @@ pub fn check_unbound(types: &Types, span: RawSpan) -> Result<(), ParseError> {
     let mut unbound_set: HashSet<Ident> = HashSet::new();
 
     // recurse into type and find unbound type vars
-    find_unbound_vars(&types, &mut unbound_set);
+    find_unbound_vars(types, &mut unbound_set);
 
     if !unbound_set.is_empty() {
         return Err(ParseError::UnboundTypeVariables(

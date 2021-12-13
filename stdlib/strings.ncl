@@ -121,17 +121,17 @@
         %blame% (%tag% "not a string" l),
 
     // using a contract instead of type for now because of https://github.com/tweag/nickel/issues/226
-    join | List Str -> Str -> Str
+    join | Str -> List Str -> Str
     | doc m#"
       Joins a list of strings given a seperator.
 
       For example:
       ```nickel
-        join [ "Hello", "World!" ] ", " =>
+        join ", " [ "Hello", "World!" ] =>
           "Hello, World!"
       ```
       "#m
-    = fun l sep =>
+    = fun sep l =>
       if %length% l == 0 then
         ""
       else
@@ -143,13 +143,13 @@
 
       For example:
       ```nickel
-      split "1,2,3" "," =>
+      split "," "1,2,3" =>
         [ "1", "2", "3" ]
-      split "1,2,3" "." =>
+      split "." "1,2,3" =>
         [ "1,2,3" ]
       ```
       "#m
-    = fun s sep => %strSplit% s sep,
+    = fun sep s => %strSplit% s sep,
 
     trim : Str -> Str
     | doc m#"
@@ -245,78 +245,78 @@
 
     contains: Str -> Str -> Bool
     | doc m#"
-      Checks if the second string is part of the first string.
+      Checks if the first string is part of the second string.
 
       For example:
       ```nickel
-        contains "abcdef" "cde" =>
+        contains "cde" "abcdef" =>
           true
-        contains "abcdef" "" =>
+        contains "" "abcdef" =>
           true
-        contains "abcdef" "ghj" =>
+        contains "ghj" "abcdef" =>
           false
       ```
       "#m
-    = fun s subs => %strContains% s subs,
+    = fun subs s => %strContains% s subs,
 
     replace: Str -> Str -> Str -> Str
     | doc m#"
-      `replace str sub repl` replaces every occurence of `sub` in `str` with `repl`.
+      `replace sub repl str` replaces every occurence of `sub` in `str` with `repl`.
 
       For example:
       ```nickel
-        replace "abcdef" "cd" "   " =>
+        replace "cd" "   " "abcdef" =>
           "ab   ef"
-        replace "abcdef" "" "A" =>
+        replace "" "A" "abcdef" =>
           "AaAbAcAdAeAfA"
       ```
       "#m
-    = fun s pattern replace =>
+    = fun pattern replace s =>
        %strReplace% s pattern replace,
 
     replaceRegex: Str -> Str -> Str -> Str
     | doc m#"
-      `replaceRegex str regex repl` replaces every match of `regex` in `str` with `repl`.
+      `replaceRegex regex repl str` replaces every match of `regex` in `str` with `repl`.
 
       For example:
       ```nickel
-        replaceRegex "Hello!" "l+." "j" =>
+        replaceRegex "l+." "j" "Hello!" =>
           "Hej!"
-        replaceRegex "This 37 is a number." "\\d+" "\"a\" is not" =>
-          "This "a" is not a number."
+        replaceRegex "\\d+" "\"a\" is not" "This 37 is a number." =>
+          "This \"a\" is not a number."
       ```
       "#m
-    = fun s pattern replace =>
+    = fun pattern replace s =>
        %strReplaceRegex% s pattern replace,
 
     isMatch : Str -> Str -> Bool
     | doc m#"
-      `isMatch str regex` checks if `str` matches `regex`.
+      `isMatch regex str` checks if `str` matches `regex`.
 
       For example:
       ```nickel
-        isMatch "123" "^\\d+$" =>
+        isMatch "^\\d+$" "123" =>
           true
-        isMatch "123" "\\d{4}" =>
+        isMatch "\\d{4}" "123" =>
           false
       ```
       "#m
-    = fun s regex => %strIsMatch% s regex,
+    = fun regex s => %strIsMatch% s regex,
 
     match : Str -> Str -> {match: Str, index: Num, groups: List Str}
     | doc m#"
-      `match str regex` matches `str` given `regex`. Results in the part of `str` that matched, the index of the
+      `match regex str` matches `str` given `regex`. Results in the part of `str` that matched, the index of the
       first character that was part of the match in `str`, and a lists of all capture groups if any.
 
       For example:
       ```nickel
-        match "5 apples, 6 pears and 0 grapes" "^(\\d).*(\\d).*(\\d).*$" =>
+        match "^(\\d).*(\\d).*(\\d).*$" "5 apples, 6 pears and 0 grapes" =>
           { match = "5 apples, 6 pears and 0 grapes", index = 0, groups = [ "5", "6", "0" ] }
-        match "01234" "3" =>
+        match "3" "01234" =>
           { match = "3", index = 3, groups = [ ] }
       ```
       "#m
-    = fun s regex => %strMatch% s regex,
+    = fun regex s => %strMatch% s regex,
 
     length : Str -> Num
     | doc m#"
@@ -332,21 +332,21 @@
       "#m
     = fun s => %strLength% s,
 
-    substring: Str -> Num -> Num -> Str
+    substring: Num -> Num -> Str -> Str
     | doc m#"
       Takes a slice from the string. Errors if either index is out of range.
 
       For example:
       ```nickel
-        substring "abcdef" 3 5 =>
+        substring 3 5 "abcdef" =>
           "de"
-        substring "abcdef" 3 10 =>
+        substring 3 10 "abcdef" =>
           error
-        substring "abcdef" (-3) 4 =>
+        substring (-3) 4 "abcdef" =>
           error
       ```
       "#m
-    = fun s start end => %strSubstr% s start end,
+    = fun start end s => %strSubstr% s start end,
 
     fromNum | Num -> Str
     | doc m#"

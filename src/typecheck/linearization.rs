@@ -24,9 +24,9 @@
 
 use std::{collections::HashMap, marker::PhantomData};
 
-use super::TypeWrapper;
+use super::{TypeWrapper, UnifTable};
 use crate::environment::Environment as GenericEnvironment;
-use crate::term::{MetaValue, RecordAttrs};
+use crate::term::MetaValue;
 use crate::types::Types;
 use crate::{identifier::Ident, position::TermPos, term::Term};
 
@@ -65,6 +65,8 @@ pub struct Completed {
     pub id_mapping: HashMap<usize, usize>,
     pub scope_mapping: HashMap<Vec<ScopeId>, Vec<usize>>,
 }
+
+pub type CompletionSalt = (UnifTable, HashMap<usize, Ident>);
 
 pub struct Uninit;
 
@@ -107,15 +109,32 @@ pub struct LinearizationItem<S: ResolutionState> {
 }
 
 /// Abstact term kinds.
-/// Currently only tracks Declaration and Usages, with Structure being a
-/// wildcard for any other kind of term.
+/// Currently tracks
+/// 1. Declarations
+/// 2. Usages
+/// 3. Records, listing their fields
+/// 4. wildcard (Structure) for any other kind of term.
 /// Can be extended later to represent Contracts, Records, etc.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TermKind {
+    Declaration(Ident, Vec<usize>),
+    Usage(UsageState),
+    Record(HashMap<Ident, usize>),
+    RecordField {
+        ident: Ident,
+        record: usize,
+        usages: Vec<usize>,
+        value: Option<usize>,
+    },
     Structure,
-    Declaration(String, Vec<usize>),
-    Usage(Option<usize>),
-    Record(RecordAttrs),
+}
+
+/// Some usages cannot be fully resolved in a first pass (i.e. recursive record fields)
+/// In these cases we defer the resolution to a second pass during linearization
+#[derive(Debug, Clone, PartialEq)]
+pub enum UsageState {
+    Resolved(Option<usize>),
+    Deferred { parent: usize, child: Ident },
 }
 
 /// The linearizer trait is what is refered to during typechecking.
@@ -141,6 +160,16 @@ pub trait Linearizer<L, S> {
         _ty: TypeWrapper,
     ) {
     }
+
+    /// Allows to amend the type of an ident in scope
+    fn retype_ident(
+        &mut self,
+        _lin: &mut Linearization<Building<L>>,
+        _ident: &Ident,
+        _new_type: TypeWrapper,
+    ) {
+    }
+
     /// Defines how to turn a [Building] Linearization of the tracked type into
     /// a [Completed] linearization.
     /// By default creates an entirely empty [Completed] object
@@ -156,7 +185,15 @@ pub trait Linearizer<L, S> {
             },
         }
     }
-    fn scope(&self, branch: ScopeId) -> Self;
+
+    /// Ensures the scope structure of the source can be represented in the
+    /// linearization.
+    /// The specific implementations need to take care of how to represent
+    /// decending into a lower scope.
+    /// Notice, the resulting instance is a fresh value, any resource that is
+    /// required or produced in parallel instances should therefore be put
+    /// into the Building State `L` which is passed
+    fn scope(&mut self, branch: ScopeId) -> Self;
 }
 
 /// [Linearizer] that deliberately does not maintain any state or act
@@ -164,7 +201,7 @@ pub trait Linearizer<L, S> {
 /// Ideally the compiler would eliminate code using this [Linearizer]
 pub struct StubHost<L, S>(PhantomData<L>, PhantomData<S>);
 impl<L, S> Linearizer<L, S> for StubHost<L, S> {
-    fn scope(&self, _: ScopeId) -> Self {
+    fn scope(&mut self, _: ScopeId) -> Self {
         StubHost::new()
     }
 }
@@ -188,9 +225,9 @@ pub enum ScopeId {
 
 impl ScopeIdElem for ScopeId {}
 
-impl Into<Completed> for Linearization<Completed> {
-    fn into(self) -> Completed {
-        self.state
+impl From<Linearization<Completed>> for Completed {
+    fn from(lin: Linearization<Completed>) -> Self {
+        lin.state
     }
 }
 
@@ -213,11 +250,10 @@ impl Completed {
 
                 self.scope_mapping
                     .get(scope)
-                    .map_or_else(|| Vec::new(), Clone::clone)
+                    .map_or_else(Vec::new, Clone::clone)
             })
             .map(|id| self.get_item(id))
-            .filter(Option::is_some)
-            .map(Option::unwrap)
+            .flatten()
             .collect()
     }
 }

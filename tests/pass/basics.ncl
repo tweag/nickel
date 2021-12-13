@@ -1,37 +1,37 @@
 let Assert = fun l x => x || %blame% l in
 
-// basic arithmetic
-(1+1 == 2 | #Assert) &&
-(1-2+3-4 == -2 | #Assert) &&
-(2-3-4 == -5 | #Assert) &&
-(-1-2 == -3 | #Assert) &&
-(2*2 + 2*3 - 2*4 == 2 | #Assert) &&
-(1/2 + 1/4 - 1/8 == 0.625 | #Assert) &&
-((10 + 1/4) % 3 == 1.25 | #Assert) &&
-(10 + 1/4 % 3 == 10.25 | #Assert) &&
-(34 + (if true then 2 else 222)
-  == 36
-  | #Assert) &&
+[
+  // basic arithmetic
+  1+1 == 2,
+  1-2+3-4 == -2,
+  2-3-4 == -5,
+  -1-2 == -3,
+  2*2 + 2*3 - 2*4 == 2,
+  1/2 + 1/4 - 1/8 == 0.625,
+  (10 + 1/4) % 3 == 1.25,
+  10 + 1/4 % 3 == 10.25,
+  34 + (if true then 2 else 222)
+    == 36,
 
-// comparisons
-(1 < 1 == false | #Assert) &&
-(1 <= 1 == true | #Assert) &&
-(1 > 1 == false | #Assert) &&
-(1 >= 1 == true | #Assert) &&
-(1 + 1/2 > 1 + 1/4 == true | #Assert) &&
-(1 + 1/2 < 1 + 1/4 == false | #Assert) &&
-(1 + 1/2 + 1/8 > 1 + 1/4 + 1/4 == true | #Assert) &&
-(1 + 1/2 + 1/8 < 1 + 1/4 + 1/4 == false | #Assert) &&
-(-1 - 2 < 3 - 10 == false | #Assert) &&
-(-1 - 2 > 3 - 10 == true | #Assert) &&
-(-1*2 > 1*2 == false | #Assert) &&
-(-1*2 < 1*2 == true | #Assert) &&
-(1/4 + 1/4 - 1/4 + 1/4 <= 1/2 == true | #Assert) &&
-(1/4 + 1/4 - 1/4 + 1/4 < 1/2 == false | #Assert) &&
-(1/4 + 1/4 - 1/4 + 1/4 >= 1/2 == true | #Assert) &&
-(1/4 + 1/4 - 1/4 + 1/4 < 1/2 == false | #Assert) &&
+  // comparisons
+  1 < 1 == false,
+  1 <= 1 == true,
+  1 > 1 == false,
+  1 >= 1 == true,
+  1 + 1/2 > 1 + 1/4 == true,
+  1 + 1/2 < 1 + 1/4 == false,
+  1 + 1/2 + 1/8 > 1 + 1/4 + 1/4 == true,
+  1 + 1/2 + 1/8 < 1 + 1/4 + 1/4 == false,
+  -1 - 2 < 3 - 10 == false,
+  -1 - 2 > 3 - 10 == true,
+  -1*2 > 1*2 == false,
+  -1*2 < 1*2 == true,
+  1/4 + 1/4 - 1/4 + 1/4 <= 1/2 == true,
+  1/4 + 1/4 - 1/4 + 1/4 < 1/2 == false,
+  1/4 + 1/4 - 1/4 + 1/4 >= 1/2 == true,
+  1/4 + 1/4 - 1/4 + 1/4 < 1/2 == false,
 
-// This test checks that the terms of a switch are closured
-(let x = 3 in (switch { foo => 1, _ => x, } (3 + 2)) == 3) &&
-
-true
+  // This test checks that the terms of a switch are closured
+  let x = 3 in (switch { `foo => 1, _ => x} (3 + 2)) == 3,
+]
+|> lists.foldl (fun x y => (x | #Assert) && y) true

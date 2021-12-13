@@ -308,7 +308,7 @@ pub mod import_resolution {
         let term = rt.as_ref();
         match term {
             Term::Import(path) => {
-                let (_, file_id) = resolver.resolve(&path, parent.clone(), &rt.pos)?;
+                let (_, file_id) = resolver.resolve(path, parent.clone(), &rt.pos)?;
                 Ok(RichTerm::new(Term::ResolvedImport(file_id), rt.pos))
             }
             _ => Ok(rt),
@@ -455,7 +455,7 @@ where
 
 /// Generate a new fresh variable which do not clash with user-defined variables.
 pub fn fresh_var() -> Ident {
-    Ident(format!("%{}", FreshVarCounter::next()))
+    format!("%{}", FreshVarCounter::next()).into()
 }
 
 /// Structures which can be packed together with their environment as a closure.

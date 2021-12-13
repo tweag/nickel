@@ -6,42 +6,43 @@ let GccFlag =
   fun label value =>
   if builtins.isStr value then
     if strings.length value > 0 &&
-      lists.any (fun x => x == strings.substring value 0 1) available then
+      lists.any (fun x => x == strings.substring 0 1 value) available then
       value
     else
-      contracts.blame (contracts.tag "unknown flag #{value}" label)
+      contracts.blameWith "unknown flag #{value}" label
   else if builtins.isRecord value then
     if records.hasField "flag" value && records.hasField "arg" value then
       if lists.any (fun x => x == value.flag) available then
         //Normalize the tag to a string
         value.flag ++ value.arg
       else
-        contracts.blame (contracts.tag "unknown flag #{value.flag}")
+        contracts.blameWith "unknown flag #{value.flag}" label
     else
-      contracts.blame (contracts.tag "bad record structure: missing field
-        `flag` or `arg`" label)
+      contracts.blameWith
+        "bad record structure: missing field `flag` or `arg`"
+        label
   else
-    contracts.blame (contracts.tag "expected record or string") in
+    contracts.blameWith "expected record or string" label in
 
 let Path =
   let pattern = m#"^(.+)/([^/]+)$"#m in
   fun label value =>
     if builtins.isStr value then
-      if strings.isMatch value pattern then
+      if strings.isMatch pattern value then
         value
       else
-        contracts.blame (contracts.tag "invalid path" label)
+        contracts.blameWith "invalid path" label
     else
-      contracts.blame (contracts.tag "not a string" label) in
+      contracts.blameWith "not a string" label in
 
 let SharedObjectFile = fun label value =>
   if builtins.isStr value then
-    if strings.isMatch value m#"\.so$"#m then
+    if strings.isMatch m#"\.so$"#m value then
       value
     else
-      contracts.blame (contracts.tag "not an .so file" label)
+      contracts.blameWith "not an .so file" label
   else
-    contracts.blame (contracts.tag "not a string" label) in
+    contracts.blameWith "not a string" label in
 
 let OptLevel = fun label value =>
   if value == 0 || value == 1 || value == 2 then

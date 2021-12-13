@@ -7,7 +7,7 @@
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
 use crate::cache::Cache;
-use crate::error::{Error, EvalError, IOError, ParseError, REPLError};
+use crate::error::{Error, EvalError, IOError, ParseError, ParseErrors, REPLError};
 use crate::identifier::Ident;
 use crate::parser::{grammar, lexer, ExtendedTerm};
 use crate::term::{RichTerm, Term};
@@ -117,11 +117,15 @@ impl REPLImpl {
             String::from(exp),
         );
 
-        match self
+        let (term, parse_errs) = self
             .parser
-            .parse(file_id, lexer::Lexer::new(exp))
-            .map_err(|err| ParseError::from_lalrpop(err, file_id))?
-        {
+            .parse_term_tolerant(file_id, lexer::Lexer::new(exp))?;
+
+        if !parse_errs.no_errors() {
+            return Err(parse_errs.into());
+        }
+
+        match term {
             // Because we don't use the cache for input, we have to perform recursive import
             // resolution/typechecking/transformation by oursleves.
             ExtendedTerm::RichTerm(t) => {
@@ -223,7 +227,8 @@ impl REPL for REPLImpl {
 
     fn typecheck(&mut self, exp: &str) -> Result<Types, Error> {
         let file_id = self.cache.add_tmp("<repl-typecheck>", String::from(exp));
-        let term = self.cache.parse_nocache(file_id)?;
+        // We ignore non fatal errors while type checking.
+        let (term, _) = self.cache.parse_nocache(file_id)?;
         let (term, pending) = transformations::resolve_imports(term, &mut self.cache)?;
         for id in &pending {
             self.cache.resolve_imports(*id).unwrap();
@@ -259,7 +264,7 @@ pub enum InputStatus {
     Complete(ExtendedTerm),
     Partial,
     Command,
-    Failed(ParseError),
+    Failed(ParseErrors),
 }
 
 /// Validator enabling multiline input.
@@ -302,15 +307,21 @@ impl InputParser {
 
         let result = self
             .parser
-            .parse(self.file_id, lexer::Lexer::new(input))
-            .map_err(|err| ParseError::from_lalrpop(err, self.file_id));
+            .parse_term_tolerant(self.file_id, lexer::Lexer::new(input));
+
+        let partial = |pe| {
+            matches!(
+                pe,
+                &ParseError::UnexpectedEOF(..) | &ParseError::UnmatchedCloseBrace(..)
+            )
+        };
 
         match result {
-            Ok(t) => InputStatus::Complete(t),
-            Err(ParseError::UnexpectedEOF(..)) | Err(ParseError::UnmatchedCloseBrace(..)) => {
-                InputStatus::Partial
-            }
-            Err(err) => InputStatus::Failed(err),
+            Ok((t, e)) if e.no_errors() => InputStatus::Complete(t),
+            Ok((_, e)) if e.errors.iter().all(|e| partial(e)) => InputStatus::Partial,
+            Ok((_, e)) => InputStatus::Failed(e),
+            Err(e) if partial(&e) => InputStatus::Partial,
+            Err(err) => InputStatus::Failed(err.into()),
         }
     }
 }

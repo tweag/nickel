@@ -13,8 +13,8 @@ fn parse(s: &str) -> Result<RichTerm, ParseError> {
     let id = Files::new().add("<test>", String::from(s));
 
     super::grammar::TermParser::new()
-        .parse(id, Lexer::new(&s))
-        .map_err(|err| ParseError::from_lalrpop(err, id))
+        .parse_term(id, Lexer::new(&s))
+        .map_err(|errs| errs.errors.first().unwrap().clone())
 }
 
 fn parse_without_pos(s: &str) -> RichTerm {
@@ -154,9 +154,13 @@ fn unary_op() {
 #[test]
 fn enum_terms() {
     assert_eq!(parse_without_pos("`foo"), Enum(Ident::from("foo")).into(),);
+    assert_eq!(
+        parse_without_pos("`\"foo:bar\""),
+        Enum(Ident::from("foo:bar")).into(),
+    );
 
     assert_eq!(
-        parse_without_pos("switch { foo => true, bar => false, _ => 456, } 123"),
+        parse_without_pos("switch { `foo => true, `bar => false, _ => 456, } 123"),
         mk_switch!(Num(123.), ("foo", Bool(true)), ("bar", Bool(false)) ; Num(456.))
     )
 }
@@ -375,24 +379,24 @@ fn unbound_type_variables() {
     // should fail, "a" is unbound
     assert_matches!(
         parse("1 | a"),
-        Err(ParseError::UnboundTypeVariables(unbound_vars, _)) if (unbound_vars.contains(&Ident("a".into())) && unbound_vars.len() == 1)
+        Err(ParseError::UnboundTypeVariables(unbound_vars, _)) if (unbound_vars.contains(&Ident::from("a")) && unbound_vars.len() == 1)
     );
 
     // should fail, "d" is unbound
     assert_matches!(
         parse("null: forall a b c. a -> (b -> List c) -> {foo : List {_ : d}, bar: b | Dyn}"),
-        Err(ParseError::UnboundTypeVariables(unbound_vars, _)) if (unbound_vars.contains(&Ident("d".into())) && unbound_vars.len() == 1)
+        Err(ParseError::UnboundTypeVariables(unbound_vars, _)) if (unbound_vars.contains(&Ident::from("d")) && unbound_vars.len() == 1)
     );
 
     // should fail, "e" is unbound
     assert_matches!(
         parse("null: forall a b c. a -> (b -> List c) -> {foo : List {_ : a}, bar: b | e}"),
-        Err(ParseError::UnboundTypeVariables(unbound_vars, _)) if (unbound_vars.contains(&Ident("e".into())) && unbound_vars.len() == 1)
+        Err(ParseError::UnboundTypeVariables(unbound_vars, _)) if (unbound_vars.contains(&Ident::from("e")) && unbound_vars.len() == 1)
     );
 
     // should fail, "a" is unbound
     assert_matches!(
         parse("null: a -> (forall a. a -> a)"),
-        Err(ParseError::UnboundTypeVariables(unbound_vars, _)) if (unbound_vars.contains(&Ident("a".into())) && unbound_vars.len() == 1)
+        Err(ParseError::UnboundTypeVariables(unbound_vars, _)) if (unbound_vars.contains(&Ident::from("a")) && unbound_vars.len() == 1)
     );
 }

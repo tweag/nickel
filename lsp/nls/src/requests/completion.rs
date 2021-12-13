@@ -45,7 +45,7 @@ pub fn handle_completion(
             _ => None,
         })
         .map(|(ident, _)| CompletionItem {
-            label: ident,
+            label: ident.0,
             ..Default::default()
         })
         .collect();

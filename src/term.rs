@@ -108,12 +108,6 @@ pub enum Term {
     #[serde(skip)]
     OpN(NAryOp, Vec<RichTerm>),
 
-    /// A promise.
-    ///
-    /// Represent a subterm which is to be statically typechecked.
-    #[serde(skip)]
-    Promise(Types, Label, RichTerm),
-
     /// A symbol.
     ///
     /// A unique tag corresponding to a type variable. See `Wrapped` below.
@@ -151,6 +145,8 @@ pub enum Term {
     /// A resolved import (which has already been loaded and parsed).
     #[serde(skip)]
     ResolvedImport(FileId),
+    #[serde(skip)]
+    ParseError,
 }
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
@@ -298,7 +294,7 @@ impl Term {
     {
         use self::Term::*;
         match self {
-            Null => (),
+            Null | ParseError => (),
             Switch(ref mut t, ref mut cases, ref mut def) => {
                 cases.iter_mut().for_each(|c| {
                     let (_, t) = c;
@@ -321,10 +317,7 @@ impl Term {
             }
             Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | Sym(_) | Enum(_) | Import(_)
             | ResolvedImport(_) => {}
-            Fun(_, ref mut t)
-            | Op1(_, ref mut t)
-            | Promise(_, _, ref mut t)
-            | Wrapped(_, ref mut t) => {
+            Fun(_, ref mut t) | Op1(_, ref mut t) | Wrapped(_, ref mut t) => {
                 func(t);
             }
             MetaValue(ref mut meta) => {
@@ -381,10 +374,10 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
-            | Term::Promise(_, _, _)
             | Term::Import(_)
             | Term::ResolvedImport(_)
-            | Term::StrChunks(_) => None,
+            | Term::StrChunks(_)
+            | Term::ParseError => None,
         }
         .map(String::from)
     }
@@ -411,7 +404,15 @@ impl Term {
             }
             Term::Fun(_, _) => String::from("<func>"),
             Term::Lbl(_) => String::from("<label>"),
-            Term::Enum(Ident(s)) => format!("`{}", s),
+            Term::Enum(id) => {
+                let re = regex::Regex::new("_?[a-zA-Z][_a-zA-Z0-9]*").unwrap();
+                let s = id.to_string();
+                if re.is_match(&s) {
+                    format!("`{}", s)
+                } else {
+                    format!("`\"{}\"", s)
+                }
+            }
             Term::Record(..) | Term::RecRecord(..) => String::from("{ ... }"),
             Term::List(_) => String::from("[ ... ]"),
             Term::Sym(_) => String::from("<sym>"),
@@ -439,7 +440,8 @@ impl Term {
 
                 format!("<{}{}={}>", content, value_label, value)
             }
-            Term::Var(Ident(id)) => id.clone(),
+            Term::Var(id) => id.to_string(),
+            Term::ParseError => String::from("<parse error>"),
             Term::Let(_, _, _)
             | Term::LetPattern(_, _, _, _)
             | Term::App(_, _)
@@ -447,7 +449,6 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
-            | Term::Promise(_, _, _)
             | Term::Import(_)
             | Term::ResolvedImport(_) => String::from("<unevaluated>"),
         }
@@ -501,13 +502,13 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
-            | Term::Promise(_, _, _)
             | Term::Wrapped(_, _)
             | Term::MetaValue(_)
             | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
-            | Term::RecRecord(..) => false,
+            | Term::RecRecord(..)
+            | Term::ParseError => false,
         }
     }
 
@@ -540,13 +541,13 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
-            | Term::Promise(_, _, _)
             | Term::Wrapped(_, _)
             | Term::MetaValue(_)
             | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
-            | Term::RecRecord(..) => false,
+            | Term::RecRecord(..)
+            | Term::ParseError => false,
         }
     }
 }
@@ -892,7 +893,8 @@ impl RichTerm {
         };
 
         let result = match *term {
-            v @ Term::Null
+            v @ Term::ParseError
+            | v @ Term::Null
             | v @ Term::Bool(_)
             | v @ Term::Num(_)
             | v @ Term::Str(_)
@@ -945,11 +947,7 @@ impl RichTerm {
                     .map(|(id, t)| t.traverse(f, state, method).map(|t_ok| (id.clone(), t_ok)))
                     .collect();
 
-                let default = default
-                    .map(|t| t.traverse(f, state, method))
-                    // Transpose from Option<Result> to Result<Option>. There is a `transpose`
-                    // method in Rust, but it has currently not made it to the stable version yet
-                    .map_or(Ok(None), |res| res.map(Some))?;
+                let default = default.map(|t| t.traverse(f, state, method)).transpose()?;
 
                 let t = t.traverse(f, state, method)?;
 
@@ -977,13 +975,6 @@ impl RichTerm {
                     .collect();
                 RichTerm {
                     term: Box::new(Term::OpN(op, ts_res?)),
-                    pos,
-                }
-            }
-            Term::Promise(ty, l, t) => {
-                let t = t.traverse(f, state, method)?;
-                RichTerm {
-                    term: Box::new(Term::Promise(ty, l, t)),
                     pos,
                 }
             }
@@ -1083,9 +1074,7 @@ impl RichTerm {
                         };
                         Ok(Contract { types, ..ctr })
                     })
-                    // Transpose from Option<Result> to Result<Option>. There is a `transpose`
-                    // method in Rust, but it has currently not made it to the stable version yet
-                    .map_or(Ok(None), |res| res.map(Some))?;
+                    .transpose()?;
 
                 let value = meta
                     .value

@@ -376,11 +376,11 @@ impl fmt::Display for Types {
             }
             AbsType::Sym() => write!(f, "Sym"),
             AbsType::Flat(ref t) => write!(f, "#{}", t.as_ref().shallow_repr()),
-            AbsType::Var(Ident(ref var)) => write!(f, "{}", var),
-            AbsType::Forall(Ident(ref i), ref ty) => {
+            AbsType::Var(var) => write!(f, "{}", var),
+            AbsType::Forall(i, ref ty) => {
                 let mut curr: &Types = ty.as_ref();
                 write!(f, "forall {}", i)?;
-                while let Types(AbsType::Forall(Ident(ref i), ref ty)) = curr {
+                while let Types(AbsType::Forall(i, ref ty)) = curr {
                     write!(f, " {}", i)?;
                     curr = ty;
                 }
@@ -390,7 +390,7 @@ impl fmt::Display for Types {
             AbsType::StaticRecord(row) => write!(f, "{{{}}}", row),
             AbsType::DynRecord(ty) => write!(f, "{{_: {}}}", ty),
             AbsType::RowEmpty() => Ok(()),
-            AbsType::RowExtend(Ident(id), ty_opt, tail) => {
+            AbsType::RowExtend(id, ty_opt, tail) => {
                 write!(f, "{}", id)?;
 
                 if let Some(ty) = ty_opt {
@@ -429,7 +429,9 @@ mod test {
         println!("{}", wrapper);
         let id = Files::new().add("<test>", wrapper.clone());
 
-        let rt = TermParser::new().parse(id, Lexer::new(&wrapper)).unwrap();
+        let rt = TermParser::new()
+            .parse_term(id, Lexer::new(&wrapper))
+            .unwrap();
 
         match *rt.term {
             Term::MetaValue(MetaValue { mut contracts, .. }) if contracts.len() == 1 => {
