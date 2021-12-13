@@ -44,7 +44,6 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
     "compile": "tsc -b",
     "watch": "tsc -b -w",
     "lint": "eslint ./src --ext .ts,.tsx",
@@ -58,13 +57,13 @@
   },
   "devDependencies": {
     "@types/mocha": "^8.2.2",
-    "@types/node": "^12.12.0",
-    "@types/vscode": "^1.52.0",
-    "@typescript-eslint/eslint-plugin": "^4.23.0",
-    "@typescript-eslint/parser": "^4.23.0",
+    "@types/node": "^12.20.37",
+    "@types/vscode": "1.52.0",
+    "@typescript-eslint/eslint-plugin": "^4.33.0",
+    "@typescript-eslint/parser": "^4.33.0",
+    "@vscode/test-electron": "^1.6.2",
     "eslint": "^7.26.0",
     "mocha": "^8.3.2",
-    "typescript": "^4.3.5",
-    "@vscode/test-electron": "^1.6.1"
+    "typescript": "^4.5.3"
   }
 }
