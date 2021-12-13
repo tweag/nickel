@@ -172,5 +172,4 @@ let typecheck = [
   {"foo" = 1} : {foo : Num},
 ] in
 
-
 true
