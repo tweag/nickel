@@ -1,5 +1,5 @@
 {
-  "name": "nickel-lsp",
+  "name": "nls",
   "description": "Nickel Language Server",
   "author": "",
   "license": "MIT",
@@ -21,24 +21,24 @@
   "contributes": {
     "configuration": {
       "type": "object",
-      "title": "Example configuration",
+      "title": "Nickel Language Server Configuration",
       "properties": {
-        "languageServerExample.maxNumberOfProblems": {
-          "scope": "resource",
-          "type": "number",
-          "default": 100,
-          "description": "Controls the maximum number of problems produced by the server."
-        },
-        "languageServerExample.trace.server": {
+        "nls.server.path": {
           "scope": "window",
           "type": "string",
-          "enum": [
-            "off",
-            "messages",
-            "verbose"
-          ],
-          "default": "off",
-          "description": "Traces the communication between VS Code and the language server."
+          "default": "nls",
+          "description": "Path to nickel language server"
+        },
+        "nls.server.trace": {
+          "scope": "window",
+          "type": "string",
+          "description": "Enables performance tracing to the given file"
+        },
+        "nls.server.debugLog": {
+          "scope": "window",
+          "type": "boolean",
+          "default": false,
+          "description": "Logs the communication between VS Code and the language server."
         }
       }
     }
