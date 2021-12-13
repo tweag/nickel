@@ -1,40 +1,36 @@
 let Assert = fun l x => x || %blame% l in
 
-((10 | default | Num) == 10 | #Assert) &&
+[
+(10 | default | Num) == 10,
 
 // Check the correct handling of the update of thunks containing enriched values (see issue
 // https://github.com/tweag/nickel/issues/123)
-(let x = {a = (fun x => (1 | default)) 1} in
-  builtins.seq (x.a) ((x & {a=2}).a) == 2 | #Assert) &&
+let x = {a = (fun x => (1 | default)) 1} in
+  builtins.seq (x.a) ((x & {a=2}).a) == 2,
 
 // merge_default
-(({a = 2} & {a | default = 0, b | default = true}) == {a = 2, b = true}
-  | #Assert) &&
-({a | default = {x = 1}} & {a | default = {y = "y"}} == {a = {x = 1, y = "y"}}
-  | #Assert) &&
+({a = 2} & {a | default = 0, b | default = true}) == {a = 2, b = true},
+{a | default = {x = 1}} & {a | default = {y = "y"}} == {a = {x = 1, y = "y"}},
 
 // merge_contract
-({a = 2, b | Bool} & {a | Num, b | default = true}
-  == {a = 2, b = true}
-  | #Assert) &&
+{a = 2, b | Bool} & {a | Num, b | default = true}
+  == {a = 2, b = true},
 
 // merge_default_contract
-({a = 2} & {a | default | Num = 0, b | default = true}
-  == {a = 2, b = true}
-  | #Assert) &&
+{a = 2} & {a | default | Num = 0, b | default = true}
+  == {a = 2, b = true},
 
-({a=2} & {a | Num} & {a | default = 3} == {a = 2} | #Assert) &&
-({a=2} & {b | Num} & {b | default = 3} == {a = 2, b = 3} | #Assert) &&
-(({a | default = 1} & {b | Num} & {a | default = 1}).a
-  == 1
-  | #Assert) &&
+{a=2} & {a | Num} & {a | default = 3} == {a = 2},
+{a=2} & {b | Num} & {b | default = 3} == {a = 2, b = 3},
+({a | default = 1} & {b | Num} & {a | default = 1}).a
+  == 1,
 
 // composed
-(let Even = fun l x => if x % 2 == 0 then x else %blame% l in
+let Even = fun l x => if x % 2 == 0 then x else %blame% l in
   let DivBy3 = fun l x => if x % 3 ==  0 then x else %blame% l in
   let composed = {a | #Even} & {a | #DivBy3} in
   (composed & {a = 6} == {a = 6} | #Assert) &&
-  (composed & {a = 12} == {a = 12} | #Assert)) &&
+  (composed & {a = 12} == {a = 12} | #Assert),
 
 
 // Check that the environments of contracts are correctly saved and restored when merging. See
@@ -55,7 +51,7 @@ let Assert = fun l x => x || %blame% l in
 // default/contract -> contract-default/default
 ((def & ctr_num & def2).a == 2 | #Assert) &&
 // value/contract-default <- contract/contract-default
-((val & (ctr_num & def)).a == 1 | #Assert)) &&
+((val & (ctr_num & def)).a == 1 | #Assert)),
+]
 
-
-true
+|> lists.foldl (fun x y => (x | #Assert) && y) true

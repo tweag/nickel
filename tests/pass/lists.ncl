@@ -1,18 +1,19 @@
 let Assert = fun l x => x || %blame% l in
 
+[
 // accesses
-(lists.elemAt 1 [1,2,3] == 2 | #Assert) &&
-(lists.elemAt 1 (lists.map (fun x => x + 1) [1,2,3]) == 3 | #Assert) &&
+lists.elemAt 1 [1,2,3] == 2,
+lists.elemAt 1 (lists.map (fun x => x + 1) [1,2,3]) == 3,
 
 // length
-(lists.length [] == 0 | #Assert) &&
-(lists.length [1,2,3] == 3 | #Assert) &&
-(lists.length ([] @ [1,2] @ [3,4] @ []) == 4 | #Assert) &&
+lists.length [] == 0,
+lists.length [1,2,3] == 3,
+lists.length ([] @ [1,2] @ [3,4] @ []) == 4,
 
 // Test case added after https://github.com/tweag/nickel/issues/154
-(let x = 1 in let l = [x] @ [2] in %head% l == 1 | #Assert) &&
+let x = 1 in let l = [x] @ [2] in %head% l == 1,
 
-(let Y = fun f => (fun x => f (x x)) (fun x => f (x x)) in
+let Y = fun f => (fun x => f (x x)) (fun x => f (x x)) in
   let foldr_ =
     fun self => fun f => fun acc => fun l =>
       if %length% l == 0 then acc
@@ -30,9 +31,7 @@ let Assert = fun l x => x || %blame% l in
   in
   let all = fun pred => fun l => foldr and true (%map% l pred) in
   let isZ = fun x => x == 0 in
-  all isZ [0, 0, 0, 1]
-  == false
-  | #Assert) &&
+  all isZ [0, 0, 0, 1] == false,
+]
 
-
- true
+|> lists.foldl (fun x y => (x | #Assert) && y) true
