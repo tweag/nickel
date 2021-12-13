@@ -76,7 +76,12 @@ impl Server {
 
     pub(crate) fn reply(&mut self, response: Response) {
         trace!("Sending response: {:#?}", response);
-        Trace::reply(response.id.clone());
+
+        if let Some(_) = response.error {
+            Trace::error_reply(response.id.clone());
+        } else {
+            Trace::reply(response.id.clone());
+        }
 
         self.connection
             .sender

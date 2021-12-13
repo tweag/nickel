@@ -175,15 +175,23 @@ impl Trace {
         .report();
     }
 
-    pub fn reply(id: RequestId) {
+    pub fn reply_with(id: RequestId, with_error: bool) {
         Self::with_trace(|mut t| {
             t.received
                 .remove(&id)
-                .map(|received| received.into_replied(false))
+                .map(|received| received.into_replied(with_error))
                 .map(|item| t.write_item(item))
                 .unwrap_or(Ok(()))
         })
         .report()
+    }
+
+    pub fn reply(id: RequestId) {
+        Self::reply_with(id, false)
+    }
+
+    pub fn error_reply(id: RequestId) {
+        Self::reply_with(id, true)
     }
 
     pub fn drop_received() -> anyhow::Result<()> {
