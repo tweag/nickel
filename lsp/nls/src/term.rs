@@ -12,7 +12,7 @@ impl TermPosExt for TermPos {
         match self {
             TermPos::Inherited(RawSpan { src_id, start, end })
             | TermPos::Original(RawSpan { src_id, start, end }) => {
-                Some((src_id.clone(), (start.0 as usize..end.0 as usize)))
+                Some((*src_id, (start.0 as usize..end.0 as usize)))
             }
             TermPos::None => None,
         }

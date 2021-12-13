@@ -1,8 +1,4 @@
-use std::{
-    collections::{hash_map::DefaultHasher, HashMap},
-    hash::Hash,
-    time::{Instant, SystemTime, UNIX_EPOCH},
-};
+use std::collections::HashMap;
 
 use anyhow::Result;
 use codespan::FileId;
@@ -77,7 +73,7 @@ impl Server {
     pub(crate) fn reply(&mut self, response: Response) {
         trace!("Sending response: {:#?}", response);
 
-        if let Some(_) = response.error {
+        if response.error.is_some() {
             Trace::error_reply(response.id.clone());
         } else {
             Trace::reply(response.id.clone());
@@ -207,7 +203,7 @@ impl Server {
     }
 
     pub fn lin_cache_get(&self, file_id: &FileId) -> Result<&Completed, ResponseError> {
-        self.lin_cache.get(&file_id).ok_or_else(|| ResponseError {
+        self.lin_cache.get(file_id).ok_or_else(|| ResponseError {
             data: None,
             message: "File has not yet been parsed or cached.".to_owned(),
             code: ErrorCode::ParseError as i32,

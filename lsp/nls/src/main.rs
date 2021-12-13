@@ -1,12 +1,7 @@
-use std::{
-    fs::{self, File, OpenOptions},
-    io::{self, Stderr},
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{fs, io, path::PathBuf};
 
 use anyhow::Result;
-use log::trace;
+
 use lsp_server::Connection;
 
 mod cache;
@@ -18,7 +13,7 @@ mod server;
 use server::Server;
 use structopt::StructOpt;
 
-use crate::trace::{CsvTraceItem, Trace};
+use crate::trace::Trace;
 
 mod term;
 mod trace;

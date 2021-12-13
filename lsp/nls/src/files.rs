@@ -84,14 +84,14 @@ fn parse_and_typecheck(server: &mut Server, uri: Url, file_id: FileId) -> Result
         .cache
         .parse(file_id)
         .map_err(|parse_err| parse_err.to_diagnostic(server.cache.files_mut(), None))
-        .and_then(|parse_errs| {
+        .map(|parse_errs| {
             // Parse errors are not fatal
             let mut d = parse_errs
                 .inner()
                 .to_diagnostic(server.cache.files_mut(), None);
             trace!("Parsed, checking types");
             let _ = typecheck(server, file_id).map_err(|mut ty_d| d.append(&mut ty_d));
-            Ok(d)
+            d
         })
         .unwrap_or_else(|d| d);
 

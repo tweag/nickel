@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     fmt::Display,
     io::Write,
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{Mutex, MutexGuard},
     time::{Duration, Instant},
 };
 
@@ -140,6 +140,7 @@ impl Trace {
         })
     }
 
+    #[allow(dead_code)]
     pub fn remove_writer() -> Result<()> {
         Self::with_trace(|mut trace| {
             if let Some(ref mut writer) = trace.writer {
@@ -166,7 +167,7 @@ impl Trace {
 
         Self::with_trace(|mut trace| {
             let params = TraceItemParams {
-                method: method.to_string().into(),
+                method: method.to_string(),
                 ..Default::default()
             };
             trace.received.insert(id, TraceItem { time, params });
@@ -194,6 +195,7 @@ impl Trace {
         Self::reply_with(id, true)
     }
 
+    #[allow(dead_code)]
     pub fn drop_received() -> anyhow::Result<()> {
         Self::with_trace(|mut t| {
             t.received.clear();

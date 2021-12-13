@@ -133,7 +133,7 @@ pub fn handle_to_usages(
             let mut locations = Vec::new();
 
             for reference_id in usages.iter() {
-                let reference = linearization.id_mapping[&reference_id];
+                let reference = linearization.id_mapping[reference_id];
                 let reference = linearization.lin[reference].clone();
                 let location = match reference.pos {
                     TermPos::Original(RawSpan {

@@ -59,7 +59,7 @@ pub fn handle(
     let item = linearization[index.unwrap()].to_owned();
     debug!("{:?}", item);
 
-    let (ty, meta) = resolve_type_meta(&item, &completed);
+    let (ty, meta) = resolve_type_meta(&item, completed);
 
     let range = match item.pos {
         TermPos::Original(span) | TermPos::Inherited(span) => Some(Range::from_codespan(
@@ -119,7 +119,7 @@ fn resolve_type_meta(
             extra.push(doc.to_owned());
         }
         if let Some(types) = types {
-            extra.push(format!("{}", types.label.tag));
+            extra.push(types.label.tag.to_string());
         }
         if !contracts.is_empty() {
             extra.push(
