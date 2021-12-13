@@ -2,6 +2,7 @@ use std::{fs, io, path::PathBuf};
 
 use anyhow::Result;
 
+use log::debug;
 use lsp_server::Connection;
 
 mod cache;
@@ -33,6 +34,7 @@ fn main() -> Result<()> {
     let options = Opt::from_args();
 
     if let Some(file) = options.trace {
+        debug!("Writing trace to {:?}", file.canonicalize()?);
         Trace::set_writer(csv::Writer::from_writer(io::BufWriter::new(
             fs::OpenOptions::new().append(true).open(file)?,
         )))?;
