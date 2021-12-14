@@ -151,9 +151,7 @@ impl Server {
                 )
             }
             _ => Ok(()),
-        }?;
-
-        Ok(())
+        }
     }
 
     fn handle_request(&mut self, req: lsp_server::Request) -> Result<()> {
