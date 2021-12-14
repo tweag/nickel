@@ -12,8 +12,6 @@ use log::error;
 use lsp_server::RequestId;
 use serde::Serialize;
 
-use self::param::Enrichment;
-
 lazy_static! {
     static ref TRACE: Mutex<Trace> = Mutex::new(Trace::default());
 }
@@ -204,7 +202,7 @@ impl Trace {
     }
 }
 
-pub(crate) trait Enrich<E: Enrichment> {
+pub(crate) trait Enrich<E> {
     fn enrich(id: &RequestId, param: E);
 }
 
@@ -226,10 +224,6 @@ pub mod param {
     use lsp_server::RequestId;
     use nickel::typecheck::linearization::Completed;
 
-    pub trait Enrichment {}
-
-    impl Enrichment for &Completed {}
-
     impl Enrich<&Completed> for Trace {
         fn enrich(id: &RequestId, param: &Completed) {
             Self::with_trace(|mut t| {
@@ -245,8 +239,6 @@ pub mod param {
     pub struct FileUpdate<'a> {
         pub content: &'a str,
     }
-
-    impl Enrichment for FileUpdate<'_> {}
 
     impl<'a> Enrich<FileUpdate<'a>> for Trace {
         fn enrich(id: &RequestId, param: FileUpdate<'a>) {
