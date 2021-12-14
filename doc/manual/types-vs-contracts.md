@@ -14,12 +14,6 @@ exceptionally use contracts when types are not expressive enough to encode the
 property you want (such as in `#ValidUrl -> #Port -> #ValidUrl`) or if the type
 system is not powerful enough to see that your code is correct.
 
-Type annotations do have a runtime cost. If you hit contracts-related
-performances issues, you can always disable some contract checks using specific
-flags (TO BE PRECISED ONCE WE HAVE THOSE FLAGS). With annotations, code is still
-typechecked, and you can turn contracts checking back on for debugging. Without
-annotations, you're out of luck.
-
 What to do depends on the context:
 
 - *Anonymous function: nothing*. Short, anonymous functions can
@@ -54,51 +48,6 @@ What to do depends on the context:
       ev (fun f => f 0) 1
     in ...
     ```
-
-## Library (record of functions)
-
-You should use **type annotations** for records of functions. Currently Nickel
-doesn't have a specific notion of a library or a module. You can just put
-functions inside a record. In accordance with the previous section, you should
-also use a type annotation on your record to make the type of the functions
-accessible to the outside. Otherwise, the record is typed as `Dyn` and will
-obliterate the types, making your library basically unusable inside typed code.
-
-### Example
-
-DON'T
-```
-{
-  foo :  Num -> Num = fun x => x + 1,
-  bar : Num -> Num = foo,
-}
-```
-
-BUT DO
-```
-{
-  foo = fun x => x + 1,
-  bar = foo,
-} : {
-  foo : Num -> Num,
-  bar : Num -> Num,
-}
-```
-
-Alternatively, you can repeat your types both at the function level and at the
-record level. It makes code more navigable and `query`-friendly, but at the
-expense of repetition and duplicated contract checks. It is also currently
-required for polymorphic functions because of [the following
-bug](https://github.com/tweag/nickel/issues/360). A better solution will
-probably be implemented in the future: type holes (TODO: MAY ACTUALLY BE AVAILABLE FOR RELEASE)
-
-(NOT YET POSSIBLE)
-```
-{
-  foo : Num -> Num = fun x => x + 1,
-  bar : Num -> Num = foo,
-} : _
-```
 
 ## Data (record, list)
 
