@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 generate_counter!(FreshVarCounter, usize);
 
-/// # Desugarise destructuring.usize
+/// # Desugarise destructuring
 ///
 /// Replace a let-binding with destructuring by a classical let-binding.
 /// It will first destruct the pattern and create a new var for each field of the patternn.
@@ -20,13 +20,14 @@ generate_counter!(FreshVarCounter, usize);
 ///
 /// Taking the let pattern:
 /// ```text
-/// let x {a,d=b} = {a=1,b=2,c="ignored"} in ...
+/// let x @ {a, b=d, ..} = {a=1,b=2,c="ignored"} in ...
 /// ```
 /// after transformation we will have:
 /// ```text
-/// let x = (let var = {a=1,b=2,c="ignored"} in {a=var.a,d=var.b}) in (
-///     let a = x.a in (
-///         let d = x.b in ...))
+/// let x = {a=1,b=2,c="ignored"} in
+/// let a = x.a in
+/// let d = x.b in
+/// ...
 /// ```
 pub mod desugar_destructuring {
     use super::{Ident, RichTerm, Term};
@@ -35,9 +36,13 @@ pub mod desugar_destructuring {
     use crate::term::MetaValue;
     use crate::term::{BinaryOp::DynRemove, UnaryOp::StaticAccess};
 
+    /// Wrap the desugarized term in a meta value containing the "Record contract" needed to check
+    /// the pattern exaustivity and also fill the default values (`?` operator) if not presents in the record.
+    /// This function should be, in the general case, considered as the entry point of this
+    /// transformation.
     pub fn desugar_with_contract(rt: RichTerm) -> RichTerm {
         if let Term::LetPattern(x, pat, t_, body) = *rt.term {
-            let pos = body.pos.clone();
+            let pos = body.pos;
             let meta = pat.clone().as_contract();
             let t_ = {
                 let t_pos = t_.pos;
@@ -55,19 +60,19 @@ pub mod desugar_destructuring {
         }
     }
 
+    /// Main transformation function to desuggar let patterns.
+    /// WARNING: In a real usage case, you will want to generate also the matavalue associated to
+    /// this pattern destructuring. Do not concider this function as the entry point of the
+    /// transformation. For that, use `desugar_with_contract`.
     pub fn desugar(rt: RichTerm) -> RichTerm {
         if let Term::LetPattern(x, pat, t_, body) = *rt.term {
             let pos = body.pos;
-            let x = if let Some(x) = x {
-                x
-            } else {
-                super::fresh_var()
-            };
+            let x = x.unwrap_or_else(super::fresh_var);
             RichTerm::new(
                 Term::Let(
                     x.clone(),
                     t_,
-                    destruct_term(x.clone(), pat.clone(), drop_fields(x, pat, body)),
+                    destruct_term(x.clone(), pat.clone(), bind_open_field(x, pat, body)),
                 ),
                 pos,
             )
@@ -76,7 +81,12 @@ pub mod desugar_destructuring {
         }
     }
 
-    fn drop_fields(x: Ident, pat: Destruct, body: RichTerm) -> RichTerm {
+    /// Wrap `body` in a let construct binding the open part of the pattern to the required value.
+    /// Having `let {a,..y} = {a=1, b=2, c=3} in <BODY>` will bind `y` to {b=2,c=3} in `BODY`.
+    /// Here, the x, is the identifier pointing to the full record. If having `val @ {...} = ... in
+    /// ...` the param x should be `Ident("val")` but if we have a `@` binding less form, you will
+    /// probably generate a fresh variable.
+    fn bind_open_field(x: Ident, pat: Destruct, body: RichTerm) -> RichTerm {
         let (matches, var) = match pat {
             Destruct::Record(matches, true, Some(x)) => (matches, x),
             Destruct::Record(matches, true, None) => (matches, super::fresh_var()),
@@ -95,21 +105,21 @@ pub mod desugar_destructuring {
         .into()
     }
 
+    /// Core of the destructuring. Bind all the variables of the pattern except the "open" (`..y`)
+    /// part. For that, see `bind_open_field`.
     fn destruct_term(x: Ident, pat: Destruct, body: RichTerm) -> RichTerm {
         let pos = body.pos;
         match pat {
-            Destruct::Record(mut matches, open, rst) => {
-                matches.into_iter().fold(body, move |t, m| match m {
-                    Match::Simple(id, _) => RichTerm::new(
-                        Term::Let(id.clone(), op1(StaticAccess(id), Term::Var(x.clone())), t),
-                        pos,
-                    ),
-                    Match::Assign(f, _, (id, pat)) => desugar(RichTerm::new(
-                        Term::LetPattern(id, pat, op1(StaticAccess(f), Term::Var(x.clone())), t),
-                        pos,
-                    )),
-                })
-            }
+            Destruct::Record(matches, ..) => matches.into_iter().fold(body, move |t, m| match m {
+                Match::Simple(id, _) => RichTerm::new(
+                    Term::Let(id.clone(), op1(StaticAccess(id), Term::Var(x.clone())), t),
+                    pos,
+                ),
+                Match::Assign(f, _, (id, pat)) => desugar(RichTerm::new(
+                    Term::LetPattern(id, pat, op1(StaticAccess(f), Term::Var(x.clone())), t),
+                    pos,
+                )),
+            }),
             _ => body,
         }
     }

@@ -187,15 +187,13 @@ pub struct Contract {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct AbsMetaValue<V> {
+pub struct MetaValue {
     pub doc: Option<String>,
     pub types: Option<Contract>,
     pub contracts: Vec<Contract>,
     pub priority: MergePriority,
-    pub value: V,
+    pub value: Option<RichTerm>,
 }
-
-pub type MetaValue = AbsMetaValue<Option<RichTerm>>;
 
 impl From<RichTerm> for MetaValue {
     fn from(rt: RichTerm) -> Self {
@@ -206,6 +204,12 @@ impl From<RichTerm> for MetaValue {
             priority: Default::default(),
             value: Some(rt),
         }
+    }
+}
+
+impl Default for MetaValue {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -1226,11 +1230,11 @@ pub mod make {
         T1: Into<RichTerm>,
         T2: Into<RichTerm>,
         D: Into<Destruct>,
-        I: Into<Ident> + fmt::Debug,
+        I: Into<Ident>,
     {
         match pat.into() {
             d @ (Destruct::Record(..) | Destruct::List(_)) => {
-                Term::LetPattern(id.map(|i| i.into()), d.into(), t1.into(), t2.into()).into()
+                Term::LetPattern(id.map(|i| i.into()), d, t1.into(), t2.into()).into()
             }
             Destruct::Empty => {
                 if let Some(id) = id {

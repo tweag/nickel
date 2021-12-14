@@ -641,7 +641,15 @@ fn type_check_<S, E>(
         }
         Term::LetPattern(x, pat, re, rt) => {
             let ty_let = binding_type(re.as_ref(), &envs, state.table, strict);
-            type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Left), strict, re, ty_let.clone())?;
+            type_check_(
+                state,
+                envs.clone(),
+                lin,
+                linearizer.scope(ScopeId::Left),
+                strict,
+                re,
+                ty_let.clone(),
+            )?;
 
             // TODO typecheck the interior of the patern
             if let Some(x) = x {
