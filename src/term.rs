@@ -66,7 +66,7 @@ pub enum Term {
     Let(Ident, RichTerm, RichTerm),
     #[serde(skip)]
     LetPattern(Option<Ident>, Destruct, RichTerm, RichTerm),
-    /// A reversible let binding.
+    /// A revertible let binding.
     #[serde(skip)]
     LetRev(Ident, RichTerm, RichTerm),
     /// An application.

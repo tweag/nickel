@@ -236,13 +236,13 @@ pub mod share_normal_form {
                     })
                     .collect();
 
-                // Recursive records are the reason why we need reversible thunks, since when
+                // Recursive records are the reason why we need revertible thunks, since when
                 // merged, we may have to revert the fields back to their original expression.
                 with_bindings(
                     Term::RecRecord(map, dyn_fields, attrs),
                     bindings,
                     pos,
-                    BindingType::Reversible,
+                    BindingType::Revertible,
                 )
             }
             Term::List(ts) => {
@@ -303,7 +303,7 @@ pub mod share_normal_form {
     /// Type of let-binding to introduce during the share normal form pass.
     enum BindingType {
         Normal,
-        Reversible,
+        Revertible,
     }
 
     impl Default for BindingType {
@@ -330,7 +330,7 @@ pub mod share_normal_form {
             },
             |acc, (id, t)| match btype {
                 BindingType::Normal => RichTerm::new(Term::Let(id, t, acc), pos),
-                BindingType::Reversible => RichTerm::new(Term::LetRev(id, t, acc), pos),
+                BindingType::Revertible => RichTerm::new(Term::LetRev(id, t, acc), pos),
             },
         )
     }
