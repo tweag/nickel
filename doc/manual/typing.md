@@ -552,7 +552,7 @@ error: Incompatible types
   = These types are not compatible
 ```
 
-### Take-away
+#### Take-away
 
 When calling to typed code from untyped code, Nickel
 automatically inserts contract checks at the boundary to enjoy clearer and
@@ -562,6 +562,46 @@ untyped values inside typed code by telling the typechecker "trust me on this
 one, and if I'm wrong there will be a contract error anyway". Finally, while a
 type annotation switches the typechecker on, a contract annotation switches it
 back off.
+
+#### Using contracts as types
+<!-- TODO: find a good name for this section -->
+Type annotations and contracts share the same syntax. This means that you can
+technically write a static type annotation containing a custom contract.
+
+```nickel
+let Port = contracts.fromPred (fun value =>
+  builtins.isNum value
+  && value % 1 == 0
+  && value >= 0
+  && value <= 65535) in
+
+(10 - 1 : #Port)
+```
+
+But this program is unfortunately rejected by the typechecker:
+
+Result:
+```
+error: Incompatible types
+  ┌─ repl-input-0:7:2
+  │
+7 │ (10 : #Port)
+  │  ^^ this expression
+  │
+  = The type of the expression was expected to be `#Port`
+  = The type of the expression was inferred to be `Num`
+  = These types are not compatible
+```
+
+Indeed, statically ensuring that an arbitrary expression will eventually
+respects an arbitrary user-written predicate is a really hard problem even in
+simple cases (and undecidable in the general case). So, what can we do with annotations like `#Port`? There is one way the typechecker can be sure that something will eventually be a port number, or will fail with the correct error message: when using a contract application. 
+
+```nickel
+(let p | #Port = 10 - 1 in
+ let id = fun x => x
+)
+```
 
 ## Typing in practice
 
