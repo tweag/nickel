@@ -213,7 +213,7 @@ The following type constructors are available:
 #### Plain polymorphism
 
 Usually, a function like `filter` would be defined in a library. In this case,
-it is good practice to write an explicit type annotations, if only to provide an
+it is good practice to write a type annotation for it, if only to provide an
 explicit interface for the consumers of the library. What should be the type
 annotation for `filter`?
 
@@ -240,65 +240,7 @@ well:
 }
 ```
 
-**Type inference and polymorphism**
-the type inferred by the typechecker is,
-guessed from the application of `filter` following its definition. If we try to
-use `filter` on a list of elements with a different type, we get in trouble:
-
-
-In our initial `filter` example, we are using `filter` on a list of booleans, so
-we could do this:
-
-```nickel
-{
-  filter : (Num -> Bool) -> List Num -> List Num = ...,
-}
-```
-
-But this type is limiting. For example, we couldn't do `filter (fun s =>
-strings.length s > 2) ["a","ab","abcd"]`.
-
-```nickel
-(let filter = ... in
-let result = filter (fun x => x % 2 == 0) [1,2,3,4,5,6] in
-let dummy = filter (fun s => strings.length s > 2) ["a","ab","abcd"] in
-result) : List Num
-```
-
-Result:
-```
-error: Incompatible types
-  ┌─ repl-input-35:2:37
-  │
-2 │ let dummy = filter (fun s => strings.length s > 2) ["a","ab","abcd"] in
-  │                                             ^ this expression
-  │
-  = The type of the expression was expected to be `Str`
-  = The type of the expression was inferred to be `Num`
-  = These types are not compatible
-```
-
-That's too bad, because the code of `filter` is in fact agnostic with respect to
-the type of elements of the list. That is, `filter` is *generic*.  This can be
-expressed in Nickel with so-called *parametric polymorphism*. This is really
-just a pedantic name for some flavour of generics. Generic parameters are
-introduced by the keyword `forall`, and can then be used as any other type.  We
-can now fix our example:
-
-```nickel
-(let filter : forall a. (a -> Bool) -> List a -> List a in
-let result = filter (fun x => x % 2 == 0) [1,2,3,4,5,6] in
-let dummy = filter (fun s => strings.length s > 2) ["a","ab","abcd"] in
-result) : List Num
-```
-
-Result:
-```
-[2,4,6]
-```
-
-And now it works! `forall a. (a -> Bool) -> List a -> List a` means it is OK to
-substitute `a` for any type. You can use as many generic parameters as you need:
+You can use as many parameters as you need:
 
 ```nickel
 let fst : forall a b. a -> b -> a = fun x y => x in
