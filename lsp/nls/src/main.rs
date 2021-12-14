@@ -19,7 +19,7 @@ mod term;
 mod trace;
 
 #[derive(StructOpt, Debug)]
-/// The interpreter of the Nickel language.
+/// The LSP server of the Nickel language.
 struct Opt {
     /// The trace output file, disables tracing if not given
     #[structopt(short = "t", long)]
