@@ -18,6 +18,9 @@ To enter a shell with `nickel` and `nls` run
 nix shell github:tweag/nickel
 ```
 
+```
+```
+
 ## Client
 
 Different clients have varying ways to install lsp clients:
@@ -46,4 +49,32 @@ The VS Code extension offers three configuration options:
 
 - `"nls.server.path"`: Path to nickel language server
 - `"nls.server.trace"`: "Enables performance tracing to the given file"
-- `"nls.server.debugLog"`: "Logs the communication between VS Code and the language server."
+
+### Neovim
+
+After installing `nickel` and `nls`
+`nls` is supported in [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig).
+Using `nvim-lspconfig` setup `nls` like all your other LSP servers as described by the `nvim-lspconfig` ReadMe.
+
+```lua
+require('lspconfig')["nickel_ls"].setup {}
+```
+
+### Neo(Vim) with Coc.nvim
+
+Add the `nickel_ls` `JSON` object to your `:CocConfig`/`coc-settings.json`.
+```
+{
+  "languageserver": {
+    "nickel_ls": {
+      "command": "nls",
+      "rootPatterns": [
+        ".git"
+      ],
+      "filetypes": [
+        "ncl"
+      ]
+    }
+  }
+}
+```
