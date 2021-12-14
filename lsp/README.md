@@ -18,7 +18,12 @@ To enter a shell with `nickel` and `nls` run
 nix shell github:tweag/nickel
 ```
 
+Alternatively to install both using nix run:
+
 ```
+git clone https://github.com/tweag/nickel.git
+cd nickel
+nix-env -f . -i
 ```
 
 ## Client
