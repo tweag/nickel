@@ -112,9 +112,7 @@ Let us try on the filter example. We want the call to be inside the statically
 typechecked block. The easiest way is to add an annotation at the top-level:
 
 ```nickel
-(let filter
-   : (Num -> Bool) -> List Num -> List Num
-   = fun pred l =>
+(let filter = fun pred l =>
      lists.foldl (fun acc x => if pred x then acc @ [x] else acc) [] l in
 filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]) : List Num
 ```
