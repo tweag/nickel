@@ -65,7 +65,7 @@ impl Destruct {
     }
 
     /// Get the inner vector of `Matches` of the pattern. If `Empty` return a empty vector.
-    fn inner(self) -> Vec<Match> {
+    pub fn inner(self) -> Vec<Match> {
         match self {
             Destruct::Record(i, _, _) | Destruct::List(i) => i,
             Destruct::Empty => vec![],
@@ -76,6 +76,14 @@ impl Destruct {
     pub fn is_open(&self) -> bool {
         match self {
             Destruct::Record(_, o, _) => *o,
+            _ => false,
+        }
+    }
+
+    /// check if the pattern is empty.
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Destruct::Empty => true,
             _ => false,
         }
     }
