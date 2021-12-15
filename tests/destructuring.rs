@@ -2,6 +2,7 @@ use assert_matches::assert_matches;
 use nickel::error::{Error, EvalError, TypecheckError};
 use nickel::term::Term;
 
+#[path = "./common.rs"]
 mod common;
 use common::eval_file;
 
