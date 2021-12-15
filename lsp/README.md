@@ -20,7 +20,6 @@ nix shell github:tweag/nickel
 
 ## Client
 
-Different clients have varying ways to install lsp clients:
 
 ### VS Code
 
