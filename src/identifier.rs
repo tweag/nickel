@@ -48,12 +48,21 @@ where
     String: From<F>,
 {
     fn from(val: F) -> Self {
-        Ident {label: String::from(val), pos: TermPos::None}
+        Ident {
+            label: String::from(val),
+            pos: TermPos::None,
+        }
     }
 }
 
 impl Into<String> for Ident {
     fn into(self) -> String {
         self.label
+    }
+}
+
+impl Ident {
+    pub fn is_generated(&self) -> bool {
+        self.label.starts_with('%')
     }
 }
