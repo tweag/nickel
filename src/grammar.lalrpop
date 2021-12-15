@@ -58,11 +58,9 @@ MetaAnnotAtom: MetaValue = {
 };
 
 DefaultAnnot: MetaValue = "?" <t: Term> => MetaValue {
-    doc: None,
-    types: None,
-    contracts: Vec::new(),
     priority: MergePriority::Default,
-    value: Some(t)
+    value: Some(t),
+    ..Default::default()
 };
 
 MetaAnnot: MetaValue = <anns: MetaAnnotAtom+> => anns.into_iter().fold(MetaValue::new(), MetaValue::flatten);
@@ -82,7 +80,7 @@ Annot: MetaValue = {
 pub Term: RichTerm = WithPos<RootTerm>;
 
 pub ExtendedTerm: ExtendedTerm = {
-    "let" <pat:Pattern> <meta: Annot?> "=" <t: Term> => {
+    "let" <id: Ident> <meta: Annot?> "=" <t: Term> => {
         let t = if let Some(mut meta) = meta {
             let pos = t.pos;
             meta.value = Some(t);
@@ -91,8 +89,7 @@ pub ExtendedTerm: ExtendedTerm = {
         else {
             t
         };
-
-        ExtendedTerm::ToplevelLet(pat.0.unwrap(), t)
+        ExtendedTerm::ToplevelLet(id, t)
     },
     Term => ExtendedTerm::RichTerm(<>),
 }
@@ -261,6 +258,7 @@ FieldPathElem: FieldPathElem = {
     <WithPos<StrChunks>> => FieldPathElem::Expr(<>),
 };
 
+#[inline]
 Pattern: (Option<Ident>,Destruct) = {
     <id:(<Ident> "@")?> <pat:Destruct> => (id,pat),
     Ident => (Some(<>),Destruct::Empty),
