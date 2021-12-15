@@ -18,7 +18,20 @@ To enter a shell with `nickel` and `nls` run
 nix shell github:tweag/nickel
 ```
 
-Alternatively to install both using nix run:
+To install `nickel` and `nls` into your profile run
+
+```
+nix profile install github:tweag/nickel
+```
+
+To build the `nickel` and `nls` executables run
+
+```
+# The executables will be placed in ./result/bin/
+nix build github:tweag/nickel
+```
+
+Alternatively to install without nix flakes using nix run:
 
 ```
 git clone https://github.com/tweag/nickel.git
