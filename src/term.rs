@@ -24,6 +24,7 @@ use crate::types::{AbsType, Types};
 use codespan::FileId;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::ffi::OsString;
 use std::fmt;
 
@@ -1107,6 +1108,110 @@ impl RichTerm {
             TraverseMethod::TopDown => Ok(result),
             TraverseMethod::BottomUp => f(result, state),
         }
+    }
+
+    /// Return the free variables of a term.
+    pub fn free_vars(&self) -> HashSet<Ident> {
+        fn collect_free_var(rt: &RichTerm, set: &mut HashSet<Ident>) {
+            match rt.as_ref() {
+                Term::Var(id) => {
+                    set.insert(id.clone());
+                }
+                Term::ParseError
+                | Term::Null
+                | Term::Bool(_)
+                | Term::Num(_)
+                | Term::Str(_)
+                | Term::Lbl(_)
+                | Term::Sym(_)
+                | Term::Enum(_)
+                | Term::Import(_)
+                | Term::ResolvedImport(_) => (),
+                Term::Fun(id, t) => {
+                    let mut set2 = HashSet::new();
+                    collect_free_var(t, &mut set2);
+                    set2.remove(id);
+                    set.extend(set2);
+                }
+                Term::Let(id, t1, t2) => {
+                    collect_free_var(t1, set);
+                    let mut set2 = HashSet::new();
+                    collect_free_var(t2, &mut set2);
+                    set2.remove(id);
+                    set.extend(set2);
+                }
+                Term::App(t1, t2) => {
+                    collect_free_var(t1, set);
+                    collect_free_var(t2, set);
+                }
+                Term::Switch(t, cases, default) => {
+                    // The annotation on `map_res` use Result's corresponding trait to convert from
+                    // Iterator<Result> to a Result<Iterator>
+                    collect_free_var(t, set);
+                    for t in cases.values().chain(default.iter()) {
+                        collect_free_var(t, set);
+                    }
+                }
+                Term::Op1(_, t) => collect_free_var(t, set),
+                Term::Op2(_, t1, t2) => {
+                    collect_free_var(t1, set);
+                    collect_free_var(t2, set);
+                }
+                Term::OpN(_, ts) => {
+                    for t in ts {
+                        collect_free_var(t, set);
+                    }
+                }
+                Term::Wrapped(_, t) => collect_free_var(t, set),
+                Term::Record(map, _) => {
+                    for t in map.values() {
+                        collect_free_var(t, set);
+                    }
+                }
+                Term::RecRecord(map, dyn_fields, _) => {
+                    //TODO: back to this
+                    let mut rec_fields = HashSet::new();
+                    let mut set2: HashSet<Ident> = HashSet::new();
+                    for (id, t) in map {
+                        collect_free_var(t, &mut set2);
+                        rec_fields.insert(id.clone());
+                    }
+                    for (t1, t2) in dyn_fields.iter() {
+                        collect_free_var(t1, &mut set2);
+                        collect_free_var(t2, &mut set2);
+                    }
+
+                    let set2: HashSet<Ident> = set2.difference(&rec_fields).cloned().collect();
+                    set.union(&set2);
+                }
+                Term::List(ts) => {
+                    for t in ts {
+                        collect_free_var(t, set);
+                    }
+                }
+                Term::StrChunks(chunks) => {
+                    for chunk in chunks {
+                        match chunk {
+                            StrChunk::Expr(t, _) => collect_free_var(t, set),
+                            _ => (),
+                        }
+                    }
+                }
+                Term::MetaValue(meta) => {
+                    for ctr in meta.contracts.iter().chain(meta.types.iter()) {
+                        set.extend(ctr.types.free_vars());
+                    }
+
+                    if let Some(ref t) = meta.value {
+                        collect_free_var(t, set);
+                    }
+                }
+            }
+        }
+
+        let mut set = HashSet::new();
+        collect_free_var(self, &mut set);
+        set
     }
 }
 
