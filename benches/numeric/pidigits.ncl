@@ -4,11 +4,11 @@
       x
     else
       let i = 2*n + 1 in
-      let sign = if n % 2 == 1 then -1 else 1 in
+      let sign = if n % 2 == 1 then - 1 else 1 in
       sign * (%pow% x i) / i,
 
   sum = fun x total n iterCount =>
-    if n == iterCount-1 then
+    if n == iterCount - 1 then
       total 
     else
       sum x (total + (nth_term x n)) (n+1) iterCount,

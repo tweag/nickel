@@ -1,5 +1,5 @@
 {
-  encode = fun n f x => if n == 0 then x else encode (n-1) f (f x),
+  encode = fun n f x => if n == 0 then x else encode (n - 1) f (f x),
   decode = fun nApply => nApply (fun x => x + 1) 0,
 
   add = fun n m f x => n f (m f x),
@@ -9,7 +9,7 @@
     if n == 0 then
       []
     else
-      (generate f (n-1)) @ [f n],
+      (generate f (n - 1)) @ [f n],
 
   id = fun x => x,
 
