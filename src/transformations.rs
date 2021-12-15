@@ -56,8 +56,7 @@ pub mod share_normal_form {
     /// traversal to obtain a full transformation.
     pub fn transform_one(rt: RichTerm) -> RichTerm {
         let pos = rt.pos;
-        match_sharedterm! {
-            with rt.term, do {
+        match_sharedterm! {rt.term, with {
                 Term::Record(map, attrs) => {
                     let mut bindings = Vec::with_capacity(map.len());
 
@@ -226,8 +225,7 @@ pub mod apply_contracts {
     /// inner value.  Otherwise, return the term unchanged.
     pub fn transform_one(rt: RichTerm) -> RichTerm {
         let pos = rt.pos;
-        match_sharedterm! {
-            with rt.term, do {
+        match_sharedterm! {rt.term, with {
                 Term::MetaValue(meta) if meta.value.is_some() => {
                     let mut meta = meta;
                     let inner = meta.types.iter().chain(meta.contracts.iter()).fold(

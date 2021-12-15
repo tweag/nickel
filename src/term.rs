@@ -917,10 +917,8 @@ impl RichTerm {
     where
         F: FnMut(RichTerm, &mut S) -> Result<RichTerm, E>,
     {
-        let RichTerm { term, pos } = self;
-        match_sharedterm! {
-            with term, do {
-
+        let pos = self.pos;
+        match_sharedterm! {self.term, with {
                 Term::Fun(id, t) => {
                     let t = t.traverse(f, state)?;
                     f(
@@ -1142,7 +1140,7 @@ impl RichTerm {
                         state,
                     )
                 }
-            } else f(RichTerm { term, pos }, state)
+            } else f(self, state)
         }
     }
 }
@@ -1169,6 +1167,8 @@ impl From<Term> for RichTerm {
 }
 
 /// Allows to match on SharedTerm without taking ownership of the matched part until the match.
+/// In the `else` clause, we haven't taken ownership yet, so we can still use the richterm at that point.
+///
 /// It is used somehow as a match statement, going from
 /// ```
 /// # use nickel::term::{RichTerm, Term};
@@ -1186,21 +1186,18 @@ impl From<Term> for RichTerm {
 /// # use nickel::match_sharedterm;
 /// let rt = RichTerm::from(Term::Num(5.0));
 ///
-/// match_sharedterm! {
-///     with rt.term, do {
+/// match_sharedterm!{rt.term, with {
 ///         Term::Num(x) => x as usize,
 ///         Term::Str(s) => s.len(),
 ///     } else 42
 /// };
 /// ```
 ///
-/// The `else` part is optional and returns the SharedTerm if absent.
-///
 /// Known limitation: cannot use a `mut` inside the patterns.
 #[macro_export]
 macro_rules! match_sharedterm {
     (
-        with $st: expr, do {
+        $st: expr, with {
             $($($pat: pat_param)|+ $(if $if_expr: expr)? => $expr: expr),+ $(,)?
         } else $else_clause: expr
     ) => {
@@ -1214,18 +1211,6 @@ macro_rules! match_sharedterm {
                     },
             )+
             _ => $else_clause
-        }
-    };
-
-    (
-        with $st: expr, do {
-            $($($pat: pat_param)|+ $(if $if_expr: expr)? => $expr: expr),+ $(,)?
-        }
-    ) => {
-        $crate::match_sharedterm!{
-            with $st, do {
-                $($($pat)|+ $(if $if_expr)? => $expr),+
-            } else $st
         }
     };
 }

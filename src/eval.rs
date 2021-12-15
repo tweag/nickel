@@ -306,8 +306,7 @@ pub enum EnvBuildError {
 
 /// Add the bindings of a record to an environment. Ignore the fields defined by interpolation.
 pub fn env_add_term(env: &mut Environment, rt: RichTerm) -> Result<(), EnvBuildError> {
-    match_sharedterm!(
-        with rt.term, do {
+    match_sharedterm! {rt.term, with {
             Term::Record(bindings, _) | Term::RecRecord(bindings, ..) => {
                 let ext = bindings.into_iter().map(|(id, t)| {
                     (
@@ -320,7 +319,7 @@ pub fn env_add_term(env: &mut Environment, rt: RichTerm) -> Result<(), EnvBuildE
                 Ok(())
             },
         } else Err(EnvBuildError::NotARecord(rt))
-    )
+    }
 }
 
 /// Bind a closure in an environment.

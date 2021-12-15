@@ -268,24 +268,21 @@ fn process_unary_operation(
                 ))
             }
         }
-        UnaryOp::Blame() => {
-            match_sharedterm! {
-                with t, do {
-                    Term::Lbl(label) => Err(
-                        EvalError::BlameError(
-                            label,
-                            std::mem::replace(call_stack, Vec::new()),
-                        )),
-                } else {
-                    Err(EvalError::TypeError(
-                        String::from("Label"),
-                        String::from("blame"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
-                }
+        UnaryOp::Blame() => match_sharedterm! { t, with {
+                Term::Lbl(label) => Err(
+                    EvalError::BlameError(
+                        label,
+                        std::mem::replace(call_stack, Vec::new()),
+                    )),
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Label"),
+                    String::from("blame"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
             }
-        }
+        },
         UnaryOp::Embed(_id) => {
             if let Term::Enum(_) = &*t {
                 Ok(Closure::atomic_closure(RichTerm {
@@ -357,27 +354,24 @@ fn process_unary_operation(
                 ))
             }
         }
-        UnaryOp::ChangePolarity() => {
-            match_sharedterm! {
-                with t, do {
-                    Term::Lbl(l) => {
-                        let mut l = l;
-                        l.polarity = !l.polarity;
-                        Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Lbl(l),
-                            pos_op_inh,
-                        )))
-                    }
-                } else {
-                    Err(EvalError::TypeError(
-                        String::from("Label"),
-                        String::from("changePolarity"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+        UnaryOp::ChangePolarity() => match_sharedterm! {t, with {
+                Term::Lbl(l) => {
+                    let mut l = l;
+                    l.polarity = !l.polarity;
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Lbl(l),
+                        pos_op_inh,
+                    )))
                 }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Label"),
+                    String::from("changePolarity"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
             }
-        }
+        },
         UnaryOp::Pol() => {
             if let Term::Lbl(l) = &*t {
                 Ok(Closure::atomic_closure(RichTerm::new(
@@ -393,69 +387,60 @@ fn process_unary_operation(
                 ))
             }
         }
-        UnaryOp::GoDom() => {
-            match_sharedterm! {
-                with t, do {
-                    Term::Lbl(l) => {
-                        let mut l = l;
-                        l.path.push(ty_path::Elem::Domain);
-                        Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Lbl(l),
-                            pos_op_inh,
-                        )))
-                    }
-                } else {
-                    Err(EvalError::TypeError(
-                        String::from("Label"),
-                        String::from("goDom"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+        UnaryOp::GoDom() => match_sharedterm! {t, with {
+                Term::Lbl(l) => {
+                    let mut l = l;
+                    l.path.push(ty_path::Elem::Domain);
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Lbl(l),
+                        pos_op_inh,
+                    )))
                 }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Label"),
+                    String::from("goDom"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
             }
-        }
-        UnaryOp::GoCodom() => {
-            match_sharedterm! {
-                with t, do {
-                    Term::Lbl(l) => {
-                        let mut l = l;
-                        l.path.push(ty_path::Elem::Codomain);
-                        Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Lbl(l),
-                            pos_op_inh,
-                        )))
-                    }
-                } else {
-                    Err(EvalError::TypeError(
-                        String::from("Label"),
-                        String::from("goCodom"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+        },
+        UnaryOp::GoCodom() => match_sharedterm! {t, with {
+                Term::Lbl(l) => {
+                    let mut l = l;
+                    l.path.push(ty_path::Elem::Codomain);
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Lbl(l),
+                        pos_op_inh,
+                    )))
                 }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Label"),
+                    String::from("goCodom"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
             }
-        }
-        UnaryOp::GoList() => {
-            match_sharedterm! {
-                with t, do {
-                    Term::Lbl(l) => {
-                        let mut l = l;
-                        l.path.push(ty_path::Elem::List);
-                        Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Lbl(l),
-                            pos_op_inh,
-                        )))
-                    }
-                } else {
-                    Err(EvalError::TypeError(
-                        String::from("Label"),
-                        String::from("goList"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+        },
+        UnaryOp::GoList() => match_sharedterm! {t, with {
+                Term::Lbl(l) => {
+                    let mut l = l;
+                    l.path.push(ty_path::Elem::List);
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Lbl(l),
+                        pos_op_inh,
+                    )))
                 }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Label"),
+                    String::from("goList"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
             }
-        }
+        },
         UnaryOp::Wrap() => {
             if let Term::Sym(s) = &*t {
                 Ok(Closure::atomic_closure(
@@ -494,59 +479,52 @@ fn process_unary_operation(
                 ))
             }
         }
-        UnaryOp::FieldsOf() => {
-            match_sharedterm! {
-                with t, do {
-                    Term::Record(map, ..) => {
-                        let mut fields: Vec<String> = map.into_iter().map(|(Ident(id), _)| id).collect();
-                        fields.sort();
-                        let terms = fields.into_iter().map(mk_term::string).collect();
-                        Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::List(terms),
-                            pos_op_inh,
-                        )))
-                    }
-                } else {
-                    Err(EvalError::TypeError(
-                        String::from("Record"),
-                        String::from("fieldsOf"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+        UnaryOp::FieldsOf() => match_sharedterm! {t, with {
+                Term::Record(map, ..) => {
+                    let mut fields: Vec<String> = map.into_iter().map(|(Ident(id), _)| id).collect();
+                    fields.sort();
+                    let terms = fields.into_iter().map(mk_term::string).collect();
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::List(terms),
+                        pos_op_inh,
+                    )))
                 }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Record"),
+                    String::from("fieldsOf"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
             }
-        }
-        UnaryOp::ValuesOf() => {
-            match_sharedterm! {
-                with t, do {
-                    Term::Record(map, ..) => {
-                        let mut values: Vec<_> = map.into_iter().collect();
-                        // Although it seems that sort_by_key would be easier here, it would actually
-                        // require to copy the identifiers because of the lack of HKT. See
-                        // https://github.com/rust-lang/rust/issues/34162.
-                        values.sort_by(|(id1, _), (id2, _)| id1.cmp(id2));
-                        let terms = values.into_iter().map(|(_, t)| t).collect();
-                        Ok(Closure {
-                            body: RichTerm::new(Term::List(terms), pos_op_inh),
-                            env,
-                        })
-                    }
-                } else {
-                    Err(EvalError::TypeError(
-                        String::from("Record"),
-                        String::from("valuesOf"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+        },
+        UnaryOp::ValuesOf() => match_sharedterm! {t, with {
+                Term::Record(map, ..) => {
+                    let mut values: Vec<_> = map.into_iter().collect();
+                    // Although it seems that sort_by_key would be easier here, it would actually
+                    // require to copy the identifiers because of the lack of HKT. See
+                    // https://github.com/rust-lang/rust/issues/34162.
+                    values.sort_by(|(id1, _), (id2, _)| id1.cmp(id2));
+                    let terms = values.into_iter().map(|(_, t)| t).collect();
+                    Ok(Closure {
+                        body: RichTerm::new(Term::List(terms), pos_op_inh),
+                        env,
+                    })
                 }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Record"),
+                    String::from("valuesOf"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
             }
-        }
+        },
         UnaryOp::ListMap() => {
             let (f, ..) = stack
                 .pop_arg()
                 .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("map"), pos_op))?;
-            match_sharedterm! {
-                with t, do {
+            match_sharedterm! {t, with {
                     Term::List(ts) => {
                         let mut shared_env = Environment::new();
                         let f_as_var = f.body.closurize(&mut env, f.env);
@@ -625,8 +603,7 @@ fn process_unary_operation(
                 .pop_arg()
                 .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("recordMap"), pos_op))?;
 
-            match_sharedterm! {
-                with t, do {
+            match_sharedterm! {t, with {
                     Term::Record(rec, attr) => {
                         let mut shared_env = Environment::new();
                         let f_as_var = f.body.closurize(&mut env, f.env);
@@ -723,9 +700,7 @@ fn process_unary_operation(
                 ))
             }
         }
-        UnaryOp::ListTail() => {
-            match_sharedterm! {
-                with t, do {
+        UnaryOp::ListTail() => match_sharedterm! {t, with {
                     Term::List(ts) => {
                         let mut ts_it = ts.into_iter();
                         if ts_it.next().is_some() {
@@ -745,8 +720,7 @@ fn process_unary_operation(
                         RichTerm { term: t, pos },
                     ))
                 }
-            }
-        }
+        },
         UnaryOp::ListLength() => {
             if let Term::List(ts) = &*t {
                 // A num does not have any free variable so we can drop the environment
@@ -972,33 +946,30 @@ fn process_unary_operation(
                 ))
             }
         }
-        UnaryOp::EnumFromStr() => {
-            match_sharedterm! {
-                with t, do {
-                    Term::Str(s) => {
-                        let re = regex::Regex::new("_?[a-zA-Z][_a-zA-Z0-9]*").unwrap();
-                        if re.is_match(&s) {
-                            Ok(Closure::atomic_closure(RichTerm::new(
-                                Term::Enum(Ident(s)),
-                                pos_op_inh,
-                            )))
-                        } else {
-                            Err(EvalError::Other(
-                                format!("enumFrom: invalid enum tag `{}`", s),
-                                pos,
-                            ))
-                        }
+        UnaryOp::EnumFromStr() => match_sharedterm! {t, with {
+                Term::Str(s) => {
+                    let re = regex::Regex::new("_?[a-zA-Z][_a-zA-Z0-9]*").unwrap();
+                    if re.is_match(&s) {
+                        Ok(Closure::atomic_closure(RichTerm::new(
+                            Term::Enum(Ident(s)),
+                            pos_op_inh,
+                        )))
+                    } else {
+                        Err(EvalError::Other(
+                            format!("enumFrom: invalid enum tag `{}`", s),
+                            pos,
+                        ))
                     }
-                } else {
-                    Err(EvalError::TypeError(
-                        String::from("Str"),
-                        String::from("strLength"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
                 }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("strLength"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
             }
-        }
+        },
     }
 }
 
@@ -1346,46 +1317,40 @@ fn process_binary_operation(
                 ))
             }
         }
-        BinaryOp::Tag() => {
-            match_sharedterm! {
-                with t1, do {
-                    Term::Str(s) => {
-                        match_sharedterm!{
-                            with t2, do {
-                                Term::Lbl(l) => {
-                                    let mut l = l;
-                                    l.tag = s;
-                                    Ok(Closure::atomic_closure(RichTerm::new(
-                                        Term::Lbl(l),
-                                        pos_op_inh,
-                                    )))
-                                }
-                            } else {
-                                Err(EvalError::TypeError(
-                                    String::from("Label"),
-                                    String::from("tag, 2nd argument"),
-                                    snd_pos,
-                                    RichTerm {
-                                        term: t2,
-                                        pos: pos2,
-                                    },
-                                ))
+        BinaryOp::Tag() => match_sharedterm! {t1, with {
+                Term::Str(s) => match_sharedterm!{t2, with {
+                            Term::Lbl(l) => {
+                                let mut l = l;
+                                l.tag = s;
+                                Ok(Closure::atomic_closure(RichTerm::new(
+                                    Term::Lbl(l),
+                                    pos_op_inh,
+                                )))
                             }
+                        } else {
+                            Err(EvalError::TypeError(
+                                String::from("Label"),
+                                String::from("tag, 2nd argument"),
+                                snd_pos,
+                                RichTerm {
+                                    term: t2,
+                                    pos: pos2,
+                                },
+                            ))
                         }
                     }
-                } else {
-                    Err(EvalError::TypeError(
-                        String::from("Str"),
-                        String::from("tag, 1st argument"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
-                    ))
-                }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("tag, 1st argument"),
+                    fst_pos,
+                    RichTerm {
+                        term: t1,
+                        pos: pos1,
+                    },
+                ))
             }
-        }
+        },
         BinaryOp::Eq() => {
             let mut env = Environment::new();
 
@@ -1557,100 +1522,89 @@ fn process_binary_operation(
                 ))
             }
         }
-        BinaryOp::GoField() => {
-            match_sharedterm! {
-                with t1, do {
-                    Term::Str(field) => {
-                        match_sharedterm! {
-                            with t2, do {
-                                Term::Lbl(l) => {
-                                    let mut l = l;
-                                    l.path.push(ty_path::Elem::Field(Ident(field)));
-                                    Ok(Closure::atomic_closure(RichTerm::new(
-                                        Term::Lbl(l),
-                                        pos_op_inh,
-                                    )))
-                                }
-                            } else {
-                                Err(EvalError::TypeError(
-                                    String::from("Label"),
-                                    String::from("goField, 2nd argument"),
-                                    snd_pos,
-                                    RichTerm {
-                                        term: t2,
-                                        pos: pos2,
-                                    },
-                                ))
-                            }
+        BinaryOp::GoField() => match_sharedterm! {t1, with {
+                Term::Str(field) => match_sharedterm! {t2, with {
+                        Term::Lbl(l) => {
+                            let mut l = l;
+                            l.path.push(ty_path::Elem::Field(Ident(field)));
+                            Ok(Closure::atomic_closure(RichTerm::new(
+                                Term::Lbl(l),
+                                pos_op_inh,
+                            )))
                         }
+                    } else {
+                        Err(EvalError::TypeError(
+                            String::from("Label"),
+                            String::from("goField, 2nd argument"),
+                            snd_pos,
+                            RichTerm {
+                                term: t2,
+                                pos: pos2,
+                            },
+                        ))
                     }
-                } else {
-                    Err(EvalError::TypeError(
-                        String::from("Str"),
-                        String::from("goField, 1st argument"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
-                    ))
-                }
+                },
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("goField, 1st argument"),
+                    fst_pos,
+                    RichTerm {
+                        term: t1,
+                        pos: pos1,
+                    },
+                ))
             }
-        }
-
-        BinaryOp::DynAccess() => {
-            match_sharedterm! {
-                with t1, do {
-                    Term::Str(id) => {
-                        if let Term::Record(static_map, _attrs) = &*t2 {
-                            match static_map.get(&Ident(id.clone())) {
-                                Some(e) => Ok(Closure {
-                                    body: e.clone(),
-                                    env: env2,
-                                }),
-                                None => Err(EvalError::FieldMissing(
-                                    id,
-                                    String::from("(.$)"),
-                                    RichTerm {
-                                        term: t2,
-                                        pos: pos2,
-                                    },
-                                    pos_op,
-                                )),
-                            }
-                        } else {
-                            Err(EvalError::TypeError(
-                                String::from("Record"),
-                                String::from(".$"),
-                                snd_pos,
+        },
+        BinaryOp::DynAccess() => match_sharedterm! {t1, with {
+                Term::Str(id) => {
+                    if let Term::Record(static_map, _attrs) = &*t2 {
+                        match static_map.get(&Ident(id.clone())) {
+                            Some(e) => Ok(Closure {
+                                body: e.clone(),
+                                env: env2,
+                            }),
+                            None => Err(EvalError::FieldMissing(
+                                id,
+                                String::from("(.$)"),
                                 RichTerm {
                                     term: t2,
                                     pos: pos2,
                                 },
-                            ))
+                                pos_op,
+                            )),
                         }
+                    } else {
+                        Err(EvalError::TypeError(
+                            String::from("Record"),
+                            String::from(".$"),
+                            snd_pos,
+                            RichTerm {
+                                term: t2,
+                                pos: pos2,
+                            },
+                        ))
                     }
-                } else {
-                    Err(EvalError::TypeError(
-                        String::from("Str"),
-                        String::from(".$"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
-                    ))
                 }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from(".$"),
+                    fst_pos,
+                    RichTerm {
+                        term: t1,
+                        pos: pos1,
+                    },
+                ))
             }
-        }
+        },
         BinaryOp::DynExtend() => {
             let (clos, _) = stack
                 .pop_arg()
                 .ok_or_else(|| EvalError::NotEnoughArgs(3, String::from("$[ .. ]"), pos_op))?;
 
             if let Term::Str(id) = &*t1 {
-                match_sharedterm! {
-                    with t2, do {
+                match_sharedterm! {t2, with {
                         Term::Record(static_map, attrs) => {
                             let mut static_map = static_map;
                             let as_var = clos.body.closurize(&mut env2, clos.env);
@@ -1686,140 +1640,125 @@ fn process_binary_operation(
                 ))
             }
         }
-        BinaryOp::DynRemove() => {
-            match_sharedterm! {
-                with t1, do {
-                    Term::Str(id) => {
-                        match_sharedterm! {
-                            with t2, do {
-                                Term::Record(static_map, attrs) => {
-                                    let mut static_map = static_map;
-                                    match static_map.remove(&Ident(id.clone())) {
-                                        None => Err(EvalError::FieldMissing(
-                                            id,
-                                            String::from("(-$)"),
-                                            RichTerm {
-                                                term: SharedTerm::new(Term::Record(static_map, attrs)),
-                                                pos: pos2,
-                                            },
-                                            pos_op,
-                                        )),
-                                        Some(_) => Ok(Closure {
-                                            body: RichTerm::new(Term::Record(static_map, attrs), pos_op_inh),
-                                            env: env2,
-                                        }),
-                                    }
-                                }
-                            } else {
-                                Err(EvalError::TypeError(
-                                    String::from("Record"),
-                                    String::from("-$"),
-                                    snd_pos,
+        BinaryOp::DynRemove() => match_sharedterm! {t1, with {
+                Term::Str(id) => match_sharedterm! {t2, with {
+                        Term::Record(static_map, attrs) => {
+                            let mut static_map = static_map;
+                            match static_map.remove(&Ident(id.clone())) {
+                                None => Err(EvalError::FieldMissing(
+                                    id,
+                                    String::from("(-$)"),
                                     RichTerm {
-                                        term: t2,
+                                        term: SharedTerm::new(Term::Record(static_map, attrs)),
                                         pos: pos2,
                                     },
-                                ))
+                                    pos_op,
+                                )),
+                                Some(_) => Ok(Closure {
+                                    body: RichTerm::new(Term::Record(static_map, attrs), pos_op_inh),
+                                    env: env2,
+                                }),
                             }
                         }
+                    } else {
+                        Err(EvalError::TypeError(
+                            String::from("Record"),
+                            String::from("-$"),
+                            snd_pos,
+                            RichTerm {
+                                term: t2,
+                                pos: pos2,
+                            },
+                        ))
                     }
-                } else {
-                    Err(EvalError::TypeError(
-                        String::from("Str"),
-                        String::from("-$"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
-                    ))
-                }
+                },
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("-$"),
+                    fst_pos,
+                    RichTerm {
+                        term: t1,
+                        pos: pos1,
+                    },
+                ))
             }
-        }
-        BinaryOp::HasField() => {
-            match_sharedterm! {
-                with t1, do {
-                    Term::Str(id) => {
-                        if let Term::Record(static_map, _) = &*t2 {
-                            Ok(Closure::atomic_closure(RichTerm::new(
-                                Term::Bool(static_map.contains_key(&Ident(id))),
-                                pos_op_inh,
-                            )))
-                        } else {
-                            Err(EvalError::TypeError(
-                                String::from("Record"),
-                                String::from("hasField, 2nd argument"),
-                                snd_pos,
-                                RichTerm {
-                                    term: t2,
-                                    pos: pos2,
-                                },
-                            ))
-                        }
+        },
+        BinaryOp::HasField() => match_sharedterm! {t1, with {
+                Term::Str(id) => {
+                    if let Term::Record(static_map, _) = &*t2 {
+                        Ok(Closure::atomic_closure(RichTerm::new(
+                            Term::Bool(static_map.contains_key(&Ident(id))),
+                            pos_op_inh,
+                        )))
+                    } else {
+                        Err(EvalError::TypeError(
+                            String::from("Record"),
+                            String::from("hasField, 2nd argument"),
+                            snd_pos,
+                            RichTerm {
+                                term: t2,
+                                pos: pos2,
+                            },
+                        ))
                     }
-                } else {
-                    Err(EvalError::TypeError(
-                        String::from("Str"),
-                        String::from("hasField, 1st argument"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
-                    ))
                 }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("hasField, 1st argument"),
+                    fst_pos,
+                    RichTerm {
+                        term: t1,
+                        pos: pos1,
+                    },
+                ))
             }
-        }
-        BinaryOp::ListConcat() => {
-            match_sharedterm! {
-                with t1, do {
-                    Term::List(ts1) => {
-                        match_sharedterm!{
-                            with t2, do {
-                                Term::List(ts2) => {
-                                    let mut env = Environment::new();
-                                    let mut ts: Vec<RichTerm> = Vec::with_capacity(ts1.len() + ts2.len());
-                                    ts.extend(
-                                        ts1.into_iter()
-                                            .map(|t| t.closurize(&mut env, env1.clone())),
-                                    );
-                                    ts.extend(
-                                        ts2.into_iter()
-                                            .map(|t| t.closurize(&mut env, env2.clone())),
-                                    );
+        },
+        BinaryOp::ListConcat() => match_sharedterm! {t1, with {
+                Term::List(ts1) => match_sharedterm! {t2, with {
+                        Term::List(ts2) => {
+                            let mut env = Environment::new();
+                            let mut ts: Vec<RichTerm> = Vec::with_capacity(ts1.len() + ts2.len());
+                            ts.extend(
+                                ts1.into_iter()
+                                    .map(|t| t.closurize(&mut env, env1.clone())),
+                            );
+                            ts.extend(
+                                ts2.into_iter()
+                                    .map(|t| t.closurize(&mut env, env2.clone())),
+                            );
 
-                                    Ok(Closure {
-                                        body: RichTerm::new(Term::List(ts), pos_op_inh),
-                                        env,
-                                    })
-                                }
-                            } else {
-                                Err(EvalError::TypeError(
-                                    String::from("List"),
-                                    String::from("@, 2nd operand"),
-                                    snd_pos,
-                                    RichTerm {
-                                        term: t2,
-                                        pos: pos2,
-                                    },
-                                ))
-
-                            }
+                            Ok(Closure {
+                                body: RichTerm::new(Term::List(ts), pos_op_inh),
+                                env,
+                            })
                         }
+                    } else {
+                        Err(EvalError::TypeError(
+                            String::from("List"),
+                            String::from("@, 2nd operand"),
+                            snd_pos,
+                            RichTerm {
+                                term: t2,
+                                pos: pos2,
+                            },
+                        ))
+
                     }
-                } else {
-                    Err(EvalError::TypeError(
-                        String::from("List"),
-                        String::from("@, 1st operand"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
-                    ))
-                }
+                },
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("List"),
+                    String::from("@, 1st operand"),
+                    fst_pos,
+                    RichTerm {
+                        term: t1,
+                        pos: pos1,
+                    },
+                ))
             }
-        }
+        },
         BinaryOp::ListElemAt() => match (&*t1, &*t2) {
             (Term::List(ts), Term::Num(n)) => {
                 let n_int = *n as usize;
@@ -2325,8 +2264,7 @@ fn process_nary_operation(
             ) = args_iter.next().unwrap();
             debug_assert!(args_iter.next().is_none());
 
-            match_sharedterm! {
-                with t1, do {
+            match_sharedterm! {t1, with {
                     Term::Lbl(lbl) => {
                         merge(
                             RichTerm {
