@@ -23,7 +23,7 @@ nix shell github:tweag/nickel
 
 ### VS Code
 
-Until nls is available through the vscode marketplace, it can be built using nix:
+NLS is currently not available through the vscode marketplace. In the meantime, it can be built using Nix.
 
 Either using the command line
 
