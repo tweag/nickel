@@ -7,7 +7,7 @@ enables to mix both static typing and dynamic typing.
 
 Usually, static typing brings in important benefits for large codebases of
 general-purpose programming languages, but the case of an interpreted
-configuration language may appear less clear-cut.
+configuration language appears less clear-cut.
 
 Nevertheless, who has ever faced puzzling [dynamic type
 errors](https://www.haskellforall.com/2021/01/dynamic-type-errors-lack-relevance.html)
@@ -19,25 +19,22 @@ eventually break evaluation somewhere else.
 
 On the other hand, for pure configuration code, static typing is less useful.
 First, a configuration is a terminating program run once on fixed inputs: here,
-basic type errors will show up at runtime anyway. What's more, Nickel has a
-powerful validation system, contracts, that can do the same job as types and
-more.
+basic type errors will show up at runtime anyway. Second, Nickel has a powerful
+validation system, contracts, that can do the same job as types and more.
 
-The need for statically typing functions but not configuration code is the
-motivation for gradual typing.
+The dilemma of needing static typing for functions while getting types out of
+the way when writing configurations led to the choice of gradual typing.
 
-You should at least skim at this document first, but once you have even a
-partial understanding of how typing works, you should look at the practical
-guide [Type versus contracts: when to?](./types-vs-contracts.md) if what you
-seek is knowing when and how to annotate your code.
+If you already have an idea of typing and contracts work an nickel but you are
+looking for a quick cheat-sheet about when to use each, please visit [Type
+versus contracts: when to?](./types-vs-contracts.md).
 
 ## Typing modes
 
-### Untyped by default
+### Dynamic typing
 
-By default, Nickel code is dynamically typed.
+By default, Nickel code is dynamically typed. For example:
 
-Example:
 ```nickel
 {
   name = "hello",
@@ -52,7 +49,7 @@ Example:
 
 While dynamic typing is fine for configuration code, especially when checked
 against a contract, we run into the bad error reporting issue once we are using
-functions.
+functions. Say we want to filter over a list of element:
 
 ```
 let filter = fun pred l =>
@@ -76,13 +73,13 @@ error: Type error
 This example shows how dynamic typing delays type errors, making them harder to
 diagnose. Here, `filter` is fine, but the error still points to inside its
 implementation. The actual issue is that the caller provided an argument of the
-wrong type: the function should return a boolean, but returns either the
-original element or `null`. This is a tiny example, so debugging is still doable
-here. In a real code base, the user (who probably wouldn't even be the author of
-`filter` in practice) might have a harder time solving the issue from the error
-report.
+wrong type: the filtering function should return a boolean but returns either
+the original element (a number) or `null`. This is a tiny example, so debugging
+is still doable here. In a real code base, the user (who probably wouldn't even
+be the author of `filter`) might have a harder time solving the issue from the
+error report.
 
-### Typed blocks
+### Static typing
 
 The `filter` example is the poster child for static typing. The typechecker will
 catch the error early as the type expected by `filter` and the return type of
@@ -94,7 +91,7 @@ it a variable definition, a record field or any expression via an inline
 annotation. We will refer to such an annotated expression as a *statically typed
 block*.
 
-Examples:
+Example:
 ```
 // Let binding
 let f : Num -> Bool = fun x => x % 2 == 0 in
@@ -109,7 +106,8 @@ let r = {
 ```
 
 Let us try on the filter example. We want the call to be inside the statically
-typechecked block. The easiest way is to add an annotation at the top-level:
+typechecked block. The easiest way is to capture the whole expression by adding
+a type annotation at the top-level:
 
 ```nickel
 (let filter = fun pred l =>
@@ -131,15 +129,19 @@ error: Incompatible types
 ```
 
 This is already better! The error now points at the call site, and inside our
-anonymous functions, telling us it is expected to return a boolean. What's more,
-we just had to give the top-level annotation `List Num`. Nickel performs type
-inference, so that you don't have to write the type for `filter`, the filtering
-function nor the list.
+anonymous function, telling us it is expected to return a boolean instead of a
+number. Notice how we just had to give the top-level annotation `List Num`.
+Nickel performs type inference, so that you don't have to write the type for
+`filter`, the filtering function nor the list.
 
-**Take-away**: Nickel takes an hybrid approach to typing that mixes both static
-typing and dynamic typing. The default is dynamic typing. The static typechecker
-kicks in when using a type annotation `exp : Type`. This delimits a typed block.
-Nickel has type inference, sparing you writing unnecessary type annotations.
+### Take-away
+
+Nickel is gradually typed, meaning you can mix both static typing and dynamic
+typing. The default is dynamic typing. The static typechecker kicks in when
+using a type annotation `exp : Type`, which delimits a statically typed block.
+
+Nickel also has type inference, sparing you writing unnecessary type
+annotations.
 
 ## Type system
 
@@ -213,16 +215,16 @@ The following type constructors are available:
 #### Plain polymorphism
 
 Usually, a function like `filter` would be defined in a library. In this case,
-it is good practice to write a type annotation for it, if only to provide an
-explicit interface for the consumers of the library. What should be the type
+it is good practice to write a type annotation for it, if only to provide the
+consumers of this library with an explicit interface. What should be the type
 annotation for `filter`?
 
 In our initial `filter` example, we are filtering on a list of numbers. But the
 code of `filter` is agnostic with respect to the type of elements of the list.
 That is, `filter` is *generic*. Genericity is expressed in Nickel through
-*polymorphism*.  Polymorphic parameters are introduced by the keyword `forall`,
-and can later be substituted for any concrete type. Here is our polymorphic
-type annotation:
+*polymorphism*. A polymorphic type is a type that contains the keyword `forall`,
+which introduces type variables that can later be substituted for any concrete
+type.  Here is our polymorphic type annotation for `filter`:
 
 ```nickel
 {
@@ -284,11 +286,11 @@ error: Incompatible types
   = These types are not compatible
 ```
 
-The reason is that without an explicit polymorphic annotation, the typechecker
-will always infer non-polymorphic types. Here, `filter` is given the type `(Num
--> Bool) -> List Num -> List Num`, guessed from the application in the right
-hand side of `result`. **If you need a polymorphic type, you have to write an
-explicit annotation**.
+The reason is that **without an explicit polymorphic annotation, the typechecker
+will always infer non-polymorphic types**. If you need polymorphism, you have to
+write a type anntation. Here, `filter` is inferred to be of type `(Num -> Bool)
+-> List Num -> List Num`, guessed from the application in the right hand side of
+`result`.
 
 **Note**:
 if you are a more type-inclined reader, you may wonder why the typechecker is
@@ -296,11 +298,11 @@ not capable of inferring a polymorphic type for `filter` by itself. Indeed,
 [Hindley-Milner](https://en.wikipedia.org/wiki/Hindley%E2%80%93Milner_type_system)
 type-inference can precisely infer heading `foralls`, such that the previous
 rejected example would be accepted. We chose to abandon this so-called automatic
-generalization, because it makes other aspects of the type system and type
-inference more complex or limited. Requiring annotation of polymorphic functions
-seems like a good practice and an acceptable price to pay in exchange of making
-the type system simpler and more easily extensible, in a non type-heavy
-configuration language like Nickel.
+generalization, because doing so just makes things simpler with respect to the
+implementation, the design and the extensibility of the language and the type
+system. Requiring annotation of polymorphic functions seems like a good practice
+and a small price to pay in return, in a non type-heavy configuration language
+like Nickel.
 
 #### Row polymorphism
 
@@ -338,7 +340,7 @@ because it imposes that arguments have exactly one field `total: Num`, and
 nothing more.
 
 To express such constraints, Nickel features *row polymorphism*. The idea is
-similar to polymorphism, but instead substituting a parameter for a single type,
+similar to polymorphism, but instead of substituting a parameter for a single type,
 we can substitute a parameter for a whole sequence of field declarations, also
 referred to as rows:
 
@@ -361,13 +363,13 @@ Result:
 
 In the type of `addTotal`, the part `{total: Num | a}` expresses exactly what we
 wanted: the argument must have a field `total: Num`, but the *tail* (the rest of
-the record type) is polymorphic, and `a` may be substituted for an arbitrary
-field lists (like `jan: Num, feb: Num`). We used two different generic
-parameters `a` and `b`, to express that the tails of the arguments may differ.
-If we used `a` in both places, as in `forall a. {total: Num | a} -> {total: Num
-| a} -> Num`, we could still write `addTotal {total = 1, foo = 1} {total = 2,
-foo = 2}` but `addTotal {total = 1, foo = 1} {total = 2, bar = 2}` would be
-rejected. Using distinct parameters `a` and `b` gives us maximum flexibility.
+the record type) is polymorphic, and `a` may be substituted for arbitrary fields
+(such as `jan: Num, feb: Num`). We used two different generic parameters `a` and
+`b`, to express that the tails of the arguments may differ.  If we used `a` in
+both places, as in `forall a. {total: Num | a} -> {total: Num | a} -> Num`, we
+could still write `addTotal {total = 1, foo = 1} {total = 2, foo = 2}` but not
+`addTotal {total = 1, foo = 1} {total = 2, bar = 2}`. Using distinct parameters
+`a` and `b` gives us maximum flexibility.
 
 What comes before the tail may include several fields, is in e.g. `forall a.
 {total: Num, subtotal: Num | a} -> Num`.
@@ -384,6 +386,10 @@ switch {
 } protocol
 ```
 
+Because the `switch` statement has a catch-all case `_`, this function is indeed
+able to handle other tags than `http` and `ftp`, as expressed by its polymorphic
+type.
+
 ### Take-away
 
 The type system of Nickel has a few basic types (`Dyn`, `Num`, `Str`,
@@ -399,21 +405,21 @@ We'll now explore how typed and untyped code interact.
 
 ### Using statically typed code inside dynamically code
 
-Until now, we have written the statically typed `filter` examples where
-statically typed blocks included both the definition of `filter` and the call
-sites. More realistically, `filter` would be a typed library function (it is
-actually part of the standard library as `lists.filter`) while being likely to
-be called from dynamically typed configuration file. In this situation, the call
-site escape the typechecker. Thus, without an additional mechanism, static
-typing would only ensure that the implementation of `filter` doesn't violate the
-typing rules, but wouldn't prevent a ill-formed call from dynamically typed
-code.  Thus, we haven't solved the main issue of delayed dynamic type errors
-presented in the introduction! Remember, the typical problem is the caller
-passing an value of the wrong type that eventually raises an error from within
-`filter`.
+Until now, we have written the statically typed `filter` examples using
+statically typed blocks that enclosed both the definition of `filter` and the
+call sites. More realistically, `filter` would be a statically typed library
+function (it is actually part of the standard library as `lists.filter`) while
+being likely to be called from dynamically typed configuration files. In this
+situation, the call site escapes the typechecker. Thus, without an additional
+mechanism, static typing would only ensure that the implementation of `filter`
+doesn't violate the typing rules, but wouldn't prevent a ill-formed call from
+dynamically typed code.  At first sight, we haven't solved at all the main issue
+of delayed dynamic type errors that static typing was supposed to solve in the
+first place! Remember, the typical problem is the caller passing an value of the
+wrong type that eventually raises an error from within `filter`.
 
-Hopefully, Nickel has actually a good error reporting story in this situation.
-Let us see by ourselves:
+Hopefully, Nickel does have a mechanism to prevent this from happening and to
+provide good error reporting in this situation.  Let us see by ourselves:
 
 ```nickel
 lists.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
@@ -456,15 +462,15 @@ note:
 We call `filter` from a dynamically typed location, but still get a spot-on
 error. To precisely avoid dynamically code injecting values of the wrong type
 inside statically typed blocks via function calls, the interpreter protects said
-blocks by a contract. Contracts form a principled runtime verification scheme .
+blocks by a contract. Contracts form a principled runtime verification scheme.
 Please refer to the [dedicated document](./contracts.md) for more details, but
-for now, you can just remember that *any type annotation*, wherever it is, gives
+for now, you can just remember that *any type annotation* (wherever it is) gives
 rise at runtime to a corresponding contract application. In other words, `foo:
 T` and `foo | T` (here `|` is contract application, not the row tail separator)
 behave exactly the same at *runtime*.
 
-Thanks to this protection, you can type your library functions and use them from
-dynamically typed code while still getting good error messages.
+Thanks to this guard, you can statically type your library functions and use
+them from dynamically typed code while still enjoying good error messages.
 
 ### Using untyped code inside typed code
 
@@ -519,12 +525,11 @@ let x | Num = if true then 0 else "a" in
 
 Here, `x` is clearly always a number, but it is not well-typed (the `then` and
 `else` branches of an `if` must have the same type). Nonetheless, this program
-is accepted! The rationale is that because we inserted a contract application,
-the typechecker knows that if `x` is not a number, the program will fail early
-with a detailed contract error. Thus, if we reach `1 + x`, `x` is necessarily a
-number at this point and won't cause any type mismatch. In a way, the contract
-application acts like a type cast, but whose verification is delayed to
-run-time.
+is accepted! Because we inserted a contract application, the typechecker can be
+sure that if `x` is not a number, the program will fail early with a detailed
+contract error. Thus, if we reach `1 + x`, at this point `x` is necessarily a
+number and won't cause any type mismatch. In a way, the contract application
+acts like a type cast, but whose verification is delayed to run-time.
 
 Dually to a static type annotation, a contract annotation *turns the typechecker
 off again*. This is illustrated by the following variation being accepted:
@@ -552,21 +557,23 @@ error: Incompatible types
   = These types are not compatible
 ```
 
-#### Take-away
+### Take-away
 
-When calling to typed code from untyped code, Nickel
-automatically inserts contract checks at the boundary to enjoy clearer and
-earlier error reporting. In the other direction, an expression `exp | Type` is
-blindly accepted to be of type `Type` by the typechecker. This is a way of using
-untyped values inside typed code by telling the typechecker "trust me on this
-one, and if I'm wrong there will be a contract error anyway". Finally, while a
-type annotation switches the typechecker on, a contract annotation switches it
-back off.
+When calling to typed code from untyped code, Nickel automatically inserts
+contract checks at the boundary to enjoy clearer and earlier error reporting. In
+the other direction, an expression `exp | Type` is blindly accepted to be of
+type `Type` by the typechecker. This is a way of using untyped values inside
+typed code by telling the typechecker "trust me on this one, and if I'm wrong
+there will be a contract error anyway". Finally, while a type annotation
+switches the typechecker on, a contract annotation switches it back off.
 
-#### Using contracts as types
+## Using contracts as types
+
 <!-- TODO: find a good name for this section -->
+
 Type annotations and contracts share the same syntax. This means that you can
-technically write a static type annotation containing a custom contract.
+technically use custom contracts a any other type inside a static type
+annotation.
 
 ```nickel
 let Port = contracts.fromPred (fun value =>
@@ -595,7 +602,10 @@ error: Incompatible types
 
 Indeed, statically ensuring that an arbitrary expression will eventually
 respects an arbitrary user-written predicate is a really hard problem even in
-simple cases (and undecidable in the general case). So, what can we do with annotations like `#Port`? There is one way the typechecker can be sure that something will eventually be a port number, or will fail with the correct error message: when using a contract application. 
+simple cases (and undecidable in the general case). So, what can we do with
+annotations like `#Port`? There is one situation when the typechecker can be sure that
+something will eventually be a port number, or will fail with the correct error
+message: when using a contract application.
 
 ```nickel
 (let p | #Port = 10 - 1 in
@@ -603,7 +613,17 @@ simple cases (and undecidable in the general case). So, what can we do with anno
 )
 ```
 
+A custom contract hence acts like an opaque type (or abstract type) for the
+typechecker. The typechecker doesn't really know much about it except that the
+only way to construct a value of type `#Port` is to use contract application.
+You also need an explicit contract application to cast back a `#Port` to a
+`Num`: `(p | Num) + 1 : Num`.
+
+Currently, custom contracts as static types are very rigid, and not very useful.
+It's possible that future additions to the type system make them more useful at
+some point.
+
 ## Typing in practice
 
-When to use type annotation, a contract application, or none? This is what the
-guide [Type versus contracts: when to?](./types-vs-contracts.md) is for!
+When to use type annotation, a contract application, or none of those? This is what the
+guide [Type versus contracts: when to?](./types-vs-contracts.md) is for.
