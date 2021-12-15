@@ -363,19 +363,33 @@ pub trait Closurizable {
 }
 
 impl Closurizable for RichTerm {
-    /// Pack a term together with an environment as a closure.
-    ///
-    /// Generate a fresh variable, bind it to the corresponding closure `(t,with_env)` in `env`,
-    /// and return this variable as a fresh term.
     fn closurize(self, env: &mut Environment, with_env: Environment) -> RichTerm {
+        // If the term is already a generated variable (that is, introduced by the share normal
+        // form transformation), we don't have to create a useless intermediate closure. We just
+        // transfer the original thunk to the new environment. This is not only an optimization:
+        // this is relied upon by recursive record merging when computing the fixpoint. Change
+        // carefully.
+        //
+        // We could do it for non-generated ident as well, but be we would be renaming
+        // user-supplied variables by giberrish generated names. It may hamper error reporting, so
+        // for the time being, we restrict ourselves to generated identifier.
+        let reuse_thunk = match self.as_ref() {
+            Term::Var(id) if id.to_string().starts_with('%') => with_env.get(&id),
+            _ => None,
+        };
+
         let var = fresh_var();
         let pos = self.pos;
-        let closure = Closure {
-            body: self,
-            env: with_env,
-        };
-        env.insert(var.clone(), Thunk::new(closure, IdentKind::Record()));
 
+        let thunk = reuse_thunk.unwrap_or_else(|| {
+            let closure = Closure {
+                body: self,
+                env: with_env,
+            };
+            Thunk::new(closure, IdentKind::Record())
+        });
+
+        env.insert(var.clone(), thunk);
         RichTerm::new(Term::Var(var), pos.into_inherited())
     }
 }
