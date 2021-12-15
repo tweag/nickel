@@ -1,6 +1,6 @@
 # Nickel Language Server
 
-NLS is a language server for the nickel programming language.  Making use of the interpreter libraries directly, allows nls to offer error messages, type hints, and autocompletion right in your favorite lsp-enabled editor.
+NLS is a language server for the nickel programming language.  NLS offer error messages, type hints, and auto-completion right in your favorite LSP-enabled editor.
 
 ## Server
   
