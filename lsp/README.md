@@ -54,6 +54,7 @@ The VS Code extension offers three configuration options:
 
 - `"nls.server.path"`: Path to nickel language server
 - `"nls.server.trace"`: "Enables performance tracing to the given file"
+- `"nls.server.debugLog"`: "Logs the communication between VS Code and the language server." 
 
 ### Neovim
 
@@ -73,6 +74,8 @@ Add the `nickel_ls` `JSON` object to your `:CocConfig`/`coc-settings.json`.
   "languageserver": {
     "nickel_ls": {
       "command": "nls",
+      // You can enable performance tracing with:
+      // "command": "nls --trace <file>",
       "rootPatterns": [
         ".git"
       ],
