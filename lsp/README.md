@@ -25,7 +25,7 @@ nix shell github:tweag/nickel
 
 NLS is currently not available through the vscode marketplace. In the meantime, it can be built using Nix.
 
-Either using the command line
+Either using the command line (you need to have the [`jq`](https://stedolan.github.io/jq/) command available)
 
 ```
 code --install-extension $(nix build ./\#vscodeExtension --no-link --json | jq ".[0].outputs.vsix")
