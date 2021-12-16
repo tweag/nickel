@@ -146,6 +146,12 @@ pub enum Term {
     ParseError,
 }
 
+impl From<MetaValue> for Term {
+    fn from(m: MetaValue) -> Self {
+        Term::MetaValue(m)
+    }
+}
+
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub struct RecordAttrs {
     pub open: bool,

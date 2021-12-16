@@ -16,8 +16,8 @@ use lsp_types::{
     TextDocumentSyncOptions, WorkDoneProgressOptions,
 };
 
-use nickel::typecheck::linearization::Completed;
-use nickel::{cache::Cache, environment::Environment, eval::Thunk, identifier::Ident};
+use nickel::cache::Cache;
+use nickel::typecheck::{linearization::Completed, Environment};
 
 use crate::{
     requests::{completion, goto, hover, symbols},
@@ -28,7 +28,7 @@ pub struct Server {
     pub connection: Connection,
     pub cache: Cache,
     pub lin_cache: HashMap<FileId, Completed>,
-    pub global_env: Environment<Ident, Thunk>,
+    pub global_env: Environment,
 }
 
 impl Server {
@@ -59,9 +59,9 @@ impl Server {
 
     pub fn new(connection: Connection) -> Server {
         let mut cache = Cache::new();
-        cache.prepare_stdlib().unwrap();
+        cache.load_stdlib().unwrap();
+        let global_env = cache.mk_types_env().unwrap();
         let lin_cache = HashMap::new();
-        let global_env = cache.mk_global_env().unwrap();
         Server {
             connection,
             cache,
