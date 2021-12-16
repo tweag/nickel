@@ -60,7 +60,7 @@ impl Server {
     pub fn new(connection: Connection) -> Server {
         let mut cache = Cache::new();
         cache.load_stdlib().unwrap();
-        let global_env = cache.mk_global_types().unwrap();
+        let global_env = cache.mk_types_env().unwrap();
         let lin_cache = HashMap::new();
         Server {
             connection,

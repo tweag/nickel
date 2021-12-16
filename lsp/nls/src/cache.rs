@@ -4,7 +4,6 @@ use codespan::FileId;
 use nickel::{
     cache::{Cache, CacheError, CacheOp, CachedTerm, EntryState},
     error::TypecheckError,
-    eval,
     typecheck::{self, linearization::Completed},
 };
 
