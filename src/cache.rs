@@ -792,7 +792,7 @@ impl Cache {
     /// Load, parse, and apply program transformations to the standard library. Do not typecheck
     /// for performance reason: this is done in the test suite.
     /// Return a global environment containing both eval and type environment. If you need only the
-    /// type environment, prefer to use `load_stdlib()` then `mk_global_type` to avoid
+    /// type environment, use `load_stdlib()` then `mk_global_type` to avoid
     /// transformations and evaluation preparation.
     pub fn prepare_stdlib(&mut self) -> Result<GlobalEnv, Error> {
         self.load_stdlib()?;
