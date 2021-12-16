@@ -72,7 +72,7 @@ pub mod desugar_destructuring {
                 Term::Let(
                     x.clone(),
                     t_,
-                    destruct_term(x.clone(), pat.clone(), bind_open_field(x, pat, body)),
+                    destruct_term(x.clone(), &pat, bind_open_field(x, &pat, body)),
                 ),
                 pos,
             )
@@ -86,15 +86,15 @@ pub mod desugar_destructuring {
     /// Here, the x, is the identifier pointing to the full record. If having `val @ {...} = ... in
     /// ...` the param x should be `Ident("val")` but if we have a `@` binding less form, you will
     /// probably generate a fresh variable.
-    fn bind_open_field(x: Ident, pat: Destruct, body: RichTerm) -> RichTerm {
+    fn bind_open_field(x: Ident, pat: &Destruct, body: RichTerm) -> RichTerm {
         let (matches, var) = match pat {
-            Destruct::Record(matches, true, Some(x)) => (matches, x),
+            Destruct::Record(matches, true, Some(x)) => (matches, x.clone()),
             Destruct::Record(matches, true, None) => (matches, super::fresh_var()),
             Destruct::Record(_, false, None) | Destruct::Empty => return body,
             _ => panic!("A closed pattern can not have a rest binding"),
         };
         Term::Let(
-            var,
+            var.clone(),
             matches.iter().fold(Term::Var(x).into(), |x, m| match m {
                 Match::Simple(i, _) | Match::Assign(i, _, _) => {
                     op2(DynRemove(), Term::Str(i.to_string()), x)
@@ -107,16 +107,25 @@ pub mod desugar_destructuring {
 
     /// Core of the destructuring. Bind all the variables of the pattern except the "open" (`..y`)
     /// part. For that, see `bind_open_field`.
-    fn destruct_term(x: Ident, pat: Destruct, body: RichTerm) -> RichTerm {
+    fn destruct_term(x: Ident, pat: &Destruct, body: RichTerm) -> RichTerm {
         let pos = body.pos;
         match pat {
-            Destruct::Record(matches, ..) => matches.into_iter().fold(body, move |t, m| match m {
+            Destruct::Record(matches, ..) => matches.iter().fold(body, move |t, m| match m {
                 Match::Simple(id, _) => RichTerm::new(
-                    Term::Let(id.clone(), op1(StaticAccess(id), Term::Var(x.clone())), t),
+                    Term::Let(
+                        id.clone(),
+                        op1(StaticAccess(id.clone()), Term::Var(x.clone())),
+                        t,
+                    ),
                     pos,
                 ),
                 Match::Assign(f, _, (id, pat)) => desugar(RichTerm::new(
-                    Term::LetPattern(id, pat, op1(StaticAccess(f), Term::Var(x.clone())), t),
+                    Term::LetPattern(
+                        id.clone(),
+                        pat.clone(),
+                        op1(StaticAccess(f.clone()), Term::Var(x.clone())),
+                        t,
+                    ),
                     pos,
                 )),
             }),
