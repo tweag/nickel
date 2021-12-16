@@ -101,7 +101,7 @@ impl Match {
                 id,
                 Term::MetaValue(MetaValue::flatten(m, d.as_contract())).into(),
             ),
-            _ => unimplemented!(),
+            Match::Assign(_id, _m, (_, _d @ Destruct::List(..))) => unimplemented!(),
         }
     }
 }
