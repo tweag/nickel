@@ -66,6 +66,18 @@ pub enum InfixOp {
     Binary(BinaryOp),
 }
 
+impl From<UnaryOp> for InfixOp {
+    fn from(op: UnaryOp) -> Self {
+        InfixOp::Unary(op)
+    }
+}
+
+impl From<BinaryOp> for InfixOp {
+    fn from(op: BinaryOp) -> Self {
+        InfixOp::Binary(op)
+    }
+}
+
 impl InfixOp {
     /// Eta-expand an operator. This wraps an operator, for example `==`, as a function `fun x1 x2
     /// => x1 == x2`. Propagate the given position to the function body, for better error

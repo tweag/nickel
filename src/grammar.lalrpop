@@ -371,32 +371,67 @@ switch_case: SwitchCase = {
     "_" "=>" <t: Term> => SwitchCase::Default(<>),
 }
 
+InfixBOp2: BinaryOp = {
+    "++" => BinaryOp::StrConcat(),
+    "@" => BinaryOp::ListConcat(),
+}
+
+InfixBOp3: BinaryOp = {
+    "*" => BinaryOp::Mult(),
+    "/" => BinaryOp::Div(),
+    "%" => BinaryOp::Modulo(),
+}
+
+InfixBOp4: BinaryOp = {
+    "+" => BinaryOp::Plus(),
+    "-" => BinaryOp::Sub(),
+}
+
+InfixUOp5: UnaryOp = {
+    "!" => UnaryOp::BoolNot(),
+}
+
+InfixBOp6: BinaryOp = {
+    "&" => BinaryOp::Merge(),
+}
+
+InfixBOp7: BinaryOp = {
+    "<" => BinaryOp::LessThan(),
+    "<=" => BinaryOp::LessOrEq(),
+    ">" => BinaryOp::GreaterThan(),
+    ">=" => BinaryOp::GreaterOrEq(),
+}
+
+InfixBOp8: BinaryOp = {
+    "==" => BinaryOp::Eq(),
+}
+
+InfixLazyBOp9: UnaryOp = {
+    "&&" => UnaryOp::BoolAnd(),
+}
+
+InfixLazyBOp10: UnaryOp = {
+    "||" => UnaryOp::BoolOr(),
+}
+
+InfixBOp: BinaryOp = {
+    InfixBOp2,
+    InfixBOp3,
+    InfixBOp4,
+    InfixBOp6,
+    InfixBOp7,
+    InfixBOp8,
+}
+
+InfixLazyBOp: UnaryOp = {
+    InfixUOp5,
+    InfixLazyBOp9,
+    InfixLazyBOp10,
+}
+
 InfixOp: InfixOp = {
-    "++" => InfixOp::Binary(BinaryOp::StrConcat()),
-    "@" => InfixOp::Binary(BinaryOp::ListConcat()),
-
-    "*" => InfixOp::Binary(BinaryOp::Mult()),
-    "/" => InfixOp::Binary(BinaryOp::Div()),
-    "%" => InfixOp::Binary(BinaryOp::Modulo()),
-
-    "+" => InfixOp::Binary(BinaryOp::Plus()),
-    "-" => InfixOp::Binary(BinaryOp::Sub()),
-
-    "!" => InfixOp::Unary(UnaryOp::BoolNot()),
-
-    "&" => InfixOp::Binary(BinaryOp::Merge()),
-
-    "<" => InfixOp::Binary(BinaryOp::LessThan()),
-    "<=" => InfixOp::Binary(BinaryOp::LessOrEq()),
-    ">" => InfixOp::Binary(BinaryOp::GreaterThan()),
-    ">=" => InfixOp::Binary(BinaryOp::GreaterOrEq()),
-
-    "==" => InfixOp::Binary(BinaryOp::Eq()),
-    "!=" => InfixOp::Unary(UnaryOp::BoolNot()),
-
-    "&&" => InfixOp::Unary(UnaryOp::BoolAnd()),
-
-    "||" => InfixOp::Unary(UnaryOp::BoolOr()),
+    <InfixBOp> => <>.into(),
+    <InfixLazyBOp> => <>.into(),
 }
 
 CurriedOp: RichTerm = {
@@ -406,68 +441,65 @@ CurriedOp: RichTerm = {
             mk_app!(mk_term::var("x2"), mk_term::var("x1"))
             .with_pos(mk_pos(src_id, l, r))
         ),
+    <l: @L> "!=" <r: @R> =>
+        mk_fun!("x1", "x2",
+            mk_term::op1(
+                UnaryOp::BoolNot(),
+                Term::Op2(BinaryOp::Eq(),
+                    mk_term::var("x2"),
+                    mk_term::var("x1")
+                )
+            )
+            .with_pos(mk_pos(src_id, l, r))
+        ),
 }
+
+InfixUOpApp<UOp, Expr>: RichTerm =
+  <op: UOp> <t: WithPos<Expr>> => mk_term::op1(op, t);
+
+InfixBOpApp<BOp, LExpr, RExpr>: RichTerm =
+  <t1: WithPos<LExpr>> <op: BOp> <t2: WithPos<RExpr>> => mk_term::op2(op, t1, t2);
+
+InfixLazyBOpApp<UOp, LExpr, RExpr>: RichTerm =
+  <t1: WithPos<LExpr>> <op: UOp> <t2: WithPos<RExpr>> =>
+    mk_app!(mk_term::op1(op, t1), t2);
 
 InfixExpr: RichTerm = {
     #[precedence(level="0")]
     Applicative,
 
     #[precedence(level="1")]
-    "-" <WithPos<InfixExpr>> =>
-        mk_term::op2(BinaryOp::Sub(), Term::Num(0.0), <>),
+    "-" <WithPos<InfixExpr>> => mk_term::op2(BinaryOp::Sub(), Term::Num(0.0), <>),
 
     #[precedence(level="2")] #[assoc(side="left")]
-    <t1: WithPos<InfixExpr>> "++" <t2: WithPos<InfixExpr>> =>
-        mk_term::op2(BinaryOp::StrConcat(), t1, t2),
-    <t1: WithPos<InfixExpr>> "@" <t2: WithPos<InfixExpr>> =>
-        mk_term::op2(BinaryOp::ListConcat(), t1, t2),
+    InfixBOpApp<InfixBOp2, InfixExpr, InfixExpr>,
 
     #[precedence(level="3")] #[assoc(side="left")]
-    <t1: WithPos<InfixExpr>> "*" <t2: WithPos<InfixExpr>> =>
-        mk_term::op2(BinaryOp::Mult(), t1, t2),
-    <t1: WithPos<InfixExpr>> "/" <t2: WithPos<InfixExpr>> =>
-        mk_term::op2(BinaryOp::Div(), t1, t2),
-    <t1: WithPos<InfixExpr>> "%" <t2: WithPos<InfixExpr>> =>
-        mk_term::op2(BinaryOp::Modulo(), t1, t2),
+    InfixBOpApp<InfixBOp3, InfixExpr, InfixExpr>,
 
     #[precedence(level="4")] #[assoc(side="left")]
-    <t1: WithPos<InfixExpr>> "+" <t2: WithPos<InfixExpr>> =>
-        mk_term::op2(BinaryOp::Plus(), t1, t2),
-    <t1: WithPos<InfixExpr>> "-" <t2: WithPos<InfixExpr>> =>
-        mk_term::op2(BinaryOp::Sub(), t1, t2),
+    InfixBOpApp<InfixBOp4, InfixExpr, InfixExpr>,
 
     #[precedence(level="5")]
-    "!" <WithPos<InfixExpr>> => mk_term::op1(UnaryOp::BoolNot(), <>),
+    InfixUOpApp<InfixUOp5, InfixExpr>,
 
     #[precedence(level="6")] #[assoc(side="left")]
-    <t1: WithPos<InfixExpr>> "&" <t2: WithPos<InfixExpr>> =>
-        mk_term::op2(BinaryOp::Merge(), t1, t2),
-    <t1: WithPos<InfixExpr>> "|>" <t2: WithPos<InfixExpr>> =>
-        mk_app!(t2, t1),
+    InfixBOpApp<InfixBOp6, InfixExpr, InfixExpr>,
+    <t1: WithPos<InfixExpr>> "|>" <t2: WithPos<InfixExpr>> => mk_app!(t2, t1),
 
     #[precedence(level="7")] #[assoc(side="left")]
-    <t1: WithPos<InfixExpr>> "<" <t2: WithPos<InfixExpr>> =>
-        mk_term::op2(BinaryOp::LessThan(), t1, t2),
-    <t1: WithPos<InfixExpr>> "<=" <t2: WithPos<InfixExpr>> =>
-        mk_term::op2(BinaryOp::LessOrEq(), t1, t2),
-    <t1: WithPos<InfixExpr>> ">" <t2: WithPos<InfixExpr>> =>
-        mk_term::op2(BinaryOp::GreaterThan(), t1, t2),
-    <t1: WithPos<InfixExpr>> ">=" <t2: WithPos<InfixExpr>> =>
-        mk_term::op2(BinaryOp::GreaterOrEq(), t1, t2),
+    InfixBOpApp<InfixBOp7, InfixExpr, InfixExpr>,
 
     #[precedence(level="8")] #[assoc(side="left")]
-    <t1: WithPos<InfixExpr>> "==" <t2: WithPos<InfixExpr>> =>
-        mk_term::op2(BinaryOp::Eq(), t1, t2),
+    InfixBOpApp<InfixBOp8, InfixExpr, InfixExpr>,
     <t1: WithPos<InfixExpr>> "!=" <t2: WithPos<InfixExpr>> =>
         mk_term::op1(UnaryOp::BoolNot(), Term::Op2(BinaryOp::Eq(), t1, t2)),
 
     #[precedence(level="9")] #[assoc(side="left")]
-    <t1: WithPos<InfixExpr>> "&&" <t2: WithPos<InfixExpr>> =>
-        mk_app!(mk_term::op1(UnaryOp::BoolAnd(), t1), t2),
+    InfixLazyBOpApp<InfixLazyBOp9, InfixExpr, InfixExpr>,
 
     #[precedence(level="10")] #[assoc(side="left")]
-    <t1: WithPos<InfixExpr>> "||" <t2: WithPos<InfixExpr>> =>
-        mk_app!(mk_term::op1(UnaryOp::BoolOr(), t1), t2),
+    InfixLazyBOpApp<InfixLazyBOp10, InfixExpr, InfixExpr>,
 }
 
 BOpPre: BinaryOp = {
