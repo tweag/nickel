@@ -645,6 +645,50 @@ fn type_check_<S, E>(
             envs.insert(x.clone(), ty_let);
             type_check_(state, envs, lin, linearizer, strict, rt, ty)
         }
+        Term::LetPattern(x, pat, re, rt) => {
+            use crate::destruct::*;
+            fn inject_pat_vars(pat: &Destruct, envs: &mut Envs) {
+                match pat {
+                    Destruct::Record(matches, _, rst) => {
+                        if let Some(id) = rst {
+                            envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
+                        }
+                        matches.iter().for_each(|m| match m {
+                            Match::Simple(id, ..) => {
+                                envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()))
+                            }
+                            Match::Assign(_, _, (bind_id, pat)) => {
+                                if let Some(id) = bind_id {
+                                    envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
+                                }
+                                if !pat.is_empty() {
+                                    inject_pat_vars(pat, envs);
+                                }
+                            }
+                        });
+                    }
+                    _ => (),
+                }
+            }
+            let ty_let = binding_type(re.as_ref(), &envs, state.table, strict);
+            type_check_(
+                state,
+                envs.clone(),
+                lin,
+                linearizer.scope(ScopeId::Left),
+                strict,
+                re,
+                ty_let.clone(),
+            )?;
+
+            // TODO typecheck the interior of the patern
+            if let Some(x) = x {
+                envs.insert(x.clone(), ty_let);
+                inject_pat_vars(pat, &mut envs);
+            }
+            //type_check_(state, envs, strict, rt, ty)
+            Ok(())
+        }
         Term::App(e, t) => {
             let src = TypeWrapper::Ptr(new_var(state.table));
             let arr = mk_tyw_arrow!(src.clone(), ty);

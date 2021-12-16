@@ -13,6 +13,7 @@ use super::lexer::{Token, NormalToken, StringToken, MultiStringToken};
 
 use crate::{mk_app, mk_opn};
 use crate::identifier::Ident;
+use crate::destruct::{Match, LastMatch, Destruct};
 use crate::parser::error::ParseError;
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
     MergePriority, Contract, NAryOp, RecordAttrs};
@@ -56,6 +57,12 @@ MetaAnnotAtom: MetaValue = {
     },
 };
 
+DefaultAnnot: MetaValue = "?" <t: Term> => MetaValue {
+    priority: MergePriority::Default,
+    value: Some(t),
+    ..Default::default()
+};
+
 MetaAnnot: MetaValue = <anns: MetaAnnotAtom+> => anns.into_iter().fold(MetaValue::new(), MetaValue::flatten);
 
 Annot: MetaValue = {
@@ -73,7 +80,7 @@ Annot: MetaValue = {
 pub Term: RichTerm = WithPos<RootTerm>;
 
 pub ExtendedTerm: ExtendedTerm = {
-    "let" <id:Ident> <meta: Annot?> "=" <t: Term> => {
+    "let" <id: Ident> <meta: Annot?> "=" <t: Term> => {
         let t = if let Some(mut meta) = meta {
             let pos = t.pos;
             meta.value = Some(t);
@@ -82,14 +89,13 @@ pub ExtendedTerm: ExtendedTerm = {
         else {
             t
         };
-
         ExtendedTerm::ToplevelLet(id, t)
     },
     Term => ExtendedTerm::RichTerm(<>),
 }
 
 RootTerm: RichTerm = {
-    "let" <id:Ident> <meta: Annot?> "=" <t1: Term> "in"
+    "let" <pat:Pattern> <meta: Annot?> "=" <t1: Term> "in"
         <t2: Term> => {
         let t1 = if let Some(mut meta) = meta {
             let pos = t1.pos;
@@ -100,11 +106,11 @@ RootTerm: RichTerm = {
             t1
         };
 
-        mk_term::let_in(id, t1, t2)
+        mk_term::let_pat(pat.0, pat.1, t1, t2)
     },
-    <l: @L> "fun" <ps:Pattern+> "=>" <t: Term> <r: @R> => {
+    <l: @L> "fun" <ids:Ident+> "=>" <t: Term> <r: @R> => {
         let pos = mk_pos(src_id, l, r);
-        ps.into_iter().rev().fold(t, |t, p| RichTerm {
+        ids.into_iter().rev().fold(t, |t, p| RichTerm {
             term: Box::new(Term::Fun(p, t)),
             pos,
         })
@@ -252,8 +258,48 @@ FieldPathElem: FieldPathElem = {
     <WithPos<StrChunks>> => FieldPathElem::Expr(<>),
 };
 
-Pattern: Ident = {
-    Ident,
+#[inline]
+Pattern: (Option<Ident>,Destruct) = {
+    <id:(<Ident> "@")?> <pat:Destruct> => (id,pat),
+    Ident => (Some(<>),Destruct::Empty),
+};
+
+Destruct: Destruct = {
+    "{" <mut matches: (<Match> ",")*> <last:LastMatch?> "}" => {
+        let (open, rst) = match last {
+	    Some(LastMatch::Match(m)) => {
+	        matches.push(m);
+	        (false,None)
+	    },
+	    Some(LastMatch::Ellipsis(rst)) => (true, rst),
+	    _ => (false, None),
+	};
+	Destruct::Record(matches, open, rst)
+    },
+};
+
+Match: Match = {
+    <left:Ident> <anns: MetaAnnot?> <default: DefaultAnnot?> "=" <right: Pattern> => {
+	let meta = match (default, anns) {
+	    (Some(d), Some(m)) => MetaValue::flatten(d,m),
+	    (Some(m),_) | (_,Some(m)) => m,
+  	    _ => MetaValue::new(),
+	};
+	Match::Assign(left, meta, right)
+    },
+    <id:Ident> <anns: MetaAnnot?> <default: DefaultAnnot?> => {
+	let meta = match (default, anns) {
+	    (Some(d), Some(m)) => MetaValue::flatten(d,m),
+	    (Some(m),_) | (_,Some(m)) => m,
+  	    _ => MetaValue::new(),
+	};
+	Match::Simple(id, meta)
+    },
+};
+
+LastMatch: LastMatch = {
+    Match => LastMatch::Match(<>),
+    ".."<Ident?> => LastMatch::Ellipsis(<>),
 };
 
 Ident: Ident = <l:@L> <i: "identifier"> <r:@R> => Ident(i.to_string(), mk_pos(src_id, l, r));
@@ -558,6 +604,7 @@ extern {
         "true" => Token::Normal(NormalToken::True),
         "false" => Token::Normal(NormalToken::False),
 
+        "?" => Token::Normal(NormalToken::QuestionMark),
         "," => Token::Normal(NormalToken::Comma),
         ":" => Token::Normal(NormalToken::Colon),
         "$" => Token::Normal(NormalToken::Dollar),

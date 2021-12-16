@@ -945,6 +945,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
 
                 RichTerm::new(Term::Let(id, t1, t2), pos)
             }
+            p @ Term::LetPattern(..) => panic!("Pattern {:?} has not been transformed before evaluation", p),
             Term::App(t1, t2) => {
                 let t1 = subst_(t1, global_env, env, Cow::Borrowed(bound.as_ref()));
                 let t2 = subst_(t2, global_env, env, bound);
