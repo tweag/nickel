@@ -99,7 +99,7 @@ impl Program {
     pub fn typecheck(&mut self) -> Result<(), Error> {
         self.cache.parse(self.main_id)?;
         self.cache.load_stdlib()?;
-        let global_env = self.cache.mk_global_types().unwrap();
+        let global_env = self.cache.mk_types_env().expect("program::typecheck(): stdlib has been loaded but was not found in cache on mk_types_env()");
         self.cache
             .resolve_imports(self.main_id)
             .map_err(|cache_err| {

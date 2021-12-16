@@ -1031,8 +1031,7 @@ pub fn apparent_type(t: &Term, envs: Option<&Envs>) -> ApparentType {
 
 /// Infer type of a more complex structure.
 /// For now, it's implemented only to infer the type of a non annotated record by gathering the apparent type of the fields.
-/// It's used essentially to type the stdlib, but could be use in a future for types placeholders for
-/// instence.
+/// It's used essentially to type the stdlib.
 pub fn infer_type(t: &Term) -> TypeWrapper {
     match t {
         Term::Record(rec, ..) | Term::RecRecord(rec, ..) => AbsType::StaticRecord(Box::new(

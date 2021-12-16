@@ -775,7 +775,7 @@ impl Cache {
         if let Some(ids) = self.stdlib_ids.as_ref().cloned() {
             ids.iter()
                 .try_fold(CacheOp::Cached(()), |cache_op, file_id| {
-                    let global_env = self.mk_global_types().map_err(|err| match err {
+                    let global_env = self.mk_types_env().map_err(|err| match err {
                         CacheError::NotParsed => CacheError::NotParsed,
                         CacheError::Error(_) => unreachable!(),
                     })?;
@@ -796,7 +796,7 @@ impl Cache {
     /// transformations and evaluation preparation.
     pub fn prepare_stdlib(&mut self) -> Result<GlobalEnv, Error> {
         self.load_stdlib()?;
-        let type_env = self.mk_global_types().unwrap();
+        let type_env = self.mk_types_env().unwrap();
 
         self.stdlib_ids
             .as_ref()
@@ -808,32 +808,32 @@ impl Cache {
                 cache_err
                     .unwrap_error("cache::prepare_stdlib(): expected standard library to be parsed")
             })?;
-        let eval_env = self.mk_global_eval().unwrap();
+        let eval_env = self.mk_eval_env().unwrap();
         Ok(GlobalEnv { eval_env, type_env })
     }
 
     /// Generate a global typing environment from the list of `file_ids` corresponding to the standard
     /// library parts.
-    pub fn mk_global_types(&self) -> Result<typecheck::Environment, CacheError<Void>> {
-        let type_env = self
-            .stdlib_ids
-            .as_ref()
-            .map_or(Err(CacheError::NotParsed), |ids| {
-                Ok(ids
-                    .iter()
-                    .map(|file_id| {
-                        self.get_owned(*file_id).expect(
+    pub fn mk_types_env(&self) -> Result<typecheck::Environment, CacheError<Void>> {
+        let stdlib_terms_vec =
+            self.stdlib_ids
+                .as_ref()
+                .map_or(Err(CacheError::NotParsed), |ids| {
+                    Ok(ids
+                        .iter()
+                        .map(|file_id| {
+                            self.get_owned(*file_id).expect(
                             "cache::mk_global_env(): can't build environment, stdlib not parsed",
                         )
-                    })
-                    .collect())
-            })?;
-        Ok(typecheck::Envs::mk_global(type_env).unwrap())
+                        })
+                        .collect())
+                })?;
+        Ok(typecheck::Envs::mk_global(stdlib_terms_vec).unwrap())
     }
 
     /// Generate a global evaluation environment from the list of `file_ids` corresponding to the standard
     /// library parts.
-    pub fn mk_global_eval(&self) -> Result<eval::Environment, CacheError<Void>> {
+    pub fn mk_eval_env(&self) -> Result<eval::Environment, CacheError<Void>> {
         if let Some(ids) = self.stdlib_ids.as_ref().cloned() {
             let mut eval_env = eval::Environment::new();
             ids.iter().for_each(|file_id| {
