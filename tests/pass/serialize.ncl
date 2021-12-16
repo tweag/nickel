@@ -15,19 +15,18 @@ let assertDeserInv = fun x =>
     assertAux `Yaml x &&
     assertAux `Toml x in
 
-(assertSerInv {val = 1 + 1} | #Assert) &&
-(assertSerInv {val = "Some string"} | #Assert) &&
-(assertSerInv {val = ["a", 3, []]} | #Assert) &&
-(assertSerInv {a.foo.bar = "2", b = false, c = [{d = "e"}, {d = "f"}]}
-  | #Assert) &&
+[
+  assertSerInv {val = 1 + 1},
+  assertSerInv {val = "Some string"},
+  assertSerInv {val = ["a", 3, []]},
+  assertSerInv {a.foo.bar = "2", b = false, c = [{d = "e"}, {d = "f"}]},
 
-(assertDeserInv {a = 1, b = 4, c = 3} | #Assert) &&
-(assertDeserInv {a.b.c = "richtig"} | #Assert) &&
-(assertDeserInv {
-    foo = 1,
-    bar = ["str", true],
-    baz = {subfoo = true, subbar = 0}
-  } | #Assert) &&
-
-
-true
+  assertDeserInv {a = 1, b = 4, c = 3},
+  assertDeserInv {a.b.c = "richtig"},
+  assertDeserInv {
+      foo = 1,
+      bar = ["str", true],
+      baz = {subfoo = true, subbar = 0}
+    },
+]
+|> lists.foldl (fun x y => (x | #Assert) && y) true

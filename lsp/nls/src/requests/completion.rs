@@ -5,7 +5,11 @@ use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{CompletionItem, CompletionParams};
 use serde_json::Value;
 
-use crate::{requests::utils::find_linearization_index, server::Server};
+use crate::{
+    requests::utils::find_linearization_index,
+    server::Server,
+    trace::{Enrich, Trace},
+};
 
 pub fn handle_completion(
     params: CompletionParams,
@@ -26,6 +30,8 @@ pub fn handle_completion(
 
     let locator = (file_id, ByteIndex(start as u32));
     let linearization = server.lin_cache_get(&file_id)?;
+
+    Trace::enrich(&id, linearization);
 
     let index = find_linearization_index(&linearization.lin, locator);
 

@@ -7,12 +7,15 @@ use lsp_types::{
 };
 use nickel::{
     position::{RawSpan, TermPos},
-    typecheck::linearization,
+    typecheck::linearization::{self, UsageState},
 };
 use serde_json::Value;
 
 use crate::{
-    diagnostic::LocationCompat, requests::utils::find_linearization_index, server::Server,
+    diagnostic::LocationCompat,
+    requests::utils::find_linearization_index,
+    server::Server,
+    trace::{Enrich, Trace},
 };
 
 pub fn handle_to_definition(
@@ -39,7 +42,9 @@ pub fn handle_to_definition(
     .unwrap();
 
     let locator = (file_id, ByteIndex(start as u32));
-    let linearization = &server.lin_cache_get(&file_id)?;
+    let linearization = server.lin_cache_get(&file_id)?;
+
+    Trace::enrich(&id, linearization);
 
     let index = find_linearization_index(&linearization.lin, locator);
 
@@ -53,7 +58,7 @@ pub fn handle_to_definition(
     debug!("found referencing item: {:?}", item);
 
     let location = match item.kind {
-        linearization::TermKind::Usage(Some(usage_id)) => {
+        linearization::TermKind::Usage(UsageState::Resolved(Some(usage_id))) => {
             let definition = linearization.id_mapping[&usage_id];
             let definition = linearization.lin[definition].clone();
             let location = match definition.pos {
@@ -128,7 +133,7 @@ pub fn handle_to_usages(
             let mut locations = Vec::new();
 
             for reference_id in usages.iter() {
-                let reference = linearization.id_mapping[&reference_id];
+                let reference = linearization.id_mapping[reference_id];
                 let reference = linearization.lin[reference].clone();
                 let location = match reference.pos {
                     TermPos::Original(RawSpan {
