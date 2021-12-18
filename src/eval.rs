@@ -359,9 +359,9 @@ pub struct CallStack(pub Vec<StackElem>);
 /// Basic description of a function call. Used for error reporting.
 pub struct CallDescr {
     /// The name of the called function, if any.
-    head: Option<Ident>,
+    pub head: Option<Ident>,
     /// The position of the application.
-    span: RawSpan,
+    pub span: RawSpan,
 }
 
 impl CallStack {

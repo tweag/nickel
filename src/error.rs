@@ -886,20 +886,20 @@ impl ToDiagnostic<FileId> for EvalError {
                 if ty_path::is_only_codom(&l.path) {
                 } else if let Some(id) = contract_id {
                     let (calls, curr_call) = call_stack.group_by_calls(id);
-                    let diag_curr_call = curr_call.map(|(id_opt, pos)| {
-                        let name = id_opt
+                    let diag_curr_call = curr_call.map(|cdescr| {
+                        let name = cdescr.head
                             .map(|ident| ident.to_string())
                             .unwrap_or_else(|| String::from("<func>"));
                         Diagnostic::note().with_labels(vec![
-                            primary(&pos).with_message(format!("While calling to {}", name))
+                            primary(&cdescr.span).with_message(format!("While calling to {}", name))
                         ])
                     });
                     let diags =
-                        calls.into_iter().enumerate().map(|(i, (id_opt, pos))| {
-                            let name = id_opt
+                        calls.into_iter().enumerate().map(|(i, cdescr)| {
+                            let name = cdescr.head
                                 .map(|ident| ident.to_string())
                                 .unwrap_or_else(|| String::from("<func>"));
-                            Diagnostic::note().with_labels(vec![secondary(&pos)
+                            Diagnostic::note().with_labels(vec![secondary(&cdescr.span)
                                 .with_message(format!("({}) calling {}", i + 1, name))])
                         });
 
