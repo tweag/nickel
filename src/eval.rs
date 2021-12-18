@@ -417,24 +417,25 @@ impl CallStack {
     /// 1. When an application is evaluated, push a marker with the position of the application on the callstack.
     /// 2. When a function body is entered, push a marker with the position of the original application on the
     ///    callstack.
-    /// 3. When a variable is evaluated, push a marker with its name and position on the callstack. The goal is to
-    ///    have an easy access to the name of a called function for calls of the form `f arg1
-    ///    .. argn`.
+    /// 3. When a variable is evaluated, push a marker with its name and position on the callstack.
     /// 4. When a record field is accessed, push a marker with its name and position on the
-    ///    callstack too. Field are are similar to variable bindings regarding error reporting.
+    ///    callstack too.
     ///
-    /// The resulting stack is not suited to be reported to the user for the following reasons:
+    /// Both field and variable are useful to determine the name of a called function, when there
+    /// is one.  The resulting stack is not suited to be reported to the user for the following
+    /// reasons:
     ///
-    /// 1. One call spans several on the callstack. First the application is entered, then possibly
-    ///    variables or other application are evaluated, and only when we evaluated the left hand
-    ///    side to function, the body of this function is entered.
-    /// 2. Because of currying, multiple arguments applications span several objects on the
-    ///    callstack.  Typically, `(fun x y => x + y) arg1 arg2` spans two `App` and two `Fun`
-    ///    elements in the form `App1 App2 Fun2 Fun1`, where the position span of `App1` includes
-    ///    the position span of `App2`.  We want to group them as one call.
-    /// 3. The callstack includes calls to builtin contracts. These calls are inserted implicitly by
-    ///    the abstract machine and are not written explicitly by the user. Showing them is confusing
-    ///    and clutters the call chain, so we get rid of them too.
+    /// 1. One call spans several items on the callstack. First the application is entered (pushing
+    ///    an `App`), then possibly variables or other application are evaluated until we
+    ///    eventually reach a function for the left hand side. Then body of this function is
+    ///    entered (pushing a `Fun`).
+    /// 2. Because of currying, multi-ary applications span several objects on the callstack.
+    ///    Typically, `(fun x y => x + y) arg1 arg2` spans two `App` and two `Fun` elements in the
+    ///    form `App1 App2 Fun2 Fun1`, where the position span of `App1` includes the position span
+    ///    of `App2`.  We want to group them as one call.
+    /// 3. The callstack includes calls to builtin contracts. These calls are inserted implicitly
+    ///    by the abstract machine and are not written explicitly by the user. Showing them is
+    ///    confusing and clutters the call chain, so we get rid of them too.
     ///
     /// This is the role of `group_by_calls`, which filter out unwanted elements and groups
     /// callstack elements into atomic call elements represented by [`CallDescr`].
@@ -468,6 +469,16 @@ impl CallStack {
             _ => false,
         });
 
+        // We maintain a stack of active calls (whose head is being evaluated).  When encountering
+        // an identifier (variable or record field), we see if it could serve as a function name
+        // for the current active call. When a `Fun` is encountered, we check if this correspond to
+        // the current active call, and if it does, the call description is moved to a stack of
+        // processed calls.
+        //
+        // We also merge subcalls, in the sense that subcalls of larger calls are not considered
+        // separately. `app1` is a subcall of `app2` if the position of `app1` is included in the
+        // one of `app2` and the starting index is equal. We want `f a b c` to be reported as only
+        // one big call to `f` rather than three nested calls `f a`, `f a b`, and `f a b c`.
         let mut pending: Vec<CallDescr> = Vec::new();
         let mut entered: Vec<CallDescr> = Vec::new();
 
@@ -502,13 +513,13 @@ impl CallStack {
                     }
                     // Otherwise, we are most probably entering a subcall () of the currently
                     // active call (e.g. in an multi-ary application `f g h`, a subcall would be `f
-                    // g`). We do nothing.
+                    // g`). In any case, we do nothing.
                 }
             }
         }
 
         entered.reverse();
-        (entered.into_iter().collect(), pending.pop())
+        (entered, pending.pop())
     }
 
     /// Return the length of the callstack. Wrapper for `callstack.0.len()`.
