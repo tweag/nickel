@@ -356,7 +356,7 @@ impl ThunkUpdateFrame {
 #[derive(PartialEq, Clone, Default, Debug)]
 pub struct CallStack(pub Vec<StackElem>);
 
-/// Basic description of a functino call. Used for error reporting.
+/// Basic description of a function call. Used for error reporting.
 pub struct CallDescr {
     /// The name of the called function, if any.
     head: Option<Ident>,
@@ -432,7 +432,7 @@ impl CallStack {
     ///    callstack.  Typically, `(fun x y => x + y) arg1 arg2` spans two `App` and two `Fun`
     ///    elements in the form `App1 App2 Fun2 Fun1`, where the position span of `App1` includes
     ///    the position span of `App2`.  We want to group them as one call.
-    /// 3. The callstack includes calls to builtin contracts. These calls are inserted implicitely by
+    /// 3. The callstack includes calls to builtin contracts. These calls are inserted implicitly by
     ///    the abstract machine and are not written explicitly by the user. Showing them is confusing
     ///    and clutters the call chain, so we get rid of them too.
     ///
@@ -499,11 +499,10 @@ impl CallStack {
                         .unwrap_or(false)
                     {
                         entered.push(pending.pop().unwrap());
-                    } else {
-                        // Do nothing. We are most probably entering a subcall () of the currently
-                        // active call (e.g. in an multi-ary application `f g h` the call
-                        // corresponding to `f g`).
                     }
+                    // Otherwise, we are most probably entering a subcall () of the currently
+                    // active call (e.g. in an multi-ary application `f g h`, a subcall would be `f
+                    // g`). We do nothing.
                 }
             }
         }
