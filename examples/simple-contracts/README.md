@@ -9,6 +9,11 @@ The second one, `simple-contract-div.ncl`, defines simple contracts on numbers
 and illustrates the application of several contracts to one value. It is
 expected to fail, to demonstrate basic error-reporting for contracts.
 
+For illustrative purpose, those contracts are written as plain custom contracts:
+functions `Lbl -> Dyn -> Dyn`. However, they are just boolean predicates here.
+In this case, you should rather write them more succintly as predicates `Dyn ->
+Bool` and use `contracts.fromPred` to obtain the corresponding contracts.
+
 ## Run
 
 ```

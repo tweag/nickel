@@ -119,15 +119,99 @@ pub enum ThunkState {
 /// The mutable data stored inside a thunk.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ThunkData {
-    closure: Closure,
+    inner: InnerThunkData,
     state: ThunkState,
 }
 
+/// The part of [ThunkData] responsible for storing the closure itself. It can either be:
+/// - A standard thunk, that is destructively updated once and for all
+/// - A reversible thunk, that can be restored to its original expression. Used to implement
+/// recursive merging of records and overriding (see the [RFC
+/// overriding](https://github.com/tweag/nickel/pull/330))
+#[derive(Clone, Debug, PartialEq)]
+pub enum InnerThunkData {
+    Standard(Closure),
+    Reversible {
+        orig: Rc<Closure>,
+        cached: Rc<Closure>,
+    },
+}
+
 impl ThunkData {
+    /// Create new standard thunk data.
     pub fn new(closure: Closure) -> Self {
         ThunkData {
-            closure,
+            inner: InnerThunkData::Standard(closure),
             state: ThunkState::Suspended,
+        }
+    }
+
+    /// Create new reversible thunk data.
+    pub fn new_rev(orig: Closure) -> Self {
+        let rc = Rc::new(orig);
+
+        ThunkData {
+            inner: InnerThunkData::Reversible {
+                orig: rc.clone(),
+                cached: rc,
+            },
+            state: ThunkState::Suspended,
+        }
+    }
+
+    /// Return a reference to the closure currently cached.
+    pub fn closure(&self) -> &Closure {
+        match self.inner {
+            InnerThunkData::Standard(ref closure) => closure,
+            InnerThunkData::Reversible { ref cached, .. } => cached,
+        }
+    }
+
+    /// Return a mutable reference to the closure currently cached.
+    pub fn closure_mut(&mut self) -> &mut Closure {
+        match self.inner {
+            InnerThunkData::Standard(ref mut closure) => closure,
+            InnerThunkData::Reversible { ref mut cached, .. } => Rc::make_mut(cached),
+        }
+    }
+
+    /// Consume the data and return the cached closure.
+    pub fn into_closure(self) -> Closure {
+        match self.inner {
+            InnerThunkData::Standard(closure) => closure,
+            InnerThunkData::Reversible { orig, cached } => {
+                std::mem::drop(orig);
+                Rc::try_unwrap(cached).unwrap_or_else(|rc| (*rc).clone())
+            }
+        }
+    }
+
+    /// Update the cached closure.
+    pub fn update(&mut self, new: Closure) {
+        match self.inner {
+            InnerThunkData::Standard(ref mut closure) => *closure = new,
+            InnerThunkData::Reversible { ref mut cached, .. } => *cached = Rc::new(new),
+        }
+
+        self.state = ThunkState::Evaluated;
+    }
+
+    /// Create fresh unevaluated thunk data from `self`, restored to its original state before the
+    /// first update. For standard thunk data, the content is unchanged and the state is conserved: in
+    /// this case, `restore()` is the same as `clone()`.
+    pub fn restore(&self) -> Self {
+        match self.inner {
+            InnerThunkData::Standard(ref closure) => ThunkData {
+                inner: InnerThunkData::Standard(closure.clone()),
+                state: self.state,
+            },
+            InnerThunkData::Reversible { ref orig, .. } => ThunkData {
+                inner: InnerThunkData::Reversible {
+                    orig: Rc::clone(orig),
+                    cached: Rc::clone(orig),
+                },
+                state: self.state,
+            },
         }
     }
 }
@@ -136,6 +220,13 @@ impl ThunkData {
 ///
 /// A thunk is a shared suspended computation. It is the primary device for the implementation of
 /// lazy evaluation.
+///
+/// For the implementation of recursive merging, some thunks need to be reversible, in the sense
+/// that we must be able to restore the original expression before update. Those are called
+/// reversible thunks. Most expressions don't need reversible thunks as their evaluation will
+/// always give the same result, but some others, such as the ones containing recursive references
+/// inside a record may be invalidated by merging, and thus need to store the unaltered original
+/// expression. Those aspects are mainly handled in [InnerThunkData].
 #[derive(Clone, Debug, PartialEq)]
 pub struct Thunk {
     data: Rc<RefCell<ThunkData>>,
@@ -147,9 +238,18 @@ pub struct Thunk {
 pub struct BlackholedError;
 
 impl Thunk {
+    /// Create a new standard thunk.
     pub fn new(closure: Closure, ident_kind: IdentKind) -> Self {
         Thunk {
             data: Rc::new(RefCell::new(ThunkData::new(closure))),
+            ident_kind,
+        }
+    }
+
+    /// Create a new reversible thunk.
+    pub fn new_rev(closure: Closure, ident_kind: IdentKind) -> Self {
+        Thunk {
+            data: Rc::new(RefCell::new(ThunkData::new_rev(closure))),
             ident_kind,
         }
     }
@@ -180,33 +280,17 @@ impl Thunk {
 
     /// Immutably borrow the inner closure. Panic if there is another active mutable borrow.
     pub fn borrow(&self) -> Ref<'_, Closure> {
-        let (closure, _) = Ref::map_split(self.data.borrow(), |data| {
-            let ThunkData {
-                ref closure,
-                ref state,
-            } = data;
-            (closure, state)
-        });
-
-        closure
+        Ref::map(self.data.borrow(), |data| data.closure())
     }
 
     /// Mutably borrow the inner closure. Panic if there is any other active borrow.
     pub fn borrow_mut(&mut self) -> RefMut<'_, Closure> {
-        let (closure, _) = RefMut::map_split(self.data.borrow_mut(), |data| {
-            let ThunkData {
-                ref mut closure,
-                ref mut state,
-            } = data;
-            (closure, state)
-        });
-
-        closure
+        RefMut::map(self.data.borrow_mut(), |data| data.closure_mut())
     }
 
     /// Get an owned clone of the inner closure.
     pub fn get_owned(&self) -> Closure {
-        self.data.borrow().closure.clone()
+        self.data.borrow().closure().clone()
     }
 
     pub fn ident_kind(&self) -> IdentKind {
@@ -217,8 +301,18 @@ impl Thunk {
     /// reference to the inner closure.
     pub fn into_closure(self) -> Closure {
         match Rc::try_unwrap(self.data) {
-            Ok(inner) => inner.into_inner().closure,
-            Err(rc) => rc.borrow().clone().closure,
+            Ok(inner) => inner.into_inner().into_closure(),
+            Err(rc) => rc.borrow().closure().clone(),
+        }
+    }
+
+    /// Create a fresh unevaluated thunk from `self`, restored to its original state before the
+    /// first update. For a standard thunk, the content is unchanged and the state is conserved: in
+    /// this case, `restore()` is the same as `clone()`.
+    pub fn restore(&self) -> Self {
+        Thunk {
+            data: Rc::new(RefCell::new(self.data.borrow().restore())),
+            ident_kind: self.ident_kind,
         }
     }
 }
@@ -244,10 +338,7 @@ impl ThunkUpdateFrame {
     /// - `false` if the corresponding closure has been dropped since
     pub fn update(self, closure: Closure) -> bool {
         if let Some(data) = Weak::upgrade(&self.data) {
-            *data.borrow_mut() = ThunkData {
-                closure,
-                state: ThunkState::Evaluated,
-            };
+            data.borrow_mut().update(closure);
             true
         } else {
             false
@@ -370,7 +461,7 @@ where
         ),
     );
     eval_closure(Closure::atomic_closure(wrapper), global_env, resolver, true)
-        .map(|(term, env)| subst(term.into(), &global_env, &env).into())
+        .map(|(term, env)| subst(term.into(), global_env, &env).into())
 }
 
 /// Evaluate a Nickel Term, stopping when a meta value is encountered at the top-level without
@@ -386,7 +477,7 @@ pub fn eval_meta<R>(
 where
     R: ImportResolver,
 {
-    let (term, env) = eval_closure(Closure::atomic_closure(t), &global_env, resolver, false)?;
+    let (term, env) = eval_closure(Closure::atomic_closure(t), global_env, resolver, false)?;
 
     match term {
         Term::MetaValue(mut meta) => {
@@ -627,30 +718,7 @@ where
                         }
                     }
                 }
-            }
-            Term::Promise(ty, l, t) => {
-                let mut l = l.clone();
-                l.arg_pos = t.pos;
-                let thunk = Thunk::new(
-                    Closure {
-                        body: t.clone(),
-                        env: env.clone(),
-                    },
-                    IdentKind::Lam(),
-                );
-                l.arg_thunk = Some(thunk.clone());
-
-                stack.push_tracked_arg(thunk, pos.into_inherited());
-                stack.push_arg(
-                    Closure::atomic_closure(Term::Lbl(l).into()),
-                    pos.into_inherited(),
-                );
-
-                Closure {
-                    body: ty.contract(),
-                    env,
-                }
-            }
+            },
             Term::RecRecord(ts, dyn_fields, attrs) => {
                 // Thanks to the share normal form transformation, the content is either a constant or a
                 // variable.
@@ -661,7 +729,7 @@ where
                             let thunk = env.get(var_id).ok_or_else(|| {
                                 EvalError::UnboundIdentifier(var_id.clone(), rt.pos)
                             })?;
-                            rec_env.insert(id.clone(), thunk.clone());
+                            rec_env.insert(id.clone(), thunk);
                             Ok(rec_env)
                         }
                         _ => {
@@ -877,6 +945,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
                 })
                 .unwrap_or_else(|| RichTerm::new(Term::Var(id), pos)),
             v @ Term::Null
+            | v @ Term::ParseError
             | v @ Term::Bool(_)
             | v @ Term::Num(_)
             | v @ Term::Str(_)
@@ -895,6 +964,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
 
                 RichTerm::new(Term::Let(id, t1, t2), pos)
             }
+            p @ Term::LetPattern(..) => panic!("Pattern {:?} has not been transformed before evaluation", p),
             Term::App(t1, t2) => {
                 let t1 = subst_(t1, global_env, env, Cow::Borrowed(bound.as_ref()));
                 let t2 = subst_(t2, global_env, env, bound);
@@ -935,11 +1005,6 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
                     .collect();
 
                 RichTerm::new(Term::OpN(op, ts), pos)
-            }
-            Term::Promise(ty, l, t) => {
-                let t = subst_(t, global_env, env, bound);
-
-                RichTerm::new(Term::Promise(ty, l, t), pos)
             }
             Term::Wrapped(i, t) => {
                 let t = subst_(t, global_env, env, bound);
@@ -1079,7 +1144,7 @@ mod tests {
         let id = Files::new().add("<test>", String::from(s));
 
         grammar::TermParser::new()
-            .parse(id, lexer::Lexer::new(&s))
+            .parse_term(id, lexer::Lexer::new(&s))
             .map(|mut t| {
                 t.clean_pos();
                 t
@@ -1250,7 +1315,7 @@ mod tests {
 
         // let x = import "bad" in x
         match mk_import("x", "bad", mk_term::var("x"), &mut resolver).unwrap_err() {
-            ImportError::ParseError(_, _) => (),
+            ImportError::ParseErrors(_, _) => (),
             _ => assert!(false),
         };
 
@@ -1400,11 +1465,12 @@ mod tests {
                 .unwrap()
         );
 
-        let t = parse("switch {x => [1, glob1], y => loc2, z => {id = true, other = glob3}} loc1")
-            .unwrap();
+        let t =
+            parse("switch {`x => [1, glob1], `y => loc2, `z => {id = true, other = glob3}} loc1")
+                .unwrap();
         assert_eq!(
             subst(t, &global_env, &env),
-            parse("switch {x => [1, 1], y => (if false then 1 else \"Glob2\"), z => {id = true, other = false}} true").unwrap()
+            parse("switch {`x => [1, 1], `y => (if false then 1 else \"Glob2\"), `z => {id = true, other = false}} true").unwrap()
         );
     }
 }

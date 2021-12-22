@@ -22,7 +22,7 @@
 //! [`mk_global_env`](./struct.Program.html#method.mk_global_env)).  Each such value is added to
 //! the global environment before the evaluation of the program.
 use crate::cache::*;
-use crate::error::{Error, ParseError, ToDiagnostic};
+use crate::error::{Error, ToDiagnostic};
 use crate::identifier::Ident;
 use crate::parser::lexer::Lexer;
 use crate::term::{RichTerm, Term};
@@ -72,13 +72,9 @@ impl Program {
     /// Retrieve the parsed term and typecheck it, and generate a fresh global environment. Return
     /// both.
     fn prepare_eval(&mut self) -> Result<(RichTerm, eval::Environment), Error> {
-        self.cache.prepare_stdlib()?;
-        let global_env = self
-            .cache
-            .mk_global_env()
-            .expect("program::prepare_eval(): expected event to be ready");
-        self.cache.prepare(self.main_id, &global_env)?;
-        Ok((self.cache.get(self.main_id).unwrap(), global_env))
+        let GlobalEnv { eval_env, type_env } = self.cache.prepare_stdlib()?;
+        self.cache.prepare(self.main_id, &type_env)?;
+        Ok((self.cache.get(self.main_id).unwrap(), eval_env))
     }
 
     /// Parse if necessary, typecheck and then evaluate the program.
@@ -95,11 +91,7 @@ impl Program {
 
     /// Wrapper for [`query`](./fn.query.html).
     pub fn query(&mut self, path: Option<String>) -> Result<Term, Error> {
-        self.cache.prepare_stdlib()?;
-        let global_env = self
-            .cache
-            .mk_global_env()
-            .expect("program::prepare_eval(): expected event to be ready");
+        let global_env = self.cache.prepare_stdlib()?;
         query(&mut self.cache, self.main_id, &global_env, path)
     }
 
@@ -107,7 +99,7 @@ impl Program {
     pub fn typecheck(&mut self) -> Result<(), Error> {
         self.cache.parse(self.main_id)?;
         self.cache.load_stdlib()?;
-        let global_env = self.cache.mk_global_env().expect("program::typecheck(): stdlib has been loaded but was not found in cache on mk_global_env()");
+        let global_env = self.cache.mk_types_env().expect("program::typecheck(): stdlib has been loaded but was not found in cache on mk_types_env()");
         self.cache
             .resolve_imports(self.main_id)
             .map_err(|cache_err| {
@@ -148,10 +140,10 @@ impl Program {
 pub fn query(
     cache: &mut Cache,
     file_id: FileId,
-    global_env: &eval::Environment,
+    global_env: &GlobalEnv,
     path: Option<String>,
 ) -> Result<Term, Error> {
-    cache.prepare(file_id, global_env)?;
+    cache.prepare(file_id, &global_env.type_env)?;
 
     let t = if let Some(p) = path {
         // Parsing `y.path`. We `seq` it to force the evaluation of the underlying value,
@@ -159,9 +151,8 @@ pub fn query(
         // errors.
         let source = format!("x.{}", p);
         let query_file_id = cache.add_tmp("<query>", source.clone());
-        let new_term = parser::grammar::TermParser::new()
-            .parse(query_file_id, Lexer::new(&source))
-            .map_err(|err| ParseError::from_lalrpop(err, query_file_id))?;
+        let new_term =
+            parser::grammar::TermParser::new().parse_term(query_file_id, Lexer::new(&source))?;
 
         // Substituting `y` for `t`
         let mut env = eval::Environment::new();
@@ -176,7 +167,7 @@ pub fn query(
         cache.get_owned(file_id).unwrap()
     };
 
-    Ok(eval::eval_meta(t, &global_env, cache)?)
+    Ok(eval::eval_meta(t, &global_env.eval_env, cache)?)
 }
 
 /// Pretty-print an error.
@@ -195,7 +186,7 @@ where
     let diagnostics = error.to_diagnostic(cache.files_mut(), contracts_id);
 
     let result = diagnostics.iter().try_for_each(|d| {
-        codespan_reporting::term::emit(&mut writer.lock(), &config, cache.files_mut(), &d)
+        codespan_reporting::term::emit(&mut writer.lock(), &config, cache.files_mut(), d)
     });
     match result {
         Ok(()) => (),
@@ -219,7 +210,7 @@ mod tests {
         let id = Files::new().add("<test>", String::from(s));
 
         grammar::TermParser::new()
-            .parse(id, lexer::Lexer::new(&s))
+            .parse_term(id, lexer::Lexer::new(&s))
             .map(|mut t| {
                 t.clean_pos();
                 t

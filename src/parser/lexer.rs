@@ -40,7 +40,7 @@ pub enum NormalToken<'input> {
     #[error]
     Error,
 
-    #[regex("_?[a-zA-Z][_a-zA-Z0-9]*")]
+    #[regex("_?[a-zA-Z][_a-zA-Z0-9-]*")]
     Identifier(&'input str),
     #[regex("[0-9]*\\.?[0-9]+", |lex| lex.slice().parse())]
     NumLiteral(f64),
@@ -78,6 +78,8 @@ pub enum NormalToken<'input> {
     #[token("false")]
     False,
 
+    #[token("?")]
+    QuestionMark,
     #[token(",")]
     Comma,
     #[token(":")]

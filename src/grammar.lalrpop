@@ -3,6 +3,8 @@ use std::ffi::OsString;
 
 use codespan::FileId;
 
+use lalrpop_util::ErrorRecovery;
+
 use super::ExtendedTerm;
 use super::utils::{StringKind, mk_pos, mk_label, mk_span, strip_indent, SwitchCase,
     FieldPathElem, strip_indent_doc, build_record, elaborate_field_path, check_unbound,
@@ -11,13 +13,14 @@ use super::lexer::{Token, NormalToken, StringToken, MultiStringToken};
 
 use crate::{mk_app, mk_opn};
 use crate::identifier::Ident;
+use crate::destruct::{Match, LastMatch, Destruct};
 use crate::parser::error::ParseError;
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
     MergePriority, Contract, NAryOp, RecordAttrs, SharedTerm};
 use crate::term::make as mk_term;
 use crate::types::{Types, AbsType};
 
-grammar<'input>(src_id: FileId);
+grammar<'input, 'err>(src_id: FileId, errors: &'err mut Vec<ErrorRecovery<usize, Token<'input>, ParseError>>);
 
 WithPos<Rule>: RichTerm = <l: @L> <t: Rule> <r: @R> => t.with_pos(mk_pos(src_id, l, r));
 CheckUnbound<Rule>: Types = <l: @L> <t: Rule> <r: @R> =>? check_unbound(&t, mk_span(src_id, l, r)).map_err(|e| lalrpop_util::ParseError::User{error: e}).and(Ok(t));
@@ -54,6 +57,12 @@ MetaAnnotAtom: MetaValue = {
     },
 };
 
+DefaultAnnot: MetaValue = "?" <t: Term> => MetaValue {
+    priority: MergePriority::Default,
+    value: Some(t),
+    ..Default::default()
+};
+
 MetaAnnot: MetaValue = <anns: MetaAnnotAtom+> => anns.into_iter().fold(MetaValue::new(), MetaValue::flatten);
 
 Annot: MetaValue = {
@@ -71,7 +80,7 @@ Annot: MetaValue = {
 pub Term: RichTerm = WithPos<RootTerm>;
 
 pub ExtendedTerm: ExtendedTerm = {
-    "let" <id:Ident> <meta: Annot?> "=" <t: Term> => {
+    "let" <id: Ident> <meta: Annot?> "=" <t: Term> => {
         let t = if let Some(mut meta) = meta {
             let pos = t.pos;
             meta.value = Some(t);
@@ -80,14 +89,13 @@ pub ExtendedTerm: ExtendedTerm = {
         else {
             t
         };
-
         ExtendedTerm::ToplevelLet(id, t)
     },
     Term => ExtendedTerm::RichTerm(<>),
 }
 
 RootTerm: RichTerm = {
-    "let" <id:Ident> <meta: Annot?> "=" <t1: Term> "in"
+    "let" <pat:Pattern> <meta: Annot?> "=" <t1: Term> "in"
         <t2: Term> => {
         let t1 = if let Some(mut meta) = meta {
             let pos = t1.pos;
@@ -98,11 +106,11 @@ RootTerm: RichTerm = {
             t1
         };
 
-        mk_term::let_in(id, t1, t2)
+        mk_term::let_pat(pat.0, pat.1, t1, t2)
     },
-    <l: @L> "fun" <ps:Pattern+> "=>" <t: Term> <r: @R> => {
+    <l: @L> "fun" <ids:Ident+> "=>" <t: Term> <r: @R> => {
         let pos = mk_pos(src_id, l, r);
-        ps.into_iter().rev().fold(t, |t, p| RichTerm {
+        ids.into_iter().rev().fold(t, |t, p| RichTerm {
             term: SharedTerm::new(Term::Fun(p, t)),
             pos,
         })
@@ -132,6 +140,7 @@ RootTerm: RichTerm = {
     "if" <cond: Term> "then" <t1: Term> "else" <t2: Term> =>
         mk_app!(Term::Op1(UnaryOp::Ite(), cond), t1, t2),
     AnnotatedTerm,
+    <l: @L> <t: !> <r: @R> => { errors.push(t); RichTerm { term: SharedTerm::new(Term::ParseError), pos: mk_pos(src_id, l, r)} },
 };
 
 AnnotatedTerm: RichTerm = {
@@ -167,7 +176,7 @@ RecordOperand: RichTerm = {
 
 RecordOperationChain: RichTerm = {
     <t: WithPos<RecordOperand>> "." <id: Ident> => mk_term::op1(UnaryOp::StaticAccess(id), t),
-    <t: WithPos<RecordOperand>> "." <t_id: StrChunks> => mk_term::op2(BinaryOp::DynAccess(), t_id, t),
+    <t: WithPos<RecordOperand>> "." <t_id: WithPos<StrChunks>> => mk_term::op2(BinaryOp::DynAccess(), t_id, t),
     <t: WithPos<RecordOperand>> "-$" <t_id: WithPos<Atom>> => mk_term::op2(BinaryOp::DynRemove(), t_id, t),
     <r: WithPos<RecordOperand>> "$[" <id: Term> "=" <t: Term> "]" =>
         mk_app!(mk_term::op2(BinaryOp::DynExtend(), id, r), t),
@@ -180,7 +189,7 @@ Atom: RichTerm = {
     Bool => RichTerm::from(Term::Bool(<>)),
     StrChunks,
     Ident => RichTerm::from(Term::Var(<>)),
-    "`" <Ident> => RichTerm::from(Term::Enum(<>)),
+    "`" <EnumTag> => RichTerm::from(Term::Enum(<>)),
     "{" <fields: (<RecordField> ",")*> <last: RecordLastField?> "}" => {
         let (last_field, attrs) = match last {
             Some(RecordLastField::Field(f)) => (Some(f), Default::default()),
@@ -246,14 +255,54 @@ FieldPath: Vec<FieldPathElem> = {
 
 FieldPathElem: FieldPathElem = {
     <Ident> => FieldPathElem::Ident(<>),
-    <StrChunks> => FieldPathElem::Expr(<>),
+    <WithPos<StrChunks>> => FieldPathElem::Expr(<>),
 };
 
-Pattern: Ident = {
-    Ident,
+#[inline]
+Pattern: (Option<Ident>,Destruct) = {
+    <id:(<Ident> "@")?> <pat:Destruct> => (id,pat),
+    Ident => (Some(<>),Destruct::Empty),
 };
 
-Ident: Ident = "identifier" => Ident(<>.to_string());
+Destruct: Destruct = {
+    "{" <mut matches: (<Match> ",")*> <last:LastMatch?> "}" => {
+        let (open, rst) = match last {
+	    Some(LastMatch::Match(m)) => {
+	        matches.push(m);
+	        (false,None)
+	    },
+	    Some(LastMatch::Ellipsis(rst)) => (true, rst),
+	    _ => (false, None),
+	};
+	Destruct::Record(matches, open, rst)
+    },
+};
+
+Match: Match = {
+    <left:Ident> <anns: MetaAnnot?> <default: DefaultAnnot?> "=" <right: Pattern> => {
+	let meta = match (default, anns) {
+	    (Some(d), Some(m)) => MetaValue::flatten(d,m),
+	    (Some(m),_) | (_,Some(m)) => m,
+  	    _ => MetaValue::new(),
+	};
+	Match::Assign(left, meta, right)
+    },
+    <id:Ident> <anns: MetaAnnot?> <default: DefaultAnnot?> => {
+	let meta = match (default, anns) {
+	    (Some(d), Some(m)) => MetaValue::flatten(d,m),
+	    (Some(m),_) | (_,Some(m)) => m,
+  	    _ => MetaValue::new(),
+	};
+	Match::Simple(id, meta)
+    },
+};
+
+LastMatch: LastMatch = {
+    Match => LastMatch::Match(<>),
+    ".."<Ident?> => LastMatch::Ellipsis(<>),
+};
+
+Ident: Ident = <l:@L> <i: "identifier"> <r:@R> => Ident(i.to_string(), mk_pos(src_id, l, r));
 
 Bool: bool = {
     "true" => true,
@@ -261,8 +310,7 @@ Bool: bool = {
 };
 
 StrChunks : RichTerm = {
-  <start: StringStart> <fst: ChunkLiteral?> <chunks: (ChunkExpr+ChunkLiteral)*> <lasts:
-    ChunkExpr*> <end: StringEnd> => {
+  <start: StringStart> <fst: ChunkLiteral?> <chunks: (ChunkExpr+ChunkLiteral)*> <lasts:ChunkExpr*> <end: StringEnd> => {
         debug_assert_eq!(start, end);
 
         let chunks: Vec<StrChunk<RichTerm>> = fst.into_iter()
@@ -316,6 +364,12 @@ HashBrace = { "#{", "multstr #{" };
 
 StaticString: String = StringStart <s: ChunkLiteral> StringEnd => s;
 
+EnumTag: Ident = {
+    <Ident>,
+    <StaticString> => <>.into(),
+}
+
+
 ChunkLiteralPart: ChunkLiteralPart<'input> = {
     "str literal" => ChunkLiteralPart::Str(<>),
     "multstr literal" => ChunkLiteralPart::Str(<>),
@@ -360,7 +414,7 @@ UOp: UnaryOp = {
 };
 
 switch_case: SwitchCase = {
-    <id: Ident> "=>" <t: Term> => SwitchCase::Normal(id, t),
+    "`" <id: EnumTag> "=>" <t: Term> => SwitchCase::Normal(id, t),
     "_" "=>" <t: Term> => SwitchCase::Default(<>),
 }
 
@@ -486,7 +540,7 @@ subType : Types = {
     <Ident> => Types(AbsType::Var(<>)),
     "#" <WithPos<RecordOperand>> => Types(AbsType::Flat(<>)),
     "(" <Types> ")",
-    "<" <rows:(<Ident> ",")*> <last: (<Ident>)?> <tail: ("|" <Ident>)?> ">" => {
+    "<" <rows:(<EnumTag> ",")*> <last: (<EnumTag>)?> <tail: ("|" <EnumTag>)?> ">" => {
         let ty = rows.into_iter()
             .chain(last.into_iter())
             // As we build row types as a linked list via a fold on the original
@@ -550,6 +604,7 @@ extern {
         "true" => Token::Normal(NormalToken::True),
         "false" => Token::Normal(NormalToken::False),
 
+        "?" => Token::Normal(NormalToken::QuestionMark),
         "," => Token::Normal(NormalToken::Comma),
         ":" => Token::Normal(NormalToken::Colon),
         "$" => Token::Normal(NormalToken::Dollar),

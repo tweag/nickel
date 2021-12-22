@@ -11,21 +11,24 @@ use lsp_types::{
     notification::{DidChangeTextDocument, DidOpenTextDocument},
     request::{Request as RequestTrait, *},
     CompletionOptions, CompletionParams, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
-    GotoDefinitionParams, HoverOptions, HoverParams, HoverProviderCapability, OneOf,
-    ReferenceParams, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
+    DocumentSymbolParams, GotoDefinitionParams, HoverOptions, HoverParams, HoverProviderCapability,
+    OneOf, ReferenceParams, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
     TextDocumentSyncOptions, WorkDoneProgressOptions,
 };
 
-use nickel::typecheck::linearization::Completed;
-use nickel::{cache::Cache, environment::Environment, eval::Thunk, identifier::Ident};
+use nickel::cache::Cache;
+use nickel::typecheck::{linearization::Completed, Environment};
 
-use crate::requests::{completion, goto, hover};
+use crate::{
+    requests::{completion, goto, hover, symbols},
+    trace::Trace,
+};
 
 pub struct Server {
     pub connection: Connection,
     pub cache: Cache,
     pub lin_cache: HashMap<FileId, Completed>,
-    pub global_env: Environment<Ident, Thunk>,
+    pub global_env: Environment,
 }
 
 impl Server {
@@ -49,15 +52,16 @@ impl Server {
                 trigger_characters: Some(vec![]),
                 ..Default::default()
             }),
+            document_symbol_provider: Some(OneOf::Left(true)),
             ..ServerCapabilities::default()
         }
     }
 
     pub fn new(connection: Connection) -> Server {
         let mut cache = Cache::new();
-        cache.prepare_stdlib().unwrap();
+        cache.load_stdlib().unwrap();
+        let global_env = cache.mk_types_env().unwrap();
         let lin_cache = HashMap::new();
-        let global_env = cache.mk_global_env().unwrap();
         Server {
             connection,
             cache,
@@ -68,6 +72,13 @@ impl Server {
 
     pub(crate) fn reply(&mut self, response: Response) {
         trace!("Sending response: {:#?}", response);
+
+        if response.error.is_some() {
+            Trace::error_reply(response.id.clone());
+        } else {
+            Trace::reply(response.id.clone());
+        }
+
         self.connection
             .sender
             .send(Message::Response(response))
@@ -102,7 +113,7 @@ impl Server {
                     let id = req.id.clone();
                     match self.connection.handle_shutdown(&req) {
                         Ok(true) => break,
-                        Ok(false) => self.handle_request(req),
+                        Ok(false) => self.handle_request(req)?,
                         Err(err) => {
                             // This only fails if a shutdown was
                             // requested in the first place, so it
@@ -123,31 +134,29 @@ impl Server {
         Ok(())
     }
 
-    fn handle_notification(&mut self, notification: Notification) {
+    fn handle_notification(&mut self, notification: Notification) -> Result<()> {
         match notification.method.as_str() {
             DidOpenTextDocument::METHOD => {
                 trace!("handle open notification");
                 crate::files::handle_open(
                     self,
-                    serde_json::from_value::<DidOpenTextDocumentParams>(notification.params)
-                        .unwrap(),
+                    serde_json::from_value::<DidOpenTextDocumentParams>(notification.params)?,
                 )
-                .unwrap();
             }
             DidChangeTextDocument::METHOD => {
                 trace!("handle save notification");
                 crate::files::handle_save(
                     self,
-                    serde_json::from_value::<DidChangeTextDocumentParams>(notification.params)
-                        .unwrap(),
+                    serde_json::from_value::<DidChangeTextDocumentParams>(notification.params)?,
                 )
-                .unwrap();
             }
-            _ => {}
+            _ => Ok(()),
         }
     }
 
-    fn handle_request(&mut self, req: lsp_server::Request) {
+    fn handle_request(&mut self, req: lsp_server::Request) -> Result<()> {
+        Trace::receive(req.id.clone(), req.method.clone());
+
         let res = match req.method.as_str() {
             HoverRequest::METHOD => {
                 let params: HoverParams = serde_json::from_value(req.params).unwrap();
@@ -172,6 +181,12 @@ impl Server {
                 completion::handle_completion(params, req.id.clone(), self)
             }
 
+            DocumentSymbolRequest::METHOD => {
+                debug!("handle completion");
+                let params: DocumentSymbolParams = serde_json::from_value(req.params).unwrap();
+                symbols::handle_document_symbols(params, req.id.clone(), self)
+            }
+
             _ => Ok(()),
         };
 
@@ -180,12 +195,13 @@ impl Server {
                 id: req.id,
                 result: None,
                 error: Some(error),
-            })
+            });
         }
+        Ok(())
     }
 
     pub fn lin_cache_get(&self, file_id: &FileId) -> Result<&Completed, ResponseError> {
-        self.lin_cache.get(&file_id).ok_or_else(|| ResponseError {
+        self.lin_cache.get(file_id).ok_or_else(|| ResponseError {
             data: None,
             message: "File has not yet been parsed or cached.".to_owned(),
             code: ErrorCode::ParseError as i32,

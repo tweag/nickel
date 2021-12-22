@@ -19,8 +19,8 @@ pub trait LocationCompat {
 
 impl LocationCompat for lsp_types::Range {
     fn from_codespan(file_id: &FileId, range: &Range<usize>, files: &Files<String>) -> Self {
-        let start = files.location(file_id.clone(), range.start as u32);
-        let end = files.location(file_id.clone(), range.end as u32);
+        let start = files.location(*file_id, range.start as u32);
+        let end = files.location(*file_id, range.end as u32);
 
         let (line_start, col_start, line_end, col_end) = match (start, end) {
             (Ok(start_loc), Ok(end_loc)) => (

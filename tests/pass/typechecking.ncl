@@ -53,25 +53,25 @@ let typecheck = [
   (`blo : <bla, blo>),
   (`bla : forall r. <bla | r>),
   (`bla : forall r. <bla, blo | r>),
-  ((switch {bla => 3} `bla) : Num),
-  ((switch {bla => 3, _ => 2} `blo) : Num),
+  ((switch {`bla => 3} `bla) : Num),
+  ((switch {`bla => 3, _ => 2} `blo) : Num),
 
   // enums_complex
-  ((fun x => switch {bla => 1, ble => 2} x) : <bla, ble> -> Num),
-  ((fun x => switch {bla => 1, ble => 2, bli => 4} (%embed% bli x))
+  ((fun x => switch {`bla => 1, `ble => 2} x) : <bla, ble> -> Num),
+  ((fun x => switch {`bla => 1, `ble => 2, `bli => 4} (%embed% bli x))
     : <bla, ble> -> Num),
   ((fun x =>
-      (switch {bla => 3, bli => 2} x)
-      + (switch {bli => 6, bla => 20} x))
+      (switch {`bla => 3, `bli => 2} x)
+      + (switch {`bli => 6, `bla => 20} x))
     `bla
     : Num),
 
   let f : forall r. <blo, ble | r> -> Num = fun x =>
-    switch {blo => 1, ble => 2, _ => 3} x in
+    switch {`blo => 1, `ble => 2, _ => 3} x in
             (f `bli : Num),
 
   let f : forall r. (forall p. <blo, ble | r> -> <bla, bli | p>) =
-    fun x => switch {blo => `bla, ble => `bli, _ => `bla, } x in
+    fun x => switch {`blo => `bla, `ble => `bli, _ => `bla} x in
     f `bli,
 
   // static records
@@ -170,7 +170,15 @@ let typecheck = [
 
   // recursive_records_quoted
   {"foo" = 1} : {foo : Num},
-] in
 
+  // stdlib typechecking:
+  strings.length : Str -> Num,
+  (strings.length "Ok") : Num,
+  (strings.length "Ok" == 2) : Bool,
+  // partial application
+  (strings.split ".") : Str -> List Str,
+  // TODO: fix issue with `forall`
+  // (lists.length [] == 0) : Bool,
+] in
 
 true

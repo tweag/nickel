@@ -6,8 +6,8 @@
 //! Dually, the frontend is the user-facing part, which may be a CLI, a web application, a
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
-use crate::cache::Cache;
-use crate::error::{Error, EvalError, IOError, ParseError, REPLError};
+use crate::cache::{Cache, GlobalEnv};
+use crate::error::{Error, EvalError, IOError, ParseError, ParseErrors, REPLError};
 use crate::identifier::Ident;
 use crate::parser::{grammar, lexer, ExtendedTerm};
 use crate::term::{RichTerm, Term};
@@ -70,16 +70,12 @@ pub struct REPLImpl {
     cache: Cache,
     /// The parser, supporting toplevel let declaration.
     parser: grammar::ExtendedTermParser,
-    /// The eval environment. Contain the global environment with the stdlib, plus toplevel
+    /// The global environment. Contain the global environment with the stdlib, plus toplevel
     /// declarations and loadings made inside the REPL.
-    eval_env: eval::Environment,
-    /// The initial eval environment, without the toplevel declarations made inside the REPL. Used
+    env: GlobalEnv,
+    /// The initial type environment, without the toplevel declarations made inside the REPL. Used
     /// to typecheck imports in a fresh environment.
-    init_eval_env: eval::Environment,
-    /// The typing environment, counterpart of the eval environment for typechecking. Entries are
-    /// [`TypeWrapper`](../typecheck/enum.TypeWrapper.html) for the ease of interacting with the
-    /// typechecker, but there are not any unification variable in it.
-    type_env: typecheck::Environment,
+    init_type_env: typecheck::Environment,
 }
 
 impl REPLImpl {
@@ -88,20 +84,16 @@ impl REPLImpl {
         REPLImpl {
             cache: Cache::new(),
             parser: grammar::ExtendedTermParser::new(),
-            eval_env: eval::Environment::new(),
-            init_eval_env: eval::Environment::new(),
-            type_env: typecheck::Environment::new(),
+            env: GlobalEnv::new(),
+            init_type_env: typecheck::Environment::new(),
         }
     }
 
     /// Load and process the stdlib, and use it to populate the eval environment as well as the
     /// typing environment.
     pub fn load_stdlib(&mut self) -> Result<(), Error> {
-        self.cache.prepare_stdlib()?;
-
-        self.eval_env = self.cache.mk_global_env().unwrap();
-        self.init_eval_env = self.eval_env.clone();
-        self.type_env = typecheck::Envs::mk_global(&self.eval_env);
+        self.env = self.cache.prepare_stdlib()?;
+        self.init_type_env = self.env.type_env.clone();
         Ok(())
     }
 
@@ -117,11 +109,15 @@ impl REPLImpl {
             String::from(exp),
         );
 
-        match self
+        let (term, parse_errs) = self
             .parser
-            .parse(file_id, lexer::Lexer::new(exp))
-            .map_err(|err| ParseError::from_lalrpop(err, file_id))?
-        {
+            .parse_term_tolerant(file_id, lexer::Lexer::new(exp))?;
+
+        if !parse_errs.no_errors() {
+            return Err(parse_errs.into());
+        }
+
+        match term {
             // Because we don't use the cache for input, we have to perform recursive import
             // resolution/typechecking/transformation by oursleves.
             ExtendedTerm::RichTerm(t) => {
@@ -130,10 +126,10 @@ impl REPLImpl {
                     self.cache.resolve_imports(*id).unwrap();
                 }
 
-                typecheck::type_check_in_env(&t, &self.type_env, &self.cache)?;
+                typecheck::type_check_in_env(&t, &self.env.type_env, &self.cache)?;
                 for id in &pending {
                     self.cache
-                        .typecheck(*id, &self.init_eval_env)
+                        .typecheck(*id, &self.init_type_env)
                         .map_err(|cache_err| {
                             cache_err.unwrap_error("repl::eval_(): expected imports to be parsed")
                         })?;
@@ -146,7 +142,7 @@ impl REPLImpl {
                         .unwrap_or_else(|_| panic!("repl::eval_(): expected imports to be parsed"));
                 }
 
-                Ok(eval_function(t, &self.eval_env, &mut self.cache)?.into())
+                Ok(eval_function(t, &self.env.eval_env, &mut self.cache)?.into())
             }
             ExtendedTerm::ToplevelLet(id, t) => {
                 let (t, pending) = transformations::resolve_imports(t, &mut self.cache)?;
@@ -154,11 +150,11 @@ impl REPLImpl {
                     self.cache.resolve_imports(*id).unwrap();
                 }
 
-                typecheck::type_check_in_env(&t, &self.type_env, &self.cache)?;
-                typecheck::Envs::env_add(&mut self.type_env, id.clone(), &t);
+                typecheck::type_check_in_env(&t, &self.env.type_env, &self.cache)?;
+                typecheck::Envs::env_add(&mut self.env.type_env, id.clone(), &t);
                 for id in &pending {
                     self.cache
-                        .typecheck(*id, &self.init_eval_env)
+                        .typecheck(*id, &self.init_type_env)
                         .map_err(|cache_err| {
                             cache_err.unwrap_error("repl::eval_(): expected imports to be parsed")
                         })?;
@@ -171,8 +167,8 @@ impl REPLImpl {
                         .unwrap_or_else(|_| panic!("repl::eval_(): expected imports to be parsed"));
                 }
 
-                let local_env = self.eval_env.clone();
-                eval::env_add(&mut self.eval_env, id.clone(), t, local_env);
+                let local_env = self.env.eval_env.clone();
+                eval::env_add(&mut self.env.eval_env, id.clone(), t, local_env);
                 Ok(EvalResult::Bound(id))
             }
         }
@@ -215,24 +211,25 @@ impl REPL for REPLImpl {
         for id in &pending {
             self.cache.resolve_imports(*id).unwrap();
         }
-        typecheck::Envs::env_add_term(&mut self.type_env, &term).unwrap();
-        eval::env_add_term(&mut self.eval_env, term.clone()).unwrap();
+        typecheck::Envs::env_add_term(&mut self.env.type_env, &term).unwrap();
+        eval::env_add_term(&mut self.env.eval_env, term.clone()).unwrap();
 
         Ok(term)
     }
 
     fn typecheck(&mut self, exp: &str) -> Result<Types, Error> {
         let file_id = self.cache.add_tmp("<repl-typecheck>", String::from(exp));
-        let term = self.cache.parse_nocache(file_id)?;
+        // We ignore non fatal errors while type checking.
+        let (term, _) = self.cache.parse_nocache(file_id)?;
         let (term, pending) = transformations::resolve_imports(term, &mut self.cache)?;
         for id in &pending {
             self.cache.resolve_imports(*id).unwrap();
         }
-        typecheck::type_check_in_env(&term, &self.type_env, &self.cache)?;
+        typecheck::type_check_in_env(&term, &self.env.type_env, &self.cache)?;
 
         Ok(typecheck::apparent_type(
             term.as_ref(),
-            Some(&typecheck::Envs::from_global(&self.type_env)),
+            Some(&typecheck::Envs::from_global(&self.env.type_env)),
         )
         .into())
     }
@@ -241,7 +238,7 @@ impl REPL for REPLImpl {
         use crate::program;
 
         let file_id = self.cache.add_tmp("<repl-query>", String::from(exp));
-        program::query(&mut self.cache, file_id, &self.eval_env, None)
+        program::query(&mut self.cache, file_id, &self.env, None)
     }
 
     fn cache_mut(&mut self) -> &mut Cache {
@@ -259,7 +256,7 @@ pub enum InputStatus {
     Complete(ExtendedTerm),
     Partial,
     Command,
-    Failed(ParseError),
+    Failed(ParseErrors),
 }
 
 /// Validator enabling multiline input.
@@ -302,15 +299,21 @@ impl InputParser {
 
         let result = self
             .parser
-            .parse(self.file_id, lexer::Lexer::new(input))
-            .map_err(|err| ParseError::from_lalrpop(err, self.file_id));
+            .parse_term_tolerant(self.file_id, lexer::Lexer::new(input));
+
+        let partial = |pe| {
+            matches!(
+                pe,
+                &ParseError::UnexpectedEOF(..) | &ParseError::UnmatchedCloseBrace(..)
+            )
+        };
 
         match result {
-            Ok(t) => InputStatus::Complete(t),
-            Err(ParseError::UnexpectedEOF(..)) | Err(ParseError::UnmatchedCloseBrace(..)) => {
-                InputStatus::Partial
-            }
-            Err(err) => InputStatus::Failed(err),
+            Ok((t, e)) if e.no_errors() => InputStatus::Complete(t),
+            Ok((_, e)) if e.errors.iter().all(|e| partial(e)) => InputStatus::Partial,
+            Ok((_, e)) => InputStatus::Failed(e),
+            Err(e) if partial(&e) => InputStatus::Partial,
+            Err(err) => InputStatus::Failed(err.into()),
         }
     }
 }

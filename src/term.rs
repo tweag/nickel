@@ -16,6 +16,7 @@
 //! contracts, default values, documentation, etc. They bring such usually external object down to
 //! the term level, and together with [merge](../merge/index.html), they allow for flexible and
 //! modular definitions of contracts, record and metadata all together.
+use crate::destruct::Destruct;
 use crate::identifier::Ident;
 use crate::label::Label;
 use crate::match_sharedterm;
@@ -66,6 +67,8 @@ pub enum Term {
     /// A let binding.
     #[serde(skip)]
     Let(Ident, RichTerm, RichTerm),
+    #[serde(skip)]
+    LetPattern(Option<Ident>, Destruct, RichTerm, RichTerm),
     /// An application.
     #[serde(skip)]
     App(RichTerm, RichTerm),
@@ -108,12 +111,6 @@ pub enum Term {
     #[serde(skip)]
     OpN(NAryOp, Vec<RichTerm>),
 
-    /// A promise.
-    ///
-    /// Represent a subterm which is to be statically typechecked.
-    #[serde(skip)]
-    Promise(Types, Label, RichTerm),
-
     /// A symbol.
     ///
     /// A unique tag corresponding to a type variable. See `Wrapped` below.
@@ -151,6 +148,14 @@ pub enum Term {
     /// A resolved import (which has already been loaded and parsed).
     #[serde(skip)]
     ResolvedImport(FileId),
+    #[serde(skip)]
+    ParseError,
+}
+
+impl From<MetaValue> for Term {
+    fn from(m: MetaValue) -> Self {
+        Term::MetaValue(m)
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
@@ -208,6 +213,12 @@ impl From<RichTerm> for MetaValue {
             priority: Default::default(),
             value: Some(rt),
         }
+    }
+}
+
+impl Default for MetaValue {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -296,7 +307,7 @@ impl Term {
     {
         use self::Term::*;
         match self {
-            Null => (),
+            Null | ParseError => (),
             Switch(ref mut t, ref mut cases, ref mut def) => {
                 cases.iter_mut().for_each(|c| {
                     let (_, t) = c;
@@ -319,10 +330,7 @@ impl Term {
             }
             Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | Sym(_) | Enum(_) | Import(_)
             | ResolvedImport(_) => {}
-            Fun(_, ref mut t)
-            | Op1(_, ref mut t)
-            | Promise(_, _, ref mut t)
-            | Wrapped(_, ref mut t) => {
+            Fun(_, ref mut t) | Op1(_, ref mut t) | Wrapped(_, ref mut t) => {
                 func(t);
             }
             MetaValue(ref mut meta) => {
@@ -335,6 +343,7 @@ impl Term {
                 meta.value.iter_mut().for_each(func);
             }
             Let(_, ref mut t1, ref mut t2)
+            | LetPattern(_, _, ref mut t1, ref mut t2)
             | App(ref mut t1, ref mut t2)
             | Op2(_, ref mut t1, ref mut t2) => {
                 func(t1);
@@ -371,16 +380,17 @@ impl Term {
             Term::Wrapped(_, _) => Some("Wrapped"),
             Term::MetaValue(_) => Some("Metavalue"),
             Term::Let(_, _, _)
+            | Term::LetPattern(_, _, _, _)
             | Term::App(_, _)
             | Term::Var(_)
             | Term::Switch(..)
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
-            | Term::Promise(_, _, _)
             | Term::Import(_)
             | Term::ResolvedImport(_)
-            | Term::StrChunks(_) => None,
+            | Term::StrChunks(_)
+            | Term::ParseError => None,
         }
         .map(String::from)
     }
@@ -407,7 +417,15 @@ impl Term {
             }
             Term::Fun(_, _) => String::from("<func>"),
             Term::Lbl(_) => String::from("<label>"),
-            Term::Enum(Ident(s)) => format!("`{}", s),
+            Term::Enum(id) => {
+                let re = regex::Regex::new("_?[a-zA-Z][_a-zA-Z0-9]*").unwrap();
+                let s = id.to_string();
+                if re.is_match(&s) {
+                    format!("`{}", s)
+                } else {
+                    format!("`\"{}\"", s)
+                }
+            }
             Term::Record(..) | Term::RecRecord(..) => String::from("{ ... }"),
             Term::List(_) => String::from("[ ... ]"),
             Term::Sym(_) => String::from("<sym>"),
@@ -435,14 +453,15 @@ impl Term {
 
                 format!("<{}{}={}>", content, value_label, value)
             }
-            Term::Var(Ident(id)) => id.clone(),
+            Term::Var(id) => id.to_string(),
+            Term::ParseError => String::from("<parse error>"),
             Term::Let(_, _, _)
+            | Term::LetPattern(_, _, _, _)
             | Term::App(_, _)
             | Term::Switch(..)
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
-            | Term::Promise(_, _, _)
             | Term::Import(_)
             | Term::ResolvedImport(_) => String::from("<unevaluated>"),
         }
@@ -489,19 +508,20 @@ impl Term {
             | Term::List(_)
             | Term::Sym(_) => true,
             Term::Let(_, _, _)
+            | Term::LetPattern(_, _, _, _)
             | Term::App(_, _)
             | Term::Var(_)
             | Term::Switch(..)
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
-            | Term::Promise(_, _, _)
             | Term::Wrapped(_, _)
             | Term::MetaValue(_)
             | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
-            | Term::RecRecord(..) => false,
+            | Term::RecRecord(..)
+            | Term::ParseError => false,
         }
     }
 
@@ -524,6 +544,7 @@ impl Term {
             | Term::Enum(_)
             | Term::Sym(_) => true,
             Term::Let(_, _, _)
+            | Term::LetPattern(_, _, _, _)
             | Term::Record(..)
             | Term::List(_)
             | Term::Fun(_, _)
@@ -533,13 +554,13 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
-            | Term::Promise(_, _, _)
             | Term::Wrapped(_, _)
             | Term::MetaValue(_)
             | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
-            | Term::RecRecord(..) => false,
+            | Term::RecRecord(..)
+            | Term::ParseError => false,
         }
     }
 }
@@ -878,6 +899,12 @@ impl fmt::Display for NAryOp {
     }
 }
 
+#[derive(Copy, Clone)]
+pub enum TraverseMethod {
+    TopDown,
+    BottomUp,
+}
+
 /// Wrap [terms](type.Term.html) with positional information.
 #[derive(Debug, PartialEq, Clone)]
 pub struct RichTerm {
@@ -910,220 +937,200 @@ impl RichTerm {
         self
     }
 
-    /// Apply a transformation on a whole term by mapping a function `f` on each node in a
-    /// bottom-up manner. `f` may return a generic error `E` and use the state `S` which is
-    /// passed around.
-    pub fn traverse<F, S, E>(self, f: &mut F, state: &mut S) -> Result<RichTerm, E>
+    /// Apply a transformation on a whole term by mapping a function `f` on each node in
+    /// manner defined by the method.
+    /// `f` may return a generic error `E` and use the state `S` which is passed around.
+    pub fn traverse<F, S, E>(
+        self,
+        f: &mut F,
+        state: &mut S,
+        method: TraverseMethod,
+    ) -> Result<RichTerm, E>
     where
         F: FnMut(RichTerm, &mut S) -> Result<RichTerm, E>,
     {
-        let pos = self.pos;
-        match_sharedterm! {self.term, with {
-                Term::Fun(id, t) => {
-                    let t = t.traverse(f, state)?;
-                    f(
-                        RichTerm {
-                            term: SharedTerm::new(Term::Fun(id, t)),
-                            pos,
-                        },
-                        state,
-                    )
-                },
-                Term::Let(id, t1, t2) => {
-                    let t1 = t1.traverse(f, state)?;
-                    let t2 = t2.traverse(f, state)?;
-                    f(
-                        RichTerm {
-                            term: SharedTerm::new(Term::Let(id, t1, t2)),
-                            pos,
-                        },
-                        state,
-                    )
-                },
-                Term::App(t1, t2) => {
-                    let t1 = t1.traverse(f, state)?;
-                    let t2 = t2.traverse(f, state)?;
-                    f(
-                        RichTerm {
-                            term: SharedTerm::new(Term::App(t1, t2)),
-                            pos,
-                        },
-                        state,
-                    )
-                },
-                Term::Switch(t, cases, default) => {
-                    // The annotation on `map_res` use Result's corresponding trait to convert from
-                    // Iterator<Result> to a Result<Iterator>
-                    let cases_res: Result<HashMap<Ident, RichTerm>, E> = cases
-                        .into_iter()
-                        // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                        .map(|(id, t)| t.traverse(f, state).map(|t_ok| (id.clone(), t_ok)))
-                        .collect();
+        let rt = match method {
+            TraverseMethod::TopDown => f(self, state)?,
+            TraverseMethod::BottomUp => self,
+        };
+        let pos = rt.pos;
 
-                    let default = default
-                        .map(|t| t.traverse(f, state))
-                        // Transpose from Option<Result> to Result<Option>. There is a `transpose`
-                        // method in Rust, but it has currently not made it to the stable version yet
-                        .map_or(Ok(None), |res| res.map(Some))?;
+        let result = match_sharedterm! {rt.term, with {
+            Term::Fun(id, t) => {
+                let t = t.traverse(f, state, method)?;
+                RichTerm::new(
+                    Term::Fun(id, t),
+                    pos,
+                    )
+            },
+            Term::Let(id, t1, t2) => {
+                let t1 = t1.traverse(f, state, method)?;
+                let t2 = t2.traverse(f, state, method)?;
+                RichTerm::new(
+                    Term::Let(id, t1, t2),
+                    pos,
+                )
+            },
+            Term::LetPattern(id, pat, t1, t2) => {
+                let t1 = t1.traverse(f, state, method)?;
+                let t2 = t2.traverse(f, state, method)?;
+                RichTerm::new(
+                    Term::LetPattern(id, pat, t1, t2),
+                    pos,
+                )
+            },
+            Term::App(t1, t2) => {
+                let t1 = t1.traverse(f, state, method)?;
+                let t2 = t2.traverse(f, state, method)?;
+                RichTerm::new(
+                    Term::App(t1, t2),
+                    pos,
+                )
+            },
+            Term::Switch(t, cases, default) => {
+                // The annotation on `map_res` use Result's corresponding trait to convert from
+                // Iterator<Result> to a Result<Iterator>
+                let cases_res: Result<HashMap<Ident, RichTerm>, E> = cases
+                    .into_iter()
+                    // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
+                    .map(|(id, t)| t.traverse(f, state, method).map(|t_ok| (id.clone(), t_ok)))
+                    .collect();
 
-                    let t = t.traverse(f, state)?;
+                let default = default.map(|t| t.traverse(f, state, method)).transpose()?;
 
-                    f(
-                        RichTerm::new(Term::Switch(t, cases_res?, default), pos),
-                        state,
-                    )
-                },
-                Term::Op1(op, t) => {
-                    let t = t.traverse(f, state)?;
-                    f(
-                        RichTerm {
-                            term: SharedTerm::new(Term::Op1(op, t)),
-                            pos,
-                        },
-                        state,
-                    )
-                },
-                Term::Op2(op, t1, t2) => {
-                    let t1 = t1.traverse(f, state)?;
-                    let t2 = t2.traverse(f, state)?;
-                    f(
-                        RichTerm {
-                            term: SharedTerm::new(Term::Op2(op, t1, t2)),
-                            pos,
-                        },
-                        state,
-                    )
-                },
-                Term::OpN(op, ts) => {
-                    let ts_res: Result<Vec<RichTerm>, E> =
-                        ts.into_iter().map(|t| t.traverse(f, state)).collect();
-                    f(
-                        RichTerm {
-                            term: SharedTerm::new(Term::OpN(op, ts_res?)),
-                            pos,
-                        },
-                        state,
-                    )
-                },
-                Term::Promise(ty, l, t) => {
-                    let t = t.traverse(f, state)?;
-                    f(
-                        RichTerm {
-                            term: SharedTerm::new(Term::Promise(ty, l, t)),
-                            pos,
-                        },
-                        state,
-                    )
-                },
-                Term::Wrapped(i, t) => {
-                    let t = t.traverse(f, state)?;
-                    f(
-                        RichTerm {
-                            term: SharedTerm::new(Term::Wrapped(i, t)),
-                            pos,
-                        },
-                        state,
-                    )
-                },
-                Term::Record(map, attrs) => {
-                    // The annotation on `map_res` uses Result's corresponding trait to convert from
-                    // Iterator<Result> to a Result<Iterator>
-                    let map_res: Result<HashMap<Ident, RichTerm>, E> = map
-                        .into_iter()
-                        // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                        .map(|(id, t)| t.traverse(f, state).map(|t_ok| (id.clone(), t_ok)))
-                        .collect();
-                    f(
-                        RichTerm {
-                            term: SharedTerm::new(Term::Record(map_res?, attrs)),
-                            pos,
-                        },
-                        state,
-                    )
-                },
-                Term::RecRecord(map, dyn_fields, attrs) => {
-                    // The annotation on `map_res` uses Result's corresponding trait to convert from
-                    // Iterator<Result> to a Result<Iterator>
-                    let map_res: Result<HashMap<Ident, RichTerm>, E> = map
-                        .into_iter()
-                        // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                        .map(|(id, t)| Ok((id, t.traverse(f, state)?)))
-                        .collect();
-                    let dyn_fields_res: Result<Vec<(RichTerm, RichTerm)>, E> = dyn_fields
-                        .into_iter()
-                        .map(|(id_t, t)| Ok((id_t.traverse(f, state)?, t.traverse(f, state)?)))
-                        .collect();
-                    f(
-                        RichTerm {
-                            term: SharedTerm::new(Term::RecRecord(map_res?, dyn_fields_res?, attrs)),
-                            pos,
-                        },
-                        state,
-                    )
-                },
-                Term::List(ts) => {
-                    let ts_res: Result<Vec<RichTerm>, E> =
-                        ts.into_iter().map(|t| t.traverse(f, state)).collect();
+                let t = t.traverse(f, state, method)?;
 
-                    f(
-                        RichTerm {
-                            term: SharedTerm::new(Term::List(ts_res?)),
-                            pos,
-                        },
-                        state,
-                    )
-                },
-                Term::StrChunks(chunks) => {
-                    let chunks_res: Result<Vec<StrChunk<RichTerm>>, E> = chunks
-                        .into_iter()
-                        .map(|chunk| match chunk {
-                            chunk @ StrChunk::Literal(_) => Ok(chunk),
-                            StrChunk::Expr(t, indent) => {
-                                Ok(StrChunk::Expr(t.traverse(f, state)?, indent))
+                RichTerm::new(
+                    Term::Switch(t, cases_res?, default),
+                    pos,
+                )
+            },
+            Term::Op1(op, t) => {
+                let t = t.traverse(f, state, method)?;
+                RichTerm::new(
+                    Term::Op1(op, t),
+                    pos,
+                )
+            },
+            Term::Op2(op, t1, t2) => {
+                let t1 = t1.traverse(f, state, method)?;
+                let t2 = t2.traverse(f, state, method)?;
+                RichTerm::new(Term::Op2(op, t1, t2),
+                    pos,
+                )
+            },
+            Term::OpN(op, ts) => {
+                let ts_res: Result<Vec<RichTerm>, E> = ts
+                    .into_iter()
+                    .map(|t| t.traverse(f, state, method))
+                    .collect();
+                RichTerm::new(
+                    Term::OpN(op, ts_res?),
+                    pos,
+                )
+            },
+            Term::Wrapped(i, t) => {
+                let t = t.traverse(f, state, method)?;
+                RichTerm::new(
+                    Term::Wrapped(i, t),
+                    pos,
+                )
+            },
+            Term::Record(map, attrs) => {
+                // The annotation on `map_res` uses Result's corresponding trait to convert from
+                // Iterator<Result> to a Result<Iterator>
+                let map_res: Result<HashMap<Ident, RichTerm>, E> = map
+                    .into_iter()
+                    // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
+                    .map(|(id, t)| t.traverse(f, state, method).map(|t_ok| (id.clone(), t_ok)))
+                    .collect();
+                RichTerm::new(
+                    Term::Record(map_res?, attrs),
+                    pos,
+                )
+            },
+            Term::RecRecord(map, dyn_fields, attrs) => {
+                // The annotation on `map_res` uses Result's corresponding trait to convert from
+                // Iterator<Result> to a Result<Iterator>
+                let map_res: Result<HashMap<Ident, RichTerm>, E> = map
+                    .into_iter()
+                    // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
+                    .map(|(id, t)| Ok((id, t.traverse(f, state, method)?)))
+                    .collect();
+                let dyn_fields_res: Result<Vec<(RichTerm, RichTerm)>, E> = dyn_fields
+                    .into_iter()
+                    .map(|(id_t, t)| {
+                        Ok((
+                            id_t.traverse(f, state, method)?,
+                            t.traverse(f, state, method)?,
+                        ))
+                    })
+                    .collect();
+                RichTerm::new(
+                    Term::RecRecord(map_res?, dyn_fields_res?, attrs),
+                    pos,
+                )
+            },
+            Term::List(ts) => {
+                let ts_res: Result<Vec<RichTerm>, E> = ts
+                    .into_iter()
+                    .map(|t| t.traverse(f, state, method))
+                    .collect();
+
+                RichTerm::new(
+                    Term::List(ts_res?),
+                    pos,
+                )
+            },
+            Term::StrChunks(chunks) => {
+                let chunks_res: Result<Vec<StrChunk<RichTerm>>, E> = chunks
+                    .into_iter()
+                    .map(|chunk| match chunk {
+                        chunk @ StrChunk::Literal(_) => Ok(chunk),
+                        StrChunk::Expr(t, indent) => {
+                            Ok(StrChunk::Expr(t.traverse(f, state, method)?, indent))
+                        }
+                    })
+                    .collect();
+
+                RichTerm::new(
+                    Term::StrChunks(chunks_res?),
+                    pos,
+                )
+            },
+            Term::MetaValue(meta) => {
+                let contracts: Result<Vec<Contract>, _> = meta
+                    .contracts
+                    .into_iter()
+                    .map(|ctr| {
+                        let types = match ctr.types {
+                            Types(AbsType::Flat(t)) => {
+                                Types(AbsType::Flat(t.traverse(f, state, method)?))
                             }
-                        })
-                        .collect();
+                            ty => ty,
+                        };
+                        Ok(Contract { types, ..ctr })
+                    })
+                    .collect();
+                let contracts = contracts?;
 
-                    f(
-                        RichTerm {
-                            term: SharedTerm::new(Term::StrChunks(chunks_res?)),
-                            pos,
-                        },
-                        state,
-                    )
-                },
-                Term::MetaValue(meta) => {
-                    let contracts: Result<Vec<Contract>, _> = meta
-                        .contracts
-                        .into_iter()
-                        .map(|ctr| {
-                            let types = match ctr.types {
-                                Types(AbsType::Flat(t)) => Types(AbsType::Flat(t.traverse(f, state)?)),
-                                ty => ty,
-                            };
-                            Ok(Contract { types, ..ctr })
-                        })
-                        .collect();
-                    let contracts = contracts?;
+                let types = meta
+                    .types
+                    .map(|ctr| {
+                        let types = match ctr.types {
+                            Types(AbsType::Flat(t)) => {
+                                Types(AbsType::Flat(t.traverse(f, state, method)?))
+                            }
+                            ty => ty,
+                        };
+                        Ok(Contract { types, ..ctr })
+                    })
+                    .transpose()?;
 
-                    let types = meta
-                        .types
-                        .map(|ctr| {
-                            let types = match ctr.types {
-                                Types(AbsType::Flat(t)) => Types(AbsType::Flat(t.traverse(f, state)?)),
-                                ty => ty,
-                            };
-                            Ok(Contract { types, ..ctr })
-                        })
-                        // Transpose from Option<Result> to Result<Option>. There is a `transpose`
-                        // method in Rust, but it has currently not made it to the stable version yet
-                        .map_or(Ok(None), |res| res.map(Some))?;
-
-                    let value = meta
-                        .value
-                        .map(|t| t.traverse(f, state))
-                        .map_or(Ok(None), |res| res.map(Some))?;
-
+                let value = meta
+                    .value
+                    .map(|t| t.traverse(f, state, method))
+                    .map_or(Ok(None), |res| res.map(Some))?;
                     let meta = MetaValue {
                         doc: meta.doc,
                         types,
@@ -1131,16 +1138,16 @@ impl RichTerm {
                         priority: meta.priority,
                         value,
                     };
+                RichTerm::new(
+                    Term::MetaValue(meta),
+                    pos,
+                )
+            }} else rt
+        };
 
-                    f(
-                        RichTerm {
-                            term: SharedTerm::new(Term::MetaValue(meta)),
-                            pos,
-                        },
-                        state,
-                    )
-                }
-            } else f(self, state)
+        match method {
+            TraverseMethod::TopDown => Ok(result),
+            TraverseMethod::BottomUp => f(result, state),
         }
     }
 }
@@ -1310,6 +1317,27 @@ pub mod make {
         I: Into<Ident>,
     {
         Term::Let(id.into(), t1.into(), t2.into()).into()
+    }
+
+    pub fn let_pat<I, D, T1, T2>(id: Option<I>, pat: D, t1: T1, t2: T2) -> RichTerm
+    where
+        T1: Into<RichTerm>,
+        T2: Into<RichTerm>,
+        D: Into<Destruct>,
+        I: Into<Ident>,
+    {
+        match pat.into() {
+            d @ (Destruct::Record(..) | Destruct::List(_)) => {
+                Term::LetPattern(id.map(|i| i.into()), d, t1.into(), t2.into()).into()
+            }
+            Destruct::Empty => {
+                if let Some(id) = id {
+                    let_in(id, t1, t2)
+                } else {
+                    Term::Null.into()
+                }
+            }
+        }
     }
 
     #[cfg(test)]

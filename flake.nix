@@ -7,8 +7,8 @@
   inputs.import-cargo.url = "github:edolstra/import-cargo";
 
   nixConfig = {
-    substituters = [ "https://nickel.cachix.org" ];
-    trusted-public-keys = [ "nickel.cachix.org-1:ABoCOGpTJbAum7U6c+04VbjvLxG9f0gJP5kYihRRdQs=" ];
+    extra-substituters = [ "https://nickel.cachix.org" ];
+    extra-trusted-public-keys = [ "nickel.cachix.org-1:ABoCOGpTJbAum7U6c+04VbjvLxG9f0gJP5kYihRRdQs=" ];
   };
 
   outputs = { self, nixpkgs, nixpkgs-wasm, nixpkgs-mozilla, import-cargo }:
@@ -43,6 +43,17 @@
           overlays = [ nixpkgs-mozilla.overlays.rust ];
         };
 
+      mkRust = pkgs: channel:
+        let
+          manifestFile = builtins.fetchurl {
+            url = pkgs.lib.rustLib.manifest_v2_url RUST_CHANNELS.${channel};
+            sha256 = RUST_CHANNELS.${channel}.sha256;
+          };
+        in
+        pkgs.lib.rustLib.fromManifestFile manifestFile {
+          inherit (pkgs) lib stdenv fetchurl patchelf;
+        };
+
       mkCargoHome = { pkgs }:
         (import-cargo.builders.importCargo {
           lockFile = ./Cargo.lock;
@@ -59,12 +70,12 @@
         else
           [];
 
-      buildNickel = { system, isShell ? false, channel ? "stable" }:
+      buildNickel = { system, isShell ? false, channel ? "stable", checkFmt ?  false }:
         let
           pkgs = mkPkgs {inherit system;};
 
           rust =
-            (pkgs.rustChannelOf RUST_CHANNELS."${channel}").rust.override({
+            (mkRust pkgs channel).rust.override({
                extensions = if isShell then [
                 "rust-src"
                 "rust-analysis"
@@ -95,8 +106,10 @@
           checkPhase =
             ''
               cargo test --release --frozen --offline
-              cargo fmt --all -- --check
-            '';
+            '' + (if checkFmt then ''
+
+                cargo fmt --all -- --check
+              '' else "");
 
           installPhase =
             ''
@@ -113,7 +126,7 @@
           pkgs = mkPkgs {inherit system;};
           pkgsPinned = import nixpkgs-wasm {inherit system;};
 
-          rust = (pkgs.rustChannelOf RUST_CHANNELS."${channel}").rust.override({
+          rust = (mkRust pkgs channel).rust.override({
             targets = ["wasm32-unknown-unknown"];
           });
 
@@ -214,11 +227,11 @@
           '';
         };
 
-      buildDevShell = { system, channel ? "stable" }: 
-      let 
+      buildDevShell = { system, channel ? "stable" }:
+      let
         pkgs = mkPkgs { inherit system; };
         nickel = buildNickel { inherit system; isShell = true; };
-        rust = (pkgs.rustChannelOf RUST_CHANNELS."${channel}").rust.override({
+        rust = (mkRust pkgs channel).rust.override({
           extensions = [ "rustfmt-preview" ];
         });
         rustFormatHook = pkgs.writeShellScriptBin "check-rust-format-hook"
@@ -228,7 +241,7 @@
             [ $RESULT != 0 ] && echo "Please run \`cargo fmt\` before"
             exit $RESULT
           '';
-        
+
         installGitHooks = hookTypes:
           let mkHook = type: hooks: {
             hook = pkgs.writeShellScript type
@@ -257,7 +270,7 @@
           '';
           in
 
-          pkgs.writeShellScriptBin "install-git-hooks" 
+          pkgs.writeShellScriptBin "install-git-hooks"
           ''
 
             if [[ ! -d .git ]] || [[ ! -f flake.nix ]]; then
@@ -271,14 +284,14 @@
             fi
 
             mkdir -p ./.git/hooks
-            
+
             ${pkgs.lib.concatStringsSep "\n" (pkgs.lib.mapAttrsToList (type: hooks: installHookScript (mkHook type hooks)) hookTypes )}
 
             echo "Installed git hooks: $INSTALLED_GIT_HOOKS"
             printf "%s\n" "''${INSTALLED_GIT_HOOKS[@]}" > .git/hooks/nix-installed-hooks
           '';
-        
-        uninstallGitHooks = pkgs.writeShellScriptBin "uninstall-git-hooks" 
+
+        uninstallGitHooks = pkgs.writeShellScriptBin "uninstall-git-hooks"
           ''
           if [[ ! -e "$PWD/.git/hooks/nix-installed-hooks" ]]; then
             echo "Error: could find list of installed hooks."
@@ -321,8 +334,9 @@
         } //
         (builtins.listToAttrs
           (map (channel:
+            let checkFmt = channel == "stable"; in
             { name = "nickel-against-${channel}-rust-channel";
-              value = buildNickel { inherit system channel; };
+              value = buildNickel { inherit system channel checkFmt; };
             }
           )
           (builtins.attrNames RUST_CHANNELS))

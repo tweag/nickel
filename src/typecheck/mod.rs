@@ -43,7 +43,6 @@
 use crate::cache::ImportResolver;
 use crate::environment::Environment as GenericEnvironment;
 use crate::error::TypecheckError;
-use crate::eval;
 use crate::identifier::Ident;
 use crate::label::ty_path;
 use crate::position::TermPos;
@@ -69,7 +68,7 @@ pub enum RowUnifError {
     /// The RHS had a additional `Dyn` tail.
     ExtraDynTail(),
     /// There were two incompatible definitions for the same row.
-    RowMismatch(Ident, UnifError),
+    RowMismatch(Ident, Box<UnifError>),
     /// Tried to unify an enum row and a record row.
     RowKindMismatch(Ident, Option<TypeWrapper>, Option<TypeWrapper>),
     /// One of the row was ill-formed (typically, a tail was neither a row, a variable nor `Dyn`).
@@ -105,9 +104,7 @@ impl RowUnifError {
             RowUnifError::RowKindMismatch(id, tyw1, tyw2) => {
                 UnifError::RowKindMismatch(id, tyw1, tyw2)
             }
-            RowUnifError::RowMismatch(id, err) => {
-                UnifError::RowMismatch(id, left, right, Box::new(err))
-            }
+            RowUnifError::RowMismatch(id, err) => UnifError::RowMismatch(id, left, right, err),
             RowUnifError::IllformedRow(tyw) => UnifError::IllformedRow(tyw),
             RowUnifError::UnsatConstr(id, tyw) => UnifError::RowConflict(id, tyw, left, right),
             RowUnifError::WithConst(c, tyw) => UnifError::WithConst(c, tyw),
@@ -355,6 +352,11 @@ pub struct Envs<'a> {
     local: Environment,
 }
 
+#[derive(Clone, Debug)]
+pub enum EnvBuildError {
+    NotARecord(RichTerm),
+}
+
 impl<'a> Envs<'a> {
     /// Create an `Envs` value with an empty local environment from a global environment.
     pub fn from_global(global: &'a Environment) -> Self {
@@ -373,23 +375,29 @@ impl<'a> Envs<'a> {
         }
     }
 
-    /// Populate a new global typing environment from a global term environment.
-    pub fn mk_global(eval_env: &eval::Environment) -> Environment {
-        eval_env
+    /// Populate a new global typing environment from a `Vec` of parsed files.
+    pub fn mk_global(envs: Vec<RichTerm>) -> Result<Environment, EnvBuildError> {
+        Ok(envs
             .iter()
-            .map(|(id, thunk)| {
-                (
-                    id.clone(),
-                    apparent_type(thunk.borrow().body.as_ref(), None).into(),
-                )
+            .map(|rt| {
+                if let Term::RecRecord(rec, ..) = rt.as_ref() {
+                    Ok(rec
+                        .iter()
+                        .map(|(id, rt)| (id.clone(), infer_type(rt.as_ref()))))
+                } else {
+                    Err(EnvBuildError::NotARecord(rt.clone()))
+                }
             })
-            .collect()
+            .collect::<Result<Vec<_>, EnvBuildError>>()?
+            .into_iter()
+            .flatten()
+            .collect())
     }
 
     /// Add the bindings of a record to a typing environment. Ignore fields whose name are defined
     /// through interpolation.
     //TODO: support the case of a record with a type annotation.
-    pub fn env_add_term(env: &mut Environment, rt: &RichTerm) -> Result<(), eval::EnvBuildError> {
+    pub fn env_add_term(env: &mut Environment, rt: &RichTerm) -> Result<(), EnvBuildError> {
         let RichTerm { term, pos } = rt;
 
         match term.as_ref() {
@@ -402,10 +410,7 @@ impl<'a> Envs<'a> {
 
                 Ok(())
             }
-            t => Err(eval::EnvBuildError::NotARecord(RichTerm::new(
-                t.clone(),
-                *pos,
-            ))),
+            t => Err(EnvBuildError::NotARecord(RichTerm::new(t.clone(), *pos))),
         }
     }
 
@@ -454,16 +459,15 @@ pub struct State<'a> {
 /// file. It however still needs the resolver to get the apparent type of imports.
 pub fn type_check<L>(
     t: &RichTerm,
-    global_eval_env: &eval::Environment,
+    global_env: &Environment,
     resolver: &impl ImportResolver,
-    linearizer: impl Linearizer<L, (UnifTable, HashMap<usize, Ident>)>,
+    mut linearizer: impl Linearizer<L, (UnifTable, HashMap<usize, Ident>)>,
 ) -> Result<(Types, Completed), TypecheckError>
 where
     L: Default,
 {
     let (mut table, mut names) = (UnifTable::new(), HashMap::new());
     let mut building = Linearization::building();
-    let global = Envs::mk_global(global_eval_env);
     let ty = TypeWrapper::Ptr(new_var(&mut table));
 
     {
@@ -476,7 +480,7 @@ where
 
         type_check_(
             &mut state,
-            Envs::from_global(&global),
+            Envs::from_global(&global_env),
             &mut building,
             linearizer.scope(linearization::ScopeId::Right),
             false,
@@ -523,7 +527,7 @@ pub fn type_check_in_env(
         ty.clone(),
     )?;
 
-    Ok(to_type(&state.table, ty))
+    Ok(to_type(state.table, ty))
 }
 
 /// Typecheck a term against a specific type.
@@ -551,7 +555,9 @@ fn type_check_<S, E>(
 ) -> Result<(), TypecheckError> {
     let RichTerm { term: t, pos } = rt;
     linearizer.add_term(lin, t, *pos, ty.clone());
+
     match t.as_ref() {
+        Term::ParseError => Ok(()),
         // null is inferred to be of type Dyn
         Term::Null => unify(state, strict, ty, mk_typewrapper::dynamic())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
@@ -565,17 +571,22 @@ fn type_check_<S, E>(
             unify(state, strict, ty, mk_typewrapper::str())
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
-            chunks
-                .iter()
-                .enumerate()
-                .try_for_each(|(choice, chunk)| -> Result<(), TypecheckError> {
+            chunks.iter().enumerate().try_for_each(
+                |(choice, chunk)| -> Result<(), TypecheckError> {
                     match chunk {
                         StrChunk::Literal(_) => Ok(()),
-                        StrChunk::Expr(t, _) => {
-                            type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Choice(choice)), strict, t, mk_typewrapper::str())
-                        }
+                        StrChunk::Expr(t, _) => type_check_(
+                            state,
+                            envs.clone(),
+                            lin,
+                            linearizer.scope(ScopeId::Choice(choice)),
+                            strict,
+                            t,
+                            mk_typewrapper::str(),
+                        ),
                     }
-                })
+                },
+            )
         }
         Term::Fun(x, t) => {
             let src = TypeWrapper::Ptr(new_var(state.table));
@@ -584,6 +595,7 @@ fn type_check_<S, E>(
             // let src = TypeWrapper::The(AbsType::Dyn());
             let trg = TypeWrapper::Ptr(new_var(state.table));
             let arr = mk_tyw_arrow!(src.clone(), trg.clone());
+            linearizer.retype_ident(lin, x, src.clone());
 
             unify(state, strict, ty, arr).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
@@ -600,7 +612,15 @@ fn type_check_<S, E>(
                 .iter()
                 .enumerate()
                 .try_for_each(|(choice, t)| -> Result<(), TypecheckError> {
-                    type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Choice(choice)), strict, t, ty_elts.clone())
+                    type_check_(
+                        state,
+                        envs.clone(),
+                        lin,
+                        linearizer.scope(ScopeId::Choice(choice)),
+                        strict,
+                        t,
+                        ty_elts.clone(),
+                    )
                 })
         }
         Term::Lbl(_) => {
@@ -610,17 +630,78 @@ fn type_check_<S, E>(
         }
         Term::Let(x, re, rt) => {
             let ty_let = binding_type(re.as_ref(), &envs, state.table, strict);
-            type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Left), strict, re, ty_let.clone())?;
+            linearizer.retype_ident(lin, x, ty_let.clone());
+            type_check_(
+                state,
+                envs.clone(),
+                lin,
+                linearizer.scope(ScopeId::Left),
+                strict,
+                re,
+                ty_let.clone(),
+            )?;
 
             // TODO move this up once lets are rec
             envs.insert(x.clone(), ty_let);
             type_check_(state, envs, lin, linearizer, strict, rt, ty)
         }
+        Term::LetPattern(x, pat, re, rt) => {
+            use crate::destruct::*;
+            fn inject_pat_vars(pat: &Destruct, envs: &mut Envs) {
+                match pat {
+                    Destruct::Record(matches, _, rst) => {
+                        if let Some(id) = rst {
+                            envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
+                        }
+                        matches.iter().for_each(|m| match m {
+                            Match::Simple(id, ..) => {
+                                envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()))
+                            }
+                            Match::Assign(_, _, (bind_id, pat)) => {
+                                if let Some(id) = bind_id {
+                                    envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
+                                }
+                                if !pat.is_empty() {
+                                    inject_pat_vars(pat, envs);
+                                }
+                            }
+                        });
+                    }
+                    _ => (),
+                }
+            }
+            let ty_let = binding_type(re.as_ref(), &envs, state.table, strict);
+            type_check_(
+                state,
+                envs.clone(),
+                lin,
+                linearizer.scope(ScopeId::Left),
+                strict,
+                re,
+                ty_let.clone(),
+            )?;
+
+            // TODO typecheck the interior of the patern
+            if let Some(x) = x {
+                envs.insert(x.clone(), ty_let);
+                inject_pat_vars(pat, &mut envs);
+            }
+            //type_check_(state, envs, strict, rt, ty)
+            Ok(())
+        }
         Term::App(e, t) => {
             let src = TypeWrapper::Ptr(new_var(state.table));
             let arr = mk_tyw_arrow!(src.clone(), ty);
 
-            type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Left), strict, e, arr)?;
+            type_check_(
+                state,
+                envs.clone(),
+                lin,
+                linearizer.scope(ScopeId::Left),
+                strict,
+                e,
+                arr,
+            )?;
             type_check_(state, envs, lin, linearizer, strict, t, src)
         }
         Term::Switch(exp, cases, default) => {
@@ -629,12 +710,28 @@ fn type_check_<S, E>(
             let res = TypeWrapper::Ptr(new_var(state.table));
 
             for (choice, case) in cases.values().enumerate() {
-                type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Choice(choice)), strict, case, res.clone())?;
+                type_check_(
+                    state,
+                    envs.clone(),
+                    lin,
+                    linearizer.scope(ScopeId::Choice(choice)),
+                    strict,
+                    case,
+                    res.clone(),
+                )?;
             }
 
             let row = match default {
                 Some(t) => {
-                    type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Right),strict, t, res.clone())?;
+                    type_check_(
+                        state,
+                        envs.clone(),
+                        lin,
+                        linearizer.scope(ScopeId::Right),
+                        strict,
+                        t,
+                        res.clone(),
+                    )?;
                     TypeWrapper::Ptr(new_var(state.table))
                 }
                 None => cases.iter().try_fold(
@@ -650,7 +747,7 @@ fn type_check_<S, E>(
         }
         Term::Var(x) => {
             let x_ty = envs
-                .get(&x)
+                .get(x)
                 .ok_or_else(|| TypecheckError::UnboundIdentifier(x.clone(), *pos))?;
 
             let instantiated = instantiate_foralls(state, x_ty, ForallInst::Ptr);
@@ -667,19 +764,27 @@ fn type_check_<S, E>(
         Term::RecRecord(stat_map, dynamic, _) if !dynamic.is_empty() => {
             let ty_dyn = TypeWrapper::Ptr(new_var(state.table));
 
-            for (id, _) in stat_map {
+            for id in stat_map.keys() {
                 envs.insert(id.clone(), ty_dyn.clone());
+                linearizer.retype_ident(lin, id, ty_dyn.clone())
             }
 
-            stat_map
-                .iter()
-                .enumerate()
-                .try_for_each(|(choice, (_, t))| -> Result<(), TypecheckError> {
-                    type_check_(state, envs.clone(),lin , linearizer.scope(ScopeId::Choice(choice)), strict,t, ty_dyn.clone())
-                })?;
+            stat_map.iter().enumerate().try_for_each(
+                |(choice, (_, t))| -> Result<(), TypecheckError> {
+                    type_check_(
+                        state,
+                        envs.clone(),
+                        lin,
+                        linearizer.scope(ScopeId::Choice(choice)),
+                        strict,
+                        t,
+                        ty_dyn.clone(),
+                    )
+                },
+            )?;
 
             unify(state, strict, ty, mk_typewrapper::dyn_record(ty_dyn))
-                    .map_err(|err| err.into_typecheck_err(state, rt.pos))
+                .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Record(stat_map, _) | Term::RecRecord(stat_map, ..) => {
             // For recursive records, we look at the apparent type of each field and bind it in
@@ -688,7 +793,8 @@ fn type_check_<S, E>(
             if let Term::RecRecord(..) = t.as_ref() {
                 for (id, rt) in stat_map {
                     let tyw = binding_type(rt.as_ref(), &envs, state.table, strict);
-                    envs.insert(id.clone(), tyw);
+                    envs.insert(id.clone(), tyw.clone());
+                    linearizer.retype_ident(lin, id, tyw);
                 }
             }
 
@@ -700,12 +806,19 @@ fn type_check_<S, E>(
 
             if let TypeWrapper::Concrete(AbsType::DynRecord(rec_ty)) = root_ty {
                 // Checking for a dynamic record
-                stat_map
-                    .iter()
-                    .enumerate()
-                    .try_for_each(|(choice, (_, t))| -> Result<(), TypecheckError> {
-                        type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Choice(choice)), strict, t, (*rec_ty).clone())
-                    })
+                stat_map.iter().enumerate().try_for_each(
+                    |(choice, (_, t))| -> Result<(), TypecheckError> {
+                        type_check_(
+                            state,
+                            envs.clone(),
+                            lin,
+                            linearizer.scope(ScopeId::Choice(choice)),
+                            strict,
+                            t,
+                            (*rec_ty).clone(),
+                        )
+                    },
+                )
             } else {
                 let row = stat_map.iter().enumerate().try_fold(
                     mk_tyw_row!(),
@@ -714,12 +827,20 @@ fn type_check_<S, E>(
                         // annotations) have already be determined and put in the typing
                         // environment, and we need to use the same.
                         let ty = if let Term::RecRecord(..) = t.as_ref() {
-                            envs.get(&id).unwrap()
+                            envs.get(id).unwrap()
                         } else {
                             TypeWrapper::Ptr(new_var(state.table))
                         };
 
-                        type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Choice(choice)), strict, field, ty.clone())?;
+                        type_check_(
+                            state,
+                            envs.clone(),
+                            lin,
+                            linearizer.scope(ScopeId::Choice(choice)),
+                            strict,
+                            field,
+                            ty.clone(),
+                        )?;
 
                         Ok(mk_tyw_row!((id.clone(), ty); acc))
                     },
@@ -734,14 +855,30 @@ fn type_check_<S, E>(
 
             unify(state, strict, ty, ty_res)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Right),strict, t, ty_arg)
+            type_check_(
+                state,
+                envs.clone(),
+                lin,
+                linearizer.scope(ScopeId::Right),
+                strict,
+                t,
+                ty_arg,
+            )
         }
         Term::Op2(op, t1, t2) => {
             let (ty_arg1, ty_arg2, ty_res) = get_bop_type(state, op)?;
 
             unify(state, strict, ty, ty_res)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Left), strict, t1, ty_arg1)?;
+            type_check_(
+                state,
+                envs.clone(),
+                lin,
+                linearizer.scope(ScopeId::Left),
+                strict,
+                t1,
+                ty_arg1,
+            )?;
             type_check_(state, envs, lin, linearizer, strict, t2, ty_arg2)
         }
         Term::OpN(op, args) => {
@@ -755,15 +892,21 @@ fn type_check_<S, E>(
                 .enumerate()
                 .zip(args.iter())
                 .try_for_each(|((choice, ty_t), t)| {
-                    type_check_(state, envs.clone(), lin, linearizer.scope(ScopeId::Choice(choice)), strict, t, ty_t)?;
+                    type_check_(
+                        state,
+                        envs.clone(),
+                        lin,
+                        linearizer.scope(ScopeId::Choice(choice)),
+                        strict,
+                        t,
+                        ty_t,
+                    )?;
                     Ok(())
                 })?;
 
             Ok(())
         }
-        Term::Promise(ty2, _, t)
-        // A non-empty metavalue with a type annotation is a promise.
-        | Term::MetaValue(MetaValue {
+        Term::MetaValue(MetaValue {
             types: Some(Contract { types: ty2, .. }),
             value: Some(t),
             ..
@@ -778,9 +921,7 @@ fn type_check_<S, E>(
         // A metavalue with at least one contract is an assume. If there's several
         // contracts, we arbitrarily chose the first one as the type annotation.
         Term::MetaValue(MetaValue {
-            contracts,
-            value,
-            ..
+            contracts, value, ..
         }) if !contracts.is_empty() => {
             let ctr = contracts.get(0).unwrap();
             let Contract { types: ty2, .. } = ctr;
@@ -791,9 +932,16 @@ fn type_check_<S, E>(
             // if there's an inner value, we have to recursively typecheck it, but in non strict
             // mode.
             if let Some(t) = value {
-                type_check_(state, envs, lin, linearizer, false, t, mk_typewrapper::dynamic())
-            }
-            else {
+                type_check_(
+                    state,
+                    envs,
+                    lin,
+                    linearizer,
+                    false,
+                    t,
+                    mk_typewrapper::dynamic(),
+                )
+            } else {
                 Ok(())
             }
         }
@@ -807,10 +955,8 @@ fn type_check_<S, E>(
         // A metavalue without a body nor a type annotation is a record field without definition.
         // This should probably be non representable in the syntax, as it doesn't really make
         // sense. In any case, we infer it to be of type `Dyn` for now.
-        Term::MetaValue(_) => {
-             unify(state, strict, ty, mk_typewrapper::dynamic())
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))
-        },
+        Term::MetaValue(_) => unify(state, strict, ty, mk_typewrapper::dynamic())
+            .map_err(|err| err.into_typecheck_err(state, rt.pos)),
         Term::Import(_) => unify(state, strict, ty, mk_typewrapper::dynamic())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
         // We use the apparent type of the import for checking. This function doesn't recursively
@@ -820,7 +966,8 @@ fn type_check_<S, E>(
                 .resolver
                 .get(*file_id)
                 .expect("Internal error: resolved import not found ({:?}) during typechecking.");
-            let ty_import : TypeWrapper = apparent_type(t.as_ref(), Some(&Envs::from_envs(&envs))).into();
+            let ty_import: TypeWrapper =
+                apparent_type(t.as_ref(), Some(&Envs::from_envs(&envs))).into();
             unify(state, strict, ty, ty_import).map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
     }
@@ -902,8 +1049,7 @@ impl From<ApparentType> for TypeWrapper {
 ///   the future, such as `Dyn -> Dyn` for functions, `{ | Dyn}` for records, and so on).
 pub fn apparent_type(t: &Term, envs: Option<&Envs>) -> ApparentType {
     match t {
-        Term::Promise(ty, _, _)
-        | Term::MetaValue(MetaValue {
+        Term::MetaValue(MetaValue {
             types: Some(Contract { types: ty, .. }),
             ..
         }) => ApparentType::Annotated(ty.clone()),
@@ -924,6 +1070,30 @@ pub fn apparent_type(t: &Term, envs: Option<&Envs>) -> ApparentType {
             .map(ApparentType::FromEnv)
             .unwrap_or(ApparentType::Approximated(Types(AbsType::Dyn()))),
         _ => ApparentType::Approximated(Types(AbsType::Dyn())),
+    }
+}
+
+/// Infer type of a more complex structure.
+/// For now, it's implemented only to infer the type of a non annotated record by gathering the apparent type of the fields.
+/// It's used essentially to type the stdlib.
+pub fn infer_type(t: &Term) -> TypeWrapper {
+    match t {
+        Term::Record(rec, ..) | Term::RecRecord(rec, ..) => AbsType::StaticRecord(Box::new(
+            TypeWrapper::Concrete(rec.iter().fold(AbsType::RowEmpty(), |r, (id, rt)| {
+                AbsType::RowExtend(
+                    id.clone(),
+                    Some(Box::new(infer_type(rt.term.as_ref()))),
+                    Box::new(r.into()),
+                )
+            })),
+        ))
+        .into(),
+        Term::MetaValue(MetaValue {
+            value: Some(rt),
+            types: None,
+            ..
+        }) => infer_type(rt.as_ref()),
+        t => apparent_type(t, None).into(),
     }
 }
 
@@ -1173,7 +1343,7 @@ fn row_add(
         }
         TypeWrapper::Ptr(root) => {
             if let Some(set) = state.constr.get(&root) {
-                if set.contains(&id) {
+                if set.contains(id) {
                     return Err(RowUnifError::UnsatConstr(id.clone(), ty.map(|tyw| *tyw)));
                 }
             }
@@ -1360,7 +1530,7 @@ pub fn unify_rows(
             match (ty, ty2) {
                 (None, None) => Ok(()),
                 (Some(ty), Some(ty2)) => unify_(state, *ty, *ty2)
-                    .map_err(|err| RowUnifError::RowMismatch(id.clone(), err)),
+                    .map_err(|err| RowUnifError::RowMismatch(id.clone(), Box::new(err))),
                 (ty1, ty2) => Err(RowUnifError::RowKindMismatch(
                     id,
                     ty1.map(|t| *t),
@@ -1485,7 +1655,7 @@ pub mod reporting {
             name = format!("{}{}", name, suffix);
         }
 
-        let ident = Ident(name);
+        let ident = Ident::from(name);
         name_reg.reg.insert(id, ident.clone());
         ident
     }
@@ -2103,7 +2273,7 @@ pub fn constr_unify(
                 }
                 TypeWrapper::Concrete(AbsType::RowExtend(_, _, tail)) => tyw = tail,
                 TypeWrapper::Ptr(u) if *u != p => {
-                    if let Some(u_constr) = constr.get_mut(&u) {
+                    if let Some(u_constr) = constr.get_mut(u) {
                         u_constr.extend(p_constr.into_iter());
                     } else {
                         constr.insert(*u, p_constr);
