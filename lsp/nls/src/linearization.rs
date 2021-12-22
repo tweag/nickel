@@ -326,7 +326,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
         // `offset` is used to find the [LinearizationItem] representing the field
         // Field items are inserted immediately after the record
         if !matches!(term, Term::Op1(UnaryOp::StaticAccess(_), _)) {
-            if let Some((record, (offset, Ident {pos: field_pos, ..}))) = self
+            if let Some((record, (offset, Ident { pos: field_pos, .. }))) = self
                 .record_fields
                 .take()
                 .map(|(record, mut fields)| (record, fields.pop().unwrap()))

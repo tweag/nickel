@@ -48,7 +48,10 @@ where
     String: From<F>,
 {
     fn from(val: F) -> Self {
-        Ident {label: String::from(val), pos: TermPos::None}
+        Ident {
+            label: String::from(val),
+            pos: TermPos::None,
+        }
     }
 }
 
