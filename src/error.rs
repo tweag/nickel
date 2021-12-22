@@ -922,25 +922,38 @@ impl ToDiagnostic<FileId> for EvalError {
 
                 let mut field: Option<String> = None;
                 let mut pos_record = TermPos::None;
+                let mut pos_access: Option<TermPos> = None;
 
                 for elt in callstack.as_ref().iter().rev() {
                     match elt {
-                        StackElem::Var(_, id, _) if !id.is_generated() && field.is_none() => {
-                            field = Some(id.to_string())
+                        StackElem::Var { id, pos, .. } if !id.is_generated() && field.is_none() => {
+                            field = Some(id.to_string());
+                            pos_access = Some(*pos);
                         }
-                        StackElem::Field(_, id, pos) => {
+                        StackElem::Field {
+                            id,
+                            pos_record: pos_rec,
+                            pos_access: pos_acc,
+                            ..
+                        } => {
                             field.get_or_insert(id.to_string());
-                            pos_record = *pos;
+                            pos_access.get_or_insert(*pos_acc);
+                            pos_record = *pos_rec;
                             break;
                         }
                         _ => (),
                     }
                 }
 
-                let labels = pos_record
-                    .into_opt()
-                    .map(|span| vec![primary(&span).with_message("in this record")])
-                    .unwrap_or_default();
+                let mut labels = vec![];
+
+                if let Some(span) = pos_record.into_opt() {
+                    labels.push(primary(&span).with_message("in this record"));
+                }
+
+                if let Some(span) = pos_access.map(TermPos::into_opt).flatten() {
+                    labels.push(secondary(&span).with_message("accessed here"));
+                }
 
                 vec![
                     Diagnostic::error()

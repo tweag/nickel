@@ -608,7 +608,8 @@ where
                 }
                 // TODO: improve error message using some positions
                 else {
-                    return Err(EvalError::Other(String::from("empty metavalue"), pos));
+                    let label = meta.contracts.pop().unwrap().label;
+                    return Err(EvalError::MissingFieldDef(label, call_stack));
                 }
             }
             Term::ResolvedImport(id) => {
