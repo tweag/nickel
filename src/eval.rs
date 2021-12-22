@@ -364,6 +364,23 @@ pub struct CallDescr {
     pub span: RawSpan,
 }
 
+/// A call stack element.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum StackElem {
+    /// A function body was entered. The position is the position of the original application.
+    Fun(TermPos),
+    /// An application was evaluated.
+    App(TermPos),
+    /// A variable was entered.
+    Var(IdentKind, Ident, TermPos),
+    /// A record field was entered.
+    Field(
+        TermPos, /* the position of the field access */
+        Ident,   /* the field name */
+        TermPos, /* the position of the record */
+    ),
+}
+
 impl CallStack {
     pub fn new() -> Self {
         CallStack(Vec::new())
@@ -539,23 +556,6 @@ impl From<CallStack> for Vec<StackElem> {
     fn from(cs: CallStack) -> Self {
         cs.0
     }
-}
-
-/// A call stack element.
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum StackElem {
-    /// A function body was entered. The position is the position of the original application.
-    Fun(TermPos),
-    /// An application was evaluated.
-    App(TermPos),
-    /// A variable was entered.
-    Var(IdentKind, Ident, TermPos),
-    /// A record field was entered.
-    Field(
-        TermPos, /* the position of the record */
-        Ident,   /* the field name */
-        TermPos, /* the position of the field access */
-    ),
 }
 
 /// Kind of an identifier.
