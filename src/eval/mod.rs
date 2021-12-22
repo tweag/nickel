@@ -107,6 +107,12 @@ use lazy::*;
 use operation::{continuate_operation, OperationCont};
 use stack::Stack;
 
+impl AsRef<Vec<StackElem>> for CallStack {
+    fn as_ref(&self) -> &Vec<StackElem> {
+        &self.0
+    }
+}
+
 /// Kind of an identifier.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum IdentKind {
