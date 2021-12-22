@@ -439,7 +439,7 @@ fn process_unary_operation(
             if let Term::Record(mut static_map, attrs) = *t {
                 match static_map.remove(&id) {
                     Some(e) => {
-                        call_stack.enter_field(e.pos, id, pos_op);
+                        call_stack.enter_field(id, pos, e.pos, pos_op);
                         Ok(Closure { body: e, env })
                     }
                     None => Err(EvalError::FieldMissing(
@@ -1519,7 +1519,7 @@ fn process_binary_operation(
                     let ident = Ident::from(&id_str);
                     match static_map.remove(&ident) {
                         Some(e) => {
-                            call_stack.enter_field(e.pos, ident, pos_op);
+                            call_stack.enter_field(ident, pos2, e.pos, pos_op);
                             Ok(Closure { body: e, env: env2 })
                         }
                         None => Err(EvalError::FieldMissing(

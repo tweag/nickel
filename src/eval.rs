@@ -372,13 +372,18 @@ pub enum StackElem {
     /// An application was evaluated.
     App(TermPos),
     /// A variable was entered.
-    Var(IdentKind, Ident, TermPos),
+    Var {
+        kind: IdentKind,
+        id: Ident,
+        pos: TermPos,
+    },
     /// A record field was entered.
-    Field(
-        TermPos, /* the position of the field access */
-        Ident,   /* the field name */
-        TermPos, /* the position of the record */
-    ),
+    Field {
+        id: Ident,
+        pos_record: TermPos,
+        pos_field: TermPos,
+        pos_access: TermPos,
+    },
 }
 
 impl CallStack {
@@ -388,7 +393,7 @@ impl CallStack {
 
     /// Push a marker to indicate that a var was entered.
     pub fn enter_var(&mut self, kind: IdentKind, id: Ident, pos: TermPos) {
-        self.0.push(StackElem::Var(kind, id, pos));
+        self.0.push(StackElem::Var { kind, id, pos });
     }
 
     /// Push a marker to indicate that an application was entered.
@@ -410,8 +415,19 @@ impl CallStack {
     }
 
     /// Push a marker to indicate that a record field was entered.
-    pub fn enter_field(&mut self, record_pos: TermPos, field_id: Ident, pos: TermPos) {
-        self.0.push(StackElem::Field(record_pos, field_id, pos));
+    pub fn enter_field(
+        &mut self,
+        id: Ident,
+        pos_record: TermPos,
+        pos_field: TermPos,
+        pos_access: TermPos,
+    ) {
+        self.0.push(StackElem::Field {
+            id,
+            pos_record,
+            pos_field,
+            pos_access,
+        });
     }
 
     /// Process a raw callstack by aggregating elements belonging to the same call. Return a list
@@ -467,12 +483,12 @@ impl CallStack {
         // We filter out calls and accesses made from within the builtin contracts, as well as
         // generated variables introduced by program transformations.
         let it = self.0.iter().filter(|elem| match elem {
-            StackElem::Var(_, id, _) if id.is_generated() => false,
-            StackElem::Var(_, _, TermPos::Original(RawSpan { src_id, .. }))
-            | StackElem::Var(_, _, TermPos::Inherited(RawSpan { src_id, .. }))
+            StackElem::Var {id, ..} if id.is_generated() => false,
+            StackElem::Var{ pos: TermPos::Original(RawSpan { src_id, .. }), ..}
+            | StackElem::Var{pos: TermPos::Inherited(RawSpan { src_id, .. }), ..}
             | StackElem::Fun(TermPos::Original(RawSpan { src_id, .. }))
-            | StackElem::Field(_, _, TermPos::Original(RawSpan { src_id, .. }))
-            | StackElem::Field(_, _, TermPos::Inherited(RawSpan { src_id, .. }))
+            | StackElem::Field {pos_access: TermPos::Original(RawSpan { src_id, .. }), ..}
+            | StackElem::Field {pos_access: TermPos::Inherited(RawSpan { src_id, .. }), ..}
             | StackElem::App(TermPos::Original(RawSpan { src_id, .. }))
             // We avoid applications (Fun/App) with inherited positions. Such calls include
             // contracts applications which add confusing call items whose positions don't point to
@@ -499,7 +515,12 @@ impl CallStack {
 
         for elt in it {
             match elt {
-                StackElem::Var(_, id, pos) | StackElem::Field(_, id, pos) => {
+                StackElem::Var { id, pos, .. }
+                | StackElem::Field {
+                    id,
+                    pos_access: pos,
+                    ..
+                } => {
                     match pending.last_mut() {
                         Some(CallDescr {
                             head: ref mut head @ None,
@@ -997,7 +1018,7 @@ where
                 }
             }
             // Unwrapping of enriched terms
-            Term::MetaValue(meta) if enriched_strict => {
+            Term::MetaValue(mut meta) if enriched_strict => {
                 if meta.value.is_some() {
                     /* Since we are forcing a metavalue, we are morally evaluating `force t` rather
                      * than `t` iteself.  Updating a thunk after having performed this forcing may
@@ -1028,7 +1049,8 @@ where
                 }
                 // TODO: improve error message using some positions
                 else {
-                    return Err(EvalError::Other(String::from("empty metavalue"), pos));
+                    let label = meta.contracts.pop().unwrap().label;
+                    return Err(EvalError::MissingFieldDef(label, call_stack));
                 }
             }
             Term::ResolvedImport(id) => {
