@@ -423,7 +423,7 @@ InfixBOp: BinaryOp = {
     InfixBOp8,
 }
 
-InfixLazyBOp: UnaryOp = {
+InfixUOpOrLazyBOp: UnaryOp = {
     InfixUOp5,
     InfixLazyBOp9,
     InfixLazyBOp10,
@@ -431,7 +431,7 @@ InfixLazyBOp: UnaryOp = {
 
 InfixOp: InfixOp = {
     <InfixBOp> => <>.into(),
-    <InfixLazyBOp> => <>.into(),
+    <InfixUOpOrLazyBOp> => <>.into(),
 }
 
 CurriedOp: RichTerm = {
