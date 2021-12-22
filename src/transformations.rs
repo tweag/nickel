@@ -31,8 +31,8 @@ generate_counter!(FreshVarCounter, usize);
 /// ```
 pub mod desugar_destructuring {
     use super::{Ident, RichTerm, Term};
-    use crate::match_sharedterm;
     use crate::destruct::{Destruct, Match};
+    use crate::match_sharedterm;
     use crate::term::make::{op1, op2};
     use crate::term::MetaValue;
     use crate::term::{BinaryOp::DynRemove, UnaryOp::StaticAccess};

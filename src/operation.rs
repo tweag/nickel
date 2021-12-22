@@ -955,7 +955,7 @@ fn process_unary_operation(
                     RichTerm { term: t, pos },
                 ))
             }
-        },
+        }
     }
 }
 
