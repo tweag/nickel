@@ -130,7 +130,10 @@ pub fn elaborate_field_path(
             };
 
             if let Some(static_access) = static_access {
-                let id = Ident(static_access, exp.pos);
+                let id = Ident {
+                    label: static_access,
+                    pos: exp.pos,
+                };
 
                 let mut map = HashMap::new();
                 map.insert(id, acc);
@@ -194,7 +197,14 @@ where
                     });
 
                     if is_static.is_ok() {
-                        insert_static_field(&mut static_map, Ident(buffer, e.pos), t)
+                        insert_static_field(
+                            &mut static_map,
+                            Ident {
+                                label: buffer,
+                                pos: e.pos,
+                            },
+                            t,
+                        )
                     } else {
                         dynamic_fields.push((e, t));
                     }

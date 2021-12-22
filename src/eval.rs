@@ -364,9 +364,9 @@ pub enum StackElem {
 /// Kind of an identifier.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum IdentKind {
-    Let(),
-    Lam(),
-    Record(),
+    Let,
+    Lam,
+    Record,
 }
 
 /// A closure, a term together with an environment.
@@ -402,7 +402,7 @@ pub fn env_add_term(env: &mut Environment, rt: RichTerm) -> Result<(), EnvBuildE
             let ext = bindings.into_iter().map(|(id, t)| {
                 (
                     id,
-                    Thunk::new(Closure::atomic_closure(t), IdentKind::Record()),
+                    Thunk::new(Closure::atomic_closure(t), IdentKind::Record),
                 )
             });
 
@@ -419,7 +419,7 @@ pub fn env_add(env: &mut Environment, id: Ident, rt: RichTerm, local_env: Enviro
         body: rt,
         env: local_env,
     };
-    env.insert(id, Thunk::new(closure, IdentKind::Let()));
+    env.insert(id, Thunk::new(closure, IdentKind::Let));
 }
 
 /// Determine if a thunk is worth being put on the stack for future update.
@@ -588,7 +588,7 @@ where
                     body: s,
                     env: env.clone(),
                 };
-                env.insert(x, Thunk::new(closure, IdentKind::Let()));
+                env.insert(x, Thunk::new(closure, IdentKind::Let));
                 Closure { body: t, env }
             }
             Term::Switch(exp, cases, default) => {
@@ -725,7 +725,7 @@ where
                                 body: rt.clone(),
                                 env: Environment::new(),
                             };
-                            rec_env.insert(id.clone(), Thunk::new(closure, IdentKind::Let()));
+                            rec_env.insert(id.clone(), Thunk::new(closure, IdentKind::Let));
                             Ok(rec_env)
                         }
                     },
@@ -1400,7 +1400,7 @@ mod tests {
             Ident::from("g"),
             Thunk::new(
                 Closure::atomic_closure(Term::Num(1.0).into()),
-                IdentKind::Let(),
+                IdentKind::Let,
             ),
         );
 
@@ -1421,7 +1421,7 @@ mod tests {
             .map(|(id, t)| {
                 (
                     id.into(),
-                    Thunk::new(Closure::atomic_closure(t), IdentKind::Let()),
+                    Thunk::new(Closure::atomic_closure(t), IdentKind::Let),
                 )
             })
             .collect()
