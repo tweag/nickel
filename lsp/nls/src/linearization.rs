@@ -454,29 +454,6 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                 //           would do with the value will be handled in the following
                 //           call to [Self::add_term]
 
-<<<<<<< HEAD
-                for contract in meta.contracts.iter().cloned() {
-                    match contract.types.0 {
-                        nickel::types::AbsType::Flat(RichTerm { term, pos: _ }) => {
-                            match &*term {
-                                Term::Var(ident) => {
-                                    let parent = self.env.get(&ident);
-                                    lin.push(LinearizationItem {
-                                        id: lin.mk_id(),
-                                        pos,
-                                        ty: TypeWrapper::Concrete(AbsType::Var(ident.clone())),
-                                        scope: self.scope.clone(),
-                                        // id = parent: full let binding including the body
-                                        // id = parent + 1: actual delcaration scope, i.e. _ = < definition >
-                                        kind: TermKind::Usage(parent.map(|id| id + 1)),
-                                        meta: None,
-                                    });
-                                    if let Some(parent) = parent {
-                                        lin.add_usage(parent, id);
-                                    }
-                                }
-                                _ => {}
-=======
                 for contract in meta.contracts.iter() {
                     if let nickel::types::AbsType::Flat(RichTerm { term, pos: _ }) =
                         &contract.types.0
@@ -496,7 +473,6 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                             });
                             if let Some(parent) = parent {
                                 lin.add_usage(parent, id);
->>>>>>> master
                             }
                         }
                     }
