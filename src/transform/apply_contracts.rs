@@ -8,7 +8,7 @@
 //!
 //! It must be run before `share_normal_form` to avoid rechecking contracts each time the inner
 //! value is unwrapped.
-use crate::term::{RichTerm, Term};
+use crate::term::{make as mk_term, BinaryOp, RichTerm, Term};
 use crate::{match_sharedterm, mk_app};
 
 /// If the top-level node of the AST is a meta-value, apply the meta-value's contracts to the inner
@@ -19,15 +19,20 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
         with {
             Term::MetaValue(meta) if meta.value.is_some() => {
                 let mut meta = meta;
+                let pos_inh = pos.into_inherited();
                 let inner = meta.types.iter().chain(meta.contracts.iter()).fold(
                     meta.value.take().unwrap(),
                     |acc, ctr| {
                         mk_app!(
-                            ctr.types.clone().contract(),
-                            Term::Lbl(ctr.label.clone()),
+                            mk_term::op2(
+                                BinaryOp::Assume(),
+                                ctr.types.contract(),
+                                Term::Lbl(ctr.label.clone())
+                            )
+                            .with_pos(pos_inh),
                             acc
                         )
-                        .with_pos(pos)
+                        .with_pos(pos_inh)
                     },
                 );
 

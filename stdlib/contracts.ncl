@@ -7,11 +7,14 @@
 
   string = fun l t => if %is_str% t then t else %blame% l,
 
-  list = fun elt l t => if %is_list% t then %map% t (elt (%go_list% l)) else %blame% l,
+  list = fun elt l t =>
+    if %is_list% t then
+      %map% t (fun value => %assume% elt (%go_list% l) value)
+    else %blame% l,
 
   func = fun s t l e =>
       if %is_fun% e then
-          (fun x => t (%go_codom% l) (e (s (%chng_pol% (%go_dom% l)) x)))
+          (fun x => %assume% t (%go_codom% l) (e (%assume% s (%chng_pol% (%go_dom% l)) x)))
       else
           %blame% l,
 
@@ -28,23 +31,23 @@
       if (case t) then
           t
       else
-          contr (%tag% "NotRowExt" l) t,
+          %assume% contr (%tag% "NotRowExt" l) t,
 
   record = fun cont l t =>
       if %is_record% t then
-          cont {} l t
+          %assume% (cont {}) l t
       else
           %blame% (%tag% "not a record" l),
 
   dyn_record = fun contr l t =>
       if %is_record% t then
-          %record_map% t (fun _field => contr l)
+          %record_map% t (fun _field value => %assume% contr l value)
       else
           %blame% (%tag% "not a record" l),
 
   record_extend = fun field contr cont acc l t =>
       if %has_field% field t then
-          let acc = acc$[field = contr (%go_field% field l) (t."#{field}")] in
+          let acc = acc$[field = %assume% contr (%go_field% field l) (t."#{field}")] in
           let t = t -$ field in
           cont acc l t
       else
@@ -151,5 +154,30 @@
         ```
         "#m
       = fun msg l => %tag% msg l,
+
+    apply
+      | doc m#"
+        Apply a contract to a label and a value.
+
+        Type: `Contract -> Lbl -> Dyn -> Dyn`
+        (for technical reasons, this element isn't actually statically typed)
+
+        Nickel supports user-defined contracts defined as functions, but also as
+        records. Moreover, the interpreter performs additional book-keeping for
+        error reporting when applying a contract in an expression `value |
+        #Contract`. You should not use standard function application to apply a
+        contract, but this function instead. 
+
+        For example:
+        ```
+        let Nullable = fun contract label value =>
+          if value == null then null
+          else contracts.apply contract label value
+        in
+        let Contract = Nullable {foo | Num} in
+        ({foo = 1} | #Contract)
+        ```
+        "#m
+      = fun contract label value => %assume% contract label value,
   },
 }
