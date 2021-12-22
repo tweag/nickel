@@ -887,21 +887,21 @@ impl ToDiagnostic<FileId> for EvalError {
                 } else if let Some(id) = contract_id {
                     let (calls, curr_call) = call_stack.group_by_calls(id);
                     let diag_curr_call = curr_call.map(|cdescr| {
-                        let name = cdescr.head
+                        let name = cdescr
+                            .head
                             .map(|ident| ident.to_string())
                             .unwrap_or_else(|| String::from("<func>"));
-                        Diagnostic::note().with_labels(vec![
-                            primary(&cdescr.span).with_message(format!("While calling to {}", name))
-                        ])
+                        Diagnostic::note().with_labels(vec![primary(&cdescr.span)
+                            .with_message(format!("While calling to {}", name))])
                     });
-                    let diags =
-                        calls.into_iter().enumerate().map(|(i, cdescr)| {
-                            let name = cdescr.head
-                                .map(|ident| ident.to_string())
-                                .unwrap_or_else(|| String::from("<func>"));
-                            Diagnostic::note().with_labels(vec![secondary(&cdescr.span)
-                                .with_message(format!("({}) calling {}", i + 1, name))])
-                        });
+                    let diags = calls.into_iter().enumerate().map(|(i, cdescr)| {
+                        let name = cdescr
+                            .head
+                            .map(|ident| ident.to_string())
+                            .unwrap_or_else(|| String::from("<func>"));
+                        Diagnostic::note().with_labels(vec![secondary(&cdescr.span)
+                            .with_message(format!("({}) calling {}", i + 1, name))])
+                    });
 
                     diagnostics.extend(diag_curr_call);
                     diagnostics.extend(diags);

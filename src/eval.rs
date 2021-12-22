@@ -388,11 +388,7 @@ impl CallStack {
 
     /// Push a marker to indicate that a var was entered.
     pub fn enter_var(&mut self, kind: IdentKind, id: Ident, pos: TermPos) {
-        // We ignore generated variables introduced by program transformations. They are not
-        // relevant for error reporting.
-        if !id.is_generated() {
-            self.0.push(StackElem::Var(kind, id, pos));
-        }
+        self.0.push(StackElem::Var(kind, id, pos));
     }
 
     /// Push a marker to indicate that an application was entered.
@@ -468,8 +464,10 @@ impl CallStack {
         self: &CallStack,
         contract_id: FileId,
     ) -> (Vec<CallDescr>, Option<CallDescr>) {
-        // We filter out calls and accesses made from within the builtin contracts.
+        // We filter out calls and accesses made from within the builtin contracts, as well as
+        // generated variables introduced by program transformations.
         let it = self.0.iter().filter(|elem| match elem {
+            StackElem::Var(_, id, _) if id.is_generated() => false,
             StackElem::Var(_, _, TermPos::Original(RawSpan { src_id, .. }))
             | StackElem::Var(_, _, TermPos::Inherited(RawSpan { src_id, .. }))
             | StackElem::Fun(TermPos::Original(RawSpan { src_id, .. }))
