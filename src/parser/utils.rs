@@ -1,17 +1,20 @@
+//! Various helpers and companion code for the parser are put here to keep the grammar definition
+//! uncluttered.
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 
 use codespan::FileId;
 
-use crate::identifier::Ident;
-/// A few helpers to generate position spans and labels easily during parsing
-use crate::label::Label;
-use crate::mk_app;
-use crate::parser::error::ParseError;
-use crate::position::{RawSpan, TermPos};
-use crate::term::{make as mk_term, BinaryOp, RecordAttrs, RichTerm, StrChunk, Term};
-use crate::types::{AbsType, Types};
+use crate::{
+    identifier::Ident,
+    label::Label,
+    mk_app, mk_fun,
+    parser::error::ParseError,
+    position::{RawSpan, TermPos},
+    term::{make as mk_term, BinaryOp, RecordAttrs, RichTerm, StrChunk, Term, UnaryOp},
+    types::{AbsType, Types},
+};
 
 /// Distinguish between the standard string separators `"`/`"` and the multi-line string separators
 /// `m#"`/`"#m` in the parser.
@@ -55,6 +58,41 @@ pub enum ChunkLiteralPart<'input> {
 pub enum RecordLastField {
     Field((FieldPathElem, RichTerm)),
     Ellipsis,
+}
+
+/// An infix operator that is not applied. Used for the curried operator syntax (e.g `(==)`)
+pub enum InfixOp {
+    Unary(UnaryOp),
+    Binary(BinaryOp),
+}
+
+impl From<UnaryOp> for InfixOp {
+    fn from(op: UnaryOp) -> Self {
+        InfixOp::Unary(op)
+    }
+}
+
+impl From<BinaryOp> for InfixOp {
+    fn from(op: BinaryOp) -> Self {
+        InfixOp::Binary(op)
+    }
+}
+
+impl InfixOp {
+    /// Eta-expand an operator. This wraps an operator, for example `==`, as a function `fun x1 x2
+    /// => x1 == x2`. Propagate the given position to the function body, for better error
+    /// reporting.
+    pub fn eta_expand(self, pos: TermPos) -> RichTerm {
+        let pos = pos.into_inherited();
+        match self {
+            InfixOp::Unary(op) => mk_fun!("x", mk_term::op1(op, mk_term::var("x")).with_pos(pos)),
+            InfixOp::Binary(op) => mk_fun!(
+                "x1",
+                "x2",
+                mk_term::op2(op, mk_term::var("x1"), mk_term::var("x2")).with_pos(pos)
+            ),
+        }
+    }
 }
 
 /// Elaborate a record field definition specified as a path, like `a.b.c = foo`, into a regular

@@ -1277,6 +1277,13 @@ pub mod make {
         Term::Op2(op, t1.into(), t2.into()).into()
     }
 
+    pub fn opn<T>(op: NAryOp, args: Vec<T>) -> RichTerm
+    where
+        T: Into<RichTerm>,
+    {
+        Term::OpN(op, args.into_iter().map(T::into).collect()).into()
+    }
+
     pub fn assume<T>(types: Types, l: Label, t: T) -> RichTerm
     where
         T: Into<RichTerm>,
