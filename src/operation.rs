@@ -441,7 +441,7 @@ fn process_unary_operation(
                     Some(e) => Ok(Closure { body: e, env }),
 
                     None => Err(EvalError::FieldMissing(
-                        id.0,
+                        id.label,
                         String::from("(.)"),
                         RichTerm {
                             term: Box::new(Term::Record(static_map, attrs)),
@@ -587,11 +587,11 @@ fn process_unary_operation(
                 let rec = rec
                     .into_iter()
                     .map(|e| {
-                        let (Ident(s, ident_pos), t) = e;
+                        let (id, t) = e;
                         let pos = t.pos.into_inherited();
                         (
-                            Ident(s.clone(), ident_pos),
-                            mk_app!(f_as_var.clone(), mk_term::string(s), t)
+                            id.clone(),
+                            mk_app!(f_as_var.clone(), mk_term::string(id.label), t)
                                 .closurize(&mut shared_env, env.clone())
                                 .with_pos(pos),
                         )
