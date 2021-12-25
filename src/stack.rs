@@ -194,7 +194,7 @@ impl Stack {
     /// If the argument is not tracked, it is directly returned.
     pub fn pop_arg_as_thunk(&mut self) -> Option<(Thunk, TermPos)> {
         match self.0.pop() {
-            Some(Marker::Arg(arg, pos)) => Some((Thunk::new(arg, IdentKind::Lam), pos)),
+            Some(Marker::Arg(arg, pos)) => Some((Thunk::new(arg, IdentKind::Lambda), pos)),
             Some(Marker::TrackedArg(arg_thunk, pos)) => Some((arg_thunk, pos)),
             Some(m) => {
                 self.0.push(m);
@@ -303,7 +303,7 @@ impl Stack {
             Some(Marker::TrackedArg(thunk, _)) => Some(thunk.clone()),
             Some(Marker::Arg(..)) => {
                 let (closure, pos) = self.pop_arg().unwrap();
-                let thunk = Thunk::new(closure, IdentKind::Lam);
+                let thunk = Thunk::new(closure, IdentKind::Lambda);
                 self.push_tracked_arg(thunk.clone(), pos);
                 Some(thunk)
             }

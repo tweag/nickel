@@ -362,12 +362,12 @@ pub mod apply_contracts {
                             Term::Lbl(ctr.label.clone()),
                             acc
                         )
-                        .with_pos(pos)
+                        .with_pos(pos.into_inherited())
                     },
                 );
 
                 meta.value.replace(inner);
-                RichTerm::new(Term::MetaValue(meta), pos)
+                RichTerm::new(Term::MetaValue(meta), pos.into_inherited())
             }
             t => RichTerm::new(t, pos),
         }

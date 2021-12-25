@@ -60,3 +60,9 @@ impl Into<String> for Ident {
         self.label
     }
 }
+
+impl Ident {
+    pub fn is_generated(&self) -> bool {
+        self.label.starts_with('%')
+    }
+}
