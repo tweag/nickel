@@ -648,7 +648,11 @@ fn should_update(t: &Term) -> bool {
 
 /// Evaluate a Nickel term. Wrapper around [eval_closure](fn.eval_closure.html) that starts from an
 /// empty local environment and drops the final environment.
-pub fn eval<R>(t0: RichTerm, global_env: &Environment, resolver: &mut R) -> Result<Term, EvalError>
+pub fn eval<R>(
+    t0: RichTerm,
+    global_env: &Environment,
+    resolver: &mut R,
+) -> Result<RichTerm, EvalError>
 where
     R: ImportResolver,
 {
@@ -660,7 +664,7 @@ pub fn eval_full<R>(
     t0: RichTerm,
     global_env: &Environment,
     resolver: &mut R,
-) -> Result<Term, EvalError>
+) -> Result<RichTerm, EvalError>
 where
     R: ImportResolver,
 {
@@ -677,7 +681,7 @@ where
         ),
     );
     eval_closure(Closure::atomic_closure(wrapper), global_env, resolver, true)
-        .map(|(term, env)| subst(term.into(), global_env, &env).into())
+        .map(|(term, env)| subst(term, global_env, &env))
 }
 
 /// Evaluate a Nickel Term, stopping when a meta value is encountered at the top-level without
@@ -689,27 +693,26 @@ pub fn eval_meta<R>(
     t: RichTerm,
     global_env: &Environment,
     resolver: &mut R,
-) -> Result<Term, EvalError>
+) -> Result<RichTerm, EvalError>
 where
     R: ImportResolver,
 {
-    let (term, env) = eval_closure(Closure::atomic_closure(t), global_env, resolver, false)?;
+    let (mut rt, env) = eval_closure(Closure::atomic_closure(t), global_env, resolver, false)?;
 
-    match term {
-        Term::MetaValue(mut meta) => {
+    match *rt.term {
+        Term::MetaValue(ref mut meta) => {
             if let Some(t) = meta.value.take() {
-                let pos = t.pos;
                 let (evaluated, env) =
                     eval_closure(Closure { body: t, env }, global_env, resolver, true)?;
-                let substituted = subst(RichTerm::new(evaluated, pos), global_env, &env);
+                let substituted = subst(evaluated, global_env, &env);
 
-                meta.value.replace(substituted);
+                meta.value = Some(substituted);
             }
-
-            Ok(Term::MetaValue(meta))
         }
-        term => Ok(term),
-    }
+        _ => (),
+    };
+
+    Ok(rt)
 }
 
 /// The main loop of evaluation.
@@ -738,7 +741,7 @@ pub fn eval_closure<R>(
     global_env: &Environment,
     resolver: &mut R,
     mut enriched_strict: bool,
-) -> Result<(Term, Environment), EvalError>
+) -> Result<(RichTerm, Environment), EvalError>
 where
     R: ImportResolver,
 {
@@ -1018,7 +1021,7 @@ where
                 }
             }
             // Unwrapping of enriched terms
-            Term::MetaValue(mut meta) if enriched_strict => {
+            Term::MetaValue(meta) if enriched_strict => {
                 if meta.value.is_some() {
                     /* Since we are forcing a metavalue, we are morally evaluating `force t` rather
                      * than `t` iteself.  Updating a thunk after having performed this forcing may
@@ -1091,7 +1094,7 @@ where
                     env.insert(x, thunk);
                     Closure { body: t, env }
                 } else {
-                    return Ok((Term::Fun(x, t), env));
+                    return Ok((RichTerm::new(Term::Fun(x, t), pos), env));
                 }
             }
             // Otherwise, this is either an ill-formed application, or we are done
@@ -1106,7 +1109,7 @@ where
                         pos_app,
                     ));
                 } else {
-                    return Ok((t, env));
+                    return Ok((RichTerm::new(t, pos), env));
                 }
             }
         }
@@ -1336,7 +1339,7 @@ mod tests {
 
     /// Evaluate a term without import support.
     fn eval_no_import(t: RichTerm) -> Result<Term, EvalError> {
-        eval(t, &Environment::new(), &mut DummyResolver {})
+        eval(t, &Environment::new(), &mut DummyResolver {}).map(|rt| *rt.term)
     }
 
     fn parse(s: &str) -> Option<RichTerm> {
@@ -1344,10 +1347,7 @@ mod tests {
 
         grammar::TermParser::new()
             .parse_term(id, lexer::Lexer::new(&s))
-            .map(|mut t| {
-                t.clean_pos();
-                t
-            })
+            .map(RichTerm::without_pos)
             .map_err(|err| println!("{:?}", err))
             .ok()
     }
@@ -1525,6 +1525,7 @@ mod tests {
                 &Environment::new(),
                 &mut resolver
             )
+            .map(Term::from)
             .unwrap(),
             Term::Num(2.0)
         );
@@ -1542,6 +1543,7 @@ mod tests {
                 &Environment::new(),
                 &mut resolver
             )
+            .map(Term::from)
             .unwrap(),
             Term::Bool(true)
         );
@@ -1623,14 +1625,23 @@ mod tests {
         );
 
         let t = mk_term::let_in("x", Term::Num(2.0), mk_term::var("x"));
-        assert_eq!(eval(t, &global_env, &mut resolver), Ok(Term::Num(2.0)));
+        assert_eq!(
+            eval(t, &global_env, &mut resolver).map(Term::from),
+            Ok(Term::Num(2.0))
+        );
 
         let t = mk_term::let_in("x", Term::Num(2.0), mk_term::var("g"));
-        assert_eq!(eval(t, &global_env, &mut resolver), Ok(Term::Num(1.0)));
+        assert_eq!(
+            eval(t, &global_env, &mut resolver).map(Term::from),
+            Ok(Term::Num(1.0))
+        );
 
         // Shadowing of global environment
         let t = mk_term::let_in("g", Term::Num(2.0), mk_term::var("g"));
-        assert_eq!(eval(t, &global_env, &mut resolver), Ok(Term::Num(2.0)));
+        assert_eq!(
+            eval(t, &global_env, &mut resolver).map(Term::from),
+            Ok(Term::Num(2.0))
+        );
     }
 
     fn mk_env(bindings: Vec<(&str, RichTerm)>) -> Environment {

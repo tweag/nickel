@@ -12,7 +12,7 @@ fn run(path: impl Into<OsString>) {
     let path = path.into();
     let mut p = Program::new_from_file(path.clone()).expect("could not load file as a program");
     assert_eq!(
-        p.eval(),
+        p.eval().map(Term::from),
         Ok(Term::Bool(true)),
         "error evaluating {}",
         path.to_string_lossy(),

@@ -78,13 +78,13 @@ impl Program {
     }
 
     /// Parse if necessary, typecheck and then evaluate the program.
-    pub fn eval(&mut self) -> Result<Term, Error> {
+    pub fn eval(&mut self) -> Result<RichTerm, Error> {
         let (t, global_env) = self.prepare_eval()?;
         eval::eval(t, &global_env, &mut self.cache).map_err(|e| e.into())
     }
 
     /// Same as `eval`, but proceeds to a full evaluation.
-    pub fn eval_full(&mut self) -> Result<Term, Error> {
+    pub fn eval_full(&mut self) -> Result<RichTerm, Error> {
         let (t, global_env) = self.prepare_eval()?;
         eval::eval_full(t, &global_env, &mut self.cache).map_err(|e| e.into())
     }
@@ -167,7 +167,7 @@ pub fn query(
         cache.get_owned(file_id).unwrap()
     };
 
-    Ok(eval::eval_meta(t, &global_env.eval_env, cache)?)
+    Ok(eval::eval_meta(t, &global_env.eval_env, cache)?.into())
 }
 
 /// Pretty-print an error.
@@ -203,6 +203,7 @@ mod tests {
     use crate::error::EvalError;
     use crate::parser::{grammar, lexer};
     use crate::position::TermPos;
+    use crate::term::Term;
     use codespan::Files;
     use std::io::Cursor;
 
@@ -211,15 +212,12 @@ mod tests {
 
         grammar::TermParser::new()
             .parse_term(id, lexer::Lexer::new(&s))
-            .map(|mut t| {
-                t.clean_pos();
-                t
-            })
+            .map(RichTerm::without_pos)
             .map_err(|err| println!("{:?}", err))
             .ok()
     }
 
-    fn eval_full(s: &str) -> Result<Term, Error> {
+    fn eval_full(s: &str) -> Result<RichTerm, Error> {
         let src = Cursor::new(s);
 
         let mut p = Program::new_from_source(src, "<test>").map_err(|io_err| {
@@ -236,14 +234,7 @@ mod tests {
         use crate::mk_record;
         use crate::term::make as mk_term;
 
-        // Clean all the position information in a term.
-        fn clean_pos(t: Term) -> Term {
-            let mut tmp = RichTerm::new(t, TermPos::None);
-            tmp.clean_pos();
-            *tmp.term
-        }
-
-        let t = clean_pos(eval_full("[(1 + 1), (\"a\" ++ \"b\"), ([ 1, [1 + 2] ])]").unwrap());
+        let t = eval_full("[(1 + 1), (\"a\" ++ \"b\"), ([ 1, [1 + 2] ])]").unwrap();
         let mut expd = parse("[2, \"ab\", [1, [3]]]").unwrap();
 
         // String are parsed as StrChunks, but evaluated to Str, so we need to hack list a bit
@@ -253,17 +244,15 @@ mod tests {
             panic!();
         }
 
-        assert_eq!(t, *expd.term);
+        assert_eq!(t.without_pos(), expd.without_pos());
 
-        let t = clean_pos(
-            eval_full("let x = 1 in let y = 1 + x in let z = {foo.bar.baz = y} in z").unwrap(),
-        );
+        let t = eval_full("let x = 1 in let y = 1 + x in let z = {foo.bar.baz = y} in z").unwrap();
         // Records are parsed as RecRecords, so we need to build one by hand
         let expd = mk_record!((
             "foo",
             mk_record!(("bar", mk_record!(("baz", Term::Num(2.0)))))
         ));
-        assert_eq!(t, *expd.term);
+        assert_eq!(t.without_pos(), expd);
 
         // /!\ [MAY OVERFLOW STACK]
         // Check that substitution do not replace bound variables. Before the fixing commit, this

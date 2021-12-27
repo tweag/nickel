@@ -21,7 +21,7 @@ fn nested() {
         "should_be = 3",
     )
     .unwrap();
-    assert_eq!(prog.eval(), Ok(Term::Num(3.)));
+    assert_eq!(prog.eval().map(Term::from), Ok(Term::Num(3.)));
 }
 
 #[test]
@@ -31,7 +31,7 @@ fn root_path() {
         "should_be = 44",
     )
     .unwrap();
-    assert_eq!(prog.eval(), Ok(Term::Num(44.)));
+    assert_eq!(prog.eval().map(Term::from), Ok(Term::Num(44.)));
 }
 
 #[test]
@@ -41,7 +41,7 @@ fn multi_imports() {
         "should_be = 5",
     )
     .unwrap();
-    assert_eq!(prog.eval(), Ok(Term::Num(5.)));
+    assert_eq!(prog.eval().map(Term::from), Ok(Term::Num(5.)));
 }
 
 #[test]
@@ -97,7 +97,7 @@ fn serialize() {
         "shoud success",
     )
     .unwrap();
-    assert_eq!(prog.eval(), Ok(Term::Bool(true)));
+    assert_eq!(prog.eval().map(Term::from), Ok(Term::Bool(true)));
 }
 
 #[test]
@@ -107,5 +107,8 @@ fn circular_imports_fail() {
         "should_fail",
     )
     .unwrap();
-    assert_matches!(prog.eval(), Ok(Term::RecRecord(..)) | Ok(Term::Record(..)));
+    assert_matches!(
+        prog.eval().map(Term::from),
+        Ok(Term::RecRecord(..)) | Ok(Term::Record(..))
+    );
 }

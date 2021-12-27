@@ -18,9 +18,7 @@ fn parse(s: &str) -> Result<RichTerm, ParseError> {
 }
 
 fn parse_without_pos(s: &str) -> RichTerm {
-    let mut result = parse(s).unwrap();
-    result.clean_pos();
-    result
+    parse(s).unwrap().without_pos()
 }
 
 fn lex(s: &str) -> Result<Vec<(usize, Token, usize)>, InternalParseError> {
