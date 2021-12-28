@@ -15,7 +15,7 @@ use std::convert::TryInto;
 use std::io::Cursor;
 use wasm_bindgen::prelude::*;
 
-/// Return codes of the Wasm REPL.
+/// Return codes of the WASM REPL.
 ///
 /// wasm-bindgen doesn't support exporting arbitrary enumeration. Thus we have to encode these
 /// enums as structures with a tag and values. The values that are actually set depend on the
@@ -29,7 +29,7 @@ pub enum WasmResultTag {
     Error = 3,
 }
 
-/// Severity of an error diagnostic. Wasm wrapper for the corresponding codespan type.
+/// Severity of an error diagnostic. WASM wrapper for the corresponding codespan type.
 #[derive(Serialize_repr, Clone, Copy, Eq, PartialEq)]
 #[repr(u8)]
 pub enum WasmErrorSeverity {
@@ -56,7 +56,7 @@ impl From<Severity> for WasmErrorSeverity {
     }
 }
 
-/// Style of an error label. Wasm wrapper for the corresponding codespan type.
+/// Style of an error label. WASM wrapper for the corresponding codespan type.
 #[derive(Serialize_repr, Clone, Copy, Eq, PartialEq)]
 #[repr(u8)]
 pub enum WasmErrorLabelStyle {
@@ -73,7 +73,7 @@ impl From<LabelStyle> for WasmErrorLabelStyle {
     }
 }
 
-/// A serializable error diagnostic. Wasm wrapper for the corresponding codespan type.
+/// A serializable error diagnostic. WASM wrapper for the corresponding codespan type.
 #[derive(Serialize)]
 pub struct WasmErrorDiagnostic {
     pub severity: WasmErrorSeverity,
@@ -97,7 +97,7 @@ impl WasmErrorDiagnostic {
     }
 }
 
-/// A serializable error label. Wasm wrapper for the corresponding codespan type.
+/// A serializable error label. WASM wrapper for the corresponding codespan type.
 #[derive(Serialize)]
 pub struct WasmErrorLabel {
     msg: String,
@@ -140,7 +140,7 @@ impl WasmErrorLabel {
     }
 }
 
-/// Wasm wrapper for the result type of the initialization of the REPL.
+/// WASM wrapper for the result type of the initialization of the REPL.
 #[wasm_bindgen]
 pub struct WasmInitResult {
     msg: String,
@@ -159,7 +159,7 @@ impl WasmInitResult {
         self.state
     }
 
-    /// Make an `WasmInitResult` result from an `InputError`.
+    /// Make a `WasmInitResult` result from an `InputError`.
     fn error(mut state: ReplState, error: InputError) -> Self {
         WasmInitResult {
             msg: err_to_string(&mut state.0.cache_mut(), &error),
@@ -169,7 +169,7 @@ impl WasmInitResult {
     }
 }
 
-/// Wasm wrapper for the result type of an execution of the REPL.
+/// WASM wrapper for the result type of an execution of the REPL.
 #[wasm_bindgen]
 pub struct WasmInputResult {
     msg: String,
@@ -189,7 +189,7 @@ impl WasmInputResult {
         self.errors.clone()
     }
 
-    /// Make an `WasmInputResult` from an `InputError`.
+    /// Make a `WasmInputResult` from an `InputError`.
     fn error(cache: &mut Cache, error: InputError) -> Self {
         let (msg, errors) = match error {
             InputError::NickelError(err) => {
@@ -241,11 +241,11 @@ impl From<InputResult> for WasmInputResult {
     }
 }
 
-/// Wasm-compatible wrapper around `ReplImpl`.
+/// WASM-compatible wrapper around `ReplImpl`.
 #[wasm_bindgen]
 pub struct ReplState(ReplImpl);
 
-/// Wasm-compatible wrapper around `serialize::ExportFormat`.
+/// WASM-compatible wrapper around `serialize::ExportFormat`.
 #[wasm_bindgen]
 pub enum WasmExportFormat {
     Raw = "raw",
@@ -297,7 +297,7 @@ pub fn err_to_string(cache: &mut Cache, error: &InputError) -> String {
     }
 }
 
-/// Return a new instance of the Wasm REPL, with the standard library loaded.
+/// Return a new instance of the WASM REPL, with the standard library loaded.
 #[wasm_bindgen]
 pub fn repl_init() -> WasmInitResult {
     let mut repl = ReplImpl::new();
@@ -311,7 +311,7 @@ pub fn repl_init() -> WasmInitResult {
     }
 }
 
-/// Evaluate an input in the Wasm REPL.
+/// Evaluate an input in the WASM REPL.
 #[wasm_bindgen]
 pub fn repl_input(state: &mut ReplState, line: &str) -> WasmInputResult {
     input(&mut state.0, line)
@@ -319,7 +319,7 @@ pub fn repl_input(state: &mut ReplState, line: &str) -> WasmInputResult {
         .unwrap_or_else(|err| WasmInputResult::error(state.0.cache_mut(), err))
 }
 
-/// Evaluate an input in the Wasm REPL and serialize it.
+/// Evaluate an input in the WASM REPL and serialize it.
 #[wasm_bindgen]
 pub fn repl_serialize(
     state: &mut ReplState,
