@@ -112,7 +112,7 @@ let typecheck = [
   (fun l => %head% l) : forall a. List a -> a,
   (fun f l => %map% l f) : forall a b. (a -> b) -> List a -> List b,
   (fun l1 => fun l2 => l1 @ l2) : forall a. List a -> List a -> List a,
-  (fun i l => %elemAt% l i) : forall a. Num -> List a -> a,
+  (fun i l => %elem_at% l i) : forall a. Num -> List a -> a,
 
   // recursive_records
   {a : Num = 1, b = a + 1} : {a : Num, b : Num},

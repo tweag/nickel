@@ -7,32 +7,32 @@ use common::eval;
 #[test]
 fn elem_at() {
     assert_matches!(
-        eval("%elemAt% [] 0"),
+        eval("%elem_at% [] 0"),
         Err(Error::EvalError(EvalError::Other(..)))
     );
     assert_matches!(
-        eval("%elemAt% [1,2,3] (-1)"),
+        eval("%elem_at% [1,2,3] (-1)"),
         Err(Error::EvalError(EvalError::Other(..)))
     );
     assert_matches!(
-        eval("%elemAt% [true, false, true] 3"),
+        eval("%elem_at% [true, false, true] 3"),
         Err(Error::EvalError(EvalError::Other(..)))
     );
     assert_matches!(
-        eval("%elemAt% {} 0"),
+        eval("%elem_at% {} 0"),
         Err(Error::EvalError(EvalError::TypeError(..)))
     );
     assert_matches!(
-        eval("%elemAt% [1, 2, 3] 0.5"),
+        eval("%elem_at% [1, 2, 3] 0.5"),
         Err(Error::EvalError(EvalError::Other(..)))
     );
 
     assert_matches!(
-        eval("lists.elemAt 0 {} 0"),
+        eval("lists.elem_at 0 {} 0"),
         Err(Error::EvalError(EvalError::BlameError(..)))
     );
     assert_matches!(
-        eval("lists.elemAt \"a\" []"),
+        eval("lists.elem_at \"a\" []"),
         Err(Error::EvalError(EvalError::BlameError(..)))
     );
 }

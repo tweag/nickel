@@ -1,90 +1,90 @@
 {
   builtins = {
-    isNum : Dyn -> Bool
+    is_num : Dyn -> Bool
     | doc m#"
       Checks if the given value is a number.
 
       For example:
       ```nickel
-        isNum 1 =>
+        is_num 1 =>
           true
-        isNum "Hello, World!" =>
+        is_num "Hello, World!" =>
           false
       ```
       "#m
-    = fun x => %isNum% x,
+    = fun x => %is_num% x,
 
-    isBool : Dyn -> Bool
+    is_bool : Dyn -> Bool
     | doc m#"
       Checks if the given value is a boolean.
 
       For example:
       ```nickel
-        isBool false =>
+        is_bool false =>
           true
-        isBool 42 =>
+        is_bool 42 =>
           false
       ```
       "#m
-    = fun x => %isBool% x,
+    = fun x => %is_bool% x,
 
-    isStr : Dyn -> Bool
+    is_str : Dyn -> Bool
     | doc m#"
       Checks if the given value is a string.
 
       For example:
       ```nickel
-        isBool true =>
+        is_bool true =>
           false
-        isBool "Hello, World!" =>
+        is_bool "Hello, World!" =>
           true
       ```
       "#m
-    = fun x => %isStr% x,
+    = fun x => %is_str% x,
 
-    isFun : Dyn -> Bool
+    is_fun : Dyn -> Bool
     | doc m#"
       Checks if the given value is a function.
 
       For example
       ```nickel
-        isFun (fun x => x) =>
+        is_fun (fun x => x) =>
           true
-        isFun 42 =>
+        is_fun 42 =>
           false
       ```
       "#m
-    = fun x => %isFun% x,
+    = fun x => %is_fun% x,
 
-    isList : Dyn -> Bool
+    is_list : Dyn -> Bool
     | doc m#"
       Checks if the given value is a list.
 
       For example
       ```nickel
-        isList [ 1, 2 ] =>
+        is_list [ 1, 2 ] =>
           true
-        isList 42 =>
+        is_list 42 =>
           false
       ```
       "#m
-    = fun x => %isList% x,
+    = fun x => %is_list% x,
 
-    isRecord : Dyn -> Bool
+    is_record : Dyn -> Bool
     | doc m#"
       Checks if the given value is a record.
 
       For example
       ```nickel
-        isRecord [ 1, 2 ] =>
+        is_record [ 1, 2 ] =>
           false
-        isRecord { hello = "Hello", world = "World" } =>
+        is_record { hello = "Hello", world = "World" } =>
           true
       ```
       "#m
-    = fun x => %isRecord% x,
+    = fun x => %is_record% x,
 
-    typeOf : Dyn -> <
+    typeof : Dyn -> <
       TypeNum,
       TypeBool,
       TypeStr,
@@ -97,19 +97,19 @@
 
       For example:
       ```nickel
-        typeOf [ 1, 2 ] =>
+        typeof [ 1, 2 ] =>
           `TypeList
-        typeOf (fun x => x) =>
+        typeof (fun x => x) =>
           `TypeFun
       ```
       "#m
     = fun x =>
-      if %isNum% x then `TypeNum
-      else if %isBool% x then `TypeBool
-      else if %isStr% x then `TypeStr
-      else if %isFun% x then `TypeFun
-      else if %isList% x then `TypeList
-      else if %isRecord% x then `TypeRecord
+      if %is_num% x then `TypeNum
+      else if %is_bool% x then `TypeBool
+      else if %is_str% x then `TypeStr
+      else if %is_fun% x then `TypeFun
+      else if %is_list% x then `TypeList
+      else if %is_record% x then `TypeRecord
       else `Other,
 
     seq : forall a. Dyn -> a -> a
@@ -128,21 +128,21 @@
       "#m
     = fun x y => %seq% x y,
 
-    deepSeq : forall a. Dyn -> a -> a
+    deep_seq : forall a. Dyn -> a -> a
     | doc m#"
-      `deepSeq x y` forces a deep evaluation `x`, before resulting in `y`.
+      `deep_seq x y` forces a deep evaluation `x`, before resulting in `y`.
 
       For example:
       ```nickel
-        deepSeq (42 / 0) 37 =>
+        deep_seq (42 / 0) 37 =>
           error
-        deepSeq (42 / 2) 37 =>
+        deep_seq (42 / 2) 37 =>
           37
-        deepSeq { tooFar = 42 / 0 } 37 =>
+        deep_seq { tooFar = 42 / 0 } 37 =>
           error
       ```
       "#m
-    = fun x y => %deepSeq% x y,
+    = fun x y => %deep_seq% x y,
 
     hash : <Md5, Sha1, Sha256, Sha512> -> Str -> Str
     | doc m#"
@@ -169,7 +169,7 @@
           }"
       ```
       "#m
-    = fun format x => %serialize% format (%deepSeq% x x),
+    = fun format x => %serialize% format (%deep_seq% x x),
 
     deserialize : <Json, Toml, Yaml> -> Str -> Dyn
     | doc m#"

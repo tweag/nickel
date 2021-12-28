@@ -2,12 +2,12 @@
 // Illustrate a basic contract violation.
 
 let Even = fun label value =>
-  if builtins.isNum value && value % 2 == 0 then
+  if builtins.is_num value && value % 2 == 0 then
     value
   else
     contracts.blame label in
 let DivBy3 = fun label value =>
-  if builtins.isNum value && value % 3 == 0 then
+  if builtins.is_num value && value % 3 == 0 then
     value
   else
     contracts.blame label in

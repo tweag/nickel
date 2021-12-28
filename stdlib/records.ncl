@@ -13,40 +13,40 @@
           { hello = 2, world = 3 }
       ```
       "#m
-    = fun f r => %recordMap% r f,
+    = fun f r => %record_map% r f,
 
-    fieldsOf | { | Dyn} -> List Str
+    fields | { | Dyn} -> List Str
     | doc m#"
       Given a record, results in a list of the string representation of all fields in the record.
 
       ```nickel
-        fieldsOf { one = 1, two = 2 } =>
+        fields { one = 1, two = 2 } =>
           [ "one", "two" ]
       ```
       "#m
-    = fun r => %fieldsOf% r,
+    = fun r => %fields% r,
 
-    valuesOf | { | Dyn} -> List
+    values | { | Dyn} -> List
     | doc m#"
       Given a record, results in a list containing all the values in that record.
 
       ```nickel
-        valuesOf { one = 1, world = "world" }
+        values { one = 1, world = "world" }
           [ 1, "world" ]
       ```
       "#m
-    = fun r => %valuesOf% r,
+    = fun r => %values% r,
 
-    hasField : Str -> Dyn -> Bool
+    has_field : Str -> Dyn -> Bool
     | doc m#"
       Given the name of a field and a record, checks if the record contains the given field.
 
       ```nickel
-        hasField "hello" { one = 1, two = 2 } =>
+        has_field "hello" { one = 1, two = 2 } =>
           false
-        hasField "one" { one = 1, two = 2 } =>
+        has_field "one" { one = 1, two = 2 } =>
           true
       "#m
-    = fun field r => %hasField% field r,
+    = fun field r => %has_field% field r,
   }
 }

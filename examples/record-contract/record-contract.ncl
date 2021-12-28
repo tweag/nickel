@@ -1,8 +1,8 @@
 // An illustrative (thus incomplete and maybe incorrect) contract example for a
 // Kubernetes configuration.
 
-let Port | doc "A contract for a port number" = contracts.fromPred (fun value =>
-  builtins.isNum value &&
+let Port | doc "A contract for a port number" = contracts.from_predicate (fun value =>
+  builtins.is_num value &&
   value % 1 == 0 &&
   value >= 0 &&
   value <= 65535) in
@@ -11,7 +11,7 @@ let PortElt
   | doc "A contract for a port element of a Kubernetes configuration"
   = {
     name | Str,
-    containerPort | #Port,
+    container_port | #Port,
   } in
 
 let Container = {
@@ -25,7 +25,7 @@ let KubernetesConfig = {
        | doc "The kind of the element being configured."
        | default = `Pod,
 
-  apiVersion | Str,
+  api_version | Str,
 
   metadata = {
     name | Str,
@@ -37,7 +37,7 @@ let KubernetesConfig = {
              | doc "The number of replicas"
              | default = 1,
 
-    selector.matchLabels.app | Str,
+    selector.match_labels.app | Str,
 
     template = {
       metadata.labels.app | Str,
@@ -54,13 +54,13 @@ let metadata_ = {
 
 {
   kind = `ReplicationController,
-  apiVersion = "1.1.0",
+  api_version = "1.1.0",
   metadata = metadata_,
   spec = {
     replicas = 3,
     selector = {
       app.name = name_,
-      matchLabels.app = name_,
+      match_labels.app = name_,
     },
     template = {
        metadata = metadata_,
@@ -72,7 +72,7 @@ let metadata_ = {
               ports = [
                 {
                   name = "http-server",
-                  containerPort = 80,
+                  container_port = 80,
                 }
               ]
             }

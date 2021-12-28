@@ -78,13 +78,13 @@
     Ident
     | doc m#"
       Contract to enforce the value is a valid Nickel identifier. Can be used in conjunction with the record field
-      function (e.g. `hasField`).
+      function (e.g. `has_field`).
 
       For example:
       ```nickel
-        records.hasField ("hello" | Ident) { hello = "hi!" } =>
+        records.has_field ("hello" | Ident) { hello = "hi!" } =>
           true
-        records.hasField ("9" | Ident) { hello = "hi!" } =>
+        records.has_field ("9" | Ident) { hello = "hi!" } =>
           error (invalid enum tag)
       "#m
     = fun l s =>
@@ -193,17 +193,17 @@
       "#m
     = fun s => %charCode% s,
 
-    fromCode | Num -> #CharLiteral
+    from_code | Num -> #CharLiteral
     | doc m#"
       Results in the character for a given ascii code. Any number outside the ascii range results in an error.
 
       For example:
       ```nickel
-        fromCode 65 =>
+        from_code 65 =>
           "A"
-        fromCode 37 =>
+        from_code 37 =>
           "%"
-        fromCode 128 =>
+        from_code 128 =>
           error
       ```
       "#m
@@ -274,30 +274,30 @@
     = fun pattern replace s =>
        %strReplace% s pattern replace,
 
-    replaceRegex: Str -> Str -> Str -> Str
+    replace_regex: Str -> Str -> Str -> Str
     | doc m#"
-      `replaceRegex regex repl str` replaces every match of `regex` in `str` with `repl`.
+      `replace_regex regex repl str` replaces every match of `regex` in `str` with `repl`.
 
       For example:
       ```nickel
-        replaceRegex "l+." "j" "Hello!" =>
+        replace_regex "l+." "j" "Hello!" =>
           "Hej!"
-        replaceRegex "\\d+" "\"a\" is not" "This 37 is a number." =>
+        replace_regex "\\d+" "\"a\" is not" "This 37 is a number." =>
           "This \"a\" is not a number."
       ```
       "#m
     = fun pattern replace s =>
        %strReplaceRegex% s pattern replace,
 
-    isMatch : Str -> Str -> Bool
+    is_match : Str -> Str -> Bool
     | doc m#"
-      `isMatch regex str` checks if `str` matches `regex`.
+      `is_match regex str` checks if `str` matches `regex`.
 
       For example:
       ```nickel
-        isMatch "^\\d+$" "123" =>
+        is_match "^\\d+$" "123" =>
           true
-        isMatch "\\d{4}" "123" =>
+        is_match "\\d{4}" "123" =>
           false
       ```
       "#m
@@ -348,75 +348,75 @@
       "#m
     = fun start end s => %strSubstr% s start end,
 
-    fromNum | Num -> Str
+    from_num | Num -> Str
     | doc m#"
       Converts a number to its string representation.
 
-      fromNum 42 =>
+      from_num 42 =>
         "42"
       "#m
     = fun n => %toStr% n,
 
-    // fromEnum | < | Dyn> -> Str = fun tag => %toStr% tag,
-    fromEnum | Dyn -> Str
+    // from_enum | < | Dyn> -> Str = fun tag => %toStr% tag,
+    from_enum | Dyn -> Str
     | doc m#"
       Converts an enum variant to its string representation.
 
       For example:
       ```nickel
-      fromEnum `MyEnum =>
+      from_enum `MyEnum =>
         "MyEnum"
       ```
       "#m
     = fun tag => %toStr% tag,
 
-    fromBool | Bool -> Str
+    from_bool | Bool -> Str
     | doc m#"
       Converts a boolean value to its string representation.
 
       For example:
       ```nickel
-        fromBool true =>
+        from_bool true =>
           "true"
       ```
       "#m
     = fun b => %toStr% b,
 
-    toNum | #NumLiteral -> Num
+    to_num | #NumLiteral -> Num
     | doc m#"
       Converts a string that represents an integer to that integer.
 
       For example:
       ```nickel
-        toNum "123" =>
+        to_num "123" =>
           123
       ```
       "#m
     = fun s => %numFromStr% s,
 
-    toBool | #BoolLiteral -> Bool
+    to_bool | #BoolLiteral -> Bool
     | doc m#"
       Converts a string that represents a boolean to that boolean.
 
       For example:
       ```nickel
-        toBool "true" =>
+        to_bool "true" =>
           true
-        toBool "True" =>
+        to_bool "True" =>
           true
-        toBool "false" =>
+        to_bool "false" =>
           false
       "#m
     = fun s => s == "true",
 
-    // toEnum | #Ident -> < | Dyn> = fun s => %enumFromStr% s,
-    toEnum | #Ident -> Dyn
+    // to_enum | #Ident -> < | Dyn> = fun s => %enumFromStr% s,
+    to_enum | #Ident -> Dyn
     | doc m#"
       Converts any string that represents an enum variant to that enum variant.
 
       For example:
       ```nickel
-        toEnum "Hello" =>
+        to_enum "Hello" =>
           `Hello
       ```
       "#m

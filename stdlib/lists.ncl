@@ -13,7 +13,7 @@
         ```
         "#m
       = fun label value =>
-       if %isList% value then
+       if %is_list% value then
          if %length% value != 0 then
            value
          else
@@ -70,17 +70,17 @@
         "#m
       = fun f l => %map% l f,
 
-    elemAt : forall a. Num -> List a -> a
+    elem_at : forall a. Num -> List a -> a
       | doc m#"
         Retrieves the n'th element from a list (0-indexed).
 
         For example:
         ```nickel
-          elemAt 3 [ "zero" "one" "two" "three" "four" ] =>
+          elem_at 3 [ "zero" "one" "two" "three" "four" ] =>
             "three"
         ```
         "#m
-      = fun n l => %elemAt% l n,
+      = fun n l => %elem_at% l n,
 
     concat : forall a. List a -> List a -> List a
       | doc m#"

@@ -149,32 +149,32 @@ pub enum NormalToken<'input> {
 
     #[token("%tag%")]
     Tag,
-    #[token("%isNum%")]
+    #[token("%is_num%")]
     IsNum,
-    #[token("%isBool%")]
+    #[token("%is_bool%")]
     IsBool,
-    #[token("%isStr%")]
+    #[token("%is_str%")]
     IsStr,
-    #[token("%isFun%")]
+    #[token("%is_fun%")]
     IsFun,
-    #[token("%isList%")]
+    #[token("%is_list%")]
     IsList,
-    #[token("%isRecord%")]
+    #[token("%is_record%")]
     IsRecord,
 
     #[token("%blame%")]
     Blame,
-    #[token("%chngPol%")]
+    #[token("%chng_pol%")]
     ChangePol,
     #[token("%polarity%")]
     Polarity,
-    #[token("%goDom%")]
+    #[token("%go_dom%")]
     GoDom,
-    #[token("%goCodom%")]
+    #[token("%go_codom%")]
     GoCodom,
-    #[token("%goField%")]
+    #[token("%go_field%")]
     GoField,
-    #[token("%goList%")]
+    #[token("%go_list%")]
     GoList,
 
     #[token("%wrap%")]
@@ -183,11 +183,11 @@ pub enum NormalToken<'input> {
     Unwrap,
     #[token("%embed%")]
     Embed,
-    #[token("%recordMap%")]
+    #[token("%record_map%")]
     RecordMap,
     #[token("%seq%")]
     Seq,
-    #[token("%deepSeq%")]
+    #[token("%deep_seq%")]
     DeepSeq,
     #[token("%head%")]
     Head,
@@ -195,18 +195,18 @@ pub enum NormalToken<'input> {
     Tail,
     #[token("%length%")]
     Length,
-    #[token("%fieldsOf%")]
+    #[token("%fields%")]
     FieldsOf,
-    #[token("%valuesOf%")]
+    #[token("%values%")]
     ValuesOf,
     #[token("%pow%")]
     Pow,
 
-    #[token("%hasField%")]
+    #[token("%has_field%")]
     HasField,
     #[token("%map%")]
     Map,
-    #[token("%elemAt%")]
+    #[token("%elem_at%")]
     ElemAt,
     #[token("%generate%")]
     ListGen,
@@ -223,39 +223,39 @@ pub enum NormalToken<'input> {
     Serialize,
     #[token("%deserialize%")]
     Deserialize,
-    #[token("%strSplit%")]
+    #[token("%str_split%")]
     StrSplit,
-    #[token("%strTrim%")]
+    #[token("%str_trim%")]
     StrTrim,
-    #[token("%strChars%")]
+    #[token("%str_chars%")]
     StrChars,
-    #[token("%charCode%")]
+    #[token("%char_code%")]
     CharCode,
-    #[token("%charFromCode%")]
+    #[token("%char_from_code%")]
     CharFromCode,
-    #[token("%strUppercase%")]
+    #[token("%str_uppercase%")]
     StrUppercase,
-    #[token("%strLowercase%")]
+    #[token("%str_lowercase%")]
     StrLowercase,
-    #[token("%strContains%")]
+    #[token("%str_contains%")]
     StrContains,
-    #[token("%strReplace%")]
+    #[token("%str_replace%")]
     StrReplace,
-    #[token("%strReplaceRegex%")]
+    #[token("%str_replace_regex%")]
     StrReplaceRegex,
-    #[token("%strIsMatch%")]
+    #[token("%str_is_match%")]
     StrIsMatch,
-    #[token("%strMatch%")]
+    #[token("%str_match%")]
     StrMatch,
-    #[token("%strLength%")]
+    #[token("%str_length%")]
     StrLength,
-    #[token("%strSubstr%")]
+    #[token("%str_substr%")]
     StrSubstr,
-    #[token("%toStr%")]
+    #[token("%to_str%")]
     ToStr,
-    #[token("%numFromStr%")]
+    #[token("%num_from_str%")]
     NumFromStr,
-    #[token("%enumFromStr%")]
+    #[token("%enum_from_str%")]
     EnumFromStr,
 
     #[token("{")]

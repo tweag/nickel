@@ -473,7 +473,7 @@ fn process_unary_operation(
             } else {
                 Err(EvalError::TypeError(
                     String::from("Record"),
-                    String::from("fieldsOf"),
+                    String::from("fields"),
                     arg_pos,
                     RichTerm { term: t, pos },
                 ))
