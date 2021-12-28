@@ -605,9 +605,7 @@ where
                         }) => Closure { body: inner, env },
                         _ => unreachable!(),
                     }
-                }
-                // TODO: improve error message using some positions
-                else {
+                } else {
                     let label = meta.contracts.pop().unwrap().label;
                     return Err(EvalError::MissingFieldDef(label, call_stack));
                 }

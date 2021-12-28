@@ -920,6 +920,21 @@ impl ToDiagnostic<FileId> for EvalError {
             EvalError::MissingFieldDef(l, callstack) => {
                 use crate::eval::StackElem;
 
+                // The following code determines what was the last accessed record field by looking
+                // at the call stack. Because of recursive records though, the fields may actually
+                // be accessed via a variable:
+                //
+                // ```
+                //  {
+                //    foo | Dyn
+                //        | doc "Oops, undefined :(",
+                //    bar = 1 + foo,
+                //  }.bar
+                //  ```
+                //
+                // Here, the missing field doesn't correspond to a field access, but to a variable
+                // occurrence `foo`. Thus, we take the last non-generated identifier accessed
+                // (either variable or field) as the name of the missing field.
                 let mut field: Option<String> = None;
                 let mut pos_record = TermPos::None;
                 let mut pos_access: Option<TermPos> = None;
