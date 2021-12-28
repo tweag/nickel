@@ -7,19 +7,19 @@
 export function repl_init(): WASMInitResult;
 /**
 * Evaluate an input in the WASM REPL.
-* @param {REPLState} state
+* @param {ReplState} state
 * @param {string} line
 * @returns {WASMInputResult}
 */
-export function repl_input(state: REPLState, line: string): WASMInputResult;
+export function repl_input(state: ReplState, line: string): WASMInputResult;
 /**
 * Evaluate an input in the WASM REPL and serialize it.
-* @param {REPLState} state
+* @param {ReplState} state
 * @param {any} format
 * @param {string} line
 * @returns {WASMInputResult}
 */
-export function repl_serialize(state: REPLState, format: any, line: string): WASMInputResult;
+export function repl_serialize(state: ReplState, format: any, line: string): WASMInputResult;
 /**
 * Return codes of the WASM REPL.
 *
@@ -34,9 +34,9 @@ export enum WASMResultTag {
   Error,
 }
 /**
-* WASM-compatible wrapper around `REPLImpl`.
+* WASM-compatible wrapper around `ReplImpl`.
 */
-export class REPLState {
+export class ReplState {
   free(): void;
 }
 /**
@@ -45,9 +45,9 @@ export class REPLState {
 export class WASMInitResult {
   free(): void;
 /**
-* @returns {REPLState}
+* @returns {ReplState}
 */
-  repl(): REPLState;
+  repl(): ReplState;
 /**
 * @returns {string}
 */
