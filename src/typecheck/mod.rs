@@ -648,26 +648,23 @@ fn type_check_<S, E>(
         Term::LetPattern(x, pat, re, _rt) => {
             use crate::destruct::*;
             fn inject_pat_vars(pat: &Destruct, envs: &mut Envs) {
-                match pat {
-                    Destruct::Record(matches, _, rst) => {
-                        if let Some(id) = rst {
-                            envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
-                        }
-                        matches.iter().for_each(|m| match m {
-                            Match::Simple(id, ..) => {
-                                envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()))
-                            }
-                            Match::Assign(_, _, (bind_id, pat)) => {
-                                if let Some(id) = bind_id {
-                                    envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
-                                }
-                                if !pat.is_empty() {
-                                    inject_pat_vars(pat, envs);
-                                }
-                            }
-                        });
+                if let Destruct::Record(matches, _, rst) = pat {
+                    if let Some(id) = rst {
+                        envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
                     }
-                    _ => (),
+                    matches.iter().for_each(|m| match m {
+                        Match::Simple(id, ..) => {
+                            envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()))
+                        }
+                        Match::Assign(_, _, (bind_id, pat)) => {
+                            if let Some(id) = bind_id {
+                                envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
+                            }
+                            if !pat.is_empty() {
+                                inject_pat_vars(pat, envs);
+                            }
+                        }
+                    });
                 }
             }
             let ty_let = binding_type(re.as_ref(), &envs, state.table, strict);
