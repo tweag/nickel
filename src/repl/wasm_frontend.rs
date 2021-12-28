@@ -1,6 +1,6 @@
 //! Web assembly interface to the REPL.
 use super::simple_frontend::{input, serialize, InputError, InputResult};
-use super::{REPLImpl, REPL};
+use super::{ReplImpl, Repl};
 use crate::cache::Cache;
 use crate::error::ToDiagnostic;
 use crate::serialize::ExportFormat;
@@ -145,7 +145,7 @@ impl WASMErrorLabel {
 pub struct WASMInitResult {
     msg: String,
     pub tag: WASMResultTag,
-    state: REPLState,
+    state: ReplState,
 }
 
 #[wasm_bindgen]
@@ -155,12 +155,12 @@ impl WASMInitResult {
         self.msg.clone()
     }
 
-    pub fn repl(self) -> REPLState {
+    pub fn repl(self) -> ReplState {
         self.state
     }
 
     /// Make an `WASMInitResult` result from an `InputError`.
-    fn error(mut state: REPLState, error: InputError) -> Self {
+    fn error(mut state: ReplState, error: InputError) -> Self {
         WASMInitResult {
             msg: err_to_string(&mut state.0.cache_mut(), &error),
             tag: WASMResultTag::Error,
@@ -241,9 +241,9 @@ impl From<InputResult> for WASMInputResult {
     }
 }
 
-/// WASM-compatible wrapper around `REPLImpl`.
+/// WASM-compatible wrapper around `ReplImpl`.
 #[wasm_bindgen]
-pub struct REPLState(REPLImpl);
+pub struct ReplState(ReplImpl);
 
 /// WASM-compatible wrapper around `serialize::ExportFormat`.
 #[wasm_bindgen]
@@ -300,20 +300,20 @@ pub fn err_to_string(cache: &mut Cache, error: &InputError) -> String {
 /// Return a new instance of the WASM REPL, with the standard library loaded.
 #[wasm_bindgen]
 pub fn repl_init() -> WASMInitResult {
-    let mut repl = REPLImpl::new();
+    let mut repl = ReplImpl::new();
     match repl.load_stdlib() {
         Ok(()) => WASMInitResult {
             msg: String::new(),
             tag: WASMResultTag::Success,
-            state: REPLState(repl),
+            state: ReplState(repl),
         },
-        Err(err) => WASMInitResult::error(REPLState(repl), err.into()),
+        Err(err) => WASMInitResult::error(ReplState(repl), err.into()),
     }
 }
 
 /// Evaluate an input in the WASM REPL.
 #[wasm_bindgen]
-pub fn repl_input(state: &mut REPLState, line: &str) -> WASMInputResult {
+pub fn repl_input(state: &mut ReplState, line: &str) -> WASMInputResult {
     input(&mut state.0, line)
         .map(WASMInputResult::from)
         .unwrap_or_else(|err| WASMInputResult::error(state.0.cache_mut(), err))
@@ -322,7 +322,7 @@ pub fn repl_input(state: &mut REPLState, line: &str) -> WASMInputResult {
 /// Evaluate an input in the WASM REPL and serialize it.
 #[wasm_bindgen]
 pub fn repl_serialize(
-    state: &mut REPLState,
+    state: &mut ReplState,
     format: WASMExportFormat,
     line: &str,
 ) -> WASMInputResult {

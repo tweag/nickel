@@ -136,7 +136,7 @@ impl Program {
 //TODO: also gather type information, such that `query a.b.c <<< '{ ... } : {a: {b: {c: Num}}}`
 //would additionally report `type: Num` for example.
 //TODO: not sure where this should go. It seems to embed too much logic to be in `Cache`, but is
-//common to both `Program` and `REPL`. Leaving it here as a stand-alone function for now
+//common to both `Program` and `Repl`. Leaving it here as a stand-alone function for now
 pub fn query(
     cache: &mut Cache,
     file_id: FileId,
@@ -175,7 +175,7 @@ pub fn query(
 /// This function is located here in `Program` because errors need a reference to `files` in
 /// order to produce a diagnostic (see [`label_alt`](../error/fn.label_alt.html)).
 //TODO: not sure where this should go. It seems to embed too much logic to be in `Cache`, but is
-//common to both `Program` and `REPL`. Leaving it here as a stand-alone function for now
+//common to both `Program` and `Repl`. Leaving it here as a stand-alone function for now
 pub fn report<E>(cache: &mut Cache, error: E)
 where
     E: ToDiagnostic<FileId>,

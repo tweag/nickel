@@ -7,7 +7,7 @@
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
 use crate::cache::{Cache, GlobalEnv};
-use crate::error::{Error, EvalError, IOError, ParseError, ParseErrors, REPLError};
+use crate::error::{Error, EvalError, IOError, ParseError, ParseErrors, ReplError};
 use crate::identifier::Ident;
 use crate::parser::{grammar, lexer, ExtendedTerm};
 use crate::term::{RichTerm, Term};
@@ -49,7 +49,7 @@ impl From<Term> for EvalResult {
 }
 
 /// Interface of the REPL backend.
-pub trait REPL {
+pub trait Repl {
     /// Evaluate an expression, which can be either a standard term or a toplevel let-binding.
     fn eval(&mut self, exp: &str) -> Result<EvalResult, Error>;
     /// Fully evaluate an expression, which can be either a standard term or a toplevel let-binding.
@@ -65,7 +65,7 @@ pub trait REPL {
 }
 
 /// Standard implementation of the REPL backend.
-pub struct REPLImpl {
+pub struct ReplImpl {
     /// The underlying cache, storing input, loaded files and parsed terms.
     cache: Cache,
     /// The parser, supporting toplevel let declaration.
@@ -78,10 +78,10 @@ pub struct REPLImpl {
     init_type_env: typecheck::Environment,
 }
 
-impl REPLImpl {
+impl ReplImpl {
     /// Create a new empty REPL.
     pub fn new() -> Self {
-        REPLImpl {
+        ReplImpl {
             cache: Cache::new(),
             parser: grammar::ExtendedTermParser::new(),
             env: GlobalEnv::new(),
@@ -175,7 +175,7 @@ impl REPLImpl {
     }
 }
 
-impl REPL for REPLImpl {
+impl Repl for ReplImpl {
     fn eval(&mut self, exp: &str) -> Result<EvalResult, Error> {
         self.eval_(exp, false)
     }

@@ -29,14 +29,14 @@ impl From<Error> for InputError {
 }
 
 /// Return a new instance of an REPL with the standard library loaded.
-pub fn init() -> Result<REPLImpl, Error> {
-    let mut repl = REPLImpl::new();
+pub fn init() -> Result<ReplImpl, Error> {
+    let mut repl = ReplImpl::new();
     repl.load_stdlib()?;
     Ok(repl)
 }
 
 /// Evaluate an input.
-pub fn input<R: REPL>(repl: &mut R, line: &str) -> Result<InputResult, InputError> {
+pub fn input<R: Repl>(repl: &mut R, line: &str) -> Result<InputResult, InputError> {
     if line.trim().is_empty() {
         Ok(InputResult::Blank)
     } else if line.starts_with(':') {
@@ -90,7 +90,7 @@ pub fn input<R: REPL>(repl: &mut R, line: &str) -> Result<InputResult, InputErro
 }
 
 /// Evaluate an input and serialize the result.
-pub fn serialize<R: REPL>(
+pub fn serialize<R: Repl>(
     repl: &mut R,
     format: ExportFormat,
     input: &str,
