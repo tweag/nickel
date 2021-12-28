@@ -1339,7 +1339,7 @@ mod tests {
 
     /// Evaluate a term without import support.
     fn eval_no_import(t: RichTerm) -> Result<Term, EvalError> {
-        eval(t, &Environment::new(), &mut DummyResolver {}).map(|rt| *rt.term)
+        eval(t, &Environment::new(), &mut DummyResolver {}).map(Term::from)
     }
 
     fn parse(s: &str) -> Option<RichTerm> {
