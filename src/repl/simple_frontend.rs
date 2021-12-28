@@ -65,7 +65,7 @@ pub fn input<R: REPL>(repl: &mut R, line: &str) -> Result<InputResult, InputErro
             Ok(Command::Print(exp)) => repl
                 .eval_full(&exp)
                 .map(|res| match res {
-                    EvalResult::Evaluated(t) => InputResult::Success(t.deep_repr()),
+                    EvalResult::Evaluated(rt) => InputResult::Success(rt.as_ref().deep_repr()),
                     EvalResult::Bound(_) => InputResult::Blank,
                 })
                 .map_err(InputError::from),
@@ -82,7 +82,7 @@ pub fn input<R: REPL>(repl: &mut R, line: &str) -> Result<InputResult, InputErro
     } else {
         repl.eval(&line)
             .map(|eval_res| match eval_res {
-                EvalResult::Evaluated(t) => InputResult::Success(format!("{}\n", t.shallow_repr())),
+                EvalResult::Evaluated(rt) => InputResult::Success(format!("{}\n", rt.as_ref().shallow_repr())),
                 EvalResult::Bound(_) => InputResult::Success(String::new()),
             })
             .map_err(InputError::from)
