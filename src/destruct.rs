@@ -82,10 +82,7 @@ impl Destruct {
 
     /// check if the pattern is empty.
     pub fn is_empty(&self) -> bool {
-        match self {
-            Destruct::Empty => true,
-            _ => false,
-        }
+	matches!(self, Destruct::Empty)
     }
 }
 
