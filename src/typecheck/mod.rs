@@ -645,7 +645,7 @@ fn type_check_<S, E>(
             envs.insert(x.clone(), ty_let);
             type_check_(state, envs, lin, linearizer, strict, rt, ty)
         }
-        Term::LetPattern(x, pat, re, rt) => {
+        Term::LetPattern(x, pat, re, _rt) => {
             use crate::destruct::*;
             fn inject_pat_vars(pat: &Destruct, envs: &mut Envs) {
                 match pat {

@@ -1,5 +1,5 @@
 use assert_matches::assert_matches;
-use nickel::error::{Error, EvalError, TypecheckError};
+use nickel::error::{Error, EvalError};
 use nickel::term::Term;
 
 #[path = "./common.rs"]
