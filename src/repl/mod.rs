@@ -37,13 +37,13 @@ pub mod wasm_frontend;
 /// Result of the evaluation of an input.
 pub enum EvalResult {
     /// The input has been evaluated to a term.
-    Evaluated(Term),
+    Evaluated(RichTerm),
     /// The input was a toplevel let, which has been bound in the environment.
     Bound(Ident),
 }
 
-impl From<Term> for EvalResult {
-    fn from(t: Term) -> Self {
+impl From<RichTerm> for EvalResult {
+    fn from(t: RichTerm) -> Self {
         EvalResult::Evaluated(t)
     }
 }

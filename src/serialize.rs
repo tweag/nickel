@@ -299,7 +299,8 @@ mod tests {
                     mk_term::op2(BinaryOp::Eq(), from_json, evaluated.clone()),
                     &Environment::new(),
                     &mut $crate::cache::resolvers::DummyResolver {}
-                ),
+                )
+                .map(Term::from),
                 Ok(Term::Bool(true))
             );
             assert_eq!(
@@ -307,7 +308,8 @@ mod tests {
                     mk_term::op2(BinaryOp::Eq(), from_yaml, evaluated.clone()),
                     &Environment::new(),
                     &mut $crate::cache::resolvers::DummyResolver {}
-                ),
+                )
+                .map(Term::from),
                 Ok(Term::Bool(true))
             );
             assert_eq!(
@@ -315,7 +317,8 @@ mod tests {
                     mk_term::op2(BinaryOp::Eq(), from_toml, evaluated),
                     &Environment::new(),
                     &mut $crate::cache::resolvers::DummyResolver {}
-                ),
+                )
+                .map(Term::from),
                 Ok(Term::Bool(true))
             );
         };

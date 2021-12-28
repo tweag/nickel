@@ -865,10 +865,15 @@ impl RichTerm {
     ///
     /// It allows to use rust `Eq` trait to compare the values of the underlying terms.
     #[cfg(test)]
-    pub fn clean_pos(&mut self) {
-        self.pos = TermPos::None;
-        self.term
-            .apply_to_rich_terms(|rt: &mut Self| rt.clean_pos());
+    pub fn without_pos(mut self) -> Self {
+        fn clean_pos(rt: &mut RichTerm) {
+            rt.pos = TermPos::None;
+            rt.term
+                .apply_to_rich_terms(|rt: &mut RichTerm| clean_pos(rt));
+        }
+
+        clean_pos(&mut self);
+        self
     }
 
     /// Set the position and return the term updated.
