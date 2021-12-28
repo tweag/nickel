@@ -155,15 +155,9 @@ impl From<MetaValue> for Term {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Copy, Clone)]
+#[derive(Debug, Default, Eq, PartialEq, Copy, Clone)]
 pub struct RecordAttrs {
     pub open: bool,
-}
-
-impl Default for RecordAttrs {
-    fn default() -> Self {
-        RecordAttrs { open: false }
-    }
 }
 
 impl RecordAttrs {
@@ -830,9 +824,7 @@ impl NAryOp {
     }
 
     pub fn is_strict(&self) -> bool {
-        match self {
-            _ => true,
-        }
+        true
     }
 }
 

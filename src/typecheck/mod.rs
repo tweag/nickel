@@ -480,7 +480,7 @@ where
 
         type_check_(
             &mut state,
-            Envs::from_global(&global_env),
+            Envs::from_global(global_env),
             &mut building,
             linearizer.scope(linearization::ScopeId::Right),
             false,
@@ -645,29 +645,26 @@ fn type_check_<S, E>(
             envs.insert(x.clone(), ty_let);
             type_check_(state, envs, lin, linearizer, strict, rt, ty)
         }
-        Term::LetPattern(x, pat, re, rt) => {
+        Term::LetPattern(x, pat, re, _rt) => {
             use crate::destruct::*;
             fn inject_pat_vars(pat: &Destruct, envs: &mut Envs) {
-                match pat {
-                    Destruct::Record(matches, _, rst) => {
-                        if let Some(id) = rst {
-                            envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
-                        }
-                        matches.iter().for_each(|m| match m {
-                            Match::Simple(id, ..) => {
-                                envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()))
-                            }
-                            Match::Assign(_, _, (bind_id, pat)) => {
-                                if let Some(id) = bind_id {
-                                    envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
-                                }
-                                if !pat.is_empty() {
-                                    inject_pat_vars(pat, envs);
-                                }
-                            }
-                        });
+                if let Destruct::Record(matches, _, rst) = pat {
+                    if let Some(id) = rst {
+                        envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
                     }
-                    _ => (),
+                    matches.iter().for_each(|m| match m {
+                        Match::Simple(id, ..) => {
+                            envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()))
+                        }
+                        Match::Assign(_, _, (bind_id, pat)) => {
+                            if let Some(id) = bind_id {
+                                envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
+                            }
+                            if !pat.is_empty() {
+                                inject_pat_vars(pat, envs);
+                            }
+                        }
+                    });
                 }
             }
             let ty_let = binding_type(re.as_ref(), &envs, state.table, strict);
