@@ -788,10 +788,10 @@ pub enum BinaryOp {
 
 impl BinaryOp {
     pub fn is_strict(&self) -> bool {
-	match self {
-	    BinaryOp::Merge() => false,
-	    _ => true,
-	}
+        match self {
+            BinaryOp::Merge() => false,
+            _ => true,
+        }
     }
 }
 
