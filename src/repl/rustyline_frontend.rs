@@ -1,4 +1,4 @@
-//! Native terminal implementation of an REPL frontend using rustyline.
+//! Native terminal implementation of a REPL frontend using rustyline.
 use std::path::PathBuf;
 
 use super::command::Command;
@@ -21,7 +21,7 @@ pub fn config() -> Config {
 
 /// Main loop of the REPL.
 pub fn repl(histfile: PathBuf) -> Result<(), InitError> {
-    let mut repl = REPLImpl::new();
+    let mut repl = ReplImpl::new();
 
     match repl.load_stdlib() {
         Ok(()) => (),

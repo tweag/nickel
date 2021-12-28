@@ -35,7 +35,7 @@ pub enum Error {
     ImportError(ImportError),
     SerializationError(SerializationError),
     IOError(IOError),
-    REPLError(REPLError),
+    ReplError(ReplError),
 }
 
 /// An error occurring during evaluation.
@@ -324,7 +324,7 @@ pub struct IOError(pub String);
 
 /// An error occurring during an REPL session.
 #[derive(Debug, PartialEq, Clone)]
-pub enum REPLError {
+pub enum ReplError {
     UnknownCommand(String),
     MissingArg {
         cmd: repl::command::CommandType,
@@ -400,9 +400,9 @@ pub fn escape(s: &str) -> String {
     .expect("escape(): converting from a string should give back a valid UTF8 string")
 }
 
-impl From<REPLError> for Error {
-    fn from(error: REPLError) -> Error {
-        Error::REPLError(error)
+impl From<ReplError> for Error {
+    fn from(error: ReplError) -> Error {
+        Error::ReplError(error)
     }
 }
 
@@ -772,7 +772,7 @@ impl ToDiagnostic<FileId> for Error {
             Error::ImportError(err) => err.to_diagnostic(files, contract_id),
             Error::SerializationError(err) => err.to_diagnostic(files, contract_id),
             Error::IOError(err) => err.to_diagnostic(files, contract_id),
-            Error::REPLError(err) => err.to_diagnostic(files, contract_id),
+            Error::ReplError(err) => err.to_diagnostic(files, contract_id),
         }
     }
 }
@@ -1415,19 +1415,19 @@ impl ToDiagnostic<FileId> for IOError {
     }
 }
 
-impl ToDiagnostic<FileId> for REPLError {
+impl ToDiagnostic<FileId> for ReplError {
     fn to_diagnostic(
         &self,
         _files: &mut Files<String>,
         _contract_id: Option<FileId>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
-            REPLError::UnknownCommand(s) => vec![Diagnostic::error()
+            ReplError::UnknownCommand(s) => vec![Diagnostic::error()
                 .with_message(format!("unknown command `{}`", s))
                 .with_notes(vec![String::from(
                     "type `:?` or `:help` for a list of available commands.",
                 )])],
-            REPLError::MissingArg { cmd, msg_opt } => {
+            ReplError::MissingArg { cmd, msg_opt } => {
                 let mut notes = msg_opt
                     .as_ref()
                     .map(|msg| vec![msg.clone()])
