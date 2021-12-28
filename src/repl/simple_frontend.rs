@@ -82,7 +82,9 @@ pub fn input<R: REPL>(repl: &mut R, line: &str) -> Result<InputResult, InputErro
     } else {
         repl.eval(&line)
             .map(|eval_res| match eval_res {
-                EvalResult::Evaluated(rt) => InputResult::Success(format!("{}\n", rt.as_ref().shallow_repr())),
+                EvalResult::Evaluated(rt) => {
+                    InputResult::Success(format!("{}\n", rt.as_ref().shallow_repr()))
+                }
                 EvalResult::Bound(_) => InputResult::Success(String::new()),
             })
             .map_err(InputError::from)
