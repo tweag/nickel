@@ -1044,7 +1044,7 @@ pub mod resolvers {
                 let buf = self.files.source(file_id);
                 let term = parser::grammar::TermParser::new()
                     .parse_term(file_id, Lexer::new(buf))
-                    .map_err(|e| ImportError::ParseErrors(e.into(), *pos))?;
+                    .map_err(|e| ImportError::ParseErrors(e, *pos))?;
                 e.insert(term);
                 Ok((
                     ResolvedTerm::FromFile {
