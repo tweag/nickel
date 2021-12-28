@@ -480,7 +480,7 @@ where
 
         type_check_(
             &mut state,
-            Envs::from_global(&global_env),
+            Envs::from_global(global_env),
             &mut building,
             linearizer.scope(linearization::ScopeId::Right),
             false,

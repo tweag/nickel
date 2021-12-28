@@ -261,7 +261,7 @@ impl Types {
                         AbsType::Dyn() => contracts::dyn_tail(),
                         AbsType::Var(id) => {
                             let (_, rt) = h
-                                .get(&id)
+                                .get(id)
                                 .unwrap_or_else(|| panic!("Unbound type variable {:?}", id));
                             rt.clone()
                         }

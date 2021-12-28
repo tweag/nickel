@@ -384,7 +384,7 @@ impl Cache {
         match format {
             InputFormat::Nickel => {
                 let (t, parse_errs) = parser::grammar::TermParser::new()
-                    .parse_term_tolerant(file_id, Lexer::new(&buf))?;
+                    .parse_term_tolerant(file_id, Lexer::new(buf))?;
 
                 Ok((t, parse_errs))
             }
@@ -1043,7 +1043,7 @@ pub mod resolvers {
             if let hash_map::Entry::Vacant(e) = self.term_cache.entry(file_id) {
                 let buf = self.files.source(file_id);
                 let term = parser::grammar::TermParser::new()
-                    .parse_term(file_id, Lexer::new(&buf))
+                    .parse_term(file_id, Lexer::new(buf))
                     .map_err(|e| ImportError::ParseErrors(e.into(), *pos))?;
                 e.insert(term);
                 Ok((
