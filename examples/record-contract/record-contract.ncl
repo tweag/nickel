@@ -61,7 +61,7 @@ let metadata_ = {
     replicas = 3,
     selector = {
       app.name = name_,
-      match_labels.app = name_,
+      matchLabels.app = name_,
     },
     template = {
        metadata = metadata_,
