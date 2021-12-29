@@ -233,11 +233,11 @@
 
       For example:
       ```nickel
-        uppercase "A" =>
+        lowercase "A" =>
           "a"
-        uppercase "Æ" =>
+        lowercase "Æ" =>
           "æ"
-        uppercase "." =>
+        lowercase "." =>
           "."
       ```
       "#m
