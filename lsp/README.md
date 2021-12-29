@@ -12,9 +12,9 @@ it in VSCode and (Neo)Vim.
 
 ## Installation
 
-Three installation methods are proposed: Using Nix flakes (**recommended**),
-Using Nix without flakes (older Nix versions), or using `cargo` if you already
-use the `Rust` toolchain and don't want to install Nix.
+Three installation methods are proposed: using Nix flakes (**recommended**),
+using Nix without flakes (older Nix versions), or using `cargo` if you already
+use the Rust toolchain and don't want to install Nix.
 
 ### Using Nix (flakes)
 
@@ -58,8 +58,8 @@ nix-env -f . -i
 
 ### Using Cargo
 
-If you already have a working `cargo` installation, you can make `nls` available
-globally (it will be built and stored inside the repository, though) without
+If you already have a working [`cargo`](https://doc.rust-lang.org/cargo/) installation, you can make `nls` available
+globally (it will be built and stored inside the repository) without
 Nix:
 
 ```
@@ -114,7 +114,7 @@ The VS Code extension offers three configuration options:
 require('lspconfig')["nickel_ls"].setup {}
 ```
 
-### With Coc.nvim
+#### With Coc.nvim
 
 Add an `nickel_ls` entry to your configuration. Type `:CocConfig` in Neovim (or edit `coc-settings.json`) and add:
 
