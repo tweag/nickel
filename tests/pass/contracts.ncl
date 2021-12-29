@@ -55,10 +55,10 @@ let Assert = fun l x => x || %blame% l in
   // records_simple
   ({} | {}) == {},
   let x | {a: Num, s: Str} = {a = 1, s = "a"} in
-    %deepSeq% x x == {a = 1, s = "a"},
+    %deep_seq% x x == {a = 1, s = "a"},
 
   let x | {a: Num, s: {foo: Bool}} = {a = 1, s = { foo = true}} in
-    %deepSeq% x x == {a = 1, s = { foo = true}},
+    %deep_seq% x x == {a = 1, s = { foo = true}},
 
   // polymorphism
   (let id | forall a. { | a} -> { | a} = fun x => x in

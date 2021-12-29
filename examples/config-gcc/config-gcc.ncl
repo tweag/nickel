@@ -9,40 +9,40 @@ let GccFlag =
       lists.any (fun x => x == strings.substring 0 1 value) available then
       value
     else
-      contracts.blameWith "unknown flag #{value}" label
-  else if builtins.isRecord value then
-    if records.hasField "flag" value && records.hasField "arg" value then
+      contracts.blame_with "unknown flag #{value}" label
+  else if builtins.is_record value then
+    if records.has_field "flag" value && records.has_field "arg" value then
       if lists.any (fun x => x == value.flag) available then
         //Normalize the tag to a string
         value.flag ++ value.arg
       else
-        contracts.blameWith "unknown flag #{value.flag}" label
+        contracts.blame_with "unknown flag #{value.flag}" label
     else
-      contracts.blameWith
+      contracts.blame_with
         "bad record structure: missing field `flag` or `arg`"
         label
   else
-    contracts.blameWith "expected record or string" label in
+    contracts.blame_with "expected record or string" label in
 
 let Path =
   let pattern = m#"^(.+)/([^/]+)$"#m in
   fun label value =>
     if builtins.isStr value then
-      if strings.isMatch pattern value then
+      if strings.is_match pattern value then
         value
       else
-        contracts.blameWith "invalid path" label
+        contracts.blame_with "invalid path" label
     else
-      contracts.blameWith "not a string" label in
+      contracts.blame_with "not a string" label in
 
 let SharedObjectFile = fun label value =>
   if builtins.isStr value then
-    if strings.isMatch m#"\.so$"#m value then
+    if strings.is_match m#"\.so$"#m value then
       value
     else
-      contracts.blameWith "not an .so file" label
+      contracts.blame_with "not an .so file" label
   else
-    contracts.blameWith "not a string" label in
+    contracts.blame_with "not a string" label in
 
 let OptLevel = fun label value =>
   if value == 0 || value == 1 || value == 2 then
@@ -51,7 +51,7 @@ let OptLevel = fun label value =>
     contracts.blame label in
 
 let Contract = {
-  pathLibC | doc "Path to libc."
+  path_libc | doc "Path to libc."
            | #Path
            | #SharedObjectFile
            | default = "/lib/x86_64-linux-gnu/libc.so",
@@ -63,7 +63,7 @@ let Contract = {
         | List #GccFlag
         | default = [],
 
-  optimizationLevel | doc "
+  optimization_level | doc "
                        Optimization level. Possible values:
 
                         - *0*: unoptimized
@@ -76,5 +76,5 @@ let Contract = {
 
 {
   flags = ["Wextra", {flag = "o", arg = "stuff.o"}],
-  optimizationLevel = 2,
+  optimization_level = 2,
 } | #Contract
