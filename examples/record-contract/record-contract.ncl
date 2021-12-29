@@ -38,7 +38,7 @@ let KubernetesConfig = {
              | doc "The number of replicas"
              | default = 1,
 
-    selector.match_labels.app | Str,
+    selector.matchLabels.app | Str,
 
     template = {
       metadata.labels.app | Str,
