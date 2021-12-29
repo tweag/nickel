@@ -2,24 +2,24 @@
 /* eslint-disable */
 /**
 * Return a new instance of the WASM REPL, with the standard library loaded.
-* @returns {WASMInitResult}
+* @returns {WasmInitResult}
 */
-export function repl_init(): WASMInitResult;
+export function repl_init(): WasmInitResult;
 /**
 * Evaluate an input in the WASM REPL.
-* @param {REPLState} state
+* @param {ReplState} state
 * @param {string} line
-* @returns {WASMInputResult}
+* @returns {WasmInputResult}
 */
-export function repl_input(state: REPLState, line: string): WASMInputResult;
+export function repl_input(state: ReplState, line: string): WasmInputResult;
 /**
 * Evaluate an input in the WASM REPL and serialize it.
-* @param {REPLState} state
+* @param {ReplState} state
 * @param {any} format
 * @param {string} line
-* @returns {WASMInputResult}
+* @returns {WasmInputResult}
 */
-export function repl_serialize(state: REPLState, format: any, line: string): WASMInputResult;
+export function repl_serialize(state: ReplState, format: any, line: string): WasmInputResult;
 /**
 * Return codes of the WASM REPL.
 *
@@ -27,27 +27,27 @@ export function repl_serialize(state: REPLState, format: any, line: string): WAS
 * enums as structures with a tag and values. The values that are actually set depend on the
 * tag.
 */
-export enum WASMResultTag {
+export enum WasmResultTag {
   Success,
   Blank,
   Partial,
   Error,
 }
 /**
-* WASM-compatible wrapper around `REPLImpl`.
+* WASM-compatible wrapper around `ReplImpl`.
 */
-export class REPLState {
+export class ReplState {
   free(): void;
 }
 /**
 * WASM wrapper for the result type of the initialization of the REPL.
 */
-export class WASMInitResult {
+export class WasmInitResult {
   free(): void;
 /**
-* @returns {REPLState}
+* @returns {ReplState}
 */
-  repl(): REPLState;
+  repl(): ReplState;
 /**
 * @returns {string}
 */
@@ -60,7 +60,7 @@ export class WASMInitResult {
 /**
 * WASM wrapper for the result type of an execution of the REPL.
 */
-export class WASMInputResult {
+export class WasmInputResult {
   free(): void;
 /**
 * @returns {any}

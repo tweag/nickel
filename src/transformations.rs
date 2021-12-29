@@ -10,6 +10,130 @@ use std::path::PathBuf;
 
 generate_counter!(FreshVarCounter, usize);
 
+/// # Desugarise destructuring
+///
+/// Replace a let-binding with destructuring by a classical let-binding.
+/// It will first destruct the pattern and create a new var for each field of the patternn.
+/// After that, it will construct a new Record/List from the extracted fields.
+///
+/// ## Example:
+///
+/// Taking the let pattern:
+/// ```text
+/// let x @ {a, b=d, ..} = {a=1,b=2,c="ignored"} in ...
+/// ```
+/// after transformation we will have:
+/// ```text
+/// let x = {a=1,b=2,c="ignored"} in
+/// let a = x.a in
+/// let d = x.b in
+/// ...
+/// ```
+pub mod desugar_destructuring {
+    use super::{Ident, RichTerm, Term};
+    use crate::destruct::{Destruct, Match};
+    use crate::term::make::{op1, op2};
+    use crate::term::MetaValue;
+    use crate::term::{BinaryOp::DynRemove, UnaryOp::StaticAccess};
+
+    /// Wrap the desugarized term in a meta value containing the "Record contract" needed to check
+    /// the pattern exaustivity and also fill the default values (`?` operator) if not presents in the record.
+    /// This function should be, in the general case, considered as the entry point of this
+    /// transformation.
+    pub fn desugar_with_contract(rt: RichTerm) -> RichTerm {
+        if let Term::LetPattern(x, pat, t_, body) = *rt.term {
+            let pos = body.pos;
+            let meta = pat.clone().as_contract();
+            let t_ = {
+                let t_pos = t_.pos;
+                RichTerm::new(
+                    Term::MetaValue(MetaValue {
+                        value: Some(t_),
+                        ..meta
+                    }),
+                    t_pos,
+                )
+            };
+            desugar(RichTerm::new(Term::LetPattern(x, pat, t_, body), pos))
+        } else {
+            rt
+        }
+    }
+
+    /// Main transformation function to desuggar let patterns.
+    /// WARNING: In a real usage case, you will want to generate also the matavalue associated to
+    /// this pattern destructuring. Do not concider this function as the entry point of the
+    /// transformation. For that, use `desugar_with_contract`.
+    pub fn desugar(rt: RichTerm) -> RichTerm {
+        if let Term::LetPattern(x, pat, t_, body) = *rt.term {
+            let pos = body.pos;
+            let x = x.unwrap_or_else(super::fresh_var);
+            RichTerm::new(
+                Term::Let(
+                    x.clone(),
+                    t_,
+                    destruct_term(x.clone(), &pat, bind_open_field(x, &pat, body)),
+                ),
+                pos,
+            )
+        } else {
+            rt
+        }
+    }
+
+    /// Wrap `body` in a let construct binding the open part of the pattern to the required value.
+    /// Having `let {a,..y} = {a=1, b=2, c=3} in <BODY>` will bind `y` to {b=2,c=3} in `BODY`.
+    /// Here, the x, is the identifier pointing to the full record. If having `val @ {...} = ... in
+    /// ...` the param x should be `Ident("val")` but if we have a `@` binding less form, you will
+    /// probably generate a fresh variable.
+    fn bind_open_field(x: Ident, pat: &Destruct, body: RichTerm) -> RichTerm {
+        let (matches, var) = match pat {
+            Destruct::Record(matches, true, Some(x)) => (matches, x.clone()),
+            Destruct::Record(matches, true, None) => (matches, super::fresh_var()),
+            Destruct::Record(_, false, None) | Destruct::Empty => return body,
+            _ => panic!("A closed pattern can not have a rest binding"),
+        };
+        Term::Let(
+            var.clone(),
+            matches.iter().fold(Term::Var(x).into(), |x, m| match m {
+                Match::Simple(i, _) | Match::Assign(i, _, _) => {
+                    op2(DynRemove(), Term::Str(i.to_string()), x)
+                }
+            }),
+            body,
+        )
+        .into()
+    }
+
+    /// Core of the destructuring. Bind all the variables of the pattern except the "open" (`..y`)
+    /// part. For that, see `bind_open_field`.
+    fn destruct_term(x: Ident, pat: &Destruct, body: RichTerm) -> RichTerm {
+        let pos = body.pos;
+        match pat {
+            Destruct::Record(matches, ..) => matches.iter().fold(body, move |t, m| match m {
+                Match::Simple(id, _) => RichTerm::new(
+                    Term::Let(
+                        id.clone(),
+                        op1(StaticAccess(id.clone()), Term::Var(x.clone())),
+                        t,
+                    ),
+                    pos,
+                ),
+                Match::Assign(f, _, (id, pat)) => desugar(RichTerm::new(
+                    Term::LetPattern(
+                        id.clone(),
+                        pat.clone(),
+                        op1(StaticAccess(f.clone()), Term::Var(x.clone())),
+                        t,
+                    ),
+                    pos,
+                )),
+            }),
+            _ => body,
+        }
+    }
+}
+
 /// Share normal form.
 ///
 /// Replace the subexpressions of WHNFs that are not functions by thunks, such that they can be
@@ -238,12 +362,12 @@ pub mod apply_contracts {
                             Term::Lbl(ctr.label.clone()),
                             acc
                         )
-                        .with_pos(pos)
+                        .with_pos(pos.into_inherited())
                     },
                 );
 
                 meta.value.replace(inner);
-                RichTerm::new(Term::MetaValue(meta), pos)
+                RichTerm::new(Term::MetaValue(meta), pos.into_inherited())
             }
             t => RichTerm::new(t, pos),
         }
@@ -269,6 +393,8 @@ pub fn transform(rt: RichTerm) -> RichTerm {
     let rt = rt
         .traverse(
             &mut |rt: RichTerm, _| -> Result<RichTerm, ()> {
+                // before anything, we have to desugar the syntax
+                let rt = desugar_destructuring::desugar_with_contract(rt);
                 // We need to do contract generation before wrapping stuff in variables
                 let rt = apply_contracts::transform_one(rt);
                 Ok(rt)
@@ -386,7 +512,7 @@ impl Closurizable for RichTerm {
                 body: self,
                 env: with_env,
             };
-            Thunk::new(closure, IdentKind::Record())
+            Thunk::new(closure, IdentKind::Record)
         });
 
         env.insert(var.clone(), thunk);

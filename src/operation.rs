@@ -105,9 +105,9 @@ pub fn continuate_operation(
             );
             Ok(clos)
         }
-        OperationCont::Op2Second(b_op, fst_clos, fst_pos, snd_pos) => {
-            process_binary_operation(b_op, fst_clos, fst_pos, clos, snd_pos, stack, pos)
-        }
+        OperationCont::Op2Second(b_op, fst_clos, fst_pos, snd_pos) => process_binary_operation(
+            b_op, fst_clos, fst_pos, clos, snd_pos, stack, call_stack, pos,
+        ),
         OperationCont::OpN {
             op,
             mut evaluated,
@@ -438,10 +438,12 @@ fn process_unary_operation(
         UnaryOp::StaticAccess(id) => {
             if let Term::Record(mut static_map, attrs) = *t {
                 match static_map.remove(&id) {
-                    Some(e) => Ok(Closure { body: e, env }),
-
+                    Some(e) => {
+                        call_stack.enter_field(id, pos, e.pos, pos_op);
+                        Ok(Closure { body: e, env })
+                    }
                     None => Err(EvalError::FieldMissing(
-                        id.0,
+                        id.label,
                         String::from("(.)"),
                         RichTerm {
                             term: Box::new(Term::Record(static_map, attrs)),
@@ -587,11 +589,11 @@ fn process_unary_operation(
                 let rec = rec
                     .into_iter()
                     .map(|e| {
-                        let (Ident(s, ident_pos), t) = e;
+                        let (id, t) = e;
                         let pos = t.pos.into_inherited();
                         (
-                            Ident(s.clone(), ident_pos),
-                            mk_app!(f_as_var.clone(), mk_term::string(s), t)
+                            id.clone(),
+                            mk_app!(f_as_var.clone(), mk_term::string(id.label), t)
                                 .closurize(&mut shared_env, env.clone())
                                 .with_pos(pos),
                         )
@@ -945,6 +947,7 @@ fn process_binary_operation(
     clos: Closure,
     snd_pos: TermPos,
     stack: &mut Stack,
+    call_stack: &mut CallStack,
     pos_op: TermPos,
 ) -> Result<Closure, EvalError> {
     let Closure {
@@ -1511,12 +1514,16 @@ fn process_binary_operation(
         }
 
         BinaryOp::DynAccess() => {
-            if let Term::Str(id) = *t1 {
+            if let Term::Str(id_str) = *t1 {
                 if let Term::Record(mut static_map, attrs) = *t2 {
-                    match static_map.remove(&Ident::from(&id)) {
-                        Some(e) => Ok(Closure { body: e, env: env2 }),
+                    let ident = Ident::from(&id_str);
+                    match static_map.remove(&ident) {
+                        Some(e) => {
+                            call_stack.enter_field(ident, pos2, e.pos, pos_op);
+                            Ok(Closure { body: e, env: env2 })
+                        }
                         None => Err(EvalError::FieldMissing(
-                            id,
+                            id_str,
                             String::from("(.$)"),
                             RichTerm {
                                 term: Box::new(Term::Record(static_map, attrs)),

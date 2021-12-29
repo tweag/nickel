@@ -1,4 +1,7 @@
-use crate::term::TermPosExt;
+use crate::{
+    term::TermPosExt,
+    trace::{Enrich, Trace},
+};
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{DocumentSymbol, DocumentSymbolParams, SymbolKind};
 use serde_json::Value;
@@ -16,6 +19,7 @@ pub fn handle_document_symbols(
         .unwrap();
 
     if let Some(completed) = server.lin_cache.get(&file_id) {
+        Trace::enrich(&id, completed);
         let symbols = completed
             .lin
             .iter()
@@ -24,14 +28,17 @@ pub fn handle_document_symbols(
                     let range = item
                         .pos
                         .try_to_range()
-                        .or_else(|| Some((file_id.clone(), (0usize..0usize))))
+                        .or_else(|| Some((file_id, (0usize..0usize))))
                         .map(|(file_id, range)| {
                             codespan_lsp::byte_span_to_range(server.cache.files(), file_id, range)
                                 .unwrap()
                         })
                         .unwrap();
+
+                    // `deprecated` is a required field but causes a warning although we are not using it
+                    #[allow(deprecated)]
                     Some(DocumentSymbol {
-                        name: name.0.to_owned(),
+                        name: name.to_string(),
                         detail: Some(format!("{}", item.ty)),
                         kind: SymbolKind::Variable,
                         tags: None,

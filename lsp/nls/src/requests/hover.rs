@@ -12,7 +12,10 @@ use nickel::{
 use serde_json::Value;
 
 use crate::{
-    diagnostic::LocationCompat, requests::utils::find_linearization_index, server::Server,
+    diagnostic::LocationCompat,
+    requests::utils::find_linearization_index,
+    server::Server,
+    trace::{Enrich, Trace},
 };
 
 pub fn handle(
@@ -46,6 +49,8 @@ pub fn handle(
     let linearization = &completed.lin;
     let index = find_linearization_index(linearization, locator);
 
+    Trace::enrich(&id, completed);
+
     if index == None {
         server.reply(Response::new_ok(id, Value::Null));
         return Ok(());
@@ -54,7 +59,7 @@ pub fn handle(
     let item = linearization[index.unwrap()].to_owned();
     debug!("{:?}", item);
 
-    let (ty, meta) = resolve_type_meta(&item, &completed);
+    let (ty, meta) = resolve_type_meta(&item, completed);
 
     let range = match item.pos {
         TermPos::Original(span) | TermPos::Inherited(span) => Some(Range::from_codespan(
@@ -114,7 +119,7 @@ fn resolve_type_meta(
             extra.push(doc.to_owned());
         }
         if let Some(types) = types {
-            extra.push(format!("{}", types.label.tag));
+            extra.push(types.label.tag.to_string());
         }
         if !contracts.is_empty() {
             extra.push(

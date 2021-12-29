@@ -117,11 +117,11 @@ function getInt32Memory0() {
 }
 /**
 * Return a new instance of the WASM REPL, with the standard library loaded.
-* @returns {WASMInitResult}
+* @returns {WasmInitResult}
 */
 export function repl_init() {
     var ret = wasm.repl_init();
-    return WASMInitResult.__wrap(ret);
+    return WasmInitResult.__wrap(ret);
 }
 
 function _assertClass(instance, klass) {
@@ -132,31 +132,31 @@ function _assertClass(instance, klass) {
 }
 /**
 * Evaluate an input in the WASM REPL.
-* @param {REPLState} state
+* @param {ReplState} state
 * @param {string} line
-* @returns {WASMInputResult}
+* @returns {WasmInputResult}
 */
 export function repl_input(state, line) {
-    _assertClass(state, REPLState);
+    _assertClass(state, ReplState);
     var ptr0 = passStringToWasm0(line, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     var len0 = WASM_VECTOR_LEN;
     var ret = wasm.repl_input(state.ptr, ptr0, len0);
-    return WASMInputResult.__wrap(ret);
+    return WasmInputResult.__wrap(ret);
 }
 
 /**
 * Evaluate an input in the WASM REPL and serialize it.
-* @param {REPLState} state
+* @param {ReplState} state
 * @param {any} format
 * @param {string} line
-* @returns {WASMInputResult}
+* @returns {WasmInputResult}
 */
 export function repl_serialize(state, format, line) {
-    _assertClass(state, REPLState);
+    _assertClass(state, ReplState);
     var ptr0 = passStringToWasm0(line, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     var len0 = WASM_VECTOR_LEN;
     var ret = wasm.repl_serialize(state.ptr, addHeapObject(format), ptr0, len0);
-    return WASMInputResult.__wrap(ret);
+    return WasmInputResult.__wrap(ret);
 }
 
 /**
@@ -166,14 +166,14 @@ export function repl_serialize(state, format, line) {
 * enums as structures with a tag and values. The values that are actually set depend on the
 * tag.
 */
-export const WASMResultTag = Object.freeze({ Success:0,"0":"Success",Blank:1,"1":"Blank",Partial:2,"2":"Partial",Error:3,"3":"Error", });
+export const WasmResultTag = Object.freeze({ Success:0,"0":"Success",Blank:1,"1":"Blank",Partial:2,"2":"Partial",Error:3,"3":"Error", });
 /**
-* WASM-compatible wrapper around `REPLImpl`.
+* WASM-compatible wrapper around `ReplImpl`.
 */
-export class REPLState {
+export class ReplState {
 
     static __wrap(ptr) {
-        const obj = Object.create(REPLState.prototype);
+        const obj = Object.create(ReplState.prototype);
         obj.ptr = ptr;
 
         return obj;
@@ -194,10 +194,10 @@ export class REPLState {
 /**
 * WASM wrapper for the result type of the initialization of the REPL.
 */
-export class WASMInitResult {
+export class WasmInitResult {
 
     static __wrap(ptr) {
-        const obj = Object.create(WASMInitResult.prototype);
+        const obj = Object.create(WasmInitResult.prototype);
         obj.ptr = ptr;
 
         return obj;
@@ -243,21 +243,21 @@ export class WASMInitResult {
         }
     }
     /**
-    * @returns {REPLState}
+    * @returns {ReplState}
     */
     repl() {
         const ptr = this.__destroy_into_raw();
         var ret = wasm.wasminitresult_repl(ptr);
-        return REPLState.__wrap(ret);
+        return ReplState.__wrap(ret);
     }
 }
 /**
 * WASM wrapper for the result type of an execution of the REPL.
 */
-export class WASMInputResult {
+export class WasmInputResult {
 
     static __wrap(ptr) {
-        const obj = Object.create(WASMInputResult.prototype);
+        const obj = Object.create(WasmInputResult.prototype);
         obj.ptr = ptr;
 
         return obj;

@@ -8,17 +8,23 @@ use codespan::{FileId, Files};
 use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 use lalrpop_util::ErrorRecovery;
 
-use crate::eval::{CallStack, StackElem};
-use crate::identifier::Ident;
-use crate::label::ty_path;
-use crate::parser::error::{LexicalError, ParseError as InternalParseError};
-use crate::parser::lexer::Token;
-use crate::parser::utils::mk_span;
-use crate::position::{RawSpan, TermPos};
-use crate::serialize::ExportFormat;
-use crate::term::RichTerm;
-use crate::types::Types;
-use crate::{label, parser, repl};
+use crate::{
+    eval::CallStack,
+    identifier::Ident,
+    label,
+    label::ty_path,
+    parser,
+    parser::{
+        error::{LexicalError, ParseError as InternalParseError},
+        lexer::Token,
+        utils::mk_span,
+    },
+    position::{RawSpan, TermPos},
+    repl,
+    serialize::ExportFormat,
+    term::RichTerm,
+    types::Types,
+};
 
 /// A general error occurring during either parsing or evaluation.
 #[derive(Debug, Clone, PartialEq)]
@@ -29,7 +35,7 @@ pub enum Error {
     ImportError(ImportError),
     SerializationError(SerializationError),
     IOError(IOError),
-    REPLError(REPLError),
+    ReplError(ReplError),
 }
 
 /// An error occurring during evaluation.
@@ -318,7 +324,7 @@ pub struct IOError(pub String);
 
 /// An error occurring during an REPL session.
 #[derive(Debug, PartialEq, Clone)]
-pub enum REPLError {
+pub enum ReplError {
     UnknownCommand(String),
     MissingArg {
         cmd: repl::command::CommandType,
@@ -394,9 +400,9 @@ pub fn escape(s: &str) -> String {
     .expect("escape(): converting from a string should give back a valid UTF8 string")
 }
 
-impl From<REPLError> for Error {
-    fn from(error: REPLError) -> Error {
-        Error::REPLError(error)
+impl From<ReplError> for Error {
+    fn from(error: ReplError) -> Error {
+        Error::ReplError(error)
     }
 }
 
@@ -748,160 +754,6 @@ fn report_ty_path(l: &label::Label, files: &mut Files<String>) -> (Label<FileId>
     (label, notes)
 }
 
-/// Process a raw callstack by grouping elements belonging to the same call and getting rid of
-/// elements that are not associated to a call.
-///
-/// Recall that when a call `f arg` is evaluated, the following events happen:
-/// 1. `arg` is pushed on the evaluation stack.
-/// 2. `f` is evaluated.
-/// 3. Hopefully, the result of this evaluation is a function `Func(id, body)`. `arg` is popped
-///    from the stack, bound to `id` in the environment, and `body is entered`.
-///
-/// For error reporting purpose, we want to be able to determine the chain of nested calls leading
-/// to the current code path at any moment. To do so, the Nickel abstract machine maintains a
-/// callstack via this basic mechanism:
-/// 1. When a function body is entered, push the position of the original application on the
-///    callstack.
-/// 2. When a variable is evaluated, put its name and position on the callstack. The goal is to
-///    have an easy access to the name of a called function for calls of the form `f arg1
-///    .. argn`.
-///
-/// The resulting stack is not suited to be reported to the user for the following reasons:
-///
-/// 1. Some variable evaluations do not correspond to a call. The typical example is `let x = exp
-///    in x`, which pushes an orphan `x` on the callstack. We want to get rid of these.
-/// 2. Because of currying, multiple arguments applications span several objects on the callstack.
-///    Typically, `(fun x y => x + y) arg1 arg2` spans two `App` elements, where the position span
-///    of the latter includes the position span of the former. We want to group them as one call.
-/// 3. The callstack includes calls to builtin contracts. These calls are inserted implicitely by
-///    the abstract machine and are not written explicitly by the user. Showing them is confusing
-///    and clutters the call chain, so we get rid of them too.
-///
-/// This is the role of `process_callstack`, which filters out unwanted elements and groups
-/// callstack elements into atomic call elements represented as `(Option<Ident>, RawSpan)` tuples:
-///
-///  - The first element is the name of the function called, if there is any (anonymous functions don't have one).
-///  - The second is the position span of the whole application.
-///
-/// The callstack is also reversed such that the most nested calls, which are usually the most
-/// relevant to understand the error, are printed first.
-///
-/// # Arguments
-///
-/// - `cs`: the raw callstack to process.
-/// - `contract_id`: the `FileId` of the source containing standard contracts, to filter their
-///   calls out.
-pub fn process_callstack(cs: &CallStack, contract_id: FileId) -> Vec<(Option<Ident>, RawSpan)> {
-    // Create a call element from a callstack element.
-    fn from_elem(elem: &StackElem) -> (Option<Ident>, RawSpan) {
-        match elem {
-            StackElem::Var(_, id, TermPos::Original(pos))
-            | StackElem::Var(_, id, TermPos::Inherited(pos)) => (Some(id.clone()), *pos),
-            StackElem::App(TermPos::Original(pos)) | StackElem::App(TermPos::Inherited(pos)) => {
-                (None, *pos)
-            }
-            _ => panic!(),
-        }
-    }
-
-    let it = cs.iter().filter(|elem| match elem {
-        StackElem::Var(_, _, TermPos::Original(RawSpan { src_id, .. }))
-        | StackElem::Var(_, _, TermPos::Inherited(RawSpan { src_id, .. }))
-        | StackElem::App(TermPos::Original(RawSpan { src_id, .. }))
-        | StackElem::App(TermPos::Inherited(RawSpan { src_id, .. }))
-            if *src_id != contract_id =>
-        {
-            true
-        }
-        _ => false,
-    });
-
-    // To decide how to fuse calls, we need to see two successive elements of the callstack at each
-    // iteration. To do so, we create a zipper of the original iterator with a copy of the iterator
-    // shifted by one element, which returns options to be able to iter until the very last element
-    // (it is padded with an ending `None`).
-    let shifted = it.clone().skip(1).map(Some).chain(Some(None));
-    let mut it = it.peekable();
-
-    // The call element being currently built.
-    let mut pending = if let Some(first) = it.peek() {
-        from_elem(first)
-    } else {
-        return Vec::new();
-    };
-
-    let mut acc = Vec::new();
-
-    for (prev, next) in it.zip(shifted) {
-        match (prev, next) {
-            // If a `Var` is immediately followed by another `Var`, it does not correspond to a
-            // call: we just drop `pending` and replace it with a fresh call element. This
-            // corresponds to the case 1 mentioned in the description of this function.
-            (StackElem::Var(_, _, _), Some(StackElem::Var(_, id, TermPos::Original(pos))))
-            | (StackElem::Var(_, _, _), Some(StackElem::Var(_, id, TermPos::Inherited(pos)))) => {
-                pending = (Some(id.clone()), *pos)
-            }
-            // If an `App` is followed by a `Var`, then `Var` necessarily belongs to a different
-            // call (or to no call at all): we push the pending call and replace it with a fresh
-            // call element.
-            (StackElem::App(pos_app), Some(StackElem::Var(_, id, TermPos::Original(pos))))
-            | (StackElem::App(pos_app), Some(StackElem::Var(_, id, TermPos::Inherited(pos))))
-                if pos_app.is_def() =>
-            {
-                let old = std::mem::replace(&mut pending, (Some(id.clone()), *pos));
-                acc.push(old);
-            }
-            // If a `Var` is followed by an `App`, they belong to the same call iff the position
-            // span of the `Var` is included in the position span of the following `App`. In this
-            // case, we fuse them. Otherwise, `Var` again does not correspond to any call, and we
-            // just drop the old `pending`.
-            (StackElem::Var(_, _, _), Some(StackElem::App(TermPos::Original(pos_app))))
-            | (StackElem::Var(_, _, _), Some(StackElem::App(TermPos::Inherited(pos_app)))) => {
-                let id_opt = match &pending {
-                    (id_opt, pos) if *pos <= *pos_app => id_opt.as_ref().cloned(),
-                    _ => None,
-                };
-                pending = (id_opt, *pos_app);
-            }
-            // Same thing with two `App`: we test for the containment of position spans. If this
-            // fails, however, we still push `pending`, since as opposed to `Var`, an `App` always
-            // corresponds to an actual call.
-            (StackElem::App(_), Some(StackElem::App(TermPos::Original(pos_app))))
-            | (StackElem::App(_), Some(StackElem::App(TermPos::Inherited(pos_app)))) => {
-                let (contained, id_opt) = match &pending {
-                    (id_opt, pos) if *pos <= *pos_app => (true, id_opt.as_ref().cloned()),
-                    _ => (false, None),
-                };
-                if contained {
-                    pending = (id_opt, *pos_app);
-                } else {
-                    let old = std::mem::replace(&mut pending, (None, *pos_app));
-                    acc.push(old);
-                };
-            }
-            // We save the last `pending` element at the end of the iterator if the last stack
-            // element was an `App`.
-            (StackElem::App(_), None) => {
-                acc.push(pending);
-                // The `break` is useless at first sight, but if omit it the compiler complains
-                // that we will use a moved `pending`
-                break;
-            }
-            // Otherwise it is again an orphan `Var` that can be ignored.
-            (StackElem::Var(_, _, _), None) => (),
-            // We should have tested all possible legal configurations of a callstack.
-            _ => panic!(
-                "error::process_callstack(): unexpected consecutive elements of the\
-callstack ({:?}, {:?})",
-                prev, next
-            ),
-        };
-    }
-
-    acc.reverse();
-    acc
-}
-
 impl ToDiagnostic<FileId> for Error {
     fn to_diagnostic(
         &self,
@@ -920,7 +772,7 @@ impl ToDiagnostic<FileId> for Error {
             Error::ImportError(err) => err.to_diagnostic(files, contract_id),
             Error::SerializationError(err) => err.to_diagnostic(files, contract_id),
             Error::IOError(err) => err.to_diagnostic(files, contract_id),
-            Error::REPLError(err) => err.to_diagnostic(files, contract_id),
+            Error::ReplError(err) => err.to_diagnostic(files, contract_id),
         }
     }
 }
@@ -1033,17 +885,25 @@ impl ToDiagnostic<FileId> for EvalError {
 
                 if ty_path::is_only_codom(&l.path) {
                 } else if let Some(id) = contract_id {
-                    let diags = process_callstack(call_stack, id)
-                        .into_iter()
-                        .enumerate()
-                        .map(|(i, (id_opt, pos))| {
-                            let name = id_opt
-                                .map(|ident| ident.to_string())
-                                .unwrap_or_else(|| String::from("<func>"));
-                            Diagnostic::note().with_labels(vec![secondary(&pos)
-                                .with_message(format!("({}) calling {}", i + 1, name))])
-                        });
+                    let (calls, curr_call) = call_stack.group_by_calls(id);
+                    let diag_curr_call = curr_call.map(|cdescr| {
+                        let name = cdescr
+                            .head
+                            .map(|ident| ident.to_string())
+                            .unwrap_or_else(|| String::from("<func>"));
+                        Diagnostic::note().with_labels(vec![primary(&cdescr.span)
+                            .with_message(format!("While calling to {}", name))])
+                    });
+                    let diags = calls.into_iter().enumerate().map(|(i, cdescr)| {
+                        let name = cdescr
+                            .head
+                            .map(|ident| ident.to_string())
+                            .unwrap_or_else(|| String::from("<func>"));
+                        Diagnostic::note().with_labels(vec![secondary(&cdescr.span)
+                            .with_message(format!("({}) calling {}", i + 1, name))])
+                    });
 
+                    diagnostics.extend(diag_curr_call);
                     diagnostics.extend(diags);
                 }
 
@@ -1555,19 +1415,19 @@ impl ToDiagnostic<FileId> for IOError {
     }
 }
 
-impl ToDiagnostic<FileId> for REPLError {
+impl ToDiagnostic<FileId> for ReplError {
     fn to_diagnostic(
         &self,
         _files: &mut Files<String>,
         _contract_id: Option<FileId>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
-            REPLError::UnknownCommand(s) => vec![Diagnostic::error()
+            ReplError::UnknownCommand(s) => vec![Diagnostic::error()
                 .with_message(format!("unknown command `{}`", s))
                 .with_notes(vec![String::from(
                     "type `:?` or `:help` for a list of available commands.",
                 )])],
-            REPLError::MissingArg { cmd, msg_opt } => {
+            ReplError::MissingArg { cmd, msg_opt } => {
                 let mut notes = msg_opt
                     .as_ref()
                     .map(|msg| vec![msg.clone()])

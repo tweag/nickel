@@ -43,7 +43,6 @@
 use crate::cache::ImportResolver;
 use crate::environment::Environment as GenericEnvironment;
 use crate::error::TypecheckError;
-use crate::eval;
 use crate::identifier::Ident;
 use crate::label::ty_path;
 use crate::position::TermPos;
@@ -353,6 +352,11 @@ pub struct Envs<'a> {
     local: Environment,
 }
 
+#[derive(Clone, Debug)]
+pub enum EnvBuildError {
+    NotARecord(RichTerm),
+}
+
 impl<'a> Envs<'a> {
     /// Create an `Envs` value with an empty local environment from a global environment.
     pub fn from_global(global: &'a Environment) -> Self {
@@ -371,23 +375,29 @@ impl<'a> Envs<'a> {
         }
     }
 
-    /// Populate a new global typing environment from a global term environment.
-    pub fn mk_global(eval_env: &eval::Environment) -> Environment {
-        eval_env
+    /// Populate a new global typing environment from a `Vec` of parsed files.
+    pub fn mk_global(envs: Vec<RichTerm>) -> Result<Environment, EnvBuildError> {
+        Ok(envs
             .iter()
-            .map(|(id, thunk)| {
-                (
-                    id.clone(),
-                    apparent_type(thunk.borrow().body.as_ref(), None).into(),
-                )
+            .map(|rt| {
+                if let Term::RecRecord(rec, ..) = rt.as_ref() {
+                    Ok(rec
+                        .iter()
+                        .map(|(id, rt)| (id.clone(), infer_type(rt.as_ref()))))
+                } else {
+                    Err(EnvBuildError::NotARecord(rt.clone()))
+                }
             })
-            .collect()
+            .collect::<Result<Vec<_>, EnvBuildError>>()?
+            .into_iter()
+            .flatten()
+            .collect())
     }
 
     /// Add the bindings of a record to a typing environment. Ignore fields whose name are defined
     /// through interpolation.
     //TODO: support the case of a record with a type annotation.
-    pub fn env_add_term(env: &mut Environment, rt: &RichTerm) -> Result<(), eval::EnvBuildError> {
+    pub fn env_add_term(env: &mut Environment, rt: &RichTerm) -> Result<(), EnvBuildError> {
         let RichTerm { term, pos } = rt;
 
         match term.as_ref() {
@@ -400,10 +410,7 @@ impl<'a> Envs<'a> {
 
                 Ok(())
             }
-            t => Err(eval::EnvBuildError::NotARecord(RichTerm::new(
-                t.clone(),
-                *pos,
-            ))),
+            t => Err(EnvBuildError::NotARecord(RichTerm::new(t.clone(), *pos))),
         }
     }
 
@@ -452,7 +459,7 @@ pub struct State<'a> {
 /// file. It however still needs the resolver to get the apparent type of imports.
 pub fn type_check<L>(
     t: &RichTerm,
-    global_eval_env: &eval::Environment,
+    global_env: &Environment,
     resolver: &impl ImportResolver,
     mut linearizer: impl Linearizer<L, (UnifTable, HashMap<usize, Ident>)>,
 ) -> Result<(Types, Completed), TypecheckError>
@@ -461,7 +468,6 @@ where
 {
     let (mut table, mut names) = (UnifTable::new(), HashMap::new());
     let mut building = Linearization::building();
-    let global = Envs::mk_global(global_eval_env);
     let ty = TypeWrapper::Ptr(new_var(&mut table));
 
     {
@@ -474,7 +480,7 @@ where
 
         type_check_(
             &mut state,
-            Envs::from_global(&global),
+            Envs::from_global(global_env),
             &mut building,
             linearizer.scope(linearization::ScopeId::Right),
             false,
@@ -638,6 +644,47 @@ fn type_check_<S, E>(
             // TODO move this up once lets are rec
             envs.insert(x.clone(), ty_let);
             type_check_(state, envs, lin, linearizer, strict, rt, ty)
+        }
+        Term::LetPattern(x, pat, re, _rt) => {
+            use crate::destruct::*;
+            fn inject_pat_vars(pat: &Destruct, envs: &mut Envs) {
+                if let Destruct::Record(matches, _, rst) = pat {
+                    if let Some(id) = rst {
+                        envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
+                    }
+                    matches.iter().for_each(|m| match m {
+                        Match::Simple(id, ..) => {
+                            envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()))
+                        }
+                        Match::Assign(_, _, (bind_id, pat)) => {
+                            if let Some(id) = bind_id {
+                                envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
+                            }
+                            if !pat.is_empty() {
+                                inject_pat_vars(pat, envs);
+                            }
+                        }
+                    });
+                }
+            }
+            let ty_let = binding_type(re.as_ref(), &envs, state.table, strict);
+            type_check_(
+                state,
+                envs.clone(),
+                lin,
+                linearizer.scope(ScopeId::Left),
+                strict,
+                re,
+                ty_let.clone(),
+            )?;
+
+            // TODO typecheck the interior of the patern
+            if let Some(x) = x {
+                envs.insert(x.clone(), ty_let);
+                inject_pat_vars(pat, &mut envs);
+            }
+            //type_check_(state, envs, strict, rt, ty)
+            Ok(())
         }
         Term::App(e, t) => {
             let src = TypeWrapper::Ptr(new_var(state.table));
@@ -1020,6 +1067,30 @@ pub fn apparent_type(t: &Term, envs: Option<&Envs>) -> ApparentType {
             .map(ApparentType::FromEnv)
             .unwrap_or(ApparentType::Approximated(Types(AbsType::Dyn()))),
         _ => ApparentType::Approximated(Types(AbsType::Dyn())),
+    }
+}
+
+/// Infer type of a more complex structure.
+/// For now, it's implemented only to infer the type of a non annotated record by gathering the apparent type of the fields.
+/// It's used essentially to type the stdlib.
+pub fn infer_type(t: &Term) -> TypeWrapper {
+    match t {
+        Term::Record(rec, ..) | Term::RecRecord(rec, ..) => AbsType::StaticRecord(Box::new(
+            TypeWrapper::Concrete(rec.iter().fold(AbsType::RowEmpty(), |r, (id, rt)| {
+                AbsType::RowExtend(
+                    id.clone(),
+                    Some(Box::new(infer_type(rt.term.as_ref()))),
+                    Box::new(r.into()),
+                )
+            })),
+        ))
+        .into(),
+        Term::MetaValue(MetaValue {
+            value: Some(rt),
+            types: None,
+            ..
+        }) => infer_type(rt.as_ref()),
+        t => apparent_type(t, None).into(),
     }
 }
 

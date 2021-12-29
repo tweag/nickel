@@ -1,6 +1,6 @@
 //! Web assembly interface to the REPL.
 use super::simple_frontend::{input, serialize, InputError, InputResult};
-use super::{REPLImpl, REPL};
+use super::{Repl, ReplImpl};
 use crate::cache::Cache;
 use crate::error::ToDiagnostic;
 use crate::serialize::ExportFormat;
@@ -22,7 +22,7 @@ use wasm_bindgen::prelude::*;
 /// tag.
 #[wasm_bindgen]
 #[derive(Clone, Copy, Eq, PartialEq)]
-pub enum WASMResultTag {
+pub enum WasmResultTag {
     Success = 0,
     Blank = 1,
     Partial = 2,
@@ -32,7 +32,7 @@ pub enum WASMResultTag {
 /// Severity of an error diagnostic. WASM wrapper for the corresponding codespan type.
 #[derive(Serialize_repr, Clone, Copy, Eq, PartialEq)]
 #[repr(u8)]
-pub enum WASMErrorSeverity {
+pub enum WasmErrorSeverity {
     Bug = 5,
     /// An error.
     Error = 4,
@@ -44,14 +44,14 @@ pub enum WASMErrorSeverity {
     Help = 1,
 }
 
-impl From<Severity> for WASMErrorSeverity {
-    fn from(s: Severity) -> WASMErrorSeverity {
+impl From<Severity> for WasmErrorSeverity {
+    fn from(s: Severity) -> WasmErrorSeverity {
         match s {
-            Severity::Bug => WASMErrorSeverity::Bug,
-            Severity::Error => WASMErrorSeverity::Error,
-            Severity::Warning => WASMErrorSeverity::Warning,
-            Severity::Note => WASMErrorSeverity::Note,
-            Severity::Help => WASMErrorSeverity::Help,
+            Severity::Bug => WasmErrorSeverity::Bug,
+            Severity::Error => WasmErrorSeverity::Error,
+            Severity::Warning => WasmErrorSeverity::Warning,
+            Severity::Note => WasmErrorSeverity::Note,
+            Severity::Help => WasmErrorSeverity::Help,
         }
     }
 }
@@ -59,39 +59,39 @@ impl From<Severity> for WASMErrorSeverity {
 /// Style of an error label. WASM wrapper for the corresponding codespan type.
 #[derive(Serialize_repr, Clone, Copy, Eq, PartialEq)]
 #[repr(u8)]
-pub enum WASMErrorLabelStyle {
+pub enum WasmErrorLabelStyle {
     Primary = 0,
     Secondary = 1,
 }
 
-impl From<LabelStyle> for WASMErrorLabelStyle {
-    fn from(label_style: LabelStyle) -> WASMErrorLabelStyle {
+impl From<LabelStyle> for WasmErrorLabelStyle {
+    fn from(label_style: LabelStyle) -> WasmErrorLabelStyle {
         match label_style {
-            LabelStyle::Primary => WASMErrorLabelStyle::Primary,
-            LabelStyle::Secondary => WASMErrorLabelStyle::Secondary,
+            LabelStyle::Primary => WasmErrorLabelStyle::Primary,
+            LabelStyle::Secondary => WasmErrorLabelStyle::Secondary,
         }
     }
 }
 
 /// A serializable error diagnostic. WASM wrapper for the corresponding codespan type.
 #[derive(Serialize)]
-pub struct WASMErrorDiagnostic {
-    pub severity: WASMErrorSeverity,
+pub struct WasmErrorDiagnostic {
+    pub severity: WasmErrorSeverity,
     msg: String,
     notes: Vec<String>,
-    labels: Vec<WASMErrorLabel>,
+    labels: Vec<WasmErrorLabel>,
 }
 
-impl WASMErrorDiagnostic {
+impl WasmErrorDiagnostic {
     fn from_codespan(files: &Files<String>, diag: Diagnostic<FileId>) -> Self {
-        WASMErrorDiagnostic {
+        WasmErrorDiagnostic {
             severity: diag.severity.into(),
             msg: diag.message,
             notes: diag.notes,
             labels: diag
                 .labels
                 .into_iter()
-                .map(|label| WASMErrorLabel::from_codespan(files, label))
+                .map(|label| WasmErrorLabel::from_codespan(files, label))
                 .collect(),
         }
     }
@@ -99,16 +99,16 @@ impl WASMErrorDiagnostic {
 
 /// A serializable error label. WASM wrapper for the corresponding codespan type.
 #[derive(Serialize)]
-pub struct WASMErrorLabel {
+pub struct WasmErrorLabel {
     msg: String,
-    pub style: WASMErrorLabelStyle,
+    pub style: WasmErrorLabelStyle,
     pub line_start: usize,
     pub col_start: usize,
     pub line_end: usize,
     pub col_end: usize,
 }
 
-impl WASMErrorLabel {
+impl WasmErrorLabel {
     fn from_codespan(files: &Files<String>, label: Label<FileId>) -> Self {
         let start_loc = files.location(label.file_id, label.range.start as u32);
         let end_loc = files.location(label.file_id, label.range.end as u32);
@@ -129,7 +129,7 @@ impl WASMErrorLabel {
             _ => (0, 0, 0, 0),
         };
 
-        WASMErrorLabel {
+        WasmErrorLabel {
             msg: label.message,
             style: label.style.into(),
             line_start,
@@ -142,28 +142,28 @@ impl WASMErrorLabel {
 
 /// WASM wrapper for the result type of the initialization of the REPL.
 #[wasm_bindgen]
-pub struct WASMInitResult {
+pub struct WasmInitResult {
     msg: String,
-    pub tag: WASMResultTag,
-    state: REPLState,
+    pub tag: WasmResultTag,
+    state: ReplState,
 }
 
 #[wasm_bindgen]
-impl WASMInitResult {
+impl WasmInitResult {
     #[wasm_bindgen(getter)]
     pub fn msg(&self) -> String {
         self.msg.clone()
     }
 
-    pub fn repl(self) -> REPLState {
+    pub fn repl(self) -> ReplState {
         self.state
     }
 
-    /// Make an `WASMInitResult` result from an `InputError`.
-    fn error(mut state: REPLState, error: InputError) -> Self {
-        WASMInitResult {
+    /// Make a `WasmInitResult` result from an `InputError`.
+    fn error(mut state: ReplState, error: InputError) -> Self {
+        WasmInitResult {
             msg: err_to_string(&mut state.0.cache_mut(), &error),
-            tag: WASMResultTag::Error,
+            tag: WasmResultTag::Error,
             state,
         }
     }
@@ -171,14 +171,14 @@ impl WASMInitResult {
 
 /// WASM wrapper for the result type of an execution of the REPL.
 #[wasm_bindgen]
-pub struct WASMInputResult {
+pub struct WasmInputResult {
     msg: String,
-    pub tag: WASMResultTag,
+    pub tag: WasmResultTag,
     errors: JsValue,
 }
 
 #[wasm_bindgen]
-impl WASMInputResult {
+impl WasmInputResult {
     #[wasm_bindgen(getter)]
     pub fn msg(&self) -> String {
         self.msg.clone()
@@ -189,7 +189,7 @@ impl WASMInputResult {
         self.errors.clone()
     }
 
-    /// Make an `WASMInputResult` from an `InputError`.
+    /// Make a `WasmInputResult` from an `InputError`.
     fn error(cache: &mut Cache, error: InputError) -> Self {
         let (msg, errors) = match error {
             InputError::NickelError(err) => {
@@ -197,57 +197,57 @@ impl WASMInputResult {
                 let diagnostics = err.to_diagnostic(cache.files_mut(), contracts_id);
 
                 let msg = diags_to_string(cache, &diagnostics);
-                let errors: Vec<WASMErrorDiagnostic> = diagnostics
+                let errors: Vec<WasmErrorDiagnostic> = diagnostics
                     .into_iter()
-                    .map(|diag| WASMErrorDiagnostic::from_codespan(cache.files(), diag))
+                    .map(|diag| WasmErrorDiagnostic::from_codespan(cache.files(), diag))
                     .collect();
                 (msg, errors)
             }
             InputError::Other(err) => (err, Vec::new()),
         };
 
-        WASMInputResult {
+        WasmInputResult {
             msg,
-            tag: WASMResultTag::Error,
+            tag: WasmResultTag::Error,
             errors: JsValue::from_serde(&errors).unwrap(),
         }
     }
 
     /// Generate a serializable empty list.
     fn empty_errors() -> JsValue {
-        JsValue::from_serde(&Vec::<WASMErrorDiagnostic>::new()).unwrap()
+        JsValue::from_serde(&Vec::<WasmErrorDiagnostic>::new()).unwrap()
     }
 }
 
-impl From<InputResult> for WASMInputResult {
+impl From<InputResult> for WasmInputResult {
     fn from(ir: InputResult) -> Self {
         match ir {
-            InputResult::Success(msg) => WASMInputResult {
+            InputResult::Success(msg) => WasmInputResult {
                 msg,
-                tag: WASMResultTag::Success,
-                errors: WASMInputResult::empty_errors(),
+                tag: WasmResultTag::Success,
+                errors: WasmInputResult::empty_errors(),
             },
-            InputResult::Blank => WASMInputResult {
+            InputResult::Blank => WasmInputResult {
                 msg: String::new(),
-                tag: WASMResultTag::Blank,
-                errors: WASMInputResult::empty_errors(),
+                tag: WasmResultTag::Blank,
+                errors: WasmInputResult::empty_errors(),
             },
-            InputResult::Partial => WASMInputResult {
+            InputResult::Partial => WasmInputResult {
                 msg: String::new(),
-                tag: WASMResultTag::Partial,
-                errors: WASMInputResult::empty_errors(),
+                tag: WasmResultTag::Partial,
+                errors: WasmInputResult::empty_errors(),
             },
         }
     }
 }
 
-/// WASM-compatible wrapper around `REPLImpl`.
+/// WASM-compatible wrapper around `ReplImpl`.
 #[wasm_bindgen]
-pub struct REPLState(REPLImpl);
+pub struct ReplState(ReplImpl);
 
 /// WASM-compatible wrapper around `serialize::ExportFormat`.
 #[wasm_bindgen]
-pub enum WASMExportFormat {
+pub enum WasmExportFormat {
     Raw = "raw",
     Json = "json",
     Yaml = "yaml",
@@ -256,15 +256,15 @@ pub enum WASMExportFormat {
 
 pub type ExportFormaParseError = ();
 
-impl TryInto<ExportFormat> for WASMExportFormat {
+impl TryInto<ExportFormat> for WasmExportFormat {
     type Error = ExportFormaParseError;
 
     fn try_into(self) -> Result<ExportFormat, ExportFormaParseError> {
         match self {
-            WASMExportFormat::Raw => Ok(ExportFormat::Raw),
-            WASMExportFormat::Json => Ok(ExportFormat::Json),
-            WASMExportFormat::Yaml => Ok(ExportFormat::Yaml),
-            WASMExportFormat::Toml => Ok(ExportFormat::Toml),
+            WasmExportFormat::Raw => Ok(ExportFormat::Raw),
+            WasmExportFormat::Json => Ok(ExportFormat::Json),
+            WasmExportFormat::Yaml => Ok(ExportFormat::Yaml),
+            WasmExportFormat::Toml => Ok(ExportFormat::Toml),
             _ => Err(()),
         }
     }
@@ -299,34 +299,34 @@ pub fn err_to_string(cache: &mut Cache, error: &InputError) -> String {
 
 /// Return a new instance of the WASM REPL, with the standard library loaded.
 #[wasm_bindgen]
-pub fn repl_init() -> WASMInitResult {
-    let mut repl = REPLImpl::new();
+pub fn repl_init() -> WasmInitResult {
+    let mut repl = ReplImpl::new();
     match repl.load_stdlib() {
-        Ok(()) => WASMInitResult {
+        Ok(()) => WasmInitResult {
             msg: String::new(),
-            tag: WASMResultTag::Success,
-            state: REPLState(repl),
+            tag: WasmResultTag::Success,
+            state: ReplState(repl),
         },
-        Err(err) => WASMInitResult::error(REPLState(repl), err.into()),
+        Err(err) => WasmInitResult::error(ReplState(repl), err.into()),
     }
 }
 
 /// Evaluate an input in the WASM REPL.
 #[wasm_bindgen]
-pub fn repl_input(state: &mut REPLState, line: &str) -> WASMInputResult {
+pub fn repl_input(state: &mut ReplState, line: &str) -> WasmInputResult {
     input(&mut state.0, line)
-        .map(WASMInputResult::from)
-        .unwrap_or_else(|err| WASMInputResult::error(state.0.cache_mut(), err))
+        .map(WasmInputResult::from)
+        .unwrap_or_else(|err| WasmInputResult::error(state.0.cache_mut(), err))
 }
 
 /// Evaluate an input in the WASM REPL and serialize it.
 #[wasm_bindgen]
 pub fn repl_serialize(
-    state: &mut REPLState,
-    format: WASMExportFormat,
+    state: &mut ReplState,
+    format: WasmExportFormat,
     line: &str,
-) -> WASMInputResult {
+) -> WasmInputResult {
     serialize(&mut state.0, format.try_into().unwrap_or_default(), line)
-        .map(WASMInputResult::from)
-        .unwrap_or_else(|err| WASMInputResult::error(state.0.cache_mut(), err))
+        .map(WasmInputResult::from)
+        .unwrap_or_else(|err| WasmInputResult::error(state.0.cache_mut(), err))
 }

@@ -1,7 +1,7 @@
-use std::{borrow::BorrowMut, cell::UnsafeCell, collections::HashMap, mem};
+use std::{collections::HashMap, mem};
 
 use codespan::ByteIndex;
-use log::{debug, error, Record};
+use log::debug;
 use nickel::{
     identifier::Ident,
     position::TermPos,
@@ -84,11 +84,11 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
         scope: Vec<ScopeId>,
         env: &mut Environment,
     ) {
-        for (ident, value) in record_fields.into_iter() {
+        for (ident, value) in record_fields.iter() {
             let id = self.id_gen().get_and_advance();
             self.push(LinearizationItem {
                 id,
-                pos: ident.1,
+                pos: ident.pos,
                 // temporary, the actual type is resolved later and the item retyped
                 ty: TypeWrapper::Concrete(AbsType::Dyn()),
                 kind: TermKind::RecordField {
@@ -203,7 +203,7 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
                 // get record field
                 .and_then(|parent_declaration| match &parent_declaration.kind {
                     TermKind::Record(fields) => {
-                        fields.get(&child_ident).and_then(|child_declaration_id| {
+                        fields.get(child_ident).and_then(|child_declaration_id| {
                             self.state.resource.linearization.get(*child_declaration_id)
                         })
                     }
@@ -225,7 +225,7 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
                                     "parent referenced a nested record indirectly`: {:?}",
                                     fields
                                 );
-                                fields.get(&child_ident).and_then(|accessor_id| {
+                                fields.get(child_ident).and_then(|accessor_id| {
                                     self.state.resource.linearization.get(*accessor_id)
                                 })
                             }
@@ -262,7 +262,7 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
 
             if defers.is_empty() && !unresolved.is_empty() {
                 debug!("unresolved references: {:?}", unresolved);
-                defers = mem::replace(&mut unresolved, Vec::new());
+                defers = mem::take(&mut unresolved);
             }
         }
     }
@@ -326,7 +326,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
         // `offset` is used to find the [LinearizationItem] representing the field
         // Field items are inserted immediately after the record
         if !matches!(term, Term::Op1(UnaryOp::StaticAccess(_), _)) {
-            if let Some((record, (offset, Ident(_, field_pos)))) = self
+            if let Some((record, (offset, Ident { pos: field_pos, .. }))) = self
                 .record_fields
                 .take()
                 .map(|(record, mut fields)| (record, fields.pop().unwrap()))
@@ -379,7 +379,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                 lin.push(LinearizationItem {
                     id,
                     ty,
-                    pos: ident.1,
+                    pos: ident.pos,
                     scope: self.scope.clone(),
                     kind: TermKind::Declaration(ident.to_owned(), Vec::new()),
                     meta: self.meta.take(),
@@ -395,7 +395,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
 
                 lin.push(LinearizationItem {
                     id: root_id,
-                    pos: ident.1,
+                    pos: ident.pos,
                     ty: TypeWrapper::Concrete(AbsType::Dyn()),
                     scope: self.scope.clone(),
                     kind: TermKind::Usage(UsageState::Resolved(self.env.get(ident))),
@@ -413,7 +413,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                         let id = id_gen.get_and_advance();
                         lin.push(LinearizationItem {
                             id,
-                            pos: accessor.1,
+                            pos: accessor.pos,
                             ty: TypeWrapper::Concrete(AbsType::Dyn()),
                             scope: self.scope.clone(),
                             kind: TermKind::Usage(UsageState::Deferred {
@@ -455,33 +455,26 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                 //           call to [Self::add_term]
 
                 for contract in meta.contracts.iter() {
-                    match &contract.types.0 {
-                        // Note: we extract the
-                        nickel::types::AbsType::Flat(RichTerm { term, pos: _ }) => {
-                            match &**term {
-                                Term::Var(ident) => {
-                                    let parent = self.env.get(&ident);
-                                    let id = id_gen.get_and_advance();
-                                    lin.push(LinearizationItem {
-                                        id,
-                                        pos: ident.1,
-                                        ty: TypeWrapper::Concrete(AbsType::Var(ident.to_owned())),
-                                        scope: self.scope.clone(),
-                                        // id = parent: full let binding including the body
-                                        // id = parent + 1: actual delcaration scope, i.e. _ = < definition >
-                                        kind: TermKind::Usage(UsageState::Resolved(
-                                            parent.map(|id| id),
-                                        )),
-                                        meta: None,
-                                    });
-                                    if let Some(parent) = parent {
-                                        lin.add_usage(parent, id);
-                                    }
-                                }
-                                _ => {}
+                    if let nickel::types::AbsType::Flat(RichTerm { term, pos: _ }) =
+                        &contract.types.0
+                    {
+                        if let Term::Var(ident) = &**term {
+                            let parent = self.env.get(ident);
+                            let id = id_gen.get_and_advance();
+                            lin.push(LinearizationItem {
+                                id,
+                                pos: ident.pos,
+                                ty: TypeWrapper::Concrete(AbsType::Var(ident.to_owned())),
+                                scope: self.scope.clone(),
+                                // id = parent: full let binding including the body
+                                // id = parent + 1: actual delcaration scope, i.e. _ = < definition >
+                                kind: TermKind::Usage(UsageState::Resolved(parent)),
+                                meta: None,
+                            });
+                            if let Some(parent) = parent {
+                                lin.add_usage(parent, id);
                             }
                         }
-                        _ => {}
                     }
                 }
 
@@ -493,7 +486,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                 }
             }
 
-            other @ _ => {
+            other => {
                 debug!("Add wildcard item: {:?}", other);
 
                 lin.push(LinearizationItem {

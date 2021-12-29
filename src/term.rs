@@ -16,6 +16,7 @@
 //! contracts, default values, documentation, etc. They bring such usually external object down to
 //! the term level, and together with [merge](../merge/index.html), they allow for flexible and
 //! modular definitions of contracts, record and metadata all together.
+use crate::destruct::Destruct;
 use crate::identifier::Ident;
 use crate::label::Label;
 use crate::position::TermPos;
@@ -64,6 +65,8 @@ pub enum Term {
     /// A let binding.
     #[serde(skip)]
     Let(Ident, RichTerm, RichTerm),
+    #[serde(skip)]
+    LetPattern(Option<Ident>, Destruct, RichTerm, RichTerm),
     /// An application.
     #[serde(skip)]
     App(RichTerm, RichTerm),
@@ -147,15 +150,15 @@ pub enum Term {
     ParseError,
 }
 
-#[derive(Debug, Eq, PartialEq, Copy, Clone)]
-pub struct RecordAttrs {
-    pub open: bool,
+impl From<MetaValue> for Term {
+    fn from(m: MetaValue) -> Self {
+        Term::MetaValue(m)
+    }
 }
 
-impl Default for RecordAttrs {
-    fn default() -> Self {
-        RecordAttrs { open: false }
-    }
+#[derive(Debug, Default, Eq, PartialEq, Copy, Clone)]
+pub struct RecordAttrs {
+    pub open: bool,
 }
 
 impl RecordAttrs {
@@ -202,6 +205,12 @@ impl From<RichTerm> for MetaValue {
             priority: Default::default(),
             value: Some(rt),
         }
+    }
+}
+
+impl Default for MetaValue {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -326,6 +335,7 @@ impl Term {
                 meta.value.iter_mut().for_each(func);
             }
             Let(_, ref mut t1, ref mut t2)
+            | LetPattern(_, _, ref mut t1, ref mut t2)
             | App(ref mut t1, ref mut t2)
             | Op2(_, ref mut t1, ref mut t2) => {
                 func(t1);
@@ -362,6 +372,7 @@ impl Term {
             Term::Wrapped(_, _) => Some("Wrapped"),
             Term::MetaValue(_) => Some("Metavalue"),
             Term::Let(_, _, _)
+            | Term::LetPattern(_, _, _, _)
             | Term::App(_, _)
             | Term::Var(_)
             | Term::Switch(..)
@@ -437,6 +448,7 @@ impl Term {
             Term::Var(id) => id.to_string(),
             Term::ParseError => String::from("<parse error>"),
             Term::Let(_, _, _)
+            | Term::LetPattern(_, _, _, _)
             | Term::App(_, _)
             | Term::Switch(..)
             | Term::Op1(_, _)
@@ -488,6 +500,7 @@ impl Term {
             | Term::List(_)
             | Term::Sym(_) => true,
             Term::Let(_, _, _)
+            | Term::LetPattern(_, _, _, _)
             | Term::App(_, _)
             | Term::Var(_)
             | Term::Switch(..)
@@ -523,6 +536,7 @@ impl Term {
             | Term::Enum(_)
             | Term::Sym(_) => true,
             Term::Let(_, _, _)
+            | Term::LetPattern(_, _, _, _)
             | Term::Record(..)
             | Term::List(_)
             | Term::Fun(_, _)
@@ -811,9 +825,7 @@ impl NAryOp {
     }
 
     pub fn is_strict(&self) -> bool {
-        match self {
-            _ => true,
-        }
+        true
     }
 }
 
@@ -854,10 +866,15 @@ impl RichTerm {
     ///
     /// It allows to use rust `Eq` trait to compare the values of the underlying terms.
     #[cfg(test)]
-    pub fn clean_pos(&mut self) {
-        self.pos = TermPos::None;
-        self.term
-            .apply_to_rich_terms(|rt: &mut Self| rt.clean_pos());
+    pub fn without_pos(mut self) -> Self {
+        fn clean_pos(rt: &mut RichTerm) {
+            rt.pos = TermPos::None;
+            rt.term
+                .apply_to_rich_terms(|rt: &mut RichTerm| clean_pos(rt));
+        }
+
+        clean_pos(&mut self);
+        self
     }
 
     /// Set the position and return the term updated.
@@ -910,6 +927,14 @@ impl RichTerm {
                 let t2 = t2.traverse(f, state, method)?;
                 RichTerm {
                     term: Box::new(Term::Let(id, t1, t2)),
+                    pos,
+                }
+            }
+            Term::LetPattern(id, pat, t1, t2) => {
+                let t1 = t1.traverse(f, state, method)?;
+                let t2 = t2.traverse(f, state, method)?;
+                RichTerm {
+                    term: Box::new(Term::LetPattern(id, pat, t1, t2)),
                     pos,
                 }
             }
@@ -1308,6 +1333,27 @@ pub mod make {
         Term::Let(id.into(), t1.into(), t2.into()).into()
     }
 
+    pub fn let_pat<I, D, T1, T2>(id: Option<I>, pat: D, t1: T1, t2: T2) -> RichTerm
+    where
+        T1: Into<RichTerm>,
+        T2: Into<RichTerm>,
+        D: Into<Destruct>,
+        I: Into<Ident>,
+    {
+        match pat.into() {
+            d @ (Destruct::Record(..) | Destruct::List(_)) => {
+                Term::LetPattern(id.map(|i| i.into()), d, t1.into(), t2.into()).into()
+            }
+            Destruct::Empty => {
+                if let Some(id) = id {
+                    let_in(id, t1, t2)
+                } else {
+                    Term::Null.into()
+                }
+            }
+        }
+    }
+
     #[cfg(test)]
     pub fn if_then_else<T1, T2, T3>(cond: T1, t1: T2, t2: T3) -> RichTerm
     where
@@ -1331,6 +1377,13 @@ pub mod make {
         T2: Into<RichTerm>,
     {
         Term::Op2(op, t1.into(), t2.into()).into()
+    }
+
+    pub fn opn<T>(op: NAryOp, args: Vec<T>) -> RichTerm
+    where
+        T: Into<RichTerm>,
+    {
+        Term::OpN(op, args.into_iter().map(T::into).collect()).into()
     }
 
     pub fn assume<T>(types: Types, l: Label, t: T) -> RichTerm

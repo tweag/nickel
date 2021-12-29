@@ -6,13 +6,12 @@ use codespan::FileId;
 use lalrpop_util::ErrorRecovery;
 
 use super::ExtendedTerm;
-use super::utils::{StringKind, mk_pos, mk_label, mk_span, strip_indent, SwitchCase,
-    FieldPathElem, strip_indent_doc, build_record, elaborate_field_path, check_unbound,
-    ChunkLiteralPart, RecordLastField};
+use super::utils::*;
 use super::lexer::{Token, NormalToken, StringToken, MultiStringToken};
 
-use crate::{mk_app, mk_opn};
+use crate::{mk_app, mk_opn, mk_fun};
 use crate::identifier::Ident;
+use crate::destruct::{Match, LastMatch, Destruct};
 use crate::parser::error::ParseError;
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
     MergePriority, Contract, NAryOp, RecordAttrs};
@@ -56,6 +55,12 @@ MetaAnnotAtom: MetaValue = {
     },
 };
 
+DefaultAnnot: MetaValue = "?" <t: Term> => MetaValue {
+    priority: MergePriority::Default,
+    value: Some(t),
+    ..Default::default()
+};
+
 MetaAnnot: MetaValue = <anns: MetaAnnotAtom+> => anns.into_iter().fold(MetaValue::new(), MetaValue::flatten);
 
 Annot: MetaValue = {
@@ -73,7 +78,7 @@ Annot: MetaValue = {
 pub Term: RichTerm = WithPos<RootTerm>;
 
 pub ExtendedTerm: ExtendedTerm = {
-    "let" <id:Ident> <meta: Annot?> "=" <t: Term> => {
+    "let" <id: Ident> <meta: Annot?> "=" <t: Term> => {
         let t = if let Some(mut meta) = meta {
             let pos = t.pos;
             meta.value = Some(t);
@@ -82,14 +87,13 @@ pub ExtendedTerm: ExtendedTerm = {
         else {
             t
         };
-
         ExtendedTerm::ToplevelLet(id, t)
     },
     Term => ExtendedTerm::RichTerm(<>),
 }
 
 RootTerm: RichTerm = {
-    "let" <id:Ident> <meta: Annot?> "=" <t1: Term> "in"
+    "let" <pat:Pattern> <meta: Annot?> "=" <t1: Term> "in"
         <t2: Term> => {
         let t1 = if let Some(mut meta) = meta {
             let pos = t1.pos;
@@ -100,11 +104,11 @@ RootTerm: RichTerm = {
             t1
         };
 
-        mk_term::let_in(id, t1, t2)
+        mk_term::let_pat(pat.0, pat.1, t1, t2)
     },
-    <l: @L> "fun" <ps:Pattern+> "=>" <t: Term> <r: @R> => {
+    <l: @L> "fun" <ids:Ident+> "=>" <t: Term> <r: @R> => {
         let pos = mk_pos(src_id, l, r);
-        ps.into_iter().rev().fold(t, |t, p| RichTerm {
+        ids.into_iter().rev().fold(t, |t, p| RichTerm {
             term: Box::new(Term::Fun(p, t)),
             pos,
         })
@@ -177,6 +181,7 @@ RecordOperationChain: RichTerm = {
 };
 
 Atom: RichTerm = {
+    "(" <CurriedOp> ")",
     "(" <Term> ")",
     "num literal" => RichTerm::from(Term::Num(<>)),
     "null" => RichTerm::from(Term::Null),
@@ -252,11 +257,52 @@ FieldPathElem: FieldPathElem = {
     <WithPos<StrChunks>> => FieldPathElem::Expr(<>),
 };
 
-Pattern: Ident = {
-    Ident,
+#[inline]
+Pattern: (Option<Ident>,Destruct) = {
+    <id:(<Ident> "@")?> <pat:Destruct> => (id,pat),
+    Ident => (Some(<>),Destruct::Empty),
 };
 
-Ident: Ident = <l:@L> <i: "identifier"> <r:@R> => Ident(i.to_string(), mk_pos(src_id, l, r));
+Destruct: Destruct = {
+    "{" <mut matches: (<Match> ",")*> <last:LastMatch?> "}" => {
+        let (open, rst) = match last {
+	    Some(LastMatch::Match(m)) => {
+	        matches.push(m);
+	        (false,None)
+	    },
+	    Some(LastMatch::Ellipsis(rst)) => (true, rst),
+	    _ => (false, None),
+	};
+	Destruct::Record(matches, open, rst)
+    },
+};
+
+Match: Match = {
+    <left:Ident> <anns: MetaAnnot?> <default: DefaultAnnot?> "=" <right: Pattern> => {
+	let meta = match (default, anns) {
+	    (Some(d), Some(m)) => MetaValue::flatten(d,m),
+	    (Some(m),_) | (_,Some(m)) => m,
+  	    _ => MetaValue::new(),
+	};
+	Match::Assign(left, meta, right)
+    },
+    <id:Ident> <anns: MetaAnnot?> <default: DefaultAnnot?> => {
+	let meta = match (default, anns) {
+	    (Some(d), Some(m)) => MetaValue::flatten(d,m),
+	    (Some(m),_) | (_,Some(m)) => m,
+  	    _ => MetaValue::new(),
+	};
+	Match::Simple(id, meta)
+    },
+};
+
+LastMatch: LastMatch = {
+    Match => LastMatch::Match(<>),
+    ".."<Ident?> => LastMatch::Ellipsis(<>),
+};
+
+Ident: Ident = <l:@L> <i: "identifier"> <r:@R>
+    => Ident { label: i.to_string(), pos: mk_pos(src_id, l, r) };
 
 Bool: bool = {
     "true" => true,
@@ -372,66 +418,135 @@ switch_case: SwitchCase = {
     "_" "=>" <t: Term> => SwitchCase::Default(<>),
 }
 
+InfixBOp2: BinaryOp = {
+    "++" => BinaryOp::StrConcat(),
+    "@" => BinaryOp::ListConcat(),
+}
+
+InfixBOp3: BinaryOp = {
+    "*" => BinaryOp::Mult(),
+    "/" => BinaryOp::Div(),
+    "%" => BinaryOp::Modulo(),
+}
+
+InfixBOp4: BinaryOp = {
+    "+" => BinaryOp::Plus(),
+    "-" => BinaryOp::Sub(),
+}
+
+InfixUOp5: UnaryOp = {
+    "!" => UnaryOp::BoolNot(),
+}
+
+InfixBOp6: BinaryOp = {
+    "&" => BinaryOp::Merge(),
+}
+
+InfixBOp7: BinaryOp = {
+    "<" => BinaryOp::LessThan(),
+    "<=" => BinaryOp::LessOrEq(),
+    ">" => BinaryOp::GreaterThan(),
+    ">=" => BinaryOp::GreaterOrEq(),
+}
+
+InfixBOp8: BinaryOp = {
+    "==" => BinaryOp::Eq(),
+}
+
+InfixLazyBOp9: UnaryOp = {
+    "&&" => UnaryOp::BoolAnd(),
+}
+
+InfixLazyBOp10: UnaryOp = {
+    "||" => UnaryOp::BoolOr(),
+}
+
+InfixBOp: BinaryOp = {
+    InfixBOp2,
+    InfixBOp3,
+    InfixBOp4,
+    InfixBOp6,
+    InfixBOp7,
+    InfixBOp8,
+}
+
+InfixUOpOrLazyBOp: UnaryOp = {
+    InfixUOp5,
+    InfixLazyBOp9,
+    InfixLazyBOp10,
+}
+
+InfixOp: InfixOp = {
+    <InfixBOp> => <>.into(),
+    <InfixUOpOrLazyBOp> => <>.into(),
+}
+
+CurriedOp: RichTerm = {
+    <l: @L> <op: InfixOp> <r: @R> => op.eta_expand(mk_pos(src_id, l, r)),
+    <l: @L> "|>" <r: @R> =>
+        mk_fun!("x1", "x2",
+            mk_app!(mk_term::var("x2"), mk_term::var("x1"))
+            .with_pos(mk_pos(src_id, l, r))
+        ),
+    <l: @L> "!=" <r: @R> =>
+        mk_fun!("x1", "x2",
+            mk_term::op1(
+                UnaryOp::BoolNot(),
+                Term::Op2(BinaryOp::Eq(),
+                    mk_term::var("x2"),
+                    mk_term::var("x1")
+                )
+            )
+            .with_pos(mk_pos(src_id, l, r))
+        ),
+}
+
+InfixUOpApp<UOp, Expr>: RichTerm =
+  <op: UOp> <t: WithPos<Expr>> => mk_term::op1(op, t);
+
+InfixBOpApp<BOp, LExpr, RExpr>: RichTerm =
+  <t1: WithPos<LExpr>> <op: BOp> <t2: WithPos<RExpr>> => mk_term::op2(op, t1, t2);
+
+InfixLazyBOpApp<UOp, LExpr, RExpr>: RichTerm =
+  <t1: WithPos<LExpr>> <op: UOp> <t2: WithPos<RExpr>> =>
+    mk_app!(mk_term::op1(op, t1), t2);
+
 InfixExpr: RichTerm = {
     #[precedence(level="0")]
     Applicative,
 
     #[precedence(level="1")]
-    "-" <WithPos<InfixExpr>> =>
-        mk_term::op2(BinaryOp::Sub(), Term::Num(0.0), <>),
+    "-" <WithPos<InfixExpr>> => mk_term::op2(BinaryOp::Sub(), Term::Num(0.0), <>),
 
     #[precedence(level="2")] #[assoc(side="left")]
-    <t1: WithPos<InfixExpr>> "++" <t2: WithPos<InfixExpr>> =>
-        mk_term::op2(BinaryOp::StrConcat(), t1, t2),
-    <t1: WithPos<InfixExpr>> "@" <t2: WithPos<InfixExpr>> =>
-        mk_term::op2(BinaryOp::ListConcat(), t1, t2),
+    InfixBOpApp<InfixBOp2, InfixExpr, InfixExpr>,
 
     #[precedence(level="3")] #[assoc(side="left")]
-    <t1: WithPos<InfixExpr>> "*" <t2: WithPos<InfixExpr>> =>
-        mk_term::op2(BinaryOp::Mult(), t1, t2),
-    <t1: WithPos<InfixExpr>> "/" <t2: WithPos<InfixExpr>> =>
-        mk_term::op2(BinaryOp::Div(), t1, t2),
-    <t1: WithPos<InfixExpr>> "%" <t2: WithPos<InfixExpr>> =>
-        mk_term::op2(BinaryOp::Modulo(), t1, t2),
+    InfixBOpApp<InfixBOp3, InfixExpr, InfixExpr>,
 
     #[precedence(level="4")] #[assoc(side="left")]
-    <t1: WithPos<InfixExpr>> "+" <t2: WithPos<InfixExpr>> =>
-        mk_term::op2(BinaryOp::Plus(), t1, t2),
-    <t1: WithPos<InfixExpr>> "-" <t2: WithPos<InfixExpr>> =>
-        mk_term::op2(BinaryOp::Sub(), t1, t2),
+    InfixBOpApp<InfixBOp4, InfixExpr, InfixExpr>,
 
     #[precedence(level="5")]
-    "!" <WithPos<InfixExpr>> => mk_term::op1(UnaryOp::BoolNot(), <>),
+    InfixUOpApp<InfixUOp5, InfixExpr>,
 
     #[precedence(level="6")] #[assoc(side="left")]
-    <t1: WithPos<InfixExpr>> "&" <t2: WithPos<InfixExpr>> =>
-        mk_term::op2(BinaryOp::Merge(), t1, t2),
-    <t1: WithPos<InfixExpr>> "|>" <t2: WithPos<InfixExpr>> =>
-        mk_app!(t2, t1),
+    InfixBOpApp<InfixBOp6, InfixExpr, InfixExpr>,
+    <t1: WithPos<InfixExpr>> "|>" <t2: WithPos<InfixExpr>> => mk_app!(t2, t1),
 
     #[precedence(level="7")] #[assoc(side="left")]
-    <t1: WithPos<InfixExpr>> "<" <t2: WithPos<InfixExpr>> =>
-        mk_term::op2(BinaryOp::LessThan(), t1, t2),
-    <t1: WithPos<InfixExpr>> "<=" <t2: WithPos<InfixExpr>> =>
-        mk_term::op2(BinaryOp::LessOrEq(), t1, t2),
-    <t1: WithPos<InfixExpr>> ">" <t2: WithPos<InfixExpr>> =>
-        mk_term::op2(BinaryOp::GreaterThan(), t1, t2),
-    <t1: WithPos<InfixExpr>> ">=" <t2: WithPos<InfixExpr>> =>
-        mk_term::op2(BinaryOp::GreaterOrEq(), t1, t2),
+    InfixBOpApp<InfixBOp7, InfixExpr, InfixExpr>,
 
     #[precedence(level="8")] #[assoc(side="left")]
-    <t1: WithPos<InfixExpr>> "==" <t2: WithPos<InfixExpr>> =>
-        mk_term::op2(BinaryOp::Eq(), t1, t2),
+    InfixBOpApp<InfixBOp8, InfixExpr, InfixExpr>,
     <t1: WithPos<InfixExpr>> "!=" <t2: WithPos<InfixExpr>> =>
         mk_term::op1(UnaryOp::BoolNot(), Term::Op2(BinaryOp::Eq(), t1, t2)),
 
     #[precedence(level="9")] #[assoc(side="left")]
-    <t1: WithPos<InfixExpr>> "&&" <t2: WithPos<InfixExpr>> =>
-        mk_app!(mk_term::op1(UnaryOp::BoolAnd(), t1), t2),
+    InfixLazyBOpApp<InfixLazyBOp9, InfixExpr, InfixExpr>,
 
     #[precedence(level="10")] #[assoc(side="left")]
-    <t1: WithPos<InfixExpr>> "||" <t2: WithPos<InfixExpr>> =>
-        mk_app!(mk_term::op1(UnaryOp::BoolOr(), t1), t2),
+    InfixLazyBOpApp<InfixLazyBOp10, InfixExpr, InfixExpr>,
 }
 
 BOpPre: BinaryOp = {
@@ -558,6 +673,7 @@ extern {
         "true" => Token::Normal(NormalToken::True),
         "false" => Token::Normal(NormalToken::False),
 
+        "?" => Token::Normal(NormalToken::QuestionMark),
         "," => Token::Normal(NormalToken::Comma),
         ":" => Token::Normal(NormalToken::Colon),
         "$" => Token::Normal(NormalToken::Dollar),

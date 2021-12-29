@@ -4,7 +4,6 @@ use codespan::FileId;
 use nickel::{
     cache::{Cache, CacheError, CacheOp, CachedTerm, EntryState},
     error::TypecheckError,
-    eval,
     typecheck::{self, linearization::Completed},
 };
 
@@ -15,7 +14,7 @@ pub trait CacheExt {
     fn typecheck_with_analysis(
         &mut self,
         file_id: FileId,
-        global_env: &eval::Environment,
+        global_env: &typecheck::Environment,
         lin_cache: &mut HashMap<FileId, Completed>,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>>;
 }
@@ -35,7 +34,7 @@ impl CacheExt for Cache {
     fn typecheck_with_analysis<'a>(
         &mut self,
         file_id: FileId,
-        global_env: &eval::Environment,
+        global_env: &typecheck::Environment,
         lin_cache: &mut HashMap<FileId, Completed>,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
         if !self.terms_mut().contains_key(&file_id) {

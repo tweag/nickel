@@ -24,7 +24,7 @@ use nickel::{position::TermPos, typecheck::linearization};
 /// item could be found.
 ///  
 pub fn find_linearization_index(
-    linearization: &Vec<linearization::LinearizationItem<nickel::types::Types>>,
+    linearization: &[linearization::LinearizationItem<nickel::types::Types>],
     locator: (codespan::FileId, ByteIndex),
 ) -> Option<usize> {
     let (file_id, start) = locator;
@@ -76,7 +76,7 @@ pub fn find_linearization_index(
                             return Some(index);
                         }
 
-                        return None;
+                        None
                     })
                 })
         }
