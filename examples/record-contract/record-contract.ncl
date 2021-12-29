@@ -1,5 +1,6 @@
 // An illustrative (thus incomplete and maybe incorrect) contract example for a
 // Kubernetes configuration.
+// Schema and example derived from https://github.com/kubernetes/examples/blob/master/guestbook-go/guestbook-controller.json.
 
 let Port | doc "A contract for a port number" = contracts.from_predicate (fun value =>
   builtins.is_num value &&
@@ -11,7 +12,7 @@ let PortElt
   | doc "A contract for a port element of a Kubernetes configuration"
   = {
     name | Str,
-    container_port | #Port,
+    containerPort | #Port,
   } in
 
 let Container = {
@@ -25,7 +26,7 @@ let KubernetesConfig = {
        | doc "The kind of the element being configured."
        | default = `Pod,
 
-  api_version | Str,
+  apiVersion | Str,
 
   metadata = {
     name | Str,
@@ -54,7 +55,7 @@ let metadata_ = {
 
 {
   kind = `ReplicationController,
-  api_version = "1.1.0",
+  apiVersion = "1.1.0",
   metadata = metadata_,
   spec = {
     replicas = 3,
@@ -72,7 +73,7 @@ let metadata_ = {
               ports = [
                 {
                   name = "http-server",
-                  container_port = 80,
+                  containerPort = 80,
                 }
               ]
             }
