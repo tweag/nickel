@@ -418,7 +418,7 @@ of delayed dynamic type errors that static typing was supposed to solve in the
 first place! Remember, the typical problem is the caller passing an value of the
 wrong type that eventually raises an error from within `filter`.
 
-Hopefully, Nickel does have a mechanism to prevent this from happening and to
+Fortunately, Nickel does have a mechanism to prevent this from happening and to
 provide good error reporting in this situation.  Let us see by ourselves:
 
 ```nickel
