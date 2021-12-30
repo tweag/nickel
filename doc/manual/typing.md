@@ -2,9 +2,6 @@
 
 ## Introduction
 
-Nickel takes an hybrid approach to typing: *gradual typing*. Gradual typing
-enables to mix both static typing and dynamic typing.
-
 Usually, static typing brings in important benefits for large codebases of
 general-purpose programming languages, but the case of an interpreted
 configuration language appears less clear-cut.
@@ -22,12 +19,13 @@ First, a configuration is a terminating program run once on fixed inputs: here,
 basic type errors will show up at runtime anyway. Second, Nickel has a powerful
 validation system, contracts, that can do the same job as types and more.
 
-The dilemma of needing static typing for functions while getting types out of
-the way when writing configurations led to the choice of gradual typing.
+This apparent dilemma is solved in Nickel by supporting *gradual typing*
+language. Gradual typing enables to mix both static typing and dynamic typing.
 
-If you already have an idea of typing and contracts work an nickel but you are
-looking for a quick cheat-sheet about when to use each, please visit [Type
-versus contracts: when to?](./types-vs-contracts.md).
+The following is a detailed exposition of this gradual type system. If you are
+rather looking for a small cheat-sheet about when to use static typing or
+contracts, please visit [Type versus contracts: when
+to?](./types-vs-contracts.md).
 
 ## Typing modes
 
@@ -40,16 +38,48 @@ By default, Nickel code is dynamically typed. For example:
   name = "hello",
   version = "0.1.1",
   fullname =
-    if builtins.isNum version then
+    if builtins.is_num version then
       "hello-v#{strings.fromNum version}"
     else
       "hello-#{version}",
 }
 ```
 
-While dynamic typing is fine for configuration code
-we run into the bad error reporting issue once we are using
-functions. Say we want to filter over a list of element:
+As long as we operate on constants, dynamic type error can be sufficient.
+Let us introduce an error on the last line of the previous example:
+
+```nickel
+{
+  name = "hello",
+  version = "0.1.1",
+  fullname =
+    if builtins.is_num version then
+      "hello-v#{strings.fromNum version}"
+    else
+      "hello-#{version + 1}",
+}
+```
+
+`version` is a string, and can't be added to a number. If we try to export this
+configuration using `nickel export`, we get indeed:
+
+```
+error: Type error
+  ┌─ repl-input-3:8:16
+  │
+3 │   version = "0.1.1",
+  │             ------- evaluated to this
+  ·
+8 │       "hello-#{version + 1}",
+  │                ^^^^^^^ This expression has type Str, but Num was expected
+  │
+  = +, 1st argument
+
+```
+
+While dynamic typing is fine for configuration code, we run into the bad error
+reporting issue once we are using functions. Say we want to filter over a list
+of elements:
 
 ```
 let filter = fun pred l =>
@@ -87,7 +117,7 @@ the filtering function passed as the argument don't match .
 
 To call the typechecker to the rescue, use `:` to introduce a *type annotation*.
 This annotation switches the typechecker on inside the annotated expression, be
-it a variable definition, a record field or any expression via an inline
+it a variable definition, a record field or any expression using an inline
 annotation. We will refer to such an annotated expression as a *statically typed
 block*.
 
@@ -228,7 +258,7 @@ type.  Here is our polymorphic type annotation for `filter`:
 
 ```nickel
 {
-  filter : forall a. (a-> Bool) -> List a -> List a = ...,
+  filter : forall a. (a -> Bool) -> List a -> List a = ...,
 }
 ```
 
@@ -374,6 +404,19 @@ could still write `addTotal {total = 1, foo = 1} {total = 2, foo = 2}` but not
 What comes before the tail may include several fields, is in e.g. `forall a.
 {total: Num, subtotal: Num | a} -> Num`.
 
+<!-- TODO: should we keep this example? To revisit before release. Extension
+operator is a tad ugly, and ideally we would only use merge. But the type of
+merge can't be currently express in the -type system. -->
+Row types can appear in the result of the function as well. The following
+example return a new version of the input where fields `a` and `b` have been
+summed, without modifying the rest:
+
+```nickel
+let sum : forall r. {a : Num, b : Num | r} -> {a : Num, b : Num, sum : Num | r}
+        = fun x => x $[ "sum" = x.a + x.b]
+in sum {a = 1, b = 2, c = 3} // {a=1, b=2, sum=3, c=3}
+```
+
 Note that row polymorphism also works with enums, with the same intuition of a
 tail that can be substituted for something else. For example:
 
@@ -463,7 +506,7 @@ We call `filter` from a dynamically typed location, but still get a spot-on
 error. To precisely avoid dynamically code injecting values of the wrong type
 inside statically typed blocks via function calls, the interpreter protects said
 blocks by a contract. Contracts form a principled runtime verification scheme.
-Please refer to the [dedicated document](./contracts.md) for more details, but
+Please refer to the [dedicated manual section](./contracts.md) for more details, but
 for now, you can just remember that *any type annotation* (wherever it is) gives
 rise at runtime to a corresponding contract application. In other words, `foo:
 T` and `foo | T` (here `|` is contract application, not the row tail separator)
@@ -475,47 +518,33 @@ them from dynamically typed code while still enjoying good error messages.
 ### Using untyped code inside typed code
 
 In the other direction, we face a different issue. How can we use untyped values
-inside typed code? Let us try:
+inside typed code?
 
-```
-let x = 1 in
-(1 + x : Num)
-```
+Most of the time, dynamically typed code just get assigned the `Dyn` type:
 
-Although `x` shouldn't be statically typed, this code is accepted. Hmm. What
-about:
-
-```
+```nickel
 let x = 0 + 1 in
 (1 + x : Num)
 ```
 
-Now, it doesn't, as we would initially expect. In all generality, you can use an
-identifier defined in untyped code from within a typed block, as it is the case
-here. Thus, the typechecker needs to assign a type to every identifier, even the
-ones defined outside of statically typed block. But it also tries to respect the
-intention of the programmer.  If one doesn't use annotations, then the code
-shouldn't be typechecked, whatever the reason is (for performance, because it
-can't be well-typed, etc.): if you want `x` to be typed, you should annotate it.
-
-The typechecker still tries its best not to be too stupid. It is obvious in the
-first case that `1` is of type `Num`. This information is cheap to gather. When
-encountering a binding outside of a typed block, the typechecker determines the
-*apparent type* of the definition. The rationale is that determining the
-apparent type shouldn't recurse arbitrarily inside the expression or do anything
-non-trivial.  Typically, our previous `0 + 1` is a compound expression with a
-primitive operator, so the apparent type is just `Dyn`. For now, the typechecker
-determines an apparent type that is not `Dyn` only for literals (numbers,
-strings, booleans), variables, and annotated expressions.
-
-Otherwise, the typechecker fallbacks to `Dyn`. In the future, it could also
-infer `Dyn -> Dyn` for functions, `{_: Dyn}` for records, and so on. As of now
-(INSERT VERSION HERE), it doesn't.
+Result:
+```
+error: Incompatible types
+  ┌─ repl-input-6:1:6
+  │
+1 │ (1 + x : Num)
+  │      ^ this expression
+  │
+  = The type of the expression was expected to be `Num`
+  = The type of the expression was inferred to be `Dyn`
+  = These types are not compatible
+```
 
 We could add a type annotation to `x`. But sometimes we don't want to, or we
-can't. Maybe we know that the expression correctly evaluates to a number but the
-typechecker rejects it because it isn't able to see it. In any of these
-situations, we can trade a type annotation for a contract application:
+can't. Maybe in a real use-case, `x` is a full expression that we know it
+correctly evaluates to a number but is rejected by the typechecker as it uses
+dynamic idioms. In this case, we can trade a type annotation for a contract
+application:
 
 Example:
 ```nickel
@@ -531,14 +560,17 @@ contract error. Thus, if we reach `1 + x`, at this point `x` is necessarily a
 number and won't cause any type mismatch. In a way, the contract application
 acts like a type cast, but whose verification is delayed to run-time.
 
-Dually to a static type annotation, a contract annotation *turns the typechecker
-off again*. This is illustrated by the following variation being accepted:
+Dually to a static type annotation, a contract application also *turns the
+typechecker off again*. You are back in the dynamic world. This is illustrated
+by the following program, where we inlined `x` in the statically typed block,
+being accepted:
 
 ```nickel
 (1 + ((if true then 0 else "a" | Num)) : Num
 ```
 
-While this one is rejected because of the mismatch between branches:
+While a fully statically typed version is rejected because of the type mismatch
+between branches:
 
 ```nickel
 (1 + (if true then 0 else "a")) : Num
@@ -557,6 +589,33 @@ error: Incompatible types
   = These types are not compatible
 ```
 
+**Apparent type**
+
+As a side note, annotations are not always needed to use dynamically typed code
+inside a statically typed block. The following example is accepted:
+
+```
+let x = 1 in
+(1 + x : Num)
+```
+
+The typechecker tries to respect the intention of the programmer.  If one
+doesn't use annotations, then the code shouldn't be typechecked, whatever the
+reason is. If you want `x` to be statically typed, you should annotate it.
+
+That being said, the typechecker still avoid being too rigid: it is obvious in
+the previous example case that `1` is of type `Num`. This information is cheap
+to gather. When encountering a binding outside of a typed block, the typechecker
+determines the *apparent type* of the definition. The rationale is that
+determining the apparent type shouldn't recurse arbitrarily inside the
+expression or do anything non-trivial.  Typically, replacing `1` with a compound
+expression `0 + 1` would change the type of `x` type to `Dyn` and makes the
+example fail. For now, the typechecker determines an apparent type that is not
+`Dyn` only for literals (numbers, strings, booleans), lists, variables, imports
+and annotated expressions. Otherwise, the typechecker fallbacks to `Dyn`. It may
+do more in the future (assign `Dyn -> Dyn` to functions, `{_: Dyn}` to records,
+etc).
+
 ### Take-away
 
 When calling to typed code from untyped code, Nickel automatically inserts
@@ -564,20 +623,21 @@ contract checks at the boundary to enjoy clearer and earlier error reporting. In
 the other direction, an expression `exp | Type` is blindly accepted to be of
 type `Type` by the typechecker. This is a way of using untyped values inside
 typed code by telling the typechecker "trust me on this one, and if I'm wrong
-there will be a contract error anyway". Finally, while a type annotation
-switches the typechecker on, a contract annotation switches it back off.
+there will be a contract error anyway". While a type annotation switches the
+typechecker on, a contract annotation switches it back off.
 
 ## Using contracts as types
 
-<!-- TODO: find a good name for this section -->
+<!-- TODO: find a good name for this section. Will need rework after meging
+types and contracts syntax -->
 
 Type annotations and contracts share the same syntax. This means that you can
-technically use custom contracts a any other type inside a static type
+technically use custom contracts as any other type inside a static type
 annotation.
 
 ```nickel
-let Port = contracts.fromPred (fun value =>
-  builtins.isNum value
+let Port = contracts.from_predicate (fun value =>
+  builtins.is_num value
   && value % 1 == 0
   && value >= 0
   && value <= 65535) in
@@ -600,17 +660,19 @@ error: Incompatible types
   = These types are not compatible
 ```
 
-Indeed, statically ensuring that an arbitrary expression will eventually
+It turns out statically ensuring that an arbitrary expression will eventually
 respects an arbitrary user-written predicate is a really hard problem even in
-simple cases (and undecidable in the general case). So, what can we do with
-annotations like `#Port`? There is one situation when the typechecker can be sure that
-something will eventually be a port number, or will fail with the correct error
-message: when using a contract application.
+simple cases (technically, it is undecidable in the general case). The
+typechecker doesn't have a clue about the relation  between numbers and ports.
+So, what can it do with annotations like `#Port`? There is one situation when
+the typechecker can be sure that something will eventually be a port number, or
+will fail with the correct error message: when using a contract application.
 
 ```nickel
 (let p | #Port = 10 - 1 in
- let id = fun x => x
-)
+ let id = fun x => x in
+ id p
+) : #Port
 ```
 
 A custom contract hence acts like an opaque type (or abstract type) for the
@@ -619,11 +681,13 @@ only way to construct a value of type `#Port` is to use contract application.
 You also need an explicit contract application to cast back a `#Port` to a
 `Num`: `(p | Num) + 1 : Num`.
 
-Currently, custom contracts as static types are very rigid, and not very useful.
-It's possible that future additions to the type system make them more useful at
-some point.
+Because of the rigidity of opaque types, using custom contracts inside static
+type annotations is not very useful right now. We just had to give a reasonable
+them a meaning at typechecking time because types and contracts share the same
+specification syntax.
 
 ## Typing in practice
 
-When to use type annotation, a contract application, or none of those? This is what the
-guide [Type versus contracts: when to?](./types-vs-contracts.md) is for.
+When to use type annotation, a contract application, or none of those? This is
+what the guide [Type versus contracts: when to?](./types-vs-contracts.md) is
+for.
