@@ -212,7 +212,7 @@ The following type constructors are available:
 
 ### Polymorphism
 
-#### Plain polymorphism
+#### Type polymorphism
 
 Usually, a function like `filter` would be defined in a library. In this case,
 it is good practice to write a type annotation for it, if only to provide the
