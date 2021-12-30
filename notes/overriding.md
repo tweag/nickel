@@ -808,8 +808,6 @@ We propose to implement directly the general solution of (b).
 This section defines the operational semantics of merging with the choices
 previously described.
 
-**THIS IS WORK IN PROGRESS FROM HERE**
-
 The choices made in [custom merge function section](#custom-merge-functions-2),
 in particular symmetrizing merge with respect to custom merge function
 annotations, require the evaluation process to:
