@@ -1,6 +1,6 @@
 # Cookbook
 
-For now, this is an unorganized, temporary document not to forgot some pieces of
+For now, this is an unorganized, temporary document not to forget some pieces of
 the user manual that are not yet put in the right place.
 
 ## Library (record of functions)
