@@ -412,7 +412,7 @@ function (it is actually part of the standard library as `lists.filter`) while
 being likely to be called from dynamically typed configuration files. In this
 situation, the call site escapes the typechecker. Thus, without an additional
 mechanism, static typing would only ensure that the implementation of `filter`
-doesn't violate the typing rules, but wouldn't prevent a ill-formed call from
+doesn't violate the typing rules, but wouldn't prevent an ill-formed call from
 dynamically typed code.  At first sight, we haven't solved at all the main issue
 of delayed dynamic type errors that static typing was supposed to solve in the
 first place! Remember, the typical problem is the caller passing an value of the
