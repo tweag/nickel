@@ -9,7 +9,7 @@ Usually, static typing brings in important benefits for large codebases of
 general-purpose programming languages, but the case of an interpreted
 configuration language appears less clear-cut.
 
-Nevertheless, who has ever faced puzzling [dynamic type
+Nevertheless, they who have ever faced puzzling [dynamic type
 errors](https://www.haskellforall.com/2021/01/dynamic-type-errors-lack-relevance.html)
 may have felt the need for something better. Standard dynamic typing is prone to
 error messages being unrelated to the actual issue while being located far from
