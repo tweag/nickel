@@ -47,8 +47,8 @@ By default, Nickel code is dynamically typed. For example:
 }
 ```
 
-While dynamic typing is fine for configuration code, especially when checked
-against a contract, we run into the bad error reporting issue once we are using
+While dynamic typing is fine for configuration code
+we run into the bad error reporting issue once we are using
 functions. Say we want to filter over a list of element:
 
 ```
