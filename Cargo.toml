@@ -67,9 +67,9 @@ bench = false
 name = "numeric"
 harness = false
 
-# [[bench]]
-# name = "functions"
-# harness = false
+[[bench]]
+name = "functions"
+harness = false
 
 [[bench]]
 name = "lists"

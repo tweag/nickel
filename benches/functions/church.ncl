@@ -21,7 +21,7 @@
       add (mult (encode 3) nChurch) (encode 5))
       encoded in
     let sumChurch = lists.fold (fun accChurch nChurch => add accChurch nChurch)
-      listChurch (encode 0) in
+      (encode 0) listChurch in
 
     let list = lists.map (fun n => 3*n + 5) orig in
     let sum = lists.foldl (fun acc n => acc + n) 0 list in
