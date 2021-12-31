@@ -1,17 +1,17 @@
 {
   dyn = fun l t => t,
 
-  num = fun l t => if %isNum% t then t else %blame% l,
+  num = fun l t => if %is_num% t then t else %blame% l,
 
-  bool = fun l t => if %isBool% t then t else %blame% l,
+  bool = fun l t => if %is_bool% t then t else %blame% l,
 
-  string = fun l t => if %isStr% t then t else %blame% l,
+  string = fun l t => if %is_str% t then t else %blame% l,
 
-  list = fun elt l t => if %isList% t then %map% t (elt (%goList% l)) else %blame% l,
+  list = fun elt l t => if %is_list% t then %map% t (elt (%go_list% l)) else %blame% l,
 
   func = fun s t l e =>
-      if %isFun% e then
-          (fun x => t (%goCodom% l) (e (s (%chngPol% (%goDom% l)) x)))
+      if %is_fun% e then
+          (fun x => t (%go_codom% l) (e (s (%chng_pol% (%go_dom% l)) x)))
       else
           %blame% l,
 
@@ -31,20 +31,20 @@
           contr (%tag% "NotRowExt" l) t,
 
   record = fun cont l t =>
-      if %isRecord% t then
+      if %is_record% t then
           cont {} l t
       else
           %blame% (%tag% "not a record" l),
 
   dyn_record = fun contr l t =>
-      if %isRecord% t then
-          %recordMap% t (fun _field => contr l)
+      if %is_record% t then
+          %record_map% t (fun _field => contr l)
       else
           %blame% (%tag% "not a record" l),
 
   record_extend = fun field contr cont acc l t =>
-      if %hasField% field t then
-          let acc = acc$[field = contr (%goField% field l) (t."#{field}")] in
+      if %has_field% field t then
+          let acc = acc$[field = contr (%go_field% field l) (t."#{field}")] in
           let t = t -$ field in
           cont acc l t
       else
@@ -53,14 +53,14 @@
   forall_tail = fun sy pol acc l t =>
       let magic_fld = "_%wrapped" in
       if pol == (%polarity% l) then
-          if %hasField% magic_fld t then
+          if %has_field% magic_fld t then
               let rest = (t -$ magic_fld) in
               if rest == {} then
                   let fail = %blame% (%tag% "polymorphic tail mismatch" l) in
                   let inner = %unwrap% sy (t."#{magic_fld}") fail in
                   acc & inner
               else
-                  %blame% (%tag% "extra field `#{%head% (%fieldsOf% rest)}`" l)
+                  %blame% (%tag% "extra field `#{%head% (%fields% rest)}`" l)
           else
               %blame% (%tag% "missing polymorphic part" l)
       else
@@ -70,7 +70,7 @@
 
   empty_tail = fun acc l t =>
       if t == {} then acc
-      else %blame% (%tag% "extra field `#{%head% (%fieldsOf% t)}`" l),
+      else %blame% (%tag% "extra field `#{%head% (%fields% t)}`" l),
 
   contracts = {
     blame
@@ -93,7 +93,7 @@
         "#m
       = fun l => %blame% l,
 
-    blameWith
+    blame_with
       | doc m#"
         Raise blame with respect to a given label and a custom error message.
 
@@ -101,20 +101,20 @@
         (for technical reasons, this element isn't actually statically typed)
 
         Same as `blame`, but take an additional custom error message that will be
-        displayed as part of the blame error. `blameWith msg l` is equivalent to
+        displayed as part of the blame error. `blame_with msg l` is equivalent to
         `blame (tag msg l)
 
         For example:
         ```nickel
         let IsZero = fun label value =>
           if value == 0 then value
-          else contracts.blameWith "Not zero" label in
+          else contracts.blame_with "Not zero" label in
         0 | #IsZero
         ```
         "#m
       = fun msg l => %blame% (%tag% msg l),
 
-    fromPred
+    from_predicate
       | doc m#"
         Generate a contract from a boolean predicate.
 
@@ -123,7 +123,7 @@
 
         For example:
         ```
-        let IsZero = contracts.fromPred (fun x => x == 0) in
+        let IsZero = contracts.from_predicate (fun x => x == 0) in
         0 | #IsZero
         ```
         "#m
@@ -139,9 +139,9 @@
 
         For example:
         ```
-        let ContractNum = contracts.fromPred (fun x => x > 0 && x < 50) in
+        let ContractNum = contracts.from_predicate (fun x => x > 0 && x < 50) in
         Contract = fun label value =>
-          if builtins.isNum value then
+          if builtins.is_num value then
             ContractNum
               (contracts.tag "num subcontract failed! (out of bound)" label)
               value

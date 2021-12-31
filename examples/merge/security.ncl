@@ -3,5 +3,5 @@
   
   firewall.enabled | default = true,
   firewall.type = "iptables",
-  firewall.openPorts = [21,80,443],
+  firewall.open_ports = [21, 80, 443],
 }

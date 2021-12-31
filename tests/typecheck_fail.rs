@@ -143,7 +143,7 @@ fn simple_list() {
 fn lists_operations() {
     assert_typecheck_fails!("(fun l => %head% l) : forall a b. (List a -> b)");
     assert_typecheck_fails!(
-        "(fun f l => %elemAt% (%map% l f) 0) : forall a. (forall b. (a -> b) -> List -> b)"
+        "(fun f l => %elem_at% (%map% l f) 0) : forall a. (forall b. (a -> b) -> List -> b)"
     );
 }
 

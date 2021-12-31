@@ -75,21 +75,21 @@ fn merge_compose_contract() {
 fn records_contracts_simple() {
     assert_raise_blame!("{a=1} | {}");
 
-    assert_raise_blame!("let x | {a: Num, s: Str} = {a = 1, s = 2} in %deepSeq% x x");
-    assert_raise_blame!("let x | {a: Num, s: Str} = {a = \"a\", s = \"b\"} in %deepSeq% x x");
-    assert_raise_blame!("let x | {a: Num, s: Str} = {a = 1} in %deepSeq% x x");
-    assert_raise_blame!("let x | {a: Num, s: Str} = {s = \"a\"} in %deepSeq% x x");
+    assert_raise_blame!("let x | {a: Num, s: Str} = {a = 1, s = 2} in %deep_seq% x x");
+    assert_raise_blame!("let x | {a: Num, s: Str} = {a = \"a\", s = \"b\"} in %deep_seq% x x");
+    assert_raise_blame!("let x | {a: Num, s: Str} = {a = 1} in %deep_seq% x x");
+    assert_raise_blame!("let x | {a: Num, s: Str} = {s = \"a\"} in %deep_seq% x x");
     assert_raise_blame!(
-        "let x | {a: Num, s: Str} = {a = 1, s = \"a\", extra = 1} in %deepSeq% x x"
+        "let x | {a: Num, s: Str} = {a = 1, s = \"a\", extra = 1} in %deep_seq% x x"
     );
 
     assert_raise_blame!(
-        "let x | {a: Num, s: {foo: Bool}} = {a = 1, s = {foo = 2}} in %deepSeq% x x"
+        "let x | {a: Num, s: {foo: Bool}} = {a = 1, s = {foo = 2}} in %deep_seq% x x"
     );
     assert_raise_blame!(
-        "let x | {a: Num, s: {foo: Bool}} = {a = 1, s = {foo = true, extra = 1}} in %deepSeq% x x"
+        "let x | {a: Num, s: {foo: Bool}} = {a = 1, s = {foo = true, extra = 1}} in %deep_seq% x x"
     );
-    assert_raise_blame!("let x | {a: Num, s: {foo: Bool}} = {a = 1, s = {}} in %deepSeq% x x");
+    assert_raise_blame!("let x | {a: Num, s: {foo: Bool}} = {a = 1, s = {}} in %deep_seq% x x");
 }
 
 #[test]
@@ -134,7 +134,7 @@ fn lists_contracts() {
     use nickel::label::ty_path::Elem;
 
     assert_matches!(
-        eval("%deepSeq% ([1, \"a\"] | List Num) 0"),
+        eval("%deep_seq% ([1, \"a\"] | List Num) 0"),
         Err(Error::EvalError(EvalError::BlameError(..)))
     );
     assert_matches!(
@@ -146,7 +146,7 @@ fn lists_contracts() {
         Err(Error::EvalError(EvalError::BlameError(..)))
     );
 
-    let res = eval("%deepSeq% ([{a = [1]}] | List {a: List Str}) false");
+    let res = eval("%deep_seq% ([{a = [1]}] | List {a: List Str}) false");
     match &res {
         Err(Error::EvalError(EvalError::BlameError(ref l, _))) => {
             assert_matches!(l.path.as_slice(), [Elem::List, Elem::Field(id), Elem::List] if &id.to_string() == "a")
@@ -159,7 +159,7 @@ fn lists_contracts() {
     res.unwrap_err().to_diagnostic(&mut files, None);
 
     let res = eval(
-        "(%elemAt% (({foo = [(fun x => \"a\")]} | {foo: List (forall a. a -> Num)}).foo) 0) false",
+        "(%elem_at% (({foo = [(fun x => \"a\")]} | {foo: List (forall a. a -> Num)}).foo) 0) false",
     );
     match &res {
         Err(Error::EvalError(EvalError::BlameError(ref l, _))) => {

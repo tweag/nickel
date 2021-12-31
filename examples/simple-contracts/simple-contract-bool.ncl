@@ -1,8 +1,8 @@
 // Example of simple custom contract, parametrized by a first argument.
 // In practice, for this kind of simple predicate, one should rather use
-// `contracts.fromPred`
-let EqualsTo = fun referenceValue label value =>
-  if referenceValue == value then
+// `contracts.from_predicate`
+let EqualsTo = fun reference_value label value =>
+  if reference_value == value then
     value 
   else
     contracts.blame label in
