@@ -362,7 +362,10 @@ ChunkExpr: StrChunk<RichTerm> = HashBrace <t: WithPos<Term>> "}" => StrChunk::Ex
 
 HashBrace = { "#{", "multstr #{" };
 
-StaticString: String = StringStart <s: ChunkLiteral> StringEnd => s;
+StaticString: String = {
+    StringStart <s: ChunkLiteral> StringEnd => s,
+    StringStart StringEnd => String::new(),
+};
 
 EnumTag: Ident = {
     <Ident>,
