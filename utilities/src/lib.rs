@@ -8,7 +8,14 @@ use std::path::PathBuf;
 
 pub fn eval(s: impl std::string::ToString) -> Result<Term, Error> {
     let mut p = Program::new_from_source(Cursor::new(s.to_string()), "test").unwrap();
-    p.eval()
+    p.eval().map(Term::from)
+}
+
+pub fn eval_file(f: &str) -> Result<Term, Error> {
+    let path = format!("{}/../tests/{}", env!("CARGO_MANIFEST_DIR"), f);
+    let mut p = Program::new_from_file(&path)
+        .unwrap_or_else(|e| panic!("Could not create program from `{}`\n {}", path, e));
+    p.eval().map(Term::from)
 }
 
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
@@ -117,7 +124,7 @@ pub fn bench_args_expect<F>(
     c.bench_function(name, |b| {
         b.iter_batched_ref(
             || Program::new_from_source(Cursor::new(content.clone()), name).unwrap(),
-            |p| assert!(pred(p.eval().unwrap())),
+            |p| assert!(pred(p.eval().map(Term::from).unwrap())),
             criterion::BatchSize::LargeInput,
         )
     });
