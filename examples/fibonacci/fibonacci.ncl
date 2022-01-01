@@ -6,10 +6,10 @@
 let fibonacci = {
  f = fun n =>
   if n == 0 then
-    0 
+    0
   else if n == 1 then
     1
-  else 
+  else
     f (n - 1) + f (n - 2)
 }.f in
 fibonacci 10

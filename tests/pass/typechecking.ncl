@@ -120,7 +120,7 @@ let typecheck = [
   {a : Num = 1 + a} : {a : Num},
 
   // let_inference
-  (let x = 1 + 2 in let f = fun x => x + 1 in f x) : Num, 
+  (let x = 1 + 2 in let f = fun x => x + 1 in f x) : Num,
   // (let x = 1 + 2 in let f = fun x => x ++ "a" in f x) : Num,
   {a = 1, b = 1 + a} : {a : Num, b : Num},
   {f = fun x => if x == 0 then 1 else 1 + (f (x + (-1))),}
