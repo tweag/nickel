@@ -602,8 +602,12 @@ impl Cache {
     ) -> Result<CacheOp<()>, Error> {
         let mut result = CacheOp::Cached(());
 
-        if self.parse(file_id)? == CacheOp::Done(ParseErrors::default()) {
-            result = CacheOp::Done(());
+        match self.parse(file_id)? {
+            CacheOp::Done(e) | CacheOp::Cached(e) if !e.no_errors() => return Err(e.into()),
+            CacheOp::Done(_) => {
+                result = CacheOp::Done(());
+            }
+            _ => {}
         };
 
         let import_res = self.resolve_imports(file_id).map_err(|cache_err| {
