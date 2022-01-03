@@ -154,7 +154,7 @@
               # Wasm-pack requires to change the crate type. Cargo doesn't yet
               # support having different crate types depending on the target, so
               # we switch there
-              printf '\n[lib]\ncrate-type = ["cdylib", "rlib"]' >> Cargo.toml
+              sed -i 's/\[lib\]/[lib]\ncrate-type = ["cdylib", "rlib"]/' Cargo.toml
             '';
 
           buildPhase =
