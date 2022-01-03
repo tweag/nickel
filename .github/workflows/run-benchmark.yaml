@@ -8,7 +8,9 @@ jobs:
     name: run benchmark
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@master
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
       - uses: jasonwilliams/criterion-compare-action@move_to_actions
         with:
           branchName: ${{ github.base_ref }}
