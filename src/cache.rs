@@ -759,9 +759,12 @@ impl Cache {
             .map(|(name, content)| self.add_string(OsString::from(name), String::from(content)))
             .collect();
 
-        file_ids
-            .iter()
-            .try_for_each(|file_id| self.parse(*file_id).map(|_| ()))?;
+        for file_id in file_ids.iter() {
+            let errs = self.parse(*file_id)?.inner();
+            if !errs.no_errors() {
+                return Err(errs.into());
+            }
+        }
         self.stdlib_ids.replace(file_ids);
         Ok(CacheOp::Done(()))
     }
