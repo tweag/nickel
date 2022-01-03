@@ -68,9 +68,6 @@ members = [
 [profile.release]
 debug = true
 
-[lib]
-bench = false
-
 [[bench]]
 name = "numeric"
 harness = false
