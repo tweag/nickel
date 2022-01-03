@@ -4,9 +4,7 @@ on:
 
 jobs:
   deploy:
-    # TODO Change @ci-workflow to @master once
-    # https://github.com/tweag/nickel-lang.org/pull/5 is merged.
-    uses: tweag/nickel-lang.org/.github/workflows/deploy.yml@ci-workflow
+    uses: tweag/nickel-lang.org/.github/workflows/deploy.yml@master
     with:
       # TODO Remove next line once
       # https://github.com/tweag/nickel-lang.org/pull/5 is merged.
