@@ -12,6 +12,9 @@ name = "nickel"
 path = "src/bin/nickel.rs"
 bench = false
 
+[lib]
+bench = false
+
 [features]
 default = ["markdown", "repl"]
 markdown = ["termimad"]

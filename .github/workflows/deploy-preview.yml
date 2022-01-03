@@ -1,0 +1,20 @@
+name: Deploy preview
+on:
+  pull_request:
+
+jobs:
+  deploy:
+    # TODO Change @ci-workflow to @master once
+    # https://github.com/tweag/nickel-lang.org/pull/5 is merged.
+    uses: tweag/nickel-lang.org/.github/workflows/deploy.yml@ci-workflow
+    with:
+      # TODO Remove next line once
+      # https://github.com/tweag/nickel-lang.org/pull/5 is merged.
+      website_ref: ci-workflow
+      nickel_repository: ${{ github.repository }}
+      nickel_ref: ${{ github.sha }}
+      production_deploy: false
+    secrets:
+      CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}

@@ -72,7 +72,7 @@ let Assert = fun l x => x || %blame% l in
     (eq_with_ctxt
         [[1,2,3,4], [1,0,3,4], [1,2,3,4], [1,2,3,4]]
         [[1,2,3,4], [1,2,3,4], [1,2,3,4], [1,2,3,4]]
-      == false 
+      == false
   ),
 ]
 |> lists.foldl (fun x y => (x | #Assert) && y) true

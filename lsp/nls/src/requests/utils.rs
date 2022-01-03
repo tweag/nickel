@@ -7,7 +7,7 @@ use nickel::{position::TermPos, typecheck::linearization};
 /// - Each element has a corresponding span in the source
 /// - Spans are either equal (same starting point, same length)
 ///   or shorter but never intersecting
-///   
+///
 ///   (start_element_2 >= start_element_1 AND end_element_2 <= end_element_1)
 ///
 /// For any location a binary search is used to efficiently find the index
@@ -22,7 +22,7 @@ use nickel::{position::TermPos, typecheck::linearization};
 ///
 /// If neither is possible `None` is returned as no corresponding linearization
 /// item could be found.
-///  
+///
 pub fn find_linearization_index(
     linearization: &[linearization::LinearizationItem<nickel::types::Types>],
     locator: (codespan::FileId, ByteIndex),

@@ -133,18 +133,15 @@ for help about a specific subcommand.
      packages.
    - **Without Nix**: otherwise, follow [this guide][rust-guide] to install Rust
      and Cargo first.
-2. Build Nickel:
+1. Build Nickel:
    ```console
    $ cargo build
    ```
    And voilà! Generated files are placed in `target/debug`.
-
-
 1. *(optional)* make a symbolic link to the executable:
   ```console
   $ ln -S nickel target/debug/nickel
   ```
-
 
 ### Tests
 

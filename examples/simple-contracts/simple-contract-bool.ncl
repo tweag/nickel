@@ -3,7 +3,7 @@
 // `contracts.from_predicate`
 let EqualsTo = fun reference_value label value =>
   if reference_value == value then
-    value 
+    value
   else
     contracts.blame label in
 
@@ -15,4 +15,4 @@ let AlwaysFalse = EqualsTo false in
 // Try passing `false` to `not`, or to use the identity function (replacing `!x`
 // by `x`) to see contract errors appear.
 let not | #AlwaysTrue -> #AlwaysFalse = fun x => !x in
-not true 
+not true

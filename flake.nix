@@ -229,6 +229,25 @@
           '';
         };
 
+      buildNlsVSIX = { system }:
+        let pkgs = mkPkgs { inherit system; };
+          node-package = (pkgs.callPackage ./lsp/client-extension {}).package ;
+          vsix = node-package.override rec {
+            pname = "nls-client";
+            outputs = [ "vsix" "out" ];
+            nativeBuildInputs =  with pkgs; [
+              nodePackages.typescript
+              # Required by `keytar`, which is a dependency of `vsce`.
+              pkg-config libsecret 
+            ];
+            postInstall = ''
+              npm run compile
+              mkdir -p $vsix
+              echo y | npx vsce package -o $vsix/${pname}.vsix
+            '';
+          };
+        in vsix.vsix;
+
       buildDevShell = { system, channel ? "stable" }:
       let
         pkgs = mkPkgs { inherit system; };
@@ -326,6 +345,7 @@
         build = buildNickel { inherit system; };
         buildWasm = buildNickelWASM { inherit system; optimize = true; };
         dockerImage = buildDocker { inherit system; };
+        vscodeExtension = buildNlsVSIX { inherit system; };
       });
 
       checks = forAllSystems (system:
