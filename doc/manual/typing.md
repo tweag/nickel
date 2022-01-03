@@ -6,26 +6,27 @@ Usually, static typing brings in important benefits for large codebases of
 general-purpose programming languages, but the case of an interpreted
 configuration language appears less clear-cut.
 
-Nevertheless, they who have ever faced puzzling [dynamic type
-errors](https://www.haskellforall.com/2021/01/dynamic-type-errors-lack-relevance.html)
-may have felt the need for something better. Standard dynamic typing is prone to
-error messages being unrelated to the actual issue while being located far from
-the offending code. This is especially salient when working with functions,
-which tend to delay type errors by passing around ill-formed values until they
-eventually break evaluation somewhere else.
+For pure configuration code, which is mostly data, static typing is not as
+useful. First, a configuration is a terminating program run once on fixed
+inputs: here, basic type errors will show up at runtime anyway. Second, Nickel
+has a powerful validation system, contracts, that can do the same job as types
+and more.
 
-On the other hand, for pure configuration code, static typing is less useful.
-First, a configuration is a terminating program run once on fixed inputs: here,
-basic type errors will show up at runtime anyway. Second, Nickel has a powerful
-validation system, contracts, that can do the same job as types and more.
+Nevertheless, if you have ever faced puzzling [dynamic type
+errors](https://www.haskellforall.com/2021/01/dynamic-type-errors-lack-relevance.html),
+you may have felt the need for something better. Classic dynamic typing is prone
+to error messages being unrelated to the actual issue and pointing to a location
+far from the offending code. This is especially salient when working with
+functions, which tend to delay type errors by passing around ill-formed values
+until they eventually break evaluation somewhere else. For reusable code, i.e.
+functions, static typing really helps.
 
-This apparent dilemma is solved in Nickel by supporting *gradual typing*
-language. Gradual typing enables to mix both static typing and dynamic typing.
+This apparent dilemma is solved in Nickel by supporting *gradual typing*.
+Gradual typing enables to mix both static typing and dynamic typing.
 
 The following is a detailed exposition of this gradual type system. If you are
-rather looking for a small cheat-sheet about when to use static typing or
-contracts, please visit [Type versus contracts: when
-to?](./types-vs-contracts.md).
+rather looking for a cheat-sheet about when to use static typing or contracts,
+please visit [Type versus contracts: when to?](./types-vs-contracts.md).
 
 ## Typing modes
 
@@ -45,8 +46,9 @@ By default, Nickel code is dynamically typed. For example:
 }
 ```
 
-As long as we operate on constants, dynamic type error can be sufficient.
-Let us introduce an error on the last line of the previous example:
+As long as we operate on basic data (numbers, strings, etc.), dynamic type error
+can be sufficient. Let us introduce an error on the last line of the previous
+example:
 
 ```nickel
 {
@@ -61,7 +63,7 @@ Let us introduce an error on the last line of the previous example:
 ```
 
 `version` is a string, and can't be added to a number. If we try to export this
-configuration using `nickel export`, we get indeed:
+configuration using `nickel export`, we get a reasonable error message:
 
 ```
 error: Type error
@@ -77,11 +79,10 @@ error: Type error
 
 ```
 
-While dynamic typing is fine for configuration code, we run into the bad error
-reporting issue once we are using functions. Say we want to filter over a list
-of elements:
+While dynamic typing is fine for configuration code, the trouble begins once we
+are using functions. Say we want to filter over a list of elements:
 
-```
+```nickel
 let filter = fun pred l =>
   lists.foldl (fun acc x => if pred x then acc @ [x] else acc) [] l in
 filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
@@ -100,14 +101,14 @@ error: Type error
   = if
 ```
 
-This example shows how dynamic typing delays type errors, making them harder to
-diagnose. Here, `filter` is fine, but the error still points to inside its
-implementation. The actual issue is that the caller provided an argument of the
-wrong type: the filtering function should return a boolean but returns either
-the original element (a number) or `null`. This is a tiny example, so debugging
-is still doable here. In a real code base, the user (who probably wouldn't even
-be the author of `filter`) might have a harder time solving the issue from the
-error report.
+This example illustrates how dynamic typing delays type errors, making them
+harder to diagnose. Here, `filter` is fine, but the error still points to inside
+its implementation. The actual issue is that the caller provided an argument of
+the wrong type: the filtering function should return a boolean but returns
+either the original element (a number) or `null`. This is a tiny example, so
+debugging is still doable here. In a real code base, the user (who probably
+wouldn't even be the author of `filter`) might have a harder time solving the
+issue from the error report.
 
 ### Static typing
 
@@ -180,7 +181,7 @@ Let us now have a quick tour of the type system. The basic types are:
 - `Dyn`: the dynamic type. This is the type given to most expressions outside of
   a typed block. A value of type `Dyn` can be pretty much anything.
 - `Num`: the only number type. Currently implemented as a 64bits float.
-- `Str`: a string.
+- `Str`: a string, which must always be valid UTF8.
 - `Bool`: a boolean, that is either `true` or `false`.
 <!-- - `Lbl`: a contract label. You usually don't need to use it or worry about it, -->
 <!--     it is more of an internal thing.  -->
@@ -211,7 +212,7 @@ The following type constructors are available:
   Example:
   ```nickel
   let occurences : {_: Num} = {a = 1, b = 3, c = 0} in
-  records.map (fun char count => count+1) occurences : {_ : Num}
+  records.map (fun char count => count + 1) occurences : {_ : Num}
   ```
 - **Enum**: `<tag1, .., tagn>`: an enumeration comprised of alternatives `tag1`,
   .., `tagn`. An enumeration literal is prefixed with a backtick and serialized
@@ -254,7 +255,7 @@ code of `filter` is agnostic with respect to the type of elements of the list.
 That is, `filter` is *generic*. Genericity is expressed in Nickel through
 *polymorphism*. A polymorphic type is a type that contains the keyword `forall`,
 which introduces type variables that can later be substituted for any concrete
-type.  Here is our polymorphic type annotation for `filter`:
+type. Here is our polymorphic type annotation for `filter`:
 
 ```nickel
 {
@@ -406,9 +407,9 @@ What comes before the tail may include several fields, is in e.g. `forall a.
 
 <!-- TODO: should we keep this example? To revisit before release. Extension
 operator is a tad ugly, and ideally we would only use merge. But the type of
-merge can't be currently express in the -type system. -->
+merge can't be currently express in the type system. -->
 Row types can appear in the result of the function as well. The following
-example return a new version of the input where fields `a` and `b` have been
+example returns a new version of the input where fields `a` and `b` have been
 summed, without modifying the rest:
 
 ```nickel
@@ -435,11 +436,11 @@ type.
 
 ### Take-away
 
-The type system of Nickel has a few basic types (`Dyn`, `Num`, `Str`,
-and `Bool`) and type constructors for lists, records, enums and functions.
-Nickel features generics via polymorphism, introduced by the `forall` keyword. A
-type can not only be generic in other types, but records and enums types can
-also be generic in their tail. The tail is delimited by `|`.
+The type system of Nickel has usual basic types (`Dyn`, `Num`, `Str`, and
+`Bool`) and type constructors for lists, records, enums and functions. Nickel
+features generics via polymorphism, introduced by the `forall` keyword. A type
+can not only be generic in other types, but records and enums types can also be
+generic in their tail. The tail is delimited by `|`.
 
 ## Interaction between statically typed and dynamically typed code
 
@@ -451,18 +452,19 @@ We'll now explore how typed and untyped code interact.
 Until now, we have written the statically typed `filter` examples using
 statically typed blocks that enclosed both the definition of `filter` and the
 call sites. More realistically, `filter` would be a statically typed library
-function (it is actually part of the standard library as `lists.filter`) while
-being likely to be called from dynamically typed configuration files. In this
-situation, the call site escapes the typechecker. Thus, without an additional
-mechanism, static typing would only ensure that the implementation of `filter`
-doesn't violate the typing rules, but wouldn't prevent an ill-formed call from
-dynamically typed code.  At first sight, we haven't solved at all the main issue
-of delayed dynamic type errors that static typing was supposed to solve in the
-first place! Remember, the typical problem is the caller passing an value of the
-wrong type that eventually raises an error from within `filter`.
+function (it is actually part of the standard library as `lists.filter`) and
+likely be called from dynamically typed configuration files. In this situation,
+the call site escapes the typechecker. Thus, without an additional mechanism,
+static typing would only ensure that the implementation of `filter` doesn't
+violate the typing rules, but wouldn't prevent an ill-formed call from
+dynamically typed code.  At first sight, static typing hasn't solved the
+original issue of delayed dynamic type errors at all! Remember, the typical
+problem is the caller passing a value of the wrong type that eventually raises
+an error from within `filter`.
 
 Fortunately, Nickel does have a mechanism to prevent this from happening and to
-provide good error reporting in this situation.  Let us see by ourselves:
+provide good error reporting in this situation. Let us see that by ourselves by
+calling to the statically typed `lists.filter` from dynamically typed code:
 
 ```nickel
 lists.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
@@ -515,12 +517,11 @@ behave exactly the same at *runtime*.
 Thanks to this guard, you can statically type your library functions and use
 them from dynamically typed code while still enjoying good error messages.
 
-### Using untyped code inside typed code
+### Using dynamically typed code inside statically typed code
 
-In the other direction, we face a different issue. How can we use untyped values
-inside typed code?
-
-Most of the time, dynamically typed code just get assigned the `Dyn` type:
+In the other direction, we face a different issue. Because dynamically typed
+code just get assigned the `Dyn` type most of the time, we can't use a
+dynamically typed value inside a statically typed block directly:
 
 ```nickel
 let x = 0 + 1 in
@@ -541,10 +542,9 @@ error: Incompatible types
 ```
 
 We could add a type annotation to `x`. But sometimes we don't want to, or we
-can't. Maybe in a real use-case, `x` is a full expression that we know it
-correctly evaluates to a number but is rejected by the typechecker as it uses
-dynamic idioms. In this case, we can trade a type annotation for a contract
-application:
+can't. Maybe in a real use-case, `x` is an expression that we know correctly
+evaluates to a number but is rejected by the typechecker because it uses dynamic
+idioms. In this case, we can trade a type annotation for a contract application:
 
 Example:
 ```nickel
@@ -562,8 +562,8 @@ acts like a type cast, but whose verification is delayed to run-time.
 
 Dually to a static type annotation, a contract application also *turns the
 typechecker off again*. You are back in the dynamic world. This is illustrated
-by the following program, where we inlined `x` in the statically typed block,
-being accepted:
+by the following program being accepted, where we inlined `x` inside the
+statically typed block:
 
 ```nickel
 (1 + ((if true then 0 else "a" | Num)) : Num
@@ -594,26 +594,26 @@ error: Incompatible types
 As a side note, annotations are not always needed to use dynamically typed code
 inside a statically typed block. The following example is accepted:
 
-```
+```nickel
 let x = 1 in
 (1 + x : Num)
 ```
 
-The typechecker tries to respect the intention of the programmer.  If one
-doesn't use annotations, then the code shouldn't be typechecked, whatever the
-reason is. If you want `x` to be statically typed, you should annotate it.
+The typechecker tries to respect the intent of the programmer. If one doesn't
+use annotations, then the code shouldn't be typechecked, whatever the reason is.
+If you want `x` to be statically typed, you should annotate it.
 
-That being said, the typechecker still avoid being too rigid: it is obvious in
+That being said, the typechecker still avoids being too rigid: it is obvious in
 the previous example case that `1` is of type `Num`. This information is cheap
 to gather. When encountering a binding outside of a typed block, the typechecker
 determines the *apparent type* of the definition. The rationale is that
 determining the apparent type shouldn't recurse arbitrarily inside the
-expression or do anything non-trivial.  Typically, replacing `1` with a compound
-expression `0 + 1` would change the type of `x` type to `Dyn` and makes the
-example fail. For now, the typechecker determines an apparent type that is not
-`Dyn` only for literals (numbers, strings, booleans), lists, variables, imports
-and annotated expressions. Otherwise, the typechecker fallbacks to `Dyn`. It may
-do more in the future (assign `Dyn -> Dyn` to functions, `{_: Dyn}` to records,
+expression or do anything non-trivial. Typically, replacing `1` with a compound
+expression `0 + 1` changes the type of `x` type to `Dyn` and makes the example
+fail. For now, the typechecker determines an apparent type that is not `Dyn`
+only for literals (numbers, strings, booleans), lists, variables, imports and
+annotated expressions. Otherwise, the typechecker fallbacks to `Dyn`. It may do
+more in the future (assign `Dyn -> Dyn` to functions, `{_: Dyn}` to records,
 etc).
 
 ### Take-away
@@ -662,8 +662,8 @@ error: Incompatible types
 
 It turns out statically ensuring that an arbitrary expression will eventually
 respects an arbitrary user-written predicate is a really hard problem even in
-simple cases (technically, it is undecidable in the general case). The
-typechecker doesn't have a clue about the relation  between numbers and ports.
+simple cases (technically, it is even undecidable in the general case). The
+typechecker doesn't have a clue about the relation between numbers and ports.
 So, what can it do with annotations like `#Port`? There is one situation when
 the typechecker can be sure that something will eventually be a port number, or
 will fail with the correct error message: when using a contract application.
@@ -675,16 +675,16 @@ will fail with the correct error message: when using a contract application.
 ) : #Port
 ```
 
-A custom contract hence acts like an opaque type (or abstract type) for the
-typechecker. The typechecker doesn't really know much about it except that the
-only way to construct a value of type `#Port` is to use contract application.
-You also need an explicit contract application to cast back a `#Port` to a
-`Num`: `(p | Num) + 1 : Num`.
+A custom contract hence acts like an opaque type (sometimes called abstract type
+as well) for the typechecker. The typechecker doesn't really know much about it
+except that the only way to construct a value of type `#Port` is to use contract
+application. You also need an explicit contract application to cast back a
+`#Port` to a `Num`: `(p | Num) + 1 : Num`.
 
 Because of the rigidity of opaque types, using custom contracts inside static
-type annotations is not very useful right now. We just had to give a reasonable
-them a meaning at typechecking time because types and contracts share the same
-specification syntax.
+type annotations is not very useful right now. We just had to give them a
+reasonable meaning at typechecking time because types and contracts share the
+same specification syntax, and they can thus appear inside types.
 
 ## Typing in practice
 
