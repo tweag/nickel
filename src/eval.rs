@@ -959,12 +959,9 @@ where
                             // We already checked for unbound identifier in the previous fold,
                             // so function should always succeed
                             let mut thunk = env.get(&var_id).unwrap();
-                            let mut clos = thunk.borrow_mut();
-                            let free_vars = clos.body.free_vars();
-                            clos.env.extend(
+                            thunk.borrow_mut().env.extend(
                                 rec_env
                                     .iter_elems()
-                                    .filter(|(id, _)| free_vars.contains(id))
                                     .map(|(id, thunk)| (id.clone(), thunk.clone())),
                             );
                             (
@@ -997,12 +994,10 @@ where
                                     let mut thunk = env.get(&var_id).ok_or_else(|| {
                                         EvalError::UnboundIdentifier(var_id.clone(), pos)
                                     })?;
-                                    let mut clos = thunk.borrow_mut();
-                                    let free_vars = clos.body.free_vars();
-                                    clos.env.extend(
+
+                                    thunk.borrow_mut().env.extend(
                                         rec_env
                                             .iter_elems()
-                                            .filter(|(id, _)| free_vars.contains(id))
                                             .map(|(id, thunk)| (id.clone(), thunk.clone())),
                                     );
                                     Ok(Term::App(
