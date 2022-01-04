@@ -116,7 +116,7 @@ pub fn bench_args_expect<F>(
     );
 
     let content = if eval_mode == EvalMode::DeepSeq {
-        format!("%deepSeq% ({}) true", content)
+        format!("%deep_seq% ({}) true", content)
     } else {
         content
     };
