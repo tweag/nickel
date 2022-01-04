@@ -97,11 +97,22 @@ impl FromStr for Command {
         let cmd: CommandType = cmd_str
             .parse()
             .map_err(|_| ReplError::UnknownCommand(cmd_str.clone()))?;
-        let arg: String = s.chars().skip(cmd_end + 1).collect();
+        let arg: String = s
+            .chars()
+            .skip(cmd_end + 1)
+            .collect::<String>()
+            .trim()
+            .to_string();
 
         match cmd {
             CommandType::Load => {
                 require_arg(cmd, &arg, Some("Please provide a file to load"))?;
+                let arg = if arg.starts_with('"') && arg.ends_with('"') {
+                    arg.chars().skip(1).take(arg.len() - 2).collect::<String>()
+                } else {
+                    arg
+                };
+                println!("{}", arg);
                 Ok(Command::Load(OsString::from(arg)))
             }
             CommandType::Typecheck => {
