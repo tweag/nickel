@@ -65,8 +65,9 @@ members = [
     "lsp/nls"
 ]
 
-[profile.release]
-debug = true
+# Enable this to use flamegraphs
+# [profile.release]
+# debug = true
 
 [[bench]]
 name = "numeric"
