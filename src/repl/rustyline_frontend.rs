@@ -102,7 +102,7 @@ pub fn repl(histfile: PathBuf) -> Result<(), InitError> {
                 }
             }
             Ok(line) => {
-                match repl.eval(&line) {
+                match repl.eval_full(&line) {
                     Ok(EvalResult::Evaluated(rt)) => println!("{}\n", rt.as_ref().deep_repr()),
                     Ok(EvalResult::Bound(_)) => (),
                     Err(err) => program::report(repl.cache_mut(), err),
