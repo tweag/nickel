@@ -561,16 +561,16 @@ number and won't cause any type mismatch. In a way, the contract application
 acts like a type cast, but whose verification is delayed to run-time.
 
 Dually to a static type annotation, a contract application also *turns the
-typechecker off again*. You are back in the dynamic world. This is illustrated
-by the following program being accepted, where we inlined `x` inside the
-statically typed block:
+typechecker off again*. You are back in the dynamic world. Even in a statically
+typed block, a contract application can thus serve to embed dynamically typed
+code that you know is correct but wouldn't typecheck:
 
 ```nickel
 (1 + ((if true then 0 else "a" | Num)) : Num
 ```
 
-While a fully statically typed version is rejected because of the type mismatch
-between branches:
+The code above is accepted, while a fully statically typed version is rejected
+because of the type mismatch between the if branches:
 
 ```nickel
 (1 + (if true then 0 else "a")) : Num
