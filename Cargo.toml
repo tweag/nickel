@@ -55,9 +55,36 @@ serde_repr = { version = "0.1", optional = true }
 [dev-dependencies]
 pretty_assertions = "0.5.1"
 assert_matches = "1.4.0"
+criterion = "0.3"
+pprof = { version = "0.4.4", features = ["criterion", "flamegraph"] }
+utilities = {path = "utilities"}
 
 [workspace]
 members = [
     ".",
     "lsp/nls"
 ]
+
+# Enable this to use flamegraphs
+# [profile.release]
+# debug = true
+
+[[bench]]
+name = "numeric"
+harness = false
+
+[[bench]]
+name = "functions"
+harness = false
+
+[[bench]]
+name = "lists"
+harness = false
+
+[[bench]]
+name = "records"
+harness = false
+
+[[bench]]
+name = "serialization"
+harness = false

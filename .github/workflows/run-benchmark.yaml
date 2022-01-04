@@ -1,0 +1,17 @@
+name: benchmark pull requests
+on:
+  pull_request:
+    types: [labeled]
+jobs:
+  runBenchmark:
+    if: ${{ github.event.label.name == 'run-benchmark' && github.event_name == 'pull_request' }}
+    name: run benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - uses: jasonwilliams/criterion-compare-action@move_to_actions
+        with:
+          branchName: ${{ github.base_ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}

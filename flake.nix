@@ -155,6 +155,14 @@
               # support having different crate types depending on the target, so
               # we switch there
               sed -i 's/\[lib\]/[lib]\ncrate-type = ["cdylib", "rlib"]/' Cargo.toml
+
+              # This is a hack to prevent the fs2 crate from being compiled on wasm.
+              # This may be able to be removed once one or more of these issues are resolved:
+              # https://github.com/bheisler/criterion.rs/issues/461
+              # https://github.com/rust-lang/cargo/issues/1596
+              # https://github.com/rust-lang/cargo/issues/1197
+              # https://github.com/rust-lang/cargo/issues/5777
+              sed -i '/utilities/d' Cargo.toml
             '';
 
           buildPhase =
