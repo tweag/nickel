@@ -151,7 +151,7 @@ impl ReplImpl {
                 }
 
                 typecheck::type_check_in_env(&t, &self.env.type_env, &self.cache)?;
-                typecheck::Envs::env_add(&mut self.env.type_env, id.clone(), &t);
+                typecheck::Envs::env_add(&mut self.env.type_env, id.clone(), &t, &self.cache);
                 for id in &pending {
                     self.cache
                         .typecheck(*id, &self.init_type_env)
@@ -211,7 +211,7 @@ impl Repl for ReplImpl {
         for id in &pending {
             self.cache.resolve_imports(*id).unwrap();
         }
-        typecheck::Envs::env_add_term(&mut self.env.type_env, &term).unwrap();
+        typecheck::Envs::env_add_term(&mut self.env.type_env, &term, &self.cache).unwrap();
         eval::env_add_term(&mut self.env.eval_env, term.clone()).unwrap();
 
         Ok(term)
@@ -230,6 +230,7 @@ impl Repl for ReplImpl {
         Ok(typecheck::apparent_type(
             term.as_ref(),
             Some(&typecheck::Envs::from_global(&self.env.type_env)),
+            Some(&self.cache),
         )
         .into())
     }

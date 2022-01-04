@@ -397,14 +397,19 @@ impl<'a> Envs<'a> {
     /// Add the bindings of a record to a typing environment. Ignore fields whose name are defined
     /// through interpolation.
     //TODO: support the case of a record with a type annotation.
-    pub fn env_add_term(env: &mut Environment, rt: &RichTerm) -> Result<(), EnvBuildError> {
+    pub fn env_add_term(
+        env: &mut Environment,
+        rt: &RichTerm,
+        resolver: &dyn ImportResolver,
+    ) -> Result<(), EnvBuildError> {
         let RichTerm { term, pos } = rt;
 
         match term.as_ref() {
             Term::Record(bindings, _) | Term::RecRecord(bindings, ..) => {
                 for (id, t) in bindings {
                     let tyw: TypeWrapper =
-                        apparent_type(t.as_ref(), Some(&Envs::from_global(env))).into();
+                        apparent_type(t.as_ref(), Some(&Envs::from_global(env)), Some(resolver))
+                            .into();
                     env.insert(id.clone(), tyw);
                 }
 
@@ -415,10 +420,10 @@ impl<'a> Envs<'a> {
     }
 
     /// Bind one term in a typing environment.
-    pub fn env_add(env: &mut Environment, id: Ident, rt: &RichTerm) {
+    pub fn env_add(env: &mut Environment, id: Ident, rt: &RichTerm, resolver: &dyn ImportResolver) {
         env.insert(
             id,
-            apparent_type(rt.as_ref(), Some(&Envs::from_global(env))).into(),
+            apparent_type(rt.as_ref(), Some(&Envs::from_global(env)), Some(resolver)).into(),
         );
     }
 
@@ -629,7 +634,7 @@ fn type_check_<S, E>(
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Let(x, re, rt, _) => {
-            let ty_let = binding_type(re.as_ref(), &envs, state.table, strict);
+            let ty_let = binding_type(re.as_ref(), &envs, state.table, strict, state.resolver);
             linearizer.retype_ident(lin, x, ty_let.clone());
             type_check_(
                 state,
@@ -667,7 +672,7 @@ fn type_check_<S, E>(
                     });
                 }
             }
-            let ty_let = binding_type(re.as_ref(), &envs, state.table, strict);
+            let ty_let = binding_type(re.as_ref(), &envs, state.table, strict, state.resolver);
             type_check_(
                 state,
                 envs.clone(),
@@ -789,7 +794,7 @@ fn type_check_<S, E>(
             // Fields defined by interpolation are ignored.
             if let Term::RecRecord(..) = t.as_ref() {
                 for (id, rt) in stat_map {
-                    let tyw = binding_type(rt.as_ref(), &envs, state.table, strict);
+                    let tyw = binding_type(rt.as_ref(), &envs, state.table, strict, state.resolver);
                     envs.insert(id.clone(), tyw.clone());
                     linearizer.retype_ident(lin, id, tyw);
                 }
@@ -963,8 +968,12 @@ fn type_check_<S, E>(
                 .resolver
                 .get(*file_id)
                 .expect("Internal error: resolved import not found during typechecking.");
-            let ty_import: TypeWrapper =
-                apparent_type(t.as_ref(), Some(&Envs::from_envs(&envs))).into();
+            let ty_import: TypeWrapper = apparent_type(
+                t.as_ref(),
+                Some(&Envs::from_envs(&envs)),
+                Some(state.resolver),
+            )
+            .into();
             unify(state, strict, ty, ty_import).map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
     }
@@ -979,8 +988,16 @@ fn type_check_<S, E>(
 ///       return `Dyn`.
 ///     * in strict mode, we will typecheck `bound_exp`: return a new unification variable to be
 ///       associated to `bound_exp`.
-fn binding_type(t: &Term, envs: &Envs, table: &mut UnifTable, strict: bool) -> TypeWrapper {
-    let ty_apt = apparent_type(t, Some(envs));
+/// As this function is always called in a context where an `ImportResolver` is present, expect
+/// it passed in arguments.
+fn binding_type(
+    t: &Term,
+    envs: &Envs,
+    table: &mut UnifTable,
+    strict: bool,
+    resolver: &dyn ImportResolver,
+) -> TypeWrapper {
+    let ty_apt = apparent_type(t, Some(envs), Some(resolver));
 
     match ty_apt {
         ApparentType::Approximated(_) if strict => TypeWrapper::Ptr(new_var(table)),
@@ -1042,9 +1059,15 @@ impl From<ApparentType> for TypeWrapper {
 /// - if `bound_exp` is a constant (string, number, boolean or symbol) which type can be deduced
 ///   directly without unfolding the expression further, return the corresponding exact type.
 /// - if `bound_exp` is a list, return `List Dyn`.
+/// - if `bound_exp` is a resolved import, return the apparent type of the imported term. Returns
+///   `Dyn` if the resolver is not passed as a parameter to the function.
 /// - Otherwise, return an approximation of the type (currently `Dyn`, but could be more precise in
 ///   the future, such as `Dyn -> Dyn` for functions, `{ | Dyn}` for records, and so on).
-pub fn apparent_type(t: &Term, envs: Option<&Envs>) -> ApparentType {
+pub fn apparent_type(
+    t: &Term,
+    envs: Option<&Envs>,
+    resolver: Option<&dyn ImportResolver>,
+) -> ApparentType {
     match t {
         Term::MetaValue(MetaValue {
             types: Some(Contract { types: ty, .. }),
@@ -1054,7 +1077,9 @@ pub fn apparent_type(t: &Term, envs: Option<&Envs>) -> ApparentType {
         Term::MetaValue(MetaValue { contracts, .. }) if !contracts.is_empty() => {
             ApparentType::Annotated(contracts.get(0).unwrap().types.clone())
         }
-        Term::MetaValue(MetaValue { value: Some(v), .. }) => apparent_type(v.as_ref(), envs),
+        Term::MetaValue(MetaValue { value: Some(v), .. }) => {
+            apparent_type(v.as_ref(), envs, resolver)
+        }
         Term::Num(_) => ApparentType::Inferred(Types(AbsType::Num())),
         Term::Bool(_) => ApparentType::Inferred(Types(AbsType::Bool())),
         Term::Sym(_) => ApparentType::Inferred(Types(AbsType::Sym())),
@@ -1066,6 +1091,16 @@ pub fn apparent_type(t: &Term, envs: Option<&Envs>) -> ApparentType {
             .and_then(|envs| envs.get(id))
             .map(ApparentType::FromEnv)
             .unwrap_or(ApparentType::Approximated(Types(AbsType::Dyn()))),
+        Term::ResolvedImport(f) => {
+            if let Some(r) = resolver {
+                let t = r
+                    .get(*f)
+                    .expect("Internal error: resolved import not found during typechecking.");
+                apparent_type(&t.term, envs, Some(r))
+            } else {
+                ApparentType::Approximated(Types(AbsType::Dyn()))
+            }
+        }
         _ => ApparentType::Approximated(Types(AbsType::Dyn())),
     }
 }
@@ -1090,7 +1125,7 @@ pub fn infer_type(t: &Term) -> TypeWrapper {
             types: None,
             ..
         }) => infer_type(rt.as_ref()),
-        t => apparent_type(t, None).into(),
+        t => apparent_type(t, None, None).into(),
     }
 }
 
