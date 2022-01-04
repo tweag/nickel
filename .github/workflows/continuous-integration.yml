@@ -17,8 +17,6 @@ jobs:
           - macos-latest
         rust_channel:
           - stable
-          - beta
-          - nightly
         include:
           - os: ubuntu-latest
             system: x86_64-linux
@@ -26,7 +24,7 @@ jobs:
           - os: macos-latest
             system: x86_64-darwin
             experimental: false
-          - rust_channel: nightly
+          - rust_channel: stable
             experimental: true
 
     runs-on: ${{ matrix.os }}
