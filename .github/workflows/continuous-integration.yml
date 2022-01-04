@@ -25,7 +25,7 @@ jobs:
             system: x86_64-darwin
             experimental: false
           - rust_channel: stable
-            experimental: true
+            experimental: false
 
     runs-on: ${{ matrix.os }}
     # The `== true` makes it work wether experimental has been defined or not.
