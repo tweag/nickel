@@ -16,8 +16,6 @@ jobs:
           - macos-latest
         rust_channel:
           - stable
-          - beta
-          - nightly
         include:
           - os: ubuntu-latest
             system: x86_64-linux
@@ -25,8 +23,6 @@ jobs:
           - os: macos-latest
             system: x86_64-darwin
             experimental: false
-          - rust_channel: nightly
-            experimental: true
 
     runs-on: ${{ matrix.os }}
     # The `== true` makes it work wether experimental has been defined or not.
