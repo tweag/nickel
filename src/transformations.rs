@@ -523,15 +523,45 @@ impl Closurizable for RichTerm {
     /// Generate a fresh variable, bind it to the corresponding closure `(t,with_env)` in `env`,
     /// and return this variable as a fresh term.
     fn closurize(self, env: &mut Environment, with_env: Environment) -> RichTerm {
-        // If the term is already a generated variable (that is, introduced by the share normal
-        // form transformation), we don't have to create a useless intermediate closure. We just
-        // transfer the original thunk to the new environment. This is not only an optimization:
-        // this is relied upon by recursive record merging when computing the fixpoint. Change
-        // carefully.
+        // If the term is already a variable, we don't have to create a useless intermediate
+        // closure. We just transfer the original thunk to the new environment. This is not only an
+        // optimization: this is relied upon by recursive record merging when computing the
+        // fixpoint.
         //
-        // We could do it for non-generated ident as well, but be we would be renaming
-        // user-supplied variables by giberrish generated names. It may hamper error reporting, so
-        // for the time being, we restrict ourselves to generated identifier.
+        // More specifically, the evaluation of a recursive record patches the environment of each
+        // field with the thunks recursively referring to the other fields of the record. `eval`
+        // assumes that a recursive record field is either a constant or a generated variable whose
+        // thunks *immediately* contain the original unevaluated expression (both properties are
+        // true after the share normal form transformation and maintained when reverting thunks
+        // before merging recursive records).
+        //
+        // To maintain this invariant, `closurize` must NOT introduce an indirection through a
+        // variable, such as transforming:
+        //
+        // ```
+        // {foo = %1, bar = 1} in env %1 <- 1 + bar
+        // ```
+        //
+        // to:
+        //
+        // ```
+        // {foo = %2, bar = 1} in env %2 <- (%1 in env %1 <- 1 + bar)
+        // ```
+        //
+        // In this case, the evaluation of the recursive records will patch the outer environment
+        // instead of the inner one, giving:
+        //
+        // ```
+        // {foo = %2, bar = 1} in env %2 <- (%1 in env %1 <- 1 + bar), bar <- 1
+        // ```
+        //
+        // Then, evaluating `foo` would unduly raise an unbound identifier error.
+        //
+        //
+        // We currently only do this optimization for generated variables (introduced by the share
+        // normal form). We could do it for non-generated identifiers as well, but be we would be
+        // renaming user-supplied variables by gibberish generated names. It may hamper error
+        // reporting, so for the time being, we restrict ourselves to generated identifiers.
         let reuse_thunk = match self.as_ref() {
             Term::Var(id) if id.is_generated() => with_env.get(&id),
             _ => None,
