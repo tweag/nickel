@@ -373,7 +373,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
 
         let id = id_gen.get();
         match term {
-            Term::Let(ident, _, _) | Term::Fun(ident, _) => {
+            Term::Let(ident, _, _, _) | Term::Fun(ident, _) => {
                 self.env
                     .insert(ident.to_owned(), lin.state.resource.linearization.len());
                 lin.push(LinearizationItem {
