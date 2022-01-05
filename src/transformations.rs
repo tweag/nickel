@@ -562,21 +562,22 @@ impl Closurizable for RichTerm {
         // normal form). We could do it for non-generated identifiers as well, but be we would be
         // renaming user-supplied variables by gibberish generated names. It may hamper error
         // reporting, so for the time being, we restrict ourselves to generated identifiers.
-        let reuse_thunk = match self.as_ref() {
-            Term::Var(id) if id.is_generated() => with_env.get(&id),
-            _ => None,
-        };
-
         let var = fresh_var();
         let pos = self.pos;
 
-        let thunk = reuse_thunk.unwrap_or_else(|| {
-            let closure = Closure {
-                body: self,
-                env: with_env,
-            };
-            Thunk::new(closure, IdentKind::Record)
-        });
+        let thunk = match self.as_ref() {
+            Term::Var(id) if id.is_generated() => with_env.get(&id).expect(&format!(
+                "Internal error(closurize) : generated identifier {} not found in the environment",
+                id.is_generated()
+            )),
+            _ => {
+                let closure = Closure {
+                    body: self,
+                    env: with_env,
+                };
+                Thunk::new(closure, IdentKind::Record())
+            }
+        };
 
         env.insert(var.clone(), thunk);
         RichTerm::new(Term::Var(var), pos.into_inherited())
