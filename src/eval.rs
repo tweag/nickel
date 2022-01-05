@@ -96,7 +96,7 @@ use crate::{
     position::RawSpan,
     position::TermPos,
     stack::Stack,
-    term::{make as mk_term, BinaryOp, MetaValue, RichTerm, StrChunk, Term, UnaryOp},
+    term::{make as mk_term, BinaryOp, BindingType, MetaValue, RichTerm, StrChunk, Term, UnaryOp},
 };
 use codespan::FileId;
 use std::cell::{Ref, RefCell, RefMut};
@@ -801,20 +801,18 @@ where
                 );
                 Closure { body: t1, env }
             }
-            Term::Let(x, s, t) => {
+            Term::Let(x, s, t, btype) => {
                 let closure = Closure {
                     body: s,
                     env: env.clone(),
                 };
-                env.insert(x, Thunk::new(closure, IdentKind::Let));
-                Closure { body: t, env }
-            }
-            Term::LetRev(x, s, t) => {
-                let closure = Closure {
-                    body: s,
-                    env: env.clone(),
+
+                let thunk = match btype {
+                    BindingType::Normal => Thunk::new(closure, IdentKind::Let),
+                    BindingType::Revertible => Thunk::new_rev(closure, IdentKind::Let),
                 };
-                env.insert(x, Thunk::new_rev(closure, IdentKind::Let));
+
+                env.insert(x, thunk);
                 Closure { body: t, env }
             }
             Term::Switch(exp, cases, default) => {
@@ -1165,19 +1163,13 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
             | v @ Term::Enum(_)
             | v @ Term::Import(_)
             | v @ Term::ResolvedImport(_) => RichTerm::new(v, pos),
-            Term::Let(id, t1, t2) => {
+            Term::Let(id, t1, t2, btype) => {
                 let t1 = subst_(t1, global_env, env, Cow::Borrowed(bound.as_ref()));
                 let t2 = subst_(t2, global_env, env, bound);
 
-                RichTerm::new(Term::Let(id, t1, t2), pos)
+                RichTerm::new(Term::Let(id, t1, t2, btype), pos)
             }
             p @ Term::LetPattern(..) => panic!("Pattern {:?} has not been transformed before evaluation", p),
-            Term::LetRev(id, t1, t2) => {
-                let t1 = subst_(t1, global_env, env, Cow::Borrowed(bound.as_ref()));
-                let t2 = subst_(t2, global_env, env, bound);
-
-                RichTerm::new(Term::LetRev(id, t1, t2), pos)
-            }
             Term::App(t1, t2) => {
                 let t1 = subst_(t1, global_env, env, Cow::Borrowed(bound.as_ref()));
                 let t2 = subst_(t2, global_env, env, bound);

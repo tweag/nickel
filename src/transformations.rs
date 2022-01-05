@@ -167,7 +167,7 @@ pub mod share_normal_form {
     use super::fresh_var;
     use crate::identifier::Ident;
     use crate::position::TermPos;
-    use crate::term::{MetaValue, RichTerm, Term};
+    use crate::term::{BindingType, MetaValue, RichTerm, Term};
 
     /// Transform the top-level term of an AST to a share normal form, if it can.
     ///
@@ -271,7 +271,7 @@ pub mod share_normal_form {
                     meta.value
                         .replace(RichTerm::new(Term::Var(fresh_var.clone()), t.pos));
                     let inner = RichTerm::new(Term::MetaValue(meta), pos);
-                    RichTerm::new(Term::Let(fresh_var, t, inner), pos)
+                    RichTerm::new(Term::Let(fresh_var, t, inner, BindingType::Normal), pos)
                 } else {
                     RichTerm::new(Term::MetaValue(meta), pos)
                 }
@@ -300,18 +300,6 @@ pub mod share_normal_form {
         }
     }
 
-    /// Type of let-binding to introduce during the share normal form pass.
-    enum BindingType {
-        Normal,
-        Revertible,
-    }
-
-    impl Default for BindingType {
-        fn default() -> Self {
-            BindingType::Normal
-        }
-    }
-
     /// Bind a list of pairs `(identifier, term)` in a term.
     ///
     /// Given the term `body` and bindings of identifiers to terms represented as a list of pairs
@@ -323,16 +311,11 @@ pub mod share_normal_form {
         pos: TermPos,
         btype: BindingType,
     ) -> RichTerm {
-        bindings.into_iter().fold(
-            RichTerm {
-                term: Box::new(body),
-                pos: pos.into_inherited(),
-            },
-            |acc, (id, t)| match btype {
-                BindingType::Normal => RichTerm::new(Term::Let(id, t, acc), pos),
-                BindingType::Revertible => RichTerm::new(Term::LetRev(id, t, acc), pos),
-            },
-        )
+        bindings
+            .into_iter()
+            .fold(RichTerm::new(body, pos.into_inherited()), |acc, (id, t)| {
+                RichTerm::new(Term::Let(id, t, acc, btype), pos)
+            })
     }
 }
 
