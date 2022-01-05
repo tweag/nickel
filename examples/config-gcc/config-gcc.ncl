@@ -4,7 +4,7 @@ let GccFlag =
   // We only allow the following flags
   let available = ["W", "c", "S", "e", "o"] in
   fun label value =>
-  if builtins.isStr value then
+  if builtins.is_str value then
     if strings.length value > 0 &&
       lists.any (fun x => x == strings.substring 0 1 value) available then
       value
@@ -27,7 +27,7 @@ let GccFlag =
 let Path =
   let pattern = m#"^(.+)/([^/]+)$"#m in
   fun label value =>
-    if builtins.isStr value then
+    if builtins.is_str value then
       if strings.is_match pattern value then
         value
       else
@@ -36,7 +36,7 @@ let Path =
       contracts.blame_with "not a string" label in
 
 let SharedObjectFile = fun label value =>
-  if builtins.isStr value then
+  if builtins.is_str value then
     if strings.is_match m#"\.so$"#m value then
       value
     else
