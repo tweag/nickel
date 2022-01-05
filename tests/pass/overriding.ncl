@@ -62,5 +62,13 @@ let Assert = contracts.from_predicate functions.id in
   |> builtins.deep_seq base
   |> builtins.deep_seq ext1
   |> builtins.deep_seq ext2,
+
+  // Test that the evaluation of a recursive record patches the right
+  // environment in some edge cases (when fields only contains a variable)
+  let foo = 1 in
+  let y = foo in
+  {bar = y, foo = 2}.bar == 1,
+  ({foo | default = 1, bar = foo} & {foo = 2}).bar == 2,
+  ({foo | default = 1, bar = foo, baz = bar} & {foo = 2}).baz == 2,
 ]
 |> lists.foldl (fun next acc => (next | #Assert) && acc) true
