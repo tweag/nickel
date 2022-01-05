@@ -668,7 +668,7 @@ pub fn eval_full<R>(
 where
     R: ImportResolver,
 {
-    eval_internal(t0, global_env, resolver).map(|(term, env)| subst(term, global_env, &env))
+    eval_deep_closure(t0, global_env, resolver).map(|(term, env)| subst(term, global_env, &env))
 }
 
 /// Fully evaluates a Nickel term like `eval_full`, but does not substitute all variables.
@@ -680,10 +680,10 @@ pub fn eval_deep<R>(
 where
     R: ImportResolver,
 {
-    eval_internal(t0, global_env, resolver).map(|(term, _)| term)
+    eval_deep_closure(t0, global_env, resolver).map(|(term, _)| term)
 }
 
-fn eval_internal<R>(
+fn eval_deep_closure<R>(
     t0: RichTerm,
     global_env: &Environment,
     resolver: &mut R,
