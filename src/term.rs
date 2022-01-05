@@ -158,12 +158,6 @@ impl From<MetaValue> for Term {
     }
 }
 
-impl Default for Term {
-    fn default() -> Self {
-        Term::Null
-    }
-}
-
 #[derive(Debug, Default, Eq, PartialEq, Copy, Clone)]
 pub struct RecordAttrs {
     pub open: bool,
