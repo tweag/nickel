@@ -33,8 +33,7 @@ pub mod desugar_destructuring {
     use super::{Ident, RichTerm, Term};
     use crate::destruct::{Destruct, Match};
     use crate::term::make::{op1, op2};
-    use crate::term::MetaValue;
-    use crate::term::{BinaryOp::DynRemove, UnaryOp::StaticAccess};
+    use crate::term::{BinaryOp::DynRemove, BindingType, MetaValue, UnaryOp::StaticAccess};
 
     /// Wrap the desugarized term in a meta value containing the "Record contract" needed to check
     /// the pattern exaustivity and also fill the default values (`?` operator) if not presents in the record.
@@ -73,6 +72,7 @@ pub mod desugar_destructuring {
                     x.clone(),
                     t_,
                     destruct_term(x.clone(), &pat, bind_open_field(x, &pat, body)),
+                    BindingType::Normal,
                 ),
                 pos,
             )
@@ -101,6 +101,7 @@ pub mod desugar_destructuring {
                 }
             }),
             body,
+            BindingType::Normal,
         )
         .into()
     }
@@ -116,6 +117,7 @@ pub mod desugar_destructuring {
                         id.clone(),
                         op1(StaticAccess(id.clone()), Term::Var(x.clone())),
                         t,
+                        BindingType::Normal,
                     ),
                     pos,
                 ),
@@ -558,7 +560,7 @@ impl Closurizable for RichTerm {
                     body: self,
                     env: with_env,
                 };
-                Thunk::new(closure, IdentKind::Record())
+                Thunk::new(closure, IdentKind::Record)
             }
         };
 

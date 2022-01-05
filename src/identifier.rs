@@ -67,12 +67,6 @@ impl Into<String> for Ident {
 
 impl Ident {
     pub fn is_generated(&self) -> bool {
-        self.label.starts_with('%')
-    }
-}
-
-impl Ident {
-    pub fn is_generated(&self) -> bool {
-        self.0.starts_with(GEN_PREFIX)
+        self.label.starts_with(GEN_PREFIX)
     }
 }
