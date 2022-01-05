@@ -89,7 +89,6 @@ impl Program {
         eval::eval_full(t, &global_env, &mut self.cache).map_err(|e| e.into())
     }
 
-    /// Same as `eval`, but proceeds to a full evaluation.
     /// Same as `eval_full`, but does not substitute all variables.
     pub fn eval_deep(&mut self) -> Result<RichTerm, Error> {
         let (t, global_env) = self.prepare_eval()?;
