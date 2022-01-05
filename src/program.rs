@@ -89,6 +89,13 @@ impl Program {
         eval::eval_full(t, &global_env, &mut self.cache).map_err(|e| e.into())
     }
 
+    /// Same as `eval`, but proceeds to a full evaluation.
+    /// Same as `eval_full`, but does not substitute all variables.
+    pub fn eval_deep(&mut self) -> Result<RichTerm, Error> {
+        let (t, global_env) = self.prepare_eval()?;
+        eval::eval_deep(t, &global_env, &mut self.cache).map_err(|e| e.into())
+    }
+
     /// Wrapper for [`query`](./fn.query.html).
     pub fn query(&mut self, path: Option<String>) -> Result<Term, Error> {
         let global_env = self.cache.prepare_stdlib()?;

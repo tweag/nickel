@@ -668,6 +668,29 @@ pub fn eval_full<R>(
 where
     R: ImportResolver,
 {
+    eval_internal(t0, global_env, resolver).map(|(term, env)| subst(term, global_env, &env))
+}
+
+/// Fully evaluates a Nickel term like `eval_full`, but does not substitute all variables.
+pub fn eval_deep<R>(
+    t0: RichTerm,
+    global_env: &Environment,
+    resolver: &mut R,
+) -> Result<RichTerm, EvalError>
+where
+    R: ImportResolver,
+{
+    eval_internal(t0, global_env, resolver).map(|(term, _)| term)
+}
+
+fn eval_internal<R>(
+    t0: RichTerm,
+    global_env: &Environment,
+    resolver: &mut R,
+) -> Result<(RichTerm, Environment), EvalError>
+where
+    R: ImportResolver,
+{
     use crate::transformations::fresh_var;
 
     let var = fresh_var();
@@ -681,7 +704,6 @@ where
         ),
     );
     eval_closure(Closure::atomic_closure(wrapper), global_env, resolver, true)
-        .map(|(term, env)| subst(term, global_env, &env))
 }
 
 /// Evaluate a Nickel Term, stopping when a meta value is encountered at the top-level without
