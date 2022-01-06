@@ -16,7 +16,7 @@ struct ImportsResolutionState<'a, R> {
     parent: Option<PathBuf>,
 }
 
-/// Import resolution.
+/// Perform imports resolution.
 ///
 /// All resolved imports are stacked during the process. Once the term has been traversed,
 /// the elements of this stack are returned. The caller is responsible
@@ -35,30 +35,15 @@ where
         let path = resolver.get_path(x.src_id);
         PathBuf::from(path)
     });
-    let result = imports_pass(rt, resolver, &mut stack, source_file)?;
 
-    Ok((result, stack))
-}
-
-/// Perform one full imports resolution pass. Put all imports encountered for the first time in
-/// `stack`, but do not process them.
-fn imports_pass<R>(
-    rt: RichTerm,
-    resolver: &mut R,
-    stack: &mut Vec<FileId>,
-    parent: Option<PathBuf>,
-) -> Result<RichTerm, ImportError>
-where
-    R: ImportResolver,
-{
     let mut state = ImportsResolutionState {
         resolver,
-        stack,
-        parent,
+        stack: &mut stack,
+        parent: source_file,
     };
 
     // If an import is resolved, then stack it.
-    rt.traverse(
+    let transformed = rt.traverse(
         &mut |rt: RichTerm,
               state: &mut ImportsResolutionState<R>|
          -> Result<RichTerm, ImportError> {
@@ -71,7 +56,9 @@ where
         },
         &mut state,
         TraverseMethod::BottomUp,
-    )
+    )?;
+
+    Ok((transformed, stack))
 }
 
 /// Resolve the import if the term is an unresolved import, or return the term unchanged. As
