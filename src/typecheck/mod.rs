@@ -650,8 +650,10 @@ fn type_check_<S, E>(
             envs.insert(x.clone(), ty_let);
             type_check_(state, envs, lin, linearizer, strict, rt, ty)
         }
-        Term::LetPattern(x, pat, re, _rt) => {
+        Term::LetPattern(x, pat, re, rt) => {
             use crate::destruct::*;
+            // TODO: The insertion of values in the type environement is done but everything is
+            // typed as `Dyn`.
             fn inject_pat_vars(pat: &Destruct, envs: &mut Envs) {
                 if let Destruct::Record(matches, _, rst) = pat {
                     if let Some(id) = rst {
@@ -661,12 +663,11 @@ fn type_check_<S, E>(
                         Match::Simple(id, ..) => {
                             envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()))
                         }
-                        Match::Assign(_, _, (bind_id, pat)) => {
-                            if let Some(id) = bind_id {
-                                envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
-                            }
+                        Match::Assign(id, _, (bind_id, pat)) => {
+                            let id = bind_id.as_ref().unwrap_or(id);
+                            envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
                             if !pat.is_empty() {
-                                inject_pat_vars(pat, envs);
+                                inject_pat_vars(&pat, envs);
                             }
                         }
                     });
@@ -685,11 +686,11 @@ fn type_check_<S, E>(
 
             // TODO typecheck the interior of the patern
             if let Some(x) = x {
+                linearizer.retype_ident(lin, x, ty_let.clone());
                 envs.insert(x.clone(), ty_let);
-                inject_pat_vars(pat, &mut envs);
             }
-            //type_check_(state, envs, strict, rt, ty)
-            Ok(())
+            inject_pat_vars(pat, &mut envs);
+            type_check_(state, envs, lin, linearizer, strict, rt, ty)
         }
         Term::App(e, t) => {
             let src = TypeWrapper::Ptr(new_var(state.table));
