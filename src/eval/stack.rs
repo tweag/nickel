@@ -2,7 +2,7 @@
 //!
 //! See [eval](../eval/index.html).
 use crate::eval::{Closure, Environment, IdentKind, Thunk, ThunkUpdateFrame};
-use crate::operation::OperationCont;
+use super::operation::OperationCont;
 use crate::position::TermPos;
 use crate::term::{RichTerm, StrChunk};
 

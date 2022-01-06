@@ -1,4 +1,5 @@
 //! Evaluation of a Nickel term.
+//!
 //! The implementation of the Nickel abstract machine which evaluates a term. Note that this
 //! machine is not currently formalized somewhere and is just a convenient name to designate the
 //! current implementation.
@@ -92,15 +93,20 @@ use crate::{
     error::EvalError,
     identifier::Ident,
     mk_app,
-    operation::{continuate_operation, OperationCont},
     position::RawSpan,
     position::TermPos,
-    stack::Stack,
     term::{make as mk_term, BinaryOp, BindingType, MetaValue, RichTerm, StrChunk, Term, UnaryOp},
 };
 use codespan::FileId;
 use std::cell::{Ref, RefCell, RefMut};
 use std::rc::{Rc, Weak};
+
+pub mod operation;
+pub mod merge;
+pub mod stack;
+
+use stack::Stack;
+use operation::{continuate_operation, OperationCont};
 
 /// The state of a thunk.
 ///
