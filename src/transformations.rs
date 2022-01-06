@@ -208,11 +208,21 @@ pub mod share_normal_form {
                 // other constructors: it is not only about sharing, but also about the future
                 // evaluation of recursive records. Only constant are not required to be
                 // closurized.
+                //
+                // In theory, the variable case is one exception: if the field is already a bare
+                // variable, it seems useless to add one more indirection through a generated
+                // variable. However, it is currently fundamental for recursive record merging that
+                // the sare normal form transformation ensure the following post-condition: the
+                // fields of recursive records contain either a constant or a *generated* variable,
+                // but never a user-supplied variable directly (the former starts with a special
+                // marker). See comments inside [`RichTerm::closurize`] for more details.
                 let mut bindings = Vec::with_capacity(map.len());
 
                 let map = map
                     .into_iter()
                     .map(|(id, t)| {
+                        // CHANGE THIS CONDITION CAREFULLY. Doing so can break the post-condition
+                        // explained above.
                         if !t.as_ref().is_constant() {
                             let fresh_var = fresh_var();
                             let pos_t = t.pos;
@@ -546,7 +556,11 @@ impl Closurizable for RichTerm {
         // We currently only do this optimization for generated variables (introduced by the share
         // normal form). We could do it for non-generated identifiers as well, but be we would be
         // renaming user-supplied variables by gibberish generated names. It may hamper error
-        // reporting, so for the time being, we restrict ourselves to generated identifiers.
+        // reporting, so for the time being, we restrict ourselves to generated identifiers. Note
+        // that performing or not performing this optimization for user-supplied variables doesn't
+        // affect the invariant mentioned above, because the share normal form must ensure that the
+        // fields of a record all contain generated variables (or constant), but never
+        // user-supplied variables.
         let var = fresh_var();
         let pos = self.pos;
 
