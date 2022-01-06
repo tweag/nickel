@@ -222,3 +222,11 @@ fn dynamic_record_field() {
         Err(TypecheckError::TypeMismatch(..))
     );
 }
+
+#[test]
+fn piecewise_signature() {
+    assert_matches!(
+        type_check_expr("{foo : Num, foo = \"bar\"}"),
+        Err(TypecheckError::TypeMismatch(..))
+    );
+}
