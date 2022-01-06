@@ -1,6 +1,6 @@
 //! In a lazy language like Nickel, there are no well delimited stack frames due to how function
 //! application is evaluated. Additional information about the history of function calls is thus
-//! stored in the call stack solely for better error reporting. This is the role of the callstack.
+//! stored in a call stack solely for better error reporting.
 use super::IdentKind;
 use crate::{
     identifier::Ident,

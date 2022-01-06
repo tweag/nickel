@@ -1,4 +1,4 @@
-//! Thunks and similar devices used to implement lazy evaluation.
+//! Thunks and associated devices used to implement lazy evaluation.
 use super::{Closure, IdentKind};
 use std::cell::{Ref, RefCell, RefMut};
 use std::rc::{Rc, Weak};
