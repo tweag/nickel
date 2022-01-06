@@ -688,7 +688,7 @@ fn eval_deep_closure<R>(
 where
     R: ImportResolver,
 {
-    use crate::transformations::fresh_var;
+    use crate::transform::fresh_var;
 
     let var = fresh_var();
     // Desugar to let x = term in deepSeq x x
@@ -1358,7 +1358,7 @@ mod tests {
     use crate::parser::{grammar, lexer};
     use crate::term::make as mk_term;
     use crate::term::{BinaryOp, StrChunk, UnaryOp};
-    use crate::transformations::resolve_imports;
+    use crate::transform::import_resolution::resolve_imports;
     use crate::{mk_app, mk_fun};
     use codespan::Files;
 

@@ -17,7 +17,7 @@ use crate::position::TermPos;
 use crate::stack::Stack;
 use crate::term::make as mk_term;
 use crate::term::{BinaryOp, NAryOp, RichTerm, StrChunk, Term, UnaryOp};
-use crate::transformations::Closurizable;
+use crate::transform::Closurizable;
 use crate::{mk_app, mk_fun, mk_opn};
 use crate::{serialize, serialize::ExportFormat};
 use md5::digest::Digest;

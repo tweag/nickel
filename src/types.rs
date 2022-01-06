@@ -179,7 +179,7 @@ impl Types {
         sy: &mut i32,
     ) -> RichTerm {
         use crate::stdlib::contracts;
-        use crate::transformations::fresh_var;
+        use crate::transform::fresh_var;
 
         let ctr = match self.0 {
             AbsType::Dyn() => contracts::dynamic(),

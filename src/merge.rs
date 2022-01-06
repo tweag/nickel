@@ -56,7 +56,7 @@ use crate::eval::{CallStack, Closure, Environment};
 use crate::label::Label;
 use crate::position::TermPos;
 use crate::term::{make as mk_term, BinaryOp, Contract, MetaValue, RecordAttrs, RichTerm, Term};
-use crate::transformations::Closurizable;
+use crate::transform::Closurizable;
 use std::collections::HashMap;
 
 /// Merging mode. Merging is used both to combine standard data and to apply contracts defined as
@@ -434,7 +434,7 @@ fn merge_closurize(
 }
 
 fn rev_thunks<'a, I: Iterator<Item = &'a mut RichTerm>>(map: I, env: &mut Environment) {
-    use crate::transformations::fresh_var;
+    use crate::transform::fresh_var;
 
     for rt in map {
         if let Term::Var(id) = rt.as_ref() {
