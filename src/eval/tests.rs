@@ -117,8 +117,8 @@ where
 
 #[test]
 fn enriched_terms_unwrapping() {
-    let t = mk_default(mk_default(mk_docstring(Term::Bool(false).into(), "a").into()).into())
-        .into();
+    let t =
+        mk_default(mk_default(mk_docstring(Term::Bool(false).into(), "a").into()).into()).into();
     assert_eq!(Ok(Term::Bool(false)), eval_no_import(t));
 }
 
@@ -343,13 +343,11 @@ fn substitution() {
     let t = parse("let x = 1 in if loc1 then 1 + loc2 else glob3").unwrap();
     assert_eq!(
         subst(t, &global_env, &env),
-        parse("let x = 1 in if true then 1 + (if false then 1 else \"Glob2\") else false")
-            .unwrap()
+        parse("let x = 1 in if true then 1 + (if false then 1 else \"Glob2\") else false").unwrap()
     );
 
-    let t =
-        parse("switch {`x => [1, glob1], `y => loc2, `z => {id = true, other = glob3}} loc1")
-            .unwrap();
+    let t = parse("switch {`x => [1, glob1], `y => loc2, `z => {id = true, other = glob3}} loc1")
+        .unwrap();
     assert_eq!(
         subst(t, &global_env, &env),
         parse("switch {`x => [1, 1], `y => (if false then 1 else \"Glob2\"), `z => {id = true, other = false}} true").unwrap()

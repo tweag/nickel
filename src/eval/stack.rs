@@ -1,8 +1,8 @@
 //! Define the main evaluation stack of the Nickel abstract machine and related operations.
 //!
 //! See [eval](../eval/index.html).
-use crate::eval::{Closure, Environment, IdentKind, Thunk, ThunkUpdateFrame};
 use super::operation::OperationCont;
+use crate::eval::{Closure, Environment, IdentKind, Thunk, ThunkUpdateFrame};
 use crate::position::TermPos;
 use crate::term::{RichTerm, StrChunk};
 

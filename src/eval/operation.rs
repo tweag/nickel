@@ -6,15 +6,15 @@
 //! the functions [`process_unary_operation`](fn.process_unary_operation.html) and
 //! [`process_binary_operation`](fn.process_binary_operation.html) receive evaluated operands and
 //! implement the actual semantics of operators.
+use super::merge;
+use super::merge::{merge, MergeMode};
+use super::stack::Stack;
 use crate::error::EvalError;
 use crate::eval::{subst, CallStack, Closure, Environment};
 use crate::identifier::Ident;
 use crate::label::ty_path;
-use super::merge;
-use super::merge::{merge, MergeMode};
 use crate::mk_record;
 use crate::position::TermPos;
-use super::stack::Stack;
 use crate::term::make as mk_term;
 use crate::term::{BinaryOp, NAryOp, RichTerm, StrChunk, Term, UnaryOp};
 use crate::transform::Closurizable;

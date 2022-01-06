@@ -2,7 +2,7 @@
 //!
 //! A label is a value holding metadata relative to contract checking. It gives the user useful
 //! information about the context of a contract failure.
-use crate::eval::Thunk;
+use crate::eval::lazy::Thunk;
 use crate::position::{RawSpan, TermPos};
 use crate::types::{AbsType, Types};
 use codespan::Files;
