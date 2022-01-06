@@ -5,6 +5,7 @@ use crate::parser::lexer::Lexer;
 use crate::position::TermPos;
 use crate::stdlib as nickel_stdlib;
 use crate::term::{RichTerm, Term};
+use crate::transform::import_resolution;
 use crate::typecheck;
 use crate::typecheck::{linearization::StubHost, type_check};
 use crate::{eval, parser, transform};
@@ -561,7 +562,7 @@ impl Cache {
                     let CachedTerm {
                         term, parse_errs, ..
                     } = self.terms.remove(&file_id).unwrap();
-                    let (term, pending) = transform::resolve_imports(term, self)?;
+                    let (term, pending) = import_resolution::resolve_imports(term, self)?;
                     self.terms.insert(
                         file_id,
                         CachedTerm {
@@ -650,7 +651,7 @@ impl Cache {
         if errs.no_errors() {
             return Err(Error::ParseErrors(errs));
         }
-        let (term, pending) = transform::resolve_imports(term, self)?;
+        let (term, pending) = import_resolution::resolve_imports(term, self)?;
         type_check(&term, global_env, self, StubHost::<(), _>::new())?;
         let term = transform::transform(term);
         Ok((term, pending))

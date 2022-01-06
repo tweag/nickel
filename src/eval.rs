@@ -1358,7 +1358,7 @@ mod tests {
     use crate::parser::{grammar, lexer};
     use crate::term::make as mk_term;
     use crate::term::{BinaryOp, StrChunk, UnaryOp};
-    use crate::transform::resolve_imports;
+    use crate::transform::import_resolution::resolve_imports;
     use crate::{mk_app, mk_fun};
     use codespan::Files;
 
