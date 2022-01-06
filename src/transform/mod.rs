@@ -1,5 +1,5 @@
 use crate::cache::ImportResolver;
-use crate::eval::{Closure, Environment, IdentKind, Thunk};
+use crate::eval::{lazy::Thunk, Closure, Environment, IdentKind};
 use crate::identifier::Ident;
 use crate::term::{Contract, RichTerm, Term, TraverseMethod};
 use crate::types::{AbsType, Types};

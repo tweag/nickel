@@ -9,7 +9,7 @@ use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 use lalrpop_util::ErrorRecovery;
 
 use crate::{
-    eval::CallStack,
+    eval::callstack::CallStack,
     identifier::Ident,
     label,
     label::ty_path,
