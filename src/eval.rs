@@ -96,7 +96,7 @@ use crate::{
     position::RawSpan,
     position::TermPos,
     stack::Stack,
-    term::{make as mk_term, BinaryOp, MetaValue, RichTerm, StrChunk, Term, UnaryOp},
+    term::{make as mk_term, BinaryOp, BindingType, MetaValue, RichTerm, StrChunk, Term, UnaryOp},
 };
 use codespan::FileId;
 use std::cell::{Ref, RefCell, RefMut};
@@ -127,13 +127,13 @@ pub struct ThunkData {
 
 /// The part of [ThunkData] responsible for storing the closure itself. It can either be:
 /// - A standard thunk, that is destructively updated once and for all
-/// - A reversible thunk, that can be restored to its original expression. Used to implement
+/// - A revertible thunk, that can be restored to its original expression. Used to implement
 /// recursive merging of records and overriding (see the [RFC
 /// overriding](https://github.com/tweag/nickel/pull/330))
 #[derive(Clone, Debug, PartialEq)]
 pub enum InnerThunkData {
     Standard(Closure),
-    Reversible {
+    Revertible {
         orig: Rc<Closure>,
         cached: Rc<Closure>,
     },
@@ -148,12 +148,12 @@ impl ThunkData {
         }
     }
 
-    /// Create new reversible thunk data.
+    /// Create new revertible thunk data.
     pub fn new_rev(orig: Closure) -> Self {
         let rc = Rc::new(orig);
 
         ThunkData {
-            inner: InnerThunkData::Reversible {
+            inner: InnerThunkData::Revertible {
                 orig: rc.clone(),
                 cached: rc,
             },
@@ -165,7 +165,7 @@ impl ThunkData {
     pub fn closure(&self) -> &Closure {
         match self.inner {
             InnerThunkData::Standard(ref closure) => closure,
-            InnerThunkData::Reversible { ref cached, .. } => cached,
+            InnerThunkData::Revertible { ref cached, .. } => cached,
         }
     }
 
@@ -173,7 +173,7 @@ impl ThunkData {
     pub fn closure_mut(&mut self) -> &mut Closure {
         match self.inner {
             InnerThunkData::Standard(ref mut closure) => closure,
-            InnerThunkData::Reversible { ref mut cached, .. } => Rc::make_mut(cached),
+            InnerThunkData::Revertible { ref mut cached, .. } => Rc::make_mut(cached),
         }
     }
 
@@ -181,7 +181,7 @@ impl ThunkData {
     pub fn into_closure(self) -> Closure {
         match self.inner {
             InnerThunkData::Standard(closure) => closure,
-            InnerThunkData::Reversible { orig, cached } => {
+            InnerThunkData::Revertible { orig, cached } => {
                 std::mem::drop(orig);
                 Rc::try_unwrap(cached).unwrap_or_else(|rc| (*rc).clone())
             }
@@ -192,27 +192,24 @@ impl ThunkData {
     pub fn update(&mut self, new: Closure) {
         match self.inner {
             InnerThunkData::Standard(ref mut closure) => *closure = new,
-            InnerThunkData::Reversible { ref mut cached, .. } => *cached = Rc::new(new),
+            InnerThunkData::Revertible { ref mut cached, .. } => *cached = Rc::new(new),
         }
 
         self.state = ThunkState::Evaluated;
     }
 
-    /// Create fresh unevaluated thunk data from `self`, restored to its original state before the
-    /// first update. For standard thunk data, the content is unchanged and the state is conserved: in
-    /// this case, `restore()` is the same as `clone()`.
-    pub fn restore(&self) -> Self {
+    /// Create fresh unevaluated thunk data from `self`, reverted to its original state before the
+    /// first update. For standard thunk data, the content is unchanged and the state is conserved:
+    /// in this case, `revert()` is the same as `clone()`.
+    pub fn revert(&self) -> Self {
         match self.inner {
-            InnerThunkData::Standard(ref closure) => ThunkData {
-                inner: InnerThunkData::Standard(closure.clone()),
-                state: self.state,
-            },
-            InnerThunkData::Reversible { ref orig, .. } => ThunkData {
-                inner: InnerThunkData::Reversible {
+            InnerThunkData::Standard(_) => self.clone(),
+            InnerThunkData::Revertible { ref orig, .. } => ThunkData {
+                inner: InnerThunkData::Revertible {
                     orig: Rc::clone(orig),
                     cached: Rc::clone(orig),
                 },
-                state: self.state,
+                state: ThunkState::Suspended,
             },
         }
     }
@@ -223,9 +220,9 @@ impl ThunkData {
 /// A thunk is a shared suspended computation. It is the primary device for the implementation of
 /// lazy evaluation.
 ///
-/// For the implementation of recursive merging, some thunks need to be reversible, in the sense
-/// that we must be able to restore the original expression before update. Those are called
-/// reversible thunks. Most expressions don't need reversible thunks as their evaluation will
+/// For the implementation of recursive merging, some thunks need to be revertible, in the sense
+/// that we must be able to revert to the original expression before update. Those are called
+/// revertible thunks. Most expressions don't need revertible thunks as their evaluation will
 /// always give the same result, but some others, such as the ones containing recursive references
 /// inside a record may be invalidated by merging, and thus need to store the unaltered original
 /// expression. Those aspects are mainly handled in [InnerThunkData].
@@ -248,7 +245,7 @@ impl Thunk {
         }
     }
 
-    /// Create a new reversible thunk.
+    /// Create a new revertible thunk.
     pub fn new_rev(closure: Closure, ident_kind: IdentKind) -> Self {
         Thunk {
             data: Rc::new(RefCell::new(ThunkData::new_rev(closure))),
@@ -308,12 +305,12 @@ impl Thunk {
         }
     }
 
-    /// Create a fresh unevaluated thunk from `self`, restored to its original state before the
+    /// Create a fresh unevaluated thunk from `self`, reverted to its original state before the
     /// first update. For a standard thunk, the content is unchanged and the state is conserved: in
-    /// this case, `restore()` is the same as `clone()`.
-    pub fn restore(&self) -> Self {
+    /// this case, `revert()` is the same as `clone()`.
+    pub fn revert(&self) -> Self {
         Thunk {
-            data: Rc::new(RefCell::new(self.data.borrow().restore())),
+            data: Rc::new(RefCell::new(self.data.borrow().revert())),
             ident_kind: self.ident_kind,
         }
     }
@@ -826,12 +823,18 @@ where
                 );
                 Closure { body: t1, env }
             }
-            Term::Let(x, s, t) => {
+            Term::Let(x, s, t, btype) => {
                 let closure = Closure {
                     body: s,
                     env: env.clone(),
                 };
-                env.insert(x, Thunk::new(closure, IdentKind::Let));
+
+                let thunk = match btype {
+                    BindingType::Normal => Thunk::new(closure, IdentKind::Let),
+                    BindingType::Revertible => Thunk::new_rev(closure, IdentKind::Let),
+                };
+
+                env.insert(x, thunk);
                 Closure { body: t, env }
             }
             Term::Switch(exp, cases, default) => {
@@ -1182,11 +1185,11 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
             | v @ Term::Enum(_)
             | v @ Term::Import(_)
             | v @ Term::ResolvedImport(_) => RichTerm::new(v, pos),
-            Term::Let(id, t1, t2) => {
+            Term::Let(id, t1, t2, btype) => {
                 let t1 = subst_(t1, global_env, env, Cow::Borrowed(bound.as_ref()));
                 let t2 = subst_(t2, global_env, env, bound);
 
-                RichTerm::new(Term::Let(id, t1, t2), pos)
+                RichTerm::new(Term::Let(id, t1, t2, btype), pos)
             }
             p @ Term::LetPattern(..) => panic!("Pattern {:?} has not been transformed before evaluation", p),
             Term::App(t1, t2) => {

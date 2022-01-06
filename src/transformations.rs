@@ -33,8 +33,7 @@ pub mod desugar_destructuring {
     use super::{Ident, RichTerm, Term};
     use crate::destruct::{Destruct, Match};
     use crate::term::make::{op1, op2};
-    use crate::term::MetaValue;
-    use crate::term::{BinaryOp::DynRemove, UnaryOp::StaticAccess};
+    use crate::term::{BinaryOp::DynRemove, BindingType, MetaValue, UnaryOp::StaticAccess};
 
     /// Wrap the desugarized term in a meta value containing the "Record contract" needed to check
     /// the pattern exaustivity and also fill the default values (`?` operator) if not presents in the record.
@@ -73,6 +72,7 @@ pub mod desugar_destructuring {
                     x.clone(),
                     t_,
                     destruct_term(x.clone(), &pat, bind_open_field(x, &pat, body)),
+                    BindingType::Normal,
                 ),
                 pos,
             )
@@ -101,6 +101,7 @@ pub mod desugar_destructuring {
                 }
             }),
             body,
+            BindingType::Normal,
         )
         .into()
     }
@@ -116,6 +117,7 @@ pub mod desugar_destructuring {
                         id.clone(),
                         op1(StaticAccess(id.clone()), Term::Var(x.clone())),
                         t,
+                        BindingType::Normal,
                     ),
                     pos,
                 ),
@@ -167,7 +169,7 @@ pub mod share_normal_form {
     use super::fresh_var;
     use crate::identifier::Ident;
     use crate::position::TermPos;
-    use crate::term::{MetaValue, RichTerm, Term};
+    use crate::term::{BindingType, MetaValue, RichTerm, Term};
 
     /// Transform the top-level term of an AST to a share normal form, if it can.
     ///
@@ -197,7 +199,7 @@ pub mod share_normal_form {
                     })
                     .collect();
 
-                with_bindings(Term::Record(map, attrs), bindings, pos)
+                with_bindings(Term::Record(map, attrs), bindings, pos, BindingType::Normal)
             }
             Term::RecRecord(map, dyn_fields, attrs) => {
                 // When a recursive record is evaluated, all fields need to be turned to closures
@@ -206,11 +208,21 @@ pub mod share_normal_form {
                 // other constructors: it is not only about sharing, but also about the future
                 // evaluation of recursive records. Only constant are not required to be
                 // closurized.
+                //
+                // In theory, the variable case is one exception: if the field is already a bare
+                // variable, it seems useless to add one more indirection through a generated
+                // variable. However, it is currently fundamental for recursive record merging that
+                // the sare normal form transformation ensure the following post-condition: the
+                // fields of recursive records contain either a constant or a *generated* variable,
+                // but never a user-supplied variable directly (the former starts with a special
+                // marker). See comments inside [`RichTerm::closurize`] for more details.
                 let mut bindings = Vec::with_capacity(map.len());
 
                 let map = map
                     .into_iter()
                     .map(|(id, t)| {
+                        // CHANGE THIS CONDITION CAREFULLY. Doing so can break the post-condition
+                        // explained above.
                         if !t.as_ref().is_constant() {
                             let fresh_var = fresh_var();
                             let pos_t = t.pos;
@@ -236,7 +248,14 @@ pub mod share_normal_form {
                     })
                     .collect();
 
-                with_bindings(Term::RecRecord(map, dyn_fields, attrs), bindings, pos)
+                // Recursive records are the reason why we need revertible thunks, since when
+                // merged, we may have to revert the fields back to their original expression.
+                with_bindings(
+                    Term::RecRecord(map, dyn_fields, attrs),
+                    bindings,
+                    pos,
+                    BindingType::Revertible,
+                )
             }
             Term::List(ts) => {
                 let mut bindings = Vec::with_capacity(ts.len());
@@ -255,7 +274,7 @@ pub mod share_normal_form {
                     })
                     .collect();
 
-                with_bindings(Term::List(ts), bindings, pos)
+                with_bindings(Term::List(ts), bindings, pos, BindingType::Normal)
             }
             Term::MetaValue(mut meta @ MetaValue { value: Some(_), .. }) => {
                 if meta.value.as_ref().map(|t| should_share(&t.term)).unwrap() {
@@ -264,7 +283,7 @@ pub mod share_normal_form {
                     meta.value
                         .replace(RichTerm::new(Term::Var(fresh_var.clone()), t.pos));
                     let inner = RichTerm::new(Term::MetaValue(meta), pos);
-                    RichTerm::new(Term::Let(fresh_var, t, inner), pos)
+                    RichTerm::new(Term::Let(fresh_var, t, inner, BindingType::Normal), pos)
                 } else {
                     RichTerm::new(Term::MetaValue(meta), pos)
                 }
@@ -298,14 +317,17 @@ pub mod share_normal_form {
     /// Given the term `body` and bindings of identifiers to terms represented as a list of pairs
     /// `(id_1, term_1), .., (id_n, term_n)`, return the new term `let id_n = term_n in ... let
     /// id_1 = term_1 in body`.
-    fn with_bindings(body: Term, bindings: Vec<(Ident, RichTerm)>, pos: TermPos) -> RichTerm {
-        bindings.into_iter().fold(
-            RichTerm {
-                term: Box::new(body),
-                pos: pos.into_inherited(),
-            },
-            |acc, (id, t)| RichTerm::new(Term::Let(id, t, acc), pos),
-        )
+    fn with_bindings(
+        body: Term,
+        bindings: Vec<(Ident, RichTerm)>,
+        pos: TermPos,
+        btype: BindingType,
+    ) -> RichTerm {
+        bindings
+            .into_iter()
+            .fold(RichTerm::new(body, pos.into_inherited()), |acc, (id, t)| {
+                RichTerm::new(Term::Let(id, t, acc, btype), pos)
+            })
     }
 }
 
@@ -474,7 +496,9 @@ where
 
 /// Generate a new fresh variable which do not clash with user-defined variables.
 pub fn fresh_var() -> Ident {
-    format!("%{}", FreshVarCounter::next()).into()
+    use crate::identifier::GEN_PREFIX;
+
+    format!("{}{}", GEN_PREFIX, FreshVarCounter::next()).into()
 }
 
 /// Structures which can be packed together with their environment as a closure.
@@ -494,14 +518,67 @@ impl Closurizable for RichTerm {
     /// Generate a fresh variable, bind it to the corresponding closure `(t,with_env)` in `env`,
     /// and return this variable as a fresh term.
     fn closurize(self, env: &mut Environment, with_env: Environment) -> RichTerm {
+        // If the term is already a variable, we don't have to create a useless intermediate
+        // closure. We just transfer the original thunk to the new environment. This is not only an
+        // optimization: this is relied upon by recursive record merging when computing the
+        // fixpoint.
+        //
+        // More specifically, the evaluation of a recursive record patches the environment of each
+        // field with the thunks recursively referring to the other fields of the record. `eval`
+        // assumes that a recursive record field is either a constant or a generated variable whose
+        // thunks *immediately* contain the original unevaluated expression (both properties are
+        // true after the share normal form transformation and maintained when reverting thunks
+        // before merging recursive records).
+        //
+        // To maintain this invariant, `closurize` must NOT introduce an indirection through a
+        // variable, such as transforming:
+        //
+        // ```
+        // {foo = %1, bar = 1} in env %1 <- 1 + bar
+        // ```
+        //
+        // to:
+        //
+        // ```
+        // {foo = %2, bar = 1} in env %2 <- (%1 in env %1 <- 1 + bar)
+        // ```
+        //
+        // In this case, the evaluation of the recursive records will patch the outer environment
+        // instead of the inner one, giving:
+        //
+        // ```
+        // {foo = %2, bar = 1} in env %2 <- (%1 in env %1 <- 1 + bar), bar <- 1
+        // ```
+        //
+        // Then, evaluating `foo` would unduly raise an unbound identifier error.
+        //
+        //
+        // We currently only do this optimization for generated variables (introduced by the share
+        // normal form). We could do it for non-generated identifiers as well, but be we would be
+        // renaming user-supplied variables by gibberish generated names. It may hamper error
+        // reporting, so for the time being, we restrict ourselves to generated identifiers. Note
+        // that performing or not performing this optimization for user-supplied variables doesn't
+        // affect the invariant mentioned above, because the share normal form must ensure that the
+        // fields of a record all contain generated variables (or constant), but never
+        // user-supplied variables.
         let var = fresh_var();
         let pos = self.pos;
-        let closure = Closure {
-            body: self,
-            env: with_env,
-        };
-        env.insert(var.clone(), Thunk::new(closure, IdentKind::Record));
 
+        let thunk = match self.as_ref() {
+            Term::Var(id) if id.is_generated() => with_env.get(&id).expect(&format!(
+                "Internal error(closurize) : generated identifier {} not found in the environment",
+                id
+            )),
+            _ => {
+                let closure = Closure {
+                    body: self,
+                    env: with_env,
+                };
+                Thunk::new(closure, IdentKind::Record)
+            }
+        };
+
+        env.insert(var.clone(), thunk);
         RichTerm::new(Term::Var(var), pos.into_inherited())
     }
 }
