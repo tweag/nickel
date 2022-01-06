@@ -684,7 +684,6 @@ fn type_check_<S, E>(
                 ty_let.clone(),
             )?;
 
-            // TODO typecheck the interior of the patern
             if let Some(x) = x {
                 linearizer.retype_ident(lin, x, ty_let.clone());
                 envs.insert(x.clone(), ty_let);
