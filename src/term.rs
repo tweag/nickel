@@ -265,13 +265,15 @@ impl MetaValue {
             value: _,
         } = outer;
 
-        // If both have type annotations, the result will have the outer one as a type annotation.
-        // However we still need to enforce the corresponding contract to preserve the operational
-        // semantics. Thus, the inner type annotation is derelicted to a contract.
-        match inner.types.take() {
-            Some(ctr) if types.is_some() => contracts.push(ctr),
-            _ => (),
-        };
+        if types.is_some() {
+            // If both have type annotations, the result will have the outer one as a type annotation.
+            // However we still need to enforce the corresponding contract to preserve the operational
+            // semantics. Thus, the inner type annotation is derelicted to a contract.
+            match inner.types.take() {
+                Some(ctr) => contracts.push(ctr),
+                _ => (),
+            };
+        }
 
         contracts.extend(inner.contracts.into_iter());
 
@@ -1323,5 +1325,23 @@ pub mod make {
         S: Into<OsString>,
     {
         Term::Import(path.into()).into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression test for issue [#548](https://github.com/tweag/nickel/issues/548)
+    #[test]
+    fn metavalue_flatten() {
+        let mut inner = MetaValue::new();
+        inner.types = Some(Contract {
+            types: Types(AbsType::Num()),
+            label: Label::dummy(),
+        });
+        let outer = MetaValue::new();
+        let res = MetaValue::flatten(outer, inner);
+        assert_ne!(res.types, None);
     }
 }
