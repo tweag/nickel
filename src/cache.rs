@@ -7,7 +7,7 @@ use crate::stdlib as nickel_stdlib;
 use crate::term::{RichTerm, Term};
 use crate::typecheck;
 use crate::typecheck::{linearization::StubHost, type_check};
-use crate::{eval, parser, transformations};
+use crate::{eval, parser, transform};
 use codespan::{FileId, Files};
 use io::Read;
 use std::collections::hash_map;
@@ -443,7 +443,7 @@ impl Cache {
                     let CachedTerm {
                         term, parse_errs, ..
                     } = self.terms.remove(&file_id).unwrap();
-                    let term = transformations::transform(term);
+                    let term = transform::transform(term);
                     self.terms.insert(
                         file_id,
                         CachedTerm {
@@ -500,23 +500,20 @@ impl Cache {
                         Term::Record(ref mut map, _) => {
                             let map_res = std::mem::take(map)
                                 .into_iter()
-                                .map(|(id, t)| (id, transformations::transform(t)))
+                                .map(|(id, t)| (id, transform::transform(t)))
                                 .collect();
                             *map = map_res;
                         }
                         Term::RecRecord(ref mut map, ref mut dyn_fields, _) => {
                             let map_res = std::mem::take(map)
                                 .into_iter()
-                                .map(|(id, t)| (id, transformations::transform(t)))
+                                .map(|(id, t)| (id, transform::transform(t)))
                                 .collect();
 
                             let dyn_fields_res = std::mem::take(dyn_fields)
                                 .into_iter()
                                 .map(|(id_t, t)| {
-                                    (
-                                        transformations::transform(id_t),
-                                        transformations::transform(t),
-                                    )
+                                    (transform::transform(id_t), transform::transform(t))
                                 })
                                 .collect();
 
@@ -564,7 +561,7 @@ impl Cache {
                     let CachedTerm {
                         term, parse_errs, ..
                     } = self.terms.remove(&file_id).unwrap();
-                    let (term, pending) = transformations::resolve_imports(term, self)?;
+                    let (term, pending) = transform::resolve_imports(term, self)?;
                     self.terms.insert(
                         file_id,
                         CachedTerm {
@@ -653,9 +650,9 @@ impl Cache {
         if errs.no_errors() {
             return Err(Error::ParseErrors(errs));
         }
-        let (term, pending) = transformations::resolve_imports(term, self)?;
+        let (term, pending) = transform::resolve_imports(term, self)?;
         type_check(&term, global_env, self, StubHost::<(), _>::new())?;
-        let term = transformations::transform(term);
+        let term = transform::transform(term);
         Ok((term, pending))
     }
 

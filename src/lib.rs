@@ -15,6 +15,6 @@ pub mod serialize;
 pub mod stack;
 pub mod stdlib;
 pub mod term;
-pub mod transformations;
+pub mod transform;
 pub mod typecheck;
 pub mod types;
