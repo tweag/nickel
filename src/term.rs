@@ -1151,7 +1151,7 @@ impl RichTerm {
                     set2.remove(id);
                     set.extend(set2);
                 }
-                Term::Let(id, t1, t2) => {
+                Term::Let(id, t1, t2, _) => {
                     collect_free_var(t1, set);
                     let mut set2 = HashSet::new();
                     collect_free_var(t2, &mut set2);
