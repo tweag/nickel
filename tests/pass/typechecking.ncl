@@ -168,6 +168,10 @@ let typecheck = [
   // Typed import
   import "typed-import.ncl" : Num,
 
+  // Regression test for #430 (https://github.com/tweag/nickel/issues/430)
+  let x = import "typed-import.ncl"
+  in x : Num,
+
   // recursive_records_quoted
   {"foo" = 1} : {foo : Num},
 

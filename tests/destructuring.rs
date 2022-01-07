@@ -1,10 +1,8 @@
 use assert_matches::assert_matches;
-use nickel::error::{Error, EvalError};
+use nickel::error::{Error, EvalError, TypecheckError};
 use nickel::term::Term;
 
-#[path = "./common.rs"]
-mod common;
-use common::eval_file;
+use utilities::eval_file;
 
 #[test]
 fn simple() {
@@ -58,7 +56,7 @@ fn mixed() {
 fn assign_fail() {
     assert_matches!(
         eval_file("destructuring/assign_fail.ncl"),
-        Err(Error::EvalError(EvalError::UnboundIdentifier(..)))
+        Err(Error::TypecheckError(TypecheckError::UnboundIdentifier(..)))
     );
 }
 

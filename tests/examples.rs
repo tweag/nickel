@@ -8,7 +8,7 @@ fn eval_file(file: &str) -> Result<RichTerm, Error> {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push(format!("examples/{}", file));
     let mut p = Program::new_from_file(path).expect("could not load file as a program");
-    p.eval()
+    p.eval_deep()
 }
 
 #[test]

@@ -4,7 +4,7 @@ use nickel::program::Program;
 use nickel::repl::query_print;
 #[cfg(feature = "repl")]
 use nickel::repl::rustyline_frontend;
-use nickel::term::RichTerm;
+use nickel::term::{RichTerm, Term};
 use nickel::{serialize, serialize::ExportFormat};
 use std::path::PathBuf;
 use std::{fs, process};
@@ -117,7 +117,9 @@ fn main() {
             }
             Some(Command::Typecheck) => program.typecheck().map(|_| ()),
             Some(Command::Repl { .. }) => unreachable!(),
-            None => program.eval().map(|t| println!("Done: {:?}", t)),
+            None => program
+                .eval_full()
+                .map(|t| println!("{}", Term::from(t).deep_repr())),
         };
 
         if let Err(err) = result {

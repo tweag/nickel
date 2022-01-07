@@ -52,12 +52,11 @@
 //! - *Contract check*: merging a `Contract` or a `ContractDefault` with a simple value `t`
 //! evaluates to a contract check, that is an `Assume(..., t)`
 use crate::error::EvalError;
-use crate::eval::CallStack;
-use crate::eval::{Closure, Environment};
+use crate::eval::{CallStack, Closure, Environment};
 use crate::label::Label;
 use crate::position::TermPos;
 use crate::term::{make as mk_term, BinaryOp, Contract, MetaValue, RecordAttrs, RichTerm, Term};
-use crate::transformations::Closurizable;
+use crate::transform::Closurizable;
 use std::collections::HashMap;
 
 /// Merging mode. Merging is used both to combine standard data and to apply contracts defined as
@@ -85,9 +84,9 @@ impl Default for MergeMode {
 /// contract. It is important as `merge` is not commutative in this mode.
 pub fn merge(
     t1: RichTerm,
-    env1: Environment,
+    mut env1: Environment,
     t2: RichTerm,
-    env2: Environment,
+    mut env2: Environment,
     pos_op: TermPos,
     mode: MergeMode,
 ) -> Result<Closure, EvalError> {
@@ -322,7 +321,7 @@ pub fn merge(
         }
         // Merge put together the fields of records, and recursively merge
         // fields that are present in both terms
-        (Term::Record(m1, attrs1), Term::Record(m2, attrs2)) => {
+        (Term::Record(mut m1, attrs1), Term::Record(mut m2, attrs2)) => {
             /* Terms inside m1 and m2 may capture variables of resp. env1 and env2.  Morally, we
              * need to store closures, or a merge of closures, inside the resulting record.  We use
              * the same trick as in the evaluation of the operator DynExtend, and replace each such
@@ -330,7 +329,9 @@ pub fn merge(
              */
             let mut m = HashMap::new();
             let mut env = Environment::new();
-            let (mut left, mut center, mut right) = hashmap::split(m1, m2);
+            rev_thunks(m1.values_mut(), &mut env1);
+            rev_thunks(m2.values_mut(), &mut env2);
+            let (left, center, right) = hashmap::split(m1, m2);
 
             match mode {
                 MergeMode::Contract(mut lbl) if !attrs2.open && !left.is_empty() => {
@@ -343,15 +344,15 @@ pub fn merge(
                 _ => (),
             };
 
-            for (field, t) in left.drain() {
+            for (field, t) in left.into_iter() {
                 m.insert(field, t.closurize(&mut env, env1.clone()));
             }
 
-            for (field, t) in right.drain() {
+            for (field, t) in right.into_iter() {
                 m.insert(field, t.closurize(&mut env, env2.clone()));
             }
 
-            for (field, (t1, t2)) in center.drain() {
+            for (field, (t1, t2)) in center.into_iter() {
                 m.insert(
                     field,
                     merge_closurize(&mut env, t1, env1.clone(), t2, env2.clone()),
@@ -360,7 +361,7 @@ pub fn merge(
 
             Ok(Closure {
                 body: RichTerm::new(
-                    Term::Record(m, RecordAttrs::merge(attrs1, attrs2)),
+                    Term::RecRecord(m, Vec::new(), RecordAttrs::merge(attrs1, attrs2)),
                     pos_op.into_inherited(),
                 ),
                 env,
@@ -430,6 +431,22 @@ fn merge_closurize(
         t2.closurize(&mut local_env, env2),
     ));
     body.closurize(env, local_env)
+}
+
+fn rev_thunks<'a, I: Iterator<Item = &'a mut RichTerm>>(map: I, env: &mut Environment) {
+    use crate::transform::fresh_var;
+
+    for rt in map {
+        if let Term::Var(id) = rt.as_ref() {
+            // This create a fresh variable which is bound to a reverted copy of the original thunk
+            let reverted = env.get(&id).unwrap().revert();
+            let fresh_id = fresh_var();
+            env.insert(fresh_id.clone(), reverted);
+            *rt.term = Term::Var(fresh_id);
+        }
+        // Otherwise, if it is not a variable after the share normal form transformations, it
+        // should be a constant and we don't need to revert anything
+    }
 }
 
 pub mod hashmap {
