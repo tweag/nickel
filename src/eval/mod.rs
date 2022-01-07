@@ -606,7 +606,7 @@ where
                         _ => unreachable!(),
                     }
                 } else {
-                    let label = meta.contracts.pop().unwrap().label;
+                    let label = meta.contracts.pop().or(meta.types).map(|ctr| ctr.label);
                     return Err(EvalError::MissingFieldDef(label, call_stack));
                 }
             }

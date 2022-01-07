@@ -44,7 +44,7 @@ pub enum EvalError {
     /// A blame occurred: a contract have been broken somewhere.
     BlameError(label::Label, CallStack),
     /// A field required by a record contract is missing a definition.
-    MissingFieldDef(label::Label, CallStack),
+    MissingFieldDef(Option<label::Label>, CallStack),
     /// Mismatch between the expected type and the actual type of an expression.
     TypeError(
         /* expected type */ String,
@@ -917,8 +917,8 @@ impl ToDiagnostic<FileId> for EvalError {
 
                 diagnostics
             }
-            EvalError::MissingFieldDef(l, callstack) => {
-                use crate::eval::StackElem;
+            EvalError::MissingFieldDef(label, callstack) => {
+                use crate::eval::callstack::StackElem;
 
                 // The following code determines what was the last accessed record field by looking
                 // at the call stack. Because of recursive records though, the fields may actually
@@ -970,16 +970,19 @@ impl ToDiagnostic<FileId> for EvalError {
                     labels.push(secondary(&span).with_message("accessed here"));
                 }
 
-                vec![
-                    Diagnostic::error()
-                        .with_message(format!(
-                            "missing definition for `{}`",
-                            field.unwrap_or(String::from("?"))
-                        ))
-                        .with_labels(labels)
-                        .with_notes(vec![]),
-                    blame_label_note(&l),
-                ]
+                let mut diags = vec![Diagnostic::error()
+                    .with_message(format!(
+                        "missing definition for `{}`",
+                        field.unwrap_or(String::from("?"))
+                    ))
+                    .with_labels(labels)
+                    .with_notes(vec![])];
+
+                if let Some(label) = label {
+                    diags.push(blame_label_note(label));
+                }
+
+                diags
             }
             EvalError::TypeError(expd, msg, orig_pos_opt, t) => {
                 let label = format!(
