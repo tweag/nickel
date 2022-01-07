@@ -652,7 +652,7 @@ fn type_check_<S, E>(
         }
         Term::LetPattern(x, pat, re, rt) => {
             use crate::destruct::*;
-            // TODO: The insertion of values in the type environement is done but everything is
+            // TODO: The insertion of values in the type environment is done but everything is
             // typed as `Dyn`.
             fn inject_pat_vars(pat: &Destruct, envs: &mut Envs) {
                 if let Destruct::Record(matches, _, rst) = pat {
