@@ -1,59 +1,74 @@
 use codespan::ByteIndex;
 use log::debug;
-use nickel::{position::TermPos, typecheck::linearization};
+use nickel::{
+    position::TermPos,
+    term::MetaValue,
+    typecheck::linearization::{Completed, LinearizationItem, Resolved, TermKind, UsageState},
+};
 
-/// Finds the index of a linearization item for a given location
-/// The linearization is a list of items that are sorted by their physical occurence.
-/// - Each element has a corresponding span in the source
-/// - Spans are either equal (same starting point, same length)
-///   or shorter but never intersecting
-///
-///   (start_element_2 >= start_element_1 AND end_element_2 <= end_element_1)
-///
-/// For any location a binary search is used to efficiently find the index
-/// of the *last* element that starts at this position.
-/// This corresponds to the most concrete Element as the linearization is
-/// 1. produced by a stable sort and
-/// 2. lower elements are more concrete
-///
-/// If a perfect match cannot be found, the binary search still provides an
-/// anchor point from which we reversely find the first element that *contains*
-/// the location looked up
-///
-/// If neither is possible `None` is returned as no corresponding linearization
-/// item could be found.
-///
-pub fn find_linearization_index(
-    linearization: &[linearization::LinearizationItem<nickel::types::Types>],
-    locator: (codespan::FileId, ByteIndex),
-) -> Option<usize> {
-    let (file_id, start) = locator;
-    let index = match linearization.binary_search_by_key(&locator, |item| match item.pos {
-        TermPos::Original(span) | TermPos::Inherited(span) => (span.src_id, span.start),
-        TermPos::None => unreachable!(),
-    }) {
-        // Found item(s) starting at `locator`
-        // search for most precise element
-        Ok(index) => linearization[index..]
-            .iter()
-            .enumerate()
-            .take_while(|(_, item)| {
-                let pos = match item.pos {
-                    TermPos::Original(span) | TermPos::Inherited(span) => (span.src_id, span.start),
-                    TermPos::None => unreachable!(),
-                };
-                pos == (file_id, start)
-            })
-            .inspect(|(offset, item)| debug!("taken: {:?} @ {}", item, index + offset))
-            .map(|(offset, _)| index + offset)
-            .last(),
-        // No perfect match found
-        // iterate back finding the first wrapping linearization item
-        Err(index) => {
-            linearization[..index]
+pub trait CompletedExt {
+    fn item_at(
+        &self,
+        locator: (codespan::FileId, ByteIndex),
+    ) -> Option<&LinearizationItem<Resolved>>;
+
+    fn resolve_item_type_meta(&self, item: &LinearizationItem<Resolved>)
+        -> (Resolved, Vec<String>);
+}
+
+impl CompletedExt for Completed {
+    /// Finds the index of a linearization item for a given location
+    /// The linearization is a list of items that are sorted by their physical occurence.
+    /// - Each element has a corresponding span in the source
+    /// - Spans are either equal (same starting point, same length)
+    ///   or shorter but never intersecting
+    ///
+    ///   (start_element_2 >= start_element_1 AND end_element_2 <= end_element_1)
+    ///
+    /// For any location a binary search is used to efficiently find the index
+    /// of the *last* element that starts at this position.
+    /// This corresponds to the most concrete Element as the linearization is
+    /// 1. produced by a stable sort and
+    /// 2. lower elements are more concrete
+    ///
+    /// If a perfect match cannot be found, the binary search still provides an
+    /// anchor point from which we reversely find the first element that *contains*
+    /// the location looked up
+    ///
+    /// If neither is possible `None` is returned as no corresponding linearization
+    /// item could be found.
+    ///
+    fn item_at(
+        &self,
+        locator: (codespan::FileId, ByteIndex),
+    ) -> Option<&LinearizationItem<Resolved>> {
+        let (file_id, start) = locator;
+        let linearization = &self.lin;
+        let item = match linearization.binary_search_by_key(&locator, |item| match item.pos {
+            TermPos::Original(span) | TermPos::Inherited(span) => (span.src_id, span.start),
+            TermPos::None => unreachable!(),
+        }) {
+            // Found item(s) starting at `locator`
+            // search for most precise element
+            Ok(index) => linearization[index..]
                 .iter()
                 .enumerate()
-                .rfold(None, |acc, (index, item)| {
+                .take_while(|(_, item)| {
+                    let pos = match item.pos {
+                        TermPos::Original(span) | TermPos::Inherited(span) => {
+                            (span.src_id, span.start)
+                        }
+                        TermPos::None => unreachable!(),
+                    };
+                    pos == (file_id, start)
+                })
+                .inspect(|(offset, item)| debug!("taken: {:?} @ {}", item, index + offset))
+                .map(|(_, item)| item)
+                .last(),
+            // No perfect match found
+            // iterate back finding the first wrapping linearization item
+            Err(index) => {
+                linearization[..index].iter().rfold(None, |acc, item| {
                     let pos = match item.pos {
                         TermPos::Original(pos) | TermPos::Inherited(pos) => {
                             Some((pos.start, pos.end, pos.src_id))
@@ -73,13 +88,59 @@ pub fn find_linearization_index(
                         );
 
                         if file_id == ifile && start > istart && start < iend {
-                            return Some(index);
+                            return Some(item);
                         }
 
                         None
                     })
                 })
+            }
+        };
+        item
+    }
+
+    /// Resolve type and meta information for a given item
+    fn resolve_item_type_meta(
+        &self,
+        item: &LinearizationItem<Resolved>,
+    ) -> (Resolved, Vec<String>) {
+        let mut extra = Vec::new();
+
+        let item = match item.kind {
+            TermKind::Usage(UsageState::Resolved(usage)) => {
+                usage.and_then(|u| self.get_item(u + 1)).unwrap_or(item)
+            }
+            TermKind::Declaration(_, _) => self.get_item(item.id + 1).unwrap_or(item),
+            _ => item,
+        };
+
+        if let Some(MetaValue {
+            ref doc,
+            ref types,
+            ref contracts,
+            priority,
+            ..
+        }) = item.meta.as_ref()
+        {
+            if let Some(doc) = doc {
+                extra.push(doc.to_owned());
+            }
+            if let Some(types) = types {
+                extra.push(types.label.tag.to_string());
+            }
+            if !contracts.is_empty() {
+                extra.push(
+                    contracts
+                        .iter()
+                        .map(|contract| format!("{}", contract.label.types,))
+                        .collect::<Vec<_>>()
+                        .join(","),
+                );
+            }
+
+            extra.push(format!("Merge Priority: {:?}", priority));
         }
-    };
-    index
+
+        (item.ty.to_owned(), extra)
+    }
 }

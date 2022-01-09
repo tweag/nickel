@@ -13,7 +13,7 @@ use serde_json::Value;
 
 use crate::{
     diagnostic::LocationCompat,
-    requests::utils::find_linearization_index,
+    requests::utils::CompletedExt,
     server::Server,
     trace::{Enrich, Trace},
 };
@@ -46,14 +46,14 @@ pub fn handle_to_definition(
 
     Trace::enrich(&id, linearization);
 
-    let index = find_linearization_index(&linearization.lin, locator);
+    let item = linearization.item_at(locator);
 
-    if index == None {
+    if item == None {
         server.reply(Response::new_ok(id, Value::Null));
         return Ok(());
     }
 
-    let item = linearization.lin[index.unwrap()].to_owned();
+    let item = item.unwrap();
 
     debug!("found referencing item: {:?}", item);
 
@@ -116,18 +116,18 @@ pub fn handle_to_usages(
     let locator = (file_id, ByteIndex(start as u32));
     let linearization = server.lin_cache_get(&file_id)?;
 
-    let index = find_linearization_index(&linearization.lin, locator);
+    let item = linearization.item_at(locator);
 
-    if index == None {
+    if item == None {
         server.reply(Response::new_ok(id, Value::Null));
         return Ok(());
     }
 
-    let item = linearization.lin[index.unwrap()].to_owned();
+    let item = item.unwrap();
 
     debug!("found referencing item: {:?}", item);
 
-    let locations = match item.kind {
+    let locations = match &item.kind {
         linearization::TermKind::Declaration(_, usages)
         | linearization::TermKind::RecordField { usages, .. } => {
             let mut locations = Vec::new();
