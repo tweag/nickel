@@ -415,7 +415,7 @@ impl Cache {
             }
             Some(CachedTerm { term, state, .. }) if *state >= EntryState::Parsed => {
                 if *state < EntryState::Typechecking {
-                    type_check(term, global_env, self, StubHost::<(), _>::new())?;
+                    type_check(term, global_env, self, StubHost::<(), (), _>::new())?;
                     self.update_state(file_id, EntryState::Typechecking);
                 }
 
@@ -652,7 +652,7 @@ impl Cache {
             return Err(Error::ParseErrors(errs));
         }
         let (term, pending) = import_resolution::resolve_imports(term, self)?;
-        type_check(&term, global_env, self, StubHost::<(), _>::new())?;
+        type_check(&term, global_env, self, StubHost::<(), (), _>::new())?;
         let term = transform::transform(term);
         Ok((term, pending))
     }

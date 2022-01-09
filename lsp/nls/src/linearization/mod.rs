@@ -7,7 +7,7 @@ use nickel::{
     position::TermPos,
     term::{MetaValue, RichTerm, Term, UnaryOp},
     typecheck::{
-        linearization::{Building, Environment, Linearization, Linearizer, ScopeId},
+        linearization::{Linearization, Linearizer, ScopeId},
         reporting::{to_type, NameReg},
         TypeWrapper, UnifTable,
     },
@@ -15,12 +15,16 @@ use nickel::{
 };
 
 use self::{
+    building::Building,
     completed::Completed,
     interface::{ResolutionState, TermKind, Unresolved, UsageState},
 };
 
+pub mod building;
 pub mod completed;
 pub mod interface;
+
+pub type Environment = nickel::environment::Environment<Ident, usize>;
 
 /// A recorded item of a given state of resolution state
 /// Tracks a unique id used to build a reference table after finalizing
@@ -34,12 +38,6 @@ pub struct LinearizationItem<S: ResolutionState> {
     pub kind: TermKind,
     pub scope: Vec<ScopeId>,
     pub meta: Option<MetaValue>,
-}
-
-#[derive(Default)]
-pub struct BuildingResource {
-    pub linearization: Vec<LinearizationItem<Unresolved>>,
-    pub scope: HashMap<Vec<ScopeId>, Vec<usize>>,
 }
 
 trait BuildingExt {
@@ -61,11 +59,9 @@ trait BuildingExt {
     fn id_gen(&self) -> IdGen;
 }
 
-impl BuildingExt for Linearization<Building<BuildingResource>> {
+impl BuildingExt for Building {
     fn push(&mut self, item: LinearizationItem<Unresolved>) {
-        self.state
-            .resource
-            .scope
+        self.scope
             .remove(&item.scope)
             .map(|mut s| {
                 s.push(item.id);
@@ -74,15 +70,13 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
             .or_else(|| Some(vec![item.id]))
             .into_iter()
             .for_each(|l| {
-                self.state.resource.scope.insert(item.scope.clone(), l);
+                self.scope.insert(item.scope.clone(), l);
             });
-        self.state.resource.linearization.push(item);
+        self.linearization.push(item);
     }
 
     fn add_usage(&mut self, decl: usize, usage: usize) {
         match self
-            .state
-            .resource
             .linearization
             .get_mut(decl)
             .expect("Could not find parent")
@@ -132,8 +126,6 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
 
     fn add_record_field(&mut self, record: usize, (field_ident, reference_id): (Ident, usize)) {
         match self
-            .state
-            .resource
             .linearization
             .get_mut(record)
             .expect("Could not find record")
@@ -152,9 +144,7 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
     ) -> Option<&'a LinearizationItem<TypeWrapper>> {
         // if item is a usage, resolve the usage first
         match item.kind {
-            TermKind::Usage(UsageState::Resolved(Some(pointed))) => {
-                self.state.resource.linearization.get(pointed)
-            }
+            TermKind::Usage(UsageState::Resolved(Some(pointed))) => self.linearization.get(pointed),
             _ => Some(item),
         }
         // load referenced value, either from record field or declaration
@@ -165,12 +155,10 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
                     debug!("parent referenced a record field {:?}", value);
                     value
                         // retrieve record
-                        .and_then(|value_index| self.state.resource.linearization.get(value_index))
+                        .and_then(|value_index| self.linearization.get(value_index))
                 }
                 // if declaration is a let biding resolve its value
-                TermKind::Declaration(_, _) => {
-                    self.state.resource.linearization.get(item_pointer.id + 1)
-                }
+                TermKind::Declaration(_, _) => self.linearization.get(item_pointer.id + 1),
 
                 // if something else was referenced, stop.
                 _ => Some(item_pointer),
@@ -190,7 +178,7 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
             let (child_item, parent_accessor_id, child_ident) = &deferred;
             // resolve the value referenced by the parent accessor element
             // get the parent accessor, and read its resolved reference
-            let parent_referenced = self.state.resource.linearization.get(*parent_accessor_id);
+            let parent_referenced = self.linearization.get(*parent_accessor_id);
 
             if let Some(LinearizationItem {
                 kind: TermKind::Usage(UsageState::Deferred { .. }),
@@ -223,7 +211,7 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
                 .and_then(|parent_declaration| match &parent_declaration.kind {
                     TermKind::Record(fields) => {
                         fields.get(child_ident).and_then(|child_declaration_id| {
-                            self.state.resource.linearization.get(*child_declaration_id)
+                            self.linearization.get(*child_declaration_id)
                         })
                     }
                     _ => None,
@@ -232,11 +220,11 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
             let referenced_declaration =
                 referenced_declaration.and_then(|referenced| match referenced.kind {
                     TermKind::Usage(UsageState::Resolved(Some(pointed))) => {
-                        self.state.resource.linearization.get(pointed)
+                        self.linearization.get(pointed)
                     }
                     TermKind::RecordField { value, .. } => value
                         // retrieve record
-                        .and_then(|value_index| self.state.resource.linearization.get(value_index))
+                        .and_then(|value_index| self.linearization.get(value_index))
                         // retrieve field
                         .and_then(|record| match &record.kind {
                             TermKind::Record(fields) => {
@@ -244,12 +232,12 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
                                     "parent referenced a nested record indirectly`: {:?}",
                                     fields
                                 );
-                                fields.get(child_ident).and_then(|accessor_id| {
-                                    self.state.resource.linearization.get(*accessor_id)
-                                })
+                                fields
+                                    .get(child_ident)
+                                    .and_then(|accessor_id| self.linearization.get(*accessor_id))
                             }
                             TermKind::Usage(UsageState::Resolved(Some(pointed))) => {
-                                self.state.resource.linearization.get(*pointed)
+                                self.linearization.get(*pointed)
                             }
                             _ => None,
                         })
@@ -266,12 +254,8 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
             );
 
             {
-                let child: &mut LinearizationItem<TypeWrapper> = self
-                    .state
-                    .resource
-                    .linearization
-                    .get_mut(*child_item)
-                    .unwrap();
+                let child: &mut LinearizationItem<TypeWrapper> =
+                    self.linearization.get_mut(*child_item).unwrap();
                 child.kind = TermKind::Usage(UsageState::Resolved(referenced_id));
             }
 
@@ -287,7 +271,7 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
     }
 
     fn id_gen(&self) -> IdGen {
-        IdGen::new(self.state.resource.linearization.len())
+        IdGen::new(self.linearization.len())
     }
 }
 
@@ -329,12 +313,14 @@ impl AnalysisHost {
     }
 }
 
-impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for AnalysisHost {
+impl Linearizer for AnalysisHost {
+    type Building = Building;
     type Completed = Completed;
+    type CompletionExtra = (UnifTable, HashMap<usize, Ident>);
 
     fn add_term(
         &mut self,
-        lin: &mut Linearization<Building<BuildingResource>>,
+        lin: &mut Linearization<Building>,
         term: &Term,
         mut pos: TermPos,
         ty: TypeWrapper,
@@ -358,13 +344,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                     pos
                 });
 
-                for field in lin
-                    .state
-                    .resource
-                    .linearization
-                    .get_mut(record + offset)
-                    .into_iter()
-                {
+                for field in lin.linearization.get_mut(record + offset).into_iter() {
                     debug!("{:?}", field.kind);
                     let usage_offset = if matches!(term, Term::Var(_)) {
                         debug!(
@@ -395,8 +375,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
         let id = id_gen.get();
         match term {
             Term::Let(ident, _, _, _) | Term::Fun(ident, _) => {
-                self.env
-                    .insert(ident.to_owned(), lin.state.resource.linearization.len());
+                self.env.insert(ident.to_owned(), lin.linearization.len());
                 lin.push(LinearizationItem {
                     id,
                     ty,
@@ -527,15 +506,13 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
     /// Additionally, resolves concrete types for all items.
     fn linearize(
         self,
-        mut lin: Linearization<Building<BuildingResource>>,
+        mut lin: Linearization<Building>,
         (table, reported_names): (UnifTable, HashMap<usize, Ident>),
     ) -> Linearization<Completed> {
         debug!("linearizing");
 
         // TODO: Storing defers while linearizing?
         let defers: Vec<(usize, usize, Ident)> = lin
-            .state
-            .resource
             .linearization
             .iter()
             .filter_map(|item| match &item.kind {
@@ -548,9 +525,12 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
 
         lin.resolve_record_references(defers);
 
-        let mut lin_ = lin.state.resource.linearization;
+        let Building {
+            mut linearization,
+            scope,
+        } = lin.into_inner();
 
-        lin_.sort_by_key(|item| match item.pos {
+        linearization.sort_by_key(|item| match item.pos {
             TermPos::Original(span) => (span.src_id, span.start),
             TermPos::Inherited(span) => (span.src_id, span.start),
             TermPos::None => {
@@ -562,14 +542,15 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
 
         // create an index of id -> new position
         let mut id_mapping = HashMap::new();
-        lin_.iter()
+        linearization
+            .iter()
             .enumerate()
             .for_each(|(index, LinearizationItem { id, .. })| {
                 id_mapping.insert(*id, index);
             });
 
         // resolve types
-        let lin_ = lin_
+        let lin_ = linearization
             .into_iter()
             .map(
                 |LinearizationItem {
@@ -595,7 +576,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
         Linearization::new(Completed {
             lin: lin_,
             id_mapping,
-            scope_mapping: lin.state.resource.scope,
+            scope_mapping: scope,
         })
     }
 
@@ -618,14 +599,14 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
 
     fn retype_ident(
         &mut self,
-        lin: &mut Linearization<Building<BuildingResource>>,
+        lin: &mut Linearization<Building>,
         ident: &Ident,
         new_type: TypeWrapper,
     ) {
         if let Some(item) = self
             .env
             .get(ident)
-            .and_then(|index| lin.state.resource.linearization.get_mut(index))
+            .and_then(|index| lin.linearization.get_mut(index))
         {
             debug!("retyping {:?} to {:?}", ident, new_type);
             item.ty = new_type;

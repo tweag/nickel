@@ -23,6 +23,7 @@
 //! - [LinearizationItem]: Abstract information for each term.
 
 use std::marker::PhantomData;
+use std::ops::{Deref, DerefMut};
 
 use super::TypeWrapper;
 use crate::environment::Environment as GenericEnvironment;
@@ -32,7 +33,7 @@ use crate::{identifier::Ident, position::TermPos, term::Term};
 /// Restricts the possible states of a linearization to entities marked
 /// as [LinearizationState]
 pub struct Linearization<S: LinearizationState> {
-    pub state: S,
+    state: S,
 }
 
 impl<S: LinearizationState> Linearization<S> {
@@ -41,32 +42,31 @@ impl<S: LinearizationState> Linearization<S> {
     }
 }
 
+impl<S: LinearizationState> Deref for Linearization<S> {
+    type Target = S;
+
+    fn deref(&self) -> &Self::Target {
+        &self.state
+    }
+}
+
+impl<S: LinearizationState> DerefMut for Linearization<S> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.state
+    }
+}
+
 /// Constructors for different phases
 impl Linearization<Uninit> {
     pub fn new<S: LinearizationState>(state: S) -> Linearization<S> {
         Linearization { state }
     }
-    pub fn building<T: Default>() -> Linearization<Building<T>> {
-        Linearization {
-            state: Building {
-                resource: T::default(),
-            },
-        }
-    }
-}
-
-/// A concrete [LinearizationState]
-/// Holds any inner datatype that can be used as stable resource
-/// while recording terms.
-pub struct Building<T> {
-    pub resource: T,
 }
 
 pub struct Uninit;
 
 /// Marker trait for possible states of the linearization
 pub trait LinearizationState {}
-impl<T> LinearizationState for Building<T> {}
 impl LinearizationState for () {}
 impl LinearizationState for Uninit {}
 
@@ -85,8 +85,10 @@ impl LinearizationState for Uninit {}
 /// **Generic Terms**
 /// `L`: The data type available during build
 /// `S`: Type of external state passed into the linearization
-pub trait Linearizer<L, S> {
+pub trait Linearizer {
+    type Building: LinearizationState + Default;
     type Completed: LinearizationState + Default;
+    type CompletionExtra;
 
     /// Record a new type
     ///
@@ -97,7 +99,7 @@ pub trait Linearizer<L, S> {
     /// state is the responsibility of [Linearizer::scope]
     fn add_term(
         &mut self,
-        _lin: &mut Linearization<Building<L>>,
+        _lin: &mut Linearization<Self::Building>,
         _term: &Term,
         _pos: TermPos,
         _ty: TypeWrapper,
@@ -107,7 +109,7 @@ pub trait Linearizer<L, S> {
     /// Allows to amend the type of an ident in scope
     fn retype_ident(
         &mut self,
-        _lin: &mut Linearization<Building<L>>,
+        _lin: &mut Linearization<Self::Building>,
         _ident: &Ident,
         _new_type: TypeWrapper,
     ) {
@@ -118,8 +120,8 @@ pub trait Linearizer<L, S> {
     /// By default creates an entirely empty [Self::Completed] object
     fn linearize(
         self,
-        _lin: Linearization<Building<L>>,
-        _extra: S,
+        _lin: Linearization<Self::Building>,
+        _extra: Self::CompletionExtra,
     ) -> Linearization<Self::Completed>
     where
         Self: Sized,
@@ -142,21 +144,26 @@ pub trait Linearizer<L, S> {
 /// [Linearizer] that deliberately does not maintain any state or act
 /// in any way.
 /// Ideally the compiler would eliminate code using this [Linearizer]
-pub struct StubHost<L, S>(PhantomData<L>, PhantomData<S>);
-impl<L, S> Linearizer<L, S> for StubHost<L, S> {
-    type Completed = ();
+pub struct StubHost<B = (), C = (), E = ()>(PhantomData<B>, PhantomData<C>, PhantomData<E>);
+impl<B, C, E> Linearizer for StubHost<B, C, E>
+where
+    B: LinearizationState + Default,
+    C: LinearizationState + Default,
+{
+    type Building = B;
+    type Completed = C;
+    type CompletionExtra = E;
+
     fn scope(&mut self, _: ScopeId) -> Self {
         StubHost::new()
     }
 }
 
-impl<L, S> StubHost<L, S> {
-    pub fn new() -> StubHost<L, S> {
-        StubHost(PhantomData, PhantomData)
+impl<B, C, E> StubHost<B, C, E> {
+    pub fn new() -> StubHost<B, C, E> {
+        StubHost(PhantomData, PhantomData, PhantomData)
     }
 }
-
-pub type Environment = GenericEnvironment<Ident, usize>;
 
 trait ScopeIdElem: Clone + Eq {}
 
