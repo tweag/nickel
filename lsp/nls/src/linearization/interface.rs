@@ -1,15 +1,6 @@
 use std::collections::HashMap;
 
-use nickel::{
-    identifier::Ident,
-    position::TermPos,
-    term::MetaValue,
-    typecheck::{
-        linearization::{LinearizationState, ScopeId},
-        TypeWrapper,
-    },
-    types::Types,
-};
+use nickel::{identifier::Ident, typecheck::TypeWrapper, types::Types};
 
 pub trait ResolutionState {}
 /// Types are available as [TypeWrapper] only during recording
