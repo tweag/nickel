@@ -1,4 +1,5 @@
 use crate::{
+    linearization::interface::TermKind,
     term::TermPosExt,
     trace::{Enrich, Trace},
 };
@@ -24,7 +25,7 @@ pub fn handle_document_symbols(
             .lin
             .iter()
             .filter_map(|item| match &item.kind {
-                nickel::typecheck::linearization::TermKind::Declaration(name, _) => {
+                TermKind::Declaration(name, _) => {
                     let range = item
                         .pos
                         .try_to_range()

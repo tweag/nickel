@@ -22,12 +22,10 @@
 //!               outside the LSP context meaning to cause as little runtime impact as possible.
 //! - [LinearizationItem]: Abstract information for each term.
 
-use std::{collections::HashMap, marker::PhantomData};
+use std::marker::PhantomData;
 
-use super::{TypeWrapper, UnifTable};
+use super::TypeWrapper;
 use crate::environment::Environment as GenericEnvironment;
-use crate::term::MetaValue;
-use crate::types::Types;
 use crate::{identifier::Ident, position::TermPos, term::Term};
 
 /// Holds the state of a linearization, either in progress or finalized
@@ -37,10 +35,16 @@ pub struct Linearization<S: LinearizationState> {
     pub state: S,
 }
 
+impl<S: LinearizationState> Linearization<S> {
+    pub fn into_inner(self) -> S {
+        self.state
+    }
+}
+
 /// Constructors for different phases
 impl Linearization<Uninit> {
-    pub fn completed(completed: Completed) -> Linearization<Completed> {
-        Linearization { state: completed }
+    pub fn new<S: LinearizationState>(state: S) -> Linearization<S> {
+        Linearization { state }
     }
     pub fn building<T: Default>() -> Linearization<Building<T>> {
         Linearization {
@@ -58,22 +62,12 @@ pub struct Building<T> {
     pub resource: T,
 }
 
-/// Finalized linearization
-#[derive(Debug)]
-pub struct Completed {
-    pub lin: Vec<LinearizationItem<Resolved>>,
-    pub id_mapping: HashMap<usize, usize>,
-    pub scope_mapping: HashMap<Vec<ScopeId>, Vec<usize>>,
-}
-
-pub type CompletionSalt = (UnifTable, HashMap<usize, Ident>);
-
 pub struct Uninit;
 
 /// Marker trait for possible states of the linearization
 pub trait LinearizationState {}
 impl<T> LinearizationState for Building<T> {}
-impl LinearizationState for Completed {}
+impl LinearizationState for () {}
 impl LinearizationState for Uninit {}
 
 /// Possible resolution states of a LinearizationItem.
@@ -83,59 +77,6 @@ impl LinearizationState for Uninit {}
 ///
 /// As implementors are used as typestate items of the [LinearizationItem]
 /// to determine the type of the Item.
-pub trait ResolutionState {}
-/// Types are available as [TypeWrapper] only during recording
-/// They are resolved after typechecking has collected all terms into concrete
-/// [Types]
-pub type Unresolved = TypeWrapper;
-impl ResolutionState for Unresolved {}
-
-/// When resolved a concrete [Types] is known
-pub type Resolved = Types;
-impl ResolutionState for Resolved {}
-
-/// A recorded item of a given state of resolution state
-/// Tracks a unique id used to build a reference table after finalizing
-/// the linearization using the LSP [AnalysisHost]
-#[derive(Debug, Clone, PartialEq)]
-pub struct LinearizationItem<S: ResolutionState> {
-    //term_: Box<Term>,
-    pub id: usize,
-    pub pos: TermPos,
-    pub ty: S,
-    pub kind: TermKind,
-    pub scope: Vec<ScopeId>,
-    pub meta: Option<MetaValue>,
-}
-
-/// Abstact term kinds.
-/// Currently tracks
-/// 1. Declarations
-/// 2. Usages
-/// 3. Records, listing their fields
-/// 4. wildcard (Structure) for any other kind of term.
-/// Can be extended later to represent Contracts, Records, etc.
-#[derive(Debug, Clone, PartialEq)]
-pub enum TermKind {
-    Declaration(Ident, Vec<usize>),
-    Usage(UsageState),
-    Record(HashMap<Ident, usize>),
-    RecordField {
-        ident: Ident,
-        record: usize,
-        usages: Vec<usize>,
-        value: Option<usize>,
-    },
-    Structure,
-}
-
-/// Some usages cannot be fully resolved in a first pass (i.e. recursive record fields)
-/// In these cases we defer the resolution to a second pass during linearization
-#[derive(Debug, Clone, PartialEq)]
-pub enum UsageState {
-    Resolved(Option<usize>),
-    Deferred { parent: usize, child: Ident },
-}
 
 /// The linearizer trait is what is refered to during typechecking.
 /// It is the interface to recording terms (while tracking their scope)
@@ -145,6 +86,8 @@ pub enum UsageState {
 /// `L`: The data type available during build
 /// `S`: Type of external state passed into the linearization
 pub trait Linearizer<L, S> {
+    type Completed: LinearizationState + Default;
+
     /// Record a new type
     ///
     /// `self` is assumed to be _scope stable_ meaning, it can hold information
@@ -171,18 +114,18 @@ pub trait Linearizer<L, S> {
     }
 
     /// Defines how to turn a [Building] Linearization of the tracked type into
-    /// a [Completed] linearization.
-    /// By default creates an entirely empty [Completed] object
-    fn linearize(self, _lin: Linearization<Building<L>>, _extra: S) -> Linearization<Completed>
+    /// a [Self::Completed] linearization.
+    /// By default creates an entirely empty [Self::Completed] object
+    fn linearize(
+        self,
+        _lin: Linearization<Building<L>>,
+        _extra: S,
+    ) -> Linearization<Self::Completed>
     where
         Self: Sized,
     {
         Linearization {
-            state: Completed {
-                lin: Vec::new(),
-                id_mapping: HashMap::new(),
-                scope_mapping: HashMap::new(),
-            },
+            state: Self::Completed::default(),
         }
     }
 
@@ -201,6 +144,7 @@ pub trait Linearizer<L, S> {
 /// Ideally the compiler would eliminate code using this [Linearizer]
 pub struct StubHost<L, S>(PhantomData<L>, PhantomData<S>);
 impl<L, S> Linearizer<L, S> for StubHost<L, S> {
+    type Completed = ();
     fn scope(&mut self, _: ScopeId) -> Self {
         StubHost::new()
     }
@@ -224,36 +168,3 @@ pub enum ScopeId {
 }
 
 impl ScopeIdElem for ScopeId {}
-
-impl From<Linearization<Completed>> for Completed {
-    fn from(lin: Linearization<Completed>) -> Self {
-        lin.state
-    }
-}
-
-impl Completed {
-    pub fn get_item(&self, id: usize) -> Option<&LinearizationItem<Resolved>> {
-        self.id_mapping
-            .get(&id)
-            .and_then(|index| self.lin.get(*index))
-    }
-
-    pub fn get_in_scope(
-        &self,
-        LinearizationItem { scope, .. }: &LinearizationItem<Resolved>,
-    ) -> Vec<&LinearizationItem<Resolved>> {
-        (0..scope.len())
-            .into_iter()
-            .map(|end| &scope[..=end])
-            .flat_map(|scope| {
-                eprintln!("in scope {:?}: {:?}", scope, self.scope_mapping.get(scope));
-
-                self.scope_mapping
-                    .get(scope)
-                    .map_or_else(Vec::new, Clone::clone)
-            })
-            .map(|id| self.get_item(id))
-            .flatten()
-            .collect()
-    }
-}

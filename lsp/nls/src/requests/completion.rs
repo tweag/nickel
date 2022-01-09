@@ -6,7 +6,7 @@ use lsp_types::{CompletionItem, CompletionParams};
 use serde_json::Value;
 
 use crate::{
-    requests::utils::CompletedExt,
+    linearization::interface::TermKind,
     server::Server,
     trace::{Enrich, Trace},
 };
@@ -46,9 +46,7 @@ pub fn handle_completion(
         .get_in_scope(&item)
         .iter()
         .filter_map(|i| match i.kind {
-            nickel::typecheck::linearization::TermKind::Declaration(ref ident, _) => {
-                Some((ident.clone(), i.ty.clone()))
-            }
+            TermKind::Declaration(ref ident, _) => Some((ident.clone(), i.ty.clone())),
             _ => None,
         })
         .map(|(ident, _)| CompletionItem {

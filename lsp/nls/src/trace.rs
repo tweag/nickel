@@ -220,9 +220,10 @@ impl<T, E: Display> ResultExt<E> for Result<T, E> {
 
 pub mod param {
 
+    use crate::linearization::completed::Completed;
+
     use super::{Enrich, ResultExt, Trace};
     use lsp_server::RequestId;
-    use nickel::typecheck::linearization::Completed;
 
     impl Enrich<&Completed> for Trace {
         fn enrich(id: &RequestId, param: &Completed) {

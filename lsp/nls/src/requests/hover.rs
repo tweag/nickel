@@ -8,7 +8,6 @@ use serde_json::Value;
 
 use crate::{
     diagnostic::LocationCompat,
-    requests::utils::CompletedExt,
     server::Server,
     trace::{Enrich, Trace},
 };

@@ -50,7 +50,7 @@ use crate::{mk_tyw_arrow, mk_tyw_enum, mk_tyw_enum_row, mk_tyw_record, mk_tyw_ro
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 
-use self::linearization::{Building, Completed, Linearization, Linearizer, ScopeId, StubHost};
+use self::linearization::{Building, Linearization, Linearizer, ScopeId, StubHost};
 
 pub mod error;
 pub mod linearization;
@@ -185,14 +185,15 @@ pub struct State<'a> {
 ///
 /// Note that this function doesn't recursively typecheck imports (anymore), but just the current
 /// file. It however still needs the resolver to get the apparent type of imports.
-pub fn type_check<L>(
+pub fn type_check<L, LL>(
     t: &RichTerm,
     global_env: &Environment,
     resolver: &impl ImportResolver,
-    mut linearizer: impl Linearizer<L, (UnifTable, HashMap<usize, Ident>)>,
-) -> Result<(Types, Completed), TypecheckError>
+    mut linearizer: LL,
+) -> Result<(Types, LL::Completed), TypecheckError>
 where
     L: Default,
+    LL: Linearizer<L, (UnifTable, HashMap<usize, Ident>)>,
 {
     let (mut table, mut names) = (UnifTable::new(), HashMap::new());
     let mut building = Linearization::building();
@@ -219,7 +220,7 @@ where
 
     let lin = linearizer
         .linearize(building, (table.clone(), names))
-        .into();
+        .into_inner();
     Ok((to_type(&table, ty), lin))
 }
 

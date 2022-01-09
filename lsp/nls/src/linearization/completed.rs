@@ -1,22 +1,51 @@
+use std::collections::HashMap;
+
 use codespan::ByteIndex;
 use log::debug;
 use nickel::{
     position::TermPos,
     term::MetaValue,
-    typecheck::linearization::{Completed, LinearizationItem, Resolved, TermKind, UsageState},
+    typecheck::linearization::{LinearizationState, ScopeId},
 };
 
-pub trait CompletedExt {
-    fn item_at(
-        &self,
-        locator: (codespan::FileId, ByteIndex),
-    ) -> Option<&LinearizationItem<Resolved>>;
+use super::{
+    interface::{Resolved, TermKind, UsageState},
+    LinearizationItem,
+};
 
-    fn resolve_item_type_meta(&self, item: &LinearizationItem<Resolved>)
-        -> (Resolved, Vec<String>);
+#[derive(Debug, Default)]
+pub struct Completed {
+    pub lin: Vec<LinearizationItem<Resolved>>,
+    pub id_mapping: HashMap<usize, usize>,
+    pub scope_mapping: HashMap<Vec<ScopeId>, Vec<usize>>,
 }
 
-impl CompletedExt for Completed {
+impl Completed {
+    pub fn get_item(&self, id: usize) -> Option<&LinearizationItem<Resolved>> {
+        self.id_mapping
+            .get(&id)
+            .and_then(|index| self.lin.get(*index))
+    }
+
+    pub fn get_in_scope(
+        &self,
+        LinearizationItem { scope, .. }: &LinearizationItem<Resolved>,
+    ) -> Vec<&LinearizationItem<Resolved>> {
+        (0..scope.len())
+            .into_iter()
+            .map(|end| &scope[..=end])
+            .flat_map(|scope| {
+                eprintln!("in scope {:?}: {:?}", scope, self.scope_mapping.get(scope));
+
+                self.scope_mapping
+                    .get(scope)
+                    .map_or_else(Vec::new, Clone::clone)
+            })
+            .map(|id| self.get_item(id))
+            .flatten()
+            .collect()
+    }
+
     /// Finds the index of a linearization item for a given location
     /// The linearization is a list of items that are sorted by their physical occurence.
     /// - Each element has a corresponding span in the source
@@ -38,7 +67,7 @@ impl CompletedExt for Completed {
     /// If neither is possible `None` is returned as no corresponding linearization
     /// item could be found.
     ///
-    fn item_at(
+    pub fn item_at(
         &self,
         locator: (codespan::FileId, ByteIndex),
     ) -> Option<&LinearizationItem<Resolved>> {
@@ -100,7 +129,7 @@ impl CompletedExt for Completed {
     }
 
     /// Resolve type and meta information for a given item
-    fn resolve_item_type_meta(
+    pub fn resolve_item_type_meta(
         &self,
         item: &LinearizationItem<Resolved>,
     ) -> (Resolved, Vec<String>) {
@@ -144,3 +173,5 @@ impl CompletedExt for Completed {
         (item.ty.to_owned(), extra)
     }
 }
+
+impl LinearizationState for Completed {}

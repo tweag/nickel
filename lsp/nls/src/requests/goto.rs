@@ -5,15 +5,12 @@ use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{
     GotoDefinitionParams, GotoDefinitionResponse, Location, Range, ReferenceParams, Url,
 };
-use nickel::{
-    position::{RawSpan, TermPos},
-    typecheck::linearization::{self, UsageState},
-};
+use nickel::position::{RawSpan, TermPos};
 use serde_json::Value;
 
 use crate::{
     diagnostic::LocationCompat,
-    requests::utils::CompletedExt,
+    linearization::interface::{TermKind, UsageState},
     server::Server,
     trace::{Enrich, Trace},
 };
@@ -58,7 +55,7 @@ pub fn handle_to_definition(
     debug!("found referencing item: {:?}", item);
 
     let location = match item.kind {
-        linearization::TermKind::Usage(UsageState::Resolved(Some(usage_id))) => {
+        TermKind::Usage(UsageState::Resolved(Some(usage_id))) => {
             let definition = linearization.id_mapping[&usage_id];
             let definition = linearization.lin[definition].clone();
             let location = match definition.pos {
@@ -128,8 +125,7 @@ pub fn handle_to_usages(
     debug!("found referencing item: {:?}", item);
 
     let locations = match &item.kind {
-        linearization::TermKind::Declaration(_, usages)
-        | linearization::TermKind::RecordField { usages, .. } => {
+        TermKind::Declaration(_, usages) | TermKind::RecordField { usages, .. } => {
             let mut locations = Vec::new();
 
             for reference_id in usages.iter() {

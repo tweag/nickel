@@ -7,15 +7,34 @@ use nickel::{
     position::TermPos,
     term::{MetaValue, RichTerm, Term, UnaryOp},
     typecheck::{
-        linearization::{
-            Building, Completed, Environment, Linearization, LinearizationItem, Linearizer,
-            ScopeId, TermKind, Unresolved, UsageState,
-        },
+        linearization::{Building, Environment, Linearization, Linearizer, ScopeId},
         reporting::{to_type, NameReg},
         TypeWrapper, UnifTable,
     },
     types::AbsType,
 };
+
+use self::{
+    completed::Completed,
+    interface::{ResolutionState, TermKind, Unresolved, UsageState},
+};
+
+pub mod completed;
+pub mod interface;
+
+/// A recorded item of a given state of resolution state
+/// Tracks a unique id used to build a reference table after finalizing
+/// the linearization using the LSP [AnalysisHost]
+#[derive(Debug, Clone, PartialEq)]
+pub struct LinearizationItem<S: ResolutionState> {
+    //term_: Box<Term>,
+    pub id: usize,
+    pub pos: TermPos,
+    pub ty: S,
+    pub kind: TermKind,
+    pub scope: Vec<ScopeId>,
+    pub meta: Option<MetaValue>,
+}
 
 #[derive(Default)]
 pub struct BuildingResource {
@@ -311,6 +330,8 @@ impl AnalysisHost {
 }
 
 impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for AnalysisHost {
+    type Completed = Completed;
+
     fn add_term(
         &mut self,
         lin: &mut Linearization<Building<BuildingResource>>,
@@ -571,7 +592,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
 
         eprintln!("Linearized {:#?}", &lin_);
 
-        Linearization::completed(Completed {
+        Linearization::new(Completed {
             lin: lin_,
             id_mapping,
             scope_mapping: lin.state.resource.scope,
