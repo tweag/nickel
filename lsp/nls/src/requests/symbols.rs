@@ -22,7 +22,7 @@ pub fn handle_document_symbols(
     if let Some(completed) = server.lin_cache.get(&file_id) {
         Trace::enrich(&id, completed);
         let symbols = completed
-            .lin
+            .linearization
             .iter()
             .filter_map(|item| match &item.kind {
                 TermKind::Declaration(name, _) => {

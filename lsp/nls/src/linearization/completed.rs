@@ -9,22 +9,35 @@ use nickel::{
 };
 
 use super::{
+    building::ID,
     interface::{Resolved, TermKind, UsageState},
     LinearizationItem,
 };
 
 #[derive(Debug, Default)]
 pub struct Completed {
-    pub lin: Vec<LinearizationItem<Resolved>>,
-    pub id_mapping: HashMap<usize, usize>,
-    pub scope_mapping: HashMap<Vec<ScopeId>, Vec<usize>>,
+    pub linearization: Vec<LinearizationItem<Resolved>>,
+    scope: HashMap<Vec<ScopeId>, Vec<usize>>,
+    id_to_index: HashMap<ID, usize>,
 }
 
 impl Completed {
+    pub fn new(
+        linearization: Vec<LinearizationItem<Resolved>>,
+        scope: HashMap<Vec<ScopeId>, Vec<usize>>,
+        id_to_index: HashMap<ID, usize>,
+    ) -> Self {
+        Self {
+            linearization,
+            scope,
+            id_to_index,
+        }
+    }
+
     pub fn get_item(&self, id: usize) -> Option<&LinearizationItem<Resolved>> {
-        self.id_mapping
+        self.id_to_index
             .get(&id)
-            .and_then(|index| self.lin.get(*index))
+            .and_then(|index| self.linearization.get(*index))
     }
 
     pub fn get_in_scope(
@@ -35,11 +48,9 @@ impl Completed {
             .into_iter()
             .map(|end| &scope[..=end])
             .flat_map(|scope| {
-                eprintln!("in scope {:?}: {:?}", scope, self.scope_mapping.get(scope));
+                eprintln!("in scope {:?}: {:?}", scope, self.scope.get(scope));
 
-                self.scope_mapping
-                    .get(scope)
-                    .map_or_else(Vec::new, Clone::clone)
+                self.scope.get(scope).map_or_else(Vec::new, Clone::clone)
             })
             .map(|id| self.get_item(id))
             .flatten()
@@ -72,7 +83,7 @@ impl Completed {
         locator: (codespan::FileId, ByteIndex),
     ) -> Option<&LinearizationItem<Resolved>> {
         let (file_id, start) = locator;
-        let linearization = &self.lin;
+        let linearization = &self.linearization;
         let item = match linearization.binary_search_by_key(&locator, |item| match item.pos {
             TermPos::Original(span) | TermPos::Inherited(span) => (span.src_id, span.start),
             TermPos::None => unreachable!(),

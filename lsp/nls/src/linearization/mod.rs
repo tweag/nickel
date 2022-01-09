@@ -1,4 +1,4 @@
-use std::{collections::HashMap, mem};
+use std::collections::HashMap;
 
 use codespan::ByteIndex;
 use log::debug;
@@ -17,7 +17,7 @@ use nickel::{
 use self::{
     building::Building,
     completed::Completed,
-    interface::{ResolutionState, TermKind, Unresolved, UsageState},
+    interface::{ResolutionState, TermKind, UsageState},
 };
 
 pub mod building;
@@ -38,241 +38,6 @@ pub struct LinearizationItem<S: ResolutionState> {
     pub kind: TermKind,
     pub scope: Vec<ScopeId>,
     pub meta: Option<MetaValue>,
-}
-
-trait BuildingExt {
-    fn push(&mut self, item: LinearizationItem<Unresolved>);
-    fn add_usage(&mut self, decl: usize, usage: usize);
-    fn register_fields(
-        &mut self,
-        record_fields: &HashMap<Ident, RichTerm>,
-        record: usize,
-        scope: Vec<ScopeId>,
-        env: &mut Environment,
-    );
-    fn add_record_field(&mut self, record: usize, field: (Ident, usize));
-    fn resolve_reference<'a>(
-        &'a self,
-        item: &'a LinearizationItem<TypeWrapper>,
-    ) -> Option<&'a LinearizationItem<TypeWrapper>>;
-    fn resolve_record_references(&mut self, defers: Vec<(usize, usize, Ident)>);
-    fn id_gen(&self) -> IdGen;
-}
-
-impl BuildingExt for Building {
-    fn push(&mut self, item: LinearizationItem<Unresolved>) {
-        self.scope
-            .remove(&item.scope)
-            .map(|mut s| {
-                s.push(item.id);
-                s
-            })
-            .or_else(|| Some(vec![item.id]))
-            .into_iter()
-            .for_each(|l| {
-                self.scope.insert(item.scope.clone(), l);
-            });
-        self.linearization.push(item);
-    }
-
-    fn add_usage(&mut self, decl: usize, usage: usize) {
-        match self
-            .linearization
-            .get_mut(decl)
-            .expect("Could not find parent")
-            .kind
-        {
-            TermKind::Structure => unreachable!(),
-            TermKind::Usage(_) => unreachable!(),
-            TermKind::Record(_) => unreachable!(),
-            TermKind::Declaration(_, ref mut usages)
-            | TermKind::RecordField { ref mut usages, .. } => usages.push(usage),
-        };
-    }
-
-    fn register_fields(
-        &mut self,
-        record_fields: &HashMap<Ident, RichTerm>,
-        record: usize,
-        scope: Vec<ScopeId>,
-        env: &mut Environment,
-    ) {
-        for (ident, value) in record_fields.iter() {
-            let id = self.id_gen().get_and_advance();
-            self.push(LinearizationItem {
-                id,
-                pos: ident.pos,
-                // temporary, the actual type is resolved later and the item retyped
-                ty: TypeWrapper::Concrete(AbsType::Dyn()),
-                kind: TermKind::RecordField {
-                    record,
-                    ident: ident.clone(),
-                    usages: Vec::new(),
-                    value: None,
-                },
-                scope: scope.clone(),
-                meta: match value.term.as_ref() {
-                    Term::MetaValue(meta @ MetaValue { .. }) => Some(MetaValue {
-                        value: None,
-                        ..meta.clone()
-                    }),
-                    _ => None,
-                },
-            });
-            env.insert(ident.clone(), id);
-            self.add_record_field(record, (ident.clone(), id))
-        }
-    }
-
-    fn add_record_field(&mut self, record: usize, (field_ident, reference_id): (Ident, usize)) {
-        match self
-            .linearization
-            .get_mut(record)
-            .expect("Could not find record")
-            .kind
-        {
-            TermKind::Record(ref mut fields) => {
-                fields.insert(field_ident, reference_id);
-            }
-            _ => unreachable!(),
-        }
-    }
-
-    fn resolve_reference<'a>(
-        &'a self,
-        item: &'a LinearizationItem<TypeWrapper>,
-    ) -> Option<&'a LinearizationItem<TypeWrapper>> {
-        // if item is a usage, resolve the usage first
-        match item.kind {
-            TermKind::Usage(UsageState::Resolved(Some(pointed))) => self.linearization.get(pointed),
-            _ => Some(item),
-        }
-        // load referenced value, either from record field or declaration
-        .and_then(|item_pointer| {
-            match item_pointer.kind {
-                // if declaration is a record field, resolve its value
-                TermKind::RecordField { value, .. } => {
-                    debug!("parent referenced a record field {:?}", value);
-                    value
-                        // retrieve record
-                        .and_then(|value_index| self.linearization.get(value_index))
-                }
-                // if declaration is a let biding resolve its value
-                TermKind::Declaration(_, _) => self.linearization.get(item_pointer.id + 1),
-
-                // if something else was referenced, stop.
-                _ => Some(item_pointer),
-            }
-        })
-    }
-
-    fn resolve_record_references(&mut self, mut defers: Vec<(usize, usize, Ident)>) {
-        let mut unresolved: Vec<(usize, usize, Ident)> = Vec::new();
-
-        while let Some(deferred) = defers.pop() {
-            // child_item: current deferred usage item
-            //       i.e.: root.<child>
-            // parent_accessor_id: id of the parent usage
-            //               i.e.: <parent>.child
-            // child_ident: identifier the child item references
-            let (child_item, parent_accessor_id, child_ident) = &deferred;
-            // resolve the value referenced by the parent accessor element
-            // get the parent accessor, and read its resolved reference
-            let parent_referenced = self.linearization.get(*parent_accessor_id);
-
-            if let Some(LinearizationItem {
-                kind: TermKind::Usage(UsageState::Deferred { .. }),
-                ..
-            }) = parent_referenced
-            {
-                debug!("parent references deferred usage");
-                unresolved.push(deferred.clone());
-                continue;
-            }
-
-            // load the parent referenced declaration (i.e.: a declaration or record field term)
-            let parent_declaration = parent_referenced
-                .and_then(|parent_usage_value| self.resolve_reference(parent_usage_value));
-
-            if let Some(LinearizationItem {
-                kind: TermKind::Usage(UsageState::Deferred { .. }),
-                ..
-            }) = parent_declaration
-            {
-                debug!("parent references deferred usage");
-                unresolved.push(deferred.clone());
-                continue;
-            }
-
-            let referenced_declaration = parent_declaration
-                // resolve indirection by following the usage
-                .and_then(|parent_declaration| self.resolve_reference(parent_declaration))
-                // get record field
-                .and_then(|parent_declaration| match &parent_declaration.kind {
-                    TermKind::Record(fields) => {
-                        fields.get(child_ident).and_then(|child_declaration_id| {
-                            self.linearization.get(*child_declaration_id)
-                        })
-                    }
-                    _ => None,
-                });
-
-            let referenced_declaration =
-                referenced_declaration.and_then(|referenced| match referenced.kind {
-                    TermKind::Usage(UsageState::Resolved(Some(pointed))) => {
-                        self.linearization.get(pointed)
-                    }
-                    TermKind::RecordField { value, .. } => value
-                        // retrieve record
-                        .and_then(|value_index| self.linearization.get(value_index))
-                        // retrieve field
-                        .and_then(|record| match &record.kind {
-                            TermKind::Record(fields) => {
-                                debug!(
-                                    "parent referenced a nested record indirectly`: {:?}",
-                                    fields
-                                );
-                                fields
-                                    .get(child_ident)
-                                    .and_then(|accessor_id| self.linearization.get(*accessor_id))
-                            }
-                            TermKind::Usage(UsageState::Resolved(Some(pointed))) => {
-                                self.linearization.get(*pointed)
-                            }
-                            _ => None,
-                        })
-                        .or(Some(referenced)),
-
-                    _ => Some(referenced),
-                });
-
-            let referenced_id = referenced_declaration.map(|reference| reference.id);
-
-            debug!(
-                "Associating child {} to value {:?}",
-                child_ident, referenced_declaration
-            );
-
-            {
-                let child: &mut LinearizationItem<TypeWrapper> =
-                    self.linearization.get_mut(*child_item).unwrap();
-                child.kind = TermKind::Usage(UsageState::Resolved(referenced_id));
-            }
-
-            if let Some(referenced_id) = referenced_id {
-                self.add_usage(referenced_id, *child_item);
-            }
-
-            if defers.is_empty() && !unresolved.is_empty() {
-                debug!("unresolved references: {:?}", unresolved);
-                defers = mem::take(&mut unresolved);
-            }
-        }
-    }
-
-    fn id_gen(&self) -> IdGen {
-        IdGen::new(self.linearization.len())
-    }
 }
 
 /// [Linearizer] used by the LSP
@@ -573,11 +338,7 @@ impl Linearizer for AnalysisHost {
 
         eprintln!("Linearized {:#?}", &lin_);
 
-        Linearization::new(Completed {
-            lin: lin_,
-            id_mapping,
-            scope_mapping: scope,
-        })
+        Linearization::new(Completed::new(lin_, scope, id_mapping))
     }
 
     fn scope(&mut self, scope_id: ScopeId) -> Self {

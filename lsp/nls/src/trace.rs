@@ -229,7 +229,7 @@ pub mod param {
         fn enrich(id: &RequestId, param: &Completed) {
             Self::with_trace(|mut t| {
                 t.received.entry(id.to_owned()).and_modify(|item| {
-                    item.params.linearization_size = Some(param.lin.len());
+                    item.params.linearization_size = Some(param.linearization.len());
                 });
                 Ok(())
             })
