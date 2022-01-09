@@ -218,7 +218,7 @@ where
     }
 
     let lin = linearizer
-        .linearize(building, (table.clone(), names))
+        .complete(building, (table.clone(), names))
         .into_inner();
     Ok((to_type(&table, ty), lin))
 }

@@ -269,7 +269,7 @@ impl Linearizer for AnalysisHost {
     /// their location in the source.
     ///
     /// Additionally, resolves concrete types for all items.
-    fn linearize(
+    fn complete(
         self,
         mut lin: Linearization<Building>,
         (table, reported_names): (UnifTable, HashMap<usize, Ident>),

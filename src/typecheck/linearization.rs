@@ -26,7 +26,6 @@ use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 
 use super::TypeWrapper;
-use crate::environment::Environment as GenericEnvironment;
 use crate::{identifier::Ident, position::TermPos, term::Term};
 
 /// Holds the state of a linearization, either in progress or finalized
@@ -118,7 +117,7 @@ pub trait Linearizer {
     /// Defines how to turn a [Building] Linearization of the tracked type into
     /// a [Self::Completed] linearization.
     /// By default creates an entirely empty [Self::Completed] object
-    fn linearize(
+    fn complete(
         self,
         _lin: Linearization<Self::Building>,
         _extra: Self::CompletionExtra,
