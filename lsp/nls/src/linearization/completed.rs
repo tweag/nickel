@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use codespan::ByteIndex;
 use log::debug;
 use nickel::{
-    position::TermPos,
     term::MetaValue,
     typecheck::linearization::{LinearizationState, ScopeId},
 };
@@ -44,15 +43,13 @@ impl Completed {
         &self,
         LinearizationItem { scope, .. }: &LinearizationItem<Resolved>,
     ) -> Vec<&LinearizationItem<Resolved>> {
+        let empty = Vec::with_capacity(0);
         (0..scope.len())
-            .into_iter()
-            .map(|end| &scope[..=end])
-            .flat_map(|scope| {
+            .flat_map(|end| {
                 eprintln!("in scope {:?}: {:?}", scope, self.scope.get(scope));
-
-                self.scope.get(scope).map_or_else(Vec::new, Clone::clone)
+                self.scope.get(&scope[..=end]).unwrap_or(&empty)
             })
-            .map(|id| self.get_item(id))
+            .map(|id| self.get_item(*id))
             .flatten()
             .collect()
     }
@@ -84,43 +81,22 @@ impl Completed {
     ) -> Option<&LinearizationItem<Resolved>> {
         let (file_id, start) = locator;
         let linearization = &self.linearization;
-        let item = match linearization.binary_search_by_key(&locator, |item| match item.pos {
-            TermPos::Original(span) | TermPos::Inherited(span) => (span.src_id, span.start),
-            TermPos::None => unreachable!(),
-        }) {
+        let item = match linearization
+            .binary_search_by_key(&locator, |item| (item.pos.src_id, item.pos.start))
+        {
             // Found item(s) starting at `locator`
             // search for most precise element
             Ok(index) => linearization[index..]
                 .iter()
-                .enumerate()
-                .take_while(|(_, item)| {
-                    let pos = match item.pos {
-                        TermPos::Original(span) | TermPos::Inherited(span) => {
-                            (span.src_id, span.start)
-                        }
-                        TermPos::None => unreachable!(),
-                    };
-                    pos == (file_id, start)
-                })
-                .inspect(|(offset, item)| debug!("taken: {:?} @ {}", item, index + offset))
-                .map(|(_, item)| item)
+                .take_while(|item| (item.pos.src_id, item.pos.start) == (file_id, start))
                 .last(),
             // No perfect match found
             // iterate back finding the first wrapping linearization item
             Err(index) => {
                 linearization[..index].iter().rfold(None, |acc, item| {
-                    let pos = match item.pos {
-                        TermPos::Original(pos) | TermPos::Inherited(pos) => {
-                            Some((pos.start, pos.end, pos.src_id))
-                        }
-                        TermPos::None => None,
-                    };
                     // Returning the stored item directly ensures we return the first (reversly) found item
                     acc.or_else(|| {
-                        if pos == None {
-                            return None;
-                        }
-                        let (istart, iend, ifile) = pos.unwrap();
+                        let (istart, iend, ifile) = (item.pos.start, item.pos.end, item.pos.src_id);
 
                         debug!(
                             "{} < {} < {} in {:?} = {:?}",
