@@ -558,6 +558,27 @@ fn type_check_<S, E>(
     rt: &RichTerm,
     ty: TypeWrapper,
 ) -> Result<(), TypecheckError> {
+    use crate::destruct::*;
+    fn inject_pat_vars(pat: &Destruct, envs: &mut Envs) {
+        if let Destruct::Record(matches, _, rst) = pat {
+            if let Some(id) = rst {
+                envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
+            }
+            matches.iter().for_each(|m| match m {
+                Match::Simple(id, ..) => {
+                    envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()))
+                }
+                Match::Assign(_, _, (bind_id, pat)) => {
+                    if let Some(id) = bind_id {
+                        envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
+                    }
+                    if !pat.is_empty() {
+                        inject_pat_vars(pat, envs);
+                    }
+                }
+            });
+        }
+    }
     let RichTerm { term: t, pos } = rt;
     linearizer.add_term(lin, t, *pos, ty.clone());
 
@@ -607,6 +628,21 @@ fn type_check_<S, E>(
             envs.insert(x.clone(), src);
             type_check_(state, envs, lin, linearizer, strict, t, trg)
         }
+        Term::FunPattern(x, pat, t) => {
+            let src = TypeWrapper::Ptr(new_var(state.table));
+            // TODO what to do here, this makes more sense to me, but it means let x = foo in bar
+            // behaves quite different to (\x.bar) foo, worth considering if it's ok to type these two differently
+            // let src = TypeWrapper::The(AbsType::Dyn());
+            let trg = TypeWrapper::Ptr(new_var(state.table));
+            let arr = mk_tyw_arrow!(src.clone(), trg.clone());
+            if let Some(x) = x {
+                linearizer.retype_ident(lin, x, src.clone());
+                envs.insert(x.clone(), src);
+                inject_pat_vars(pat, &mut envs);
+            }
+            unify(state, strict, ty, arr).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+            type_check_(state, envs, lin, linearizer, strict, t, trg)
+        }
         Term::List(terms) => {
             let ty_elts = TypeWrapper::Ptr(new_var(state.table));
 
@@ -651,27 +687,6 @@ fn type_check_<S, E>(
             type_check_(state, envs, lin, linearizer, strict, rt, ty)
         }
         Term::LetPattern(x, pat, re, _rt) => {
-            use crate::destruct::*;
-            fn inject_pat_vars(pat: &Destruct, envs: &mut Envs) {
-                if let Destruct::Record(matches, _, rst) = pat {
-                    if let Some(id) = rst {
-                        envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
-                    }
-                    matches.iter().for_each(|m| match m {
-                        Match::Simple(id, ..) => {
-                            envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()))
-                        }
-                        Match::Assign(_, _, (bind_id, pat)) => {
-                            if let Some(id) = bind_id {
-                                envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
-                            }
-                            if !pat.is_empty() {
-                                inject_pat_vars(pat, envs);
-                            }
-                        }
-                    });
-                }
-            }
             let ty_let = binding_type(re.as_ref(), &envs, state.table, strict, state.resolver);
             type_check_(
                 state,

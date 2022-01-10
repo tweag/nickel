@@ -24,6 +24,7 @@ pub fn transform(rt: RichTerm) -> RichTerm {
             &mut |rt: RichTerm, _| -> Result<RichTerm, ()> {
                 // before anything, we have to desugar the syntax
                 let rt = desugar_destructuring::desugar_with_contract(rt);
+                let rt = desugar_destructuring::desugar_fun_pat(rt);
                 // We need to do contract generation before wrapping stuff in variables
                 let rt = apply_contracts::transform_one(rt);
                 Ok(rt)

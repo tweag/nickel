@@ -24,6 +24,24 @@ use crate::term::{
     BinaryOp::DynRemove, BindingType, MetaValue, RichTerm, Term, UnaryOp::StaticAccess,
 };
 
+pub fn transform_one(rt: RichTerm) -> RichTerm {
+    match *rt.term {
+        Term::LetPattern(..) => desugar_with_contract(rt),
+        Term::FunPattern(..) => desugar_fun_pat(rt),
+        _ => rt,
+    }
+}
+
+pub fn desugar_fun_pat(rt: RichTerm) -> RichTerm {
+    if let Term::FunPattern(x, pat, t_) = *rt.term {
+        let x = x.unwrap_or_else(super::fresh_var);
+        let t_ = destruct_term(x.clone(), &pat, bind_open_field(x.clone(), &pat, t_));
+        RichTerm::new(Term::Fun(x, desugar_fun_pat(t_)), rt.pos)
+    } else {
+        rt
+    }
+}
+
 /// Wrap the desugar term in a meta value containing the "Record contract" needed to check the
 /// pattern exhaustively and also fill the default values (`?` operator) if not presents in the
 /// record. This function should be, in the general case, considered as the entry point of this
