@@ -1754,8 +1754,7 @@ fn process_binary_operation(
                     Err(EvalError::Other(format!("elemAt: index out of bounds. Expected a value between 0 and {}, got {}", ts.len(), n), pos_op))
                 } else {
                     Ok(Closure {
-                        // SAFETY: bound checking done in the previous step
-                        body: unsafe { ts.get_unchecked(n_int).clone() },
+                        body: ts[n_int].clone(),
                         env: env1,
                     })
                 }
@@ -2183,7 +2182,7 @@ fn process_nary_operation(
                     } else {
                         Ok(Closure::atomic_closure(RichTerm::new(
                             // SAFETY: checked already that we have correct range for utf-8 string
-                            Term::Str(String::from(unsafe { s.get_unchecked(start_int..end_int) })),
+                            Term::Str(s[start_int..end_int].to_owned()),
                             pos_op_inh,
                         )))
                     }
