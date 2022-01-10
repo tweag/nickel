@@ -4,7 +4,7 @@
       let l = lists.generate (fun _n => "a") n in
       lists.foldl (fun x y => x ++ y) "" l in
     let makeRecStep = fun state k =>
-      let name = state.prevName ++ (strings.fromNum k) in
+      let name = state.prevName ++ (strings.from_num k) in
       {
         value = state.value & {"#{name}" = {}},
         prevName = name,
