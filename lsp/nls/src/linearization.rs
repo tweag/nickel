@@ -425,7 +425,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                     }
                 }
             }
-            Term::Record(fields, _) | Term::RecRecord(fields, _, _) => {
+            Term::Record(fields, _) | Term::RecRecord(fields, _, _, _) => {
                 lin.push(LinearizationItem {
                     id,
                     pos,
