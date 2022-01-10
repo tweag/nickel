@@ -838,7 +838,7 @@ where
                         env,
                     } = update_closure;
 
-                    match term.as_value() {
+                    match term.into_owned() {
                         Term::MetaValue(MetaValue {
                             value: Some(inner), ..
                         }) => Closure { body: inner, env },
@@ -935,7 +935,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
         bound: Cow<HashSet<Ident>>,
     ) -> RichTerm {
         let RichTerm { term, pos } = rt;
-        match term.as_value() {
+        match term.into_owned() {
             Term::Var(id) if !bound.as_ref().contains(&id) => env
                 .get(&id)
                 .or_else(|| global_env.get(&id))

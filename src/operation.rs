@@ -315,7 +315,7 @@ fn process_unary_operation(
                     env: cases_env,
                 } = cases_closure;
 
-                let mut cases = match cases_term.as_value() {
+                let mut cases = match cases_term.into_owned() {
                     Term::Record(map, _) => map,
                     _ => panic!("invalid argument for switch"),
                 };
@@ -661,7 +661,7 @@ fn process_unary_operation(
                 Closure { body, env }
             }
 
-            match t.as_value() {
+            match t.into_owned() {
                 Term::Record(map, _) if !map.is_empty() => {
                     let terms = map.into_iter().map(|(_, t)| t);
                     Ok(seq_terms(terms, env, pos_op))
@@ -1279,7 +1279,7 @@ fn process_binary_operation(
                 // Return a function that either behaves like the identity or
                 // const unwrapped_term
 
-                Ok(if let Term::Wrapped(s2, t) = t2.as_value() {
+                Ok(if let Term::Wrapped(s2, t) = t2.into_owned() {
                     if *s1 == s2 {
                         Closure {
                             body: mk_fun!("-invld", t),
@@ -2330,7 +2330,7 @@ fn eq(env: &mut Environment, c1: Closure, c2: Closure) -> EqResult {
         }
     }
 
-    match (t1.as_value(), t2.as_value()) {
+    match (t1.into_owned(), t2.into_owned()) {
         (Term::Null, Term::Null) => EqResult::Bool(true),
         (Term::Bool(b1), Term::Bool(b2)) => EqResult::Bool(b1 == b2),
         (Term::Num(n1), Term::Num(n2)) => EqResult::Bool(n1 == n2),

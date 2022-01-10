@@ -577,7 +577,7 @@ impl SharedTerm {
         }
     }
 
-    pub fn as_value(self) -> Term {
+    pub fn into_owned(self) -> Term {
         Rc::try_unwrap(self.term).unwrap_or_else(|rc| Term::clone(&rc))
     }
 }
@@ -596,7 +596,7 @@ impl AsMut<Term> for SharedTerm {
 
 impl From<SharedTerm> for Term {
     fn from(st: SharedTerm) -> Self {
-        st.as_value()
+        st.into_owned()
     }
 }
 
@@ -1154,7 +1154,7 @@ impl RichTerm {
 
 impl From<RichTerm> for Term {
     fn from(rt: RichTerm) -> Self {
-        rt.term.as_value()
+        rt.term.into_owned()
     }
 }
 
@@ -1181,7 +1181,7 @@ impl From<Term> for RichTerm {
 /// # use nickel::term::{RichTerm, Term};
 /// let rt = RichTerm::from(Term::Num(5.0));
 ///
-/// match rt.term.as_value() {
+/// match rt.term.into_owned() {
 ///     Term::Num(x) => x as usize,
 ///     Term::Str(s) => s.len(),
 ///     _ => 42,

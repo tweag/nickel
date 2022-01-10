@@ -118,7 +118,7 @@ pub fn merge(
         pos: pos2,
     } = t2;
 
-    match (t1.as_value(), t2.as_value()) {
+    match (t1.into_owned(), t2.into_owned()) {
         // Merge is idempotent on basic terms
         (Term::Bool(b1), Term::Bool(b2)) => {
             if b1 == b2 {

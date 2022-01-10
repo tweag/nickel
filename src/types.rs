@@ -433,7 +433,7 @@ mod test {
             .parse_term(id, Lexer::new(&wrapper))
             .unwrap();
 
-        match rt.term.as_value() {
+        match rt.term.into_owned() {
             Term::MetaValue(MetaValue { mut contracts, .. }) if contracts.len() == 1 => {
                 contracts.remove(0).types
             }
