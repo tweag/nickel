@@ -4,7 +4,7 @@ use nickel::program::Program;
 use nickel::repl::query_print;
 #[cfg(feature = "repl")]
 use nickel::repl::rustyline_frontend;
-use nickel::term::RichTerm;
+use nickel::term::{RichTerm, Term};
 use nickel::{serialize, serialize::ExportFormat};
 use std::path::PathBuf;
 use std::{fs, process};
@@ -53,7 +53,7 @@ enum Command {
     /// Typecheck a program, but do not run it
     Typecheck,
     /// Start an REPL session
-    REPL {
+    Repl {
         #[structopt(long)]
         history_file: Option<PathBuf>,
     },
@@ -62,7 +62,7 @@ enum Command {
 fn main() {
     let opts = Opt::from_args();
 
-    if let Some(Command::REPL { history_file }) = opts.command {
+    if let Some(Command::Repl { history_file }) = opts.command {
         let histfile = if let Some(h) = history_file {
             h
         } else {
@@ -116,8 +116,10 @@ fn main() {
                 })
             }
             Some(Command::Typecheck) => program.typecheck().map(|_| ()),
-            Some(Command::REPL { .. }) => unreachable!(),
-            None => program.eval().map(|t| println!("Done: {:?}", t)),
+            Some(Command::Repl { .. }) => unreachable!(),
+            None => program
+                .eval_full()
+                .map(|t| println!("{}", Term::from(t).deep_repr())),
         };
 
         if let Err(err) = result {

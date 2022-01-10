@@ -1,4 +1,4 @@
-//! Native terminal implementation of an REPL frontend using rustyline.
+//! Native terminal implementation of a REPL frontend using rustyline.
 use std::path::PathBuf;
 
 use super::command::Command;
@@ -21,7 +21,7 @@ pub fn config() -> Config {
 
 /// Main loop of the REPL.
 pub fn repl(histfile: PathBuf) -> Result<(), InitError> {
-    let mut repl = REPLImpl::new();
+    let mut repl = ReplImpl::new();
 
     match repl.load_stdlib() {
         Ok(()) => (),
@@ -78,7 +78,7 @@ pub fn repl(histfile: PathBuf) -> Result<(), InitError> {
                     }),
                     Ok(Command::Print(exp)) => {
                         match repl.eval_full(&exp) {
-                            Ok(EvalResult::Evaluated(t)) => println!("{}\n", t.deep_repr()),
+                            Ok(EvalResult::Evaluated(rt)) => println!("{}\n", rt.as_ref().deep_repr()),
                             Ok(EvalResult::Bound(_)) => (),
                             Err(err) => program::report(repl.cache_mut(), err),
                         };
@@ -102,8 +102,8 @@ pub fn repl(histfile: PathBuf) -> Result<(), InitError> {
                 }
             }
             Ok(line) => {
-                match repl.eval(&line) {
-                    Ok(EvalResult::Evaluated(t)) => println!("{}\n", t.shallow_repr()),
+                match repl.eval_full(&line) {
+                    Ok(EvalResult::Evaluated(rt)) => println!("{}\n", rt.as_ref().deep_repr()),
                     Ok(EvalResult::Bound(_)) => (),
                     Err(err) => program::report(repl.cache_mut(), err),
                 };

@@ -2,14 +2,14 @@ let Assert = fun l x => x || %blame% l in
 
 let assertSerInv = fun x =>
     let assertAux = fun format x =>
-      %deserialize% format (%serialize% format (%deepSeq% x x)) == x in
+      %deserialize% format (%serialize% format (%deep_seq% x x)) == x in
     assertAux `Json x &&
     assertAux `Yaml x &&
     assertAux `Toml x in
 
 let assertDeserInv = fun x =>
     let assertAux = fun format x =>
-      let s = %serialize% format (%deepSeq% x x) in
+      let s = %serialize% format (%deep_seq% x x) in
       %serialize% format (%deserialize% format s) == s in
     assertAux `Json x &&
     assertAux `Yaml x &&

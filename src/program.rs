@@ -78,15 +78,21 @@ impl Program {
     }
 
     /// Parse if necessary, typecheck and then evaluate the program.
-    pub fn eval(&mut self) -> Result<Term, Error> {
+    pub fn eval(&mut self) -> Result<RichTerm, Error> {
         let (t, global_env) = self.prepare_eval()?;
         eval::eval(t, &global_env, &mut self.cache).map_err(|e| e.into())
     }
 
     /// Same as `eval`, but proceeds to a full evaluation.
-    pub fn eval_full(&mut self) -> Result<Term, Error> {
+    pub fn eval_full(&mut self) -> Result<RichTerm, Error> {
         let (t, global_env) = self.prepare_eval()?;
         eval::eval_full(t, &global_env, &mut self.cache).map_err(|e| e.into())
+    }
+
+    /// Same as `eval_full`, but does not substitute all variables.
+    pub fn eval_deep(&mut self) -> Result<RichTerm, Error> {
+        let (t, global_env) = self.prepare_eval()?;
+        eval::eval_deep(t, &global_env, &mut self.cache).map_err(|e| e.into())
     }
 
     /// Wrapper for [`query`](./fn.query.html).
@@ -136,7 +142,7 @@ impl Program {
 //TODO: also gather type information, such that `query a.b.c <<< '{ ... } : {a: {b: {c: Num}}}`
 //would additionally report `type: Num` for example.
 //TODO: not sure where this should go. It seems to embed too much logic to be in `Cache`, but is
-//common to both `Program` and `REPL`. Leaving it here as a stand-alone function for now
+//common to both `Program` and `Repl`. Leaving it here as a stand-alone function for now
 pub fn query(
     cache: &mut Cache,
     file_id: FileId,
@@ -167,7 +173,7 @@ pub fn query(
         cache.get_owned(file_id).unwrap()
     };
 
-    Ok(eval::eval_meta(t, &global_env.eval_env, cache)?)
+    Ok(eval::eval_meta(t, &global_env.eval_env, cache)?.into())
 }
 
 /// Pretty-print an error.
@@ -175,7 +181,7 @@ pub fn query(
 /// This function is located here in `Program` because errors need a reference to `files` in
 /// order to produce a diagnostic (see [`label_alt`](../error/fn.label_alt.html)).
 //TODO: not sure where this should go. It seems to embed too much logic to be in `Cache`, but is
-//common to both `Program` and `REPL`. Leaving it here as a stand-alone function for now
+//common to both `Program` and `Repl`. Leaving it here as a stand-alone function for now
 pub fn report<E>(cache: &mut Cache, error: E)
 where
     E: ToDiagnostic<FileId>,
@@ -212,15 +218,12 @@ mod tests {
 
         grammar::TermParser::new()
             .parse_term(id, lexer::Lexer::new(&s))
-            .map(|mut t| {
-                t.clean_pos();
-                t
-            })
+            .map(RichTerm::without_pos)
             .map_err(|err| println!("{:?}", err))
             .ok()
     }
 
-    fn eval_full(s: &str) -> Result<Term, Error> {
+    fn eval_full(s: &str) -> Result<RichTerm, Error> {
         let src = Cursor::new(s);
 
         let mut p = Program::new_from_source(src, "<test>").map_err(|io_err| {
@@ -237,14 +240,7 @@ mod tests {
         use crate::mk_record;
         use crate::term::make as mk_term;
 
-        // Clean all the position information in a term.
-        fn clean_pos(t: Term) -> Term {
-            let mut tmp = RichTerm::new(t, TermPos::None);
-            tmp.clean_pos();
-            tmp.term.into_owned()
-        }
-
-        let t = clean_pos(eval_full("[(1 + 1), (\"a\" ++ \"b\"), ([ 1, [1 + 2] ])]").unwrap());
+        let t = eval_full("[(1 + 1), (\"a\" ++ \"b\"), ([ 1, [1 + 2] ])]").unwrap();
         let mut expd = parse("[2, \"ab\", [1, [3]]]").unwrap();
 
         // String are parsed as StrChunks, but evaluated to Str, so we need to hack list a bit
@@ -254,17 +250,15 @@ mod tests {
             panic!();
         }
 
-        assert_eq!(t, *expd.term);
+        assert_eq!(t.without_pos(), expd.without_pos());
 
-        let t = clean_pos(
-            eval_full("let x = 1 in let y = 1 + x in let z = {foo.bar.baz = y} in z").unwrap(),
-        );
+        let t = eval_full("let x = 1 in let y = 1 + x in let z = {foo.bar.baz = y} in z").unwrap();
         // Records are parsed as RecRecords, so we need to build one by hand
         let expd = mk_record!((
             "foo",
             mk_record!(("bar", mk_record!(("baz", Term::Num(2.0)))))
         ));
-        assert_eq!(t, *expd.term);
+        assert_eq!(t.without_pos(), expd);
 
         // /!\ [MAY OVERFLOW STACK]
         // Check that substitution do not replace bound variables. Before the fixing commit, this

@@ -38,7 +38,7 @@ pub fn handle_document_symbols(
                     // `deprecated` is a required field but causes a warning although we are not using it
                     #[allow(deprecated)]
                     Some(DocumentSymbol {
-                        name: name.0.to_owned(),
+                        name: name.to_string(),
                         detail: Some(format!("{}", item.ty)),
                         kind: SymbolKind::Variable,
                         tags: None,

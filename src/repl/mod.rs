@@ -7,12 +7,13 @@
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
 use crate::cache::{Cache, GlobalEnv};
-use crate::error::{Error, EvalError, IOError, ParseError, ParseErrors, REPLError};
+use crate::error::{Error, EvalError, IOError, ParseError, ParseErrors, ReplError};
 use crate::identifier::Ident;
 use crate::parser::{grammar, lexer, ExtendedTerm};
 use crate::term::{RichTerm, Term};
+use crate::transform::import_resolution;
 use crate::types::Types;
-use crate::{eval, transformations, typecheck};
+use crate::{eval, transform, typecheck};
 use codespan::FileId;
 use simple_counter::*;
 use std::ffi::{OsStr, OsString};
@@ -37,19 +38,19 @@ pub mod wasm_frontend;
 /// Result of the evaluation of an input.
 pub enum EvalResult {
     /// The input has been evaluated to a term.
-    Evaluated(Term),
+    Evaluated(RichTerm),
     /// The input was a toplevel let, which has been bound in the environment.
     Bound(Ident),
 }
 
-impl From<Term> for EvalResult {
-    fn from(t: Term) -> Self {
+impl From<RichTerm> for EvalResult {
+    fn from(t: RichTerm) -> Self {
         EvalResult::Evaluated(t)
     }
 }
 
 /// Interface of the REPL backend.
-pub trait REPL {
+pub trait Repl {
     /// Evaluate an expression, which can be either a standard term or a toplevel let-binding.
     fn eval(&mut self, exp: &str) -> Result<EvalResult, Error>;
     /// Fully evaluate an expression, which can be either a standard term or a toplevel let-binding.
@@ -65,7 +66,7 @@ pub trait REPL {
 }
 
 /// Standard implementation of the REPL backend.
-pub struct REPLImpl {
+pub struct ReplImpl {
     /// The underlying cache, storing input, loaded files and parsed terms.
     cache: Cache,
     /// The parser, supporting toplevel let declaration.
@@ -78,10 +79,10 @@ pub struct REPLImpl {
     init_type_env: typecheck::Environment,
 }
 
-impl REPLImpl {
+impl ReplImpl {
     /// Create a new empty REPL.
     pub fn new() -> Self {
-        REPLImpl {
+        ReplImpl {
             cache: Cache::new(),
             parser: grammar::ExtendedTermParser::new(),
             env: GlobalEnv::new(),
@@ -121,7 +122,7 @@ impl REPLImpl {
             // Because we don't use the cache for input, we have to perform recursive import
             // resolution/typechecking/transformation by oursleves.
             ExtendedTerm::RichTerm(t) => {
-                let (t, pending) = transformations::resolve_imports(t, &mut self.cache)?;
+                let (t, pending) = import_resolution::resolve_imports(t, &mut self.cache)?;
                 for id in &pending {
                     self.cache.resolve_imports(*id).unwrap();
                 }
@@ -135,7 +136,7 @@ impl REPLImpl {
                         })?;
                 }
 
-                let t = transformations::transform(t);
+                let t = transform::transform(t);
                 for id in &pending {
                     self.cache
                         .transform(*id)
@@ -145,13 +146,13 @@ impl REPLImpl {
                 Ok(eval_function(t, &self.env.eval_env, &mut self.cache)?.into())
             }
             ExtendedTerm::ToplevelLet(id, t) => {
-                let (t, pending) = transformations::resolve_imports(t, &mut self.cache)?;
+                let (t, pending) = import_resolution::resolve_imports(t, &mut self.cache)?;
                 for id in &pending {
                     self.cache.resolve_imports(*id).unwrap();
                 }
 
                 typecheck::type_check_in_env(&t, &self.env.type_env, &self.cache)?;
-                typecheck::Envs::env_add(&mut self.env.type_env, id.clone(), &t);
+                typecheck::Envs::env_add(&mut self.env.type_env, id.clone(), &t, &self.cache);
                 for id in &pending {
                     self.cache
                         .typecheck(*id, &self.init_type_env)
@@ -160,7 +161,7 @@ impl REPLImpl {
                         })?;
                 }
 
-                let t = transformations::transform(t);
+                let t = transform::transform(t);
                 for id in &pending {
                     self.cache
                         .transform(*id)
@@ -175,7 +176,7 @@ impl REPLImpl {
     }
 }
 
-impl REPL for REPLImpl {
+impl Repl for ReplImpl {
     fn eval(&mut self, exp: &str) -> Result<EvalResult, Error> {
         self.eval_(exp, false)
     }
@@ -207,11 +208,11 @@ impl REPL for REPLImpl {
         })?;
 
         let term = self.cache.get_owned(file_id).unwrap();
-        let (term, pending) = transformations::resolve_imports(term, &mut self.cache)?;
+        let (term, pending) = import_resolution::resolve_imports(term, &mut self.cache)?;
         for id in &pending {
             self.cache.resolve_imports(*id).unwrap();
         }
-        typecheck::Envs::env_add_term(&mut self.env.type_env, &term).unwrap();
+        typecheck::Envs::env_add_term(&mut self.env.type_env, &term, &self.cache).unwrap();
         eval::env_add_term(&mut self.env.eval_env, term.clone()).unwrap();
 
         Ok(term)
@@ -221,7 +222,7 @@ impl REPL for REPLImpl {
         let file_id = self.cache.add_tmp("<repl-typecheck>", String::from(exp));
         // We ignore non fatal errors while type checking.
         let (term, _) = self.cache.parse_nocache(file_id)?;
-        let (term, pending) = transformations::resolve_imports(term, &mut self.cache)?;
+        let (term, pending) = import_resolution::resolve_imports(term, &mut self.cache)?;
         for id in &pending {
             self.cache.resolve_imports(*id).unwrap();
         }
@@ -230,6 +231,7 @@ impl REPL for REPLImpl {
         Ok(typecheck::apparent_type(
             term.as_ref(),
             Some(&typecheck::Envs::from_global(&self.env.type_env)),
+            Some(&self.cache),
         )
         .into())
     }

@@ -112,7 +112,7 @@ let typecheck = [
   (fun l => %head% l) : forall a. List a -> a,
   (fun f l => %map% l f) : forall a b. (a -> b) -> List a -> List b,
   (fun l1 => fun l2 => l1 @ l2) : forall a. List a -> List a -> List a,
-  (fun i l => %elemAt% l i) : forall a. Num -> List a -> a,
+  (fun i l => %elem_at% l i) : forall a. Num -> List a -> a,
 
   // recursive_records
   {a : Num = 1, b = a + 1} : {a : Num, b : Num},
@@ -120,7 +120,7 @@ let typecheck = [
   {a : Num = 1 + a} : {a : Num},
 
   // let_inference
-  (let x = 1 + 2 in let f = fun x => x + 1 in f x) : Num, 
+  (let x = 1 + 2 in let f = fun x => x + 1 in f x) : Num,
   // (let x = 1 + 2 in let f = fun x => x ++ "a" in f x) : Num,
   {a = 1, b = 1 + a} : {a : Num, b : Num},
   {f = fun x => if x == 0 then 1 else 1 + (f (x + (-1))),}
@@ -167,6 +167,10 @@ let typecheck = [
 
   // Typed import
   import "typed-import.ncl" : Num,
+
+  // Regression test for #430 (https://github.com/tweag/nickel/issues/430)
+  let x = import "typed-import.ncl"
+  in x : Num,
 
   // recursive_records_quoted
   {"foo" = 1} : {foo : Num},

@@ -5,9 +5,10 @@ use crate::parser::lexer::Lexer;
 use crate::position::TermPos;
 use crate::stdlib as nickel_stdlib;
 use crate::term::{RichTerm, SharedTerm, Term};
+use crate::transform::import_resolution;
 use crate::typecheck;
 use crate::typecheck::{linearization::StubHost, type_check};
-use crate::{eval, parser, transformations};
+use crate::{eval, parser, transform};
 use codespan::{FileId, Files};
 use io::Read;
 use std::collections::hash_map;
@@ -384,7 +385,7 @@ impl Cache {
         match format {
             InputFormat::Nickel => {
                 let (t, parse_errs) = parser::grammar::TermParser::new()
-                    .parse_term_tolerant(file_id, Lexer::new(&buf))?;
+                    .parse_term_tolerant(file_id, Lexer::new(buf))?;
 
                 Ok((t, parse_errs))
             }
@@ -443,7 +444,7 @@ impl Cache {
                     let CachedTerm {
                         term, parse_errs, ..
                     } = self.terms.remove(&file_id).unwrap();
-                    let term = transformations::transform(term);
+                    let term = transform::transform(term);
                     self.terms.insert(
                         file_id,
                         CachedTerm {
@@ -500,23 +501,20 @@ impl Cache {
                         Term::Record(ref mut map, _) => {
                             let map_res = std::mem::take(map)
                                 .into_iter()
-                                .map(|(id, t)| (id, transformations::transform(t)))
+                                .map(|(id, t)| (id, transform::transform(t)))
                                 .collect();
                             *map = map_res;
                         }
                         Term::RecRecord(ref mut map, ref mut dyn_fields, _) => {
                             let map_res = std::mem::take(map)
                                 .into_iter()
-                                .map(|(id, t)| (id, transformations::transform(t)))
+                                .map(|(id, t)| (id, transform::transform(t)))
                                 .collect();
 
                             let dyn_fields_res = std::mem::take(dyn_fields)
                                 .into_iter()
                                 .map(|(id_t, t)| {
-                                    (
-                                        transformations::transform(id_t),
-                                        transformations::transform(t),
-                                    )
+                                    (transform::transform(id_t), transform::transform(t))
                                 })
                                 .collect();
 
@@ -564,7 +562,7 @@ impl Cache {
                     let CachedTerm {
                         term, parse_errs, ..
                     } = self.terms.remove(&file_id).unwrap();
-                    let (term, pending) = transformations::resolve_imports(term, self)?;
+                    let (term, pending) = import_resolution::resolve_imports(term, self)?;
                     self.terms.insert(
                         file_id,
                         CachedTerm {
@@ -602,8 +600,12 @@ impl Cache {
     ) -> Result<CacheOp<()>, Error> {
         let mut result = CacheOp::Cached(());
 
-        if self.parse(file_id)? == CacheOp::Done(ParseErrors::default()) {
-            result = CacheOp::Done(());
+        match self.parse(file_id)? {
+            CacheOp::Done(e) | CacheOp::Cached(e) if !e.no_errors() => return Err(e.into()),
+            CacheOp::Done(_) => {
+                result = CacheOp::Done(());
+            }
+            _ => {}
         };
 
         let import_res = self.resolve_imports(file_id).map_err(|cache_err| {
@@ -649,9 +651,9 @@ impl Cache {
         if errs.no_errors() {
             return Err(Error::ParseErrors(errs));
         }
-        let (term, pending) = transformations::resolve_imports(term, self)?;
+        let (term, pending) = import_resolution::resolve_imports(term, self)?;
         type_check(&term, global_env, self, StubHost::<(), _>::new())?;
-        let term = transformations::transform(term);
+        let term = transform::transform(term);
         Ok((term, pending))
     }
 
@@ -755,9 +757,12 @@ impl Cache {
             .map(|(name, content)| self.add_string(OsString::from(name), String::from(content)))
             .collect();
 
-        file_ids
-            .iter()
-            .try_for_each(|file_id| self.parse(*file_id).map(|_| ()))?;
+        for file_id in file_ids.iter() {
+            let errs = self.parse(*file_id)?.inner();
+            if !errs.no_errors() {
+                return Err(errs.into());
+            }
+        }
         self.stdlib_ids.replace(file_ids);
         Ok(CacheOp::Done(()))
     }
@@ -1043,8 +1048,8 @@ pub mod resolvers {
             if let hash_map::Entry::Vacant(e) = self.term_cache.entry(file_id) {
                 let buf = self.files.source(file_id);
                 let term = parser::grammar::TermParser::new()
-                    .parse_term(file_id, Lexer::new(&buf))
-                    .map_err(|e| ImportError::ParseErrors(e.into(), *pos))?;
+                    .parse_term(file_id, Lexer::new(buf))
+                    .map_err(|e| ImportError::ParseErrors(e, *pos))?;
                 e.insert(term);
                 Ok((
                     ResolvedTerm::FromFile {

@@ -154,7 +154,15 @@
               # Wasm-pack requires to change the crate type. Cargo doesn't yet
               # support having different crate types depending on the target, so
               # we switch there
-              printf '\n[lib]\ncrate-type = ["cdylib", "rlib"]' >> Cargo.toml
+              sed -i 's/\[lib\]/[lib]\ncrate-type = ["cdylib", "rlib"]/' Cargo.toml
+
+              # This is a hack to prevent the fs2 crate from being compiled on wasm.
+              # This may be able to be removed once one or more of these issues are resolved:
+              # https://github.com/bheisler/criterion.rs/issues/461
+              # https://github.com/rust-lang/cargo/issues/1596
+              # https://github.com/rust-lang/cargo/issues/1197
+              # https://github.com/rust-lang/cargo/issues/5777
+              sed -i '/utilities/d' Cargo.toml
             '';
 
           buildPhase =
@@ -226,6 +234,25 @@
             echo "WORKS" > $out
           '';
         };
+
+      buildNlsVSIX = { system }:
+        let pkgs = mkPkgs { inherit system; };
+          node-package = (pkgs.callPackage ./lsp/client-extension {}).package ;
+          vsix = node-package.override rec {
+            pname = "nls-client";
+            outputs = [ "vsix" "out" ];
+            nativeBuildInputs =  with pkgs; [
+              nodePackages.typescript
+              # Required by `keytar`, which is a dependency of `vsce`.
+              pkg-config libsecret 
+            ];
+            postInstall = ''
+              npm run compile
+              mkdir -p $vsix
+              echo y | npx vsce package -o $vsix/${pname}.vsix
+            '';
+          };
+        in vsix.vsix;
 
       buildDevShell = { system, channel ? "stable" }:
       let
@@ -324,6 +351,7 @@
         build = buildNickel { inherit system; };
         buildWasm = buildNickelWASM { inherit system; optimize = true; };
         dockerImage = buildDocker { inherit system; };
+        vscodeExtension = buildNlsVSIX { inherit system; };
       });
 
       checks = forAllSystems (system:

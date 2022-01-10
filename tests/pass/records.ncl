@@ -13,19 +13,19 @@ let Assert = fun l x => x || %blame% l in
   ({bar = 3}$["foo" = true]).foo == true,
 
   // primitive_ops
-  records.hasField "foo" {foo = 1, bar = 2},
-  records.hasField "fop" {foo = 1, bar = 2} == false,
-  records.hasField "foo" ({foo = 2, bar = 3} -$ "foo")
+  records.has_field "foo" {foo = 1, bar = 2},
+  records.has_field "fop" {foo = 1, bar = 2} == false,
+  records.has_field "foo" ({foo = 2, bar = 3} -$ "foo")
     == false,
 
-  records.hasField "foo" ({bar = 3}$["foo" = 1]),
+  records.has_field "foo" ({bar = 3}$["foo" = 1]),
 
   // lazyness of map
   (records.map (fun x y => y + 1) {foo = 1, bar = "it's lazy"}).foo
     == 2,
 
   let r = records.map
-      (fun y x => if %isNum% x then x + 1 else 0)
+      (fun y x => if %is_num% x then x + 1 else 0)
       {foo = 1, bar = "it's lazy"} in
     (r.foo) + (r.bar) == 2,
 

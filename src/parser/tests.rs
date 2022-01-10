@@ -18,9 +18,7 @@ fn parse(s: &str) -> Result<RichTerm, ParseError> {
 }
 
 fn parse_without_pos(s: &str) -> RichTerm {
-    let mut result = parse(s).unwrap();
-    result.clean_pos();
-    result
+    parse(s).unwrap().without_pos()
 }
 
 fn lex(s: &str) -> Result<Vec<(usize, Token, usize)>, InternalParseError> {
@@ -139,11 +137,11 @@ fn lets() {
 #[test]
 fn unary_op() {
     assert_eq!(
-        parse_without_pos("%isNum% x"),
+        parse_without_pos("%is_num% x"),
         mk_term::op1(UnaryOp::IsNum(), mk_term::var("x"))
     );
     assert_eq!(
-        parse_without_pos("%isNum% x y"),
+        parse_without_pos("%is_num% x y"),
         mk_app!(
             mk_term::op1(UnaryOp::IsNum(), mk_term::var("x")),
             mk_term::var("y")

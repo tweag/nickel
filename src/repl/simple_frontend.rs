@@ -29,14 +29,14 @@ impl From<Error> for InputError {
 }
 
 /// Return a new instance of an REPL with the standard library loaded.
-pub fn init() -> Result<REPLImpl, Error> {
-    let mut repl = REPLImpl::new();
+pub fn init() -> Result<ReplImpl, Error> {
+    let mut repl = ReplImpl::new();
     repl.load_stdlib()?;
     Ok(repl)
 }
 
 /// Evaluate an input.
-pub fn input<R: REPL>(repl: &mut R, line: &str) -> Result<InputResult, InputError> {
+pub fn input<R: Repl>(repl: &mut R, line: &str) -> Result<InputResult, InputError> {
     if line.trim().is_empty() {
         Ok(InputResult::Blank)
     } else if line.starts_with(':') {
@@ -65,7 +65,7 @@ pub fn input<R: REPL>(repl: &mut R, line: &str) -> Result<InputResult, InputErro
             Ok(Command::Print(exp)) => repl
                 .eval_full(&exp)
                 .map(|res| match res {
-                    EvalResult::Evaluated(t) => InputResult::Success(t.deep_repr()),
+                    EvalResult::Evaluated(rt) => InputResult::Success(rt.as_ref().deep_repr()),
                     EvalResult::Bound(_) => InputResult::Blank,
                 })
                 .map_err(InputError::from),
@@ -80,9 +80,11 @@ pub fn input<R: REPL>(repl: &mut R, line: &str) -> Result<InputResult, InputErro
             Err(err) => Err(InputError::from(Error::from(err))),
         }
     } else {
-        repl.eval(&line)
+        repl.eval_full(line)
             .map(|eval_res| match eval_res {
-                EvalResult::Evaluated(t) => InputResult::Success(format!("{}\n", t.shallow_repr())),
+                EvalResult::Evaluated(rt) => {
+                    InputResult::Success(format!("{}\n", rt.as_ref().deep_repr()))
+                }
                 EvalResult::Bound(_) => InputResult::Success(String::new()),
             })
             .map_err(InputError::from)
@@ -90,7 +92,7 @@ pub fn input<R: REPL>(repl: &mut R, line: &str) -> Result<InputResult, InputErro
 }
 
 /// Evaluate an input and serialize the result.
-pub fn serialize<R: REPL>(
+pub fn serialize<R: Repl>(
     repl: &mut R,
     format: ExportFormat,
     input: &str,

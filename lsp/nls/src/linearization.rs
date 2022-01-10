@@ -88,7 +88,7 @@ impl BuildingExt for Linearization<Building<BuildingResource>> {
             let id = self.id_gen().get_and_advance();
             self.push(LinearizationItem {
                 id,
-                pos: ident.1,
+                pos: ident.pos,
                 // temporary, the actual type is resolved later and the item retyped
                 ty: TypeWrapper::Concrete(AbsType::Dyn()),
                 kind: TermKind::RecordField {
@@ -326,7 +326,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
         // `offset` is used to find the [LinearizationItem] representing the field
         // Field items are inserted immediately after the record
         if !matches!(term, Term::Op1(UnaryOp::StaticAccess(_), _)) {
-            if let Some((record, (offset, Ident(_, field_pos)))) = self
+            if let Some((record, (offset, Ident { pos: field_pos, .. }))) = self
                 .record_fields
                 .take()
                 .map(|(record, mut fields)| (record, fields.pop().unwrap()))
@@ -373,13 +373,13 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
 
         let id = id_gen.get();
         match term {
-            Term::Let(ident, _, _) | Term::Fun(ident, _) => {
+            Term::Let(ident, _, _, _) | Term::Fun(ident, _) => {
                 self.env
                     .insert(ident.to_owned(), lin.state.resource.linearization.len());
                 lin.push(LinearizationItem {
                     id,
                     ty,
-                    pos: ident.1,
+                    pos: ident.pos,
                     scope: self.scope.clone(),
                     kind: TermKind::Declaration(ident.to_owned(), Vec::new()),
                     meta: self.meta.take(),
@@ -395,7 +395,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
 
                 lin.push(LinearizationItem {
                     id: root_id,
-                    pos: ident.1,
+                    pos: ident.pos,
                     ty: TypeWrapper::Concrete(AbsType::Dyn()),
                     scope: self.scope.clone(),
                     kind: TermKind::Usage(UsageState::Resolved(self.env.get(ident))),
@@ -413,7 +413,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                         let id = id_gen.get_and_advance();
                         lin.push(LinearizationItem {
                             id,
-                            pos: accessor.1,
+                            pos: accessor.pos,
                             ty: TypeWrapper::Concrete(AbsType::Dyn()),
                             scope: self.scope.clone(),
                             kind: TermKind::Usage(UsageState::Deferred {
@@ -442,12 +442,10 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                 self.record_fields =
                     Some((id + 1, field_names.into_iter().enumerate().rev().collect()));
             }
-
             Term::Op1(UnaryOp::StaticAccess(ident), _) => {
                 let x = self.access.get_or_insert(Vec::with_capacity(1));
                 x.push(ident.to_owned())
             }
-
             Term::MetaValue(meta) => {
                 // Notice 1: No push to lin
                 // Notice 2: we discard the encoded value as anything we
@@ -463,7 +461,7 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                             let id = id_gen.get_and_advance();
                             lin.push(LinearizationItem {
                                 id,
-                                pos: ident.1,
+                                pos: ident.pos,
                                 ty: TypeWrapper::Concrete(AbsType::Var(ident.to_owned())),
                                 scope: self.scope.clone(),
                                 // id = parent: full let binding including the body
@@ -485,7 +483,6 @@ impl Linearizer<BuildingResource, (UnifTable, HashMap<usize, Ident>)> for Analys
                     })
                 }
             }
-
             other => {
                 debug!("Add wildcard item: {:?}", other);
 

@@ -1,0 +1,15 @@
+name: Deploy preview
+on:
+  pull_request:
+
+jobs:
+  deploy:
+    uses: tweag/nickel-lang.org/.github/workflows/deploy.yml@master
+    with:
+      nickel_repository: ${{ github.repository }}
+      nickel_ref: ${{ github.sha }}
+      production_deploy: false
+    secrets:
+      CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}

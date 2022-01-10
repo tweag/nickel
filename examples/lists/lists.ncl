@@ -1,6 +1,6 @@
 // Example list functions. This code is illustrative: prefer using the list
 // stdlib functions `lists.map` and `lists.fold` instead.
-let myListLib = {
+let my_list_lib = {
   // We have to wrap `head` and `tail` with the right annotations if we want our
   // map and fold to be statically typed. This is due to a current issue with
   // the how the stdlib is typed, see
@@ -24,5 +24,5 @@ let myListLib = {
           f (head list) (fold f (tail list) first),
 } in
 // Compute `7!`
-let l = myListLib.map (fun x => x+1) [1, 2, 3, 4, 5, 6] in
-myListLib.fold (fun x acc => x * acc) l 1
+let l = my_list_lib.map (fun x => x+1) [1, 2, 3, 4, 5, 6] in
+my_list_lib.fold (fun x acc => x * acc) l 1

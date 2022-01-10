@@ -66,7 +66,8 @@ pub enum Term {
 
     /// A let binding.
     #[serde(skip)]
-    Let(Ident, RichTerm, RichTerm),
+    Let(Ident, RichTerm, RichTerm, BindingType),
+    /// A destructuring let-binding.
     #[serde(skip)]
     LetPattern(Option<Ident>, Destruct, RichTerm, RichTerm),
     /// An application.
@@ -158,15 +159,24 @@ impl From<MetaValue> for Term {
     }
 }
 
+/// Type of let-binding. This only affects run-time behavior. Revertible bindings introduce
+/// revertible thunks at evaluation, which are devices used for the implementation of recursive
+/// records merging. See the [`merge`] and [`eval`] modules for more details.
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
-pub struct RecordAttrs {
-    pub open: bool,
+pub enum BindingType {
+    Normal,
+    Revertible,
 }
 
-impl Default for RecordAttrs {
+impl Default for BindingType {
     fn default() -> Self {
-        RecordAttrs { open: false }
+        BindingType::Normal
     }
+}
+
+#[derive(Debug, Default, Eq, PartialEq, Copy, Clone)]
+pub struct RecordAttrs {
+    pub open: bool,
 }
 
 impl RecordAttrs {
@@ -258,13 +268,15 @@ impl MetaValue {
             value: _,
         } = outer;
 
-        // If both have type annotations, the result will have the outer one as a type annotation.
-        // However we still need to enforce the corresponding contract to preserve the operational
-        // semantics. Thus, the inner type annotation is derelicted to a contract.
-        match inner.types.take() {
-            Some(ctr) if types.is_some() => contracts.push(ctr),
-            _ => (),
-        };
+        if types.is_some() {
+            // If both have type annotations, the result will have the outer one as a type annotation.
+            // However we still need to enforce the corresponding contract to preserve the operational
+            // semantics. Thus, the inner type annotation is derelicted to a contract.
+            match inner.types.take() {
+                Some(ctr) => contracts.push(ctr),
+                _ => (),
+            };
+        }
 
         contracts.extend(inner.contracts.into_iter());
 
@@ -342,7 +354,7 @@ impl Term {
                     });
                 meta.value.iter_mut().for_each(func);
             }
-            Let(_, ref mut t1, ref mut t2)
+            Let(_, ref mut t1, ref mut t2, _)
             | LetPattern(_, _, ref mut t1, ref mut t2)
             | App(ref mut t1, ref mut t2)
             | Op2(_, ref mut t1, ref mut t2) => {
@@ -379,8 +391,8 @@ impl Term {
             Term::Sym(_) => Some("Sym"),
             Term::Wrapped(_, _) => Some("Wrapped"),
             Term::MetaValue(_) => Some("Metavalue"),
-            Term::Let(_, _, _)
-            | Term::LetPattern(_, _, _, _)
+            Term::Let(..)
+            | Term::LetPattern(..)
             | Term::App(_, _)
             | Term::Var(_)
             | Term::Switch(..)
@@ -455,8 +467,8 @@ impl Term {
             }
             Term::Var(id) => id.to_string(),
             Term::ParseError => String::from("<parse error>"),
-            Term::Let(_, _, _)
-            | Term::LetPattern(_, _, _, _)
+            Term::Let(..)
+            | Term::LetPattern(..)
             | Term::App(_, _)
             | Term::Switch(..)
             | Term::Op1(_, _)
@@ -507,8 +519,8 @@ impl Term {
             | Term::Record(..)
             | Term::List(_)
             | Term::Sym(_) => true,
-            Term::Let(_, _, _)
-            | Term::LetPattern(_, _, _, _)
+            Term::Let(..)
+            | Term::LetPattern(..)
             | Term::App(_, _)
             | Term::Var(_)
             | Term::Switch(..)
@@ -543,8 +555,8 @@ impl Term {
             | Term::Lbl(_)
             | Term::Enum(_)
             | Term::Sym(_) => true,
-            Term::Let(_, _, _)
-            | Term::LetPattern(_, _, _, _)
+            Term::Let(..)
+            | Term::LetPattern(..)
             | Term::Record(..)
             | Term::List(_)
             | Term::Fun(_, _)
@@ -874,9 +886,7 @@ impl NAryOp {
     }
 
     pub fn is_strict(&self) -> bool {
-        match self {
-            _ => true,
-        }
+        true
     }
 }
 
@@ -917,9 +927,15 @@ impl RichTerm {
     ///
     /// It allows to use rust `Eq` trait to compare the values of the underlying terms.
     #[cfg(test)]
-    pub fn clean_pos(&mut self) {
-        self.pos = TermPos::None;
-        SharedTerm::make_mut(&mut self.term).apply_to_rich_terms(|rt: &mut Self| rt.clean_pos());
+    pub fn without_pos(mut self) -> Self {
+        fn clean_pos(rt: &mut RichTerm) {
+            rt.pos = TermPos::None;
+            SharedTerm::make_mut(&mut rt.term)
+                .apply_to_rich_terms(|rt: &mut RichTerm| clean_pos(rt));
+        }
+
+        clean_pos(&mut self);
+        self
     }
 
     /// Set the position and return the term updated.
@@ -952,13 +968,13 @@ impl RichTerm {
                 RichTerm::new(
                     Term::Fun(id, t),
                     pos,
-                    )
+                )
             },
-            Term::Let(id, t1, t2) => {
+            Term::Let(id, t1, t2, btype) => {
                 let t1 = t1.traverse(f, state, method)?;
                 let t2 = t2.traverse(f, state, method)?;
                 RichTerm::new(
-                    Term::Let(id, t1, t2),
+                    Term::Let(id, t1, t2, btype),
                     pos,
                 )
             },
@@ -1307,7 +1323,7 @@ pub mod make {
         T2: Into<RichTerm>,
         I: Into<Ident>,
     {
-        Term::Let(id.into(), t1.into(), t2.into()).into()
+        Term::Let(id.into(), t1.into(), t2.into(), BindingType::Normal).into()
     }
 
     pub fn let_pat<I, D, T1, T2>(id: Option<I>, pat: D, t1: T1, t2: T2) -> RichTerm
@@ -1356,6 +1372,13 @@ pub mod make {
         Term::Op2(op, t1.into(), t2.into()).into()
     }
 
+    pub fn opn<T>(op: NAryOp, args: Vec<T>) -> RichTerm
+    where
+        T: Into<RichTerm>,
+    {
+        Term::OpN(op, args.into_iter().map(T::into).collect()).into()
+    }
+
     pub fn assume<T>(types: Types, l: Label, t: T) -> RichTerm
     where
         T: Into<RichTerm>,
@@ -1382,5 +1405,23 @@ pub mod make {
         S: Into<OsString>,
     {
         Term::Import(path.into()).into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression test for issue [#548](https://github.com/tweag/nickel/issues/548)
+    #[test]
+    fn metavalue_flatten() {
+        let mut inner = MetaValue::new();
+        inner.types = Some(Contract {
+            types: Types(AbsType::Num()),
+            label: Label::dummy(),
+        });
+        let outer = MetaValue::new();
+        let res = MetaValue::flatten(outer, inner);
+        assert_ne!(res.types, None);
     }
 }

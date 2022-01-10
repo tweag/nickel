@@ -16,7 +16,7 @@
       ```
       "#m
     = fun l s =>
-      if %isStr% s then
+      if %is_str% s then
         if s == "true" || s == "True" then
           "true"
         else if s == "false" || s == "False" then
@@ -42,8 +42,8 @@
       "#m
     = let pattern = m#"^[+-]?(\d+(\.\d*)?(e[+-]?\d+)?|\.\d+(e[+-]?\d+)?)$"#m in
       fun l s =>
-        if %isStr% s then
-          if %strIsMatch% s pattern then
+        if %is_str% s then
+          if %str_is_match% s pattern then
             s
           else
             %blame% (%tag% "invalid num literal" l)
@@ -67,7 +67,7 @@
       ```
       "#m
     = fun l s =>
-      if %isStr% s then
+      if %is_str% s then
         if length s == 1 then
           s
         else
@@ -78,19 +78,19 @@
     Ident
     | doc m#"
       Contract to enforce the value is a valid Nickel identifier. Can be used in conjunction with the record field
-      function (e.g. `hasField`).
+      function (e.g. `has_field`).
 
       For example:
       ```nickel
-        records.hasField ("hello" | Ident) { hello = "hi!" } =>
+        records.has_field ("hello" | Ident) { hello = "hi!" } =>
           true
-        records.hasField ("9" | Ident) { hello = "hi!" } =>
+        records.has_field ("9" | Ident) { hello = "hi!" } =>
           error (invalid enum tag)
       "#m
     = fun l s =>
       let pattern = m#"_?[a-zA-Z][_a-zA-Z0-9]*"#m in
-      if %isStr% s then
-        if %strIsMatch% s pattern then
+      if %is_str% s then
+        if %str_is_match% s pattern then
             s
           else
             %blame% (%tag% "invalid enum tag" l)
@@ -112,8 +112,8 @@
       ```
       "#m
     = fun l s =>
-      if %isStr% s then
-        if %strLength% s > 0 then
+      if %is_str% s then
+        if %str_length% s > 0 then
           s
         else
           %blame% (%tag% "empty string" l)
@@ -149,7 +149,7 @@
         [ "1,2,3" ]
       ```
       "#m
-    = fun sep s => %strSplit% s sep,
+    = fun sep s => %str_split% s sep,
 
     trim : Str -> Str
     | doc m#"
@@ -163,7 +163,7 @@
         "1   2   3"
       ```
       "#m
-    = fun s => %strTrim% s,
+    = fun s => %str_trim% s,
 
     chars : Str -> List Str
     | doc m#"
@@ -175,7 +175,7 @@
           [ "H", "e", "l", "l", "o" ]
       ```
       "#m
-    = fun s => %strChars% s,
+    = fun s => %str_chars% s,
 
     code | #CharLiteral -> Num
     | doc m#"
@@ -191,23 +191,23 @@
           error
       ```
       "#m
-    = fun s => %charCode% s,
+    = fun s => %char_code% s,
 
-    fromCode | Num -> #CharLiteral
+    from_code | Num -> #CharLiteral
     | doc m#"
       Results in the character for a given ascii code. Any number outside the ascii range results in an error.
 
       For example:
       ```nickel
-        fromCode 65 =>
+        from_code 65 =>
           "A"
-        fromCode 37 =>
+        from_code 37 =>
           "%"
-        fromCode 128 =>
+        from_code 128 =>
           error
       ```
       "#m
-    = fun s => %charFromCode% s,
+    = fun s => %char_from_code% s,
 
     uppercase : Str -> Str
     | doc m#"
@@ -224,7 +224,7 @@
           "."
       ```
       "#m
-    = fun s => %strUppercase% s,
+    = fun s => %str_uppercase% s,
 
     lowercase : Str -> Str
     | doc m#"
@@ -233,15 +233,15 @@
 
       For example:
       ```nickel
-        uppercase "A" =>
+        lowercase "A" =>
           "a"
-        uppercase "Æ" =>
+        lowercase "Æ" =>
           "æ"
-        uppercase "." =>
+        lowercase "." =>
           "."
       ```
       "#m
-    = fun s => %strLowercase% s,
+    = fun s => %str_lowercase% s,
 
     contains: Str -> Str -> Bool
     | doc m#"
@@ -257,7 +257,7 @@
           false
       ```
       "#m
-    = fun subs s => %strContains% s subs,
+    = fun subs s => %str_contains% s subs,
 
     replace: Str -> Str -> Str -> Str
     | doc m#"
@@ -272,36 +272,36 @@
       ```
       "#m
     = fun pattern replace s =>
-       %strReplace% s pattern replace,
+       %str_replace% s pattern replace,
 
-    replaceRegex: Str -> Str -> Str -> Str
+    replace_regex: Str -> Str -> Str -> Str
     | doc m#"
-      `replaceRegex regex repl str` replaces every match of `regex` in `str` with `repl`.
+      `replace_regex regex repl str` replaces every match of `regex` in `str` with `repl`.
 
       For example:
       ```nickel
-        replaceRegex "l+." "j" "Hello!" =>
+        replace_regex "l+." "j" "Hello!" =>
           "Hej!"
-        replaceRegex "\\d+" "\"a\" is not" "This 37 is a number." =>
+        replace_regex "\\d+" "\"a\" is not" "This 37 is a number." =>
           "This \"a\" is not a number."
       ```
       "#m
     = fun pattern replace s =>
-       %strReplaceRegex% s pattern replace,
+       %str_replace_regex% s pattern replace,
 
-    isMatch : Str -> Str -> Bool
+    is_match : Str -> Str -> Bool
     | doc m#"
-      `isMatch regex str` checks if `str` matches `regex`.
+      `is_match regex str` checks if `str` matches `regex`.
 
       For example:
       ```nickel
-        isMatch "^\\d+$" "123" =>
+        is_match "^\\d+$" "123" =>
           true
-        isMatch "\\d{4}" "123" =>
+        is_match "\\d{4}" "123" =>
           false
       ```
       "#m
-    = fun regex s => %strIsMatch% s regex,
+    = fun regex s => %str_is_match% s regex,
 
     match : Str -> Str -> {match: Str, index: Num, groups: List Str}
     | doc m#"
@@ -316,7 +316,7 @@
           { match = "3", index = 3, groups = [ ] }
       ```
       "#m
-    = fun regex s => %strMatch% s regex,
+    = fun regex s => %str_match% s regex,
 
     length : Str -> Num
     | doc m#"
@@ -330,7 +330,7 @@
           2
       ```
       "#m
-    = fun s => %strLength% s,
+    = fun s => %str_length% s,
 
     substring: Num -> Num -> Str -> Str
     | doc m#"
@@ -346,80 +346,80 @@
           error
       ```
       "#m
-    = fun start end s => %strSubstr% s start end,
+    = fun start end s => %str_substr% s start end,
 
-    fromNum | Num -> Str
+    from_num | Num -> Str
     | doc m#"
       Converts a number to its string representation.
 
-      fromNum 42 =>
+      from_num 42 =>
         "42"
       "#m
-    = fun n => %toStr% n,
+    = fun n => %to_str% n,
 
-    // fromEnum | < | Dyn> -> Str = fun tag => %toStr% tag,
-    fromEnum | Dyn -> Str
+    // from_enum | < | Dyn> -> Str = fun tag => %to_str% tag,
+    from_enum | Dyn -> Str
     | doc m#"
       Converts an enum variant to its string representation.
 
       For example:
       ```nickel
-      fromEnum `MyEnum =>
+      from_enum `MyEnum =>
         "MyEnum"
       ```
       "#m
-    = fun tag => %toStr% tag,
+    = fun tag => %to_str% tag,
 
-    fromBool | Bool -> Str
+    from_bool | Bool -> Str
     | doc m#"
       Converts a boolean value to its string representation.
 
       For example:
       ```nickel
-        fromBool true =>
+        from_bool true =>
           "true"
       ```
       "#m
-    = fun b => %toStr% b,
+    = fun b => %to_str% b,
 
-    toNum | #NumLiteral -> Num
+    to_num | #NumLiteral -> Num
     | doc m#"
       Converts a string that represents an integer to that integer.
 
       For example:
       ```nickel
-        toNum "123" =>
+        to_num "123" =>
           123
       ```
       "#m
-    = fun s => %numFromStr% s,
+    = fun s => %num_from_str% s,
 
-    toBool | #BoolLiteral -> Bool
+    to_bool | #BoolLiteral -> Bool
     | doc m#"
       Converts a string that represents a boolean to that boolean.
 
       For example:
       ```nickel
-        toBool "true" =>
+        to_bool "true" =>
           true
-        toBool "True" =>
+        to_bool "True" =>
           true
-        toBool "false" =>
+        to_bool "false" =>
           false
       "#m
     = fun s => s == "true",
 
-    // toEnum | #Ident -> < | Dyn> = fun s => %enumFromStr% s,
-    toEnum | #Ident -> Dyn
+    // to_enum | #Ident -> < | Dyn> = fun s => %enum_from_str% s,
+    to_enum | #Ident -> Dyn
     | doc m#"
       Converts any string that represents an enum variant to that enum variant.
 
       For example:
       ```nickel
-        toEnum "Hello" =>
+        to_enum "Hello" =>
           `Hello
       ```
       "#m
-    = fun s => %enumFromStr% s,
+    = fun s => %enum_from_str% s,
   }
 }

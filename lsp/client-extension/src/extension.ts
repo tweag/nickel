@@ -3,7 +3,7 @@
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
 
-import { privateEncrypt } from 'crypto';
+import { PathLike } from 'fs';
 import * as path from 'path';
 import { workspace, ExtensionContext } from 'vscode';
 
@@ -18,11 +18,17 @@ let client: LanguageClient;
 
 export function activate(context: ExtensionContext) {
 	// The server is implemented in node
-	const serverModule = context.asAbsolutePath(
+	const debugServerModule = context.asAbsolutePath(
 		path.join('..','..','target', 'debug', 'nls')
 	);
 
+	const serverConfigutration = workspace.getConfiguration("nls.server")
+	const enableDebug: Boolean = serverConfigutration.get("debugLog")
+	const traceFile: PathLike = serverConfigutration.get("trace")
+	const serverModule: string = serverConfigutration.get("path")
 
+
+	console.error(debugServerModule)
 	console.error(serverModule)
 
 	// The debug options for the server
@@ -32,10 +38,12 @@ export function activate(context: ExtensionContext) {
 	// Otherwise the run options are used
 	const serverOptions: ServerOptions = {
 		run: {
-			command: serverModule, transport: TransportKind.stdio, options: { env: { "RUST_LOG": "trace" } }
+			command: serverModule, transport: TransportKind.stdio, options: (enableDebug ? debugOptions : {}),
+			args: traceFile ? ["--trace", traceFile.toString()] : [],
 		},
 		debug: {
-			command: serverModule,
+			command: debugServerModule,
+			args: traceFile ? ["--trace", traceFile.toString()] : [],
 			transport: TransportKind.stdio,
 			options: debugOptions
 		}
@@ -53,8 +61,8 @@ export function activate(context: ExtensionContext) {
 
 	// Create the language client and start the client.
 	client = new LanguageClient(
-		'languageServerExample',
-		'Language Server Example',
+		'nickelLanguageServerClient',
+		'Nickel Language Server',
 		serverOptions,
 		clientOptions
 	);

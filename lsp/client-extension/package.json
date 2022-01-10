@@ -1,5 +1,5 @@
 {
-  "name": "nickel-lsp",
+  "name": "nls",
   "description": "Nickel Language Server",
   "author": "",
   "license": "MIT",
@@ -21,30 +21,29 @@
   "contributes": {
     "configuration": {
       "type": "object",
-      "title": "Example configuration",
+      "title": "Nickel Language Server Configuration",
       "properties": {
-        "languageServerExample.maxNumberOfProblems": {
-          "scope": "resource",
-          "type": "number",
-          "default": 100,
-          "description": "Controls the maximum number of problems produced by the server."
-        },
-        "languageServerExample.trace.server": {
+        "nls.server.path": {
           "scope": "window",
           "type": "string",
-          "enum": [
-            "off",
-            "messages",
-            "verbose"
-          ],
-          "default": "off",
-          "description": "Traces the communication between VS Code and the language server."
+          "default": "nls",
+          "description": "Path to nickel language server"
+        },
+        "nls.server.trace": {
+          "scope": "window",
+          "type": "string",
+          "description": "Enables performance tracing to the given file"
+        },
+        "nls.server.debugLog": {
+          "scope": "window",
+          "type": "boolean",
+          "default": false,
+          "description": "Logs the communication between VS Code and the language server."
         }
       }
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
     "compile": "tsc -b",
     "watch": "tsc -b -w",
     "lint": "eslint ./src --ext .ts,.tsx",
@@ -58,13 +57,13 @@
   },
   "devDependencies": {
     "@types/mocha": "^8.2.2",
-    "@types/node": "^12.12.0",
-    "@types/vscode": "^1.52.0",
-    "@typescript-eslint/eslint-plugin": "^4.23.0",
-    "@typescript-eslint/parser": "^4.23.0",
+    "@types/node": "^12.20.37",
+    "@types/vscode": "1.52.0",
+    "@typescript-eslint/eslint-plugin": "^4.33.0",
+    "@typescript-eslint/parser": "^4.33.0",
+    "@vscode/test-electron": "^1.6.2",
     "eslint": "^7.26.0",
     "mocha": "^8.3.2",
-    "typescript": "^4.3.5",
-    "@vscode/test-electron": "^1.6.1"
+    "typescript": "^4.5.3"
   }
 }

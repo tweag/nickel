@@ -13,7 +13,7 @@
       ```
       "#m
     = fun label value =>
-      if %isNum% value then
+      if %is_num% value then
         if value % 1 == 0 then
           value
         else
@@ -36,7 +36,7 @@
       ```
       "#m
     = fun label value =>
-      if %isNum% value then
+      if %is_num% value then
         if value % 1 == 0 && value >= 0 then
           value
         else
@@ -59,7 +59,7 @@
       ```
       "#m
     = fun label value =>
-      if %isNum% value then
+      if %is_num% value then
         if value % 1 == 0 && value > 0 then
           value
         else
@@ -80,7 +80,7 @@
       ```
       "#m
     = fun label value =>
-      if %isNum% value then
+      if %is_num% value then
         if value != 0 then
           value
         else
@@ -88,19 +88,19 @@
       else
         %blame% (%tag% "not a number" label),
 
-    isInt : Num -> Bool
+    is_int : Num -> Bool
     | doc m#"
       Checks if the given number is an integer.
 
       For example:
       ```nickel
-        isInt 42 =>
+        is_int 42 =>
           true
-        isInt 1.5 =>
+        is_int 1.5 =>
           false
       ```
       "#m
-    = fun x => %isNum% x && (x % 1 == 0),
+    = fun x => %is_num% x && (x % 1 == 0),
 
     min : Num -> Num -> Num
     | doc m#"

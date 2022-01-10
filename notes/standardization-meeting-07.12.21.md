@@ -224,7 +224,7 @@ open_contract(#(open_contract(T))) =  open_contract(T)
   else contract label value in
 
   //cannot do
-  foo | #Nullable (C1 & C2 & C3)
+  foo | #Nullable (Num -> Num)
   ```
 - `#` is verbose: should we remove it? But in current situation, it is nice to
   embed value syntax in the type syntax as in
