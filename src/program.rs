@@ -126,6 +126,11 @@ impl Program {
     {
         report(&mut self.cache, error)
     }
+
+    #[cfg(debug_assertions)]
+    pub fn set_skip_stdlib(&mut self) {
+        self.cache.skip_stdlib = true;
+    }
 }
 
 /// Query the metadata of a path of a term in the cache.
