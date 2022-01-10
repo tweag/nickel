@@ -638,8 +638,8 @@ fn type_check_<S, E>(
             if let Some(x) = x {
                 linearizer.retype_ident(lin, x, src.clone());
                 envs.insert(x.clone(), src);
-                inject_pat_vars(pat, &mut envs);
             }
+            inject_pat_vars(pat, &mut envs);
             unify(state, strict, ty, arr).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
             type_check_(state, envs, lin, linearizer, strict, t, trg)
         }
