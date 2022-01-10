@@ -580,17 +580,15 @@ impl SharedTerm {
     pub fn into_owned(self) -> Term {
         Rc::try_unwrap(self.term).unwrap_or_else(|rc| Term::clone(&rc))
     }
+
+    pub fn make_mut(this: &mut Self) -> &mut Term {
+        Rc::make_mut(&mut this.term)
+    }
 }
 
 impl AsRef<Term> for SharedTerm {
     fn as_ref(&self) -> &Term {
         self.term.as_ref()
-    }
-}
-
-impl AsMut<Term> for SharedTerm {
-    fn as_mut(&mut self) -> &mut Term {
-        Rc::make_mut(&mut self.term)
     }
 }
 
@@ -610,7 +608,7 @@ impl Deref for SharedTerm {
 
 impl DerefMut for SharedTerm {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.as_mut()
+        SharedTerm::make_mut(self)
     }
 }
 
