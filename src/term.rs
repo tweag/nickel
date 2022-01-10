@@ -606,12 +606,6 @@ impl Deref for SharedTerm {
     }
 }
 
-impl DerefMut for SharedTerm {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        SharedTerm::make_mut(self)
-    }
-}
-
 /// Primitive unary operators.
 ///
 /// Some operators, such as if-then-else or `seq`, actually take several arguments but are only
@@ -925,8 +919,7 @@ impl RichTerm {
     #[cfg(test)]
     pub fn clean_pos(&mut self) {
         self.pos = TermPos::None;
-        self.term
-            .apply_to_rich_terms(|rt: &mut Self| rt.clean_pos());
+        SharedTerm::make_mut(&mut self.term).apply_to_rich_terms(|rt: &mut Self| rt.clean_pos());
     }
 
     /// Set the position and return the term updated.

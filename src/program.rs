@@ -203,6 +203,7 @@ mod tests {
     use crate::error::EvalError;
     use crate::parser::{grammar, lexer};
     use crate::position::TermPos;
+    use crate::term::SharedTerm;
     use codespan::Files;
     use std::io::Cursor;
 
@@ -247,7 +248,7 @@ mod tests {
         let mut expd = parse("[2, \"ab\", [1, [3]]]").unwrap();
 
         // String are parsed as StrChunks, but evaluated to Str, so we need to hack list a bit
-        if let Term::List(ref mut data) = *expd.term {
+        if let Term::List(ref mut data) = SharedTerm::make_mut(&mut expd.term) {
             *data.get_mut(1).unwrap() = mk_term::string("ab");
         } else {
             panic!();
