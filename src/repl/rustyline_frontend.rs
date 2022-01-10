@@ -56,7 +56,7 @@ pub fn repl(histfile: PathBuf) -> Result<(), InitError> {
                         Term::Record(map, _) => {
                              println!("Loaded {} symbol(s) in the environment.", map.len())
                         }
-                        Term::RecRecord(map, dyn_fields, _) => {
+                        Term::RecRecord(map, dyn_fields, _, _) => {
                             if !dyn_fields.is_empty() {
                                 println!("Warning: loading dynamic fields is currently not supported. {} symbols ignored", dyn_fields.len());
                             }

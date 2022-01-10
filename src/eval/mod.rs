@@ -481,7 +481,7 @@ where
                     }
                 }
             },
-            Term::RecRecord(ts, dyn_fields, attrs) => {
+            Term::RecRecord(ts, dyn_fields, attrs, _) => {
                 // Thanks to the share normal form transformation, the content is either a constant or a
                 // variable.
                 let rec_env = ts.iter().try_fold::<_, _, Result<Environment, EvalError>>(
@@ -786,7 +786,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
 
                 RichTerm::new(Term::Record(map, attrs), pos)
             }
-            Term::RecRecord(map, dyn_fields, attrs) => {
+            Term::RecRecord(map, dyn_fields, attrs, free_vars) => {
                 let map = map
                     .into_iter()
                     .map(|(id, t)| {
@@ -807,7 +807,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
                     })
                     .collect();
 
-                RichTerm::new(Term::RecRecord(map, dyn_fields, attrs), pos)
+                RichTerm::new(Term::RecRecord(map, dyn_fields, attrs, free_vars), pos)
             }
             Term::List(ts) => {
                 let ts = ts

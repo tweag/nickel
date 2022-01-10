@@ -27,6 +27,8 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ffi::OsString;
 use std::fmt;
+use std::hash::Hash;
+use std::iter::Extend;
 
 /// The AST of a Nickel expression.
 ///
@@ -88,6 +90,8 @@ pub enum Term {
         HashMap<Ident, RichTerm>,
         Vec<(RichTerm, RichTerm)>, /* field whose name is defined by interpolation */
         RecordAttrs,
+        // Cached free variables calculation
+        Option<HashSet<Ident>>,
     ),
     /// A switch construct. The evaluation is done by the corresponding unary operator, but we
     /// still need this one for typechecking.
@@ -331,7 +335,7 @@ impl Term {
             Record(ref mut static_map, _) => {
                 static_map.iter_mut().for_each(|(_, t)| func(t));
             }
-            RecRecord(ref mut static_map, ref mut dyn_fields, _) => {
+            RecRecord(ref mut static_map, ref mut dyn_fields, _, _) => {
                 static_map.iter_mut().for_each(|(_, t)| func(t));
                 dyn_fields.iter_mut().for_each(|(t1, t2)| {
                     func(t1);
@@ -480,14 +484,14 @@ impl Term {
     /// Return a deep string representation of a term, used for printing in the REPL
     pub fn deep_repr(&self) -> String {
         match self {
-            Term::Record(fields, _) | Term::RecRecord(fields, _, _) => {
+            Term::Record(fields, _) | Term::RecRecord(fields, _, _, _) => {
                 let fields_str: Vec<String> = fields
                     .iter()
                     .map(|(ident, term)| format!("{} = {}", ident, term.as_ref().deep_repr()))
                     .collect();
 
                 let suffix = match self {
-                    Term::RecRecord(_, dyn_fields, _) if !dyn_fields.is_empty() => ", ..",
+                    Term::RecRecord(_, dyn_fields, _, _) if !dyn_fields.is_empty() => ", ..",
                     _ => "",
                 };
 
@@ -864,6 +868,25 @@ pub enum TraverseMethod {
     BottomUp,
 }
 
+/// It's like `std::iter::Extend`, but it work for `()`.
+/// `Extend` unit impl fails because `()` does not implement `IntoIterator`.
+pub trait Append: Default + Clone {
+    fn append(&mut self, lhs: Self);
+}
+
+impl Append for () {
+    fn append(&mut self, _lhs: Self) {}
+}
+
+impl<T: Clone + Hash> Append for HashSet<T>
+where
+    HashSet<T>: Extend<T>,
+{
+    fn append(&mut self, lhs: Self) {
+        self.extend(lhs);
+    }
+}
+
 /// Wrap [terms](type.Term.html) with positional information.
 #[derive(Debug, PartialEq, Clone)]
 pub struct RichTerm {
@@ -913,8 +936,23 @@ impl RichTerm {
     where
         F: FnMut(RichTerm, &mut S) -> Result<RichTerm, E>,
     {
+        self.traverse_monoid_state(&mut |t, s, _| f(t, s), state, &mut (), method)
+    }
+
+    pub fn traverse_monoid_state<F, S, M, E>(
+        self,
+        f: &mut F,
+        state: &mut S,
+        monoid: &mut M,
+        method: TraverseMethod,
+    ) -> Result<RichTerm, E>
+    where
+        F: FnMut(RichTerm, &mut S, &mut M) -> Result<RichTerm, E>,
+        M: Append,
+    {
+        let mut m = M::default();
         let RichTerm { term, pos } = match method {
-            TraverseMethod::TopDown => f(self, state)?,
+            TraverseMethod::TopDown => f(self, state, &mut m)?,
             TraverseMethod::BottomUp => self,
         };
 
@@ -934,31 +972,32 @@ impl RichTerm {
                 pos,
             },
             Term::Fun(id, t) => {
-                let t = t.traverse(f, state, method)?;
+                let t = t.traverse_monoid_state(f, state, &mut m, method)?;
                 RichTerm {
                     term: Box::new(Term::Fun(id, t)),
                     pos,
                 }
             }
             Term::Let(id, t1, t2, btype) => {
-                let t1 = t1.traverse(f, state, method)?;
-                let t2 = t2.traverse(f, state, method)?;
+                let t1 = t1.traverse_monoid_state(f, state, &mut m, method)?;
+                let t2 = t2.traverse_monoid_state(f, state, &mut m, method)?;
+
                 RichTerm {
                     term: Box::new(Term::Let(id, t1, t2, btype)),
                     pos,
                 }
             }
             Term::LetPattern(id, pat, t1, t2) => {
-                let t1 = t1.traverse(f, state, method)?;
-                let t2 = t2.traverse(f, state, method)?;
+                let t1 = t1.traverse_monoid_state(f, state, &mut m, method)?;
+                let t2 = t2.traverse_monoid_state(f, state, &mut m, method)?;
                 RichTerm {
                     term: Box::new(Term::LetPattern(id, pat, t1, t2)),
                     pos,
                 }
             }
             Term::App(t1, t2) => {
-                let t1 = t1.traverse(f, state, method)?;
-                let t2 = t2.traverse(f, state, method)?;
+                let t1 = t1.traverse_monoid_state(f, state, &mut m, method)?;
+                let t2 = t2.traverse_monoid_state(f, state, &mut m, method)?;
                 RichTerm {
                     term: Box::new(Term::App(t1, t2)),
                     pos,
@@ -970,25 +1009,30 @@ impl RichTerm {
                 let cases_res: Result<HashMap<Ident, RichTerm>, E> = cases
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(id, t)| t.traverse(f, state, method).map(|t_ok| (id.clone(), t_ok)))
+                    .map(|(id, t)| {
+                        t.traverse_monoid_state(f, state, &mut m, method)
+                            .map(|t_ok| (id.clone(), t_ok))
+                    })
                     .collect();
 
-                let default = default.map(|t| t.traverse(f, state, method)).transpose()?;
+                let default = default
+                    .map(|t| t.traverse_monoid_state(f, state, &mut m, method))
+                    .transpose()?;
 
-                let t = t.traverse(f, state, method)?;
+                let t = t.traverse_monoid_state(f, state, &mut m, method)?;
 
                 RichTerm::new(Term::Switch(t, cases_res?, default), pos)
             }
             Term::Op1(op, t) => {
-                let t = t.traverse(f, state, method)?;
+                let t = t.traverse_monoid_state(f, state, &mut m, method)?;
                 RichTerm {
                     term: Box::new(Term::Op1(op, t)),
                     pos,
                 }
             }
             Term::Op2(op, t1, t2) => {
-                let t1 = t1.traverse(f, state, method)?;
-                let t2 = t2.traverse(f, state, method)?;
+                let t1 = t1.traverse_monoid_state(f, state, &mut m, method)?;
+                let t2 = t2.traverse_monoid_state(f, state, &mut m, method)?;
                 RichTerm {
                     term: Box::new(Term::Op2(op, t1, t2)),
                     pos,
@@ -997,7 +1041,7 @@ impl RichTerm {
             Term::OpN(op, ts) => {
                 let ts_res: Result<Vec<RichTerm>, E> = ts
                     .into_iter()
-                    .map(|t| t.traverse(f, state, method))
+                    .map(|t| t.traverse_monoid_state(f, state, &mut m, method))
                     .collect();
                 RichTerm {
                     term: Box::new(Term::OpN(op, ts_res?)),
@@ -1005,7 +1049,7 @@ impl RichTerm {
                 }
             }
             Term::Wrapped(i, t) => {
-                let t = t.traverse(f, state, method)?;
+                let t = t.traverse_monoid_state(f, state, &mut m, method)?;
                 RichTerm {
                     term: Box::new(Term::Wrapped(i, t)),
                     pos,
@@ -1017,39 +1061,42 @@ impl RichTerm {
                 let map_res: Result<HashMap<Ident, RichTerm>, E> = map
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(id, t)| t.traverse(f, state, method).map(|t_ok| (id.clone(), t_ok)))
+                    .map(|(id, t)| {
+                        t.traverse_monoid_state(f, state, &mut m, method)
+                            .map(|t_ok| (id.clone(), t_ok))
+                    })
                     .collect();
                 RichTerm {
                     term: Box::new(Term::Record(map_res?, attrs)),
                     pos,
                 }
             }
-            Term::RecRecord(map, dyn_fields, attrs) => {
+            Term::RecRecord(map, dyn_fields, attrs, free_vars) => {
                 // The annotation on `map_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
                 let map_res: Result<HashMap<Ident, RichTerm>, E> = map
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(id, t)| Ok((id, t.traverse(f, state, method)?)))
+                    .map(|(id, t)| Ok((id, t.traverse_monoid_state(f, state, &mut m, method)?)))
                     .collect();
                 let dyn_fields_res: Result<Vec<(RichTerm, RichTerm)>, E> = dyn_fields
                     .into_iter()
                     .map(|(id_t, t)| {
                         Ok((
-                            id_t.traverse(f, state, method)?,
-                            t.traverse(f, state, method)?,
+                            id_t.traverse_monoid_state(f, state, &mut m, method)?,
+                            t.traverse_monoid_state(f, state, &mut m, method)?,
                         ))
                     })
                     .collect();
                 RichTerm {
-                    term: Box::new(Term::RecRecord(map_res?, dyn_fields_res?, attrs)),
+                    term: Box::new(Term::RecRecord(map_res?, dyn_fields_res?, attrs, free_vars)),
                     pos,
                 }
             }
             Term::List(ts) => {
                 let ts_res: Result<Vec<RichTerm>, E> = ts
                     .into_iter()
-                    .map(|t| t.traverse(f, state, method))
+                    .map(|t| t.traverse_monoid_state(f, state, &mut m, method))
                     .collect();
 
                 RichTerm {
@@ -1062,9 +1109,10 @@ impl RichTerm {
                     .into_iter()
                     .map(|chunk| match chunk {
                         chunk @ StrChunk::Literal(_) => Ok(chunk),
-                        StrChunk::Expr(t, indent) => {
-                            Ok(StrChunk::Expr(t.traverse(f, state, method)?, indent))
-                        }
+                        StrChunk::Expr(t, indent) => Ok(StrChunk::Expr(
+                            t.traverse_monoid_state(f, state, &mut m, method)?,
+                            indent,
+                        )),
                     })
                     .collect();
 
@@ -1080,7 +1128,7 @@ impl RichTerm {
                     .map(|ctr| {
                         let types = match ctr.types {
                             Types(AbsType::Flat(t)) => {
-                                Types(AbsType::Flat(t.traverse(f, state, method)?))
+                                Types(AbsType::Flat(t.traverse_monoid_state(f, state, &mut m, method)?))
                             }
                             ty => ty,
                         };
@@ -1094,7 +1142,7 @@ impl RichTerm {
                     .map(|ctr| {
                         let types = match ctr.types {
                             Types(AbsType::Flat(t)) => {
-                                Types(AbsType::Flat(t.traverse(f, state, method)?))
+                                Types(AbsType::Flat(t.traverse_monoid_state(f, state, &mut m, method)?))
                             }
                             ty => ty,
                         };
@@ -1104,7 +1152,7 @@ impl RichTerm {
 
                 let value = meta
                     .value
-                    .map(|t| t.traverse(f, state, method))
+                    .map(|t| t.traverse_monoid_state(f, state, &mut m, method))
                     .map_or(Ok(None), |res| res.map(Some))?;
 
                 let meta = MetaValue {
@@ -1122,10 +1170,13 @@ impl RichTerm {
             }
         };
 
-        match method {
+        let r = match method {
             TraverseMethod::TopDown => Ok(result),
-            TraverseMethod::BottomUp => f(result, state),
-        }
+            TraverseMethod::BottomUp => f(result, state, &mut m),
+        };
+
+        monoid.append(m);
+        r
     }
 
     /// Return the free variables of a term.
@@ -1194,7 +1245,10 @@ impl RichTerm {
                         collect_free_var(t, set);
                     }
                 }
-                Term::RecRecord(map, dyn_fields, _) => {
+                Term::RecRecord(_, _, _, Some(free_vars)) => {
+                    set.union(free_vars);
+                }
+                Term::RecRecord(map, dyn_fields, _, None) => {
                     //TODO: back to this
                     let mut rec_fields = HashSet::new();
                     let mut set2: HashSet<Ident> = HashSet::new();
@@ -1217,9 +1271,8 @@ impl RichTerm {
                 }
                 Term::StrChunks(chunks) => {
                     for chunk in chunks {
-                        match chunk {
-                            StrChunk::Expr(t, _) => collect_free_var(t, set),
-                            _ => (),
+                        if let StrChunk::Expr(t, _) = chunk {
+                            collect_free_var(t, set)
                         }
                     }
                 }

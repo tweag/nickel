@@ -505,7 +505,7 @@ impl Cache {
                                 .collect();
                             *map = map_res;
                         }
-                        Term::RecRecord(ref mut map, ref mut dyn_fields, _) => {
+                        Term::RecRecord(ref mut map, ref mut dyn_fields, _, _) => {
                             let map_res = std::mem::take(map)
                                 .into_iter()
                                 .map(|(id, t)| (id, transform::transform(t)))

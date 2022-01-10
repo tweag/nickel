@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::cache::ImportResolver;
 use crate::eval::{lazy::Thunk, Closure, Environment, IdentKind};
 use crate::identifier::Ident;
@@ -8,9 +10,11 @@ use simple_counter::*;
 generate_counter!(FreshVarCounter, usize);
 
 pub mod apply_contracts;
+pub mod collect_free_vars;
 pub mod desugar_destructuring;
 pub mod import_resolution;
 pub mod share_normal_form;
+use collect_free_vars::collect_free_vars;
 
 /// Apply all program transformations, excepted import resolution that is currently performed
 /// earlier, as it needs to be done before typechecking.
@@ -33,12 +37,14 @@ pub fn transform(rt: RichTerm) -> RichTerm {
         )
         .unwrap();
 
-    rt.traverse(
-        &mut |rt: RichTerm, _| -> Result<RichTerm, ()> {
-            let rt = share_normal_form::transform_one(rt);
+    rt.traverse_monoid_state(
+        &mut |rt: RichTerm, _, free_vars| -> Result<RichTerm, ()> {
+            let mut rt = share_normal_form::transform_one(rt);
+            collect_free_vars(&mut rt, free_vars);
             Ok(rt)
         },
         &mut (),
+        &mut HashSet::new(),
         TraverseMethod::BottomUp,
     )
     .unwrap()

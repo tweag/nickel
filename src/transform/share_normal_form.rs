@@ -62,7 +62,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
 
             with_bindings(Term::Record(map, attrs), bindings, pos, BindingType::Normal)
         }
-        Term::RecRecord(map, dyn_fields, attrs) => {
+        Term::RecRecord(map, dyn_fields, attrs, free_vars) => {
             // When a recursive record is evaluated, all fields need to be turned to closures
             // anyway (see the corresponding case in `eval::eval()`), which is what the share
             // normal form transformation does. This is why the test is more lax here than for
@@ -112,7 +112,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
             // Recursive records are the reason why we need revertible thunks, since when
             // merged, we may have to revert the fields back to their original expression.
             with_bindings(
-                Term::RecRecord(map, dyn_fields, attrs),
+                Term::RecRecord(map, dyn_fields, attrs, free_vars),
                 bindings,
                 pos,
                 BindingType::Revertible,

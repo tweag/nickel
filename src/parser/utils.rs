@@ -216,7 +216,7 @@ where
         }
     });
 
-    Term::RecRecord(static_map, dynamic_fields, attrs)
+    Term::RecRecord(static_map, dynamic_fields, attrs, None)
 }
 
 /// Make a span from parser byte offsets.

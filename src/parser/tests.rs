@@ -176,7 +176,8 @@ fn record_terms() {
             .into_iter()
             .collect(),
             Vec::new(),
-            Default::default()
+            Default::default(),
+            Default::default(),
         )
         .into()
     );
@@ -195,6 +196,7 @@ fn record_terms() {
                 mk_app!(mk_term::op1(UnaryOp::Ite(), Num(4.)), Num(5.), Num(6.))
             )],
             Default::default(),
+            Default::default(),
         )
         .into()
     );
@@ -209,6 +211,7 @@ fn record_terms() {
             .into_iter()
             .collect(),
             Vec::new(),
+            Default::default(),
             Default::default(),
         )
         .into()

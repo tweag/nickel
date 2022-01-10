@@ -486,7 +486,7 @@ fn type_check_<S, E>(
         }
         // If some fields are defined dynamically, the only potential type that works is `{_ : a}`
         // for some `a`
-        Term::RecRecord(stat_map, dynamic, _) if !dynamic.is_empty() => {
+        Term::RecRecord(stat_map, dynamic, _, _) if !dynamic.is_empty() => {
             let ty_dyn = TypeWrapper::Ptr(new_var(state.table));
 
             for id in stat_map.keys() {
