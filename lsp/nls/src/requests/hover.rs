@@ -39,7 +39,7 @@ pub fn handle(
     let locator = (file_id, ByteIndex(start as u32));
 
     let linearization = server.lin_cache_get(&file_id)?;
-    let item = linearization.item_at(locator);
+    let item = linearization.item_at(&locator);
 
     Trace::enrich(&id, linearization);
 

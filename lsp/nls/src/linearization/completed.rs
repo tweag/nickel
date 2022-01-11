@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use codespan::ByteIndex;
-use log::debug;
 use nickel::{
     term::MetaValue,
     typecheck::linearization::{LinearizationState, ScopeId},
@@ -77,40 +76,26 @@ impl Completed {
     ///
     pub fn item_at(
         &self,
-        locator: (codespan::FileId, ByteIndex),
+        locator: &(codespan::FileId, ByteIndex),
     ) -> Option<&LinearizationItem<Resolved>> {
         let (file_id, start) = locator;
         let linearization = &self.linearization;
         let item = match linearization
-            .binary_search_by_key(&locator, |item| (item.pos.src_id, item.pos.start))
+            .binary_search_by_key(locator, |item| (item.pos.src_id, item.pos.start))
         {
             // Found item(s) starting at `locator`
             // search for most precise element
             Ok(index) => linearization[index..]
                 .iter()
-                .take_while(|item| (item.pos.src_id, item.pos.start) == (file_id, start))
+                .take_while(|item| (item.pos.src_id, item.pos.start) == *locator)
                 .last(),
             // No perfect match found
             // iterate back finding the first wrapping linearization item
-            Err(index) => {
-                linearization[..index].iter().rfold(None, |acc, item| {
-                    // Returning the stored item directly ensures we return the first (reversly) found item
-                    acc.or_else(|| {
-                        let (istart, iend, ifile) = (item.pos.start, item.pos.end, item.pos.src_id);
+            Err(index) => linearization[..index].iter().rfind(|item| {
+                let (istart, iend, ifile) = (item.pos.start, item.pos.end, item.pos.src_id);
 
-                        debug!(
-                            "{} < {} < {} in {:?} = {:?}",
-                            istart, start, iend, file_id, ifile
-                        );
-
-                        if file_id == ifile && start > istart && start < iend {
-                            return Some(item);
-                        }
-
-                        None
-                    })
-                })
-            }
+                file_id == &ifile && start > &istart && start < &iend
+            }),
         };
         item
     }
