@@ -33,12 +33,23 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
 }
 
 pub fn desugar_fun_pat(rt: RichTerm) -> RichTerm {
-    if let Term::FunPattern(x, pat, t_) = *rt.term {
-        let x = x.unwrap_or_else(super::fresh_var);
-        let t_ = destruct_term(x.clone(), &pat, bind_open_field(x.clone(), &pat, t_));
-        RichTerm::new(Term::Fun(x, desugar_fun_pat(t_)), rt.pos)
-    } else {
-        rt
+    match *rt.term {
+        Term::FunPattern(x, pat, t_) if !pat.is_empty() => {
+            let x = x.unwrap_or_else(super::fresh_var);
+            RichTerm::new(
+                Term::Fun(
+                    x.clone(),
+                    Term::LetPattern(None, pat, Term::Var(x).into(), t_).into(),
+                ),
+                rt.pos,
+            )
+        }
+        Term::FunPattern(Some(x), Destruct::Empty, t_) => RichTerm::new(Term::Fun(x, t_), rt.pos),
+        Term::FunPattern(..) => panic!(
+            "A function can not have empty pattern without name in {:?}",
+            rt
+        ),
+        _ => rt,
     }
 }
 
