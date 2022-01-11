@@ -19,6 +19,12 @@ struct Opt {
     #[structopt(short = "f", long)]
     #[structopt(parse(from_os_str))]
     file: Option<PathBuf>,
+
+    #[cfg(debug_assertions)]
+    /// Skip the standard library import, for debugging only, does not affect REPL
+    #[structopt(long)]
+    nostdlib: bool,
+
     #[structopt(subcommand)]
     command: Option<Command>,
 }
@@ -87,6 +93,11 @@ fn main() {
                 eprintln!("Error when reading input: {}", err);
                 process::exit(1)
             });
+
+        #[cfg(debug_assertions)]
+        if opts.nostdlib {
+            program.set_skip_stdlib();
+        }
 
         let result = match opts.command {
             Some(Command::Export { format, output }) => export(&mut program, format, output),
