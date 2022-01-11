@@ -628,7 +628,7 @@ fn type_check_<S, E>(
             unify(state, strict, ty, mk_typewrapper::dynamic())
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
-        Term::Let(x, re, rt) | Term::LetRev(x, re, rt) => {
+        Term::Let(x, re, rt, _) => {
             let ty_let = binding_type(re.as_ref(), &envs, state.table, strict);
             linearizer.retype_ident(lin, x, ty_let.clone());
             type_check_(

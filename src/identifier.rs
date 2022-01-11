@@ -11,6 +11,10 @@ pub struct Ident {
     pub pos: TermPos,
 }
 
+/// Special character used for generating fresh identifiers. It must be syntactically impossible to
+/// use to write in a standard Nickel program, to avoid name clashes.
+pub const GEN_PREFIX: char = '%';
+
 impl PartialOrd for Ident {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         self.label.partial_cmp(&other.label)
@@ -64,5 +68,11 @@ impl Into<String> for Ident {
 impl Ident {
     pub fn is_generated(&self) -> bool {
         self.label.starts_with('%')
+    }
+}
+
+impl Ident {
+    pub fn is_generated(&self) -> bool {
+        self.0.starts_with(GEN_PREFIX)
     }
 }
