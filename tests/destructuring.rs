@@ -83,3 +83,8 @@ fn typecontract_fail() {
         Err(Error::EvalError(EvalError::BlameError(..)))
     );
 }
+
+#[test]
+fn fun() {
+    assert_eq!(eval_file("destructuring/fun.ncl"), Ok(Term::Bool(true)));
+}
