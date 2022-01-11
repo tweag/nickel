@@ -81,9 +81,9 @@ harness = false
 name = "lists"
 harness = false
 
-[[bench]]
-name = "records"
-harness = false
+# [[bench]]
+# name = "records"
+# harness = false
 
 [[bench]]
 name = "serialization"

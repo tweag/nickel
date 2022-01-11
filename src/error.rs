@@ -43,6 +43,8 @@ pub enum Error {
 pub enum EvalError {
     /// A blame occurred: a contract have been broken somewhere.
     BlameError(label::Label, CallStack),
+    /// A field required by a record contract is missing a definition.
+    MissingFieldDef(Option<label::Label>, CallStack),
     /// Mismatch between the expected type and the actual type of an expression.
     TypeError(
         /* expected type */ String,
@@ -206,6 +208,7 @@ impl ParseErrors {
     pub fn new(errors: Vec<ParseError>) -> ParseErrors {
         ParseErrors { errors }
     }
+
     pub fn errors(self) -> Option<Vec<ParseError>> {
         if self.errors.is_empty() {
             None
@@ -754,6 +757,15 @@ fn report_ty_path(l: &label::Label, files: &mut Files<String>) -> (Label<FileId>
     (label, notes)
 }
 
+/// Return a note diagnostic showing where a contract was bound.
+fn blame_label_note(l: &label::Label) -> Diagnostic<FileId> {
+    Diagnostic::note().with_labels(vec![Label::primary(
+        l.span.src_id,
+        l.span.start.to_usize()..l.span.end.to_usize(),
+    )
+    .with_message("bound here")])
+}
+
 impl ToDiagnostic<FileId> for Error {
     fn to_diagnostic(
         &self,
@@ -877,11 +889,7 @@ impl ToDiagnostic<FileId> for EvalError {
                     .with_labels(labels)
                     .with_notes(notes)];
 
-                diagnostics.push(Diagnostic::note().with_labels(vec![
-                    Label::primary(
-                        l.span.src_id,
-                        l.span.start.to_usize()..l.span.end.to_usize(),
-                    ).with_message("bound here")]));
+                diagnostics.push(blame_label_note(&l));
 
                 if ty_path::is_only_codom(&l.path) {
                 } else if let Some(id) = contract_id {
@@ -908,6 +916,73 @@ impl ToDiagnostic<FileId> for EvalError {
                 }
 
                 diagnostics
+            }
+            EvalError::MissingFieldDef(label, callstack) => {
+                use crate::eval::callstack::StackElem;
+
+                // The following code determines what was the last accessed record field by looking
+                // at the call stack. Because of recursive records though, the fields may actually
+                // be accessed via a variable:
+                //
+                // ```
+                //  {
+                //    foo | Dyn
+                //        | doc "Oops, undefined :(",
+                //    bar = 1 + foo,
+                //  }.bar
+                //  ```
+                //
+                // Here, the missing field doesn't correspond to a field access, but to a variable
+                // occurrence `foo`. Thus, we take the last non-generated identifier accessed
+                // (either variable or field) as the name of the missing field.
+                let mut field: Option<String> = None;
+                let mut pos_record = TermPos::None;
+                let mut pos_access: Option<TermPos> = None;
+
+                for elt in callstack.as_ref().iter().rev() {
+                    match elt {
+                        StackElem::Var { id, pos, .. } if !id.is_generated() && field.is_none() => {
+                            field = Some(id.to_string());
+                            pos_access = Some(*pos);
+                        }
+                        StackElem::Field {
+                            id,
+                            pos_record: pos_rec,
+                            pos_access: pos_acc,
+                            ..
+                        } => {
+                            field.get_or_insert(id.to_string());
+                            pos_access.get_or_insert(*pos_acc);
+                            pos_record = *pos_rec;
+                            break;
+                        }
+                        _ => (),
+                    }
+                }
+
+                let mut labels = vec![];
+
+                if let Some(span) = pos_record.into_opt() {
+                    labels.push(primary(&span).with_message("in this record"));
+                }
+
+                if let Some(span) = pos_access.map(TermPos::into_opt).flatten() {
+                    labels.push(secondary(&span).with_message("accessed here"));
+                }
+
+                let mut diags = vec![Diagnostic::error()
+                    .with_message(format!(
+                        "missing definition for `{}`",
+                        field.unwrap_or(String::from("?"))
+                    ))
+                    .with_labels(labels)
+                    .with_notes(vec![])];
+
+                if let Some(label) = label {
+                    diags.push(blame_label_note(label));
+                }
+
+                diags
             }
             EvalError::TypeError(expd, msg, orig_pos_opt, t) => {
                 let label = format!(

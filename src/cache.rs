@@ -68,6 +68,10 @@ pub struct Cache {
     terms: HashMap<FileId, CachedTerm>,
     /// The list of ids corresponding to the stdlib modules
     stdlib_ids: Option<Vec<FileId>>,
+
+    #[cfg(debug_assertions)]
+    /// Skip loading the stdlib, used for debugging purpose
+    pub skip_stdlib: bool,
 }
 
 /// wrapping eval environment with typing environment
@@ -203,6 +207,9 @@ impl Cache {
             terms: HashMap::new(),
             imports: HashMap::new(),
             stdlib_ids: None,
+
+            #[cfg(debug_assertions)]
+            skip_stdlib: false,
         }
     }
 
@@ -800,6 +807,10 @@ impl Cache {
     /// type environment, use `load_stdlib()` then `mk_global_type` to avoid
     /// transformations and evaluation preparation.
     pub fn prepare_stdlib(&mut self) -> Result<GlobalEnv, Error> {
+        #[cfg(debug_assertions)]
+        if self.skip_stdlib {
+            return Ok(GlobalEnv::new());
+        }
         self.load_stdlib()?;
         let type_env = self.mk_types_env().unwrap();
 

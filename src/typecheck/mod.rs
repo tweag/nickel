@@ -44,9 +44,7 @@ use crate::cache::ImportResolver;
 use crate::environment::Environment as GenericEnvironment;
 use crate::error::TypecheckError;
 use crate::identifier::Ident;
-use crate::label::ty_path;
-use crate::position::TermPos;
-use crate::term::{BinaryOp, Contract, MetaValue, NAryOp, RichTerm, StrChunk, Term, UnaryOp};
+use crate::term::{Contract, MetaValue, RichTerm, StrChunk, Term};
 use crate::types::{AbsType, Types};
 use crate::{mk_tyw_arrow, mk_tyw_enum, mk_tyw_enum_row, mk_tyw_record, mk_tyw_row};
 use std::collections::{HashMap, HashSet};
@@ -54,289 +52,15 @@ use std::convert::TryInto;
 
 use self::linearization::{Building, Completed, Linearization, Linearizer, ScopeId, StubHost};
 
+pub mod error;
 pub mod linearization;
+pub mod operation;
+pub mod reporting;
+#[macro_use]
+pub mod mk_typewrapper;
 
-/// Error during the unification of two row types.
-#[derive(Debug, PartialEq)]
-pub enum RowUnifError {
-    /// The LHS had a binding that was missing in the RHS.
-    MissingRow(Ident),
-    /// The LHS had a `Dyn` tail that was missing in the RHS.
-    MissingDynTail(),
-    /// The RHS had a binding that was not in the LHS.
-    ExtraRow(Ident),
-    /// The RHS had a additional `Dyn` tail.
-    ExtraDynTail(),
-    /// There were two incompatible definitions for the same row.
-    RowMismatch(Ident, Box<UnifError>),
-    /// Tried to unify an enum row and a record row.
-    RowKindMismatch(Ident, Option<TypeWrapper>, Option<TypeWrapper>),
-    /// One of the row was ill-formed (typically, a tail was neither a row, a variable nor `Dyn`).
-    ///
-    /// This should probably not happen with proper restrictions on the parser and a correct
-    /// typechecking algorithm. We let it as an error for now, but it could be removed in the
-    /// future.
-    IllformedRow(TypeWrapper),
-    /// A [row constraint](./type.RowConstr.html) was violated.
-    UnsatConstr(Ident, Option<TypeWrapper>),
-    /// Tried to unify a type constant with another different type.
-    WithConst(usize, TypeWrapper),
-    /// Tried to unify two distinct type constants.
-    ConstMismatch(usize, usize),
-}
-
-impl RowUnifError {
-    /// Convert a row unification error to a unification error.
-    ///
-    /// There is a hierarchy between error types, from the most local/specific to the most high-level:
-    /// - [`RowUnifError`](./enum.RowUnifError.html)
-    /// - [`UnifError`](./enum.UnifError.html)
-    /// - [`TypecheckError`](../errors/enum.TypecheckError.html)
-    ///
-    /// Each level usually adds information (such as types or positions) and group different
-    /// specific errors into most general ones.
-    pub fn into_unif_err(self, left: TypeWrapper, right: TypeWrapper) -> UnifError {
-        match self {
-            RowUnifError::MissingRow(id) => UnifError::MissingRow(id, left, right),
-            RowUnifError::MissingDynTail() => UnifError::MissingDynTail(left, right),
-            RowUnifError::ExtraRow(id) => UnifError::ExtraRow(id, left, right),
-            RowUnifError::ExtraDynTail() => UnifError::ExtraDynTail(left, right),
-            RowUnifError::RowKindMismatch(id, tyw1, tyw2) => {
-                UnifError::RowKindMismatch(id, tyw1, tyw2)
-            }
-            RowUnifError::RowMismatch(id, err) => UnifError::RowMismatch(id, left, right, err),
-            RowUnifError::IllformedRow(tyw) => UnifError::IllformedRow(tyw),
-            RowUnifError::UnsatConstr(id, tyw) => UnifError::RowConflict(id, tyw, left, right),
-            RowUnifError::WithConst(c, tyw) => UnifError::WithConst(c, tyw),
-            RowUnifError::ConstMismatch(c1, c2) => UnifError::ConstMismatch(c1, c2),
-        }
-    }
-}
-
-/// Error during the unification of two types.
-#[derive(Debug, PartialEq)]
-pub enum UnifError {
-    /// Tried to unify two incompatible types.
-    TypeMismatch(TypeWrapper, TypeWrapper),
-    /// There are two incompatible definitions for the same row.
-    RowMismatch(Ident, TypeWrapper, TypeWrapper, Box<UnifError>),
-    /// Tried to unify an enum row and a record row.
-    RowKindMismatch(Ident, Option<TypeWrapper>, Option<TypeWrapper>),
-    /// Tried to unify two distinct type constants.
-    ConstMismatch(usize, usize),
-    /// Tried to unify two rows, but an identifier of the LHS was absent from the RHS.
-    MissingRow(Ident, TypeWrapper, TypeWrapper),
-    /// Tried to unify two rows, but the `Dyn` tail of the RHS was absent from the LHS.
-    MissingDynTail(TypeWrapper, TypeWrapper),
-    /// Tried to unify two rows, but an identifier of the RHS was absent from the LHS.
-    ExtraRow(Ident, TypeWrapper, TypeWrapper),
-    /// Tried to unify two rows, but the `Dyn` tail of the RHS was absent from the LHS.
-    ExtraDynTail(TypeWrapper, TypeWrapper),
-    /// A row was ill-formed.
-    IllformedRow(TypeWrapper),
-    /// Tried to unify a unification variable with a row type violating the [row
-    /// constraints](./type.RowConstr.html) of the variable.
-    RowConflict(Ident, Option<TypeWrapper>, TypeWrapper, TypeWrapper),
-    /// Tried to unify a type constant with another different type.
-    WithConst(usize, TypeWrapper),
-    /// A flat type, which is an opaque type corresponding to custom contracts, contained a Nickel
-    /// term different from a variable. Only a variables is a legal inner term of a flat type.
-    IllformedFlatType(RichTerm),
-    /// A generic type was ill-formed. Currently, this happens if a `StatRecord` or `Enum` type
-    /// does not contain a row type.
-    IllformedType(TypeWrapper),
-    /// An unbound type variable was referenced.
-    UnboundTypeVariable(Ident),
-    /// An error occurred when unifying the domains of two arrows.
-    DomainMismatch(TypeWrapper, TypeWrapper, Box<UnifError>),
-    /// An error occurred when unifying the codomains of two arrows.
-    CodomainMismatch(TypeWrapper, TypeWrapper, Box<UnifError>),
-}
-
-impl UnifError {
-    /// Convert a unification error to a typechecking error.
-    ///
-    /// Wrapper that calls [`to_typecheck_err_`](./fn.to_typecheck_err_.html) with an empty [name
-    /// registry](./reporting/struct.NameReg.html).
-    pub fn into_typecheck_err(self, state: &State, pos_opt: TermPos) -> TypecheckError {
-        self.into_typecheck_err_(state, &mut reporting::NameReg::new(), pos_opt)
-    }
-
-    /// Convert a unification error to a typechecking error.
-    ///
-    /// There is a hierarchy between error types, from the most local/specific to the most high-level:
-    /// - [`RowUnifError`](./enum.RowUnifError.html)
-    /// - [`UnifError`](./enum.UnifError.html)
-    /// - [`TypecheckError`](../errors/enum.TypecheckError.html)
-    ///
-    /// Each level usually adds information (such as types or positions) and group different
-    /// specific errors into most general ones.
-    ///
-    /// # Parameters
-    ///
-    /// - `state`: the state of unification. Used to access the unification table, and the original
-    /// names of of unification variable or type constant.
-    /// - `names`: a [name registry](./reporting/struct.NameReg.html), structure used to assign
-    /// unique a humain-readable names to unification variables and type constants.
-    /// - `pos_opt`: the position span of the expression that failed to typecheck.
-    pub fn into_typecheck_err_(
-        self,
-        state: &State,
-        names: &mut reporting::NameReg,
-        pos_opt: TermPos,
-    ) -> TypecheckError {
-        match self {
-            UnifError::TypeMismatch(ty1, ty2) => TypecheckError::TypeMismatch(
-                reporting::to_type(state.table, state.names, names, ty1),
-                reporting::to_type(state.table, state.names, names, ty2),
-                pos_opt,
-            ),
-            UnifError::RowMismatch(ident, tyw1, tyw2, err) => TypecheckError::RowMismatch(
-                ident,
-                reporting::to_type(state.table, state.names, names, tyw1),
-                reporting::to_type(state.table, state.names, names, tyw2),
-                Box::new((*err).into_typecheck_err_(state, names, TermPos::None)),
-                pos_opt,
-            ),
-            UnifError::RowKindMismatch(id, ty1, ty2) => TypecheckError::RowKindMismatch(
-                id,
-                ty1.map(|tw| reporting::to_type(state.table, state.names, names, tw)),
-                ty2.map(|tw| reporting::to_type(state.table, state.names, names, tw)),
-                pos_opt,
-            ),
-            // TODO: for now, failure to unify with a type constant causes the same error as a
-            // usual type mismatch. It could be nice to have a specific error message in the
-            // future.
-            UnifError::ConstMismatch(c1, c2) => TypecheckError::TypeMismatch(
-                reporting::to_type(state.table, state.names, names, TypeWrapper::Constant(c1)),
-                reporting::to_type(state.table, state.names, names, TypeWrapper::Constant(c2)),
-                pos_opt,
-            ),
-            UnifError::WithConst(c, ty) => TypecheckError::TypeMismatch(
-                reporting::to_type(state.table, state.names, names, TypeWrapper::Constant(c)),
-                reporting::to_type(state.table, state.names, names, ty),
-                pos_opt,
-            ),
-            UnifError::IllformedFlatType(rt) => {
-                TypecheckError::IllformedType(Types(AbsType::Flat(rt)))
-            }
-            UnifError::IllformedType(tyw) => TypecheckError::IllformedType(reporting::to_type(
-                state.table,
-                state.names,
-                names,
-                tyw,
-            )),
-            UnifError::MissingRow(id, tyw1, tyw2) => TypecheckError::MissingRow(
-                id,
-                reporting::to_type(state.table, state.names, names, tyw1),
-                reporting::to_type(state.table, state.names, names, tyw2),
-                pos_opt,
-            ),
-            UnifError::MissingDynTail(tyw1, tyw2) => TypecheckError::MissingDynTail(
-                reporting::to_type(state.table, state.names, names, tyw1),
-                reporting::to_type(state.table, state.names, names, tyw2),
-                pos_opt,
-            ),
-            UnifError::ExtraRow(id, tyw1, tyw2) => TypecheckError::ExtraRow(
-                id,
-                reporting::to_type(state.table, state.names, names, tyw1),
-                reporting::to_type(state.table, state.names, names, tyw2),
-                pos_opt,
-            ),
-            UnifError::ExtraDynTail(tyw1, tyw2) => TypecheckError::ExtraDynTail(
-                reporting::to_type(state.table, state.names, names, tyw1),
-                reporting::to_type(state.table, state.names, names, tyw2),
-                pos_opt,
-            ),
-            UnifError::IllformedRow(tyw) => TypecheckError::IllformedType(reporting::to_type(
-                state.table,
-                state.names,
-                names,
-                tyw,
-            )),
-            UnifError::RowConflict(id, tyw, left, right) => TypecheckError::RowConflict(
-                id,
-                tyw.map(|tyw| reporting::to_type(state.table, state.names, names, tyw)),
-                reporting::to_type(state.table, state.names, names, left),
-                reporting::to_type(state.table, state.names, names, right),
-                pos_opt,
-            ),
-            UnifError::UnboundTypeVariable(ident) => {
-                TypecheckError::UnboundTypeVariable(ident, pos_opt)
-            }
-            err @ UnifError::CodomainMismatch(_, _, _)
-            | err @ UnifError::DomainMismatch(_, _, _) => {
-                let (expd, actual, path, err_final) = err.into_type_path().unwrap();
-                TypecheckError::ArrowTypeMismatch(
-                    reporting::to_type(state.table, state.names, names, expd),
-                    reporting::to_type(state.table, state.names, names, actual),
-                    path,
-                    Box::new(err_final.into_typecheck_err_(state, names, TermPos::None)),
-                    pos_opt,
-                )
-            }
-        }
-    }
-
-    /// Transform a `(Co)DomainMismatch` into a type path and other data.
-    ///
-    /// `(Co)DomainMismatch` can be nested: when unifying `Num -> Num -> Num` with `Num -> Bool ->
-    /// Num`, the resulting error is of the form `CodomainMismatch(.., DomainMismatch(..,
-    /// TypeMismatch(..)))`. The heading sequence of `(Co)DomainMismatch` is better represented as
-    /// a type path, here `[Codomain, Domain]`, while the last error of the chain -- which thus
-    /// cannot be a `(Co)DomainMismatch` -- is the actual cause of the unification failure.
-    ///
-    /// This function breaks down a `(Co)Domain` mismatch into a more convenient representation.
-    ///
-    /// # Return
-    ///
-    /// Return `None` if `self` is not a `DomainMismatch` nor a `CodomainMismatch`.
-    ///
-    /// Otherwise, return the following tuple:
-    ///  - the original expected type.
-    ///  - the original actual type.
-    ///  - a type path pointing at the subtypes which failed to be unified.
-    ///  - the final error, which is the actual cause of that failure.
-    pub fn into_type_path(self) -> Option<(TypeWrapper, TypeWrapper, ty_path::Path, Self)> {
-        let mut curr: Self = self;
-        let mut path = ty_path::Path::new();
-        // The original expected and actual type. They are just updated once, in the first
-        // iteration of the loop below.
-        let mut tyws: Option<(TypeWrapper, TypeWrapper)> = None;
-
-        loop {
-            match curr {
-                UnifError::DomainMismatch(
-                    tyw1 @ TypeWrapper::Concrete(AbsType::Arrow(_, _)),
-                    tyw2 @ TypeWrapper::Concrete(AbsType::Arrow(_, _)),
-                    err,
-                ) => {
-                    tyws = tyws.or(Some((tyw1, tyw2)));
-                    path.push(ty_path::Elem::Domain);
-                    curr = *err;
-                }
-                UnifError::DomainMismatch(_, _, _) => panic!(
-                    "typechecking::to_type_path(): domain mismatch error on a non arrow type"
-                ),
-                UnifError::CodomainMismatch(
-                    tyw1 @ TypeWrapper::Concrete(AbsType::Arrow(_, _)),
-                    tyw2 @ TypeWrapper::Concrete(AbsType::Arrow(_, _)),
-                    err,
-                ) => {
-                    tyws = tyws.or(Some((tyw1, tyw2)));
-                    path.push(ty_path::Elem::Codomain);
-                    curr = *err;
-                }
-                UnifError::CodomainMismatch(_, _, _) => panic!(
-                    "typechecking::to_type_path(): codomain mismatch error on a non arrow type"
-                ),
-                // tyws equals to `None` iff we did not even enter the case above once, i.e. if
-                // `self` was indeed neither a `DomainMismatch` nor a `CodomainMismatch`
-                _ => break tyws.map(|(expd, actual)| (expd, actual, path, curr)),
-            }
-        }
-    }
-}
+use error::*;
+use operation::{get_bop_type, get_nop_type, get_uop_type};
 
 /// The typing environment.
 pub type Environment = GenericEnvironment<Ident, TypeWrapper>;
@@ -440,7 +164,6 @@ impl<'a> Envs<'a> {
 }
 
 /// The shared state of unification.
-
 pub struct State<'a> {
     /// The import resolver, to retrieve and typecheck imports.
     resolver: &'a dyn ImportResolver,
@@ -559,6 +282,8 @@ fn type_check_<S, E>(
     ty: TypeWrapper,
 ) -> Result<(), TypecheckError> {
     use crate::destruct::*;
+    // TODO: The insertion of values in the type environment is done but everything is
+    // typed as `Dyn`.
     fn inject_pat_vars(pat: &Destruct, envs: &mut Envs) {
         if let Destruct::Record(matches, _, rst) = pat {
             if let Some(id) = rst {
@@ -568,17 +293,17 @@ fn type_check_<S, E>(
                 Match::Simple(id, ..) => {
                     envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()))
                 }
-                Match::Assign(_, _, (bind_id, pat)) => {
-                    if let Some(id) = bind_id {
-                        envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
-                    }
+                Match::Assign(id, _, (bind_id, pat)) => {
+                    let id = bind_id.as_ref().unwrap_or(id);
+                    envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
                     if !pat.is_empty() {
-                        inject_pat_vars(pat, envs);
+                        inject_pat_vars(&pat, envs);
                     }
                 }
             });
         }
     }
+
     let RichTerm { term: t, pos } = rt;
     linearizer.add_term(lin, t, *pos, ty.clone());
 
@@ -686,7 +411,7 @@ fn type_check_<S, E>(
             envs.insert(x.clone(), ty_let);
             type_check_(state, envs, lin, linearizer, strict, rt, ty)
         }
-        Term::LetPattern(x, pat, re, _rt) => {
+        Term::LetPattern(x, pat, re, rt) => {
             let ty_let = binding_type(re.as_ref(), &envs, state.table, strict, state.resolver);
             type_check_(
                 state,
@@ -698,13 +423,12 @@ fn type_check_<S, E>(
                 ty_let.clone(),
             )?;
 
-            // TODO typecheck the interior of the patern
             if let Some(x) = x {
+                linearizer.retype_ident(lin, x, ty_let.clone());
                 envs.insert(x.clone(), ty_let);
-                inject_pat_vars(pat, &mut envs);
             }
-            //type_check_(state, envs, strict, rt, ty)
-            Ok(())
+            inject_pat_vars(pat, &mut envs);
+            type_check_(state, envs, lin, linearizer, strict, rt, ty)
         }
         Term::App(e, t) => {
             let src = TypeWrapper::Ptr(new_var(state.table));
@@ -1120,9 +844,8 @@ pub fn apparent_type(
     }
 }
 
-/// Infer type of a more complex structure.
-/// For now, it's implemented only to infer the type of a non annotated record by gathering the apparent type of the fields.
-/// It's used essentially to type the stdlib.
+/// Infer the type of a non annotated record by gathering the apparent type of the fields. It's
+/// currently used essentially to type the stdlib.
 pub fn infer_type(t: &Term) -> TypeWrapper {
     match t {
         Term::Record(rec, ..) | Term::RecRecord(rec, ..) => AbsType::StaticRecord(Box::new(
@@ -1232,126 +955,6 @@ impl From<Types> for TypeWrapper {
     fn from(ty: Types) -> Self {
         TypeWrapper::Concrete(ty.0.map(|ty_| Box::new(TypeWrapper::from(*ty_))))
     }
-}
-
-#[macro_use]
-/// Helpers for building `TypeWrapper`s.
-pub mod mk_typewrapper {
-    use super::{AbsType, TypeWrapper};
-
-    /// Multi-ary arrow constructor for types implementing `Into<TypeWrapper>`.
-    #[macro_export]
-    macro_rules! mk_tyw_arrow {
-        ($left:expr, $right:expr) => {
-            $crate::typecheck::TypeWrapper::Concrete(
-                $crate::types::AbsType::Arrow(
-                    Box::new($crate::typecheck::TypeWrapper::from($left)),
-                    Box::new($crate::typecheck::TypeWrapper::from($right))
-                )
-            )
-        };
-        ( $fst:expr, $snd:expr , $( $types:expr ),+ ) => {
-            mk_tyw_arrow!($fst, mk_tyw_arrow!($snd, $( $types ),+))
-        };
-    }
-
-    /// Multi-ary enum row constructor for types implementing `Into<TypeWrapper>`.
-    /// `mk_tyw_enum_row!(id1, .., idn, tail)` correspond to `<id1, .., idn | tail>.
-    #[macro_export]
-    macro_rules! mk_tyw_enum_row {
-        ($id:expr, $tail:expr) => {
-            $crate::typecheck::TypeWrapper::Concrete(
-                $crate::types::AbsType::RowExtend(
-                    Ident::from($id),
-                    None,
-                    Box::new($crate::typecheck::TypeWrapper::from($tail))
-                )
-            )
-        };
-        ( $fst:expr, $snd:expr , $( $rest:expr ),+ ) => {
-            mk_tyw_enum_row!($fst, mk_tyw_enum_row!($snd, $( $rest),+))
-        };
-    }
-
-    /// Multi-ary record row constructor for types implementing `Into<TypeWrapper>`.
-    /// `mk_tyw_row!((id1, ty1), .., (idn, tyn); tail)` correspond to `{id1: ty1, .., idn: tyn |
-    /// tail}. The tail can be omitted, in which case the empty row is uses as a tail instead.
-    #[macro_export]
-    macro_rules! mk_tyw_row {
-        () => {
-            $crate::typecheck::TypeWrapper::from(AbsType::RowEmpty())
-        };
-        (; $tail:expr) => {
-            $crate::typecheck::TypeWrapper::from($tail)
-        };
-        (($id:expr, $ty:expr) $(,($ids:expr, $tys:expr))* $(; $tail:expr)?) => {
-            $crate::typecheck::TypeWrapper::Concrete(
-                $crate::types::AbsType::RowExtend(
-                    Ident::from($id),
-                    Some(Box::new($ty.into())),
-                    Box::new(mk_tyw_row!($(($ids, $tys)),* $(; $tail)?))
-                )
-            )
-        };
-    }
-
-    /// Wrapper around `mk_tyw_enum_row!` to build an enum type from an enum row.
-    #[macro_export]
-    macro_rules! mk_tyw_enum {
-        ( $rows:expr ) => {
-            $crate::typecheck::TypeWrapper::Concrete(
-                $crate::types::AbsType::Enum(
-                    Box::new($rows.into())
-                )
-            )
-        };
-        ( $fst:expr, $( $rest:expr ),+ ) => {
-            mk_tyw_enum!(mk_tyw_enum_row!($fst, $( $rest),+))
-        };
-    }
-
-    /// Wrapper around `mk_tyw_record!` to build a record type from a record row.
-    #[macro_export]
-    macro_rules! mk_tyw_record {
-        ($(($ids:expr, $tys:expr)),* $(; $tail:expr)?) => {
-            $crate::typecheck::TypeWrapper::Concrete(
-                $crate::types::AbsType::StaticRecord(
-                    Box::new(mk_tyw_row!($(($ids, $tys)),* $(; $tail)?))
-                )
-            )
-        };
-    }
-
-    /// Generate an helper function to build a 0-ary type.
-    macro_rules! generate_builder {
-        ($fun:ident, $var:ident) => {
-            pub fn $fun() -> TypeWrapper {
-                TypeWrapper::Concrete(AbsType::$var())
-            }
-        };
-    }
-
-    pub fn dyn_record<T>(ty: T) -> TypeWrapper
-    where
-        T: Into<TypeWrapper>,
-    {
-        TypeWrapper::Concrete(AbsType::DynRecord(Box::new(ty.into())))
-    }
-
-    pub fn list<T>(ty: T) -> TypeWrapper
-    where
-        T: Into<TypeWrapper>,
-    {
-        TypeWrapper::Concrete(AbsType::List(Box::new(ty.into())))
-    }
-
-    // dyn is a reserved keyword
-    generate_builder!(dynamic, Dyn);
-    generate_builder!(str, Str);
-    generate_builder!(num, Num);
-    generate_builder!(bool, Bool);
-    generate_builder!(sym, Sym);
-    generate_builder!(row_empty, RowEmpty);
 }
 
 /// Look for a binding in a row, or add a new one if it is not present and if allowed by [row
@@ -1630,136 +1233,6 @@ fn to_type(table: &UnifTable, ty: TypeWrapper) -> Types {
     }
 }
 
-/// Helpers to convert a `TypeWrapper` to a human-readable `Types` representation for error
-/// reporting purpose.
-pub mod reporting {
-    use super::*;
-    use std::collections::HashSet;
-    /// A name registry used to replace unification variables and type constants with human-readable
-    /// and distinct names when reporting errors.
-    pub struct NameReg {
-        reg: HashMap<usize, Ident>,
-        taken: HashSet<String>,
-        var_count: usize,
-        cst_count: usize,
-    }
-
-    impl NameReg {
-        pub fn new() -> Self {
-            NameReg {
-                reg: HashMap::new(),
-                taken: HashSet::new(),
-                var_count: 0,
-                cst_count: 0,
-            }
-        }
-    }
-
-    /// Create a fresh name candidate for a type variable or a type constant.
-    ///
-    /// Used by [`to_type_report`](./fn.to_type_report.html) and subfunctions
-    /// [`var_to_type`](./fn.var_to_type) and [`cst_to_type`](./fn.cst_to_type) when converting a type
-    /// wrapper to a human-readable representation.
-    ///
-    /// To select a candidate, first check in `names` if the variable or the constant corresponds to a
-    /// type variable written by the user. If it is, return the name of the variable. Otherwise, use
-    /// the given counter to generate a new single letter.
-    ///
-    /// Generated name is clearly not necessarily unique. This is handled by
-    /// [`select_uniq`](./fn.select_uniq.html).
-    fn mk_name(names: &HashMap<usize, Ident>, counter: &mut usize, id: usize) -> String {
-        match names.get(&id) {
-            // First check if that constant or variable was introduced by a forall. If it was, try
-            // to use the same name.
-            Some(orig) => format!("{}", orig),
-            None => {
-                //Otherwise, generate a new character
-                let next = *counter;
-                *counter += 1;
-                std::char::from_u32(('a' as u32) + ((next % 26) as u32))
-                    .unwrap()
-                    .to_string()
-            }
-        }
-    }
-
-    /// Select a name distinct from all the others, starting from a candidate name for a type
-    /// variable or a type constant.
-    ///
-    /// If the name is already taken, it just iterates by adding a numeric suffix `1`, `2`, .., and
-    /// so on until a free name is found. See [`var_to_type`](./fn.var_to_type.html) and
-    /// [`cst_to_type`](./fn.cst_to_type.html).
-    fn select_uniq(name_reg: &mut NameReg, mut name: String, id: usize) -> Ident {
-        // To avoid clashing with already picked names, we add a numeric suffix to the picked
-        // letter.
-        if name_reg.taken.contains(&name) {
-            let mut suffix = 1;
-
-            while name_reg.taken.contains(&format!("{}{}", name, suffix)) {
-                suffix += 1;
-            }
-
-            name = format!("{}{}", name, suffix);
-        }
-
-        let ident = Ident::from(name);
-        name_reg.reg.insert(id, ident.clone());
-        ident
-    }
-
-    /// Either retrieve or generate a new fresh name for a unification variable for error reporting,
-    /// and wrap it as a type variable. Constant are named `_a`, `_b`, .., `_a1`, `_b1`, .. and so on.
-    fn var_to_type(names: &HashMap<usize, Ident>, name_reg: &mut NameReg, p: usize) -> Types {
-        let ident = name_reg.reg.get(&p).cloned().unwrap_or_else(|| {
-            // Select a candidate name and add a "_" prefix
-            let name = format!("_{}", mk_name(names, &mut name_reg.var_count, p));
-            // Add a suffix to make it unique if it has already been picked
-            select_uniq(name_reg, name, p)
-        });
-
-        Types(AbsType::Var(ident))
-    }
-
-    /// Either retrieve or generate a new fresh name for a constant for error reporting, and wrap it as
-    /// type variable. Constant are named `a`, `b`, .., `a1`, `b1`, .. and so on.
-    fn cst_to_type(names: &HashMap<usize, Ident>, name_reg: &mut NameReg, c: usize) -> Types {
-        let ident = name_reg.reg.get(&c).cloned().unwrap_or_else(|| {
-            // Select a candidate name
-            let name = mk_name(names, &mut name_reg.cst_count, c);
-            // Add a suffix to make it unique if it has already been picked
-            select_uniq(name_reg, name, c)
-        });
-
-        Types(AbsType::Var(ident))
-    }
-
-    /// Extract a concrete type corresponding to a type wrapper for error reporting.
-    ///
-    /// Similar to [`to_type`](./fn.to_type.html), excepted that free unification variables and
-    /// type constants are replaced by type variables which names are determined by the
-    /// [`var_to_type`](./fn.var_to_type.html) and [`cst_to_type`](./fn.cst_tot_type.html).
-    /// Distinguishing occurrences of unification variables and type constants is more informative
-    /// than having `Dyn` everywhere.
-    pub fn to_type(
-        table: &UnifTable,
-        reported_names: &HashMap<usize, Ident>,
-        names: &mut NameReg,
-        ty: TypeWrapper,
-    ) -> Types {
-        match ty {
-            TypeWrapper::Ptr(p) => match get_root(table, p) {
-                TypeWrapper::Ptr(p) => var_to_type(reported_names, names, p),
-                tyw => to_type(table, reported_names, names, tyw),
-            },
-            TypeWrapper::Constant(c) => cst_to_type(reported_names, names, c),
-            TypeWrapper::Concrete(t) => {
-                let mapped = t.map(|btyp| Box::new(to_type(table, reported_names, names, *btyp)));
-                Types(mapped)
-            }
-        }
-    }
-}
-
 /// Type of the parameter controlling instantiation of foralls.
 ///
 /// See [`instantiate_foralls`](./fn.instantiate_foralls.html).
@@ -1803,379 +1276,6 @@ fn instantiate_foralls(state: &mut State, mut ty: TypeWrapper, inst: ForallInst)
     }
 
     ty
-}
-
-/// Type of unary operations.
-pub fn get_uop_type(
-    state: &mut State,
-    op: &UnaryOp,
-) -> Result<(TypeWrapper, TypeWrapper), TypecheckError> {
-    Ok(match op {
-        // forall a. bool -> a -> a -> a
-        UnaryOp::Ite() => {
-            let branches = TypeWrapper::Ptr(new_var(state.table));
-
-            (
-                mk_typewrapper::bool(),
-                mk_tyw_arrow!(branches.clone(), branches.clone(), branches),
-            )
-        }
-        // forall a. a -> Bool
-        UnaryOp::IsNum()
-        | UnaryOp::IsBool()
-        | UnaryOp::IsStr()
-        | UnaryOp::IsFun()
-        | UnaryOp::IsList()
-        | UnaryOp::IsRecord() => {
-            let inp = TypeWrapper::Ptr(new_var(state.table));
-            (inp, mk_typewrapper::bool())
-        }
-        // Bool -> Bool -> Bool
-        UnaryOp::BoolAnd() | UnaryOp::BoolOr() => (
-            mk_typewrapper::bool(),
-            mk_tyw_arrow!(AbsType::Bool(), AbsType::Bool()),
-        ),
-        // Bool -> Bool
-        UnaryOp::BoolNot() => (mk_typewrapper::bool(), mk_typewrapper::bool()),
-        // forall a. Dyn -> a
-        UnaryOp::Blame() => {
-            let res = TypeWrapper::Ptr(new_var(state.table));
-
-            (mk_typewrapper::dynamic(), res)
-        }
-        // Dyn -> Bool
-        UnaryOp::Pol() => (mk_typewrapper::dynamic(), mk_typewrapper::bool()),
-        // forall rows. < | rows> -> <id | rows>
-        UnaryOp::Embed(id) => {
-            let row = TypeWrapper::Ptr(new_var(state.table));
-            // Constraining a freshly created variable should never fail.
-            constraint(state, row.clone(), id.clone()).unwrap();
-            (mk_tyw_enum!(row.clone()), mk_tyw_enum!(id.clone(), row))
-        }
-        // This should not happen, as Switch() is only produced during evaluation.
-        UnaryOp::Switch(_) => panic!("cannot typecheck Switch()"),
-        // Dyn -> Dyn
-        UnaryOp::ChangePolarity() | UnaryOp::GoDom() | UnaryOp::GoCodom() | UnaryOp::GoList() => {
-            (mk_typewrapper::dynamic(), mk_typewrapper::dynamic())
-        }
-        // Sym -> Dyn -> Dyn
-        UnaryOp::Wrap() => (
-            mk_typewrapper::sym(),
-            mk_tyw_arrow!(AbsType::Dyn(), AbsType::Dyn()),
-        ),
-        // forall rows a. { id: a | rows} -> a
-        UnaryOp::StaticAccess(id) => {
-            let row = TypeWrapper::Ptr(new_var(state.table));
-            let res = TypeWrapper::Ptr(new_var(state.table));
-
-            (mk_tyw_record!((id.clone(), res.clone()); row), res)
-        }
-        // forall a b. List a -> (a -> b) -> List b
-        UnaryOp::ListMap() => {
-            let a = TypeWrapper::Ptr(new_var(state.table));
-            let b = TypeWrapper::Ptr(new_var(state.table));
-
-            let f_type = mk_tyw_arrow!(a.clone(), b.clone());
-            (
-                mk_typewrapper::list(a),
-                mk_tyw_arrow!(f_type, mk_typewrapper::list(b)),
-            )
-        }
-        // forall a. Num -> (Num -> a) -> List a
-        UnaryOp::ListGen() => {
-            let a = TypeWrapper::Ptr(new_var(state.table));
-
-            let f_type = mk_tyw_arrow!(AbsType::Num(), a.clone());
-            (
-                mk_typewrapper::num(),
-                mk_tyw_arrow!(f_type, mk_typewrapper::list(a)),
-            )
-        }
-        // forall a b. { _ : a} -> (Str -> a -> b) -> { _ : b }
-        UnaryOp::RecordMap() => {
-            // Assuming f has type Str -> a -> b,
-            // this has type DynRecord(a) -> DynRecord(b)
-
-            let a = TypeWrapper::Ptr(new_var(state.table));
-            let b = TypeWrapper::Ptr(new_var(state.table));
-
-            let f_type = mk_tyw_arrow!(AbsType::Str(), a.clone(), b.clone());
-            (
-                mk_typewrapper::dyn_record(a),
-                mk_tyw_arrow!(f_type, mk_typewrapper::dyn_record(b)),
-            )
-        }
-        // forall a b. a -> b -> b
-        UnaryOp::Seq() | UnaryOp::DeepSeq() => {
-            let fst = TypeWrapper::Ptr(new_var(state.table));
-            let snd = TypeWrapper::Ptr(new_var(state.table));
-
-            (fst, mk_tyw_arrow!(snd.clone(), snd))
-        }
-        // forall a. List a -> a
-        UnaryOp::ListHead() => {
-            let ty_elt = TypeWrapper::Ptr(new_var(state.table));
-            (mk_typewrapper::list(ty_elt.clone()), ty_elt)
-        }
-        // forall a. List a -> List a
-        UnaryOp::ListTail() => {
-            let ty_elt = TypeWrapper::Ptr(new_var(state.table));
-            (
-                mk_typewrapper::list(ty_elt.clone()),
-                mk_typewrapper::list(ty_elt),
-            )
-        }
-        // forall a. List a -> Num
-        UnaryOp::ListLength() => {
-            let ty_elt = TypeWrapper::Ptr(new_var(state.table));
-            (mk_typewrapper::list(ty_elt), mk_typewrapper::num())
-        }
-        // This should not happen, as ChunksConcat() is only produced during evaluation.
-        UnaryOp::ChunksConcat() => panic!("cannot type ChunksConcat()"),
-        // BEFORE: forall rows. { rows } -> List
-        // Dyn -> List Str
-        UnaryOp::FieldsOf() => (
-            mk_typewrapper::dynamic(),
-            //mk_tyw_record!(; TypeWrapper::Ptr(new_var(state.table))),
-            mk_typewrapper::list(AbsType::Str()),
-        ),
-        // Dyn -> List
-        UnaryOp::ValuesOf() => (
-            mk_typewrapper::dynamic(),
-            mk_typewrapper::list(AbsType::Dyn()),
-        ),
-        // Str -> Str
-        UnaryOp::StrTrim() => (mk_typewrapper::str(), mk_typewrapper::str()),
-        // Str -> List Str
-        UnaryOp::StrChars() => (
-            mk_typewrapper::str(),
-            mk_typewrapper::list(mk_typewrapper::str()),
-        ),
-        // Str -> Num
-        UnaryOp::CharCode() => (mk_typewrapper::str(), mk_typewrapper::num()),
-        // Num -> Str
-        UnaryOp::CharFromCode() => (mk_typewrapper::num(), mk_typewrapper::str()),
-        // Str -> Str
-        UnaryOp::StrUppercase() => (mk_typewrapper::str(), mk_typewrapper::str()),
-        // Str -> Str
-        UnaryOp::StrLowercase() => (mk_typewrapper::str(), mk_typewrapper::str()),
-        // Str -> Num
-        UnaryOp::StrLength() => (mk_typewrapper::str(), mk_typewrapper::num()),
-        // Dyn -> Str
-        UnaryOp::ToStr() => (mk_typewrapper::dynamic(), mk_typewrapper::num()),
-        // Str -> Num
-        UnaryOp::NumFromStr() => (mk_typewrapper::str(), mk_typewrapper::num()),
-        // Str -> < | Dyn>
-        UnaryOp::EnumFromStr() => (
-            mk_typewrapper::str(),
-            mk_tyw_enum!(mk_typewrapper::dynamic()),
-        ),
-    })
-}
-
-/// Type of a binary operation.
-pub fn get_bop_type(
-    state: &mut State,
-    op: &BinaryOp,
-) -> Result<(TypeWrapper, TypeWrapper, TypeWrapper), TypecheckError> {
-    Ok(match op {
-        // Num -> Num -> Num
-        BinaryOp::Plus()
-        | BinaryOp::Sub()
-        | BinaryOp::Mult()
-        | BinaryOp::Div()
-        | BinaryOp::Modulo() => (
-            mk_typewrapper::num(),
-            mk_typewrapper::num(),
-            mk_typewrapper::num(),
-        ),
-        // Str -> Str -> Str
-        BinaryOp::StrConcat() => (
-            mk_typewrapper::str(),
-            mk_typewrapper::str(),
-            mk_typewrapper::str(),
-        ),
-        // Sym -> Dyn -> Dyn -> Dyn
-        // This should not happen, as `ApplyContract()` is only produced during evaluation.
-        BinaryOp::Assume() => panic!("cannot typecheck assume"),
-        BinaryOp::Unwrap() => (
-            mk_typewrapper::sym(),
-            mk_typewrapper::dynamic(),
-            mk_tyw_arrow!(AbsType::Dyn(), AbsType::Dyn()),
-        ),
-        // Str -> Dyn -> Dyn
-        BinaryOp::Tag() => (
-            mk_typewrapper::str(),
-            mk_typewrapper::dynamic(),
-            mk_typewrapper::dynamic(),
-        ),
-        // forall a b. a -> b -> Bool
-        BinaryOp::Eq() => (
-            TypeWrapper::Ptr(new_var(state.table)),
-            TypeWrapper::Ptr(new_var(state.table)),
-            mk_typewrapper::bool(),
-        ),
-        // Num -> Num -> Bool
-        BinaryOp::LessThan()
-        | BinaryOp::LessOrEq()
-        | BinaryOp::GreaterThan()
-        | BinaryOp::GreaterOrEq() => (
-            mk_typewrapper::num(),
-            mk_typewrapper::num(),
-            mk_typewrapper::bool(),
-        ),
-        // Str -> Dyn -> Dyn
-        BinaryOp::GoField() => (
-            mk_typewrapper::str(),
-            mk_typewrapper::dynamic(),
-            mk_typewrapper::dynamic(),
-        ),
-        // forall a. Str -> { _ : a} -> a
-        BinaryOp::DynAccess() => {
-            let res = TypeWrapper::Ptr(new_var(state.table));
-
-            (
-                mk_typewrapper::str(),
-                mk_typewrapper::dyn_record(res.clone()),
-                res,
-            )
-        }
-        // forall a. Str -> { _ : a } -> a -> { _ : a }
-        BinaryOp::DynExtend() => {
-            let res = TypeWrapper::Ptr(new_var(state.table));
-            (
-                mk_typewrapper::str(),
-                mk_typewrapper::dyn_record(res.clone()),
-                mk_tyw_arrow!(res.clone(), mk_typewrapper::dyn_record(res)),
-            )
-        }
-        // forall a. Str -> { _ : a } -> { _ : a}
-        BinaryOp::DynRemove() => {
-            let res = TypeWrapper::Ptr(new_var(state.table));
-
-            (
-                mk_typewrapper::str(),
-                mk_typewrapper::dyn_record(res.clone()),
-                mk_typewrapper::dyn_record(res),
-            )
-        }
-        // Str -> Dyn -> Bool
-        BinaryOp::HasField() => (
-            mk_typewrapper::str(),
-            mk_typewrapper::dynamic(),
-            mk_typewrapper::bool(),
-        ),
-        // forall a. List a -> List a -> List a
-        BinaryOp::ListConcat() => {
-            let ty_elt = TypeWrapper::Ptr(new_var(state.table));
-            let ty_list = mk_typewrapper::list(ty_elt);
-            (ty_list.clone(), ty_list.clone(), ty_list)
-        }
-        // forall a. List a -> Num -> a
-        BinaryOp::ListElemAt() => {
-            let ty_elt = TypeWrapper::Ptr(new_var(state.table));
-            (
-                mk_typewrapper::list(ty_elt.clone()),
-                mk_typewrapper::num(),
-                ty_elt,
-            )
-        }
-        // Dyn -> Dyn -> Dyn
-        BinaryOp::Merge() => (
-            mk_typewrapper::dynamic(),
-            mk_typewrapper::dynamic(),
-            mk_typewrapper::dynamic(),
-        ),
-        // <Md5, Sha1, Sha256, Sha512> -> Str -> Str
-        BinaryOp::Hash() => (
-            mk_tyw_enum!(
-                "Md5",
-                "Sha1",
-                "Sha256",
-                "Sha512",
-                mk_typewrapper::row_empty()
-            ),
-            mk_typewrapper::str(),
-            mk_typewrapper::str(),
-        ),
-        // forall a. <Json, Yaml, Toml> -> a -> Str
-        BinaryOp::Serialize() => {
-            let ty_input = TypeWrapper::Ptr(new_var(state.table));
-            (
-                mk_tyw_enum!("Json", "Yaml", "Toml", mk_typewrapper::row_empty()),
-                ty_input,
-                mk_typewrapper::str(),
-            )
-        }
-        // <Json, Yaml, Toml> -> Str -> Dyn
-        BinaryOp::Deserialize() => (
-            mk_tyw_enum!("Json", "Yaml", "Toml", mk_typewrapper::row_empty()),
-            mk_typewrapper::str(),
-            mk_typewrapper::dynamic(),
-        ),
-        // Num -> Num -> Num
-        BinaryOp::Pow() => (
-            mk_typewrapper::num(),
-            mk_typewrapper::num(),
-            mk_typewrapper::num(),
-        ),
-        // Str -> Str -> Bool
-        BinaryOp::StrContains() => (
-            mk_typewrapper::str(),
-            mk_typewrapper::str(),
-            mk_typewrapper::bool(),
-        ),
-        // Str -> Str -> Bool
-        BinaryOp::StrIsMatch() => (
-            mk_typewrapper::str(),
-            mk_typewrapper::str(),
-            mk_typewrapper::bool(),
-        ),
-        // Str -> Str -> {match: Str, index: Num, groups: List Str}
-        BinaryOp::StrMatch() => (
-            mk_typewrapper::str(),
-            mk_typewrapper::str(),
-            mk_tyw_record!(
-                ("match", AbsType::Str()),
-                ("index", AbsType::Num()),
-                ("groups", mk_typewrapper::list(AbsType::Str()))
-            ),
-        ),
-        // Str -> Str -> List Str
-        BinaryOp::StrSplit() => (
-            mk_typewrapper::str(),
-            mk_typewrapper::str(),
-            mk_typewrapper::list(AbsType::Str()),
-        ),
-    })
-}
-
-pub fn get_nop_type(
-    _state: &mut State,
-    op: &NAryOp,
-) -> Result<(Vec<TypeWrapper>, TypeWrapper), TypecheckError> {
-    Ok(match op {
-        // Str -> Str -> Str -> Str
-        NAryOp::StrReplace() | NAryOp::StrReplaceRegex() => (
-            vec![
-                mk_typewrapper::str(),
-                mk_typewrapper::str(),
-                mk_typewrapper::str(),
-            ],
-            mk_typewrapper::str(),
-        ),
-        // Str -> Num -> Num -> Str
-        NAryOp::StrSubstr() => (
-            vec![
-                mk_typewrapper::str(),
-                mk_typewrapper::num(),
-                mk_typewrapper::num(),
-            ],
-            mk_typewrapper::str(),
-        ),
-        // This should not happen, as Switch() is only produced during evaluation.
-        NAryOp::MergeContract() => panic!("cannot typecheck MergeContract()"),
-    })
 }
 
 /// The unification table.

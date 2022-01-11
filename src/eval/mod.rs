@@ -107,6 +107,12 @@ use lazy::*;
 use operation::{continuate_operation, OperationCont};
 use stack::Stack;
 
+impl AsRef<Vec<StackElem>> for CallStack {
+    fn as_ref(&self) -> &Vec<StackElem> {
+        &self.0
+    }
+}
+
 /// Kind of an identifier.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum IdentKind {
@@ -571,7 +577,7 @@ where
                 }
             }
             // Unwrapping of enriched terms
-            Term::MetaValue(meta) if enriched_strict => {
+            Term::MetaValue(mut meta) if enriched_strict => {
                 if meta.value.is_some() {
                     /* Since we are forcing a metavalue, we are morally evaluating `force t` rather
                      * than `t` iteself.  Updating a thunk after having performed this forcing may
@@ -599,10 +605,9 @@ where
                         }) => Closure { body: inner, env },
                         _ => unreachable!(),
                     }
-                }
-                // TODO: improve error message using some positions
-                else {
-                    return Err(EvalError::Other(String::from("empty metavalue"), pos));
+                } else {
+                    let label = meta.contracts.pop().or(meta.types).map(|ctr| ctr.label);
+                    return Err(EvalError::MissingFieldDef(label, call_stack));
                 }
             }
             Term::ResolvedImport(id) => {
