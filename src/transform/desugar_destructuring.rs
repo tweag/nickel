@@ -6,7 +6,7 @@
 //!
 //! # Example
 //!
-//! The let pattern:
+//! ## The let pattern:
 //! ```text
 //! let x @ {a, b=d, ..} = {a=1,b=2,c="ignored"} in ...
 //! ```
@@ -17,6 +17,19 @@
 //! let d = x.b in
 //! ...
 //! ```
+//!
+//! ## The function pattern
+//! ```text
+//! let f = fun x @ {a, b=c}, {d ? 2, ..w} => <do_something> in ...
+//! ```
+//! will be transformed to:
+//! ```text
+//! let f = fun x %unnamed% => (
+//!     let {a, b=c} = x in
+//!     let {d ? 2, ..w} = %unnamed% in
+//!     <do_something>
+//! ) in ...
+//! ```
 use crate::destruct::{Destruct, Match};
 use crate::identifier::Ident;
 use crate::term::make::{op1, op2};
@@ -24,15 +37,23 @@ use crate::term::{
     BinaryOp::DynRemove, BindingType, MetaValue, RichTerm, Term, UnaryOp::StaticAccess,
 };
 
+/// Entry point of the patterns desugaring.
+/// It call:
+/// - `desugar_with_contract` when `rt` is a let pattern.
+/// - `desugar_fun` when `rt` is a function with patterns as arguments (`Term::FunPattern`).
 pub fn transform_one(rt: RichTerm) -> RichTerm {
     match *rt.term {
         Term::LetPattern(..) => desugar_with_contract(rt),
-        Term::FunPattern(..) => desugar_fun_pat(rt),
+        Term::FunPattern(..) => desugar_fun(rt),
         _ => rt,
     }
 }
 
-pub fn desugar_fun_pat(rt: RichTerm) -> RichTerm {
+/// Desugar a function with patterns as arguments.
+/// This function does not perform nested transformation because internaly it's only used in a top
+/// down traversal. It mean that the return value is a normal `Term::Fun` but it can contains
+/// `Term::FunPattern` and `Term::LetPattern` inside RHS.
+pub fn desugar_fun(rt: RichTerm) -> RichTerm {
     match *rt.term {
         Term::FunPattern(x, pat, t_) if !pat.is_empty() => {
             let x = x.unwrap_or_else(super::fresh_var);
@@ -53,10 +74,10 @@ pub fn desugar_fun_pat(rt: RichTerm) -> RichTerm {
     }
 }
 
-/// Wrap the desugar term in a meta value containing the "Record contract" needed to check the
+/// Wrap the desugar `LetPattern` in a meta value containing the "Record contract" needed to check the
 /// pattern exhaustively and also fill the default values (`?` operator) if not presents in the
-/// record. This function should be, in the general case, considered as the entry point of this
-/// transformation.
+/// record. This function should be, in the general case, considered as the entry point of the let
+/// patterns transformation.
 pub fn desugar_with_contract(rt: RichTerm) -> RichTerm {
     if let Term::LetPattern(x, pat, t_, body) = *rt.term {
         let pos = body.pos;

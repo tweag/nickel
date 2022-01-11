@@ -126,7 +126,7 @@ fn variables() {
 #[test]
 fn functions() {
     assert_eq!(
-        crate::transform::desugar_destructuring::desugar_fun_pat(parse_without_pos("fun x => x")),
+        crate::transform::desugar_destructuring::desugar_fun(parse_without_pos("fun x => x")),
         mk_term::id()
     );
 }
