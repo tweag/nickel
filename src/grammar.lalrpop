@@ -174,7 +174,7 @@ RecordOperand: RichTerm = {
 
 RecordOperationChain: RichTerm = {
     <t: WithPos<RecordOperand>> "." <id: Ident> => mk_term::op1(UnaryOp::StaticAccess(id), t),
-    <t: WithPos<RecordOperand>> "." <t_id: WithPos<StrChunks>> => mk_term::op2(BinaryOp::DynAccess(), t_id, t),
+    <t: WithPos<RecordOperand>> "." <t_id: WithPos<StrChunks>> => mk_access(t_id, t),
     <t: WithPos<RecordOperand>> "-$" <t_id: WithPos<Atom>> => mk_term::op2(BinaryOp::DynRemove(), t_id, t),
     <r: WithPos<RecordOperand>> "$[" <id: Term> "=" <t: Term> "]" =>
         mk_app!(mk_term::op2(BinaryOp::DynExtend(), id, r), t),

@@ -95,6 +95,36 @@ impl InfixOp {
     }
 }
 
+/// Turn record destructors using literal chunks only into static accesses
+pub fn mk_access(access: RichTerm, root: RichTerm) -> RichTerm {
+    let label = match *access.term {
+        Term::StrChunks(ref chunks) => {
+            chunks
+                .iter()
+                .fold(Some(String::new()), |acc, next| match (acc, next) {
+                    (Some(mut acc), StrChunk::Literal(lit)) => {
+                        acc.push_str(lit);
+                        Some(acc)
+                    }
+                    _ => None,
+                })
+        }
+        _ => None,
+    };
+
+    if let Some(label) = label {
+        mk_term::op1(
+            UnaryOp::StaticAccess(Ident {
+                label,
+                pos: access.pos,
+            }),
+            root,
+        )
+    } else {
+        mk_term::op2(BinaryOp::DynAccess(), access, root)
+    }
+}
+
 /// Elaborate a record field definition specified as a path, like `a.b.c = foo`, into a regular
 /// flat definition `a = {b = {c = foo}}`.
 ///
