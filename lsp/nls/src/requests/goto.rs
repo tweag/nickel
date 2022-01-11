@@ -43,7 +43,7 @@ pub fn handle_to_definition(
 
     Trace::enrich(&id, linearization);
 
-    let item = linearization.item_at(locator);
+    let item = linearization.item_at(&locator);
 
     if item == None {
         server.reply(Response::new_ok(id, Value::Null));
@@ -106,7 +106,7 @@ pub fn handle_to_usages(
     let locator = (file_id, ByteIndex(start as u32));
     let linearization = server.lin_cache_get(&file_id)?;
 
-    let item = linearization.item_at(locator);
+    let item = linearization.item_at(&locator);
 
     if item == None {
         server.reply(Response::new_ok(id, Value::Null));

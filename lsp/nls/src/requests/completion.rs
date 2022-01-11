@@ -33,7 +33,7 @@ pub fn handle_completion(
 
     Trace::enrich(&id, linearization);
 
-    let item = linearization.item_at(locator);
+    let item = linearization.item_at(&locator);
 
     if item == None {
         server.reply(Response::new_ok(id, Value::Null));
