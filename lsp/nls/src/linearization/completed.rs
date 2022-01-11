@@ -87,7 +87,7 @@ impl Completed {
             // search for most precise element
             Ok(index) => linearization[index..]
                 .iter()
-                .take_while(|item| (item.pos.src_id, item.pos.start) == (*file_id, *start))
+                .take_while(|item| (item.pos.src_id, item.pos.start) == *locator)
                 .last(),
             // No perfect match found
             // iterate back finding the first wrapping linearization item
