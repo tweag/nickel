@@ -5,7 +5,7 @@ use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{
     GotoDefinitionParams, GotoDefinitionResponse, Location, Range, ReferenceParams, Url,
 };
-use nickel::position::{RawSpan, TermPos};
+use nickel::position::RawSpan;
 use serde_json::Value;
 
 use crate::{
@@ -58,26 +58,20 @@ pub fn handle_to_definition(
         TermKind::Usage(UsageState::Resolved(Some(usage_id))) => {
             let definition = linearization.get_item(usage_id).unwrap();
             let location = match definition.pos {
-                TermPos::Original(RawSpan {
+                RawSpan {
                     start: ByteIndex(start),
                     end: ByteIndex(end),
                     src_id,
-                })
-                | TermPos::Inherited(RawSpan {
-                    start: ByteIndex(start),
-                    end: ByteIndex(end),
-                    src_id,
-                }) => Some(Location {
+                } => Location {
                     uri: Url::parse(&server.cache.name(src_id).to_string_lossy()).unwrap(),
                     range: Range::from_codespan(
                         &src_id,
                         &(start as usize..end as usize),
                         server.cache.files(),
                     ),
-                }),
-                TermPos::None => None,
+                },
             };
-            location
+            Some(location)
         }
         _ => None,
     };
@@ -130,28 +124,20 @@ pub fn handle_to_usages(
             for reference_id in usages.iter() {
                 let reference = linearization.get_item(*reference_id).unwrap();
                 let location = match reference.pos {
-                    TermPos::Original(RawSpan {
+                    RawSpan {
                         start: ByteIndex(start),
                         end: ByteIndex(end),
                         src_id,
-                    })
-                    | TermPos::Inherited(RawSpan {
-                        start: ByteIndex(start),
-                        end: ByteIndex(end),
-                        src_id,
-                    }) => Some(Location {
+                    } => Location {
                         uri: Url::parse(&server.cache.name(src_id).to_string_lossy()).unwrap(),
                         range: Range::from_codespan(
                             &src_id,
                             &(start as usize..end as usize),
                             server.cache.files(),
                         ),
-                    }),
-                    TermPos::None => None,
+                    },
                 };
-                if let Some(location) = location {
-                    locations.push(location)
-                }
+                locations.push(location);
             }
             Some(locations)
         }

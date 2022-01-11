@@ -68,7 +68,7 @@ impl Building {
             let id = self.id_gen().get_and_advance();
             self.push(LinearizationItem {
                 id,
-                pos: ident.pos,
+                pos: ident.pos.unwrap(),
                 // temporary, the actual type is resolved later and the item retyped
                 ty: TypeWrapper::Concrete(AbsType::Dyn()),
                 kind: TermKind::RecordField {

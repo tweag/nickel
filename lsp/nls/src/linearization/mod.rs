@@ -4,7 +4,7 @@ use codespan::ByteIndex;
 use log::debug;
 use nickel::{
     identifier::Ident,
-    position::TermPos,
+    position::{RawSpan, TermPos},
     term::{MetaValue, RichTerm, Term, UnaryOp},
     typecheck::{
         linearization::{Linearization, Linearizer, ScopeId},
@@ -33,7 +33,7 @@ pub type Environment = nickel::environment::Environment<Ident, usize>;
 pub struct LinearizationItem<S: ResolutionState> {
     //term_: Box<Term>,
     pub id: usize,
-    pub pos: TermPos,
+    pub pos: RawSpan,
     pub ty: S,
     pub kind: TermKind,
     pub scope: Vec<ScopeId>,
@@ -144,7 +144,7 @@ impl Linearizer for AnalysisHost {
                 lin.push(LinearizationItem {
                     id,
                     ty,
-                    pos: ident.pos,
+                    pos: ident.pos.unwrap(),
                     scope: self.scope.clone(),
                     kind: TermKind::Declaration(ident.to_owned(), Vec::new()),
                     meta: self.meta.take(),
@@ -160,7 +160,7 @@ impl Linearizer for AnalysisHost {
 
                 lin.push(LinearizationItem {
                     id: root_id,
-                    pos: ident.pos,
+                    pos: ident.pos.unwrap(),
                     ty: TypeWrapper::Concrete(AbsType::Dyn()),
                     scope: self.scope.clone(),
                     kind: TermKind::Usage(UsageState::Resolved(self.env.get(ident))),
@@ -178,7 +178,7 @@ impl Linearizer for AnalysisHost {
                         let id = id_gen.get_and_advance();
                         lin.push(LinearizationItem {
                             id,
-                            pos: accessor.pos,
+                            pos: accessor.pos.unwrap(),
                             ty: TypeWrapper::Concrete(AbsType::Dyn()),
                             scope: self.scope.clone(),
                             kind: TermKind::Usage(UsageState::Deferred {
@@ -193,7 +193,7 @@ impl Linearizer for AnalysisHost {
             Term::Record(fields, _) | Term::RecRecord(fields, _, _) => {
                 lin.push(LinearizationItem {
                     id,
-                    pos,
+                    pos: pos.unwrap(),
                     ty,
                     kind: TermKind::Record(HashMap::new()),
                     scope: self.scope.clone(),
@@ -226,7 +226,7 @@ impl Linearizer for AnalysisHost {
                             let id = id_gen.get_and_advance();
                             lin.push(LinearizationItem {
                                 id,
-                                pos: ident.pos,
+                                pos: ident.pos.unwrap(),
                                 ty: TypeWrapper::Concrete(AbsType::Var(ident.to_owned())),
                                 scope: self.scope.clone(),
                                 // id = parent: full let binding including the body
@@ -253,7 +253,7 @@ impl Linearizer for AnalysisHost {
 
                 lin.push(LinearizationItem {
                     id,
-                    pos,
+                    pos: pos.unwrap(),
                     ty,
                     scope: self.scope.clone(),
                     kind: TermKind::Structure,
@@ -295,15 +295,7 @@ impl Linearizer for AnalysisHost {
             scope,
         } = lin.into_inner();
 
-        linearization.sort_by_key(|item| match item.pos {
-            TermPos::Original(span) => (span.src_id, span.start),
-            TermPos::Inherited(span) => (span.src_id, span.start),
-            TermPos::None => {
-                eprintln!("{:?}", item);
-
-                unreachable!()
-            }
-        });
+        linearization.sort_by_key(|item| (item.pos.src_id, item.pos.start));
 
         // create an index of id -> new position
         let mut id_mapping = HashMap::new();

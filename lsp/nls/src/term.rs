@@ -1,20 +1,14 @@
 use std::ops::Range;
 
 use codespan::FileId;
-use nickel::position::{RawSpan, TermPos};
+use nickel::position::RawSpan;
 
-pub trait TermPosExt {
-    fn try_to_range(&self) -> Option<(FileId, Range<usize>)>;
+pub trait RawSpanExt {
+    fn to_range(self) -> (FileId, Range<usize>);
 }
 
-impl TermPosExt for TermPos {
-    fn try_to_range(&self) -> Option<(FileId, Range<usize>)> {
-        match self {
-            TermPos::Inherited(RawSpan { src_id, start, end })
-            | TermPos::Original(RawSpan { src_id, start, end }) => {
-                Some((*src_id, (start.0 as usize..end.0 as usize)))
-            }
-            TermPos::None => None,
-        }
+impl RawSpanExt for RawSpan {
+    fn to_range(self) -> (FileId, Range<usize>) {
+        (self.src_id, (self.start.to_usize()..self.end.to_usize()))
     }
 }
