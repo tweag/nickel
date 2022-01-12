@@ -1102,8 +1102,8 @@ impl RichTerm {
                 RichTerm::new(
                     Term::Record(map_res?, attrs),
                     pos,
-                    )
-            }
+                )
+            },
             Term::RecRecord(map, dyn_fields, attrs, free_vars) => {
                 // The annotation on `map_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>

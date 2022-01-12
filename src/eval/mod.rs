@@ -496,7 +496,7 @@ where
                         }
                     }
                 }
-            },
+            }
             Term::RecRecord(ts, dyn_fields, attrs, _) => {
                 // Thanks to the share normal form transformation, the content is either a constant or a
                 // variable.
