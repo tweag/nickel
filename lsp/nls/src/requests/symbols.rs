@@ -1,5 +1,6 @@
 use crate::{
-    term::TermPosExt,
+    linearization::interface::TermKind,
+    term::RawSpanExt,
     trace::{Enrich, Trace},
 };
 use lsp_server::{RequestId, Response, ResponseError};
@@ -21,19 +22,15 @@ pub fn handle_document_symbols(
     if let Some(completed) = server.lin_cache.get(&file_id) {
         Trace::enrich(&id, completed);
         let symbols = completed
-            .lin
+            .linearization
             .iter()
             .filter_map(|item| match &item.kind {
-                nickel::typecheck::linearization::TermKind::Declaration(name, _) => {
-                    let range = item
-                        .pos
-                        .try_to_range()
-                        .or_else(|| Some((file_id, (0usize..0usize))))
-                        .map(|(file_id, range)| {
-                            codespan_lsp::byte_span_to_range(server.cache.files(), file_id, range)
-                                .unwrap()
-                        })
-                        .unwrap();
+                TermKind::Declaration(name, _) => {
+                    let (file_id, span) = item.pos.to_range();
+
+                    let range =
+                        codespan_lsp::byte_span_to_range(server.cache.files(), file_id, span)
+                            .unwrap();
 
                     // `deprecated` is a required field but causes a warning although we are not using it
                     #[allow(deprecated)]

@@ -14,7 +14,7 @@ use crate::identifier::Ident;
 use crate::destruct::{Match, LastMatch, Destruct};
 use crate::parser::error::ParseError;
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
-    MergePriority, Contract, NAryOp, RecordAttrs};
+    MergePriority, Contract, NAryOp, RecordAttrs, SharedTerm};
 use crate::term::make as mk_term;
 use crate::types::{Types, AbsType};
 
@@ -109,7 +109,7 @@ RootTerm: RichTerm = {
     <l: @L> "fun" <ids:Ident+> "=>" <t: Term> <r: @R> => {
         let pos = mk_pos(src_id, l, r);
         ids.into_iter().rev().fold(t, |t, p| RichTerm {
-            term: Box::new(Term::Fun(p, t)),
+            term: SharedTerm::new(Term::Fun(p, t)),
             pos,
         })
     },
@@ -138,7 +138,7 @@ RootTerm: RichTerm = {
     "if" <cond: Term> "then" <t1: Term> "else" <t2: Term> =>
         mk_app!(Term::Op1(UnaryOp::Ite(), cond), t1, t2),
     AnnotatedTerm,
-    <l: @L> <t: !> <r: @R> => { errors.push(t); RichTerm { term: Box::new(Term::ParseError), pos: mk_pos(src_id, l, r)} },
+    <l: @L> <t: !> <r: @R> => { errors.push(t); RichTerm { term: SharedTerm::new(Term::ParseError), pos: mk_pos(src_id, l, r)} },
 };
 
 AnnotatedTerm: RichTerm = {

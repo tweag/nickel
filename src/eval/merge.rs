@@ -55,7 +55,9 @@ use crate::error::EvalError;
 use crate::eval::{CallStack, Closure, Environment};
 use crate::label::Label;
 use crate::position::TermPos;
-use crate::term::{make as mk_term, BinaryOp, Contract, MetaValue, RecordAttrs, RichTerm, Term};
+use crate::term::{
+    make as mk_term, BinaryOp, Contract, MetaValue, RecordAttrs, RichTerm, SharedTerm, Term,
+};
 use crate::transform::Closurizable;
 use std::collections::HashMap;
 
@@ -115,7 +117,7 @@ pub fn merge(
         pos: pos2,
     } = t2;
 
-    match (*t1, *t2) {
+    match (t1.into_owned(), t2.into_owned()) {
         // Merge is idempotent on basic terms
         (Term::Bool(b1), Term::Bool(b2)) => {
             if b1 == b2 {
@@ -126,11 +128,11 @@ pub fn merge(
             } else {
                 Err(EvalError::MergeIncompatibleArgs(
                     RichTerm {
-                        term: Box::new(Term::Bool(b1)),
+                        term: SharedTerm::new(Term::Bool(b1)),
                         pos: pos1,
                     },
                     RichTerm {
-                        term: Box::new(Term::Bool(b2)),
+                        term: SharedTerm::new(Term::Bool(b2)),
                         pos: pos2,
                     },
                     pos_op,
@@ -146,11 +148,11 @@ pub fn merge(
             } else {
                 Err(EvalError::MergeIncompatibleArgs(
                     RichTerm {
-                        term: Box::new(Term::Num(n1)),
+                        term: SharedTerm::new(Term::Num(n1)),
                         pos: pos1,
                     },
                     RichTerm {
-                        term: Box::new(Term::Num(n2)),
+                        term: SharedTerm::new(Term::Num(n2)),
                         pos: pos2,
                     },
                     pos_op,
@@ -166,11 +168,11 @@ pub fn merge(
             } else {
                 Err(EvalError::MergeIncompatibleArgs(
                     RichTerm {
-                        term: Box::new(Term::Str(s1)),
+                        term: SharedTerm::new(Term::Str(s1)),
                         pos: pos1,
                     },
                     RichTerm {
-                        term: Box::new(Term::Str(s2)),
+                        term: SharedTerm::new(Term::Str(s2)),
                         pos: pos2,
                     },
                     pos_op,
@@ -186,11 +188,11 @@ pub fn merge(
             } else {
                 Err(EvalError::MergeIncompatibleArgs(
                     RichTerm {
-                        term: Box::new(Term::Lbl(l1)),
+                        term: SharedTerm::new(Term::Lbl(l1)),
                         pos: pos1,
                     },
                     RichTerm {
-                        term: Box::new(Term::Lbl(l2)),
+                        term: SharedTerm::new(Term::Lbl(l2)),
                         pos: pos2,
                     },
                     pos_op,
@@ -327,8 +329,6 @@ pub fn merge(
              * the same trick as in the evaluation of the operator DynExtend, and replace each such
              * term by a variable bound to an appropriate closure in the environment
              */
-            let mut m = HashMap::new();
-            let mut env = Environment::new();
             rev_thunks(m1.values_mut(), &mut env1);
             rev_thunks(m2.values_mut(), &mut env2);
             let (left, center, right) = hashmap::split(m1, m2);
@@ -343,6 +343,9 @@ pub fn merge(
                 }
                 _ => (),
             };
+
+            let mut m = HashMap::with_capacity(left.len() + center.len() + right.len());
+            let mut env = Environment::new();
 
             for (field, t) in left.into_iter() {
                 m.insert(field, t.closurize(&mut env, env1.clone()));
@@ -370,11 +373,11 @@ pub fn merge(
         //The following cases are either errors or not yet implemented
         (t1_, t2_) => Err(EvalError::MergeIncompatibleArgs(
             RichTerm {
-                term: Box::new(t1_),
+                term: SharedTerm::new(t1_),
                 pos: pos1,
             },
             RichTerm {
-                term: Box::new(t2_),
+                term: SharedTerm::new(t2_),
                 pos: pos2,
             },
             pos_op,
@@ -442,7 +445,7 @@ fn rev_thunks<'a, I: Iterator<Item = &'a mut RichTerm>>(map: I, env: &mut Enviro
             let reverted = env.get(&id).unwrap().revert();
             let fresh_id = fresh_var();
             env.insert(fresh_id.clone(), reverted);
-            *rt.term = Term::Var(fresh_id);
+            *(SharedTerm::make_mut(&mut rt.term)) = Term::Var(fresh_id);
         }
         // Otherwise, if it is not a variable after the share normal form transformations, it
         // should be a constant and we don't need to revert anything

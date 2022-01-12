@@ -19,6 +19,7 @@
 use crate::destruct::Destruct;
 use crate::identifier::Ident;
 use crate::label::Label;
+use crate::match_sharedterm;
 use crate::position::TermPos;
 use crate::types::{AbsType, Types};
 use codespan::FileId;
@@ -29,6 +30,8 @@ use std::ffi::OsString;
 use std::fmt;
 use std::hash::Hash;
 use std::iter::Extend;
+use std::ops::Deref;
+use std::rc::Rc;
 
 /// The AST of a Nickel expression.
 ///
@@ -579,6 +582,47 @@ impl Term {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct SharedTerm {
+    shared: Rc<Term>,
+}
+
+impl SharedTerm {
+    pub fn new(term: Term) -> Self {
+        Self {
+            shared: Rc::new(term),
+        }
+    }
+
+    pub fn into_owned(self) -> Term {
+        Rc::try_unwrap(self.shared).unwrap_or_else(|rc| Term::clone(&rc))
+    }
+
+    pub fn make_mut(this: &mut Self) -> &mut Term {
+        Rc::make_mut(&mut this.shared)
+    }
+}
+
+impl AsRef<Term> for SharedTerm {
+    fn as_ref(&self) -> &Term {
+        self.shared.as_ref()
+    }
+}
+
+impl From<SharedTerm> for Term {
+    fn from(st: SharedTerm) -> Self {
+        st.into_owned()
+    }
+}
+
+impl Deref for SharedTerm {
+    type Target = Term;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_ref()
+    }
+}
+
 /// Primitive unary operators.
 ///
 /// Some operators, such as if-then-else or `seq`, actually take several arguments but are only
@@ -890,7 +934,7 @@ where
 /// Wrap [terms](type.Term.html) with positional information.
 #[derive(Debug, PartialEq, Clone)]
 pub struct RichTerm {
-    pub term: Box<Term>,
+    pub term: SharedTerm,
     pub pos: TermPos,
 }
 
@@ -898,7 +942,7 @@ impl RichTerm {
     /// Create a new value from a term and an optional position.
     pub fn new(t: Term, pos: TermPos) -> Self {
         RichTerm {
-            term: Box::new(t),
+            term: SharedTerm::new(t),
             pos,
         }
     }
@@ -910,7 +954,7 @@ impl RichTerm {
     pub fn without_pos(mut self) -> Self {
         fn clean_pos(rt: &mut RichTerm) {
             rt.pos = TermPos::None;
-            rt.term
+            SharedTerm::make_mut(&mut rt.term)
                 .apply_to_rich_terms(|rt: &mut RichTerm| clean_pos(rt));
         }
 
@@ -951,58 +995,45 @@ impl RichTerm {
         M: Append,
     {
         let mut m = M::default();
-        let RichTerm { term, pos } = match method {
+        let rt = match method {
             TraverseMethod::TopDown => f(self, state, &mut m)?,
             TraverseMethod::BottomUp => self,
         };
+        let pos = rt.pos;
 
-        let result = match *term {
-            v @ Term::ParseError
-            | v @ Term::Null
-            | v @ Term::Bool(_)
-            | v @ Term::Num(_)
-            | v @ Term::Str(_)
-            | v @ Term::Lbl(_)
-            | v @ Term::Sym(_)
-            | v @ Term::Var(_)
-            | v @ Term::Enum(_)
-            | v @ Term::Import(_)
-            | v @ Term::ResolvedImport(_) => RichTerm {
-                term: Box::new(v),
-                pos,
-            },
+        let result = match_sharedterm! {rt.term, with {
             Term::Fun(id, t) => {
                 let t = t.traverse_monoid_state(f, state, &mut m, method)?;
-                RichTerm {
-                    term: Box::new(Term::Fun(id, t)),
+                RichTerm::new(
+                    Term::Fun(id, t),
                     pos,
-                }
-            }
+                )
+            },
             Term::Let(id, t1, t2, btype) => {
                 let t1 = t1.traverse_monoid_state(f, state, &mut m, method)?;
                 let t2 = t2.traverse_monoid_state(f, state, &mut m, method)?;
 
-                RichTerm {
-                    term: Box::new(Term::Let(id, t1, t2, btype)),
+                RichTerm::new(
+                    Term::Let(id, t1, t2, btype),
                     pos,
-                }
-            }
+                )
+            },
             Term::LetPattern(id, pat, t1, t2) => {
                 let t1 = t1.traverse_monoid_state(f, state, &mut m, method)?;
                 let t2 = t2.traverse_monoid_state(f, state, &mut m, method)?;
-                RichTerm {
-                    term: Box::new(Term::LetPattern(id, pat, t1, t2)),
+                RichTerm::new(
+                    Term::LetPattern(id, pat, t1, t2),
                     pos,
-                }
-            }
+                )
+            },
             Term::App(t1, t2) => {
                 let t1 = t1.traverse_monoid_state(f, state, &mut m, method)?;
                 let t2 = t2.traverse_monoid_state(f, state, &mut m, method)?;
-                RichTerm {
-                    term: Box::new(Term::App(t1, t2)),
+                RichTerm::new(
+                    Term::App(t1, t2),
                     pos,
-                }
-            }
+                )
+            },
             Term::Switch(t, cases, default) => {
                 // The annotation on `map_res` use Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
@@ -1021,40 +1052,42 @@ impl RichTerm {
 
                 let t = t.traverse_monoid_state(f, state, &mut m, method)?;
 
-                RichTerm::new(Term::Switch(t, cases_res?, default), pos)
-            }
+                RichTerm::new(
+                    Term::Switch(t, cases_res?, default),
+                    pos,
+                )
+            },
             Term::Op1(op, t) => {
                 let t = t.traverse_monoid_state(f, state, &mut m, method)?;
-                RichTerm {
-                    term: Box::new(Term::Op1(op, t)),
+                RichTerm::new(
+                    Term::Op1(op, t),
                     pos,
-                }
-            }
+                )
+            },
             Term::Op2(op, t1, t2) => {
                 let t1 = t1.traverse_monoid_state(f, state, &mut m, method)?;
                 let t2 = t2.traverse_monoid_state(f, state, &mut m, method)?;
-                RichTerm {
-                    term: Box::new(Term::Op2(op, t1, t2)),
+                RichTerm::new(Term::Op2(op, t1, t2),
                     pos,
-                }
-            }
+                )
+            },
             Term::OpN(op, ts) => {
                 let ts_res: Result<Vec<RichTerm>, E> = ts
                     .into_iter()
                     .map(|t| t.traverse_monoid_state(f, state, &mut m, method))
                     .collect();
-                RichTerm {
-                    term: Box::new(Term::OpN(op, ts_res?)),
+                RichTerm::new(
+                    Term::OpN(op, ts_res?),
                     pos,
-                }
-            }
+                )
+            },
             Term::Wrapped(i, t) => {
                 let t = t.traverse_monoid_state(f, state, &mut m, method)?;
-                RichTerm {
-                    term: Box::new(Term::Wrapped(i, t)),
+                RichTerm::new(
+                    Term::Wrapped(i, t),
                     pos,
-                }
-            }
+                )
+            },
             Term::Record(map, attrs) => {
                 // The annotation on `map_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
@@ -1066,10 +1099,10 @@ impl RichTerm {
                             .map(|t_ok| (id.clone(), t_ok))
                     })
                     .collect();
-                RichTerm {
-                    term: Box::new(Term::Record(map_res?, attrs)),
+                RichTerm::new(
+                    Term::Record(map_res?, attrs),
                     pos,
-                }
+                    )
             }
             Term::RecRecord(map, dyn_fields, attrs, free_vars) => {
                 // The annotation on `map_res` uses Result's corresponding trait to convert from
@@ -1088,22 +1121,22 @@ impl RichTerm {
                         ))
                     })
                     .collect();
-                RichTerm {
-                    term: Box::new(Term::RecRecord(map_res?, dyn_fields_res?, attrs, free_vars)),
+                RichTerm::new(
+                    Term::RecRecord(map_res?, dyn_fields_res?, attrs, free_vars),
                     pos,
-                }
-            }
+                )
+            },
             Term::List(ts) => {
                 let ts_res: Result<Vec<RichTerm>, E> = ts
                     .into_iter()
                     .map(|t| t.traverse_monoid_state(f, state, &mut m, method))
                     .collect();
 
-                RichTerm {
-                    term: Box::new(Term::List(ts_res?)),
+                RichTerm::new(
+                    Term::List(ts_res?),
                     pos,
-                }
-            }
+                )
+            },
             Term::StrChunks(chunks) => {
                 let chunks_res: Result<Vec<StrChunk<RichTerm>>, E> = chunks
                     .into_iter()
@@ -1116,11 +1149,11 @@ impl RichTerm {
                     })
                     .collect();
 
-                RichTerm {
-                    term: Box::new(Term::StrChunks(chunks_res?)),
+                RichTerm::new(
+                    Term::StrChunks(chunks_res?),
                     pos,
-                }
-            }
+                )
+            },
             Term::MetaValue(meta) => {
                 let contracts: Result<Vec<Contract>, _> = meta
                     .contracts
@@ -1154,20 +1187,18 @@ impl RichTerm {
                     .value
                     .map(|t| t.traverse_monoid_state(f, state, &mut m, method))
                     .map_or(Ok(None), |res| res.map(Some))?;
-
-                let meta = MetaValue {
-                    doc: meta.doc,
-                    types,
-                    contracts,
-                    priority: meta.priority,
-                    value,
-                };
-
-                RichTerm {
-                    term: Box::new(Term::MetaValue(meta)),
+                    let meta = MetaValue {
+                        doc: meta.doc,
+                        types,
+                        contracts,
+                        priority: meta.priority,
+                        value,
+                    };
+                RichTerm::new(
+                    Term::MetaValue(meta),
                     pos,
-                }
-            }
+                )
+            }} else rt
         };
 
         let r = match method {
@@ -1296,7 +1327,7 @@ impl RichTerm {
 
 impl From<RichTerm> for Term {
     fn from(rt: RichTerm) -> Self {
-        *rt.term
+        rt.term.into_owned()
     }
 }
 
@@ -1309,10 +1340,59 @@ impl AsRef<Term> for RichTerm {
 impl From<Term> for RichTerm {
     fn from(t: Term) -> Self {
         RichTerm {
-            term: Box::new(t),
+            term: SharedTerm::new(t),
             pos: TermPos::None,
         }
     }
+}
+
+/// Allows to match on SharedTerm without taking ownership of the matched part until the match.
+/// In the `else` clause, we haven't taken ownership yet, so we can still use the richterm at that point.
+///
+/// It is used somehow as a match statement, going from
+/// ```
+/// # use nickel::term::{RichTerm, Term};
+/// let rt = RichTerm::from(Term::Num(5.0));
+///
+/// match rt.term.into_owned() {
+///     Term::Num(x) => x as usize,
+///     Term::Str(s) => s.len(),
+///     _ => 42,
+/// };
+/// ```
+/// to
+/// ```
+/// # use nickel::term::{RichTerm, Term};
+/// # use nickel::match_sharedterm;
+/// let rt = RichTerm::from(Term::Num(5.0));
+///
+/// match_sharedterm!{rt.term, with {
+///         Term::Num(x) => x as usize,
+///         Term::Str(s) => s.len(),
+///     } else 42
+/// };
+/// ```
+///
+/// Known limitation: cannot use a `mut` inside the patterns.
+#[macro_export]
+macro_rules! match_sharedterm {
+    (
+        $st: expr, with {
+            $($($pat: pat_param)|+ $(if $if_expr: expr)? => $expr: expr),+ $(,)?
+        } else $else_clause: expr
+    ) => {
+        match $st.as_ref() {
+            $(
+                #[allow(unused_variables, unreachable_patterns, unused_mut)]
+                $($pat)|+ $(if $if_expr)? =>
+                    match Term::from($st) {
+                        $($pat)|+ => $expr,
+                        _ => unsafe {::core::hint::unreachable_unchecked()}
+                    },
+            )+
+            _ => $else_clause
+        }
+    };
 }
 
 #[macro_use]

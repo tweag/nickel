@@ -29,8 +29,9 @@
 //! variables.
 use super::fresh_var;
 use crate::identifier::Ident;
+use crate::match_sharedterm;
 use crate::position::TermPos;
-use crate::term::{BindingType, MetaValue, RichTerm, Term};
+use crate::term::{BindingType, RichTerm, Term};
 
 /// Transform the top-level term of an AST to a share normal form, if it can.
 ///
@@ -41,115 +42,106 @@ use crate::term::{BindingType, MetaValue, RichTerm, Term};
 /// the transformation is implemented as rewrite rules, and must be used in conjunction a
 /// traversal to obtain a full transformation.
 pub fn transform_one(rt: RichTerm) -> RichTerm {
-    let RichTerm { term, pos } = rt;
-    match *term {
-        Term::Record(map, attrs) => {
-            let mut bindings = Vec::with_capacity(map.len());
+    let pos = rt.pos;
+    match_sharedterm! {rt.term,
+        with {
+            Term::Record(map, attrs) => {
+                let mut bindings = Vec::with_capacity(map.len());
 
-            let map = map
-                .into_iter()
-                .map(|(id, t)| {
-                    if should_share(&t.term) {
-                        let fresh_var = fresh_var();
-                        let pos_t = t.pos;
-                        bindings.push((fresh_var.clone(), t));
-                        (id, RichTerm::new(Term::Var(fresh_var), pos_t))
-                    } else {
-                        (id, t)
-                    }
-                })
-                .collect();
+                let map = map
+                    .into_iter()
+                    .map(|(id, t)| {
+                        if should_share(&t.term) {
+                            let fresh_var = fresh_var();
+                            let pos_t = t.pos;
+                            bindings.push((fresh_var.clone(), t));
+                            (id, RichTerm::new(Term::Var(fresh_var), pos_t))
+                        } else {
+                            (id, t)
+                        }
+                    })
+                    .collect();
 
-            with_bindings(Term::Record(map, attrs), bindings, pos, BindingType::Normal)
-        }
-        Term::RecRecord(map, dyn_fields, attrs, free_vars) => {
-            // When a recursive record is evaluated, all fields need to be turned to closures
-            // anyway (see the corresponding case in `eval::eval()`), which is what the share
-            // normal form transformation does. This is why the test is more lax here than for
-            // other constructors: it is not only about sharing, but also about the future
-            // evaluation of recursive records. Only constant are not required to be
-            // closurized.
-            //
-            // In theory, the variable case is one exception: if the field is already a bare
-            // variable, it seems useless to add one more indirection through a generated
-            // variable. However, it is currently fundamental for recursive record merging that
-            // the sare normal form transformation ensure the following post-condition: the
-            // fields of recursive records contain either a constant or a *generated* variable,
-            // but never a user-supplied variable directly (the former starts with a special
-            // marker). See comments inside [`RichTerm::closurize`] for more details.
-            let mut bindings = Vec::with_capacity(map.len());
+                with_bindings(Term::Record(map, attrs), bindings, pos, BindingType::Normal)
+            },
+            Term::RecRecord(map, dyn_fields, attrs) => {
+                // When a recursive record is evaluated, all fields need to be turned to closures
+                // anyway (see the corresponding case in `eval::eval()`), which is what the share
+                // normal form transformation does. This is why the test is more lax here than for
+                // other constructors: it is not only about sharing, but also about the future
+                // evaluation of recursive records. Only constant are not required to be
+                // closurized.
+                //
+                // In theory, the variable case is one exception: if the field is already a bare
+                // variable, it seems useless to add one more indirection through a generated
+                // variable. However, it is currently fundamental for recursive record merging that
+                // the sare normal form transformation ensure the following post-condition: the
+                // fields of recursive records contain either a constant or a *generated* variable,
+                // but never a user-supplied variable directly (the former starts with a special
+                // marker). See comments inside [`RichTerm::closurize`] for more details.
+                let mut bindings = Vec::with_capacity(map.len());
 
-            let map = map
-                .into_iter()
-                .map(|(id, t)| {
-                    // CHANGE THIS CONDITION CAREFULLY. Doing so can break the post-condition
-                    // explained above.
-                    if !t.as_ref().is_constant() {
-                        let fresh_var = fresh_var();
-                        let pos_t = t.pos;
-                        bindings.push((fresh_var.clone(), t));
-                        (id, RichTerm::new(Term::Var(fresh_var), pos_t))
-                    } else {
-                        (id, t)
-                    }
-                })
-                .collect();
+                let map = map
+                    .into_iter()
+                    .map(|(id, t)| {
+                        // CHANGE THIS CONDITION CAREFULLY. Doing so can break the post-condition
+                        // explained above.
+                        if !t.as_ref().is_constant() {
+                            let fresh_var = fresh_var();
+                            let pos_t = t.pos;
+                            bindings.push((fresh_var.clone(), t));
+                            (id, RichTerm::new(Term::Var(fresh_var), pos_t))
+                        } else {
+                            (id, t)
+                        }
+                    })
+                    .collect();
 
-            let dyn_fields = dyn_fields
-                .into_iter()
-                .map(|(id_t, t)| {
-                    if !t.as_ref().is_constant() {
-                        let fresh_var = fresh_var();
-                        let pos_t = t.pos;
-                        bindings.push((fresh_var.clone(), t));
-                        (id_t, RichTerm::new(Term::Var(fresh_var), pos_t))
-                    } else {
-                        (id_t, t)
-                    }
-                })
-                .collect();
+                let dyn_fields = dyn_fields
+                    .into_iter()
+                    .map(|(id_t, t)| {
+                        if !t.as_ref().is_constant() {
+                            let fresh_var = fresh_var();
+                            let pos_t = t.pos;
+                            bindings.push((fresh_var.clone(), t));
+                            (id_t, RichTerm::new(Term::Var(fresh_var), pos_t))
+                        } else {
+                            (id_t, t)
+                        }
+                    })
+                    .collect();
 
-            // Recursive records are the reason why we need revertible thunks, since when
-            // merged, we may have to revert the fields back to their original expression.
-            with_bindings(
-                Term::RecRecord(map, dyn_fields, attrs, free_vars),
-                bindings,
-                pos,
-                BindingType::Revertible,
-            )
-        }
-        Term::List(ts) => {
-            let mut bindings = Vec::with_capacity(ts.len());
+                with_bindings(Term::RecRecord(map, dyn_fields, attrs), bindings, pos, BindingType::Revertible)
+            },
+            Term::List(ts) => {
+                let mut bindings = Vec::with_capacity(ts.len());
 
-            let ts = ts
-                .into_iter()
-                .map(|t| {
-                    if should_share(&t.term) {
-                        let fresh_var = fresh_var();
-                        let pos_t = t.pos;
-                        bindings.push((fresh_var.clone(), t));
-                        RichTerm::new(Term::Var(fresh_var), pos_t)
-                    } else {
-                        t
-                    }
-                })
-                .collect();
+                let ts = ts
+                    .into_iter()
+                    .map(|t| {
+                        if should_share(&t.term) {
+                            let fresh_var = fresh_var();
+                            let pos_t = t.pos;
+                            bindings.push((fresh_var.clone(), t));
+                            RichTerm::new(Term::Var(fresh_var), pos_t)
+                        } else {
+                            t
+                        }
+                    })
+                    .collect();
 
-            with_bindings(Term::List(ts), bindings, pos, BindingType::Normal)
-        }
-        Term::MetaValue(mut meta @ MetaValue { value: Some(_), .. }) => {
-            if meta.value.as_ref().map(|t| should_share(&t.term)).unwrap() {
-                let fresh_var = fresh_var();
-                let t = meta.value.take().unwrap();
-                meta.value
-                    .replace(RichTerm::new(Term::Var(fresh_var.clone()), t.pos));
-                let inner = RichTerm::new(Term::MetaValue(meta), pos);
-                RichTerm::new(Term::Let(fresh_var, t, inner, BindingType::Normal), pos)
-            } else {
-                RichTerm::new(Term::MetaValue(meta), pos)
+                with_bindings(Term::List(ts), bindings, pos, BindingType::Normal)
+            },
+            Term::MetaValue(meta) if meta.value.as_ref().map(|t| should_share(&t.term)).unwrap_or(false) => {
+                    let mut meta = meta;
+                    let fresh_var = fresh_var();
+                    let t = meta.value.take().unwrap();
+                    meta.value
+                        .replace(RichTerm::new(Term::Var(fresh_var.clone()), t.pos));
+                    let inner = RichTerm::new(Term::MetaValue(meta), pos);
+                    RichTerm::new(Term::Let(fresh_var, t, inner, BindingType::Normal), pos)
             }
-        }
-        t => RichTerm::new(t, pos),
+        } else rt
     }
 }
 

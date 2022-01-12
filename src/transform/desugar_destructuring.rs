@@ -19,6 +19,7 @@
 //! ```
 use crate::destruct::{Destruct, Match};
 use crate::identifier::Ident;
+use crate::match_sharedterm;
 use crate::term::make::{op1, op2};
 use crate::term::{
     BinaryOp::DynRemove, BindingType, MetaValue, RichTerm, Term, UnaryOp::StaticAccess,
@@ -29,44 +30,48 @@ use crate::term::{
 /// record. This function should be, in the general case, considered as the entry point of this
 /// transformation.
 pub fn desugar_with_contract(rt: RichTerm) -> RichTerm {
-    if let Term::LetPattern(x, pat, t_, body) = *rt.term {
-        let pos = body.pos;
-        let meta = pat.clone().as_contract();
-        let t_ = {
-            let t_pos = t_.pos;
-            RichTerm::new(
-                Term::MetaValue(MetaValue {
-                    value: Some(t_),
-                    ..meta
-                }),
-                t_pos,
-            )
-        };
-        desugar(RichTerm::new(Term::LetPattern(x, pat, t_, body), pos))
-    } else {
-        rt
-    }
+    match_sharedterm!(rt.term,
+        with {
+            Term::LetPattern(x, pat, t_, body) => {
+                let pos = body.pos;
+                let meta = pat.clone().as_contract();
+                let t_ = {
+                    let t_pos = t_.pos;
+                    RichTerm::new(
+                        Term::MetaValue(MetaValue {
+                            value: Some(t_),
+                            ..meta
+                        }),
+                        t_pos,
+                    )
+                };
+                desugar(RichTerm::new(Term::LetPattern(x, pat, t_, body), pos))
+            }
+        } else rt
+    )
 }
 
 /// Main transformation function to desugar let patterns. WARNING: In a real usage case, you will
 /// want to generate also the metavalue associated to this pattern destructuring. Do not consider
 /// this function as the entry point of the transformation. For that, use `desugar_with_contract`.
 pub fn desugar(rt: RichTerm) -> RichTerm {
-    if let Term::LetPattern(x, pat, t_, body) = *rt.term {
-        let pos = body.pos;
-        let x = x.unwrap_or_else(super::fresh_var);
-        RichTerm::new(
-            Term::Let(
-                x.clone(),
-                t_,
-                destruct_term(x.clone(), &pat, bind_open_field(x, &pat, body)),
-                BindingType::Normal,
-            ),
-            pos,
-        )
-    } else {
-        rt
-    }
+    match_sharedterm!(rt.term,
+        with {
+            Term::LetPattern(x, pat, t_, body) => {
+                let pos = body.pos;
+                let x = x.unwrap_or_else(super::fresh_var);
+                RichTerm::new(
+                    Term::Let(
+                        x.clone(),
+                        t_,
+                        destruct_term(x.clone(), &pat, bind_open_field(x, &pat, body)),
+                        BindingType::Normal,
+                    ),
+                    pos,
+                )
+            }
+        } else rt
+    )
 }
 
 /// Wrap `body` in a let construct binding the open part of the pattern to the required value.

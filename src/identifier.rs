@@ -70,3 +70,9 @@ impl Ident {
         self.label.starts_with(GEN_PREFIX)
     }
 }
+
+impl AsRef<str> for Ident {
+    fn as_ref(&self) -> &str {
+        &self.label
+    }
+}
