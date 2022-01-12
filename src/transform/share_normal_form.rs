@@ -31,7 +31,7 @@ use super::fresh_var;
 use crate::identifier::Ident;
 use crate::match_sharedterm;
 use crate::position::TermPos;
-use crate::term::{BindingType, MetaValue, RichTerm, Term};
+use crate::term::{BindingType, RichTerm, Term};
 
 /// Transform the top-level term of an AST to a share normal form, if it can.
 ///
