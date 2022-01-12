@@ -9,7 +9,7 @@ The idea would be to encode sums by using Pi and Sigma types: `A+B` would become
 
 For this, we'd need to implement two new kind of contracts:
  * Dependent functions, `x: A -> \x. B`, which allow the codomain contract to depend on the input, as a reference we have [1] Racket's functions contracts, [2] is also a good reference. There are two challenges/decisions:
-   * _strictness_, a function that ignores it input may evaluate it anyways if the target contract does
+   * _strictness_, a function that ignores it input may evaluate it anyway if the target contract does
    * _lax vs picky_, as pointed in [3], we can decide to wrap or not the argument on the domain contract when passed to the codomain, I think it should be checked there as well.
  * Dependent records, `{idx: Bool, val: if idx then A else B}` would allow us to have Sigma types quite naturally, together with some more complex stuff.
 
