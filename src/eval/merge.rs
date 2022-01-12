@@ -329,8 +329,6 @@ pub fn merge(
              * the same trick as in the evaluation of the operator DynExtend, and replace each such
              * term by a variable bound to an appropriate closure in the environment
              */
-            let mut m = HashMap::new();
-            let mut env = Environment::new();
             rev_thunks(m1.values_mut(), &mut env1);
             rev_thunks(m2.values_mut(), &mut env2);
             let (left, center, right) = hashmap::split(m1, m2);
@@ -345,6 +343,9 @@ pub fn merge(
                 }
                 _ => (),
             };
+
+            let mut m = HashMap::with_capacity(left.len() + center.len() + right.len());
+            let mut env = Environment::new();
 
             for (field, t) in left.into_iter() {
                 m.insert(field, t.closurize(&mut env, env1.clone()));
