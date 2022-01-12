@@ -17,9 +17,10 @@ use lsp_types::{
 };
 
 use nickel::cache::Cache;
-use nickel::typecheck::{linearization::Completed, Environment};
+use nickel::typecheck::Environment;
 
 use crate::{
+    linearization::completed::Completed,
     requests::{completion, goto, hover, symbols},
     trace::Trace,
 };

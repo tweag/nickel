@@ -4,10 +4,10 @@ use codespan::FileId;
 use nickel::{
     cache::{Cache, CacheError, CacheOp, CachedTerm, EntryState},
     error::TypecheckError,
-    typecheck::{self, linearization::Completed},
+    typecheck,
 };
 
-use crate::linearization::AnalysisHost;
+use crate::linearization::{completed::Completed, AnalysisHost};
 
 pub trait CacheExt {
     fn update_content(&mut self, path: impl Into<OsString>, s: String) -> io::Result<FileId>;

@@ -50,7 +50,7 @@ use crate::{mk_tyw_arrow, mk_tyw_enum, mk_tyw_enum_row, mk_tyw_record, mk_tyw_ro
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 
-use self::linearization::{Building, Completed, Linearization, Linearizer, ScopeId, StubHost};
+use self::linearization::{Linearization, Linearizer, ScopeId, StubHost};
 
 pub mod error;
 pub mod linearization;
@@ -185,17 +185,17 @@ pub struct State<'a> {
 ///
 /// Note that this function doesn't recursively typecheck imports (anymore), but just the current
 /// file. It however still needs the resolver to get the apparent type of imports.
-pub fn type_check<L>(
+pub fn type_check<LL>(
     t: &RichTerm,
     global_env: &Environment,
     resolver: &impl ImportResolver,
-    mut linearizer: impl Linearizer<L, (UnifTable, HashMap<usize, Ident>)>,
-) -> Result<(Types, Completed), TypecheckError>
+    mut linearizer: LL,
+) -> Result<(Types, LL::Completed), TypecheckError>
 where
-    L: Default,
+    LL: Linearizer<CompletionExtra = (HashMap<usize, Option<TypeWrapper>>, HashMap<usize, Ident>)>,
 {
     let (mut table, mut names) = (UnifTable::new(), HashMap::new());
-    let mut building = Linearization::building();
+    let mut building = Linearization::new(LL::Building::default());
     let ty = TypeWrapper::Ptr(new_var(&mut table));
 
     {
@@ -218,8 +218,8 @@ where
     }
 
     let lin = linearizer
-        .linearize(building, (table.clone(), names))
-        .into();
+        .complete(building, (table.clone(), names))
+        .into_inner();
     Ok((to_type(&table, ty), lin))
 }
 
@@ -248,8 +248,8 @@ pub fn type_check_in_env(
     type_check_(
         &mut state,
         Envs::from_global(global),
-        &mut Linearization::building::<()>(),
-        StubHost::<(), ()>::new(),
+        &mut Linearization::new(()),
+        StubHost::<()>::new(),
         false,
         t,
         ty.clone(),
@@ -272,11 +272,11 @@ pub fn type_check_in_env(
 ///
 /// Registers every term with the `linearizer` and makes sure to scope the
 /// liearizer accordingly
-fn type_check_<S, E>(
+fn type_check_<L: Linearizer>(
     state: &mut State,
     mut envs: Envs,
-    lin: &mut Linearization<Building<S>>,
-    mut linearizer: impl Linearizer<S, E>,
+    lin: &mut Linearization<L::Building>,
+    mut linearizer: L,
     strict: bool,
     rt: &RichTerm,
     ty: TypeWrapper,

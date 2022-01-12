@@ -6,7 +6,7 @@ use lsp_types::{CompletionItem, CompletionParams};
 use serde_json::Value;
 
 use crate::{
-    requests::utils::find_linearization_index,
+    linearization::interface::TermKind,
     server::Server,
     trace::{Enrich, Trace},
 };
@@ -33,21 +33,20 @@ pub fn handle_completion(
 
     Trace::enrich(&id, linearization);
 
-    let index = find_linearization_index(&linearization.lin, locator);
+    let item = linearization.item_at(&locator);
 
-    if index == None {
+    if item == None {
         server.reply(Response::new_ok(id, Value::Null));
         return Ok(());
     }
 
-    let item = linearization.lin[index.unwrap()].to_owned();
+    let item = item.unwrap().to_owned();
+
     let in_scope: Vec<_> = linearization
         .get_in_scope(&item)
         .iter()
         .filter_map(|i| match i.kind {
-            nickel::typecheck::linearization::TermKind::Declaration(ref ident, _) => {
-                Some((ident.clone(), i.ty.clone()))
-            }
+            TermKind::Declaration(ref ident, _) => Some((ident.clone(), i.ty.clone())),
             _ => None,
         })
         .map(|(ident, _)| CompletionItem {
