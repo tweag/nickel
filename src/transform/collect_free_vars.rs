@@ -22,7 +22,6 @@ pub fn collect_free_vars(rt: &mut RichTerm, free_vars: &mut HashSet<Ident>) {
             map.iter().for_each(|(id, _)| {
                 free_vars.remove(id);
             });
-            
         }
         Term::Switch(..) => {
             // TODO switch should be revisted.

@@ -1127,9 +1127,9 @@ impl RichTerm {
                     .into_iter()
                     .map(|ctr| {
                         let types = match ctr.types {
-                            Types(AbsType::Flat(t)) => {
-                                Types(AbsType::Flat(t.traverse_monoid_state(f, state, &mut m, method)?))
-                            }
+                            Types(AbsType::Flat(t)) => Types(AbsType::Flat(
+                                t.traverse_monoid_state(f, state, &mut m, method)?,
+                            )),
                             ty => ty,
                         };
                         Ok(Contract { types, ..ctr })
@@ -1141,9 +1141,9 @@ impl RichTerm {
                     .types
                     .map(|ctr| {
                         let types = match ctr.types {
-                            Types(AbsType::Flat(t)) => {
-                                Types(AbsType::Flat(t.traverse_monoid_state(f, state, &mut m, method)?))
-                            }
+                            Types(AbsType::Flat(t)) => Types(AbsType::Flat(
+                                t.traverse_monoid_state(f, state, &mut m, method)?,
+                            )),
                             ty => ty,
                         };
                         Ok(Contract { types, ..ctr })
