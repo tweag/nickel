@@ -4,7 +4,7 @@ use crate::error::{Error, ImportError, ParseError, ParseErrors, TypecheckError};
 use crate::parser::lexer::Lexer;
 use crate::position::TermPos;
 use crate::stdlib as nickel_stdlib;
-use crate::term::{RichTerm, Term};
+use crate::term::{RichTerm, SharedTerm, Term};
 use crate::transform::import_resolution;
 use crate::typecheck;
 use crate::typecheck::{linearization::StubHost, type_check};
@@ -504,7 +504,7 @@ impl Cache {
                 } = self.terms.remove(&file_id).unwrap();
 
                 if state < EntryState::Transforming {
-                    match term.term.as_mut() {
+                    match SharedTerm::make_mut(&mut term.term) {
                         Term::Record(ref mut map, _) => {
                             let map_res = std::mem::take(map)
                                 .into_iter()

@@ -1,5 +1,5 @@
 use nickel::program::Program;
-use nickel::term::Term;
+use nickel::term::{SharedTerm, Term};
 
 #[test]
 pub fn test_query_metadata_basic() {
@@ -9,7 +9,7 @@ pub fn test_query_metadata_basic() {
 
     if let Term::MetaValue(meta) = result {
         assert_eq!(meta.doc, Some(String::from("Test basic")));
-        assert_eq!(meta.value.unwrap().term, Box::new(Term::Num(2.0)));
+        assert_eq!(meta.value.unwrap().term, SharedTerm::new(Term::Num(2.0)));
     } else {
         panic!();
     }
@@ -26,7 +26,7 @@ pub fn test_query_metadata_from_func() {
 
     if let Term::MetaValue(meta) = result {
         assert_eq!(meta.doc, Some(String::from("Test from func")));
-        assert_eq!(meta.value.unwrap().term, Box::new(Term::Num(4.0)));
+        assert_eq!(meta.value.unwrap().term, SharedTerm::new(Term::Num(4.0)));
     } else {
         panic!();
     }
