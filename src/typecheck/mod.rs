@@ -357,7 +357,6 @@ fn type_check_<S, E>(
             let src = TypeWrapper::Ptr(new_var(state.table));
             // TODO what to do here, this makes more sense to me, but it means let x = foo in bar
             // behaves quite different to (\x.bar) foo, worth considering if it's ok to type these two differently
-            // let src = TypeWrapper::The(AbsType::Dyn());
             let trg = TypeWrapper::Ptr(new_var(state.table));
             let arr = mk_tyw_arrow!(src.clone(), trg.clone());
             if let Some(x) = x {

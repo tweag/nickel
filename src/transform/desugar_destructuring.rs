@@ -20,7 +20,7 @@
 //!
 //! ## The function pattern
 //! ```text
-//! let f = fun x @ {a, b=c}, {d ? 2, ..w} => <do_something> in ...
+//! let f = fun x@{a, b=c} {d ? 2, ..w} => <do_something> in ...
 //! ```
 //! will be transformed to:
 //! ```text
@@ -38,7 +38,7 @@ use crate::term::{
 };
 
 /// Entry point of the patterns desugaring.
-/// It call:
+/// It calls:
 /// - `desugar_with_contract` when `rt` is a let pattern.
 /// - `desugar_fun` when `rt` is a function with patterns as arguments (`Term::FunPattern`).
 pub fn transform_one(rt: RichTerm) -> RichTerm {
@@ -51,8 +51,8 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
 
 /// Desugar a function with patterns as arguments.
 /// This function does not perform nested transformation because internaly it's only used in a top
-/// down traversal. It mean that the return value is a normal `Term::Fun` but it can contains
-/// `Term::FunPattern` and `Term::LetPattern` inside RHS.
+/// down traversal. This means that the return value is a normal `Term::Fun` but it can contain
+/// `Term::FunPattern` and `Term::LetPattern` inside.
 pub fn desugar_fun(rt: RichTerm) -> RichTerm {
     match *rt.term {
         Term::FunPattern(x, pat, t_) if !pat.is_empty() => {
