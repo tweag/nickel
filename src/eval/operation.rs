@@ -2187,7 +2187,6 @@ fn process_nary_operation(
                         Err(EvalError::Other(format!("substring: index out of bounds. Expected the 3rd argument (end) to be between {} and {}, got {}", start+1., s.len(), end), pos_op))
                     } else {
                         Ok(Closure::atomic_closure(RichTerm::new(
-                            // SAFETY: checked already that we have correct range for utf-8 string
                             Term::Str(s[start_int..end_int].to_owned()),
                             pos_op_inh,
                         )))
