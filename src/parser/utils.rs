@@ -95,7 +95,7 @@ impl InfixOp {
     }
 }
 
-/// Turn record destructors using literal chunks only into static accesses
+/// Turn dynamic accesses using literal chunks only into static accesses
 pub fn mk_access(access: RichTerm, root: RichTerm) -> RichTerm {
     let label = match *access.term {
         Term::StrChunks(ref chunks) => {
