@@ -89,6 +89,22 @@ pub ExtendedTerm: ExtendedTerm = {
         };
         ExtendedTerm::ToplevelLet(id, t)
     },
+    "let" <f: Ident> <l: @L> <args: Ident+> <meta: Annot?> "=" <t: Term> <r: @R> => {
+        let pos = mk_pos(src_id, l, r);
+        let func = args.into_iter().rev().fold(t, |t, p| RichTerm {
+              term: SharedTerm::new(Term::Fun(p, t)),
+              pos,
+	});
+        let t1 = if let Some(mut meta) = meta {
+            meta.value = Some(func);
+            RichTerm::new(Term::MetaValue(meta), pos)
+        }
+        else {
+            func
+        };
+	
+        ExtendedTerm::ToplevelLet(f, t1)
+    },
     Term => ExtendedTerm::RichTerm(<>),
 }
 
@@ -105,6 +121,22 @@ RootTerm: RichTerm = {
         };
 
         mk_term::let_pat(pat.0, pat.1, t1, t2)
+    },
+    "let" <f: Ident> <l: @L> <args: Ident+> <meta: Annot?> "=" <t: Term> <r: @R> "in" <tin: Term> => {
+        let pos = mk_pos(src_id, l, r);
+        let func = args.into_iter().rev().fold(t, |t, p| RichTerm {
+              term: SharedTerm::new(Term::Fun(p, t)),
+              pos,
+	});
+        let t1 = if let Some(mut meta) = meta {
+            meta.value = Some(func);
+            RichTerm::new(Term::MetaValue(meta), pos)
+        }
+        else {
+            func
+        };
+	
+        mk_term::let_in(f, t1, tin)
     },
     <l: @L> "fun" <ids:Ident+> "=>" <t: Term> <r: @R> => {
         let pos = mk_pos(src_id, l, r);
