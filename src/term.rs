@@ -579,28 +579,28 @@ impl Term {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SharedTerm {
-    term: Rc<Term>,
+    shared: Rc<Term>,
 }
 
 impl SharedTerm {
     pub fn new(term: Term) -> Self {
         Self {
-            term: Rc::new(term),
+            shared: Rc::new(term),
         }
     }
 
     pub fn into_owned(self) -> Term {
-        Rc::try_unwrap(self.term).unwrap_or_else(|rc| Term::clone(&rc))
+        Rc::try_unwrap(self.shared).unwrap_or_else(|rc| Term::clone(&rc))
     }
 
     pub fn make_mut(this: &mut Self) -> &mut Term {
-        Rc::make_mut(&mut this.term)
+        Rc::make_mut(&mut this.shared)
     }
 }
 
 impl AsRef<Term> for SharedTerm {
     fn as_ref(&self) -> &Term {
-        self.term.as_ref()
+        self.shared.as_ref()
     }
 }
 
