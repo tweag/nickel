@@ -38,9 +38,10 @@ use crate::term::{
 };
 
 /// Entry point of the patterns desugaring.
-/// It calls:
-/// - `desugar_with_contract` when `rt` is a let pattern.
-/// - `desugar_fun` when `rt` is a function with patterns as arguments (`Term::FunPattern`).
+/// It desugar a `RichTerm` if possible (the term is a let pattern or a function with patterns in
+/// its arguments).
+/// ## Warning:
+/// The transformation is generaly not recursive. The result can contain patterns itself.
 pub fn transform_one(rt: RichTerm) -> RichTerm {
     match *rt.term {
         Term::LetPattern(..) => desugar_with_contract(rt),
