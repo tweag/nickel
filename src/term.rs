@@ -57,9 +57,12 @@ pub enum Term {
     /// efficiently from the back of it.
     #[serde(skip)]
     StrChunks(Vec<StrChunk<RichTerm>>),
-    /// A function.
+    /// A standard function.
     #[serde(skip)]
     Fun(Ident, RichTerm),
+    /// A function able to destruct its arguments.
+    #[serde(skip)]
+    FunPattern(Option<Ident>, Destruct, RichTerm),
     /// A blame label.
     #[serde(skip)]
     Lbl(Label),
@@ -342,7 +345,10 @@ impl Term {
             }
             Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | Sym(_) | Enum(_) | Import(_)
             | ResolvedImport(_) => {}
-            Fun(_, ref mut t) | Op1(_, ref mut t) | Wrapped(_, ref mut t) => {
+            Fun(_, ref mut t)
+            | FunPattern(_, _, ref mut t)
+            | Op1(_, ref mut t)
+            | Wrapped(_, ref mut t) => {
                 func(t);
             }
             MetaValue(ref mut meta) => {
@@ -383,7 +389,7 @@ impl Term {
             Term::Bool(_) => Some("Bool"),
             Term::Num(_) => Some("Num"),
             Term::Str(_) => Some("Str"),
-            Term::Fun(_, _) => Some("Fun"),
+            Term::Fun(_, _) | Term::FunPattern(_, _, _) => Some("Fun"),
             Term::Lbl(_) => Some("Label"),
             Term::Enum(_) => Some("Enum"),
             Term::Record(..) | Term::RecRecord(..) => Some("Record"),
@@ -427,7 +433,7 @@ impl Term {
 
                 format!("\"{}\"", chunks_str.join(""))
             }
-            Term::Fun(_, _) => String::from("<func>"),
+            Term::Fun(_, _) | Term::FunPattern(_, _, _) => String::from("<func>"),
             Term::Lbl(_) => String::from("<label>"),
             Term::Enum(id) => {
                 let re = regex::Regex::new("_?[a-zA-Z][_a-zA-Z0-9]*").unwrap();
@@ -521,6 +527,7 @@ impl Term {
             | Term::Sym(_) => true,
             Term::Let(..)
             | Term::LetPattern(..)
+            | Term::FunPattern(..)
             | Term::App(_, _)
             | Term::Var(_)
             | Term::Switch(..)
@@ -560,6 +567,7 @@ impl Term {
             | Term::Record(..)
             | Term::List(_)
             | Term::Fun(_, _)
+            | Term::FunPattern(_, _, _)
             | Term::App(_, _)
             | Term::Switch(..)
             | Term::Var(_)
@@ -967,6 +975,13 @@ impl RichTerm {
                 let t = t.traverse(f, state, method)?;
                 RichTerm::new(
                     Term::Fun(id, t),
+                    pos,
+                )
+            },
+            Term::FunPattern(id, d, t) => {
+                let t = t.traverse(f, state, method)?;
+                RichTerm::new(
+                    Term::FunPattern(id, d, t),
                     pos,
                 )
             },

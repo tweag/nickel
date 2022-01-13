@@ -14,5 +14,7 @@ let Assert = fun l x => x || %blame% l in
     let g = Y (fun g => (fun x => if x  then (g false) else 4)) in
     g true
     == 4,
+  // alternate syntax
+  let f x y = x + y in f 1 2 == 3,
 ]
 |> lists.foldl (fun x y => (x | #Assert) && y) true
