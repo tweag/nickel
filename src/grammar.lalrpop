@@ -14,7 +14,7 @@ use crate::identifier::Ident;
 use crate::destruct::{Match, LastMatch, Destruct};
 use crate::parser::error::ParseError;
 use crate::term::{BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
-    MergePriority, Contract, NAryOp, RecordAttrs};
+    MergePriority, Contract, NAryOp, RecordAttrs, SharedTerm};
 use crate::term::make as mk_term;
 use crate::types::{Types, AbsType};
 
@@ -23,15 +23,7 @@ grammar<'input, 'err>(src_id: FileId, errors: &'err mut Vec<ErrorRecovery<usize,
 WithPos<Rule>: RichTerm = <l: @L> <t: Rule> <r: @R> => t.with_pos(mk_pos(src_id, l, r));
 CheckUnbound<Rule>: Types = <l: @L> <t: Rule> <r: @R> =>? check_unbound(&t, mk_span(src_id, l, r)).map_err(|e| lalrpop_util::ParseError::User{error: e}).and(Ok(t));
 
-TypeAnnot: MetaValue = ":" <l: @L> <ty_res: CheckUnbound<Types>> <r: @R> => MetaValue {
-    doc: None,
-    types: Some(Contract {types: ty_res.clone(), label: mk_label(ty_res, src_id, l, r)}),
-    contracts: Vec::new(),
-    priority: Default::default(),
-    value: None,
-};
-
-MetaAnnotAtom: MetaValue = {
+AnnotAtom: MetaValue = {
     "|" <l: @L> <ty_res: CheckUnbound<Types>> <r: @R> => MetaValue {
         doc: None,
         types: None,
@@ -53,6 +45,13 @@ MetaAnnotAtom: MetaValue = {
         priority: Default::default(),
         value: None,
     },
+    ":" <l: @L> <ty_res: CheckUnbound<Types>> <r: @R> => MetaValue {
+        doc: None,
+        types: Some(Contract {types: ty_res.clone(), label: mk_label(ty_res, src_id, l, r)}),
+        contracts: Vec::new(),
+        priority: Default::default(),
+        value: None,
+    },
 };
 
 DefaultAnnot: MetaValue = "?" <t: Term> => MetaValue {
@@ -61,19 +60,7 @@ DefaultAnnot: MetaValue = "?" <t: Term> => MetaValue {
     ..Default::default()
 };
 
-MetaAnnot: MetaValue = <anns: MetaAnnotAtom+> => anns.into_iter().fold(MetaValue::new(), MetaValue::flatten);
-
-Annot: MetaValue = {
-    <TypeAnnot>,
-    <ty_ann: TypeAnnot?> <meta: MetaAnnot> => {
-        if let Some(ty_meta) = ty_ann {
-            MetaValue::flatten(ty_meta, meta)
-        }
-        else {
-            meta
-        }
-    }
-};
+Annot: MetaValue = <anns: AnnotAtom+> => anns.into_iter().fold(MetaValue::new(), MetaValue::flatten);
 
 pub Term: RichTerm = WithPos<RootTerm>;
 
@@ -109,7 +96,7 @@ RootTerm: RichTerm = {
     <l: @L> "fun" <pats: Pattern+> "=>" <t: Term> <r: @R> => {
         let pos = mk_pos(src_id, l, r);
         pats.into_iter().rev().fold(t, |t, (id, destruct)| RichTerm {
-            term: Box::new(Term::FunPattern(id, destruct, t)),
+            term: SharedTerm::new(Term::FunPattern(id, destruct, t)),
             pos,
         })
     },
@@ -138,7 +125,7 @@ RootTerm: RichTerm = {
     "if" <cond: Term> "then" <t1: Term> "else" <t2: Term> =>
         mk_app!(Term::Op1(UnaryOp::Ite(), cond), t1, t2),
     AnnotatedTerm,
-    <l: @L> <t: !> <r: @R> => { errors.push(t); RichTerm { term: Box::new(Term::ParseError), pos: mk_pos(src_id, l, r)} },
+    <l: @L> <t: !> <r: @R> => { errors.push(t); RichTerm { term: SharedTerm::new(Term::ParseError), pos: mk_pos(src_id, l, r)} },
 };
 
 AnnotatedTerm: RichTerm = {
@@ -174,7 +161,7 @@ RecordOperand: RichTerm = {
 
 RecordOperationChain: RichTerm = {
     <t: WithPos<RecordOperand>> "." <id: Ident> => mk_term::op1(UnaryOp::StaticAccess(id), t),
-    <t: WithPos<RecordOperand>> "." <t_id: WithPos<StrChunks>> => mk_term::op2(BinaryOp::DynAccess(), t_id, t),
+    <t: WithPos<RecordOperand>> "." <t_id: WithPos<StrChunks>> => mk_access(t_id, t),
     <t: WithPos<RecordOperand>> "-$" <t_id: WithPos<Atom>> => mk_term::op2(BinaryOp::DynRemove(), t_id, t),
     <r: WithPos<RecordOperand>> "$[" <id: Term> "=" <t: Term> "]" =>
         mk_app!(mk_term::op2(BinaryOp::DynExtend(), id, r), t),
@@ -208,34 +195,21 @@ Atom: RichTerm = {
 };
 
 RecordField: (FieldPathElem, RichTerm) = {
-    <path: FieldPath> <ty_ann: TypeAnnot?> "=" <t: Term> => {
-        let t = if let Some(mut meta) = ty_ann {
-            let pos = t.pos;
-            meta.value = Some(t);
-            RichTerm::new(Term::MetaValue(meta), pos)
-        }
-        else {
-            t
-        };
-
-        elaborate_field_path(path, t)
-    },
-    <path: FieldPath> <ty_ann: TypeAnnot> <meta: MetaAnnot> "=" <t: Term> => {
-        let pos = t.pos;
-        let mut meta = MetaValue::flatten(ty_ann, meta);
-        meta.value = Some(t);
-        let t = RichTerm::new(Term::MetaValue(meta), pos);
-
-        elaborate_field_path(path, t)
-    },
-    <l: @L> <path: FieldPath> <meta: MetaAnnot> <r: @R> <t: ("=" <Term>)?> => {
-        let mut meta = meta;
+    <l: @L> <path: FieldPath> <ann: Annot?> <r: @R> <t: ("=" <Term>)?> => {
         let pos = t.as_ref()
             .map(|t| t.pos.clone())
             .unwrap_or(mk_pos(src_id, l, r));
-        meta.value = t;
-        let t = RichTerm::new(Term::MetaValue(meta), pos);
-        elaborate_field_path(path, t)
+        let term = if let Some(mut meta) = ann {
+            meta.value = t;
+            RichTerm::new(Term::MetaValue(meta), pos)
+        } else {
+            if let Some(deft) = t {
+                deft
+            } else {
+                RichTerm::new(Term::Null, pos)
+            }
+        };
+        elaborate_field_path(path, term)
     }
 }
 
@@ -278,7 +252,7 @@ Destruct: Destruct = {
 };
 
 Match: Match = {
-    <left:Ident> <anns: MetaAnnot?> <default: DefaultAnnot?> "=" <right: Pattern> => {
+    <left:Ident> <anns: Annot?> <default: DefaultAnnot?> "=" <right: Pattern> => {
 	let meta = match (default, anns) {
 	    (Some(d), Some(m)) => MetaValue::flatten(d,m),
 	    (Some(m),_) | (_,Some(m)) => m,
@@ -286,7 +260,7 @@ Match: Match = {
 	};
 	Match::Assign(left, meta, right)
     },
-    <id:Ident> <anns: MetaAnnot?> <default: DefaultAnnot?> => {
+    <id:Ident> <anns: Annot?> <default: DefaultAnnot?> => {
 	let meta = match (default, anns) {
 	    (Some(d), Some(m)) => MetaValue::flatten(d,m),
 	    (Some(m),_) | (_,Some(m)) => m,

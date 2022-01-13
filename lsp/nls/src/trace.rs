@@ -220,15 +220,16 @@ impl<T, E: Display> ResultExt<E> for Result<T, E> {
 
 pub mod param {
 
+    use crate::linearization::completed::Completed;
+
     use super::{Enrich, ResultExt, Trace};
     use lsp_server::RequestId;
-    use nickel::typecheck::linearization::Completed;
 
     impl Enrich<&Completed> for Trace {
         fn enrich(id: &RequestId, param: &Completed) {
             Self::with_trace(|mut t| {
                 t.received.entry(id.to_owned()).and_modify(|item| {
-                    item.params.linearization_size = Some(param.lin.len());
+                    item.params.linearization_size = Some(param.linearization.len());
                 });
                 Ok(())
             })

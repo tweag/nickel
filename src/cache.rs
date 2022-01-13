@@ -4,7 +4,7 @@ use crate::error::{Error, ImportError, ParseError, ParseErrors, TypecheckError};
 use crate::parser::lexer::Lexer;
 use crate::position::TermPos;
 use crate::stdlib as nickel_stdlib;
-use crate::term::{RichTerm, Term};
+use crate::term::{RichTerm, SharedTerm, Term};
 use crate::transform::import_resolution;
 use crate::typecheck;
 use crate::typecheck::{linearization::StubHost, type_check};
@@ -422,7 +422,7 @@ impl Cache {
             }
             Some(CachedTerm { term, state, .. }) if *state >= EntryState::Parsed => {
                 if *state < EntryState::Typechecking {
-                    type_check(term, global_env, self, StubHost::<(), _>::new())?;
+                    type_check(term, global_env, self, StubHost::<(), (), _>::new())?;
                     self.update_state(file_id, EntryState::Typechecking);
                 }
 
@@ -504,7 +504,7 @@ impl Cache {
                 } = self.terms.remove(&file_id).unwrap();
 
                 if state < EntryState::Transforming {
-                    match term.term.as_mut() {
+                    match SharedTerm::make_mut(&mut term.term) {
                         Term::Record(ref mut map, _) => {
                             let map_res = std::mem::take(map)
                                 .into_iter()
@@ -659,7 +659,7 @@ impl Cache {
             return Err(Error::ParseErrors(errs));
         }
         let (term, pending) = import_resolution::resolve_imports(term, self)?;
-        type_check(&term, global_env, self, StubHost::<(), _>::new())?;
+        type_check(&term, global_env, self, StubHost::<(), (), _>::new())?;
         let term = transform::transform(term);
         Ok((term, pending))
     }

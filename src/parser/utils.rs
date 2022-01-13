@@ -12,7 +12,7 @@ use crate::{
     mk_app, mk_fun,
     parser::error::ParseError,
     position::{RawSpan, TermPos},
-    term::{make as mk_term, BinaryOp, RecordAttrs, RichTerm, StrChunk, Term, UnaryOp},
+    term::{make as mk_term, BinaryOp, MetaValue, RecordAttrs, RichTerm, StrChunk, Term, UnaryOp},
     types::{AbsType, Types},
 };
 
@@ -95,6 +95,36 @@ impl InfixOp {
     }
 }
 
+/// Turn dynamic accesses using literal chunks only into static accesses
+pub fn mk_access(access: RichTerm, root: RichTerm) -> RichTerm {
+    let label = match *access.term {
+        Term::StrChunks(ref chunks) => {
+            chunks
+                .iter()
+                .fold(Some(String::new()), |acc, next| match (acc, next) {
+                    (Some(mut acc), StrChunk::Literal(lit)) => {
+                        acc.push_str(lit);
+                        Some(acc)
+                    }
+                    _ => None,
+                })
+        }
+        _ => None,
+    };
+
+    if let Some(label) = label {
+        mk_term::op1(
+            UnaryOp::StaticAccess(Ident {
+                label,
+                pos: access.pos,
+            }),
+            root,
+        )
+    } else {
+        mk_term::op2(BinaryOp::DynAccess(), access, root)
+    }
+}
+
 /// Elaborate a record field definition specified as a path, like `a.b.c = foo`, into a regular
 /// flat definition `a = {b = {c = foo}}`.
 ///
@@ -162,7 +192,9 @@ where
             Entry::Occupied(mut occpd) => {
                 // temporary putting null in the entry to take the previous value.
                 let prev = occpd.insert(Term::Null.into());
-                occpd.insert(mk_term::op2(BinaryOp::Merge(), prev, t));
+
+                // A field of a record without metadata AND without value is impossible
+                occpd.insert(merge_field(prev, t).unwrap());
             }
             Entry::Vacant(vac) => {
                 vac.insert(t);
@@ -217,6 +249,41 @@ where
     });
 
     Term::RecRecord(static_map, dynamic_fields, attrs)
+}
+
+/// Merge two fields by performing the merge of both their value and MetaValue if any.
+fn merge_field(rterm1: RichTerm, rterm2: RichTerm) -> Option<RichTerm> {
+    let term1 = if let Term::MetaValue(meta) = &*rterm1.term {
+        (Some(meta.clone()), meta.value.clone())
+    } else {
+        (None, Some(rterm1))
+    };
+
+    let term2 = if let Term::MetaValue(meta) = &*rterm2.term {
+        (Some(meta.clone()), meta.value.clone())
+    } else {
+        (None, Some(rterm2))
+    };
+
+    let new_value = match (term1.1, term2.1) {
+        (Some(t1), Some(t2)) => Some(mk_term::op2(BinaryOp::Merge(), t1, t2)),
+        (Some(t), None) | (None, Some(t)) => Some(t),
+        (None, None) => None,
+    };
+
+    match (term1.0, term2.0) {
+        (Some(meta1), Some(meta2)) => {
+            let mut new_meta = MetaValue::flatten(meta1, meta2);
+            new_meta.value = new_value;
+            Some(RichTerm::from(Term::MetaValue(new_meta)))
+        }
+        (Some(meta), None) | (None, Some(meta)) => {
+            let mut new_meta = meta.clone();
+            new_meta.value = new_value;
+            Some(RichTerm::from(Term::MetaValue(new_meta)))
+        }
+        (None, None) => new_value,
+    }
 }
 
 /// Make a span from parser byte offsets.
