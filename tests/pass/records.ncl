@@ -80,5 +80,18 @@ let Assert = fun l x => x || %blame% l in
       g = fun y => f (y + (-1))
     }.f 10 in
     with_res "done" == "done",
+
+    // piecewise signatures
+    {
+        foo : Num,
+        bar = 3,
+        foo = 5
+    }.foo == 5,
+    {
+        foo : Num,
+        foo = 1,
+        bar : Num = foo,
+    }.bar == 1,
+    let {foo : Num} = {foo = 1} in foo == 1,
 ]
 |> lists.foldl (fun x y => (x | #Assert) && y) true
