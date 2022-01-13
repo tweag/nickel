@@ -58,10 +58,11 @@ pub fn desugar_fun(rt: RichTerm) -> RichTerm {
     match *rt.term {
         Term::FunPattern(x, pat, t_) if !pat.is_empty() => {
             let x = x.unwrap_or_else(super::fresh_var);
+            let t_pos = t_.pos;
             RichTerm::new(
                 Term::Fun(
                     x.clone(),
-                    Term::LetPattern(None, pat, Term::Var(x).into(), t_).into(),
+                    RichTerm::new(Term::LetPattern(None, pat, Term::Var(x).into(), t_), t_pos),
                 ),
                 rt.pos,
             )
