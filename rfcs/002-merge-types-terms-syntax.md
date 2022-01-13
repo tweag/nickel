@@ -211,13 +211,12 @@ constructs.
     2. More in the spirit of actually mixing terms and types, we could have
        records to store their tail in a specific attribute, and adapt contract
        application to take it into account. But this implies giving semantics to
-       things like `record.is_empty { | a}` or `{ | a} & { | b}`. Those are
+       things like `record.is_empty { ; a}` or `{ ; a} & { ; b}`. Those are
        actually interesting questions outside of the context of this RFC (see
        [201](https://github.com/tweag/nickel/issues/201)).
   Solution 2. sounds more uniform (representing everything as records), but it
   requires more design thinking. There isn't any obvious practical usage that
-  seems to require it right now (in practice we expect a record with a tail to
-  be only used as a type annotation or applied as a contract, but nothing else).
+  seems to require it right now (in practice we expect a record with a tail to be only used as a type annotation or applied as a contract, but nothing else).
   Finally, we can always switch to 2. later, as it should be a
   backward-compatible improvement.
 
@@ -260,4 +259,29 @@ documentation, we only translate as record types expressions that are already a
 record type in the current syntax (`Type`). Otherwise, we consider it as an
 opaque type, that is `type({ ... }) = #term({ ... })`.
 
-Note that this may create a loop in the translation for mixed record with tails. 
+Note that this may create a loop in the translation for mixed record with tails.
+Take `EXP` to be `{foo : Num, foo = 1; a}`, then as per this proposal,
+`term(EXP) = §type(EXP)` and `type(EXP) = #term(EXP)`. To break the cycle, we
+propose that `term(EXP) = §type(EXP)` when `EXP` is a record with a tail iff
+`EXP` can be translated to an actual recod type. Otherwise, the parser should
+issue an error. This is the case with this example. The rationale is that, once
+again, although the syntax allows it, it doesn't make much sense to mix a record
+with actual definition with a tail.
+
+#### Application
+
+Todo: type application
+ex: `forall a. Nullable a -> List (Nullable a)`
+
+#### Ground types
+
+TODO: identifiers on separate lexical entities?
+
+#### Variables
+
+TODO: follow blindly the recipe, or do so form of substitution, to supersede the
+typealias feature request.
+
+## Extensions
+
+TODO
