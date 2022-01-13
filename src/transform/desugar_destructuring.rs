@@ -56,24 +56,24 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
 /// down traversal. This means that the return value is a normal `Term::Fun` but it can contain
 /// `Term::FunPattern` and `Term::LetPattern` inside.
 pub fn desugar_fun(rt: RichTerm) -> RichTerm {
-    match *rt.term {
+    match_sharedterm! {rt.term, with {
         Term::FunPattern(x, pat, t_) if !pat.is_empty() => {
             let x = x.unwrap_or_else(super::fresh_var);
             let t_pos = t_.pos;
             RichTerm::new(
                 Term::Fun(
                     x.clone(),
-                    RichTerm::new(Term::LetPattern(None, pat, Term::Var(x).into(), t_), t_pos),
+                    RichTerm::new(Term::LetPattern(None, pat, Term::Var(x).into(), t_), t_pos /* TODO: should we use rt.pos? */),
                 ),
                 rt.pos,
             )
-        }
+        },
         Term::FunPattern(Some(x), Destruct::Empty, t_) => RichTerm::new(Term::Fun(x, t_), rt.pos),
-        Term::FunPattern(..) => panic!(
+        t@Term::FunPattern(..) => panic!(
             "A function can not have empty pattern without name in {:?}",
-            rt
+            t
         ),
-        _ => rt,
+    } else rt
     }
 }
 
