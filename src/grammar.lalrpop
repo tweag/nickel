@@ -93,10 +93,10 @@ RootTerm: RichTerm = {
 
         mk_term::let_pat(pat.0, pat.1, t1, t2)
     },
-    <l: @L> "fun" <ids:Ident+> "=>" <t: Term> <r: @R> => {
+    <l: @L> "fun" <pats: Pattern+> "=>" <t: Term> <r: @R> => {
         let pos = mk_pos(src_id, l, r);
-        ids.into_iter().rev().fold(t, |t, p| RichTerm {
-            term: SharedTerm::new(Term::Fun(p, t)),
+        pats.into_iter().rev().fold(t, |t, (id, destruct)| RichTerm {
+            term: SharedTerm::new(Term::FunPattern(id, destruct, t)),
             pos,
         })
     },

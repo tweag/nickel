@@ -6,7 +6,7 @@
 //!
 //! # Example
 //!
-//! The let pattern:
+//! ## The let pattern:
 //! ```text
 //! let x @ {a, b=d, ..} = {a=1,b=2,c="ignored"} in ...
 //! ```
@@ -17,6 +17,19 @@
 //! let d = x.b in
 //! ...
 //! ```
+//!
+//! ## The function pattern
+//! ```text
+//! let f = fun x@{a, b=c} {d ? 2, ..w} => <do_something> in ...
+//! ```
+//! will be transformed to:
+//! ```text
+//! let f = fun x %unnamed% => (
+//!     let {a, b=c} = x in
+//!     let {d ? 2, ..w} = %unnamed% in
+//!     <do_something>
+//! ) in ...
+//! ```
 use crate::destruct::{Destruct, Match};
 use crate::identifier::Ident;
 use crate::match_sharedterm;
@@ -25,10 +38,49 @@ use crate::term::{
     BinaryOp::DynRemove, BindingType, MetaValue, RichTerm, Term, UnaryOp::StaticAccess,
 };
 
-/// Wrap the desugar term in a meta value containing the "Record contract" needed to check the
+/// Entry point of the patterns desugaring.
+/// It desugar a `RichTerm` if possible (the term is a let pattern or a function with patterns in
+/// its arguments).
+/// ## Warning:
+/// The transformation is generaly not recursive. The result can contain patterns itself.
+pub fn transform_one(rt: RichTerm) -> RichTerm {
+    match *rt.term {
+        Term::LetPattern(..) => desugar_with_contract(rt),
+        Term::FunPattern(..) => desugar_fun(rt),
+        _ => rt,
+    }
+}
+
+/// Desugar a function with patterns as arguments.
+/// This function does not perform nested transformation because internaly it's only used in a top
+/// down traversal. This means that the return value is a normal `Term::Fun` but it can contain
+/// `Term::FunPattern` and `Term::LetPattern` inside.
+pub fn desugar_fun(rt: RichTerm) -> RichTerm {
+    match_sharedterm! {rt.term, with {
+        Term::FunPattern(x, pat, t_) if !pat.is_empty() => {
+            let x = x.unwrap_or_else(super::fresh_var);
+            let t_pos = t_.pos;
+            RichTerm::new(
+                Term::Fun(
+                    x.clone(),
+                    RichTerm::new(Term::LetPattern(None, pat, Term::Var(x).into(), t_), t_pos /* TODO: should we use rt.pos? */),
+                ),
+                rt.pos,
+            )
+        },
+        Term::FunPattern(Some(x), Destruct::Empty, t_) => RichTerm::new(Term::Fun(x, t_), rt.pos),
+        t@Term::FunPattern(..) => panic!(
+            "A function can not have empty pattern without name in {:?}",
+            t
+        ),
+    } else rt
+    }
+}
+
+/// Wrap the desugar `LetPattern` in a meta value containing the "Record contract" needed to check the
 /// pattern exhaustively and also fill the default values (`?` operator) if not presents in the
-/// record. This function should be, in the general case, considered as the entry point of this
-/// transformation.
+/// record. This function should be, in the general case, considered as the entry point of the let
+/// patterns transformation.
 pub fn desugar_with_contract(rt: RichTerm) -> RichTerm {
     match_sharedterm!(rt.term,
         with {
