@@ -578,7 +578,7 @@ where
                                         EvalError::UnboundIdentifier(var_id.clone(), pos)
                                     })?;
                                     let mut clos = thunk.borrow_mut();
-                                    // TODO free_vars
+                                    // TODO Is any form of the free vars optimiztion sound for dynamic fields?
                                     clos.env.extend(
                                         rec_env
                                             .iter_elems()
