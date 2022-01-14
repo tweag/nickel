@@ -355,40 +355,6 @@ impl Types {
             _ => false,
         }
     }
-
-    pub fn free_vars(&self) -> HashSet<Ident> {
-        pub fn collect_free_vars(ty: &Types, set: &mut HashSet<Ident>) {
-            match &ty.0 {
-                AbsType::Dyn()
-                | AbsType::Num()
-                | AbsType::Bool()
-                | AbsType::Str()
-                | AbsType::Sym()
-                | AbsType::Var(_)
-                | AbsType::RowEmpty() => (),
-                AbsType::Forall(_, ty)
-                | AbsType::Enum(ty)
-                | AbsType::StaticRecord(ty)
-                | AbsType::DynRecord(ty)
-                | AbsType::List(ty) => collect_free_vars(ty.as_ref(), set),
-                AbsType::Arrow(ty1, ty2) => {
-                    collect_free_vars(ty1.as_ref(), set);
-                    collect_free_vars(ty2.as_ref(), set);
-                }
-                AbsType::RowExtend(_, ty_opt, tail) => {
-                    if let Some(ty) = ty_opt {
-                        collect_free_vars(ty, set);
-                    }
-                    collect_free_vars(tail, set);
-                }
-                AbsType::Flat(ref t) => set.extend(t.free_vars()),
-            }
-        }
-
-        let mut set = HashSet::new();
-        collect_free_vars(self, &mut set);
-        set
-    }
 }
 
 impl fmt::Display for Types {

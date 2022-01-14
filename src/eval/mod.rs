@@ -497,7 +497,7 @@ where
                     }
                 }
             }
-            Term::RecRecord(ts, dyn_fields, attrs, _) => {
+            Term::RecRecord(ts, dyn_fields, attrs, free_vars) => {
                 // Thanks to the share normal form transformation, the content is either a constant or a
                 // variable.
                 let rec_env = ts.iter().try_fold::<_, _, Result<Environment, EvalError>>(
@@ -532,13 +532,20 @@ where
                             // so function should always succeed
                             let mut thunk = env.get(var_id).unwrap();
                             let mut clos = thunk.borrow_mut();
-                            let free_vars = clos.body.free_vars();
-                            clos.env.extend(
-                                rec_env
-                                    .iter_elems()
-                                    .filter(|(id, _)| free_vars.contains(id))
-                                    .map(|(id, thunk)| (id.clone(), thunk.clone())),
-                            );
+                            if let Some(Some(free_vars)) = free_vars.as_ref().map(|fr| fr.get(id)) {
+                                clos.env.extend(
+                                    rec_env
+                                        .iter_elems()
+                                        .filter(|(id, _)| free_vars.contains(id))
+                                        .map(|(id, thunk)| (id.clone(), thunk.clone())),
+                                );
+                            } else {
+                                clos.env.extend(
+                                    rec_env
+                                        .iter_elems()
+                                        .map(|(id, thunk)| (id.clone(), thunk.clone())),
+                                );
+                            }
                             (
                                 id.clone(),
                                 RichTerm {
@@ -571,11 +578,10 @@ where
                                         EvalError::UnboundIdentifier(var_id.clone(), pos)
                                     })?;
                                     let mut clos = thunk.borrow_mut();
-                                    let free_vars = clos.body.free_vars();
+                                    // TODO free_vars
                                     clos.env.extend(
                                         rec_env
                                             .iter_elems()
-                                            .filter(|(id, _)| free_vars.contains(id))
                                             .map(|(id, thunk)| (id.clone(), thunk.clone())),
                                     );
                                     Ok(Term::App(

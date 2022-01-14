@@ -1,11 +1,11 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 
 use crate::{
     identifier::Ident,
     term::{RichTerm, Term},
 };
 
-pub fn collect_free_vars(rt: &mut RichTerm, free_vars: &mut HashSet<Ident>) {
+pub fn collect_free_vars(rt: &mut RichTerm, free_vars: &mut HashSet<Ident>, fields_free_vars: HashMap<Ident, HashSet<Ident>>) {
     match rt.as_ref() {
         Term::Var(id) => {
             free_vars.insert(id.clone());
