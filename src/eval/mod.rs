@@ -88,6 +88,8 @@
 //! appear inside recursive records in the future. An adapted garbage collector is probably
 //! something to consider at some point.
 
+use std::cell::RefMut;
+
 use crate::{
     cache::ImportResolver,
     environment::Environment as GenericEnvironment,
@@ -524,6 +526,23 @@ where
                     },
                 )?;
 
+                let filter_free_vars = |id, mut clos: RefMut<Closure>| {
+                    if let Some(Some(free_vars)) = free_vars.as_ref().map(|fr| fr.get(id)) {
+                        clos.env.extend(
+                            rec_env
+                                .iter_elems()
+                                .filter(|(id, _)| free_vars.contains(id))
+                                .map(|(id, thunk)| (id.clone(), thunk.clone())),
+                        );
+                    } else {
+                        clos.env.extend(
+                            rec_env
+                                .iter_elems()
+                                .map(|(id, thunk)| (id.clone(), thunk.clone())),
+                        );
+                    }
+                };
+
                 let new_ts = ts.into_iter().map(|(id, rt)| {
                     let pos = rt.pos;
                     match &*rt.term {
@@ -578,12 +597,23 @@ where
                                         EvalError::UnboundIdentifier(var_id.clone(), pos)
                                     })?;
                                     let mut clos = thunk.borrow_mut();
-                                    // TODO Is any form of the free vars optimiztion sound for dynamic fields?
-                                    clos.env.extend(
-                                        rec_env
-                                            .iter_elems()
-                                            .map(|(id, thunk)| (id.clone(), thunk.clone())),
-                                    );
+                                    if let Some(Some(free_vars)) = free_vars
+                                        .as_ref()
+                                        .map(|fr| fr.get(&Ident::from(String::new())))
+                                    {
+                                        clos.env.extend(
+                                            rec_env
+                                                .iter_elems()
+                                                .filter(|(id, _)| free_vars.contains(id))
+                                                .map(|(id, thunk)| (id.clone(), thunk.clone())),
+                                        );
+                                    } else {
+                                        clos.env.extend(
+                                            rec_env
+                                                .iter_elems()
+                                                .map(|(id, thunk)| (id.clone(), thunk.clone())),
+                                        );
+                                    }
                                     Ok(Term::App(
                                         mk_term::op2(BinaryOp::DynExtend(), id_t, acc),
                                         mk_term::var(var_id.clone()).with_pos(pos),

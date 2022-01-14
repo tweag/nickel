@@ -97,7 +97,9 @@ pub enum Term {
         Vec<(RichTerm, RichTerm)>, /* field whose name is defined by interpolation */
         RecordAttrs,
         // Cached free variables calculation
-        // TODO When RecRecord is refactored merge this with the first field.
+        // An empty `Ident` is used for all dynamic fields.
+        // It would be nice to use a `None`, but that does not play well with the borrow checker.
+        // TODO When RecRecord is refactored store a fields free var set next to it's `RichTerm`.
         Option<HashMap<Ident, HashSet<Ident>>>,
     ),
     /// A switch construct. The evaluation is done by the corresponding unary operator, but we
@@ -1147,11 +1149,16 @@ impl RichTerm {
                     .collect();
                 let dyn_fields_res: Result<Vec<(RichTerm, RichTerm)>, E> = dyn_fields
                     .into_iter()
+
                     .map(|(id_t, t)| {
-                        Ok((
-                            id_t.traverse_monoid_state(f, state, &mut m, method, f_rec_fields, rec_fields_state)?,
-                            t.traverse_monoid_state(f, state, &mut m, method, f_rec_fields, rec_fields_state)?,
-                        ))
+                        let mut mb = M::default();
+                        let r_id_t = id_t.traverse_monoid_state(f, state, &mut m, method, f_rec_fields, rec_fields_state)?;
+                        let r_t = t.traverse_monoid_state(f, state, &mut m, method, f_rec_fields, rec_fields_state)?;
+                        // We use an empty string as the ident for all dynamic fields.
+                        f_rec_fields(&r_t, Ident::from(String::new()), rec_fields_state, &mut mb);
+                        m.append(mb);
+
+                        Ok((r_id_t, r_t))
                     })
                     .collect();
                 RichTerm::new(
