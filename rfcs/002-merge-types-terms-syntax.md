@@ -16,12 +16,12 @@ aspects covered in this document.
 
 In a standard statically typed language (without dependent types), terms and
 types are usually two distinct syntactic categories. Most of the constructs on
-one side indeed don't make sense on the other side: what could mean the type `1
-+ 1`, or the term `forall a. a -> a`? Separating the two syntactically
-allows for a better mental separation for the user as well. Finally, separating
-the two gives more room in the grammar of the language to reuse syntax in a
-different way. For example, in Nickel, we are using the pipe operator `|` both
-for metavalues (terms) and row tails (types).
+one side indeed don't make sense on the other side: what could mean the type
+`1 + 1`, or the term `forall a. a -> a`? Separating terms and types
+syntactically allows for a better mental separation for the user as well.
+Finally, separating terms and types gives more room in designing the syntax of
+the language to reuse symbols in a different way. For example, in Nickel, we are
+using the pipe operator `|` both for metavalues (terms) and row tails (types).
 
 However, because of the interaction between static typing and contracts, Nickel
 is different from the standard typed functional language. We have to:
@@ -77,7 +77,8 @@ peer-programming Nickel with beginners, they happened to be confused as why
 sometimes we need a hash and sometimes not, why we used `List` and sometimes
 `list` (the equivalent of `§List` in this document), and so on.
 
-It also turns out the type application syntax (`List Num`) coincides with the
+It also turns out the type application syntax `List Num` (actually, there is no
+such thing as type application currently, but rather `List` coincides with the
 standard application within contracts, that is `§(List Num) = §List §Num`. It
 would thus make sense to define type application for user-defined contracts by
 `#Foo Type ~ #(Foo §Type)`, and to be able to write directly `#Nullable Num` or
@@ -165,17 +166,18 @@ the syntax, otherwise, we would remove it too).
 
 #### Records
 
-The current syntax already supports lone type annotations such as `{foo : Num}`,
-since the piecewise signature PR. Hence record types of `Type` is almost already
-a subset of records of `Term`. Still, the following points need clarification:
+The current syntax already supports a term with lone type annotations such as
+`{foo : Num}`, since the piecewise signature PR. Hence record types of `Type` is
+almost already a subset of records of `Term`. Still, the following points need
+clarification:
 
-- **Conflict of `|`**: `|` is used both for tail and metavalue. Thus, `{foo :
+- **Conflict for `|`**: `|` is used both for tail and metavalue. Thus, `{foo :
   Num | a}` can be interpreted both as the type `{foo : Num | a}` or the
   contract `{foo : Num | #a}`.
 
   We can use `;` to denote the record tail instead, as in `{foo : Num; a}`. `|`
   is working well as a separator for metavalues. Another solution is to use a
-  `..a` syntax, that would also convey thew idea of a tail. It may clash with
+  `..a` syntax, that would also convey the idea of a tail. It may clash with
   potential uses for record extension as in say Rust: `Struct {bar: 1, ..rest}`,
   but we would probably use merging in Nickel for that. It also has a different
   meaning in destructuring (this not a parsing problem, but may be confusing for
@@ -293,21 +295,22 @@ runtime on the failure of merging `1` and `2`. There are also multiple
 approximation possible: we could create an opaque type encoding the tuple `(Num,
 Eq 2)`, we could set `foo : Dyn`, etc.
 
-However, for records without any definition can be associated with a precise
-static type that won't break blame safety. In pratice, this amounts to convert
-`|` to `:` and drop any other metadata. **We thus propose to only translate as
-types records with fields that don't have any definition, and at most one
-contract or type annotation**. That is, beside now allowing `{foo | Num}` to
-behave as `{foo : Num}` as a type annotation, and ignoring metadata like
-documentation, we only translate as record types expressions that are already a
-record type in the current syntax (`Type`). Otherwise, we consider it as an
-opaque type, that is `type({ ... }) = #term({ ... })`.
+Because of blame safety, and the different possible trade-offs, **we propose to only translate as
+types records that are already record types in the current syntax**. That is:
+
+```
+type({f1: t1, .., fn : tn}) = {f1: type(t1), .., fn: type(tn)}
+type({...}) = #term({...}) otherwise
+```
+
+See [Record types](#record-types) in the [Extensions](#extensions) section for
+possible improvements.
 
 #### Ground types and type application
 
 There is currently no general type application per se, but a special casing for
-`List Foo`, which is a parametrized type. We propose to keep ground types as
-reserved keywords and special lexemes of the language for now: it makes things
+`List Foo`, which is a parametrized type. **We propose to keep ground types as
+reserved keywords and special lexemes of the language** for now: it makes things
 simpler as we don't have to ask ourselves what `let List = 1 in [] : List Num` should be
 interpreted as. That way, we can also special case the application of the list
 type and translate an application as a term otherwise: 
@@ -318,10 +321,15 @@ type(a b) = List type(f)   if a == List
 ```
 
 This is a straightforward solution but this limits the interaction with type
-variables: `try_to_list: forall a. List (Nullable a) -> Nullable (List a)`. Note
-that, however, this is already impossible in the current syntax. It can be
-improved on later on in a backward compatible manner with a proper type
-application (or different scoping rules for type variables).
+variables: we can't write things like
+`try_to_list: forall a. List (Nullable a) -> Nullable (List a)`, because the
+type variable `a` won't "cross" the term application `Nullable _`. Note that,
+however, this is already impossible to express in the current syntax, no matter
+where you add `#` and `§`. It can be improved on later on in a backward
+compatible manner with a proper type application (or different scoping rules for
+type variables). What's more, it's not obvious that mixing polymorphic types and
+contracts like that would be a widespread practice, as working statically with
+contracts is very restricting.
 
 #### Variables
 
@@ -346,51 +354,65 @@ But is not very worrisome: it's clear that the local definition is the one that
 matters.
 
 To translate a variable, we thus have to know if a variable is a type variable
-or not. We let this issue as an external implementation detail, assuming there
-is such a predicate `is_type_var` available during the translation. We can set
+or not. We sidestep this question as an external implementation detail, assuming
+here that there is a predicate `is_type_var` available during the translation.
+We can no set:
 
 ```
-type(var x) = x     if is_type_var(x)
-type(var x) = #x    otherwise
+type(var x) = x   if is_type_var(x)
+type(var x) = #x  otherwise
 ```
 
 ## Extensions
 
-We have made a number of proposition led by simplicity and the idea of landing
-this feature before the first release, all of this while staying open to future
-improvements. This merge brings interesting questions and possibilities, that we
-quickly sketch in this section.
+We have made a number of proposition guided by simplicity and the idea of
+implementing this RFC before the first release, all of this while staying
+forward-compatible. This syntax merging proposal brings interesting questions
+and perspectives that we sketch in this section.
 
 ### Record types
 
-For now, we only translate to record types objects that are already record types
-in the current syntax. But actually, we could extract record types from some
-contracts, that bear the same information. The typical example is contracts of
-the form:
+In this RFC, we only translate to record types objects that are already record
+types in the current syntax. It turns out we could extract record types from
+some record contracts too, that often hold the same information. The typical
+example is contracts of the form:
 
 ```
 {
   foo | #Contract1,
-  bar | #{
-          baz | Str, 
-        }
+  bar | #{baz | Str},
 }
 ```
 
 Which is perfectly represented by the static type `{foo : #Contract1, bar: {baz:
-Str}}`, without endangering blame safety (something with this type will pass the
+Str}}`, without breaking blame safety (something with this type will pass the
 contract). The general idea is that **a record without any concrete field
-definition (`= content`) can be represented accurately by a static type**.
+definition (`= content`) can be represented accurately by a static type**. The
+`type` function on such record would then amount to convert `|` (contract
+application) to `:` and drop all others metavalue, and recursively translate the
+RHS of annotations to a type.
+
+We could have done this translation in the current proposal already, but one
+effect would be to translate the current
+`foo | #{bar | #SomeContract, baz | #SomeOther}` to
+`foo | {bar: #SomeContract, baz: #SomeOther`. Rigorously, this violates our
+first coherence law. Additionally, it turns out the current implementation of
+contracts makes the two version above behave slightly differently at runtime.
+That this should or should not be the case, we sidestep this difficulty for now
+and preserve the previous behavior of record contracts for now.
 
 ### Generalized tail
 
-We discussed the question of allowing `{foo | Str = "foo", bar = 1; a}` with a
-tail. To be honest, I don't really foresee a use-case right now for such
+We discussed the question of allowing tails in general records
+`{foo | Str = "foo", bar = 1; a}`. I currently don't foresee a use-case for such
 objects, but it's interesting to note that adding a specific attribute for the
-tail is already what is implementing contracts associated to such records with a
-polymorphic tail. Having this tail represented explicitly could help having a
-unique implementation for record contracts, working both for as-of-now `Term`
-(e.g. `{foo | Num, bar | Num}`) and `Type` (e.g. `{foo : Num, bar : Num}`).
+tail is already what is morally done in the implementation of the contract for a
+record with a polymorphic tail such as `forall a. {foo: Num | a} -> {| a}`,
+where the polymorphic tail is sealed inside a hidden magic field. Having this
+tail represented explicitly could help having a unique implementation for both
+record contracts and contracts derived from record types, working both for
+as-of-now `Term` (e.g. `{foo | Num, bar | Num}`) and `Type` (e.g.
+`{foo : Num, bar : Num | a}`).
 
 ### Treatment of variables
 
@@ -403,11 +425,11 @@ This would allow to implement type aliases:
 
 ```nickel
 let PairNum = {fst: Num, snd: Num} in
-{fst : PairNum = fun x => x.fst}
+{fst : PairNum -> Num = fun x => x.fst}
 ```
 
 As well as extracting more type information from contracts, combined with the
-idea from the record types section:
+idea from the [Record types](#record-types) section:
 
 ```nickel
 let Contract = {foo | OtherContr, bar | Str} in
@@ -421,10 +443,10 @@ let appendToBar : Str -> Str = fun s => my_value.bar ++ s
 ### Type application
 
 We could also have type application as part of the underlying type syntax. The
-interest is in allowing it to capture type variables, as in `singleton_maybe:
-forall a b. Nullable a -> Nullable (List a)`. We can even imagine the
-typechecker being able to evaluate function application, to be able to do
-something like:
+benefit in allowing it would be to capture type variables, as in
+`singleton_maybe: forall a b. Nullable a -> Nullable (List a)`. 
+We can even imagine the typechecker being able to evaluate function application,
+to be able to do something like:
 
 ```
 let Pair = fun a b => {fst: a, snd: b} in
