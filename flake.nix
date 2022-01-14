@@ -1,8 +1,5 @@
 {
   inputs.nixpkgs.url = "nixpkgs/nixos-unstable";
-  # We need a fixed version for wasm-bindgen-cli, that corresponds to
-  # the version of wasm-bindgen in Cargo.toml
-  inputs.nixpkgs-wasm.url = "nixpkgs/nixos-21.05";
   inputs.nixpkgs-mozilla.url = "github:nickel-lang/nixpkgs-mozilla/flake";
   inputs.import-cargo.url = "github:edolstra/import-cargo";
 
@@ -11,7 +8,7 @@
     extra-trusted-public-keys = [ "nickel.cachix.org-1:ABoCOGpTJbAum7U6c+04VbjvLxG9f0gJP5kYihRRdQs=" ];
   };
 
-  outputs = { self, nixpkgs, nixpkgs-wasm, nixpkgs-mozilla, import-cargo }:
+  outputs = { self, nixpkgs, nixpkgs-mozilla, import-cargo }:
     let
 
       SYSTEMS = [
@@ -36,11 +33,40 @@
 
       forAllSystems = f: genAttrs SYSTEMS (system: f system);
 
+      cargoTOML = builtins.fromTOML (builtins.readFile ./Cargo.toml);
+      WasmBindgenCargoVersion = cargoTOML.dependencies.wasm-bindgen.version;
+      WasmBindgenVersion = builtins.substring 1 (builtins.stringLength WasmBindgenCargoVersion) WasmBindgenCargoVersion;
+
+      custom_overlay = final: prev: {
+        wasm-bindgen-cli = prev.wasm-bindgen-cli.overrideAttrs (old: rec {
+          version = WasmBindgenVersion;
+          src =
+            let
+              tarball = final.fetchFromGitHub {
+                owner = "rustwasm";
+                repo = "wasm-bindgen";
+                rev = version;
+                hash = "sha256-GsraYfWzUZjFpPpufTyXF0i2llBzjh04iTKio6m4NRA=";
+              };
+            in
+            final.runCommand "source" { } ''
+              cp -R ${tarball} $out
+              chmod -R +w $out
+              cp ${./wasm-bindgen-api-Cargo.lock} $out/Cargo.lock
+            '';
+          cargoDeps = old.cargoDeps.overrideAttrs (final.lib.const {
+            name = "${old.pname}-${version}-vendor.tar.gz";
+            inherit src;
+            outputHash = "sha256:0bykharc2iq7r0n51d5rdg9s8dq86r9mc6vvbqlp6i468kp8hdvn";
+          });
+        });
+      };
+
       # Instantiate nixpkgs with the mozilla Rust overlay
       mkPkgs = { system }:
         import nixpkgs {
           inherit system;
-          overlays = [ nixpkgs-mozilla.overlays.rust ];
+          overlays = [ custom_overlay nixpkgs-mozilla.overlays.rust ];
         };
 
       mkRust = pkgs: channel:
@@ -124,7 +150,6 @@
       buildNickelWASM = { system, channel ? "stable", optimize ? true }:
         let
           pkgs = mkPkgs {inherit system;};
-          pkgsPinned = import nixpkgs-wasm {inherit system;};
 
           rust = (mkRust pkgs channel).rust.override({
             targets = ["wasm32-unknown-unknown"];
@@ -139,7 +164,7 @@
             [
               rust
               pkgs.wasm-pack
-              pkgsPinned.wasm-bindgen-cli
+              pkgs.wasm-bindgen-cli
               pkgs.binaryen
               cargoHome
             ]

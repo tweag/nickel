@@ -49,21 +49,6 @@
         "type": "github"
       }
     },
-    "nixpkgs-wasm": {
-      "locked": {
-        "lastModified": 1631098960,
-        "narHash": "sha256-6j6G/omHEFAnI2x7UvdrviGDNqiq1Fjd1A58Q6uc4sQ=",
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "12eb1d16ae3b6cbf0ea83e9228bca8ffd7cfe347",
-        "type": "github"
-      },
-      "original": {
-        "id": "nixpkgs",
-        "ref": "nixos-21.05",
-        "type": "indirect"
-      }
-    },
     "nixpkgs_2": {
       "locked": {
         "lastModified": 1630248577,
@@ -83,8 +68,7 @@
       "inputs": {
         "import-cargo": "import-cargo",
         "nixpkgs": "nixpkgs",
-        "nixpkgs-mozilla": "nixpkgs-mozilla",
-        "nixpkgs-wasm": "nixpkgs-wasm"
+        "nixpkgs-mozilla": "nixpkgs-mozilla"
       }
     }
   },
