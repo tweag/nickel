@@ -1,3 +1,5 @@
+//! Various post transformations of nickel code.
+
 use std::collections::{HashMap, HashSet};
 
 use crate::cache::ImportResolver;
@@ -27,7 +29,7 @@ pub fn transform(rt: RichTerm) -> RichTerm {
         .traverse(
             &mut |rt: RichTerm, _| -> Result<RichTerm, ()> {
                 // before anything, we have to desugar the syntax
-                let rt = desugar_destructuring::desugar_with_contract(rt);
+                let rt = desugar_destructuring::transform_one(rt);
                 // We need to do contract generation before wrapping stuff in variables
                 let rt = apply_contracts::transform_one(rt);
                 Ok(rt)

@@ -109,7 +109,7 @@ impl Completed {
 
         let item = match item.kind {
             TermKind::Usage(UsageState::Resolved(usage)) => {
-                usage.and_then(|u| self.get_item(u + 1)).unwrap_or(item)
+                usage.and_then(|u| self.get_item(u)).unwrap_or(item)
             }
             TermKind::Declaration(_, _) => self.get_item(item.id + 1).unwrap_or(item),
             _ => item,
