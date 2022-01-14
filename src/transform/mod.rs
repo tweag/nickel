@@ -39,7 +39,7 @@ pub fn transform(rt: RichTerm) -> RichTerm {
         )
         .unwrap();
 
-    rt.traverse_monoid_state::<_, _, _, HashMap<_, _>, _, _>(
+    rt.traverse_monoid_state(
         &mut |rt: RichTerm, _, free_vars, rec_free_vars| -> Result<RichTerm, ()> {
             let mut rt = share_normal_form::transform_one(rt);
             collect_free_vars(&mut rt, free_vars, rec_free_vars);
@@ -49,9 +49,7 @@ pub fn transform(rt: RichTerm) -> RichTerm {
         &mut HashSet::new(),
         TraverseMethod::BottomUp,
         &mut |_, id, fv_rec, fv| {
-            let mut fvp = HashSet::new();
-            std::mem::swap(fv, &mut fvp);
-            fv_rec.insert(id, fvp);
+            fv_rec.insert(id, fv.clone());
         },
         &mut HashMap::new(),
     )
