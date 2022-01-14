@@ -232,17 +232,16 @@ Type -> UniTerm` the embedding of the current syntax to the new unified syntax
 operational equivalence (we won't prove those rules formally, as this a mere
 design guideline, so we also restrain from giving a formal definition for `~`).
 
-1. For all `t: Term`, `term(!t) ~ t` and for any `T: Type`, `type(!T) = T` .
+1. For all `t: Term`, `term(!t) ~ t` and for all `T: Type`, `type(!T) = T` .
    That is, a term or a type in the current syntax with `#` removed will be
    interpreted the same in the new syntax.
-2. For any `T: Type`, `term(!T) ~ §T`. That is, the interpretation of something
-   that is a type in the current syntax as a term in a new syntax must behave
+2. For all `T: Type`, `term(!T) ~ §T`. That is, the interpretation of something
+   that is a type in the current syntax as a term in the new syntax must behave
    the same as the corresponding contract.
 
 ### `term`
 
-As explained, we see the `term` translation as inserting implicit `§`
-automatically.
+The `term` translation mainly inserts implicit `§` automatically.
 
 - For most term-only constructs (that is everything excepted
   records and constructors coming from types), `term` is an homomorphism (e.g.
@@ -260,55 +259,49 @@ constructs.
   equivalent to `{foo | Num}` operationally when `foo` doesn't have a
   definition.
 - For a tail, because of the predicate enforced in the grammar, we know that a
-  record `{ body; tail}` in `UniTerm` must satisfy `is_type(body)`. We just
-  convert it to a type, and derive the corresponding contract:
-  `term({body; tail}) = §type({body; tail})`.
+  record `{ body; tail}` in `UniTerm` must satisfy `is_record_type({body})`. We
+  just convert it to a type, and derive the corresponding contract: `term({body;
+  tail}) = §type({body; tail})`.
  
 ### `type`
 
 Dually to terms:
 
-- For type-only constructs, `type` is the obvious homomorphism. For example,
+- For type-only constructs, `type` is an homomorphism. For example,
   `type(t -> t') = type(t) -> type(t')`.
 - For term-only constructs, we take the opaque type associated to a contract.
-  Concretely, we just translate it as a `Term`, and put a `#` in front:
-  `type(fun x => body)` = `#term(fun x => body)`.
+  That is, `type(t) = #term(t)`. For example,
+  `type(fun x => body) = #term(fun x => body)`.
 
 #### Records
 
-As for terms, the case of records remain. For records that are actually the
+As for terms, the case of records remains. For records that are actually the
 embedding of a `Type`, such as `{foo : Num, bar: {baz: Num}}`, the translation
-is obvious. For records that are the embedding of a `Term`, we can simply
-proceed as above: `type({foo = 1, bar = "baz"}) = #{foo = 1, bar = "baz"}`.
+is obvious. For records that are the embedding of a `Term` without annotations,
+we can simply proceed as above: `type({foo = 1, bar = "baz"}) = #{foo = 1, bar =
+"baz"}`.
 
 The case for records that mixes the both `Term` and `Type` is less clear. Take
 for example: `x : {foo : Num = 1}`. Should we consider this as a totally opaque
 record, that is `type({foo : Num = 1}) = #{foo : Num = 1}` or take advantage
 from the information that `foo` is necessarily a number and set `type({foo : Num
-= 1}) = {foo: Num}`? The problem of the latter is that we loose the property of
-*blame safety*, which is that "well-typed program can't be blamed", because the
-type deduced is less precise that the actual contract. For example, `{foo = 2} :
-{foo : Num, foo = 1}` would pass typechecking but fails at runtime on the
-failure of merging `1` and `2`. There are also multiple approximation possible:
-we could create an opaque type encoding the tuple `(Num, Eq 2)`, we could set
-`foo : Dyn`, etc.
+= 1}) = {foo: Num}`? The problem with the latter approach is that we loose the
+property of *blame safety*, which is that "well-typed program can't be blamed".
+Indeed, the extracted type is less precise that the actual contract. For
+example, `{foo = 2} : {foo : Num, foo = 1}` would pass typechecking but fails at
+runtime on the failure of merging `1` and `2`. There are also multiple
+approximation possible: we could create an opaque type encoding the tuple `(Num,
+Eq 2)`, we could set `foo : Dyn`, etc.
 
-Because of blame safety and the different possible trade-off in translating a
-mixed record to a `Type`, **we propose to only translate as types records with
-fields that don't have any definition**. That is, beside now allowing `{foo | Num}` to
+However, for records without any definition can be associated with a precise
+static type that won't break blame safety. In pratice, this amounts to convert
+`|` to `:` and drop any other metadata. **We thus propose to only translate as
+types records with fields that don't have any definition, and at most one
+contract or type annotation**. That is, beside now allowing `{foo | Num}` to
 behave as `{foo : Num}` as a type annotation, and ignoring metadata like
 documentation, we only translate as record types expressions that are already a
 record type in the current syntax (`Type`). Otherwise, we consider it as an
 opaque type, that is `type({ ... }) = #term({ ... })`.
-
-Note that this may create a loop in the translation for mixed record with tails.
-Take `EXP` to be `{foo : Num, foo = 1; a}`, then as per this proposal,
-`term(EXP) = §type(EXP)` and `type(EXP) = #term(EXP)`. To break the cycle, we
-propose that `term(EXP) = §type(EXP)` when `EXP` is a record with a tail iff
-`EXP` can be translated to an actual recod type. Otherwise, the parser should
-issue an error. This is the case with this example. The rationale is that, once
-again, although the syntax allows it, it doesn't make much sense to mix a record
-with actual definition with a tail.
 
 #### Ground types and type application
 
