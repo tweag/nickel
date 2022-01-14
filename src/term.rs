@@ -921,8 +921,8 @@ pub enum TraverseMethod {
     BottomUp,
 }
 
-/// It's like `std::iter::Extend`, but it work for `()`.
-/// `Extend` unit impl fails because `()` does not implement `IntoIterator`.
+/// It's like `std::iter::Extend`, but it works for `()`.
+/// The `Extend` unit impl fails because `()` does not implement `IntoIterator`.
 pub trait Append: Default + Clone {
     fn append(&mut self, lhs: Self);
 }
