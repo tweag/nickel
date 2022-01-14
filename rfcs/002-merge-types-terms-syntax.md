@@ -30,7 +30,7 @@ is different from the standard typed functional language. We have to:
   (a term) to a type. Currently, this type is quite rigid: this is an opaque
   type.
 - Give a dynamic meaning to types. Because each type annotation gives rise
-  to a contract, we have to derive a contract from a type. There is currently no
+  to a contract, we have to derive a contract from a type. There is no
   first-class operator to do that in the current syntax, but the interpreter
   does it internally via the `open_contract()` function. Throughout this
   document, we will use the `§` operator to denote this operation, pretending it
@@ -78,8 +78,9 @@ sometimes we need a hash and sometimes not, why we used `List` and sometimes
 `list` (the equivalent of `§List` in this document), and so on.
 
 It also turns out the type application syntax `List Num` (actually, there is no
-such thing as type application currently, but rather `List` coincides with the
-standard application within contracts, that is `§(List Num) = §List §Num`. It
+such thing as general type application currently, but rather `List` is a
+parametrized type with special treatment) coincides with the standard
+application of contracts seen as terms, that is `§(List Num) = §List §Num`. It
 would thus make sense to define type application for user-defined contracts by
 `#Foo Type ~ #(Foo §Type)`, and to be able to write directly `#Nullable Num` or
 `#Nullable #Port` instead of the oddly different forms `#(Nullable §Num)` and
@@ -116,23 +117,22 @@ We use the following notations throughout this document:
 
 ## Challenges
 
-Such a change brings in two main challenges:
+Such a change faces two main challenges:
 
 ### Semantics
 
-At first sight, the first challenge is to give a semantics for all the strange
-term we can now write:
+The first challenge is to give a semantics for all the strange term we can now
+write:
 
 ```nickel
 let foo : forall a. a -> (fun x => x + 1) -> a + 1
 ```
 
-But, as already observed, we can rely on the fact that the current language
-already has the generic transformations `# : Term -> Type` and `§ : Type ->
-Term`. Our goal is to define a new syntax `UniTerm`, and two translations `type
-: UniTerm -> Type` and `term : UniTerm -> Term`, based on `#` and `§`. We will
-then be able to write Nickel programs in `UniTerm` and translate them to the
-current syntax.
+Once again, we can rely on the fact that the current language already has the
+generic transformations `# : Term -> Type` and `§ : Type -> Term`. Our goal is
+to define a new syntax `UniTerm`, and two translations `type : UniTerm -> Type`
+and `term : UniTerm -> Term`, based on `#` and `§`. We will then be able to
+write Nickel programs in `UniTerm` and translate them to the current syntax.
 
 ### Conflicts
 
@@ -152,9 +152,6 @@ precisely, here is a list of the current conflicts:
 - The syntax for record literals may conflict, as it is used both for record
   types and records themselves. Now, how should we understand `{foo : Bar, bar =
   2 | a}` as a type? And as a term?
-
-Fortunately we already picked a different arrow for types `->` and
-function/switch cases `=>`.
 
 ## Proposal
 
@@ -264,7 +261,7 @@ constructs.
   record `{ body; tail}` in `UniTerm` must satisfy `is_record_type({body})`. We
   just convert it to a type, and derive the corresponding contract: `term({body;
   tail}) = §type({body; tail})`.
- 
+
 ### `type`
 
 Dually to terms:
@@ -313,7 +310,7 @@ There is currently no general type application per se, but a special casing for
 reserved keywords and special lexemes of the language** for now: it makes things
 simpler as we don't have to ask ourselves what `let List = 1 in [] : List Num` should be
 interpreted as. That way, we can also special case the application of the list
-type and translate an application as a term otherwise: 
+type and translate an application as a term otherwise:
 
 ```
 type(a b) = List type(f)   if a == List
@@ -444,7 +441,7 @@ let appendToBar : Str -> Str = fun s => my_value.bar ++ s
 
 We could also have type application as part of the underlying type syntax. The
 benefit in allowing it would be to capture type variables, as in
-`singleton_maybe: forall a b. Nullable a -> Nullable (List a)`. 
+`singleton_maybe: forall a b. Nullable a -> Nullable (List a)`.
 We can even imagine the typechecker being able to evaluate function application,
 to be able to do something like:
 
