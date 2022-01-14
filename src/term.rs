@@ -72,7 +72,7 @@ pub enum Term {
 
     /// A let binding.
     #[serde(skip)]
-    Let(Ident, RichTerm, RichTerm, BindingType),
+    Let(Ident, RichTerm, RichTerm, BindingType, Option<HashSet<Ident>>),
     /// A destructuring let-binding.
     #[serde(skip)]
     LetPattern(Option<Ident>, Destruct, RichTerm, RichTerm),
@@ -368,7 +368,7 @@ impl Term {
                     });
                 meta.value.iter_mut().for_each(func);
             }
-            Let(_, ref mut t1, ref mut t2, _)
+            Let(_, ref mut t1, ref mut t2, _, _)
             | LetPattern(_, _, ref mut t1, ref mut t2)
             | App(ref mut t1, ref mut t2)
             | Op2(_, ref mut t1, ref mut t2) => {
@@ -1038,12 +1038,12 @@ impl RichTerm {
                     pos,
                 )
             },
-            Term::Let(id, t1, t2, btype) => {
+            Term::Let(id, t1, t2, btype, fv) => {
                 let t1 = t1.traverse_monoid_state(f, state, &mut m, method, f_rec_fields, rec_fields_state)?;
                 let t2 = t2.traverse_monoid_state(f, state, &mut m, method, f_rec_fields, rec_fields_state)?;
 
                 RichTerm::new(
-                    Term::Let(id, t1, t2, btype),
+                    Term::Let(id, t1, t2, btype,fv),
                     pos,
                 )
             },
@@ -1417,7 +1417,14 @@ pub mod make {
         T2: Into<RichTerm>,
         I: Into<Ident>,
     {
-        Term::Let(id.into(), t1.into(), t2.into(), BindingType::Normal).into()
+        Term::Let(
+            id.into(),
+            t1.into(),
+            t2.into(),
+            BindingType::Normal,
+            Default::default(),
+        )
+        .into()
     }
 
     pub fn let_pat<I, D, T1, T2>(id: Option<I>, pat: D, t1: T1, t2: T2) -> RichTerm

@@ -357,7 +357,17 @@ where
                     env,
                 }
             }
-            Term::Let(x, s, t, btype) => {
+            Term::Let(x, s, t, btype, fv) => {
+                let mut env: Environment = env
+                    .iter()
+                    .filter_map(|(id, thunk)| {
+                        if fv.as_ref().map(|fv| fv.contains(id)).unwrap_or(true) {
+                            Some((id.clone(), thunk.clone()))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
                 let closure = Closure {
                     body: s.clone(),
                     env: env.clone(),
@@ -761,11 +771,11 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
             | v @ Term::Enum(_)
             | v @ Term::Import(_)
             | v @ Term::ResolvedImport(_) => RichTerm::new(v, pos),
-            Term::Let(id, t1, t2, btype) => {
+            Term::Let(id, t1, t2, btype, fv) => {
                 let t1 = subst_(t1, global_env, env, Cow::Borrowed(bound.as_ref()));
                 let t2 = subst_(t2, global_env, env, bound);
 
-                RichTerm::new(Term::Let(id, t1, t2, btype), pos)
+                RichTerm::new(Term::Let(id, t1, t2, btype, fv), pos)
             }
             p @ Term::LetPattern(..) => panic!("Pattern {:?} has not been transformed before evaluation", p),
             p @ Term::FunPattern(..) => panic!("Pattern {:?} has not been transformed before evaluation", p),

@@ -118,6 +118,7 @@ pub fn desugar(rt: RichTerm) -> RichTerm {
                         t_,
                         destruct_term(x.clone(), &pat, bind_open_field(x, &pat, body)),
                         BindingType::Normal,
+                        Default::default(),
                     ),
                     pos,
                 )
@@ -147,6 +148,7 @@ fn bind_open_field(x: Ident, pat: &Destruct, body: RichTerm) -> RichTerm {
         }),
         body,
         BindingType::Normal,
+        Default::default(),
     )
     .into()
 }
@@ -163,6 +165,7 @@ fn destruct_term(x: Ident, pat: &Destruct, body: RichTerm) -> RichTerm {
                     op1(StaticAccess(id.clone()), Term::Var(x.clone())),
                     t,
                     BindingType::Normal,
+                    Default::default(),
                 ),
                 pos,
             ),

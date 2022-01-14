@@ -15,7 +15,11 @@ pub fn collect_free_vars(
         Term::Var(id) => {
             free_vars.insert(id.clone());
         }
-        Term::Let(id, _, _, _) | Term::Fun(id, _) => {
+        Term::Fun(id, _) => {
+            free_vars.remove(id);
+        }
+        Term::Let(id, _, _, _, fv) => {
+            *fv = Some(free_vars.clone());
             free_vars.remove(id);
         }
         Term::LetPattern(id, _, _, _) => {

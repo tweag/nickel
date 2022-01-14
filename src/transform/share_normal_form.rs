@@ -139,7 +139,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                     meta.value
                         .replace(RichTerm::new(Term::Var(fresh_var.clone()), t.pos));
                     let inner = RichTerm::new(Term::MetaValue(meta), pos);
-                    RichTerm::new(Term::Let(fresh_var, t, inner, BindingType::Normal), pos)
+                    RichTerm::new(Term::Let(fresh_var, t, inner, BindingType::Normal, Default::default()), pos)
             }
         } else rt
     }
@@ -179,6 +179,6 @@ fn with_bindings(
     bindings
         .into_iter()
         .fold(RichTerm::new(body, pos.into_inherited()), |acc, (id, t)| {
-            RichTerm::new(Term::Let(id, t, acc, btype), pos)
+            RichTerm::new(Term::Let(id, t, acc, btype, Default::default()), pos)
         })
 }
