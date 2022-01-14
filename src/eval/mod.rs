@@ -88,8 +88,6 @@
 //! appear inside recursive records in the future. An adapted garbage collector is probably
 //! something to consider at some point.
 
-use std::cell::RefMut;
-
 use crate::{
     cache::ImportResolver,
     environment::Environment as GenericEnvironment,
@@ -526,24 +524,7 @@ where
                     },
                 )?;
 
-                let filter_free_vars = |id, mut clos: RefMut<Closure>| {
-                    if let Some(Some(free_vars)) = free_vars.as_ref().map(|fr| fr.get(id)) {
-                        clos.env.extend(
-                            rec_env
-                                .iter_elems()
-                                .filter(|(id, _)| free_vars.contains(id))
-                                .map(|(id, thunk)| (id.clone(), thunk.clone())),
-                        );
-                    } else {
-                        clos.env.extend(
-                            rec_env
-                                .iter_elems()
-                                .map(|(id, thunk)| (id.clone(), thunk.clone())),
-                        );
-                    }
-                };
-
-                let new_ts = ts.into_iter().map(|(id, rt)| {
+                let new_ts = ts.iter().map(|(id, rt)| {
                     let pos = rt.pos;
                     match &*rt.term {
                         Term::Var(var_id) => {
@@ -577,7 +558,7 @@ where
                     }
                 });
 
-                let static_part = RichTerm::new(Term::Record(new_ts.collect(), attrs.clone()), pos);
+                let static_part = RichTerm::new(Term::Record(new_ts.collect(), *attrs), pos);
 
                 // Transform the static part `{stat1 = val1, ..., statn = valn}` and the dynamic
                 // part `{exp1 = dyn_val1, ..., expm = dyn_valm}` to a sequence of extensions
@@ -585,7 +566,7 @@ where
                 // The `dyn_val` are given access to the recursive environment, but not the dynamic
                 // field names.
                 let extended = dyn_fields
-                    .into_iter()
+                    .iter()
                     .try_fold::<_, _, Result<RichTerm, EvalError>>(
                         static_part,
                         |acc, (id_t, t)| {
