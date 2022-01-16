@@ -17,5 +17,3 @@ jobs:
             access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
       - name: Update flake.lock
         uses: DeterminateSystems/update-flake-lock@v3
-        with:
-          inputs: nixpkgs nixpkgs-mozilla import-cargo
