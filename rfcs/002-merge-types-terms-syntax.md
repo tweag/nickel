@@ -353,7 +353,7 @@ matters.
 To translate a variable, we thus have to know if a variable is a type variable
 or not. We sidestep this question as an external implementation detail, assuming
 here that there is a predicate `is_type_var` available during the translation.
-We can no set:
+We can now set:
 
 ```
 type(var x) = x   if is_type_var(x)
