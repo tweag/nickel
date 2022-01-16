@@ -362,7 +362,7 @@ type(var x) = #x  otherwise
 
 ## Extensions
 
-We have made a number of proposition guided by simplicity and the idea of
+We have made a number of propositions guided by simplicity and the objective of
 implementing this RFC before the first release, all of this while staying
 forward-compatible. This syntax merging proposal brings interesting questions
 and perspectives that we sketch in this section.
