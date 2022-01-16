@@ -400,16 +400,14 @@ and preserve the previous behavior of record contracts for now.
 
 ### Generalized tail
 
-We discussed the question of allowing tails in general records
-`{foo | Str = "foo", bar = 1; a}`. I currently don't foresee a use-case for such
-objects, but it's interesting to note that adding a specific attribute for the
-tail is already what is morally done in the implementation of the contract for a
-record with a polymorphic tail such as `forall a. {foo: Num | a} -> {| a}`,
-where the polymorphic tail is sealed inside a hidden magic field. Having this
-tail represented explicitly could help having a unique implementation for both
-record contracts and contracts derived from record types, working both for
-as-of-now `Term` (e.g. `{foo | Num, bar | Num}`) and `Type` (e.g.
-`{foo : Num, bar : Num | a}`).
+We discussed the question of allowing tails in general records `{foo | Str =
+"foo", bar = 1; a}`. I currently don't foresee a use-case for such objects, but
+it's interesting to note that adding a specific attribute for the tail is
+already what is morally done in the implementation of the contract for a record
+with a polymorphic tail such as `forall a. {foo: Num | a} -> {| a}`, where the
+polymorphic tail is sealed inside a hidden magic field. Having this tail
+represented explicitly could help having a unique and uniform implementation
+for record contracts, contracts derived from record types and record values.
 
 ### Treatment of variables
 
