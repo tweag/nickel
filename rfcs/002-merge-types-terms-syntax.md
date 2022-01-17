@@ -289,7 +289,7 @@ property of *blame safety*, which is that "well-typed program can't be blamed".
 Indeed, the extracted type is less precise that the actual contract. For
 example, `{foo = 2} : {foo : Num, foo = 1}` would pass typechecking but fails at
 runtime on the failure of merging `1` and `2`. There are also multiple
-approximation possible: we could create an opaque type encoding the tuple `(Num,
+approximations possible: we could create an opaque type encoding the tuple `(Num,
 Eq 2)`, we could set `foo : Dyn`, etc.
 
 Because of blame safety, and the different possible trade-offs, **we propose to only translate as
