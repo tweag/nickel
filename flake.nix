@@ -1,7 +1,7 @@
 {
   inputs.nixpkgs.url = "nixpkgs/nixos-unstable";
   inputs.flake-utils.url  = "github:numtide/flake-utils";
-  inputs.nixpkgs-mozilla.url = "github:nickel-lang/nixpkgs-mozilla/flake";
+  inputs.rust-overlay.url = "github:oxalica/rust-overlay";
   inputs.import-cargo.url = "github:edolstra/import-cargo";
 
   nixConfig = {
@@ -12,7 +12,7 @@
   outputs = { self
             , nixpkgs
             , flake-utils
-            , nixpkgs-mozilla
+            , rust-overlay
             , import-cargo
             }:
     let
@@ -23,14 +23,11 @@
         "x86_64-linux"
       ];
 
-      RUST_CHANNELS = readRustChannels [
+      RUST_CHANNELS = [
         "stable"
         "beta"
         "nightly"
       ];
-
-      readRustChannel = c: builtins.fromTOML (builtins.readFile (./. + "/scripts/channel_${c}.toml"));
-      readRustChannels = cs: builtins.listToAttrs (map (c: { name = c; value = readRustChannel c; }) cs);
 
       cargoTOML = builtins.fromTOML (builtins.readFile ./Cargo.toml);
       WasmBindgenCargoVersion = cargoTOML.dependencies.wasm-bindgen.version;
@@ -67,31 +64,16 @@
       let 
         pkgs = import nixpkgs {
           inherit system;
-          overlays = [ customOverlay nixpkgs-mozilla.overlays.rust ];
+          overlays = [
+            (import rust-overlay)
+            customOverlay
+          ];
         };
 
         cargoHome = (import-cargo.builders.importCargo {
           lockFile = ./Cargo.lock;
           inherit pkgs;
         }).cargoHome;
-
-        rustPlatform =
-          builtins.listToAttrs
-              (builtins.map
-                (channel:
-                  let
-                    manifestFile = builtins.fetchurl {
-                      url = pkgs.lib.rustLib.manifest_v2_url RUST_CHANNELS.${channel};
-                      sha256 = RUST_CHANNELS.${channel}.sha256;
-                    };
-                  in { name = channel;
-                       value = pkgs.lib.rustLib.fromManifestFile manifestFile {
-                         inherit (pkgs) lib stdenv fetchurl patchelf;
-                       };
-                     }
-                )
-                (builtins.attrNames RUST_CHANNELS)
-              );
 
         # Additional packages required for some systems to build Nickel
         missingSysPkgs =
@@ -108,15 +90,20 @@
                       , checkFmt ?  false
                       }:
           let
+            rustProfile =
+              if isShell then "default"
+              else "minimal";
+
             rust =
-              rustPlatform.${channel}.rust.override {
-                extensions = if isShell then [
-                  "rust-src"
-                  "rust-analysis"
-                  "rustfmt-preview"
-                  "clippy-preview"
-                ] else [];
-              };
+              if channel == "nightly" then
+                pkgs.rust-bin.selectLatestNightlyWith (toolchain: toolchain.${rustProfile}.override {
+                  extensions = [ "rustfmt-preview" ];
+                })
+              else
+                pkgs.rust-bin.${channel}.latest.${rustProfile}.override {
+                  extensions = [ "rustfmt-preview" ];
+                };
+
           in pkgs.stdenv.mkDerivation {
             name = "nickel-${version}";
 
@@ -149,31 +136,37 @@
                 cargo install --frozen --offline --path lsp/nls --root $out
                 rm $out/.crates.toml
               '';
+
+            passhtru.rust = rust;
           };
 
         buildNickelWASM = { channel ? "stable"
                           , optimize ? true
                           }:
           let
-            rust = rustPlatform.${channel}.rust.override({
-              targets = ["wasm32-unknown-unknown"];
-            });
+            rust =
+              if channel == "nightly" then
+                pkgs.rust-bin.selectLatestNightlyWith (toolchain: toolchain.minimal.override {
+                  targets = ["wasm32-unknown-unknown"];
+                })
+              else
+                pkgs.rust-bin.${channel}.latest.minimal.override {
+                  targets = ["wasm32-unknown-unknown"];
+                };
           in pkgs.stdenv.mkDerivation {
             name = "nickel-wasm-${version}";
 
+            src = self;
+
+            nativeBuildInputs = [ pkgs.jq ];
+
             buildInputs =
-              [
-                rust
+              [ rust
                 pkgs.wasm-pack
                 pkgs.wasm-bindgen-cli
                 pkgs.binaryen
                 cargoHome
-              ]
-              ++ missingSysPkgs;
-
-            nativeBuildInputs = [pkgs.jq];
-
-            src = self;
+              ] ++ missingSysPkgs;
 
             preBuild =
               ''
@@ -273,12 +266,10 @@
         buildDevShell = { channel ? "stable" }:
           let
             nickel = buildNickel { isShell = true; };
-            rust = rustPlatform.${channel}.rust.override({
-              extensions = [ "rustfmt-preview" ];
-            });
+
             rustFormatHook = pkgs.writeShellScriptBin "check-rust-format-hook"
               ''
-                ${rust}/bin/cargo fmt -- --check
+                ${nickel.rust}/bin/cargo fmt -- --check
                 RESULT=$?
                 [ $RESULT != 0 ] && echo "Please run \`cargo fmt\` before"
                 exit $RESULT
@@ -374,8 +365,7 @@
           builtins.listToAttrs
             (builtins.map (channel: { name = channel;
                                       value = buildDevShell { inherit channel; };
-                                    })
-              (builtins.attrNames RUST_CHANNELS)
+                                    }) RUST_CHANNELS
             );
         devShell = devShells.stable;
 
@@ -389,8 +379,7 @@
             (builtins.map (channel: let checkFmt = channel == "stable";
                                     in { name = "nickel-against-${channel}-rust-channel";
                                          value = buildNickel { inherit channel checkFmt; };
-                                       })
-              (builtins.attrNames RUST_CHANNELS)));
+                                       }) RUST_CHANNELS));
       }
     );
 }
