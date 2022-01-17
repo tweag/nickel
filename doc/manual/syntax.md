@@ -121,11 +121,46 @@ Examples:
 []
 ```
 
-### Record
-<!-- TODO -->
+Lists can be concatenated with the operator `@`:
+```
+> [1] @ [2, 3]
+[ 1, 2, 3 ]
+```
 
-### Dynamic Record
-<!-- TODO -->
+### Record
+Records are key-value storage. They are delimited with by `{` and `}`, elements are separated by `,`.
+key-value elements are noted as `key = value`.
+The keys can be either identifiers, or strings. Values can be of any type.
+Elements inside a record are unordered.
+
+Examples:
+```
+{}
+{a = 3}
+{my_id_n5 = "my id number 5", my_id_n4 = }
+{"5" = 5, six = 6}
+```
+
+A record cannot contain the same key twice, or the values must be identical (see section about _merge_).
+```
+> {a = 3, a = 3}
+{ a = 3 }
+
+> {a = 3, "a" = 3}
+{ a = 3 }
+```
+
+Accessing a record field can be done using the `.` operator :
+```
+> { a = 1, b = 5 }.a
+1
+
+> { a = 1 }.b
+error: Missing field
+
+> { "1" = "one" }."1"
+"one"
+```
 
 ### Enum
 <!-- TODO -->
