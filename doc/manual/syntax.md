@@ -83,7 +83,29 @@ Yes it is, indeed it is"
 ```
 
 ## Equality Operators
-<!-- TODO -->
+
+We have seen that the operators `==` and `!=` works for comparing numbers, but they can actually compare any values together. Two values are equal if they have the same _type_ and the same _value_.
+
+Examples:
+```
+> 1 == 1
+true
+
+> 5 == 5.0
+true
+
+> "Hello" == "Hello"
+true
+
+> "Hello" != "World"
+true
+
+> 5 == "Hello"
+false
+
+> true == "true"
+false
+```
 
 
 ## Composite types
