@@ -15,7 +15,7 @@ pub fn get_uop_type(
     Ok(match op {
         // forall a. bool -> a -> a -> a
         UnaryOp::Ite() => {
-            let branches = TypeWrapper::Ptr(new_var(state.table));
+            let branches = TypeWrapper::Ptr(state.table.fresh_var());
 
             (
                 mk_typewrapper::bool(),
@@ -29,7 +29,7 @@ pub fn get_uop_type(
         | UnaryOp::IsFun()
         | UnaryOp::IsList()
         | UnaryOp::IsRecord() => {
-            let inp = TypeWrapper::Ptr(new_var(state.table));
+            let inp = TypeWrapper::Ptr(state.table.fresh_var());
             (inp, mk_typewrapper::bool())
         }
         // Bool -> Bool -> Bool
@@ -41,7 +41,7 @@ pub fn get_uop_type(
         UnaryOp::BoolNot() => (mk_typewrapper::bool(), mk_typewrapper::bool()),
         // forall a. Dyn -> a
         UnaryOp::Blame() => {
-            let res = TypeWrapper::Ptr(new_var(state.table));
+            let res = TypeWrapper::Ptr(state.table.fresh_var());
 
             (mk_typewrapper::dynamic(), res)
         }
@@ -49,7 +49,7 @@ pub fn get_uop_type(
         UnaryOp::Pol() => (mk_typewrapper::dynamic(), mk_typewrapper::bool()),
         // forall rows. < | rows> -> <id | rows>
         UnaryOp::Embed(id) => {
-            let row = TypeWrapper::Ptr(new_var(state.table));
+            let row = TypeWrapper::Ptr(state.table.fresh_var());
             // Constraining a freshly created variable should never fail.
             constraint(state, row.clone(), id.clone()).unwrap();
             (mk_tyw_enum!(row.clone()), mk_tyw_enum!(id.clone(), row))
@@ -67,15 +67,15 @@ pub fn get_uop_type(
         ),
         // forall rows a. { id: a | rows} -> a
         UnaryOp::StaticAccess(id) => {
-            let row = TypeWrapper::Ptr(new_var(state.table));
-            let res = TypeWrapper::Ptr(new_var(state.table));
+            let row = TypeWrapper::Ptr(state.table.fresh_var());
+            let res = TypeWrapper::Ptr(state.table.fresh_var());
 
             (mk_tyw_record!((id.clone(), res.clone()); row), res)
         }
         // forall a b. List a -> (a -> b) -> List b
         UnaryOp::ListMap() => {
-            let a = TypeWrapper::Ptr(new_var(state.table));
-            let b = TypeWrapper::Ptr(new_var(state.table));
+            let a = TypeWrapper::Ptr(state.table.fresh_var());
+            let b = TypeWrapper::Ptr(state.table.fresh_var());
 
             let f_type = mk_tyw_arrow!(a.clone(), b.clone());
             (
@@ -85,7 +85,7 @@ pub fn get_uop_type(
         }
         // forall a. Num -> (Num -> a) -> List a
         UnaryOp::ListGen() => {
-            let a = TypeWrapper::Ptr(new_var(state.table));
+            let a = TypeWrapper::Ptr(state.table.fresh_var());
 
             let f_type = mk_tyw_arrow!(AbsType::Num(), a.clone());
             (
@@ -98,8 +98,8 @@ pub fn get_uop_type(
             // Assuming f has type Str -> a -> b,
             // this has type DynRecord(a) -> DynRecord(b)
 
-            let a = TypeWrapper::Ptr(new_var(state.table));
-            let b = TypeWrapper::Ptr(new_var(state.table));
+            let a = TypeWrapper::Ptr(state.table.fresh_var());
+            let b = TypeWrapper::Ptr(state.table.fresh_var());
 
             let f_type = mk_tyw_arrow!(AbsType::Str(), a.clone(), b.clone());
             (
@@ -109,19 +109,19 @@ pub fn get_uop_type(
         }
         // forall a b. a -> b -> b
         UnaryOp::Seq() | UnaryOp::DeepSeq() => {
-            let fst = TypeWrapper::Ptr(new_var(state.table));
-            let snd = TypeWrapper::Ptr(new_var(state.table));
+            let fst = TypeWrapper::Ptr(state.table.fresh_var());
+            let snd = TypeWrapper::Ptr(state.table.fresh_var());
 
             (fst, mk_tyw_arrow!(snd.clone(), snd))
         }
         // forall a. List a -> a
         UnaryOp::ListHead() => {
-            let ty_elt = TypeWrapper::Ptr(new_var(state.table));
+            let ty_elt = TypeWrapper::Ptr(state.table.fresh_var());
             (mk_typewrapper::list(ty_elt.clone()), ty_elt)
         }
         // forall a. List a -> List a
         UnaryOp::ListTail() => {
-            let ty_elt = TypeWrapper::Ptr(new_var(state.table));
+            let ty_elt = TypeWrapper::Ptr(state.table.fresh_var());
             (
                 mk_typewrapper::list(ty_elt.clone()),
                 mk_typewrapper::list(ty_elt),
@@ -129,7 +129,7 @@ pub fn get_uop_type(
         }
         // forall a. List a -> Num
         UnaryOp::ListLength() => {
-            let ty_elt = TypeWrapper::Ptr(new_var(state.table));
+            let ty_elt = TypeWrapper::Ptr(state.table.fresh_var());
             (mk_typewrapper::list(ty_elt), mk_typewrapper::num())
         }
         // This should not happen, as ChunksConcat() is only produced during evaluation.
@@ -138,7 +138,7 @@ pub fn get_uop_type(
         // Dyn -> List Str
         UnaryOp::FieldsOf() => (
             mk_typewrapper::dynamic(),
-            //mk_tyw_record!(; TypeWrapper::Ptr(new_var(state.table))),
+            //mk_tyw_record!(; TypeWrapper::Ptr(state.table.fresh_var())),
             mk_typewrapper::list(AbsType::Str()),
         ),
         // Dyn -> List
@@ -213,8 +213,8 @@ pub fn get_bop_type(
         ),
         // forall a b. a -> b -> Bool
         BinaryOp::Eq() => (
-            TypeWrapper::Ptr(new_var(state.table)),
-            TypeWrapper::Ptr(new_var(state.table)),
+            TypeWrapper::Ptr(state.table.fresh_var()),
+            TypeWrapper::Ptr(state.table.fresh_var()),
             mk_typewrapper::bool(),
         ),
         // Num -> Num -> Bool
@@ -234,7 +234,7 @@ pub fn get_bop_type(
         ),
         // forall a. Str -> { _ : a} -> a
         BinaryOp::DynAccess() => {
-            let res = TypeWrapper::Ptr(new_var(state.table));
+            let res = TypeWrapper::Ptr(state.table.fresh_var());
 
             (
                 mk_typewrapper::str(),
@@ -244,7 +244,7 @@ pub fn get_bop_type(
         }
         // forall a. Str -> { _ : a } -> a -> { _ : a }
         BinaryOp::DynExtend() => {
-            let res = TypeWrapper::Ptr(new_var(state.table));
+            let res = TypeWrapper::Ptr(state.table.fresh_var());
             (
                 mk_typewrapper::str(),
                 mk_typewrapper::dyn_record(res.clone()),
@@ -253,7 +253,7 @@ pub fn get_bop_type(
         }
         // forall a. Str -> { _ : a } -> { _ : a}
         BinaryOp::DynRemove() => {
-            let res = TypeWrapper::Ptr(new_var(state.table));
+            let res = TypeWrapper::Ptr(state.table.fresh_var());
 
             (
                 mk_typewrapper::str(),
@@ -269,13 +269,13 @@ pub fn get_bop_type(
         ),
         // forall a. List a -> List a -> List a
         BinaryOp::ListConcat() => {
-            let ty_elt = TypeWrapper::Ptr(new_var(state.table));
+            let ty_elt = TypeWrapper::Ptr(state.table.fresh_var());
             let ty_list = mk_typewrapper::list(ty_elt);
             (ty_list.clone(), ty_list.clone(), ty_list)
         }
         // forall a. List a -> Num -> a
         BinaryOp::ListElemAt() => {
-            let ty_elt = TypeWrapper::Ptr(new_var(state.table));
+            let ty_elt = TypeWrapper::Ptr(state.table.fresh_var());
             (
                 mk_typewrapper::list(ty_elt.clone()),
                 mk_typewrapper::num(),
@@ -302,7 +302,7 @@ pub fn get_bop_type(
         ),
         // forall a. <Json, Yaml, Toml> -> a -> Str
         BinaryOp::Serialize() => {
-            let ty_input = TypeWrapper::Ptr(new_var(state.table));
+            let ty_input = TypeWrapper::Ptr(state.table.fresh_var());
             (
                 mk_tyw_enum!("Json", "Yaml", "Toml", mk_typewrapper::row_empty()),
                 ty_input,
