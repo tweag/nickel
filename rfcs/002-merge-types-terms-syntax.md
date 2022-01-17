@@ -121,7 +121,7 @@ Such a change faces two main challenges:
 
 ### Semantics
 
-The first challenge is to give a semantics for all the strange term we can now
+The first challenge is to give a semantics for all the strange terms we can now
 write:
 
 ```nickel
