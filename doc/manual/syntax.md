@@ -109,10 +109,17 @@ false
 
 
 ## Composite types
-<!-- TODO -->
 
 ### List
-<!-- TODO -->
+Lists allows grouping of values into sequences. They are delimited by `[` and `]`, and elements are separated with `,`.
+
+Examples:
+```
+[1, 2, 3]
+["Hello", "World"]
+[1, true, "true"]
+[]
+```
 
 ### Record
 <!-- TODO -->
