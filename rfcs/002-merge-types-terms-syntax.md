@@ -136,7 +136,7 @@ write Nickel programs in `UniTerm` and translate them to the current syntax.
 
 ### Conflicts
 
-The second challenge is syntaxes clashes. Because the syntaxes were separate, we
+The second challenge is syntax clashes. Because the syntaxes were separate, we
 use the same constructs for different objects in terms and in types. More
 precisely, here is a list of the current conflicts:
 
