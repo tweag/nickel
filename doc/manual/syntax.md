@@ -162,9 +162,6 @@ error: Missing field
 "one"
 ```
 
-### Enum
-<!-- TODO -->
-
 ## Statements
 
 ### If-Then-Else
@@ -196,9 +193,6 @@ true
 > let a = 1 in let b = 2 in a + b
 3
 ```
-
-### Switch
-<!-- TODO -->
 
 ## Functions
 A function is declared using the `fun` keyword, then arguments separated by spaces, and finally an arrow `=>` to add the body of the function.
