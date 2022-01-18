@@ -120,7 +120,7 @@ for help about a specific subcommand.
 #### Editor Setup
 
 Nickel has syntax highlighting plugins for Vim/Neovim, and VSCode.
-In editor diagnostics, type hints, and auto-completion are provided by the Nickel Language Server.
+In-editor diagnostics, type hints, and auto-completion are provided by the Nickel Language Server.
 Please follow [this guide](https://github.com/tweag/nickel/tree/master/lsp) to setup syntax highlighting and NLS.
 
 ### Build
