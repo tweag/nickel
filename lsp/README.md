@@ -104,7 +104,7 @@ The VS Code extension offers three configuration options:
 ### (Neo)Vim
 
 Before proceeding install the [Nickel syntax highlighting plugin](https://github.com/nickel-lang/vim-nickel) using your Vim plugin manager.
-Without this plugin your LSP client will not start NLS.
+Without this plugin your LSP client may not start NLS on nickel source files.
 
 With Vim-Plug:
 ```vim
