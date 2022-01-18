@@ -48,6 +48,6 @@ jobs:
         name: nickel
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
 
-    - name: Building Nickel against `${{ matrix.rust_channel }}` Rust channel
+    - name: Run all checks
       run: |
-        nix build ./#checks.${{ matrix.system }}.nickel-against-${{ matrix.rust_channel }}-rust-channel
+        nix flake check

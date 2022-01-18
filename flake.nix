@@ -1,7 +1,12 @@
 {
   inputs.nixpkgs.url = "nixpkgs/nixos-unstable";
-  inputs.flake-utils.url  = "github:numtide/flake-utils";
+  inputs.flake-utils.url = "github:numtide/flake-utils";
+  inputs.pre-commit-hooks.url = "github:cachix/pre-commit-hooks.nix";
+  inputs.pre-commit-hooks.inputs.nixpkgs.follows = "nixpkgs";
+  inputs.pre-commit-hooks.inputs.flake-utils.follows = "flake-utils";
   inputs.rust-overlay.url = "github:oxalica/rust-overlay";
+  inputs.rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
+  inputs.rust-overlay.inputs.flake-utils.follows = "flake-utils";
   inputs.import-cargo.url = "github:edolstra/import-cargo";
 
   nixConfig = {
@@ -9,12 +14,14 @@
     extra-trusted-public-keys = [ "nickel.cachix.org-1:ABoCOGpTJbAum7U6c+04VbjvLxG9f0gJP5kYihRRdQs=" ];
   };
 
-  outputs = { self
-            , nixpkgs
-            , flake-utils
-            , rust-overlay
-            , import-cargo
-            }:
+  outputs =
+    { self
+    , nixpkgs
+    , flake-utils
+    , pre-commit-hooks
+    , rust-overlay
+    , import-cargo
+    }:
     let
       SYSTEMS = [
         "aarch64-darwin"
@@ -28,6 +35,8 @@
         "beta"
         "nightly"
       ];
+
+      forEachRustChannel = fn: builtins.listToAttrs (builtins.map fn RUST_CHANNELS);
 
       cargoTOML = builtins.fromTOML (builtins.readFile ./Cargo.toml);
       WasmBindgenCargoVersion = cargoTOML.dependencies.wasm-bindgen.version;
@@ -60,326 +69,292 @@
         });
       };
 
-    in flake-utils.lib.eachSystem SYSTEMS (system:
-      let 
-        pkgs = import nixpkgs {
-          inherit system;
-          overlays = [
-            (import rust-overlay)
-            customOverlay
+    in
+    flake-utils.lib.eachSystem SYSTEMS (system:
+    let
+      pkgs = import nixpkgs {
+        inherit system;
+        overlays = [
+          (import rust-overlay)
+          customOverlay
+        ];
+      };
+
+      cargoHome = (import-cargo.builders.importCargo {
+        lockFile = ./Cargo.lock;
+        inherit pkgs;
+      }).cargoHome;
+
+      # Additional packages required for some systems to build Nickel
+      missingSysPkgs =
+        if pkgs.stdenv.isDarwin then
+          [
+            pkgs.darwin.apple_sdk.frameworks.Security
+            pkgs.darwin.libiconv
+          ]
+        else
+          [ ];
+
+      buildNickel =
+        { channel ? "stable"
+        , isDevShell ? false
+        }:
+        let
+          rustProfile =
+            if isDevShell then "default"
+            else "minimal";
+
+          rustExtensions = [
+            "rust-src"
+            "rust-analysis"
+            "rustfmt-preview"
+            "clippy-preview"
           ];
-        };
 
-        cargoHome = (import-cargo.builders.importCargo {
-          lockFile = ./Cargo.lock;
-          inherit pkgs;
-        }).cargoHome;
+          rust =
+            let
+              _rust =
+                if channel == "nightly" then
+                  pkgs.rust-bin.selectLatestNightlyWith
+                    (toolchain: toolchain.${rustProfile}.override {
+                      extensions = rustExtensions;
+                    })
+                else
+                  pkgs.rust-bin.${channel}.latest.${rustProfile}.override {
+                    extensions = rustExtensions;
+                  };
+            in
+            pkgs.buildEnv {
+              name = _rust.name;
+              inherit (_rust) meta;
+              buildInputs = [ pkgs.makeWrapper ];
+              paths = [ _rust ];
+              pathsToLink = [ "/" "/bin" ];
+              # XXX: This is needed because cargo and clippy commands need to
+              # also be aware of other binaries in order to work properly.
+              # https://github.com/cachix/pre-commit-hooks.nix/issues/126
+              postBuild = ''
+                for i in $out/bin/*; do
+                  wrapProgram "$i" --prefix PATH : "$out/bin"
+                done
 
-        # Additional packages required for some systems to build Nickel
-        missingSysPkgs =
-          if pkgs.stdenv.isDarwin then
-            [
-              pkgs.darwin.apple_sdk.frameworks.Security
-              pkgs.darwin.libiconv
-            ]
-          else
-            [];
-
-        buildNickel = { isShell ? false
-                      , channel ? "stable"
-                      , checkFmt ?  false
-                      }:
-          let
-            rustProfile =
-              if isShell then "default"
-              else "minimal";
-
-            rust =
-              if channel == "nightly" then
-                pkgs.rust-bin.selectLatestNightlyWith (toolchain: toolchain.${rustProfile}.override {
-                  extensions = [ "rustfmt-preview" ];
-                })
-              else
-                pkgs.rust-bin.${channel}.latest.${rustProfile}.override {
-                  extensions = [ "rustfmt-preview" ];
-                };
-
-          in pkgs.stdenv.mkDerivation {
-            name = "nickel-${version}";
-
-            buildInputs = [ rust ]
-              ++ missingSysPkgs ++ (
-              if isShell then
-                [ pkgs.nodePackages.makam ]
-              else
-                [ cargoHome ]
-            );
-
-            src = if isShell then null else self;
-
-            buildPhase = "cargo build --workspace --release --frozen --offline";
-
-            doCheck = true;
-
-            checkPhase =
-              ''
-                cargo test --release --frozen --offline
-              '' + (if checkFmt then ''
-
-                  cargo fmt --all -- --check
-                '' else "");
-
-            installPhase =
-              ''
-                mkdir -p $out
-                cargo install --frozen --offline --path . --root $out
-                cargo install --frozen --offline --path lsp/nls --root $out
-                rm $out/.crates.toml
               '';
+            };
 
-            passhtru.rust = rust;
-          };
-
-        buildNickelWASM = { channel ? "stable"
-                          , optimize ? true
-                          }:
-          let
-            rust =
-              if channel == "nightly" then
-                pkgs.rust-bin.selectLatestNightlyWith (toolchain: toolchain.minimal.override {
-                  targets = ["wasm32-unknown-unknown"];
-                })
-              else
-                pkgs.rust-bin.${channel}.latest.minimal.override {
-                  targets = ["wasm32-unknown-unknown"];
-                };
-          in pkgs.stdenv.mkDerivation {
-            name = "nickel-wasm-${version}";
-
+          pre-commit = pre-commit-hooks.lib.${system}.run {
             src = self;
-
-            nativeBuildInputs = [ pkgs.jq ];
-
-            buildInputs =
-              [ rust
-                pkgs.wasm-pack
-                pkgs.wasm-bindgen-cli
-                pkgs.binaryen
-                cargoHome
-              ] ++ missingSysPkgs;
-
-            preBuild =
-              ''
-                # Wasm-pack requires to change the crate type. Cargo doesn't yet
-                # support having different crate types depending on the target, so
-                # we switch there
-                sed -i 's/\[lib\]/[lib]\ncrate-type = ["cdylib", "rlib"]/' Cargo.toml
-
-                # This is a hack to prevent the fs2 crate from being compiled on wasm.
-                # This may be able to be removed once one or more of these issues are resolved:
-                # https://github.com/bheisler/criterion.rs/issues/461
-                # https://github.com/rust-lang/cargo/issues/1596
-                # https://github.com/rust-lang/cargo/issues/1197
-                # https://github.com/rust-lang/cargo/issues/5777
-                sed -i '/utilities/d' Cargo.toml
-              '';
-
-            buildPhase =
-              let optLevel = if optimize then "-O4 " else "-O0";
-              in ''
-                runHook preBuild
-
-                wasm-pack build --mode no-install -- --no-default-features --features repl-wasm --frozen --offline
-                # Because of wasm-pack not using existing wasm-opt
-                # (https://github.com/rustwasm/wasm-pack/issues/869), we have to
-                # run wasm-opt manually
-                echo "[Nix build script]Manually running wasm-opt..."
-                wasm-opt ${optLevel} pkg/nickel_bg.wasm -o pkg/nickel_bg.wasm
-
-                runHook postBuild
-              '';
-
-            postBuild = ''
-              # Wasm-pack forces the name of both the normal crate and the
-              # generated NPM package to be the same. Unfortunately, there already
-              # exists a nickel package in the NPM registry, so we use nickel-repl
-              # instead
-              jq '.name = "nickel-repl"' pkg/package.json > package.json.patched \
-                && rm -f pkg/package.json \
-                && mv package.json.patched pkg/package.json
-            '';
-
-            installPhase =
-              ''
-                mkdir -p $out
-                cp -r pkg $out/nickel-repl
-              '';
-          };
-
-        buildDocker = nickel:
-          pkgs.dockerTools.buildLayeredImage {
-            name = "nickel";
-            tag = version;
-            contents = [
-              nickel
-              pkgs.bashInteractive
-            ];
-            config = {
-              Cmd = "bash";
+            hooks = {
+              nixpkgs-fmt = {
+                enable = true;
+              };
+              rustfmt = {
+                enable = true;
+                entry = pkgs.lib.mkForce "${rust}/bin/cargo-fmt fmt -- --check --color always";
+              };
             };
           };
 
-        makamSpecs = pkgs.stdenv.mkDerivation {
-          name = "nickel-makam-specs-${version}";
-          src = ./makam-spec/src;
+        in
+        pkgs.stdenv.mkDerivation {
+          name = "nickel-${version}";
+
           buildInputs =
-            [ pkgs.nodePackages.makam
-            ];
+            [
+              rust
+            ] ++ missingSysPkgs
+            ++ (if isDevShell then [ pkgs.nodePackages.makam ]
+            else [ cargoHome ]);
+
+          src = if isDevShell then null else self;
+
           buildPhase = ''
-            # For some reason (bug) the first time I use makam here it doesn't generate any output
-            # That's why I'm "building" before testing
-            makam init.makam
-            makam --run-tests testnickel.makam
+            cargo build --workspace --release --frozen --offline
           '';
+
+          doCheck = true;
+
+          checkPhase = ''
+            cargo test --release --frozen --offline
+          '' + (pkgs.lib.optionalString (channel == "stable") ''
+            cargo fmt --all -- --check
+          '');
+
           installPhase = ''
-            echo "WORKS" > $out
+            mkdir -p $out
+            cargo install --frozen --offline --path . --root $out
+            cargo install --frozen --offline --path lsp/nls --root $out
+            rm $out/.crates.toml
           '';
+
+          shellHook = pre-commit.shellHook + ''
+            echo "=== Nickel development shell ==="
+            echo "Info: Git hooks can be installed using \`pre-commit install\`"
+          '';
+
+          passthru = { inherit rust pre-commit; };
+
+          RUST_SRC_PATH = "${rust}/lib/rustlib/src/rust/library";
         };
 
-        vscodeExtension = 
-          let node-package = (pkgs.callPackage ./lsp/client-extension {}).package ;
-          in (node-package.override rec {
-            pname = "nls-client";
-            outputs = [ "vsix" "out" ];
-            nativeBuildInputs =  with pkgs; [
-              nodePackages.typescript
-              # Required by `keytar`, which is a dependency of `vsce`.
-              pkg-config libsecret 
-            ];
-            postInstall = ''
-              npm run compile
-              mkdir -p $vsix
-              echo y | npx vsce package -o $vsix/${pname}.vsix
-            '';
-          }).vsix;
-
-        buildDevShell = { channel ? "stable" }:
-          let
-            nickel = buildNickel { isShell = true; };
-
-            rustFormatHook = pkgs.writeShellScriptBin "check-rust-format-hook"
-              ''
-                ${nickel.rust}/bin/cargo fmt -- --check
-                RESULT=$?
-                [ $RESULT != 0 ] && echo "Please run \`cargo fmt\` before"
-                exit $RESULT
-              '';
-
-            installGitHooks = hookTypes:
-              let mkHook = type: hooks: {
-                hook = pkgs.writeShellScript type
-                ''
-                  for hook in ${pkgs.symlinkJoin { name = "${type}-git-hooks"; paths = hooks; }}/bin/*; do
-                    $hook
-                    RESULT=$?
-                    if [ $RESULT != 0 ]; then
-                      echo "$hook returned non-zero: $RESULT, abort operation"
-                    exit $RESULT
-                    fi
-                  done
-                  echo "$INSTALLED_GIT_HOOKS $type"
-                  exit 0
-                '';
-                inherit type;
+      # TODO: merge buildNickelWASM with buildNickel
+      buildNickelWASM =
+        { channel ? "stable"
+        , optimize ? true
+        }:
+        let
+          rust =
+            if channel == "nightly" then
+              pkgs.rust-bin.selectLatestNightlyWith
+                (toolchain: toolchain.minimal.override {
+                  targets = [ "wasm32-unknown-unknown" ];
+                })
+            else
+              pkgs.rust-bin.${channel}.latest.minimal.override {
+                targets = [ "wasm32-unknown-unknown" ];
               };
+        in
+        pkgs.stdenv.mkDerivation {
+          name = "nickel-wasm-${version}";
 
-              installHookScript = { type, hook }: ''
-                if [[ -e .git/hooks/${type} ]]; then
-                    echo "Warn: ${type} hook already present, skipping"
-                else
-                    ln -s ${hook} $PWD/.git/hooks/${type}
-                    INSTALLED_GIT_HOOKS+=(${type})
-                fi
-              '';
-              in
+          src = self;
 
-              pkgs.writeShellScriptBin "install-git-hooks"
-              ''
+          nativeBuildInputs = [ pkgs.jq ];
 
-                if [[ ! -d .git ]] || [[ ! -f flake.nix ]]; then
-                  echo "Invocate \`nix develop\` from the project root directory."
-                  exit 1
-                fi
+          buildInputs =
+            [
+              rust
+              pkgs.wasm-pack
+              pkgs.wasm-bindgen-cli
+              pkgs.binaryen
+              cargoHome
+            ] ++ missingSysPkgs;
 
-                if [[ -e .git/hooks/nix-installed-hooks ]]; then
-                   echo "Hooks already installed, reinstalling"
-                   ${uninstallGitHooks.name}
-                fi
+          preBuild =
+            ''
+              # Wasm-pack requires to change the crate type. Cargo doesn't yet
+              # support having different crate types depending on the target, so
+              # we switch there
+              sed -i 's/\[lib\]/[lib]\ncrate-type = ["cdylib", "rlib"]/' Cargo.toml
 
-                mkdir -p ./.git/hooks
-
-                ${pkgs.lib.concatStringsSep "\n" (pkgs.lib.mapAttrsToList (type: hooks: installHookScript (mkHook type hooks)) hookTypes )}
-
-                echo "Installed git hooks: $INSTALLED_GIT_HOOKS"
-                printf "%s\n" "''${INSTALLED_GIT_HOOKS[@]}" > .git/hooks/nix-installed-hooks
-              '';
-
-            uninstallGitHooks = pkgs.writeShellScriptBin "uninstall-git-hooks"
-              ''
-              if [[ ! -e "$PWD/.git/hooks/nix-installed-hooks" ]]; then
-                echo "Error: could find list of installed hooks."
-                exit 1
-              fi
-
-              while read -r hook
-              do
-                echo "Uninstalling $hook"
-                rm "$PWD/.git/hooks/$hook"
-              done < "$PWD/.git/hooks/nix-installed-hooks"
-
-              rm "$PWD/.git/hooks/nix-installed-hooks"
-              '';
-
-          in pkgs.mkShell {
-            packages = [
-              (installGitHooks { pre-commit = [ rustFormatHook ]; })
-              uninstallGitHooks
-            ];
-            inputsFrom = [ nickel ];
-            shellHook = ''
-              echo "=== Nickel development shell ==="
-              echo "Info: Git hooks can be installed using \`install-git-hooks\`"
+              # This is a hack to prevent the fs2 crate from being compiled on wasm.
+              # This may be able to be removed once one or more of these issues are resolved:
+              # https://github.com/bheisler/criterion.rs/issues/461
+              # https://github.com/rust-lang/cargo/issues/1596
+              # https://github.com/rust-lang/cargo/issues/1197
+              # https://github.com/rust-lang/cargo/issues/5777
+              sed -i '/utilities/d' Cargo.toml
             '';
-          };
 
-      in rec {
-        packages = {
-          build = buildNickel {};
-          buildWasm = buildNickelWASM { optimize = true; };
-          dockerImage = buildDocker packages.build;
-          inherit vscodeExtension;
+          buildPhase =
+            let optLevel = if optimize then "-O4 " else "-O0";
+            in
+            ''
+              runHook preBuild
+
+              wasm-pack build --mode no-install -- --no-default-features --features repl-wasm --frozen --offline
+              # Because of wasm-pack not using existing wasm-opt
+              # (https://github.com/rustwasm/wasm-pack/issues/869), we have to
+              # run wasm-opt manually
+              echo "[Nix build script]Manually running wasm-opt..."
+              wasm-opt ${optLevel} pkg/nickel_bg.wasm -o pkg/nickel_bg.wasm
+
+              runHook postBuild
+            '';
+
+          postBuild = ''
+            # Wasm-pack forces the name of both the normal crate and the
+            # generated NPM package to be the same. Unfortunately, there already
+            # exists a nickel package in the NPM registry, so we use nickel-repl
+            # instead
+            jq '.name = "nickel-repl"' pkg/package.json > package.json.patched \
+              && rm -f pkg/package.json \
+              && mv package.json.patched pkg/package.json
+          '';
+
+          installPhase =
+            ''
+              mkdir -p $out
+              cp -r pkg $out/nickel-repl
+            '';
         };
-        defaultPackage = packages.build;
 
-        devShells = 
-          builtins.listToAttrs
-            (builtins.map (channel: { name = channel;
-                                      value = buildDevShell { inherit channel; };
-                                    }) RUST_CHANNELS
-            );
-        devShell = devShells.stable;
+      buildDocker = nickel: pkgs.dockerTools.buildLayeredImage {
+        name = "nickel";
+        tag = version;
+        contents = [
+          nickel
+          pkgs.bashInteractive
+        ];
+        config = {
+          Cmd = "bash";
+        };
+      };
 
-        checks = 
-          {
-            # wasm-opt can take long: eschew optimizations in checks
-            wasm = buildNickelWASM { channel = "stable"; optimize = false; };
-            specs = makamSpecs;
-          } //
-          (builtins.listToAttrs
-            (builtins.map (channel: let checkFmt = channel == "stable";
-                                    in { name = "nickel-against-${channel}-rust-channel";
-                                         value = buildNickel { inherit channel checkFmt; };
-                                       }) RUST_CHANNELS));
-      }
+      makamSpecs = pkgs.stdenv.mkDerivation {
+        name = "nickel-makam-specs-${version}";
+        src = ./makam-spec/src;
+        buildInputs =
+          [
+            pkgs.nodePackages.makam
+          ];
+        buildPhase = ''
+          # For some reason (bug) the first time I use makam here it doesn't generate any output
+          # That's why I'm "building" before testing
+          makam init.makam
+          makam --run-tests testnickel.makam
+        '';
+        installPhase = ''
+          echo "WORKS" > $out
+        '';
+      };
+
+      vscodeExtension =
+        let node-package = (pkgs.callPackage ./lsp/client-extension { }).package;
+        in
+        (node-package.override rec {
+          pname = "nls-client";
+          outputs = [ "vsix" "out" ];
+          nativeBuildInputs = with pkgs; [
+            nodePackages.typescript
+            # Required by `keytar`, which is a dependency of `vsce`.
+            pkg-config
+            libsecret
+          ];
+          postInstall = ''
+            npm run compile
+            mkdir -p $vsix
+            echo y | npx vsce package -o $vsix/${pname}.vsix
+          '';
+        }).vsix;
+
+    in
+    rec {
+      defaultPackage = packages.build;
+      packages = {
+        build = buildNickel { };
+        buildWasm = buildNickelWASM { optimize = true; };
+        dockerImage = buildDocker packages.build; # TODO: docker image should be a passthru
+        inherit vscodeExtension;
+      };
+
+      devShell = devShells.stable;
+      devShells = forEachRustChannel
+        (channel: {
+          name = channel;
+          value = buildNickel { inherit channel; isDevShell = true; };
+        });
+
+      checks = {
+        # wasm-opt can take long: eschew optimizations in checks
+        wasm = buildNickelWASM { channel = "stable"; optimize = false; };
+        specs = makamSpecs;
+        pre-commit = defaultPackage.pre-commit;
+      } // (forEachRustChannel (channel:
+        {
+          name = "nickel-against-${channel}-rust-channel";
+          value = buildNickel { inherit channel; };
+        }
+      ));
+    }
     );
 }
