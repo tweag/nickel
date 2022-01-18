@@ -96,4 +96,23 @@ depend on.
 
 To simplify, when merging two records, all contracts of both left and right one
 are applied to the resulting one.
-TODO: detail and write exemples.
+For instence:
+
+```text
+
+let Port | doc "A contract for a port number" = contracts.from_predicate (fun value =>
+  builtins.is_num value &&
+  value % 1 == 0 &&
+  value >= 0 &&
+  value <= 65535) in
+let Gt | doc "Contract greater than" = fun x =>
+contracts.from_predicate(fun value =>
+value > x) in
+{
+    port | #(Gt 1024) | default = 8080,
+} & {
+    port | #Port = 80,
+} // blame because 80 < 1024
+```
+
+If in the second record we would have put `port=8888` it does not have blame.
