@@ -165,13 +165,57 @@ error: Missing field
 ### Enum
 <!-- TODO -->
 
-## Functions
-<!-- TODO -->
-
 ## Statements
 
 ### If-Then-Else
+This statement allows conditional branching in your code. You can use it as `if <bool expr> then <expr> else <expr>`. Both expressions in the `then` and `else` branches are lazily evaluated, and must have the same type.
+
+Examples:
+```
+> if true then "TRUE :)" else "false :("
+"TRUE :)"
+
+> if false then "Not this one" else "This one"
+"This one"
+
+> if "forty-two" == 42 then "equal?" else "unequal"
+"unequal"
+```
 
 ### Let-In
+Let-in allows the binding of an expression. It is used as `let <ident> = <expr> in <expr>`.
+
+Examples:
+```
+> let r = { a = "a", b = "b" } in r.a
+"a"
+
+> let inner = { inside = true } in let outer = { outside = inner.inside } in outer.outside
+true
+
+> let a = 1 in let b = 2 in a + b
+3
+```
 
 ### Switch
+<!-- TODO -->
+
+## Functions
+A function is declared using the `fun` keyword, then arguments separated by spaces, and finally an arrow `=>` to add the body of the function.
+To call a function, just add the arguments after it separated with spaces.
+Functions in Nickel are curried, meaning that a function taking multiple arguments is actually a function that takes a single argument and returns a function taking the rest of the arguments, until it is applied.
+
+Example
+```
+> (fun a b => a + b) 1 2
+3
+
+let add = fun a b => a + b in add 1 2
+3
+
+> let add = fun a b => a + b in
+    let add1 = add 1 in
+        add1 2
+3
+```
+
