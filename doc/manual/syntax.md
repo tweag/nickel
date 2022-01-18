@@ -194,6 +194,12 @@ true
 3
 ```
 
+The identifier in the `let` part can be typed (more about typing in the dedicated document):
+```
+> let a : Num = 6 in 6 * 7
+42
+```
+
 ## Functions
 A function is declared using the `fun` keyword, then arguments separated by spaces, and finally an arrow `=>` to add the body of the function.
 To call a function, just add the arguments after it separated with spaces.
