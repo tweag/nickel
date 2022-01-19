@@ -109,9 +109,9 @@ let Assert = fun l x => x || %blame% l in
 
   // nested_metavalues
   // Regression test for #402
-  let myContract = { x | Str } in
+  let MyContract = { x | Str } in
   {
-    foo | #myContract | default = { x = "From foo" },
+    foo | #MyContract | default = { x = "From foo" },
     bar | #{..} | default = foo
   } == { foo.x = "From foo", bar.x = "From foo"},
 
@@ -121,7 +121,7 @@ let Assert = fun l x => x || %blame% l in
   (f {foo = 1}).bar == 1,
   // user-written contract application
   let Extend = fun base label value =>
-    let derived = if builtins.isRecord base then
+    let derived = if builtins.is_record base then
       (base & {foo | Num})
     else
       base in
