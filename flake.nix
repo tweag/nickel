@@ -155,6 +155,11 @@
             hooks = {
               nixpkgs-fmt = {
                 enable = true;
+                excludes = [
+                  "lsp/client-extension/default.nix"
+                  "lsp/client-extension/node-env.nix"
+                  "lsp/client-extension/node-packages.nix"
+                ];
               };
               rustfmt = {
                 enable = true;
