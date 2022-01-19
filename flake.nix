@@ -95,51 +95,60 @@
         else
           [ ];
 
+      mkRust =
+        { rustProfile ? "minimal"
+        , rustExtensions ? [
+            "rust-src"
+            "rust-analysis"
+            "rustfmt-preview"
+            "clippy-preview"
+          ]
+        , channel ? "stable"
+        , target ? pkgs.rust.toRustTarget pkgs.stdenv.hostPlatform
+        }:
+        let
+          _rust =
+            if channel == "nightly" then
+              pkgs.rust-bin.selectLatestNightlyWith
+                (toolchain: toolchain.${rustProfile}.override {
+                  extensions = rustExtensions;
+                  targets = [ target ];
+                })
+            else
+              pkgs.rust-bin.${channel}.latest.${rustProfile}.override {
+                extensions = rustExtensions;
+                targets = [ target ];
+              };
+        in
+        pkgs.buildEnv {
+          name = _rust.name;
+          inherit (_rust) meta;
+          buildInputs = [ pkgs.makeWrapper ];
+          paths = [ _rust ];
+          pathsToLink = [ "/" "/bin" ];
+          # XXX: This is needed because cargo and clippy commands need to
+          # also be aware of other binaries in order to work properly.
+          # https://github.com/cachix/pre-commit-hooks.nix/issues/126
+          postBuild = ''
+            for i in $out/bin/*; do
+              wrapProgram "$i" --prefix PATH : "$out/bin"
+            done
+
+          '';
+        };
+
       buildNickel =
         { channel ? "stable"
         , isDevShell ? false
+        , target ? pkgs.rust.toRustTarget pkgs.stdenv.hostPlatform
+        ,
         }:
         let
           rustProfile =
             if isDevShell then "default"
             else "minimal";
 
-          rustExtensions = [
-            "rust-src"
-            "rust-analysis"
-            "rustfmt-preview"
-            "clippy-preview"
-          ];
-
-          rust =
-            let
-              _rust =
-                if channel == "nightly" then
-                  pkgs.rust-bin.selectLatestNightlyWith
-                    (toolchain: toolchain.${rustProfile}.override {
-                      extensions = rustExtensions;
-                    })
-                else
-                  pkgs.rust-bin.${channel}.latest.${rustProfile}.override {
-                    extensions = rustExtensions;
-                  };
-            in
-            pkgs.buildEnv {
-              name = _rust.name;
-              inherit (_rust) meta;
-              buildInputs = [ pkgs.makeWrapper ];
-              paths = [ _rust ];
-              pathsToLink = [ "/" "/bin" ];
-              # XXX: This is needed because cargo and clippy commands need to
-              # also be aware of other binaries in order to work properly.
-              # https://github.com/cachix/pre-commit-hooks.nix/issues/126
-              postBuild = ''
-                for i in $out/bin/*; do
-                  wrapProgram "$i" --prefix PATH : "$out/bin"
-                done
-
-              '';
-            };
+          rust = mkRust { inherit rustProfile channel target; };
 
           pre-commit = pre-commit-hooks.lib.${system}.run {
             src = self;
@@ -196,22 +205,15 @@
           RUST_SRC_PATH = "${rust}/lib/rustlib/src/rust/library";
         };
 
-      # TODO: merge buildNickelWASM with buildNickel
       buildNickelWASM =
         { channel ? "stable"
         , optimize ? true
         }:
         let
-          rust =
-            if channel == "nightly" then
-              pkgs.rust-bin.selectLatestNightlyWith
-                (toolchain: toolchain.minimal.override {
-                  targets = [ "wasm32-unknown-unknown" ];
-                })
-            else
-              pkgs.rust-bin.${channel}.latest.minimal.override {
-                targets = [ "wasm32-unknown-unknown" ];
-              };
+          rust = mkRust {
+            inherit channel;
+            target = "wasm32-unknown-unknown";
+          };
         in
         pkgs.stdenv.mkDerivation {
           name = "nickel-wasm-${version}";
@@ -220,46 +222,41 @@
 
           nativeBuildInputs = [ pkgs.jq ];
 
-          buildInputs =
-            [
-              rust
-              pkgs.wasm-pack
-              pkgs.wasm-bindgen-cli
-              pkgs.binaryen
-              cargoHome
-            ] ++ missingSysPkgs;
+          buildInputs = [
+            rust
+            pkgs.wasm-pack
+            pkgs.wasm-bindgen-cli
+            pkgs.binaryen
+            cargoHome
+          ] ++ missingSysPkgs;
 
-          preBuild =
-            ''
-              # Wasm-pack requires to change the crate type. Cargo doesn't yet
-              # support having different crate types depending on the target, so
-              # we switch there
-              sed -i 's/\[lib\]/[lib]\ncrate-type = ["cdylib", "rlib"]/' Cargo.toml
+          preBuild = ''
+            # Wasm-pack requires to change the crate type. Cargo doesn't yet
+            # support having different crate types depending on the target, so
+            # we switch there
+            sed -i 's/\[lib\]/[lib]\ncrate-type = ["cdylib", "rlib"]/' Cargo.toml
 
-              # This is a hack to prevent the fs2 crate from being compiled on wasm.
-              # This may be able to be removed once one or more of these issues are resolved:
-              # https://github.com/bheisler/criterion.rs/issues/461
-              # https://github.com/rust-lang/cargo/issues/1596
-              # https://github.com/rust-lang/cargo/issues/1197
-              # https://github.com/rust-lang/cargo/issues/5777
-              sed -i '/utilities/d' Cargo.toml
-            '';
+            # This is a hack to prevent the fs2 crate from being compiled on wasm.
+            # This may be able to be removed once one or more of these issues are resolved:
+            # https://github.com/bheisler/criterion.rs/issues/461
+            # https://github.com/rust-lang/cargo/issues/1596
+            # https://github.com/rust-lang/cargo/issues/1197
+            # https://github.com/rust-lang/cargo/issues/5777
+            sed -i '/utilities/d' Cargo.toml
+          '';
 
-          buildPhase =
-            let optLevel = if optimize then "-O4 " else "-O0";
-            in
-            ''
-              runHook preBuild
+          buildPhase = ''
+            runHook preBuild
 
-              wasm-pack build --mode no-install -- --no-default-features --features repl-wasm --frozen --offline
-              # Because of wasm-pack not using existing wasm-opt
-              # (https://github.com/rustwasm/wasm-pack/issues/869), we have to
-              # run wasm-opt manually
-              echo "[Nix build script]Manually running wasm-opt..."
-              wasm-opt ${optLevel} pkg/nickel_bg.wasm -o pkg/nickel_bg.wasm
+            wasm-pack build --mode no-install -- --no-default-features --features repl-wasm --frozen --offline
+            # Because of wasm-pack not using existing wasm-opt
+            # (https://github.com/rustwasm/wasm-pack/issues/869), we have to
+            # run wasm-opt manually
+            echo "[Nix build script]Manually running wasm-opt..."
+            wasm-opt ${if optimize then "-O4 " else "-O0"} pkg/nickel_bg.wasm -o pkg/nickel_bg.wasm
 
-              runHook postBuild
-            '';
+            runHook postBuild
+          '';
 
           postBuild = ''
             # Wasm-pack forces the name of both the normal crate and the
@@ -271,11 +268,10 @@
               && mv package.json.patched pkg/package.json
           '';
 
-          installPhase =
-            ''
-              mkdir -p $out
-              cp -r pkg $out/nickel-repl
-            '';
+          installPhase = ''
+            mkdir -p $out
+            cp -r pkg $out/nickel-repl
+          '';
         };
 
       buildDocker = nickel: pkgs.dockerTools.buildLayeredImage {
