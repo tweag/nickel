@@ -15,10 +15,10 @@ in
 server & firewall
 ```
 
-In the simple case where both record does not have common fields, it give a
-record which is the union of both ones.
+In the simple case where both records do not have common fields, it gives a
+record which is the union of both.
 
-If you have to merge with fields in commons, you will use two new concepts:
+If you have to merge records with fields in commons, you will use two new concepts:
 
 - default annotation,
 - overwriting,
@@ -26,7 +26,7 @@ If you have to merge with fields in commons, you will use two new concepts:
 ## Default annotation
 
 To be able to merge records with commons fields, at least one side field has to
-be annotated as default. It means, if you have two records:
+be annotated as default. This means, if you have two records:
 
 ```text
 let left = {
@@ -61,20 +61,19 @@ left & right
 
 The default annotation is generaly to give a default value to a record field.
 So, this value can be changed afterward. Saying it in a more abstract way,
-default indicate a smaller priority to a field in case of merging. Saying that,
-If both side would have been annotated `default`, the merge is not possible
-neither.
+default indicate a lower priority to a field in case of merging. Saying that,
+If both sides have been annotated `default`, the merge is not possible.
 
 ## Overwriting
 
 The overwriting is the concept specifying the behaviour of a merge when you
-overwrite a field on which depend an otherone. This  feature is described in
+overwrite a field on which depends an other one. This  feature is described in
 ["#573 [RFC] Merge types and terms syntax proposal"](https://github.com/tweag/nickel/pull/573)
 in more details.
 
 Here, we will simply explain what appen in the following case:
 We have a record with some fields annotated `default` and others depending on
-these ones. An exemple could be:
+these ones. An example could be:
 
 ```text
 let security = {
@@ -89,7 +88,7 @@ let security = {
 security & {firewall.open_proto.ftp = false} // => {firewall.open_ports = [80, 443]
 ```
 
-We then see that depending fields are updated when you overwrite the fields they
+We then see that dependent fields are updated when you overwrite the fields they
 depend on.
 
 ## A word about contracts
