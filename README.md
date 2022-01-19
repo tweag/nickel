@@ -88,15 +88,13 @@ abstractions or just feel ad hoc. Nickel buys you more for less.
 2. Run your first program:
   ```console
   $ ./nickel <<< 'let x = 2 in x + x'
-  Typechecked: Ok(Types(Dyn))
-  Done: Num(4.0)
+  4
   ```
   Or load it from a file:
   ```console
   $ echo 'let s = "world" in "Hello, " ++ s' > program.ncl
   $ ./nickel -f program.ncl
-  Typechecked: Ok(Types(Dyn))
-  Done: Str("Hello, world")
+  "Hello, world"
   ```
 3. Start a REPL:
   ```console
@@ -118,6 +116,12 @@ abstractions or just feel ad hoc. Nickel buys you more for less.
 
 Use `nickel help` for a list of subcommands, and `nickel help <subcommand>`
 for help about a specific subcommand.
+
+#### Editor Setup
+
+Nickel has syntax highlighting plugins for Vim/Neovim, and VSCode.
+In-editor diagnostics, type hints, and auto-completion are provided by the Nickel Language Server.
+Please follow [this guide](https://github.com/tweag/nickel/tree/master/lsp) to setup syntax highlighting and NLS.
 
 ### Build
 
