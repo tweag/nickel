@@ -225,11 +225,14 @@ try to have them just be simple syntactic translations that insert the implicit
 `#` and `§` appropriately, without having to recurse into terms or do anything
 complex, whenever possible.
 
-The two functions must satisfy the following coherence laws with `! : Term +
-Type -> UniTerm` the embedding of the current syntax to the new unified syntax
-(erasing `#` and `§`, and changing `|` for tails to `;`) and `~` some flavour of
-operational equivalence (we won't prove those rules formally, as this a mere
-design guideline, so we also restrain from giving a formal definition for `~`).
+- Recall that `! : Term + Type -> UniTerm` is the embedding of the current
+  syntax to the new unified syntax (erasing `#` and `§`, and changing `|` for
+  tails to `;`)
+- In the following, `~` is some flavour of operational equivalence. We won't prove the rules.
+  Those are rather design guidelines. In consequence, we also restrain from
+  giving a formal definition for `~`.
+
+The `term` and `type` functions must satisfy the following coherence laws:
 
 1. For all `t: Term`, `term(!t) ~ t` and for all `T: Type`, `type(!T) = T` .
    That is, a term or a type in the current syntax with `#` removed will be
@@ -284,16 +287,18 @@ The case for records that mixes the both `Term` and `Type` is less clear. Take
 for example: `x : {foo : Num = 1}`. Should we consider this as a totally opaque
 record, that is `type({foo : Num = 1}) = #{foo : Num = 1}` or take advantage
 from the information that `foo` is necessarily a number and set `type({foo : Num
-= 1}) = {foo: Num}`? The problem with the latter approach is that we loose the
-property of *blame safety*, which is that "well-typed program can't be blamed".
-Indeed, the extracted type is less precise that the actual contract. For
-example, `{foo = 2} : {foo : Num, foo = 1}` would pass typechecking but fails at
-runtime on the failure of merging `1` and `2`. There are also multiple
-approximations possible: we could create an opaque type encoding the tuple `(Num,
-Eq 2)`, we could set `foo : Dyn`, etc.
+= 1}) = {foo: Num}`? The problem with the latter approach is that we lose
+information, which is not acceptable. Now `{foo = 2} | #{foo : Num = 1}` would
+run fine, while it doesn't currently, and it shouldn't.
 
-Because of blame safety, and the different possible trade-offs, **we propose to only translate as
-types records that are already record types in the current syntax**. That is:
+Another approach would be the use the `type` only at typchecking time, to
+extract static type information, but keep the original term around for runtime.
+However, doing so, we break *blame safety*, which is that "well-typed program
+can't be blamed". For example, `{foo = 2} : {foo : Num, foo = 1}` would pass
+typechecking but fails at runtime on the failure of merging `1` and `2`.
+
+Because of those issues, **we propose to only translate as types records that
+are already record types in the current syntax**. That is:
 
 ```
 type({f1: t1, .., fn : tn}) = {f1: type(t1), .., fn: type(tn)}
