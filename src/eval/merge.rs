@@ -329,8 +329,9 @@ pub fn merge(
              * the same trick as in the evaluation of the operator DynExtend, and replace each such
              * term by a variable bound to an appropriate closure in the environment
              */
-            // Merging recursive record is the one operation that may override recursive fields.
-            // To have the recursive fields depend on the updated values
+            // Merging recursive record is the one operation that may override recursive fields. To
+            // have the recursive fields depend on the updated values, we need to revert the thunks
+            // first.
             rev_thunks(m1.values_mut(), &mut env1);
             rev_thunks(m2.values_mut(), &mut env2);
 
