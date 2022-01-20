@@ -192,11 +192,11 @@ pub fn type_check<LL>(
     mut linearizer: LL,
 ) -> Result<(Types, LL::Completed), TypecheckError>
 where
-    LL: Linearizer<CompletionExtra = (HashMap<usize, Option<TypeWrapper>>, HashMap<usize, Ident>)>,
+    LL: Linearizer<CompletionExtra = (UnifTable, HashMap<usize, Ident>)>,
 {
     let (mut table, mut names) = (UnifTable::new(), HashMap::new());
     let mut building = Linearization::new(LL::Building::default());
-    let ty = TypeWrapper::Ptr(new_var(&mut table));
+    let ty = table.fresh_unif_var();
 
     {
         let mut state: State = State {
@@ -217,10 +217,10 @@ where
         )?;
     }
 
-    let lin = linearizer
-        .complete(building, (table.clone(), names))
-        .into_inner();
-    Ok((to_type(&table, ty), lin))
+    let result = to_type(&table, ty);
+    let lin = linearizer.complete(building, (table, names)).into_inner();
+
+    Ok((result, lin))
 }
 
 /// Typecheck a term using the given global typing environment. Same as
@@ -244,7 +244,7 @@ pub fn type_check_in_env(
         constr: &mut RowConstr::new(),
         names: &mut HashMap::new(),
     };
-    let ty = TypeWrapper::Ptr(new_var(state.table));
+    let ty = state.table.fresh_unif_var();
     type_check_(
         &mut state,
         Envs::from_global(global),
@@ -340,11 +340,11 @@ fn type_check_<L: Linearizer>(
             )
         }
         Term::Fun(x, t) => {
-            let src = TypeWrapper::Ptr(new_var(state.table));
+            let src = state.table.fresh_unif_var();
             // TODO what to do here, this makes more sense to me, but it means let x = foo in bar
             // behaves quite different to (\x.bar) foo, worth considering if it's ok to type these two differently
             // let src = TypeWrapper::The(AbsType::Dyn());
-            let trg = TypeWrapper::Ptr(new_var(state.table));
+            let trg = state.table.fresh_unif_var();
             let arr = mk_tyw_arrow!(src.clone(), trg.clone());
             linearizer.retype_ident(lin, x, src.clone());
 
@@ -354,10 +354,10 @@ fn type_check_<L: Linearizer>(
             type_check_(state, envs, lin, linearizer, strict, t, trg)
         }
         Term::FunPattern(x, pat, t) => {
-            let src = TypeWrapper::Ptr(new_var(state.table));
+            let src = state.table.fresh_unif_var();
             // TODO what to do here, this makes more sense to me, but it means let x = foo in bar
             // behaves quite different to (\x.bar) foo, worth considering if it's ok to type these two differently
-            let trg = TypeWrapper::Ptr(new_var(state.table));
+            let trg = state.table.fresh_unif_var();
             let arr = mk_tyw_arrow!(src.clone(), trg.clone());
             if let Some(x) = x {
                 linearizer.retype_ident(lin, x, src.clone());
@@ -368,7 +368,7 @@ fn type_check_<L: Linearizer>(
             type_check_(state, envs, lin, linearizer, strict, t, trg)
         }
         Term::List(terms) => {
-            let ty_elts = TypeWrapper::Ptr(new_var(state.table));
+            let ty_elts = state.table.fresh_unif_var();
 
             unify(state, strict, ty, mk_typewrapper::list(ty_elts.clone()))
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
@@ -430,7 +430,7 @@ fn type_check_<L: Linearizer>(
             type_check_(state, envs, lin, linearizer, strict, rt, ty)
         }
         Term::App(e, t) => {
-            let src = TypeWrapper::Ptr(new_var(state.table));
+            let src = state.table.fresh_unif_var();
             let arr = mk_tyw_arrow!(src.clone(), ty);
 
             type_check_(
@@ -447,7 +447,7 @@ fn type_check_<L: Linearizer>(
         Term::Switch(exp, cases, default) => {
             // Currently, if it has a default value, we typecheck the whole thing as
             // taking ANY enum, since it's more permissive and there's no loss of information
-            let res = TypeWrapper::Ptr(new_var(state.table));
+            let res = state.table.fresh_unif_var();
 
             for (choice, case) in cases.values().enumerate() {
                 type_check_(
@@ -472,7 +472,7 @@ fn type_check_<L: Linearizer>(
                         t,
                         res.clone(),
                     )?;
-                    TypeWrapper::Ptr(new_var(state.table))
+                    state.table.fresh_unif_var()
                 }
                 None => cases.iter().try_fold(
                     mk_typewrapper::row_empty(),
@@ -495,14 +495,14 @@ fn type_check_<L: Linearizer>(
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Enum(id) => {
-            let row = TypeWrapper::Ptr(new_var(state.table));
+            let row = state.table.fresh_unif_var();
             unify(state, strict, ty, mk_tyw_enum!(id.clone(), row))
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         // If some fields are defined dynamically, the only potential type that works is `{_ : a}`
         // for some `a`
         Term::RecRecord(stat_map, dynamic, _) if !dynamic.is_empty() => {
-            let ty_dyn = TypeWrapper::Ptr(new_var(state.table));
+            let ty_dyn = state.table.fresh_unif_var();
 
             for id in stat_map.keys() {
                 envs.insert(id.clone(), ty_dyn.clone());
@@ -539,7 +539,7 @@ fn type_check_<L: Linearizer>(
             }
 
             let root_ty = if let TypeWrapper::Ptr(p) = ty {
-                get_root(state.table, p)
+                state.table.root(p)
             } else {
                 ty.clone()
             };
@@ -569,7 +569,7 @@ fn type_check_<L: Linearizer>(
                         let ty = if let Term::RecRecord(..) = t.as_ref() {
                             envs.get(id).unwrap()
                         } else {
-                            TypeWrapper::Ptr(new_var(state.table))
+                            state.table.fresh_unif_var()
                         };
 
                         type_check_(
@@ -593,8 +593,6 @@ fn type_check_<L: Linearizer>(
         Term::Op1(op, t) => {
             let (ty_arg, ty_res) = get_uop_type(state, op)?;
 
-            unify(state, strict, ty, ty_res)
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
             type_check_(
                 state,
                 envs.clone(),
@@ -603,7 +601,11 @@ fn type_check_<L: Linearizer>(
                 strict,
                 t,
                 ty_arg,
-            )
+            )?;
+
+            let instantiated = instantiate_foralls(state, ty_res, ForallInst::Ptr);
+            unify(state, strict, ty, instantiated)
+                .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Op2(op, t1, t2) => {
             let (ty_arg1, ty_arg2, ty_res) = get_bop_type(state, op)?;
@@ -738,7 +740,7 @@ fn binding_type(
     let ty_apt = apparent_type(t, Some(envs), Some(resolver));
 
     match ty_apt {
-        ApparentType::Approximated(_) if strict => TypeWrapper::Ptr(new_var(table)),
+        ApparentType::Approximated(_) if strict => table.fresh_unif_var(),
         ty_apt => ty_apt.into(),
     }
 }
@@ -973,7 +975,7 @@ fn row_add(
     mut r: TypeWrapper,
 ) -> Result<(Option<Box<TypeWrapper>>, TypeWrapper), RowUnifError> {
     if let TypeWrapper::Ptr(p) = r {
-        r = get_root(state.table, p);
+        r = state.table.root(p);
     }
     match r {
         TypeWrapper::Concrete(AbsType::RowEmpty()) | TypeWrapper::Concrete(AbsType::Dyn()) => {
@@ -996,15 +998,15 @@ fn row_add(
                     return Err(RowUnifError::UnsatConstr(id.clone(), ty.map(|tyw| *tyw)));
                 }
             }
-            let new_row = TypeWrapper::Ptr(new_var(state.table));
+            let new_row = state.table.fresh_unif_var();
             constraint(state, new_row.clone(), id.clone())?;
-            state.table.insert(
+            state.table.assign(
                 root,
-                Some(TypeWrapper::Concrete(AbsType::RowExtend(
+                TypeWrapper::Concrete(AbsType::RowExtend(
                     id.clone(),
                     ty.clone(),
                     Box::new(new_row.clone()),
-                ))),
+                )),
             );
             Ok((ty, new_row))
         }
@@ -1036,10 +1038,10 @@ pub fn unify_(
     mut t2: TypeWrapper,
 ) -> Result<(), UnifError> {
     if let TypeWrapper::Ptr(pt1) = t1 {
-        t1 = get_root(state.table, pt1);
+        t1 = state.table.root(pt1);
     }
     if let TypeWrapper::Ptr(pt2) = t2 {
-        t2 = get_root(state.table, pt2);
+        t2 = state.table.root(pt2);
     }
 
     // t1 and t2 are roots of the type
@@ -1115,7 +1117,7 @@ pub fn unify_(
             (AbsType::DynRecord(t), AbsType::DynRecord(t2)) => unify_(state, *t, *t2),
             (AbsType::Forall(i1, t1t), AbsType::Forall(i2, t2t)) => {
                 // Very stupid (slow) implementation
-                let constant_type = TypeWrapper::Constant(new_var(state.table));
+                let constant_type = state.table.fresh_const();
 
                 unify_(
                     state,
@@ -1138,13 +1140,13 @@ pub fn unify_(
         (TypeWrapper::Ptr(p), tyw) => {
             constr_unify(state.constr, p, &tyw)
                 .map_err(|err| err.into_unif_err(TypeWrapper::Ptr(p), tyw.clone()))?;
-            state.table.insert(p, Some(tyw));
+            state.table.assign(p, tyw);
             Ok(())
         }
         (tyw, TypeWrapper::Ptr(p)) => {
             constr_unify(state.constr, p, &tyw)
                 .map_err(|err| err.into_unif_err(tyw.clone(), TypeWrapper::Ptr(p)))?;
-            state.table.insert(p, Some(tyw));
+            state.table.assign(p, tyw);
             Ok(())
         }
         (TypeWrapper::Constant(i1), TypeWrapper::Constant(i2)) if i1 == i2 => Ok(()),
@@ -1220,7 +1222,7 @@ pub fn unify_rows(
 /// as type constants are replaced with the type `Dyn`.
 fn to_type(table: &UnifTable, ty: TypeWrapper) -> Types {
     match ty {
-        TypeWrapper::Ptr(p) => match get_root(table, p) {
+        TypeWrapper::Ptr(p) => match table.root(p) {
             t @ TypeWrapper::Concrete(_) => to_type(table, t),
             _ => Types(AbsType::Dyn()),
         },
@@ -1257,11 +1259,11 @@ enum ForallInst {
 /// - `inst`: the type of instantiation, either by a type constant or by a unification variable
 fn instantiate_foralls(state: &mut State, mut ty: TypeWrapper, inst: ForallInst) -> TypeWrapper {
     if let TypeWrapper::Ptr(p) = ty {
-        ty = get_root(state.table, p);
+        ty = state.table.root(p);
     }
 
     while let TypeWrapper::Concrete(AbsType::Forall(id, forall_ty)) = ty {
-        let fresh_id = new_var(state.table);
+        let fresh_id = state.table.fresh_var();
         let var = match inst {
             ForallInst::Constant => TypeWrapper::Constant(fresh_id),
             ForallInst::Ptr => TypeWrapper::Ptr(fresh_id),
@@ -1282,7 +1284,58 @@ fn instantiate_foralls(state: &mut State, mut ty: TypeWrapper, inst: ForallInst)
 /// Map each unification variable to either another type variable or a concrete type it has been
 /// unified with. Each binding `(ty, var)` in this map should be thought of an edge in a
 /// unification graph.
-pub type UnifTable = HashMap<usize, Option<TypeWrapper>>;
+pub struct UnifTable(Vec<Option<TypeWrapper>>);
+
+impl UnifTable {
+    pub fn new() -> Self {
+        UnifTable(Vec::new())
+    }
+
+    /// Assign a type to a unification variable.
+    pub fn assign(&mut self, var: usize, tyw: TypeWrapper) {
+        debug_assert!(self.0[var].is_none());
+        self.0[var] = Some(tyw);
+    }
+
+    /// Retrieve the current assignement of a unification variable.
+    pub fn get(&self, var: usize) -> Option<&TypeWrapper> {
+        self.0[var].as_ref()
+    }
+
+    /// Create a fresh variable identifier and allocate a corresponding slot in the table.
+    fn fresh_var(&mut self) -> usize {
+        let next = self.0.len();
+        self.0.push(None);
+        next
+    }
+
+    /// Create a fresh unification variable and allocate a corresponding slot in the table.
+    pub fn fresh_unif_var(&mut self) -> TypeWrapper {
+        TypeWrapper::Ptr(self.fresh_var())
+    }
+
+    /// Create a fresh type constant.
+    pub fn fresh_const(&mut self) -> TypeWrapper {
+        TypeWrapper::Constant(self.fresh_var())
+    }
+
+    /// Follow the links in the unification table to find the representative of the equivalence class
+    /// of unification variable `x`.
+    ///
+    /// This corresponds to the find in union-find.
+    // TODO This should be a union find like algorithm
+    pub fn root(&self, x: usize) -> TypeWrapper {
+        // All queried variable must have been introduced by `new_var` and thus a corresponding entry
+        // must always exist in `state`. If not, the typechecking algorithm is not correct, and we
+        // panic.
+        match &self.0[x] {
+            None => TypeWrapper::Ptr(x),
+            Some(TypeWrapper::Ptr(y)) => self.root(*y),
+            Some(ty @ TypeWrapper::Concrete(_)) => ty.clone(),
+            Some(k @ TypeWrapper::Constant(_)) => k.clone(),
+        }
+    }
+}
 
 /// Row constraints.
 ///
@@ -1292,19 +1345,12 @@ pub type UnifTable = HashMap<usize, Option<TypeWrapper>>;
 /// String}`.
 pub type RowConstr = HashMap<usize, HashSet<Ident>>;
 
-/// Create a fresh unification variable.
-fn new_var(table: &mut UnifTable) -> usize {
-    let next = table.len();
-    table.insert(next, None);
-    next
-}
-
 /// Add a row constraint on a type.
 ///
 /// See [`RowConstr`](type.RowConstr.html).
 fn constraint(state: &mut State, x: TypeWrapper, id: Ident) -> Result<(), RowUnifError> {
     match x {
-        TypeWrapper::Ptr(p) => match get_root(state.table, p) {
+        TypeWrapper::Ptr(p) => match state.table.root(p) {
             ty @ TypeWrapper::Concrete(_) => constraint(state, ty, id),
             TypeWrapper::Ptr(root) => {
                 if let Some(v) = state.constr.get_mut(&root) {
@@ -1339,7 +1385,7 @@ fn constraint(state: &mut State, x: TypeWrapper, id: Ident) -> Result<(), RowUni
 ///
 /// Because `constraint_var` should be called on a fresh unification variable `p`, the following is
 /// assumed:
-/// - `get_root(state.table, p) == p`
+/// - `state.table.root_of(p) == p`
 /// - `state.constr.get(&p) == None`
 fn constrain_var(state: &mut State, tyw: &TypeWrapper, p: usize) {
     fn constrain_var_(state: &mut State, mut constr: HashSet<Ident>, tyw: &TypeWrapper, p: usize) {
@@ -1347,7 +1393,7 @@ fn constrain_var(state: &mut State, tyw: &TypeWrapper, p: usize) {
             TypeWrapper::Ptr(u) if p == *u && !constr.is_empty() => {
                 state.constr.insert(p, constr);
             }
-            TypeWrapper::Ptr(u) => match get_root(state.table, *u) {
+            TypeWrapper::Ptr(u) => match state.table.root(*u) {
                 TypeWrapper::Ptr(_) => (),
                 tyw => constrain_var_(state, constr, &tyw, p),
             },
@@ -1432,22 +1478,5 @@ pub fn constr_unify(
         }
     } else {
         Ok(())
-    }
-}
-
-/// Follow the links in the unification table to find the representative of the equivalence class
-/// of unification variable `x`.
-///
-/// This corresponds to the find in union-find.
-// TODO This should be a union find like algorithm
-pub fn get_root(table: &UnifTable, x: usize) -> TypeWrapper {
-    // All queried variable must have been introduced by `new_var` and thus a corresponding entry
-    // must always exist in `state`. If not, the typechecking algorithm is not correct, and we
-    // panic.
-    match table.get(&x).unwrap() {
-        None => TypeWrapper::Ptr(x),
-        Some(TypeWrapper::Ptr(y)) => get_root(table, *y),
-        Some(ty @ TypeWrapper::Concrete(_)) => ty.clone(),
-        Some(k @ TypeWrapper::Constant(_)) => k.clone(),
     }
 }

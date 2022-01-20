@@ -115,7 +115,7 @@ pub fn to_type(
     ty: TypeWrapper,
 ) -> Types {
     match ty {
-        TypeWrapper::Ptr(p) => match get_root(table, p) {
+        TypeWrapper::Ptr(p) => match table.root(p) {
             TypeWrapper::Ptr(p) => var_to_type(reported_names, names, p),
             tyw => to_type(table, reported_names, names, tyw),
         },
