@@ -501,8 +501,6 @@ where
             Term::RecRecord(ts, dyn_fields, attrs) => {
                 let rec_env = fixpoint::rec_env(ts.iter(), &env)?;
 
-                // unwrap: we already checked for unbound identifier when building the recursive
-                // environment
                 ts.iter()
                     .try_for_each(|(_, rt)| fixpoint::patch_field(rt, &rec_env, &env))?;
 
