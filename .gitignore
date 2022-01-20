@@ -13,10 +13,13 @@
 **/*.rs.bk
 
 # Makam cache
-.makam-cache/
-node_modules
-lsp/client-extension/node_modules
-lsp/client-extension/out
+/.makam-cache/
+/node_modules
+/lsp/client-extension/node_modules
+/lsp/client-extension/out
 
 # Ctags output
 /tags
+
+# pre-commit-hooks
+/.pre-commit-config.yaml
