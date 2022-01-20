@@ -31,6 +31,10 @@ There are a some predefined operators for working with numbers :
 | /        | The division operator                                | `1 / 2 = 0.5` |
 | %        | The modulo operator (returns the *signed* remainder) | `5 % 3 = 2`   |
 
+> **Remark about the `-` operator:***  
+> Since `-` can be used inside of an identifier, the subtraction operators **needs** to be surrounded by spaces,
+> write `1 - 1`, not `1-1`.
+
 Numbers are also comparable, using the dedicated comparison operators, returning a boolean value :
 | Operator | Description      | Example   |
 |:--------:|:----------------:|:---------:|
@@ -41,6 +45,15 @@ Numbers are also comparable, using the dedicated comparison operators, returning
 | >=       | Greater or Equal | `1 >= 1`  |
 | <=       | Smaller or Equal | `-1 <= 6` |
 
+All those operators have precedence with each others. In the table below, you will find the operators sorted from highest to lowest precedence:
+|       Operators      | Associativity | Remark                                        |
+|:--------------------:|:-------------:|-----------------------------------------------|
+|       `( ... )`      |               | parentheses always have to highest precedence |
+|          `-`         | right-to-left | unary negation (as in `-1`)                   |
+|     `*`, `/`, `%`    | left-to-right |                                               |
+|       `+`, `-`       | left-to-right | binary addition and subtraction               |
+| `<`, `>`, `=<`, `>=` | left-to-right |                                               |
+|      `==`, `!=`      | left-to-right |                                               |
 
 ### Boolean values
 
