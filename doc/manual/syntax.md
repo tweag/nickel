@@ -1,8 +1,8 @@
 # Nickel Syntax
 
-## Simple types
+## Simple values
 
-There are tree basic kind of values in Nickel : 
+There are three basic kind of values in Nickel : 
  1. numeric values, 
  2. boolean values,
  3. strings.
@@ -46,7 +46,7 @@ Numbers are also comparable, using the dedicated comparison operators, returning
 
 The boolean values in Nickel are denoted `true` and `false`.
 
-To work with boolean values, we have a the classic logical operators *AND* (&&), *OR* (||) and *NOT* (!).
+To work with boolean values, we have the classic logical operators *AND* (&&), *OR* (||) and *NOT* (!).
 The _AND_ and _OR_ operators are lazy in the evaluation of the second argument. The truth table below gives the results for using these operators:
 
 Examples:
@@ -108,10 +108,10 @@ false
 ```
 
 
-## Composite types
+## Composite values
 
 ### List
-Lists allows grouping of values into sequences. They are delimited by `[` and `]`, and elements are separated with `,`.
+A list is a sequence of values. They are delimited by `[` and `]`, and elements are separated with `,`.
 
 Examples:
 ```
@@ -128,8 +128,8 @@ Lists can be concatenated with the operator `@`:
 ```
 
 ### Record
-Records are key-value storage. They are delimited with by `{` and `}`, elements are separated by `,`.
-key-value elements are noted as `key = value`.
+Records are key-value storage. They are delimited by `{` and `}`, and elements are separated by `,`.
+Key-value elements are noted as `key = value`.
 The keys can be either identifiers, or strings. Values can be of any type.
 Elements inside a record are unordered.
 
