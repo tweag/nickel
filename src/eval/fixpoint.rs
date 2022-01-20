@@ -30,10 +30,6 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a RichTerm)>>(
         .collect()
 }
 
-fn patch_thunk(mut thunk: Thunk, rec_env: &Vec<(Ident, Thunk)>) {
-    thunk.borrow_mut().env.extend(rec_env.iter().cloned());
-}
-
 /// Take a [`RichTerm`] that is stored inside a field, and patch its environment by enriching it
 /// with the recursive environment.
 pub fn patch_field(
@@ -42,10 +38,10 @@ pub fn patch_field(
     env: &Environment,
 ) -> Result<(), EvalError> {
     if let Term::Var(var_id) = &*rt.term {
-        let thunk = env
+        let mut thunk = env
             .get(var_id)
             .ok_or_else(|| EvalError::UnboundIdentifier(var_id.clone(), rt.pos))?;
-        patch_thunk(thunk, rec_env);
+        thunk.borrow_mut().env.extend(rec_env.iter().cloned());
     }
     // Thanks to the share normal form transformation, the content is either a
     // constant or a variable. In the constant case, the environment is irrelevant,
