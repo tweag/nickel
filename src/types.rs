@@ -55,7 +55,7 @@ use crate::identifier::Ident;
 use crate::term::make as mk_term;
 use crate::term::{RichTerm, Term, UnaryOp};
 use crate::{mk_app, mk_fun};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt;
 
 /// A Nickel type.

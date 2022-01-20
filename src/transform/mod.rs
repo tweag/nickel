@@ -39,19 +39,15 @@ pub fn transform(rt: RichTerm) -> RichTerm {
         )
         .unwrap();
 
-    rt.traverse_monoid_state(
-        &mut |rt: RichTerm, _, free_vars, rec_free_vars| -> Result<RichTerm, ()> {
+    rt.traverse_with_parent(
+        false,
+        &mut |rt: RichTerm, parent, (free_vars, field_free_vars)| -> Result<RichTerm, ()> {
             let mut rt = share_normal_form::transform_one(rt);
-            collect_free_vars(&mut rt, free_vars, rec_free_vars);
+            collect_free_vars(&mut rt, parent, free_vars, field_free_vars);
             Ok(rt)
         },
-        &mut (),
-        &mut HashSet::new(),
+        &mut (HashSet::new(), Default::default()),
         TraverseMethod::BottomUp,
-        &mut |_, id, fv_rec, fv| {
-            fv_rec.insert(id, fv.clone());
-        },
-        &mut HashMap::new(),
     )
     .unwrap()
 }
