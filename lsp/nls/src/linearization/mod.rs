@@ -139,8 +139,40 @@ impl Linearizer for AnalysisHost {
 
         let id = id_gen.get();
         match term {
+            Term::FunPattern(ident, destruct, _) => {
+                if let Some(ident) = ident {
+                    self.env.insert(ident.to_owned(), id);
+                    lin.push(LinearizationItem {
+                        id: id_gen.get_and_advance(),
+                        ty,
+                        pos: ident.pos.unwrap(),
+                        scope: self.scope.clone(),
+                        kind: TermKind::Declaration(ident.to_owned(), Vec::new()),
+                        meta: self.meta.take(),
+                    });
+                }
+                for matched in destruct.to_owned().inner() {
+                    let (ident, term) = matched.as_meta_field();
+                    self.env.insert(ident.to_owned(), id_gen.get());
+                    lin.push(LinearizationItem {
+                        id: id_gen.get_and_advance(),
+                        // TODO: get type from pattern
+                        ty: TypeWrapper::Concrete(AbsType::Dyn()),
+                        pos: ident.pos.unwrap(),
+                        scope: self.scope.clone(),
+                        kind: TermKind::Declaration(ident.to_owned(), Vec::new()),
+                        meta: match &*term.term {
+                            Term::MetaValue(meta) => Some(MetaValue {
+                                value: None,
+                                ..meta.clone()
+                            }),
+                            _ => None,
+                        },
+                    });
+                }
+            }
             Term::Let(ident, _, _, _) | Term::Fun(ident, _) => {
-                self.env.insert(ident.to_owned(), lin.linearization.len());
+                self.env.insert(ident.to_owned(), id);
                 lin.push(LinearizationItem {
                     id,
                     ty,
