@@ -593,8 +593,6 @@ fn type_check_<L: Linearizer>(
         Term::Op1(op, t) => {
             let (ty_arg, ty_res) = get_uop_type(state, op)?;
 
-            unify(state, strict, ty, ty_res)
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
             type_check_(
                 state,
                 envs.clone(),
@@ -603,7 +601,11 @@ fn type_check_<L: Linearizer>(
                 strict,
                 t,
                 ty_arg,
-            )
+            )?;
+
+            let instantiated = instantiate_foralls(state, ty_res, ForallInst::Ptr);
+            unify(state, strict, ty, instantiated)
+                .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Op2(op, t1, t2) => {
             let (ty_arg1, ty_arg2, ty_res) = get_bop_type(state, op)?;
