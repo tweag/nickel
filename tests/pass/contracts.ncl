@@ -109,10 +109,27 @@ let Assert = fun l x => x || %blame% l in
 
   // nested_metavalues
   // Regression test for #402
-  let myContract = { x | Str } in
+  let MyContract = { x | Str } in
   {
-    foo | #myContract | default = { x = "From foo" },
+    foo | #MyContract | default = { x = "From foo" },
     bar | #{..} | default = foo
   } == { foo.x = "From foo", bar.x = "From foo"},
+
+  // mixing type and record contracts
+  let f | #{foo | Num} -> #{bar | Num} = fun r =>
+    {bar = r.foo} in
+  (f {foo = 1}).bar == 1,
+  // user-written contract application
+  let Extend = fun base label value =>
+    let derived = if builtins.is_record base then
+      (base & {foo | Num})
+    else
+      base in
+    contracts.apply derived label value in
+  let Contract = Extend {bar | Num, ..} in
+  let Id = Extend (fun label value => value) in
+  ({bar = 1, foo = 1} | #Contract)
+    & ({baz = 1} | #Id)
+  == {foo = 1, bar = 1, baz = 1},
 ]
 |> lists.foldl (fun x y => (x | #Assert) && y) true

@@ -53,7 +53,7 @@
 //! untyped parts.
 use crate::identifier::Ident;
 use crate::term::make as mk_term;
-use crate::term::{BinaryOp, RichTerm, Term, UnaryOp};
+use crate::term::{RichTerm, Term, UnaryOp};
 use crate::{mk_app, mk_fun};
 use std::collections::HashMap;
 use std::fmt;
@@ -154,15 +154,14 @@ impl<Ty> AbsType<Ty> {
 pub struct Types(pub AbsType<Box<Types>>);
 
 impl Types {
-    /// Return the contract corresponding to a type.
-    ///
-    /// Wrapper for [`contract_open`](fn.contract_open.html).
+    /// Return the contract corresponding to a type, either as a function or a record. Said
+    /// contract must then be applied using the `Assume` primitive operation.
     pub fn contract(&self) -> RichTerm {
         let mut sy = 0;
-        self.contract_open(HashMap::new(), true, &mut sy)
+        self.subcontract(HashMap::new(), true, &mut sy)
     }
 
-    /// Return the contract corresponding to a type.
+    /// Return the contract corresponding to a subtype.
     ///
     /// # Arguments
     ///
@@ -172,28 +171,27 @@ impl Types {
     /// of an arrow type (see [`Label`](../label/struct.label.html)).
     /// - `sy` is a counter used to generate fresh symbols for `forall` contracts (see `Wrapped` in
     /// [terms](../term/enum.Term.html).
-    pub fn contract_open(
+    fn subcontract(
         &self,
         mut h: HashMap<Ident, (RichTerm, RichTerm)>,
         pol: bool,
         sy: &mut i32,
     ) -> RichTerm {
         use crate::stdlib::contracts;
-        use crate::transform::fresh_var;
 
-        let ctr = match self.0 {
+        match self.0 {
             AbsType::Dyn() => contracts::dynamic(),
             AbsType::Num() => contracts::num(),
             AbsType::Bool() => contracts::bool(),
             AbsType::Str() => contracts::string(),
             //TODO: optimization: have a specialized contract for `List Dyn`, to avoid mapping an
             //always successful contract on each element.
-            AbsType::List(ref ty) => mk_app!(contracts::list(), ty.contract_open(h, pol, sy)),
+            AbsType::List(ref ty) => mk_app!(contracts::list(), ty.subcontract(h, pol, sy)),
             AbsType::Sym() => panic!("Are you trying to check a Sym at runtime?"),
             AbsType::Arrow(ref s, ref t) => mk_app!(
                 contracts::func(),
-                s.contract_open(h.clone(), !pol, sy),
-                t.contract_open(h, pol, sy)
+                s.subcontract(h.clone(), !pol, sy),
+                t.subcontract(h, pol, sy)
             ),
             AbsType::Flat(ref t) => t.clone(),
             AbsType::Var(ref i) => {
@@ -209,9 +207,9 @@ impl Types {
 
                 h.insert(i.clone(), (inst_var, inst_tail));
                 *sy += 1;
-                t.contract_open(h, pol, sy)
+                t.subcontract(h, pol, sy)
             }
-            AbsType::RowEmpty() | AbsType::RowExtend(_, _, _) => contracts::fail(),
+            AbsType::RowEmpty() | AbsType::RowExtend(..) => contracts::fail(),
             AbsType::Enum(ref r) => {
                 fn form(ty: Types, h: HashMap<Ident, (RichTerm, RichTerm)>) -> RichTerm {
                     match ty.0 {
@@ -267,7 +265,7 @@ impl Types {
                         }
                         AbsType::RowExtend(id, Some(ty), rest) => {
                             let cont = form(sy, pol, rest.as_ref(), h.clone());
-                            let row_contr = ty.contract_open(h, pol, sy);
+                            let row_contr = ty.subcontract(h, pol, sy);
                             mk_app!(
                                 contracts::record_extend(),
                                 mk_term::string(format!("{}", id)),
@@ -285,26 +283,9 @@ impl Types {
                 mk_app!(contracts::record(), form(sy, pol, ty, h))
             }
             AbsType::DynRecord(ref ty) => {
-                mk_app!(contracts::dyn_record(), ty.contract_open(h, pol, sy))
+                mk_app!(contracts::dyn_record(), ty.subcontract(h, pol, sy))
             }
-        };
-
-        // To track the argument to contracts and support contracts as record, we need to wrap the
-        // function contracts as an `Assume`. Since `Assume` is strict in the label and need to be
-        // fully applied, we need to wrap the whole expression back as a standard function, that is
-        // to form: `fun l val => %assume% ctr l val`
-        let var_l = fresh_var();
-        let var_val = fresh_var();
-        let pos = ctr.pos;
-        mk_fun!(
-            var_l.clone(),
-            var_val.clone(),
-            mk_app!(
-                mk_term::op2(BinaryOp::Assume(), ctr, Term::Var(var_l)),
-                Term::Var(var_val)
-            )
-        )
-        .with_pos(pos.into_inherited())
+        }
     }
 
     /// Find a binding in a record row type. Return `None` if there is no such binding, if the type

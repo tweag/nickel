@@ -197,9 +197,14 @@ pub fn get_bop_type(
             mk_typewrapper::str(),
             mk_typewrapper::str(),
         ),
+        // Ideally: Contract -> Label -> Dyn -> Dyn
+        // Currenty: Dyn -> Dyn -> (Dyn -> Dyn)
+        BinaryOp::Assume() => (
+            mk_typewrapper::dynamic(),
+            mk_typewrapper::dynamic(),
+            mk_tyw_arrow!(mk_typewrapper::dynamic(), mk_typewrapper::dynamic()),
+        ),
         // Sym -> Dyn -> Dyn -> Dyn
-        // This should not happen, as `ApplyContract()` is only produced during evaluation.
-        BinaryOp::Assume() => panic!("cannot typecheck assume"),
         BinaryOp::Unwrap() => (
             mk_typewrapper::sym(),
             mk_typewrapper::dynamic(),

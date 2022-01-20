@@ -524,6 +524,7 @@ InfixExpr: RichTerm = {
 }
 
 BOpPre: BinaryOp = {
+    "assume" => BinaryOp::Assume(),
     "unwrap" => BinaryOp::Unwrap(),
     "go_field" => BinaryOp::GoField(),
     "has_field" => BinaryOp::HasField(),
@@ -699,6 +700,7 @@ extern {
         "is_fun" => Token::Normal(NormalToken::IsFun),
         "is_list" => Token::Normal(NormalToken::IsList),
         "is_record" => Token::Normal(NormalToken::IsRecord),
+        "assume" => Token::Normal(NormalToken::Assume),
         "blame" => Token::Normal(NormalToken::Blame),
         "chng_pol" => Token::Normal(NormalToken::ChangePol),
         "polarity" => Token::Normal(NormalToken::Polarity),

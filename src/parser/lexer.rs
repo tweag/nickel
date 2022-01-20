@@ -162,6 +162,8 @@ pub enum NormalToken<'input> {
     #[token("%is_record%")]
     IsRecord,
 
+    #[token("%assume%")]
+    Assume,
     #[token("%blame%")]
     Blame,
     #[token("%chng_pol%")]
