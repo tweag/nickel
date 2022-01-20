@@ -497,7 +497,7 @@ where
                     }
                 }
             }
-            Term::RecRecord(ts, dyn_fields, attrs) => {
+            Term::RecRecord(ts, dyn_fields, attrs, free_vars) => {
                 // Thanks to the share normal form transformation, the content is either a constant or a
                 // variable.
                 let rec_env = ts.iter().try_fold::<_, _, Result<Environment, EvalError>>(
@@ -524,18 +524,28 @@ where
                     },
                 )?;
 
-                let new_ts = ts.into_iter().map(|(id, rt)| {
+                let new_ts = ts.iter().map(|(id, rt)| {
                     let pos = rt.pos;
                     match &*rt.term {
                         Term::Var(var_id) => {
                             // We already checked for unbound identifier in the previous fold,
                             // so function should always succeed
                             let mut thunk = env.get(var_id).unwrap();
-                            thunk.borrow_mut().env.extend(
-                                rec_env
-                                    .iter_elems()
-                                    .map(|(id, thunk)| (id.clone(), thunk.clone())),
-                            );
+                            let mut clos = thunk.borrow_mut();
+                            if let Some(Some(free_vars)) = free_vars.as_ref().map(|fr| fr.get(id)) {
+                                clos.env.extend(
+                                    rec_env
+                                        .iter_elems()
+                                        .filter(|(id, _)| free_vars.contains(id))
+                                        .map(|(id, thunk)| (id.clone(), thunk.clone())),
+                                );
+                            } else {
+                                clos.env.extend(
+                                    rec_env
+                                        .iter_elems()
+                                        .map(|(id, thunk)| (id.clone(), thunk.clone())),
+                                );
+                            }
                             (
                                 id.clone(),
                                 RichTerm {
@@ -548,7 +558,7 @@ where
                     }
                 });
 
-                let static_part = RichTerm::new(Term::Record(new_ts.collect(), attrs.clone()), pos);
+                let static_part = RichTerm::new(Term::Record(new_ts.collect(), *attrs), pos);
 
                 // Transform the static part `{stat1 = val1, ..., statn = valn}` and the dynamic
                 // part `{exp1 = dyn_val1, ..., expm = dyn_valm}` to a sequence of extensions
@@ -556,7 +566,7 @@ where
                 // The `dyn_val` are given access to the recursive environment, but not the dynamic
                 // field names.
                 let extended = dyn_fields
-                    .into_iter()
+                    .iter()
                     .try_fold::<_, _, Result<RichTerm, EvalError>>(
                         static_part,
                         |acc, (id_t, t)| {
@@ -567,12 +577,24 @@ where
                                     let mut thunk = env.get(var_id).ok_or_else(|| {
                                         EvalError::UnboundIdentifier(var_id.clone(), pos)
                                     })?;
-
-                                    thunk.borrow_mut().env.extend(
-                                        rec_env
-                                            .iter_elems()
-                                            .map(|(id, thunk)| (id.clone(), thunk.clone())),
-                                    );
+                                    let mut clos = thunk.borrow_mut();
+                                    if let Some(Some(free_vars)) = free_vars
+                                        .as_ref()
+                                        .map(|fr| fr.get(&Ident::from(String::new())))
+                                    {
+                                        clos.env.extend(
+                                            rec_env
+                                                .iter_elems()
+                                                .filter(|(id, _)| free_vars.contains(id))
+                                                .map(|(id, thunk)| (id.clone(), thunk.clone())),
+                                        );
+                                    } else {
+                                        clos.env.extend(
+                                            rec_env
+                                                .iter_elems()
+                                                .map(|(id, thunk)| (id.clone(), thunk.clone())),
+                                        );
+                                    }
                                     Ok(Term::App(
                                         mk_term::op2(BinaryOp::DynExtend(), id_t, acc),
                                         mk_term::var(var_id.clone()).with_pos(pos),
@@ -806,7 +828,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
 
                 RichTerm::new(Term::Record(map, attrs), pos)
             }
-            Term::RecRecord(map, dyn_fields, attrs) => {
+            Term::RecRecord(map, dyn_fields, attrs, free_vars) => {
                 let map = map
                     .into_iter()
                     .map(|(id, t)| {
@@ -827,7 +849,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
                     })
                     .collect();
 
-                RichTerm::new(Term::RecRecord(map, dyn_fields, attrs), pos)
+                RichTerm::new(Term::RecRecord(map, dyn_fields, attrs, free_vars), pos)
             }
             Term::List(ts) => {
                 let ts = ts

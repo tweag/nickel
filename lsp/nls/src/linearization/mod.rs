@@ -222,7 +222,7 @@ impl Linearizer for AnalysisHost {
                     }
                 }
             }
-            Term::Record(fields, _) | Term::RecRecord(fields, _, _) => {
+            Term::Record(fields, _) | Term::RecRecord(fields, _, _, _) => {
                 lin.push(LinearizationItem {
                     id,
                     pos: pos.unwrap(),

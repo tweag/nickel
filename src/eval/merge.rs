@@ -364,7 +364,7 @@ pub fn merge(
 
             Ok(Closure {
                 body: RichTerm::new(
-                    Term::RecRecord(m, Vec::new(), RecordAttrs::merge(attrs1, attrs2)),
+                    Term::RecRecord(m, Vec::new(), RecordAttrs::merge(attrs1, attrs2), None),
                     pos_op.into_inherited(),
                 ),
                 env,

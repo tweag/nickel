@@ -191,7 +191,7 @@ fn write_query_result_<R: QueryPrinter>(
                 fields.sort();
                 renderer.write_fields(out, fields.into_iter())
             }
-            Term::RecRecord(map, dyn_fields, _) if !map.is_empty() => {
+            Term::RecRecord(map, dyn_fields, _, _) if !map.is_empty() => {
                 let mut fields: Vec<_> = map.keys().collect();
                 fields.sort();
                 let dynamic = Ident::from("<dynamic>");
