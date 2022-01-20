@@ -4,7 +4,7 @@ When you have a big configuration, the way to split it in several files
 (e.g.: separated by cathegorie or level of abstraction) is the merging operator.
 In nickel this is the `&` operator.
 
-For instence, having a server config and a firewall config, the network config
+For instance, having a server config and a firewall config, the network config
 could be:
 
 ```text
@@ -15,8 +15,7 @@ in
 server & firewall
 ```
 
-In the simple case where both records do not have common fields, it gives a
-record which is the union of both.
+In the simple case where records `x` and `y` have no common fields, `x&y` is the union of `x` and `y`.
 
 If you have to merge records with fields in commons, you will use two new concepts:
 
@@ -95,7 +94,7 @@ depend on.
 
 To simplify, when merging two records, all contracts of both left and right one
 are applied to the resulting one.
-For instence:
+For instance:
 
 ```text
 
