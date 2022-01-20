@@ -4,7 +4,7 @@ let typecheck = [
   false : Bool,
   0 : Num,
   45 : Num,
-  fun x => x : forall a. a -> a,
+  (fun x => x) : forall a. a -> a,
   let x = 3 in (x : Num),
   4 + false,
   (true | Num) : Num,
@@ -82,7 +82,7 @@ let typecheck = [
   let r : {bla : Bool, blo : Num} = {blo = 1, bla = true} in
     ((if r.bla then r.blo else 2) : Num),
 
-  let f : forall a. (forall r. {bla : Bool, blo : a, ble : a | r} -> a) =
+  let f : forall a r. {bla : Bool, blo : a, ble : a | r} -> a =
       fun r => if r.bla then r.blo else r.ble in
     (if (f {bla = true, blo = false, ble = true, blip = 1, }) then
       (f {bla = true, blo = 1, ble = 2, blip = `blip, })
@@ -181,8 +181,8 @@ let typecheck = [
   (strings.length "Ok" == 2) : Bool,
   // partial application
   (strings.split ".") : Str -> List Str,
-  // TODO: fix issue with `forall`
-  // (lists.length [] == 0) : Bool,
+  (lists.length [] == 0) : Bool,
+  (lists.map (fun x => x ++ "1") ["a", "b", "c"]) : List Str,
 ] in
 
 true
