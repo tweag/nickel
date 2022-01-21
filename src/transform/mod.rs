@@ -1,11 +1,11 @@
 //! Various post transformations of nickel code.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::cache::ImportResolver;
 use crate::eval::{lazy::Thunk, Closure, Environment, IdentKind};
 use crate::identifier::Ident;
-use crate::term::{Contract, RichTerm, Term, TermType, TraverseMethod};
+use crate::term::{Contract, RichTerm, Term, TraverseMethod, TermType};
 use crate::types::{AbsType, Types};
 use simple_counter::*;
 
@@ -41,9 +41,10 @@ pub fn transform(rt: RichTerm) -> RichTerm {
 
     rt.traverse_with_parent(
         TermType::Any,
-        &mut |mut rt: RichTerm, parent, (free_vars, field_free_vars)| -> Result<RichTerm, ()> {
+        &mut |rt: RichTerm, parent, (free_vars, field_free_vars)| -> Result<RichTerm, ()> {
+            let mut rt = share_normal_form::transform_one(rt);
             collect_free_vars(&mut rt, parent, free_vars, field_free_vars);
-            Ok(share_normal_form::transform_one(rt))
+            Ok(rt)
         },
         &mut (HashSet::new(), Default::default()),
         TraverseMethod::BottomUp,
@@ -158,4 +159,3 @@ impl Closurizable for Contract {
         }
     }
 }
-
