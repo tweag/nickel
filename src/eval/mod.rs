@@ -569,7 +569,7 @@ where
                     .iter()
                     .try_fold::<_, _, Result<RichTerm, EvalError>>(
                         static_part,
-                        |acc, (id_t, t)| {
+                        |acc, (id_t, t, _)| {
                             let id_t = id_t.clone();
                             let pos = t.pos;
                             match &*t.term {
@@ -841,10 +841,11 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
 
                 let dyn_fields = dyn_fields
                     .into_iter()
-                    .map(|(id_t, t)| {
+                    .map(|(id_t, t, fr)| {
                         (
                             subst_(id_t, global_env, env, Cow::Borrowed(bound.as_ref())),
                             subst_(t, global_env, env, Cow::Borrowed(bound.as_ref())),
+                            fr
                         )
                     })
                     .collect();

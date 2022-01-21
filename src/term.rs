@@ -93,12 +93,13 @@ pub enum Term {
     #[serde(skip)]
     RecRecord(
         HashMap<Ident, RichTerm>,
-        Vec<(RichTerm, RichTerm)>, /* field whose name is defined by interpolation */
+        Vec<(RichTerm, RichTerm, Option<HashSet<Ident>>)>, /* field whose name is defined by interpolation */
         RecordAttrs,
         // Cached free variables calculation
         // An empty `Ident` is used for all dynamic fields.
         // It would be nice to use a `None`, but that does not play well with the borrow checker.
         // TODO When RecRecord is refactored store a fields free var set next to it's `RichTerm`.
+        // TODO ignore free vars in impl PartialEq, and Ord.
         Option<HashMap<Ident, HashSet<Ident>>>,
     ),
     /// A switch construct. The evaluation is done by the corresponding unary operator, but we
@@ -345,7 +346,7 @@ impl Term {
             }
             RecRecord(ref mut static_map, ref mut dyn_fields, _, _) => {
                 static_map.iter_mut().for_each(|(_, t)| func(t));
-                dyn_fields.iter_mut().for_each(|(t1, t2)| {
+                dyn_fields.iter_mut().for_each(|(t1, t2, _)| {
                     func(t1);
                     func(t2);
                 });
@@ -1105,12 +1106,13 @@ impl RichTerm {
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
                     .map(|(id, t)| Ok((id, t.traverse_with_parent(TermType::RecRecord, f, state, method)?)))
                     .collect();
-                let dyn_fields_res: Result<Vec<(RichTerm, RichTerm)>, E> = dyn_fields
+                let dyn_fields_res: Result<Vec<(RichTerm, RichTerm, Option<HashSet<Ident>>)>, E> = dyn_fields
                     .into_iter()
-                    .map(|(id_t, t)| {
+                    .map(|(id_t, t, fr)| {
                         Ok((
                             id_t.traverse_with_parent(TermType::RecRecord, f, state, method)?,
                             t.traverse_with_parent(TermType::RecRecord, f, state, method)?,
+                            fr
                         ))
                     })
                     .collect();

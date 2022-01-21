@@ -520,8 +520,8 @@ impl Cache {
 
                             let dyn_fields_res = std::mem::take(dyn_fields)
                                 .into_iter()
-                                .map(|(id_t, t)| {
-                                    (transform::transform(id_t), transform::transform(t))
+                                .map(|(id_t, t, fr)| {
+                                    (transform::transform(id_t), transform::transform(t), fr)
                                 })
                                 .collect();
 

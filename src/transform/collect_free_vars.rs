@@ -25,25 +25,20 @@ pub fn collect_free_vars(
             remove_destruct(d, free_vars);
         }
 
-        Term::RecRecord(map, _dyn_fields, _, ffv) => {
+        Term::RecRecord(map, dyn_fields, _, ffv) => {
+            for f in dyn_fields.iter_mut() {
+                f.2 = Some(fields_free_vars.pop_back().unwrap());
+            }
+
             *ffv = Some(
                 map.iter()
-                    .map(|(id, _)| (id.clone(), fields_free_vars.pop_front().unwrap()))
+                    .zip(fields_free_vars.drain(0..map.len()))
+                    .map(|((id, _), fv)| (id.clone(), fv))
                     .collect(),
             );
-            let dyn_fields_free_vars =
-                fields_free_vars
-                    .drain(0..)
-                    .fold(HashSet::new(), |mut acc, fr| {
-                        fr.into_iter().for_each(|id| {
-                            acc.insert(id);
-                        });
-                        acc
-                    });
-            // All Dynamic field's free vars are combined into one set with an empty Ident.
-            ffv.as_mut()
-                .unwrap()
-                .insert(Ident::from(String::new()), dyn_fields_free_vars);
+            for (fv, (_, _, dfv)) in fields_free_vars.drain(0..).zip(dyn_fields.iter_mut()) {
+                *dfv = Some(fv);
+            }
 
             map.iter().for_each(|(id, _)| {
                 free_vars.remove(id);

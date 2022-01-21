@@ -196,7 +196,8 @@ fn record_terms() {
             .collect(),
             vec![(
                 StrChunks(vec![StrChunk::expr(RichTerm::from(Num(123.)))]).into(),
-                mk_app!(mk_term::op1(UnaryOp::Ite(), Num(4.)), Num(5.), Num(6.))
+                mk_app!(mk_term::op1(UnaryOp::Ite(), Num(4.)), Num(5.), Num(6.)),
+                None
             )],
             Default::default(),
             Default::default(),

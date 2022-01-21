@@ -238,12 +238,12 @@ where
                             t,
                         )
                     } else {
-                        dynamic_fields.push((e, t));
+                        dynamic_fields.push((e, t, None));
                     }
                 }
                 // Currently `e` can only be string chunks, and this case should be unreachable,
                 // but let's be future-proof
-                _ => dynamic_fields.push((e, t)),
+                _ => dynamic_fields.push((e, t, None)),
             }
         }
     });

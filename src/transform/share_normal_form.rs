@@ -99,14 +99,14 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
 
                 let dyn_fields = dyn_fields
                     .into_iter()
-                    .map(|(id_t, t)| {
+                    .map(|(id_t, t, fr)| {
                         if !t.as_ref().is_constant() {
                             let fresh_var = fresh_var();
                             let pos_t = t.pos;
                             bindings.push((fresh_var.clone(), t));
-                            (id_t, RichTerm::new(Term::Var(fresh_var), pos_t))
+                            (id_t, RichTerm::new(Term::Var(fresh_var), pos_t), fr)
                         } else {
-                            (id_t, t)
+                            (id_t, t, fr)
                         }
                     })
                     .collect();
