@@ -11,9 +11,11 @@ lalrpop_mod!(
 
 pub mod error;
 pub mod lexer;
+pub mod uniterm;
+pub mod utils;
+
 #[cfg(test)]
 mod tests;
-pub mod utils;
 
 /// Either a term or a toplevel let declaration.
 pub enum ExtendedTerm {

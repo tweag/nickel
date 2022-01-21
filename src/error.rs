@@ -291,6 +291,8 @@ pub enum ParseError {
     ),
     /// Unbound type variable
     UnboundTypeVariables(Vec<Ident>, RawSpan),
+    /// TODO
+    InvalidUniRecord(),
 }
 
 /// An error occurring during the resolution of an import.
@@ -444,6 +446,7 @@ impl ParseError {
                 InternalParseError::UnboundTypeVariables(idents, span) => {
                     ParseError::UnboundTypeVariables(idents, span)
                 }
+                InternalParseError::InvalidUniRecord(..) => ParseError::InvalidUniRecord(),
             },
         }
     }
@@ -1195,6 +1198,10 @@ impl ToDiagnostic<FileId> for ParseError {
                         .join(",")
                 ))
                 .with_labels(vec![primary(span)]),
+            ParseError::InvalidUniRecord(..) => {
+                Diagnostic::error().with_message(format!("invalid record literal"))
+            }
+            // .with_labels(vec![primary(span)]),
         };
 
         vec![diagnostic]

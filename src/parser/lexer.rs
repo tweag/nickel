@@ -82,6 +82,8 @@ pub enum NormalToken<'input> {
     QuestionMark,
     #[token(",")]
     Comma,
+    #[token(";")]
+    Semicolon,
     #[token(":")]
     Colon,
     #[token("$")]

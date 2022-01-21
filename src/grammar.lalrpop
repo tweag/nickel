@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::ffi::OsString;
+use std::convert::TryFrom;
 
 use codespan::FileId;
 
@@ -8,6 +9,7 @@ use lalrpop_util::ErrorRecovery;
 use super::ExtendedTerm;
 use super::utils::*;
 use super::lexer::{Token, NormalToken, StringToken, MultiStringToken};
+use super::uniterm::UniRecord;
 
 use crate::{mk_app, mk_opn, mk_fun};
 use crate::identifier::Ident;
@@ -21,7 +23,18 @@ use crate::types::{Types, AbsType};
 grammar<'input, 'err>(src_id: FileId, errors: &'err mut Vec<ErrorRecovery<usize, Token<'input>, ParseError>>);
 
 WithPos<Rule>: RichTerm = <l: @L> <t: Rule> <r: @R> => t.with_pos(mk_pos(src_id, l, r));
-CheckUnbound<Rule>: Types = <l: @L> <t: Rule> <r: @R> =>? check_unbound(&t, mk_span(src_id, l, r)).map_err(|e| lalrpop_util::ParseError::User{error: e}).and(Ok(t));
+CheckUnbound<Rule>: Types = <l: @L> <t: Rule> <r: @R> =>?
+    check_unbound(&t, mk_span(src_id, l, r))
+        .map_err(|e| lalrpop_util::ParseError::User{error: e})
+        .and(Ok(t));
+
+AsTerm<Rule>: RichTerm = <l: @L> <ut: Rule> <r: @R> =>?
+    RichTerm::try_from(ut)
+        .map_err(|e| lalrpop_util::ParseError::User{error: e});
+
+AsTypes<Rule>: Types = <l: @L> <ut: Rule> <r: @R> =>?
+    Types::try_from(ut)
+        .map_err(|e| lalrpop_util::ParseError::User{error: e});
 
 AnnotAtom: MetaValue = {
     "|" <l: @L> <ty_res: CheckUnbound<Types>> <r: @R> => MetaValue {
@@ -167,6 +180,28 @@ RecordOperationChain: RichTerm = {
         mk_app!(mk_term::op2(BinaryOp::DynExtend(), id, r), t),
 };
 
+RowTail: Types = {
+    <Ident> => Types(AbsType::Var(<>)),
+    "Dyn" => Types(AbsType::Dyn()),
+}
+
+UniRecord: UniRecord = {
+   "{" <fields: (<RecordField> ",")*>
+       <last: RecordLastField?>
+       <tail: (";" RowTail)?>
+   "}" => {
+        let (last_field, attrs) = match last {
+            Some(RecordLastField::Field(f)) => (Some(f), Default::default()),
+            Some(RecordLastField::Ellipsis) =>
+                (None, RecordAttrs { open: true }),
+            None => (None, Default::default())
+        };
+
+        let fields : Vec<_> = fields.into_iter().chain(last_field.into_iter()).collect();
+        UniRecord { fields, tail: tail.map(|t| t.1), attrs }
+    },
+};
+
 Atom: RichTerm = {
     "(" <CurriedOp> ")",
     "(" <Term> ")",
@@ -175,19 +210,9 @@ Atom: RichTerm = {
     Bool => RichTerm::from(Term::Bool(<>)),
     StrChunks,
     Ident => RichTerm::from(Term::Var(<>)),
+    AsTerm<UniRecord>,
     "`" <EnumTag> => RichTerm::from(Term::Enum(<>)),
-    "{" <fields: (<RecordField> ",")*> <last: RecordLastField?> "}" => {
-        let (last_field, attrs) = match last {
-            Some(RecordLastField::Field(f)) => (Some(f), Default::default()),
-            Some(RecordLastField::Ellipsis) =>
-                (None, RecordAttrs { open: true }),
-            None => (None, Default::default())
-        };
-
-        let fields = fields.into_iter().chain(last_field.into_iter());
-        RichTerm::from(build_record(fields, attrs))
-    },
-    "[" <terms: (<Term> ",")*> <last: Term?> "]" => {
+     "[" <terms: (<Term> ",")*> <last: Term?> "]" => {
         let terms : Vec<RichTerm> = terms.into_iter()
             .chain(last.into_iter()).collect();
         RichTerm::from(Term::List(terms))
@@ -570,11 +595,6 @@ BaseType: Types = {
     "Str" => Types(AbsType::Str()),
 };
 
-RowTail: Types = {
-    <Ident> => Types(AbsType::Var(<>)),
-    "Dyn" => Types(AbsType::Dyn()),
-}
-
 subType : Types = {
     <BaseType>,
     "List" <ty: subType?> => {
@@ -603,25 +623,7 @@ subType : Types = {
             );
         Types(AbsType::Enum(Box::new(ty)))
     },
-    "{" <rows:(<Ident> ":" <Types> ",")*>
-        <last:(<Ident> ":" <Types>)?>
-        <tail: ("|" <RowTail>)?> "}" => {
-        let ty = rows.into_iter()
-            .chain(last.into_iter())
-            // As we build row types as a linked list via a fold on the original
-            // iterator, the order of identifiers is reversed. This not a big deal
-            // but it's less confusing to the user to print them in the original
-            // order for error reporting.
-            .rev()
-            .fold(
-                tail.unwrap_or(Types(AbsType::RowEmpty())),
-                |t, i_ty| {
-                    let (i, ty) = i_ty;
-                    Types(AbsType::RowExtend(i, Some(Box::new(ty)), Box::new(t)))
-                }
-            );
-        Types(AbsType::StaticRecord(Box::new(ty)))
-    },
+    AsTypes<UniRecord>,
     "{" "_" ":" <Types> "}" => Types(AbsType::DynRecord(Box::new(<>))),
 };
 
@@ -650,6 +652,7 @@ extern {
 
         "?" => Token::Normal(NormalToken::QuestionMark),
         "," => Token::Normal(NormalToken::Comma),
+        ";" => Token::Normal(NormalToken::Semicolon),
         ":" => Token::Normal(NormalToken::Colon),
         "$" => Token::Normal(NormalToken::Dollar),
         "=" => Token::Normal(NormalToken::Equals),

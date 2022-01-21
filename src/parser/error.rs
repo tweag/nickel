@@ -19,4 +19,6 @@ pub enum ParseError {
     Lexical(LexicalError),
     /// Unbound type variable(s)
     UnboundTypeVariables(Vec<Ident>, RawSpan),
+    /// Invalid unirecord.
+    InvalidUniRecord(),
 }

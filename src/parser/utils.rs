@@ -537,6 +537,7 @@ pub fn strip_indent_doc(doc: String) -> String {
 
 /// Recursively checks for unbound type variables in a type
 pub fn check_unbound(types: &Types, span: RawSpan) -> Result<(), ParseError> {
+    return Ok(());
     // heavy lifting function, recurses into a type expression and returns a set of unbound vars
     fn find_unbound_vars(types: &Types, unbound_set: &mut HashSet<Ident>) {
         match &types.0 {
@@ -587,6 +588,8 @@ pub fn check_unbound(types: &Types, span: RawSpan) -> Result<(), ParseError> {
     find_unbound_vars(types, &mut unbound_set);
 
     if !unbound_set.is_empty() {
+        println!("Unbound var on type {}", types);
+        println!("Unbound var on type (DEBUG) {:#?}", types);
         return Err(ParseError::UnboundTypeVariables(
             unbound_set.into_iter().collect(),
             span,
