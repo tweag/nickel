@@ -98,13 +98,13 @@ fn records_contracts_poly() {
     // but this is not yet the case.
     // eval_string(&format!("{} {{foo = 2}}", extd)).unwrap_err();
 
-    let remv = "let f | forall a. {foo: Num | a} -> { | a} = fun x => x -$ \"foo\" in f";
+    let remv = "let f | forall a. {foo: Num ; a} -> { ; a} = fun x => x -$ \"foo\" in f";
     assert_raise_blame!(&format!("{} {{}}", remv));
 
-    let bad_cst = "let f | forall a. { | a} -> { | a} = fun x => {a=1} in f";
-    let bad_acc = "let f | forall a. { | a} -> { | a} = fun x => %seq% x.a x in f";
-    let bad_extd = "let f | forall a. { | a} -> {foo: Num | a} = fun x => x -$ \"foo\" in f";
-    let bad_rmv = "let f | forall a. {foo: Num | a} -> { | a} = fun x => x$[\"foo\"=1] in f";
+    let bad_cst = "let f | forall a. { ; a} -> { ; a} = fun x => {a=1} in f";
+    let bad_acc = "let f | forall a. { ; a} -> { ; a} = fun x => %seq% x.a x in f";
+    let bad_extd = "let f | forall a. { ; a} -> {foo: Num ; a} = fun x => x -$ \"foo\" in f";
+    let bad_rmv = "let f | forall a. {foo: Num ; a} -> { ; a} = fun x => x$[\"foo\"=1] in f";
 
     assert_raise_blame!(&format!("{} {{}}", bad_cst));
     // The polymorphic parts is protected by hiding it. Thus, trying to access the protected field
@@ -121,9 +121,9 @@ fn records_contracts_poly() {
     assert_raise_blame!(
         "let f |
             forall a.
-                (forall b. {a: Num, b: Num | b} -> { a: Num | b})
-                -> {a: Num | a}
-                -> { | a}
+                (forall b. {a: Num, b: Num ; b} -> { a: Num ; b})
+                -> {a: Num ; a}
+                -> { ; a}
             = fun f rec => (f rec) -$ \"a\" -$ \"b\" in
         f (fun x => x) {a = 1, b = true, c = 3}"
     );

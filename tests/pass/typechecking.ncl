@@ -82,7 +82,7 @@ let typecheck = [
   let r : {bla : Bool, blo : Num} = {blo = 1, bla = true} in
     ((if r.bla then r.blo else 2) : Num),
 
-  let f : forall a r. {bla : Bool, blo : a, ble : a | r} -> a =
+  let f : forall a r. {bla : Bool, blo : a, ble : a ; r} -> a =
       fun r => if r.bla then r.blo else r.ble in
     (if (f {bla = true, blo = false, ble = true, blip = 1, }) then
       (f {bla = true, blo = 1, ble = 2, blip = `blip, })
@@ -130,12 +130,12 @@ let typecheck = [
     : {f : Num -> Num},
 
   // polymorphic_row_constraints
-  let extend | forall c. { | c} -> {a: Str | c} = 0 in
-    let remove | forall c. {a: Str | c} -> { | c} = 0 in
+  let extend | forall c. { ; c} -> {a: Str ; c} = 0 in
+    let remove | forall c. {a: Str ; c} -> { ; c} = 0 in
     (let good = remove (extend {}) in 0) : Num,
 
-  let r | {a: Num | Dyn} = {a = 1, b = 2} in (r.a : Num),
-  ({a = 1, b = 2} | {a: Num | Dyn}) : {a: Num | Dyn},
+  let r | {a: Num ; Dyn} = {a = 1, b = 2} in (r.a : Num),
+  ({a = 1, b = 2} | {a: Num ; Dyn}) : {a: Num ; Dyn},
 
   //Regression test following [#270](https://github.com/tweag/nickel/issues/270). Check that
   //unifying a variable with itself doesn't introduce a loop. The failure of this test results
