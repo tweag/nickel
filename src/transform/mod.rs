@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use crate::cache::ImportResolver;
 use crate::eval::{lazy::Thunk, Closure, Environment, IdentKind};
 use crate::identifier::Ident;
-use crate::term::{Contract, RichTerm, Term, TraverseMethod, TermType};
+use crate::term::{Contract, RichTerm, Term, TermType, TraverseMethod};
 use crate::types::{AbsType, Types};
 use simple_counter::*;
 
