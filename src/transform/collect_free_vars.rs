@@ -1,7 +1,7 @@
 use std::collections::{HashSet, VecDeque};
-use std::mem::swap;
 
-use crate::term::SharedTerm;
+use crate::destruct::{Destruct, Match};
+use crate::term::{SharedTerm, TermType};
 use crate::{
     identifier::Ident,
     term::{RichTerm, Term},
@@ -9,7 +9,7 @@ use crate::{
 
 pub fn collect_free_vars(
     rt: &mut RichTerm,
-    parent_rec_record: bool,
+    parent_rec_record: TermType,
     free_vars: &mut HashSet<Ident>,
     fields_free_vars: &mut VecDeque<HashSet<Ident>>,
 ) {
@@ -20,9 +20,9 @@ pub fn collect_free_vars(
         Term::Let(id, _, _, _) | Term::Fun(id, _) => {
             free_vars.remove(id);
         }
-        Term::LetPattern(id, _, _, _) => {
-            // We can ignore the `Destruct`, since all values lhs are in the rhs.
+        Term::LetPattern(id, d, _, _) | Term::FunPattern(id, d, _) => {
             id.as_ref().map(|id| free_vars.remove(id));
+            remove_destruct(d, free_vars);
         }
 
         Term::RecRecord(map, _dyn_fields, _, ffv) => {
@@ -49,14 +49,30 @@ pub fn collect_free_vars(
                 free_vars.remove(id);
             });
         }
-        Term::Switch(..) => {
-            // TODO switch should be revisted.
-        }
-
         _ => {}
     }
 
-    if parent_rec_record {
+    if parent_rec_record == TermType::RecRecord {
         fields_free_vars.push_back(free_vars.clone());
+    }
+}
+
+// Making this recursive should be fine unless we expect massive destructuring patterns.
+fn remove_destruct(d: &Destruct, free_vars: &mut HashSet<Ident>) {
+    match d {
+        Destruct::Record(_, _, id) => {
+            id.as_ref().map(|id| free_vars.remove(id));
+        }
+        Destruct::List(ms) => ms.iter().for_each(|m| match m {
+            Match::Assign(id, _, (m_id, d)) => {
+                free_vars.remove(id);
+                m_id.as_ref().map(|id| free_vars.remove(id));
+                remove_destruct(d, free_vars)
+            }
+            Match::Simple(id, _) => {
+                free_vars.remove(id);
+            }
+        }),
+        Destruct::Empty => {}
     }
 }

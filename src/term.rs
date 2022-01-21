@@ -28,7 +28,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ffi::OsString;
 use std::fmt;
-use std::hash::Hash;
 use std::iter::Extend;
 use std::ops::Deref;
 use std::rc::Rc;
@@ -923,23 +922,10 @@ pub enum TraverseMethod {
     BottomUp,
 }
 
-/// It's like `std::iter::Extend`, but it works for `()`.
-/// The `Extend` unit impl fails because `()` does not implement `IntoIterator`.
-pub trait Append: Default + Clone {
-    fn append(&mut self, lhs: Self);
-}
-
-impl Append for () {
-    fn append(&mut self, _lhs: Self) {}
-}
-
-impl<T: Clone + Hash> Append for HashSet<T>
-where
-    HashSet<T>: Extend<T>,
-{
-    fn append(&mut self, lhs: Self) {
-        self.extend(lhs);
-    }
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum TermType {
+    RecRecord,
+    Any,
 }
 
 /// Wrap [terms](type.Term.html) with positional information.
@@ -991,18 +977,18 @@ impl RichTerm {
     where
         F: FnMut(RichTerm, &mut S) -> Result<RichTerm, E>,
     {
-        self.traverse_with_parent(false, &mut |rt, _, s| f(rt, s), state, method)
+        self.traverse_with_parent(TermType::Any, &mut |rt, _, s| f(rt, s), state, method)
     }
 
     pub fn traverse_with_parent<F, S, E>(
         self,
-        parent: bool,
+        parent: TermType,
         f: &mut F,
         state: &mut S,
         method: TraverseMethod,
     ) -> Result<RichTerm, E>
     where
-        F: FnMut(RichTerm, bool, &mut S) -> Result<RichTerm, E>,
+        F: FnMut(RichTerm, TermType, &mut S) -> Result<RichTerm, E>,
     {
         let rt = match method {
             TraverseMethod::TopDown => f(self, parent, state)?,
@@ -1012,38 +998,38 @@ impl RichTerm {
 
         let result = match_sharedterm! {rt.term, with {
             Term::Fun(id, t) => {
-                let t = t.traverse_with_parent(false, f, state, method)?;
+                let t = t.traverse_with_parent(TermType::Any, f, state, method)?;
                 RichTerm::new(
                     Term::Fun(id, t),
                     pos,
                 )
             },
             Term::FunPattern(id, d, t) => {
-                let t = t.traverse_with_parent(false, f, state, method)?;
+                let t = t.traverse_with_parent(TermType::Any, f, state, method)?;
                 RichTerm::new(
                     Term::FunPattern(id, d, t),
                     pos,
                 )
             },
             Term::Let(id, t1, t2, btype) => {
-                let t1 = t1.traverse_with_parent(false, f, state, method)?;
-                let t2 = t2.traverse_with_parent(false, f, state, method)?;
+                let t1 = t1.traverse_with_parent(TermType::Any, f, state, method)?;
+                let t2 = t2.traverse_with_parent(TermType::Any, f, state, method)?;
                 RichTerm::new(
                     Term::Let(id, t1, t2, btype),
                     pos,
                 )
             },
             Term::LetPattern(id, pat, t1, t2) => {
-                let t1 = t1.traverse_with_parent(false, f, state, method)?;
-                let t2 = t2.traverse_with_parent(false, f, state, method)?;
+                let t1 = t1.traverse_with_parent(TermType::Any, f, state, method)?;
+                let t2 = t2.traverse_with_parent(TermType::Any, f, state, method)?;
                 RichTerm::new(
                     Term::LetPattern(id, pat, t1, t2),
                     pos,
                 )
             },
             Term::App(t1, t2) => {
-                let t1 = t1.traverse_with_parent(false, f, state, method)?;
-                let t2 = t2.traverse_with_parent(false, f, state, method)?;
+                let t1 = t1.traverse_with_parent(TermType::Any, f, state, method)?;
+                let t2 = t2.traverse_with_parent(TermType::Any, f, state, method)?;
                 RichTerm::new(
                     Term::App(t1, t2),
                     pos,
@@ -1055,12 +1041,12 @@ impl RichTerm {
                 let cases_res: Result<HashMap<Ident, RichTerm>, E> = cases
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(id, t)| t.traverse_with_parent(false, f, state, method).map(|t_ok| (id.clone(), t_ok)))
+                    .map(|(id, t)| t.traverse_with_parent(TermType::Any, f, state, method).map(|t_ok| (id.clone(), t_ok)))
                     .collect();
 
-                let default = default.map(|t| t.traverse_with_parent(false, f, state, method)).transpose()?;
+                let default = default.map(|t| t.traverse_with_parent(TermType::Any, f, state, method)).transpose()?;
 
-                let t = t.traverse_with_parent(false, f, state, method)?;
+                let t = t.traverse_with_parent(TermType::Any, f, state, method)?;
 
                 RichTerm::new(
                     Term::Switch(t, cases_res?, default),
@@ -1068,15 +1054,15 @@ impl RichTerm {
                 )
             },
             Term::Op1(op, t) => {
-                let t = t.traverse_with_parent(false, f, state, method)?;
+                let t = t.traverse_with_parent(TermType::Any, f, state, method)?;
                 RichTerm::new(
                     Term::Op1(op, t),
                     pos,
                 )
             },
             Term::Op2(op, t1, t2) => {
-                let t1 = t1.traverse_with_parent(false, f, state, method)?;
-                let t2 = t2.traverse_with_parent(false, f, state, method)?;
+                let t1 = t1.traverse_with_parent(TermType::Any, f, state, method)?;
+                let t2 = t2.traverse_with_parent(TermType::Any, f, state, method)?;
                 RichTerm::new(Term::Op2(op, t1, t2),
                     pos,
                 )
@@ -1084,7 +1070,7 @@ impl RichTerm {
             Term::OpN(op, ts) => {
                 let ts_res: Result<Vec<RichTerm>, E> = ts
                     .into_iter()
-                    .map(|t| t.traverse_with_parent(false, f, state, method))
+                    .map(|t| t.traverse_with_parent(TermType::Any, f, state, method))
                     .collect();
                 RichTerm::new(
                     Term::OpN(op, ts_res?),
@@ -1092,7 +1078,7 @@ impl RichTerm {
                 )
             },
             Term::Wrapped(i, t) => {
-                let t = t.traverse_with_parent(false, f, state, method)?;
+                let t = t.traverse_with_parent(TermType::Any, f, state, method)?;
                 RichTerm::new(
                     Term::Wrapped(i, t),
                     pos,
@@ -1104,7 +1090,7 @@ impl RichTerm {
                 let map_res: Result<HashMap<Ident, RichTerm>, E> = map
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(id, t)| t.traverse_with_parent(false, f, state, method).map(|t_ok| (id.clone(), t_ok)))
+                    .map(|(id, t)| t.traverse_with_parent(TermType::Any, f, state, method).map(|t_ok| (id.clone(), t_ok)))
                     .collect();
                 RichTerm::new(
                     Term::Record(map_res?, attrs),
@@ -1117,14 +1103,14 @@ impl RichTerm {
                 let map_res: Result<HashMap<Ident, RichTerm>, E> = map
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(id, t)| Ok((id, t.traverse_with_parent(true, f, state, method)?)))
+                    .map(|(id, t)| Ok((id, t.traverse_with_parent(TermType::RecRecord, f, state, method)?)))
                     .collect();
                 let dyn_fields_res: Result<Vec<(RichTerm, RichTerm)>, E> = dyn_fields
                     .into_iter()
                     .map(|(id_t, t)| {
                         Ok((
-                            id_t.traverse_with_parent(true, f, state, method)?,
-                            t.traverse_with_parent(true, f, state, method)?,
+                            id_t.traverse_with_parent(TermType::RecRecord, f, state, method)?,
+                            t.traverse_with_parent(TermType::RecRecord, f, state, method)?,
                         ))
                     })
                     .collect();
@@ -1136,7 +1122,7 @@ impl RichTerm {
             Term::List(ts) => {
                 let ts_res: Result<Vec<RichTerm>, E> = ts
                     .into_iter()
-                    .map(|t| t.traverse_with_parent(false, f, state, method))
+                    .map(|t| t.traverse_with_parent(TermType::Any, f, state, method))
                     .collect();
 
                 RichTerm::new(
@@ -1150,7 +1136,7 @@ impl RichTerm {
                     .map(|chunk| match chunk {
                         chunk @ StrChunk::Literal(_) => Ok(chunk),
                         StrChunk::Expr(t, indent) => {
-                            Ok(StrChunk::Expr(t.traverse_with_parent(false, f, state, method)?, indent))
+                            Ok(StrChunk::Expr(t.traverse_with_parent(TermType::Any, f, state, method)?, indent))
                         }
                     })
                     .collect();
@@ -1167,7 +1153,7 @@ impl RichTerm {
                     .map(|ctr| {
                         let types = match ctr.types {
                             Types(AbsType::Flat(t)) => {
-                                Types(AbsType::Flat(t.traverse_with_parent(false, f, state, method)?))
+                                Types(AbsType::Flat(t.traverse_with_parent(TermType::Any, f, state, method)?))
                             }
                             ty => ty,
                         };
@@ -1181,7 +1167,7 @@ impl RichTerm {
                     .map(|ctr| {
                         let types = match ctr.types {
                             Types(AbsType::Flat(t)) => {
-                                Types(AbsType::Flat(t.traverse_with_parent(false, f, state, method)?))
+                                Types(AbsType::Flat(t.traverse_with_parent(TermType::Any, f, state, method)?))
                             }
                             ty => ty,
                         };
@@ -1191,7 +1177,7 @@ impl RichTerm {
 
                 let value = meta
                     .value
-                    .map(|t| t.traverse_with_parent(false, f, state, method))
+                    .map(|t| t.traverse_with_parent(TermType::Any, f, state, method))
                     .map_or(Ok(None), |res| res.map(Some))?;
                     let meta = MetaValue {
                         doc: meta.doc,

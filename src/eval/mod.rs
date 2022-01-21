@@ -532,7 +532,7 @@ where
                             // so function should always succeed
                             let mut thunk = env.get(var_id).unwrap();
                             let mut clos = thunk.borrow_mut();
-                            if let Some(Some(free_vars)) = free_vars.as_ref().map(|fr| fr.get(id)) {
+                            if let Some(free_vars) = free_vars.as_ref().and_then(|fr| fr.get(id)) {
                                 clos.env.extend(
                                     rec_env
                                         .iter_elems()
@@ -578,9 +578,9 @@ where
                                         EvalError::UnboundIdentifier(var_id.clone(), pos)
                                     })?;
                                     let mut clos = thunk.borrow_mut();
-                                    if let Some(Some(free_vars)) = free_vars
+                                    if let Some(free_vars) = free_vars
                                         .as_ref()
-                                        .map(|fr| fr.get(&Ident::from(String::new())))
+                                        .and_then(|fr| fr.get(&Ident::from(String::new())))
                                     {
                                         clos.env.extend(
                                             rec_env
