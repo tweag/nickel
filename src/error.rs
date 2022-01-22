@@ -1200,8 +1200,7 @@ impl ToDiagnostic<FileId> for ParseError {
                 .with_labels(vec![primary(span)]),
             ParseError::InvalidUniRecord(..) => {
                 Diagnostic::error().with_message(format!("invalid record literal"))
-            }
-            // .with_labels(vec![primary(span)]),
+            } // .with_labels(vec![primary(span)]),
         };
 
         vec![diagnostic]
