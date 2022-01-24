@@ -37,6 +37,9 @@ let Assert = fun l x => x || %blame% l in
   {a = {b = 1}} & {a = {c = true}}
     == {a = {b = 1, c = true}},
 
+  {a = `A, b = `B} & {a = `A, c = `C}
+    == {a = `A, b = `B, c = `C},
+
   // merge_complex
   let rec1 = {
       a = false,

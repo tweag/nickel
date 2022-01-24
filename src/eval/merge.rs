@@ -199,6 +199,26 @@ pub fn merge(
                 ))
             }
         }
+        (Term::Enum(i1), Term::Enum(i2)) => {
+            if i1 == i2 {
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Enum(i1),
+                    pos_op.into_inherited(),
+                )))
+            } else {
+                Err(EvalError::MergeIncompatibleArgs(
+                    RichTerm {
+                        term: SharedTerm::new(Term::Enum(i1)),
+                        pos: pos1,
+                    },
+                    RichTerm {
+                        term: SharedTerm::new(Term::Enum(i2)),
+                        pos: pos2,
+                    },
+                    pos_op,
+                ))
+            }
+        }
         (Term::MetaValue(meta1), Term::MetaValue(meta2)) => {
             // For now, we blindly closurize things and copy environments in this section. A
             // careful analysis would make it possible to spare a few closurize operations and more
