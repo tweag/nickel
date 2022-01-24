@@ -82,19 +82,34 @@ let Assert = fun l x => x || %blame% l in
         else g x,
       g = fun y => f (y + (-1))
     }.f 10 in
-    with_res "done" == "done",
+  with_res "done" == "done",
 
-    // piecewise signatures
-    {
-        foo : Num,
-        bar = 3,
-        foo = 5
-    }.foo == 5,
-    {
-        foo : Num,
-        foo = 1,
-        bar : Num = foo,
-    }.bar == 1,
-    let {foo : Num} = {foo = 1} in foo == 1,
+  // piecewise signatures
+  {
+      foo : Num,
+      bar = 3,
+      foo = 5
+  }.foo == 5,
+  {
+      foo : Num,
+      foo = 1,
+      bar : Num = foo,
+  }.bar == 1,
+  let {foo : Num} = {foo = 1} in foo == 1,
+
+  // recursive overriding with common fields
+  // regression tests for [#579](https://github.com/tweag/nickel/issues/579)
+  // and [#583](https://github.com/tweag/nickel/issues/583)
+  ({foo.bar = foo.baz, foo.baz | default = 2} & {foo.baz = 1}).foo.bar == 1,
+  let Name = fun b label name => if b then "hijack" else contracts.blame label in
+  let Config = {
+      b | Bool,
+      name | #(Name b),
+  } in
+  let data | #Config = {
+      b = true,
+      name = "name",
+  } in
+  data.name == "hijack",
 ]
 |> lists.foldl (fun x y => (x | #Assert) && y) true
