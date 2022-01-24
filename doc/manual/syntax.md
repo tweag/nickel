@@ -221,12 +221,6 @@ true
 3
 ```
 
-The identifier in the `let` part can be typed (more about typing in the dedicated document):
-```
-> let a : Num = 6 in 6 * 7
-42
-```
-
 ## Functions
 A function is declared using the `fun` keyword, then arguments separated by spaces, and finally an arrow `=>` to add the body of the function.
 To call a function, just add the arguments after it separated with spaces.
@@ -246,3 +240,21 @@ let add = fun a b => a + b in add 1 2
 3
 ```
 
+## Typing
+To give a type to a value, we write it with `< value > : < type >`.
+More information on typing in the relevant document.
+
+Examples:
+```
+5 : Num
+"Hello" : Str
+
+(fun a b => a + b) : Num -> Num -> Num
+let add : Num -> Num -> Num = fun a b => a + b
+
+{a: Num = 1, b: Bool = true, c : List Num = [ 1 ]}
+let r : {a : Num, b : Bool, c : List Num} = { a = 1, b = true, c = [ 1 ] }
+
+{ a = 1, b = 2 } : { _ : Num }
+let r : { _ : Num } = { a = 1, b = 2 }
+```
