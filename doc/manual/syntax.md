@@ -108,7 +108,7 @@ error: Type error
 
 ## Equality Operators
 
-We have seen that the operators `==` and `!=` works for comparing numbers, but they can actually compare any values together. Two values are equal if they have the same _type_ and the same _value_.
+We have seen that the operators `==` and `!=` works for comparing numbers, but they can actually compare any values together. To be equal, except for the obvious equality on values, elements must have the same type.
 
 Examples:
 ```
