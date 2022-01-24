@@ -1,4 +1,4 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::HashSet;
 
 use crate::destruct::{Destruct, Match};
 use crate::term::{SharedTerm, TermType};
@@ -7,15 +7,21 @@ use crate::{
     term::{RichTerm, Term},
 };
 
+// `collect_free_vars` is transformation pass that caches a terms free variables.
+// This is used for optimizing memory consumption
+//
+// `free_vars` is the set of free variables in this term.
+//
+// `fields_free_vars` is a mapping between position of a field in a RecRecord`,
+//  and the free variables used in the body of the field.
 pub fn collect_free_vars(
     rt: &mut RichTerm,
     parent_rec_record: TermType,
     free_vars: &mut HashSet<Ident>,
-    fields_free_vars: &mut VecDeque<HashSet<Ident>>,
+    fields_free_vars: &mut Vec<HashSet<Ident>>,
 ) {
-
     if parent_rec_record == TermType::RecRecord {
-        fields_free_vars.push_back(free_vars.clone());
+        fields_free_vars.push(free_vars.clone());
     }
 
     match SharedTerm::make_mut(&mut rt.term) {
@@ -32,7 +38,7 @@ pub fn collect_free_vars(
 
         Term::RecRecord(map, dyn_fields, _, ffv) => {
             for f in dyn_fields.iter_mut() {
-                f.2 = Some(fields_free_vars.pop_back().unwrap());
+                f.2 = Some(fields_free_vars.pop().unwrap());
             }
 
             *ffv = Some(
