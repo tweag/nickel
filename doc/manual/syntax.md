@@ -154,7 +154,7 @@ Lists can be concatenated with the operator `@`:
 ### Record
 Records are key-value storage, or in Nickel terms, field-value storage. They are delimited by `{` and `}`, and elements are separated by `,`.
 Field-value elements are noted as `field = value`.
-The fields can be either identifiers, or strings. Values can be of any type.
+The fields are strings, but can be noted as identifiers if they respect identifiers syntax (internally, they will be stored as strings). Values can be of any type.
 Elements inside a record are unordered.
 
 Examples:
@@ -175,6 +175,18 @@ error: Missing field
 
 > { "1" = "one" }."1"
 "one"
+```
+
+It is possible to write records of records via the *pieces syntax*, where we separate fields by dots:
+```
+> { a = { b = 1 } }
+{ a = { b = 1 } }
+ 
+> { a.b = 1 }
+{ a = { b = 1 } }
+
+> { a.b = 1, a.c = 2, b = 3}
+{ a = { b = 1, c = 2 }, b = 3 }
 ```
 
 ## Statements
