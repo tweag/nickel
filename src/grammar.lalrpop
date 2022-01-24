@@ -1,38 +1,47 @@
-use std::collections::HashMap;
-use std::ffi::OsString;
-use std::convert::TryFrom;
+use std::{
+    collections::HashMap,
+    ffi::OsString,
+    convert::TryFrom,
+};
 
 use codespan::FileId;
-
 use lalrpop_util::ErrorRecovery;
 
-use super::ExtendedTerm;
-use super::utils::*;
-use super::lexer::{Token, NormalToken, StringToken, MultiStringToken};
-use super::uniterm::UniRecord;
+use super::{
+    ExtendedTerm,
+    utils::*,
+    lexer::{Token, NormalToken, StringToken, MultiStringToken},
+    error::ParseError,
+    uniterm::UniRecord,
+};
 
-use crate::{mk_app, mk_opn, mk_fun};
-use crate::identifier::Ident;
-use crate::destruct::{Match, LastMatch, Destruct};
-use crate::parser::error::ParseError;
-use crate::term::{BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
-    MergePriority, Contract, NAryOp, RecordAttrs, SharedTerm};
-use crate::term::make as mk_term;
-use crate::types::{Types, AbsType};
+use crate::{
+    mk_app,
+    mk_opn,
+    mk_fun,
+    identifier::Ident,
+    destruct::{Match, LastMatch, Destruct},
+    term::{
+        BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
+        MergePriority, Contract, NAryOp, RecordAttrs, SharedTerm,
+        make as mk_term},
+    types::{Types, AbsType},
+    position::TermPos,
+};
 
 grammar<'input, 'err>(src_id: FileId, errors: &'err mut Vec<ErrorRecovery<usize, Token<'input>, ParseError>>);
 
-WithPos<Rule>: RichTerm = <l: @L> <t: Rule> <r: @R> => t.with_pos(mk_pos(src_id, l, r));
+WithPos<Rule>: Rule = <l: @L> <t: Rule> <r: @R> => t.with_pos(mk_pos(src_id, l, r));
 CheckUnbound<Rule>: Types = <l: @L> <t: Rule> <r: @R> =>?
     check_unbound(&t, mk_span(src_id, l, r))
         .map_err(|e| lalrpop_util::ParseError::User{error: e})
         .and(Ok(t));
 
-AsTerm<Rule>: RichTerm = <l: @L> <ut: Rule> <r: @R> =>?
+AsTerm<Rule>: RichTerm = <ut: WithPos<Rule>> =>?
     RichTerm::try_from(ut)
         .map_err(|e| lalrpop_util::ParseError::User{error: e});
 
-AsTypes<Rule>: Types = <l: @L> <ut: Rule> <r: @R> =>?
+AsTypes<Rule>: Types = <ut: WithPos<Rule>> =>?
     Types::try_from(ut)
         .map_err(|e| lalrpop_util::ParseError::User{error: e});
 
@@ -188,7 +197,7 @@ RowTail: Types = {
 UniRecord: UniRecord = {
    "{" <fields: (<RecordField> ",")*>
        <last: RecordLastField?>
-       <tail: (";" RowTail)?>
+       <l: @L> <tail: (";" RowTail)?> <r: @R>
    "}" => {
         let (last_field, attrs) = match last {
             Some(RecordLastField::Field(f)) => (Some(f), Default::default()),
@@ -198,7 +207,12 @@ UniRecord: UniRecord = {
         };
 
         let fields : Vec<_> = fields.into_iter().chain(last_field.into_iter()).collect();
-        UniRecord { fields, tail: tail.map(|t| t.1), attrs }
+        UniRecord {
+            fields,
+            tail: tail.map(|t| (t.1, mk_pos(src_id, l, r))),
+            attrs,
+            pos: TermPos::None
+        }
     },
 };
 

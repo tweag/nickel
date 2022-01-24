@@ -291,8 +291,13 @@ pub enum ParseError {
     ),
     /// Unbound type variable
     UnboundTypeVariables(Vec<Ident>, RawSpan),
-    /// TODO
-    InvalidUniRecord(),
+    /// Illegal record literal in the uniterm syntax (see RFC002). In practice, this is a record
+    /// mixing a tail and non-type constructs.
+    InvalidUniRecord(
+        RawSpan, /* non-type construct position */
+        RawSpan, /* tail position */
+        RawSpan, /* whole record position */
+    ),
 }
 
 /// An error occurring during the resolution of an import.
@@ -446,7 +451,9 @@ impl ParseError {
                 InternalParseError::UnboundTypeVariables(idents, span) => {
                     ParseError::UnboundTypeVariables(idents, span)
                 }
-                InternalParseError::InvalidUniRecord(..) => ParseError::InvalidUniRecord(),
+                InternalParseError::InvalidUniRecord(illegal_pos, tail_pos, pos) => {
+                    ParseError::InvalidUniRecord(illegal_pos, tail_pos, pos)
+                }
             },
         }
     }
@@ -1198,9 +1205,13 @@ impl ToDiagnostic<FileId> for ParseError {
                         .join(",")
                 ))
                 .with_labels(vec![primary(span)]),
-            ParseError::InvalidUniRecord(..) => {
-                Diagnostic::error().with_message(format!("invalid record literal"))
-            } // .with_labels(vec![primary(span)]),
+            ParseError::InvalidUniRecord(illegal_span, tail_span, span) => Diagnostic::error()
+                .with_message(format!("invalid record literal"))
+                .with_labels(vec![
+                    primary(span),
+                    secondary(illegal_span).with_message("can't use non-type construct"),
+                    secondary(tail_span).with_message("in presence of a tail"),
+                ]),
         };
 
         vec![diagnostic]

@@ -1,5 +1,4 @@
-use crate::identifier::Ident;
-use crate::position::RawSpan;
+use crate::{identifier::Ident, position::RawSpan};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum LexicalError {
@@ -19,6 +18,11 @@ pub enum ParseError {
     Lexical(LexicalError),
     /// Unbound type variable(s)
     UnboundTypeVariables(Vec<Ident>, RawSpan),
-    /// Invalid unirecord.
-    InvalidUniRecord(),
+    /// Illegal record literal in the uniterm syntax (see RFC002). In practice, this is a record
+    /// mixing a tail and non-type constructs.
+    InvalidUniRecord(
+        RawSpan, /* non-type construct position */
+        RawSpan, /* tail position */
+        RawSpan, /* whole record position */
+    ),
 }
