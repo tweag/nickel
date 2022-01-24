@@ -13,6 +13,11 @@ pub fn collect_free_vars(
     free_vars: &mut HashSet<Ident>,
     fields_free_vars: &mut VecDeque<HashSet<Ident>>,
 ) {
+
+    if parent_rec_record == TermType::RecRecord {
+        fields_free_vars.push_back(free_vars.clone());
+    }
+
     match SharedTerm::make_mut(&mut rt.term) {
         Term::Var(id) => {
             free_vars.insert(id.clone());
@@ -45,10 +50,6 @@ pub fn collect_free_vars(
             });
         }
         _ => {}
-    }
-
-    if parent_rec_record == TermType::RecRecord {
-        fields_free_vars.push_back(free_vars.clone());
     }
 }
 
