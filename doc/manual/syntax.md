@@ -258,3 +258,55 @@ let r : {a : Num, b : Bool, c : List Num} = { a = 1, b = true, c = [ 1 ] }
 { a = 1, b = 2 } : { _ : Num }
 let r : { _ : Num } = { a = 1, b = 2 }
 ```
+
+## Metadata
+Metadata can be used to add contracts (more information in relevant documentation), documentation or default values.
+It is introduced with a `|`. Multiple metadata can be chained.
+
+For adding a regular type as contract, the syntax is `| < type >`. For a defined contract, we use the `| #< defined type >`.
+
+Examples:
+```
+> 5 | Num
+5
+
+> 5 | Bool
+error: Blame error: contract broken by a value.
+
+> let SmallNum = contracts.from_predicate (fun x => x < 5) in 1 | #SmallNum
+1
+
+> let SmallNum = contracts.from_predicate (fun x => x < 5) in 10 | #SmallNum
+error: Blame error: contract broken by a value.
+
+> let SmallNum = contracts.from_predicate (fun x => x < 5) in
+    let NotTooSmallNum = contracts.from_predicate (fun x => x >= 2) in
+        3 | Num | #SmallNum | #NotTooSmallNum
+3
+```
+
+Adding documentation can be done with `| doc < a string >`.  
+Examples:
+```
+> 5 | doc "The number five"
+5
+
+> true | Bool | doc m#"
+    If something is true,
+    it is based on facts rather than being invented or imagined,
+    and is accurate and reliable.
+    (Collins dictionary)
+    "#m
+true
+```
+
+Default values are used for records contracts, to give a default values to fields.
+It is noted as `| default = < default value >`.  
+Examples:
+```
+> let Ais2ByDefault = { a | default = 2 } in {} | #Ais2ByDefault
+{ a = 2 }
+
+> let Ais2ByDefault = { a | default = 2 } in { a = 1 } | #Ais2ByDefault
+{ a = 1 }
+```
