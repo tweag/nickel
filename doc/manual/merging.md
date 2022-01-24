@@ -15,17 +15,78 @@ in
 server & firewall
 ```
 
-In the simple case where records `x` and `y` have no common fields, `x&y` is the union of `x` and `y`.
+In the simple case where records `x` and `y` have no common fields, `x&y` is the
+union of `x` and `y`.
 
-If you have to merge records with fields in commons, you will use two new concepts:
+If you have to merge records with fields in commons, you will have the following cases:
 
-- default annotation,
-- overwriting,
+- Merging of fields beeing themself records.
+- Merging with records containing fields with merely contracts (without value)
+- Merging, with one side annotated `default`
+
+## Recursivity of the merge
+
+When merging, in the case of intersection of fields, Nickel will try to
+recursively merge them. That mean: if you have tow records, `x` and `y`, both
+having a field `a`; if `a` is a record, the merge will be a record `z` with a
+field a beeing the merge between `x.a` and `y.a` or `z = {a = x.a & y.a}.
+
+Example:
+
+```text
+// file firewall/udp.ncl
+{
+    open_ports.udp = [12345,12346], // same as open_ports = {udp = [...]},
+}
+
+// file firewall/tcp.ncl
+{
+    open_ports.tcp = [23, 80, 443], // same as open_ports = {tcp = [...]},
+}
+
+// firewall.ncl
+let
+udp = import "firewall/udp.ncl",
+tcp = import "firewall/tcp.ncl",
+in
+udp & tcp
+```
+
+In the above example, we merge two records, both with a field `open_ports`. The
+thing is that, in  both sides, this is itself a record. So, the resulting merge
+will have the form:
+
+```text
+{
+    open_ports = udp.open_ports & tcp.open_ports, // => {udp = [...], tcp = [...]}
+}
+```
+
+## Records as mixins
+
+To be merged with others, records don't have to have a value attached to every fields.
+A record with only contracts fields is perfectly valid also.
+
+This property can generaly be used to implement mixins like design.
+
+```
+let Host = {
+    host_name | Str,
+    public_addr | Str,
+    // return the record depending on host_name and public_addr
+    dns_rec: Str -> Str = fun rec_type => rec_type ++ ": " ++ public_addr ++ ", " ++ host_name,
+} in
+let exemple_dot_com = {
+    host_name = "exemple.com",
+    public_addr = "0.0.0.0",
+} & Host in
+exemple_dot_com.dns_rec "A"
+```
 
 ## Default annotation
 
-To be able to merge records with commons fields, at least one side field has to
-be annotated as default. This means, if you have two records:
+If you need the same behaviour but with the field defaulting to a specified
+value if not set during any merge, you will probably try something like:
 
 ```text
 let left = {
@@ -41,8 +102,9 @@ left & right
 ```
 
 Like it is, it's impossible to merge and will throw an unmergeable terms error.
-Here, the issue is on the field `firewall.enabled`. What you have to do to fix it
-is to annotate this field as default in one of the records:
+Here, the issue is on the field `firewall.enabled`. It's undecidable which value
+to keep. Also instead of priorising one to the other, Nickel prefer to be
+explicit and provide the `default` annotation:
 
 ```text
 let left = {
@@ -59,7 +121,8 @@ left & right
 ```
 
 The default annotation is generaly to give a default value to a record field.
-So, this value can be changed afterward. Saying it in a more abstract way,
+So, this value can be changed afterward. Saying it in an different way than
+the explaination maid in the current part introduction,
 default indicate a lower priority to a field in case of merging. Saying that,
 If both sides have been annotated `default`, the merge is not possible.
 
@@ -92,13 +155,13 @@ depend on.
 
 ## A word about contracts
 
-To simplify, when merging two records, all contracts of both left and right one
+When merging two records, all contracts of both left and right one
 are applied to the resulting one.
 For instance:
 
 ```text
-
-let Port | doc "A contract for a port number" = contracts.from_predicate (fun value =>
+let Port | doc "A contract for a port number"
+  = contracts.from_predicate (fun value =>
   builtins.is_num value &&
   value % 1 == 0 &&
   value >= 0 &&
