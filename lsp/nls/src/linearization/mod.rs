@@ -46,7 +46,8 @@ pub struct LinearizationItem<S: ResolutionState> {
 /// resolution
 pub struct AnalysisHost {
     env: Environment,
-    scope: Vec<ScopeId>,
+    scope: Scope,
+    next_scope_id: ScopeId,
     meta: Option<MetaValue>,
     /// Indexing a record will store a reference to the record as
     /// well as its fields.
@@ -70,7 +71,8 @@ impl AnalysisHost {
     pub fn new() -> Self {
         AnalysisHost {
             env: Environment::new(),
-            scope: Vec::new(),
+            scope: Default::default(),
+            next_scope_id: Default::default(),
             meta: None,
             record_fields: None,
             access: None,
@@ -365,13 +367,16 @@ impl Linearizer for AnalysisHost {
         Linearization::new(Completed::new(lin_, scope, id_mapping))
     }
 
-    fn scope(&mut self, scope_id: ScopeId) -> Self {
+    fn scope(&mut self) -> Self {
         let mut scope = self.scope.clone();
+        let (scope_id, next_scope_id) = self.next_scope_id.next();
+
         scope.push(scope_id);
 
         AnalysisHost {
             scope,
             env: self.env.clone(),
+            next_scope_id,
             /// when opening a new scope `meta` is assumed to be `None` as meta data
             /// is immediately followed by a term without opening a scope
             meta: None,
