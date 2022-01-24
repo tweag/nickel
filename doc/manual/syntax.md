@@ -141,9 +141,9 @@ Lists can be concatenated with the operator `@`:
 ```
 
 ### Record
-Records are key-value storage. They are delimited by `{` and `}`, and elements are separated by `,`.
-Key-value elements are noted as `key = value`.
-The keys can be either identifiers, or strings. Values can be of any type.
+Records are key-value storage, or in Nickel terms, field-value storage. They are delimited by `{` and `}`, and elements are separated by `,`.
+Field-value elements are noted as `field = value`.
+The fields can be either identifiers, or strings. Values can be of any type.
 Elements inside a record are unordered.
 
 Examples:
@@ -152,15 +152,6 @@ Examples:
 {a = 3}
 {my_id_n5 = "my id number 5", my_id_n4 = }
 {"5" = 5, six = 6}
-```
-
-A record cannot contain the same key twice, or the values must be identical (see section about _merge_).
-```
-> {a = 3, a = 3}
-{ a = 3 }
-
-> {a = 3, "a" = 3}
-{ a = 3 }
 ```
 
 Accessing a record field can be done using the `.` operator :
