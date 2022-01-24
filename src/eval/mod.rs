@@ -101,6 +101,7 @@ use crate::{
 };
 
 pub mod callstack;
+pub mod fixpoint;
 pub mod lazy;
 pub mod merge;
 pub mod operation;
@@ -498,63 +499,20 @@ where
                 }
             }
             Term::RecRecord(ts, dyn_fields, attrs) => {
-                // Thanks to the share normal form transformation, the content is either a constant or a
-                // variable.
-                let rec_env = ts.iter().try_fold::<_, _, Result<Environment, EvalError>>(
-                    Environment::new(),
-                    |mut rec_env, (id, rt)| match rt.as_ref() {
-                        Term::Var(ref var_id) => {
-                            let thunk = env.get(var_id).ok_or_else(|| {
-                                EvalError::UnboundIdentifier(var_id.clone(), rt.pos)
-                            })?;
-                            rec_env.insert(id.clone(), thunk);
-                            Ok(rec_env)
-                        }
-                        _ => {
-                            // If we are in this branch, the term must be a constant after the
-                            // share normal form transformation, hence it should not need an
-                            // environment, which is why it is dropped.
-                            let closure = Closure {
-                                body: rt.clone(),
-                                env: Environment::new(),
-                            };
-                            rec_env.insert(id.clone(), Thunk::new(closure, IdentKind::Let));
-                            Ok(rec_env)
-                        }
-                    },
-                )?;
+                let rec_env = fixpoint::rec_env(ts.iter(), &env)?;
 
-                let new_ts = ts.into_iter().map(|(id, rt)| {
-                    let pos = rt.pos;
-                    match &*rt.term {
-                        Term::Var(var_id) => {
-                            // We already checked for unbound identifier in the previous fold,
-                            // so function should always succeed
-                            let mut thunk = env.get(var_id).unwrap();
-                            thunk.borrow_mut().env.extend(
-                                rec_env
-                                    .iter_elems()
-                                    .map(|(id, thunk)| (id.clone(), thunk.clone())),
-                            );
-                            (
-                                id.clone(),
-                                RichTerm {
-                                    term: SharedTerm::new(Term::Var(var_id.clone())),
-                                    pos,
-                                },
-                            )
-                        }
-                        _ => (id.clone(), rt.clone()),
-                    }
-                });
+                ts.iter()
+                    .try_for_each(|(_, rt)| fixpoint::patch_field(rt, &rec_env, &env))?;
 
-                let static_part = RichTerm::new(Term::Record(new_ts.collect(), attrs.clone()), pos);
+                //TODO: We should probably avoid cloning the `ts` hashmap, using `match_sharedterm`
+                //instead of `match` in the main eval loop, if possible
+                let static_part = RichTerm::new(Term::Record(ts.clone(), attrs.clone()), pos);
 
                 // Transform the static part `{stat1 = val1, ..., statn = valn}` and the dynamic
                 // part `{exp1 = dyn_val1, ..., expm = dyn_valm}` to a sequence of extensions
                 // `{stat1 = val1, ..., statn = valn} $[ exp1 = dyn_val1] ... $[ expn = dyn_valn ]`
-                // The `dyn_val` are given access to the recursive environment, but not the dynamic
-                // field names.
+                // The `dyn_val` are given access to the recursive environment, but the recursive
+                // environment only contains the static fields, and not the dynamic fields.
                 let extended = dyn_fields
                     .into_iter()
                     .try_fold::<_, _, Result<RichTerm, EvalError>>(
@@ -562,29 +520,15 @@ where
                         |acc, (id_t, t)| {
                             let id_t = id_t.clone();
                             let pos = t.pos;
-                            match &*t.term {
-                                Term::Var(var_id) => {
-                                    let mut thunk = env.get(var_id).ok_or_else(|| {
-                                        EvalError::UnboundIdentifier(var_id.clone(), pos)
-                                    })?;
 
-                                    thunk.borrow_mut().env.extend(
-                                        rec_env
-                                            .iter_elems()
-                                            .map(|(id, thunk)| (id.clone(), thunk.clone())),
-                                    );
-                                    Ok(Term::App(
-                                        mk_term::op2(BinaryOp::DynExtend(), id_t, acc),
-                                        mk_term::var(var_id.clone()).with_pos(pos),
-                                    )
-                                    .into())
-                                }
-                                _ => Ok(Term::App(
+                            fixpoint::patch_field(t, &rec_env, &env)?;
+                            Ok(RichTerm::new(
+                                Term::App(
                                     mk_term::op2(BinaryOp::DynExtend(), id_t, acc),
                                     t.clone(),
-                                )
-                                .into()),
-                            }
+                                ),
+                                pos.into_inherited(),
+                            ))
                         },
                     )?;
 
