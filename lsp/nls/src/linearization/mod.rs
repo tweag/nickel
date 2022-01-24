@@ -370,13 +370,14 @@ impl Linearizer for AnalysisHost {
     fn scope(&mut self) -> Self {
         let mut scope = self.scope.clone();
         let (scope_id, next_scope_id) = self.next_scope_id.next();
+        self.next_scope_id = next_scope_id;
 
         scope.push(scope_id);
 
         AnalysisHost {
             scope,
             env: self.env.clone(),
-            next_scope_id,
+            next_scope_id: ScopeId::default(),
             /// when opening a new scope `meta` is assumed to be `None` as meta data
             /// is immediately followed by a term without opening a scope
             meta: None,
