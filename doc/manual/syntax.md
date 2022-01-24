@@ -81,6 +81,8 @@ Strings are enclosed by `" ... "` for a single line string or by `m#" ... "#m` f
 They can be concatenated with the operator `++`.
 Strings must be UTF-8 valid.
 
+String interpolation exists in Nickel, via the notation `"#{ < expression that evaluates to a string > }"`.
+
 Examples:
 ```
 > "Hello, World!"
@@ -93,6 +95,15 @@ Yes it is, indeed it is"
 
 > "Hello" ++ "World"
 "HelloWorld"
+
+> let h = "Hello" in "#{h} World"
+"Hello World"
+
+> let n = 5 in "The number #{n}."
+error: Type error
+
+> let n = 5 in "The number #{strings.from_num n}."
+"The number 5."
 ```
 
 ## Equality Operators
