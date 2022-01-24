@@ -18,9 +18,9 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a RichTerm)>>(
                 Ok((id.clone(), thunk))
             }
             _ => {
-                // If we are in this branch, the term must be a constant after the
-                // share normal form transformation, hence it should not need an
-                // environment, which is why it is dropped.
+                // If we are in this branch, `rt` must be a constant after the share normal form
+                // transformation, hence it should not need an environment, which is why it is
+                // dropped.
                 let closure = Closure {
                     body: rt.clone(),
                     env: Environment::new(),
@@ -31,7 +31,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a RichTerm)>>(
         .collect()
 }
 
-/// Patch the environment of the content of a recursive record field by extending it with a
+/// Update the environment of the content of a recursive record field by extending it with a
 /// recursive environment.
 pub fn patch_field(
     rt: &RichTerm,

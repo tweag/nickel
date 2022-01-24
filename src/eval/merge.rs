@@ -336,8 +336,8 @@ pub fn merge(
             rev_thunks(m2.values_mut(), &mut env2);
 
             // We save the original fields before they are potentially merged in order to patch
-            // their environment in the final record. Note that we are only cloning shared terms
-            // (`Rc`s) here.
+            // their environment in the final record (cf `fixpoint::patch_fields`). Note that we
+            // are only cloning shared terms (`Rc`s) here.
             let m1_values: Vec<_> = m1.values().cloned().collect();
             let m2_values: Vec<_> = m2.values().cloned().collect();
 
