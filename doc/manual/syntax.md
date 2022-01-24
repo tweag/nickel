@@ -156,6 +156,7 @@ Records are key-value storage, or in Nickel terms, field-value storage. They are
 Field-value elements are noted as `field = value`.
 The fields are strings, but can be noted as identifiers if they respect identifiers syntax (internally, they will be stored as strings). Values can be of any type.
 Elements inside a record are unordered.
+Two records can be _merged_ together using the operator `&`. The reader can find more information about merging in the relevant documentation.
 
 Examples:
 ```
