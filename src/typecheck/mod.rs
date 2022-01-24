@@ -322,8 +322,9 @@ fn type_check_<L: Linearizer>(
             unify(state, strict, ty, mk_typewrapper::str())
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
-            chunks.iter().enumerate().try_for_each(
-                |(choice, chunk)| -> Result<(), TypecheckError> {
+            chunks
+                .iter()
+                .try_for_each(|chunk| -> Result<(), TypecheckError> {
                     match chunk {
                         StrChunk::Literal(_) => Ok(()),
                         StrChunk::Expr(t, _) => type_check_(
@@ -336,8 +337,7 @@ fn type_check_<L: Linearizer>(
                             mk_typewrapper::str(),
                         ),
                     }
-                },
-            )
+                })
         }
         Term::Fun(x, t) => {
             let src = state.table.fresh_unif_var();
@@ -375,8 +375,7 @@ fn type_check_<L: Linearizer>(
 
             terms
                 .iter()
-                .enumerate()
-                .try_for_each(|(choice, t)| -> Result<(), TypecheckError> {
+                .try_for_each(|t| -> Result<(), TypecheckError> {
                     type_check_(
                         state,
                         envs.clone(),
@@ -441,7 +440,7 @@ fn type_check_<L: Linearizer>(
             // taking ANY enum, since it's more permissive and there's no loss of information
             let res = state.table.fresh_unif_var();
 
-            for (choice, case) in cases.values().enumerate() {
+            for case in cases.values() {
                 type_check_(
                     state,
                     envs.clone(),
@@ -501,8 +500,9 @@ fn type_check_<L: Linearizer>(
                 linearizer.retype_ident(lin, id, ty_dyn.clone())
             }
 
-            stat_map.iter().enumerate().try_for_each(
-                |(choice, (_, t))| -> Result<(), TypecheckError> {
+            stat_map
+                .iter()
+                .try_for_each(|(_, t)| -> Result<(), TypecheckError> {
                     type_check_(
                         state,
                         envs.clone(),
@@ -512,8 +512,7 @@ fn type_check_<L: Linearizer>(
                         t,
                         ty_dyn.clone(),
                     )
-                },
-            )?;
+                })?;
 
             unify(state, strict, ty, mk_typewrapper::dyn_record(ty_dyn))
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
@@ -538,8 +537,9 @@ fn type_check_<L: Linearizer>(
 
             if let TypeWrapper::Concrete(AbsType::DynRecord(rec_ty)) = root_ty {
                 // Checking for a dynamic record
-                stat_map.iter().enumerate().try_for_each(
-                    |(choice, (_, t))| -> Result<(), TypecheckError> {
+                stat_map
+                    .iter()
+                    .try_for_each(|(_, t)| -> Result<(), TypecheckError> {
                         type_check_(
                             state,
                             envs.clone(),
@@ -549,12 +549,11 @@ fn type_check_<L: Linearizer>(
                             t,
                             (*rec_ty).clone(),
                         )
-                    },
-                )
+                    })
             } else {
-                let row = stat_map.iter().enumerate().try_fold(
+                let row = stat_map.iter().try_fold(
                     mk_tyw_row!(),
-                    |acc, (choice, (id, field))| -> Result<TypeWrapper, TypecheckError> {
+                    |acc, (id, field)| -> Result<TypeWrapper, TypecheckError> {
                         // In the case of a recursive record, new types (either type variables or
                         // annotations) have already be determined and put in the typing
                         // environment, and we need to use the same.
@@ -623,9 +622,8 @@ fn type_check_<L: Linearizer>(
 
             tys_op
                 .into_iter()
-                .enumerate()
                 .zip(args.iter())
-                .try_for_each(|((choice, ty_t), t)| {
+                .try_for_each(|(ty_t, t)| {
                     type_check_(
                         state,
                         envs.clone(),
