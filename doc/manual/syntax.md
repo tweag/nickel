@@ -31,11 +31,11 @@ There are a some predefined operators for working with numbers :
 | /        | The division operator                                | `1 / 2 = 0.5` |
 | %        | The modulo operator (returns the *signed* remainder) | `5 % 3 = 2`   |
 
-> **Remark about the `-` operator:***  
-> Since `-` can be used inside of an identifier, the subtraction operators **needs** to be surrounded by spaces,
+> **Remark about the `-` operator:**  
+> Since `-` can be used inside an identifier, the subtraction operators **needs** to be surrounded by spaces,
 > write `1 - 1`, not `1-1`.
 
-Numbers are also comparable, using the dedicated comparison operators, returning a boolean value :
+Numbers can be compared using the following operators :
 | Operator | Description      | Example   |
 |:--------:|:----------------:|:---------:|
 | ==       | Equal            | `5 == 5`  |
@@ -45,10 +45,10 @@ Numbers are also comparable, using the dedicated comparison operators, returning
 | >=       | Greater or Equal | `1 >= 1`  |
 | <=       | Smaller or Equal | `-1 <= 6` |
 
-All those operators have precedence with each others. In the table below, you will find the operators sorted from highest to lowest precedence:
+In the table below, you will find the operators sorted from highest to lowest precedence:
 |       Operators      | Associativity | Remark                                        |
 |:--------------------:|:-------------:|-----------------------------------------------|
-|       `( ... )`      |               | parentheses always have to highest precedence |
+|       `( ... )`      |               | parentheses always have the highest precedence |
 |          `-`         | right-to-left | unary negation (as in `-1`)                   |
 |     `*`, `/`, `%`    | left-to-right |                                               |
 |       `+`, `-`       | left-to-right | binary addition and subtraction               |
@@ -59,8 +59,8 @@ All those operators have precedence with each others. In the table below, you wi
 
 The boolean values in Nickel are denoted `true` and `false`.
 
-To work with boolean values, we have the classic logical operators *AND* (&&), *OR* (||) and *NOT* (!).
-The _AND_ and _OR_ operators are lazy in the evaluation of the second argument. The truth table below gives the results for using these operators:
+Nickel features the classical boolean operators *AND* (&&), *OR* (||) and *NOT* (!).
+The _AND_ and _OR_ operators are lazy in the evaluation of the second argument: for example, in `exp1 && exp2`, `exp2` is only evaluated if `exp1` evaluates to `false`. The truth table of these operators is given below:
 
 Examples:
 ```
@@ -81,7 +81,7 @@ Strings are enclosed by `" ... "` for a single line string or by `m#" ... "#m` f
 They can be concatenated with the operator `++`.
 Strings must be UTF-8 valid.
 
-String interpolation exists in Nickel, via the notation `"#{ < expression that evaluates to a string > }"`.
+The string interpolation syntax is `"#{ < expression that evaluates to a string > }"`.
 
 Examples:
 ```
@@ -178,7 +178,7 @@ error: Missing field
 "one"
 ```
 
-It is possible to write records of records via the *pieces syntax*, where we separate fields by dots:
+It is possible to write records of records via the *piecewise syntax*, where we separate fields by dots:
 ```
 > { a = { b = 1 } }
 { a = { b = 1 } }
@@ -261,10 +261,9 @@ let r : { _ : Num } = { a = 1, b = 2 }
 ```
 
 ## Metadata
-Metadata can be used to add contracts (more information in relevant documentation), documentation or default values.
-It is introduced with a `|`. Multiple metadata can be chained.
+Metadata are used to attach contracts (more information in relevant documentation), documentation or priority to values.
+A metadata is introduced with the syntax `<value> | <metadata>`. Multiple metadata can be chained.
 
-For adding a regular type as contract, the syntax is `| < type >`. For a defined contract, we use the `| #< defined type >`.
 
 Examples:
 ```
@@ -286,7 +285,7 @@ error: Blame error: contract broken by a value.
 3
 ```
 
-Adding documentation can be done with `| doc < a string >`.  
+Adding documentation can be done with `| doc < string >`.  
 Examples:
 ```
 > 5 | doc "The number five"
@@ -301,7 +300,7 @@ Examples:
 true
 ```
 
-Default values are used for records contracts, to give a default values to fields.
+Record contracts can set default values using the `default` metadata:
 It is noted as `| default = < default value >`.  
 Examples:
 ```
