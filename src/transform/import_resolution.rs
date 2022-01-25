@@ -3,7 +3,7 @@
 //! identifier directly.
 use super::ImportResolver;
 use crate::error::ImportError;
-use crate::term::{RichTerm, Term, TraverseMethod};
+use crate::term::{RichTerm, Term, TraverseOrder};
 use codespan::FileId;
 use std::path::PathBuf;
 
@@ -55,7 +55,7 @@ where
             Ok(rt)
         },
         &mut state,
-        TraverseMethod::BottomUp,
+        TraverseOrder::BottomUp,
     )?;
 
     Ok((transformed, stack))

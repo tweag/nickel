@@ -50,7 +50,7 @@ use crate::{mk_tyw_arrow, mk_tyw_enum, mk_tyw_enum_row, mk_tyw_record, mk_tyw_ro
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 
-use self::linearization::{Linearization, Linearizer, ScopeId, StubHost};
+use self::linearization::{Linearization, Linearizer, StubHost};
 
 pub mod error;
 pub mod linearization;
@@ -623,7 +623,7 @@ fn type_check_<L: Linearizer>(
             tys_op
                 .into_iter()
                 .zip(args.iter())
-                .try_for_each(|(ty_t, t)| {
+                .try_for_each(|(ty_t, t)| -> Result<_, TypecheckError> {
                     type_check_(
                         state,
                         envs.clone(),

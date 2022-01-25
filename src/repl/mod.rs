@@ -118,56 +118,60 @@ impl ReplImpl {
             return Err(parse_errs.into());
         }
 
+        // Because we don't use the cache for input, we have to perform recursive import
+        // resolution/typechecking/transformation by ourselves.
+        //
+        // `id` must be set to `None` for normal lets and to `Some(id_)` for top-level lets. In the
+        // latter case, we need to update the current type environment before doing program
+        // transformations in the case of a top-level let.
+        fn prepare(
+            repl_impl: &mut ReplImpl,
+            id: Option<Ident>,
+            t: RichTerm,
+        ) -> Result<RichTerm, Error> {
+            let (t, pending) = import_resolution::resolve_imports(t, &mut repl_impl.cache)?;
+            for id in &pending {
+                repl_impl.cache.resolve_imports(*id).unwrap();
+            }
+
+            typecheck::type_check_in_env(&t, &repl_impl.env.type_env, &repl_impl.cache)?;
+
+            if let Some(id) = id {
+                typecheck::Envs::env_add(
+                    &mut repl_impl.env.type_env,
+                    id.clone(),
+                    &t,
+                    &repl_impl.cache,
+                );
+            }
+
+            for id in &pending {
+                repl_impl
+                    .cache
+                    .typecheck(*id, &repl_impl.init_type_env)
+                    .map_err(|cache_err| {
+                        cache_err.unwrap_error("repl::eval_(): expected imports to be parsed")
+                    })?;
+            }
+
+            let t = transform::transform(t).map_err(|err| Error::ParseErrors(err.into()))?;
+            for id in &pending {
+                repl_impl
+                    .cache
+                    .transform(*id)
+                    .unwrap_or_else(|_| panic!("repl::eval_(): expected imports to be parsed"));
+            }
+
+            Ok(t)
+        }
+
         match term {
-            // Because we don't use the cache for input, we have to perform recursive import
-            // resolution/typechecking/transformation by oursleves.
             ExtendedTerm::RichTerm(t) => {
-                let (t, pending) = import_resolution::resolve_imports(t, &mut self.cache)?;
-                for id in &pending {
-                    self.cache.resolve_imports(*id).unwrap();
-                }
-
-                typecheck::type_check_in_env(&t, &self.env.type_env, &self.cache)?;
-                for id in &pending {
-                    self.cache
-                        .typecheck(*id, &self.init_type_env)
-                        .map_err(|cache_err| {
-                            cache_err.unwrap_error("repl::eval_(): expected imports to be parsed")
-                        })?;
-                }
-
-                let t = transform::transform(t);
-                for id in &pending {
-                    self.cache
-                        .transform(*id)
-                        .unwrap_or_else(|_| panic!("repl::eval_(): expected imports to be parsed"));
-                }
-
+                let t = prepare(self, None, t)?;
                 Ok(eval_function(t, &self.env.eval_env, &mut self.cache)?.into())
             }
             ExtendedTerm::ToplevelLet(id, t) => {
-                let (t, pending) = import_resolution::resolve_imports(t, &mut self.cache)?;
-                for id in &pending {
-                    self.cache.resolve_imports(*id).unwrap();
-                }
-
-                typecheck::type_check_in_env(&t, &self.env.type_env, &self.cache)?;
-                typecheck::Envs::env_add(&mut self.env.type_env, id.clone(), &t, &self.cache);
-                for id in &pending {
-                    self.cache
-                        .typecheck(*id, &self.init_type_env)
-                        .map_err(|cache_err| {
-                            cache_err.unwrap_error("repl::eval_(): expected imports to be parsed")
-                        })?;
-                }
-
-                let t = transform::transform(t);
-                for id in &pending {
-                    self.cache
-                        .transform(*id)
-                        .unwrap_or_else(|_| panic!("repl::eval_(): expected imports to be parsed"));
-                }
-
+                let t = prepare(self, Some(id.clone()), t)?;
                 let local_env = self.env.eval_env.clone();
                 eval::env_add(&mut self.env.eval_env, id.clone(), t, local_env);
                 Ok(EvalResult::Bound(id))

@@ -1,5 +1,6 @@
 //! Additional AST nodes for the common UniTerm syntax (see RFC002 for more details).
 use super::*;
+use crate::types::UnboundTypeVariableError;
 use error::ParseError;
 use utils::{build_record, FieldPathElem};
 
@@ -24,14 +25,14 @@ pub struct UniRecord {
 /// Error indicating that a construct is not allowed when trying to interpret an `UniRecord` as a
 /// record type in a strict way. See [`into_type_strict`]. Hold the position of the illegal
 /// construct.
-pub struct InvalidRecordType(pub TermPos);
+pub struct InvalidRecordTypeError(pub TermPos);
 
 impl UniRecord {
     /// Try to convert a `UniRecord` to a type. The strict part means that if the `UniRecord` must
     /// be a plain record type, uniquely containing fields of the form `fields: Type`. Currently,
     /// it doesn't support the field path syntax: `{foo.bar.baz : Type}.into_type_strict()` returns
     /// an `Err`.
-    pub fn into_type_strict(self) -> Result<Types, InvalidRecordType> {
+    pub fn into_type_strict(self) -> Result<Types, InvalidRecordTypeError> {
         let ty = self.fields.into_iter()
             // Because we build row types as a linked list by folding on the original iterator, the
             // order of identifiers is reversed. This not a big deal but it's less confusing to the
@@ -52,12 +53,12 @@ impl UniRecord {
                                     Ok(Types(AbsType::RowExtend(id, Some(Box::new(ctrt.types)), Box::new(acc)))),
                             }
                             else {
-                                Err(InvalidRecordType(id.pos))
+                                Err(InvalidRecordTypeError(id.pos))
                             }
                         }
                     }
                     else {
-                        Err(InvalidRecordType(rt.pos))
+                        Err(InvalidRecordTypeError(rt.pos))
                     }
                 }
             )?;
@@ -75,17 +76,21 @@ impl TryFrom<UniRecord> for RichTerm {
 
     /// Convert a `UniRecord` to a term. If the `UniRecord` has a tail, it is first interpreted as
     /// a type and then converted to a contract. Otherwise it is interpreted as a record directly.
-    /// Fail if the `UniRecord` has a tail but isn't exactly a record type either.
+    /// Fail if the `UniRecord` has a tail but isn't syntactically a record type either.
     fn try_from(ur: UniRecord) -> Result<Self, ParseError> {
         let pos = ur.pos;
 
         let result = if let Some((_, tail_pos)) = ur.tail {
             ur.into_type_strict()
                 // We unwrap all positions: at this stage of the parsing, they must all be set
-                .map_err(|InvalidRecordType(pos)| {
+                .map_err(|InvalidRecordTypeError(pos)| {
                     ParseError::InvalidUniRecord(pos.unwrap(), tail_pos.unwrap(), pos.unwrap())
                 })
-                .map(|ty| ty.contract())
+                .and_then(|ty| {
+                    ty.contract().map_err(|UnboundTypeVariableError(id)| {
+                        ParseError::UnboundTypeVariables(vec![id], pos.unwrap())
+                    })
+                })
         } else {
             Ok(RichTerm::from(build_record(
                 ur.fields.into_iter(),
@@ -109,7 +114,7 @@ impl TryFrom<UniRecord> for Types {
 
         if let Some((_, tail_pos)) = ur.tail {
             ur.into_type_strict()
-                .map_err(|InvalidRecordType(illegal_pos)| {
+                .map_err(|InvalidRecordTypeError(illegal_pos)| {
                     ParseError::InvalidUniRecord(
                         illegal_pos.unwrap(),
                         tail_pos.unwrap(),

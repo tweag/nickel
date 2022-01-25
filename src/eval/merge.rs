@@ -258,7 +258,7 @@ pub fn merge(
                         &env1,
                         types2.iter().chain(contracts2.iter()),
                         &env2,
-                    );
+                    )?;
                     (Some(v), e)
                 }
                 v1 => (v1, env1.clone()),
@@ -275,7 +275,7 @@ pub fn merge(
                         &env2,
                         types1.iter().chain(contracts1.iter()),
                         &env1,
-                    );
+                    )?;
                     (Some(v), e)
                 }
                 v2 => (v2, env2.clone()),
@@ -433,21 +433,26 @@ pub fn merge(
 fn cross_apply_contracts<'a>(
     t1: RichTerm,
     env1: &Environment,
-    it2: impl Iterator<Item = &'a Contract>,
+    mut it2: impl Iterator<Item = &'a Contract>,
     env2: &Environment,
-) -> (RichTerm, Environment) {
+) -> Result<(RichTerm, Environment), EvalError> {
     let mut env = Environment::new();
     let mut env1_local = env1.clone();
 
     let pos = t1.pos.into_inherited();
     let result = it2
-        .fold(t1, |acc, ctr| {
+        .try_fold(t1, |acc, ctr| {
             let ty_closure = ctr.types.clone().closurize(&mut env1_local, env2.clone());
-            mk_term::assume(ty_closure, ctr.label.clone(), acc).with_pos(pos)
-        })
+            mk_term::assume(ty_closure, ctr.label.clone(), acc)
+                .map_err(|crate::types::UnboundTypeVariableError(id)| {
+                    let pos = id.pos;
+                    EvalError::UnboundIdentifier(id, pos)
+                })
+                .map(|rt| rt.with_pos(pos))
+        })?
         .closurize(&mut env, env1_local);
 
-    (result, env)
+    Ok((result, env))
 }
 
 /// Merge the two optional documentations of a metavalue.

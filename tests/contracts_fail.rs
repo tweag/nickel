@@ -172,8 +172,8 @@ fn lists_contracts() {
 
 #[test]
 fn records_contracts_closed() {
-    assert_raise_blame!("{a=1} | #{}");
-    assert_raise_blame!("{a=1, b=2} | #{a | Num}");
+    assert_raise_blame!("{a=1} | {}");
+    assert_raise_blame!("{a=1, b=2} | {a | Num}");
     assert_raise_blame!("let Contract = {a | Num} & {b | Num} in ({a=1, b=2, c=3} | #Contract)");
 }
 
