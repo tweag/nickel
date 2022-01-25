@@ -32,10 +32,6 @@ use crate::{
 grammar<'input, 'err>(src_id: FileId, errors: &'err mut Vec<ErrorRecovery<usize, Token<'input>, ParseError>>);
 
 WithPos<Rule>: Rule = <l: @L> <t: Rule> <r: @R> => t.with_pos(mk_pos(src_id, l, r));
-CheckUnbound<Rule>: Types = <l: @L> <t: Rule> <r: @R> =>?
-    check_unbound(&t, mk_span(src_id, l, r))
-        .map_err(|e| lalrpop_util::ParseError::User{error: e})
-        .and(Ok(t));
 
 AsTerm<Rule>: RichTerm = <ut: WithPos<Rule>> =>?
     RichTerm::try_from(ut)
@@ -46,7 +42,7 @@ AsTypes<Rule>: Types = <ut: WithPos<Rule>> =>?
         .map_err(|e| lalrpop_util::ParseError::User{error: e});
 
 AnnotAtom: MetaValue = {
-    "|" <l: @L> <ty_res: CheckUnbound<Types>> <r: @R> => MetaValue {
+    "|" <l: @L> <ty_res: Types> <r: @R> => MetaValue {
         doc: None,
         types: None,
         contracts: vec![Contract {types: ty_res.clone(), label: mk_label(ty_res, src_id, l, r)}],
@@ -67,7 +63,7 @@ AnnotAtom: MetaValue = {
         priority: Default::default(),
         value: None,
     },
-    ":" <l: @L> <ty_res: CheckUnbound<Types>> <r: @R> => MetaValue {
+    ":" <l: @L> <ty_res: Types> <r: @R> => MetaValue {
         doc: None,
         types: Some(Contract {types: ty_res.clone(), label: mk_label(ty_res, src_id, l, r)}),
         contracts: Vec::new(),
