@@ -204,7 +204,7 @@ It is possible to write records of records via the *piecewise syntax*, where we 
 ## Constructs
 
 ### If-Then-Else
-This construct allows conditional branching in your code. You can use it as `if <bool expr> then <expr> else <expr>`. Both expressions in the `then` and `else` branches are lazily evaluated, and must have the same type.
+This construct allows conditional branching in your code. You can use it as `if <bool expr> then <expr> else <expr>`.
 
 Examples:
 ```
@@ -219,6 +219,17 @@ Examples:
 
 > ["1"] @ (if 42 == "42" then ["3"] else ["2"]) @ ["3"]
 ["1", "2", "3"]
+```
+
+The `then` and `else` branches are only evaluated accordingly to the result of the expression inside the `if`.
+
+Examples:
+```
+> ["1"] @ (if true then ["2"] else "error") @ ["3"]    // Here only the expression in 'then' is evaluated, which is correct
+["1", "2", "3"]
+
+> ["1"] @ (if false then ["2"] else "error") @ ["3"]    // Here only the expression in 'else' is evaluated, which results in a type error
+error: Type error
 ```
 
 ### Let-In
