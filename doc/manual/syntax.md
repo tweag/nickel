@@ -216,6 +216,9 @@ Examples:
 
 > if "forty-two" == 42 then "equal?" else "unequal"
 "unequal"
+
+> ["1"] @ (if 42 == "42" then ["3"] else ["2"]) @ ["3"]
+["1", "2", "3"]
 ```
 
 ### Let-In
