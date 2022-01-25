@@ -60,7 +60,7 @@ In the table below, you will find the operators sorted from highest to lowest pr
 The boolean values in Nickel are denoted `true` and `false`.
 
 Nickel features the classical boolean operators *AND* (&&), *OR* (||) and *NOT* (!).
-The _AND_ and _OR_ operators are lazy in the evaluation of the second argument: for example, in `exp1 && exp2`, `exp2` is only evaluated if `exp1` evaluates to `false`. The truth table of these operators is given below:
+The _AND_ and _OR_ operators are lazy in the evaluation of the second argument: for example, in `exp1 && exp2`, `exp2` is only evaluated if `exp1` evaluates to `false`.
 
 Examples:
 ```
