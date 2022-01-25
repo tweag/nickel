@@ -3,11 +3,12 @@ use std::collections::HashMap;
 use codespan::ByteIndex;
 use log::debug;
 use nickel::{
+    destruct,
     identifier::Ident,
     position::{RawSpan, TermPos},
     term::{MetaValue, RichTerm, Term, UnaryOp},
     typecheck::{
-        linearization::{Linearization, Linearizer, ScopeId},
+        linearization::{Linearization, Linearizer, Scope, ScopeId},
         reporting::{to_type, NameReg},
         TypeWrapper, UnifTable,
     },
@@ -36,7 +37,7 @@ pub struct LinearizationItem<S: ResolutionState> {
     pub pos: RawSpan,
     pub ty: S,
     pub kind: TermKind,
-    pub scope: Vec<ScopeId>,
+    pub scope: Scope,
     pub meta: Option<MetaValue>,
 }
 
@@ -141,7 +142,7 @@ impl Linearizer for AnalysisHost {
 
         let id = id_gen.get();
         match term {
-            Term::FunPattern(ident, destruct, _) => {
+            Term::LetPattern(ident, destruct, ..) | Term::FunPattern(ident, destruct, _) => {
                 if let Some(ident) = ident {
                     self.env.insert(ident.to_owned(), id);
                     lin.push(LinearizationItem {

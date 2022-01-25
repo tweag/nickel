@@ -173,3 +173,5 @@ impl ScopeId {
         (self, next)
     }
 }
+
+pub type Scope = Vec<ScopeId>;

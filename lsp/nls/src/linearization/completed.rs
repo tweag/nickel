@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use codespan::ByteIndex;
 use nickel::{
     term::MetaValue,
-    typecheck::linearization::{LinearizationState, ScopeId},
+    typecheck::linearization::{LinearizationState, Scope, ScopeId},
 };
 
 use super::{
@@ -15,14 +15,14 @@ use super::{
 #[derive(Debug, Default)]
 pub struct Completed {
     pub linearization: Vec<LinearizationItem<Resolved>>,
-    scope: HashMap<Vec<ScopeId>, Vec<usize>>,
+    scope: HashMap<Scope, Vec<usize>>,
     id_to_index: HashMap<ID, usize>,
 }
 
 impl Completed {
     pub fn new(
         linearization: Vec<LinearizationItem<Resolved>>,
-        scope: HashMap<Vec<ScopeId>, Vec<usize>>,
+        scope: HashMap<Scope, Vec<usize>>,
         id_to_index: HashMap<ID, usize>,
     ) -> Self {
         Self {
