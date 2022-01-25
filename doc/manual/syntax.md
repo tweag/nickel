@@ -201,10 +201,10 @@ It is possible to write records of records via the *piecewise syntax*, where we 
 { a = { b = 1, c = 2 }, b = 3 }
 ```
 
-## Statements
+## Constructs
 
 ### If-Then-Else
-This statement allows conditional branching in your code. You can use it as `if <bool expr> then <expr> else <expr>`. Both expressions in the `then` and `else` branches are lazily evaluated, and must have the same type.
+This construct allows conditional branching in your code. You can use it as `if <bool expr> then <expr> else <expr>`. Both expressions in the `then` and `else` branches are lazily evaluated, and must have the same type.
 
 Examples:
 ```
