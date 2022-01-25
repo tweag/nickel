@@ -93,6 +93,17 @@ Yes it is, indeed it is"#m
 "Well, if this isn't a string?
 Yes it is, indeed it is"
 
+> m#"
+This line has no identation.
+  This line is indented.
+    This line is even more indented.
+This line has no more identation.
+"#m
+"This line has no indentation.
+  This line is indented.
+    This line is even more indented.
+This line has no more indentation."
+
 > "Hello" ++ "World"
 "HelloWorld"
 
