@@ -252,7 +252,7 @@ A function is declared using the `fun` keyword, then arguments separated by spac
 To call a function, just add the arguments after it separated with spaces.
 Functions in Nickel are curried, meaning that a function taking multiple arguments is actually a function that takes a single argument and returns a function taking the rest of the arguments, until it is applied.
 
-Example
+Examples:
 ```
 > (fun a b => a + b) 1 2
 3
@@ -264,6 +264,43 @@ let add = fun a b => a + b in add 1 2
     let add1 = add 1 in
         add1 2
 3
+```
+
+All existing infix operators in Nickel can be turned into prefix functions by putting them inside parentheses.
+
+Examples:
+```
+> 1 + 2
+3
+
+> (+) 1 2
+3
+
+> let increment = fun n => (+) 1 n in
+    increment 41
+42
+
+> let increment = (+) 1 in
+    increment 41
+42
+
+> let flatten = lists.fold (@) [] in flatten [[1, 2], [3], [4, 5]]
+[ 1, 2, 3, 4, 5 ]
+```
+
+Functions might be composed using the *pipe operator*. The pipe operator allows for a function application `f x` to be written as `x |> f`.
+This operator is left-associative, so `x |> f |> g` will be interpreted as `g (f x)`.
+
+Examples:
+```
+> "Hello World" |> strings.split " "
+["Hello", "World"]
+
+> "Hello World" |> strings.split " " |> lists.head
+"Hello"
+
+> "Hello World" |> strings.split " " |> lists.head |> strings.uppercase
+"HELLO"
 ```
 
 ## Typing
