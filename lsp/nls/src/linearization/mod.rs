@@ -3,11 +3,12 @@ use std::collections::HashMap;
 use codespan::ByteIndex;
 use log::debug;
 use nickel::{
+    destruct,
     identifier::Ident,
     position::{RawSpan, TermPos},
     term::{MetaValue, RichTerm, Term, UnaryOp},
     typecheck::{
-        linearization::{Linearization, Linearizer, ScopeId},
+        linearization::{Linearization, Linearizer, Scope, ScopeId},
         reporting::{to_type, NameReg},
         TypeWrapper, UnifTable,
     },
@@ -36,7 +37,7 @@ pub struct LinearizationItem<S: ResolutionState> {
     pub pos: RawSpan,
     pub ty: S,
     pub kind: TermKind,
-    pub scope: Vec<ScopeId>,
+    pub scope: Scope,
     pub meta: Option<MetaValue>,
 }
 
@@ -46,7 +47,8 @@ pub struct LinearizationItem<S: ResolutionState> {
 /// resolution
 pub struct AnalysisHost {
     env: Environment,
-    scope: Vec<ScopeId>,
+    scope: Scope,
+    next_scope_id: ScopeId,
     meta: Option<MetaValue>,
     /// Indexing a record will store a reference to the record as
     /// well as its fields.
@@ -70,7 +72,8 @@ impl AnalysisHost {
     pub fn new() -> Self {
         AnalysisHost {
             env: Environment::new(),
-            scope: Vec::new(),
+            scope: Default::default(),
+            next_scope_id: Default::default(),
             meta: None,
             record_fields: None,
             access: None,
@@ -139,7 +142,7 @@ impl Linearizer for AnalysisHost {
 
         let id = id_gen.get();
         match term {
-            Term::FunPattern(ident, destruct, _) => {
+            Term::LetPattern(ident, destruct, ..) | Term::FunPattern(ident, destruct, _) => {
                 if let Some(ident) = ident {
                     self.env.insert(ident.to_owned(), id);
                     lin.push(LinearizationItem {
@@ -365,13 +368,17 @@ impl Linearizer for AnalysisHost {
         Linearization::new(Completed::new(lin_, scope, id_mapping))
     }
 
-    fn scope(&mut self, scope_id: ScopeId) -> Self {
+    fn scope(&mut self) -> Self {
         let mut scope = self.scope.clone();
+        let (scope_id, next_scope_id) = self.next_scope_id.next();
+        self.next_scope_id = next_scope_id;
+
         scope.push(scope_id);
 
         AnalysisHost {
             scope,
             env: self.env.clone(),
+            next_scope_id: ScopeId::default(),
             /// when opening a new scope `meta` is assumed to be `None` as meta data
             /// is immediately followed by a term without opening a scope
             meta: None,

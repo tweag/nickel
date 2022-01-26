@@ -137,7 +137,7 @@ pub trait Linearizer {
     /// Notice, the resulting instance is a fresh value, any resource that is
     /// required or produced in parallel instances should therefore be put
     /// into the Building State `L` which is passed
-    fn scope(&mut self, branch: ScopeId) -> Self;
+    fn scope(&mut self) -> Self;
 }
 
 /// [Linearizer] that deliberately does not maintain any state or act
@@ -153,7 +153,7 @@ where
     type Completed = C;
     type CompletionExtra = E;
 
-    fn scope(&mut self, _: ScopeId) -> Self {
+    fn scope(&mut self) -> Self {
         StubHost::new()
     }
 }
@@ -164,13 +164,14 @@ impl<B, C, E> StubHost<B, C, E> {
     }
 }
 
-trait ScopeIdElem: Clone + Eq {}
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash)]
+pub struct ScopeId(usize);
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub enum ScopeId {
-    Left,
-    Right,
-    Choice(usize),
+impl ScopeId {
+    pub fn next(self) -> (Self, Self) {
+        let next = ScopeId(self.0 + 1);
+        (self, next)
+    }
 }
 
-impl ScopeIdElem for ScopeId {}
+pub type Scope = Vec<ScopeId>;

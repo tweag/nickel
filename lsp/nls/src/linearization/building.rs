@@ -5,7 +5,7 @@ use nickel::{
     identifier::Ident,
     term::{MetaValue, RichTerm, Term},
     typecheck::{
-        linearization::{LinearizationState, ScopeId},
+        linearization::{LinearizationState, Scope, ScopeId},
         TypeWrapper,
     },
     types::AbsType,
@@ -21,7 +21,7 @@ use super::{interface::Unresolved, Environment, IdGen, LinearizationItem};
 #[derive(Default)]
 pub struct Building {
     pub linearization: Vec<LinearizationItem<Unresolved>>,
-    pub scope: HashMap<Vec<ScopeId>, Vec<ID>>,
+    pub scope: HashMap<Scope, Vec<ID>>,
 }
 
 pub type ID = usize;
@@ -61,7 +61,7 @@ impl Building {
         &mut self,
         record_fields: &HashMap<Ident, RichTerm>,
         record: usize,
-        scope: Vec<ScopeId>,
+        scope: Scope,
         env: &mut Environment,
     ) {
         for (ident, value) in record_fields.iter() {
