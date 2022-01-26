@@ -12,7 +12,7 @@ use crate::{
 //
 // `free_vars` is the set of free variables in this term.
 //
-// `fields_free_vars` is a mapping between position of a field in a RecRecord`,
+// `fields_free_vars` is a mapping between position of a field in a `RecRecord`,
 //  and the free variables used in the body of the field.
 pub fn collect_free_vars(
     rt: &mut RichTerm,
