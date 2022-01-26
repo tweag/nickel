@@ -501,16 +501,14 @@ where
             Term::RecRecord(ts, dyn_fields, attrs, free_vars) => {
                 let rec_env = fixpoint::rec_env(ts.iter(), &env)?;
 
-                let filter_env = |(id, _): &(Ident, Thunk)| -> bool {
-                    if let Some(free_vars) = free_vars.as_ref().and_then(|fr| fr.get(id)) {
-                        free_vars.contains(id)
-                    } else {
-                        true
-                    }
-                };
-
                 ts.iter().try_for_each(|(_, rt)| {
-                    fixpoint::patch_field(rt, &rec_env, &env, filter_env)
+                    if let Some(free_vars) = free_vars.as_ref() {
+                        fixpoint::patch_field(rt, &rec_env, &env, |(id, _)| {
+                            free_vars.get(id).map(|fv| fv.contains(id)).unwrap_or(true)
+                        })
+                    } else {
+                        fixpoint::patch_field(rt, &rec_env, &env, |_| true)
+                    }
                 })?;
 
                 //TODO: We should probably avoid cloning the `ts` hashmap, using `match_sharedterm`
