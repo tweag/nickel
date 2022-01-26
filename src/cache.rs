@@ -645,9 +645,15 @@ impl Cache {
             result = CacheOp::Done(());
         };
 
-        let transform_res = self.transform(file_id).unwrap_or_else(|_| {
-            panic!("cache::prepare(): expected source to be parsed before transformations",)
-        });
+        let transform_res = self.transform(file_id).map_err(|cache_err| {
+            Error::ParseErrors(
+                cache_err
+                    .unwrap_error(
+                        "cache::prepare(): expected source to be parsed before transformations",
+                    )
+                    .into(),
+            )
+        })?;
 
         if transform_res == CacheOp::Done(()) {
             result = CacheOp::Done(());
