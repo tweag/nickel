@@ -4,7 +4,7 @@
 //! raw byte indices.  They are prefixed with Raw to differentiate them from codespan's types and
 //! indicate that they do not store human friendly data like lines and columns.
 use codespan::{ByteIndex, FileId};
-use std::cmp::Ordering;
+use std::cmp::{max, min, Ordering};
 
 /// A position identified by a byte offset in a file.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -21,6 +21,22 @@ pub struct RawSpan {
     pub src_id: FileId,
     pub start: ByteIndex,
     pub end: ByteIndex,
+}
+
+impl RawSpan {
+    /// Fuse two spans if they are from the same source file. The resulting span is the smallest
+    /// span that contain both `span1` and `span2`.
+    pub fn fuse(span1: RawSpan, span2: RawSpan) -> Option<RawSpan> {
+        if span1.src_id == span2.src_id {
+            Some(RawSpan {
+                src_id: span1.src_id,
+                start: min(span1.start, span2.start),
+                end: max(span1.end, span2.end),
+            })
+        } else {
+            None
+        }
+    }
 }
 
 /// The position span of a term.

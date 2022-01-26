@@ -6,7 +6,7 @@ use utils::{build_record, FieldPathElem};
 
 use crate::{
     match_sharedterm,
-    position::TermPos,
+    position::{RawSpan, TermPos},
     term::{MergePriority, MetaValue, RecordAttrs, RichTerm, Term},
     types::{AbsType, Types},
 };
@@ -41,24 +41,28 @@ impl UniRecord {
             .try_fold(
                 self.tail.map(|(tail, _)| tail).unwrap_or(Types(AbsType::RowEmpty())),
                 |acc, (path_elem, rt)| {
-                    if let FieldPathElem::Ident(id) = path_elem {
-                        match_sharedterm! {rt.term, with {
-                            Term::MetaValue(MetaValue {
-                                doc: None,
-                                types: Some(ctrt),
-                                contracts,
-                                priority: MergePriority::Normal,
-                                value: None,
-                                }) if contracts.is_empty() =>
-                                    Ok(Types(AbsType::RowExtend(id, Some(Box::new(ctrt.types)), Box::new(acc)))),
-                            }
-                            else {
-                                Err(InvalidRecordTypeError(id.pos))
+                    match path_elem {
+                        FieldPathElem::Ident(id) => {
+                            match_sharedterm! {rt.term, with {
+                                Term::MetaValue(MetaValue {
+                                    doc: None,
+                                    types: Some(ctrt),
+                                    contracts,
+                                    priority: MergePriority::Normal,
+                                    value: None,
+                                    }) if contracts.is_empty() =>
+                                        Ok(Types(AbsType::RowExtend(id, Some(Box::new(ctrt.types)), Box::new(acc)))),
+                                }
+                                else {
+                                    // Position of identifiers must always be set at this stage
+                                    // (parsing)
+                                    let span_id = id.pos.unwrap();
+                                    let term_pos = rt.pos.into_opt().unwrap_or(span_id);
+                                    Err(InvalidRecordTypeError(TermPos::Original(RawSpan::fuse(span_id, term_pos).unwrap())))
+                                }
                             }
                         }
-                    }
-                    else {
-                        Err(InvalidRecordTypeError(rt.pos))
+                        FieldPathElem::Expr(rt) => Err(InvalidRecordTypeError(rt.pos)),
                     }
                 }
             )?;
