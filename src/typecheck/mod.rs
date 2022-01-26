@@ -620,10 +620,8 @@ fn type_check_<L: Linearizer>(
             unify(state, strict, ty, ty_ret)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
-            tys_op
-                .into_iter()
-                .zip(args.iter())
-                .try_for_each(|(ty_t, t)| -> Result<_, TypecheckError> {
+            tys_op.into_iter().zip(args.iter()).try_for_each(
+                |(ty_t, t)| -> Result<_, TypecheckError> {
                     type_check_(
                         state,
                         envs.clone(),
@@ -634,7 +632,8 @@ fn type_check_<L: Linearizer>(
                         ty_t,
                     )?;
                     Ok(())
-                })?;
+                },
+            )?;
 
             Ok(())
         }
