@@ -160,31 +160,43 @@ impl Linearizer for AnalysisHost {
         match term {
             Term::LetPattern(ident, destruct, ..) | Term::FunPattern(ident, destruct, _) => {
                 if let Some(ident) = ident {
-                    self.env.insert(ident.to_owned(), id);
-                    let id = id_gen.get_and_advance();
-
                     let value_ptr = match term {
                         Term::LetPattern(_, _, _, _) => {
                             self.let_binding = Some(id);
                             ValueState::Unknown
                         }
-                        Term::FunPattern(_, _, _) => ValueState::Known(id),
+                        Term::FunPattern(_, _, _) => {
+                            // stub object
+                            lin.push(LinearizationItem {
+                                id: id_gen.get_and_advance(),
+
+                                ty: ty.clone(),
+                                pos: ident.pos.clone().unwrap(),
+                                scope: self.scope.clone(),
+                                kind: TermKind::Structure,
+                                meta: self.meta.take(),
+                            });
+
+                            ValueState::Known(id_gen.get())
+                        }
                         _ => unreachable!(),
                     };
 
+                    let id = id_gen.get_and_advance();
+                    self.env.insert(ident.to_owned(), id);
                     lin.push(LinearizationItem {
-                        id,
+                        id: id_gen.get_and_advance(),
                         ty,
                         pos: ident.pos.unwrap(),
                         scope: self.scope.clone(),
                         kind: TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr),
-                        meta: self.meta.take(),
+                        meta: None,
                     });
                 }
                 for matched in destruct.to_owned().inner() {
                     let (ident, term) = matched.as_meta_field();
-                    self.env.insert(ident.to_owned(), id_gen.get());
                     let id = id_gen.get_and_advance();
+                    self.env.insert(ident.to_owned(), id);
                     lin.push(LinearizationItem {
                         id,
                         // TODO: get type from pattern
@@ -207,17 +219,30 @@ impl Linearizer for AnalysisHost {
                 }
             }
             Term::Let(ident, _, _, _) | Term::Fun(ident, _) => {
-                self.env.insert(ident.to_owned(), id);
                 let value_ptr = match term {
                     Term::Let(_, _, _, _) => {
                         self.let_binding = Some(id);
                         ValueState::Unknown
                     }
-                    Term::Fun(_, _) => ValueState::Known(id),
+                    Term::Fun(_, _) => {
+                        // stub object
+                        lin.push(LinearizationItem {
+                            id: id_gen.get_and_advance(),
+
+                            ty: ty.clone(),
+                            pos: ident.pos.clone().unwrap(),
+                            scope: self.scope.clone(),
+                            kind: TermKind::Structure,
+                            meta: self.meta.take(),
+                        });
+
+                        ValueState::Known(id_gen.get())
+                    }
                     _ => unreachable!(),
                 };
+                self.env.insert(ident.to_owned(), id_gen.get());
                 lin.push(LinearizationItem {
-                    id,
+                    id: id_gen.get(),
                     ty,
                     pos: ident.pos.unwrap(),
                     scope: self.scope.clone(),
