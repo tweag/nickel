@@ -118,7 +118,7 @@ pub fn handle_to_usages(
     debug!("found referencing item: {:?}", item);
 
     let locations = match &item.kind {
-        TermKind::Declaration(_, usages) | TermKind::RecordField { usages, .. } => {
+        TermKind::Declaration(_, usages, _) | TermKind::RecordField { usages, .. } => {
             let mut locations = Vec::new();
 
             for reference_id in usages.iter() {

@@ -5,7 +5,7 @@ use nickel::{
     identifier::Ident,
     term::{MetaValue, RichTerm, Term},
     typecheck::{
-        linearization::{LinearizationState, Scope, ScopeId},
+        linearization::{LinearizationState, Scope},
         TypeWrapper,
     },
     types::AbsType,
@@ -13,7 +13,10 @@ use nickel::{
 
 use crate::linearization::interface::{TermKind, UsageState};
 
-use super::{interface::Unresolved, Environment, IdGen, LinearizationItem};
+use super::{
+    interface::{Unresolved, ValueState},
+    Environment, IdGen, LinearizationItem,
+};
 
 /// A concrete [LinearizationState]
 /// Holds any inner datatype that can be used as stable resource
@@ -52,9 +55,19 @@ impl Building {
             TermKind::Structure => unreachable!(),
             TermKind::Usage(_) => unreachable!(),
             TermKind::Record(_) => unreachable!(),
-            TermKind::Declaration(_, ref mut usages)
+            TermKind::Declaration(_, ref mut usages, _)
             | TermKind::RecordField { ref mut usages, .. } => usages.push(usage),
         };
+    }
+
+    pub(super) fn inform_declaration(&mut self, declaration: ID, value: ID) {
+        match self.linearization.get_mut(declaration) {
+            Some(LinearizationItem {
+                kind: TermKind::Declaration(_, _, value_state),
+                ..
+            }) => *value_state = ValueState::Known(value),
+            _ => (),
+        }
     }
 
     pub(super) fn register_fields(
@@ -75,7 +88,7 @@ impl Building {
                     record,
                     ident: ident.clone(),
                     usages: Vec::new(),
-                    value: None,
+                    value: ValueState::Unknown,
                 },
                 scope: scope.clone(),
                 meta: match value.term.as_ref() {
@@ -120,16 +133,19 @@ impl Building {
         }
         // load referenced value, either from record field or declaration
         .and_then(|item_pointer| {
-            match item_pointer.kind {
+            match &item_pointer.kind {
                 // if declaration is a record field, resolve its value
                 TermKind::RecordField { value, .. } => {
                     debug!("parent referenced a record field {:?}", value);
                     value
                         // retrieve record
+                        .as_option()
                         .and_then(|value_index| self.linearization.get(value_index))
                 }
-                // if declaration is a let biding resolve its value
-                TermKind::Declaration(_, _) => self.linearization.get(item_pointer.id + 1),
+                // if declaration is a let binding resolve its value
+                TermKind::Declaration(_, _, ValueState::Known(value)) => {
+                    self.linearization.get(*value)
+                }
 
                 // if something else was referenced, stop.
                 _ => Some(item_pointer),
@@ -189,12 +205,13 @@ impl Building {
                 });
 
             let referenced_declaration =
-                referenced_declaration.and_then(|referenced| match referenced.kind {
+                referenced_declaration.and_then(|referenced| match &referenced.kind {
                     TermKind::Usage(UsageState::Resolved(pointed)) => {
-                        self.linearization.get(pointed)
+                        self.linearization.get(*pointed)
                     }
                     TermKind::RecordField { value, .. } => value
                         // retrieve record
+                        .as_option()
                         .and_then(|value_index| self.linearization.get(value_index))
                         // retrieve field
                         .and_then(|record| match &record.kind {
