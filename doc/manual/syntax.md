@@ -93,17 +93,6 @@ Yes it is, indeed it is"#m
 "Well, if this isn't a string?
 Yes it is, indeed it is"
 
-> m#"
-This line has no identation.
-  This line is indented.
-    This line is even more indented.
-This line has no more identation.
-"#m
-"This line has no indentation.
-  This line is indented.
-    This line is even more indented.
-This line has no more indentation."
-
 > "Hello" ++ "World"
 "HelloWorld"
 
@@ -115,6 +104,73 @@ error: Type error
 
 > let n = 5 in "The number #{strings.from_num n}."
 "The number 5."
+```
+
+Multiline strings are useful to write indented lines. The indentation is stripped from the beginning of the first line, and first and last lines are ignored if they are empty.
+
+Example:
+```
+> m#"
+This line has no identation.
+  This line is indented.
+    This line is even more indented.
+This line has no more identation.
+"#m
+"This line has no indentation.
+  This line is indented.
+    This line is even more indented.
+This line has no more indentation." 
+```
+
+The only special sequence in a multiline string is the string interpolation.
+
+Examples:
+```
+> m#"Multiline\nString?"#m
+"Multiline\nString?"
+
+> m#"Multiline#{"\n"}String"#m
+"Multiline
+String"
+```
+
+A multiline string can be introduced and closed by multiple `#` signs, as long as this amount is equal. If one wants to use string interpolation, it must uses the same amount of `#`.
+
+Examples:
+```
+> m##"Hello World"##m
+"Hello World"
+
+> m#####"Hello World"#####m
+"Hello World"
+
+> let w = "World" in m##"Hello #{w}"##m
+"Hello #{"World"}"
+
+> let w = "World" in m##"Hello ##{w}"##m
+"Hello World"
+```
+
+Multiline strings are "indentation-aware". This means that one could use an indented string interpolation and the indentation would behave as expected:
+```
+> let log = m#"
+if log:
+  print("log:", s)
+"#m in m#"
+def concat(str_list, log=false):
+  res = []
+  for s in str_list:
+    #{log}
+    res.append(s)
+  return res
+"#m
+"def concat(str_list, log=false):
+  res = []
+  for s in str_list:
+    if log:
+      print("log:", s)
+    res.append(s)
+  return res"
 ```
 
 ## Equality Operators
