@@ -298,12 +298,17 @@ impl Linearizer for AnalysisHost {
                 // recursively linearize flat types
                 fn walk_types(
                     lin: &mut Linearization<Building>,
-                    outer_host: &AnalysisHost,
+                    outer_host: &mut AnalysisHost,
                     t: &nickel::types::Types,
                 ) {
+                    let mut scope = outer_host.scope.clone();
+                    let (scope_id, next_scope_id) = outer_host.next_scope_id.next();
+                    outer_host.next_scope_id = next_scope_id;
+                    scope.push(scope_id);
+
                     let inner_host = AnalysisHost {
                         env: outer_host.env.clone(),
-                        scope: outer_host.scope.clone(),
+                        scope,
                         ..Default::default()
                     };
                     match &t.0 {
