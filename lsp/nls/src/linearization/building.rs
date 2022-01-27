@@ -115,7 +115,7 @@ impl Building {
     ) -> Option<&'a LinearizationItem<TypeWrapper>> {
         // if item is a usage, resolve the usage first
         match item.kind {
-            TermKind::Usage(UsageState::Resolved(Some(pointed))) => self.linearization.get(pointed),
+            TermKind::Usage(UsageState::Resolved(pointed)) => self.linearization.get(pointed),
             _ => Some(item),
         }
         // load referenced value, either from record field or declaration
@@ -190,7 +190,7 @@ impl Building {
 
             let referenced_declaration =
                 referenced_declaration.and_then(|referenced| match referenced.kind {
-                    TermKind::Usage(UsageState::Resolved(Some(pointed))) => {
+                    TermKind::Usage(UsageState::Resolved(pointed)) => {
                         self.linearization.get(pointed)
                     }
                     TermKind::RecordField { value, .. } => value
@@ -207,7 +207,7 @@ impl Building {
                                     .get(child_ident)
                                     .and_then(|accessor_id| self.linearization.get(*accessor_id))
                             }
-                            TermKind::Usage(UsageState::Resolved(Some(pointed))) => {
+                            TermKind::Usage(UsageState::Resolved(pointed)) => {
                                 self.linearization.get(*pointed)
                             }
                             _ => None,
@@ -227,7 +227,7 @@ impl Building {
             {
                 let child: &mut LinearizationItem<TypeWrapper> =
                     self.linearization.get_mut(*child_item).unwrap();
-                child.kind = TermKind::Usage(UsageState::Resolved(referenced_id));
+                child.kind = TermKind::Usage(UsageState::from(referenced_id));
             }
 
             if let Some(referenced_id) = referenced_id {

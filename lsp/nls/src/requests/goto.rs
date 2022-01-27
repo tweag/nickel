@@ -55,7 +55,7 @@ pub fn handle_to_definition(
     debug!("found referencing item: {:?}", item);
 
     let location = match item.kind {
-        TermKind::Usage(UsageState::Resolved(Some(usage_id))) => {
+        TermKind::Usage(UsageState::Resolved(usage_id)) => {
             let definition = linearization.get_item(usage_id).unwrap();
             let location = match definition.pos {
                 RawSpan {
