@@ -46,7 +46,7 @@ pub fn handle_completion(
         .get_in_scope(&item)
         .iter()
         .filter_map(|i| match i.kind {
-            TermKind::Declaration(ref ident, _) => Some((ident.clone(), i.ty.clone())),
+            TermKind::Declaration(ref ident, _, _) => Some((ident.clone(), i.ty.clone())),
             _ => None,
         })
         .map(|(ident, _)| CompletionItem {

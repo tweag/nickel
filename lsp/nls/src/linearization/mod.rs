@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use codespan::ByteIndex;
 use log::debug;
 use nickel::{
-    destruct,
     identifier::Ident,
     position::{RawSpan, TermPos},
     term::{MetaValue, RichTerm, Term, UnaryOp},
@@ -15,8 +14,10 @@ use nickel::{
     types::AbsType,
 };
 
+use crate::linearization::interface::ValueState;
+
 use self::{
-    building::Building,
+    building::{Building, ID},
     completed::Completed,
     interface::{ResolutionState, TermKind, UsageState},
 };
@@ -57,7 +58,8 @@ pub struct AnalysisHost {
     /// in their own scope immediately after the record, which
     /// gives the corresponding record field _term_ to the ident
     /// useable to construct a vale declaration.
-    record_fields: Option<(usize, Vec<(usize, Ident)>)>,
+    record_fields: Option<(ID, Vec<(ID, Ident)>)>,
+    let_binding: Option<ID>,
     /// Accesses to nested records are recorded recursively.
     /// ```
     /// outer.middle.inner -> inner(middle(outer))
@@ -70,14 +72,7 @@ pub struct AnalysisHost {
 
 impl AnalysisHost {
     pub fn new() -> Self {
-        AnalysisHost {
-            env: Environment::new(),
-            scope: Default::default(),
-            next_scope_id: Default::default(),
-            meta: None,
-            record_fields: None,
-            access: None,
-        }
+        Default::default()
     }
 }
 
@@ -89,6 +84,7 @@ impl Default for AnalysisHost {
             next_scope_id: Default::default(),
             meta: Default::default(),
             record_fields: Default::default(),
+            let_binding: Default::default(),
             access: Default::default(),
         }
     }
@@ -113,7 +109,10 @@ impl Linearizer for AnalysisHost {
         // `record` is the id [LinearizatonItem] of the enclosing record
         // `offset` is used to find the [LinearizationItem] representing the field
         // Field items are inserted immediately after the record
-        if !matches!(term, Term::Op1(UnaryOp::StaticAccess(_), _)) {
+        if !matches!(
+            term,
+            Term::Op1(UnaryOp::StaticAccess(_), _) | Term::MetaValue(_)
+        ) {
             if let Some((record, (offset, Ident { pos: field_pos, .. }))) = self
                 .record_fields
                 .take()
@@ -139,13 +138,17 @@ impl Linearizer for AnalysisHost {
                     };
                     match field.kind {
                         TermKind::RecordField { ref mut value, .. } => {
-                            *value = Some(id_gen.get() + usage_offset);
+                            *value = ValueState::Known(id_gen.get() + usage_offset);
                         }
                         // The linearization item of a record with n fields is expected to be
                         // followed by n linearization items representing each field
                         _ => unreachable!(),
                     }
                 }
+            }
+
+            if let Some(declaration) = self.let_binding.take() {
+                lin.inform_declaration(declaration, id_gen.get());
             }
         }
 
@@ -157,26 +160,54 @@ impl Linearizer for AnalysisHost {
         match term {
             Term::LetPattern(ident, destruct, ..) | Term::FunPattern(ident, destruct, _) => {
                 if let Some(ident) = ident {
+                    let value_ptr = match term {
+                        Term::LetPattern(_, _, _, _) => {
+                            self.let_binding = Some(id);
+                            ValueState::Unknown
+                        }
+                        Term::FunPattern(_, _, _) => {
+                            // stub object
+                            lin.push(LinearizationItem {
+                                id: id_gen.get_and_advance(),
+
+                                ty: ty.clone(),
+                                pos: ident.pos.clone().unwrap(),
+                                scope: self.scope.clone(),
+                                kind: TermKind::Structure,
+                                meta: self.meta.take(),
+                            });
+
+                            ValueState::Known(id_gen.get())
+                        }
+                        _ => unreachable!(),
+                    };
+
+                    let id = id_gen.get_and_advance();
                     self.env.insert(ident.to_owned(), id);
                     lin.push(LinearizationItem {
                         id: id_gen.get_and_advance(),
                         ty,
                         pos: ident.pos.unwrap(),
                         scope: self.scope.clone(),
-                        kind: TermKind::Declaration(ident.to_owned(), Vec::new()),
-                        meta: self.meta.take(),
+                        kind: TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr),
+                        meta: None,
                     });
                 }
                 for matched in destruct.to_owned().inner() {
                     let (ident, term) = matched.as_meta_field();
-                    self.env.insert(ident.to_owned(), id_gen.get());
+                    let id = id_gen.get_and_advance();
+                    self.env.insert(ident.to_owned(), id);
                     lin.push(LinearizationItem {
-                        id: id_gen.get_and_advance(),
+                        id,
                         // TODO: get type from pattern
                         ty: TypeWrapper::Concrete(AbsType::Dyn()),
                         pos: ident.pos.unwrap(),
                         scope: self.scope.clone(),
-                        kind: TermKind::Declaration(ident.to_owned(), Vec::new()),
+                        kind: TermKind::Declaration(
+                            ident.to_owned(),
+                            Vec::new(),
+                            ValueState::Known(id),
+                        ),
                         meta: match &*term.term {
                             Term::MetaValue(meta) => Some(MetaValue {
                                 value: None,
@@ -188,13 +219,34 @@ impl Linearizer for AnalysisHost {
                 }
             }
             Term::Let(ident, _, _, _) | Term::Fun(ident, _) => {
-                self.env.insert(ident.to_owned(), id);
+                let value_ptr = match term {
+                    Term::Let(_, _, _, _) => {
+                        self.let_binding = Some(id);
+                        ValueState::Unknown
+                    }
+                    Term::Fun(_, _) => {
+                        // stub object
+                        lin.push(LinearizationItem {
+                            id: id_gen.get_and_advance(),
+
+                            ty: ty.clone(),
+                            pos: ident.pos.clone().unwrap(),
+                            scope: self.scope.clone(),
+                            kind: TermKind::Structure,
+                            meta: self.meta.take(),
+                        });
+
+                        ValueState::Known(id_gen.get())
+                    }
+                    _ => unreachable!(),
+                };
+                self.env.insert(ident.to_owned(), id_gen.get());
                 lin.push(LinearizationItem {
-                    id,
+                    id: id_gen.get(),
                     ty,
                     pos: ident.pos.unwrap(),
                     scope: self.scope.clone(),
-                    kind: TermKind::Declaration(ident.to_owned(), Vec::new()),
+                    kind: TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr),
                     meta: self.meta.take(),
                 });
             }
@@ -440,6 +492,7 @@ impl Linearizer for AnalysisHost {
             record_fields: self.record_fields.as_mut().and_then(|(record, fields)| {
                 Some(*record).zip(fields.pop().map(|field| vec![field]))
             }),
+            let_binding: self.let_binding.take(),
             access: self.access.clone(),
         }
     }

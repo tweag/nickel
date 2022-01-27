@@ -25,7 +25,7 @@ pub fn handle_document_symbols(
             .linearization
             .iter()
             .filter_map(|item| match &item.kind {
-                TermKind::Declaration(name, _) => {
+                TermKind::Declaration(name, _, _) => {
                     let (file_id, span) = item.pos.to_range();
 
                     let range =

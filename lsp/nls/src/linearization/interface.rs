@@ -24,18 +24,32 @@ impl ResolutionState for Resolved {}
 /// Can be extended later to represent Contracts, Records, etc.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TermKind {
-    Declaration(Ident, Vec<ID>),
+    Declaration(Ident, Vec<ID>, ValueState),
     Usage(UsageState),
     Record(HashMap<Ident, ID>),
     RecordField {
         ident: Ident,
         record: ID,
         usages: Vec<ID>,
-        value: Option<ID>,
+        value: ValueState,
     },
     Structure,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum ValueState {
+    Unknown,
+    Known(ID),
+}
+
+impl ValueState {
+    pub fn as_option(&self) -> Option<ID> {
+        match self {
+            ValueState::Unknown => None,
+            ValueState::Known(value) => Some(*value),
+        }
+    }
+}
 /// Some usages cannot be fully resolved in a first pass (i.e. recursive record fields)
 /// In these cases we defer the resolution to a second pass during linearization
 #[derive(Debug, Clone, PartialEq)]

@@ -8,7 +8,7 @@ use nickel::{
 
 use super::{
     building::ID,
-    interface::{Resolved, TermKind, UsageState},
+    interface::{Resolved, TermKind, UsageState, ValueState},
     LinearizationItem,
 };
 
@@ -108,8 +108,20 @@ impl Completed {
         let mut extra = Vec::new();
 
         let item = match item.kind {
-            TermKind::Usage(UsageState::Resolved(usage)) => self.get_item(usage).unwrap_or(item),
-            TermKind::Declaration(_, _) => self.get_item(item.id).unwrap_or(item),
+            TermKind::Usage(UsageState::Resolved(declaration)) => self
+                .get_item(declaration)
+                .and_then(|decl| match decl.kind {
+                    TermKind::Declaration(_, _, ValueState::Known(value))
+                    | TermKind::RecordField {
+                        value: ValueState::Known(value),
+                        ..
+                    } => self.get_item(value),
+                    _ => None,
+                })
+                .unwrap_or(item),
+            TermKind::Declaration(_, _, ValueState::Known(value)) => {
+                self.get_item(value).unwrap_or(item)
+            }
             _ => item,
         };
 
