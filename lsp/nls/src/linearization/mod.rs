@@ -81,6 +81,19 @@ impl AnalysisHost {
     }
 }
 
+impl Default for AnalysisHost {
+    fn default() -> Self {
+        Self {
+            env: Environment::new(),
+            scope: Default::default(),
+            next_scope_id: Default::default(),
+            meta: Default::default(),
+            record_fields: Default::default(),
+            access: Default::default(),
+        }
+    }
+}
+
 impl Linearizer for AnalysisHost {
     type Building = Building;
     type Completed = Completed;
@@ -247,34 +260,76 @@ impl Linearizer for AnalysisHost {
                 x.push(ident.to_owned())
             }
             Term::MetaValue(meta) => {
-                // Notice 1: No push to lin
+                // DF walk AST (of Contracts)
+                // adds usages of user defined contracts to the linearization
+                fn walk_terms(
+                    lin: &mut Linearization<Building>,
+                    mut host: AnalysisHost,
+                    RichTerm { term, pos }: &RichTerm,
+                ) {
+                    host.add_term(lin, term, *pos, TypeWrapper::Concrete(AbsType::Dyn()));
+                    match &**term {
+                        Term::Op1(_, rt) => walk_terms(lin, host, rt),
+                        Term::Op2(_, rt1, rt2) => {
+                            walk_terms(lin, host.scope(), rt1);
+                            walk_terms(lin, host.scope(), rt2);
+                        }
+                        Term::OpN(_, rts) => {
+                            rts.iter().for_each(|rt| walk_terms(lin, host.scope(), rt))
+                        }
+                        Term::StrChunks(chunks) => chunks
+                            .iter()
+                            .filter_map(|chunk| match chunk {
+                                nickel::term::StrChunk::Literal(_) => None,
+                                nickel::term::StrChunk::Expr(rt, _) => Some(rt),
+                            })
+                            .for_each(|rt| walk_terms(lin, host.scope(), rt)),
+                        Term::App(rt1, rt2) => {
+                            walk_terms(lin, host.scope(), rt1);
+                            walk_terms(lin, host.scope(), rt2);
+                        }
+                        Term::Record(rts, _) | Term::RecRecord(rts, _, _) => rts
+                            .values()
+                            .for_each(|rt| walk_terms(lin, host.scope(), rt)),
+                        _ => {}
+                    }
+                }
+
+                // recursively linearize flat types
+                fn walk_types(
+                    lin: &mut Linearization<Building>,
+                    outer_host: &mut AnalysisHost,
+                    t: &nickel::types::Types,
+                ) {
+                    let mut scope = outer_host.scope.clone();
+                    let (scope_id, next_scope_id) = outer_host.next_scope_id.next();
+                    outer_host.next_scope_id = next_scope_id;
+                    scope.push(scope_id);
+
+                    let inner_host = AnalysisHost {
+                        env: outer_host.env.clone(),
+                        scope,
+                        ..Default::default()
+                    };
+                    match &t.0 {
+                        AbsType::Flat(rt) => walk_terms(lin, inner_host, &rt),
+                        AbsType::Arrow(t1, t2) => {
+                            walk_types(lin, outer_host, &t1);
+                            walk_types(lin, outer_host, &t2);
+                        }
+                        _ => {}
+                    }
+                }
+
+                // Notice 1: No push to lin for the `MetaValue` itself
                 // Notice 2: we discard the encoded value as anything we
                 //           would do with the value will be handled in the following
                 //           call to [Self::add_term]
+                // Notice 3: we walk the inner contract types to resolve references
 
-                for contract in meta.contracts.iter() {
-                    if let nickel::types::AbsType::Flat(RichTerm { term, pos: _ }) =
-                        &contract.types.0
-                    {
-                        if let Term::Var(ident) = &**term {
-                            let parent = self.env.get(ident);
-                            let id = id_gen.get_and_advance();
-                            lin.push(LinearizationItem {
-                                id,
-                                pos: ident.pos.unwrap(),
-                                ty: TypeWrapper::Concrete(AbsType::Var(ident.to_owned())),
-                                scope: self.scope.clone(),
-                                // id = parent: full let binding including the body
-                                // id = parent + 1: actual delcaration scope, i.e. _ = < definition >
-                                kind: TermKind::Usage(UsageState::from(parent)),
-                                meta: None,
-                            });
-                            if let Some(parent) = parent {
-                                lin.add_usage(parent, id);
-                            }
-                        }
-                    }
-                }
+                meta.contracts
+                    .iter()
+                    .for_each(|c| walk_types(lin, self, &c.types));
 
                 if meta.value.is_some() {
                     self.meta = Some(MetaValue {
