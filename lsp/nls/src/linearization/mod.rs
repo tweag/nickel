@@ -467,7 +467,7 @@ impl Linearizer for AnalysisHost {
             record_fields: self.record_fields.as_mut().and_then(|(record, fields)| {
                 Some(*record).zip(fields.pop().map(|field| vec![field]))
             }),
-            let_binding: None,
+            let_binding: self.let_binding.take(),
             access: self.access.clone(),
         }
     }
