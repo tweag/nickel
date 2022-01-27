@@ -257,6 +257,15 @@ It is possible to write records of records via the *piecewise syntax*, where we 
 { a = { b = 1, c = 2 }, b = 3 }
 ```
 
+Since all fields are strings, we can use string interpolation to create keys or accessing:
+```
+> let k = "a" in { "#{k}" = 1 }
+{ a = 1 }
+
+> let k = "a" in { a = 1 }."#{k}"
+1
+```
+
 ## Constructs
 
 ### If-Then-Else
