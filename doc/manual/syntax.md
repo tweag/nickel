@@ -428,7 +428,8 @@ true
 ```
 
 Record contracts can set default values using the `default` metadata:
-It is noted as `| default = < default value >`.  
+It is noted as `| default = < default value >`.
+This is especially useful when merging records (more about this in the dedicated document about merge).  
 Examples:
 ```
 > let Ais2ByDefault = { a | default = 2 } in {} | #Ais2ByDefault
@@ -436,4 +437,10 @@ Examples:
 
 > let Ais2ByDefault = { a | default = 2 } in { a = 1 } | #Ais2ByDefault
 { a = 1 }
+
+> { foo | default = 1, bar = foo + 1 }
+{ foo = 1, bar = 2 }
+
+> {foo | default = 1, bar = foo + 1} & {foo = 2} {foo = 2, bar = 3}
+{ foo = 2, bar = 3 }
 ```
