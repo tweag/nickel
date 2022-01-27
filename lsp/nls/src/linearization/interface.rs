@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use nickel::{identifier::Ident, typecheck::TypeWrapper, types::Types};
 
+use super::building::ID;
+
 pub trait ResolutionState {}
 /// Types are available as [TypeWrapper] only during recording
 /// They are resolved after typechecking has collected all terms into concrete
@@ -22,14 +24,14 @@ impl ResolutionState for Resolved {}
 /// Can be extended later to represent Contracts, Records, etc.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TermKind {
-    Declaration(Ident, Vec<usize>),
+    Declaration(Ident, Vec<ID>),
     Usage(UsageState),
-    Record(HashMap<Ident, usize>),
+    Record(HashMap<Ident, ID>),
     RecordField {
         ident: Ident,
-        record: usize,
-        usages: Vec<usize>,
-        value: Option<usize>,
+        record: ID,
+        usages: Vec<ID>,
+        value: Option<ID>,
     },
     Structure,
 }
@@ -38,6 +40,16 @@ pub enum TermKind {
 /// In these cases we defer the resolution to a second pass during linearization
 #[derive(Debug, Clone, PartialEq)]
 pub enum UsageState {
-    Resolved(Option<usize>),
-    Deferred { parent: usize, child: Ident },
+    Unbound,
+    Resolved(ID),
+    Deferred { parent: ID, child: Ident },
+}
+
+impl From<Option<ID>> for UsageState {
+    fn from(option: Option<ID>) -> Self {
+        match option {
+            Some(id) => UsageState::Resolved(id),
+            None => UsageState::Unbound,
+        }
+    }
 }

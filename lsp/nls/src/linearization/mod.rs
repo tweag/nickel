@@ -198,7 +198,7 @@ impl Linearizer for AnalysisHost {
                     pos: ident.pos.unwrap(),
                     ty: TypeWrapper::Concrete(AbsType::Dyn()),
                     scope: self.scope.clone(),
-                    kind: TermKind::Usage(UsageState::Resolved(self.env.get(ident))),
+                    kind: TermKind::Usage(UsageState::from(self.env.get(ident))),
                     meta: self.meta.take(),
                 });
 
@@ -266,7 +266,7 @@ impl Linearizer for AnalysisHost {
                                 scope: self.scope.clone(),
                                 // id = parent: full let binding including the body
                                 // id = parent + 1: actual delcaration scope, i.e. _ = < definition >
-                                kind: TermKind::Usage(UsageState::Resolved(parent)),
+                                kind: TermKind::Usage(UsageState::from(parent)),
                                 meta: None,
                             });
                             if let Some(parent) = parent {
