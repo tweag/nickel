@@ -209,11 +209,11 @@ impl Linearizer for AnalysisHost {
             Term::Let(ident, _, _, _) | Term::Fun(ident, _) => {
                 self.env.insert(ident.to_owned(), id);
                 let value_ptr = match term {
-                    Term::LetPattern(_, _, _, _) => {
+                    Term::Let(_, _, _, _) => {
                         self.let_binding = Some(id);
                         ValueState::Unknown
                     }
-                    Term::FunPattern(_, _, _) => ValueState::Known(id),
+                    Term::Fun(_, _) => ValueState::Known(id),
                     _ => unreachable!(),
                 };
                 lin.push(LinearizationItem {
