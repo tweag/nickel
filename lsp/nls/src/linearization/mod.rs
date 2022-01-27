@@ -81,6 +81,19 @@ impl AnalysisHost {
     }
 }
 
+impl Default for AnalysisHost {
+    fn default() -> Self {
+        Self {
+            env: Environment::new(),
+            scope: Default::default(),
+            next_scope_id: Default::default(),
+            meta: Default::default(),
+            record_fields: Default::default(),
+            access: Default::default(),
+        }
+    }
+}
+
 impl Linearizer for AnalysisHost {
     type Building = Building;
     type Completed = Completed;
