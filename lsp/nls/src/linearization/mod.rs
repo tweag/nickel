@@ -185,7 +185,7 @@ impl Linearizer for AnalysisHost {
                     let id = id_gen.get_and_advance();
                     self.env.insert(ident.to_owned(), id);
                     lin.push(LinearizationItem {
-                        id: id_gen.get_and_advance(),
+                        id,
                         ty,
                         pos: ident.pos.unwrap(),
                         scope: self.scope.clone(),
