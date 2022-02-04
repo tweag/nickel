@@ -348,7 +348,8 @@
       checks = {
         # wasm-opt can take long: eschew optimizations in checks
         wasm = buildNickelWASM { channel = "stable"; optimize = false; };
-        specs = makamSpecs;
+        # out of sync, disabling for now -> https://github.com/tweag/nickel/issue/552
+        #specs = makamSpecs;
         pre-commit = defaultPackage.pre-commit;
       } // (forEachRustChannel (channel:
         {
