@@ -52,8 +52,8 @@
               tarball = final.fetchFromGitHub {
                 owner = "rustwasm";
                 repo = "wasm-bindgen";
-                rev = version;
-                hash = "sha256-GsraYfWzUZjFpPpufTyXF0i2llBzjh04iTKio6m4NRA=";
+                rev = WasmBindgenVersion;
+                hash = "sha256:041mp2ls78iji4w1v3kka2bbcj0pjwy7svpslk2rhldkymhxmjhs";
               };
             in
             final.runCommand "source" { } ''
@@ -61,6 +61,9 @@
               chmod -R +w $out
               cp ${./wasm-bindgen-api-Cargo.lock} $out/Cargo.lock
             '';
+          checkInputs = [ ];
+          cargoTestFlags = [ ];
+          cargoBuildFlags = [ "-p" old.pname ];
           cargoDeps = old.cargoDeps.overrideAttrs (final.lib.const {
             name = "${old.pname}-${version}-vendor.tar.gz";
             inherit src;
@@ -348,7 +351,8 @@
       checks = {
         # wasm-opt can take long: eschew optimizations in checks
         wasm = buildNickelWASM { channel = "stable"; optimize = false; };
-        specs = makamSpecs;
+        # out of sync, disabling for now -> https://github.com/tweag/nickel/issue/552
+        #specs = makamSpecs;
         pre-commit = defaultPackage.pre-commit;
       } // (forEachRustChannel (channel:
         {
