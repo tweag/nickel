@@ -6,8 +6,6 @@ jobs:
   deploy:
     uses: tweag/nickel-lang.org/.github/workflows/deploy.yml@master
     with:
-      nickel_repository: ${{ github.repository }}
-      nickel_ref: ${{ github.sha }}
       production_deploy: false
     secrets:
       CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
