@@ -32,7 +32,7 @@ There are a some predefined operators for working with numbers :
 | %        | The modulo operator (returns the *signed* remainder) | `5 % 3 = 2`   |
 
 > **Remark about the `-` operator:**  
-> Since `-` can be used inside an identifier, the subtraction operators **needs** to be surrounded by spaces,
+> Since `-` can be used inside an identifier, the subtraction operators **needs** to be surrounded by spaces:
 > write `1 - 1`, not `1-1`.
 
 Numbers can be compared using the following operators :
@@ -49,7 +49,7 @@ In the table below, you will find the operators sorted from highest to lowest pr
 |       Operators      | Associativity | Remark                                        |
 |:--------------------:|:-------------:|-----------------------------------------------|
 |       `( ... )`      |               | parentheses always have the highest precedence |
-|          `-`         | right-to-left | unary negation (as in `-1`)                   |
+|          `-`         |               | unary negation (as in `-1`)                   |
 |     `*`, `/`, `%`    | left-to-right |                                               |
 |       `+`, `-`       | left-to-right | binary addition and subtraction               |
 | `<`, `>`, `=<`, `>=` | left-to-right |                                               |
@@ -106,7 +106,7 @@ error: Type error
 "The number 5."
 ```
 
-Multiline strings are useful to write indented lines. The indentation is stripped from the beginning of the first line, and first and last lines are ignored if they are empty.
+Multiline strings are useful to write indented lines. The indentation is stripped from the beginning of the first line, and first and last lines are ignored if they are empty or contain only spaces.
 
 Example:
 ```
@@ -134,7 +134,7 @@ Examples:
 String"
 ```
 
-A multiline string can be introduced and closed by multiple `#` signs, as long as this amount is equal. If one wants to use string interpolation, it must uses the same amount of `#`.
+A multiline string can be introduced and closed by multiple `#` signs, as long as this amount is equal. If you want to use string interpolation, you must use the same amount of `#` as in the delimiters.
 
 Examples:
 ```
@@ -173,9 +173,9 @@ def concat(str_list, log=false):
   return res"
 ```
 
-## Equality Operators
+## Equality
 
-We have seen that the operators `==` and `!=` works for comparing numbers, but they can actually compare any values together. To be equal, except for the obvious equality on values, elements must have the same type.
+Operators `==` and `!=` are used to compare values. Two values of different types are never equal: that is, `==` doesn't perform implicit conversions.
 
 Examples:
 ```
@@ -221,7 +221,7 @@ Lists can be concatenated with the operator `@`:
 ### Record
 Records are key-value storage, or in Nickel terms, field-value storage. They are delimited by `{` and `}`, and elements are separated by `,`.
 Field-value elements are noted as `field = value`.
-The fields are strings, but can be noted as identifiers if they respect identifiers syntax (internally, they will be stored as strings). Values can be of any type.
+The fields are strings, but can be written without quotes `"` if they respect identifiers syntax. Values can be of any type.
 Elements inside a record are unordered.
 Two records can be _merged_ together using the operator `&`. The reader can find more information about merging in the relevant documentation.
 
@@ -257,7 +257,7 @@ It is possible to write records of records via the *piecewise syntax*, where we 
 { a = { b = 1, c = 2 }, b = 3 }
 ```
 
-Since all fields are strings, we can use string interpolation to create keys or accessing:
+When fields are enclosed with double quotes (`"`), you can use string interpolation to create or access fields:
 ```
 > let k = "a" in { "#{k}" = 1 }
 { a = 1 }
@@ -331,7 +331,7 @@ let add = fun a b => a + b in add 1 2
 3
 ```
 
-All existing infix operators in Nickel can be turned into prefix functions by putting them inside parentheses.
+All existing infix operators in Nickel can be turned into functions by putting them inside parentheses.
 
 Examples:
 ```
@@ -361,10 +361,15 @@ Examples:
 > "Hello World" |> strings.split " "
 ["Hello", "World"]
 
-> "Hello World" |> strings.split " " |> lists.head
+> "Hello World"
+  |> strings.split " "
+  |> lists.head
 "Hello"
 
-> "Hello World" |> strings.split " " |> lists.head |> strings.uppercase
+> "Hello World"
+  |> strings.split " "
+  |> lists.head
+  |> strings.uppercase
 "HELLO"
 ```
 
@@ -400,15 +405,19 @@ Examples:
 > 5 | Bool
 error: Blame error: contract broken by a value.
 
-> let SmallNum = contracts.from_predicate (fun x => x < 5) in 1 | #SmallNum
+> let SmallNum = contracts.from_predicate (fun x => x < 5) in
+1 | #SmallNum
 1
 
-> let SmallNum = contracts.from_predicate (fun x => x < 5) in 10 | #SmallNum
+> let SmallNum = contracts.from_predicate (fun x => x < 5) in
+10 | #SmallNum
 error: Blame error: contract broken by a value.
 
 > let SmallNum = contracts.from_predicate (fun x => x < 5) in
-    let NotTooSmallNum = contracts.from_predicate (fun x => x >= 2) in
-        3 | Num | #SmallNum | #NotTooSmallNum
+  let NotTooSmallNum = contracts.from_predicate (fun x => x >= 2) in
+  3 | Num
+    | #SmallNum
+    | #NotTooSmallNum
 3
 ```
 
@@ -432,15 +441,17 @@ It is noted as `| default = < default value >`.
 This is especially useful when merging records (more about this in the dedicated document about merge).  
 Examples:
 ```
-> let Ais2ByDefault = { a | default = 2 } in {} | #Ais2ByDefault
+> let Ais2ByDefault = { a | default = 2 } in
+  {} | #Ais2ByDefault
 { a = 2 }
 
-> let Ais2ByDefault = { a | default = 2 } in { a = 1 } | #Ais2ByDefault
+> let Ais2ByDefault = { a | default = 2 } in
+  { a = 1 } | #Ais2ByDefault
 { a = 1 }
 
 > { foo | default = 1, bar = foo + 1 }
 { foo = 1, bar = 2 }
 
-> {foo | default = 1, bar = foo + 1} & {foo = 2} {foo = 2, bar = 3}
+> {foo | default = 1, bar = foo + 1} & {foo = 2}
 { foo = 2, bar = 3 }
 ```
