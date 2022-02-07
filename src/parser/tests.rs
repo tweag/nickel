@@ -279,8 +279,7 @@ fn string_lexing() {
         lex_without_pos(r##"m#""#"#m"##),
         Ok(vec![
             Token::Normal(NormalToken::MultiStringStart(3)),
-            Token::MultiStr(MultiStringToken::Literal("\"")),
-            Token::MultiStr(MultiStringToken::Literal("#")),
+            Token::MultiStr(MultiStringToken::Literal("\"#")),
             Token::MultiStr(MultiStringToken::End),
         ])
     );

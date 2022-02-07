@@ -333,7 +333,7 @@ pub enum MultiStringToken<'input> {
     /// The other rules should be sufficient to match this as a double quote followed by a
     /// `CandidateInterpolation`, but if we omit this token, the lexer can fail unexpectedly on
     /// valid inputs because of #200.
-    #[token("\"#+\\{")]
+    #[regex("\"#+\\{")]
     QuotesCandidateInterpolation(&'input str),
     /// Token emitted by the modal lexer for the parser once it has decided that a `CandidateEnd` is
     /// an actual end token.
@@ -437,7 +437,7 @@ impl<'input> Lexer<'input> {
             //  `Normal`
             Some(ModalLexer::Normal(lexer)) => {
                 self.stack.push(ModeElt::Normal(self.count));
-                self.lexer.replace(morph(lexer));
+                self.lexer = Some(morph(lexer));
             }
             _ => panic!("lexer::enter_strlike"),
         }
@@ -457,11 +457,11 @@ impl<'input> Lexer<'input> {
         match self.lexer.take() {
             //count must be zero, and we do not push it on the stack
             Some(ModalLexer::Str(lexer)) => {
-                self.lexer.replace(ModalLexer::Normal(lexer.morph()));
+                self.lexer = Some(ModalLexer::Normal(lexer.morph()));
                 self.stack.push(ModeElt::Str);
             }
             Some(ModalLexer::MultiStr(lexer)) => {
-                self.lexer.replace(ModalLexer::Normal(lexer.morph()));
+                self.lexer = Some(ModalLexer::Normal(lexer.morph()));
                 self.stack.push(ModeElt::MultiStr(self.count));
             }
             _ => panic!("lexer::enter_normal"),
@@ -479,7 +479,7 @@ impl<'input> Lexer<'input> {
                     mode => panic!("lexer::leave_str (popped mode {:?})", mode),
                 };
 
-                self.lexer.replace(ModalLexer::Normal(lexer.morph()));
+                self.lexer = Some(ModalLexer::Normal(lexer.morph()));
             }
             _ => panic!("lexer::leave_str"),
         }
@@ -494,7 +494,7 @@ impl<'input> Lexer<'input> {
                     mode => panic!("lexer::leave_str (popped mode {:?})", mode),
                 };
 
-                self.lexer.replace(ModalLexer::Normal(lexer.morph()));
+                self.lexer = Some(ModalLexer::Normal(lexer.morph()));
             }
             _ => panic!("lexer::leave_str"),
         }
@@ -505,10 +505,10 @@ impl<'input> Lexer<'input> {
             Some(ModalLexer::Normal(lexer)) => {
                 // count must be 0
                 match self.stack.pop() {
-                    Some(ModeElt::Str) => self.lexer.replace(ModalLexer::Str(lexer.morph())),
+                    Some(ModeElt::Str) => self.lexer = Some(ModalLexer::Str(lexer.morph())),
                     Some(ModeElt::MultiStr(count)) => {
                         self.count = count;
-                        self.lexer.replace(ModalLexer::MultiStr(lexer.morph()))
+                        self.lexer = Some(ModalLexer::MultiStr(lexer.morph()))
                     }
                     mode => panic!("lexer::leave_normal (popped mode {:?})", mode),
                 };
@@ -566,28 +566,36 @@ impl<'input> Iterator for Lexer<'input> {
                 token = Some(MultiStr(MultiStringToken::Interpolation));
                 self.enter_normal();
             }
+            // We never lex something as a `MultiStringToken::Interpolation` directly, but rather
+            // generate it in this very function from other tokens. However, such a token could
+            // have still been buffered in the previous iteration, and can thus be matched here,
+            // which is why we need the case below.
+            Some(MultiStr(MultiStringToken::Interpolation)) => self.enter_normal(),
             // If we encouter a `QuotesCandidateInterpolation` token with the right number of
             // characters, we need to split it into two tokens:
-            // - a simple `"` literal
-            // - a interpolation token
+            // - a literal starting by a `"` followed by between 0 and k hashes `#`
+            // - an interpolation token
             // The interpolation token is put in the buffer such that it will be returned next
             // time.
+            //
+            // For example, in `m##""###{exp}"##m`, the `"###{` is a `QuotesCandidateInterpolation`
+            // which is split as a `"#` literal followed by an interpolation token.
             Some(MultiStr(MultiStringToken::QuotesCandidateInterpolation(s)))
-                if s.len() == self.count =>
+                if s.len() >= self.count =>
             {
+                let split_at = s.len() - self.count + 1;
                 let next_token = MultiStr(MultiStringToken::Interpolation);
                 let next_span = Range {
-                    start: span.start + 1,
+                    start: span.start + split_at,
                     end: span.end,
                 };
-                self.buffer.replace((next_token, next_span));
+                self.buffer = Some((next_token, next_span));
 
-                token = Some(MultiStr(MultiStringToken::Literal(&s[0..1])));
+                token = Some(MultiStr(MultiStringToken::Literal(&s[0..split_at])));
                 span = Range {
                     start: span.start,
-                    end: span.start + 1,
+                    end: span.start + split_at,
                 };
-                self.enter_normal();
             }
             // Otherwise, it is just part of the string, so we transform the token into a
             // `FalseInterpolation` one
@@ -637,7 +645,7 @@ impl<'input> Iterator for Lexer<'input> {
             // Ignore comment
             Some(Normal(NormalToken::LineComment)) => return self.next(),
             _ => (),
-        }
+        };
 
         token.map(|t| Ok((span.start, t, span.end)))
     }

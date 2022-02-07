@@ -15,5 +15,10 @@ let Assert = fun l x => x || %blame% l in
   m#""#{"foo"}""#m == "\"foo\"",
   m#"""#m == "\"",
   m#""#"#"#"#m == "\"#\"#\"#",
+
+  // regression test for issue #596 (https://github.com/tweag/nickel/issues/596)
+  let s = "Hello" in m##""##{s}" World"##m == "\"Hello\" World",
+  let s = "Hello" in m##""###{s}" World"##m == "\"#Hello\" World",
+  m##""##s"##m == "\"##s",
 ]
 |> lists.foldl (fun x y => (x | #Assert) && y) true
