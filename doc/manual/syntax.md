@@ -219,7 +219,7 @@ Lists can be concatenated with the operator `@`:
 ```
 
 ### Record
-Records are key-value storage, or in Nickel terms, field-value storage. They are delimited by `{` and `}`, and elements are separated by `,`.
+Records are key-value storage, or in Nickel terms, field-value storage. They are delimited by `{` and `}`, and elements are separated with `,`.
 Field-value elements are noted as `field = value`.
 The fields are strings, but can be written without quotes `"` if they respect identifiers syntax. Values can be of any type.
 Elements inside a record are unordered.
@@ -313,7 +313,7 @@ true
 ```
 
 ## Functions
-A function is declared using the `fun` keyword, then arguments separated by spaces, and finally an arrow `=>` to add the body of the function.
+A function is declared using the `fun` keyword, then arguments separated with spaces, and finally an arrow `=>` to add the body of the function.
 To call a function, just add the arguments after it separated with spaces.
 Functions in Nickel are curried, meaning that a function taking multiple arguments is actually a function that takes a single argument and returns a function taking the rest of the arguments, until it is applied.
 
