@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::mem;
 
 use crate::destruct::{Destruct, Match};
 use crate::term::{SharedTerm, TermType};
@@ -16,20 +17,32 @@ use crate::{
 //  and the free variables used in the body of the field.
 pub fn collect_free_vars(
     rt: &mut RichTerm,
-    parent_rec_record: TermType,
+    parent_type: TermType,
     free_vars: &mut HashSet<Ident>,
     fields_free_vars: &mut Vec<HashSet<Ident>>,
 ) {
-    if parent_rec_record == TermType::RecRecord {
-        fields_free_vars.push(free_vars.clone());
+    match parent_type {
+        TermType::RecRecord => {
+            dbg!(&free_vars);
+            dbg!(&fields_free_vars);
+            dbg!(parent_type);
+            let mut ffv = HashSet::new();
+            mem::swap(&mut ffv, free_vars);
+            fields_free_vars.push(ffv);
+        }
+        TermType::Let(id) => {
+            free_vars.remove(id);
+        }
+
+        TermType::LetPattern(id, destruct) => {}
+        TermType::Any => {}
     }
 
     match SharedTerm::make_mut(&mut rt.term) {
         Term::Var(id) => {
             free_vars.insert(id.clone());
         }
-        Term::Let(id, _, _, _) | Term::Fun(id, _) => {
-            free_vars.remove(id);
+        Term::Fun(id, _) => {
         }
         Term::LetPattern(id, d, _, _) | Term::FunPattern(id, d, _) => {
             id.as_ref().map(|id| free_vars.remove(id));
@@ -37,23 +50,29 @@ pub fn collect_free_vars(
         }
 
         Term::RecRecord(map, dyn_fields, _, ffv) => {
+            for i in fields_free_vars.iter().flat_map(|fv| fv.iter()) {
+                free_vars.insert(i.clone());
+            }
+
             for f in dyn_fields.iter_mut() {
                 f.2 = Some(fields_free_vars.pop().unwrap());
             }
 
+            dbg!(&fields_free_vars);
             *ffv = Some(
                 map.iter()
                     .zip(fields_free_vars.drain(0..map.len()))
                     .map(|((id, _), fv)| (id.clone(), fv))
                     .collect(),
             );
-            for (fv, (_, _, dfv)) in fields_free_vars.drain(0..).zip(dyn_fields.iter_mut()) {
-                *dfv = Some(fv);
-            }
 
             map.iter().for_each(|(id, _)| {
                 free_vars.remove(id);
             });
+
+            dbg!(&free_vars);
+            dbg!(&fields_free_vars);
+            dbg!(parent_type);
         }
         _ => {}
     }

@@ -501,13 +501,15 @@ where
             Term::RecRecord(ts, dyn_fields, attrs, free_vars) => {
                 let rec_env = fixpoint::rec_env(ts.iter(), &env)?;
 
-                ts.iter().try_for_each(|(_, rt)| {
+                dbg!(free_vars);
+                dbg!(ts);
+                ts.iter().try_for_each(|(fid, rt)| {
                     if let Some(free_vars) = free_vars.as_ref() {
                         fixpoint::patch_field(rt, &rec_env, &env, |(id, _)| {
-                            free_vars.get(id).map(|fv| fv.contains(id)).unwrap_or(true)
+                            free_vars.get(fid).map(|fv| fv.contains(id)).unwrap_or(true)
                         })
                     } else {
-                        fixpoint::patch_field(rt, &rec_env, &env, |_| true)
+                        fixpoint::patch_field(rt, &rec_env, &env, |_| false)
                     }
                 })?;
 

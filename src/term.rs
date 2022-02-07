@@ -923,9 +923,11 @@ pub enum TraverseMethod {
     BottomUp,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum TermType {
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum TermType<'l> {
     RecRecord,
+    Let(&'l Ident),
+    LetPattern(Option<&'l Ident>, &'l Destruct),
     Any,
 }
 
@@ -1013,16 +1015,16 @@ impl RichTerm {
                 )
             },
             Term::Let(id, t1, t2, btype) => {
-                let t1 = t1.traverse_with_parent(TermType::Any, f, state, method)?;
-                let t2 = t2.traverse_with_parent(TermType::Any, f, state, method)?;
+                let t1 = t1.traverse_with_parent(TermType::Let(&id), f, state, method)?;
+                let t2 = t2.traverse_with_parent(TermType::Let(&id), f, state, method)?;
                 RichTerm::new(
                     Term::Let(id, t1, t2, btype),
                     pos,
                 )
             },
             Term::LetPattern(id, pat, t1, t2) => {
-                let t1 = t1.traverse_with_parent(TermType::Any, f, state, method)?;
-                let t2 = t2.traverse_with_parent(TermType::Any, f, state, method)?;
+                let t1 = t1.traverse_with_parent(TermType::LetPattern(id.as_ref(), &pat), f, state, method)?;
+                let t2 = t2.traverse_with_parent(TermType::LetPattern(id.as_ref(), &pat), f, state, method)?;
                 RichTerm::new(
                     Term::LetPattern(id, pat, t1, t2),
                     pos,
