@@ -145,7 +145,7 @@ Examples:
 "Hello World"
 
 > let w = "World" in m##"Hello #{w}"##m
-"Hello #{"World"}"
+"Hello #{w}"
 
 > let w = "World" in m##"Hello ##{w}"##m
 "Hello World"
