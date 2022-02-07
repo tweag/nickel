@@ -286,17 +286,6 @@ Examples:
 ["1", "2", "3"]
 ```
 
-The `then` and `else` branches are only evaluated accordingly to the result of the expression inside the `if`.
-
-Examples:
-```
-> ["1"] @ (if true then ["2"] else "error") @ ["3"]    // Here only the expression in 'then' is evaluated, which is correct
-["1", "2", "3"]
-
-> ["1"] @ (if false then ["2"] else "error") @ ["3"]    // Here only the expression in 'else' is evaluated, which results in a type error
-error: Type error
-```
-
 ### Let-In
 Let-in allows the binding of an expression. It is used as `let <ident> = <expr> in <expr>`.
 
