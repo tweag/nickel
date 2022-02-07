@@ -1219,6 +1219,10 @@ impl ToDiagnostic<FileId> for ParseError {
                     primary(span),
                     secondary(illegal_span).with_message("can't use this record construct"),
                     secondary(tail_span).with_message("in presence of a tail"),
+                ])
+                .with_notes(vec![
+                    String::from("Using a polymorphic tail in a record `{ ..; a}` requires the rest of the record to be only composed of type annotations, of the form `<field>: <type>`."),
+                    String::from("Value assignements, such as `<field> = <expr>`, metadata, etc. are forbidden."),
                 ]),
         };
 
