@@ -291,10 +291,18 @@ pub enum ParseError {
     ),
     /// Unbound type variable
     UnboundTypeVariables(Vec<Ident>, RawSpan),
-    /// Illegal record literal in the uniterm syntax (see RFC002). In practice, this is a record
-    /// mixing a tail and non-type constructs.
+    /// Illegal record literal in the uniterm syntax. In practice, this is a record with a
+    /// polymorphic tail that contains a construct that wasn't permitted inside a record type in
+    /// the original syntax. Typically, a field assignment:
+    ///
+    /// ```nickel
+    /// forall a. {foo : Num; a} // allowed
+    /// forall a. {foo : Num = 1; a} // InvalidUniRecord error: giving a value to foo is forbidden
+    /// ```
+    ///
+    /// See [RFC002](../../rfcs/002-merge-types-terms-syntax.md) for more details.
     InvalidUniRecord(
-        RawSpan, /* non-type construct position */
+        RawSpan, /* illegal (in conjunction with a tail) construct position */
         RawSpan, /* tail position */
         RawSpan, /* whole record position */
     ),
@@ -1209,7 +1217,7 @@ impl ToDiagnostic<FileId> for ParseError {
                 .with_message(format!("invalid record literal"))
                 .with_labels(vec![
                     primary(span),
-                    secondary(illegal_span).with_message("can't use non-type construct"),
+                    secondary(illegal_span).with_message("can't use this record construct"),
                     secondary(tail_span).with_message("in presence of a tail"),
                 ]),
         };
