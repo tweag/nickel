@@ -229,7 +229,7 @@ Examples:
 ```
 {}
 {a = 3}
-{my_id_n5 = "my id number 5", my_id_n4 = }
+{my_id_n5 = "my id number 5", "my id n4" = "my id number 4" }
 {"5" = 5, six = 6}
 ```
 
