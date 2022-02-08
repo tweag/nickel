@@ -218,9 +218,21 @@ fn pipe_deepseq(c: &mut Criterion) {
     );
 }
 
+fn sort_normal(c: &mut Criterion) {
+    bench(
+        "sort normal",
+        env!("CARGO_MANIFEST_DIR"),
+        "lists/sort",
+        None,
+        20,
+        EvalMode::Normal,
+        c,
+    );
+}
+
 criterion_group! {
     name = benches;
     config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)));
-    targets = fold_strings, fold_strings_deep, fold_nums, fold_nums_deep, fold_lists, fold_lists_deep, foldl_strings, foldl_strings_deep, foldl_nums, foldl_nums_deep, foldl_lists, foldl_lists_deep, generate_normal, generate_deepseq, map_normal, map_deepseq, pipe_normal, pipe_deepseq
+    targets = fold_strings, fold_strings_deep, fold_nums, fold_nums_deep, fold_lists, fold_lists_deep, foldl_strings, foldl_strings_deep, foldl_nums, foldl_nums_deep, foldl_lists, foldl_lists_deep, generate_normal, generate_deepseq, map_normal, map_deepseq, pipe_normal, pipe_deepseq, sort_normal
 }
 criterion_main!(benches);

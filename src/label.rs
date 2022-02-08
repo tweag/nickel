@@ -2,6 +2,8 @@
 //!
 //! A label is a value holding metadata relative to contract checking. It gives the user useful
 //! information about the context of a contract failure.
+use std::rc::Rc;
+
 use crate::eval::lazy::Thunk;
 use crate::position::{RawSpan, TermPos};
 use crate::types::{AbsType, Types};
@@ -232,7 +234,7 @@ pub mod ty_path {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Label {
     /// The type checked by the original contract.
-    pub types: Types,
+    pub types: Rc<Types>,
     /// A string tag to be printed together with the error message.
     pub tag: String,
     /// The position of the original contract.
@@ -252,7 +254,7 @@ impl Label {
     /// Generate a dummy label for testing purpose.
     pub fn dummy() -> Label {
         Label {
-            types: Types(AbsType::Num()),
+            types: Rc::new(Types(AbsType::Num())),
             tag: "testing".to_string(),
             span: RawSpan {
                 src_id: Files::new().add("<test>", String::from("empty")),
