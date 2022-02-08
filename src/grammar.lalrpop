@@ -12,7 +12,7 @@ use super::{
     utils::*,
     lexer::{Token, NormalToken, StringToken, MultiStringToken},
     error::ParseError,
-    uniterm::UniRecord,
+    uniterm::*,
 };
 
 use crate::{
@@ -41,11 +41,14 @@ AsTypes<Rule>: Types = <ut: WithPos<Rule>> =>?
     Types::try_from(ut)
         .map_err(|e| lalrpop_util::ParseError::User{error: e});
 
+AsUniTerm<Rule>: UniTerm = <l: @L> <ut: Rule> <r: @R> =>
+    UniTerm::from(ut).with_pos(mk_pos(src_id, l, r));
+
 AnnotAtom: MetaValue = {
-    "|" <l: @L> <ty_res: Types> <r: @R> => MetaValue {
+    "|" <l: @L> <ty: AsTypes<Term>> <r: @R> => MetaValue {
         doc: None,
         types: None,
-        contracts: vec![Contract {types: ty_res.clone(), label: mk_label(ty_res, src_id, l, r)}],
+        contracts: vec![Contract {types: ty.clone(), label: mk_label(ty_res, src_id, l, r)}],
         priority: Default::default(),
         value: None,
     },
@@ -63,9 +66,9 @@ AnnotAtom: MetaValue = {
         priority: Default::default(),
         value: None,
     },
-    ":" <l: @L> <ty_res: Types> <r: @R> => MetaValue {
+    ":" <l: @L> <ty: AsTypes<Term>> <r: @R> => MetaValue {
         doc: None,
-        types: Some(Contract {types: ty_res.clone(), label: mk_label(ty_res, src_id, l, r)}),
+        types: Some(Contract {types: ty.clone(), label: mk_label(ty_res, src_id, l, r)}),
         contracts: Vec::new(),
         priority: Default::default(),
         value: None,
@@ -80,10 +83,10 @@ DefaultAnnot: MetaValue = "?" <t: Term> => MetaValue {
 
 Annot: MetaValue = <anns: AnnotAtom+> => anns.into_iter().fold(MetaValue::new(), MetaValue::flatten);
 
-pub Term: RichTerm = WithPos<RootTerm>;
+pub Term: RichTerm = AsTerm<RootTerm>;
 
 pub ExtendedTerm: ExtendedTerm = {
-    "let" <id: Ident> <meta: Annot?> "=" <t: Term> => {
+    "let" <id: Ident> <meta: Annot?> "=" <t: AsTerm<Term> => {
         let t = if let Some(mut meta) = meta {
             let pos = t.pos;
             meta.value = Some(t);
@@ -97,9 +100,10 @@ pub ExtendedTerm: ExtendedTerm = {
     Term => ExtendedTerm::RichTerm(<>),
 }
 
-RootTerm: RichTerm = {
-    "let" <pat:Pattern> <meta: Annot?> "=" <t1: Term> "in"
-        <t2: Term> => {
+RootUniTerm: UniTerm = {
+    "let" <pat:Pattern> <meta: Annot?>
+        "=" <t1: AsTerm<Term>>
+        "in" <t2: AsTerm<Term>> => {
         let t1 = if let Some(mut meta) = meta {
             let pos = t1.pos;
             meta.value = Some(t1);
@@ -109,14 +113,22 @@ RootTerm: RichTerm = {
             t1
         };
 
-        mk_term::let_pat(pat.0, pat.1, t1, t2)
+        UniTerm::from(mk_term::let_pat(pat.0, pat.1, t1, t2))
     },
-    <l: @L> "fun" <pats: Pattern+> "=>" <t: Term> <r: @R> => {
+    <l: @L> "fun" <pats: Pattern+> "=>" <t: AsTerm<Term>> <r: @R> => {
         let pos = mk_pos(src_id, l, r);
-        pats.into_iter().rev().fold(t, |t, (id, destruct)| RichTerm {
+        let rt = pats.into_iter().rev().fold(t, |t, (id, destruct)| RichTerm {
             term: SharedTerm::new(Term::FunPattern(id, destruct, t)),
             pos,
-        })
+        });
+
+        UniTerm::from(rt)
+    },
+    "forall" <ids: Ident+> "." <ty: AsTypes<Term>> => {
+        UniTerm::from(ids.into_iter().rev().fold(
+            ty,
+            |acc, id| Types(AbsType::Forall(id, Box::new(acc)))
+        ))
     },
     "switch" "{" <cases: (switch_case ",")*> <last: switch_case?> "}"
         <exp: Term> => {
@@ -132,7 +144,7 @@ RootTerm: RichTerm = {
             };
         }
 
-        RichTerm::from(
+        UniTerm::from(
             Term::Switch(
                 exp,
                 acc,
@@ -140,48 +152,50 @@ RootTerm: RichTerm = {
             )
         )
     },
-    "if" <cond: Term> "then" <t1: Term> "else" <t2: Term> =>
-        mk_app!(Term::Op1(UnaryOp::Ite(), cond), t1, t2),
+    "if" <cond: AsTerm<Term>> "then" <t1: AsTerm<Term>> "else" <t2: AsTerm<Term>> =>
+        UniTerm::from(mk_app!(Term::Op1(UnaryOp::Ite(), cond), t1, t2)),
     AnnotatedTerm,
-    <l: @L> <t: !> <r: @R> => { errors.push(t); RichTerm { term: SharedTerm::new(Term::ParseError), pos: mk_pos(src_id, l, r)} },
+    <l: @L> <t: !> <r: @R> => { errors.push(t); UniTerm { node: UniTermNode::ParseError, pos: mk_pos(src_id, l, r)} },
 };
 
-AnnotatedTerm: RichTerm = {
-    <t: WithPos<Infix>> <meta: Annot?> => {
+AnnotatedTerm: UniTerm = {
+    <t: AsTerm<Infix>> <meta: Annot?> => {
         if let Some(mut meta) = meta {
             let pos = t.pos;
             meta.value = Some(t);
-            RichTerm::new(Term::MetaValue(meta), pos)
+            UniTerm::from(Term::MetaValue(meta), pos)
         }
         else {
-            t
+            UniTerm::from(t)
         }
     },
 };
 
-Infix: RichTerm = {
+Infix: UniTerm = {
     InfixExpr,
 };
 
-Applicative: RichTerm = {
-    "import" <s: StaticString> => RichTerm::from(Term::Import(OsString::from(s))),
-    <t1:WithPos<Applicative>> <t2: WithPos<RecordOperand>> => mk_app!(t1, t2),
-    <op: UOp> <t: WithPos<RecordOperand>> => mk_term::op1(op, t),
-    <op: BOpPre> <t1: WithPos<RecordOperand>> <t2: WithPos<Atom>> => mk_term::op2(op, t1, t2),
-    NOpPre<WithPos<RecordOperand>>,
+Applicative: UniTerm = {
+    "import" <s: StaticString> => UniTerm::from(Term::Import(OsString::from(s))),
+    <t1:AsTerm<Applicative>> <t2: AsTerm<RecordOperand>> =>
+        UniTerm::from(mk_app!(t1, t2)),
+    <op: UOp> <t: AsTerm<RecordOperand>> => UniTerm::from(mk_term::op1(op, t)),
+    <op: BOpPre> <t1: AsTerm<RecordOperand>> <t2: AsTerm<Atom>>
+        => UniTerm::from(mk_term::op2(op, t1, t2)),
+    NOpPre<AsTerm<RecordOperand>>,
     RecordOperand,
 };
 
-RecordOperand: RichTerm = {
+RecordOperand: UniTerm = {
     Atom,
     RecordOperationChain,
 }
 
-RecordOperationChain: RichTerm = {
-    <t: WithPos<RecordOperand>> "." <id: Ident> => mk_term::op1(UnaryOp::StaticAccess(id), t),
-    <t: WithPos<RecordOperand>> "." <t_id: WithPos<StrChunks>> => mk_access(t_id, t),
-    <t: WithPos<RecordOperand>> "-$" <t_id: WithPos<Atom>> => mk_term::op2(BinaryOp::DynRemove(), t_id, t),
-    <r: WithPos<RecordOperand>> "$[" <id: Term> "=" <t: Term> "]" =>
+RecordOperationChain: UniTerm = {
+    <t: AsTerm<RecordOperand>> "." <id: Ident> => mk_term::op1(UnaryOp::StaticAccess(id), t),
+    <t: AsTerm<RecordOperand>> "." <t_id: AsTerm<StrChunks>> => mk_access(t_id, t),
+    <t: AsTerm<RecordOperand>> "-$" <t_id: AsTerm<Atom>> => mk_term::op2(BinaryOp::DynRemove(), t_id, t),
+    <r: AsTerm<RecordOperand>> "$[" <id: AsTerm<Term>> "=" <t: AsTerm<Term>> "]" =>
         mk_app!(mk_term::op2(BinaryOp::DynExtend(), id, r), t),
 };
 
@@ -212,21 +226,22 @@ UniRecord: UniRecord = {
     },
 };
 
-Atom: RichTerm = {
+Atom: UniTerm = {
     "(" <CurriedOp> ")",
     "(" <Term> ")",
-    "num literal" => RichTerm::from(Term::Num(<>)),
-    "null" => RichTerm::from(Term::Null),
-    Bool => RichTerm::from(Term::Bool(<>)),
+    "num literal" => UniTerm::from(Term::Num(<>)),
+    "null" => UniTerm::from(Term::Null),
+    Bool => UniTerm::from(Term::Bool(<>)),
     StrChunks,
-    Ident => RichTerm::from(Term::Var(<>)),
-    AsTerm<UniRecord>,
-    "`" <EnumTag> => RichTerm::from(Term::Enum(<>)),
+    Ident => UniTerm::from(UniTermNode::Var(<>)),
+    UniRecord => UniTerm::from(UniTermNode::Record(<>)),
+    "`" <EnumTag> => UniTerm::from(Term::Enum(<>)),
      "[" <terms: (<Term> ",")*> <last: Term?> "]" => {
         let terms : Vec<RichTerm> = terms.into_iter()
             .chain(last.into_iter()).collect();
-        RichTerm::from(Term::List(terms))
+        UniTerm::from(Term::List(terms))
     }
+    AsUniTerm<TypeAtom>,
 };
 
 RecordField: (FieldPathElem, RichTerm) = {
@@ -275,50 +290,53 @@ Pattern: (Option<Ident>,Destruct) = {
 Destruct: Destruct = {
     "{" <mut matches: (<Match> ",")*> <last:LastMatch?> "}" => {
         let (open, rst) = match last {
-	    Some(LastMatch::Match(m)) => {
-	        matches.push(m);
-	        (false,None)
-	    },
-	    Some(LastMatch::Ellipsis(rst)) => (true, rst),
-	    _ => (false, None),
-	};
-	Destruct::Record(matches, open, rst)
+            Some(LastMatch::Match(m)) => {
+                matches.push(m);
+                (false,None)
+            },
+            Some(LastMatch::Ellipsis(rst)) => (true, rst),
+            _ => (false, None),
+        };
+
+        Destruct::Record(matches, open, rst)
     },
 };
 
 Match: Match = {
     <left:Ident> <anns: Annot?> <default: DefaultAnnot?> "=" <right: Pattern> => {
-	let meta = match (default, anns) {
-	    (Some(d), Some(m)) => MetaValue::flatten(d,m),
-	    (Some(m),_) | (_,Some(m)) => m,
-  	    _ => MetaValue::new(),
-	};
-	Match::Assign(left, meta, right)
+        let meta = match (default, anns) {
+            (Some(d), Some(m)) => MetaValue::flatten(d,m),
+            (Some(m),_) | (_,Some(m)) => m,
+              _ => MetaValue::new(),
+        };
+
+        Match::Assign(left, meta, right)
     },
     <id:Ident> <anns: Annot?> <default: DefaultAnnot?> => {
-	let meta = match (default, anns) {
-	    (Some(d), Some(m)) => MetaValue::flatten(d,m),
-	    (Some(m),_) | (_,Some(m)) => m,
-  	    _ => MetaValue::new(),
-	};
-	Match::Simple(id, meta)
+        let meta = match (default, anns) {
+            (Some(d), Some(m)) => MetaValue::flatten(d,m),
+            (Some(m),_) | (_,Some(m)) => m,
+            _ => MetaValue::new(),
+        };
+
+        Match::Simple(id, meta)
     },
 };
 
 LastMatch: LastMatch = {
     Match => LastMatch::Match(<>),
-    ".."<Ident?> => LastMatch::Ellipsis(<>),
+    ".." <Ident?> => LastMatch::Ellipsis(<>),
 };
 
-Ident: Ident = <l:@L> <i: "identifier"> <r:@R>
-    => Ident { label: i.to_string(), pos: mk_pos(src_id, l, r) };
+Ident: Ident = <l:@L> <i: "identifier"> <r:@R> =>
+    Ident { label: i.to_string(), pos: mk_pos(src_id, l, r) };
 
 Bool: bool = {
     "true" => true,
     "false" => false,
 };
 
-StrChunks : RichTerm = {
+StrChunks : UniTerm = {
   <start: StringStart> <fst: ChunkLiteral?> <chunks: (ChunkExpr+ChunkLiteral)*> <lasts:ChunkExpr*> <end: StringEnd> => {
         debug_assert_eq!(start, end);
 
@@ -341,7 +359,7 @@ StrChunks : RichTerm = {
         };
         chunks.reverse();
 
-        RichTerm::from(Term::StrChunks(chunks))
+        UniTerm::from(Term::StrChunks(chunks))
     },
 };
 
@@ -383,7 +401,7 @@ ChunkLiteralPart: ChunkLiteralPart<'input> = {
     "str literal" => ChunkLiteralPart::Str(<>),
     "multstr literal" => ChunkLiteralPart::Str(<>),
     "str esc char" => ChunkLiteralPart::Char(<>),
-    };
+};
 
 UOp: UnaryOp = {
     "is_num" => UnaryOp::IsNum(),
@@ -423,8 +441,8 @@ UOp: UnaryOp = {
 };
 
 switch_case: SwitchCase = {
-    "`" <id: EnumTag> "=>" <t: Term> => SwitchCase::Normal(id, t),
-    "_" "=>" <t: Term> => SwitchCase::Default(<>),
+    "`" <id: EnumTag> "=>" <t: AsTerm<Term>> => SwitchCase::Normal(id, t),
+    "_" "=>" <t: AsTerm<Term>> => SwitchCase::Default(<>),
 }
 
 InfixBOp2: BinaryOp = {
@@ -490,42 +508,61 @@ InfixOp: InfixOp = {
     <InfixUOpOrLazyBOp> => <>.into(),
 }
 
-CurriedOp: RichTerm = {
-    <l: @L> <op: InfixOp> <r: @R> => op.eta_expand(mk_pos(src_id, l, r)),
+CurriedOp_: UniTerm = {
+    <l: @L> <op: InfixOp> <r: @R> =>
+        UniTerm::from(op.eta_expand(mk_pos(src_id, l, r))),
     <l: @L> "|>" <r: @R> =>
-        mk_fun!("x1", "x2",
-            mk_app!(mk_term::var("x2"), mk_term::var("x1"))
-            .with_pos(mk_pos(src_id, l, r))
+        UniTerm::from(
+            mk_fun!("x1", "x2",
+                mk_app!(mk_term::var("x2"), mk_term::var("x1"))
+                .with_pos(mk_pos(src_id, l, r))
+            )
         ),
     <l: @L> "!=" <r: @R> =>
-        mk_fun!("x1", "x2",
-            mk_term::op1(
-                UnaryOp::BoolNot(),
-                Term::Op2(BinaryOp::Eq(),
-                    mk_term::var("x2"),
-                    mk_term::var("x1")
+        UniTerm::from(
+            mk_fun!("x1", "x2",
+                mk_term::op1(
+                    UnaryOp::BoolNot(),
+                    Term::Op2(BinaryOp::Eq(),
+                        mk_term::var("x2"),
+                        mk_term::var("x1")
+                    )
                 )
+                .with_pos(mk_pos(src_id, l, r))
             )
-            .with_pos(mk_pos(src_id, l, r))
         ),
+    //<l: @L> "->" <r: @R> =>?
+    //    UniTerm::from(
+    //        mk_fun!("x1", "x2",
+    //            mk_term::op1(
+    //                UnaryOp::BoolNot(),
+    //                Term::Op2(BinaryOp::Eq(),
+    //                    mk_term::var("x2"),
+    //                    mk_term::var("x1")
+    //                )
+    //            )
+    //            .with_pos(mk_pos(src_id, l, r))
+    //        )
+    //    ),
 }
 
-InfixUOpApp<UOp, Expr>: RichTerm =
-  <op: UOp> <t: WithPos<Expr>> => mk_term::op1(op, t);
+InfixUOpApp<UOp, Expr>: UniTerm =
+  <op: UOp> <t: AsTerm<Expr>> => UniTerm::from(mk_term::op1(op, t));
 
-InfixBOpApp<BOp, LExpr, RExpr>: RichTerm =
-  <t1: WithPos<LExpr>> <op: BOp> <t2: WithPos<RExpr>> => mk_term::op2(op, t1, t2);
+InfixBOpApp<BOp, LExpr, RExpr>: UniTerm =
+  <t1: AsTerm<LExpr>> <op: BOp> <t2: AsTerm<RExpr>> =>
+      UniTerm::from(mk_term::op2(op, t1, t2));
 
-InfixLazyBOpApp<UOp, LExpr, RExpr>: RichTerm =
-  <t1: WithPos<LExpr>> <op: UOp> <t2: WithPos<RExpr>> =>
-    mk_app!(mk_term::op1(op, t1), t2);
+InfixLazyBOpApp<UOp, LExpr, RExpr>: UniTerm =
+  <t1: AsTerm<LExpr>> <op: UOp> <t2: AsTerm<RExpr>> =>
+    UniTerm::from(mk_app!(mk_term::op1(op, t1), t2));
 
-InfixExpr: RichTerm = {
+InfixExpr: UniTerm = {
     #[precedence(level="0")]
     Applicative,
 
     #[precedence(level="1")]
-    "-" <WithPos<InfixExpr>> => mk_term::op2(BinaryOp::Sub(), Term::Num(0.0), <>),
+    "-" <AsTerm<InfixExpr>> => mk_term::op2(BinaryOp::Sub(), Term::Num(0.0), <>),
 
     #[precedence(level="2")] #[assoc(side="left")]
     InfixBOpApp<InfixBOp2, InfixExpr, InfixExpr>,
@@ -548,7 +585,7 @@ InfixExpr: RichTerm = {
 
     #[precedence(level="8")] #[assoc(side="left")]
     InfixBOpApp<InfixBOp8, InfixExpr, InfixExpr>,
-    <t1: WithPos<InfixExpr>> "!=" <t2: WithPos<InfixExpr>> =>
+    <t1: AsTerm<InfixExpr>> "!=" <t2: AsTerm<InfixExpr>> =>
         mk_term::op1(UnaryOp::BoolNot(), Term::Op2(BinaryOp::Eq(), t1, t2)),
 
     #[precedence(level="9")] #[assoc(side="left")]
@@ -556,6 +593,10 @@ InfixExpr: RichTerm = {
 
     #[precedence(level="10")] #[assoc(side="left")]
     InfixLazyBOpApp<InfixLazyBOp10, InfixExpr, InfixExpr>,
+
+    #[precedence(level="11")] #[assoc(side="right")]
+    <s: AsTypes<InfixExpr>> "->" <t: AsTerm<InfixExpr>> =>
+        UniTerm::from(Types(AbsType::Arrow(Box::new(s), Box::new(t)))),
 }
 
 BOpPre: BinaryOp = {
@@ -575,46 +616,30 @@ BOpPre: BinaryOp = {
     "str_is_match" => BinaryOp::StrIsMatch(),
 }
 
-NOpPre<ArgRule>: RichTerm = {
+NOpPre<ArgRule>: UniTerm = {
     "str_replace" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
-        mk_opn!(NAryOp::StrReplace(), t1, t2, t3),
+        UniTerm::from(mk_opn!(NAryOp::StrReplace(), t1, t2, t3)),
     "str_replace_regex" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
-        mk_opn!(NAryOp::StrReplaceRegex(), t1, t2, t3),
+        UniTerm::from(mk_opn!(NAryOp::StrReplaceRegex(), t1, t2, t3)),
     "str_substr" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
-        mk_opn!(NAryOp::StrSubstr(), t1, t2, t3),
+        UniTerm::from(mk_opn!(NAryOp::StrSubstr(), t1, t2, t3)),
 }
 
-Types: Types = {
-    "forall" <ids: Ident+> "." <ty: Arrows> =>
-        ids.into_iter().rev().fold(
-            ty,
-            |acc, id| Types(AbsType::Forall(id, Box::new(acc)))
-        ),
-    <Arrows>
-}
-
-Arrows: Types = {
-    <s: subType> "->" <t:Arrows> => Types(AbsType::Arrow(Box::new(s), Box::new(t))),
-    <subType>,
-};
-
-BaseType: Types = {
+TypeBuiltin: Types = {
     "Dyn" => Types(AbsType::Dyn()),
     "Num" => Types(AbsType::Num()),
     "Bool" => Types(AbsType::Bool()),
     "Str" => Types(AbsType::Str()),
-};
-
-subType : Types = {
-    <BaseType>,
-    "List" <ty: subType?> => {
+    "List" <Atom> => {
         let ty = Box::new(ty.unwrap_or(Types(AbsType::Dyn())));
         Types(AbsType::List(ty))
     },
-    <Ident> => Types(AbsType::Var(<>)),
-    "#" <WithPos<RecordOperand>> => Types(AbsType::Flat(<>)),
-    "(" <Types> ")",
-    "<" <rows:(<EnumTag> ",")*> <last: (<EnumTag>)?> <tail: ("|" <EnumTag>)?> ">" => {
+}
+
+TypeAtom: Types = {
+    <TypeBuiltin>,
+    "#" <AsTerm<RecordOperand>> => Types(AbsType::Flat(<>)),
+    "[|" <rows:(<EnumTag> ",")*> <last: (<EnumTag>)?> <tail: (";" <EnumTag>)?> "|]" => {
         let ty = rows.into_iter()
             .chain(last.into_iter())
             // As we build row types as a linked list via a fold on the original
@@ -633,9 +658,8 @@ subType : Types = {
             );
         Types(AbsType::Enum(Box::new(ty)))
     },
-    AsTypes<UniRecord>,
-    "{" "_" ":" <Types> "}" => Types(AbsType::DynRecord(Box::new(<>))),
-};
+    "{" "_" ":" <AsTypes<Term>> "}" => Types(AbsType::DynRecord(Box::new(<>))),
+}
 
 extern {
     type Location = usize;
@@ -773,5 +797,7 @@ extern {
         "<=" => Token::Normal(NormalToken::LessOrEq),
         ">" => Token::Normal(NormalToken::RAngleBracket),
         ">=" => Token::Normal(NormalToken::GreaterOrEq),
+        "[|" => Token::Normal(NormalToken::EnumOpen),
+        "|]" => Token::Normal(NormalToken::EnumClose),
     }
 }
