@@ -21,7 +21,7 @@ use crate::identifier::Ident;
 use crate::label::Label;
 use crate::match_sharedterm;
 use crate::position::TermPos;
-use crate::types::{AbsType, Types};
+use crate::types::{AbsType, Types, UnboundTypeVariableError};
 use codespan::FileId;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -910,7 +910,7 @@ impl fmt::Display for NAryOp {
 }
 
 #[derive(Copy, Clone)]
-pub enum TraverseMethod {
+pub enum TraverseOrder {
     TopDown,
     BottomUp,
 }
@@ -952,21 +952,21 @@ impl RichTerm {
         self
     }
 
-    /// Apply a transformation on a whole term by mapping a function `f` on each node in
-    /// manner defined by the method.
+    /// Apply a transformation on a whole term by mapping a faillible function `f` on each node in
+    /// manner as prescribed by the order.
     /// `f` may return a generic error `E` and use the state `S` which is passed around.
     pub fn traverse<F, S, E>(
         self,
         f: &mut F,
         state: &mut S,
-        method: TraverseMethod,
+        method: TraverseOrder,
     ) -> Result<RichTerm, E>
     where
         F: FnMut(RichTerm, &mut S) -> Result<RichTerm, E>,
     {
         let rt = match method {
-            TraverseMethod::TopDown => f(self, state)?,
-            TraverseMethod::BottomUp => self,
+            TraverseOrder::TopDown => f(self, state)?,
+            TraverseOrder::BottomUp => self,
         };
         let pos = rt.pos;
 
@@ -1168,8 +1168,8 @@ impl RichTerm {
         };
 
         match method {
-            TraverseMethod::TopDown => Ok(result),
-            TraverseMethod::BottomUp => f(result, state),
+            TraverseOrder::TopDown => Ok(result),
+            TraverseOrder::BottomUp => f(result, state),
         }
     }
 }
@@ -1394,14 +1394,14 @@ pub mod make {
         Term::OpN(op, args.into_iter().map(T::into).collect()).into()
     }
 
-    pub fn assume<T>(types: Types, l: Label, t: T) -> RichTerm
+    pub fn assume<T>(types: Types, l: Label, t: T) -> Result<RichTerm, UnboundTypeVariableError>
     where
         T: Into<RichTerm>,
     {
-        mk_app!(
-            op2(BinaryOp::Assume(), types.contract(), Term::Lbl(l)),
+        Ok(mk_app!(
+            op2(BinaryOp::Assume(), types.contract()?, Term::Lbl(l)),
             t.into()
-        )
+        ))
     }
 
     pub fn string<S>(s: S) -> RichTerm

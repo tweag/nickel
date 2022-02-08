@@ -61,10 +61,10 @@ let Assert = fun l x => x || %blame% l in
     %deep_seq% x x == {a = 1, s = { foo = true}},
 
   // polymorphism
-  (let id | forall a. { | a} -> { | a} = fun x => x in
-    let extend | forall a. { | a} -> {foo: Num | a} = fun x =>
+  (let id | forall a. { ; a} -> { ; a} = fun x => x in
+    let extend | forall a. { ; a} -> {foo: Num ; a} = fun x =>
       x & {foo = 1} in
-    let remove | forall a. {foo: Num | a} -> { | a} = fun x =>
+    let remove | forall a. {foo: Num ; a} -> { ; a} = fun x =>
       x -$ "foo" in
 
     (id {} == {} | #Assert) &&
@@ -75,7 +75,7 @@ let Assert = fun l x => x || %blame% l in
     (remove {foo = 1, bar = 1} == {bar = 1} | #Assert) &&
     (remove (extend {}) == {} | #Assert) &&
     (extend (remove {foo = 2}) == {foo =1} | #Assert) &&
-    (let f | forall a b. {f: a -> a, arg: a | b} -> a =
+    (let f | forall a b. {f: a -> a, arg: a ; b} -> a =
         fun rec => rec.f (rec.arg) in
       f { f = fun x => x ++ " suffix", arg = "foo" }
       == "foo suffix"
@@ -83,10 +83,10 @@ let Assert = fun l x => x || %blame% l in
   ),
 
   // records_dynamic_tail
-  ({a = 1, b = "b"} | {a: Num, b: Str | Dyn}) == {a = 1, b = "b"},
-  ({a = 1, b = "b", c = false} | {a: Num, b: Str | Dyn})
+  ({a = 1, b = "b"} | {a: Num, b: Str ; Dyn}) == {a = 1, b = "b"},
+  ({a = 1, b = "b", c = false} | {a: Num, b: Str ; Dyn})
   == {a = 1, b = "b", c = false},
-  ((fun r => r.b) | {a: Num | Dyn} -> Dyn) {a = 1, b = 2} == 2,
+  ((fun r => r.b) | {a: Num ; Dyn} -> Dyn) {a = 1, b = 2} == 2,
 
   // records_open_contracts
   ({a = 0, b = 0} | #{a | Num, ..}) == {a = 0, b = 0},

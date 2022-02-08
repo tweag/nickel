@@ -1,9 +1,12 @@
 //! Various post transformations of nickel code.
-use crate::cache::ImportResolver;
-use crate::eval::{lazy::Thunk, Closure, Environment, IdentKind};
-use crate::identifier::Ident;
-use crate::term::{Contract, RichTerm, Term, TraverseMethod};
-use crate::types::{AbsType, Types};
+use crate::{
+    cache::ImportResolver,
+    eval::{lazy::Thunk, Closure, Environment, IdentKind},
+    identifier::Ident,
+    term::{Contract, RichTerm, Term, TraverseOrder},
+    types::{AbsType, Types, UnboundTypeVariableError},
+};
+
 use simple_counter::*;
 
 generate_counter!(FreshVarCounter, usize);
@@ -19,30 +22,29 @@ pub mod share_normal_form;
 /// Do not perform transformations on the imported files. If needed, either do it yourself using
 /// pending imports returned by [`resolve_imports`](../fn.resolve_imports.html) or use the
 /// [`Cache`](../../cache/struct.Cache.html)
-pub fn transform(rt: RichTerm) -> RichTerm {
-    let rt = rt
-        .traverse(
-            &mut |rt: RichTerm, _| -> Result<RichTerm, ()> {
-                // before anything, we have to desugar the syntax
-                let rt = desugar_destructuring::transform_one(rt);
-                // We need to do contract generation before wrapping stuff in variables
-                let rt = apply_contracts::transform_one(rt);
-                Ok(rt)
-            },
-            &mut (),
-            TraverseMethod::TopDown,
-        )
-        .unwrap();
-
-    rt.traverse(
-        &mut |rt: RichTerm, _| -> Result<RichTerm, ()> {
-            let rt = share_normal_form::transform_one(rt);
+pub fn transform(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError> {
+    let rt = rt.traverse(
+        &mut |rt: RichTerm, _| -> Result<RichTerm, UnboundTypeVariableError> {
+            // before anything, we have to desugar the syntax
+            let rt = desugar_destructuring::transform_one(rt);
+            // We need to do contract generation before wrapping stuff in variables
+            let rt = apply_contracts::transform_one(rt)?;
             Ok(rt)
         },
         &mut (),
-        TraverseMethod::BottomUp,
-    )
-    .unwrap()
+        TraverseOrder::TopDown,
+    )?;
+
+    Ok(rt
+        .traverse(
+            &mut |rt: RichTerm, _| -> Result<RichTerm, ()> {
+                let rt = share_normal_form::transform_one(rt);
+                Ok(rt)
+            },
+            &mut (),
+            TraverseOrder::BottomUp,
+        )
+        .unwrap())
 }
 
 /// Generate a new fresh variable which do not clash with user-defined variables.
@@ -105,7 +107,7 @@ impl Closurizable for RichTerm {
         //
         //
         // We currently only do this optimization for generated variables (introduced by the share
-        // normal form). We could do it for non-generated identifiers as well, but be we would be
+        // normal form). We could do it for non-generated identifiers as well, but we would be
         // renaming user-supplied variables by gibberish generated names. It may hamper error
         // reporting, so for the time being, we restrict ourselves to generated identifiers. Note
         // that performing or not performing this optimization for user-supplied variables doesn't
@@ -140,7 +142,9 @@ impl Closurizable for Types {
     /// Extract the underlying contract, closurize it and wrap it back as a flat type (an opaque
     /// type defined by a custom contract).
     fn closurize(self, env: &mut Environment, with_env: Environment) -> Types {
-        Types(AbsType::Flat(self.contract().closurize(env, with_env)))
+        Types(AbsType::Flat(
+            self.contract().unwrap().closurize(env, with_env),
+        ))
     }
 }
 

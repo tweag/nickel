@@ -8,6 +8,7 @@ use crate::term::{RichTerm, SharedTerm, Term};
 use crate::transform::import_resolution;
 use crate::typecheck;
 use crate::typecheck::{linearization::StubHost, type_check};
+use crate::types::UnboundTypeVariableError;
 use crate::{eval, parser, transform};
 use codespan::{FileId, Files};
 use io::Read;
@@ -443,7 +444,10 @@ impl Cache {
     /// or do nothing if the entry has already been transformed. Require that the corresponding
     /// source has been parsed.
     /// If the source contains imports, recursively perform transformations on the imports too.
-    pub fn transform(&mut self, file_id: FileId) -> Result<CacheOp<()>, CacheError<()>> {
+    pub fn transform(
+        &mut self,
+        file_id: FileId,
+    ) -> Result<CacheOp<()>, CacheError<UnboundTypeVariableError>> {
         match self.entry_state(file_id) {
             Some(state) if state >= EntryState::Transformed => Ok(CacheOp::Cached(())),
             Some(state) if state >= EntryState::Parsed => {
@@ -451,7 +455,7 @@ impl Cache {
                     let CachedTerm {
                         term, parse_errs, ..
                     } = self.terms.remove(&file_id).unwrap();
-                    let term = transform::transform(term);
+                    let term = transform::transform(term)?;
                     self.terms.insert(
                         file_id,
                         CachedTerm {
@@ -504,29 +508,38 @@ impl Cache {
                 } = self.terms.remove(&file_id).unwrap();
 
                 if state < EntryState::Transforming {
+                    let pos = term.pos;
+
                     match SharedTerm::make_mut(&mut term.term) {
                         Term::Record(ref mut map, _) => {
-                            let map_res = std::mem::take(map)
+                            let map_res: Result<_, UnboundTypeVariableError> = std::mem::take(map)
                                 .into_iter()
-                                .map(|(id, t)| (id, transform::transform(t)))
+                                .map(|(id, t)| Ok((id, transform::transform(t)?)))
                                 .collect();
-                            *map = map_res;
+                            *map = map_res.map_err(|err| {
+                                CacheError::Error(ImportError::ParseErrors(err.into(), pos))
+                            })?;
                         }
                         Term::RecRecord(ref mut map, ref mut dyn_fields, _) => {
-                            let map_res = std::mem::take(map)
+                            let map_res: Result<_, UnboundTypeVariableError> = std::mem::take(map)
                                 .into_iter()
-                                .map(|(id, t)| (id, transform::transform(t)))
+                                .map(|(id, t)| Ok((id, transform::transform(t)?)))
                                 .collect();
 
-                            let dyn_fields_res = std::mem::take(dyn_fields)
-                                .into_iter()
-                                .map(|(id_t, t)| {
-                                    (transform::transform(id_t), transform::transform(t))
-                                })
-                                .collect();
+                            let dyn_fields_res: Result<_, UnboundTypeVariableError> =
+                                std::mem::take(dyn_fields)
+                                    .into_iter()
+                                    .map(|(id_t, t)| {
+                                        Ok((transform::transform(id_t)?, transform::transform(t)?))
+                                    })
+                                    .collect();
 
-                            *map = map_res;
-                            *dyn_fields = dyn_fields_res;
+                            *map = map_res.map_err(|err| {
+                                CacheError::Error(ImportError::ParseErrors(err.into(), pos))
+                            })?;
+                            *dyn_fields = dyn_fields_res.map_err(|err| {
+                                CacheError::Error(ImportError::ParseErrors(err.into(), pos))
+                            })?;
                         }
                         _ => panic!("cache::transform_inner(): not a record"),
                     }
@@ -632,9 +645,15 @@ impl Cache {
             result = CacheOp::Done(());
         };
 
-        let transform_res = self.transform(file_id).unwrap_or_else(|_| {
-            panic!("cache::prepare(): expected source to be parsed before transformations",)
-        });
+        let transform_res = self.transform(file_id).map_err(|cache_err| {
+            Error::ParseErrors(
+                cache_err
+                    .unwrap_error(
+                        "cache::prepare(): expected source to be parsed before transformations",
+                    )
+                    .into(),
+            )
+        })?;
 
         if transform_res == CacheOp::Done(()) {
             result = CacheOp::Done(());
@@ -660,7 +679,7 @@ impl Cache {
         }
         let (term, pending) = import_resolution::resolve_imports(term, self)?;
         type_check(&term, global_env, self, StubHost::<(), (), _>::new())?;
-        let term = transform::transform(term);
+        let term = transform::transform(term).map_err(|err| Error::ParseErrors(err.into()))?;
         Ok((term, pending))
     }
 

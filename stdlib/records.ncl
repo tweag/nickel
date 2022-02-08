@@ -15,7 +15,7 @@
       "#m
     = fun f r => %record_map% r f,
 
-    fields | { | Dyn} -> List Str
+    fields | { ; Dyn} -> List Str
     | doc m#"
       Given a record, results in a list of the string representation of all fields in the record.
 
@@ -26,7 +26,7 @@
       "#m
     = fun r => %fields% r,
 
-    values | { | Dyn} -> List
+    values | { ; Dyn} -> List
     | doc m#"
       Given a record, results in a list containing all the values in that record.
 
