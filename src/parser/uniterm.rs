@@ -5,7 +5,6 @@ use error::ParseError;
 use utils::{build_record, FieldPathElem};
 
 use crate::{
-    match_sharedterm,
     position::{RawSpan, TermPos},
     term::{MergePriority, MetaValue, RecordAttrs, RichTerm, Term},
     types::{AbsType, Types},
@@ -33,38 +32,48 @@ impl UniRecord {
     /// it doesn't support the field path syntax: `{foo.bar.baz : Type}.into_type_strict()` returns
     /// an `Err`.
     pub fn into_type_strict(self) -> Result<Types, InvalidRecordTypeError> {
-        let ty = self.fields.into_iter()
+        let ty = self
+            .fields
+            .into_iter()
             // Because we build row types as a linked list by folding on the original iterator, the
             // order of identifiers is reversed. This not a big deal but it's less confusing to the
             // user to print them in the original order for error reporting.
             .rev()
             .try_fold(
-                self.tail.map(|(tail, _)| tail).unwrap_or(Types(AbsType::RowEmpty())),
+                self.tail
+                    .map(|(tail, _)| tail)
+                    .unwrap_or(Types(AbsType::RowEmpty())),
                 |acc, (path_elem, rt)| {
                     match path_elem {
                         FieldPathElem::Ident(id) => {
-                            match_sharedterm! {rt.term, with {
+                            // At parsing stage, all `Rc`s must be 1-counted. We can thus call
+                            // `into_owned()` without risking to actually clone anything.
+                            match rt.term.into_owned() {
                                 Term::MetaValue(MetaValue {
                                     doc: None,
                                     types: Some(ctrt),
                                     contracts,
                                     priority: MergePriority::Normal,
                                     value: None,
-                                    }) if contracts.is_empty() =>
-                                        Ok(Types(AbsType::RowExtend(id, Some(Box::new(ctrt.types)), Box::new(acc)))),
-                                }
-                                else {
+                                }) if contracts.is_empty() => Ok(Types(AbsType::RowExtend(
+                                    id,
+                                    Some(Box::new(ctrt.types)),
+                                    Box::new(acc),
+                                ))),
+                                _ => {
                                     // Position of identifiers must always be set at this stage
                                     // (parsing)
                                     let span_id = id.pos.unwrap();
                                     let term_pos = rt.pos.into_opt().unwrap_or(span_id);
-                                    Err(InvalidRecordTypeError(TermPos::Original(RawSpan::fuse(span_id, term_pos).unwrap())))
+                                    Err(InvalidRecordTypeError(TermPos::Original(
+                                        RawSpan::fuse(span_id, term_pos).unwrap(),
+                                    )))
                                 }
                             }
                         }
                         FieldPathElem::Expr(rt) => Err(InvalidRecordTypeError(rt.pos)),
                     }
-                }
+                },
             )?;
         Ok(Types(AbsType::StaticRecord(Box::new(ty))))
     }
