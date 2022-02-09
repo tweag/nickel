@@ -251,8 +251,23 @@ value > x) in
 
 In the case the second record would contains `port=8888` it does not have blame.
 
-TODO:
+Another annotation which has to be managed during merging is the `doc` annotation.
+When merging records both with documentation, only the most left one is keped:
 
-- case of top level contracts,
-- what append with the `doc` annotation,
-- what's more?
+```text
+let x | doc "x" = {a = 1} in
+let y | doc "y" = {b = 2} in
+x & y // doc contains "x"
+```
+
+The behaviour is the same for interior field annotation:
+
+```text
+let x = {field | doc "field x" | Num} in
+let y = {field | doc "field y" = 2} in
+x & y // doc contains "field x"
+```
+
+You can try reversing like this `y & x`. The doc will contains "field y".
+
+TODO: what's more?
