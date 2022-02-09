@@ -509,7 +509,7 @@ where
                             free_vars.get(fid).map(|fv| fv.contains(id)).unwrap_or(true)
                         })
                     } else {
-                        fixpoint::patch_field(rt, &rec_env, &env, |_| false)
+                        fixpoint::patch_field(rt, &rec_env, &env, |_| true)
                     }
                 })?;
 

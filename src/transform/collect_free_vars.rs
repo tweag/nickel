@@ -20,35 +20,48 @@ pub fn collect_free_vars(
     parent_type: TermType,
     free_vars: &mut HashSet<Ident>,
     fields_free_vars: &mut Vec<HashSet<Ident>>,
+    let_free_vars: &mut (Option<HashSet<Ident>>, Option<HashSet<Ident>>),
 ) {
-    match parent_type {
-        TermType::RecRecord => {
-            dbg!(&free_vars);
-            dbg!(&fields_free_vars);
-            dbg!(parent_type);
-            let mut ffv = HashSet::new();
-            mem::swap(&mut ffv, free_vars);
-            fields_free_vars.push(ffv);
-        }
-        TermType::Let(id) => {
-            free_vars.remove(id);
-        }
 
-        TermType::LetPattern(id, destruct) => {}
-        TermType::Any => {}
-    }
+    dbg!(&rt.term);
+    dbg!(parent_type);
 
     match SharedTerm::make_mut(&mut rt.term) {
         Term::Var(id) => {
             free_vars.insert(id.clone());
         }
+
         Term::Fun(id, _) => {
+            free_vars.remove(id);
         }
-        Term::LetPattern(id, d, _, _) | Term::FunPattern(id, d, _) => {
+        Term::FunPattern(id, d, _) => {
             id.as_ref().map(|id| free_vars.remove(id));
             remove_destruct(d, free_vars);
         }
 
+        Term::Let(id, ..) => {
+            let mut lfv = Default::default();
+            mem::swap(&mut lfv, let_free_vars);
+            if let (Some(t1), Some(t2)) = lfv {
+                *free_vars = t2;
+                free_vars.remove(id);
+
+                free_vars.extend(t1)
+            } else {
+                panic!("Let's free vars were not populated");
+            }
+        }
+        // Term::LetPattern(id, d, _, _) => {
+        //     assert_eq!(fields_free_vars.len(), 2);
+
+        //     // This depends on the order of traversal.
+        //     // `Let(id, t1, t2)` t1 must be traversed first.
+        //     *free_vars = fields_free_vars.pop().unwrap();
+        //     id.as_ref().map(|id| free_vars.remove(id));
+        //     remove_destruct(d, free_vars);
+
+        //     free_vars.extend(fields_free_vars.pop().unwrap())
+        // }
         Term::RecRecord(map, dyn_fields, _, ffv) => {
             for i in fields_free_vars.iter().flat_map(|fv| fv.iter()) {
                 free_vars.insert(i.clone());
@@ -69,12 +82,34 @@ pub fn collect_free_vars(
             map.iter().for_each(|(id, _)| {
                 free_vars.remove(id);
             });
-
-            dbg!(&free_vars);
-            dbg!(&fields_free_vars);
-            dbg!(parent_type);
         }
         _ => {}
+    }
+
+    match parent_type {
+        TermType::RecRecord => {
+            let mut ffv = HashSet::new();
+            mem::swap(&mut ffv, free_vars);
+            fields_free_vars.push(ffv);
+        }
+        // This depends on the order of traversal.
+        // `Let(id, t1, t2)` t1 must be traversed first.
+        TermType::Let => match let_free_vars {
+            (None, None) => {
+                dbg!("(None, None)");
+                let mut ffv = HashSet::new();
+                mem::swap(&mut ffv, free_vars);
+                let_free_vars.0 = Some(ffv);
+            }
+            (Some(_), None) => {
+                dbg!("(Some, None)");
+                let mut ffv = HashSet::new();
+                mem::swap(&mut ffv, free_vars);
+                let_free_vars.1 = Some(ffv);
+            }
+            _ => unreachable!(),
+        },
+        TermType::Any => {}
     }
 }
 

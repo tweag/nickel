@@ -41,9 +41,9 @@ pub fn transform(rt: RichTerm) -> RichTerm {
 
     rt.traverse_with_parent(
         TermType::Any,
-        &mut |rt: RichTerm, parent, (free_vars, field_free_vars)| -> Result<RichTerm, ()> {
-            let mut rt = share_normal_form::transform_one(rt);
-            collect_free_vars(&mut rt, parent, free_vars, field_free_vars);
+        &mut |mut rt: RichTerm, parent, (free_vars, field_free_vars)| -> Result<RichTerm, ()> {
+            // let mut rt = share_normal_form::transform_one(rt);
+            collect_free_vars(&mut rt, parent, free_vars, field_free_vars, &mut Default::default());
             Ok(rt)
         },
         &mut (HashSet::new(), Default::default()),
