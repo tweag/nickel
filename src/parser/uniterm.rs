@@ -16,8 +16,11 @@ use std::convert::TryFrom;
 ///
 /// During parsing, some constructs are common to both terms and types, such as variables or record
 /// literals ([`UniRecord`]s). They may be the source of ambiguities in the grammar, if we add two
-/// different derivation for them (e.g. one going first through term rules then types rules, and
-/// vice-versa).
+/// different derivation for them. This happens inside rules that accepts both a term and and a
+/// type, say the operands of an arrow `lhs -> rhs`. Take for example `lhs` a variable: `lhs := a`.
+/// It's hard not to end up having two possible derivation for `a`, one going first through term
+/// rules and then types rules (a custom contract `#a` in the old syntax), and vice-versa (a type
+/// variable `a` in the old syntax.
 ///
 /// To avoid the issue, we parse the source as a `UniTermNode`s, and give only one possible
 /// derivation - we will take a variable as an example in the following - through the parsing
@@ -71,13 +74,6 @@ impl TryFrom<UniTerm> for Types {
             UniTermNode::Record(r) => Types::try_from(r),
             UniTermNode::Types(ty) => Ok(ty),
             UniTermNode::Term(rt) => Ok(Types(AbsType::Flat(rt))),
-            // => {
-            //     ty.contract().map_err(|UnboundTypeVariableError(id)| {
-            //         // We unwrap the position of the identifier, which must be set at this stage of parsing
-            //         let pos = id.pos;
-            //         ParseError::UnboundTypeVariables(vec![id], pos.unwrap())
-            //     })
-            // }
         }
     }
 }
@@ -127,12 +123,6 @@ impl From<Types> for UniTerm {
             node: UniTermNode::Types(ty),
             pos: TermPos::None,
         }
-    }
-}
-
-impl From<UniTermNode> for UniTerm {
-    fn from(node: UniTermNode) -> Self {
-        UniTerm { node, pos }
     }
 }
 
