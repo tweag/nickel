@@ -96,9 +96,27 @@ impl InfixOp {
     }
 }
 
-/// Bind type variables in a type.
-pub fn bind_type_vars(ty: &mut Types) {
-    fn bind_type_vars_(ty: &mut Types, mut bound_vars: HashSet<Ident>) {
+/// Post-process a type at the right hand side of an annotation by replacing unbound type variables
+/// by the same variables but seen as a custom contract (`AbsType::Var(id)` to
+/// `AbsType::Flat(Term::Var(id))`).
+///
+/// Since parsing is done bottom-up, and given the specification of the uniterm syntax for
+/// variables occurring in types, we can't always know right away if a variable appearing in a type
+/// is actually a type variable or a variable refering to a custom contract.
+///
+/// Take for example `a -> b`. At this stage, `a` and `b` could be both variables referring to a
+/// contract (e.g. in `x | a -> b` or a type variable (e.g. in `x | forall a b. a -> b`), depending
+/// on enclosing `forall`s. To handle this, we initially parse all variables inside types as type
+/// variables. When reaching the right-hand side of an annotation, because `forall`s can only bind
+/// locally in a type, we can then decide the actual nature of each variable occurrence. We
+/// recurse into the newly constructed type to change those type variables that are not actually
+/// bound by a `forall`. This is the role of `fix_type_vars()`.
+///
+/// Once again because `forall`s only bind variable locally, and don't bind inside contracts, we
+/// don't have to recurse into contracts and this pass will only visit each node at most once in
+/// total.
+pub fn fix_type_vars(ty: &mut Types) {
+    fn fix_type_vars_aux(ty: &mut Types, mut bound_vars: HashSet<Ident>) {
         use crate::types::AbsType;
 
         match ty.0 {
@@ -110,8 +128,8 @@ pub fn bind_type_vars(ty: &mut Types) {
             | AbsType::Flat(_)
             | AbsType::RowEmpty() => (),
             AbsType::Arrow(ref mut s, ref mut t) => {
-                bind_type_vars_(s.as_mut(), bound_vars.clone());
-                bind_type_vars_(t.as_mut(), bound_vars.clone());
+                fix_type_vars_aux(s.as_mut(), bound_vars.clone());
+                fix_type_vars_aux(t.as_mut(), bound_vars.clone());
             }
             AbsType::Var(ref mut id) => {
                 if !bound_vars.contains(id) {
@@ -122,22 +140,22 @@ pub fn bind_type_vars(ty: &mut Types) {
             }
             AbsType::Forall(ref id, ref mut ty) => {
                 bound_vars.insert(id.clone());
-                bind_type_vars_(&mut *ty, bound_vars);
+                fix_type_vars_aux(&mut *ty, bound_vars);
             }
             AbsType::RowExtend(_, ref mut ty_opt, ref mut tail) => {
                 (*ty_opt)
                     .iter_mut()
-                    .for_each(|ty| bind_type_vars_(ty.as_mut(), bound_vars.clone()));
-                bind_type_vars_(tail.as_mut(), bound_vars);
+                    .for_each(|ty| fix_type_vars_aux(ty.as_mut(), bound_vars.clone()));
+                fix_type_vars_aux(tail.as_mut(), bound_vars);
             }
             AbsType::DynRecord(ref mut ty)
             | AbsType::List(ref mut ty)
             | AbsType::Enum(ref mut ty)
-            | AbsType::StaticRecord(ref mut ty) => bind_type_vars_(ty.as_mut(), bound_vars),
+            | AbsType::StaticRecord(ref mut ty) => fix_type_vars_aux(ty.as_mut(), bound_vars),
         }
     }
 
-    bind_type_vars_(ty, HashSet::new())
+    fix_type_vars_aux(ty, HashSet::new())
 }
 
 /// Turn dynamic accesses using literal chunks only into static accesses

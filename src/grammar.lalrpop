@@ -45,7 +45,7 @@ AsUniTerm<Rule>: UniTerm = <l: @L> <ut: Rule> <r: @R> =>
     UniTerm::from(ut).with_pos(mk_pos(src_id, l, r));
 
 AnnotAtom: MetaValue = {
-    "|" <l: @L> <ty: BoundTypes> <r: @R> => MetaValue {
+    "|" <l: @L> <ty: FixedType> <r: @R> => MetaValue {
         doc: None,
         types: None,
         contracts: vec![Contract {types: ty.clone(), label: mk_label(ty, src_id, l, r)}],
@@ -66,7 +66,7 @@ AnnotAtom: MetaValue = {
         priority: Default::default(),
         value: None,
     },
-    ":" <l: @L> <ty: BoundTypes> <r: @R> => MetaValue {
+    ":" <l: @L> <ty: FixedType> <r: @R> => MetaValue {
         doc: None,
         types: Some(Contract {types: ty.clone(), label: mk_label(ty, src_id, l, r)}),
         contracts: Vec::new(),
@@ -90,9 +90,9 @@ Types: Types = {
     Forall,
 }
 
-BoundTypes: Types = {
+FixedType: Types = {
     <mut ty: Types> => {
-        bind_type_vars(&mut ty);  
+        fix_type_vars(&mut ty);
         ty
     }
 };
