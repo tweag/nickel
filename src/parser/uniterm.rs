@@ -266,26 +266,3 @@ impl TryFrom<UniRecord> for Types {
         }
     }
 }
-
-// impl TryFrom<Types> for RichTerm {
-//     type Error = ParseError;
-//
-//     fn try_from(ty: Types) -> Result<Self, ParseError> {
-//         ty.contract().map_err(|UnboundTypeVariableError(id)| {
-//             // We unwrap the position of the identifier, which must be set at this stage of parsing
-//             let pos = id.pos;
-//             ParseError::UnboundTypeVariables(vec![id], pos.unwrap())
-//         })
-//     }
-// }
-//
-// // This `TryFrom` implementation can't actually fail. However, in order to have the macros
-// // `AsTypes`/`AsTerm` of the grammar to work uniformly, we have to require the same
-// // `TryFrom<A, Error = ParseError>` implementation for `UniRecord`, `Term`, and `Types`.
-// impl TryFrom<RichTerm> for Types {
-//     type Error = ParseError;
-//
-//     fn try_from(rt: RichTerm) -> Result<Self, ParseError> {
-//         Ok(Types(AbsType::Flat(rt)))
-//     }
-// }
