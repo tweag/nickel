@@ -97,24 +97,24 @@ impl InfixOp {
 }
 
 /// Post-process a type at the right hand side of an annotation by replacing unbound type variables
-/// by the same variables but seen as a custom contract (`AbsType::Var(id)` to
+/// by the same variables but seen as custom contracts (`AbsType::Var(id)` to
 /// `AbsType::Flat(Term::Var(id))`).
 ///
 /// Since parsing is done bottom-up, and given the specification of the uniterm syntax for
-/// variables occurring in types, we can't always know right away if a variable appearing in a type
-/// is actually a type variable or a variable refering to a custom contract.
+/// variables occurring in types, we can't always know right away if a such an variable occurrence
+/// is actually a type variable or a term variable seen as a custom contract.
 ///
 /// Take for example `a -> b`. At this stage, `a` and `b` could be both variables referring to a
-/// contract (e.g. in `x | a -> b` or a type variable (e.g. in `x | forall a b. a -> b`), depending
-/// on enclosing `forall`s. To handle this, we initially parse all variables inside types as type
-/// variables. When reaching the right-hand side of an annotation, because `forall`s can only bind
-/// locally in a type, we can then decide the actual nature of each variable occurrence. We
-/// recurse into the newly constructed type to change those type variables that are not actually
-/// bound by a `forall`. This is the role of `fix_type_vars()`.
+/// contract (e.g. in `x | a -> b`) or a type variable (e.g. in `x | forall a b. a -> b`),
+/// depending on enclosing `forall`s. To handle both cases, we initially parse all variables inside
+/// types as type variables. When reaching the right-hand side of an annotation, because `forall`s
+/// can only bind locally in a type, we can then decide the actual nature of each occurrence. We
+/// thus recurse into the newly constructed type to change those type variables that are not
+/// actually bound by a `forall` to be term variables. This is the role of `fix_type_vars()`.
 ///
-/// Once again because `forall`s only bind variable locally, and don't bind inside contracts, we
-/// don't have to recurse into contracts and this pass will only visit each node at most once in
-/// total.
+/// Once again because `forall`s only bind variables locally, and don't bind inside contracts, we
+/// don't have to recurse into contracts and this pass will only visit each node of the AST at most
+/// once in total.
 pub fn fix_type_vars(ty: &mut Types) {
     fn fix_type_vars_aux(ty: &mut Types, mut bound_vars: HashSet<Ident>) {
         use crate::types::AbsType;

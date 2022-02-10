@@ -1,3 +1,39 @@
+// The Nickel grammar.
+//
+// # Uniterm
+//
+// Nickel uses the uniterm grammar since
+// [RFC002](../rfcs/002-merge-types-terms-syntax.md). Uniterm is a common
+// grammar for both term and types. However, it is only a front-end: the rest of
+// the interpreter pipeline needs terms and types to be separate objects.
+//
+// Most grammar construct determines if an expression should be considered as a
+// type or a term. Typically, `e1 -> e2` will always be a type, and `e1 + e2` a
+// term. This doesn't contradict the fact that `e1 -> e2` can be used as a term:
+// the point is, even in the latter case, we still always parse `e1 -> e2` as a
+// type first, and then derive a term from it wherever needed.
+//
+// This is not the case of all rules. Record literals and variables can both be
+// interpreted in a different way, depending on how they are used. In
+// `x : {foo : Num}`, `{foo : Num}` is interpreted as a record type. In
+// `{foo : Num}.foo`, it is a record literal with a missing definition for
+// `foo`. The first interpretation is **not** equivalent to first interpreting
+// it as a term, and then as a type.
+//
+// For those reasons, the `uniterm` module introduces a new AST definition, that
+// just wraps `RichTerm` and `Types`, together with dedicated variants the
+// common constructs variables and records. As long as a common construct is not
+// used in a larger expression, it can be still interpreted in both as a term or
+// a type. Once an usage determines the nature of a record or a variable, it is
+// turned either a `RichTerm` or `Types` (although still possibly wrapped as a
+// `UniTerm`).
+//
+// This is why this grammar uses three main types `RichTerm`, `Types` and
+// `UniTerm`, as well as conversion macros `AsTerm`, `AsType` and `AsUniTerm`.
+// Some rules that are known to only produce `RichTerm` or `Types` may have the
+// corresponding more precise return type. Other rules that produce or just
+// propagate general uniterms have to return a `UniTerm`.
+
 use std::{
     collections::HashMap,
     ffi::OsString,
@@ -44,6 +80,10 @@ AsType<Rule>: Types = <ut: WithPos<Rule>> =>?
 AsUniTerm<Rule>: UniTerm = <l: @L> <ut: Rule> <r: @R> =>
     UniTerm::from(ut).with_pos(mk_pos(src_id, l, r));
 
+// A single type or meta-data annotation. The right hand `FixedType` forbids the use of
+// constructs that can themselves have annotation on the right, such as a `let`.
+// Otherwise, `foo | let x = 1 in x : Num` is ambiguous.
+// (it could be both `x : Num` or (foo // | ...) : Num`)
 AnnotAtom: MetaValue = {
     "|" <l: @L> <ty: FixedType> <r: @R> => MetaValue {
         doc: None,
@@ -75,21 +115,27 @@ AnnotAtom: MetaValue = {
     },
 };
 
+// A default annotation in a pattern.
 DefaultAnnot: MetaValue = "?" <t: Term> => MetaValue {
     priority: MergePriority::Default,
     value: Some(t),
     ..Default::default()
 };
 
+// An annotation, with possibly many metadata annotations chained.
 Annot: MetaValue = <anns: AnnotAtom+> => anns.into_iter().fold(MetaValue::new(), MetaValue::flatten);
 
+// A general term. The root of the grammar.
 pub Term: RichTerm = AsTerm<UniTerm>;
 
+// A general type. Chosen such that it can't itself have top-level annotations
+// (see `AnnotAtom`).
 Types: Types = {
     AsType<InfixExpr>,
     Forall,
 }
 
+// A type with type variables fixed. See `parser::utils::fix_type_vars`.
 FixedType: Types = {
     <mut ty: Types> => {
         fix_type_vars(&mut ty);
@@ -97,6 +143,8 @@ FixedType: Types = {
     }
 };
 
+// Either a term or a top-level let-binding (a let-binding without an `in`).
+// Used exclusively for the REPL.
 pub ExtendedTerm: ExtendedTerm = {
     "let" <id: Ident> <meta: Annot?> "=" <t: Term> => {
         let t = if let Some(mut meta) = meta {
@@ -113,6 +161,7 @@ pub ExtendedTerm: ExtendedTerm = {
     Term => ExtendedTerm::RichTerm(<>),
 }
 
+// A general term. The root of the grammar.
 UniTerm: UniTerm = {
     InfixExpr,
     AnnotatedInfixExpr,
@@ -140,7 +189,7 @@ UniTerm: UniTerm = {
 
         UniTerm::from(rt)
     },
-    "switch" "{" <cases: (switch_case ",")*> <last: switch_case?> "}"
+    "switch" "{" <cases: (SwitchCase ",")*> <last: SwitchCase?> "}"
         <exp: Term> => {
         let mut acc = HashMap::with_capacity(cases.len());
         let mut default = None;
@@ -188,6 +237,8 @@ Forall: Types =
         )
     };
 
+// A n-ary application (n may be 0, in the sense that this rule also includes
+// previous levels).
 Applicative: UniTerm = {
     "import" <s: StaticString> => UniTerm::from(Term::Import(OsString::from(s))),
     <t1: AsTerm<Applicative>> <t2: AsTerm<RecordOperand>> =>
@@ -199,6 +250,10 @@ Applicative: UniTerm = {
     RecordOperand,
 };
 
+// The list type, potentially with an argument. Take precedence over
+// application: `List Foo` is always interpreted as the type `List` parametrized
+// by `Foo`, rather than the dynamic list type `List Dyn` aliased to `List` and
+// seen as a contract applied to term `Foo`.
 TypeList: Types =
     "List" <AsType<Atom>?> => {
         let ty = Box::new(<>.unwrap_or(Types(AbsType::Dyn())));
@@ -210,6 +265,7 @@ RecordOperand: UniTerm = {
     AsUniTerm<RecordOperationChain>,
 }
 
+// A record operation chain, such as `{foo = data}.bar.baz`.
 RecordOperationChain: RichTerm = {
     <t: AsTerm<RecordOperand>> "." <id: Ident> => mk_term::op1(UnaryOp::StaticAccess(id), t),
     <t: AsTerm<RecordOperand>> "." <t_id: WithPos<StrChunks>> => mk_access(t_id, t),
@@ -223,6 +279,8 @@ RowTail: Types = {
     "Dyn" => Types(AbsType::Dyn()),
 }
 
+// A record, that can be later interpreted either as a record literal or as a
+// record type.
 UniRecord: UniRecord = {
    "{" <fields: (<RecordField> ",")*>
        <last: RecordLastField?>
@@ -245,6 +303,7 @@ UniRecord: UniRecord = {
     },
 };
 
+// An atom of the grammar.
 Atom: UniTerm = {
     "(" <AsUniTerm<CurriedOp>> ")",
     "(" <UniTerm> ")",
@@ -264,6 +323,7 @@ Atom: UniTerm = {
     AsUniTerm<TypeAtom>,
 };
 
+// A record field definition.
 RecordField: (FieldPathElem, RichTerm) = {
     <l: @L> <path: FieldPath> <ann: Annot?> <r: @R> <t: ("=" <Term>)?> => {
         let pos = t.as_ref()
@@ -288,6 +348,7 @@ RecordLastField: RecordLastField = {
     ".." => RecordLastField::Ellipsis,
 }
 
+// A field path syntax in a field definition, as in `{foo."bar bar".baz = "value"}`.
 FieldPath: Vec<FieldPathElem> = {
     <mut elems: (<FieldPathElem> ".")*> <last: FieldPathElem> => {
         elems.push(last);
@@ -300,12 +361,14 @@ FieldPathElem: FieldPathElem = {
     <WithPos<StrChunks>> => FieldPathElem::Expr(<>),
 };
 
+// The right hand side of an `=` inside a destructuring pattern.
 #[inline]
 Pattern: (Option<Ident>,Destruct) = {
     <id:(<Ident> "@")?> <pat:Destruct> => (id,pat),
     Ident => (Some(<>),Destruct::Empty),
 };
 
+// A full pattern at the left-hand side of a destructuring let.
 Destruct: Destruct = {
     "{" <mut matches: (<Match> ",")*> <last:LastMatch?> "}" => {
         let (open, rst) = match last {
@@ -321,6 +384,7 @@ Destruct: Destruct = {
     },
 };
 
+// A binding `ident = <pattern>` inside a destructuring pattern.
 Match: Match = {
     <left:Ident> <anns: Annot?> <default: DefaultAnnot?> "=" <right: Pattern> => {
         let meta = match (default, anns) {
@@ -355,6 +419,7 @@ Bool: bool = {
     "false" => false,
 };
 
+// Strings that support interpolation.
 StrChunks: RichTerm = {
   <start: StringStart> <fst: ChunkLiteral?> <chunks: (ChunkExpr+ChunkLiteral)*> <lasts:ChunkExpr*> <end: StringEnd> => {
         debug_assert_eq!(start, end);
@@ -415,7 +480,6 @@ EnumTag: Ident = {
     <StaticString> => <>.into(),
 }
 
-
 ChunkLiteralPart: ChunkLiteralPart<'input> = {
     "str literal" => ChunkLiteralPart::Str(<>),
     "multstr literal" => ChunkLiteralPart::Str(<>),
@@ -459,10 +523,13 @@ UOp: UnaryOp = {
     "enum_from" => UnaryOp::EnumFromStr(),
 };
 
-switch_case: SwitchCase = {
+SwitchCase: SwitchCase = {
     "`" <id: EnumTag> "=>" <t: Term> => SwitchCase::Normal(id, t),
     "_" "=>" <t: Term> => SwitchCase::Default(<>),
 }
+
+// Infix operators by precedence levels. Lowest levels take precedence over
+// highest ones.
 
 InfixBOp2: BinaryOp = {
     "++" => BinaryOp::StrConcat(),
