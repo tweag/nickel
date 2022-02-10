@@ -2,6 +2,7 @@
 //! uncluttered.
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fmt::Debug;
 use std::rc::Rc;
 
@@ -93,6 +94,50 @@ impl InfixOp {
             ),
         }
     }
+}
+
+/// Bind type variables in a type.
+pub fn bind_type_vars(ty: &mut Types) {
+    fn bind_type_vars_(ty: &mut Types, mut bound_vars: HashSet<Ident>) {
+        use crate::types::AbsType;
+
+        match ty.0 {
+            AbsType::Dyn()
+            | AbsType::Num()
+            | AbsType::Bool()
+            | AbsType::Str()
+            | AbsType::Sym()
+            | AbsType::Flat(_)
+            | AbsType::RowEmpty() => (),
+            AbsType::Arrow(ref mut s, ref mut t) => {
+                bind_type_vars_(s.as_mut(), bound_vars.clone());
+                bind_type_vars_(t.as_mut(), bound_vars.clone());
+            }
+            AbsType::Var(ref mut id) => {
+                if !bound_vars.contains(id) {
+                    let id = std::mem::take(id);
+                    let pos = id.pos;
+                    ty.0 = AbsType::Flat(RichTerm::new(Term::Var(id), pos));
+                }
+            }
+            AbsType::Forall(ref id, ref mut ty) => {
+                bound_vars.insert(id.clone());
+                bind_type_vars_(&mut *ty, bound_vars);
+            }
+            AbsType::RowExtend(_, ref mut ty_opt, ref mut tail) => {
+                (*ty_opt)
+                    .iter_mut()
+                    .for_each(|ty| bind_type_vars_(ty.as_mut(), bound_vars.clone()));
+                bind_type_vars_(tail.as_mut(), bound_vars);
+            }
+            AbsType::DynRecord(ref mut ty)
+            | AbsType::List(ref mut ty)
+            | AbsType::Enum(ref mut ty)
+            | AbsType::StaticRecord(ref mut ty) => bind_type_vars_(ty.as_mut(), bound_vars),
+        }
+    }
+
+    bind_type_vars_(ty, HashSet::new())
 }
 
 /// Turn dynamic accesses using literal chunks only into static accesses
