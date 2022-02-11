@@ -254,7 +254,7 @@
         "#m
       = fun f n => %generate% n f,
 
-    sort : forall a. (a -> a -> [| Less, Equal, Greater |]) -> List a -> List a
+    sort : forall a. (a -> a -> <Less, Equal, Greater>) -> List a -> List a
       | doc m#"
         Sorts the given lists based on the provided comparison operator.
 
