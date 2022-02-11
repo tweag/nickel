@@ -104,12 +104,12 @@ let Assert = fun l x => x || %blame% l in
   let Name = fun b label name => if b then "hijack" else contracts.blame label in
   let Config = {
       b | Bool,
-      name | #(Name b),
+      name | Name b,
   } in
-  let data | #Config = {
+  let data | Config = {
       b = true,
       name = "name",
   } in
   data.name == "hijack",
 ]
-|> lists.foldl (fun x y => (x | #Assert) && y) true
+|> lists.foldl (fun x y => (x | Assert) && y) true

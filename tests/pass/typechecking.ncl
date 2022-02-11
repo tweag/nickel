@@ -19,7 +19,7 @@ let typecheck = [
   (fun id => (id 4) + (id true: Bool)) (fun x => x),
   // contracts are opaque types
   (let AlwaysTrue = fun l t => if t then t else %blame% l in
-  ((fun x => x) : #alwaysTrue -> #alwaysTrue)),
+  ((fun x => x) : AlwaysTrue -> AlwaysTrue)),
 
   // simple_polymorphism
   let f : forall a. a -> a = fun x => x in
@@ -49,28 +49,28 @@ let typecheck = [
     ((if (f true) then (f 2) else 3) : Num),
 
   // enums_simple
-  (`bla : <bla>),
-  (`blo : <bla, blo>),
-  (`bla : forall r. <bla | r>),
-  (`bla : forall r. <bla, blo | r>),
+  (`bla : [|bla |]),
+  (`blo : [|bla, blo |]),
+  (`bla : forall r. [|bla ; r |]),
+  (`bla : forall r. [|bla, blo ; r |]),
   ((switch {`bla => 3} `bla) : Num),
   ((switch {`bla => 3, _ => 2} `blo) : Num),
 
   // enums_complex
-  ((fun x => switch {`bla => 1, `ble => 2} x) : <bla, ble> -> Num),
+  ((fun x => switch {`bla => 1, `ble => 2} x) : [|bla, ble |] -> Num),
   ((fun x => switch {`bla => 1, `ble => 2, `bli => 4} (%embed% bli x))
-    : <bla, ble> -> Num),
+    : [|bla, ble |] -> Num),
   ((fun x =>
       (switch {`bla => 3, `bli => 2} x)
       + (switch {`bli => 6, `bla => 20} x))
     `bla
     : Num),
 
-  let f : forall r. <blo, ble | r> -> Num = fun x =>
+  let f : forall r. [|blo, ble ; r |] -> Num = fun x =>
     switch {`blo => 1, `ble => 2, _ => 3} x in
             (f `bli : Num),
 
-  let f : forall r. (forall p. <blo, ble | r> -> <bla, bli | p>) =
+  let f : forall r. (forall p. [|blo, ble ; r |] -> [|bla, bli ; p |]) =
     fun x => switch {`blo => `bla, `ble => `bli, _ => `bla} x in
     f `bli,
 

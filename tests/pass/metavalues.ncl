@@ -28,29 +28,29 @@ let Assert = fun l x => x || %blame% l in
   // composed
   let Even = fun l x => if x % 2 == 0 then x else %blame% l in
     let DivBy3 = fun l x => if x % 3 ==  0 then x else %blame% l in
-    let composed = {a | #Even} & {a | #DivBy3} in
-    (composed & {a = 6} == {a = 6} | #Assert) &&
-    (composed & {a = 12} == {a = 12} | #Assert),
+    let composed = {a | Even} & {a | DivBy3} in
+    (composed & {a = 6} == {a = 6} | Assert) &&
+    (composed & {a = 12} == {a = 12} | Assert),
 
 
   // Check that the environments of contracts are correctly saved and restored when merging. See
   // issue [#117](https://github.com/tweag/nickel/issues/117)
-  (let ctr_num = let x = num in {a | #x} in
-    let ctr_id = let x = fun l x => x in {a | #x} in
+  (let ctr_num = let x = num in {a | x} in
+    let ctr_id = let x = fun l x => x in {a | x} in
     let val = let x = 1 in {a = x} in
     let def = let x = 2 in {a | default = x} in
     let def2 = let x = (1 + 1) in {a | default = x} in
   // contract/contract -> contract/value -> value/default
-  ((ctr_num & ctr_id & val & def).a == 1 | #Assert) &&
+  ((ctr_num & ctr_id & val & def).a == 1 | Assert) &&
   // default/value <- value/contract
-  ((def & (val & ctr_num)).a == 1 | #Assert) &&
+  ((def & (val & ctr_num)).a == 1 | Assert) &&
   // default/contract-> contract-default/contract-default <- contract/default
-  (((def & ctr_num) & (ctr_id & def2)).a == 2 | #Assert) &&
+  (((def & ctr_num) & (ctr_id & def2)).a == 2 | Assert) &&
   // default/contract -> contract-default/contract -> contract-default/value
-  ((def & ctr_num & ctr_id & val).a == 1 | #Assert) &&
+  ((def & ctr_num & ctr_id & val).a == 1 | Assert) &&
   // default/contract -> contract-default/default
-  ((def & ctr_num & def2).a == 2 | #Assert) &&
+  ((def & ctr_num & def2).a == 2 | Assert) &&
   // value/contract-default <- contract/contract-default
-  ((val & (ctr_num & def)).a == 1 | #Assert)),
+  ((val & (ctr_num & def)).a == 1 | Assert)),
 ]
-|> lists.foldl (fun x y => (x | #Assert) && y) true
+|> lists.foldl (fun x y => (x | Assert) && y) true

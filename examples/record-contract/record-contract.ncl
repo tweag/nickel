@@ -12,17 +12,17 @@ let PortElt
   | doc "A contract for a port element of a Kubernetes configuration"
   = {
     name | Str,
-    containerPort | #Port,
+    containerPort | Port,
   } in
 
 let Container = {
   name | Str,
   image | Str,
-  ports | List #PortElt,
+  ports | List PortElt,
 } in
 
 let KubernetesConfig = {
-  kind | <ReplicationController, ReplicaSet, Pod>
+  kind | [| ReplicationController, ReplicaSet, Pod |]
        | doc "The kind of the element being configured."
        | default = `Pod,
 
@@ -34,7 +34,7 @@ let KubernetesConfig = {
   },
 
   spec = {
-    replicas | #nums.PosNat
+    replicas | nums.PosNat
              | doc "The number of replicas"
              | default = 1,
 
@@ -42,7 +42,7 @@ let KubernetesConfig = {
 
     template = {
       metadata.labels.app | Str,
-      spec.containers | List #Container,
+      spec.containers | List Container,
     },
   },
 } in
@@ -81,4 +81,4 @@ let metadata_ = {
         }
     }
   }
-} | #KubernetesConfig
+} | KubernetesConfig

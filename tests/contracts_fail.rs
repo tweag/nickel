@@ -16,9 +16,9 @@ macro_rules! assert_raise_blame {
 #[test]
 fn flat_contract_fail() {
     assert_raise_blame!(
-        "let alwaysTrue = fun l t => let boolT | Bool = t in
+        "let AlwaysTrue = fun l t => let boolT | Bool = t in
         if boolT then boolT else %blame% l in
-        (false | #alwaysTrue)"
+        (false | AlwaysTrue)"
     );
 }
 
@@ -32,9 +32,9 @@ fn id_fail() {
 
 #[test]
 fn enum_simple() {
-    assert_raise_blame!("`far | <foo, bar>");
-    assert_raise_blame!("123 | <foo, bar>");
-    assert_raise_blame!("`foo | < >");
+    assert_raise_blame!("`far | [|foo, bar|]");
+    assert_raise_blame!("123 | [|foo, bar|]");
+    assert_raise_blame!("`foo | [| |]");
 }
 
 #[test]
@@ -58,7 +58,7 @@ fn merge_compose_contract() {
         format!(
             "let Even = fun l x => if x % 2 == 0 then x else %blame% l in
         let DivBy3 = fun l x => if x % 3 ==  0 then x else %blame% l in
-        let composed = {{a | #Even}} & {{a | #DivBy3}} in
+        let composed = {{a | Even}} & {{a | DivBy3}} in
         (({{a = {},}}) & composed).a",
             arg
         )
@@ -174,7 +174,7 @@ fn lists_contracts() {
 fn records_contracts_closed() {
     assert_raise_blame!("{a=1} | {}");
     assert_raise_blame!("{a=1, b=2} | {a | Num}");
-    assert_raise_blame!("let Contract = {a | Num} & {b | Num} in ({a=1, b=2, c=3} | #Contract)");
+    assert_raise_blame!("let Contract = {a | Num} & {b | Num} in ({a=1, b=2, c=3} | Contract)");
 }
 
 // #[test]

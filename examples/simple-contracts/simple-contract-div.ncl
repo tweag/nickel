@@ -12,5 +12,5 @@ let DivBy3 = fun label value =>
   else
     contracts.blame label in
 // Will cause an error! 4 is no divided by 3.
-(4 | #Even
-   | #DivBy3)
+(4 | Even
+   | DivBy3)

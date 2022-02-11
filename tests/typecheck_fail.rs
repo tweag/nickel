@@ -29,6 +29,7 @@ macro_rules! assert_typecheck_fails {
 
 #[test]
 fn unbound_variable_always_throws() {
+    type_check_expr("x").map_err(|err| println!("{:#?}", err));
     assert_matches!(
         type_check_expr("x"),
         Err(TypecheckError::UnboundIdentifier(..))
@@ -52,7 +53,7 @@ fn promise_complicated() {
     // no implicit polymorphism
     assert_typecheck_fails!("(fun id => (id 4 : Num) + (id true : Bool)) (fun x => x)");
     // contract equality (to be fair, the current implementation is full of issues: to be reworked)
-    assert_typecheck_fails!("(fun x => x) : #(fun l t => t) -> #(fun l t => t)");
+    assert_typecheck_fails!("(fun x => x) : (fun l t => t) -> (fun l t => t)");
 }
 
 #[test]
@@ -77,7 +78,7 @@ fn simple_forall() {
 
 #[test]
 fn enum_simple() {
-    assert_typecheck_fails!("`foo : <bar>");
+    assert_typecheck_fails!("`foo : [| bar |]");
     assert_typecheck_fails!("switch { `foo => 3} `bar : Num");
     assert_typecheck_fails!("switch { `foo => 3, `bar => true} `bar : Num");
 }
@@ -85,7 +86,7 @@ fn enum_simple() {
 #[test]
 fn enum_complex() {
     assert_typecheck_fails!(
-        "(fun x => switch {`bla => 1, `ble => 2, `bli => 4} x) : <bla, ble> -> Num"
+        "(fun x => switch {`bla => 1, `ble => 2, `bli => 4} x) : [| bla, ble |] -> Num"
     );
     // TODO typecheck this, I'm not sure how to do it with row variables
     // LATER NOTE: this requires row subtyping, not easy
@@ -95,12 +96,12 @@ fn enum_complex() {
             (switch {`bla => 6, `blo => 20} x)) `bla : Num"
     );
     assert_typecheck_fails!(
-        "let f : forall r. <blo, ble | r> -> Num =
+        "let f : forall r. [| blo, ble ; r |] -> Num =
             fun x => (switch {`blo => 1, `ble => 2, `bli => 3} x) in
         f"
     );
     assert_typecheck_fails!(
-        "let f : forall r. (forall p. <blo, ble | r> -> <bla, bli | p>) =
+        "let f : forall r. (forall p. [| blo, ble ; r |] -> [| bla, bli ; p |]) =
             fun x => (switch {`blo => `bla, `ble => `bli, _ => `blo} x) in
         f `bli"
     );

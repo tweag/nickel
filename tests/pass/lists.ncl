@@ -33,4 +33,4 @@ let Assert = fun l x => x || %blame% l in
     let isZ = fun x => x == 0 in
     all isZ [0, 0, 0, 1] == false,
 ]
-|> lists.foldl (fun x y => (x | #Assert) && y) true
+|> lists.foldl (fun x y => (x | Assert) && y) true

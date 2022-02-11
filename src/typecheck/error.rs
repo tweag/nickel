@@ -36,6 +36,8 @@ pub enum RowUnifError {
     WithConst(usize, TypeWrapper),
     /// Tried to unify two distinct type constants.
     ConstMismatch(usize, usize),
+    /// An unbound type variable was referenced.
+    UnboundTypeVariable(Ident),
 }
 
 impl RowUnifError {
@@ -62,6 +64,7 @@ impl RowUnifError {
             RowUnifError::UnsatConstr(id, tyw) => UnifError::RowConflict(id, tyw, left, right),
             RowUnifError::WithConst(c, tyw) => UnifError::WithConst(c, tyw),
             RowUnifError::ConstMismatch(c1, c2) => UnifError::ConstMismatch(c1, c2),
+            RowUnifError::UnboundTypeVariable(id) => UnifError::UnboundTypeVariable(id),
         }
     }
 }
