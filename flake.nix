@@ -8,6 +8,10 @@
   inputs.rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
   inputs.rust-overlay.inputs.flake-utils.follows = "flake-utils";
   inputs.import-cargo.url = "github:edolstra/import-cargo";
+  inputs.vim-nickel = {
+    url = "github:nickel-lang/vim-nickel";
+    flake = false;
+  };
 
   nixConfig = {
     extra-substituters = [ "https://nickel.cachix.org" ];
@@ -21,6 +25,7 @@
     , pre-commit-hooks
     , rust-overlay
     , import-cargo
+    , vim-nickel
     }:
     let
       SYSTEMS = [
@@ -331,14 +336,79 @@
           '';
         }).vsix;
 
+      vimPlugin =
+        pkgs.vimUtils.buildVimPluginFrom2Nix {
+           pname = "vim-nickel";
+           version = vim-nickel.rev or "dirty";
+           src = vim-nickel;
+        };
+
+      neovim = (pkgs.wrapNeovim pkgs.neovim-unwrapped {}).override {
+        configure = {
+          packages.myVimPackages.start = with pkgs.vimPlugins; [
+            vimPlugin       # syntax highlithing
+            nvim-lspconfig  # language server 
+            #LuaSnip         # snippets
+
+            # autocompletion
+            nvim-cmp        # autocompletion
+            cmp-nvim-lsp    # - for lsp
+            #cmp_luasnip     # - for snippets
+
+            # navigation (maybe telescope)
+          ];
+          customRC = ''
+            set completeopt=menu,menuone,noselect
+
+            lua << EOF
+            require('lspconfig')["nickel_ls"].setup {
+              cmd = { '${nickel}/bin/nls' }
+            }
+
+            local cmp = require'cmp'
+            cmp.setup({
+              --snippet = {
+              --  expand = function(args)
+              --    require('luasnip').lsp_expand(args.body) -- For `luasnip` users.
+              --  end,
+              --},
+              mapping = {
+                ['<C-b>'] = cmp.mapping(cmp.mapping.scroll_docs(-4), { 'i', 'c' }),
+                ['<C-f>'] = cmp.mapping(cmp.mapping.scroll_docs(4), { 'i', 'c' }),
+                ['<C-Space>'] = cmp.mapping(cmp.mapping.complete(), { 'i', 'c' }),
+                ['<C-y>'] = cmp.config.disable, -- Specify `cmp.config.disable` if you want to remove the default `<C-y>` mapping.
+                ['<C-e>'] = cmp.mapping({
+                  i = cmp.mapping.abort(),
+                  c = cmp.mapping.close(),
+                }),
+                ['<CR>'] = cmp.mapping.confirm({ select = true }), -- Accept currently selected item. Set `select` to `false` to only confirm explicitly selected items.
+              },
+              sources = cmp.config.sources({
+                { name = 'nvim_lsp' },
+                --{ name = 'luasnip' }, -- For luasnip users.
+              })
+            })
+
+            -- Setup lspconfig.
+            local capabilities = require('cmp_nvim_lsp').update_capabilities(vim.lsp.protocol.make_client_capabilities())
+            require('lspconfig')['nickel_ls'].setup {
+              capabilities = capabilities
+            }
+
+            EOF
+        '';
+        };
+      };
+
+      nickel = buildNickel {};
     in
     rec {
       defaultPackage = packages.build;
       packages = {
-        build = buildNickel { };
+        build = nickel;
         buildWasm = buildNickelWASM { optimize = true; };
         dockerImage = buildDocker packages.build; # TODO: docker image should be a passthru
-        inherit vscodeExtension;
+        inherit vscodeExtension neovim;
       };
 
       devShell = devShells.stable;
@@ -363,3 +433,5 @@
     }
     );
 }
+
+

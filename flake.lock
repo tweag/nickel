@@ -74,7 +74,8 @@
         "import-cargo": "import-cargo",
         "nixpkgs": "nixpkgs",
         "pre-commit-hooks": "pre-commit-hooks",
-        "rust-overlay": "rust-overlay"
+        "rust-overlay": "rust-overlay",
+        "vim-nickel": "vim-nickel"
       }
     },
     "rust-overlay": {
@@ -97,6 +98,22 @@
       "original": {
         "owner": "oxalica",
         "repo": "rust-overlay",
+        "type": "github"
+      }
+    },
+    "vim-nickel": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1629976508,
+        "narHash": "sha256-THikQX2vFVXVWWdr0pvR+0sBDM8Zs+wqq+AcF1DEyA0=",
+        "owner": "nickel-lang",
+        "repo": "vim-nickel",
+        "rev": "d296aa4af26106c4aff9c18f57915c03e6f39489",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nickel-lang",
+        "repo": "vim-nickel",
         "type": "github"
       }
     }
