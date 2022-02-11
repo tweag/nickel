@@ -133,7 +133,7 @@ pub Term: RichTerm = AsTerm<UniTerm>;
 Types: Types = {
     AsType<InfixExpr>,
     Forall,
-}
+};
 
 // A type with type variables fixed. See `parser::utils::fix_type_vars`.
 FixedType: Types = {
@@ -159,7 +159,7 @@ pub ExtendedTerm: ExtendedTerm = {
         ExtendedTerm::ToplevelLet(id, t)
     },
     Term => ExtendedTerm::RichTerm(<>),
-}
+};
 
 // A general term. The root of the grammar.
 UniTerm: UniTerm = {
@@ -255,15 +255,25 @@ Applicative: UniTerm = {
 // by `Foo`, rather than the dynamic list type `List Dyn` aliased to `List` and
 // seen as a contract applied to term `Foo`.
 TypeList: Types =
-    "List" <AsType<Atom>?> => {
+    "List" <TypeListParam?> => {
         let ty = Box::new(<>.unwrap_or(Types(AbsType::Dyn())));
         Types(AbsType::List(ty))
     };
 
+// Possible parameter for the list type. It's `TypeAtom` augmented with an
+// argument-less `List`, which allows to parse `List List`. We can't add
+// argument-less `List` to type atoms directly, as it would make `List Foo`
+// ambiguous: could be parsed both as `List` as a term applied to `List` as a
+// term, or as the parametrized type `List List`).
+TypeListParam: Types = {
+    "List" => Types(AbsType::List(Box::new(Types(AbsType::Dyn())))),
+    AsType<Atom>,
+};
+
 RecordOperand: UniTerm = {
     Atom,
     AsUniTerm<RecordOperationChain>,
-}
+};
 
 // A record operation chain, such as `{foo = data}.bar.baz`.
 RecordOperationChain: RichTerm = {
@@ -277,7 +287,7 @@ RecordOperationChain: RichTerm = {
 RowTail: Types = {
     <Ident> => Types(AbsType::Var(<>)),
     "Dyn" => Types(AbsType::Dyn()),
-}
+};
 
 // A record, that can be later interpreted either as a record literal or as a
 // record type.
@@ -341,12 +351,12 @@ RecordField: (FieldPathElem, RichTerm) = {
         };
         elaborate_field_path(path, term)
     }
-}
+};
 
 RecordLastField: RecordLastField = {
     <RecordField> => RecordLastField::Field(<>),
     ".." => RecordLastField::Ellipsis,
-}
+};
 
 // A field path syntax in a field definition, as in `{foo."bar bar".baz = "value"}`.
 FieldPath: Vec<FieldPathElem> = {
