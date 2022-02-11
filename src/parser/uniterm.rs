@@ -1,7 +1,7 @@
 //! Additional AST nodes for the common UniTerm syntax (see RFC002 for more details).
 use super::*;
 use error::ParseError;
-use utils::{build_record, FieldPathElem};
+use utils::{build_record, elaborate_field_path, FieldPath, FieldPathElem};
 
 use crate::{
     position::{RawSpan, TermPos},
@@ -140,7 +140,7 @@ impl From<UniRecord> for UniTerm {
 /// A record in the UniTerm syntax.
 #[derive(Clone)]
 pub struct UniRecord {
-    pub fields: Vec<(FieldPathElem, RichTerm)>,
+    pub fields: Vec<(FieldPath, RichTerm)>,
     pub tail: Option<(Types, TermPos)>,
     pub attrs: RecordAttrs,
     pub pos: TermPos,
@@ -168,35 +168,55 @@ impl UniRecord {
                 self.tail
                     .map(|(tail, _)| tail)
                     .unwrap_or(Types(AbsType::RowEmpty())),
-                |acc, (path_elem, rt)| {
-                    match path_elem {
-                        FieldPathElem::Ident(id) => {
-                            // At parsing stage, all `Rc`s must be 1-counted. We can thus call
-                            // `into_owned()` without risking to actually clone anything.
-                            match rt.term.into_owned() {
-                                Term::MetaValue(MetaValue {
-                                    doc: None,
-                                    types: Some(ctrt),
-                                    contracts,
-                                    priority: MergePriority::Normal,
-                                    value: None,
-                                }) if contracts.is_empty() => Ok(Types(AbsType::RowExtend(
-                                    id,
-                                    Some(Box::new(ctrt.types)),
-                                    Box::new(acc),
-                                ))),
-                                _ => {
-                                    // Position of identifiers must always be set at this stage
-                                    // (parsing)
-                                    let span_id = id.pos.unwrap();
-                                    let term_pos = rt.pos.into_opt().unwrap_or(span_id);
-                                    Err(InvalidRecordTypeError(TermPos::Original(
-                                        RawSpan::fuse(span_id, term_pos).unwrap(),
-                                    )))
+                |acc, (mut path, rt)| {
+                    // We don't support compound paths for type, yet.
+                    if path.len() > 1 {
+                        let span = path
+                            .into_iter()
+                            .map(|path_elem| match path_elem {
+                                FieldPathElem::Ident(id) => id.pos.into_opt(),
+                                FieldPathElem::Expr(rt) => rt.pos.into_opt(),
+                            })
+                            .reduce(|acc, pos| {
+                                acc.zip(pos)
+                                    .and_then(|(acc, span)| RawSpan::fuse(acc, span))
+                            })
+                            .flatten();
+
+                        Err(InvalidRecordTypeError(
+                            span.map_or(TermPos::None, TermPos::Original),
+                        ))
+                    } else {
+                        let elem = path.pop().unwrap();
+                        match elem {
+                            FieldPathElem::Ident(id) => {
+                                // At parsing stage, all `Rc`s must be 1-counted. We can thus call
+                                // `into_owned()` without risking to actually clone anything.
+                                match rt.term.into_owned() {
+                                    Term::MetaValue(MetaValue {
+                                        doc: None,
+                                        types: Some(ctrt),
+                                        contracts,
+                                        priority: MergePriority::Normal,
+                                        value: None,
+                                    }) if contracts.is_empty() => Ok(Types(AbsType::RowExtend(
+                                        id,
+                                        Some(Box::new(ctrt.types)),
+                                        Box::new(acc),
+                                    ))),
+                                    _ => {
+                                        // Position of identifiers must always be set at this stage
+                                        // (parsing)
+                                        let span_id = id.pos.unwrap();
+                                        let term_pos = rt.pos.into_opt().unwrap_or(span_id);
+                                        Err(InvalidRecordTypeError(TermPos::Original(
+                                            RawSpan::fuse(span_id, term_pos).unwrap(),
+                                        )))
+                                    }
                                 }
                             }
+                            FieldPathElem::Expr(rt) => Err(InvalidRecordTypeError(rt.pos)),
                         }
-                        FieldPathElem::Expr(rt) => Err(InvalidRecordTypeError(rt.pos)),
                     }
                 },
             )?;
@@ -214,11 +234,12 @@ impl TryFrom<UniRecord> for RichTerm {
 
     /// Convert a `UniRecord` to a term. If the `UniRecord` has a tail, it is first interpreted as
     /// a type and then converted to a contract. Otherwise it is interpreted as a record directly.
-    /// Fail if the `UniRecord` has a tail but isn't syntactically a record type either.
+    /// Fail if the `UniRecord` has a tail but isn't syntactically a record type either. Elaborate
+    /// field paths `foo.bar = value` to the expanded form `{foo = {bar = value}}`.
     ///
     /// We also fix the type variables of the type appearing inside annotations (see
     /// [`fix_type_vars`]).
-    fn try_from(mut ur: UniRecord) -> Result<Self, ParseError> {
+    fn try_from(ur: UniRecord) -> Result<Self, ParseError> {
         let pos = ur.pos;
 
         let result = if let Some((_, tail_pos)) = ur.tail {
@@ -234,11 +255,13 @@ impl TryFrom<UniRecord> for RichTerm {
                     })
                 })
         } else {
-            fix_fields_types(ur.fields.iter_mut().map(|(_, rt)| rt));
-            Ok(RichTerm::from(build_record(
-                ur.fields.into_iter(),
-                ur.attrs,
-            )))
+            let UniRecord { fields, attrs, .. } = ur;
+            let elaborated = fields.into_iter().map(|(path, mut rt)| {
+                fix_field_types(&mut rt);
+                elaborate_field_path(path, rt)
+            });
+
+            Ok(RichTerm::from(build_record(elaborated, attrs)))
         };
 
         result.map(|rt| rt.with_pos(pos))
@@ -348,21 +371,20 @@ pub fn fix_type_vars(ty: &mut Types) {
     fix_type_vars_aux(ty, HashSet::new())
 }
 
-/// Fix the type variables of the types appearing as annotations of the fields of a record. See
+/// Fix the type variables of the types appearing as annotations of in the field definition of a
+/// record. See
 /// [`fix_type_vars`].
-pub fn fix_fields_types<'a, I: Iterator<Item = &'a mut RichTerm>>(fields: I) {
-    for rt in fields {
-        match SharedTerm::make_mut(&mut rt.term) {
-            Term::MetaValue(ref mut m) => {
-                if let Some(Contract { ref mut types, .. }) = m.types {
-                    fix_type_vars(types);
-                }
-
-                for ctr in m.contracts.iter_mut() {
-                    fix_type_vars(&mut ctr.types);
-                }
+pub fn fix_field_types(rt: &mut RichTerm) {
+    match SharedTerm::make_mut(&mut rt.term) {
+        Term::MetaValue(ref mut m) => {
+            if let Some(Contract { ref mut types, .. }) = m.types {
+                fix_type_vars(types);
             }
-            _ => (),
+
+            for ctr in m.contracts.iter_mut() {
+                fix_type_vars(&mut ctr.types);
+            }
         }
+        _ => (),
     }
 }
