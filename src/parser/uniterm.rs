@@ -152,10 +152,10 @@ pub struct UniRecord {
 pub struct InvalidRecordTypeError(pub TermPos);
 
 impl UniRecord {
-    /// Try to convert a `UniRecord` to a type. The strict part means that if the `UniRecord` must
-    /// be a plain record type, uniquely containing fields of the form `fields: Type`. Currently,
-    /// it doesn't support the field path syntax: `{foo.bar.baz : Type}.into_type_strict()` returns
-    /// an `Err`.
+    /// Try to convert a `UniRecord` to a type. The strict part means that the `UniRecord` must be
+    /// a plain record type, uniquely containing fields of the form `fields: Type`. Currently, it
+    /// doesn't support the field path syntax: `{foo.bar.baz : Type}.into_type_strict()` returns an
+    /// `Err`.
     pub fn into_type_strict(self) -> Result<Types, InvalidRecordTypeError> {
         let ty = self
             .fields
