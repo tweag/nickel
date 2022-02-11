@@ -80,12 +80,21 @@ AsType<Rule>: Types = <ut: WithPos<Rule>> =>?
 AsUniTerm<Rule>: UniTerm = <l: @L> <ut: Rule> <r: @R> =>
     UniTerm::from(ut).with_pos(mk_pos(src_id, l, r));
 
-// A single type or meta-data annotation. The right hand `FixedType` forbids the use of
+// A single type or meta-data annotation. The `Types` rule forbids the use of
 // constructs that can themselves have annotation on the right, such as a `let`.
-// Otherwise, `foo | let x = 1 in x : Num` is ambiguous.
-// (it could be both `x : Num` or (foo // | ...) : Num`)
-AnnotAtom: MetaValue = {
-    "|" <l: @L> <ty: FixedType> <r: @R> => MetaValue {
+// Otherwise, `foo | let x = 1 in x : Num` is ambiguous (the annotation could be
+// either `foo | (let x = 1 in (x : Num))` or `(foo | let x = 1 in x) : Num`).
+//
+// The rule to use for type annotations is given as a parameter. We always use a
+// rule that is syntactically equivalent to the `Types` rule. The parameter is
+// how to control if the type should have its the type should have its variables
+// fixed now (`FixedType`) or later (bare `Types`). Almost all rules are of the
+// former kind, and use `FixedType`.
+//
+//
+// (see `FixedType` and `parser::utils::fix_type_vars`).
+AnnotAtom<TypeRule>: MetaValue = {
+    "|" <l: @L> <ty: TypeRule> <r: @R> => MetaValue {
         doc: None,
         types: None,
         contracts: vec![Contract {types: ty.clone(), label: mk_label(ty, src_id, l, r)}],
@@ -106,7 +115,7 @@ AnnotAtom: MetaValue = {
         priority: Default::default(),
         value: None,
     },
-    ":" <l: @L> <ty: FixedType> <r: @R> => MetaValue {
+    ":" <l: @L> <ty: TypeRule> <r: @R> => MetaValue {
         doc: None,
         types: Some(Contract {types: ty.clone(), label: mk_label(ty, src_id, l, r)}),
         contracts: Vec::new(),
@@ -115,21 +124,14 @@ AnnotAtom: MetaValue = {
     },
 };
 
-// A default annotation in a pattern.
-DefaultAnnot: MetaValue = "?" <t: Term> => MetaValue {
-    priority: MergePriority::Default,
-    value: Some(t),
-    ..Default::default()
-};
-
 // An annotation, with possibly many metadata annotations chained.
-Annot: MetaValue = <anns: AnnotAtom+> => anns.into_iter().fold(MetaValue::new(), MetaValue::flatten);
+Annot<TypeRule>: MetaValue = <anns: AnnotAtom<TypeRule>+> => anns.into_iter().fold(MetaValue::new(), MetaValue::flatten);
 
 // A general term. The root of the grammar.
 pub Term: RichTerm = AsTerm<UniTerm>;
 
-// A general type. Chosen such that it can't itself have top-level annotations
-// (see `AnnotAtom`).
+// A general type. Chosen such that it can't have top-level annotations.
+// (see `AnnotAtom`)
 Types: Types = {
     AsType<InfixExpr>,
     Forall,
@@ -146,7 +148,7 @@ FixedType: Types = {
 // Either a term or a top-level let-binding (a let-binding without an `in`).
 // Used exclusively for the REPL.
 pub ExtendedTerm: ExtendedTerm = {
-    "let" <id: Ident> <meta: Annot?> "=" <t: Term> => {
+    "let" <id: Ident> <meta: Annot<FixedType>?> "=" <t: Term> => {
         let t = if let Some(mut meta) = meta {
             let pos = t.pos;
             meta.value = Some(t);
@@ -166,7 +168,7 @@ UniTerm: UniTerm = {
     InfixExpr,
     AnnotatedInfixExpr,
     AsUniTerm<Forall>,
-    "let" <pat:Pattern> <meta: Annot?>
+    "let" <pat:Pattern> <meta: Annot<FixedType>?>
         "=" <t1: Term>
         "in" <t2: Term> => {
         let t1 = if let Some(mut meta) = meta {
@@ -222,7 +224,7 @@ UniTerm: UniTerm = {
 };
 
 AnnotatedInfixExpr: UniTerm = {
-    <t: AsTerm<InfixExpr>> <mut meta: Annot> => {
+    <t: AsTerm<InfixExpr>> <mut meta: Annot<FixedType>> => {
         let pos = t.pos;
         meta.value = Some(t);
         UniTerm::from(RichTerm::new(Term::MetaValue(meta), pos))
@@ -333,9 +335,10 @@ Atom: UniTerm = {
     AsUniTerm<TypeAtom>,
 };
 
-// A record field definition.
+// A record field definition. The is the only place we don't fix the type
+// variables inside the annotation right away (see the `Annot<Types>`).
 RecordField: (FieldPathElem, RichTerm) = {
-    <l: @L> <path: FieldPath> <ann: Annot?> <r: @R> <t: ("=" <Term>)?> => {
+    <l: @L> <path: FieldPath> <ann: Annot<Types>?> <r: @R> <t: ("=" <Term>)?> => {
         let pos = t.as_ref()
             .map(|t| t.pos.clone())
             .unwrap_or(mk_pos(src_id, l, r));
@@ -371,13 +374,6 @@ FieldPathElem: FieldPathElem = {
     <WithPos<StrChunks>> => FieldPathElem::Expr(<>),
 };
 
-// The right hand side of an `=` inside a destructuring pattern.
-#[inline]
-Pattern: (Option<Ident>,Destruct) = {
-    <id:(<Ident> "@")?> <pat:Destruct> => (id,pat),
-    Ident => (Some(<>),Destruct::Empty),
-};
-
 // A full pattern at the left-hand side of a destructuring let.
 Destruct: Destruct = {
     "{" <mut matches: (<Match> ",")*> <last:LastMatch?> "}" => {
@@ -396,7 +392,7 @@ Destruct: Destruct = {
 
 // A binding `ident = <pattern>` inside a destructuring pattern.
 Match: Match = {
-    <left:Ident> <anns: Annot?> <default: DefaultAnnot?> "=" <right: Pattern> => {
+    <left:Ident> <anns: Annot<FixedType>?> <default: DefaultAnnot?> "=" <right: Pattern> => {
         let meta = match (default, anns) {
             (Some(d), Some(m)) => MetaValue::flatten(d,m),
             (Some(m),_) | (_,Some(m)) => m,
@@ -405,7 +401,7 @@ Match: Match = {
 
         Match::Assign(left, meta, right)
     },
-    <id:Ident> <anns: Annot?> <default: DefaultAnnot?> => {
+    <id:Ident> <anns: Annot<FixedType>?> <default: DefaultAnnot?> => {
         let meta = match (default, anns) {
             (Some(d), Some(m)) => MetaValue::flatten(d,m),
             (Some(m),_) | (_,Some(m)) => m,
@@ -420,6 +416,21 @@ LastMatch: LastMatch = {
     Match => LastMatch::Match(<>),
     ".." <Ident?> => LastMatch::Ellipsis(<>),
 };
+
+// The right hand side of an `=` inside a destructuring pattern.
+#[inline]
+Pattern: (Option<Ident>,Destruct) = {
+    <id:(<Ident> "@")?> <pat:Destruct> => (id,pat),
+    Ident => (Some(<>),Destruct::Empty),
+};
+
+// A default annotation in a pattern.
+DefaultAnnot: MetaValue = "?" <t: Term> => MetaValue {
+    priority: MergePriority::Default,
+    value: Some(t),
+    ..Default::default()
+};
+
 
 Ident: Ident = <l:@L> <i: "identifier"> <r:@R> =>
     Ident { label: i.to_string(), pos: mk_pos(src_id, l, r) };

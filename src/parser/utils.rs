@@ -2,7 +2,6 @@
 //! uncluttered.
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::fmt::Debug;
 use std::rc::Rc;
 
@@ -94,68 +93,6 @@ impl InfixOp {
             ),
         }
     }
-}
-
-/// Post-process a type at the right hand side of an annotation by replacing unbound type variables
-/// by the same variables but seen as custom contracts (`AbsType::Var(id)` to
-/// `AbsType::Flat(Term::Var(id))`).
-///
-/// Since parsing is done bottom-up, and given the specification of the uniterm syntax for
-/// variables occurring in types, we can't always know right away if a such an variable occurrence
-/// is actually a type variable or a term variable seen as a custom contract.
-///
-/// Take for example `a -> b`. At this stage, `a` and `b` could be both variables referring to a
-/// contract (e.g. in `x | a -> b`) or a type variable (e.g. in `x | forall a b. a -> b`),
-/// depending on enclosing `forall`s. To handle both cases, we initially parse all variables inside
-/// types as type variables. When reaching the right-hand side of an annotation, because `forall`s
-/// can only bind locally in a type, we can then decide the actual nature of each occurrence. We
-/// thus recurse into the newly constructed type to change those type variables that are not
-/// actually bound by a `forall` to be term variables. This is the role of `fix_type_vars()`.
-///
-/// Once again because `forall`s only bind variables locally, and don't bind inside contracts, we
-/// don't have to recurse into contracts and this pass will only visit each node of the AST at most
-/// once in total.
-pub fn fix_type_vars(ty: &mut Types) {
-    fn fix_type_vars_aux(ty: &mut Types, mut bound_vars: HashSet<Ident>) {
-        use crate::types::AbsType;
-
-        match ty.0 {
-            AbsType::Dyn()
-            | AbsType::Num()
-            | AbsType::Bool()
-            | AbsType::Str()
-            | AbsType::Sym()
-            | AbsType::Flat(_)
-            | AbsType::RowEmpty() => (),
-            AbsType::Arrow(ref mut s, ref mut t) => {
-                fix_type_vars_aux(s.as_mut(), bound_vars.clone());
-                fix_type_vars_aux(t.as_mut(), bound_vars.clone());
-            }
-            AbsType::Var(ref mut id) => {
-                if !bound_vars.contains(id) {
-                    let id = std::mem::take(id);
-                    let pos = id.pos;
-                    ty.0 = AbsType::Flat(RichTerm::new(Term::Var(id), pos));
-                }
-            }
-            AbsType::Forall(ref id, ref mut ty) => {
-                bound_vars.insert(id.clone());
-                fix_type_vars_aux(&mut *ty, bound_vars);
-            }
-            AbsType::RowExtend(_, ref mut ty_opt, ref mut tail) => {
-                (*ty_opt)
-                    .iter_mut()
-                    .for_each(|ty| fix_type_vars_aux(ty.as_mut(), bound_vars.clone()));
-                fix_type_vars_aux(tail.as_mut(), bound_vars);
-            }
-            AbsType::DynRecord(ref mut ty)
-            | AbsType::List(ref mut ty)
-            | AbsType::Enum(ref mut ty)
-            | AbsType::StaticRecord(ref mut ty) => fix_type_vars_aux(ty.as_mut(), bound_vars),
-        }
-    }
-
-    fix_type_vars_aux(ty, HashSet::new())
 }
 
 /// Turn dynamic accesses using literal chunks only into static accesses
