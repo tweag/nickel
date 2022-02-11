@@ -389,7 +389,7 @@ impl fmt::Display for Types {
                 }
             }
             AbsType::Sym() => write!(f, "Sym"),
-            AbsType::Flat(ref t) => write!(f, "#{}", t.as_ref().shallow_repr()),
+            AbsType::Flat(ref t) => write!(f, "{}", t.as_ref().shallow_repr()),
             AbsType::Var(var) => write!(f, "{}", var),
             AbsType::Forall(i, ref ty) => {
                 let mut curr: &Types = ty.as_ref();
@@ -400,7 +400,7 @@ impl fmt::Display for Types {
                 }
                 write!(f, ". {}", curr)
             }
-            AbsType::Enum(row) => write!(f, "<{}>", row),
+            AbsType::Enum(row) => write!(f, "[|{}|]", row),
             AbsType::StaticRecord(row) => write!(f, "{{{}}}", row),
             AbsType::DynRecord(ty) => write!(f, "{{_: {}}}", ty),
             AbsType::RowEmpty() => Ok(()),
@@ -480,8 +480,8 @@ mod test {
         assert_format_eq("forall r. {x: Bool, y: Bool, z: Bool ; r}");
         assert_format_eq("{x: Bool, y: Bool, z: Bool}");
 
-        // assert_format_eq("<a, b, c, d>");
-        // assert_format_eq("forall r. <tag1, tag2, tag3 ; r>");
+        assert_format_eq("[|a, b, c, d|]");
+        assert_format_eq("forall r. [|tag1, tag2, tag3 ; r|]");
 
         assert_format_eq("List");
         assert_format_eq("List Num");
