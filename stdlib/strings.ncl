@@ -177,7 +177,7 @@
       "#m
     = fun s => %str_chars% s,
 
-    code | #CharLiteral -> Num
+    code | CharLiteral -> Num
     | doc m#"
       Results in the ascii code of the given character.
 
@@ -193,7 +193,7 @@
       "#m
     = fun s => %char_code% s,
 
-    from_code | Num -> #CharLiteral
+    from_code | Num -> CharLiteral
     | doc m#"
       Results in the character for a given ascii code. Any number outside the ascii range results in an error.
 
@@ -382,7 +382,7 @@
       "#m
     = fun b => %to_str% b,
 
-    to_num | #NumLiteral -> Num
+    to_num | NumLiteral -> Num
     | doc m#"
       Converts a string that represents an integer to that integer.
 
@@ -394,7 +394,7 @@
       "#m
     = fun s => %num_from_str% s,
 
-    to_bool | #BoolLiteral -> Bool
+    to_bool | BoolLiteral -> Bool
     | doc m#"
       Converts a string that represents a boolean to that boolean.
 
@@ -410,7 +410,7 @@
     = fun s => s == "true",
 
     // to_enum | #Ident -> < | Dyn> = fun s => %enum_from_str% s,
-    to_enum | #Ident -> Dyn
+    to_enum | Ident -> Dyn
     | doc m#"
       Converts any string that represents an enum variant to that enum variant.
 
