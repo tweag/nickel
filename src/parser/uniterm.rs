@@ -370,7 +370,16 @@ pub fn fix_type_vars(ty: &mut Types) {
                 (*ty_opt)
                     .iter_mut()
                     .for_each(|ty| fix_type_vars_aux(ty.as_mut(), bound_vars.clone()));
-                fix_type_vars_aux(tail.as_mut(), bound_vars);
+
+                // We don't touch a row tail that is a type variable, because the typechecker
+                // relies on row types being well-formed, which the parser must ensure.
+                // Well-formedness requires that only type variables and `Dyn` may appear in a row
+                // tail position, so we don't turn such variables into term variables (having a
+                // contract in tail position doesn't make sense, in the current model at least,
+                // both for typechecking and at evaluation).
+                if !matches!((**tail).0, AbsType::Var(_)) {
+                    fix_type_vars_aux(tail.as_mut(), bound_vars);
+                }
             }
             AbsType::DynRecord(ref mut ty)
             | AbsType::List(ref mut ty)
