@@ -144,6 +144,9 @@ pub struct UniRecord {
     pub tail: Option<(Types, TermPos)>,
     pub attrs: RecordAttrs,
     pub pos: TermPos,
+    /// The position of the final ellipsis `..`, if any. Used for error reporting. `pos_ellipsis`
+    /// must be different from `TermPos::None` if and only if `attrs.open` is `true`.
+    pub pos_ellipsis: TermPos,
 }
 
 /// Error indicating that a construct is not allowed when trying to interpret an `UniRecord` as a
@@ -157,6 +160,14 @@ impl UniRecord {
     /// doesn't support the field path syntax: `{foo.bar.baz : Type}.into_type_strict()` returns an
     /// `Err`.
     pub fn into_type_strict(self) -> Result<Types, InvalidRecordTypeError> {
+        // An open record (with an ellipsis `..` at the end) can't be translated to a record type.
+        // `pos_ellipsis` should be set iff `attrs.open` is true.
+        debug_assert!((self.pos_ellipsis == TermPos::None) == !self.attrs.open);
+
+        if let Some(raw_span) = self.pos_ellipsis.into_opt() {
+            return Err(InvalidRecordTypeError(TermPos::Original(raw_span)));
+        }
+
         let ty = self
             .fields
             .into_iter()
@@ -169,7 +180,7 @@ impl UniRecord {
                     .map(|(tail, _)| tail)
                     .unwrap_or(Types(AbsType::RowEmpty())),
                 |acc, (mut path, rt)| {
-                    // We don't support compound paths for type, yet.
+                    // We don't support compound paths for types, yet.
                     if path.len() > 1 {
                         let span = path
                             .into_iter()

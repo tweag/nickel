@@ -295,8 +295,8 @@ RowTail: Types = {
 // record type.
 UniRecord: UniRecord = {
    "{" <fields: (<RecordField> ",")*>
-       <last: RecordLastField?>
-       <l: @L> <tail: (";" RowTail)?> <r: @R>
+       <last_l: @L> <last: RecordLastField?> <last_r: @R>
+       <tail_l: @L> <tail: (";" RowTail)?> <tail_r: @R>
    "}" => {
         let (last_field, attrs) = match last {
             Some(RecordLastField::Field(f)) => (Some(f), Default::default()),
@@ -305,12 +305,20 @@ UniRecord: UniRecord = {
             None => (None, Default::default())
         };
 
+        let pos_ellipsis = if attrs.open {
+                mk_pos(src_id, last_l, last_r)
+            }
+            else {
+                TermPos::None
+            };
+
         let fields : Vec<_> = fields.into_iter().chain(last_field.into_iter()).collect();
         UniRecord {
             fields,
-            tail: tail.map(|t| (t.1, mk_pos(src_id, l, r))),
+            tail: tail.map(|t| (t.1, mk_pos(src_id, tail_l, tail_r))),
             attrs,
-            pos: TermPos::None
+            pos: TermPos::None,
+            pos_ellipsis,
         }
     },
 };
@@ -336,7 +344,8 @@ Atom: UniTerm = {
 };
 
 // A record field definition. The is the only place we don't fix the type
-// variables inside the annotation right away (see the `Annot<Types>`).
+// variables inside the annotation right away (note the `Annot<Types>` instead
+// of `Annot<Fixed>`).
 RecordField: (FieldPath, RichTerm) = {
     <l: @L> <path: FieldPath> <ann: Annot<Types>?> <r: @R> <t: ("=" <Term>)?> => {
         let pos = t.as_ref()
