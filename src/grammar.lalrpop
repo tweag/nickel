@@ -1,39 +1,39 @@
-// The Nickel grammar.
-//
-// # Uniterm
-//
-// Nickel uses the uniterm grammar since
-// [RFC002](../rfcs/002-merge-types-terms-syntax.md). Uniterm is a common
-// grammar for both term and types. However, it is only a front-end: the rest of
-// the interpreter pipeline needs terms and types to be separate objects.
-//
-// Most grammar construct determines if an expression should be considered as a
-// type or a term. Typically, `e1 -> e2` will always be a type, and `e1 + e2` a
-// term. This doesn't contradict the fact that `e1 -> e2` can be used as a term:
-// the point is, even in the latter case, we still always parse `e1 -> e2` as a
-// type first, and then derive a term from it wherever needed.
-//
-// This is not the case of all rules. Record literals and variables can both be
-// interpreted in a different way, depending on how they are used. In
-// `x : {foo : Num}`, `{foo : Num}` is interpreted as a record type. In
-// `{foo : Num}.foo`, it is a record literal with a missing definition for
-// `foo`. The first interpretation is **not** equivalent to first interpreting
-// it as a term, and then as a type.
-//
-// For those reasons, the `uniterm` module introduces a new AST definition, that
-// just wraps `RichTerm` and `Types`, together with dedicated variants the
-// common constructs variables and records. As long as a common construct is not
-// used in a larger expression, it can be still interpreted in both as a term or
-// a type. Once an usage determines the nature of a record or a variable, it is
-// turned either a `RichTerm` or `Types` (although still possibly wrapped as a
-// `UniTerm`).
-//
-// This is why this grammar uses three main types `RichTerm`, `Types` and
-// `UniTerm`, as well as conversion macros `AsTerm`, `AsType` and `AsUniTerm`.
-// Some rules that are known to only produce `RichTerm` or `Types` may have the
-// corresponding more precise return type. Other rules that produce or just
-// propagate general uniterms have to return a `UniTerm`.
-
+//! The Nickel grammar.
+//!
+//! # Uniterm
+//!
+//! Nickel uses the uniterm grammar since
+//! [RFC002](../rfcs/002-merge-types-terms-syntax.md). Uniterm is a common
+//! grammar for both term and types. However, it is only a front-end: the rest of
+//! the interpreter pipeline needs terms and types to be separate objects.
+//!
+//! Most of the time, grammar constructs determine unambiguously if an expression
+//! should be considered as a type or a term. Typically, `e1 -> e2` will always
+//! be a type, and `e1 + e2` a term. This doesn't contradict the fact that `e1 ->
+//! e2` can be used as a term: the point is, even in the latter case, we still
+//! parse `e1 -> e2` as a type first, and then derive a term from it wherever it
+//! is used in a context expecting a term.
+//!
+//! This is not the case of all rules. Record literals and variables can both be
+//! interpreted in a different way, depending on how their usage. In
+//! `x : {foo : Num}`, `{foo : Num}` is interpreted as a record type. In `{foo :
+//! Num}.foo`, it is a record literal with a missing definition for `foo`. The
+//! first interpretation is **not** equivalent to first interpreting it as a
+//! term, and then as a type.
+//!
+//! For those reasons, the `uniterm` module introduces a new AST definition, that
+//! just wraps `RichTerm` and `Types`, together with dedicated variants for the
+//! common constructs that are variables and records. As long as a common
+//! construct is not used in a term or a type context, it can be still
+//! interpreted as both. Once the usage determines the nature of a record or a
+//! variable, it is converted to either a `RichTerm` or a `Types` (although still
+//! possibly wrapped as a `UniTerm`).
+//!
+//! In consequence, this grammar uses three main types `RichTerm`, `Types` and
+//! `UniTerm`, as well as conversion macros `AsTerm`, `AsType` and `AsUniTerm`.
+//! Some rules that are known to only produce `RichTerm` or `Types` may have the
+//! corresponding more precise return type. Other rules that produce or just
+//! propagate general uniterms have to return a `UniTerm`.
 use std::{
     collections::HashMap,
     ffi::OsString,
@@ -87,12 +87,9 @@ AsUniTerm<Rule>: UniTerm = <l: @L> <ut: Rule> <r: @R> =>
 //
 // The rule to use for type annotations is given as a parameter. We always use a
 // rule that is syntactically equivalent to the `Types` rule. The parameter is
-// how to control if the type should have its the type should have its variables
-// fixed now (`FixedType`) or later (bare `Types`). Almost all rules are of the
-// former kind, and use `FixedType`.
-//
-//
-// (see `FixedType` and `parser::utils::fix_type_vars`).
+// here to control if the type should have its variables fixed now (`FixedType`)
+// or later (bare `Types`). Almost all rules are of the former kind, and use
+// `FixedType` (see `FixedType` and `parser::utils::fix_type_vars`).
 AnnotAtom<TypeRule>: MetaValue = {
     "|" <l: @L> <ty: TypeRule> <r: @R> => MetaValue {
         doc: None,
@@ -127,7 +124,7 @@ AnnotAtom<TypeRule>: MetaValue = {
 // An annotation, with possibly many metadata annotations chained.
 Annot<TypeRule>: MetaValue = <anns: AnnotAtom<TypeRule>+> => anns.into_iter().fold(MetaValue::new(), MetaValue::flatten);
 
-// A general term. The root of the grammar.
+// A general term. Wrap the root of the grammar as a `RichTerm`.
 pub Term: RichTerm = AsTerm<UniTerm>;
 
 // A general type. Chosen such that it can't have top-level annotations.
@@ -163,7 +160,7 @@ pub ExtendedTerm: ExtendedTerm = {
     Term => ExtendedTerm::RichTerm(<>),
 };
 
-// A general term. The root of the grammar.
+// A general uniterm. The root of the grammar.
 UniTerm: UniTerm = {
     InfixExpr,
     AnnotatedInfixExpr,
@@ -239,8 +236,8 @@ Forall: Types =
         )
     };
 
-// A n-ary application (n may be 0, in the sense that this rule also includes
-// previous levels).
+// A n-ary application-like expression (n may be 0, in the sense that this rule
+// also includes previous levels).
 Applicative: UniTerm = {
     "import" <s: StaticString> => UniTerm::from(Term::Import(OsString::from(s))),
     <t1: AsTerm<Applicative>> <t2: AsTerm<RecordOperand>> =>
@@ -323,7 +320,6 @@ UniRecord: UniRecord = {
     },
 };
 
-// An atom of the grammar.
 Atom: UniTerm = {
     "(" <AsUniTerm<CurriedOp>> ")",
     "(" <UniTerm> ")",
@@ -343,7 +339,7 @@ Atom: UniTerm = {
     AsUniTerm<TypeAtom>,
 };
 
-// A record field definition. The is the only place we don't fix the type
+// A record field definition. The is the only place where we don't fix the type
 // variables inside the annotation right away (note the `Annot<Types>` instead
 // of `Annot<Fixed>`).
 RecordField: (FieldPath, RichTerm) = {

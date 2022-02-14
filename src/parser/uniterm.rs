@@ -11,35 +11,37 @@ use crate::{
 
 use std::{collections::HashSet, convert::TryFrom};
 
-/// A node of the uniterm AST. We only define new variants for constructs common to types and
-/// terms. Otherwise, we piggyback on the existing ASTs to avoid duplicating code and definitions.
+/// A node of the uniterm AST. We only define new variants for those constructs that are common to
+/// types and terms. Otherwise, we piggyback on the existing ASTs to avoid duplicating methods and
+/// type definitions.
 ///
 /// During parsing, some constructs are common to both terms and types, such as variables or record
 /// literals ([`UniRecord`]s). They may be the source of ambiguities in the grammar, if we add two
 /// different derivation for them. This happens inside rules that accepts both a term and and a
-/// type, say the operands of an arrow `lhs -> rhs`. Take for example `lhs` a variable: `lhs := a`.
+/// type, say the operands of an arrow `lhs -> rhs`. Take for example `lhs` to be a variable `a`.
 /// It's hard not to end up having two possible derivation for `a`, one going first through term
 /// rules and then types rules (a custom contract `#a` in the old syntax), and vice-versa (a type
-/// variable `a` in the old syntax.
+/// variable `a` in the old syntax).
 ///
 /// To avoid the issue, we parse the source as a `UniTermNode`s, and give only one possible
-/// derivation - we will take a variable as an example in the following - through the parsing
+/// derivation - we will continue with the variable example in the following - through the parsing
 /// rules. As long as we can't decide yet how to see this variable, we keep it as a
 /// `UniTermNode::Var`.
 ///
 /// As soon as this variable is used in a compound expression, the top-level rule tells us how to
 /// translate it. For example, if we see an arrow `a -> Num`, then we will convert it to a type
-/// variable, and return `UniTermNode::Types(AbsType::Arrow(..))`. If, on the other hand, we enter
-/// the rule for infix operator as in `a + 1`, `a` will be converted to a `Term::Var` and the
-/// resulting uniterm will be `UniTermNode::Term(Term::Op2(..))`.
+/// variable, and return `UniTermNode::Types(AbsType::Arrow(..))` (there is actually a subtelty:
+/// see [`fix_type_vars`], but let's ignore it here). If, on the other hand, we enter the rule for
+/// an infix operator as in `a + 1`, `a` will be converted to a `Term::Var` and the resulting
+/// uniterm will be `UniTermNode::Term(Term::Op2(..))`.
 pub enum UniTermNode {
     /// A variable. Can refer both to a term variable or a type variable.
     Var(Ident),
-    /// A recod, that can be either a record literal or a record type.
+    /// A record. Can refer both to a record literal or a record type.
     Record(UniRecord),
-    /// A `UniTerm` that has been determined to be a term.
+    /// A uniterm that has been determined to be a term.
     Term(RichTerm),
-    /// A `UniTerm` that has been determined to be a type.
+    /// A uniterm that has been determined to be a type.
     Types(Types),
 }
 
@@ -137,7 +139,7 @@ impl From<UniRecord> for UniTerm {
     }
 }
 
-/// A record in the UniTerm syntax.
+/// A record in the `UniTerm` syntax.
 #[derive(Clone)]
 pub struct UniRecord {
     pub fields: Vec<(FieldPath, RichTerm)>,
@@ -150,8 +152,8 @@ pub struct UniRecord {
 }
 
 /// Error indicating that a construct is not allowed when trying to interpret an `UniRecord` as a
-/// record type in a strict way. See [`into_type_strict`]. Hold the position of the illegal
-/// construct.
+/// record type in a strict way. See [`UniRecord::into_type_strict`]. Hold the position of the
+/// illegal construct.
 pub struct InvalidRecordTypeError(pub TermPos);
 
 impl UniRecord {
@@ -284,8 +286,8 @@ impl TryFrom<UniRecord> for Types {
 
     /// Convert a `UniRecord` to a type. If the `UniRecord` has a tail, it is interpreted strictly
     /// as a type and fail if it isn't a plain record type. Otherwise, we first try to interpret it
-    /// as a plain record type, and if that doesn't work, we interpret it as a term and wrap it as
-    /// a flat type.
+    /// as a plain record type, and if that doesn't work, we interpret it as a term and wrap it
+    /// back as a user-defined contract.
     fn try_from(ur: UniRecord) -> Result<Self, ParseError> {
         let pos = ur.pos;
 
@@ -306,13 +308,13 @@ impl TryFrom<UniRecord> for Types {
     }
 }
 
-/// Post-process a type at the right hand side of an annotation by replacing unbound type variables
-/// by the same variables but seen as custom contracts (`AbsType::Var(id)` to
-/// `AbsType::Flat(Term::Var(id))`).
+/// Post-process a type at the right hand side of an annotation by replacing each unbound type
+/// variable by a term variable with the same identifier seen as a custom contract
+/// (`AbsType::Var(id)` to `AbsType::Flat(Term::Var(id))`).
 ///
 /// Since parsing is done bottom-up, and given the specification of the uniterm syntax for
-/// variables occurring in types, we can't always know right away if a such a variable occurrence
-/// is actually a type variable or a term variable seen as a custom contract.
+/// variables occurring in types, we often can't know right away if a such a variable occurrence
+/// will eventually be a type variable or a term variable seen as a custom contract.
 ///
 /// Take for example `a -> b`. At this stage, `a` and `b` could be both variables referring to a
 /// contract (e.g. in `x | a -> b`) or a type variable (e.g. in `x | forall a b. a -> b`),
@@ -391,8 +393,7 @@ pub fn fix_type_vars(ty: &mut Types) {
     fix_type_vars_aux(ty, HashSet::new())
 }
 
-/// Fix the type variables of the types appearing as annotations of in the field definition of a
-/// record. See
+/// Fix the type variables of types appearing as annotations of record fields. See
 /// [`fix_type_vars`].
 pub fn fix_field_types(rt: &mut RichTerm) {
     match SharedTerm::make_mut(&mut rt.term) {
