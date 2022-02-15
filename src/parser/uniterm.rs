@@ -9,7 +9,7 @@ use crate::{
     types::{AbsType, Types, UnboundTypeVariableError},
 };
 
-use std::{collections::HashSet, convert::TryFrom};
+use std::{borrow::Cow, collections::HashSet, convert::TryFrom};
 
 /// A node of the uniterm AST. We only define new variants for those constructs that are common to
 /// types and terms. Otherwise, we piggyback on the existing ASTs to avoid duplicating methods and
@@ -344,7 +344,7 @@ impl TryFrom<UniRecord> for Types {
 /// the fix once it's fully constructed). Fixing a unirecord prior to a conversion to a term is
 /// done by [`fix_fields_types`].
 pub fn fix_type_vars(ty: &mut Types) {
-    fn fix_type_vars_aux(ty: &mut Types, mut bound_vars: HashSet<Ident>) {
+    fn fix_type_vars_aux(ty: &mut Types, mut bound_vars: Cow<HashSet<Ident>>) {
         match ty.0 {
             AbsType::Dyn()
             | AbsType::Num()
@@ -354,8 +354,8 @@ pub fn fix_type_vars(ty: &mut Types) {
             | AbsType::Flat(_)
             | AbsType::RowEmpty() => (),
             AbsType::Arrow(ref mut s, ref mut t) => {
-                fix_type_vars_aux(s.as_mut(), bound_vars.clone());
-                fix_type_vars_aux(t.as_mut(), bound_vars.clone());
+                fix_type_vars_aux(s.as_mut(), Cow::Borrowed(bound_vars.as_ref()));
+                fix_type_vars_aux(t.as_mut(), bound_vars);
             }
             AbsType::Var(ref mut id) => {
                 if !bound_vars.contains(id) {
@@ -365,13 +365,13 @@ pub fn fix_type_vars(ty: &mut Types) {
                 }
             }
             AbsType::Forall(ref id, ref mut ty) => {
-                bound_vars.insert(id.clone());
+                bound_vars.to_mut().insert(id.clone());
                 fix_type_vars_aux(&mut *ty, bound_vars);
             }
             AbsType::RowExtend(_, ref mut ty_opt, ref mut tail) => {
-                (*ty_opt)
-                    .iter_mut()
-                    .for_each(|ty| fix_type_vars_aux(ty.as_mut(), bound_vars.clone()));
+                if let Some(ref mut ty) = *ty_opt {
+                    fix_type_vars_aux(ty.as_mut(), Cow::Borrowed(bound_vars.as_ref()));
+                }
 
                 // We don't touch a row tail that is a type variable, because the typechecker
                 // relies on row types being well-formed, which the parser must ensure.
@@ -390,7 +390,7 @@ pub fn fix_type_vars(ty: &mut Types) {
         }
     }
 
-    fix_type_vars_aux(ty, HashSet::new())
+    fix_type_vars_aux(ty, Cow::Owned(HashSet::new()))
 }
 
 /// Fix the type variables of types appearing as annotations of record fields. See
