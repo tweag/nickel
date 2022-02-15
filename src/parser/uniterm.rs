@@ -339,7 +339,7 @@ impl TryFrom<UniRecord> for Types {
 /// parsing `fst: a` if `a` will be a type variable or a term variable (while, for all other
 /// constructs, an annotation is a boundary that `forall` binders can't cross). In this example,
 /// there is indeed an enclosing forall binding `a`. With unirecords, before fixing type variables,
-/// we have wait until we eventually convert the unirecord to a term (in which case we fix all the
+/// we have to wait until we eventually convert the unirecord to a term (in which case we fix all the
 /// top-level annotations) or a type (in which case we do nothing: the enclosing type will trigger
 /// the fix once it's fully constructed). Fixing a unirecord prior to a conversion to a term is
 /// done by [`fix_fields_types`].
