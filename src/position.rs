@@ -52,6 +52,12 @@ pub enum TermPos {
     None,
 }
 
+impl Default for TermPos {
+    fn default() -> Self {
+        TermPos::None
+    }
+}
+
 impl TermPos {
     /// Apply a transformation to the inner position, if any.
     pub fn map<F: FnOnce(RawSpan) -> RawSpan>(self, f: F) -> Self {
