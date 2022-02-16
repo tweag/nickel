@@ -51,8 +51,12 @@ pub enum Destruct {
 impl Destruct {
     /// generate the metavalue containing the contract representing this pattern.
     pub fn as_contract(self) -> MetaValue {
-        let open = self.is_open();
         let label = self.label();
+        self.as_contract_with_lbl(label)
+    }
+
+    fn as_contract_with_lbl(self, label: Label) -> MetaValue {
+        let open = self.is_open();
         MetaValue {
             contracts: vec![Contract {
                 types: Types(AbsType::Flat(
@@ -112,10 +116,15 @@ impl Match {
             Match::Assign(id, m, (_, Destruct::Empty)) | Match::Simple(id, m) => {
                 (id, Term::MetaValue(m).into())
             }
-            Match::Assign(id, m, (_, d @ Destruct::Record { .. })) => (
-                id,
-                Term::MetaValue(MetaValue::flatten(m, d.as_contract())).into(),
-            ),
+            Match::Assign(id, m, (_, d @ Destruct::Record { .. })) => {
+                let label @ Label { span, .. } = d.label();
+                let span = RawSpan::fuse(id.pos.unwrap(), span).unwrap();
+                let label = Label { span, ..label };
+                (
+                    id,
+                    Term::MetaValue(MetaValue::flatten(m, d.as_contract_with_lbl(label))).into(),
+                )
+            }
             Match::Assign(_id, _m, (_, _d @ Destruct::List { .. })) => unimplemented!(),
         }
     }

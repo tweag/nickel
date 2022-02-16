@@ -293,15 +293,12 @@ Match: Match = {
 	let meta = match (default, anns) {
 	    (Some(d), Some(m)) => MetaValue::flatten(d,m),
 	    (Some(m),_) | (_,Some(m)) => m,
-  	    _ => match left {
-	        Ident{pos: TermPos::Original(span), ..} => MetaValue {
+  	    _ => MetaValue {
 	            contracts: vec![Contract{
 	                types: Types(AbsType::Dyn().into()),
-		        label: Label{span, ..Label::dummy()},
+		        label: Label{span: left.pos.unwrap(), ..Label::dummy()},
 		    }],
 		    ..Default::default()
-		},
-		_ => MetaValue::new(),
 	    },
 	};
 	Match::Assign(left, meta, right)
@@ -310,15 +307,12 @@ Match: Match = {
 	let meta = match (default, anns) {
 	    (Some(d), Some(m)) => MetaValue::flatten(d,m),
 	    (Some(m),_) | (_,Some(m)) => m,
-  	    _ => match id {
-	        Ident{pos: TermPos::Original(span), ..} => MetaValue {
+  	    _ => MetaValue {
 	            contracts: vec![Contract{
 	                types: Types(AbsType::Dyn().into()),
-		        label: Label{span, ..Label::dummy()},
+		        label: Label{span: id.pos.unwrap(), ..Label::dummy()},
 		    }],
 		    ..Default::default()
-		},
-		_ => MetaValue::new(),
 	    },
 	};
 	Match::Simple(id, meta)
