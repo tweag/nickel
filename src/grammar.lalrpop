@@ -27,6 +27,7 @@ use crate::{
         make as mk_term},
     types::{Types, AbsType},
     position::TermPos,
+    label::Label,
 };
 
 grammar<'input, 'err>(src_id: FileId, errors: &'err mut Vec<ErrorRecovery<usize, Token<'input>, ParseError>>);
@@ -273,16 +274,17 @@ Pattern: (Option<Ident>,Destruct) = {
 };
 
 Destruct: Destruct = {
-    "{" <mut matches: (<Match> ",")*> <last:LastMatch?> "}" => {
-        let (open, rst) = match last {
+    <start: @L> "{" <mut matches: (<Match> ",")*> <last:LastMatch?> "}" <end: @R> => {
+        let (open, rest) = match last {
 	    Some(LastMatch::Match(m)) => {
 	        matches.push(m);
 	        (false,None)
 	    },
-	    Some(LastMatch::Ellipsis(rst)) => (true, rst),
+	    Some(LastMatch::Ellipsis(rest)) => (true, rest),
 	    _ => (false, None),
 	};
-	Destruct::Record(matches, open, rst)
+	let span = mk_span(src_id, start, end);
+	Destruct::Record{matches, open, rest, span}
     },
 };
 
@@ -291,7 +293,16 @@ Match: Match = {
 	let meta = match (default, anns) {
 	    (Some(d), Some(m)) => MetaValue::flatten(d,m),
 	    (Some(m),_) | (_,Some(m)) => m,
-  	    _ => MetaValue::new(),
+  	    _ => match left {
+	        Ident{pos: TermPos::Original(span), ..} => MetaValue {
+	            contracts: vec![Contract{
+	                types: Types(AbsType::Dyn().into()),
+		        label: Label{span, ..Label::dummy()},
+		    }],
+		    ..Default::default()
+		},
+		_ => MetaValue::new(),
+	    },
 	};
 	Match::Assign(left, meta, right)
     },
@@ -299,7 +310,16 @@ Match: Match = {
 	let meta = match (default, anns) {
 	    (Some(d), Some(m)) => MetaValue::flatten(d,m),
 	    (Some(m),_) | (_,Some(m)) => m,
-  	    _ => MetaValue::new(),
+  	    _ => match id {
+	        Ident{pos: TermPos::Original(span), ..} => MetaValue {
+	            contracts: vec![Contract{
+	                types: Types(AbsType::Dyn().into()),
+		        label: Label{span, ..Label::dummy()},
+		    }],
+		    ..Default::default()
+		},
+		_ => MetaValue::new(),
+	    },
 	};
 	Match::Simple(id, meta)
     },

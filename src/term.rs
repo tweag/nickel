@@ -1349,7 +1349,7 @@ pub mod make {
         I: Into<Ident>,
     {
         match pat.into() {
-            d @ (Destruct::Record(..) | Destruct::List(_)) => {
+            d @ (Destruct::Record { .. } | Destruct::List { .. }) => {
                 Term::LetPattern(id.map(|i| i.into()), d, t1.into(), t2.into()).into()
             }
             Destruct::Empty => {

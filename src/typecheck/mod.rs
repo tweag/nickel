@@ -285,8 +285,8 @@ fn type_check_<L: Linearizer>(
     // TODO: The insertion of values in the type environment is done but everything is
     // typed as `Dyn`.
     fn inject_pat_vars(pat: &Destruct, envs: &mut Envs) {
-        if let Destruct::Record(matches, _, rst) = pat {
-            if let Some(id) = rst {
+        if let Destruct::Record { matches, rest, .. } = pat {
+            if let Some(id) = rest {
                 envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
             }
             matches.iter().for_each(|m| match m {

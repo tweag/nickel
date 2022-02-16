@@ -3,6 +3,7 @@
 
 use crate::identifier::Ident;
 use crate::label::Label;
+use crate::position::RawSpan;
 use crate::term::{Contract, MetaValue, RecordAttrs, RichTerm, Term};
 use crate::types::{AbsType, Types};
 
@@ -34,9 +35,14 @@ pub enum LastMatch {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Destruct {
     /// A record pattern, the onlyone implemented for now.
-    Record(Vec<Match>, bool, Option<Ident>),
+    Record {
+        matches: Vec<Match>,
+        open: bool,
+        rest: Option<Ident>,
+        span: RawSpan,
+    },
     /// A list destructuring. Not implemented.
-    List(Vec<Match>),
+    List { matches: Vec<Match>, span: RawSpan },
     /// An empty destructuring. In this case, the pattern is a clasical `let var = something in
     /// body` form.
     Empty,
@@ -46,6 +52,7 @@ impl Destruct {
     /// generate the metavalue containing the contract representing this pattern.
     pub fn as_contract(self) -> MetaValue {
         let open = self.is_open();
+        let label = self.label();
         MetaValue {
             contracts: vec![Contract {
                 types: Types(AbsType::Flat(
@@ -58,7 +65,7 @@ impl Destruct {
                     )
                     .into(),
                 )),
-                label: Label::dummy(),
+                label,
             }],
             ..Default::default()
         }
@@ -67,15 +74,26 @@ impl Destruct {
     /// Get the inner vector of `Matches` of the pattern. If `Empty` return a empty vector.
     pub fn inner(self) -> Vec<Match> {
         match self {
-            Destruct::Record(i, _, _) | Destruct::List(i) => i,
+            Destruct::Record { matches, .. } | Destruct::List { matches, .. } => matches,
             Destruct::Empty => vec![],
+        }
+    }
+
+    // Generate a label for this `Destruct`. if `Empty`, return a dummy label.
+    fn label(&self) -> Label {
+        match *self {
+            Destruct::Record { span, .. } | Destruct::List { span, .. } => Label {
+                span,
+                ..Label::dummy()
+            },
+            Destruct::Empty => Label::dummy(),
         }
     }
 
     /// Is this pattern open? Does it finish with `, ..}` form?
     pub fn is_open(&self) -> bool {
         match self {
-            Destruct::Record(_, o, _) => *o,
+            Destruct::Record { open, .. } => *open,
             _ => false,
         }
     }
@@ -94,11 +112,11 @@ impl Match {
             Match::Assign(id, m, (_, Destruct::Empty)) | Match::Simple(id, m) => {
                 (id, Term::MetaValue(m).into())
             }
-            Match::Assign(id, m, (_, d @ Destruct::Record(..))) => (
+            Match::Assign(id, m, (_, d @ Destruct::Record { .. })) => (
                 id,
                 Term::MetaValue(MetaValue::flatten(m, d.as_contract())).into(),
             ),
-            Match::Assign(_id, _m, (_, _d @ Destruct::List(..))) => unimplemented!(),
+            Match::Assign(_id, _m, (_, _d @ Destruct::List { .. })) => unimplemented!(),
         }
     }
 }
