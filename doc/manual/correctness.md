@@ -2,17 +2,19 @@
 
 One of the main value proposition of Nickel is to make configurations
 programmable. However, a not less important one is to help you write *correct*
-configurations. Correctness includes:
+configurations. Our definition of correctness is not restricted to but includes
+the following properties:
 
-1. The evaluation doesn't fail on unexpected expressions. For example, when
+1. The evaluation doesn't end up on non-sensical expressions. For example, when
    trying to add a number to a string, or to call to a value which is not a
    function.
 2. The generated configuration is valid. Your program may be correct with
-   respect to (1), but output a field `prto = "80"` instead of `port = 80`.
+   respect to the previous point while outputing a field `prto = "80"` instead
+   of `port = 80`. The consumer of the configuration will probably fail.
    Typically, validity involves respecting a data schema.
 
 Because Nickel an interpreted language, there is no well-defined *ahead-of-time*
-phase that can prevent a class of errors once and for all[1]. In practice, you
+phase that can prevent a class of errors once and for all[^1]. In practice, you
 will often still get an error at the point you are trying to run a program.
 However, what the language can do is to vastly improve the troubleshooting
 experience by providing:
@@ -50,14 +52,14 @@ that is functions, static typing really helps.
 
 This apparent dilemma is solved in Nickel by the combination of *gradual typing*
 and *contracts*. Gradual typing is a typing discipline where you can use both
-static typing and dynamic typing at will. Contracts augment the dynamic typing
-part by providing a principled and ergonomic way of enforcing arbitrary
-assertions at run-time.
+static typing and dynamic typing, at will. Contracts augment the dynamic typing
+part by providing a principled and ergonomic way to enforce arbitrary assertions
+at run-time.
 
 In essence, the purpose of types and contracts is the same: to ensure that an
-expression verifies some desired properties. And when it doesn't, evaluation
-must fail with an informative error message. There is a wide range of properties
-that can be tested, for example:
+expression verifies some desired properties. And when it doesn't, the
+interpreter must fail with an informative error message. There is a wide range
+of properties that can be tested, for example:
 
 - To evaluate to a number.
 - To evaluate to the same value as this other field `foo` of the same configuration.
@@ -92,18 +94,23 @@ contracts are checked lazily at run-time**. The characteristics and use-cases of
 types and contracts directly follow from this distinction.
 
 For example, using a custom property like `GreaterThan 10` as a type annotation
-won't be very useful, as the typechecker doesn't know much about it, won't be
-able to statically enforce it and will be very restrictive in what you can do
-with it. On the other hand, using a function contract can only test a function
-on a finite number of values, while static typing is able to statically prove
-properties for all possible input.
+won't be very useful, as the typechecker doesn't know much about it. It won't be
+able to statically enforce it and will be overly restrictive in what you can do
+with it. For this kind of checks, contracts are the tool of choice. On the other
+hand, using a function contract only tests a function on a finite number of
+inputs, while static typing is able to prove properties for all possible inputs.
 
-As a rule of thumb, you should use type annotations for functions and contracts
-for data (records and lists), especially data that ends up in the final
-configuration.
+As a rule of thumb, you should use type for functions and contracts for data
+(records and lists), especially data that ends up in the final configuration.
 
 You'll find a in-depth description of the type system and how to use it in the
-[typing section](./typing.md). For contracts, see how to validate your
-configuration in the [contract section](./contracts.md). Finally, if you are
-looking for a quick cheat-sheet about when to use static typing or contracts,
-please visit [Type versus contracts: when to?](./types-vs-contracts.md).
+[typing section](./typing.md). For contracts, refer to the
+[contract section](./contracts.md). Finally, if you are looking for a quick
+cheat-sheet about when to use static typing or contracts, go to
+[Type versus contracts: when to?](./types-vs-contracts.md).
+
+[^1]: This statement is to be nuanced. Using the Nickel LSP server in your
+  editor, for example, does perform checks a head of type, while you are typing
+  program. You can also perform typechecking separately before distributing a
+  configuration using `nickel typecheck`. However, a source program is not
+  guaranteed to have been checked in any way before execution.
