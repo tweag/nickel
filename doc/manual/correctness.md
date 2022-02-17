@@ -5,7 +5,7 @@ programmable. However, a not less important one is to help you write *correct*
 configurations. Correctness includes:
 
 1. The evaluation doesn't fail on unexpected expressions. For example, when
-   trying to add  a number to a string, or to call to a value which is not a
+   trying to add a number to a string, or to call to a value which is not a
    function.
 2. The generated configuration is valid. Your program may be correct with
    respect to (1), but output a field `prto = "80"` instead of `port = 80`.
@@ -15,19 +15,19 @@ Because Nickel an interpreted language, there is no well-defined *ahead-of-time*
 phase that can prevent a class of errors once and for all[1]. In practice, you
 will often still get an error at the point you are trying to run a program.
 However, what the language can do is to vastly improve the troubleshooting
-xperience by providing:
+experience by providing:
 
 1. An ergonomic way to express properties to check code and data against.
-2. Mechanisms to catch violiation as early as possible (e.g. before the code
+2. Mechanisms to catch violation as early as possible (e.g. before the code
    path is triggered).
-3. Informative error ssages .
+3. Informative error messages .
 
 ## Solutions
 
 One standard device for correctness is static typing. The static typing
 discipline brings in important benefits for large codebases of common
-applications. Nontheless, the case of an interpreted configuration language
-appears less clear-cut.
+applications. But the case of an interpreted configuration language appears less
+clear-cut.
 
 For pure configuration code, which is mostly data, static typing is not as
 useful. First, a configuration is a terminating program run once on fixed
@@ -90,6 +90,13 @@ They support the same syntax for properties on the right-hand side.
 annotations are checked statically, before the program even start, while
 contracts are checked lazily at run-time**. The characteristics and use-cases of
 types and contracts directly follow from this distinction.
+
+For example, using a custom property like `GreaterThan 10` as a type annotation
+won't be very useful, as the typechecker doesn't know much about it, won't be
+able to statically enforce it and will be very restrictive in what you can do
+with it. On the other hand, using a function contract can only test a function
+on a finite number of values, while static typing is able to statically prove
+properties for all possible input.
 
 As a rule of thumb, you should use type annotations for functions and contracts
 for data (records and lists), especially data that ends up in the final

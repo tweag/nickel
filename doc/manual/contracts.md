@@ -73,8 +73,8 @@ Upon success, the contract must return the original value. It may seem strange
 and kinda pointless for now, but we will see the motivation behind this design
 later in the [laziness](#laziness) section. To signal failure, we use
 `contracts.blame` or its variant `contracts.blame_with` that takes an additional
-error message as a parameter. `blame` immediately abort the execution and report
-a contract violation error.
+error message as a parameter. `blame` immediately aborts the execution and
+reports a contract violation error.
 
 In `IsFoo`, we first test if the value is a string, and then if it is equal to
 `"foo"`, in which case the contract succeeds. Otherwise, the contract fails with
@@ -99,7 +99,7 @@ Our contract is simple: in the end, it tests the condition `value == "foo"`.
 Unfortunately, it has a few cascading ifs that don't look very nice. This is a
 necessary evil if you want to provide distinct error messages (`not a string`
 and `not a "foo"`). However, one could argue in this case that the information
-of the contract's name (which is provided by default for contract violiation
+of the contract's name (which is automatically printed for contract violiation
 error, as well as various other data) is enough to understand the error. In this
 case, we can write our contract more succinctly as:
 
@@ -182,7 +182,7 @@ let MyConfig = {
 
 ### Higher-order contracts
 
-Higher-order contracts are contracts parametrized by other contract. There are
+Higher-order contracts are contracts parametrized by other contracts. There are
 not really special among parametrized contracts, but note that although
 contracts can be functions, we will see soon that they can be different objects
 as well. Even with functions, contract application behaves slightly differently
@@ -207,7 +207,7 @@ null | Nullable Num
 ## Compound contracts
 
 Contracts can be nicely composed into larger contracts. This is a big upside
-over just using standard assertions (that is bare functions and a simple abort
+over just using the classic assertions (standard functions and a simple abort
 primitive). In this section, we review the different ways of assembling existing
 contracts together into new ones.
 
@@ -416,16 +416,17 @@ different in nature: in the first one, the function `add_semi` respects its
 contract. Whenever `x` is a string, `add_semi` does return a string. Here, the
 **caller** (the user of the function) is to blame, and not the **callee** (the
 function). This is an important distinction. Say you wrote `add_semi` as a part
-of a library. A wrong call is a random user, somewhere, who makes a programming
-mistake. This is not your direct responsibility, as long as the contract error
+of a library. A wrong call is a random user, somewhere, making a programming
+mistake. This is not your direct responsibility, assuming the contract error
 messages are good enough to let users understand the issue immediately.
 
 The second example is reversed. The caller provides a string, as requested by
 the contract, but the function returns a number. The blame is on the **callee**.
-If you are a library writer, this means you have a bug that you need to be fix.
+If you are the library writer who shipped the `wrong` function, this means you
+have a bug that you need to fix.
 
-The interpreter performs specific book-keeping for functions contracts, in order
-to make this caller/callee distinction:
+The interpreter automatically performs book-keeping for functions contracts in
+order to make this caller/callee distinction:
 
 ```
 nickel>let add_semi | Str -> Str = fun x => x ++ ";" in
@@ -511,7 +512,8 @@ corresponding to its schema. If this contract checked everything eagerly,
 forcing the evaluation of the most part of the configuration, we would lose all
 the benefits of lazy evaluation. Thus, to play nicely with the evaluation model
 of Nickel, *contracts must be lazy*. In particular, a subcontract attached to a
-field should only fire when the field is requested.
+field should only fire when the field is requested. This is the case with record
+contracts, and in general all native contracts combinators are lazy too.
 
 ### Writing lazy contracts
 
@@ -610,23 +612,24 @@ error: contract broken by a value [field `0` is not a boolean].
 [..]
 ```
 
-It does! In the first example, one field is not a number literal.
+It does!
 
 **Remark: lazy, always?**
 
-Note that our check for field names is not "lazy" in the sense that even when
+Note that our check for field names is not lazy in the sense that even when
 requesting another field `"0"`, we've already triggered this check for all field
 names. This is totally fine: early error reporting is a good thing, as long we
-don't force the evaluation of something that wouldn't evaluated without the
+don't force the evaluation of something that wouldn't be evaluated without the
 contract. The field names of a record are readily available and don't incur any
-evaluation, so we check for them directly. We could also have put this check
-inside each field, along the `Bool` contract application, making it lazy too.
-But we prefer to report this error as soon as possible.
+evaluation, so we can check for them directly. We could also have put this check
+inside each field, along the `Bool` contract application, making it lazy. But we
+prefer to report this error as soon as possible.
 
 **Conclusion**
 
-Our `NumToBool` contract doesn't perform all the checks needed
-right away. Instead, **it returns a new value, which is wrapping the original
-value with delayed checks inside**. Doing so preserves laziness of the language
-and only triggers the checks when the values are used or exported in a
-configuration.
+Our `NumToBool` contract doesn't perform all the checks needed right away.
+Instead, **it returns a new value, which is wrapping the original value with
+delayed checks inside**. Doing so preserves laziness of the language and only
+triggers the checks when the values are used or exported in a configuration.
+This is the reason for contracts to return a value, which must be the original
+value with potential delayed checks inside.
