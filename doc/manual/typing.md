@@ -1,5 +1,8 @@
 # Typing in Nickel
 
+(For the motivations behind typing and a high-level overview of contracts and
+types, first read the [correctness](./correctness.md) section.)
+
 ## Typing modes
 
 ### Dynamic typing
