@@ -110,7 +110,7 @@ cheat-sheet about when to use static typing or contracts, go to
 [Type versus contracts: when to?](./types-vs-contracts.md).
 
 [^1]: This statement is to be nuanced. Using the Nickel LSP server in your
-  editor, for example, does perform checks a head of type, while you are typing
+  editor, for example, does perform checks ahead of time, while you are typing
   program. You can also perform typechecking separately before distributing a
   configuration using `nickel typecheck`. However, a source program is not
   guaranteed to have been checked in any way before execution.
