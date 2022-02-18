@@ -613,7 +613,7 @@ error: contract broken by a value [field `0` is not a boolean].
 
 It does!
 
-**Remark: lazy, always?**
+#### Remark: lazy, always?
 
 Note that our check for field names is not lazy in the sense that even when
 requesting another field `"0"`, we've already triggered this check for all field
