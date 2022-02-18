@@ -67,7 +67,7 @@ A custom contract is a function of two arguments:
 - A `label`. Provided by the interpreter, the label contains tracking information
   for error reporting. Its main usage is to be passed to `contracts.blame` or
   `contracts.blame_with` when the contract isn't satisfied.
-- The tested value.
+- The value being checked.
 
 Upon success, the contract must return the original value. It may seem strange
 and kinda pointless for now, but we will see the motivation behind this design
