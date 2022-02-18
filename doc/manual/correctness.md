@@ -85,7 +85,7 @@ error: Blame error (contract broken by value)
 [..]
 ```
 
-`:` introduces a type annotation, while `|` introduces a contract application.
+`:` introduces a type annotation, while `|` introduces a contract annotation.
 They support the same syntax for properties on the right-hand side.
 
 **The fundamental difference between types and contracts is that type
