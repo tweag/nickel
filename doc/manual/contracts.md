@@ -187,7 +187,7 @@ contracts can be functions, we will see soon that they can be different objects
 as well. Even with functions, contract application behaves slightly differently
 than bare function application. Thus, when manually handling a contract
 `contract`, do not apply it as a function `contract label value`, but use
-`contracts.apply`: `contracts.apply contract label value`. One example of an
+`contracts.apply`: `contracts.apply contract label value`. One example of a
 higher-order contract is a `Nullable` contract, that accepts a value that is
 either null or of some other given format:
 
