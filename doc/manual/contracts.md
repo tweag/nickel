@@ -480,7 +480,7 @@ In the [writing a custom contract by hand](#by-hand) section, we noted the
 strange fact that a custom contract must return a value, instead of just
 returning e.g. a boolean to indicate success or failure. A contract could even
 simply return `null`, as failure is handled separately by aborting. Moreover, the
-contracts we have written so fare always returned the original unmodified
+contracts we have written so far always returned the original unmodified
 value upon success, which doesn't sound very useful: after all, the caller and
 the interpreter already had access to this value to begin with.
 
