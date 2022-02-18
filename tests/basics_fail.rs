@@ -42,7 +42,7 @@ fn comparisons() {
 #[test]
 fn boolean_ops() {
     assert_matches!(
-        eval("let throw | #fail = null in false || true && throw"),
+        eval("let throw | fail = null in false || true && throw"),
         Err(Error::EvalError(EvalError::BlameError(..)))
     );
     assert_matches!(

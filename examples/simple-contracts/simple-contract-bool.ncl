@@ -14,5 +14,5 @@ let AlwaysFalse = EqualsTo false in
 // promise that the return value is false.
 // Try passing `false` to `not`, or to use the identity function (replacing `!x`
 // by `x`) to see contract errors appear.
-let not | #AlwaysTrue -> #AlwaysFalse = fun x => !x in
+let not | AlwaysTrue -> AlwaysFalse = fun x => !x in
 not true

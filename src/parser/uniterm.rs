@@ -331,7 +331,7 @@ impl TryFrom<UniRecord> for Types {
 /// There is one subtlety with unirecords, though. A unirecord can still be in interpreted as a
 /// record type later. Take the following example:
 ///
-/// ```
+/// ```nickel
 /// let mk_pair : forall a b. a -> b -> {fst: a, snd: b} = <exp>
 /// ```
 ///
