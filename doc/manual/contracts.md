@@ -69,9 +69,8 @@ A custom contract is a function of two arguments:
   `contracts.blame_with` when the contract isn't satisfied.
 - The value being checked.
 
-Upon success, the contract must return the original value. It may seem strange
-and kinda pointless for now, but we will see the motivation behind this design
-later in the [laziness](#laziness) section. To signal failure, we use
+Upon success, the contract must return the original value. We will see the reason why
+in the [laziness](#laziness) section. To signal failure, we use
 `contracts.blame` or its variant `contracts.blame_with` that takes an additional
 error message as a parameter. `blame` immediately aborts the execution and
 reports a contract violation error.
