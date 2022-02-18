@@ -624,7 +624,7 @@ evaluation, so we can check for them directly. We could also have put this check
 inside each field, along the `Bool` contract application, making it lazy. But we
 prefer to report this error as soon as possible.
 
-**Conclusion**
+#### Conclusion
 
 Our `NumToBool` contract doesn't perform all the checks needed right away.
 Instead, **it returns a new value, which is wrapping the original value with
