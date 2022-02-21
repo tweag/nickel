@@ -22,7 +22,7 @@ experience by providing:
 1. An ergonomic way to express properties to check code and data against.
 2. Mechanisms to catch violation as early as possible (e.g. before the code
    path is triggered).
-3. Informative error messages .
+3. Informative error messages.
 
 ## Solutions
 
@@ -59,7 +59,7 @@ at run-time.
 In essence, the purpose of types and contracts is the same: to ensure that an
 expression verifies some desired properties. And when it doesn't, the
 interpreter must fail with an informative error message. There is a wide range
-of properties that can be tested, for example:
+of properties that can be checked for, such as:
 
 - To evaluate to a number.
 - To evaluate to the same value as this other field `foo` of the same configuration.
@@ -69,19 +69,20 @@ of properties that can be tested, for example:
 
 Both types and contracts are enforced in a similar way, using an annotation:
 
-```nickel
->1 + 1.5 : Num
-
+```
+$ nickel repl
+nickel> 1 + 1.5 : Num
 2.5
-> let f : Num -> Num = fun x => x + 1
-> f 0
 
+nickel> let f : Num -> Num = fun x => x + 1
+nickel> f 0
 1
-> let GreaterThan = fun bound =>
-    contracts.from_predicate (fun val => val >= bound) in
+
+nickel> let GreaterThan = fun bound =>
+  contracts.from_predicate (fun val => val >= bound) in
 -1 | GreaterThan 10
 
-error: Blame error (contract broken by value)
+error: contract broken by value
 [..]
 ```
 
@@ -89,19 +90,261 @@ error: Blame error (contract broken by value)
 They support the same syntax for properties on the right-hand side.
 
 **The fundamental difference between types and contracts is that type
-annotations are checked statically, before the program even start, while
-contracts are checked lazily at run-time**. The characteristics and use-cases of
+annotations are checked statically, before the program even starts, while
+contracts are checked lazily, at run-time**. The characteristics and use-cases of
 types and contracts directly follow from this distinction.
 
-For example, using a custom property like `GreaterThan 10` as a type annotation
-won't be very useful, as the typechecker doesn't know much about it. It won't be
-able to statically enforce it and will be overly restrictive in what you can do
-with it. For this kind of checks, contracts are the tool of choice. On the other
-hand, using a function contract only tests a function on a finite number of
-inputs, while static typing is able to prove properties for all possible inputs.
+In the next paragraphs, we consider two typical examples to illustrate the
+difference between types and contracts in practice.
 
-As a rule of thumb, you should use type for functions and contracts for data
-(records and lists), especially data that ends up in the final configuration.
+### Case 1: a function operating on lists
+
+Say we need a function to convert a list of key-value pairs to a list of keys
+and a list of values. Let's call it `split`:
+
+```
+nickel> split [{key = "foo", value = 1}, {key = "bar", value = 2}]
+{keys = ["foo", "bar"], values = [1, 2]}
+
+nickel> split [
+  {key = "firewall", value = true},
+  {key = "grsec", value = false},
+  {key = "iptables", value = true},
+]
+{ keys: ["firewall", "grsec", "iptables"], values [true, false, true] }
+```
+
+Here is the definition for `split`, but with a twist. We mistakenly forgot to
+wrap `pair.key` as a list before concatenating at line 6:
+
+```nickel
+// lib.ncl
+{
+  split = fun pairs =>
+    lists.fold (fun pair acc =>
+      {
+        // problem: the right expression to use is [pair.key]
+        keys = acc.keys @ pair.key,
+        values = acc.values @ [pair.value],
+      })
+      {keys = [], values = []}
+      pairs
+}
+```
+
+And we call to split from our configuration:
+
+```nickel
+// config.ncl
+let {split} = import "lib.ncl" in
+split [{key = "foo", value = 1}, {key = "bar", value = 2}]
+```
+
+We want to ensure that the callers to `split` pass a list
+verifying:
+ - elements are records with a `key` field and a `value` field
+ - keys are strings
+ - values can be anything, but must all have the same type
+
+We also want to make sure our implementation correctly returns a value which is
+a record with a field `keys` that is a list of strings, and a field `values`
+that is a list of elements of the same type as the input values.
+
+An idiomatic way to express these properties in Nickel is to use the annotation
+
+```nickel
+forall a. List {key: Str, value: a}
+          -> {keys: List Str, values: List a}
+```
+
+The `forall` parts says that the type of values `a` can be anything, but it has
+to be the same `a` in the input and in the output. We'll now see the difference
+between enforcing this specification using a type annotation or a contract
+annotation.
+
+#### Using a contract annotation
+
+A contract performs checks at run-time. At this stage, a function is mostly an
+opaque, inert value, waiting for an argument to hand back a result. In
+consequence, a function contract is doomed to fire only when `split` is applied
+to an argument, in which case the contract checks that:
+
+1. The argument satisfies the `List {key: Str, value: a}` contract.
+2. The return value satisfies the `{keys: List Str, values: List a}` contract.
+
+Those checks produce useful error message when the caller passes arguments of
+the wrong type, or the function returns a value of the wrong type. But the
+function contract for `split` has the following limitations:
+
+- It only checks the values arising in concrete calls. In particular, if `split`
+  is not called by some program yet (e.g. written as part of a library), no check
+  takes place at all. If a particular code path is not triggered, it won't be
+  checked. **Here, evaluating or typechecking `lib.ncl` won't raise any error**.
+- Only the input value and the return value are checked. If `split` mishandles
+  an intermediate internal value not subject to another contract, we're
+  potentially back into unhelpful dynamic type errors. Evaluating `config.ncl`
+  indeed reports the following error:
+
+        error: Type error
+        ┌─ repl-input-12:6:27
+        │
+      6 │         keys = acc.keys @ pair.key,
+        │                           ^^^^^^^^ This expression has type Str, but List was expected
+        │
+        ┌─ repl-input-13:1:45
+        │
+      1 │ lib.split [{key = "foo", value = 1}, {key = "bar", value = 2}]
+        │                                             ----- evaluated to this
+        │
+        = @, 2nd operand
+
+  This error is not very helpful to the caller. It points to inside the
+  implementation of `split`, and to the `key = "bar"` part of the argument,
+  which respects the contract.
+
+#### Using a type annotation
+
+`split` is a generic function operating on builin types. This is a good
+candidate for static typing, which will help:
+
+- Ensure the property holds for all possible values of the parameter.
+- Check all the expressions inside `split` as well.
+- Report errors before execution takes place.
+
+Even if the call site is not statically typed, a type annotation also gives rise
+to a contract (see the [typing section][./typing.md] for more details). Thus,
+any issue with the arguments passed or the return value will be caught and
+correctly reported.
+
+What's more, intermediate values are also typechecked. Evaluating or just
+typechecking `lib.ncl` already reports an error:
+
+```
+error: Incompatible rows declaration
+  ┌─ repl-input-14:9:7
+  │
+9 │       pairs
+  │       ^^^^^ this expression
+[..]
+error: While typing field `key`: Incompatible types
+ = The type of the expression was expected to be `List Str`
+ = The type of the expression was inferred to be `Str`
+ = These types are not compatible
+```
+
+The errors says that the `key` field of the elements of `pairs` is a string, but
+given the call to `fold`, it was expected to be lists of strings.
+
+#### Function contracts
+
+From this example, it seems typing is superior in pretty much every respect for
+functions. Typechecking is indeed more exhaustive, and generally reports errors
+earlier. In return, typechecking is rigid (it can reject valid programs) and
+limited in the properties it can handle. Properties outside the range of being a
+list, a record or a function with other builtin types inside, such as checking
+that a function returning a positive number, are out of the scope of
+typechecking (see case 2 below for another example). In such cases, where
+typechecking is not an option, a function contract can be helpful.
+
+### Case 2: a custom property
+
+The previous example used builtin types: functions, records, lists, and strings.
+To validate a configuration, you may want to check more elaborate properties.
+You can do so by writing your own custom properties, referred to as custom
+contract from now on:
+
+```nickel
+let OptLevel = contracts.from_predicate (fun value =>
+    lists.elem value ["O0", "O1", "O2", "O3"]) in
+{
+  opt_level = "O2",
+}
+```
+
+`OptLevel` checks that its argument is a valid optimization level, that is
+either `"O0"`, `"O1"`, `"O2"` or `"O3"`. You can ignore the details of the
+implementation of `OptLevel` for now. Writing custom contracts is more
+extensively covered in the [contracts section](./contracts.md). As for the
+previous example, let's see the difference between using a type annotation and a
+contract annotation.
+
+#### Using a type annotation
+
+If we write:
+
+```nickel
+let level = 1 in
+{
+  opt_level : OptLevel = "0" ++ srings.from_num level,
+}
+```
+
+We get:
+
+```
+error: incompatible types
+  ┌─ repl-input-3:3:27
+  │
+3 │   opt_level : OptLevel = "0" ++ (if level == 1 then "1" else "2"),
+  │                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this expression
+  │
+  = The type of the expression was expected to be `OptLevel`
+  = The type of the expression was inferred to be `Str`
+  = These types are not compatible
+```
+
+Because `OptLevel` is a custom predicate, the typechecker can't prove that `"0"`
+concatenated with `strings.from_num 1"` is a valid optimization level. For that
+matter, even `"01" : OptLevel` doesn't typecheck. It's possible to build values
+that are accepted to be of type `OptLevel`, but it's very restricted and they
+can't really be used in a meaningful way inside typed code, beside being passed
+around.
+
+#### Using a contract annotation
+
+For such custom properties, a contract is the way to go:
+
+```nickel
+let level = 4 in
+{
+  opt_level | #OptLevel = "0" ++ strings.from_num level,
+}
+```
+
+This correctly reports an error, and even gives the computed offending value:
+
+```
+error: contract broken by a value.
+  ┌─ :1:1
+  │
+1 │ OptLevel
+  │ -------- expected type
+  │
+  ┌─ repl-input-4:3:27
+  │
+3 │   opt_level | OptLevel = "0" ++ strings.from_num level,
+  │                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ applied to this expression
+  │
+  ┌─ <unknown> (generated by evaluation):1:1
+  │
+1 │ "04"
+  │ ---- evaluated to this value
+```
+
+### Summary
+
+Types and contracts are the two mechanisms to enforce correctness of Nickel
+programs. Typechecking is a static and ahead-of-time mechanism, which is
+exhaustive and reports errors early, but is rigid and limited in the properties
+that can be checked. Contract checking is a run-time mechanism, making contracts
+more flexible and able to enforce arbitrary user-defined properties, but may
+reports less errors than typechecking, and report them later.
+
+As a rule of thumb, you should usually use types for functions operating on
+fairly generic data. Contracts are most adapted for data (records and lists),
+especially data that ends up in the final configuration. To enforce custom
+properties that are out of the scope of builtin types, you should use contracts,
+either for functions or data.
 
 You'll find a in-depth description of the type system and how to use it in the
 [typing section](./typing.md). For contracts, refer to the
