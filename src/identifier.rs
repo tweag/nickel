@@ -4,7 +4,7 @@ use std::{fmt, hash::Hash};
 
 use crate::position::TermPos;
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(into = "String", from = "String")]
 pub struct Ident {
     pub label: String,

@@ -7,4 +7,4 @@ let fibo : Num -> Num = Y (fun fibo =>
   (fun x => if or (x == 0) (dec x == 0) then 1 else (fibo (dec x)) + (fibo (dec (dec x))))) in
 let val : Num = 4 in
 
-(fibo val | #(AssertEq 5))
+(fibo val | AssertEq 5)

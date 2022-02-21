@@ -21,4 +21,4 @@ let Assert = fun l x => x || %blame% l in
   let s = "Hello" in m##""###{s}" World"##m == "\"#Hello\" World",
   m##""##s"##m == "\"##s",
 ]
-|> lists.foldl (fun x y => (x | #Assert) && y) true
+|> lists.foldl (fun x y => (x | Assert) && y) true

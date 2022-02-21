@@ -27,4 +27,4 @@ let Assert = fun l x => x || %blame% l in
    |> builtins.deserialize `Json
    == [3,4],
 ]
-|> lists.foldl (fun x y => (x | #Assert) && y) true
+|> lists.foldl (fun x y => (x | Assert) && y) true

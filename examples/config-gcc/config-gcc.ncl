@@ -52,15 +52,15 @@ let OptLevel = fun label value =>
 
 let Contract = {
   path_libc | doc "Path to libc."
-           | #Path
-           | #SharedObjectFile
-           | default = "/lib/x86_64-linux-gnu/libc.so",
+            | Path
+            | SharedObjectFile
+            | default = "/lib/x86_64-linux-gnu/libc.so",
 
   flags | doc "
             Additional flags to pass to GCC. Either provide a string without the
             leading `-`, or a structured value `{flag : Str, arg: Str}`.
           "
-        | List #GccFlag
+        | List GccFlag
         | default = [],
 
   optimization_level | doc "
@@ -70,11 +70,11 @@ let Contract = {
                         - *1*: normal
                         - *2*: use optimizations
                       "
-                    | #OptLevel
-                    | default = 1,
+                     | OptLevel
+                     | default = 1,
 } in
 
 {
   flags = ["Wextra", {flag = "o", arg = "stuff.o"}],
   optimization_level = 2,
-} | #Contract
+} | Contract

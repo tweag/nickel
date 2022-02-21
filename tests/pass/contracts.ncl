@@ -7,7 +7,7 @@ let Assert = fun l x => x || %blame% l in
   let AlwaysFalse = fun l t =>
     let boolT | Bool = t in
     if boolT then %blame% l else boolT
-  in let not | #AlwaysTrue -> #AlwaysFalse = fun b => if b then false else true in
+  in let not | AlwaysTrue -> AlwaysFalse = fun b => if b then false else true in
   not true == false,
 
   // id_polymorphic_contract
@@ -28,27 +28,27 @@ let Assert = fun l x => x || %blame% l in
   ("hello" ++ " world" | Str) == "hello world",
 
   // enums_simple
-  (`foo | <foo, bar>) == `foo,
-  (`bar | forall r. <foo, bar | r>) == `bar,
+  (`foo | [| foo, bar |]) == `foo,
+  (`bar | forall r. [| foo, bar ; r|]) == `bar,
 
   // enums_escaped
-  (`"foo:baz" | <"foo:baz", "bar:baz">) == `"foo:baz",
-  (`"bar:baz" | forall r. <"foo:baz", "bar:baz" | r>) == `"bar:baz",
+  (`"foo:baz" | [| "foo:baz", "bar:baz" |]) == `"foo:baz",
+  (`"bar:baz" | forall r. [| "foo:baz", "bar:baz" ; r |]) == `"bar:baz",
 
   // enums_complex
-  let f : forall r. <foo, bar | r> -> Num =
+  let f : forall r. [| foo, bar ; r |] -> Num =
     fun x => switch { `foo => 1, `bar => 2, _ => 3, } x in
   f `bar == 2,
 
-  let f : forall r. <foo, bar | r> -> Num =
+  let f : forall r. [| foo, bar ; r |] -> Num =
     fun x => switch { `foo => 1, `bar => 2, _ => 3, } x in
   f `boo == 3,
 
-  let f : forall r. <foo, "bar:baz" | r> -> Num =
+  let f : forall r. [| foo, "bar:baz" ; r |] -> Num =
     fun x => switch { `foo => 1, `"bar:baz" => 2, _ => 3, } x in
   f `"bar:baz" == 2,
 
-  let f : forall r. <foo, "bar:baz" | r> -> Num =
+  let f : forall r. [| foo, "bar:baz" ; r |] -> Num =
     fun x => switch { `foo => 1, `"bar:baz" => 2, _ => 3, } x in
   f `"boo,grr" == 3,
 
@@ -67,19 +67,19 @@ let Assert = fun l x => x || %blame% l in
     let remove | forall a. {foo: Num ; a} -> { ; a} = fun x =>
       x -$ "foo" in
 
-    (id {} == {} | #Assert) &&
-    (id {a = 1, b = false} == {a = 1, b = false} | #Assert) &&
-    (extend {} == {foo = 1} | #Assert) &&
-    (extend {bar = false} == {foo = 1, bar = false} | #Assert) &&
-    (remove {foo = 1} == {} | #Assert) &&
-    (remove {foo = 1, bar = 1} == {bar = 1} | #Assert) &&
-    (remove (extend {}) == {} | #Assert) &&
-    (extend (remove {foo = 2}) == {foo =1} | #Assert) &&
+    (id {} == {} | Assert) &&
+    (id {a = 1, b = false} == {a = 1, b = false} | Assert) &&
+    (extend {} == {foo = 1} | Assert) &&
+    (extend {bar = false} == {foo = 1, bar = false} | Assert) &&
+    (remove {foo = 1} == {} | Assert) &&
+    (remove {foo = 1, bar = 1} == {bar = 1} | Assert) &&
+    (remove (extend {}) == {} | Assert) &&
+    (extend (remove {foo = 2}) == {foo =1} | Assert) &&
     (let f | forall a b. {f: a -> a, arg: a ; b} -> a =
         fun rec => rec.f (rec.arg) in
       f { f = fun x => x ++ " suffix", arg = "foo" }
       == "foo suffix"
-      | #Assert)
+      | Assert)
   ),
 
   // records_dynamic_tail
@@ -89,13 +89,13 @@ let Assert = fun l x => x || %blame% l in
   ((fun r => r.b) | {a: Num ; Dyn} -> Dyn) {a = 1, b = 2} == 2,
 
   // records_open_contracts
-  ({a = 0, b = 0} | #{a | Num, ..}) == {a = 0, b = 0},
+  ({a = 0, b = 0} | {a | Num, ..}) == {a = 0, b = 0},
   let Contract = {a | Num} & {..} in
-  ({a = 0, b = 0} | #Contract) == {a = 0, b = 0},
+  ({a = 0, b = 0} | Contract) == {a = 0, b = 0},
   let Contract = {..} & {b | Num} in
-  ({a = 0, b = 0} | #Contract) == {a = 0, b = 0},
+  ({a = 0, b = 0} | Contract) == {a = 0, b = 0},
   let Contract = {a | Num, ..} & {b | Num, ..} in
-  ({a = 0, b = 0, c = 0} | #Contract) == {a = 0, b = 0, c = 0},
+  ({a = 0, b = 0, c = 0} | Contract) == {a = 0, b = 0, c = 0},
 
   // lists
   ([1, "2", false] | List) == [1, "2", false],
@@ -111,12 +111,12 @@ let Assert = fun l x => x || %blame% l in
   // Regression test for #402
   let MyContract = { x | Str } in
   {
-    foo | #MyContract | default = { x = "From foo" },
-    bar | #{..} | default = foo
+    foo | MyContract | default = { x = "From foo" },
+    bar | {..} | default = foo
   } == { foo.x = "From foo", bar.x = "From foo"},
 
   // mixing type and record contracts
-  let f | #{foo | Num} -> #{bar | Num} = fun r =>
+  let f | {foo | Num} -> {bar | Num} = fun r =>
     {bar = r.foo} in
   (f {foo = 1}).bar == 1,
   // user-written contract application
@@ -128,8 +128,8 @@ let Assert = fun l x => x || %blame% l in
     contracts.apply derived label value in
   let Contract = Extend {bar | Num, ..} in
   let Id = Extend (fun label value => value) in
-  ({bar = 1, foo = 1} | #Contract)
-    & ({baz = 1} | #Id)
-  == {foo = 1, bar = 1, baz = 1},
+  ({bar = 1, foo = 1} | Contract)
+    & ({baz = 1} | Id)
+   == {foo = 1, bar = 1, baz = 1},
 ]
-|> lists.foldl (fun x y => (x | #Assert) && y) true
+|> lists.foldl (fun x y => (x | Assert) && y) true

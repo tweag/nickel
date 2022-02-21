@@ -43,6 +43,8 @@ pub enum FieldPathElem {
     Expr(RichTerm),
 }
 
+pub type FieldPath = Vec<FieldPathElem>;
+
 /// A string chunk literal atom, being either a string or a single char.
 ///
 /// Because of the way the lexer handles escaping and interpolation, a contiguous static string
@@ -56,7 +58,7 @@ pub enum ChunkLiteralPart<'input> {
 /// The last field of a record, that can either be a normal field declaration or an ellipsis.
 #[derive(Clone, Debug)]
 pub enum RecordLastField {
-    Field((FieldPathElem, RichTerm)),
+    Field((FieldPath, RichTerm)),
     Ellipsis,
 }
 
