@@ -277,9 +277,10 @@ depend field for clarity but both behave the same.
 
 ### Contracts crossvalidation
 
-When merging two records, all contracts of both left and right one
-are applied to the resulting one.
-For instance:
+When merging records with a common field foo and different contracts attached on
+each side (say `A1`, `A2` on the left and `B` on the right), then merging
+ensures that the final value will respect the combination of all the contracts
+(`A1`, `A2`, `B`). For instance:
 
 ```text
 let Port | doc "A contract for a port number"
