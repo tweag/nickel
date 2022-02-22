@@ -1,7 +1,7 @@
 # Merging records
 
 Merging in Nickel allows to compose small, logical, and manageable blocks into a
-potentially complex final configuration.
+potentially complex final configuration. Merge is performed by the `&` operator.
 
 In this part we will try to described this concept exaustively as possible.
 
