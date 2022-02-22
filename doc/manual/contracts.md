@@ -272,9 +272,9 @@ nickel>:query config.foo
 * documentation: This documentation will propagate to the final value!
 ```
 
-#### Open contracts
+#### Open record contracts
 
-By default, contracts are closed, meaning that additional fields are forbidden:
+By default, record contracts are closed, meaning that additional fields are forbidden:
 
 ```
 nickel>let Contract = {foo | Str}
