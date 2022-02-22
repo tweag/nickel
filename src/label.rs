@@ -268,3 +268,21 @@ impl Label {
         }
     }
 }
+
+impl Default for Label {
+    fn default() -> Label {
+        Label {
+            types: Rc::new(Types(AbsType::Dyn())),
+            tag: "".to_string(),
+            span: RawSpan {
+                src_id: Files::new().add("<null>", String::from("")),
+                start: 0.into(),
+                end: 1.into(),
+            },
+            arg_thunk: None,
+            arg_pos: TermPos::None,
+            polarity: true,
+            path: Vec::new(),
+        }
+    }
+}

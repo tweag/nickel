@@ -83,23 +83,20 @@ impl Destruct {
         }
     }
 
-    // Generate a label for this `Destruct`. if `Empty`, return a dummy label.
+    // Generate a label for this `Destruct`. if `Empty`, return default label.
     fn label(&self) -> Label {
         match *self {
             Destruct::Record { span, .. } | Destruct::List { span, .. } => Label {
                 span,
-                ..Label::dummy()
+                ..Default::default()
             },
-            Destruct::Empty => Label::dummy(),
+            Destruct::Empty => Label::default(),
         }
     }
 
     /// Is this pattern open? Does it finish with `, ..}` form?
     pub fn is_open(&self) -> bool {
-        match self {
-            Destruct::Record { open, .. } => *open,
-            _ => false,
-        }
+        matches!(self, Destruct::Record { open: true, .. })
     }
 
     /// check if the pattern is empty.
@@ -116,6 +113,12 @@ impl Match {
             Match::Assign(id, m, (_, Destruct::Empty)) | Match::Simple(id, m) => {
                 (id, Term::MetaValue(m).into())
             }
+
+            // In this case we fuse spans of the `Ident` (LHS) with the destruct (RHS)
+            // because we can have two cases:
+            //
+            // - extra field on the destructuring `d`
+            // - missing field on the `id`
             Match::Assign(id, m, (_, d @ Destruct::Record { .. })) => {
                 let label @ Label { span, .. } = d.label();
                 let span = RawSpan::fuse(id.pos.unwrap(), span).unwrap();
