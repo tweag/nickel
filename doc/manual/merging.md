@@ -13,7 +13,7 @@ Warning: Nickel beeing in a pre 1st release state now. Merging is a feature
 which can recieve breacking updates until passing in 1.0.0.
 
 In the simple case, you will merge records without commons fields.
-If so, the merge is the intersection between both records.
+If so, the merge is the union between both records.
 
 If you have to merge records with fields in commons, you could be in following cases:
 
@@ -34,7 +34,6 @@ a one top key record but also a multikeys record. The idea is to group the top
 level records by topic.
 
 ### Description
-
 
 Having two records, `x` and `y`. With `x = {x0 = vx0, x1 = vx1, ..., xn = vxn}` and
 `y = {y0 = vy0, y1 = vy1, ..., yn = vyn}`. The merge of both give:
@@ -133,12 +132,20 @@ A record with only contracts fields is perfectly valid also.
 
 ### Usecases
 
-This property can generaly be used to implement mixins like design. You can even write
-OO like code as well as perform "feature agregation" on records.
+This property can generaly be used to implement mixins like design. You can even
+write OO like code as well as perform traits like implementation on records.
 
 ### Description
 
+In Nickel, all or a part of the fields of a record can be uninitialized and
+contain only contracts. In this state, they can not be evaluated. However, after
+a merge with another record containing the missing values, the result can be
+evaluated normaly and contracts will be checked on the seted values. Moreover
+some field of a record can depend on not initialized ones. Because of Nickel lazyness
+while not evaluated, no error will be thrown. When evaluating an uninitialized field,
+Nickel throw a `EmptyMetavalue` error.
 
+### Example
 
 ```text
 let Host = {
@@ -160,13 +167,6 @@ As, you will see in the overwriting part, it could have been a recursively
 depend field. Actualy, Nickel beeing a lazily functional language, a
 variable can be seen as a function without params.
 
-Here, you can see a property of merging implied by Nickel lazyness. You can
-build records having fields without value, because Nickel doesn't check them
-before they are accessed. In the previous example, `dns_rec` use `host_name` and
-`public_addr` fields. So the only requirement is to call it on a record on which
-you provided values for them. If not, Nickel will throw an `Empty Metavalue`
-error.
-
 ## Default annotation
 
 If you need the same behaviour but with the field defaulting to a specified
@@ -174,6 +174,7 @@ value if not set during any merge, `default` annotation is the answer.
 
 ### Usecases
 
+The default annotation is generaly to give a default value to a record field.
 The main usage difference between using valueless fields with defaulting fields is
 that the first make a field requiered to have a valid config where the second
 make it "optionaly updatable". Even more, giving a value to a field make it
@@ -181,9 +182,8 @@ make it "optionaly updatable". Even more, giving a value to a field make it
 
 ### Description
 
-The default annotation is generaly to give a default value to a record field.
-So, this value can be changed afterward. Saying it in an different way than
-the explaination maid in the usecases part,
+A value tagged `default` can be updated afterward. Saying it in an different way
+than the explaination maid in the usecases part,
 default indicate a lower priority to a field in case of merging. Saying that,
 If both sides have been annotated `default` with both attached to a value, the
 merge is not possible.
@@ -193,7 +193,7 @@ two reasons:
 
 - instead of priorising one record to the other, Nickel prefer to be
   explicit and provide the `default` annotation,
-- finaly, when not annotated, it make fields read only by default (when defined)
+- finaly, when not annotated, it make fields read only by default (when initialized)
   which is more secure.
 
 ### Example
@@ -243,14 +243,14 @@ RFC001 for further readings.
 ### Usecases
 
 In short you can see it as a mix between the two previous parts. A record with
-some valueless fields or annotated `default` and others depending on these ones.
-You already had an example of this in Mixins part. Here, the extra thing is
-that, the depend fields are updated as soon as you update fields on which they
-depend on.
+some fields annotated `default` and others depending on these ones.
+Actualy if you refer to "Mixins" part, you can rewrite the examples with `default`
+values and the behaviour will be overwriting.
 
 ### Description
 
-TODO
+The important thing to notice is that, the depend fields are updated as soon as
+fields on which they depend on are updated.
 
 ### Example
 
@@ -275,6 +275,8 @@ depend field for clarity but both behave the same.
 
 ## A word about contracts
 
+### Contracts crossvalidation
+
 When merging two records, all contracts of both left and right one
 are applied to the resulting one.
 For instance:
@@ -296,7 +298,9 @@ value > x) in
 } // blame because 80 < 1024
 ```
 
-In the case the second record would contains `port=8888` it does not have blame.
+In the case the second record would contains `port=8888` it would not have blame.
+
+### Case of `doc`
 
 Another annotation which has to be managed during merging is the `doc` annotation.
 When merging records both with documentation, only the most left one is keped:
