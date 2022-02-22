@@ -30,7 +30,7 @@ are performed:
 3. If it is, return the expression unchanged. Otherwise, raise an error.
 
 ```
-$nickel repl
+$ nickel repl
 nickel>1 + 1 | Num
 2
 
@@ -46,8 +46,8 @@ available. `Dyn` is a contract that never fails.
 
 ### By hand
 
-Having only the basic contracts would be quite limiting. The motivation for a
-run-time mechanism like contracts is the ability to easily check for arbitrary
+While basic contracts are already useful, the motivation for a run-time
+mechanism like contracts is the ability to easily check for arbitrary
 properties. Let us see how to define our very own contract. We start the REPL
 (`nickel repl`) and input:
 
@@ -187,9 +187,9 @@ will see soon that they can be different objects as well. Even with functions,
 contract application behaves slightly differently than bare function
 application. Thus, when manually handling a contract `contract`, do not apply it
 as a function `contract label value`, but use `contracts.apply`:
-`contracts.apply contract label value`. One example of a higher-order contract
-is a `Nullable` contract, that accepts a value that is either null or of some
-other given format:
+`contracts.apply contract label value`. One example of such a contract is a
+`Nullable` contract, that accepts a value that is either null or of some other
+given format:
 
 ```nickel
 let Nullable = fun contract label value =>
@@ -205,10 +205,8 @@ null | Nullable Num
 
 ## Compound contracts
 
-Contracts can be nicely composed into larger contracts. This is a big upside
-over just using the classic assertions (standard functions and a simple abort
-primitive). In this section, we review the different ways of assembling existing
-contracts together into new ones.
+In this section, we review the different ways of composing existing contracts
+together to create new ones.
 
 ### Records
 
@@ -229,7 +227,7 @@ let MyConfig = {
 {
   path = "/foo/bar",
   connection = {
-    server_port = 48484,
+    server_port = "48484",
     host = "localhost"
   }
 } | MyConfig
@@ -245,6 +243,12 @@ See how we've combined contracts: while defining the `MyConfig` record contract,
 we wrote another inline record contract for the `connection` field, and we
 reused the `Port` contract defined earlier. Composition is this ability of using
 existing contracts seamlessly as building blocks for new contracts.
+
+See what's the result of the evaluation of our example:
+
+```
+
+
 
 #### Metadata
 
@@ -484,13 +488,14 @@ contracts we have written so far always returned the original unmodified
 value upon success, which doesn't sound very useful: after all, the caller and
 the interpreter already had access to this value to begin with.
 
-The motivation for this return value relates to laziness. Nickel is a lazy
-language, meaning that values are evaluated on-demand. For example, record
-fields are not evaluated until they are accessed, printed (in the REPL or as a
-result of `nickel`), or until the whole record is serialized/exported. Thanks to
-laziness, you can for example query specific information on a large
-configuration without having to actually evaluate everything. We will use a
-dummy failing expression `1 + "a"` to observe where evaluation takes place:
+The motivation for this return value relates to laziness. Nickel is designed to
+be *lazy*, meaning that values are evaluated on-demand, only when they are
+needed. For example, record fields are not evaluated until they are accessed,
+printed (in the REPL or as a result of `nickel`), or until the whole record is
+serialized/exported. Thanks to laziness, you can for example query specific
+information on a large configuration without having to actually evaluate
+everything. We will use a dummy failing expression `1 + "a"` to observe where
+evaluation takes place:
 
 ```
 nickel>let config = {fail = 1 + "a", data | doc "Some information" = 42}
@@ -508,11 +513,11 @@ causes an error when evaluated.
 
 A large configuration will most probably have a root contract attached,
 corresponding to its schema. If this contract checked everything eagerly,
-forcing the evaluation of the most part of the configuration, we would lose all
-the benefits of lazy evaluation. Thus, to play nicely with the evaluation model
-of Nickel, *contracts must be lazy*. In particular, a subcontract attached to a
-field should only fire when the field is requested. This is the case with record
-contracts, and in general all native contracts combinators are lazy too.
+forcing the evaluation of the most part of the configuration, we would lose the
+benefits of laziness. Thus, *we want contracts to be lazy as well*. In
+particular, a subcontract attached to a field should only fire when the field is
+requested. This is the case with record contracts, and in general all native
+contracts combinators are lazy too.
 
 ### Writing lazy contracts
 
