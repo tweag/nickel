@@ -34,7 +34,7 @@ pub enum LastMatch {
 /// A destructuring pattern without the `x @` part.
 #[derive(Debug, PartialEq, Clone)]
 pub enum Destruct {
-    /// A record pattern, the onlyone implemented for now.
+    /// A record pattern, the only one implemented for now.
     Record {
         matches: Vec<Match>,
         open: bool,
