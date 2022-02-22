@@ -1,15 +1,13 @@
 # Merging records
 
-The merging concept in nickel is a very powerfull behaviour. It's performed by
-the `&` operator.
+Merging in Nickel allows to compose small, logical, and manageable blocks into a
+potentially complex final configuration.
 
-Merging is used in several contexts, from the simplest to the more powerfull.
 In this part we will try to described this concept exaustively as possible.
 
 Warning: The given examples are clearly not the only context on which merging
 can be used. But it's impossible to expose all the cases in a user manual.
-You can check the examples in github for further readings. Also, you can check
-RFC002 in the github repository.
+You can check the examples in github for further readings.
 
 Warning: Nickel beeing in a pre 1st release state now. Merging is a feature
 which can recieve breacking updates until passing in 1.0.0.
@@ -28,10 +26,22 @@ If you have to merge records with fields in commons, you could be in following c
 The simplest merging case is when both records does not have any common fields.
 It can be used to merge records from differents files in one only record.
 
+### Usecases
+
 You generaly will use this feature to be able to split a config in subparts.
 When your config has a small set of big subparts, they can themself be either
 a one top key record but also a multikeys record. The idea is to group the top
 level records by topic.
+
+### Description
+
+
+Having two records, `x` and `y`. With `x = {x0 = vx0, x1 = vx1, ..., xn = vxn}` and
+`y = {y0 = vy0, y1 = vy1, ..., yn = vyn}`. The merge of both give:
+`x & y = {x0 = vx0, y0 = vy0, x1 = vx1, y1 = vy1, ..., xn = vxn, yn = vyn}`
+In other terms, `x & y` is the union of `x` and `y`.
+
+### Example
 
 For instance, having a server config and a firewall config, the network config
 could be:
@@ -50,28 +60,44 @@ could be:
     open_ports = [23, 80, 443],
 }
 
-// file: server.ncl
-let
-server = import "server.ncl",
-firewall = import "firewall.ncl",
-in
+// file: network.ncl
+let server = import "server.ncl" in
+let firewall = import "firewall.ncl" in
 server & firewall
 ```
 
 In this simple case where records `x` and `y` have no common fields, `x&y` is the
-union of `x` and `y`.
+union of `x` and `y`:
+
+```text
+{
+    host_name = "example",
+    host = "example.org",
+    ip_addr = "0.0.0.0",
+    enable_firewall = true,
+    open_ports = [23, 80, 443],
+}
+```
 
 ## Recursivity of the merge
 
 It's a behaviour you will use in similar cases as before but when the split is
-at a deeper level (e.g.: in two different files you have unintersecting fields
-but with the same "root path" `open_ports.` or even `firewall.open_ports`).
+at a deeper level.
+
+### Usecases
+
+In two records you have unintersecting fields but with common
+"root path" (e.g.: `open_ports.` as in following example; can also even be
+deeper as `firewall.open_ports.`).
+
+### Description
+
 When merging, in the case of intersection of fields, Nickel will try to
 recursively merge them. That mean: if you have tow records, `x` and `y`, both
 having a field `a`; if `a` is a record, the merge will be a record `z` with a
 field a beeing the merge between `x.a` and `y.a` or `z = {a = x.a & y.a}.
 
-Example:
+### Example
 
 ```text
 // file: firewall/udp.ncl
@@ -85,11 +111,9 @@ Example:
 }
 
 // firewall.ncl
-let
-udp = import "firewall/udp.ncl",
-tcp = import "firewall/tcp.ncl",
-in
-udp & tcp
+let udp = import "firewall/udp.ncl" in
+let tcp = import "firewall/tcp.ncl" in
+{ firewall= udp & tcp}
 ```
 
 In the above example, we merge two records, both with a field `open_ports`. The
@@ -107,14 +131,22 @@ will have the form:
 To be merged with others, records don't have to have a value attached to every fields.
 A record with only contracts fields is perfectly valid also.
 
-This property can generaly be used to implement mixins like design.
+### Usecases
+
+This property can generaly be used to implement mixins like design. You can even write
+OO like code as well as perform "feature agregation" on records.
+
+### Description
+
+
 
 ```text
 let Host = {
     host_name | Str,
     public_addr | Str,
     // return the record depending on host_name and public_addr
-    dns_rec: Str -> Str = fun rec_type => rec_type ++ ": " ++ public_addr ++ ", " ++ host_name,
+    dns_rec: Str -> Str = fun rec_type =>
+        rec_type ++ ": " ++ public_addr ++ ", " ++ host_name,
 } in
 let exemple_dot_org = {
     host_name = "exemple.org",
@@ -139,10 +171,32 @@ error.
 
 If you need the same behaviour but with the field defaulting to a specified
 value if not set during any merge, `default` annotation is the answer.
+
+### Usecases
+
 The main usage difference between using valueless fields with defaulting fields is
 that the first make a field requiered to have a valid config where the second
 make it "optionaly updatable". Even more, giving a value to a field make it
 "read only" if `default is not set.
+
+### Description
+
+The default annotation is generaly to give a default value to a record field.
+So, this value can be changed afterward. Saying it in an different way than
+the explaination maid in the usecases part,
+default indicate a lower priority to a field in case of merging. Saying that,
+If both sides have been annotated `default` with both attached to a value, the
+merge is not possible.
+
+In other words, Nickel has two level of priority when merging. This mainly for
+two reasons:
+
+- instead of priorising one record to the other, Nickel prefer to be
+  explicit and provide the `default` annotation,
+- finaly, when not annotated, it make fields read only by default (when defined)
+  which is more secure.
+
+### Example
 
 One more time we can give a firewall example which will have the most restrictives
 values by default and can be updated".
@@ -163,12 +217,7 @@ left & right
 
 Like it is, it's impossible to merge and will throw an unmergeable terms error.
 Here, the issue is that the field `firewall.enabled` is defined in both sides:
-
-- it's undecidable which value to keep,
-- also instead of priorising one to the other, Nickel prefer to be
-  explicit and provide the `default` annotation,
-- finaly, when not annotated, it make fields read only by default which is quiet
-  more secure.
+It's undecidable which value to keep,
 
 The solution here is:
 
@@ -185,25 +234,25 @@ let right = {
 left & right // => {firewall.enabled = false, ...}
 ```
 
-The default annotation is generaly to give a default value to a record field.
-So, this value can be changed afterward. Saying it in an different way than
-the explaination maid in the current part introduction,
-default indicate a lower priority to a field in case of merging. Saying that,
-If both sides have been annotated `default` with both attached to a value, the
-merge is not possible.
-
 ## Overwriting
 
 The overwriting is the concept specifying the behaviour of a merge when you
 overwrite a field on which depends an other one. This  feature is described in
-RFC002 for further readings.
+RFC001 for further readings.
+
+### Usecases
+
 In short you can see it as a mix between the two previous parts. A record with
 some valueless fields or annotated `default` and others depending on these ones.
 You already had an example of this in Mixins part. Here, the extra thing is
 that, the depend fields are updated as soon as you update fields on which they
 depend on.
 
-An example could be:
+### Description
+
+TODO
+
+### Example
 
 ```text
 let security = {
@@ -220,8 +269,6 @@ security & {firewall.open_proto.ftp = false} // => {firewall.open_ports = [80, 4
 
 Above, you can notice that, if accessing `security.firewall.open_ports` before
 the merge, it will have a value. After the merge, this value is actuated.
-As said before, dependent fields are updated when you overwrite the fields they
-depend on.
 
 In the Mixins part, we used a function field. It give the same here. We used simple
 depend field for clarity but both behave the same.
