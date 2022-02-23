@@ -69,7 +69,7 @@ let metadata_ = {
           containers = [
             {
               name = name_,
-              image = "k8s.gcr.io/#{name_}:v3",
+              image = "k8s.gcr.io/%{name_}:v3",
               ports = [
                 {
                   name = "http-server",
