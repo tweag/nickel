@@ -1,7 +1,7 @@
 {
   nums = {
     Int
-    | doc m#"
+    | doc m%"
       Contract to enforce a number is an integer.
 
       For example:
@@ -11,7 +11,7 @@
         (42 | Int) =>
           42
       ```
-      "#m
+      "%m
     = fun label value =>
       if %is_num% value then
         if value % 1 == 0 then
@@ -22,7 +22,7 @@
         %blame% (%tag% "not a number" label),
 
     Nat
-    | doc m#"
+    | doc m%"
       Contract to enforce a number is a natural number (including 0).
 
       For example:
@@ -34,7 +34,7 @@
         (-4 | Nat) =>
           error
       ```
-      "#m
+      "%m
     = fun label value =>
       if %is_num% value then
         if value % 1 == 0 && value >= 0 then
@@ -45,7 +45,7 @@
         %blame% (%tag% "not a number" label),
 
     PosNat
-    | doc m#"
+    | doc m%"
       Contract to enforce a number is a positive natural number.
 
       For example:
@@ -57,7 +57,7 @@
         (-4 | PosNat) =>
           error
       ```
-      "#m
+      "%m
     = fun label value =>
       if %is_num% value then
         if value % 1 == 0 && value > 0 then
@@ -68,7 +68,7 @@
         %blame% (%tag% "not a number" label),
 
     NonZero
-    | doc m#"
+    | doc m%"
       Contract to enforce a number is anything but zero.
 
       For example:
@@ -78,7 +78,7 @@
         (0.0 | NonZero) =>
           error
       ```
-      "#m
+      "%m
     = fun label value =>
       if %is_num% value then
         if value != 0 then
@@ -89,7 +89,7 @@
         %blame% (%tag% "not a number" label),
 
     is_int : Num -> Bool
-    | doc m#"
+    | doc m%"
       Checks if the given number is an integer.
 
       For example:
@@ -99,11 +99,11 @@
         is_int 1.5 =>
           false
       ```
-      "#m
+      "%m
     = fun x => %is_num% x && (x % 1 == 0),
 
     min : Num -> Num -> Num
-    | doc m#"
+    | doc m%"
       Results in the lowest of the given two numbers.
 
       For example:
@@ -111,11 +111,11 @@
         min (-1337) 42 =>
           -1337
       ```
-      "#m
+      "%m
     = fun x y => if x <= y then x else y,
 
     max : Num -> Num -> Num
-    | doc m#"
+    | doc m%"
       Results in the highest of the given two numbers.
 
       For example:
@@ -123,11 +123,11 @@
         max (-1337) 42 =>
           42
       ```
-      "#m
+      "%m
     = fun x y => if x >= y then x else y,
 
     floor : Num -> Num
-    | doc m#"
+    | doc m%"
       Rounds the number down to the next integer.
 
       For example:
@@ -135,14 +135,14 @@
         floor 42.5 =>
           42
       ```
-      "#m
+      "%m
     = fun x =>
       if x >= 0
       then x - (x % 1)
       else x - 1 - (x % 1),
 
     abs : Num -> Num
-    | doc m#"
+    | doc m%"
       Results in the absolute value of the given number.
 
       For example:
@@ -152,11 +152,11 @@
         abs 42 =>
           42
       ```
-      "#m
+      "%m
     = fun x => if x < 0 then -x else x,
 
     fract : Num -> Num
-    | doc m#"
+    | doc m%"
       Results in the fractional part of the given number.
 
       For example:
@@ -166,11 +166,11 @@
         fract 42 =>
           0
       ```
-      "#m
+      "%m
     = fun x => x % 1,
 
     trunc : Num -> Num
-    | doc m#"
+    | doc m%"
       Truncates the given number.
 
       For example:
@@ -180,11 +180,11 @@
         trunc 42.5 =>
           42
       ```
-      "#m
+      "%m
     = fun x => x - (x % 1),
 
     pow : Num -> Num -> Num
-    | doc m#"
+    | doc m%"
       `pow x y` result in `x` to the power of `y`.
 
       For example:
@@ -192,7 +192,7 @@
         pow 2 8 =>
           256
       ```
-      "#m
+      "%m
     = fun x n => %pow% x n,
   }
 }

@@ -1,7 +1,7 @@
 {
   builtins = {
     is_num : Dyn -> Bool
-    | doc m#"
+    | doc m%"
       Checks if the given value is a number.
 
       For example:
@@ -11,11 +11,11 @@
         is_num "Hello, World!" =>
           false
       ```
-      "#m
+      "%m
     = fun x => %is_num% x,
 
     is_bool : Dyn -> Bool
-    | doc m#"
+    | doc m%"
       Checks if the given value is a boolean.
 
       For example:
@@ -25,11 +25,11 @@
         is_bool 42 =>
           false
       ```
-      "#m
+      "%m
     = fun x => %is_bool% x,
 
     is_str : Dyn -> Bool
-    | doc m#"
+    | doc m%"
       Checks if the given value is a string.
 
       For example:
@@ -39,11 +39,11 @@
         is_bool "Hello, World!" =>
           true
       ```
-      "#m
+      "%m
     = fun x => %is_str% x,
 
     is_fun : Dyn -> Bool
-    | doc m#"
+    | doc m%"
       Checks if the given value is a function.
 
       For example
@@ -53,11 +53,11 @@
         is_fun 42 =>
           false
       ```
-      "#m
+      "%m
     = fun x => %is_fun% x,
 
     is_list : Dyn -> Bool
-    | doc m#"
+    | doc m%"
       Checks if the given value is a list.
 
       For example
@@ -67,11 +67,11 @@
         is_list 42 =>
           false
       ```
-      "#m
+      "%m
     = fun x => %is_list% x,
 
     is_record : Dyn -> Bool
-    | doc m#"
+    | doc m%"
       Checks if the given value is a record.
 
       For example
@@ -81,7 +81,7 @@
         is_record { hello = "Hello", world = "World" } =>
           true
       ```
-      "#m
+      "%m
     = fun x => %is_record% x,
 
     typeof : Dyn -> [|
@@ -92,7 +92,7 @@
       TypeList,
       TypeRecord,
       Other |]
-    | doc m#"
+    | doc m%"
       Results in a value representing the type of the typed value.
 
       For example:
@@ -102,7 +102,7 @@
         typeof (fun x => x) =>
           `TypeFun
       ```
-      "#m
+      "%m
     = fun x =>
       if %is_num% x then `TypeNum
       else if %is_bool% x then `TypeBool
@@ -113,7 +113,7 @@
       else `Other,
 
     seq : forall a. Dyn -> a -> a
-    | doc m#"
+    | doc m%"
       `seq x y` forces the evaluation of `x`, before resulting in `y`.
 
       For example:
@@ -125,11 +125,11 @@
         seq { tooFar = 42 / 0 } 37 =>
           37
       ```
-      "#m
+      "%m
     = fun x y => %seq% x y,
 
     deep_seq : forall a. Dyn -> a -> a
-    | doc m#"
+    | doc m%"
       `deep_seq x y` forces a deep evaluation `x`, before resulting in `y`.
 
       For example:
@@ -141,11 +141,11 @@
         deep_seq { tooFar = 42 / 0 } 37 =>
           error
       ```
-      "#m
+      "%m
     = fun x y => %deep_seq% x y,
 
     hash : [| Md5, Sha1, Sha256, Sha512 |] -> Str -> Str
-    | doc m#"
+    | doc m%"
       Hashes the given string provided the desired hash algorithm.
 
       For example:
@@ -153,11 +153,11 @@
         hash `Md5 "hunter2" =>
           "2ab96390c7dbe3439de74d0c9b0b1767"
       ```
-      "#m
+      "%m
     = fun type s => %hash% type s,
 
     serialize : [| Json, Toml, Yaml |] -> Dyn -> Str
-    | doc m#"
+    | doc m%"
       Serializes the given value to the desired representation.
 
       For example:
@@ -168,11 +168,11 @@
             "world": "World"
           }"
       ```
-      "#m
+      "%m
     = fun format x => %serialize% format (%deep_seq% x x),
 
     deserialize : [| Json, Toml, Yaml |] -> Str -> Dyn
-    | doc m#"
+    | doc m%"
       Deserializes the given string to a nickel value given the encoding of the string.
 
       For example:
@@ -180,7 +180,7 @@
         deserialize `Json "{ \"hello\": \"Hello\", \"world\": \"World\" }"
           { hello = "Hello", world = "World" }
       ```
-      "#m
+      "%m
     = fun format x => %deserialize% format x,
   }
 }

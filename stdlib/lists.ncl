@@ -1,7 +1,7 @@
 {
   lists = {
     NonEmpty
-      | doc m#"
+      | doc m%"
         Contract to ensure the given list is not empty.
 
         For example:
@@ -11,7 +11,7 @@
           ([ 1 ] | #NonEmpty) =>
             [ 1 ]
         ```
-        "#m
+        "%m
       = fun label value =>
        if %is_list% value then
          if %length% value != 0 then
@@ -22,7 +22,7 @@
          %blame% (%tag% "not a list" label),
 
     head : forall a. List a -> a
-      | doc m#"
+      | doc m%"
         Results in the head (first element) of the given list.
 
         For example:
@@ -30,11 +30,11 @@
           head [ "this is the head", "this is not" ] =>
             "this is the head"
         ```
-        "#m
+        "%m
       = fun l => %head% l,
 
     tail : forall a. List a -> List a
-      | doc m#"
+      | doc m%"
         Results in the tail (everything but the first element) of the given list.
 
         For example:
@@ -42,11 +42,11 @@
           tail [ 1, 2, 3 ] =>
             [ 2, 3 ]
         ```
-        "#m
+        "%m
       = fun l => %tail% l,
 
     length : forall a. List a -> Num
-      | doc m#"
+      | doc m%"
         Results in a number representing the length of the given list.
 
         For example:
@@ -54,11 +54,11 @@
           length [ "Hello,", " World!" ] =>
             2
         ```
-        "#m
+        "%m
       = fun l => %length% l,
 
     map : forall a b. (a -> b) -> List a -> List b
-      | doc m#"
+      | doc m%"
         `map f [x1, x2, ..., xn]` applies function `f` to every element in the list,
         resulting in `[f x1, f x2, ... f xn]`
 
@@ -67,11 +67,11 @@
           map (fun x => x + 1) [ 1, 2, 3 ] =>
             [ 2, 3, 4 ]
         ```
-        "#m
+        "%m
       = fun f l => %map% l f,
 
     elem_at : forall a. Num -> List a -> a
-      | doc m#"
+      | doc m%"
         Retrieves the n'th element from a list (0-indexed).
 
         For example:
@@ -79,11 +79,11 @@
           elem_at 3 [ "zero" "one" "two" "three" "four" ] =>
             "three"
         ```
-        "#m
+        "%m
       = fun n l => %elem_at% l n,
 
     concat : forall a. List a -> List a -> List a
-      | doc m#"
+      | doc m%"
         Concatenates two lists such that the second list is appended to the first.
 
         For example:
@@ -91,11 +91,11 @@
           concat [ 1, 2, 3 ] [ 4, 5, 6 ] =>
             [ 1, 2, 3, 4, 5, 6 ]
         ```
-        "#m
+        "%m
       = fun l1 l2 => l1 @ l2,
 
     foldl : forall a b. (a -> b -> a) -> a -> List b -> a
-      | doc m#"
+      | doc m%"
         Fold a function over a list.
         `foldl f init [x1, x2, ..., xn]` results in `f (... (f (f init x1) x2) ...) xn`.
 
@@ -107,7 +107,7 @@
             (((0 + 1) + 2) 3) =>
             6
         ```
-        "#m
+        "%m
       = fun f acc l =>
         if %length% l == 0 then
           acc
@@ -116,7 +116,7 @@
           %seq% newAcc (foldl f newAcc (%tail% l)),
 
     fold : forall a b. (a -> b -> b) -> b -> List a -> b
-      | doc m#"
+      | doc m%"
         Fold a function over a list.
         `fold f init [x1, x2, ..., xn]` results in `f x1 (f x2 (... (f xn init) ...))`.
 
@@ -126,7 +126,7 @@
             ((([] @ [3]) @ [2]) @ [1]) =>
             [ 3, 2, 1 ]
         ```
-        "#m
+        "%m
       = fun f fst l =>
         if %length% l == 0 then
           fst
@@ -134,7 +134,7 @@
           f (%head% l) (fold f fst (%tail% l)),
 
     cons : forall a. a -> List a -> List a
-      | doc m#"
+      | doc m%"
         Construct a list given the head and tail of the list.
 
         For example:
@@ -142,11 +142,11 @@
           cons 1 [ 2, 3 ] =>
             [ 1, 2, 3 ]
         ```
-        "#m
+        "%m
       = fun x l => [x] @ l,
 
     reverse : forall a. List a -> List a
-      | doc m#"
+      | doc m%"
         Reverses the order of a list.
 
         For example:
@@ -154,11 +154,11 @@
           reverse [ 1, 2, 3 ] =>
             [ 3, 2, 1 ]
         ```
-        "#m
+        "%m
       = fun l => foldl (fun acc e => [e] @ acc) [] l,
 
     filter : forall a. (a -> Bool) -> List a -> List a
-      | doc m#"
+      | doc m%"
         `filter f xs` keeps all elements from `xs` given that satisfy `f`.
 
         For example:
@@ -166,11 +166,11 @@
           filter (fun x => x <= 3) [ 4, 3, 2, 5, 1 ] =>
             [ 3, 2, 1 ]
         ```
-        "#m
+        "%m
       = fun pred l => foldl (fun acc x => if pred x then acc @ [x] else acc) [] l,
 
     flatten : forall a. List (List a) -> List a
-      | doc m#"
+      | doc m%"
         Flatten a list of lists to a single list, essentially concatenating all lists in the original list.
 
         For example:
@@ -178,11 +178,11 @@
           flatten [[1, 2], [3, 4]] =>
             [1, 2, 3, 4]
         ```
-        "#m
+        "%m
       = fun l => fold (fun l acc => l @ acc) [] l,
 
     all : forall a. (a -> Bool) -> List a -> Bool
-      | doc m#"
+      | doc m%"
         Results in true if all elements in the given list satisfy the predicate, false otherwise.
 
         For example:
@@ -192,11 +192,11 @@
           all (fun x => x < 3) [ 1, 2 3 ] =>
             false
         ```
-        "#m
+        "%m
       = fun pred l => fold (fun x acc => if pred x then acc else false) true l,
 
     any : forall a. (a -> Bool) -> List a -> Bool
-      | doc m#"
+      | doc m%"
         Results in false if no elements in the given list satisfy the predicate, true otherwise.
 
         For example:
@@ -206,11 +206,11 @@
           any (fun x => x < 3) [ 5, 6, 7, 8 ] =>
             false
         ```
-        "#m
+        "%m
       = fun pred l => fold (fun x acc => if pred x then true else acc) false l,
 
     elem : Dyn -> List -> Bool
-      | doc m#"
+      | doc m%"
         Results in true if the given element is a member of the list, false otherwise.
 
         For example:
@@ -218,11 +218,11 @@
           elem 3 [ 1, 2, 3, 4, 5 ] =>
             true
         ```
-        "#m
+        "%m
       = fun elt => any (fun x => x == elt),
 
     partition : forall a. (a -> Bool) -> List a -> {right: List a, wrong: List a}
-      | doc m#"
+      | doc m%"
         Partitions the given list in two new lists: those containing the elements that satisfy the predicate, and those
         that do not.
 
@@ -231,7 +231,7 @@
           partition (fun x => x < 5) [ 2, 4, 5, 3, 7, 8, 6 ] =>
             { right = [ 3, 4, 2 ], wrong = [ 6, 8, 7, 5 ] }
         ```
-        "#m
+        "%m
       = fun pred l =>
         let aux = fun acc x =>
           if (pred x) then
@@ -242,7 +242,7 @@
         foldl aux {right = [], wrong = []} l,
 
     generate : forall a. (Num -> a) -> Num -> List a
-      | doc m#"
+      | doc m%"
         `generate f n` produces a list of length `n` by applying `f` on increasing numbers:
          `[ f 0, f 1, ..., f (n - 1) ]`.
 
@@ -251,11 +251,11 @@
           generate functions.id 4 =>
             [ 0, 1, 2, 3 ]
         ```
-        "#m
+        "%m
       = fun f n => %generate% n f,
 
     sort : forall a. (a -> a -> [| Less, Equal, Greater |]) -> List a -> List a
-      | doc m#"
+      | doc m%"
         Sorts the given lists based on the provided comparison operator.
 
         For example:
@@ -263,7 +263,7 @@
           sort (fun x y => if x < y then `Less else if (x == y) then `Equal else `Greater) [ 4, 5, 1, 2 ] =>
             [ 1, 2, 4, 5 ]
         ```
-        "#m
+        "%m
       = fun cmp l =>
         let first = %head% l in
         let parts = partition (fun x => (cmp x first == `Less)) (%tail% l) in

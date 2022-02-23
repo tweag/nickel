@@ -1,7 +1,7 @@
 {
   strings = {
     BoolLiteral
-    | doc m#"
+    | doc m%"
       Contract to enforce the value is a string that represents a boolean literal. Additionally casts "True" to "true"
       and "False" to "false".
 
@@ -14,7 +14,7 @@
         (true | BoolLiteral) =>
           error
       ```
-      "#m
+      "%m
     = fun l s =>
       if %is_str% s then
         if s == "true" || s == "True" then
@@ -22,12 +22,12 @@
         else if s == "false" || s == "False" then
           "false"
         else
-          %blame% (%tag% "expected \"true\" or \"false\", got #{s}" l)
+          %blame% (%tag% "expected \"true\" or \"false\", got %{s}" l)
       else
         %blame% (%tag% "not a string" l),
 
     NumLiteral
-    | doc m#"
+    | doc m%"
       Contract to enforce the value is a string that represends a numerical value.
 
       For example:
@@ -39,8 +39,8 @@
         (42 | NumLiteral) =>
           error
       ```
-      "#m
-    = let pattern = m#"^[+-]?(\d+(\.\d*)?(e[+-]?\d+)?|\.\d+(e[+-]?\d+)?)$"#m in
+      "%m
+    = let pattern = m%"^[+-]?(\d+(\.\d*)?(e[+-]?\d+)?|\.\d+(e[+-]?\d+)?)$"%m in
       fun l s =>
         if %is_str% s then
           if %str_is_match% s pattern then
@@ -51,7 +51,7 @@
           %blame% (%tag% "not a string" l),
 
     CharLiteral
-    | doc m#"
+    | doc m%"
       Contract to enforce the value is a character literal (i.e. a string of length 1).
 
       For example:
@@ -65,7 +65,7 @@
         (1 | CharLiteral) =>
           error
       ```
-      "#m
+      "%m
     = fun l s =>
       if %is_str% s then
         if length s == 1 then
@@ -76,7 +76,7 @@
         %blame% (%tag% "not a string" l),
 
     Ident
-    | doc m#"
+    | doc m%"
       Contract to enforce the value is a valid Nickel identifier. Can be used in conjunction with the record field
       function (e.g. `has_field`).
 
@@ -86,9 +86,9 @@
           true
         records.has_field ("9" | Ident) { hello = "hi!" } =>
           error (invalid enum tag)
-      "#m
+      "%m
     = fun l s =>
-      let pattern = m#"_?[a-zA-Z][_a-zA-Z0-9]*"#m in
+      let pattern = m%"_?[a-zA-Z][_a-zA-Z0-9]*"%m in
       if %is_str% s then
         if %str_is_match% s pattern then
             s
@@ -98,7 +98,7 @@
         %blame% (%tag% "not a string" l),
 
     NonEmpty
-    | doc m#"
+    | doc m%"
       Contract to enforce the value is a non-empty string.
 
       For example:
@@ -110,7 +110,7 @@
         (42 | NonEmpty) =>
           error
       ```
-      "#m
+      "%m
     = fun l s =>
       if %is_str% s then
         if %str_length% s > 0 then
@@ -120,9 +120,9 @@
       else
         %blame% (%tag% "not a string" l),
 
-    // using a contract instead of type for now because of https://github.com/tweag/nickel/issues/226
+    # using a contract instead of type for now because of https://github.com/tweag/nickel/issues/226
     join | Str -> List Str -> Str
-    | doc m#"
+    | doc m%"
       Joins a list of strings given a seperator.
 
       For example:
@@ -130,7 +130,7 @@
         join ", " [ "Hello", "World!" ] =>
           "Hello, World!"
       ```
-      "#m
+      "%m
     = fun sep l =>
       if %length% l == 0 then
         ""
@@ -138,7 +138,7 @@
         %head% l ++ lists.foldl (fun acc s => acc ++ sep ++ s) "" (%tail% l),
 
     split : Str -> Str -> List Str
-    | doc m#"
+    | doc m%"
       Splits a string based on a separator string. The separator string is not included in any string.
 
       For example:
@@ -148,11 +148,11 @@
       split "." "1,2,3" =>
         [ "1,2,3" ]
       ```
-      "#m
+      "%m
     = fun sep s => %str_split% s sep,
 
     trim : Str -> Str
-    | doc m#"
+    | doc m%"
       Trims whitespace from the start and end of the string.
 
       For example:
@@ -162,11 +162,11 @@
       trim "1   2   3   " =>
         "1   2   3"
       ```
-      "#m
+      "%m
     = fun s => %str_trim% s,
 
     chars : Str -> List Str
-    | doc m#"
+    | doc m%"
       Separates a string into its individual characters.
 
       For example:
@@ -174,11 +174,11 @@
         chars "Hello" =>
           [ "H", "e", "l", "l", "o" ]
       ```
-      "#m
+      "%m
     = fun s => %str_chars% s,
 
     code | CharLiteral -> Num
-    | doc m#"
+    | doc m%"
       Results in the ascii code of the given character.
 
       For example:
@@ -190,11 +190,11 @@
         code "å" =>
           error
       ```
-      "#m
+      "%m
     = fun s => %char_code% s,
 
     from_code | Num -> CharLiteral
-    | doc m#"
+    | doc m%"
       Results in the character for a given ascii code. Any number outside the ascii range results in an error.
 
       For example:
@@ -206,11 +206,11 @@
         from_code 128 =>
           error
       ```
-      "#m
+      "%m
     = fun s => %char_from_code% s,
 
     uppercase : Str -> Str
-    | doc m#"
+    | doc m%"
       Results in the uppercase version of the given character (including non-ascii characters) if it exists, the same
       character if not.
 
@@ -223,11 +223,11 @@
         uppercase "." =>
           "."
       ```
-      "#m
+      "%m
     = fun s => %str_uppercase% s,
 
     lowercase : Str -> Str
-    | doc m#"
+    | doc m%"
       Results in the lowercase version of the given character (including non-ascii characters) if it exists, the same
       character if not.
 
@@ -240,11 +240,11 @@
         lowercase "." =>
           "."
       ```
-      "#m
+      "%m
     = fun s => %str_lowercase% s,
 
     contains: Str -> Str -> Bool
-    | doc m#"
+    | doc m%"
       Checks if the first string is part of the second string.
 
       For example:
@@ -256,11 +256,11 @@
         contains "ghj" "abcdef" =>
           false
       ```
-      "#m
+      "%m
     = fun subs s => %str_contains% s subs,
 
     replace: Str -> Str -> Str -> Str
-    | doc m#"
+    | doc m%"
       `replace sub repl str` replaces every occurence of `sub` in `str` with `repl`.
 
       For example:
@@ -270,12 +270,12 @@
         replace "" "A" "abcdef" =>
           "AaAbAcAdAeAfA"
       ```
-      "#m
+      "%m
     = fun pattern replace s =>
        %str_replace% s pattern replace,
 
     replace_regex: Str -> Str -> Str -> Str
-    | doc m#"
+    | doc m%"
       `replace_regex regex repl str` replaces every match of `regex` in `str` with `repl`.
 
       For example:
@@ -285,12 +285,12 @@
         replace_regex "\\d+" "\"a\" is not" "This 37 is a number." =>
           "This \"a\" is not a number."
       ```
-      "#m
+      "%m
     = fun pattern replace s =>
        %str_replace_regex% s pattern replace,
 
     is_match : Str -> Str -> Bool
-    | doc m#"
+    | doc m%"
       `is_match regex str` checks if `str` matches `regex`.
 
       For example:
@@ -300,11 +300,11 @@
         is_match "\\d{4}" "123" =>
           false
       ```
-      "#m
+      "%m
     = fun regex s => %str_is_match% s regex,
 
     match : Str -> Str -> {match: Str, index: Num, groups: List Str}
-    | doc m#"
+    | doc m%"
       `match regex str` matches `str` given `regex`. Results in the part of `str` that matched, the index of the
       first character that was part of the match in `str`, and a lists of all capture groups if any.
 
@@ -315,11 +315,11 @@
         match "3" "01234" =>
           { match = "3", index = 3, groups = [ ] }
       ```
-      "#m
+      "%m
     = fun regex s => %str_match% s regex,
 
     length : Str -> Num
-    | doc m#"
+    | doc m%"
       Results in the length of the given string.
 
       For example:
@@ -329,11 +329,11 @@
         length "hi" =>
           2
       ```
-      "#m
+      "%m
     = fun s => %str_length% s,
 
     substring: Num -> Num -> Str -> Str
-    | doc m#"
+    | doc m%"
       Takes a slice from the string. Errors if either index is out of range.
 
       For example:
@@ -345,21 +345,21 @@
         substring (-3) 4 "abcdef" =>
           error
       ```
-      "#m
+      "%m
     = fun start end s => %str_substr% s start end,
 
     from_num | Num -> Str
-    | doc m#"
+    | doc m%"
       Converts a number to its string representation.
 
       from_num 42 =>
         "42"
-      "#m
+      "%m
     = fun n => %to_str% n,
 
-    // from_enum | < | Dyn> -> Str = fun tag => %to_str% tag,
+    # from_enum | < | Dyn> -> Str = fun tag => %to_str% tag,
     from_enum | Dyn -> Str
-    | doc m#"
+    | doc m%"
       Converts an enum variant to its string representation.
 
       For example:
@@ -367,11 +367,11 @@
       from_enum `MyEnum =>
         "MyEnum"
       ```
-      "#m
+      "%m
     = fun tag => %to_str% tag,
 
     from_bool | Bool -> Str
-    | doc m#"
+    | doc m%"
       Converts a boolean value to its string representation.
 
       For example:
@@ -379,11 +379,11 @@
         from_bool true =>
           "true"
       ```
-      "#m
+      "%m
     = fun b => %to_str% b,
 
     to_num | NumLiteral -> Num
-    | doc m#"
+    | doc m%"
       Converts a string that represents an integer to that integer.
 
       For example:
@@ -391,11 +391,11 @@
         to_num "123" =>
           123
       ```
-      "#m
+      "%m
     = fun s => %num_from_str% s,
 
     to_bool | BoolLiteral -> Bool
-    | doc m#"
+    | doc m%"
       Converts a string that represents a boolean to that boolean.
 
       For example:
@@ -406,12 +406,12 @@
           true
         to_bool "false" =>
           false
-      "#m
+      "%m
     = fun s => s == "true",
 
-    // to_enum | #Ident -> < | Dyn> = fun s => %enum_from_str% s,
+    # to_enum | #Ident -> < | Dyn> = fun s => %enum_from_str% s,
     to_enum | Ident -> Dyn
-    | doc m#"
+    | doc m%"
       Converts any string that represents an enum variant to that enum variant.
 
       For example:
@@ -419,7 +419,7 @@
         to_enum "Hello" =>
           `Hello
       ```
-      "#m
+      "%m
     = fun s => %enum_from_str% s,
   }
 }
