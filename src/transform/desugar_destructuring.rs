@@ -133,9 +133,24 @@ pub fn desugar(rt: RichTerm) -> RichTerm {
 /// generate a fresh variable.
 fn bind_open_field(x: Ident, pat: &Destruct, body: RichTerm) -> RichTerm {
     let (matches, var) = match pat {
-        Destruct::Record(matches, true, Some(x)) => (matches, x.clone()),
-        Destruct::Record(matches, true, None) => (matches, super::fresh_var()),
-        Destruct::Record(_, false, None) | Destruct::Empty => return body,
+        Destruct::Record {
+            matches,
+            open: true,
+            rest: Some(x),
+            ..
+        } => (matches, x.clone()),
+        Destruct::Record {
+            matches,
+            open: true,
+            rest: None,
+            ..
+        } => (matches, super::fresh_var()),
+        Destruct::Record {
+            open: false,
+            rest: None,
+            ..
+        }
+        | Destruct::Empty => return body,
         _ => panic!("A closed pattern can not have a rest binding"),
     };
     Term::Let(
@@ -156,7 +171,7 @@ fn bind_open_field(x: Ident, pat: &Destruct, body: RichTerm) -> RichTerm {
 fn destruct_term(x: Ident, pat: &Destruct, body: RichTerm) -> RichTerm {
     let pos = body.pos;
     match pat {
-        Destruct::Record(matches, ..) => matches.iter().fold(body, move |t, m| match m {
+        Destruct::Record { matches, .. } => matches.iter().fold(body, move |t, m| match m {
             Match::Simple(id, _) => RichTerm::new(
                 Term::Let(
                     id.clone(),

@@ -3,6 +3,7 @@
 
 use crate::identifier::Ident;
 use crate::label::Label;
+use crate::position::RawSpan;
 use crate::term::{Contract, MetaValue, RecordAttrs, RichTerm, Term};
 use crate::types::{AbsType, Types};
 
@@ -33,10 +34,15 @@ pub enum LastMatch {
 /// A destructuring pattern without the `x @` part.
 #[derive(Debug, PartialEq, Clone)]
 pub enum Destruct {
-    /// A record pattern, the onlyone implemented for now.
-    Record(Vec<Match>, bool, Option<Ident>),
+    /// A record pattern, the only one implemented for now.
+    Record {
+        matches: Vec<Match>,
+        open: bool,
+        rest: Option<Ident>,
+        span: RawSpan,
+    },
     /// A list destructuring. Not implemented.
-    List(Vec<Match>),
+    List { matches: Vec<Match>, span: RawSpan },
     /// An empty destructuring. In this case, the pattern is a clasical `let var = something in
     /// body` form.
     Empty,
@@ -45,6 +51,11 @@ pub enum Destruct {
 impl Destruct {
     /// generate the metavalue containing the contract representing this pattern.
     pub fn as_contract(self) -> MetaValue {
+        let label = self.label();
+        self.as_contract_with_lbl(label)
+    }
+
+    fn as_contract_with_lbl(self, label: Label) -> MetaValue {
         let open = self.is_open();
         MetaValue {
             contracts: vec![Contract {
@@ -58,7 +69,7 @@ impl Destruct {
                     )
                     .into(),
                 )),
-                label: Label::dummy(),
+                label,
             }],
             ..Default::default()
         }
@@ -67,17 +78,25 @@ impl Destruct {
     /// Get the inner vector of `Matches` of the pattern. If `Empty` return a empty vector.
     pub fn inner(self) -> Vec<Match> {
         match self {
-            Destruct::Record(i, _, _) | Destruct::List(i) => i,
+            Destruct::Record { matches, .. } | Destruct::List { matches, .. } => matches,
             Destruct::Empty => vec![],
+        }
+    }
+
+    // Generate a label for this `Destruct`. if `Empty`, return default label.
+    fn label(&self) -> Label {
+        match *self {
+            Destruct::Record { span, .. } | Destruct::List { span, .. } => Label {
+                span,
+                ..Default::default()
+            },
+            Destruct::Empty => Label::default(),
         }
     }
 
     /// Is this pattern open? Does it finish with `, ..}` form?
     pub fn is_open(&self) -> bool {
-        match self {
-            Destruct::Record(_, o, _) => *o,
-            _ => false,
-        }
+        matches!(self, Destruct::Record { open: true, .. })
     }
 
     /// check if the pattern is empty.
@@ -94,11 +113,22 @@ impl Match {
             Match::Assign(id, m, (_, Destruct::Empty)) | Match::Simple(id, m) => {
                 (id, Term::MetaValue(m).into())
             }
-            Match::Assign(id, m, (_, d @ Destruct::Record(..))) => (
-                id,
-                Term::MetaValue(MetaValue::flatten(m, d.as_contract())).into(),
-            ),
-            Match::Assign(_id, _m, (_, _d @ Destruct::List(..))) => unimplemented!(),
+
+            // In this case we fuse spans of the `Ident` (LHS) with the destruct (RHS)
+            // because we can have two cases:
+            //
+            // - extra field on the destructuring `d`
+            // - missing field on the `id`
+            Match::Assign(id, m, (_, d @ Destruct::Record { .. })) => {
+                let label @ Label { span, .. } = d.label();
+                let span = RawSpan::fuse(id.pos.unwrap(), span).unwrap();
+                let label = Label { span, ..label };
+                (
+                    id,
+                    Term::MetaValue(MetaValue::flatten(m, d.as_contract_with_lbl(label))).into(),
+                )
+            }
+            Match::Assign(_id, _m, (_, _d @ Destruct::List { .. })) => unimplemented!(),
         }
     }
 }

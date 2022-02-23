@@ -63,6 +63,7 @@ use crate::{
         make as mk_term},
     types::{Types, AbsType},
     position::TermPos,
+    label::Label,
 };
 
 grammar<'input, 'err>(src_id: FileId, errors: &'err mut Vec<ErrorRecovery<usize, Token<'input>, ParseError>>);
@@ -380,44 +381,7 @@ FieldPathElem: FieldPathElem = {
     <WithPos<StrChunks>> => FieldPathElem::Expr(<>),
 };
 
-// A full pattern at the left-hand side of a destructuring let.
-Destruct: Destruct = {
-    "{" <mut matches: (<Match> ",")*> <last:LastMatch?> "}" => {
-        let (open, rst) = match last {
-            Some(LastMatch::Match(m)) => {
-                matches.push(m);
-                (false,None)
-            },
-            Some(LastMatch::Ellipsis(rst)) => (true, rst),
-            _ => (false, None),
-        };
-
-        Destruct::Record(matches, open, rst)
-    },
-};
-
-// A binding `ident = <pattern>` inside a destructuring pattern.
-Match: Match = {
-    <left:Ident> <anns: Annot<FixedType>?> <default: DefaultAnnot?> "=" <right: Pattern> => {
-        let meta = match (default, anns) {
-            (Some(d), Some(m)) => MetaValue::flatten(d,m),
-            (Some(m),_) | (_,Some(m)) => m,
-              _ => MetaValue::new(),
-        };
-
-        Match::Assign(left, meta, right)
-    },
-    <id:Ident> <anns: Annot<FixedType>?> <default: DefaultAnnot?> => {
-        let meta = match (default, anns) {
-            (Some(d), Some(m)) => MetaValue::flatten(d,m),
-            (Some(m),_) | (_,Some(m)) => m,
-            _ => MetaValue::new(),
-        };
-
-        Match::Simple(id, meta)
-    },
-};
-
+// Last field of a pattern
 LastMatch: LastMatch = {
     Match => LastMatch::Match(<>),
     ".." <Ident?> => LastMatch::Ellipsis(<>),
@@ -430,13 +394,60 @@ Pattern: (Option<Ident>,Destruct) = {
     Ident => (Some(<>),Destruct::Empty),
 };
 
+// A full pattern at the left-hand side of a destructuring let.
+Destruct: Destruct = {
+    <start: @L> "{" <mut matches: (<Match> ",")*> <last:LastMatch?> "}" <end: @R> => {
+        let (open, rest) = match last {
+	    Some(LastMatch::Match(m)) => {
+	        matches.push(m);
+	        (false,None)
+	    },
+	    Some(LastMatch::Ellipsis(rest)) => (true, rest),
+	    _ => (false, None),
+	};
+	let span = mk_span(src_id, start, end);
+	Destruct::Record{matches, open, rest, span}
+    },
+};
+
+// A binding `ident = <pattern>` inside a destructuring pattern.
+Match: Match = {
+    <left:Ident> <anns: Annot<FixedType>?> <default: DefaultAnnot?> "=" <right: Pattern> => {
+	let meta = match (default, anns) {
+	    (Some(d), Some(m)) => MetaValue::flatten(d,m),
+	    (Some(m),_) | (_,Some(m)) => m,
+  	    _ => MetaValue {
+	            contracts: vec![Contract{
+	                types: Types(AbsType::Dyn().into()),
+		        label: Label{span: left.pos.unwrap(), ..Default::default()},
+		    }],
+		    ..Default::default()
+	    },
+	};
+	Match::Assign(left, meta, right)
+    },
+    <id:Ident> <anns: Annot<FixedType>?> <default: DefaultAnnot?> => {
+	let meta = match (default, anns) {
+	    (Some(d), Some(m)) => MetaValue::flatten(d,m),
+	    (Some(m),_) | (_,Some(m)) => m,
+  	    _ => MetaValue {
+	            contracts: vec![Contract{
+	                types: Types(AbsType::Dyn().into()),
+		        label: Label{span: id.pos.unwrap(), ..Default::default()},
+		    }],
+		    ..Default::default()
+	    },
+	};
+	Match::Simple(id, meta)
+    },
+};
+
 // A default annotation in a pattern.
 DefaultAnnot: MetaValue = "?" <t: Term> => MetaValue {
     priority: MergePriority::Default,
     value: Some(t),
     ..Default::default()
 };
-
 
 Ident: Ident = <l:@L> <i: "identifier"> <r:@R> =>
     Ident { label: i.to_string(), pos: mk_pos(src_id, l, r) };
