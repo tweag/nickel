@@ -72,10 +72,6 @@ pub fn handle(
                     language: "plain".into(),
                     value: meta.join("\n"),
                 }),
-                MarkedString::LanguageString(LanguageString {
-                    language: "plain".into(),
-                    value: format!("{:?} @ {:?}", item, range,),
-                }),
             ]),
 
             range: Some(range),
