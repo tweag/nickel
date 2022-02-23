@@ -205,7 +205,7 @@ null | Nullable Num
 
 ## Compound contracts
 
-In this section, we review the different ways of composing existing contracts
+This section describes the different ways of composing existing contracts
 together to create new ones.
 
 ### Records
