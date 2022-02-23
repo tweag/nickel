@@ -6,9 +6,9 @@
 
         For example:
         ```nickel
-          ([] | #NonEmpty) =>
+          ([] | NonEmpty) =>
             error
-          ([ 1 ] | #NonEmpty) =>
+          ([ 1 ] | NonEmpty) =>
             [ 1 ]
         ```
         "#m

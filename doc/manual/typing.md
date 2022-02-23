@@ -617,7 +617,7 @@ let Port = contracts.from_predicate (fun value =>
   && value >= 0
   && value <= 65535) in
 
-(10 - 1 : #Port)
+(10 - 1 : Port)
 ```
 
 But this program is unfortunately rejected by the typechecker:
@@ -627,10 +627,10 @@ Result:
 error: Incompatible types
   ┌─ repl-input-0:7:2
   │
-7 │ (10 : #Port)
+7 │ (10 : Port)
   │  ^^ this expression
   │
-  = The type of the expression was expected to be `#Port`
+  = The type of the expression was expected to be `Port`
   = The type of the expression was inferred to be `Num`
   = These types are not compatible
 ```
@@ -639,22 +639,22 @@ It turns out statically ensuring that an arbitrary expression will eventually
 respects an arbitrary user-written predicate is a really hard problem even in
 simple cases (technically, it is even undecidable in the general case). The
 typechecker doesn't have a clue about the relation between numbers and ports.
-So, what can it do with annotations like `#Port`? There is one situation when
+So, what can it do with annotations like `Port`? There is one situation when
 the typechecker can be sure that something will eventually be a port number, or
 will fail with the correct error message: when using a contract application.
 
 ```nickel
-(let p | #Port = 10 - 1 in
+(let p | Port = 10 - 1 in
  let id = fun x => x in
  id p
-) : #Port
+) : Port
 ```
 
 A custom contract hence acts like an opaque type (sometimes called abstract type
 as well) for the typechecker. The typechecker doesn't really know much about it
-except that the only way to construct a value of type `#Port` is to use contract
+except that the only way to construct a value of type `Port` is to use contract
 application. You also need an explicit contract application to cast back a
-`#Port` to a `Num`: `(p | Num) + 1 : Num`.
+`Port` to a `Num`: `(p | Num) + 1 : Num`.
 
 Because of the rigidity of opaque types, using custom contracts inside static
 type annotations is not very useful right now. We just had to give them a

@@ -112,7 +112,7 @@
         let IsZero = fun label value =>
           if value == 0 then value
           else contracts.blame_with "Not zero" label in
-        0 | #IsZero
+        0 | IsZero
         ```
         "#m
       = fun msg l => %blame% (%tag% msg l),
@@ -127,7 +127,7 @@
         For example:
         ```
         let IsZero = contracts.from_predicate (fun x => x == 0) in
-        0 | #IsZero
+        0 | IsZero
         ```
         "#m
       = fun pred l v => if pred v then v else %blame% l,
@@ -150,7 +150,7 @@
               value
           else
             value in
-        5 | #Contract
+        5 | Contract
         ```
         "#m
       = fun msg l => %tag% msg l,
@@ -165,7 +165,7 @@
         Nickel supports user-defined contracts defined as functions, but also as
         records. Moreover, the interpreter performs additional book-keeping for
         error reporting when applying a contract in an expression `value |
-        #Contract`. You should not use standard function application to apply a
+        Contract`. You should not use standard function application to apply a
         contract, but this function instead. 
 
         For example:
@@ -175,7 +175,7 @@
           else contracts.apply contract label value
         in
         let Contract = Nullable {foo | Num} in
-        ({foo = 1} | #Contract)
+        ({foo = 1} | Contract)
         ```
         "#m
       = fun contract label value => %assume% contract label value,

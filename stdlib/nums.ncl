@@ -185,7 +185,7 @@
 
     pow : Num -> Num -> Num
     | doc m#"
-      `pow x y` result in `x` to the power of `y`.
+      `pow x y` results in `x` to the power of `y`.
 
       For example:
       ```nickel
