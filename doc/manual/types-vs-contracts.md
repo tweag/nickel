@@ -22,12 +22,12 @@ What to do depends on the context:
     and are generally short functions passed as arguments to typed higher-order
     functions, which will apply a guarding contract.
 
-    Example: `list.map (fun x => x + 1) [1,2,3]`
+    Example: `array.map (fun x => x + 1) [1,2,3]`
 - *Let-bound function outside of typed block: use a type annotation.* Even if
     local to a file, if your function is bound to a variable, it can be
     potentially reused in different places.
 
-    Example: `let appendTm: Str -> Str = fun s => s ++ "(TM)" in ...`
+    Example: `let append_tm: Str -> Str = fun s => s ++ "(TM)" in ...`
 - *Let-bound function inside a typed block: nothing or type annotation*. Inside a
     typed block, types are inferred, so it is OK for simple functions to not be
     annotated. However, you are required to annotate it if it is polymorphic,
@@ -49,7 +49,7 @@ What to do depends on the context:
     in ...
     ```
 
-## Data (record, list)
+## Data (record, array)
 
 Conversely, for data inside configuration code, you should use **contracts**.
 Types are not adding much for configuration data, while contracts are more
@@ -63,7 +63,7 @@ let Schema = {
   version | PkgVersion
           | doc "The semantic version of the package",
           | default = "1.0.0",
-  build | List BuildSteps
+  build | Array BuildSteps
         | doc "The steps to perform in order to build the package",
         | default = [],
 } in
@@ -79,7 +79,7 @@ let Schema = {
 ## Computation (compound expressions)
 
 Some expressions are neither immediate data nor functions. Take for example the
-function application `list.map (fun s => "http://#{s}/index") servers`.
+function application `array.map (fun s => "http://#{s}/index") servers`.
 Usually, you should do **nothing**.
 
 - *Inside configuration: nothing*. The function or operator you are using should

@@ -1,8 +1,8 @@
 {
-  list = {
+  array = {
     NonEmpty
       | doc m%"
-        Contract to ensure the given list is not empty.
+        Contract to ensure the given array is not empty.
 
         For example:
         ```nickel
@@ -13,17 +13,17 @@
         ```
         "%m
       = fun label value =>
-       if %is_list% value then
+       if %is_array% value then
          if %length% value != 0 then
            value
          else
-           %blame% (%tag% "empty list" label)
+           %blame% (%tag% "empty array" label)
        else
-         %blame% (%tag% "not a list" label),
+         %blame% (%tag% "not a array" label),
 
-    head : forall a. List a -> a
+    head : forall a. Array a -> a
       | doc m%"
-        Results in the head (first element) of the given list.
+        Results in the head (first element) of the given array.
 
         For example:
         ```nickel
@@ -33,9 +33,9 @@
         "%m
       = fun l => %head% l,
 
-    tail : forall a. List a -> List a
+    tail : forall a. Array a -> Array a
       | doc m%"
-        Results in the tail (everything but the first element) of the given list.
+        Results in the tail (everything but the first element) of the given array.
 
         For example:
         ```nickel
@@ -45,9 +45,9 @@
         "%m
       = fun l => %tail% l,
 
-    length : forall a. List a -> Num
+    length : forall a. Array a -> Num
       | doc m%"
-        Results in a number representing the length of the given list.
+        Results in a number representing the length of the given array.
 
         For example:
         ```nickel
@@ -57,9 +57,9 @@
         "%m
       = fun l => %length% l,
 
-    map : forall a b. (a -> b) -> List a -> List b
+    map : forall a b. (a -> b) -> Array a -> Array b
       | doc m%"
-        `map f [x1, x2, ..., xn]` applies function `f` to every element in the list,
+        `map f [x1, x2, ..., xn]` applies function `f` to every element in the array,
         resulting in `[f x1, f x2, ... f xn]`
 
         For example:
@@ -70,9 +70,9 @@
         "%m
       = fun f l => %map% l f,
 
-    elem_at : forall a. Num -> List a -> a
+    elem_at : forall a. Num -> Array a -> a
       | doc m%"
-        Retrieves the n'th element from a list (0-indexed).
+        Retrieves the n'th element from a array (0-indexed).
 
         For example:
         ```nickel
@@ -82,9 +82,9 @@
         "%m
       = fun n l => %elem_at% l n,
 
-    concat : forall a. List a -> List a -> List a
+    concat : forall a. Array a -> Array a -> Array a
       | doc m%"
-        Concatenates two lists such that the second list is appended to the first.
+        Concatenates two arrays such that the second array is appended to the first.
 
         For example:
         ```nickel
@@ -94,9 +94,9 @@
         "%m
       = fun l1 l2 => l1 @ l2,
 
-    foldl : forall a b. (a -> b -> a) -> a -> List b -> a
+    foldl : forall a b. (a -> b -> a) -> a -> Array b -> a
       | doc m%"
-        Fold a function over a list.
+        Fold a function over a array.
         `foldl f init [x1, x2, ..., xn]` results in `f (... (f (f init x1) x2) ...) xn`.
 
         This function is strict in the intermediate accumulator.
@@ -115,9 +115,9 @@
           let newAcc = f acc (%head% l) in
           %seq% newAcc (foldl f newAcc (%tail% l)),
 
-    fold : forall a b. (a -> b -> b) -> b -> List a -> b
+    fold : forall a b. (a -> b -> b) -> b -> Array a -> b
       | doc m%"
-        Fold a function over a list.
+        Fold a function over a array.
         `fold f init [x1, x2, ..., xn]` results in `f x1 (f x2 (... (f xn init) ...))`.
 
         For example:
@@ -133,9 +133,9 @@
         else
           f (%head% l) (fold f fst (%tail% l)),
 
-    cons : forall a. a -> List a -> List a
+    cons : forall a. a -> Array a -> Array a
       | doc m%"
-        Construct a list given the head and tail of the list.
+        Construct a array given the head and tail of the array.
 
         For example:
         ```nickel
@@ -145,9 +145,9 @@
         "%m
       = fun x l => [x] @ l,
 
-    reverse : forall a. List a -> List a
+    reverse : forall a. Array a -> Array a
       | doc m%"
-        Reverses the order of a list.
+        Reverses the order of a array.
 
         For example:
         ```nickel
@@ -157,7 +157,7 @@
         "%m
       = fun l => foldl (fun acc e => [e] @ acc) [] l,
 
-    filter : forall a. (a -> Bool) -> List a -> List a
+    filter : forall a. (a -> Bool) -> Array a -> Array a
       | doc m%"
         `filter f xs` keeps all elements from `xs` given that satisfy `f`.
 
@@ -169,9 +169,9 @@
         "%m
       = fun pred l => foldl (fun acc x => if pred x then acc @ [x] else acc) [] l,
 
-    flatten : forall a. List (List a) -> List a
+    flatten : forall a. Array (Array a) -> Array a
       | doc m%"
-        Flatten a list of lists to a single list, essentially concatenating all lists in the original list.
+        Flatten a array of arrays to a single array, essentially concatenating all arrays in the original array.
 
         For example:
         ```nickel
@@ -181,9 +181,9 @@
         "%m
       = fun l => fold (fun l acc => l @ acc) [] l,
 
-    all : forall a. (a -> Bool) -> List a -> Bool
+    all : forall a. (a -> Bool) -> Array a -> Bool
       | doc m%"
-        Results in true if all elements in the given list satisfy the predicate, false otherwise.
+        Results in true if all elements in the given array satisfy the predicate, false otherwise.
 
         For example:
         ```nickel
@@ -195,9 +195,9 @@
         "%m
       = fun pred l => fold (fun x acc => if pred x then acc else false) true l,
 
-    any : forall a. (a -> Bool) -> List a -> Bool
+    any : forall a. (a -> Bool) -> Array a -> Bool
       | doc m%"
-        Results in false if no elements in the given list satisfy the predicate, true otherwise.
+        Results in false if no elements in the given array satisfy the predicate, true otherwise.
 
         For example:
         ```nickel
@@ -209,9 +209,9 @@
         "%m
       = fun pred l => fold (fun x acc => if pred x then true else acc) false l,
 
-    elem : Dyn -> List -> Bool
+    elem : Dyn -> Array -> Bool
       | doc m%"
-        Results in true if the given element is a member of the list, false otherwise.
+        Results in true if the given element is a member of the array, false otherwise.
 
         For example:
         ```nickel
@@ -221,9 +221,9 @@
         "%m
       = fun elt => any (fun x => x == elt),
 
-    partition : forall a. (a -> Bool) -> List a -> {right: List a, wrong: List a}
+    partition : forall a. (a -> Bool) -> Array a -> {right: Array a, wrong: Array a}
       | doc m%"
-        Partitions the given list in two new lists: those containing the elements that satisfy the predicate, and those
+        Partitions the given array in two new arrays: those containing the elements that satisfy the predicate, and those
         that do not.
 
         For example:
@@ -241,9 +241,9 @@
         in
         foldl aux {right = [], wrong = []} l,
 
-    generate : forall a. (Num -> a) -> Num -> List a
+    generate : forall a. (Num -> a) -> Num -> Array a
       | doc m%"
-        `generate f n` produces a list of length `n` by applying `f` on increasing numbers:
+        `generate f n` produces a array of length `n` by applying `f` on increasing numbers:
          `[ f 0, f 1, ..., f (n - 1) ]`.
 
         For example:
@@ -254,9 +254,9 @@
         "%m
       = fun f n => %generate% n f,
 
-    sort : forall a. (a -> a -> [| Less, Equal, Greater |]) -> List a -> List a
+    sort : forall a. (a -> a -> [| Less, Equal, Greater |]) -> Array a -> Array a
       | doc m%"
-        Sorts the given lists based on the provided comparison operator.
+        Sorts the given arrays based on the provided comparison operator.
 
         For example:
         ```nickel

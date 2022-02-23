@@ -112,4 +112,4 @@ let Assert = fun l x => x || %blame% l in
   } in
   data.name == "hijack",
 ]
-|> list.foldl (fun x y => (x | Assert) && y) true
+|> array.foldl (fun x y => (x | Assert) && y) true

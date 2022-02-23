@@ -40,13 +40,13 @@ macro_rules! assert_unbound {
 fn unbound_type_variables() {
     assert_unbound!("1 | a", "a");
     assert_unbound!(
-        "let f | forall a b c. a -> (b -> List c) -> {foo : List {_ : d}, bar: a; Dyn}
+        "let f | forall a b c. a -> (b -> Array c) -> {foo : Array {_ : d}, bar: a; Dyn}
            = fun bar_ _g => {foo = [{field = 1}], bar = bar_} in
          (f 1 (fun _x => [])).foo == [{field = 1}]",
         "d"
     );
     assert_unbound!(
-        "let f : forall a b c. a -> (b -> List c) -> {foo : List {field : a}, bar: a; e}
+        "let f : forall a b c. a -> (b -> Array c) -> {foo : Array {field : a}, bar: a; e}
            = fun bar_ _g => {foo = [{field = bar_}], bar = bar_} in
          null",
         "e"

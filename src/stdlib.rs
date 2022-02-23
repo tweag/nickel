@@ -11,7 +11,7 @@ pub const CONTRACT: (&str, &str) = (
     "<stdlib/contract.ncl>",
     include_str!("../stdlib/contract.ncl"),
 );
-pub const LIST: (&str, &str) = ("<stdlib/list>", include_str!("../stdlib/list.ncl"));
+pub const ARRAY: (&str, &str) = ("<stdlib/array>", include_str!("../stdlib/array.ncl"));
 pub const RECORD: (&str, &str) = ("<stdlib/record>", include_str!("../stdlib/record.ncl"));
 pub const STRING: (&str, &str) = ("<stdlib/string>", include_str!("../stdlib/string.ncl"));
 pub const NUM: (&str, &str) = ("<stdlib/num>", include_str!("../stdlib/num.ncl"));
@@ -19,7 +19,7 @@ pub const FUNCTION: (&str, &str) = ("<stdlib/function>", include_str!("../stdlib
 
 /// Return the list `(name, source_code)` of all the stdlib modules.
 pub fn modules() -> Vec<(&'static str, &'static str)> {
-    vec![BUILTIN, CONTRACT, LIST, RECORD, STRING, NUM, FUNCTION]
+    vec![BUILTIN, CONTRACT, ARRAY, RECORD, STRING, NUM, FUNCTION]
 }
 
 /// Accessors to the builtin contracts.
@@ -42,7 +42,7 @@ pub mod contract {
     generate_accessor!(num);
     generate_accessor!(bool);
     generate_accessor!(string);
-    generate_accessor!(list);
+    generate_accessor!(array);
     generate_accessor!(func);
     generate_accessor!(forall_var);
     generate_accessor!(fail);

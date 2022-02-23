@@ -56,19 +56,19 @@
       "%m
     = fun x => %is_fun% x,
 
-    is_list : Dyn -> Bool
+    is_array : Dyn -> Bool
     | doc m%"
-      Checks if the given value is a list.
+      Checks if the given value is a array.
 
       For example
       ```nickel
-        is_list [ 1, 2 ] =>
+        is_array [ 1, 2 ] =>
           true
-        is_list 42 =>
+        is_array 42 =>
           false
       ```
       "%m
-    = fun x => %is_list% x,
+    = fun x => %is_array% x,
 
     is_record : Dyn -> Bool
     | doc m%"
@@ -89,7 +89,7 @@
       TypeBool,
       TypeStr,
       TypeFun,
-      TypeList,
+      TypeArray,
       TypeRecord,
       Other |]
     | doc m%"
@@ -98,7 +98,7 @@
       For example:
       ```nickel
         typeof [ 1, 2 ] =>
-          `TypeList
+          `TypeArray
         typeof (fun x => x) =>
           `TypeFun
       ```
@@ -108,7 +108,7 @@
       else if %is_bool% x then `TypeBool
       else if %is_str% x then `TypeStr
       else if %is_fun% x then `TypeFun
-      else if %is_list% x then `TypeList
+      else if %is_array% x then `TypeArray
       else if %is_record% x then `TypeRecord
       else `Other,
 

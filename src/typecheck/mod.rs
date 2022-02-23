@@ -367,10 +367,10 @@ fn type_check_<L: Linearizer>(
             unify(state, strict, ty, arr).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
             type_check_(state, envs, lin, linearizer, strict, t, trg)
         }
-        Term::List(terms) => {
+        Term::Array(terms) => {
             let ty_elts = state.table.fresh_unif_var();
 
-            unify(state, strict, ty, mk_typewrapper::list(ty_elts.clone()))
+            unify(state, strict, ty, mk_typewrapper::array(ty_elts.clone()))
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
             terms
@@ -787,7 +787,7 @@ impl From<ApparentType> for TypeWrapper {
 ///   user-provided type.
 /// - if `bound_exp` is a constant (string, number, boolean or symbol) which type can be deduced
 ///   directly without unfolding the expression further, return the corresponding exact type.
-/// - if `bound_exp` is a list, return `List Dyn`.
+/// - if `bound_exp` is an array, return `Array Dyn`.
 /// - if `bound_exp` is a resolved import, return the apparent type of the imported term. Returns
 ///   `Dyn` if the resolver is not passed as a parameter to the function.
 /// - Otherwise, return an approximation of the type (currently `Dyn`, but could be more precise in
@@ -813,8 +813,8 @@ pub fn apparent_type(
         Term::Bool(_) => ApparentType::Inferred(Types(AbsType::Bool())),
         Term::Sym(_) => ApparentType::Inferred(Types(AbsType::Sym())),
         Term::Str(_) | Term::StrChunks(_) => ApparentType::Inferred(Types(AbsType::Str())),
-        Term::List(_) => {
-            ApparentType::Approximated(Types(AbsType::List(Box::new(Types(AbsType::Dyn())))))
+        Term::Array(_) => {
+            ApparentType::Approximated(Types(AbsType::Array(Box::new(Types(AbsType::Dyn())))))
         }
         Term::Var(id) => envs
             .and_then(|envs| envs.get(id))
@@ -928,7 +928,7 @@ impl TypeWrapper {
             Concrete(AbsType::DynRecord(def_ty)) => {
                 Concrete(AbsType::DynRecord(Box::new(def_ty.subst(id, to))))
             }
-            Concrete(AbsType::List(ty)) => Concrete(AbsType::List(Box::new(ty.subst(id, to)))),
+            Concrete(AbsType::Array(ty)) => Concrete(AbsType::Array(Box::new(ty.subst(id, to)))),
             Constant(x) => Constant(x),
             Ptr(x) => Ptr(x),
         }
@@ -1040,7 +1040,7 @@ pub fn unify_(
             (AbsType::Num(), AbsType::Num()) => Ok(()),
             (AbsType::Bool(), AbsType::Bool()) => Ok(()),
             (AbsType::Str(), AbsType::Str()) => Ok(()),
-            (AbsType::List(tyw1), AbsType::List(tyw2)) => unify_(state, *tyw1, *tyw2),
+            (AbsType::Array(tyw1), AbsType::Array(tyw2)) => unify_(state, *tyw1, *tyw2),
             (AbsType::Sym(), AbsType::Sym()) => Ok(()),
             (AbsType::Arrow(s1s, s1t), AbsType::Arrow(s2s, s2t)) => {
                 unify_(state, (*s1s).clone(), (*s2s).clone()).map_err(|err| {
@@ -1404,7 +1404,7 @@ fn constrain_var(state: &mut State, tyw: &TypeWrapper, p: usize) {
                 | AbsType::Flat(_)
                 | AbsType::RowEmpty()
                 | AbsType::Var(_) => (),
-                AbsType::List(tyw) => constrain_var_(state, HashSet::new(), tyw.as_ref(), p),
+                AbsType::Array(tyw) => constrain_var_(state, HashSet::new(), tyw.as_ref(), p),
                 AbsType::RowExtend(id, tyw, rest) => {
                     constr.insert(id.clone());
                     tyw.iter()

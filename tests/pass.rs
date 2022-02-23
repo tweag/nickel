@@ -63,8 +63,8 @@ fn functions() {
 }
 
 #[test]
-fn lists() {
-    check_file("lists.ncl");
+fn arrays() {
+    check_file("arrays.ncl");
 }
 
 #[test]

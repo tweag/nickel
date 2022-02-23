@@ -78,7 +78,7 @@ name = "functions"
 harness = false
 
 [[bench]]
-name = "lists"
+name = "arrays"
 harness = false
 
 # [[bench]]

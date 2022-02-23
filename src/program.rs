@@ -248,8 +248,8 @@ mod tests {
         let t = eval_full("[(1 + 1), (\"a\" ++ \"b\"), ([ 1, [1 + 2] ])]").unwrap();
         let mut expd = parse("[2, \"ab\", [1, [3]]]").unwrap();
 
-        // String are parsed as StrChunks, but evaluated to Str, so we need to hack list a bit
-        if let Term::List(ref mut data) = SharedTerm::make_mut(&mut expd.term) {
+        // Strings are parsed as StrChunks, but evaluated to Str, so we need to hack the array a bit
+        if let Term::Array(ref mut data) = SharedTerm::make_mut(&mut expd.term) {
             *data.get_mut(1).unwrap() = mk_term::string("ab");
         } else {
             panic!();

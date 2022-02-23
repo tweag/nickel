@@ -27,11 +27,11 @@ fn elem_at() {
     );
 
     assert_matches!(
-        eval("list.elem_at 0 {} 0"),
+        eval("array.elem_at 0 {} 0"),
         Err(Error::EvalError(EvalError::BlameError(..)))
     );
     assert_matches!(
-        eval("list.elem_at \"a\" []"),
+        eval("array.elem_at \"a\" []"),
         Err(Error::EvalError(EvalError::BlameError(..)))
     );
 }
@@ -55,21 +55,21 @@ fn head_tail() {
         Err(Error::EvalError(EvalError::TypeError(..)))
     );
 
-    // TODO: add non-empty contract to the input of list.head and list.tail
+    // TODO: add non-empty contract to the input of array.head and array.tail
     // assert_matches!(
-    //     eval("list.head []"),
+    //     eval("array.head []"),
     //     Err(Error::EvalError(EvalError::BlameError(..)))
     // );
     // assert_matches!(
-    //     eval("list.tail []"),
+    //     eval("array.tail []"),
     //     Err(Error::EvalError(EvalError::BlameError(..)))
     // );
     assert_matches!(
-        eval("list.head false"),
+        eval("array.head false"),
         Err(Error::EvalError(EvalError::BlameError(..)))
     );
     assert_matches!(
-        eval("list.tail 2"),
+        eval("array.tail 2"),
         Err(Error::EvalError(EvalError::BlameError(..)))
     );
 }

@@ -18,15 +18,15 @@
 
     let encoded =
       base
-      |> list.map encode
-      |> list.map (fun nChurch =>
+      |> array.map encode
+      |> array.map (fun nChurch =>
         add (mult (encode 3) nChurch) (encode 5))
-      |> list.fold add (encode 0) in
+      |> array.fold add (encode 0) in
 
     let decoded =
       base
-      |> list.map (fun n => 3*n + 5)
-      |> list.foldl (fun acc n => acc + n) 0 in
+      |> array.map (fun n => 3*n + 5)
+      |> array.foldl (fun acc n => acc + n) 0 in
 
     decode encoded == decoded,
 }

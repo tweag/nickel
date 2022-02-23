@@ -53,4 +53,4 @@ let Assert = fun l x => x || %blame% l in
   // value/contract-default <- contract/contract-default
   ((val & (ctr_num & def)).a == 1 | Assert)),
 ]
-|> list.foldl (fun x y => (x | Assert) && y) true
+|> array.foldl (fun x y => (x | Assert) && y) true

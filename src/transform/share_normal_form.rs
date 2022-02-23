@@ -15,7 +15,7 @@
 //! two times here.
 //!
 //! The transformation replaces such subexpressions, namely the content of the fields
-//! of records and the elements of lists - `(1 + 1)` in our example -, with fresh variables
+//! of records and the elements of arrays - `(1 + 1)` in our example -, with fresh variables
 //! introduced by `let`  added at the head of the term:
 //!
 //! ```text
@@ -38,7 +38,7 @@ use crate::term::{BindingType, RichTerm, Term};
 /// This function is not recursive: it just tries to apply one step of the transformation to
 /// the top-level node of the AST. For example, it transforms `[1 + 1, [1 + 2]]` to `let %0 = 1
 /// + 1 in [%0, [1 + 2]]`: the nested subterm `[1 + 2]` is left as it was. If the term is
-/// neither a record, a list nor an enriched value, it is returned the same.  In other words,
+/// neither a record, an array nor an enriched value, it is returned the same.  In other words,
 /// the transformation is implemented as rewrite rules, and must be used in conjunction a
 /// traversal to obtain a full transformation.
 pub fn transform_one(rt: RichTerm) -> RichTerm {
@@ -113,7 +113,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
 
                 with_bindings(Term::RecRecord(map, dyn_fields, attrs), bindings, pos, BindingType::Revertible)
             },
-            Term::List(ts) => {
+            Term::Array(ts) => {
                 let mut bindings = Vec::with_capacity(ts.len());
 
                 let ts = ts
@@ -130,7 +130,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                     })
                     .collect();
 
-                with_bindings(Term::List(ts), bindings, pos, BindingType::Normal)
+                with_bindings(Term::Array(ts), bindings, pos, BindingType::Normal)
             },
             Term::MetaValue(meta) if meta.value.as_ref().map(|t| should_share(&t.term)).unwrap_or(false) => {
                     let mut meta = meta;

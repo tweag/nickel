@@ -686,7 +686,7 @@ fn report_ty_path(l: &label::Label, files: &mut Files<String>) -> (Label<FileId>
         (String::from("expected type"), Vec::new())
     } else if ty_path::has_no_arrow(&l.path) {
         match l.path.last() {
-            Some(ty_path::Elem::List) => (String::from("expected list element type"), Vec::new()),
+            Some(ty_path::Elem::Array) => (String::from("expected array element type"), Vec::new()),
             Some(ty_path::Elem::Field(_)) => (String::from("expected field type"), Vec::new()),
             _ => unreachable!(),
         }
@@ -708,7 +708,7 @@ fn report_ty_path(l: &label::Label, files: &mut Files<String>) -> (Label<FileId>
             ],
         )
     } else {
-        // We ignore the `Field` and `List` elements of the path, since they do not impact
+        // We ignore the `Field` and `Array` elements of the path, since they do not impact
         // polarity, and only consider "higher-order" elements to customize error messages.
         let last = l
             .path

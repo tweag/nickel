@@ -29,7 +29,7 @@ generate_counter!(FreshVariableCounter, usize);
 /// Result of the equality of two terms.
 ///
 /// The equality of two terms can either be computed directly for base types (`Num`, `Str`, etc.),
-/// in which case `Bool` is returned. Otherwise, composite values such as lists or records generate
+/// in which case `Bool` is returned. Otherwise, composite values such as arrays or records generate
 /// new subequalities, as represented by the last variant as a vector of pairs of terms.  This list
 /// should be non-empty (it if was empty, `eq` should have returned `Bool(true)` directly).  The
 /// first element of this non-empty list is encoded as the two first parameters of `Eqs`, while the
@@ -191,8 +191,8 @@ fn process_unary_operation(
             Term::Bool(matches!(*t, Term::Fun(..))),
             pos_op_inh,
         ))),
-        UnaryOp::IsList() => Ok(Closure::atomic_closure(RichTerm::new(
-            Term::Bool(matches!(*t, Term::List(..))),
+        UnaryOp::IsArray() => Ok(Closure::atomic_closure(RichTerm::new(
+            Term::Bool(matches!(*t, Term::Array(..))),
             pos_op_inh,
         ))),
         UnaryOp::IsRecord() => Ok(Closure::atomic_closure(RichTerm::new(
@@ -418,10 +418,10 @@ fn process_unary_operation(
                 ))
             }
         },
-        UnaryOp::GoList() => match_sharedterm! {t, with {
+        UnaryOp::GoArray() => match_sharedterm! {t, with {
                 Term::Lbl(l) => {
                     let mut l = l;
-                    l.path.push(ty_path::Elem::List);
+                    l.path.push(ty_path::Elem::Array);
                     Ok(Closure::atomic_closure(RichTerm::new(
                         Term::Lbl(l),
                         pos_op_inh,
@@ -430,7 +430,7 @@ fn process_unary_operation(
             } else {
                 Err(EvalError::TypeError(
                     String::from("Label"),
-                    String::from("goList"),
+                    String::from("go_array"),
                     arg_pos,
                     RichTerm { term: t, pos },
                 ))
@@ -482,7 +482,7 @@ fn process_unary_operation(
                     fields.sort();
                     let terms = fields.into_iter().map(mk_term::string).collect();
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::List(terms),
+                        Term::Array(terms),
                         pos_op_inh,
                     )))
                 }
@@ -504,7 +504,7 @@ fn process_unary_operation(
                     values.sort_by(|(id1, _), (id2, _)| id1.cmp(id2));
                     let terms = values.into_iter().map(|(_, t)| t).collect();
                     Ok(Closure {
-                        body: RichTerm::new(Term::List(terms), pos_op_inh),
+                        body: RichTerm::new(Term::Array(terms), pos_op_inh),
                         env,
                     })
                 }
@@ -517,16 +517,16 @@ fn process_unary_operation(
                 ))
             }
         },
-        UnaryOp::ListMap() => {
+        UnaryOp::ArrayMap() => {
             let (f, ..) = stack
                 .pop_arg()
                 .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("map"), pos_op))?;
             match_sharedterm! {t, with {
-                    Term::List(ts) => {
+                    Term::Array(ts) => {
                         let mut shared_env = Environment::new();
                         let f_as_var = f.body.closurize(&mut env, f.env);
 
-                        // List elements are closurized to preserve lazyness of data structures. It
+                        // Array elements are closurized to preserve lazyness of data structures. It
                         // maintains the invariant that any data structure only contain thunks (that is,
                         // currently, variables).
                         let ts = ts
@@ -538,13 +538,13 @@ fn process_unary_operation(
                             .collect();
 
                         Ok(Closure {
-                            body: RichTerm::new(Term::List(ts), pos_op_inh),
+                            body: RichTerm::new(Term::Array(ts), pos_op_inh),
                             env: shared_env,
                         })
                     }
                 } else {
                     Err(EvalError::TypeError(
-                        String::from("List"),
+                        String::from("Array"),
                         String::from("map, 2nd argument"),
                         arg_pos,
                         RichTerm { term: t, pos },
@@ -552,7 +552,7 @@ fn process_unary_operation(
                 }
             }
         }
-        UnaryOp::ListGen() => {
+        UnaryOp::ArrayGen() => {
             let (f, _) = stack
                 .pop_arg()
                 .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("generate"), pos_op))?;
@@ -571,7 +571,7 @@ fn process_unary_operation(
                     let mut shared_env = Environment::new();
                     let f_as_var = f.body.closurize(&mut env, f.env);
 
-                    // List elements are closurized to preserve lazyness of data structures. It
+                    // Array elements are closurized to preserve lazyness of data structures. It
                     // maintains the invariant that any data structure only contain thunks (that is,
                     // currently, variables).
                     let ts = (0..n_int)
@@ -582,7 +582,7 @@ fn process_unary_operation(
                         .collect();
 
                     Ok(Closure {
-                        body: RichTerm::new(Term::List(ts), pos_op_inh),
+                        body: RichTerm::new(Term::Array(ts), pos_op_inh),
                         env: shared_env,
                     })
                 }
@@ -605,7 +605,7 @@ fn process_unary_operation(
                         let mut shared_env = Environment::new();
                         let f_as_var = f.body.closurize(&mut env, f.env);
 
-                        // As for `ListMap` (see above), we closurize the content of fields
+                        // As for `ArrayMap` (see above), we closurize the content of fields
                         let rec = rec
                             .into_iter()
                             .map(|e| {
@@ -644,7 +644,7 @@ fn process_unary_operation(
             }
         }
         UnaryOp::DeepSeq() => {
-            /// Build a closure that forces a given list of terms, and at the end resumes the
+            /// Build a closure that forces a given array of terms, and at the end resumes the
             /// evaluation of the argument on the top of the stack.
             ///
             /// Requires its first argument to be non-empty.
@@ -668,7 +668,7 @@ fn process_unary_operation(
                     let terms = map.into_iter().map(|(_, t)| t);
                     Ok(seq_terms(terms, env, pos_op))
                 }
-                Term::List(ts) if !ts.is_empty() => Ok(seq_terms(ts.into_iter(), env, pos_op)),
+                Term::Array(ts) if !ts.is_empty() => Ok(seq_terms(ts.into_iter(), env, pos_op)),
                 _ => {
                     if let Some((next, ..)) = stack.pop_arg() {
                         Ok(next)
@@ -678,48 +678,48 @@ fn process_unary_operation(
                 }
             }
         }
-        UnaryOp::ListHead() => {
-            if let Term::List(ts) = &*t {
+        UnaryOp::ArrayHead() => {
+            if let Term::Array(ts) = &*t {
                 if let Some(head) = ts.first() {
                     Ok(Closure {
                         body: head.clone(),
                         env,
                     })
                 } else {
-                    Err(EvalError::Other(String::from("head: empty list"), pos_op))
+                    Err(EvalError::Other(String::from("head: empty array"), pos_op))
                 }
             } else {
                 Err(EvalError::TypeError(
-                    String::from("List"),
+                    String::from("Array"),
                     String::from("head"),
                     arg_pos,
                     RichTerm { term: t, pos },
                 ))
             }
         }
-        UnaryOp::ListTail() => match_sharedterm! {t, with {
-                    Term::List(ts) => {
+        UnaryOp::ArrayTail() => match_sharedterm! {t, with {
+                    Term::Array(ts) => {
                         let mut ts_it = ts.into_iter();
                         if ts_it.next().is_some() {
                             Ok(Closure {
-                                body: RichTerm::new(Term::List(ts_it.collect()), pos_op_inh),
+                                body: RichTerm::new(Term::Array(ts_it.collect()), pos_op_inh),
                                 env,
                             })
                         } else {
-                            Err(EvalError::Other(String::from("tail: empty list"), pos_op))
+                            Err(EvalError::Other(String::from("tail: empty array"), pos_op))
                         }
                     }
                 } else {
                     Err(EvalError::TypeError(
-                        String::from("List"),
+                        String::from("Array"),
                         String::from("tail"),
                         arg_pos,
                         RichTerm { term: t, pos },
                     ))
                 }
         },
-        UnaryOp::ListLength() => {
-            if let Term::List(ts) = &*t {
+        UnaryOp::ArrayLength() => {
+            if let Term::Array(ts) = &*t {
                 // A num does not have any free variable so we can drop the environment
                 Ok(Closure {
                     body: RichTerm::new(Term::Num(ts.len() as f64), pos_op_inh),
@@ -727,7 +727,7 @@ fn process_unary_operation(
                 })
             } else {
                 Err(EvalError::TypeError(
-                    String::from("List"),
+                    String::from("Array"),
                     String::from("length"),
                     arg_pos,
                     RichTerm { term: t, pos },
@@ -803,7 +803,7 @@ fn process_unary_operation(
                     .map(|c| RichTerm::from(Term::Str(c.to_string())))
                     .collect();
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::List(ts),
+                    Term::Array(ts),
                     pos_op_inh,
                 )))
             } else {
@@ -1707,9 +1707,9 @@ fn process_binary_operation(
                 ))
             }
         },
-        BinaryOp::ListConcat() => match_sharedterm! {t1, with {
-                Term::List(ts1) => match_sharedterm! {t2, with {
-                        Term::List(ts2) => {
+        BinaryOp::ArrayConcat() => match_sharedterm! {t1, with {
+                Term::Array(ts1) => match_sharedterm! {t2, with {
+                        Term::Array(ts2) => {
                             let mut env = Environment::new();
                             let mut ts: Vec<RichTerm> = Vec::with_capacity(ts1.len() + ts2.len());
                             ts.extend(
@@ -1722,13 +1722,13 @@ fn process_binary_operation(
                             );
 
                             Ok(Closure {
-                                body: RichTerm::new(Term::List(ts), pos_op_inh),
+                                body: RichTerm::new(Term::Array(ts), pos_op_inh),
                                 env,
                             })
                         }
                     } else {
                         Err(EvalError::TypeError(
-                            String::from("List"),
+                            String::from("Array"),
                             String::from("@, 2nd operand"),
                             snd_pos,
                             RichTerm {
@@ -1741,7 +1741,7 @@ fn process_binary_operation(
                 },
             } else {
                 Err(EvalError::TypeError(
-                    String::from("List"),
+                    String::from("Array"),
                     String::from("@, 1st operand"),
                     fst_pos,
                     RichTerm {
@@ -1751,8 +1751,8 @@ fn process_binary_operation(
                 ))
             }
         },
-        BinaryOp::ListElemAt() => match (&*t1, &*t2) {
-            (Term::List(ts), Term::Num(n)) => {
+        BinaryOp::ArrayElemAt() => match (&*t1, &*t2) {
+            (Term::Array(ts), Term::Num(n)) => {
                 let n_int = *n as usize;
                 if n.fract() != 0.0 {
                     Err(EvalError::Other(format!("elemAt: expected the 2nd agument to be an integer, got the floating-point value {}", n), pos_op))
@@ -1765,7 +1765,7 @@ fn process_binary_operation(
                     })
                 }
             }
-            (Term::List(_), _) => Err(EvalError::TypeError(
+            (Term::Array(_), _) => Err(EvalError::TypeError(
                 String::from("Num"),
                 String::from("elemAt, 2nd argument"),
                 snd_pos,
@@ -1775,7 +1775,7 @@ fn process_binary_operation(
                 },
             )),
             (_, _) => Err(EvalError::TypeError(
-                String::from("List"),
+                String::from("Array"),
                 String::from("elemAt, 1st argument"),
                 fst_pos,
                 RichTerm {
@@ -1956,12 +1956,12 @@ fn process_binary_operation(
         }
         BinaryOp::StrSplit() => match (&*t1, &*t2) {
             (Term::Str(s1), Term::Str(s2)) => {
-                let list: Vec<RichTerm> = s1
+                let array: Vec<RichTerm> = s1
                     .split(s2)
                     .map(|s| Term::Str(String::from(s)).into())
                     .collect();
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::List(list),
+                    Term::Array(array),
                     pos_op_inh,
                 )))
             }
@@ -2058,14 +2058,14 @@ fn process_binary_operation(
                         mk_record!(
                             ("match", Term::Str(String::from(first_match.as_str()))),
                             ("index", Term::Num(first_match.start() as f64)),
-                            ("groups", Term::List(groups))
+                            ("groups", Term::Array(groups))
                         )
                     } else {
                         //FIXME: what should we return when there's no match?
                         mk_record!(
                             ("match", Term::Str(String::new())),
                             ("index", Term::Num(-1.)),
-                            ("groups", Term::List(Vec::new()))
+                            ("groups", Term::Array(Vec::new()))
                         )
                     };
 
@@ -2289,8 +2289,8 @@ fn process_nary_operation(
 ///
 /// # Return
 ///
-/// Return either a boolean when the equality can be computed directly, or a new non-empty list of equalities to be checked if
-/// operands are composite values.
+/// Return either a boolean when the equality can be computed directly, or a new non-empty list of
+/// equalities to be checked if operands are composite values.
 fn eq(env: &mut Environment, c1: Closure, c2: Closure) -> EqResult {
     let Closure {
         body: RichTerm { term: t1, .. },
@@ -2354,7 +2354,7 @@ fn eq(env: &mut Environment, c1: Closure, c2: Closure) -> EqResult {
                 gen_eqs(eqs, env, env1, env2)
             }
         }
-        (Term::List(l1), Term::List(l2)) if l1.len() == l2.len() => {
+        (Term::Array(l1), Term::Array(l2)) if l1.len() == l2.len() => {
             // Equalities are tested in reverse order, but that shouldn't matter. If it
             // does, just do `eqs.rev()`
             let eqs = l1.into_iter().zip(l2.into_iter());

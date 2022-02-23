@@ -773,13 +773,13 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
 
                 RichTerm::new(Term::RecRecord(map, dyn_fields, attrs), pos)
             }
-            Term::List(ts) => {
+            Term::Array(ts) => {
                 let ts = ts
                     .into_iter()
                     .map(|t| subst_(t, global_env, env, Cow::Borrowed(bound.as_ref())))
                     .collect();
 
-                RichTerm::new(Term::List(ts), pos)
+                RichTerm::new(Term::Array(ts), pos)
             }
             Term::StrChunks(chunks) => {
                 let chunks = chunks

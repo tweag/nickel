@@ -2,7 +2,7 @@
 //!
 //! Replace a let-binding with destructuring by a classical let-binding.
 //! It will first destruct the pattern and create a new var for each field of the pattern.
-//! After that, it will construct a new Record/List from the extracted fields.
+//! After that, it will construct a new Record/Array from the extracted fields.
 //!
 //! # Example
 //!

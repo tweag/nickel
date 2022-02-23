@@ -18,14 +18,14 @@ let Assert = fun l x => x || %blame% l in
   `Less != 0,
   `Greater != false,
 
-  // lists
+  // arrays
   [] == [],
   [(1 + 0), (1 + 1), (1 + 1 + 1)] == [1, 2, 3],
   [(1 + 0), ("a" ++ "b"), (if true then true else false)]
     == [1, "ab", true],
   [[[]]] == [[[]]],
   [[1], [[2]]] == [[2 + (-1)], [[1 + 1]]],
-  [[true, false]] == list.flatten [[[true, false]]],
+  [[true, false]] == array.flatten [[[true, false]]],
 
   [] != [1],
   [] != 1,
@@ -75,4 +75,4 @@ let Assert = fun l x => x || %blame% l in
       == false
   ),
 ]
-|> list.foldl (fun x y => (x | Assert) && y) true
+|> array.foldl (fun x y => (x | Assert) && y) true

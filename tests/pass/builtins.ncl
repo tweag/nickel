@@ -21,10 +21,10 @@ let Assert = fun l x => x || %blame% l in
     %deep_seq% r (r.a.b) == 3,
 
   [1,2,3]
-   |> list.map (fun x => x + 1)
-   |> list.filter (fun x => x > 2)
+   |> array.map (fun x => x + 1)
+   |> array.filter (fun x => x > 2)
    |> builtin.serialize `Json
    |> builtin.deserialize `Json
    == [3,4],
 ]
-|> list.foldl (fun x y => (x | Assert) && y) true
+|> array.foldl (fun x y => (x | Assert) && y) true

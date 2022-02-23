@@ -144,7 +144,7 @@ impl<'de> Deserialize<'de> for RichTerm {
 }
 
 /// Check that a term is serializable. Serializable terms are booleans, numbers, strings, enum,
-/// lists of serializable terms or records of serializable terms.
+/// arrays of serializable terms or records of serializable terms.
 pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), SerializationError> {
     use crate::term;
     use Term::*;
@@ -165,7 +165,7 @@ pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), SerializationE
                 map.iter().try_for_each(|(_, t)| validate(format, t))?;
                 Ok(())
             }
-            List(vec) => {
+            Array(vec) => {
                 vec.iter().try_for_each(|t| validate(format, t))?;
                 Ok(())
             }
@@ -337,7 +337,7 @@ mod tests {
     }
 
     #[test]
-    fn lists() {
+    fn arrays() {
         assert_json_eq!("[]", json!([]));
         assert_json_eq!("[null, (1+1), (2+2), (3+3)]", json!([null, 2, 4, 6]));
         assert_json_eq!(
@@ -345,7 +345,7 @@ mod tests {
             json!(["a", "bc", "def", "g"])
         );
         assert_json_eq!(
-            r#"list.fold (fun elt acc => [[elt]] @ acc) [] [1, 2, 3, 4]"#,
+            r#"array.fold (fun elt acc => [[elt]] @ acc) [] [1, 2, 3, 4]"#,
             json!([[1], [2], [3], [4]])
         );
         assert_json_eq!("[\"a\", 1, false, `foo]", json!(["a", 1, false, "foo"]));

@@ -134,17 +134,17 @@ fn dynamic_record_simple() {
 }
 
 #[test]
-fn simple_list() {
-    assert_typecheck_fails!("[1, 2, false] : List Num");
-    assert_typecheck_fails!("[(1 : Str), true, \"b\"] : List");
-    assert_typecheck_fails!("[1, 2, \"3\"] : List Str");
+fn simple_array() {
+    assert_typecheck_fails!("[1, 2, false] : Array Num");
+    assert_typecheck_fails!("[(1 : Str), true, \"b\"] : Array");
+    assert_typecheck_fails!("[1, 2, \"3\"] : Array Str");
 }
 
 #[test]
-fn lists_operations() {
-    assert_typecheck_fails!("(fun l => %head% l) : forall a b. (List a -> b)");
+fn arrays_operations() {
+    assert_typecheck_fails!("(fun l => %head% l) : forall a b. (Array a -> b)");
     assert_typecheck_fails!(
-        "(fun f l => %elem_at% (%map% l f) 0) : forall a. (forall b. (a -> b) -> List -> b)"
+        "(fun f l => %elem_at% (%map% l f) 0) : forall a. (forall b. (a -> b) -> Array -> b)"
     );
 }
 

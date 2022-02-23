@@ -53,8 +53,8 @@ pub enum NormalToken<'input> {
     Bool,
     #[token("Str")]
     Str,
-    #[token("List")]
-    List,
+    #[token("Array")]
+    Array,
 
     #[token("if")]
     If,
@@ -157,8 +157,8 @@ pub enum NormalToken<'input> {
     IsStr,
     #[token("%is_fun%")]
     IsFun,
-    #[token("%is_list%")]
-    IsList,
+    #[token("%is_array%")]
+    IsArray,
     #[token("%is_record%")]
     IsRecord,
 
@@ -176,8 +176,8 @@ pub enum NormalToken<'input> {
     GoCodom,
     #[token("%go_field%")]
     GoField,
-    #[token("%go_list%")]
-    GoList,
+    #[token("%go_array%")]
+    GoArray,
 
     #[token("%wrap%")]
     Wrap,
@@ -211,7 +211,7 @@ pub enum NormalToken<'input> {
     #[token("%elem_at%")]
     ElemAt,
     #[token("%generate%")]
-    ListGen,
+    ArrayGen,
     #[token("merge")]
     Merge,
     #[token("default")]

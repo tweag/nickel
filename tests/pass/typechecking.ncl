@@ -99,20 +99,20 @@ let typecheck = [
   let xDyn = if false then true else false in
     let yDyn = 1 + 1 in (%seq% xDyn yDyn : Dyn),
 
-  // lists_simple
+  // arrays_simple
   [1, "2", false],
   //TODO: the type system may accept the following test at some point.
-  //([1, "2", false] : List),
-  ["a", "b", "c"] : List Str,
-  [1, 2, 3] : List Num,
-  (fun x => [x]) : forall a. a -> List a,
+  //([1, "2", false] : Array),
+  ["a", "b", "c"] : Array Str,
+  [1, 2, 3] : Array Num,
+  (fun x => [x]) : forall a. a -> Array a,
 
-  // lists_ops
-  (fun l => %tail% l) : forall a. List a -> List a,
-  (fun l => %head% l) : forall a. List a -> a,
-  (fun f l => %map% l f) : forall a b. (a -> b) -> List a -> List b,
-  (fun l1 => fun l2 => l1 @ l2) : forall a. List a -> List a -> List a,
-  (fun i l => %elem_at% l i) : forall a. Num -> List a -> a,
+  // arrays_ops
+  (fun l => %tail% l) : forall a. Array a -> Array a,
+  (fun l => %head% l) : forall a. Array a -> a,
+  (fun f l => %map% l f) : forall a b. (a -> b) -> Array a -> Array b,
+  (fun l1 => fun l2 => l1 @ l2) : forall a. Array a -> Array a -> Array a,
+  (fun i l => %elem_at% l i) : forall a. Num -> Array a -> a,
 
   // recursive_records
   {a : Num = 1, b = a + 1} : {a : Num, b : Num},
@@ -146,7 +146,7 @@ let typecheck = [
     else
       gen_ (acc @ [x]) (x - 1)
     }.gen_
-    : List Num -> Num -> List Num,
+    : Array Num -> Num -> Array Num,
 
   {f = fun x => f x}.f : forall a. a -> a,
 
@@ -157,10 +157,10 @@ let typecheck = [
   let x = false in (x || true : Bool),
   let x = false in let y = x in let z = y in (z : Bool),
   // Regression test following, see [#297](https://github.com/tweag/nickel/pull/297). Check that
-  // [apparent_type](../fn.apparent_type.html) doesn't silently convert list literals from `List
-  // T` (for `T` a type or a type variable) to `List Dyn`.
-  {foo = [1]} : {foo : List Num},
-  (let y = [] in y) : forall a. List a,
+  // [apparent_type](../fn.apparent_type.html) doesn't silently convert array literals from `Array
+  // T` (for `T` a type or a type variable) to `Array Dyn`.
+  {foo = [1]} : {foo : Array Num},
+  (let y = [] in y) : forall a. Array a,
 
   // full_annotations
   let x : Num | doc "some" | default = 1 in x + 1 : Num,
@@ -180,9 +180,9 @@ let typecheck = [
   (string.length "Ok") : Num,
   (string.length "Ok" == 2) : Bool,
   // partial application
-  (string.split ".") : Str -> List Str,
-  (list.length [] == 0) : Bool,
-  (list.map (fun x => x ++ "1") ["a", "b", "c"]) : List Str,
+  (string.split ".") : Str -> Array Str,
+  (array.length [] == 0) : Bool,
+  (array.map (fun x => x ++ "1") ["a", "b", "c"]) : Array Str,
 ] in
 
 true

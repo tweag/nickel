@@ -22,8 +22,8 @@ fn fibonacci() {
 }
 
 #[test]
-fn lists() {
-    eval_file("lists/lists.ncl").unwrap();
+fn arrays() {
+    eval_file("arrays/arrays.ncl").unwrap();
 }
 
 #[test]

@@ -15,9 +15,9 @@
       "%m
     = fun f r => %record_map% r f,
 
-    fields | { ; Dyn} -> List Str
+    fields | { ; Dyn} -> Array Str
     | doc m%"
-      Given a record, results in a list of the string representation of all fields in the record.
+      Given a record, results in a array of the string representation of all fields in the record.
 
       ```nickel
         fields { one = 1, two = 2 } =>
@@ -26,9 +26,9 @@
       "%m
     = fun r => %fields% r,
 
-    values | { ; Dyn} -> List
+    values | { ; Dyn} -> Array
     | doc m%"
-      Given a record, results in a list containing all the values in that record.
+      Given a record, results in a array containing all the values in that record.
 
       ```nickel
         values { one = 1, world = "world" }

@@ -41,8 +41,8 @@ pub enum Destruct {
         rest: Option<Ident>,
         span: RawSpan,
     },
-    /// A list destructuring. Not implemented.
-    List { matches: Vec<Match>, span: RawSpan },
+    /// An array destructuring. Not implemented.
+    Array { matches: Vec<Match>, span: RawSpan },
     /// An empty destructuring. In this case, the pattern is a clasical `let var = something in
     /// body` form.
     Empty,
@@ -78,7 +78,7 @@ impl Destruct {
     /// Get the inner vector of `Matches` of the pattern. If `Empty` return a empty vector.
     pub fn inner(self) -> Vec<Match> {
         match self {
-            Destruct::Record { matches, .. } | Destruct::List { matches, .. } => matches,
+            Destruct::Record { matches, .. } | Destruct::Array { matches, .. } => matches,
             Destruct::Empty => vec![],
         }
     }
@@ -86,7 +86,7 @@ impl Destruct {
     // Generate a label for this `Destruct`. if `Empty`, return default label.
     fn label(&self) -> Label {
         match *self {
-            Destruct::Record { span, .. } | Destruct::List { span, .. } => Label {
+            Destruct::Record { span, .. } | Destruct::Array { span, .. } => Label {
                 span,
                 ..Default::default()
             },
@@ -128,7 +128,7 @@ impl Match {
                     Term::MetaValue(MetaValue::flatten(m, d.as_contract_with_lbl(label))).into(),
                 )
             }
-            Match::Assign(_id, _m, (_, _d @ Destruct::List { .. })) => unimplemented!(),
+            Match::Assign(_id, _m, (_, _d @ Destruct::Array { .. })) => unimplemented!(),
         }
     }
 }

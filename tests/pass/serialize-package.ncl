@@ -9,7 +9,7 @@ let ctr = {
     buildInputs | doc "
                   The list of inputs for this package, specified as a
                   `NixPackage`."
-                | List NixPackage,
+                | Array NixPackage,
     // Many more missing
   },
 
@@ -25,7 +25,7 @@ let ctr = {
                ```
                myPkg = {
                  name  = \"myPkg\",
-                 buildInputs | List NixPackage = [{package = \"hello\"}]\",
+                 buildInputs | Array NixPackage = [{package = \"hello\"}]\",
                }
                ```
                This will give the following attribute sets once imported in Nix:
