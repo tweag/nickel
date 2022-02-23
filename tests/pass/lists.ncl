@@ -2,13 +2,13 @@ let Assert = fun l x => x || %blame% l in
 
 [
   // accesses
-  lists.elem_at 1 [1,2,3] == 2,
-  lists.elem_at 1 (lists.map (fun x => x + 1) [1,2,3]) == 3,
+  list.elem_at 1 [1,2,3] == 2,
+  list.elem_at 1 (list.map (fun x => x + 1) [1,2,3]) == 3,
 
   // length
-  lists.length [] == 0,
-  lists.length [1,2,3] == 3,
-  lists.length ([] @ [1,2] @ [3,4] @ []) == 4,
+  list.length [] == 0,
+  list.length [1,2,3] == 3,
+  list.length ([] @ [1,2] @ [3,4] @ []) == 4,
 
   // Test case added after https://github.com/tweag/nickel/issues/154
   let x = 1 in let l = [x] @ [2] in %head% l == 1,
@@ -33,4 +33,4 @@ let Assert = fun l x => x || %blame% l in
     let isZ = fun x => x == 0 in
     all isZ [0, 0, 0, 1] == false,
 ]
-|> lists.foldl (fun x y => (x | Assert) && y) true
+|> list.foldl (fun x y => (x | Assert) && y) true

@@ -176,13 +176,13 @@ let typecheck = [
   {"foo" = 1} : {foo : Num},
 
   // stdlib typechecking:
-  strings.length : Str -> Num,
-  (strings.length "Ok") : Num,
-  (strings.length "Ok" == 2) : Bool,
+  string.length : Str -> Num,
+  (string.length "Ok") : Num,
+  (string.length "Ok" == 2) : Bool,
   // partial application
-  (strings.split ".") : Str -> List Str,
-  (lists.length [] == 0) : Bool,
-  (lists.map (fun x => x ++ "1") ["a", "b", "c"]) : List Str,
+  (string.split ".") : Str -> List Str,
+  (list.length [] == 0) : Bool,
+  (list.map (fun x => x ++ "1") ["a", "b", "c"]) : List Str,
 ] in
 
 true

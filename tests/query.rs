@@ -18,7 +18,7 @@ pub fn test_query_metadata_basic() {
 #[test]
 pub fn test_query_metadata_from_func() {
     let mut program = Program::new_from_source(
-        "builtins.seq 2 ((3+1) | doc \"Test from func\")".as_bytes(),
+        "builtin.seq 2 ((3+1) | doc \"Test from func\")".as_bytes(),
         "regr_tests",
     )
     .unwrap();

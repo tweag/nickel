@@ -201,7 +201,7 @@ impl Types {
         pol: bool,
         sy: &mut i32,
     ) -> Result<RichTerm, UnboundTypeVariableError> {
-        use crate::stdlib::contracts;
+        use crate::stdlib::contract;
 
         fn get_var(
             vars: &HashMap<Ident, (RichTerm, RichTerm)>,
@@ -219,38 +219,38 @@ impl Types {
         }
 
         let ctr = match self.0 {
-            AbsType::Dyn() => contracts::dynamic(),
-            AbsType::Num() => contracts::num(),
-            AbsType::Bool() => contracts::bool(),
-            AbsType::Str() => contracts::string(),
+            AbsType::Dyn() => contract::dynamic(),
+            AbsType::Num() => contract::num(),
+            AbsType::Bool() => contract::bool(),
+            AbsType::Str() => contract::string(),
             //TODO: optimization: have a specialized contract for `List Dyn`, to avoid mapping an
             //always successful contract on each element.
-            AbsType::List(ref ty) => mk_app!(contracts::list(), ty.subcontract(h, pol, sy)?),
+            AbsType::List(ref ty) => mk_app!(contract::list(), ty.subcontract(h, pol, sy)?),
             AbsType::Sym() => panic!("Are you trying to check a Sym at runtime?"),
             AbsType::Arrow(ref s, ref t) => mk_app!(
-                contracts::func(),
+                contract::func(),
                 s.subcontract(h.clone(), !pol, sy)?,
                 t.subcontract(h, pol, sy)?
             ),
             AbsType::Flat(ref t) => t.clone(),
             AbsType::Var(ref id) => get_var(&h, id, true)?,
             AbsType::Forall(ref i, ref t) => {
-                let inst_var = mk_app!(contracts::forall_var(), Term::Sym(*sy), Term::Bool(pol));
+                let inst_var = mk_app!(contract::forall_var(), Term::Sym(*sy), Term::Bool(pol));
 
-                let inst_tail = mk_app!(contracts::forall_tail(), Term::Sym(*sy), Term::Bool(pol));
+                let inst_tail = mk_app!(contract::forall_tail(), Term::Sym(*sy), Term::Bool(pol));
 
                 h.insert(i.clone(), (inst_var, inst_tail));
                 *sy += 1;
                 t.subcontract(h, pol, sy)?
             }
-            AbsType::RowEmpty() | AbsType::RowExtend(..) => contracts::fail(),
+            AbsType::RowEmpty() | AbsType::RowExtend(..) => contract::fail(),
             AbsType::Enum(ref r) => {
                 fn form(
                     ty: Types,
                     h: HashMap<Ident, (RichTerm, RichTerm)>,
                 ) -> Result<RichTerm, UnboundTypeVariableError> {
                     let ctr = match ty.0 {
-                        AbsType::RowEmpty() => contracts::fail(),
+                        AbsType::RowEmpty() => contract::fail(),
                         AbsType::RowExtend(_, Some(_), _) => {
                             panic!("It should be a row without type")
                         }
@@ -260,7 +260,7 @@ impl Types {
                             map.insert(id, Term::Bool(true).into());
 
                             mk_app!(
-                                contracts::row_extend(),
+                                contract::row_extend(),
                                 rest_contract,
                                 mk_fun!(
                                     "x",
@@ -289,14 +289,14 @@ impl Types {
                     h: HashMap<Ident, (RichTerm, RichTerm)>,
                 ) -> Result<RichTerm, UnboundTypeVariableError> {
                     let ctr = match &ty.0 {
-                        AbsType::RowEmpty() => contracts::empty_tail(),
-                        AbsType::Dyn() => contracts::dyn_tail(),
+                        AbsType::RowEmpty() => contract::empty_tail(),
+                        AbsType::Dyn() => contract::dyn_tail(),
                         AbsType::Var(id) => get_var(&h, id, false)?,
                         AbsType::RowExtend(id, Some(ty), rest) => {
                             let cont = form(sy, pol, rest.as_ref(), h.clone())?;
                             let row_contr = ty.subcontract(h, pol, sy)?;
                             mk_app!(
-                                contracts::record_extend(),
+                                contract::record_extend(),
                                 mk_term::string(format!("{}", id)),
                                 row_contr,
                                 cont
@@ -311,10 +311,10 @@ impl Types {
                     Ok(ctr)
                 }
 
-                mk_app!(contracts::record(), form(sy, pol, ty, h)?)
+                mk_app!(contract::record(), form(sy, pol, ty, h)?)
             }
             AbsType::DynRecord(ref ty) => {
-                mk_app!(contracts::dyn_record(), ty.subcontract(h, pol, sy)?)
+                mk_app!(contract::dyn_record(), ty.subcontract(h, pol, sy)?)
             }
         };
 

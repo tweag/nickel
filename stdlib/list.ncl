@@ -1,5 +1,5 @@
 {
-  lists = {
+  list = {
     NonEmpty
       | doc m#"
         Contract to ensure the given list is not empty.

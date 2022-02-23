@@ -1,5 +1,5 @@
 let f = { f = fun x => if (x == 0) then 0 else f (x - 1) }.f in
 {
   run = fun n =>
-    lists.map f (lists.generate functions.id n)
+    list.map f (list.generate function.id n)
 }

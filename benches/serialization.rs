@@ -9,7 +9,7 @@ fn round_trip(c: &mut Criterion) {
     path.push("benches/serialization/input.json");
 
     let content = format!(
-        "builtins.serialize `Json (import \"{}\")",
+        "builtin.serialize `Json (import \"{}\")",
         path.to_string_lossy(),
     );
 

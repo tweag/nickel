@@ -2,7 +2,7 @@ let Assert = fun l x => x || %blame% l in
 
 [
   // is_record
-  builtins.is_record {},
+  builtin.is_record {},
 
   /// This currently do not check that subexpressions are actually forced,
   /// just that the evaluation succeeds
@@ -21,10 +21,10 @@ let Assert = fun l x => x || %blame% l in
     %deep_seq% r (r.a.b) == 3,
 
   [1,2,3]
-   |> lists.map (fun x => x + 1)
-   |> lists.filter (fun x => x > 2)
-   |> builtins.serialize `Json
-   |> builtins.deserialize `Json
+   |> list.map (fun x => x + 1)
+   |> list.filter (fun x => x > 2)
+   |> builtin.serialize `Json
+   |> builtin.deserialize `Json
    == [3,4],
 ]
-|> lists.foldl (fun x y => (x | Assert) && y) true
+|> list.foldl (fun x y => (x | Assert) && y) true

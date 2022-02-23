@@ -193,7 +193,7 @@ impl WasmInputResult {
     fn error(cache: &mut Cache, error: InputError) -> Self {
         let (msg, errors) = match error {
             InputError::NickelError(err) => {
-                let contracts_id = cache.id_of("<stdlib/contracts.ncl>");
+                let contracts_id = cache.id_of("<stdlib/contract.ncl>");
                 let diagnostics = err.to_diagnostic(cache.files_mut(), contracts_id);
 
                 let msg = diags_to_string(cache, &diagnostics);
@@ -289,7 +289,7 @@ pub fn diags_to_string(cache: &mut Cache, diags: &Vec<Diagnostic<FileId>>) -> St
 pub fn err_to_string(cache: &mut Cache, error: &InputError) -> String {
     match error {
         InputError::NickelError(nickel_err) => {
-            let contracts_id = cache.id_of("<stdlib/contracts.ncl>");
+            let contracts_id = cache.id_of("<stdlib/contract.ncl>");
             let diags = nickel_err.to_diagnostic(cache.files_mut(), contracts_id);
             diags_to_string(cache, &diags)
         }

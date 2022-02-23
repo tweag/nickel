@@ -193,7 +193,7 @@ where
 {
     let writer = StandardStream::stderr(ColorChoice::Always);
     let config = codespan_reporting::term::Config::default();
-    let contracts_id = cache.id_of("<stdlib/contracts.ncl>");
+    let contracts_id = cache.id_of("<stdlib/contract.ncl>");
     let diagnostics = error.to_diagnostic(cache.files_mut(), contracts_id);
 
     let result = diagnostics.iter().try_for_each(|d| {

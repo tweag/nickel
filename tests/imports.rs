@@ -89,7 +89,7 @@ fn serialize() {
     let mut prog = Program::new_from_source(
         BufReader::new(
             format!(
-                "(builtins.serialize `Json ({})) == (builtins.serialize `Json ({{foo = \"ab\"}}))",
+                "(builtin.serialize `Json ({})) == (builtin.serialize `Json ({{foo = \"ab\"}}))",
                 mk_import("record.ncl")
             )
             .as_bytes(),

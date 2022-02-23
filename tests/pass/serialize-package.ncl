@@ -53,12 +53,12 @@ let ctr = {
           = "package",
   }
 } in
-builtins.serialize `Json (
+builtin.serialize `Json (
   {
     name = "nickel",
     buildInputs = [{package = "hello"}],
   } | ctr.Shell
-) == builtins.serialize `Json {
+) == builtin.serialize `Json {
   name = "nickel",
   buildInputs = [{input = "nixpkgs", package = "hello", "_type" = "package"}],
 }

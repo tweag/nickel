@@ -76,7 +76,7 @@ false
 
 ### Strings
 
-Nickel can work with sequences of characters, or strings. 
+Nickel can work with sequences of characters, or strings.
 Strings are enclosed by `" ... "` for a single line string or by `m#" ... "#m` for a multiline string.
 They can be concatenated with the operator `++`.
 Strings must be UTF-8 valid.
@@ -102,7 +102,7 @@ Yes it is, indeed it is"
 > let n = 5 in "The number #{n}."
 error: Type error
 
-> let n = 5 in "The number #{strings.from_num n}."
+> let n = 5 in "The number #{string.from_num n}."
 "The number 5."
 ```
 
@@ -338,7 +338,7 @@ Examples:
     increment 41
 42
 
-> let flatten = lists.fold (@) [] in flatten [[1, 2], [3], [4, 5]]
+> let flatten = list.fold (@) [] in flatten [[1, 2], [3], [4, 5]]
 [ 1, 2, 3, 4, 5 ]
 ```
 
@@ -347,18 +347,18 @@ This operator is left-associative, so `x |> f |> g` will be interpreted as `g (f
 
 Examples:
 ```
-> "Hello World" |> strings.split " "
+> "Hello World" |> string.split " "
 ["Hello", "World"]
 
 > "Hello World"
-  |> strings.split " "
-  |> lists.head
+  |> string.split " "
+  |> list.head
 "Hello"
 
 > "Hello World"
-  |> strings.split " "
-  |> lists.head
-  |> strings.uppercase
+  |> string.split " "
+  |> list.head
+  |> string.uppercase
 "HELLO"
 ```
 
@@ -394,16 +394,16 @@ Examples:
 > 5 | Bool
 error: Blame error: contract broken by a value.
 
-> let SmallNum = contracts.from_predicate (fun x => x < 5) in
+> let SmallNum = contract.from_predicate (fun x => x < 5) in
 1 | SmallNum
 1
 
-> let SmallNum = contracts.from_predicate (fun x => x < 5) in
+> let SmallNum = contract.from_predicate (fun x => x < 5) in
 10 | SmallNum
 error: Blame error: contract broken by a value.
 
-> let SmallNum = contracts.from_predicate (fun x => x < 5) in
-  let NotTooSmallNum = contracts.from_predicate (fun x => x >= 2) in
+> let SmallNum = contract.from_predicate (fun x => x < 5) in
+  let NotTooSmallNum = contract.from_predicate (fun x => x >= 2) in
   3 | Num
     | SmallNum
     | NotTooSmallNum
