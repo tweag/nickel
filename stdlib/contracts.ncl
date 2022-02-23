@@ -1,51 +1,51 @@
 {
-  dyn = fun l t => t,
+  "$dyn" = fun l t => t,
 
-  num = fun l t => if %is_num% t then t else %blame% l,
+  "$num" = fun l t => if %is_num% t then t else %blame% l,
 
-  bool = fun l t => if %is_bool% t then t else %blame% l,
+  "$bool" = fun l t => if %is_bool% t then t else %blame% l,
 
-  string = fun l t => if %is_str% t then t else %blame% l,
+  "$string" = fun l t => if %is_str% t then t else %blame% l,
 
-  list = fun elt l t =>
+  "$fail" = fun l t => %blame% l,
+
+  "$list" = fun elt l t =>
     if %is_list% t then
       %map% t (fun value => %assume% elt (%go_list% l) value)
     else %blame% l,
 
-  func = fun s t l e =>
+  "$func" = fun s t l e =>
       if %is_fun% e then
           (fun x => %assume% t (%go_codom% l) (e (%assume% s (%chng_pol% (%go_dom% l)) x)))
       else
           %blame% l,
 
-  forall_var = fun sy pol l t =>
+  "$forall_var" = fun sy pol l t =>
       let lPol = %polarity% l in
       if pol == lPol then
           %unwrap% sy t (%blame% l)
       else
           %wrap% sy t,
 
-  fail = fun l t => %blame% (%tag% "Fail" l),
-
-  row_extend = fun contr case l t =>
+  "$row_extend" = fun contr case l t =>
       if (case t) then
           t
       else
           %assume% contr (%tag% "NotRowExt" l) t,
 
-  record = fun cont l t =>
+  "$record" = fun cont l t =>
       if %is_record% t then
           %assume% (cont {}) l t
       else
           %blame% (%tag% "not a record" l),
 
-  dyn_record = fun contr l t =>
+  "$dyn_record" = fun contr l t =>
       if %is_record% t then
           %record_map% t (fun _field value => %assume% contr l value)
       else
           %blame% (%tag% "not a record" l),
 
-  record_extend = fun field contr cont acc l t =>
+  "$record_extend" = fun field contr cont acc l t =>
       if %has_field% field t then
           let acc = acc$[field = %assume% contr (%go_field% field l) (t."#{field}")] in
           let t = t -$ field in
@@ -53,7 +53,7 @@
       else
           %blame% (%tag% "missing field `#{field}`" l),
 
-  forall_tail = fun sy pol acc l t =>
+  "$forall_tail" = fun sy pol acc l t =>
       let magic_fld = "_%wrapped" in
       if pol == (%polarity% l) then
           if %has_field% magic_fld t then
@@ -69,9 +69,9 @@
       else
           acc$[magic_fld = %wrap% sy t],
 
-  dyn_tail = fun acc l t => acc & t,
+  "$dyn_tail" = fun acc l t => acc & t,
 
-  empty_tail = fun acc l t =>
+  "$empty_tail" = fun acc l t =>
       if t == {} then acc
       else %blame% (%tag% "extra field `#{%head% (%fields% t)}`" l),
 
