@@ -282,6 +282,10 @@ pub enum NormalToken<'input> {
     RAngleBracket,
     #[token(">=")]
     GreaterOrEq,
+    #[token("[|")]
+    EnumOpen,
+    #[token("|]")]
+    EnumClose,
     #[regex("//[^\n]*")]
     LineComment,
 }

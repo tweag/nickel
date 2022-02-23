@@ -84,14 +84,14 @@
       "#m
     = fun x => %is_record% x,
 
-    typeof : Dyn -> <
+    typeof : Dyn -> [|
       TypeNum,
       TypeBool,
       TypeStr,
       TypeFun,
       TypeList,
       TypeRecord,
-      Other>
+      Other |]
     | doc m#"
       Results in a value representing the type of the typed value.
 
@@ -144,7 +144,7 @@
       "#m
     = fun x y => %deep_seq% x y,
 
-    hash : <Md5, Sha1, Sha256, Sha512> -> Str -> Str
+    hash : [| Md5, Sha1, Sha256, Sha512 |] -> Str -> Str
     | doc m#"
       Hashes the given string provided the desired hash algorithm.
 
@@ -156,7 +156,7 @@
       "#m
     = fun type s => %hash% type s,
 
-    serialize : <Json, Toml, Yaml> -> Dyn -> Str
+    serialize : [| Json, Toml, Yaml |] -> Dyn -> Str
     | doc m#"
       Serializes the given value to the desired representation.
 
@@ -171,7 +171,7 @@
       "#m
     = fun format x => %serialize% format (%deep_seq% x x),
 
-    deserialize : <Json, Toml, Yaml> -> Str -> Dyn
+    deserialize : [| Json, Toml, Yaml |] -> Str -> Dyn
     | doc m#"
       Deserializes the given string to a nickel value given the encoding of the string.
 

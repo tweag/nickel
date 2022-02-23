@@ -71,4 +71,4 @@ let Assert = contracts.from_predicate functions.id in
   ({foo | default = 1, bar = foo} & {foo = 2}).bar == 2,
   ({foo | default = 1, bar = foo, baz = bar} & {foo = 2}).baz == 2,
 ]
-|> lists.foldl (fun next acc => (next | #Assert) && acc) true
+|> lists.foldl (fun next acc => (next | Assert) && acc) true

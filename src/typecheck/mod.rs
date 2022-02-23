@@ -1095,10 +1095,13 @@ pub fn unify_(
                         err.into_unif_err(mk_tyw_record!(; r1), mk_tyw_record!(; r2))
                     })
                 }
-                (TypeWrapper::Concrete(r), _) if !r.is_row_type() => {
-                    Err(UnifError::IllformedType(mk_tyw_record!(; r)))
+                (TypeWrapper::Concrete(AbsType::Var(id)), _)
+                | (_, TypeWrapper::Concrete(AbsType::Var(id))) => {
+                    Err(UnifError::UnboundTypeVariable(id))
                 }
-                (_, TypeWrapper::Concrete(r)) if !r.is_row_type() => {
+                (TypeWrapper::Concrete(r), _) | (_, TypeWrapper::Concrete(r))
+                    if !r.is_row_type() =>
+                {
                     Err(UnifError::IllformedType(mk_tyw_record!(; r)))
                 }
                 (tyw1, tyw2) => unify_(state, tyw1, tyw2),
@@ -1156,6 +1159,7 @@ pub fn unify_rows(
     t2: AbsType<Box<TypeWrapper>>,
 ) -> Result<(), RowUnifError> {
     match (t1, t2) {
+        (AbsType::Var(id), _) | (_, AbsType::Var(id)) => Err(RowUnifError::UnboundTypeVariable(id)),
         (AbsType::RowEmpty(), AbsType::RowEmpty()) | (AbsType::Dyn(), AbsType::Dyn()) => Ok(()),
         (AbsType::RowEmpty(), AbsType::Dyn()) => Err(RowUnifError::ExtraDynTail()),
         (AbsType::Dyn(), AbsType::RowEmpty()) => Err(RowUnifError::MissingDynTail()),
