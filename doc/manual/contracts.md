@@ -46,8 +46,8 @@ available. `Dyn` is a contract that never fails.
 
 ### By hand
 
-While basic contracts are already useful, the motivation for a run-time
-mechanism like contracts is the ability to easily check for arbitrary
+Where run-time
+mechanisms like contracts really shine is in the ability to check for arbitrary
 properties. Let us see how to define our very own contract. We start the REPL
 (`nickel repl`) and input:
 
