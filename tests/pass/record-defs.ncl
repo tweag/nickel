@@ -18,7 +18,7 @@ let Assert = fun l x => x || %blame% l in
   // quoted_fields
   {"foo$-^bar" = "foo"}."foo$-^bar" == "foo",
   let x = "fo" ++ "o" in
-    {"#{x}-bar" = "foo"}."foo-bar" == "foo",
+    {"%{x}-bar" = "foo"}."foo-bar" == "foo",
 
   {"foo-bar"."baz+baz" = false}."foo-bar"."baz+baz" == false,
   {foo-bar.baz-baz = false}.foo-bar.baz-baz == false,
@@ -37,7 +37,7 @@ let Assert = fun l x => x || %blame% l in
   {foo.bar.baz | Bool = true}.foo.bar.baz,
 
   // recursive_dynamic_fields
-  let x = "foo" in {"#{x}" = bar, bar = 1} == {foo = 1, bar = 1},
-  ({"#foo"."#bar".baz = other + 1, other = 0}."#foo"."#bar".baz == 1),
+  let x = "foo" in {"%{x}" = bar, bar = 1} == {foo = 1, bar = 1},
+  ({"%foo"."%bar".baz = other + 1, other = 0}."%foo"."%bar".baz == 1),
 ]
 |> lists.foldl (fun x y => (x | Assert) && y) true

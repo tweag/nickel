@@ -3,11 +3,11 @@ let Assert = fun l x => x || %blame% l in
 [
   // accesses
   ({foo = 3, bar = true}).bar == true,
-  {"#{if true then "foo" else "bar"}" = false, bar = true}.foo
+  {"%{if true then "foo" else "bar"}" = false, bar = true}.foo
     == false,
 
   ({foo = 3, bar = true})."bar" == true,
-  {"#{if true then "foo" else "bar"}" = false, bar = true}."#{"foo"}"
+  {"%{if true then "foo" else "bar"}" = false, bar = true}."%{"foo"}"
    == false,
 
   ({bar = 3}$["foo" = true]).foo == true,

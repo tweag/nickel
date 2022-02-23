@@ -332,7 +332,7 @@ mod tests {
         assert_json_eq!("null", null);
 
         assert_json_eq!("if true then false else true", false);
-        assert_json_eq!(r##""Hello, #{"world"}!""##, "Hello, world!");
+        assert_json_eq!(r##""Hello, %{"world"}!""##, "Hello, world!");
         assert_json_eq!("`foo", "foo");
     }
 
@@ -341,7 +341,7 @@ mod tests {
         assert_json_eq!("[]", json!([]));
         assert_json_eq!("[null, (1+1), (2+2), (3+3)]", json!([null, 2, 4, 6]));
         assert_json_eq!(
-            r##"[`a, ("b" ++ "c"), "d#{"e"}f", "g"]"##,
+            r##"[`a, ("b" ++ "c"), "d%{"e"}f", "g"]"##,
             json!(["a", "bc", "def", "g"])
         );
         assert_json_eq!(

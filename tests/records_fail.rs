@@ -10,7 +10,7 @@ fn records_access() {
         Err(Error::EvalError(EvalError::FieldMissing(..)))
     );
     assert_matches!(
-        eval("({ \"#{(if false then \"foo\" else \"bar\")}\" = false, bar = true, }).foo"),
+        eval("({ \"%{(if false then \"foo\" else \"bar\")}\" = false, bar = true, }).foo"),
         Err(Error::EvalError(EvalError::Other(msg, ..))) if msg.starts_with("$[ .. ]"));
 }
 
@@ -45,7 +45,7 @@ fn non_mergeable_piecewise() {
 #[test]
 fn dynamic_not_recursive() {
     assert_matches!(
-        eval("let x = \"foo\" in {\"#{x}\" = 1, bar = foo}.bar"),
+        eval("let x = \"foo\" in {\"%{x}\" = 1, bar = foo}.bar"),
         Err(Error::TypecheckError(TypecheckError::UnboundIdentifier(..)))
     );
 }

@@ -284,7 +284,7 @@ pub enum NormalToken<'input> {
     EnumOpen,
     #[token("|]")]
     EnumClose,
-    #[regex("#[^\n]*")]
+    #[regex("//[^\n]*")]
     LineComment,
 }
 
@@ -661,7 +661,7 @@ fn escape_char(chr: char) -> Option<char> {
         '\'' => Some('\''),
         '"' => Some('"'),
         '\\' => Some('\\'),
-        '#' => Some('#'),
+        '%' => Some('%'),
         'n' => Some('\n'),
         'r' => Some('\r'),
         't' => Some('\t'),
