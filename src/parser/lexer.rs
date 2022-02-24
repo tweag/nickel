@@ -325,7 +325,7 @@ pub enum MultiStringToken<'input> {
     Literal(&'input str),
 
     /// A candidate end. A multiline string starting delimiter `MultiStringStart` can have a
-    /// variable number of `#` character, so the lexer matches candidate end delimiter, compare the
+    /// variable number of `%` character, so the lexer matches candidate end delimiter, compare the
     /// number of characters, and either emit the `End` token above, or turn the `CandidateEnd` to a
     /// `FalseEnd` otherwise
     #[regex("\"%+m")]
@@ -577,7 +577,7 @@ impl<'input> Iterator for Lexer<'input> {
             Some(MultiStr(MultiStringToken::Interpolation)) => self.enter_normal(),
             // If we encouter a `QuotesCandidateInterpolation` token with the right number of
             // characters, we need to split it into two tokens:
-            // - a literal starting by a `"` followed by between 0 and k hashes `#`
+            // - a literal starting by a `"` followed by between 0 and k `%`
             // - an interpolation token
             // The interpolation token is put in the buffer such that it will be returned next
             // time.
