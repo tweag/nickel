@@ -77,32 +77,32 @@ false
 ### Strings
 
 Nickel can work with sequences of characters, or strings. 
-Strings are enclosed by `" ... "` for a single line string or by `m#" ... "#m` for a multiline string.
+Strings are enclosed by `" ... "` for a single line string or by `m%" ... "%m` for a multiline string.
 They can be concatenated with the operator `++`.
 Strings must be UTF-8 valid.
 
-The string interpolation syntax is `"#{ < expression that evaluates to a string > }"`.
+The string interpolation syntax is `"%{ < expression that evaluates to a string > }"`.
 
 Examples:
 ```
 > "Hello, World!"
 "Hello, World!"
 
-> m#"Well, if this isn't a multiline string?
-Yes it is, indeed it is"#m
+> m%"Well, if this isn't a multiline string?
+Yes it is, indeed it is"%m
 "Well, if this isn't a string?
 Yes it is, indeed it is"
 
 > "Hello" ++ "World"
 "HelloWorld"
 
-> let h = "Hello" in "#{h} World"
+> let h = "Hello" in "%{h} World"
 "Hello World"
 
-> let n = 5 in "The number #{n}."
+> let n = 5 in "The number %{n}."
 error: Type error
 
-> let n = 5 in "The number #{strings.from_num n}."
+> let n = 5 in "The number %{strings.from_num n}."
 "The number 5."
 ```
 
@@ -110,12 +110,12 @@ Multiline strings are useful to write indented lines. The indentation is strippe
 
 Example:
 ```
-> m#"
+> m%"
 This line has no identation.
   This line is indented.
     This line is even more indented.
 This line has no more identation.
-"#m
+"%m
 "This line has no indentation.
   This line is indented.
     This line is even more indented.
@@ -126,44 +126,44 @@ The only special sequence in a multiline string is the string interpolation.
 
 Examples:
 ```
-> m#"Multiline\nString?"#m
+> m%"Multiline\nString?"%m
 "Multiline\nString?"
 
-> m#"Multiline#{"\n"}String"#m
+> m%"Multiline%{"\n"}String"%m
 "Multiline
 String"
 ```
 
-A multiline string can be introduced and closed by multiple `#` signs, as long as this amount is equal. If you want to use string interpolation, you must use the same amount of `#` as in the delimiters.
+A multiline string can be introduced and closed by multiple `%` signs, as long as this amount is equal. If you want to use string interpolation, you must use the same amount of `%` as in the delimiters.
 
 Examples:
 ```
-> m##"Hello World"##m
+> m%%"Hello World"%%m
 "Hello World"
 
-> m#####"Hello World"#####m
+> m%%%%%"Hello World"%%%%%m
 "Hello World"
 
-> let w = "World" in m##"Hello #{w}"##m
-"Hello #{w}"
+> let w = "World" in m%%"Hello %{w}"%%m
+"Hello %{w}"
 
-> let w = "World" in m##"Hello ##{w}"##m
+> let w = "World" in m%%"Hello %%{w}"%%m
 "Hello World"
 ```
 
 Multiline strings are "indentation-aware". This means that one could use an indented string interpolation and the indentation would behave as expected:
 ```
-> let log = m#"
+> let log = m%"
 if log:
   print("log:", s)
-"#m in m#"
+"%m in m%"
 def concat(str_list, log=false):
   res = []
   for s in str_list:
-    #{log}
+    %{log}
     res.append(s)
   return res
-"#m
+"%m
 "def concat(str_list, log=false):
   res = []
   for s in str_list:
@@ -259,10 +259,10 @@ It is possible to write records of records via the *piecewise syntax*, where we 
 
 When fields are enclosed with double quotes (`"`), you can use string interpolation to create or access fields:
 ```
-> let k = "a" in { "#{k}" = 1 }
+> let k = "a" in { "%{k}" = 1 }
 { a = 1 }
 
-> let k = "a" in { a = 1 }."#{k}"
+> let k = "a" in { a = 1 }."%{k}"
 1
 ```
 
@@ -416,12 +416,12 @@ Examples:
 > 5 | doc "The number five"
 5
 
-> true | Bool | doc m#"
+> true | Bool | doc m%"
     If something is true,
     it is based on facts rather than being invented or imagined,
     and is accurate and reliable.
     (Collins dictionary)
-    "#m
+    "%m
 true
 ```
 
