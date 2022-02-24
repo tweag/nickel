@@ -40,9 +40,9 @@ By default, Nickel code is dynamically typed. For example:
   version = "0.1.1",
   fullname =
     if builtins.is_num version then
-      "hello-v#{strings.fromNum version}"
+      "hello-v%{strings.fromNum version}"
     else
-      "hello-#{version}",
+      "hello-%{version}",
 }
 ```
 
@@ -56,9 +56,9 @@ example:
   version = "0.1.1",
   fullname =
     if builtins.is_num version then
-      "hello-v#{strings.fromNum version}"
+      "hello-v%{strings.fromNum version}"
     else
-      "hello-#{version + 1}",
+      "hello-%{version + 1}",
 }
 ```
 
@@ -72,7 +72,7 @@ error: Type error
 3 │   version = "0.1.1",
   │             ------- evaluated to this
   ·
-8 │       "hello-#{version + 1}",
+8 │       "hello-%{version + 1}",
   │                ^^^^^^^ This expression has type Str, but Num was expected
   │
   = +, 1st argument
@@ -237,7 +237,7 @@ The following type constructors are available:
   {
     incr : Num -> Num = fun x => x + 1,
     mkPath : Str -> Str -> Str -> Str = fun basepath filename ext =>
-      "#{basepath}/#{filename}.#{ext}",
+      "%{basepath}/%{filename}.%{ext}",
   }
   ```
 
