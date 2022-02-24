@@ -102,7 +102,7 @@ let typecheck = [
   // arrays_simple
   [1, "2", false],
   //TODO: the type system may accept the following test at some point.
-  //([1, "2", false] : Array),
+  //([1, "2", false] : Array Dyn),
   ["a", "b", "c"] : Array Str,
   [1, 2, 3] : Array Num,
   (fun x => [x]) : forall a. a -> Array a,

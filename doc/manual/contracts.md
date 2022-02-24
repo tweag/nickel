@@ -433,9 +433,6 @@ error: contract broken by a value.
 [..]
 ```
 
-Recall that `Array` is an alias for `Array Dyn`, thus the `Array` contracts only
-checks that the value is an array.
-
 #### Functions
 
 A function contract `In -> Out` returns a wrapped function which, for each call,

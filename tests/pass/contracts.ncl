@@ -98,7 +98,7 @@ let Assert = fun l x => x || %blame% l in
   ({a = 0, b = 0, c = 0} | Contract) == {a = 0, b = 0, c = 0},
 
   // arrays 
-  ([1, "2", false] | Array) == [1, "2", false],
+  ([1, "2", false] | Array Dyn) == [1, "2", false],
   ([1, 2, 3] | Array Num) == [1, 2, 3],
   (["1", "2", "false"] | Array Str) == ["1", "2", "false"],
 
