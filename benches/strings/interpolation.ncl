@@ -1,13 +1,13 @@
 {
   run = fun n => if n < 1 then
     ""
-      else m#"
+      else m%"
         5bSVkTosPNAmX5yhmsDM
         Vdj4osv58320QrJPzBao
         NvTwB4CCW7vSDWPc7fe8
         3rERpwXOLNUjezETWmbn
         RgRmE9in3s76V9sZLhzN
-        #{run (n/2)}
+        %{run (n/2)}
         SHEIppXAjGy7vNRmZN04
         d29esHvAvO3a6Zu6Le3i
         nzyq1iuehn935aIVTjEH
@@ -30,7 +30,7 @@
         RmcKhKD4DcTiR5ECcWEy
         EdFOgWopcVR0EXO2AyNX
         FqqcINBbEGzeidZpXsq4
-        #{run (n/2)}
+        %{run (n/2)}
         vl7YkBO8cOTlIZGBc5ri
         CR3TKlFKUbxRcb6EjU0E
         rYrZxe8imLoBIPxrhKY7
@@ -104,5 +104,5 @@
         Ue3d9Jd3nZeSetAzBBqk
         DvN7NvTzdt4EyvUCq4Se
         a9TLAq2eVr0exurkvJZN
-      "#m
+      "%m
 }
