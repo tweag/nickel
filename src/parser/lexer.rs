@@ -302,7 +302,7 @@ pub enum StringToken<'input> {
     #[token("\"")]
     DoubleQuote,
     #[token("%{")]
-    HashBrace,
+    Interpolation,
     #[regex("\\\\.", |lex| lex.slice().chars().nth(1))]
     EscapedChar(char),
     // Repetition range `{2}` was not supported at the time of writing this regex.
