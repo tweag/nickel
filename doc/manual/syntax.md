@@ -395,18 +395,18 @@ Examples:
 error: Blame error: contract broken by a value.
 
 > let SmallNum = contracts.from_predicate (fun x => x < 5) in
-1 | #SmallNum
+1 | SmallNum
 1
 
 > let SmallNum = contracts.from_predicate (fun x => x < 5) in
-10 | #SmallNum
+10 | SmallNum
 error: Blame error: contract broken by a value.
 
 > let SmallNum = contracts.from_predicate (fun x => x < 5) in
   let NotTooSmallNum = contracts.from_predicate (fun x => x >= 2) in
   3 | Num
-    | #SmallNum
-    | #NotTooSmallNum
+    | SmallNum
+    | NotTooSmallNum
 3
 ```
 
@@ -431,11 +431,11 @@ This is especially useful when merging records (more about this in the dedicated
 Examples:
 ```
 > let Ais2ByDefault = { a | default = 2 } in
-  {} | #Ais2ByDefault
+  {} | Ais2ByDefault
 { a = 2 }
 
 > let Ais2ByDefault = { a | default = 2 } in
-  { a = 1 } | #Ais2ByDefault
+  { a = 1 } | Ais2ByDefault
 { a = 1 }
 
 > { foo | default = 1, bar = foo + 1 }
