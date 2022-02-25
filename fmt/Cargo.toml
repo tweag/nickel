@@ -1,0 +1,25 @@
+[package]
+name = "nickelfmt"
+version = "0.1.0"
+authors = ["Nicl team"]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+description = "Programmable configuration files."
+edition = "2018"
+
+[build-dependencies]
+lalrpop = "0.19.6"
+
+[dependencies]
+anyhow = "1.0"
+env_logger = "0.9"
+lalrpop-util = "0.19.6"
+log = "0.4"
+nickel = {path = "../"}
+structopt = "0.3"
+codespan = "0.11"
+pretty = "0.11"
+
+[dev-dependencies]
+pretty_assertions = "0.5.1"
+assert_matches = "1.4.0"

@@ -62,7 +62,8 @@ utilities = {path = "utilities"}
 [workspace]
 members = [
     ".",
-    "lsp/nls"
+    "lsp/nls",
+    "fmt"
 ]
 
 # Enable this to use flamegraphs
