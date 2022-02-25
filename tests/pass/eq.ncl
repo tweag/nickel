@@ -25,7 +25,7 @@ let Assert = fun l x => x || %blame% l in
     == [1, "ab", true],
   [[[]]] == [[[]]],
   [[1], [[2]]] == [[2 + (-1)], [[1 + 1]]],
-  [[true, false]] == lists.flatten [[[true, false]]],
+  [[true, false]] == list.flatten [[[true, false]]],
 
   [] != [1],
   [] != 1,
@@ -75,4 +75,4 @@ let Assert = fun l x => x || %blame% l in
       == false
   ),
 ]
-|> lists.foldl (fun x y => (x | Assert) && y) true
+|> list.foldl (fun x y => (x | Assert) && y) true

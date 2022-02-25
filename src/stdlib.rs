@@ -3,32 +3,27 @@
 use crate::term::make as mk_term;
 use crate::term::RichTerm;
 
-pub const BUILTINS: (&str, &str) = (
-    "<stdlib/builtins.ncl>",
-    include_str!("../stdlib/builtins.ncl"),
+pub const BUILTIN: (&str, &str) = (
+    "<stdlib/builtin.ncl>",
+    include_str!("../stdlib/builtin.ncl"),
 );
-pub const CONTRACTS: (&str, &str) = (
-    "<stdlib/contracts.ncl>",
-    include_str!("../stdlib/contracts.ncl"),
+pub const CONTRACT: (&str, &str) = (
+    "<stdlib/contract.ncl>",
+    include_str!("../stdlib/contract.ncl"),
 );
-pub const LISTS: (&str, &str) = ("<stdlib/lists>", include_str!("../stdlib/lists.ncl"));
-pub const RECORDS: (&str, &str) = ("<stdlib/records>", include_str!("../stdlib/records.ncl"));
-pub const STRINGS: (&str, &str) = ("<stdlib/strings>", include_str!("../stdlib/strings.ncl"));
-pub const NUMS: (&str, &str) = ("<stdlib/nums>", include_str!("../stdlib/nums.ncl"));
-pub const FUNCTIONS: (&str, &str) = (
-    "<stdlib/functions>",
-    include_str!("../stdlib/functions.ncl"),
-);
+pub const LIST: (&str, &str) = ("<stdlib/list>", include_str!("../stdlib/list.ncl"));
+pub const RECORD: (&str, &str) = ("<stdlib/record>", include_str!("../stdlib/record.ncl"));
+pub const STRING: (&str, &str) = ("<stdlib/string>", include_str!("../stdlib/string.ncl"));
+pub const NUM: (&str, &str) = ("<stdlib/num>", include_str!("../stdlib/num.ncl"));
+pub const FUNCTION: (&str, &str) = ("<stdlib/function>", include_str!("../stdlib/function.ncl"));
 
 /// Return the list `(name, source_code)` of all the stdlib modules.
 pub fn modules() -> Vec<(&'static str, &'static str)> {
-    vec![
-        BUILTINS, CONTRACTS, LISTS, RECORDS, STRINGS, NUMS, FUNCTIONS,
-    ]
+    vec![BUILTIN, CONTRACT, LIST, RECORD, STRING, NUM, FUNCTION]
 }
 
 /// Accessors to the builtin contracts.
-pub mod contracts {
+pub mod contract {
     use super::*;
 
     macro_rules! generate_accessor {

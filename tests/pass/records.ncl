@@ -13,18 +13,18 @@ let Assert = fun l x => x || %blame% l in
   ({bar = 3}$["foo" = true]).foo == true,
 
   // primitive_ops
-  records.has_field "foo" {foo = 1, bar = 2},
-  records.has_field "fop" {foo = 1, bar = 2} == false,
-  records.has_field "foo" ({foo = 2, bar = 3} -$ "foo")
+  record.has_field "foo" {foo = 1, bar = 2},
+  record.has_field "fop" {foo = 1, bar = 2} == false,
+  record.has_field "foo" ({foo = 2, bar = 3} -$ "foo")
     == false,
 
-  records.has_field "foo" ({bar = 3}$["foo" = 1]),
+  record.has_field "foo" ({bar = 3}$["foo" = 1]),
 
   // lazyness of map
-  (records.map (fun x y => y + 1) {foo = 1, bar = "it's lazy"}).foo
+  (record.map (fun x y => y + 1) {foo = 1, bar = "it's lazy"}).foo
     == 2,
 
-  let r = records.map
+  let r = record.map
       (fun y x => if %is_num% x then x + 1 else 0)
       {foo = 1, bar = "it's lazy"} in
     (r.foo) + (r.bar) == 2,
@@ -101,7 +101,7 @@ let Assert = fun l x => x || %blame% l in
   // regression tests for [#579](https://github.com/tweag/nickel/issues/579)
   // and [#583](https://github.com/tweag/nickel/issues/583)
   ({foo.bar = foo.baz, foo.baz | default = 2} & {foo.baz = 1}).foo.bar == 1,
-  let Name = fun b label name => if b then "hijack" else contracts.blame label in
+  let Name = fun b label name => if b then "hijack" else contract.blame label in
   let Config = {
       b | Bool,
       name | Name b,
@@ -112,4 +112,4 @@ let Assert = fun l x => x || %blame% l in
   } in
   data.name == "hijack",
 ]
-|> lists.foldl (fun x y => (x | Assert) && y) true
+|> list.foldl (fun x y => (x | Assert) && y) true

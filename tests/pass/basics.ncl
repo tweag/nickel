@@ -34,4 +34,4 @@ let Assert = fun l x => x || %blame% l in
   // This test checks that the terms of a switch are closured
   let x = 3 in (switch { `foo => 1, _ => x} (3 + 2)) == 3,
 ]
-|> lists.foldl (fun x y => (x | Assert) && y) true
+|> list.foldl (fun x y => (x | Assert) && y) true
