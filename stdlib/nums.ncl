@@ -184,8 +184,9 @@
     = fun x => x - (x % 1),
 
     pow : Num -> Num -> Num
+<<<<<<< HEAD
     | doc m%"
-      `pow x y` result in `x` to the power of `y`.
+      `pow x y` results in `x` to the power of `y`.
 
       For example:
       ```nickel

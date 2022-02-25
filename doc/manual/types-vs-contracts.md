@@ -11,7 +11,7 @@ What is the nature of the expression you are considering?
 Most of the time, you should use **type annotations** for functions. For
 reusable code, typing is often more adapted than contracts. You can
 exceptionally use contracts when types are not expressive enough to encode the
-property you want (such as in `#ValidUrl -> #Port -> #ValidUrl`) or if the type
+property you want (such as in `ValidUrl -> Port -> ValidUrl`) or if the type
 system is not powerful enough to see that your code is correct.
 
 What to do depends on the context:
@@ -60,10 +60,10 @@ Example:
 let Schema = {
   name | Str
        | doc "Name of the package",
-  version | #PkgVersion
+  version | PkgVersion
           | doc "The semantic version of the package",
           | default = "1.0.0",
-  build | List #BuildSteps
+  build | List BuildSteps
         | doc "The steps to perform in order to build the package",
         | default = [],
 } in
@@ -73,7 +73,7 @@ let Schema = {
     command "gcc hello.c -o hello",
     command "mv hello $out"
   ],
-} | #Schema
+} | Schema
 ```
 
 ## Computation (compound expressions)

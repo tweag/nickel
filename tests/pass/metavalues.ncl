@@ -35,7 +35,7 @@ let Assert = fun l x => x || %blame% l in
 
   // Check that the environments of contracts are correctly saved and restored when merging. See
   // issue [#117](https://github.com/tweag/nickel/issues/117)
-  (let ctr_num = let x = num in {a | x} in
+  (let ctr_num = let x = Num in {a | x} in
     let ctr_id = let x = fun l x => x in {a | x} in
     let val = let x = 1 in {a = x} in
     let def = let x = 2 in {a | default = x} in

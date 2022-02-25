@@ -409,7 +409,7 @@
       "%m
     = fun s => s == "true",
 
-    // to_enum | #Ident -> < | Dyn> = fun s => %enum_from_str% s,
+    // to_enum | Ident -> < | Dyn> = fun s => %enum_from_str% s,
     to_enum | Ident -> Dyn
     | doc m%"
       Converts any string that represents an enum variant to that enum variant.

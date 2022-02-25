@@ -1,32 +1,7 @@
 # Typing in Nickel
 
-## Introduction
-
-Usually, static typing brings in important benefits for large codebases of
-general-purpose programming languages, but the case of an interpreted
-configuration language appears less clear-cut.
-
-For pure configuration code, which is mostly data, static typing is not as
-useful. First, a configuration is a terminating program run once on fixed
-inputs: here, basic type errors will show up at runtime anyway. Second, Nickel
-has a powerful validation system, contracts, that can do the same job as types
-and more.
-
-Nevertheless, if you have ever faced puzzling [dynamic type
-errors](https://www.haskellforall.com/2021/01/dynamic-type-errors-lack-relevance.html),
-you may have felt the need for something better. Classic dynamic typing is prone
-to error messages being unrelated to the actual issue and pointing to a location
-far from the offending code. This is especially salient when working with
-functions, which tend to delay type errors by passing around ill-formed values
-until they eventually break evaluation somewhere else. For reusable code, i.e.
-functions, static typing really helps.
-
-This apparent dilemma is solved in Nickel by supporting *gradual typing*.
-Gradual typing enables to mix both static typing and dynamic typing.
-
-The following is a detailed exposition of this gradual type system. If you are
-rather looking for a cheat-sheet about when to use static typing or contracts,
-please visit [Type versus contracts: when to?](./types-vs-contracts.md).
+(For the motivations behind typing and a high-level overview of contracts and
+types, first read the [correctness](./correctness.md) section.)
 
 ## Typing modes
 
@@ -642,7 +617,7 @@ let Port = contracts.from_predicate (fun value =>
   && value >= 0
   && value <= 65535) in
 
-(10 - 1 : #Port)
+(10 - 1 : Port)
 ```
 
 But this program is unfortunately rejected by the typechecker:
@@ -652,10 +627,10 @@ Result:
 error: Incompatible types
   ┌─ repl-input-0:7:2
   │
-7 │ (10 : #Port)
+7 │ (10 : Port)
   │  ^^ this expression
   │
-  = The type of the expression was expected to be `#Port`
+  = The type of the expression was expected to be `Port`
   = The type of the expression was inferred to be `Num`
   = These types are not compatible
 ```
@@ -664,22 +639,22 @@ It turns out statically ensuring that an arbitrary expression will eventually
 respects an arbitrary user-written predicate is a really hard problem even in
 simple cases (technically, it is even undecidable in the general case). The
 typechecker doesn't have a clue about the relation between numbers and ports.
-So, what can it do with annotations like `#Port`? There is one situation when
+So, what can it do with annotations like `Port`? There is one situation when
 the typechecker can be sure that something will eventually be a port number, or
 will fail with the correct error message: when using a contract application.
 
 ```nickel
-(let p | #Port = 10 - 1 in
+(let p | Port = 10 - 1 in
  let id = fun x => x in
  id p
-) : #Port
+) : Port
 ```
 
 A custom contract hence acts like an opaque type (sometimes called abstract type
 as well) for the typechecker. The typechecker doesn't really know much about it
-except that the only way to construct a value of type `#Port` is to use contract
+except that the only way to construct a value of type `Port` is to use contract
 application. You also need an explicit contract application to cast back a
-`#Port` to a `Num`: `(p | Num) + 1 : Num`.
+`Port` to a `Num`: `(p | Num) + 1 : Num`.
 
 Because of the rigidity of opaque types, using custom contracts inside static
 type annotations is not very useful right now. We just had to give them a

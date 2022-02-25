@@ -34,14 +34,14 @@ pub mod contracts {
     macro_rules! generate_accessor {
         ($value:ident) => {
             pub fn $value() -> RichTerm {
-                mk_term::var(stringify!($value))
+                mk_term::var(format!("${}", stringify!($value)))
             }
         };
     }
 
     // `dyn` is a reserved keyword in rust
     pub fn dynamic() -> RichTerm {
-        mk_term::var("dyn")
+        mk_term::var("$dyn")
     }
 
     generate_accessor!(num);
