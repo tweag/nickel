@@ -250,7 +250,7 @@ fn string_lexing() {
         Ok(vec![
             Token::Normal(NormalToken::DoubleQuote),
             Token::Str(StringToken::Literal("1 + ")),
-            Token::Str(StringToken::HashBrace),
+            Token::Str(StringToken::Interpolation),
             Token::Normal(NormalToken::NumLiteral(1.0)),
             Token::Normal(NormalToken::RBrace),
             Token::Str(StringToken::Literal(" + 2")),
@@ -263,9 +263,9 @@ fn string_lexing() {
         Ok(vec![
             Token::Normal(NormalToken::DoubleQuote),
             Token::Str(StringToken::Literal("1 + ")),
-            Token::Str(StringToken::HashBrace),
+            Token::Str(StringToken::Interpolation),
             Token::Normal(NormalToken::DoubleQuote),
-            Token::Str(StringToken::HashBrace),
+            Token::Str(StringToken::Interpolation),
             Token::Normal(NormalToken::NumLiteral(1.0)),
             Token::Normal(NormalToken::RBrace),
             Token::Normal(NormalToken::DoubleQuote),

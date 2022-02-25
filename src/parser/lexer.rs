@@ -295,7 +295,7 @@ pub enum StringToken<'input> {
     Error,
 
     #[regex("[^\"%\\\\]+")]
-    // Has lower matching priority than `HashBrace` according to Logos' rules.
+    // Has lower matching priority than `Interpolation` according to Logos' rules.
     #[token("%")]
     Literal(&'input str),
 
@@ -607,7 +607,7 @@ impl<'input> Iterator for Lexer<'input> {
             | Some(MultiStr(MultiStringToken::QuotesCandidateInterpolation(s))) => {
                 token = Some(MultiStr(MultiStringToken::Literal(s)))
             }
-            Some(Str(StringToken::HashBrace)) => self.enter_normal(),
+            Some(Str(StringToken::Interpolation)) => self.enter_normal(),
             // Convert escape sequences to the corresponding character.
             Some(Str(StringToken::EscapedChar(c))) => {
                 if let Some(esc) = escape_char(*c) {

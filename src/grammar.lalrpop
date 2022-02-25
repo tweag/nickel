@@ -507,9 +507,9 @@ ChunkLiteral : String =
         })
     };
 
-ChunkExpr: StrChunk<RichTerm> = HashBrace <t: WithPos<Term>> "}" => StrChunk::Expr(t, 0);
+ChunkExpr: StrChunk<RichTerm> = Interpolation <t: WithPos<Term>> "}" => StrChunk::Expr(t, 0);
 
-HashBrace = { "%{", "multstr %{" };
+Interpolation = { "%{", "multstr %{" };
 
 StaticString: String = StringStart <s: ChunkLiteral?> StringEnd => s.unwrap_or_default();
 
@@ -814,7 +814,7 @@ extern {
         "&" => Token::Normal(NormalToken::Ampersand),
         "." => Token::Normal(NormalToken::Dot),
         "$[" => Token::Normal(NormalToken::DollarBracket),
-        "%{" => Token::Str(StringToken::HashBrace),
+        "%{" => Token::Str(StringToken::Interpolation),
         "multstr %{" => Token::MultiStr(MultiStringToken::Interpolation),
         "-$" => Token::Normal(NormalToken::MinusDollar),
 
