@@ -331,6 +331,15 @@
           '';
         }).vsix;
 
+      userManual = pkgs.stdenv.mkDerivation {
+        name = "nickel-user-manual-${version}";
+        src = ./doc/manual;
+        installPhase = ''
+          mkdir -p $out
+          cp -r ./ "$out"
+        '';
+      };
+
     in
     rec {
       defaultPackage = packages.build;
@@ -339,6 +348,7 @@
         buildWasm = buildNickelWASM { optimize = true; };
         dockerImage = buildDocker packages.build; # TODO: docker image should be a passthru
         inherit vscodeExtension;
+        inherit userManual;
       };
 
       devShell = devShells.stable;
