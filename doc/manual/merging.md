@@ -1,51 +1,83 @@
 # Merging records
 
-Merging in Nickel allows to compose small, logical, and manageable blocks into a
-potentially complex final configuration. Merge is performed by the `&` operator.
+In Nickel, the basic building blocks for data are records (objects in JSON or
+attribute sets in Nix). Merging is a fundamental built-in operation whose role
+is to combine records togethers. It is useful to compose small and logical
+blocks into a potentially complex final configuration, making it more
+manageable. Merge is performed by the `&` operator.
 
-In this part we will try to described this concept exaustively as possible.
+Merge is a **symmetric** operation (or, pedantically, commutative). In practice,
+this means that order doesn't matter, and `left & right` is the same thing as
+`right & left`. When the operands need to be distinguished, as we will see for
+default values for example, the idea is to use metadata to do so (annotations),
+rather than relying on the left or right position.
 
-Warning: The given examples are clearly not the only context on which merging
-can be used. But it's impossible to expose all the cases in a user manual.
-You can check the examples in github for further readings.
+**Warning**: At the time of writing, Nickel's version is 0.1. Important
+additions to merging are planned for coming versions, including priorities and
+custom merge functions. They are not detailed here yet. For more details, see
+the associated technical document [RFC001][rfc001].
 
-Warning: Nickel beeing in a pre 1st release state now. Merging is a feature
-which can recieve breacking updates until passing in 1.0.0.
+The section describes the behavior and use-cases of merge, by considering the
+following situations:
 
-In the simple case, you will merge records without commons fields.
-If so, the merge is the union between both records.
+- Merging two records without common fields
+- Merging records with common fields
+- Merging records with metadata
+  * Default values
+  * Contracts
+  * Documentation
+- Recursive overriding
 
-If you have to merge records with fields in commons, you could be in following cases:
+## Simple merge (no common fields)
 
-- Merging of fields beeing themself records.
-- Merging with records containing fields with merely contracts (without value)
-- Merging, with one side annotated `default`
+Merging two records with no common fields results in a record with the fields
+from both operands. That is, `{foo = 1, bar = "bar"} & {baz =false}` evaluates
+to `{foo = 1, bar = "bar", baz = false}`.
 
-## Simple merge (records without intersection)
+### Specification
 
-The simplest merging case is when both records does not have any common fields.
-It can be used to merge records from differents files in one only record.
+Technically, if we write the left operand as:
 
-### Usecases
+```
+letf = {
+  field_left_1 = value_left_1,
+  ..,
+  field_left_n = value_left_n,
+}
+```
 
-You generaly will use this feature to be able to split a config in subparts.
-When your config has a small set of big subparts, they can themself be either
-a one top key record but also a multikeys record. The idea is to group the top
-level records by topic.
+And the right operand as:
 
-### Description
+```
+right {
+  field_right_1 = value_right_1,
+  ..,
+  field_right_k = value_right_k
+}
+```
 
-Having two records, `x` and `y`. With `x = {x0 = vx0, x1 = vx1, ..., xn = vxn}` and
-`y = {y0 = vy0, y1 = vy1, ..., yn = vyn}`. The merge of both give:
-`x & y = {x0 = vx0, y0 = vy0, x1 = vx1, y1 = vy1, ..., xn = vxn, yn = vyn}`
-In other terms, `x & y` is the union of `x` and `y`.
+Then the merge `left & right` evaluates to the record:
 
-### Example
+```
+{
+  field_left_1 = value_left_1,
+  ..,
+  field_left_n = value_left_n,
+  field_right_1 = value_right_1,
+  ..,
+  field_right_k = value_right_k
+}
+```
 
-For instance, having a server config and a firewall config, the network config
-could be:
+In other terms, `left & right` is the union of `left` and `right`.
 
-```text
+### Examples
+
+#### Split
+
+You can split a configuration into subdomains:
+
+```nickel
 // file: server.ncl
 {
     host_name = "example",
@@ -65,10 +97,9 @@ let firewall = import "firewall.ncl" in
 server & firewall
 ```
 
-In this simple case where records `x` and `y` have no common fields, `x&y` is the
-union of `x` and `y`:
+This gives:
 
-```text
+```nickel
 {
     host_name = "example",
     host = "example.org",
@@ -78,183 +109,401 @@ union of `x` and `y`:
 }
 ```
 
-## Recursivity of the merge
+#### Extension
 
-It's a behaviour you will use in similar cases as before but when the split is
-at a deeper level.
+Given a configuration, you can use merge to add new fields:
 
-### Usecases
+```nickel
+// file: safe-network.ncl
+let base = import "network.ncl" in
+base & {use_iptables = true}
+```
 
-In two records you have unintersecting fields but with common
-"root path" (e.g.: `open_ports.` as in following example; can also even be
-deeper as `firewall.open_ports.`).
+## Recursive merge (with common fields)
 
-### Description
+When the two operands have fields in common, those fields are recursively
+merged. For example:
 
-When merging, in the case of intersection of fields, Nickel will try to
-recursively merge them. That mean: if you have tow records, `x` and `y`, both
-having a field `a`; if `a` is a record, the merge will be a record `z` with a
-field a beeing the merge between `x.a` and `y.a` or `z = {a = x.a & y.a}.
+```nickel
+{
+  top_left = 1,
+  common = {left = "left"}}
+& {
+  top_right = 2,
+  common = {right = "right"}
+}
+```
+
+Evaluates to the record
+
+```nickel
+{
+  top_left = 1,
+  top_right = 2,
+  common = {left = "left", right = "right"}
+}
+```
+
+When one or both of the common fields are not records, the merge will fail
+unless one of the following condition hold:
+
+- They are both of a primitive data type `Num`, `Bool`, `Enum`, or they are null, and they are equal
+- They are physically equal, meaning that they point to the same location in
+  memory.
+
+The rationale is that only equal values are merged, but for a notion of equality
+that immediate to determine for the interpreter, and thus most restrictive than
+`==`.
+
+### Specification
+
+```
+letf = {
+  field_left_1 = value_left_1,
+  ..,
+  field_left_n = value_left_n,
+  common_1 = common_vleft_1,
+  ..,
+  common_m = common_vleft_m,
+}
+```
+
+And the right operand as:
+
+```
+right {
+  field_right_1 = value_right_1,
+  ..,
+  field_right_k = value_right_k
+  common_1 = common_vright_1,
+  ..,
+  common_m = common_vright_m,
+}
+```
+
+Where the `field_left_i` and `field_right_j` are distinct for all `i` and `j`.
+Then the merge `left & right` evaluates to the record:
+
+```
+{
+  field_left_1 = value_left_1,
+  ..,
+  field_left_n = value_left_n,
+  field_right_1 = value_right_1,
+  ..,
+  field_right_k = value_right_k
+  common_1 = common_vleft_1 & common_vright_1,
+  ..,
+  common_m = common_vleft_m & common_vright_m,
+}
+```
+
+For two values `v1` and `v2`, if at least one value is not a record, then
+
+```
+v1 & v2 = v1    if (type_of(v1) is Num, Bool, Str, Enum or v1 == null)
+                   AND v1 == v2
+          _|_   otherwise (indicates failure)
+```
 
 ### Example
 
-```text
-// file: firewall/udp.ncl
+```nickel
+// file: udp.ncl
 {
-    open_ports.udp = [12345,12346], // same as open_ports = {udp = [...]},
+    // same as firewall = {open_ports = {udp = [...]}},
+    firewall.open_ports.udp = [12345,12346],
 }
 
-// file: firewall/tcp.ncl
+// file: tcp.ncl
 {
-    open_ports.tcp = [23, 80, 443], // same as open_ports = {tcp = [...]},
+    // same as firewall = {open_ports = {tcp = [...]}},
+    firewall.open_ports.tcp = [23, 80, 443],
 }
 
 // firewall.ncl
-let udp = import "firewall/udp.ncl" in
-let tcp = import "firewall/tcp.ncl" in
-{ firewall= udp & tcp}
+let udp = import "udp.ncl" in
+let tcp = import "tcp.ncl" in
+udp & tcp
 ```
 
-In the above example, we merge two records, both with a field `open_ports`. The
-thing is that, in  both sides, this is itself a record. So, the resulting merge
-will have the form:
+In the above example, we merge two records, both with a field `firewall`. On
+both sides, the value is a record, which is therefore merged. The same process
+happens one layer below, on the common field `open_ports`, to result in the
+final record:
 
-```text
+```nickel
 {
-    open_ports = udp.open_ports & tcp.open_ports, // => {udp = [...], tcp = [...]}
+    firewall = {
+      open_ports = {
+        udp = [12345, 12346],
+        tcp = [23, 80, 443],
+      }
+    }
 }
 ```
 
-## Records as mixins
+## Merging record with metadata
 
-To be merged with others, records don't have to have a value attached to every fields.
-A record with only contracts fields is perfectly valid also.
+Metadata can be attached to values thanks to the `|` operator. Metadata
+currently includes contract annotations, default value, and documentation. We
+describe in this section how metadata interacts with merging.
 
-### Usecases
+## Default values
 
-This property can generaly be used to implement mixins like design. You can even
-write OO like code as well as perform traits like implementation on records.
+A `default` annotation can be used to provide a base value, but let it be
+overridable through merging. For example, `{foo | default = 1} & {foo = 2}`
+evaluates to `{foo = 2}`. Without the default value, this merge would have
+failed with a `non mergeable fields` error, because merging being symmetric, it
+doesn't know how to combine `1` and `2` in a generic and meaningful way.
 
-### Description
+### Specification
 
-In Nickel, all or a part of the fields of a record can be uninitialized and
-contain only contracts. In this state, they can not be evaluated. However, after
-a merge with another record containing the missing values, the result can be
-evaluated normaly and contracts will be checked on the seted values. Moreover
-some field of a record can depend on not initialized ones. Because of Nickel lazyness
-while not evaluated, no error will be thrown. When evaluating an uninitialized field,
-Nickel throw a `EmptyMetavalue` error.
+We can consider the merging system to feature priorities. To each field
+definition `foo = val` is associated a priority `p(val)`. When merging two
+common fields `value_left` and `value_right`, then the results is either the one
+with the highest priority (that overrides the other), or the two are tentatively
+recursively merged, if the priorities are the same. Without loss of generality,
+we consider the simple case of two records with only one field, which is the
+same on both side:
 
-### Example
-
-```text
-let Host = {
-    host_name | Str,
-    public_addr | Str,
-    // return the record depending on host_name and public_addr
-    dns_rec: Str -> Str = fun rec_type =>
-        rec_type ++ ": " ++ public_addr ++ ", " ++ host_name,
-} in
-let exemple_dot_org = {
-    host_name = "exemple.org",
-    public_addr = "0.0.0.0",
-} & Host in
-exemple_dot_org.dns_rec "A"
+```
+{common = left} & {common = right}
+= {
+  common = left          if p(left) > p(right)
+           right         if p(left) < p(right)
+           left & right  if p(left) = p(right)
+}
 ```
 
-Above, the defined field `dns_rec` is a parametrised function. But,
-As, you will see in the overwriting part, it could have been a recursively
-depend field. Actualy, Nickel beeing a lazily functional language, a
-variable can be seen as a function without params.
-
-## Default annotation
-
-If you need the same behaviour but with the field defaulting to a specified
-value if not set during any merge, `default` annotation is the answer.
-
-### Usecases
-
-The default annotation is generaly to give a default value to a record field.
-The main usage difference between using valueless fields with defaulting fields is
-that the first make a field requiered to have a valid config where the second
-make it "optionaly updatable". Even more, giving a value to a field make it
-"read only" if `default is not set.
-
-### Description
-
-A value tagged `default` can be updated afterward. Saying it in an different way
-than the explaination maid in the usecases part,
-default indicate a lower priority to a field in case of merging. Saying that,
-If both sides have been annotated `default` with both attached to a value, the
-merge is not possible.
-
-In other words, Nickel has two level of priority when merging. This mainly for
-two reasons:
-
-- instead of priorising one record to the other, Nickel prefer to be
-  explicit and provide the `default` annotation,
-- finaly, when not annotated, it make fields read only by default (when initialized)
-  which is more secure.
+Currently, there are only two priorities, `normal` (by default, when nothing is
+specified) and the `default` one, with `default < normal`. We plan to add more
+in the future (see [RFC001][rfc001]).
 
 ### Example
 
-One more time we can give a firewall example which will have the most restrictives
-values by default and can be updated".
-But first, let's check what append if we forget the `default`:
+Let us stick to our firewall example. Thanks to default values, we set the most
+restrictive configuration by default, which can still be overridden if needed.
 
-```text
-let left = {
+Let us first try without default values:
+
+```nickel
+let base = {
   firewall.enabled = true,
   firewall.type = "iptables",
   firewall.open_ports = [21, 80, 443],
 } in
-let right = {
+let patch = {
   firewall.enabled = false,
   server.host.options = "TLS",
 } in
-left & right
+base & patch
 ```
 
-Like it is, it's impossible to merge and will throw an unmergeable terms error.
-Here, the issue is that the field `firewall.enabled` is defined in both sides:
-It's undecidable which value to keep,
+Because merging is meant to be symmetric, Nickel is unable to know which value
+to pick between `enabled = true` and `enabled = false` for the firewall, and
+thus fail:
 
-The solution here is:
+```
+error: non mergeable terms
+  ┌─ repl-input-0:2:22
+  │
+2 │   firewall.enabled = true,
+  │                      ^^^^ cannot merge this expression
+  ·
+7 │   firewall.enabled = false,
+  │                      ^^^^^ with this expression
 
-```text
-let left = {
+```
+
+We can use default values to give the priority to the right side:
+
+```nickel
+let base = {
   firewall.enabled | default = true,
-  firewall.type = "iptables",
-  firewall.open_ports = [21, 80, 443],
+  firewall.type | default = "iptables",
+  firewall.open_ports | default = [21, 80, 443],
 } in
-let right = {
+let patch = {
   firewall.enabled = false,
   server.host.options = "TLS",
 } in
-left & right // => {firewall.enabled = false, ...}
+base & patch
 ```
 
-## Overwriting
+This evaluates to:
 
-The overwriting is the concept specifying the behaviour of a merge when you
-overwrite a field on which depends an other one. This  feature is described in
-RFC001 for further readings.
+```
+{
+  firewall = {
+    enabled = false,
+    open_ports = [21, 80, 443],
+    type = "iptables",
+  },
+  server = {
+    host = {
+      "options": "TLS"
+    }
+  }
+}
+```
 
-### Usecases
+## Contracts
 
-In short you can see it as a mix between the two previous parts. A record with
-some fields annotated `default` and others depending on these ones.
-Actualy if you refer to "Mixins" part, you can rewrite the examples with `default`
-values and the behaviour will be overwriting.
+*Note*: see the [correctness section](./correctness.md) and the
+[contracts section](./contracts.md) for a thorough introduction to contracts in
+Nickel.
 
-### Description
+Fields may have contracts attached, either directly, as in `{foo | Num = 1}`, or
+propagated from an annotation higher up, as in `{foo = 1} | {foo | Num}`. In
+both cases, `foo` must satisfy the contract `Num`. What happens if the value of
+`foo` is altered in a subsequent merge? For example:
 
-The important thing to notice is that, the depend fields are updated as soon as
-fields on which they depend on are updated.
+- Should `{foo | default | Num = 1} & {foo = "bar"}` succeed, although `foo`
+  would be a string in the final result?
+- Should `{foo.subfield | Str = "a"} & {foo.other_subfield = 1}`
+  succeed, although a closed contract `{subfield | Str}` is attached to `foo`,
+  and the final result would have an additional field `other_subfield` ?
+
+Nickel chooses to answer **no** to both. In general, when a contract is attached
+to a field `foo`, merging ensures that whatever is this field merged with,
+including being dropped in favor of another value, the final value for `foo` has
+to respect the contract as well or the evaluation will fail accordingly.
+
+### Specification
+
+For two operands with one field each, which the same on both side, with respective
+contracts `Left1, .., Leftn` and `Right1, .., Rightk` attached:
+
+```nickel
+left = {
+  common | Left1
+         | ..
+         | Leftn
+}
+```
+
+And
+
+```nickel
+right = {
+  common | Right1
+         | ..
+         | Rightk
+}
+```
+
+Then the `common` field of `left & right` will be checked against `Left1, ..,
+Leftn, Right1, .., Rightk`. Here, we ignore the case of type annotations such as
+`common: LeftType` that can just be considered as an additional contract
+`Left0`.
 
 ### Example
 
-```text
+```nickel
+let Port
+  | doc "A valid port number"
+  = contract.from_predicate (fun value =>
+    builtin.is_num value &&
+    value % 1 == 0 &&
+    value >= 0 &&
+    value <= 65535) in
+let GreaterThan
+  | doc "A number greater than the paramater"
+  = fun x => contract.from_predicate (fun value => value > x) in
+
+{
+    port | GreaterThan 1024
+         | default = 8080,
+} & {
+    port | Port = 80,
+}
+```
+
+This fails at evaluation:
+
+```
+error: contract broken by a value.
+[..]
+   ┌─ repl-input-1:16:19
+   │
+16 │     port | Port = 80,
+   │                   ^^ applied to this expression
+
+note:
+   ┌─ repl-input-1:13:12
+   │
+13 │     port | GreaterThan 1024
+   │            ^^^^^^^^^^^^^^^^ bound here
+```
+
+
+## Documentation
+
+Documentation is attached via the `doc` keyword. Documentation is propagated
+during merging. For example, querying `foo` by using the command `nickel -f
+config.ncl query foo` on:
+
+```nickel
+// config.ncl
+{
+  foo | doc "Some documentation"
+      | = {}
+} & {
+  foo.field = null,
+}
+```
+
+Will print `"Some documentation"` as expected. If both sides have documentation, the behavior
+is unspecified, as merging two distinct blobs of text doesn't always make sense
+in general. Currently, Nickel will randomly keeps one of the two in practice.
+
+## Recursive overriding
+
+We've seen in the section on default values that they are useful to override
+(update) a single field with a different value. The combo of merging and default
+values can do more. In Nickel, records are recursive by default, in order to
+express easily dependencies between the different fields of the configuration.
+Concretely, you can refer to other fields of a record from within this record:
+
+```nickel
+let base_config = {
+  version | default = "20.09",
+  input.url | default = url = "nixpkgs/nixos-%{version}",
+} in
+base_config
+```
+
+Here, we referred to `version` from the `input` field transparently. This
+configuration evaluates to:
+
+```nickel
+{
+  version = "20.09",
+  input = {url = "nixpkgs/nixos-20.09"},
+}
+```
+
+Merging handles overriding on recursive record too. More precisely, when we
+override the default value of `version`, *the fields that depend on `version` --
+here, `input` -- will also be updated automatically*. For example, `base_config
+& {version = "unstable"}` will evaluate to:
+
+```nickel
+{
+  version = "unstable",
+  input = {url = "nixpkgs/nixos-unstable"},
+}
+```
+
+Currently, one can only use it on a field that have been marked as default. A
+more ergonomic way of overriding is planned, and described in [RFC001][rfc001].
+
+### Example
+
+Here is another variation of recursive overriding on our `firewall` example:
+
+```nickel
 let security = {
     firewall.open_proto.http | default = true,
     firewall.open_proto.https | default = true,
@@ -263,63 +512,11 @@ let security = {
         @ (if firewall.open_proto.ftp then [21] else [])
 	@ (if firewall.open_proto.http then [80] else [])
 	@ (if firewall.open_proto.https then [443] else []),
-} in // security => {firewall.open_ports = [21, 80, 443]
-security & {firewall.open_proto.ftp = false} // => {firewall.open_ports = [80, 443]
+} in // => security.firewall.open_ports = [21, 80, 443]
+security & {firewall.open_proto.ftp = false} // => firewall.open_ports = [80, 443]
 ```
 
-Above, you can notice that, if accessing `security.firewall.open_ports` before
-the merge, it will have a value. After the merge, this value is actuated.
+Here, `security.firewall.open_ports` is `[21, 80, 443]`. But in the returned
+configuration (let's call it `result`), `result.firewall.open_ports = [80, 443]`.
 
-In the Mixins part, we used a function field. It give the same here. We used simple
-depend field for clarity but both behave the same.
-
-## A word about contracts
-
-### Contracts crossvalidation
-
-When merging records with a common field foo and different contracts attached on
-each side (say `A1`, `A2` on the left and `B` on the right), then merging
-ensures that the final value will respect the combination of all the contracts
-(`A1`, `A2`, `B`). For instance:
-
-```text
-let Port | doc "A contract for a port number"
-  = contracts.from_predicate (fun value =>
-  builtins.is_num value &&
-  value % 1 == 0 &&
-  value >= 0 &&
-  value <= 65535) in
-let Gt | doc "Contract greater than" = fun x =>
-contracts.from_predicate(fun value =>
-value > x) in
-{
-    port | #(Gt 1024) | default = 8080,
-} & {
-    port | #Port = 80,
-} // blame because 80 < 1024
-```
-
-In the case the second record would contains `port=8888` it would not have blame.
-
-### Case of `doc`
-
-Another annotation which has to be managed during merging is the `doc` annotation.
-When merging records both with documentation, only the most left one is keped:
-
-```text
-let x | doc "x" = {a = 1} in
-let y | doc "y" = {b = 2} in
-x & y // doc contains "x"
-```
-
-The behaviour is the same for interior field annotation:
-
-```text
-let x = {field | doc "field x" | Num} in
-let y = {field | doc "field y" = 2} in
-x & y // doc contains "field x"
-```
-
-You can try reversing like this `y & x`. The doc will contains "field y".
-
-TODO: what's more?
+[rfc001]: https://github.com/tweag/nickel/blob/c21cf280dc610821fceed4c2caafedb60ce7177c/rfcs/001-overriding.md
