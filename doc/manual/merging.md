@@ -459,7 +459,7 @@ config.ncl query foo` on:
 ```
 
 Will print `"Some documentation"` as expected. If both sides have documentation, the behavior
-is unspecified, as merging two distinct blobs of text doesn't always make sense
+is unspecified, as merging two distinct blobs of text doesn't make sense
 in general. Currently, Nickel will randomly keeps one of the two in practice.
 
 ## Recursive overriding
