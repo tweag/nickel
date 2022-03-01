@@ -376,7 +376,7 @@ to respect the contract as well or the evaluation will fail accordingly.
 
 #### Specification
 
-For two operands with one field each, which the same on both side, with respective
+For two operands with one field each, which is the same on both side, with respective
 contracts `Left1, .., Leftn` and `Right1, .., Rightk` attached:
 
 ```nickel
