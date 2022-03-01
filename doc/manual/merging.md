@@ -500,7 +500,7 @@ here, `input` -- will also be updated automatically*. For example, `base_config
 }
 ```
 
-Currently, one can only use it on a field that have been marked as default. A
+Currently, one can only override a field that has been marked as default beforehand. A
 more ergonomic way of overriding is planned, and described in [RFC001][rfc001].
 
 ### Example
