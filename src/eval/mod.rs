@@ -140,6 +140,12 @@ impl Closure {
             env: Environment::new(),
         }
     }
+
+    /// Cheap test for physical equality. Check that the bodies as well as the environment are
+    /// physically equal.
+    pub fn ptr_eq(this: &Closure, other: &Closure) -> bool {
+        RichTerm::ptr_eq(&this.body, &other.body) && Environment::ptr_eq(&this.env, &other.env)
+    }
 }
 
 pub type Environment = GenericEnvironment<Ident, Thunk>;

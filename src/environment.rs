@@ -9,8 +9,7 @@ use std::rc::Rc;
 
 /// An environment as a linked-list of hashmaps.
 ///
-/// Each node of the linked-list corresponds to what is called
-/// "a layer", where only the current layer can be modified, the
+/// Each node of the linked-list corresponds to what is called "a layer", where only the current layer can be modified, the
 /// previous ones are only accessible for lookup.
 ///
 /// For the generic parameters, `K` is the type for the environment
@@ -128,6 +127,28 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
     /// previous, making it Rc strong count bigger than 1.
     fn was_cloned(&self) -> bool {
         Rc::strong_count(&self.current) > 1
+    }
+
+    /// Check for physical equality between two environment. Physical equality implies that the two
+    /// environment has been cloned from the same original one (or one is the clone of the others),
+    /// and that no modification has happened since.
+    ///
+    /// Concretely, the two environment must have either their last layer empty or physically equal
+    /// and the previous layers must be physically equal as well.
+    pub fn ptr_eq(this: &Self, other: &Self) -> bool {
+        fn previous_eq<T>(this: &Option<Rc<T>>, other: &Option<Rc<T>>) -> bool {
+            match (this, other) {
+                (Some(rc1), Some(rc2)) => Rc::ptr_eq(rc1, rc2),
+                (None, None) => true,
+                _ => false,
+            }
+        }
+
+        (Rc::ptr_eq(&this.current, &other.current)
+            && previous_eq(&*this.previous.borrow(), &*other.previous.borrow()))
+            || (this.current.is_empty()
+                && other.current.is_empty()
+                && previous_eq(&*this.previous.borrow(), &*other.previous.borrow()))
     }
 }
 

@@ -92,6 +92,28 @@ pub fn merge(
     pos_op: TermPos,
     mode: MergeMode,
 ) -> Result<Closure, EvalError> {
+    // Special casing when the two operands are physically equal (as closures, i.e. including the
+    // environment).
+    //
+    // We ignore the case of records and metavalues, in which case we proceed the full recursive
+    // merge, even if the operands are physically equal. Indeed, once custom merge functions are
+    // added, it is not obvious that merge is idempotent anymore (it may be so, depending on how
+    // specifying the same custom merge function two times will be handled among other things), but
+    // we will have to prove so.
+    //
+    // In the mean time, we specialize this test to the cases where merge is obviously idempotent,
+    // which are all the remaining ones.
+    match t1.as_ref() {
+        Term::MetaValue(..) | Term::Record(..) | Term::RecRecord(..) => (),
+        _ if RichTerm::ptr_eq(&t1, &t2) && Environment::ptr_eq(&env1, &env2) => {
+            return Ok(Closure {
+                body: t1,
+                env: env1,
+            });
+        }
+        _ => (),
+    }
+
     // Merging a simple value and a metavalue is equivalent to first wrapping the simple value in a
     // new metavalue (with no attribute set excepted the value), and then merging the two
     let (t1, t2) = match (t1.term.is_metavalue(), t2.term.is_metavalue()) {

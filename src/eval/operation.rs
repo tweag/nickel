@@ -2292,6 +2292,11 @@ fn process_nary_operation(
 /// Return either a boolean when the equality can be computed directly, or a new non-empty list of equalities to be checked if
 /// operands are composite values.
 fn eq(env: &mut Environment, c1: Closure, c2: Closure) -> EqResult {
+    // Short circuit when the two operands are physically equal.
+    if Closure::ptr_eq(&c1, &c2) {
+        return EqResult::Bool(true);
+    }
+
     let Closure {
         body: RichTerm { term: t1, .. },
         env: env1,

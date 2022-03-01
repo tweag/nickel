@@ -604,6 +604,10 @@ impl SharedTerm {
     pub fn make_mut(this: &mut Self) -> &mut Term {
         Rc::make_mut(&mut this.shared)
     }
+
+    pub fn ptr_eq(this: &Self, other: &Self) -> bool {
+        Rc::ptr_eq(&this.shared, &other.shared)
+    }
 }
 
 impl AsRef<Term> for SharedTerm {
@@ -1171,6 +1175,13 @@ impl RichTerm {
             TraverseOrder::TopDown => Ok(result),
             TraverseOrder::BottomUp => f(result, state),
         }
+    }
+
+    /// Do a pointer equality test on the underlying shared terms. Cheap way to check if two terms
+    /// are equal in the special case where they point to the same AST without performing any
+    /// evaluation at all.
+    pub fn ptr_eq(this: &Self, other: &Self) -> bool {
+        SharedTerm::ptr_eq(&this.term, &other.term)
     }
 }
 
