@@ -138,7 +138,7 @@ merged. For example:
 }
 ```
 
-Evaluates to the record
+Evaluates to the record:
 
 ```nickel
 {
@@ -151,13 +151,9 @@ Evaluates to the record
 When one or both of the common fields are not records, the merge will fail
 unless one of the following condition hold:
 
-- They are both of a primitive data type `Num`, `Bool`, `Enum`, or they are null, and they are equal
-- They are physically equal, meaning that they point to the same location in
-  memory.
-
-The rationale is that only equal values are merged, but for a notion of equality
-that immediate to determine for the interpreter, and thus most restrictive than
-`==`.
+- They are both of a primitive data type `Num`, `Bool`, `Enum`, `String` and
+  they are equal
+- They are both null
 
 ### Specification
 
