@@ -290,7 +290,7 @@ impl Linearizer for AnalysisHost {
                     }
                 }
             }
-            Term::Record(fields, _) | Term::RecRecord(fields, _, _) => {
+            Term::Record(fields, _) | Term::RecRecord(fields, ..) => {
                 lin.push(LinearizationItem {
                     id,
                     pos: pos.unwrap(),
@@ -340,7 +340,7 @@ impl Linearizer for AnalysisHost {
                             walk_terms(lin, host.scope(), rt1);
                             walk_terms(lin, host.scope(), rt2);
                         }
-                        Term::Record(rts, _) | Term::RecRecord(rts, _, _) => rts
+                        Term::Record(rts, _) | Term::RecRecord(rts, ..) => rts
                             .values()
                             .for_each(|rt| walk_terms(lin, host.scope(), rt)),
                         _ => {}

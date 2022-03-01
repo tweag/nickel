@@ -33,6 +33,11 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a RichTerm)>>(
 
 /// Update the environment of the content of a recursive record field by extending it with a
 /// recursive environment.
+///
+/// For each field, retrieve the set set of dependencies from the corresponding thunk in the
+/// environment, and only add those dependencies to the environment. This avoid retaining
+/// reference-counted pointers to unused data. If no dependencies are available, conservatively add
+/// all the recursive environment. See [`transform::free_var`].
 pub fn patch_field(
     rt: &RichTerm,
     rec_env: &Vec<(Ident, Thunk)>,
@@ -42,8 +47,16 @@ pub fn patch_field(
         let mut thunk = env
             .get(var_id)
             .ok_or_else(|| EvalError::UnboundIdentifier(var_id.clone(), rt.pos))?;
-        thunk.borrow_mut().env.extend(rec_env.iter().cloned());
+
+        let extension: Vec<_> = rec_env
+            .iter()
+            .filter(|(id, _)| thunk.deps().map(|fv| fv.contains(id)).unwrap_or(true))
+            .cloned()
+            .collect();
+
+        thunk.borrow_mut().env.extend(extension);
     }
+
     // Thanks to the share normal form transformation, the content is either a constant or a
     // variable. In the constant case, the environment is irrelevant and we don't have to do
     // anything in the `else` case.

@@ -28,10 +28,13 @@
 //! Newly introduced variables begin with a special character to avoid clashing with user-defined
 //! variables.
 use super::fresh_var;
-use crate::identifier::Ident;
-use crate::match_sharedterm;
-use crate::position::TermPos;
-use crate::term::{BindingType, RichTerm, Term};
+use crate::{
+    identifier::Ident,
+    match_sharedterm,
+    position::TermPos,
+    term::{BindingType, RichTerm, Term},
+};
+use std::rc::Rc;
 
 /// Transform the top-level term of an AST to a share normal form, if it can.
 ///
@@ -54,7 +57,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                         if should_share(&t.term) {
                             let fresh_var = fresh_var();
                             let pos_t = t.pos;
-                            bindings.push((fresh_var.clone(), t));
+                            bindings.push((fresh_var.clone(), t, BindingType::Normal));
                             (id, RichTerm::new(Term::Var(fresh_var), pos_t))
                         } else {
                             (id, t)
@@ -62,9 +65,9 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                     })
                     .collect();
 
-                with_bindings(Term::Record(map, attrs), bindings, pos, BindingType::Normal)
+                with_bindings(Term::Record(map, attrs), bindings, pos)
             },
-            Term::RecRecord(map, dyn_fields, attrs) => {
+            Term::RecRecord(map, dyn_fields, attrs, deps) => {
                 // When a recursive record is evaluated, all fields need to be turned to closures
                 // anyway (see the corresponding case in `eval::eval()`), which is what the share
                 // normal form transformation does. This is why the test is more lax here than for
@@ -89,7 +92,21 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                         if !t.as_ref().is_constant() {
                             let fresh_var = fresh_var();
                             let pos_t = t.pos;
-                            bindings.push((fresh_var.clone(), t));
+                            let field_deps = deps.as_ref().and_then(|deps| deps.stat_fields.get(&id)).cloned().map(Rc::new);
+                            // If the fields has an empty set of dependencies, we can eschew the
+                            // useless introduction of a revertible thunk. Note that if
+                            // `field_deps` being `None` doesn't mean "empty dependencies" but
+                            // rather that the dependencies haven't been computed. In the latter
+                            // case, we must be conservative and assume the field is potentially
+                            // recursive.
+                            let is_non_rec = (&field_deps).as_ref().map(|deps| deps.is_empty()).unwrap_or(false);
+                            let btype = if is_non_rec {
+                                BindingType::Normal
+                            } else {
+                                BindingType::Revertible(field_deps)
+                            };
+                            bindings.push((fresh_var.clone(), t, btype));
+
                             (id, RichTerm::new(Term::Var(fresh_var), pos_t))
                         } else {
                             (id, t)
@@ -99,11 +116,13 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
 
                 let dyn_fields = dyn_fields
                     .into_iter()
-                    .map(|(id_t, t)| {
+                    .enumerate()
+                    .map(|(index, (id_t, t))| {
                         if !t.as_ref().is_constant() {
                             let fresh_var = fresh_var();
                             let pos_t = t.pos;
-                            bindings.push((fresh_var.clone(), t));
+                            let field_deps = deps.as_ref().and_then(|deps| deps.dyn_fields.get(index)).cloned().map(Rc::new);
+                            bindings.push((fresh_var.clone(), t, BindingType::Revertible(field_deps)));
                             (id_t, RichTerm::new(Term::Var(fresh_var), pos_t))
                         } else {
                             (id_t, t)
@@ -111,7 +130,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                     })
                     .collect();
 
-                with_bindings(Term::RecRecord(map, dyn_fields, attrs), bindings, pos, BindingType::Revertible)
+                with_bindings(Term::RecRecord(map, dyn_fields, attrs, deps), bindings, pos)
             },
             Term::Array(ts) => {
                 let mut bindings = Vec::with_capacity(ts.len());
@@ -122,7 +141,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                         if should_share(&t.term) {
                             let fresh_var = fresh_var();
                             let pos_t = t.pos;
-                            bindings.push((fresh_var.clone(), t));
+                            bindings.push((fresh_var.clone(), t, BindingType::Normal));
                             RichTerm::new(Term::Var(fresh_var), pos_t)
                         } else {
                             t
@@ -130,7 +149,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                     })
                     .collect();
 
-                with_bindings(Term::Array(ts), bindings, pos, BindingType::Normal)
+                with_bindings(Term::Array(ts), bindings, pos)
             },
             Term::MetaValue(meta) if meta.value.as_ref().map(|t| should_share(&t.term)).unwrap_or(false) => {
                     let mut meta = meta;
@@ -165,20 +184,18 @@ fn should_share(t: &Term) -> bool {
     }
 }
 
-/// Bind a list of pairs `(identifier, term)` in a term.
+/// Bind a list of pairs `(identifier, term, binding_type)` in a term.
 ///
 /// Given the term `body` and bindings of identifiers to terms represented as a list of pairs
 /// `(id_1, term_1), .., (id_n, term_n)`, return the new term `let id_n = term_n in ... let
 /// id_1 = term_1 in body`.
 fn with_bindings(
     body: Term,
-    bindings: Vec<(Ident, RichTerm)>,
+    bindings: Vec<(Ident, RichTerm, BindingType)>,
     pos: TermPos,
-    btype: BindingType,
 ) -> RichTerm {
-    bindings
-        .into_iter()
-        .fold(RichTerm::new(body, pos.into_inherited()), |acc, (id, t)| {
-            RichTerm::new(Term::Let(id, t, acc, btype), pos)
-        })
+    bindings.into_iter().fold(
+        RichTerm::new(body, pos.into_inherited()),
+        |acc, (id, t, btype)| RichTerm::new(Term::Let(id, t, acc, btype), pos),
+    )
 }

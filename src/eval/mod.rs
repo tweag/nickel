@@ -366,7 +366,9 @@ where
 
                 let thunk = match btype {
                     BindingType::Normal => Thunk::new(closure, IdentKind::Let),
-                    BindingType::Revertible => Thunk::new_rev(closure, IdentKind::Let),
+                    BindingType::Revertible(deps) => {
+                        Thunk::new_rev(closure, IdentKind::Let, deps.clone())
+                    }
                 };
 
                 env.insert(x.clone(), thunk);
@@ -498,7 +500,7 @@ where
                     }
                 }
             }
-            Term::RecRecord(ts, dyn_fields, attrs) => {
+            Term::RecRecord(ts, dyn_fields, attrs, _) => {
                 let rec_env = fixpoint::rec_env(ts.iter(), &env)?;
 
                 ts.iter()
@@ -750,7 +752,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
 
                 RichTerm::new(Term::Record(map, attrs), pos)
             }
-            Term::RecRecord(map, dyn_fields, attrs) => {
+            Term::RecRecord(map, dyn_fields, attrs, deps) => {
                 let map = map
                     .into_iter()
                     .map(|(id, t)| {
@@ -771,7 +773,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
                     })
                     .collect();
 
-                RichTerm::new(Term::RecRecord(map, dyn_fields, attrs), pos)
+                RichTerm::new(Term::RecRecord(map, dyn_fields, attrs, deps), pos)
             }
             Term::Array(ts) => {
                 let ts = ts
