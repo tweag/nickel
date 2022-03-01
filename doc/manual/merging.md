@@ -2,9 +2,13 @@
 
 In Nickel, the basic building blocks for data are records (objects in JSON or
 attribute sets in Nix). Merging is a fundamental built-in operation whose role
-is to combine records togethers. It is useful to compose small and logical
-blocks into a potentially complex final configuration, making it more
-manageable. Merge is performed by the `&` operator.
+is to combine records togethers. Fields common to several records will be
+themselves recursively merged if possible, following the semantics described in
+this document.
+
+Merging is useful to compose small and logical blocks into a potentially complex
+final configuration, making it more manageable. A merge is performed by the `&`
+operator.
 
 Merge is a **symmetric** operation (or, pedantically, commutative). In practice,
 this means that order doesn't matter, and `left & right` is the same thing as
@@ -20,13 +24,13 @@ the associated technical document [RFC001][rfc001].
 The section describes the behavior and use-cases of merge, by considering the
 following situations:
 
-- Merging two records without common fields
-- Merging records with common fields
-- Merging records with metadata
-  * Default values
-  * Contracts
-  * Documentation
-- Recursive overriding
+- [Merging two records without common fields](#simple-merge-(no-common-fields))
+- [Merging records with common fields](#recursive-merge-(with-common-fields))
+- [Merging records with metadata](#merging-record-with-metadata)
+  * [Default values](#default-values)
+  * [Contracts](#contracts)
+  * [Documentation](#documentation)
+- [Recursive overriding](#recursive-overriding)
 
 ## Simple merge (no common fields)
 
@@ -39,7 +43,7 @@ to `{foo = 1, bar = "bar", baz = false}`.
 Technically, if we write the left operand as:
 
 ```
-letf = {
+left = {
   field_left_1 = value_left_1,
   ..,
   field_left_n = value_left_n,
@@ -158,7 +162,7 @@ that immediate to determine for the interpreter, and thus most restrictive than
 ### Specification
 
 ```
-letf = {
+left = {
   field_left_1 = value_left_1,
   ..,
   field_left_n = value_left_n,
@@ -249,7 +253,7 @@ Metadata can be attached to values thanks to the `|` operator. Metadata
 currently includes contract annotations, default value, and documentation. We
 describe in this section how metadata interacts with merging.
 
-## Default values
+### Default values
 
 A `default` annotation can be used to provide a base value, but let it be
 overridable through merging. For example, `{foo | default = 1} & {foo = 2}`
@@ -257,7 +261,7 @@ evaluates to `{foo = 2}`. Without the default value, this merge would have
 failed with a `non mergeable fields` error, because merging being symmetric, it
 doesn't know how to combine `1` and `2` in a generic and meaningful way.
 
-### Specification
+#### Specification
 
 We can consider the merging system to feature priorities. To each field
 definition `foo = val` is associated a priority `p(val)`. When merging two
@@ -278,9 +282,9 @@ same on both side:
 
 Currently, there are only two priorities, `normal` (by default, when nothing is
 specified) and the `default` one, with `default < normal`. We plan to add more
-in the future (see [RFC001][rfc001]).
+in the future (see [RFC001](https://github.com/tweag/nickel/blob/c21cf280dc610821fceed4c2caafedb60ce7177c/rfcs/001-overriding.md#priorities)).
 
-### Example
+#### Example
 
 Let us stick to our firewall example. Thanks to default values, we set the most
 restrictive configuration by default, which can still be overridden if needed.
@@ -348,7 +352,7 @@ This evaluates to:
 }
 ```
 
-## Contracts
+### Contracts
 
 *Note*: see the [correctness section](./correctness.md) and the
 [contracts section](./contracts.md) for a thorough introduction to contracts in
@@ -370,7 +374,7 @@ to a field `foo`, merging ensures that whatever is this field merged with,
 including being dropped in favor of another value, the final value for `foo` has
 to respect the contract as well or the evaluation will fail accordingly.
 
-### Specification
+#### Specification
 
 For two operands with one field each, which the same on both side, with respective
 contracts `Left1, .., Leftn` and `Right1, .., Rightk` attached:
@@ -398,7 +402,7 @@ Leftn, Right1, .., Rightk`. Here, we ignore the case of type annotations such as
 `common: LeftType` that can just be considered as an additional contract
 `Left0`.
 
-### Example
+#### Example
 
 ```nickel
 let Port
@@ -438,7 +442,7 @@ note:
 ```
 
 
-## Documentation
+### Documentation
 
 Documentation is attached via the `doc` keyword. Documentation is propagated
 during merging. For example, querying `foo` by using the command `nickel -f
@@ -469,7 +473,7 @@ Concretely, you can refer to other fields of a record from within this record:
 ```nickel
 let base_config = {
   version | default = "20.09",
-  input.url | default = url = "nixpkgs/nixos-%{version}",
+  input.url | default = "nixpkgs/nixos-%{version}",
 } in
 base_config
 ```
@@ -510,8 +514,8 @@ let security = {
     firewall.open_proto.ftp | default = true,
     firewall.open_ports = []
         @ (if firewall.open_proto.ftp then [21] else [])
-	@ (if firewall.open_proto.http then [80] else [])
-	@ (if firewall.open_proto.https then [443] else []),
+        @ (if firewall.open_proto.http then [80] else [])
+        @ (if firewall.open_proto.https then [443] else []),
 } in // => security.firewall.open_ports = [21, 80, 443]
 security & {firewall.open_proto.ftp = false} // => firewall.open_ports = [80, 443]
 ```
