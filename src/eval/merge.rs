@@ -23,7 +23,7 @@
 //! - *Values*: merging any other values succeeds if and only if these two values are equals, in which case it evaluates to
 //! this common value.
 //!
-//! Note that merging of lists is not yet implemented.
+//! Note that merging of arrays is not yet implemented.
 //!
 //! ## On enriched values
 //!

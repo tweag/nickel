@@ -4,7 +4,7 @@
 //!
 //! At its core, Nickel is a lazy JSON with higher-order functions. It includes:
 //! - Basic values: booleans, numerals, string
-//! - Data structures: lists and records
+//! - Data structures: arrays and records
 //! - Binders: functions and let bindings
 //!
 //! It also features type annotations (promise and assume), and other typechecking related
@@ -102,8 +102,8 @@ pub enum Term {
         Option<RichTerm>,         /* default */
     ),
 
-    /// A list.
-    List(Vec<RichTerm>),
+    /// An array.
+    Array(Vec<RichTerm>),
 
     /// A primitive unary operator.
     #[serde(skip)]
@@ -367,7 +367,7 @@ impl Term {
                 func(t1);
                 func(t2);
             }
-            OpN(_, ref mut terms) | List(ref mut terms) => terms.iter_mut().for_each(|t| {
+            OpN(_, ref mut terms) | Array(ref mut terms) => terms.iter_mut().for_each(|t| {
                 func(t);
             }),
             StrChunks(chunks) => chunks.iter_mut().for_each(|chunk| match chunk {
@@ -380,7 +380,7 @@ impl Term {
     /// Return the class of an expression in WHNF.
     ///
     /// The class of an expression is an approximation of its type used in error reporting. Class
-    /// and type coincide for constants (numbers, strings and booleans) and lists. Otherwise the
+    /// and type coincide for constants (numbers, strings and booleans) and arrays. Otherwise the
     /// class is less precise than the type and indicates the general shape of the term: `"Record"`
     /// for records, `"Fun`" for functions, etc. If the term is not a WHNF, `None` is returned.
     pub fn type_of(&self) -> Option<String> {
@@ -393,7 +393,7 @@ impl Term {
             Term::Lbl(_) => Some("Label"),
             Term::Enum(_) => Some("Enum"),
             Term::Record(..) | Term::RecRecord(..) => Some("Record"),
-            Term::List(_) => Some("List"),
+            Term::Array(_) => Some("Array"),
             Term::Sym(_) => Some("Sym"),
             Term::Wrapped(_, _) => Some("Wrapped"),
             Term::MetaValue(_) => Some("Metavalue"),
@@ -445,7 +445,7 @@ impl Term {
                 }
             }
             Term::Record(..) | Term::RecRecord(..) => String::from("{ ... }"),
-            Term::List(_) => String::from("[ ... ]"),
+            Term::Array(_) => String::from("[ ... ]"),
             Term::Sym(_) => String::from("<sym>"),
             Term::Wrapped(_, _) => String::from("<wrapped>"),
             Term::MetaValue(ref meta) => {
@@ -501,7 +501,7 @@ impl Term {
 
                 format!("{{ {}{}}}", fields_str.join(", "), suffix)
             }
-            Term::List(elements) => {
+            Term::Array(elements) => {
                 let elements_str: Vec<String> = elements
                     .iter()
                     .map(|term| term.as_ref().deep_repr())
@@ -523,7 +523,7 @@ impl Term {
             | Term::Lbl(_)
             | Term::Enum(_)
             | Term::Record(..)
-            | Term::List(_)
+            | Term::Array(_)
             | Term::Sym(_) => true,
             Term::Let(..)
             | Term::LetPattern(..)
@@ -565,7 +565,7 @@ impl Term {
             Term::Let(..)
             | Term::LetPattern(..)
             | Term::Record(..)
-            | Term::List(_)
+            | Term::Array(_)
             | Term::Fun(_, _)
             | Term::FunPattern(_, _, _)
             | Term::App(_, _)
@@ -647,8 +647,8 @@ pub enum UnaryOp {
     IsStr(),
     /// Test if a term is a function.
     IsFun(),
-    /// Test if a term is a list.
-    IsList(),
+    /// Test if a term is an array.
+    IsArray(),
     /// Test if a term is a record.
     IsRecord(),
 
@@ -678,8 +678,8 @@ pub enum UnaryOp {
     /// Static means that the field identifier is a statically known string inside the source.
     StaticAccess(Ident),
 
-    /// Map a function on each element of a list.
-    ListMap(),
+    /// Map a function on each element of an array.
+    ArrayMap(),
     /// Map a function on a record.
     ///
     /// The mapped function must take two arguments, the name of the field as a string, and the
@@ -715,10 +715,10 @@ pub enum UnaryOp {
     ///
     /// See `GoDom`.
     GoCodom(),
-    /// Go to the list in the type path of a label.
+    /// Go to the array in the type path of a label.
     ///
     /// See `GoDom`.
-    GoList(),
+    GoArray(),
 
     /// Wrap a term with a type tag (see `Wrapped` in [`Term`](enum.Term.html)).
     Wrap(),
@@ -727,18 +727,18 @@ pub enum UnaryOp {
     Seq(),
     /// Recursively force the evaluation of its first argument then returns the second.
     ///
-    /// Recursive here means that the evaluation does not stop at a WHNF, but the content of lists
+    /// Recursive here means that the evaluation does not stop at a WHNF, but the content of arrays
     /// and records is also recursively forced.
     DeepSeq(),
 
-    /// Return the head of a list.
-    ListHead(),
-    /// Return the tail of a list.
-    ListTail(),
-    /// Return the length of a list.
-    ListLength(),
-    /// Generate a list of a given length by mapping a `Num -> Num` function onto `[1,..,n]`.
-    ListGen(),
+    /// Return the head of an array.
+    ArrayHead(),
+    /// Return the tail of an array.
+    ArrayTail(),
+    /// Return the length of an array.
+    ArrayLength(),
+    /// Generate an array of a given length by mapping a `Num -> Num` function onto `[1,..,n]`.
+    ArrayGen(),
 
     /// Generated by the evaluation of a string with interpolated expressions. `ChunksConcat`
     /// applied to the current chunk to evaluate. As additional state, it uses a string
@@ -746,14 +746,14 @@ pub enum UnaryOp {
     /// evaluated, all stored on the stack.
     ChunksConcat(),
 
-    /// Return the names of the fields of a record as a string list.
+    /// Return the names of the fields of a record as a string array.
     FieldsOf(),
-    /// Return the values of the fields of a record as a list.
+    /// Return the values of the fields of a record as an array.
     ValuesOf(),
 
     /// Remove heading and trailing spaces from a string.
     StrTrim(),
-    /// Return the list of characters of a string.
+    /// Return the array of characters of a string.
     StrChars(),
     /// Return the code of a character (givne as a string of length 1).
     CharCode(),
@@ -831,10 +831,10 @@ pub enum BinaryOp {
     DynAccess(),
     /// Test if a record has a specific field.
     HasField(),
-    /// Concatenate two lists.
-    ListConcat(),
-    /// Access the n-th element of a list.
-    ListElemAt(),
+    /// Concatenate two arrays.
+    ArrayConcat(),
+    /// Access the n-th element of an array.
+    ArrayElemAt(),
     /// The merge operator (see the [merge module](../merge/index.html)).
     Merge(),
 
@@ -845,7 +845,7 @@ pub enum BinaryOp {
     /// Deserialize a string to a value.
     Deserialize(),
 
-    /// Split a string into a list.
+    /// Split a string into an array.
     StrSplit(),
     /// Determine if a string is a substring of another one.
     StrContains(),
@@ -1093,14 +1093,14 @@ impl RichTerm {
                     pos,
                 )
             },
-            Term::List(ts) => {
+            Term::Array(ts) => {
                 let ts_res: Result<Vec<RichTerm>, E> = ts
                     .into_iter()
                     .map(|t| t.traverse(f, state, method))
                     .collect();
 
                 RichTerm::new(
-                    Term::List(ts_res?),
+                    Term::Array(ts_res?),
                     pos,
                 )
             },
@@ -1349,7 +1349,7 @@ pub mod make {
         I: Into<Ident>,
     {
         match pat.into() {
-            d @ (Destruct::Record { .. } | Destruct::List { .. }) => {
+            d @ (Destruct::Record { .. } | Destruct::Array { .. }) => {
                 Term::LetPattern(id.map(|i| i.into()), d, t1.into(), t2.into()).into()
             }
             Destruct::Empty => {

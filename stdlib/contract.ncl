@@ -9,9 +9,9 @@
 
   "$fail" = fun l t => %blame% l,
 
-  "$list" = fun elt l t =>
-    if %is_list% t then
-      %map% t (fun value => %assume% elt (%go_list% l) value)
+  "$array" = fun elt l t =>
+    if %is_array% t then
+      %map% t (fun value => %assume% elt (%go_array% l) value)
     else %blame% l,
 
   "$func" = fun s t l e =>

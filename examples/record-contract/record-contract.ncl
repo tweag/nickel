@@ -18,7 +18,7 @@ let PortElt
 let Container = {
   name | Str,
   image | Str,
-  ports | List PortElt,
+  ports | Array PortElt,
 } in
 
 let KubernetesConfig = {
@@ -42,7 +42,7 @@ let KubernetesConfig = {
 
     template = {
       metadata.labels.app | Str,
-      spec.containers | List Container,
+      spec.containers | Array Container,
     },
   },
 } in

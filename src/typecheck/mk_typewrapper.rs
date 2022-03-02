@@ -100,11 +100,11 @@ where
     TypeWrapper::Concrete(AbsType::DynRecord(Box::new(ty.into())))
 }
 
-pub fn list<T>(ty: T) -> TypeWrapper
+pub fn array<T>(ty: T) -> TypeWrapper
 where
     T: Into<TypeWrapper>,
 {
-    TypeWrapper::Concrete(AbsType::List(Box::new(ty.into())))
+    TypeWrapper::Concrete(AbsType::Array(Box::new(ty.into())))
 }
 
 // dyn is a reserved keyword

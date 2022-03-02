@@ -51,7 +51,7 @@ pub mod ty_path {
         Domain,
         Codomain,
         Field(Ident),
-        List,
+        Array,
     }
 
     pub type Path = Vec<Elem>;
@@ -169,14 +169,14 @@ pub mod ty_path {
                     }
                 }
             }
-            (AbsType::List(ty), Some(Elem::List)) if *ty.as_ref() == Types(AbsType::Dyn()) =>
+            (AbsType::Array(ty), Some(Elem::Array)) if *ty.as_ref() == Types(AbsType::Dyn()) =>
             // Dyn shouldn't be the target of any blame
             {
-                panic!("span(): unexpected blame of a dyn contract inside a list")
+                panic!("span(): unexpected blame of a dyn contract inside an array")
             }
-            (AbsType::List(ty), Some(Elem::List)) => {
-                // initial "List "
-                let start_offset = 5;
+            (AbsType::Array(ty), Some(Elem::Array)) => {
+                // initial "Array "
+                let start_offset = 6;
                 let paren_offset = if ty.fmt_is_atom() { 0 } else { 1 };
 
                 let (sub_start, sub_end) = span(path_it, ty);

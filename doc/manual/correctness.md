@@ -97,10 +97,10 @@ types and contracts directly follow from this distinction.
 In the next paragraphs, we consider two typical examples to illustrate the
 difference between types and contracts in practice.
 
-### Case 1: a function operating on lists
+### Case 1: a function operating on arrays 
 
-Say we need a function to convert a list of key-value pairs to a list of keys
-and a list of values. Let's call it `split`:
+Say we need a function to convert an array of key-value pairs to an array of keys
+and an array of values. Let's call it `split`:
 
 ```
 nickel> split [{key = "foo", value = 1}, {key = "bar", value = 2}]
@@ -115,13 +115,13 @@ nickel> split [
 ```
 
 Here is the definition for `split`, but with a twist. We mistakenly forgot to
-wrap `pair.key` as a list before concatenating at line 6:
+wrap `pair.key` as an array before concatenating at line 6:
 
 ```nickel
 // lib.ncl
 {
   split = fun pairs =>
-    list.fold (fun pair acc =>
+    array.fold (fun pair acc =>
       {
         // problem: the right expression to use is [pair.key]
         keys = acc.keys @ pair.key,
@@ -140,21 +140,21 @@ let {split} = import "lib.ncl" in
 split [{key = "foo", value = 1}, {key = "bar", value = 2}]
 ```
 
-We want to ensure that the callers to `split` pass a list
+We want to ensure that the callers to `split` pass an array
 verifying:
  - elements are records with a `key` field and a `value` field
  - keys are strings
  - values can be anything, but must all have the same type
 
 We also want to make sure our implementation correctly returns a value which is
-a record with a field `keys` that is a list of strings, and a field `values`
-that is a list of elements of the same type as the input values.
+a record with a field `keys` that is an array of strings, and a field `values`
+that is an array of elements of the same type as the input values.
 
 An idiomatic way to express these properties in Nickel is to use the annotation
 
 ```nickel
-forall a. List {key: Str, value: a}
-          -> {keys: List Str, values: List a}
+forall a. Array {key: Str, value: a}
+          -> {keys: Array Str, values: Array a}
 ```
 
 The `forall` parts says that the type of values `a` can be anything, but it has
@@ -169,8 +169,8 @@ opaque, inert value, waiting for an argument to hand back a result. In
 consequence, a function contract is doomed to fire only when `split` is applied
 to an argument, in which case the contract checks that:
 
-1. The argument satisfies the `List {key: Str, value: a}` contract.
-2. The return value satisfies the `{keys: List Str, values: List a}` contract.
+1. The argument satisfies the `Array {key: Str, value: a}` contract.
+2. The return value satisfies the `{keys: Array Str, values: Array a}` contract.
 
 Those checks produce useful error message when the caller passes arguments of
 the wrong type, or the function returns a value of the wrong type. But the
@@ -189,7 +189,7 @@ function contract for `split` has the following limitations:
         ┌─ repl-input-12:6:27
         │
       6 │         keys = acc.keys @ pair.key,
-        │                           ^^^^^^^^ This expression has type Str, but List was expected
+        │                           ^^^^^^^^ This expression has type Str, but Array was expected
         │
         ┌─ repl-input-13:1:45
         │
@@ -227,7 +227,7 @@ error: Incompatible rows declaration
   │       ^^^^^ this expression
 [..]
 error: While typing field `key`: Incompatible types
- = The type of the expression was expected to be `List Str`
+ = The type of the expression was expected to be `Array Str`
  = The type of the expression was inferred to be `Str`
  = These types are not compatible
 ```
@@ -255,7 +255,7 @@ contract from now on:
 
 ```nickel
 let OptLevel = contract.from_predicate (fun value =>
-    list.elem value ["O0", "O1", "O2", "O3"]) in
+    array.elem value ["O0", "O1", "O2", "O3"]) in
 {
   opt_level = "O2",
 }

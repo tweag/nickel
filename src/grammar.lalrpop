@@ -250,23 +250,23 @@ Applicative: UniTerm = {
     RecordOperand,
 };
 
-// The list type, potentially with an argument. Take precedence over
-// application: `List Foo` is always interpreted as the type `List` parametrized
-// by `Foo`, rather than the dynamic list type `List Dyn` aliased to `List` and
+// The array type, potentially with an argument. Take precedence over
+// application: `Array Foo` is always interpreted as the type `Array` parametrized
+// by `Foo`, rather than the dynamic array type `Array Dyn` aliased to `Array` and
 // seen as a contract applied to term `Foo`.
-TypeList: Types =
-    "List" <TypeListParam?> => {
+TypeArray: Types =
+    "Array" <TypeArrayParam?> => {
         let ty = Box::new(<>.unwrap_or(Types(AbsType::Dyn())));
-        Types(AbsType::List(ty))
+        Types(AbsType::Array(ty))
     };
 
-// Possible parameter for the list type. It's `TypeAtom` augmented with an
-// argument-less `List`, which allows to parse `List List`. We can't add
-// argument-less `List` to type atoms directly, as it would make `List Foo`
-// ambiguous: could be parsed both as `List` as a term applied to `List` as a
-// term, or as the parametrized type `List List`).
-TypeListParam: Types = {
-    "List" => Types(AbsType::List(Box::new(Types(AbsType::Dyn())))),
+// Possible parameter for the array type. It's `TypeAtom` augmented with an
+// argument-less `Array`, which allows to parse `Array Array`. We can't add
+// argument-less `Array` to type atoms directly, as it would make `Array Foo`
+// ambiguous: could be parsed both as `Array` as a term applied to `Array` as a
+// term, or as the parametrized type `Array Array`).
+TypeArrayParam: Types = {
+    "Array" => Types(AbsType::Array(Box::new(Types(AbsType::Dyn())))),
     AsType<Atom>,
 };
 
@@ -335,7 +335,7 @@ Atom: UniTerm = {
         let terms : Vec<RichTerm> = terms.into_iter()
             .chain(last.into_iter()).collect();
 
-        UniTerm::from(Term::List(terms))
+        UniTerm::from(Term::Array(terms))
     },
     AsUniTerm<TypeAtom>,
 };
@@ -529,24 +529,24 @@ UOp: UnaryOp = {
     "is_bool" => UnaryOp::IsBool(),
     "is_str" => UnaryOp::IsStr(),
     "is_fun" => UnaryOp::IsFun(),
-    "is_list" => UnaryOp::IsList(),
+    "is_array" => UnaryOp::IsArray(),
     "is_record" => UnaryOp::IsRecord(),
     "blame" => UnaryOp::Blame(),
     "chng_pol" => UnaryOp::ChangePolarity(),
     "polarity" => UnaryOp::Pol(),
     "go_dom" => UnaryOp::GoDom(),
     "go_codom" => UnaryOp::GoCodom(),
-    "go_list" => UnaryOp::GoList(),
+    "go_array" => UnaryOp::GoArray(),
     "wrap" => UnaryOp::Wrap(),
     "embed" <Ident> => UnaryOp::Embed(<>),
-    "map"  => UnaryOp::ListMap(),
-    "generate" => UnaryOp::ListGen(),
+    "map"  => UnaryOp::ArrayMap(),
+    "generate" => UnaryOp::ArrayGen(),
     "record_map" => UnaryOp::RecordMap(),
     "seq" => UnaryOp::Seq(),
     "deep_seq" => UnaryOp::DeepSeq(),
-    "head" => UnaryOp::ListHead(),
-    "tail" => UnaryOp::ListTail(),
-    "length" => UnaryOp::ListLength(),
+    "head" => UnaryOp::ArrayHead(),
+    "tail" => UnaryOp::ArrayTail(),
+    "length" => UnaryOp::ArrayLength(),
     "fields" => UnaryOp::FieldsOf(),
     "values" => UnaryOp::ValuesOf(),
     "str_trim" => UnaryOp::StrTrim(),
@@ -571,7 +571,7 @@ SwitchCase: SwitchCase = {
 
 InfixBOp2: BinaryOp = {
     "++" => BinaryOp::StrConcat(),
-    "@" => BinaryOp::ListConcat(),
+    "@" => BinaryOp::ArrayConcat(),
 }
 
 InfixBOp3: BinaryOp = {
@@ -680,7 +680,7 @@ InfixLazyBOpApp<UOp, LExpr, RExpr>: UniTerm =
 InfixExpr: UniTerm = {
     #[precedence(level="0")]
     Applicative,
-    AsUniTerm<TypeList>,
+    AsUniTerm<TypeArray>,
 
     #[precedence(level="1")]
     "-" <AsTerm<InfixExpr>> =>
@@ -729,7 +729,7 @@ BOpPre: BinaryOp = {
     "unwrap" => BinaryOp::Unwrap(),
     "go_field" => BinaryOp::GoField(),
     "has_field" => BinaryOp::HasField(),
-    "elem_at" => BinaryOp::ListElemAt(),
+    "elem_at" => BinaryOp::ArrayElemAt(),
     "tag" => BinaryOp::Tag(),
     "hash" => BinaryOp::Hash(),
     "serialize" => BinaryOp::Serialize(),
@@ -847,14 +847,14 @@ extern {
         "Dyn" => Token::Normal(NormalToken::Dyn),
         "Str" => Token::Normal(NormalToken::Str),
         "Bool" => Token::Normal(NormalToken::Bool),
-        "List" => Token::Normal(NormalToken::List),
+        "Array" => Token::Normal(NormalToken::Array),
 
         "tag" => Token::Normal(NormalToken::Tag),
         "is_num" => Token::Normal(NormalToken::IsNum),
         "is_bool" => Token::Normal(NormalToken::IsBool),
         "is_str" => Token::Normal(NormalToken::IsStr),
         "is_fun" => Token::Normal(NormalToken::IsFun),
-        "is_list" => Token::Normal(NormalToken::IsList),
+        "is_array" => Token::Normal(NormalToken::IsArray),
         "is_record" => Token::Normal(NormalToken::IsRecord),
         "assume" => Token::Normal(NormalToken::Assume),
         "blame" => Token::Normal(NormalToken::Blame),
@@ -862,7 +862,7 @@ extern {
         "polarity" => Token::Normal(NormalToken::Polarity),
         "go_dom" => Token::Normal(NormalToken::GoDom),
         "go_codom" => Token::Normal(NormalToken::GoCodom),
-        "go_list" => Token::Normal(NormalToken::GoList),
+        "go_array" => Token::Normal(NormalToken::GoArray),
         "go_field" => Token::Normal(NormalToken::GoField),
         "wrap" => Token::Normal(NormalToken::Wrap),
         "unwrap" => Token::Normal(NormalToken::Unwrap),
@@ -879,7 +879,7 @@ extern {
 
         "has_field" => Token::Normal(NormalToken::HasField),
         "map" => Token::Normal(NormalToken::Map),
-        "generate" => Token::Normal(NormalToken::ListGen),
+        "generate" => Token::Normal(NormalToken::ArrayGen),
         "elem_at" => Token::Normal(NormalToken::ElemAt),
         "merge" => Token::Normal(NormalToken::Merge),
         "default" => Token::Normal(NormalToken::Default),

@@ -28,7 +28,7 @@ data!
     ```
 
     Alternatively, you can query a configuration or a sub-element to get
-    list of attributes or the documentation:
+    a list of attributes or the documentation:
 
     ```
     $ nickel -f record-contract.ncl query kind

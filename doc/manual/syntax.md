@@ -152,21 +152,22 @@ Examples:
 ```
 
 Multiline strings are "indentation-aware". This means that one could use an indented string interpolation and the indentation would behave as expected:
+
 ```
 > let log = m%"
 if log:
   print("log:", s)
 "%m in m%"
-def concat(str_list, log=false):
+def concat(str_array, log=false):
   res = []
-  for s in str_list:
+  for s in str_array:
     %{log}
     res.append(s)
   return res
 "%m
-"def concat(str_list, log=false):
+"def concat(str_array, log=false):
   res = []
-  for s in str_list:
+  for s in str_array:
     if log:
       print("log:", s)
     res.append(s)
@@ -201,8 +202,8 @@ false
 
 ## Composite values
 
-### List
-A list is a sequence of values. They are delimited by `[` and `]`, and elements are separated with `,`.
+### Array 
+An array is a sequence of values. They are delimited by `[` and `]`, and elements are separated with `,`.
 
 Examples:
 ```
@@ -212,7 +213,7 @@ Examples:
 []
 ```
 
-Lists can be concatenated with the operator `@`:
+Arrays can be concatenated with the operator `@`:
 ```
 > [1] @ [2, 3]
 [ 1, 2, 3 ]
@@ -338,7 +339,7 @@ Examples:
     increment 41
 42
 
-> let flatten = list.fold (@) [] in flatten [[1, 2], [3], [4, 5]]
+> let flatten = array.fold (@) [] in flatten [[1, 2], [3], [4, 5]]
 [ 1, 2, 3, 4, 5 ]
 ```
 
@@ -352,12 +353,12 @@ Examples:
 
 > "Hello World"
   |> string.split " "
-  |> list.head
+  |> array.head
 "Hello"
 
 > "Hello World"
   |> string.split " "
-  |> list.head
+  |> array.head
   |> string.uppercase
 "HELLO"
 ```
@@ -374,8 +375,8 @@ Examples:
 (fun a b => a + b) : Num -> Num -> Num
 let add : Num -> Num -> Num = fun a b => a + b
 
-{a: Num = 1, b: Bool = true, c : List Num = [ 1 ]}
-let r : {a : Num, b : Bool, c : List Num} = { a = 1, b = true, c = [ 1 ] }
+{a: Num = 1, b: Bool = true, c : Array Num = [ 1 ]}
+let r : {a : Num, b : Bool, c : Array Num} = { a = 1, b = true, c = [ 1 ] }
 
 { a = 1, b = 2 } : { _ : Num }
 let r : { _ : Num } = { a = 1, b = 2 }

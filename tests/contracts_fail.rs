@@ -134,22 +134,22 @@ fn lists_contracts() {
     use nickel::label::ty_path::Elem;
 
     assert_matches!(
-        eval("%deep_seq% ([1, \"a\"] | List Num) 0"),
+        eval("%deep_seq% ([1, \"a\"] | Array Num) 0"),
         Err(Error::EvalError(EvalError::BlameError(..)))
     );
     assert_matches!(
-        eval("1 | List"),
+        eval("1 | Array"),
         Err(Error::EvalError(EvalError::BlameError(..)))
     );
     assert_matches!(
-        eval("(fun x => x) | List"),
+        eval("(fun x => x) | Array"),
         Err(Error::EvalError(EvalError::BlameError(..)))
     );
 
-    let res = eval("%deep_seq% ([{a = [1]}] | List {a: List Str}) false");
+    let res = eval("%deep_seq% ([{a = [1]}] | Array {a: Array Str}) false");
     match &res {
         Err(Error::EvalError(EvalError::BlameError(ref l, _))) => {
-            assert_matches!(l.path.as_slice(), [Elem::List, Elem::Field(id), Elem::List] if &id.to_string() == "a")
+            assert_matches!(l.path.as_slice(), [Elem::Array, Elem::Field(id), Elem::Array] if &id.to_string() == "a")
         }
         err => panic!("expected blame error, got {:?}", err),
     }
@@ -159,11 +159,11 @@ fn lists_contracts() {
     res.unwrap_err().to_diagnostic(&mut files, None);
 
     let res = eval(
-        "(%elem_at% (({foo = [(fun x => \"a\")]} | {foo: List (forall a. a -> Num)}).foo) 0) false",
+        "(%elem_at% (({foo = [(fun x => \"a\")]} | {foo: Array (forall a. a -> Num)}).foo) 0) false",
     );
     match &res {
         Err(Error::EvalError(EvalError::BlameError(ref l, _))) => {
-            assert_matches!(l.path.as_slice(), [Elem::Field(id), Elem::List, Elem::Codomain] if &id.to_string() == "foo")
+            assert_matches!(l.path.as_slice(), [Elem::Field(id), Elem::Array, Elem::Codomain] if &id.to_string() == "foo")
         }
         err => panic!("expected blame error, got {:?}", err),
     }

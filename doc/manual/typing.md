@@ -55,11 +55,11 @@ error: Type error
 ```
 
 While dynamic typing is fine for configuration code, the trouble begins once we
-are using functions. Say we want to filter over a list of elements:
+are using functions. Say we want to filter over an array of elements:
 
 ```nickel
 let filter = fun pred l =>
-  list.foldl (fun acc x => if pred x then acc @ [x] else acc) [] l in
+  array.foldl (fun acc x => if pred x then acc @ [x] else acc) [] l in
 filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
 ```
 
@@ -68,7 +68,7 @@ Result:
 error: Type error
   ┌─ repl-input-11:2:32
   │
-2 │   list.foldl (fun acc x => if pred x then acc @ [x] else acc) [] l in
+2 │   array.foldl (fun acc x => if pred x then acc @ [x] else acc) [] l in
   │                                ^^^^^^ This expression has type Num, but Bool was expected
 3 │ filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
   │                                                             - evaluated to this
@@ -117,8 +117,8 @@ a type annotation at the top-level:
 
 ```nickel
 (let filter = fun pred l =>
-     list.foldl (fun acc x => if pred x then acc @ [x] else acc) [] l in
-filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]) : List Num
+     array.foldl (fun acc x => if pred x then acc @ [x] else acc) [] l in
+filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]) : Array Num
 ```
 
 Result:
@@ -126,7 +126,7 @@ Result:
 error: Incompatible types
   ┌─ repl-input-12:3:37
   │
-3 │ filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]) : List Num
+3 │ filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]) : Array Num
   │                                     ^ this expression
   │
   = The type of the expression was expected to be `Bool`
@@ -136,9 +136,9 @@ error: Incompatible types
 
 This is already better! The error now points at the call site, and inside our
 anonymous function, telling us it is expected to return a boolean instead of a
-number. Notice how we just had to give the top-level annotation `List Num`.
+number. Notice how we just had to give the top-level annotation `Array Num`.
 Nickel performs type inference, so that you don't have to write the type for
-`filter`, the filtering function nor the list.
+`filter`, the filtering function nor the array.
 
 ### Take-away
 
@@ -163,13 +163,13 @@ Let us now have a quick tour of the type system. The basic types are:
 
 The following type constructors are available:
 
-- **List**: `List T`. A list of elements of type `T`. When no `T` is specified, `List`
-  alone is an alias for `List Dyn`.
+- **Array**: `Array T`. An array of elements of type `T`. When no `T` is specified, `Array`
+  alone is an alias for `Array Dyn`.
 
   Example:
   ```nickel
-  let x : List (List Num) = [[1,2], [3,4]] in
-  list.flatten x : List Num
+  let x : Array (Array Num) = [[1,2], [3,4]] in
+  array.flatten x : Array Num
   ```
 - **Record**: `{field1: T1, .., fieldn: Tn}`. A record whose field
   names are known statically as `field1`, .., `fieldn`, respectively of type
@@ -225,8 +225,8 @@ it is good practice to write a type annotation for it, if only to provide the
 consumers of this library with an explicit interface. What should be the type
 annotation for `filter`?
 
-In our initial `filter` example, we are filtering on a list of numbers. But the
-code of `filter` is agnostic with respect to the type of elements of the list.
+In our initial `filter` example, we are filtering on an array of numbers. But the
+code of `filter` is agnostic with respect to the type of elements of the array.
 That is, `filter` is *generic*. Genericity is expressed in Nickel through
 *polymorphism*. A polymorphic type is a type that contains the keyword `forall`,
 which introduces type variables that can later be substituted for any concrete
@@ -234,7 +234,7 @@ type. Here is our polymorphic type annotation for `filter`:
 
 ```nickel
 {
-  filter : forall a. (a -> Bool) -> List a -> List a = ...,
+  filter : forall a. (a -> Bool) -> Array a -> Array a = ...,
 }
 ```
 
@@ -243,8 +243,8 @@ well:
 
 ```nickel
 {
-  foo : List Str = filter (fun s => string.length s > 2) ["a","ab","abcd"],
-  bar : List Num = filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6],
+  foo : Array Str = filter (fun s => string.length s > 2) ["a","ab","abcd"],
+  bar : Array Num = filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6],
 }
 ```
 
@@ -269,14 +269,14 @@ higherRankId id 0 : Num
 #### Type inference and polymorphism
 
 If we go back to our first example of the statically typed `filter` without the
-polymorphic annotation and try to add a call to `filter` on a list of strings,
+polymorphic annotation and try to add a call to `filter` on an array of strings,
 the typechecker surprisingly rejects our code:
 
 ```nickel
 (let filter = ... in
 let result = filter (fun x => x % 2 == 0) [1,2,3,4,5,6] in
 let dummy = filter (fun s => string.length s > 2) ["a","ab","abcd"] in
-result) : List Num
+result) : Array Num
 ```
 
 Result:
@@ -295,7 +295,7 @@ error: Incompatible types
 The reason is that **without an explicit polymorphic annotation, the typechecker
 will always infer non-polymorphic types**. If you need polymorphism, you have to
 write a type anntation. Here, `filter` is inferred to be of type `(Num -> Bool)
--> List Num -> List Num`, guessed from the application in the right hand side of
+-> Array Num -> Array Num`, guessed from the application in the right hand side of
 `result`.
 
 **Note**:
@@ -412,7 +412,7 @@ type.
 ### Take-away
 
 The type system of Nickel has usual basic types (`Dyn`, `Num`, `Str`, and
-`Bool`) and type constructors for lists, records, enums and functions. Nickel
+`Bool`) and type constructors for arrays, records, enums and functions. Nickel
 features generics via polymorphism, introduced by the `forall` keyword. A type
 can not only be generic in other types, but records and enums types can also be
 generic in their tail. The tail is delimited by `|`.
@@ -427,7 +427,7 @@ We'll now explore how typed and untyped code interact.
 Until now, we have written the statically typed `filter` examples using
 statically typed blocks that enclosed both the definition of `filter` and the
 call sites. More realistically, `filter` would be a statically typed library
-function (it is actually part of the standard library as `list.filter`) and
+function (it is actually part of the standard library as `array.filter`) and
 likely be called from dynamically typed configuration files. In this situation,
 the call site escapes the typechecker. Thus, without an additional mechanism,
 static typing would only ensure that the implementation of `filter` doesn't
@@ -439,10 +439,10 @@ an error from within `filter`.
 
 Fortunately, Nickel does have a mechanism to prevent this from happening and to
 provide good error reporting in this situation. Let us see that by ourselves by
-calling to the statically typed `list.filter` from dynamically typed code:
+calling to the statically typed `array.filter` from dynamically typed code:
 
 ```nickel
-list.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
+array.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
 ```
 
 Result:
@@ -450,13 +450,13 @@ Result:
 error: Blame error: contract broken by the caller.
   ┌─ :1:17
   │
-1 │ forall a. (a -> Bool) -> List a -> List a
+1 │ forall a. (a -> Bool) -> Array a -> Array a
   │                 ---- expected return type of a function provided by the caller
   │
   ┌─ repl-input-45:1:67
   │
-1 │ list.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
-  │                                                                  - evaluated to this expression
+1 │ array.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
+  │                                                                   - evaluated to this expression
   │
   = This error may happen in the following situation:
     1. A function `f` is bound by a contract: e.g. `(Num -> Num) -> Num`.
@@ -466,16 +466,16 @@ error: Blame error: contract broken by the caller.
   = Note: this is an illustrative example. The actual error may involve deeper nested functions calls.
 
 note:
-    ┌─ <stdlib/list>:160:14
+    ┌─ <stdlib/array>:160:14
     │
-160 │     filter : forall a. (a -> Bool) -> List a -> List a
+160 │     filter : forall a. (a -> Bool) -> Array a -> Array a
     │              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ bound here
 
 [...]
 note:
   ┌─ repl-input-45:1:1
   │
-1 │ list.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
+1 │ array.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
   │ ------------------------------------------------------------------- (3) calling <func>
 ```
 
@@ -586,7 +586,7 @@ determining the apparent type shouldn't recurse arbitrarily inside the
 expression or do anything non-trivial. Typically, replacing `1` with a compound
 expression `0 + 1` changes the type of `x` type to `Dyn` and makes the example
 fail. For now, the typechecker determines an apparent type that is not `Dyn`
-only for literals (numbers, strings, booleans), lists, variables, imports and
+only for literals (numbers, strings, booleans), arrays, variables, imports and
 annotated expressions. Otherwise, the typechecker fallbacks to `Dyn`. It may do
 more in the future (assign `Dyn -> Dyn` to functions, `{_: Dyn}` to records,
 etc).

@@ -15,4 +15,4 @@ let Assert = fun l x => x || %blame% l in
     g true
     == 4,
 ]
-|> list.foldl (fun x y => (x | Assert) && y) true
+|> array.foldl (fun x y => (x | Assert) && y) true

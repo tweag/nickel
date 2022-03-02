@@ -27,7 +27,7 @@ pub fn get_uop_type(
         | UnaryOp::IsBool()
         | UnaryOp::IsStr()
         | UnaryOp::IsFun()
-        | UnaryOp::IsList()
+        | UnaryOp::IsArray()
         | UnaryOp::IsRecord() => {
             let inp = TypeWrapper::Ptr(state.table.fresh_var());
             (inp, mk_typewrapper::bool())
@@ -57,7 +57,7 @@ pub fn get_uop_type(
         // This should not happen, as Switch() is only produced during evaluation.
         UnaryOp::Switch(_) => panic!("cannot typecheck Switch()"),
         // Dyn -> Dyn
-        UnaryOp::ChangePolarity() | UnaryOp::GoDom() | UnaryOp::GoCodom() | UnaryOp::GoList() => {
+        UnaryOp::ChangePolarity() | UnaryOp::GoDom() | UnaryOp::GoCodom() | UnaryOp::GoArray() => {
             (mk_typewrapper::dynamic(), mk_typewrapper::dynamic())
         }
         // Sym -> Dyn -> Dyn
@@ -72,25 +72,25 @@ pub fn get_uop_type(
 
             (mk_tyw_record!((id.clone(), res.clone()); row), res)
         }
-        // forall a b. List a -> (a -> b) -> List b
-        UnaryOp::ListMap() => {
+        // forall a b. Array a -> (a -> b) -> Array b
+        UnaryOp::ArrayMap() => {
             let a = TypeWrapper::Ptr(state.table.fresh_var());
             let b = TypeWrapper::Ptr(state.table.fresh_var());
 
             let f_type = mk_tyw_arrow!(a.clone(), b.clone());
             (
-                mk_typewrapper::list(a),
-                mk_tyw_arrow!(f_type, mk_typewrapper::list(b)),
+                mk_typewrapper::array(a),
+                mk_tyw_arrow!(f_type, mk_typewrapper::array(b)),
             )
         }
-        // forall a. Num -> (Num -> a) -> List a
-        UnaryOp::ListGen() => {
+        // forall a. Num -> (Num -> a) -> Array a
+        UnaryOp::ArrayGen() => {
             let a = TypeWrapper::Ptr(state.table.fresh_var());
 
             let f_type = mk_tyw_arrow!(AbsType::Num(), a.clone());
             (
                 mk_typewrapper::num(),
-                mk_tyw_arrow!(f_type, mk_typewrapper::list(a)),
+                mk_tyw_arrow!(f_type, mk_typewrapper::array(a)),
             )
         }
         // forall a b. { _ : a} -> (Str -> a -> b) -> { _ : b }
@@ -114,44 +114,44 @@ pub fn get_uop_type(
 
             (fst, mk_tyw_arrow!(snd.clone(), snd))
         }
-        // forall a. List a -> a
-        UnaryOp::ListHead() => {
+        // forall a. Array a -> a
+        UnaryOp::ArrayHead() => {
             let ty_elt = TypeWrapper::Ptr(state.table.fresh_var());
-            (mk_typewrapper::list(ty_elt.clone()), ty_elt)
+            (mk_typewrapper::array(ty_elt.clone()), ty_elt)
         }
-        // forall a. List a -> List a
-        UnaryOp::ListTail() => {
+        // forall a. Array a -> Array a
+        UnaryOp::ArrayTail() => {
             let ty_elt = TypeWrapper::Ptr(state.table.fresh_var());
             (
-                mk_typewrapper::list(ty_elt.clone()),
-                mk_typewrapper::list(ty_elt),
+                mk_typewrapper::array(ty_elt.clone()),
+                mk_typewrapper::array(ty_elt),
             )
         }
-        // forall a. List a -> Num
-        UnaryOp::ListLength() => {
+        // forall a. Array a -> Num
+        UnaryOp::ArrayLength() => {
             let ty_elt = TypeWrapper::Ptr(state.table.fresh_var());
-            (mk_typewrapper::list(ty_elt), mk_typewrapper::num())
+            (mk_typewrapper::array(ty_elt), mk_typewrapper::num())
         }
         // This should not happen, as ChunksConcat() is only produced during evaluation.
         UnaryOp::ChunksConcat() => panic!("cannot type ChunksConcat()"),
-        // BEFORE: forall rows. { rows } -> List
-        // Dyn -> List Str
+        // BEFORE: forall rows. { rows } -> Array
+        // Dyn -> Array Str
         UnaryOp::FieldsOf() => (
             mk_typewrapper::dynamic(),
             //mk_tyw_record!(; TypeWrapper::Ptr(state.table.fresh_var())),
-            mk_typewrapper::list(AbsType::Str()),
+            mk_typewrapper::array(AbsType::Str()),
         ),
-        // Dyn -> List
+        // Dyn -> Array
         UnaryOp::ValuesOf() => (
             mk_typewrapper::dynamic(),
-            mk_typewrapper::list(AbsType::Dyn()),
+            mk_typewrapper::array(AbsType::Dyn()),
         ),
         // Str -> Str
         UnaryOp::StrTrim() => (mk_typewrapper::str(), mk_typewrapper::str()),
-        // Str -> List Str
+        // Str -> Array Str
         UnaryOp::StrChars() => (
             mk_typewrapper::str(),
-            mk_typewrapper::list(mk_typewrapper::str()),
+            mk_typewrapper::array(mk_typewrapper::str()),
         ),
         // Str -> Num
         UnaryOp::CharCode() => (mk_typewrapper::str(), mk_typewrapper::num()),
@@ -272,17 +272,17 @@ pub fn get_bop_type(
             mk_typewrapper::dynamic(),
             mk_typewrapper::bool(),
         ),
-        // forall a. List a -> List a -> List a
-        BinaryOp::ListConcat() => {
+        // forall a. Array a -> Array a -> Array a
+        BinaryOp::ArrayConcat() => {
             let ty_elt = TypeWrapper::Ptr(state.table.fresh_var());
-            let ty_list = mk_typewrapper::list(ty_elt);
-            (ty_list.clone(), ty_list.clone(), ty_list)
+            let ty_array = mk_typewrapper::array(ty_elt);
+            (ty_array.clone(), ty_array.clone(), ty_array)
         }
-        // forall a. List a -> Num -> a
-        BinaryOp::ListElemAt() => {
+        // forall a. Array a -> Num -> a
+        BinaryOp::ArrayElemAt() => {
             let ty_elt = TypeWrapper::Ptr(state.table.fresh_var());
             (
-                mk_typewrapper::list(ty_elt.clone()),
+                mk_typewrapper::array(ty_elt.clone()),
                 mk_typewrapper::num(),
                 ty_elt,
             )
@@ -338,21 +338,21 @@ pub fn get_bop_type(
             mk_typewrapper::str(),
             mk_typewrapper::bool(),
         ),
-        // Str -> Str -> {match: Str, index: Num, groups: List Str}
+        // Str -> Str -> {match: Str, index: Num, groups: Array Str}
         BinaryOp::StrMatch() => (
             mk_typewrapper::str(),
             mk_typewrapper::str(),
             mk_tyw_record!(
                 ("match", AbsType::Str()),
                 ("index", AbsType::Num()),
-                ("groups", mk_typewrapper::list(AbsType::Str()))
+                ("groups", mk_typewrapper::array(AbsType::Str()))
             ),
         ),
-        // Str -> Str -> List Str
+        // Str -> Str -> Array Str
         BinaryOp::StrSplit() => (
             mk_typewrapper::str(),
             mk_typewrapper::str(),
-            mk_typewrapper::list(AbsType::Str()),
+            mk_typewrapper::array(AbsType::Str()),
         ),
     })
 }

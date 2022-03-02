@@ -6,7 +6,7 @@
 //! - Bool: a boolean
 //! - Str: a string literal
 //! - Sym: a symbol, used by contracts when checking polymorphic types
-//! - List: an (heterogeneous) list
+//! - Array: an (heterogeneous) array
 //!
 //! # Higher-order types
 //!
@@ -98,8 +98,8 @@ pub enum AbsType<Ty> {
     /// A dynamic record type, where all fields must have the same type.
     // DynRecord will only have a default type, this is simpler for now, I don't think we lose much
     DynRecord(Ty /*, Ty  Row */),
-    /// A parametrized list.
-    List(Ty),
+    /// A parametrized array.
+    Array(Ty),
 }
 
 impl<Ty> AbsType<Ty> {
@@ -129,7 +129,7 @@ impl<Ty> AbsType<Ty> {
             AbsType::Enum(t) => Ok(AbsType::Enum(f(t)?)),
             AbsType::StaticRecord(t) => Ok(AbsType::StaticRecord(f(t)?)),
             AbsType::DynRecord(t) => Ok(AbsType::DynRecord(f(t)?)),
-            AbsType::List(t) => Ok(AbsType::List(f(t)?)),
+            AbsType::Array(t) => Ok(AbsType::Array(f(t)?)),
         }
     }
 
@@ -223,9 +223,9 @@ impl Types {
             AbsType::Num() => contract::num(),
             AbsType::Bool() => contract::bool(),
             AbsType::Str() => contract::string(),
-            //TODO: optimization: have a specialized contract for `List Dyn`, to avoid mapping an
+            //TODO: optimization: have a specialized contract for `Array Dyn`, to avoid mapping an
             //always successful contract on each element.
-            AbsType::List(ref ty) => mk_app!(contract::list(), ty.subcontract(h, pol, sy)?),
+            AbsType::Array(ref ty) => mk_app!(contract::array(), ty.subcontract(h, pol, sy)?),
             AbsType::Sym() => panic!("Are you trying to check a Sym at runtime?"),
             AbsType::Arrow(ref s, ref t) => mk_app!(
                 contract::func(),
@@ -365,7 +365,7 @@ impl Types {
 
         match &self.0 {
             Dyn() | Num() | Bool() | Str() | Var(_) => true,
-            List(ty) if ty.0 == AbsType::Dyn() => true,
+            Array(ty) if ty.0 == AbsType::Dyn() => true,
             _ => false,
         }
     }
@@ -378,9 +378,9 @@ impl fmt::Display for Types {
             AbsType::Num() => write!(f, "Num"),
             AbsType::Bool() => write!(f, "Bool"),
             AbsType::Str() => write!(f, "Str"),
-            AbsType::List(ty) if ty.0 == AbsType::Dyn() => write!(f, "List"),
-            AbsType::List(ty) => {
-                write!(f, "List ")?;
+            AbsType::Array(ty) if ty.0 == AbsType::Dyn() => write!(f, "Array"),
+            AbsType::Array(ty) => {
+                write!(f, "Array ")?;
 
                 if ty.fmt_is_atom() {
                     write!(f, "{}", ty)
@@ -483,11 +483,11 @@ mod test {
         assert_format_eq("[|a, b, c, d|]");
         assert_format_eq("forall r. [|tag1, tag2, tag3 ; r|]");
 
-        assert_format_eq("List");
-        assert_format_eq("List Num");
-        assert_format_eq("List (List Num)");
-        assert_format_eq("Num -> List (List Str) -> Num");
-        assert_format_eq("List (Num -> Num)");
-        assert_format_eq("List (List List -> Num)");
+        assert_format_eq("Array");
+        assert_format_eq("Array Num");
+        assert_format_eq("Array (Array Num)");
+        assert_format_eq("Num -> Array (Array Str) -> Num");
+        assert_format_eq("Array (Num -> Num)");
+        assert_format_eq("Array (Array Array -> Num)");
     }
 }

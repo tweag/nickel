@@ -1,19 +1,19 @@
 {
   run = fun n m =>
     let prefix = fun n =>
-      let l = list.generate (fun _n => "a") n in
-      list.foldl (fun x y => x ++ y) "" l in
-    let makeRecStep = fun state k =>
-      let name = state.prevName ++ (string.from_num k) in
+      array.generate (fun _n => "a") n
+      |> array.foldl (fun x y => x ++ y) "" in
+    let make_rec_step = fun state k =>
+      let name = state.prev_name ++ (string.from_num k) in
       {
         value = state.value & {"%{name}" = {}},
-        prevName = name,
+        prev_name = name,
       } in
-    let topList = list.generate function.id m in
-    let makeRec = fun m =>
-      let l = list.generate function.id n in
-      let result = list.foldl makeRecStep {value = {}, prevName = prefix m} l in
+    let top_array = array.generate function.id m in
+    let make_rec = fun m =>
+      let l = array.generate function.id n in
+      let result = array.foldl make_rec_step {value = {}, prev_name = prefix m} l in
       result.value in
-    let l = list.map makeRec topList in
-    list.foldl (fun r1 r2 => r1 & r2) {} l
+    array.map make_rec top_array
+    |> array.foldl (fun r1 r2 => r1 & r2) {}
 }

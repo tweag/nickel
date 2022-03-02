@@ -97,10 +97,10 @@ let Assert = fun l x => x || %blame% l in
   let Contract = {a | Num, ..} & {b | Num, ..} in
   ({a = 0, b = 0, c = 0} | Contract) == {a = 0, b = 0, c = 0},
 
-  // lists
-  ([1, "2", false] | List) == [1, "2", false],
-  ([1, 2, 3] | List Num) == [1, 2, 3],
-  (["1", "2", "false"] | List Str) == ["1", "2", "false"],
+  // arrays 
+  ([1, "2", false] | Array) == [1, "2", false],
+  ([1, 2, 3] | Array Num) == [1, 2, 3],
+  (["1", "2", "false"] | Array Str) == ["1", "2", "false"],
 
   // full_annotations
   // Check that the contract introduced by the type annotation doesn't interact
@@ -132,4 +132,4 @@ let Assert = fun l x => x || %blame% l in
     & ({baz = 1} | Id)
    == {foo = 1, bar = 1, baz = 1},
 ]
-|> list.foldl (fun x y => (x | Assert) && y) true
+|> array.foldl (fun x y => (x | Assert) && y) true

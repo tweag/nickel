@@ -410,31 +410,31 @@ We've already seen that the primitive types `Num`, `Str` and `Bool` can be used
 as contracts. In fact, any type constructor of the
 [static type system](./typing.md) can be used to combine contracts.
 
-#### List
+#### Array 
 
-A list contract checks that the value is a list and applies the parameter
+An array contract checks that the value is an array and applies the parameter
 contract to each element:
 
 ```
 nickel>let VeryBig = contract.from_predicate (fun value =>
   builtin.is_num value
   && value >= 1000)
-nickel>[1000, 10001, 2] | List VeryBig
+nickel>[1000, 10001, 2] | Array VeryBig
 error: contract broken by a value.
   ┌─ :1:7
   │
-1 │ List (VeryBig)
-  │       ------- expected list element type
+1 │ Array (VeryBig)
+  │        ------- expected array element type
   │
   ┌─ repl-input-14:1:15
   │
-1 │ [1000, 10001, 2] | List VeryBig
+1 │ [1000, 10001, 2] | Array VeryBig
   │               - evaluated to this expression
 [..]
 ```
 
-Recall that `List` is an alias for `List Dyn`, thus the `List` contracts only
-checks that the value is a list.
+Recall that `Array` is an alias for `Array Dyn`, thus the `Array` contracts only
+checks that the value is an array.
 
 #### Functions
 
@@ -581,7 +581,7 @@ let NumBoolDict = fun label value =>
   if builtin.is_record value then
     let check_fields = value
       |> record.fields
-      |> list.foldl (fun acc field_name =>
+      |> array.foldl (fun acc field_name =>
         if string.is_match "^\\d+$" field_name then
           acc // unused and always null through iteration
         else
@@ -603,7 +603,7 @@ if you have trouble parsing the example. We first check that the value is a
 record on line 2. We then define `check_fields` one line 3, an expression that
 goes over the record field names and check that each one is a sequence of
 digits. We use a left fold with a dummy `null` accumulator as a way to just
-iterate through the list without building up anything interesting.
+iterate through the array without building up anything interesting.
 
 For laziness, the interesting bit happens here:
 

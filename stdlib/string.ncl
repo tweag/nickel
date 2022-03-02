@@ -121,9 +121,9 @@
         %blame% (%tag% "not a string" l),
 
     // using a contract instead of type for now because of https://github.com/tweag/nickel/issues/226
-    join | Str -> List Str -> Str
+    join | Str -> Array Str -> Str
     | doc m%"
-      Joins a list of strings given a seperator.
+      Joins a array of strings given a seperator.
 
       For example:
       ```nickel
@@ -135,9 +135,9 @@
       if %length% l == 0 then
         ""
       else
-        %head% l ++ list.foldl (fun acc s => acc ++ sep ++ s) "" (%tail% l),
+        %head% l ++ array.foldl (fun acc s => acc ++ sep ++ s) "" (%tail% l),
 
-    split : Str -> Str -> List Str
+    split : Str -> Str -> Array Str
     | doc m%"
       Splits a string based on a separator string. The separator string is not included in any string.
 
@@ -165,7 +165,7 @@
       "%m
     = fun s => %str_trim% s,
 
-    chars : Str -> List Str
+    chars : Str -> Array Str
     | doc m%"
       Separates a string into its individual characters.
 
@@ -303,10 +303,10 @@
       "%m
     = fun regex s => %str_is_match% s regex,
 
-    match : Str -> Str -> {match: Str, index: Num, groups: List Str}
+    match : Str -> Str -> {match: Str, index: Num, groups: Array Str}
     | doc m%"
       `match regex str` matches `str` given `regex`. Results in the part of `str` that matched, the index of the
-      first character that was part of the match in `str`, and a lists of all capture groups if any.
+      first character that was part of the match in `str`, and a arrays of all capture groups if any.
 
       For example:
       ```nickel
