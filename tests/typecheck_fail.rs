@@ -136,7 +136,7 @@ fn dynamic_record_simple() {
 #[test]
 fn simple_array() {
     assert_typecheck_fails!("[1, 2, false] : Array Num");
-    assert_typecheck_fails!("[(1 : Str), true, \"b\"] : Array");
+    assert_typecheck_fails!("[(1 : Str), true, \"b\"] : Array Dyn");
     assert_typecheck_fails!("[1, 2, \"3\"] : Array Str");
 }
 
@@ -144,7 +144,7 @@ fn simple_array() {
 fn arrays_operations() {
     assert_typecheck_fails!("(fun l => %head% l) : forall a b. (Array a -> b)");
     assert_typecheck_fails!(
-        "(fun f l => %elem_at% (%map% l f) 0) : forall a. (forall b. (a -> b) -> Array -> b)"
+        "(fun f l => %elem_at% (%map% l f) 0) : forall a. (forall b. (a -> b) -> Array Dyn -> b)"
     );
 }
 

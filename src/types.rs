@@ -365,7 +365,7 @@ impl Types {
 
         match &self.0 {
             Dyn() | Num() | Bool() | Str() | Var(_) => true,
-            Array(ty) if ty.0 == AbsType::Dyn() => true,
+            Flat(rt) if matches!(*rt.term, Term::Var(_)) => true,
             _ => false,
         }
     }
@@ -378,7 +378,6 @@ impl fmt::Display for Types {
             AbsType::Num() => write!(f, "Num"),
             AbsType::Bool() => write!(f, "Bool"),
             AbsType::Str() => write!(f, "Str"),
-            AbsType::Array(ty) if ty.0 == AbsType::Dyn() => write!(f, "Array"),
             AbsType::Array(ty) => {
                 write!(f, "Array ")?;
 
@@ -483,11 +482,10 @@ mod test {
         assert_format_eq("[|a, b, c, d|]");
         assert_format_eq("forall r. [|tag1, tag2, tag3 ; r|]");
 
-        assert_format_eq("Array");
         assert_format_eq("Array Num");
         assert_format_eq("Array (Array Num)");
         assert_format_eq("Num -> Array (Array Str) -> Num");
         assert_format_eq("Array (Num -> Num)");
-        assert_format_eq("Array (Array Array -> Num)");
+        assert_format_eq("Array (Array (Array Dyn) -> Num)");
     }
 }

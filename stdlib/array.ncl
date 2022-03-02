@@ -209,7 +209,7 @@
         "%m
       = fun pred l => fold (fun x acc => if pred x then true else acc) false l,
 
-    elem : Dyn -> Array -> Bool
+    elem : Dyn -> Array Dyn -> Bool
       | doc m%"
         Results in true if the given element is a member of the array, false otherwise.
 

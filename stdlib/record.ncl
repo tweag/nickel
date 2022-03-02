@@ -26,7 +26,7 @@
       "%m
     = fun r => %fields% r,
 
-    values | { ; Dyn} -> Array
+    values | { ; Dyn} -> Array Dyn
     | doc m%"
       Given a record, results in a array containing all the values in that record.
 

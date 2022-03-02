@@ -163,8 +163,7 @@ Let us now have a quick tour of the type system. The basic types are:
 
 The following type constructors are available:
 
-- **Array**: `Array T`. An array of elements of type `T`. When no `T` is specified, `Array`
-  alone is an alias for `Array Dyn`.
+- **Array**: `Array T`. An array of elements of type `T`.
 
   Example:
   ```nickel
