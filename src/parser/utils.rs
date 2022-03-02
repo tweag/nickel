@@ -17,7 +17,7 @@ use crate::{
 };
 
 /// Distinguish between the standard string separators `"`/`"` and the multi-line string separators
-/// `m#"`/`"#m` in the parser.
+/// `m%"`/`"%m` in the parser.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum StringKind {
     Standard,
@@ -36,7 +36,7 @@ pub enum SwitchCase {
 pub enum FieldPathElem {
     /// A static field declaration: `{ foo = .. }`
     Ident(Ident),
-    /// A quoted field declaration: `{ "#{protocol}" = .. }`
+    /// A quoted field declaration: `{ "%{protocol}" = .. }`
     ///
     /// In practice, the argument must always be `StrChunks`, but since we also need to keep track
     /// of the associated span it's handier to just use a `RichTerm`.
@@ -48,7 +48,7 @@ pub type FieldPath = Vec<FieldPathElem>;
 /// A string chunk literal atom, being either a string or a single char.
 ///
 /// Because of the way the lexer handles escaping and interpolation, a contiguous static string
-/// `"Some \\ \#{escaped} string"` will be lexed as a sequence of such atoms.
+/// `"Some \\ \%{escaped} string"` will be lexed as a sequence of such atoms.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ChunkLiteralPart<'input> {
     Str(&'input str),
@@ -212,7 +212,7 @@ where
             // fields with special characters are also parsed as an `Expr(e)`:
             //
             // ```
-            // let x = "dynamic" in {"I#am.static" = false, "#{x}" = true}
+            // let x = "dynamic" in {"I#am.static" = false, "%{x}" = true}
             // ```
             //
             // Here, both fields are parsed as `Expr(e)`, but the first field is actually a static
@@ -377,11 +377,11 @@ pub fn min_indent(chunks: &[StrChunk<RichTerm>]) -> usize {
 ///
 /// ```text
 /// let x = "I\nam\nindented" in
-/// m#"
+/// m%"
 ///   baseline
 ///     ${x}
 ///   end
-/// "#m
+/// "%m
 /// ```
 ///
 /// gives
@@ -398,11 +398,11 @@ pub fn min_indent(chunks: &[StrChunk<RichTerm>]) -> usize {
 ///
 /// ```text
 /// let x = "I\nam\nnot" in
-/// m#"
+/// m%"
 ///   baseline
 ///     ${x} sth
 ///   end
-/// "#m
+/// "%m
 /// ```
 ///
 /// gives
@@ -427,12 +427,12 @@ pub fn strip_indent(mut chunks: Vec<StrChunk<RichTerm>>) -> Vec<StrChunk<RichTer
     // When processing a line with an indented interpolated expression, as in:
     //
     // ```
-    // m#"
+    // m%"
     //  some
     //    ${x} ${y}
     //    ${x}
     //  string
-    // "#m
+    // "%m
     // ```
     //
     // We don't know at the time we process the expression `${x}` if it wil have to be re-indented,

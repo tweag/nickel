@@ -185,7 +185,7 @@ fn record_terms() {
     );
 
     assert_eq!(
-        parse_without_pos("{ a = 1, \"#{123}\" = (if 4 then 5 else 6), d = 42}"),
+        parse_without_pos("{ a = 1, \"%{123}\" = (if 4 then 5 else 6), d = 42}"),
         RecRecord(
             vec![
                 (Ident::from("a"), Num(1.).into()),
@@ -203,11 +203,11 @@ fn record_terms() {
     );
 
     assert_eq!(
-        parse_without_pos("{ a = 1, \"\\\"#}#\" = 2}"),
+        parse_without_pos("{ a = 1, \"\\\"%}%\" = 2}"),
         RecRecord(
             vec![
                 (Ident::from("a"), Num(1.).into()),
-                (Ident::from("\"#}#"), Num(2.).into()),
+                (Ident::from("\"%}%"), Num(2.).into()),
             ]
             .into_iter()
             .collect(),
@@ -246,11 +246,11 @@ fn string_lexing() {
     );
 
     assert_eq!(
-        lex_without_pos("\"1 + #{ 1 } + 2\""),
+        lex_without_pos("\"1 + %{ 1 } + 2\""),
         Ok(vec![
             Token::Normal(NormalToken::DoubleQuote),
             Token::Str(StringToken::Literal("1 + ")),
-            Token::Str(StringToken::HashBrace),
+            Token::Str(StringToken::Interpolation),
             Token::Normal(NormalToken::NumLiteral(1.0)),
             Token::Normal(NormalToken::RBrace),
             Token::Str(StringToken::Literal(" + 2")),
@@ -259,13 +259,13 @@ fn string_lexing() {
     );
 
     assert_eq!(
-        lex_without_pos("\"1 + #{ \"#{ 1 }\" } + 2\""),
+        lex_without_pos("\"1 + %{ \"%{ 1 }\" } + 2\""),
         Ok(vec![
             Token::Normal(NormalToken::DoubleQuote),
             Token::Str(StringToken::Literal("1 + ")),
-            Token::Str(StringToken::HashBrace),
+            Token::Str(StringToken::Interpolation),
             Token::Normal(NormalToken::DoubleQuote),
-            Token::Str(StringToken::HashBrace),
+            Token::Str(StringToken::Interpolation),
             Token::Normal(NormalToken::NumLiteral(1.0)),
             Token::Normal(NormalToken::RBrace),
             Token::Normal(NormalToken::DoubleQuote),
@@ -276,10 +276,10 @@ fn string_lexing() {
     );
 
     assert_eq!(
-        lex_without_pos(r##"m#""#"#m"##),
+        lex_without_pos(r##"m%""%"%m"##),
         Ok(vec![
             Token::Normal(NormalToken::MultiStringStart(3)),
-            Token::MultiStr(MultiStringToken::Literal("\"#")),
+            Token::MultiStr(MultiStringToken::Literal("\"%")),
             Token::MultiStr(MultiStringToken::End),
         ])
     );
@@ -296,12 +296,12 @@ fn str_escape() {
         mk_single_chunk("str\twith\nescapes"),
     );
     assert_eq!(
-        parse_without_pos("\"\\#\\#{ }\\#\""),
-        mk_single_chunk("##{ }#"),
+        parse_without_pos("\"\\%\\%{ }\\%\""),
+        mk_single_chunk("%%{ }%"),
     );
     assert_eq!(
-        parse_without_pos("\"#a#b#c\\#{d#\""),
-        mk_single_chunk("#a#b#c#{d#"),
+        parse_without_pos("\"%a%b%c\\%{d%\""),
+        mk_single_chunk("%a%b%c%{d%"),
     );
 }
 
@@ -337,24 +337,24 @@ fn ascii_escape() {
     assert_eq!(parse_without_pos("\"\\x08\""), mk_single_chunk("\x08"));
     assert_eq!(parse_without_pos("\"\\x7F\""), mk_single_chunk("\x7F"));
 
-    assert_eq!(parse_without_pos("m#\"\\x[f\"#m"), mk_single_chunk("\\x[f"));
-    assert_eq!(parse_without_pos("m#\"\\x0\"#m"), mk_single_chunk("\\x0"));
-    assert_eq!(parse_without_pos("m#\"\\x0z\"#m"), mk_single_chunk("\\x0z"));
-    assert_eq!(parse_without_pos("m#\"\\x00\"#m"), mk_single_chunk("\\x00"));
-    assert_eq!(parse_without_pos("m#\"\\x08\"#m"), mk_single_chunk("\\x08"));
-    assert_eq!(parse_without_pos("m#\"\\x7F\"#m"), mk_single_chunk("\\x7F"));
+    assert_eq!(parse_without_pos("m%\"\\x[f\"%m"), mk_single_chunk("\\x[f"));
+    assert_eq!(parse_without_pos("m%\"\\x0\"%m"), mk_single_chunk("\\x0"));
+    assert_eq!(parse_without_pos("m%\"\\x0z\"%m"), mk_single_chunk("\\x0z"));
+    assert_eq!(parse_without_pos("m%\"\\x00\"%m"), mk_single_chunk("\\x00"));
+    assert_eq!(parse_without_pos("m%\"\\x08\"%m"), mk_single_chunk("\\x08"));
+    assert_eq!(parse_without_pos("m%\"\\x7F\"%m"), mk_single_chunk("\\x7F"));
 }
 
 /// Regression test for [#230](https://github.com/tweag/nickel/issues/230).
 #[test]
 fn multiline_str_escape() {
     assert_eq!(
-        parse_without_pos(r##"m#"#Hel##lo###"#m"##),
-        mk_single_chunk("#Hel##lo###"),
+        parse_without_pos(r##"m%"%Hel%%lo%%%"%m"##),
+        mk_single_chunk("%Hel%%lo%%%"),
     );
     assert_eq!(
-        parse_without_pos(r##"m#"#Hel##{lo###{"#m"##),
-        mk_single_chunk("#Hel##{lo###{"),
+        parse_without_pos(r##"m%"%Hel%%{lo%%%{"%m"##),
+        mk_single_chunk("%Hel%%{lo%%%{"),
     );
 }
 

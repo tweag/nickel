@@ -129,7 +129,7 @@ fn static_record_simple() {
 #[test]
 fn dynamic_record_simple() {
     assert_typecheck_fails!(
-        "({ \"#{if true then \"foo\" else \"bar\"}\" = 2, \"foo\" = true, }.\"bla\") : Num"
+        "({ \"%{if true then \"foo\" else \"bar\"}\" = 2, \"foo\" = true, }.\"bla\") : Num"
     );
 }
 
@@ -219,7 +219,7 @@ fn shallow_type_inference() {
 #[test]
 fn dynamic_record_field() {
     assert_matches!(
-        type_check_expr("let x = \"foo\" in {\"#{x}\" = 1} : {foo: Num}"),
+        type_check_expr("let x = \"foo\" in {\"%{x}\" = 1} : {foo: Num}"),
         Err(TypecheckError::TypeMismatch(..))
     );
 }

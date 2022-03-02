@@ -6,7 +6,7 @@
     let makeRecStep = fun state k =>
       let name = state.prevName ++ (string.from_num k) in
       {
-        value = state.value & {"#{name}" = {}},
+        value = state.value & {"%{name}" = {}},
         prevName = name,
       } in
     let topList = list.generate function.id m in

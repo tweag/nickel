@@ -89,8 +89,8 @@ let typecheck = [
     else
       (f {bla = true, blo = 3, ble = 4, bloppo = `bloppop, }) : Num),
 
-  ({ "#{if true then "foo" else "bar"}" = 2, } : {_ : Num}),
-  ({ "#{if true then "foo" else "bar"}" = 2, }."#{"bl" ++ "a"}" : Num),
+  ({ "%{if true then "foo" else "bar"}" = 2, } : {_ : Num}),
+  ({ "%{if true then "foo" else "bar"}" = 2, }."%{"bl" ++ "a"}" : Num),
   ({ foo = 3, bar = 4, } : {_ : Num}),
 
   // seq
@@ -153,7 +153,7 @@ let typecheck = [
   // shallow_inference
   let x = 1 in (x + 1 : Num),
   let x = "a" in (x ++ "a" : Str),
-  let x = "a#{"some str inside"}" in (x ++ "a" : Str),
+  let x = "a%{"some str inside"}" in (x ++ "a" : Str),
   let x = false in (x || true : Bool),
   let x = false in let y = x in let z = y in (z : Bool),
   // Regression test following, see [#297](https://github.com/tweag/nickel/pull/297). Check that

@@ -4,7 +4,7 @@ let Assert = fun l x => x || %blame% l in
   // basic
   0 == 0 + 0 + 0,
   true == (if true then true else false),
-  "a" ++ "b" ++ "c" == "#{"a" ++ "b"}" ++ "c",
+  "a" ++ "b" ++ "c" == "%{"a" ++ "b"}" ++ "c",
   `Less == `Less,
   `small == `small,
 

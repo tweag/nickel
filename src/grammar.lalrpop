@@ -487,12 +487,12 @@ StrChunks: RichTerm = {
 
 StringStart : StringKind = {
     "\"" => StringKind::Standard,
-    "m#\"" => StringKind::Multiline,
+    "m%\"" => StringKind::Multiline,
 };
 
 StringEnd : StringKind = {
     "\"" => StringKind::Standard,
-    "\"#m" => StringKind::Multiline,
+    "\"%m" => StringKind::Multiline,
 };
 
 ChunkLiteral : String =
@@ -507,9 +507,9 @@ ChunkLiteral : String =
         })
     };
 
-ChunkExpr: StrChunk<RichTerm> = HashBrace <t: WithPos<Term>> "}" => StrChunk::Expr(t, 0);
+ChunkExpr: StrChunk<RichTerm> = Interpolation <t: WithPos<Term>> "}" => StrChunk::Expr(t, 0);
 
-HashBrace = { "#{", "multstr #{" };
+Interpolation = { "%{", "multstr %{" };
 
 StaticString: String = StringStart <s: ChunkLiteral?> StringEnd => s.unwrap_or_default();
 
@@ -814,8 +814,8 @@ extern {
         "&" => Token::Normal(NormalToken::Ampersand),
         "." => Token::Normal(NormalToken::Dot),
         "$[" => Token::Normal(NormalToken::DollarBracket),
-        "#{" => Token::Str(StringToken::HashBrace),
-        "multstr #{" => Token::MultiStr(MultiStringToken::Interpolation),
+        "%{" => Token::Str(StringToken::Interpolation),
+        "multstr %{" => Token::MultiStr(MultiStringToken::Interpolation),
         "-$" => Token::Normal(NormalToken::MinusDollar),
 
         "+" => Token::Normal(NormalToken::Plus),
@@ -837,12 +837,11 @@ extern {
         "|>" => Token::Normal(NormalToken::RightPipe),
         "->" => Token::Normal(NormalToken::SimpleArrow),
         "=>" => Token::Normal(NormalToken::DoubleArrow),
-        "#" => Token::Normal(NormalToken::Hash),
         "`" => Token::Normal(NormalToken::Backtick),
         "_" => Token::Normal(NormalToken::Underscore),
         "\"" => Token::Normal(NormalToken::DoubleQuote),
-        "\"#m" => Token::MultiStr(MultiStringToken::End),
-        "m#\"" => Token::Normal(NormalToken::MultiStringStart(<usize>)),
+        "\"%m" => Token::MultiStr(MultiStringToken::End),
+        "m%\"" => Token::Normal(NormalToken::MultiStringStart(<usize>)),
 
         "Num" => Token::Normal(NormalToken::Num),
         "Dyn" => Token::Normal(NormalToken::Dyn),

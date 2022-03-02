@@ -58,7 +58,7 @@ fn boolean_ops() {
 #[test]
 fn string_chunks() {
     assert_matches!(
-        eval(r##""bad type #{1 + 1}""##),
+        eval(r##""bad type %{1 + 1}""##),
         Err(Error::EvalError(EvalError::TypeError(..)))
     );
 }

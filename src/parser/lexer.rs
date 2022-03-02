@@ -140,13 +140,11 @@ pub enum NormalToken<'input> {
     SimpleArrow,
     #[token("=>")]
     DoubleArrow,
-    #[token("#")]
-    Hash,
     #[token("`")]
     Backtick,
     #[token("_")]
     Underscore,
-    #[regex("m(#+)\"", |lex| lex.slice().len())]
+    #[regex("m(%+)\"", |lex| lex.slice().len())]
     MultiStringStart(usize),
 
     #[token("%tag%")]
@@ -296,15 +294,15 @@ pub enum StringToken<'input> {
     #[error]
     Error,
 
-    #[regex("[^\"#\\\\]+")]
-    // Has lower matching priority than `HashBrace` according to Logos' rules.
-    #[token("#")]
+    #[regex("[^\"%\\\\]+")]
+    // Has lower matching priority than `Interpolation` according to Logos' rules.
+    #[token("%")]
     Literal(&'input str),
 
     #[token("\"")]
     DoubleQuote,
-    #[token("#{")]
-    HashBrace,
+    #[token("%{")]
+    Interpolation,
     #[regex("\\\\.", |lex| lex.slice().chars().nth(1))]
     EscapedChar(char),
     // Repetition range `{2}` was not supported at the time of writing this regex.
@@ -318,28 +316,28 @@ pub enum MultiStringToken<'input> {
     #[error]
     Error,
 
-    #[regex("[^\"#]+")]
+    #[regex("[^\"%]+")]
     // A token that starts as a multiline end delimiter or an interpolation sequence but is not
     // one.  These ones should have lowest matching priority according to Logos' rules, and
     // CandidateEnd and CandidateInterpolation should be matched first.
     #[token("\"")]
-    #[regex("#+")]
+    #[regex("%+")]
     Literal(&'input str),
 
     /// A candidate end. A multiline string starting delimiter `MultiStringStart` can have a
-    /// variable number of `#` character, so the lexer matches candidate end delimiter, compare the
+    /// variable number of `%` character, so the lexer matches candidate end delimiter, compare the
     /// number of characters, and either emit the `End` token above, or turn the `CandidateEnd` to a
     /// `FalseEnd` otherwise
-    #[regex("\"#+m")]
+    #[regex("\"%+m")]
     CandidateEnd(&'input str),
     /// Same as `CandidateEnd`, but for interpolation
-    #[regex("#+\\{")]
+    #[regex("%+\\{")]
     CandidateInterpolation(&'input str),
     /// Unfortunate consequence of Logos' [issue #200](https://github.com/maciejhirsz/logos/issues/200).
     /// The other rules should be sufficient to match this as a double quote followed by a
     /// `CandidateInterpolation`, but if we omit this token, the lexer can fail unexpectedly on
     /// valid inputs because of #200.
-    #[regex("\"#+\\{")]
+    #[regex("\"%+\\{")]
     QuotesCandidateInterpolation(&'input str),
     /// Token emitted by the modal lexer for the parser once it has decided that a `CandidateEnd` is
     /// an actual end token.
@@ -579,13 +577,13 @@ impl<'input> Iterator for Lexer<'input> {
             Some(MultiStr(MultiStringToken::Interpolation)) => self.enter_normal(),
             // If we encouter a `QuotesCandidateInterpolation` token with the right number of
             // characters, we need to split it into two tokens:
-            // - a literal starting by a `"` followed by between 0 and k hashes `#`
+            // - a literal starting by a `"` followed by between 0 and k `%`
             // - an interpolation token
             // The interpolation token is put in the buffer such that it will be returned next
             // time.
             //
-            // For example, in `m##""###{exp}"##m`, the `"###{` is a `QuotesCandidateInterpolation`
-            // which is split as a `"#` literal followed by an interpolation token.
+            // For example, in `m%%""%%%{exp}"%%m`, the `"%%%{` is a `QuotesCandidateInterpolation`
+            // which is split as a `"%` literal followed by an interpolation token.
             Some(MultiStr(MultiStringToken::QuotesCandidateInterpolation(s)))
                 if s.len() >= self.count =>
             {
@@ -609,7 +607,7 @@ impl<'input> Iterator for Lexer<'input> {
             | Some(MultiStr(MultiStringToken::QuotesCandidateInterpolation(s))) => {
                 token = Some(MultiStr(MultiStringToken::Literal(s)))
             }
-            Some(Str(StringToken::HashBrace)) => self.enter_normal(),
+            Some(Str(StringToken::Interpolation)) => self.enter_normal(),
             // Convert escape sequences to the corresponding character.
             Some(Str(StringToken::EscapedChar(c))) => {
                 if let Some(esc) = escape_char(*c) {
@@ -663,7 +661,7 @@ fn escape_char(chr: char) -> Option<char> {
         '\'' => Some('\''),
         '"' => Some('"'),
         '\\' => Some('\\'),
-        '#' => Some('#'),
+        '%' => Some('%'),
         'n' => Some('\n'),
         'r' => Some('\r'),
         't' => Some('\t'),

@@ -47,11 +47,11 @@
 
   "$record_extend" = fun field contr cont acc l t =>
       if %has_field% field t then
-          let acc = acc$[field = %assume% contr (%go_field% field l) (t."#{field}")] in
+          let acc = acc$[field = %assume% contr (%go_field% field l) (t."%{field}")] in
           let t = t -$ field in
           cont acc l t
       else
-          %blame% (%tag% "missing field `#{field}`" l),
+          %blame% (%tag% "missing field `%{field}`" l),
 
   "$forall_tail" = fun sy pol acc l t =>
       let magic_fld = "_%wrapped" in
@@ -60,10 +60,10 @@
               let rest = (t -$ magic_fld) in
               if rest == {} then
                   let fail = %blame% (%tag% "polymorphic tail mismatch" l) in
-                  let inner = %unwrap% sy (t."#{magic_fld}") fail in
+                  let inner = %unwrap% sy (t."%{magic_fld}") fail in
                   acc & inner
               else
-                  %blame% (%tag% "extra field `#{%head% (%fields% rest)}`" l)
+                  %blame% (%tag% "extra field `%{%head% (%fields% rest)}`" l)
           else
               %blame% (%tag% "missing polymorphic part" l)
       else
@@ -73,11 +73,11 @@
 
   "$empty_tail" = fun acc l t =>
       if t == {} then acc
-      else %blame% (%tag% "extra field `#{%head% (%fields% t)}`" l),
+      else %blame% (%tag% "extra field `%{%head% (%fields% t)}`" l),
 
   contract = {
     blame
-      | doc m#"
+      | doc m%"
         Raise blame for a given label.
 
         Type: `forall a. Lbl -> a`
@@ -93,11 +93,11 @@
           if value == 0 then value
           else contracts.blame label
         ```
-        "#m
+        "%m
       = fun l => %blame% l,
 
     blame_with
-      | doc m#"
+      | doc m%"
         Raise blame with respect to a given label and a custom error message.
 
         Type: `forall a. Str -> Lbl -> a`
@@ -114,11 +114,11 @@
           else contracts.blame_with "Not zero" label in
         0 | IsZero
         ```
-        "#m
+        "%m
       = fun msg l => %blame% (%tag% msg l),
 
     from_predicate
-      | doc m#"
+      | doc m%"
         Generate a contract from a boolean predicate.
 
         Type: `(Dyn -> Bool) -> (Lbl -> Dyn -> Dyn)`
@@ -129,11 +129,11 @@
         let IsZero = contracts.from_predicate (fun x => x == 0) in
         0 | IsZero
         ```
-        "#m
+        "%m
       = fun pred l v => if pred v then v else %blame% l,
 
     tag
-      | doc m#"
+      | doc m%"
         Attach a tag, or a custom error message, to a label. If a tag was
         previously set, it is erased.
 
@@ -152,11 +152,11 @@
             value in
         5 | Contract
         ```
-        "#m
+        "%m
       = fun msg l => %tag% msg l,
 
     apply
-      | doc m#"
+      | doc m%"
         Apply a contract to a label and a value.
 
         Type: `Contract -> Lbl -> Dyn -> Dyn`
@@ -177,7 +177,7 @@
         let Contract = Nullable {foo | Num} in
         ({foo = 1} | Contract)
         ```
-        "#m
+        "%m
       = fun contract label value => %assume% contract label value,
   },
 }
