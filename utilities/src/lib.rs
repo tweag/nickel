@@ -1,10 +1,14 @@
 //! Helpers for tests and benches.
+use codespan::Files;
 use criterion::Criterion;
-use nickel::error::Error;
-use nickel::program::Program;
-use nickel::term::Term;
-use std::io::Cursor;
-use std::path::PathBuf;
+use nickel::{
+    error::{Error, ParseError},
+    parser::{grammar, lexer},
+    program::Program,
+    term::{RichTerm, Term},
+};
+
+use std::{io::Cursor, path::PathBuf};
 
 pub fn eval(s: impl std::string::ToString) -> Result<Term, Error> {
     let mut p = Program::new_from_source(Cursor::new(s.to_string()), "test").unwrap();
@@ -16,6 +20,14 @@ pub fn eval_file(f: &str) -> Result<Term, Error> {
     let mut p = Program::new_from_file(&path)
         .unwrap_or_else(|e| panic!("Could not create program from `{}`\n {}", path, e));
     p.eval().map(Term::from)
+}
+
+pub fn parse(s: &str) -> Result<RichTerm, ParseError> {
+    let id = Files::new().add("<test>", String::from(s));
+
+    grammar::TermParser::new()
+        .parse_term(id, lexer::Lexer::new(&s))
+        .map_err(|errs| errs.errors.first().unwrap().clone())
 }
 
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
