@@ -96,12 +96,8 @@ pub enum NormalToken<'input> {
     Ampersand,
     #[token(".")]
     Dot,
-    #[token("$[")]
-    DollarBracket,
     #[token("\"")]
     DoubleQuote,
-    #[token("-$")]
-    MinusDollar,
 
     #[token("+")]
     Plus,
@@ -187,6 +183,10 @@ pub enum NormalToken<'input> {
     Embed,
     #[token("%record_map%")]
     RecordMap,
+    #[token("%record_insert%")]
+    RecordInsert,
+    #[token("%record_remove%")]
+    RecordRemove,
     #[token("%seq%")]
     Seq,
     #[token("%deep_seq%")]

@@ -64,8 +64,7 @@ let Assert = fun l x => x || %blame% l in
   (let id | forall a. { ; a} -> { ; a} = fun x => x in
     let extend | forall a. { ; a} -> {foo: Num ; a} = fun x =>
       x & {foo = 1} in
-    let remove | forall a. {foo: Num ; a} -> { ; a} = fun x =>
-      x -$ "foo" in
+    let remove | forall a. {foo: Num ; a} -> { ; a} = record.remove "foo" in
 
     (id {} == {} | Assert) &&
     (id {a = 1, b = false} == {a = 1, b = false} | Assert) &&

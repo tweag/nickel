@@ -259,19 +259,21 @@ pub fn get_bop_type(
         // forall a. Str -> { _ : a } -> { _ : a}
         BinaryOp::DynRemove() => {
             let res = TypeWrapper::Ptr(state.table.fresh_var());
-
             (
                 mk_typewrapper::str(),
                 mk_typewrapper::dyn_record(res.clone()),
                 mk_typewrapper::dyn_record(res),
             )
         }
-        // Str -> Dyn -> Bool
-        BinaryOp::HasField() => (
-            mk_typewrapper::str(),
-            mk_typewrapper::dynamic(),
-            mk_typewrapper::bool(),
-        ),
+        // forall a. Str -> {_: a} -> Bool
+        BinaryOp::HasField() => {
+            let ty_elt = TypeWrapper::Ptr(state.table.fresh_var());
+            (
+                mk_typewrapper::str(),
+                mk_typewrapper::dyn_record(ty_elt),
+                mk_typewrapper::bool(),
+            )
+        }
         // forall a. Array a -> Array a -> Array a
         BinaryOp::ArrayConcat() => {
             let ty_elt = TypeWrapper::Ptr(state.table.fresh_var());

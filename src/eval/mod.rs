@@ -510,7 +510,7 @@ where
 
                 // Transform the static part `{stat1 = val1, ..., statn = valn}` and the dynamic
                 // part `{exp1 = dyn_val1, ..., expm = dyn_valm}` to a sequence of extensions
-                // `{stat1 = val1, ..., statn = valn} $[ exp1 = dyn_val1] ... $[ expn = dyn_valn ]`
+                // `%record_insert% exp1 (... (%record_insert% expn {stat1 = val1, ..., statn = valn} dyn_valn)) dyn_val1`
                 // The `dyn_val` are given access to the recursive environment, but the recursive
                 // environment only contains the static fields, and not the dynamic fields.
                 let extended = dyn_fields

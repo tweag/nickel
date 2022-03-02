@@ -380,19 +380,6 @@ could still write `addTotal {total = 1, foo = 1} {total = 2, foo = 2}` but not
 What comes before the tail may include several fields, is in e.g. `forall a.
 {total: Num, subtotal: Num | a} -> Num`.
 
-<!-- TODO: should we keep this example? To revisit before release. Extension
-operator is a tad ugly, and ideally we would only use merge. But the type of
-merge can't be currently express in the type system. -->
-Row types can appear in the result of the function as well. The following
-example returns a new version of the input where fields `a` and `b` have been
-summed, without modifying the rest:
-
-```nickel
-let sum : forall r. {a : Num, b : Num | r} -> {a : Num, b : Num, sum : Num | r}
-        = fun x => x $[ "sum" = x.a + x.b]
-in sum {a = 1, b = 2, c = 3} // {a=1, b=2, sum=3, c=3}
-```
-
 Note that row polymorphism also works with enums, with the same intuition of a
 tail that can be substituted for something else. For example:
 
