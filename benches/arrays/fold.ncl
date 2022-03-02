@@ -1,4 +1,6 @@
-let letter | strings.CharLiteral -> strings.CharLiteral = fun n => strings.charFromCode (strings.charCode "a" + (n % 26)) in
+let letter | string.CharLiteral -> string.CharLiteral = fun n =>
+  string.char_code "a" + (n % 26)
+  |> string.char_from_code in
 
 {
   right = {
@@ -10,7 +12,7 @@ let letter | strings.CharLiteral -> strings.CharLiteral = fun n => strings.charF
       run = fun n =>
         array.fold (fun x y => x*y + (x - y)) (array.generate n (fun n => n/2))
     },
-    array_ = {
+    arrays = {
       run = fun n =>
         array.fold (fun x acc => [x] ++ acc) (array.generate n (fun n => [n]))
     },
@@ -24,7 +26,7 @@ let letter | strings.CharLiteral -> strings.CharLiteral = fun n => strings.charF
       run = fun n =>
         array.foldl (fun x y => x*y + (x - y)) (array.generate n (fun n => n/2))
     },
-    array_ = {
+    arrays = {
       run = fun n =>
         array.foldl (fun x acc => [x] ++ acc) (array.generate n (fun n => [n]))
     },
