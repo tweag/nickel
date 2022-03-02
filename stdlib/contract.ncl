@@ -75,7 +75,7 @@
       if t == {} then acc
       else %blame% (%tag% "extra field `%{%head% (%fields% t)}`" l),
 
-  contracts = {
+  contract = {
     blame
       | doc m%"
         Raise blame for a given label.

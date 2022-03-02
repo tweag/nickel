@@ -345,7 +345,7 @@ mod tests {
             json!(["a", "bc", "def", "g"])
         );
         assert_json_eq!(
-            r#"lists.fold (fun elt acc => [[elt]] @ acc) [] [1, 2, 3, 4]"#,
+            r#"list.fold (fun elt acc => [[elt]] @ acc) [] [1, 2, 3, 4]"#,
             json!([[1], [2], [3], [4]])
         );
         assert_json_eq!("[\"a\", 1, false, `foo]", json!(["a", 1, false, "foo"]));

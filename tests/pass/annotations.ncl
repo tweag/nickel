@@ -24,4 +24,4 @@ let Assert = fun l x => x || %blame% l in
   (let AssertOk = fun l t => if t == `Ok then t else %blame% l in
     switch {`Ok => true, `Err => false} `Ok | AssertOk),
 ]
-|> lists.foldl (fun x y => x && y) true
+|> list.foldl (fun x y => x && y) true

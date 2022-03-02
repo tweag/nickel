@@ -29,4 +29,4 @@ let assertDeserInv = fun x =>
       baz = {subfoo = true, subbar = 0}
     },
 ]
-|> lists.foldl (fun x y => (x | Assert) && y) true
+|> list.foldl (fun x y => (x | Assert) && y) true

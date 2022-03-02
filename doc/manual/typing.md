@@ -14,8 +14,8 @@ By default, Nickel code is dynamically typed. For example:
   name = "hello",
   version = "0.1.1",
   fullname =
-    if builtins.is_num version then
-      "hello-v%{strings.fromNum version}"
+    if builtin.is_num version then
+      "hello-v%{string.from_num version}"
     else
       "hello-%{version}",
 }
@@ -30,8 +30,8 @@ example:
   name = "hello",
   version = "0.1.1",
   fullname =
-    if builtins.is_num version then
-      "hello-v%{strings.fromNum version}"
+    if builtin.is_num version then
+      "hello-v%{string.from_num version}"
     else
       "hello-%{version + 1}",
 }
@@ -59,7 +59,7 @@ are using functions. Say we want to filter over a list of elements:
 
 ```nickel
 let filter = fun pred l =>
-  lists.foldl (fun acc x => if pred x then acc @ [x] else acc) [] l in
+  list.foldl (fun acc x => if pred x then acc @ [x] else acc) [] l in
 filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
 ```
 
@@ -68,7 +68,7 @@ Result:
 error: Type error
   ┌─ repl-input-11:2:32
   │
-2 │   lists.foldl (fun acc x => if pred x then acc @ [x] else acc) [] l in
+2 │   list.foldl (fun acc x => if pred x then acc @ [x] else acc) [] l in
   │                                ^^^^^^ This expression has type Num, but Bool was expected
 3 │ filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
   │                                                             - evaluated to this
@@ -117,7 +117,7 @@ a type annotation at the top-level:
 
 ```nickel
 (let filter = fun pred l =>
-     lists.foldl (fun acc x => if pred x then acc @ [x] else acc) [] l in
+     list.foldl (fun acc x => if pred x then acc @ [x] else acc) [] l in
 filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]) : List Num
 ```
 
@@ -169,7 +169,7 @@ The following type constructors are available:
   Example:
   ```nickel
   let x : List (List Num) = [[1,2], [3,4]] in
-  lists.flatten x : List Num
+  list.flatten x : List Num
   ```
 - **Record**: `{field1: T1, .., fieldn: Tn}`. A record whose field
   names are known statically as `field1`, .., `fieldn`, respectively of type
@@ -187,7 +187,7 @@ The following type constructors are available:
   Example:
   ```nickel
   let occurences : {_: Num} = {a = 1, b = 3, c = 0} in
-  records.map (fun char count => count + 1) occurences : {_ : Num}
+  record.map (fun char count => count + 1) occurences : {_ : Num}
   ```
 - **Enum**: `<tag1, .., tagn>`: an enumeration comprised of alternatives `tag1`,
   .., `tagn`. An enumeration literal is prefixed with a backtick and serialized
@@ -243,7 +243,7 @@ well:
 
 ```nickel
 {
-  foo : List Str = filter (fun s => strings.length s > 2) ["a","ab","abcd"],
+  foo : List Str = filter (fun s => string.length s > 2) ["a","ab","abcd"],
   bar : List Num = filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6],
 }
 ```
@@ -275,7 +275,7 @@ the typechecker surprisingly rejects our code:
 ```nickel
 (let filter = ... in
 let result = filter (fun x => x % 2 == 0) [1,2,3,4,5,6] in
-let dummy = filter (fun s => strings.length s > 2) ["a","ab","abcd"] in
+let dummy = filter (fun s => string.length s > 2) ["a","ab","abcd"] in
 result) : List Num
 ```
 
@@ -284,8 +284,8 @@ Result:
 error: Incompatible types
   ┌─ repl-input-35:2:37
   │
-2 │ let dummy = filter (fun s => strings.length s > 2) ["a","ab","abcd"] in
-  │                                             ^ this expression
+2 │ let dummy = filter (fun s => string.length s > 2) ["a","ab","abcd"] in
+  │                                            ^ this expression
   │
   = The type of the expression was expected to be `Str`
   = The type of the expression was inferred to be `Num`
@@ -427,7 +427,7 @@ We'll now explore how typed and untyped code interact.
 Until now, we have written the statically typed `filter` examples using
 statically typed blocks that enclosed both the definition of `filter` and the
 call sites. More realistically, `filter` would be a statically typed library
-function (it is actually part of the standard library as `lists.filter`) and
+function (it is actually part of the standard library as `list.filter`) and
 likely be called from dynamically typed configuration files. In this situation,
 the call site escapes the typechecker. Thus, without an additional mechanism,
 static typing would only ensure that the implementation of `filter` doesn't
@@ -439,10 +439,10 @@ an error from within `filter`.
 
 Fortunately, Nickel does have a mechanism to prevent this from happening and to
 provide good error reporting in this situation. Let us see that by ourselves by
-calling to the statically typed `lists.filter` from dynamically typed code:
+calling to the statically typed `list.filter` from dynamically typed code:
 
 ```nickel
-lists.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
+list.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
 ```
 
 Result:
@@ -455,8 +455,8 @@ error: Blame error: contract broken by the caller.
   │
   ┌─ repl-input-45:1:67
   │
-1 │ lists.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
-  │                                                                   - evaluated to this expression
+1 │ list.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
+  │                                                                  - evaluated to this expression
   │
   = This error may happen in the following situation:
     1. A function `f` is bound by a contract: e.g. `(Num -> Num) -> Num`.
@@ -466,7 +466,7 @@ error: Blame error: contract broken by the caller.
   = Note: this is an illustrative example. The actual error may involve deeper nested functions calls.
 
 note:
-    ┌─ <stdlib/lists>:160:14
+    ┌─ <stdlib/list>:160:14
     │
 160 │     filter : forall a. (a -> Bool) -> List a -> List a
     │              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ bound here
@@ -475,8 +475,8 @@ note:
 note:
   ┌─ repl-input-45:1:1
   │
-1 │ lists.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
-  │ -------------------------------------------------------------------- (3) calling <func>
+1 │ list.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
+  │ ------------------------------------------------------------------- (3) calling <func>
 ```
 
 We call `filter` from a dynamically typed location, but still get a spot-on
@@ -611,8 +611,8 @@ technically use custom contracts as any other type inside a static type
 annotation.
 
 ```nickel
-let Port = contracts.from_predicate (fun value =>
-  builtins.is_num value
+let Port = contract.from_predicate (fun value =>
+  builtin.is_num value
   && value % 1 == 0
   && value >= 0
   && value <= 65535) in

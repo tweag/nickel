@@ -1,5 +1,5 @@
 {
-  nums = {
+  num = {
     Int
     | doc m%"
       Contract to enforce a number is an integer.

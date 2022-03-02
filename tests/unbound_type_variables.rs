@@ -53,7 +53,7 @@ fn unbound_type_variables() {
     );
     assert_unbound!(
         "let f | a -> (forall a. a -> a)
-                       = fun x => builtins.seq x null in
+                       = fun x => builtin.seq x null in
                        f null",
         "a"
     );

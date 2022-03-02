@@ -2,7 +2,7 @@
 
 This example shows how to write generic, statically typed functions in Nickel.
 The code is illustrative: in practice, you should use the list stdlib functions
-`lists.map` and `lists.fold` instead of redefining your own.
+`list.map` and `list.fold` instead of redefining your own.
 
 ## Run
 

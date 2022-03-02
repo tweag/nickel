@@ -22,7 +22,7 @@ What to do depends on the context:
     and are generally short functions passed as arguments to typed higher-order
     functions, which will apply a guarding contract.
 
-    Example: `lists.map (fun x => x + 1) [1,2,3]`
+    Example: `list.map (fun x => x + 1) [1,2,3]`
 - *Let-bound function outside of typed block: use a type annotation.* Even if
     local to a file, if your function is bound to a variable, it can be
     potentially reused in different places.
@@ -44,7 +44,7 @@ What to do depends on the context:
 
     let foo : Num =
       let ev : ((Num -> Num) -> Num) -> Num -> Num
-        = fun f x => f (functions.const x) in
+        = fun f x => f (function.const x) in
       ev (fun f => f 0) 1
     in ...
     ```
@@ -79,7 +79,7 @@ let Schema = {
 ## Computation (compound expressions)
 
 Some expressions are neither immediate data nor functions. Take for example the
-function application `lists.map (fun s => "http://%{s}/index") servers`.
+function application `list.map (fun s => "http://#{s}/index") servers`.
 Usually, you should do **nothing**.
 
 - *Inside configuration: nothing*. The function or operator you are using should

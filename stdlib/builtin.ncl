@@ -1,5 +1,5 @@
 {
-  builtins = {
+  builtin = {
     is_num : Dyn -> Bool
     | doc m%"
       Checks if the given value is a number.

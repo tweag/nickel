@@ -53,11 +53,11 @@ nickel>
 
     nickel>
     ```
-- Use `builtins.serialize` to have the same behavior as the `export` subcommand
+- Use `builtin.serialize` to have the same behavior as the `export` subcommand
   and print the result as JSON:
 
   ```
-  nickel> builtins.serialize `Json (import "merge-main.ncl")
+  nickel> builtin.serialize `Json (import "merge-main.ncl")
   "{
       \"firewall\": {
       ...

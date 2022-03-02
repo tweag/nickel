@@ -14,16 +14,19 @@
   id = fun x => x,
 
   run = fun n =>
-    let orig = generate id n in
-    let encoded = lists.map encode orig in
+    let base = generate id n in
 
-    let listChurch = lists.map (fun nChurch =>
-      add (mult (encode 3) nChurch) (encode 5))
-      encoded in
-    let sumChurch = lists.fold (fun accChurch nChurch => add accChurch nChurch)
-      (encode 0) listChurch in
+    let encoded =
+      base
+      |> list.map encode
+      |> list.map (fun nChurch =>
+        add (mult (encode 3) nChurch) (encode 5))
+      |> list.fold add (encode 0) in
 
-    let list = lists.map (fun n => 3*n + 5) orig in
-    let sum = lists.foldl (fun acc n => acc + n) 0 list in
-    decode sumChurch == sum,
+    let decoded =
+      base
+      |> list.map (fun n => 3*n + 5)
+      |> list.foldl (fun acc n => acc + n) 0 in
+
+    decode encoded == decoded,
 }

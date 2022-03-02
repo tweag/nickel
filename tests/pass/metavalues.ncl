@@ -6,7 +6,7 @@ let Assert = fun l x => x || %blame% l in
   // Check the correct handling of the update of thunks containing enriched values (see issue
   // https://github.com/tweag/nickel/issues/123)
   let x = {a = (fun x => (1 | default)) 1} in
-    builtins.seq (x.a) ((x & {a=2}).a) == 2,
+    builtin.seq (x.a) ((x & {a=2}).a) == 2,
 
   // merge_default
   ({a = 2} & {a | default = 0, b | default = true}) == {a = 2, b = true},
@@ -53,4 +53,4 @@ let Assert = fun l x => x || %blame% l in
   // value/contract-default <- contract/contract-default
   ((val & (ctr_num & def)).a == 1 | Assert)),
 ]
-|> lists.foldl (fun x y => (x | Assert) && y) true
+|> list.foldl (fun x y => (x | Assert) && y) true

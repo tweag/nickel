@@ -4,29 +4,29 @@ let letter | strings.CharLiteral -> strings.CharLiteral = fun n => strings.charF
   right = {
     strings = {
       run = fun n =>
-        lists.fold (fun x y => x ++ "a") (lists.generate n (fun n => letter n))
+        list.fold (fun x y => x ++ "a") (list.generate n (fun n => letter n))
     },
     nums = {
       run = fun n =>
-        lists.fold (fun x y => x*y + (x - y)) (lists.generate n (fun n => n/2))
+        list.fold (fun x y => x*y + (x - y)) (list.generate n (fun n => n/2))
     },
-    lists_ = {
+    list_ = {
       run = fun n =>
-        lists.fold (fun x acc => [x] ++ acc) (lists.generate n (fun n => [n]))
+        list.fold (fun x acc => [x] ++ acc) (list.generate n (fun n => [n]))
     },
   },
   left = {
     strings = {
       run = fun n =>
-        lists.foldl (fun x y => x ++ "a") (lists.generate n (fun n => letter n))
+        list.foldl (fun x y => x ++ "a") (list.generate n (fun n => letter n))
     },
     nums = {
       run = fun n =>
-        lists.foldl (fun x y => x*y + (x - y)) (lists.generate n (fun n => n/2))
+        list.foldl (fun x y => x*y + (x - y)) (list.generate n (fun n => n/2))
     },
-    lists_ = {
+    list_ = {
       run = fun n =>
-        lists.foldl (fun x acc => [x] ++ acc) (lists.generate n (fun n => [n]))
+        list.foldl (fun x acc => [x] ++ acc) (list.generate n (fun n => [n]))
     },
   }
 }

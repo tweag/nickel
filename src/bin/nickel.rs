@@ -16,8 +16,7 @@ use structopt::StructOpt;
 /// The interpreter of the Nickel language.
 struct Opt {
     /// The input file. Standard input by default
-    #[structopt(short = "f", long)]
-    #[structopt(parse(from_os_str))]
+    #[structopt(short = "f", long, global = true, parse(from_os_str))]
     file: Option<PathBuf>,
 
     #[cfg(debug_assertions)]

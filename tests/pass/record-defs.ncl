@@ -40,4 +40,4 @@ let Assert = fun l x => x || %blame% l in
   let x = "foo" in {"%{x}" = bar, bar = 1} == {foo = 1, bar = 1},
   ({"%foo"."%bar".baz = other + 1, other = 0}."%foo"."%bar".baz == 1),
 ]
-|> lists.foldl (fun x y => (x | Assert) && y) true
+|> list.foldl (fun x y => (x | Assert) && y) true

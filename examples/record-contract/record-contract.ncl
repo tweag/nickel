@@ -2,8 +2,8 @@
 // Kubernetes configuration.
 // Schema and example derived from https://github.com/kubernetes/examples/blob/master/guestbook-go/guestbook-controller.json.
 
-let Port | doc "A contract for a port number" = contracts.from_predicate (fun value =>
-  builtins.is_num value &&
+let Port | doc "A contract for a port number" = contract.from_predicate (fun value =>
+  builtin.is_num value &&
   value % 1 == 0 &&
   value >= 0 &&
   value <= 65535) in
@@ -34,7 +34,7 @@ let KubernetesConfig = {
   },
 
   spec = {
-    replicas | nums.PosNat
+    replicas | num.PosNat
              | doc "The number of replicas"
              | default = 1,
 

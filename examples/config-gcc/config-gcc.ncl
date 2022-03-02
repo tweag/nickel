@@ -4,51 +4,51 @@ let GccFlag =
   // We only allow the following flags
   let available = ["W", "c", "S", "e", "o"] in
   fun label value =>
-  if builtins.is_str value then
-    if strings.length value > 0 &&
-      lists.any (fun x => x == strings.substring 0 1 value) available then
+  if builtin.is_str value then
+    if string.length value > 0 &&
+      list.any (fun x => x == string.substring 0 1 value) available then
       value
     else
-      contracts.blame_with "unknown flag %{value}" label
-  else if builtins.is_record value then
-    if records.has_field "flag" value && records.has_field "arg" value then
-      if lists.any (fun x => x == value.flag) available then
+      contract.blame_with "unknown flag %{value}" label
+  else if builtin.is_record value then
+    if record.has_field "flag" value && record.has_field "arg" value then
+      if list.any (fun x => x == value.flag) available then
         //Normalize the tag to a string
         value.flag ++ value.arg
       else
-        contracts.blame_with "unknown flag %{value.flag}" label
+        contract.blame_with "unknown flag %{value.flag}" label
     else
-      contracts.blame_with
+      contract.blame_with
         "bad record structure: missing field `flag` or `arg`"
         label
   else
-    contracts.blame_with "expected record or string" label in
+    contract.blame_with "expected record or string" label in
 
 let Path =
   let pattern = m%"^(.+)/([^/]+)$"%m in
   fun label value =>
-    if builtins.is_str value then
-      if strings.is_match pattern value then
+    if builtin.is_str value then
+      if string.is_match pattern value then
         value
       else
-        contracts.blame_with "invalid path" label
+        contract.blame_with "invalid path" label
     else
-      contracts.blame_with "not a string" label in
+      contract.blame_with "not a string" label in
 
 let SharedObjectFile = fun label value =>
-  if builtins.is_str value then
-    if strings.is_match m%"\.so$"%m value then
+  if builtin.is_str value then
+    if string.is_match m%"\.so$"%m value then
       value
     else
-      contracts.blame_with "not an .so file" label
+      contract.blame_with "not an .so file" label
   else
-    contracts.blame_with "not a string" label in
+    contract.blame_with "not a string" label in
 
 let OptLevel = fun label value =>
   if value == 0 || value == 1 || value == 2 then
     value
   else
-    contracts.blame label in
+    contract.blame label in
 
 let Contract = {
   path_libc | doc "Path to libc."

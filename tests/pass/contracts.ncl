@@ -121,15 +121,15 @@ let Assert = fun l x => x || %blame% l in
   (f {foo = 1}).bar == 1,
   // user-written contract application
   let Extend = fun base label value =>
-    let derived = if builtins.is_record base then
+    let derived = if builtin.is_record base then
       (base & {foo | Num})
     else
       base in
-    contracts.apply derived label value in
+    contract.apply derived label value in
   let Contract = Extend {bar | Num, ..} in
   let Id = Extend (fun label value => value) in
   ({bar = 1, foo = 1} | Contract)
     & ({baz = 1} | Id)
    == {foo = 1, bar = 1, baz = 1},
 ]
-|> lists.foldl (fun x y => (x | Assert) && y) true
+|> list.foldl (fun x y => (x | Assert) && y) true

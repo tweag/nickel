@@ -1,5 +1,5 @@
 {
-  records = {
+  record = {
     map : forall a b. (Str -> a -> b) -> {_: a} -> {_: b}
     | doc m%"
       Maps a function on every field of a record. The string argument of the function argument is the name of the

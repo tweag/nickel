@@ -1,5 +1,5 @@
 {
-  strings = {
+  string = {
     BoolLiteral
     | doc m%"
       Contract to enforce the value is a string that represents a boolean literal. Additionally casts "True" to "true"
@@ -135,7 +135,7 @@
       if %length% l == 0 then
         ""
       else
-        %head% l ++ lists.foldl (fun acc s => acc ++ sep ++ s) "" (%tail% l),
+        %head% l ++ list.foldl (fun acc s => acc ++ sep ++ s) "" (%tail% l),
 
     split : Str -> Str -> List Str
     | doc m%"
