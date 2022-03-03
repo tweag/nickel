@@ -10,7 +10,7 @@ let ctr = {
                   The list of inputs for this package, specified as a
                   `NixPackage`."
                 | Array NixPackage,
-    // Many more missing
+    # Many more missing
   },
 
   Shell = Derivation & {},

@@ -1,5 +1,5 @@
 let typecheck = [
-  // basics
+  # basics
   true : Bool,
   false : Bool,
   0 : Num,
@@ -10,18 +10,18 @@ let typecheck = [
   (true | Num) : Num,
   "hello" : Str,
 
-  // functions
+  # functions
   (fun x => if x then x + 1 else 34) false,
   let id : Num -> Num = fun x => x in (id 4 : Num),
-  // the id parameter is inferred
+  # the id parameter is inferred
   (fun id => (id 4 : Num)) (fun x => x),
-  // non strict zones don't unify
+  # non strict zones don't unify
   (fun id => (id 4) + (id true: Bool)) (fun x => x),
-  // contracts are opaque types
+  # contracts are opaque types
   (let AlwaysTrue = fun l t => if t then t else %blame% l in
   ((fun x => x) : AlwaysTrue -> AlwaysTrue)),
 
-  // simple_polymorphism
+  # simple_polymorphism
   let f : forall a. a -> a = fun x => x in
     ((if (f true) then (f 2) else 3) : Num),
 
@@ -31,7 +31,7 @@ let typecheck = [
   let f : forall a. (forall b. b -> b) -> a -> a = fun f x => f x in
     f (fun z => z : forall y. y -> y),
 
-  // forall nested
+  # forall nested
   let f : forall a. a -> a =
       let g | forall a. (a -> a) = fun x => x in
       g in
@@ -48,7 +48,7 @@ let typecheck = [
       g 0 in
     ((if (f true) then (f 2) else 3) : Num),
 
-  // enums_simple
+  # enums_simple
   (`bla : [|bla |]),
   (`blo : [|bla, blo |]),
   (`bla : forall r. [|bla ; r |]),
@@ -56,7 +56,7 @@ let typecheck = [
   ((switch {`bla => 3} `bla) : Num),
   ((switch {`bla => 3, _ => 2} `blo) : Num),
 
-  // enums_complex
+  # enums_complex
   ((fun x => switch {`bla => 1, `ble => 2} x) : [|bla, ble |] -> Num),
   ((fun x => switch {`bla => 1, `ble => 2, `bli => 4} (%embed% bli x))
     : [|bla, ble |] -> Num),
@@ -74,7 +74,7 @@ let typecheck = [
     fun x => switch {`blo => `bla, `ble => `bli, _ => `bla} x in
     f `bli,
 
-  // static records
+  # static records
   ({bla = 1} : {bla : Num}),
   ({blo = true, bla = 1} : {bla : Num, blo : Bool}),
   ({blo = 1}.blo : Num),
@@ -93,35 +93,35 @@ let typecheck = [
   ({ "%{if true then "foo" else "bar"}" = 2, }."%{"bl" ++ "a"}" : Num),
   ({ foo = 3, bar = 4, } : {_ : Num}),
 
-  // seq
+  # seq
   (%seq% false 1 : Num),
   ((fun x y => %seq% x y) : forall a. (forall b. a -> b -> b)),
   let xDyn = if false then true else false in
     let yDyn = 1 + 1 in (%seq% xDyn yDyn : Dyn),
 
-  // arrays_simple
+  # arrays_simple
   [1, "2", false],
-  //TODO: the type system may accept the following test at some point.
-  //([1, "2", false] : Array Dyn),
+  #TODO: the type system may accept the following test at some point.
+  #([1, "2", false] : Array Dyn),
   ["a", "b", "c"] : Array Str,
   [1, 2, 3] : Array Num,
   (fun x => [x]) : forall a. a -> Array a,
 
-  // arrays_ops
+  # arrays_ops
   (fun l => %tail% l) : forall a. Array a -> Array a,
   (fun l => %head% l) : forall a. Array a -> a,
   (fun f l => %map% l f) : forall a b. (a -> b) -> Array a -> Array b,
   (fun l1 => fun l2 => l1 @ l2) : forall a. Array a -> Array a -> Array a,
   (fun i l => %elem_at% l i) : forall a. Num -> Array a -> a,
 
-  // recursive_records
+  # recursive_records
   {a : Num = 1, b = a + 1} : {a : Num, b : Num},
   {a : Num = 1 + a} : {a : Num},
   {a : Num = 1 + a} : {a : Num},
 
-  // let_inference
+  # let_inference
   (let x = 1 + 2 in let f = fun x => x + 1 in f x) : Num,
-  // (let x = 1 + 2 in let f = fun x => x ++ "a" in f x) : Num,
+  # (let x = 1 + 2 in let f = fun x => x ++ "a" in f x) : Num,
   {a = 1, b = 1 + a} : {a : Num, b : Num},
   {f = fun x => if x == 0 then 1 else 1 + (f (x + (-1))),}
     : {f : Num -> Num},
@@ -129,7 +129,7 @@ let typecheck = [
   { f = fun x => if x == 0 then 1 else 1 + (f (x + (-1))),}
     : {f : Num -> Num},
 
-  // polymorphic_row_constraints
+  # polymorphic_row_constraints
   let extend | forall c. { ; c} -> {a: Str ; c} = 0 in
     let remove | forall c. {a: Str ; c} -> { ; c} = 0 in
     (let good = remove (extend {}) in 0) : Num,
@@ -137,9 +137,9 @@ let typecheck = [
   let r | {a: Num ; Dyn} = {a = 1, b = 2} in (r.a : Num),
   ({a = 1, b = 2} | {a: Num ; Dyn}) : {a: Num ; Dyn},
 
-  //Regression test following [#270](https://github.com/tweag/nickel/issues/270). Check that
-  //unifying a variable with itself doesn't introduce a loop. The failure of this test results
-  //in a stack overflow.
+  #Regression test following [#270](https:#github.com/tweag/nickel/issues/270). Check that
+  #unifying a variable with itself doesn't introduce a loop. The failure of this test results
+  #in a stack overflow.
   {gen_ = fun acc x =>
     if x == 0 then
       acc
@@ -150,36 +150,36 @@ let typecheck = [
 
   {f = fun x => f x}.f : forall a. a -> a,
 
-  // shallow_inference
+  # shallow_inference
   let x = 1 in (x + 1 : Num),
   let x = "a" in (x ++ "a" : Str),
   let x = "a%{"some str inside"}" in (x ++ "a" : Str),
   let x = false in (x || true : Bool),
   let x = false in let y = x in let z = y in (z : Bool),
-  // Regression test following, see [#297](https://github.com/tweag/nickel/pull/297). Check that
-  // [apparent_type](../fn.apparent_type.html) doesn't silently convert array literals from `Array
-  // T` (for `T` a type or a type variable) to `Array Dyn`.
+  # Regression test following, see [#297](https:#github.com/tweag/nickel/pull/297). Check that
+  # [apparent_type](../fn.apparent_type.html) doesn't silently convert array literals from `Array
+  # T` (for `T` a type or a type variable) to `Array Dyn`.
   {foo = [1]} : {foo : Array Num},
   (let y = [] in y) : forall a. Array a,
 
-  // full_annotations
+  # full_annotations
   let x : Num | doc "some" | default = 1 in x + 1 : Num,
 
-  // Typed import
+  # Typed import
   import "typed-import.ncl" : Num,
 
-  // Regression test for #430 (https://github.com/tweag/nickel/issues/430)
+  # Regression test for #430 (https:#github.com/tweag/nickel/issues/430)
   let x = import "typed-import.ncl"
   in x : Num,
 
-  // recursive_records_quoted
+  # recursive_records_quoted
   {"foo" = 1} : {foo : Num},
 
-  // stdlib typechecking:
+  # stdlib typechecking:
   string.length : Str -> Num,
   (string.length "Ok") : Num,
   (string.length "Ok" == 2) : Bool,
-  // partial application
+  # partial application
   (string.split ".") : Str -> Array Str,
   (array.length [] == 0) : Bool,
   (array.map (fun x => x ++ "1") ["a", "b", "c"]) : Array Str,

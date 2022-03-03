@@ -1,7 +1,7 @@
-// Validate and normalize gcc flags. They can be either a string `-Wextra` or
-// a structured value `{flag = "W", arg = "extra"}`. Arguments are not checked.
+# Validate and normalize gcc flags. They can be either a string `-Wextra` or
+# a structured value `{flag = "W", arg = "extra"}`. Arguments are not checked.
 let GccFlag =
-  // We only allow the following flags
+  # We only allow the following flags
   let available = ["W", "c", "S", "e", "o"] in
   fun label value =>
   if builtin.is_str value then
@@ -13,7 +13,7 @@ let GccFlag =
   else if builtin.is_record value then
     if record.has_field "flag" value && record.has_field "arg" value then
       if array.any (fun x => x == value.flag) available then
-        //Normalize the tag to a string
+        #Normalize the tag to a string
         value.flag ++ value.arg
       else
         contract.blame_with "unknown flag %{value.flag}" label

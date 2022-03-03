@@ -63,8 +63,8 @@ let Assert = contract.from_predicate function.id in
   |> builtin.deep_seq ext1
   |> builtin.deep_seq ext2,
 
-  // Test that the evaluation of a recursive record patches the right
-  // environment in some edge cases (when fields only contains a variable)
+  # Test that the evaluation of a recursive record patches the right
+  # environment in some edge cases (when fields only contains a variable)
   let foo = 1 in
   let y = foo in
   {bar = y, foo = 2}.bar == 1,
