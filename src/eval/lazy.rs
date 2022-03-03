@@ -124,8 +124,7 @@ impl ThunkData {
         }
     }
 
-    /// Return the potential field dependencies stored in a revertible thunk. Return `None` for a
-    /// non revertible thunk. See [`transform::free_vars`].
+    /// Return the potential field dependencies stored in a revertible thunk. See [`transform::free_vars`]
     pub fn deps(&self) -> ThunkDeps<&HashSet<Ident>> {
         match self.inner {
             InnerThunkData::Standard(_) => ThunkDeps::Empty,
@@ -246,9 +245,8 @@ impl Thunk {
         !term.is_whnf() && !term.is_metavalue()
     }
 
-    /// Return the potential field dependencies stored in a revertible thunk. Return `None` for a
-    /// non revertible thunk. Calling `deps` immutably borrows the internal `RefCell`. See
-    /// [`transform::free_vars`].
+    /// Return the potential field dependencies stored in a revertible thunk. Calling `deps`
+    /// immutably borrows the internal `RefCell`. See [`transform::free_vars`].
     pub fn deps(&self) -> ThunkDeps<Ref<'_, HashSet<Ident>>> {
         let borrowed = self.data.borrow();
 
@@ -262,20 +260,20 @@ impl Thunk {
     }
 }
 
-/// Different possible states for the field dependencies of a thunk:
+/// Possible alternatives for the field dependencies of a thunk.
 ///
-/// The parameter `D` is the type used to represent dependencies. It is usually a form of
-/// `HashSet<Ident>`, but is used with various reference types.
+/// The parameter `D` is the type used to represent dependencies. It is usually a variant of a
+/// reference to a `HashSet<Ident>`.
 pub enum ThunkDeps<D> {
     /// The thunk is revertible, containing potential recursive references to other fields, and the
     /// set of dependencies has been computed
     Known(D),
-    /// The thunk is revertible, but thet set of dependencies hasn't been computed. In that case,
+    /// The thunk is revertible, but the set of dependencies hasn't been computed. In that case,
     /// the interpreter should be conservative and assume that any recursive references can appear
     /// in the content of the corresponding thunk.
     Unknown,
     /// The thunk is not revertible and can't contain recursive references. The interpreter can
-    /// safely eschew the environment patching process entirely.
+    /// safely eschews the environment patching process entirely.
     Empty,
 }
 
