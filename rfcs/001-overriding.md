@@ -47,7 +47,7 @@ and returns a new updated record. It has the same semantics as our first
 snippet, but doesn't require to rewrite all unchanged fields.
 
 It can have a builtin syntax, such as OCaml's `with`: `{record with field =
-new_value}`, Haskell's `record {field = newValue}`, Nix `#` operator `record #
+new_value}`, Haskell's `record {field = newValue}`, Nix `//` operator `record //
 {field = newValue}`, or Rust's syntax `RecordDataType {field: new_value,
 ..record}`. There are more advanced programming techniques that make updating
 deeply nested records ergonomic such as
@@ -173,7 +173,7 @@ the original representation:
 ```nix
 let extension = {a = 2;}; in
 # The fixpoint of result is { a = 2; b = 3; }
-resultRepr = self: (rRepr (self # extension)) # extension
+resultRepr = self: (rRepr (self // extension)) // extension
 ```
 
 The second outer update ensures that the final result is also set to `a = 2`,
@@ -195,8 +195,8 @@ overriding](https://nixos.org/guides/nix-pills/override-design-pattern.html) or
     a = {b = self.a.c;};
   }; in
   let extension = {a = {c = 2;};}; in
-  rExt = let fixpoint = rRepr (fixpoint # extension); in
-  fixpoint # extension
+  rExt = let fixpoint = rRepr (fixpoint // extension); in
+  fixpoint // extension
   # Gives {a = {c = 2;};} instead of expected {a = {b = 2; c = 2;};}
   ```
 
@@ -217,13 +217,13 @@ let overlay1 = self: super: {a = 1;}; in
 let overlay2 = self: super: {b = 1; a = super.a + 1;}; in
 let applyOverlays = self:
   let base = baseRepr self; in
-  let first = base # overlay1 self base; in
-  let second = first # overlay2 self first; in
+  let first = base // overlay1 self base; in
+  let second = first // overlay2 self first; in
   second; in
 let fixpoint = applyOverlays fixpoint; in fixpoint
 ```
 
-In practice, the `super # ..` and fixpoints parts can be factorised in
+In practice, the `super // ..` and fixpoints parts can be factorised in
 dedicated helper functions.
 
 #### Advantages
@@ -243,7 +243,7 @@ dedicated helper functions.
 - ~~**(NEST)**~~ Overriding nested fields is still clumsy. For example, to
   override `lib.firefoxVersion`:
   ```nix
-  self: super: { lib = (super.lib or {}) # { firefoxVersion = ...; }; }
+  self: super: { lib = (super.lib or {}) // { firefoxVersion = ...; }; }
   ```
 
 ### NixOs module system
@@ -378,7 +378,7 @@ local obj = {
 ]
 ```
 
-This is similar to the Nix operator `#`, but doing recursive overriding in the
+This is similar to the Nix operator `//`, but doing recursive overriding in the
 expected way out of the box. The extension can access the previous version in
 the same way as Nixpkgs overlays, using the `super` keyword.
 
@@ -430,7 +430,7 @@ The NixOS module system is designed differently. It is based on merging: the
 configuration is created by combining a set of unordered records following
 specific rules. Of course, there's still a need for ordering information
 somewhere, but it is rather expressed as priorities. This system has the
-advantage of making merge commutative (in contrast with inheritance or the `#`
+advantage of making merge commutative (in contrast with inheritance or the `//`
 operator), as in CUE, and to untie data definition from precedence
 specification: one can define a module where each field has a different
 priority, if it makes sense to group them logically.  With inheritance, values
@@ -486,7 +486,7 @@ r = {
   a = 1;
   b = a + 1;
 }
-# Definition of the representation of r
+// Definition of the representation of r
 repr(r) := fun self => {
   a = 1;
   b = self.a + 1;
@@ -550,7 +550,7 @@ let block2 = {
   path = ["/bin"]
 } in
 
-# { path = ["usr/local/bin", "/bin"] }
+// { path = ["usr/local/bin", "/bin"] }
 block1 & block2
 ```
 
@@ -640,7 +640,7 @@ Example:
       | default = 1,
 
   bar | Str,
-  #equivalent to `bar | Str | priority 0`
+  //equivalent to `bar | Str | priority 0`
 
   baz.boo.bor | priority -4 = "value",
 
@@ -688,31 +688,31 @@ let neutralConf = {
 }
 
 let defaulted | default rec = neutralConf
-# ^ Will evaluate to:
-# {
-#   foo | default = 1,
-#   bar = {
-#     baz | default = "stuff",
-#     bar.blorg | default = false,
-#   },
-# }
-# This is different from `neutralConf | default`! The latter version
-# would be overrided at once, as illustrated below.
+// ^ Will evaluate to:
+// {
+//   foo | default = 1,
+//   bar = {
+//     baz | default = "stuff",
+//     bar.blorg | default = false,
+//   },
+// }
+// This is different from `neutralConf | default`! The latter version
+// would be overrided at once, as illustrated below.
 
 defaulted & {bar.baz = "shapoinkl"}
-# ^ Gives the expected:
-# {
-#   foo | default = 1,
-#   bar = {
-#     baz = "shapoinkl";
-#     bar.blor | default = false,
-#   },
-# }
-# While
+// ^ Gives the expected:
+// {
+//   foo | default = 1,
+//   bar = {
+//     baz = "shapoinkl";
+//     bar.blor | default = false,
+//   },
+// }
+// While
 
 (neutralConf | default) & {bar.baz = "shapoinkl"}
-# ^ This gives only:
-# {bar.baz = "shapoinkl"}
+// ^ This gives only:
+// {bar.baz = "shapoinkl"}
 ```
 
 This way, an existing definition (arbitrarily complex: that could be the root of
@@ -734,7 +734,7 @@ definition:
 
 ```nickel
 let add = fun args => args.lower + args.higher in
-# {a = 3}
+// {a = 3}
 {a | merge add = 1} & {a = 1} & {a = 1}
 ```
 
@@ -746,10 +746,10 @@ let r1 = {a = 1} in
 let r2 = {a = 1} in
 let r3 = {a | merge add = 1} in
 
-# {val = 2}
+// {val = 2}
 r1 & r2 & r3
 
-# {val = 3}
+// {val = 3}
 r3 & r1 & r2
 ```
 
@@ -770,7 +770,7 @@ Possible solutions:
    val1 & val2 & (val3 | merge func)
    <=> (val1 | merge func) & val2 & val3
    <=> func (func val1 val2) val3
-   # instead of the naive
+   // instead of the naive
    <=/=> func (val1 & val2) val3
    ```
 
@@ -824,17 +824,17 @@ questions:
 let add = fun x y => x + y in
 
 let var = 1 & 1 in
-var & (1 | merge add) # result?
-(var | merge add) & 1 # result?
+var & (1 | merge add) // result?
+(var | merge add) & 1 // result?
 
-((1 & 1) + (1 & 1)) & (1 | merge add) # result?
-((1 & 1) + (1 & 1) | merge add) & 1 # result?
+((1 & 1) + (1 & 1)) & (1 | merge add) // result?
+((1 & 1) + (1 & 1) | merge add) & 1 // result?
 
-# file: somefile.ncl
+// file: somefile.ncl
 1 & 1
-# file: other.ncl
-(import "somefile") & (1 | merge add) # result?
-(import "somefile" | merge add) & 1 # result?
+// file: other.ncl
+(import "somefile") & (1 | merge add) // result?
+(import "somefile" | merge add) & 1 // result?
 ```
 
 In the following, we will write "meta"-code (think of the code of the Nickel
@@ -857,7 +857,7 @@ data Metadata = Metadata {
   priority :: Priority,
   merge :: Option Priority,
   contracts :: Option (List Contract),
-  # ...
+  // ...
 }
 
 data AbsMergeTree a =
@@ -873,7 +873,7 @@ expressions, such that `let x = a & b in x & c` and `a & b & c` has the same
 merge tree: that is, merge treee commute with evaluation.
 
 ```
-# we maintain an environment of bindings in `env`
+// we maintain an environment of bindings in `env`
 
 metaData [| e | attr = val, ... |] ::=
   { attr = val, ... }                    if priority is set
@@ -883,21 +883,21 @@ mergeTree e ::= (absMergeTree e, metaData e)
 
 absMergeTree [| e1 & e2 |] = Merge(mergeTree(e1), mergeTree(e2))
 
-# whnf = Weak head normal form, result of evaluation
+// whnf = Weak head normal form, result of evaluation
 absMergeTree [| whnf |] @ e = Exp(e)
 
-# Should mergeTree cross import boundaries? Probably not
+// Should mergeTree cross import boundaries? Probably not
 absMergeTree [| import path |] @ e = Exp(e)
 
-# All other cases
+// All other cases
 absMergeTree e = weakEval e
 
-# weakEval is defined exactly as standard evaluation, excepted that it stops at
-# merge expressions, as if they were a lazy datatype in weak head normal form
+// weakEval is defined exactly as standard evaluation, excepted that it stops at
+// merge expressions, as if they were a lazy datatype in weak head normal form
 
 weakEval [| e1 & e2 |] @ e = e
 
-# all other cases are defined exactly as for eval
+// all other cases are defined exactly as for eval
 weakEval e = ... 
 ```
 
@@ -920,7 +920,7 @@ extractMergeFuns (Leaf(e,meta)) = [f] if meta.merge == Some([| f |])
 mergeFunction : MergeTree -> Result MergeFunction ()
 mergeFunction t = let funs = extractMergeFuns t in
   if lists.length t == 0 then
-    Ok(__builtinMerge) # the standard `&` merge function
+    Ok(__builtinMerge) // the standard `&` merge function
   else if lists.length t == 1 then
     Ok(head t)
   else
@@ -930,7 +930,7 @@ mergeFunction t = let funs = extractMergeFuns t in
 And the interpretation of a merge tree by a merge function:
 
 ```
-# can be extended, as long as it is a partially ordered set
+// can be extended, as long as it is a partially ordered set
 Priority = Number | -inf | +inf | ...
 
 interpret (Merge(ast_1,meta_1),Merge(ast_2,meta_2)) f =

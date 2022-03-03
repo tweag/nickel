@@ -434,9 +434,9 @@ idea from the [Record types](#record-types) section:
 ```nickel
 let Contract = {foo | OtherContr, bar | Str} in
 let my_value | Contract = {...} in
-# Would typecheck, as my_value has type Contract, which would be expanded to
-# {foo | OtherContr, bar | Str} and statically extracted as {foo: OtherContr, bar:
-# Str}
+// Would typecheck, as my_value has type Contract, which would be expanded to
+// {foo | OtherContr, bar | Str} and statically extracted as {foo: OtherContr, bar:
+// Str}
 let appendToBar : Str -> Str = fun s => my_value.bar ++ s
 ```
 
