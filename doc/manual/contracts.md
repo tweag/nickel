@@ -1,4 +1,8 @@
-# Contracts
+---
+slug: contracts
+---
+
+# Contracts in Nickel
 
 (For the motivation behind contracts and a high-level overview of contracts and
 types, first read the [correctness](./correctness.md) section.)
@@ -194,7 +198,7 @@ given format:
 ```nickel
 let Nullable = fun contract label value =>
   if value == null then
-    value 
+    value
   else
     contract.apply contract label value in
 // succeeds
@@ -218,7 +222,7 @@ missing:
 ```nickel
 let MyConfig = {
   path | Str,
- 
+
   connection | {
     server_port | Port,
     host | Str,
@@ -410,7 +414,7 @@ We've already seen that the primitive types `Num`, `Str` and `Bool` can be used
 as contracts. In fact, any type constructor of the
 [static type system](./typing.md) can be used to combine contracts.
 
-#### Array 
+#### Array
 
 An array contract checks that the value is an array and applies the parameter
 contract to each element:

@@ -1,12 +1,16 @@
+---
+slug: syntax
+---
+
 # Nickel Syntax
 
 ## Simple values
 
-There are three basic kind of values in Nickel : 
- 1. numeric values, 
+There are three basic kind of values in Nickel :
+ 1. numeric values,
  2. boolean values,
  3. strings.
- 
+
 ### Numeric values
 
 Nickel has a support for numbers, positive and negative, with or without decimals.
@@ -31,7 +35,7 @@ There are a some predefined operators for working with numbers :
 | /        | The division operator                                | `1 / 2 = 0.5` |
 | %        | The modulo operator (returns the *signed* remainder) | `5 % 3 = 2`   |
 
-> **Remark about the `-` operator:**  
+> **Remark about the `-` operator:**
 > Since `-` can be used inside an identifier, the subtraction operators **needs** to be surrounded by spaces:
 > write `1 - 1`, not `1-1`.
 
@@ -119,7 +123,7 @@ This line has no more identation.
 "This line has no indentation.
   This line is indented.
     This line is even more indented.
-This line has no more indentation." 
+This line has no more indentation."
 ```
 
 The only special sequence in a multiline string is the string interpolation.
@@ -202,7 +206,7 @@ false
 
 ## Composite values
 
-### Array 
+### Array
 An array is a sequence of values. They are delimited by `[` and `]`, and elements are separated with `,`.
 
 Examples:
@@ -250,7 +254,7 @@ It is possible to write records of records via the *piecewise syntax*, where we 
 ```
 > { a = { b = 1 } }
 { a = { b = 1 } }
- 
+
 > { a.b = 1 }
 { a = { b = 1 } }
 
@@ -411,7 +415,7 @@ error: Blame error: contract broken by a value.
 3
 ```
 
-Adding documentation can be done with `| doc < string >`.  
+Adding documentation can be done with `| doc < string >`.
 Examples:
 ```
 > 5 | doc "The number five"
@@ -428,7 +432,7 @@ true
 
 Record contracts can set default values using the `default` metadata:
 It is noted as `| default = < default value >`.
-This is especially useful when merging records (more about this in the dedicated document about merge).  
+This is especially useful when merging records (more about this in the dedicated document about merge).
 Examples:
 ```
 > let Ais2ByDefault = { a | default = 2 } in

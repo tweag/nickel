@@ -1,3 +1,7 @@
+---
+slug: merging
+---
+
 # Merging records
 
 In Nickel, the basic building blocks for data are records (objects in JSON or

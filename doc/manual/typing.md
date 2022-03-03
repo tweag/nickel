@@ -1,3 +1,7 @@
+---
+slug: typing
+---
+
 # Typing in Nickel
 
 (For the motivations behind typing and a high-level overview of contracts and

@@ -1,4 +1,8 @@
-# Correctness
+---
+slug: correctness
+---
+
+# Correctness in Nickel
 
 One of the main value proposition of Nickel is to make configurations
 programmable. However, a not less important one is to help you write *correct*
@@ -97,7 +101,7 @@ types and contracts directly follow from this distinction.
 In the next paragraphs, we consider two typical examples to illustrate the
 difference between types and contracts in practice.
 
-### Case 1: a function operating on arrays 
+### Case 1: a function operating on arrays
 
 Say we need a function to convert an array of key-value pairs to an array of keys
 and an array of values. Let's call it `split`:

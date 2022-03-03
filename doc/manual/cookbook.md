@@ -1,3 +1,7 @@
+---
+slug: cookbook
+---
+
 # Cookbook
 
 For now, this is an unorganized, temporary document not to forget some pieces of
