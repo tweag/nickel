@@ -361,14 +361,14 @@ fn multiline_str_escape() {
 #[test]
 fn line_comments() {
     assert_eq!(
-        parse_without_pos("// 1 +\n1 + 1// + 3\n//+ 2"),
+        parse_without_pos("# 1 +\n1 + 1# + 3\n#+ 2"),
         parse_without_pos("1 + 1")
     );
     assert_eq!(
         parse_without_pos(
-            "{ // Some comment
-            field = foo, // Some description
-            } // Some other"
+            "{ # Some comment
+            field = foo, # Some description
+            } # Some other"
         ),
         parse_without_pos("{field = foo}")
     );

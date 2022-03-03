@@ -296,8 +296,8 @@ pub enum ParseError {
     /// the original syntax. Typically, a field assignment:
     ///
     /// ```nickel
-    /// forall a. {foo : Num; a} // allowed
-    /// forall a. {foo : Num = 1; a} // InvalidUniRecord error: giving a value to foo is forbidden
+    /// forall a. {foo : Num; a} # allowed
+    /// forall a. {foo : Num = 1; a} # InvalidUniRecord error: giving a value to foo is forbidden
     /// ```
     ///
     /// See [RFC002](../../rfcs/002-merge-types-terms-syntax.md) for more details.

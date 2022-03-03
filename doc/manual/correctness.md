@@ -122,12 +122,12 @@ Here is the definition for `split`, but with a twist. We mistakenly forgot to
 wrap `pair.key` as an array before concatenating at line 6:
 
 ```nickel
-// lib.ncl
+# lib.ncl
 {
   split = fun pairs =>
     array.fold (fun pair acc =>
       {
-        // problem: the right expression to use is [pair.key]
+        # problem: the right expression to use is [pair.key]
         keys = acc.keys @ pair.key,
         values = acc.values @ [pair.value],
       })
@@ -139,7 +139,7 @@ wrap `pair.key` as an array before concatenating at line 6:
 And we call to split from our configuration:
 
 ```nickel
-// config.ncl
+# config.ncl
 let {split} = import "lib.ncl" in
 split [{key = "foo", value = 1}, {key = "bar", value = 2}]
 ```

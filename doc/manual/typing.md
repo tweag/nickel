@@ -103,15 +103,15 @@ block*.
 
 Example:
 ```
-// Let binding
+# Let binding
 let f : Num -> Bool = fun x => x % 2 == 0 in
 
-// Record field
+# Record field
 let r = {
   count : Num = 2354.45 * 4 + 100,
 } in
 
-// Inline
+# Inline
 1 + ((if f 10 then 1 else 0) : Num)
 ```
 
@@ -393,7 +393,7 @@ summed, without modifying the rest:
 ```nickel
 let sum : forall r. {a : Num, b : Num | r} -> {a : Num, b : Num, sum : Num | r}
         = fun x => x $[ "sum" = x.a + x.b]
-in sum {a = 1, b = 2, c = 3} // {a=1, b=2, sum=3, c=3}
+in sum {a = 1, b = 2, c = 3} # {a=1, b=2, sum=3, c=3}
 ```
 
 Note that row polymorphism also works with enums, with the same intuition of a

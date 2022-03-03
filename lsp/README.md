@@ -129,12 +129,12 @@ Add an `nickel_ls` entry to your configuration. Type `:CocConfig` in Neovim (or 
 ```
 {
   "languageserver": {
-    // Your other language servers configuration
-    // ...,
+    # Your other language servers configuration
+    # ...,
     "nickel_ls": {
       "command": "nls",
-      // You can enable performance tracing with:
-      // "command": "nls --trace <file>",
+      # You can enable performance tracing with:
+      # "command": "nls --trace <file>",
       "rootPatterns": [
         ".git"
       ],

@@ -1,7 +1,7 @@
 let Assert = fun l x => x || %blame% l in
 
 [
-  // accesses
+  # accesses
   ({foo = 3, bar = true}).bar == true,
   {"%{if true then "foo" else "bar"}" = false, bar = true}.foo
     == false,
@@ -12,7 +12,7 @@ let Assert = fun l x => x || %blame% l in
 
   ({bar = 3}$["foo" = true]).foo == true,
 
-  // primitive_ops
+  # primitive_ops
   record.has_field "foo" {foo = 1, bar = 2},
   record.has_field "fop" {foo = 1, bar = 2} == false,
   record.has_field "foo" ({foo = 2, bar = 3} -$ "foo")
@@ -20,7 +20,7 @@ let Assert = fun l x => x || %blame% l in
 
   record.has_field "foo" ({bar = 3}$["foo" = 1]),
 
-  // lazyness of map
+  # lazyness of map
   (record.map (fun x y => y + 1) {foo = 1, bar = "it's lazy"}).foo
     == 2,
 
@@ -29,7 +29,7 @@ let Assert = fun l x => x || %blame% l in
       {foo = 1, bar = "it's lazy"} in
     (r.foo) + (r.bar) == 2,
 
-  // merging
+  # merging
   {a = 1} & {b=true} == {a = 1, b = true},
   {a = 1, b = 2} & {b = 2, c = 3}
     == {a = 1, b = 2, c = 3},
@@ -40,7 +40,7 @@ let Assert = fun l x => x || %blame% l in
   {a = `A, b = `B} & {a = `A, c = `C}
     == {a = `A, b = `B, c = `C},
 
-  // merge_complex
+  # merge_complex
   let rec1 = {
       a = false,
       b = if true then (1 + 1) else (2 + 0),
@@ -59,15 +59,15 @@ let Assert = fun l x => x || %blame% l in
     } in
     rec1 & rec2 == result,
 
-  // merge_with_env
+  # merge_with_env
   (fun y => ((fun x => {a=y}) 1) & ({b=false})) 2
     == {a = 2, b = false},
 
-  // merge_with_env_nested
+  # merge_with_env_nested
   {b={c=10}} & ((fun x => {a=x, b={c=x}}) 10)
     == {a=10, b = {c = 10}},
 
-  // recursive_records
+  # recursive_records
   {a = 1, b = a + 1, c = b + a} == {a = 1, b = 2, c = 3},
   {f = fun x y =>
       if x == 0 then y else f (x + (-1)) (y + 1)
@@ -84,7 +84,7 @@ let Assert = fun l x => x || %blame% l in
     }.f 10 in
   with_res "done" == "done",
 
-  // piecewise signatures
+  # piecewise signatures
   {
       foo : Num,
       bar = 3,
@@ -97,9 +97,9 @@ let Assert = fun l x => x || %blame% l in
   }.bar == 1,
   let {foo : Num} = {foo = 1} in foo == 1,
 
-  // recursive overriding with common fields
-  // regression tests for [#579](https://github.com/tweag/nickel/issues/579)
-  // and [#583](https://github.com/tweag/nickel/issues/583)
+  # recursive overriding with common fields
+  # regression tests for [#579](https://github.com/tweag/nickel/issues/579)
+  # and [#583](https://github.com/tweag/nickel/issues/583)
   ({foo.bar = foo.baz, foo.baz | default = 2} & {foo.baz = 1}).foo.bar == 1,
   let Name = fun b label name => if b then "hijack" else contract.blame label in
   let Config = {
