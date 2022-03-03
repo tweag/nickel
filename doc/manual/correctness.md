@@ -1,4 +1,8 @@
-# Correctness
+---
+slug: correctness
+---
+
+# Correctness in Nickel
 
 One of the main value proposition of Nickel is to make configurations
 programmable. However, a not less important one is to help you write *correct*
@@ -97,7 +101,7 @@ types and contracts directly follow from this distinction.
 In the next paragraphs, we consider two typical examples to illustrate the
 difference between types and contracts in practice.
 
-### Case 1: a function operating on arrays 
+### Case 1: a function operating on arrays
 
 Say we need a function to convert an array of key-value pairs to an array of keys
 and an array of values. Let's call it `split`:
@@ -118,12 +122,12 @@ Here is the definition for `split`, but with a twist. We mistakenly forgot to
 wrap `pair.key` as an array before concatenating at line 6:
 
 ```nickel
-// lib.ncl
+# lib.ncl
 {
   split = fun pairs =>
     array.fold (fun pair acc =>
       {
-        // problem: the right expression to use is [pair.key]
+        # problem: the right expression to use is [pair.key]
         keys = acc.keys @ pair.key,
         values = acc.values @ [pair.value],
       })
@@ -135,7 +139,7 @@ wrap `pair.key` as an array before concatenating at line 6:
 And we call to split from our configuration:
 
 ```nickel
-// config.ncl
+# config.ncl
 let {split} = import "lib.ncl" in
 split [{key = "foo", value = 1}, {key = "bar", value = 2}]
 ```

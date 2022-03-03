@@ -141,11 +141,11 @@ fn lists_contracts() {
         Err(Error::EvalError(EvalError::BlameError(..)))
     );
     assert_matches!(
-        eval("1 | Array"),
+        eval("1 | Array Dyn"),
         Err(Error::EvalError(EvalError::BlameError(..)))
     );
     assert_matches!(
-        eval("(fun x => x) | Array"),
+        eval("(fun x => x) | Array Dyn"),
         Err(Error::EvalError(EvalError::BlameError(..)))
     );
 

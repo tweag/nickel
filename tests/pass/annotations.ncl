@@ -1,7 +1,7 @@
 let Assert = fun l x => x || %blame% l in
 
 [
-  // left_annot_precedence
+  # left_annot_precedence
   (let dummy = null in
     let LocalAssert = Assert in
     true | LocalAssert),
@@ -19,7 +19,7 @@ let Assert = fun l x => x || %blame% l in
       x | LocalAssert in
     f true),
 
-  // others_precedence
+  # others_precedence
   ((fun x => x | Assert) true),
   (let AssertOk = fun l t => if t == `Ok then t else %blame% l in
     switch {`Ok => true, `Err => false} `Ok | AssertOk),

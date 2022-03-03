@@ -284,7 +284,7 @@ pub enum NormalToken<'input> {
     EnumOpen,
     #[token("|]")]
     EnumClose,
-    #[regex("//[^\n]*")]
+    #[regex("#[^\n]*")]
     LineComment,
 }
 

@@ -120,7 +120,7 @@
       else
         %blame% (%tag% "not a string" l),
 
-    // using a contract instead of type for now because of https://github.com/tweag/nickel/issues/226
+    # using a contract instead of type for now because of https://github.com/tweag/nickel/issues/226
     join | Str -> Array Str -> Str
     | doc m%"
       Joins a array of strings given a seperator.
@@ -357,7 +357,7 @@
       "%m
     = fun n => %to_str% n,
 
-    // from_enum | < | Dyn> -> Str = fun tag => %to_str% tag,
+    # from_enum | < | Dyn> -> Str = fun tag => %to_str% tag,
     from_enum | Dyn -> Str
     | doc m%"
       Converts an enum variant to its string representation.
@@ -409,7 +409,7 @@
       "%m
     = fun s => s == "true",
 
-    // to_enum | Ident -> < | Dyn> = fun s => %enum_from_str% s,
+    # to_enum | Ident -> < | Dyn> = fun s => %enum_from_str% s,
     to_enum | Ident -> Dyn
     | doc m%"
       Converts any string that represents an enum variant to that enum variant.

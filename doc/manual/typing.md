@@ -1,3 +1,7 @@
+---
+slug: typing
+---
+
 # Typing in Nickel
 
 (For the motivations behind typing and a high-level overview of contracts and
@@ -99,15 +103,15 @@ block*.
 
 Example:
 ```
-// Let binding
+# Let binding
 let f : Num -> Bool = fun x => x % 2 == 0 in
 
-// Record field
+# Record field
 let r = {
   count : Num = 2354.45 * 4 + 100,
 } in
 
-// Inline
+# Inline
 1 + ((if f 10 then 1 else 0) : Num)
 ```
 
@@ -163,8 +167,7 @@ Let us now have a quick tour of the type system. The basic types are:
 
 The following type constructors are available:
 
-- **Array**: `Array T`. An array of elements of type `T`. When no `T` is specified, `Array`
-  alone is an alias for `Array Dyn`.
+- **Array**: `Array T`. An array of elements of type `T`.
 
   Example:
   ```nickel

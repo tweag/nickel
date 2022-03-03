@@ -1,4 +1,8 @@
-# Type vs contracts: when to?
+---
+slug: type-vs-contract
+---
+
+# Type vs contract: when to?
 
 You are writing Nickel code and wonder how it should be annotated. Leave it
 alone? Add type annotations? Use contracts? Here is a quick guide when you don't

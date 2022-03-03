@@ -1,7 +1,7 @@
 let Assert = fun l x => x || %blame% l in
 
 [
-  // basic arithmetic
+  # basic arithmetic
   1+1 == 2,
   1-2+3-4 == -2,
   2-3-4 == -5,
@@ -13,7 +13,7 @@ let Assert = fun l x => x || %blame% l in
   34 + (if true then 2 else 222)
     == 36,
 
-  // comparisons
+  # comparisons
   1 < 1 == false,
   1 <= 1 == true,
   1 > 1 == false,
@@ -31,7 +31,7 @@ let Assert = fun l x => x || %blame% l in
   1/4 + 1/4 - 1/4 + 1/4 >= 1/2 == true,
   1/4 + 1/4 - 1/4 + 1/4 < 1/2 == false,
 
-  // This test checks that the terms of a switch are closured
+  # This test checks that the terms of a switch are closured
   let x = 3 in (switch { `foo => 1, _ => x} (3 + 2)) == 3,
 ]
 |> array.foldl (fun x y => (x | Assert) && y) true

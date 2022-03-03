@@ -20,7 +20,7 @@ This example defines a couple contracts:
     appears as such in the output. This contract is illustrative and by no mean
     exhaustive.
 - `Path`: define a valid `/`-separated path as a string. In particular, the
-    `//` sequence is forbidden.
+    `#` sequence is forbidden.
 - `SharedObjectFile`: define a file whose extension is `.so`.
 - `OptLevel`: optimization level, either `0`, `1` or `2`.
 - `Contract`: the schema of the end configuration.

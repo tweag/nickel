@@ -141,7 +141,7 @@ pub fn get_uop_type(
             //mk_tyw_record!(; TypeWrapper::Ptr(state.table.fresh_var())),
             mk_typewrapper::array(AbsType::Str()),
         ),
-        // Dyn -> Array
+        // Dyn -> Array Dyn
         UnaryOp::ValuesOf() => (
             mk_typewrapper::dynamic(),
             mk_typewrapper::array(AbsType::Dyn()),

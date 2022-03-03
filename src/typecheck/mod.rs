@@ -22,7 +22,7 @@
 //! mode, but it is never implicitly generalized. For example, the following program is rejected:
 //!
 //! ```text
-//! // Rejected
+//! # Rejected
 //! let id = fun x => x in seq (id "a") (id 5) : Num
 //! ```
 //!
@@ -35,7 +35,7 @@
 //! annotation is sufficient:
 //!
 //! ```text
-//! // Accepted
+//! # Accepted
 //! let id : forall a. a -> a = fun x => x in seq (id "a") (id 5) : Num
 //! ```
 //!

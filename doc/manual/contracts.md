@@ -1,4 +1,8 @@
-# Contracts
+---
+slug: contracts
+---
+
+# Contracts in Nickel
 
 (For the motivation behind contracts and a high-level overview of contracts and
 types, first read the [correctness](./correctness.md) section.)
@@ -15,10 +19,10 @@ let x = (1 + 1 | Num) in x
 Contract can also be attached to identifiers in a definition:
 
 ```nickel
-// let-binding: equivalent to the previous example
+# let-binding: equivalent to the previous example
 let x | Num = 1 + 1 in x
 
-// on a record field
+# on a record field
 {x | Num = 1 + 1}
 ```
 
@@ -165,7 +169,7 @@ let Between = fun min max =>
   contract.from_predicate (fun value =>
     value >= min &&
     value <= max) in
-// alternative without from_predicate
+# alternative without from_predicate
 let BetweenAlt = fun min max label value =>
   if builtin.is_num value &&
      value >= min &&
@@ -194,12 +198,12 @@ given format:
 ```nickel
 let Nullable = fun contract label value =>
   if value == null then
-    value 
+    value
   else
     contract.apply contract label value in
-// succeeds
+# succeeds
 null | Nullable Num
-// succeeds too
+# succeeds too
 1 | Nullable Num
 ```
 
@@ -218,7 +222,7 @@ missing:
 ```nickel
 let MyConfig = {
   path | Str,
- 
+
   connection | {
     server_port | Port,
     host | Str,
@@ -410,7 +414,7 @@ We've already seen that the primitive types `Num`, `Str` and `Bool` can be used
 as contracts. In fact, any type constructor of the
 [static type system](./typing.md) can be used to combine contracts.
 
-#### Array 
+#### Array
 
 An array contract checks that the value is an array and applies the parameter
 contract to each element:
@@ -432,9 +436,6 @@ error: contract broken by a value.
   │               - evaluated to this expression
 [..]
 ```
-
-Recall that `Array` is an alias for `Array Dyn`, thus the `Array` contracts only
-checks that the value is an array.
 
 #### Functions
 
@@ -583,7 +584,7 @@ let NumBoolDict = fun label value =>
       |> record.fields
       |> array.foldl (fun acc field_name =>
         if string.is_match "^\\d+$" field_name then
-          acc // unused and always null through iteration
+          acc # unused and always null through iteration
         else
           contract.blame_with "field name `#{field_name}` is not a number" label
         ) null in
@@ -631,7 +632,7 @@ Let us see if we indeed preserved laziness:
 
 ```
 nickel>let config | NumBoolDict = {
-    "1" = 1 + "a", // Same as our previous "fail"
+    "1" = 1 + "a", # Same as our previous "fail"
     "0" | doc "Some information" = true,
 }
 nickel>:query config."0"

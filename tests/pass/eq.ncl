@@ -1,7 +1,7 @@
 let Assert = fun l x => x || %blame% l in
 
 [
-  // basic
+  # basic
   0 == 0 + 0 + 0,
   true == (if true then true else false),
   "a" ++ "b" ++ "c" == "%{"a" ++ "b"}" ++ "c",
@@ -18,7 +18,7 @@ let Assert = fun l x => x || %blame% l in
   `Less != 0,
   `Greater != false,
 
-  // arrays
+  # arrays
   [] == [],
   [(1 + 0), (1 + 1), (1 + 1 + 1)] == [1, 2, 3],
   [(1 + 0), ("a" ++ "b"), (if true then true else false)]
@@ -33,7 +33,7 @@ let Assert = fun l x => x || %blame% l in
   [1, "a", true] != [1, "a", false],
   [[true]] != [[[true]]],
 
-  // records
+  # records
   {} == {},
   ({}
   |> record.insert "a" 1
@@ -59,10 +59,10 @@ let Assert = fun l x => x || %blame% l in
   { a = "a", b = true } != { a = true, b = "a"},
   { a = { a = true } } != {a = { a = { a = true } } },
 
-  // Now that the equality operator directly uses the stack to store its continuation (see
-  // https://github.com/tweag/nickel/pull/247), check that it correctly cleans the stack when
-  // evaluating a subequality to `false`.
-  // Generate an non-empty evaluation context to evaluate equalities over a non-empty stack
+  # Now that the equality operator directly uses the stack to store its continuation (see
+  # https://github.com/tweag/nickel/pull/247), check that it correctly cleans the stack when
+  # evaluating a subequality to `false`.
+  # Generate an non-empty evaluation context to evaluate equalities over a non-empty stack
   let eq_with_ctxt = fun x y =>
       let not = fun b =>
         if b then true else false in

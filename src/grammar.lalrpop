@@ -241,6 +241,7 @@ Forall: Types =
 // also includes previous levels).
 Applicative: UniTerm = {
     "import" <s: StaticString> => UniTerm::from(Term::Import(OsString::from(s))),
+    AsUniTerm<TypeArray>,
     <t1: AsTerm<Applicative>> <t2: AsTerm<RecordOperand>> =>
         UniTerm::from(mk_app!(t1, t2)),
     <op: UOp> <t: AsTerm<RecordOperand>> => UniTerm::from(mk_term::op1(op, t)),
@@ -250,25 +251,9 @@ Applicative: UniTerm = {
     RecordOperand,
 };
 
-// The array type, potentially with an argument. Take precedence over
-// application: `Array Foo` is always interpreted as the type `Array` parametrized
-// by `Foo`, rather than the dynamic array type `Array Dyn` aliased to `Array` and
-// seen as a contract applied to term `Foo`.
-TypeArray: Types =
-    "Array" <TypeArrayParam?> => {
-        let ty = Box::new(<>.unwrap_or(Types(AbsType::Dyn())));
-        Types(AbsType::Array(ty))
-    };
-
-// Possible parameter for the array type. It's `TypeAtom` augmented with an
-// argument-less `Array`, which allows to parse `Array Array`. We can't add
-// argument-less `Array` to type atoms directly, as it would make `Array Foo`
-// ambiguous: could be parsed both as `Array` as a term applied to `Array` as a
-// term, or as the parametrized type `Array Array`).
-TypeArrayParam: Types = {
-    "Array" => Types(AbsType::Array(Box::new(Types(AbsType::Dyn())))),
-    AsType<Atom>,
-};
+// The parametrized array type.
+TypeArray: Types = "Array" <AsType<Atom>> =>
+    Types(AbsType::Array(Box::new(<>)));
 
 RecordOperand: UniTerm = {
     Atom,
@@ -677,7 +662,6 @@ InfixLazyBOpApp<UOp, LExpr, RExpr>: UniTerm =
 InfixExpr: UniTerm = {
     #[precedence(level="0")]
     Applicative,
-    AsUniTerm<TypeArray>,
 
     #[precedence(level="1")]
     "-" <AsTerm<InfixExpr>> =>
