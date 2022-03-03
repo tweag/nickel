@@ -868,7 +868,6 @@ extern {
         "record_insert" => Token::Normal(NormalToken::RecordInsert),
         "record_remove" => Token::Normal(NormalToken::RecordRemove),
         "seq" => Token::Normal(NormalToken::Seq),
-        "seq" => Token::Normal(NormalToken::Seq),
         "deep_seq" => Token::Normal(NormalToken::DeepSeq),
         "head" => Token::Normal(NormalToken::Head),
         "tail" => Token::Normal(NormalToken::Tail),
