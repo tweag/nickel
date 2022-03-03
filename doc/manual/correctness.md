@@ -40,7 +40,7 @@ machinery. On the other hand, checking this property at runtime on the final
 result is trivial.
 
 Nevertheless, if you have ever faced puzzling [dynamic type
-errors](https:#www.haskellforall.com/2021/01/dynamic-type-errors-lack-relevance.html),
+errors](https://www.haskellforall.com/2021/01/dynamic-type-errors-lack-relevance.html),
 you may feel the need for something better. Bare dynamic typing is prone to
 irrelevant error messages, pointing to a location far from the problematic code
 in the source. This is especially true when working with functions, which may be

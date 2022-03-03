@@ -58,7 +58,7 @@ let Assert = fun l x => x || %blame% l in
   { a = { a = true } } != {a = { a = { a = true } } },
 
   # Now that the equality operator directly uses the stack to store its continuation (see
-  # https:#github.com/tweag/nickel/pull/247), check that it correctly cleans the stack when
+  # https://github.com/tweag/nickel/pull/247), check that it correctly cleans the stack when
   # evaluating a subequality to `false`.
   # Generate an non-empty evaluation context to evaluate equalities over a non-empty stack
   let eq_with_ctxt = fun x y =>

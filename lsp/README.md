@@ -1,8 +1,8 @@
 # Nickel Language Server
 
 The Nickel Language Server (NLS) is a [language
-server](https:#en.wikipedia.org/wiki/Language_Server_Protocol) for the
-[Nickel](https:#www.nickel-lang.org/) programming language. NLS offers error
+server](https://en.wikipedia.org/wiki/Language_Server_Protocol) for the
+[Nickel](https://www.nickel-lang.org/) programming language. NLS offers error
 messages, type hints, and auto-completion right in your favorite LSP-enabled
 editor.
 
@@ -18,7 +18,7 @@ use the Rust toolchain and don't want to install Nix.
 
 ### Using Nix (flakes)
 
-The easiest way to install `nls` is using [Nix](https:#nixos.org/).
+The easiest way to install `nls` is using [Nix](https://nixos.org/).
 
 **Important**: the following of this section assumes that you have a flake-enabled
 Nix (>= 2.4) and the experimental features `flakes` and `nix-command` enabled.
@@ -51,19 +51,19 @@ Alternatively, you can insall `nickel` and `nls` globally on older Nix versions
 without flakes via `nix-env`:
 
 ```
-git clone https:#github.com/tweag/nickel.git
+git clone https://github.com/tweag/nickel.git
 cd nickel
 nix-env -f . -i
 ```
 
 ### Using Cargo
 
-If you already have a working [`cargo`](https:#doc.rust-lang.org/cargo/) installation, you can make `nls` available
+If you already have a working [`cargo`](https://doc.rust-lang.org/cargo/) installation, you can make `nls` available
 globally (it will be built and stored inside the repository) without
 Nix:
 
 ```
-git clone https:#github.com/tweag/nickel.git
+git clone https://github.com/tweag/nickel.git
 cd nickel/lsp/nls
 cargo install --path .
 ```
@@ -81,7 +81,7 @@ NLS is currently not available through the vscode marketplace, but this
 repository includes an extension that can be built locally via Nix (cf []()
 about the Nix setup).
 
-- One-liner (using the [`jq`](https:#stedolan.github.io/jq/) command):
+- One-liner (using the [`jq`](https://stedolan.github.io/jq/) command):
   ```
   code --install-extension $(nix build ./\#vscodeExtension --no-link --json | jq ".[0].outputs.vsix")
   ```
@@ -103,7 +103,7 @@ The VS Code extension offers three configuration options:
 
 ### (Neo)Vim
 
-Before proceeding install the [Nickel syntax highlighting plugin](https:#github.com/nickel-lang/vim-nickel) using your Vim plugin manager.
+Before proceeding install the [Nickel syntax highlighting plugin](https://github.com/nickel-lang/vim-nickel) using your Vim plugin manager.
 Without this plugin your LSP client may not start NLS on nickel source files.
 
 With Vim-Plug:
@@ -114,7 +114,7 @@ Plug 'nickel-lang/vim-nickel'
 #### Neovim builtin LSP
 
 `nls` is supported in
-[nvim-lspconfig](https:#github.com/neovim/nvim-lspconfig). Using
+[nvim-lspconfig](https://github.com/neovim/nvim-lspconfig). Using
 `nvim-lspconfig` setup `nls` like all your other LSP servers as described by the
 `nvim-lspconfig` ReadMe.
 

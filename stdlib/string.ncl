@@ -120,7 +120,7 @@
       else
         %blame% (%tag% "not a string" l),
 
-    # using a contract instead of type for now because of https:#github.com/tweag/nickel/issues/226
+    # using a contract instead of type for now because of https://github.com/tweag/nickel/issues/226
     join | Str -> Array Str -> Str
     | doc m%"
       Joins a array of strings given a seperator.

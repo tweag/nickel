@@ -1,6 +1,6 @@
 # An illustrative (thus incomplete and maybe incorrect) contract example for a
 # Kubernetes configuration.
-# Schema and example derived from https:#github.com/kubernetes/examples/blob/master/guestbook-go/guestbook-controller.json.
+# Schema and example derived from https://github.com/kubernetes/examples/blob/master/guestbook-go/guestbook-controller.json.
 
 let Port | doc "A contract for a port number" = contract.from_predicate (fun value =>
   builtin.is_num value &&

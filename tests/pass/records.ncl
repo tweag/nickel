@@ -98,8 +98,8 @@ let Assert = fun l x => x || %blame% l in
   let {foo : Num} = {foo = 1} in foo == 1,
 
   # recursive overriding with common fields
-  # regression tests for [#579](https:#github.com/tweag/nickel/issues/579)
-  # and [#583](https:#github.com/tweag/nickel/issues/583)
+  # regression tests for [#579](https://github.com/tweag/nickel/issues/579)
+  # and [#583](https://github.com/tweag/nickel/issues/583)
   ({foo.bar = foo.baz, foo.baz | default = 2} & {foo.baz = 1}).foo.bar == 1,
   let Name = fun b label name => if b then "hijack" else contract.blame label in
   let Config = {

@@ -10,10 +10,10 @@ This document is a proposal for an overriding mechanism in Nickel. It is
 expected to evolve while we put these ideas in practice, but shall serve as
 a design and implementation baseline.
 
-Related issues: [#103](https:#github.com/tweag/nickel/issues/103),
-[#240](https:#github.com/tweag/nickel/issues/240),
-[#255](https:#github.com/tweag/nickel/issues/255),
-[#279](https:#github.com/tweag/nickel/issues/279).
+Related issues: [#103](https://github.com/tweag/nickel/issues/103),
+[#240](https://github.com/tweag/nickel/issues/240),
+[#255](https://github.com/tweag/nickel/issues/255),
+[#279](https://github.com/tweag/nickel/issues/279).
 
 ## Context
 
@@ -51,7 +51,7 @@ new_value}`, Haskell's `record {field = newValue}`, Nix `#` operator `record #
 {field = newValue}`, or Rust's syntax `RecordDataType {field: new_value,
 ..record}`. There are more advanced programming techniques that make updating
 deeply nested records ergonomic such as
-[Lenses](https:#www.fpcomplete.com/haskell/tutorial/lens/) in Haskell, but
+[Lenses](https://www.fpcomplete.com/haskell/tutorial/lens/) in Haskell, but
 these rely too heavily on advanced language and typing features to be practical
 in Nickel.
 
@@ -73,7 +73,7 @@ As explained in the next section though, this is not satisfying.
 
 Nickel's records are different from the ones of OCaml, Haskell or Rust.  They
 are lazy and recursive by default. They are thus better understood as
-[codata](https:#link.springer.com/chapter/10.1007/978-3-030-17184-1_5)
+[codata](https://link.springer.com/chapter/10.1007/978-3-030-17184-1_5)
 rather than data. Take the following example:
 
 ```nickel
@@ -136,7 +136,7 @@ having it implemented in user code leads to some general well-known issues:
   error reporting much harder.
 - It is potentially harder to make user land implementations efficient.
 
-See [this gist](https:#gist.github.com/edolstra/29ce9d8ea399b703a7023073b0dbc00d)
+See [this gist](https://gist.github.com/edolstra/29ce9d8ea399b703a7023073b0dbc00d)
 for more details. We continue with an overview of existing mechanisms in Nix and
 related languages.
 
@@ -158,7 +158,7 @@ rRepr = self: {
 ```
 
 `self` is a self-reference, akin to `this` in object oriented languages.  It is
-computed as a [fixpoint](https:#en.wikipedia.org/wiki/Fixed-point_combinator),
+computed as a [fixpoint](https://en.wikipedia.org/wiki/Fixed-point_combinator),
 simply realized by auto-application in Nix, thanks to laziness:
 
 ```nix
@@ -180,8 +180,8 @@ The second outer update ensures that the final result is also set to `a = 2`,
 and not only the `a` appearing in `b`.
 
 Some details are left out, but this is the gist of it. See also [the Nix pill on
-overriding](https:#nixos.org/guides/nix-pills/override-design-pattern.html) or
-[this article on fixpoints in Nix](http:#r6.ca/blog/20140422T142911Z.html).
+overriding](https://nixos.org/guides/nix-pills/override-design-pattern.html) or
+[this article on fixpoints in Nix](http://r6.ca/blog/20140422T142911Z.html).
 
 #### Limits
 
@@ -202,7 +202,7 @@ overriding](https:#nixos.org/guides/nix-pills/override-design-pattern.html) or
 
 ### Nixpkgs overlays
 
-[Overlays](https:#nixos.wiki/wiki/Overlays) can be seen as a sequence of
+[Overlays](https://nixos.wiki/wiki/Overlays) can be seen as a sequence of
 transformations from a base record, each layer having access to a `super`
 reference to the previous layer and the `self` reference to the final value.
 
@@ -326,7 +326,7 @@ fields: {
 }
 ```
 
-Combined with [default values](https:#cuelang.org/docs/tutorials/tour/types/defaults/),
+Combined with [default values](https://cuelang.org/docs/tutorials/tour/types/defaults/),
 this provides an overriding mechanism:
 
 ```
@@ -408,18 +408,18 @@ strikingly resemble the semantics of objects and classes in OOP.  Replace
 records with objects, fields with methods and overriding with inheritance. This
 is not so surprising: there's actually an history of encoding objects in
 functional languages as recursive records (see the introduction of
-[The Recursive Record Semantics of Objects Revisited](https:#hal.inria.fr/inria-00072423)
+[The Recursive Record Semantics of Objects Revisited](https://hal.inria.fr/inria-00072423)
 for a good overview) going back to 1988
-\[[Cardelli](http:#lucacardelli.name/papers/inheritance.pdf)\].
+\[[Cardelli](http://lucacardelli.name/papers/inheritance.pdf)\].
 
 This is also mentioned in the
-[README](https:#github.com/MuKnIO/nixpkgs/blob/devel/lib/pop.md#some-historical-context)
+[README](https://github.com/MuKnIO/nixpkgs/blob/devel/lib/pop.md#some-historical-context)
 of POP (an object system in Nix), where the author observes that overriding
 mechanisms in Nix (and Jsonnet for that matter) are a simplified lazy object
 system (simplified because objects lack proper state and there is no distinction
 between classes and instances). Their logical conclusion is to embrace this fact
 and design a proper object system helped by existing literature, rather than
-reinventing the wheel. Similarly, Nix [overlays](https:#nixos.wiki/wiki/Overlays)
+reinventing the wheel. Similarly, Nix [overlays](https://nixos.wiki/wiki/Overlays)
 can be seen as a single inheritance mechanism.
 
 Inheritance-based overriding imposes an order on the overrides. A single level
@@ -584,7 +584,7 @@ expression again.
 
 There's more potential optimizations, but this first step should be a reasonable
 trade-off between implementation complexity and performance. See
-[#103](https:#github.com/tweag/nickel/issues/103) for more details.
+[#103](https://github.com/tweag/nickel/issues/103) for more details.
 
 ### Scoping
 
@@ -650,13 +650,13 @@ Example:
 
 #### Recursive priorities
 
-As noted in [#240](https:#github.com/tweag/nickel/issues/240), configurations
+As noted in [#240](https://github.com/tweag/nickel/issues/240), configurations
 should be easily overridable, and the approach outlined until now can end up
 annoyingly requiring configurations to be written with either `default` or
 `force` everywhere.
 
 This RFC proposes to add *recursive* (or "leafy", or "push down") priorities, as
-described in [#279](https:#github.com/tweag/nickel/issues/279). We define the
+described in [#279](https://github.com/tweag/nickel/issues/279). We define the
 new meta-values `default rec` and `force rec`, whose semantics are defined as:
 
 - `eval(expr | default rec)`: case of `eval(expr)`:

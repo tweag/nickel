@@ -300,7 +300,7 @@ write a type anntation. Here, `filter` is inferred to be of type `(Num -> Bool)
 **Note**:
 if you are a more type-inclined reader, you may wonder why the typechecker is
 not capable of inferring a polymorphic type for `filter` by itself. Indeed,
-[Hindley-Milner](https:#en.wikipedia.org/wiki/Hindley%E2%80%93Milner_type_system)
+[Hindley-Milner](https://en.wikipedia.org/wiki/Hindley%E2%80%93Milner_type_system)
 type-inference can precisely infer heading `foralls`, such that the previous
 rejected example would be accepted. We chose to abandon this so-called automatic
 generalization, because doing so just makes things simpler with respect to the

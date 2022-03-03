@@ -345,7 +345,7 @@ fn ascii_escape() {
     assert_eq!(parse_without_pos("m%\"\\x7F\"%m"), mk_single_chunk("\\x7F"));
 }
 
-/// Regression test for [#230](https:#github.com/tweag/nickel/issues/230).
+/// Regression test for [#230](https://github.com/tweag/nickel/issues/230).
 #[test]
 fn multiline_str_escape() {
     assert_eq!(

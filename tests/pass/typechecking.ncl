@@ -137,7 +137,7 @@ let typecheck = [
   let r | {a: Num ; Dyn} = {a = 1, b = 2} in (r.a : Num),
   ({a = 1, b = 2} | {a: Num ; Dyn}) : {a: Num ; Dyn},
 
-  #Regression test following [#270](https:#github.com/tweag/nickel/issues/270). Check that
+  #Regression test following [#270](https://github.com/tweag/nickel/issues/270). Check that
   #unifying a variable with itself doesn't introduce a loop. The failure of this test results
   #in a stack overflow.
   {gen_ = fun acc x =>
@@ -156,7 +156,7 @@ let typecheck = [
   let x = "a%{"some str inside"}" in (x ++ "a" : Str),
   let x = false in (x || true : Bool),
   let x = false in let y = x in let z = y in (z : Bool),
-  # Regression test following, see [#297](https:#github.com/tweag/nickel/pull/297). Check that
+  # Regression test following, see [#297](https://github.com/tweag/nickel/pull/297). Check that
   # [apparent_type](../fn.apparent_type.html) doesn't silently convert array literals from `Array
   # T` (for `T` a type or a type variable) to `Array Dyn`.
   {foo = [1]} : {foo : Array Num},
@@ -168,7 +168,7 @@ let typecheck = [
   # Typed import
   import "typed-import.ncl" : Num,
 
-  # Regression test for #430 (https:#github.com/tweag/nickel/issues/430)
+  # Regression test for #430 (https://github.com/tweag/nickel/issues/430)
   let x = import "typed-import.ncl"
   in x : Num,
 

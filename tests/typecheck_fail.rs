@@ -164,7 +164,7 @@ fn let_inference() {
     );
 }
 
-/// Regression test following [#144](https:#github.com/tweag/nickel/issues/144). Check that
+/// Regression test following [#144](https://github.com/tweag/nickel/issues/144). Check that
 /// polymorphic type variables appearing inside a row type are correctly constrained at
 /// instantiation.
 #[test]

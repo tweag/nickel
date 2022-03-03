@@ -30,7 +30,7 @@ pub struct ThunkData {
 /// - A standard thunk, that is destructively updated once and for all
 /// - A revertible thunk, that can be restored to its original expression. Used to implement
 /// recursive merging of records and overriding (see the [RFC
-/// overriding](https:#github.com/tweag/nickel/pull/330))
+/// overriding](https://github.com/tweag/nickel/pull/330))
 #[derive(Clone, Debug, PartialEq)]
 pub enum InnerThunkData {
     Standard(Closure),

@@ -4,7 +4,7 @@ let Assert = fun l x => x || %blame% l in
   (10 | default | Num) == 10,
 
   # Check the correct handling of the update of thunks containing enriched values (see issue
-  # https:#github.com/tweag/nickel/issues/123)
+  # https://github.com/tweag/nickel/issues/123)
   let x = {a = (fun x => (1 | default)) 1} in
     builtin.seq (x.a) ((x & {a=2}).a) == 2,
 
@@ -34,7 +34,7 @@ let Assert = fun l x => x || %blame% l in
 
 
   # Check that the environments of contracts are correctly saved and restored when merging. See
-  # issue [#117](https:#github.com/tweag/nickel/issues/117)
+  # issue [#117](https://github.com/tweag/nickel/issues/117)
   (let ctr_num = let x = Num in {a | x} in
     let ctr_id = let x = fun l x => x in {a | x} in
     let val = let x = 1 in {a = x} in

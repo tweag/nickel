@@ -10,7 +10,7 @@ let Assert = fun l x => x || %blame% l in
   array.length [1,2,3] == 3,
   array.length ([] @ [1,2] @ [3,4] @ []) == 4,
 
-  # Test case added after https:#github.com/tweag/nickel/issues/154
+  # Test case added after https://github.com/tweag/nickel/issues/154
   let x = 1 in let l = [x] @ [2] in %head% l == 1,
 
   let Y = fun f => (fun x => f (x x)) (fun x => f (x x)) in
