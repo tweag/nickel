@@ -4,8 +4,8 @@ let Assert = fun l x => x || %blame% l in
   # is_record
   builtin.is_record {},
 
-  #/ This currently do not check that subexpressions are actually forced,
-  #/ just that the evaluation succeeds
+  # This currently does not check that subexpressions are actually forced,
+  # just that the evaluation succeeds
   %seq% 1 true,
   let x = (1 + 1) in %seq% x x == 2,
   let r = {a=(1 + 1),} in
