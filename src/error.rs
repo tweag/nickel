@@ -1,7 +1,7 @@
 //! Error types and error reporting.
 //!
 //! Define error types for different phases of the execution, together with functions to generate a
-//! [codespan](https://crates.io/crates/codespan-reporting) diagnostic from them.
+//! [codespan](https:#crates.io/crates/codespan-reporting) diagnostic from them.
 use std::fmt::Write;
 
 use codespan::{FileId, Files};
@@ -296,8 +296,8 @@ pub enum ParseError {
     /// the original syntax. Typically, a field assignment:
     ///
     /// ```nickel
-    /// forall a. {foo : Num; a} // allowed
-    /// forall a. {foo : Num = 1; a} // InvalidUniRecord error: giving a value to foo is forbidden
+    /// forall a. {foo : Num; a} # allowed
+    /// forall a. {foo : Num = 1; a} # InvalidUniRecord error: giving a value to foo is forbidden
     /// ```
     ///
     /// See [RFC002](../../rfcs/002-merge-types-terms-syntax.md) for more details.
@@ -552,7 +552,7 @@ pub trait ToDiagnostic<FileId> {
     /// Return a list of diagnostics. Most errors generate only one, but showing the callstack
     /// ordered requires to sidestep a limitation of codespan. The current solution is to generate
     /// one diagnostic per callstack element. See [this
-    /// issue](https://github.com/brendanzab/codespan/issues/285).
+    /// issue](https:#github.com/brendanzab/codespan/issues/285).
     fn to_diagnostic(
         &self,
         files: &mut Files<String>,

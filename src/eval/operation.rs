@@ -500,7 +500,7 @@ fn process_unary_operation(
                     let mut values: Vec<_> = map.into_iter().collect();
                     // Although it seems that sort_by_key would be easier here, it would actually
                     // require to copy the identifiers because of the lack of HKT. See
-                    // https://github.com/rust-lang/rust/issues/34162.
+                    // https:#github.com/rust-lang/rust/issues/34162.
                     values.sort_by(|(id1, _), (id2, _)| id1.cmp(id2));
                     let terms = values.into_iter().map(|(_, t)| t).collect();
                     Ok(Closure {

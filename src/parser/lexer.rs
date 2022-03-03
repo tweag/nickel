@@ -1,7 +1,7 @@
 //! The lexer, transforming an input string to a stream of tokens.
 //!
 //! A modal lexer is implemented on top of two standard
-//! [logos](https://github.com/maciejhirsz/logos) lexers in order to support arbitrary interpolated
+//! [logos](https:#github.com/maciejhirsz/logos) lexers in order to support arbitrary interpolated
 //! expressions, which is not possible using LALRPOP's generated lexer. To see why, consider the
 //! following string:
 //!
@@ -333,7 +333,7 @@ pub enum MultiStringToken<'input> {
     /// Same as `CandidateEnd`, but for interpolation
     #[regex("%+\\{")]
     CandidateInterpolation(&'input str),
-    /// Unfortunate consequence of Logos' [issue #200](https://github.com/maciejhirsz/logos/issues/200).
+    /// Unfortunate consequence of Logos' [issue #200](https:#github.com/maciejhirsz/logos/issues/200).
     /// The other rules should be sufficient to match this as a double quote followed by a
     /// `CandidateInterpolation`, but if we omit this token, the lexer can fail unexpectedly on
     /// valid inputs because of #200.
@@ -417,7 +417,7 @@ pub struct Lexer<'input> {
     /// restore the original brace counter, which is what this stack is used for.
     pub stack: Vec<ModeElt>,
     /// A token that has been buffered and must be returned at the next call to `next()`. This is
-    /// made necessary by an issue of Logos (<https://github.com/maciejhirsz/logos/issues/200>). See
+    /// made necessary by an issue of Logos (<https:#github.com/maciejhirsz/logos/issues/200>). See
     /// `MultiStringToken::QuotesCandidateInterpolation`.
     pub buffer: Option<(Token<'input>, Range<usize>)>,
 }

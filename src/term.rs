@@ -1427,7 +1427,7 @@ pub mod make {
 mod tests {
     use super::*;
 
-    /// Regression test for issue [#548](https://github.com/tweag/nickel/issues/548)
+    /// Regression test for issue [#548](https:#github.com/tweag/nickel/issues/548)
     #[test]
     fn metavalue_flatten() {
         let mut inner = MetaValue::new();
