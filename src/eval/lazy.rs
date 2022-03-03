@@ -245,18 +245,10 @@ impl Thunk {
         !term.is_whnf() && !term.is_metavalue()
     }
 
-    /// Return the potential field dependencies stored in a revertible thunk. Calling `deps`
-    /// immutably borrows the internal `RefCell`. See [`transform::free_vars`].
-    pub fn deps(&self) -> ThunkDeps<Ref<'_, HashSet<Ident>>> {
-        let borrowed = self.data.borrow();
-
-        match borrowed.deps() {
-            ThunkDeps::Known(_) => {
-                ThunkDeps::Known(Ref::map(borrowed, |data| data.deps().unwrap()))
-            }
-            ThunkDeps::Unknown => ThunkDeps::Unknown,
-            ThunkDeps::Empty => ThunkDeps::Empty,
-        }
+    /// Return a clone of the potential field dependencies stored in a revertible thunk. See
+    /// [`transform::free_vars`].
+    pub fn deps(&self) -> ThunkDeps<HashSet<Ident>> {
+        self.data.borrow().deps().cloned()
     }
 }
 
@@ -264,6 +256,7 @@ impl Thunk {
 ///
 /// The parameter `D` is the type used to represent dependencies. It is usually a variant of a
 /// reference to a `HashSet<Ident>`.
+#[derive(Clone, Debug)]
 pub enum ThunkDeps<D> {
     /// The thunk is revertible, containing potential recursive references to other fields, and the
     /// set of dependencies has been computed
@@ -277,12 +270,12 @@ pub enum ThunkDeps<D> {
     Empty,
 }
 
-impl<D> ThunkDeps<D> {
-    pub fn unwrap(self) -> D {
+impl<D: Clone> ThunkDeps<&D> {
+    pub fn cloned(self) -> ThunkDeps<D> {
         match self {
-            ThunkDeps::Known(deps) => deps,
-            ThunkDeps::Unknown => panic!("called `ThunkDeps::unwrap()` on an `Unkown`"),
-            ThunkDeps::Empty => panic!("called `ThunkDeps::unwrap()` on an `Empty`"),
+            ThunkDeps::Known(deps) => ThunkDeps::Known(deps.clone()),
+            ThunkDeps::Unknown => ThunkDeps::Unknown,
+            ThunkDeps::Empty => ThunkDeps::Empty,
         }
     }
 }

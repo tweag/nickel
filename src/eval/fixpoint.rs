@@ -48,19 +48,16 @@ pub fn patch_field(
             .get(var_id)
             .ok_or_else(|| EvalError::UnboundIdentifier(var_id.clone(), rt.pos))?;
 
-        // Because `deps()` borrows thunk, we have to first build an extension, release the borrow,
-        // and only then we can use `borrow_mut()` and patch the environment.
-        let extension = match thunk.deps() {
-            ThunkDeps::Known(deps) => rec_env
-                .iter()
-                .filter(|(id, _)| deps.contains(id))
-                .cloned()
-                .collect(),
-            ThunkDeps::Unknown => rec_env.clone(),
-            ThunkDeps::Empty => Vec::new(),
-        };
+        let deps = thunk.deps();
 
-        thunk.borrow_mut().env.extend(extension);
+        match deps {
+            ThunkDeps::Known(deps) => thunk
+                .borrow_mut()
+                .env
+                .extend(rec_env.iter().filter(|(id, _)| deps.contains(id)).cloned()),
+            ThunkDeps::Unknown => thunk.borrow_mut().env.extend(rec_env.clone()),
+            ThunkDeps::Empty => (),
+        };
     }
 
     // Thanks to the share normal form transformation, the content is either a constant or a
