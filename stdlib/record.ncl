@@ -53,7 +53,7 @@
     insert : forall a. Str -> a -> {_: a} -> {_: a}
       | doc m%%"
         Insert a new field in a record. `insert` doesn't mutate the original
-        record but return a new one instead.
+        record but returns a new one instead.
 
         ```nickel
         insert "foo" foo { bar = "bar" } =>
@@ -70,7 +70,7 @@
     remove : forall a. Str -> {_: a} -> {_: a}
       | doc m%"
         Remove a field from a record. `remove` doesn't mutate the original
-        record but return a new one instead.
+        record but returns a new one instead.
 
         ```nickel
         remove "foo" foo { foo = "foo", bar = "bar" } =>
@@ -82,7 +82,7 @@
     update | forall a. Str -> a -> { ; a} -> { ; a}
       | doc m%"
         Update a field of a record with a new value. `update` doesn't mutate the
-        original record but return a new one instead. If the field to update is absent
+        original record but returns a new one instead. If the field to update is absent
         from the given record, `update` simply adds it.
 
         ```nickel
