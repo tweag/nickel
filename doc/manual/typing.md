@@ -99,15 +99,15 @@ block*.
 
 Example:
 ```
-// Let binding
+# Let binding
 let f : Num -> Bool = fun x => x % 2 == 0 in
 
-// Record field
+# Record field
 let r = {
   count : Num = 2354.45 * 4 + 100,
 } in
 
-// Inline
+# Inline
 1 + ((if f 10 then 1 else 0) : Num)
 ```
 
@@ -300,7 +300,7 @@ write a type anntation. Here, `filter` is inferred to be of type `(Num -> Bool)
 **Note**:
 if you are a more type-inclined reader, you may wonder why the typechecker is
 not capable of inferring a polymorphic type for `filter` by itself. Indeed,
-[Hindley-Milner](https://en.wikipedia.org/wiki/Hindley%E2%80%93Milner_type_system)
+[Hindley-Milner](https:#en.wikipedia.org/wiki/Hindley%E2%80%93Milner_type_system)
 type-inference can precisely infer heading `foralls`, such that the previous
 rejected example would be accepted. We chose to abandon this so-called automatic
 generalization, because doing so just makes things simpler with respect to the
@@ -389,7 +389,7 @@ summed, without modifying the rest:
 ```nickel
 let sum : forall r. {a : Num, b : Num | r} -> {a : Num, b : Num, sum : Num | r}
         = fun x => x $[ "sum" = x.a + x.b]
-in sum {a = 1, b = 2, c = 3} // {a=1, b=2, sum=3, c=3}
+in sum {a = 1, b = 2, c = 3} # {a=1, b=2, sum=3, c=3}
 ```
 
 Note that row polymorphism also works with enums, with the same intuition of a

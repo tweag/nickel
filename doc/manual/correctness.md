@@ -40,7 +40,7 @@ machinery. On the other hand, checking this property at runtime on the final
 result is trivial.
 
 Nevertheless, if you have ever faced puzzling [dynamic type
-errors](https://www.haskellforall.com/2021/01/dynamic-type-errors-lack-relevance.html),
+errors](https:#www.haskellforall.com/2021/01/dynamic-type-errors-lack-relevance.html),
 you may feel the need for something better. Bare dynamic typing is prone to
 irrelevant error messages, pointing to a location far from the problematic code
 in the source. This is especially true when working with functions, which may be
@@ -118,12 +118,12 @@ Here is the definition for `split`, but with a twist. We mistakenly forgot to
 wrap `pair.key` as an array before concatenating at line 6:
 
 ```nickel
-// lib.ncl
+# lib.ncl
 {
   split = fun pairs =>
     array.fold (fun pair acc =>
       {
-        // problem: the right expression to use is [pair.key]
+        # problem: the right expression to use is [pair.key]
         keys = acc.keys @ pair.key,
         values = acc.values @ [pair.value],
       })
@@ -135,7 +135,7 @@ wrap `pair.key` as an array before concatenating at line 6:
 And we call to split from our configuration:
 
 ```nickel
-// config.ncl
+# config.ncl
 let {split} = import "lib.ncl" in
 split [{key = "foo", value = 1}, {key = "bar", value = 2}]
 ```

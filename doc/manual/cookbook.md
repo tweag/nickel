@@ -37,7 +37,7 @@ Alternatively, you can repeat your types both at the function level and at the
 record level. It makes code more navigable and `query`-friendly, but at the
 expense of repetition and duplicated contract checks. It is also currently
 required for polymorphic functions because of [the following
-bug](https://github.com/tweag/nickel/issues/360). A better solution will
+bug](https:#github.com/tweag/nickel/issues/360). A better solution will
 probably be implemented in the future: type holes (TODO: MAY ACTUALLY BE AVAILABLE FOR RELEASE)
 
 (NOT YET POSSIBLE)

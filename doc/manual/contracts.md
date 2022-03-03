@@ -15,10 +15,10 @@ let x = (1 + 1 | Num) in x
 Contract can also be attached to identifiers in a definition:
 
 ```nickel
-// let-binding: equivalent to the previous example
+# let-binding: equivalent to the previous example
 let x | Num = 1 + 1 in x
 
-// on a record field
+# on a record field
 {x | Num = 1 + 1}
 ```
 
@@ -165,7 +165,7 @@ let Between = fun min max =>
   contract.from_predicate (fun value =>
     value >= min &&
     value <= max) in
-// alternative without from_predicate
+# alternative without from_predicate
 let BetweenAlt = fun min max label value =>
   if builtin.is_num value &&
      value >= min &&
@@ -197,9 +197,9 @@ let Nullable = fun contract label value =>
     value 
   else
     contract.apply contract label value in
-// succeeds
+# succeeds
 null | Nullable Num
-// succeeds too
+# succeeds too
 1 | Nullable Num
 ```
 
@@ -580,7 +580,7 @@ let NumBoolDict = fun label value =>
       |> record.fields
       |> array.foldl (fun acc field_name =>
         if string.is_match "^\\d+$" field_name then
-          acc // unused and always null through iteration
+          acc # unused and always null through iteration
         else
           contract.blame_with "field name `#{field_name}` is not a number" label
         ) null in
@@ -628,7 +628,7 @@ Let us see if we indeed preserved laziness:
 
 ```
 nickel>let config | NumBoolDict = {
-    "1" = 1 + "a", // Same as our previous "fail"
+    "1" = 1 + "a", # Same as our previous "fail"
     "0" | doc "Some information" = true,
 }
 nickel>:query config."0"

@@ -189,7 +189,7 @@ clarification:
   to take it into account. But this implies giving semantics to things like
   `record.is_empty { ; a}` or `{ ; a} & { ; b}`. Those are actually
   interesting questions outside of the context of this RFC (see
-  [201](https://github.com/tweag/nickel/issues/201)).
+  [201](https:#github.com/tweag/nickel/issues/201)).
 
   While allowing tails in arbitrary record may look more uniform, it requires
   more design thinking. There isn't any obvious practical usage that seems to
@@ -434,9 +434,9 @@ idea from the [Record types](#record-types) section:
 ```nickel
 let Contract = {foo | OtherContr, bar | Str} in
 let my_value | Contract = {...} in
-// Would typecheck, as my_value has type Contract, which would be expanded to
-// {foo | OtherContr, bar | Str} and statically extracted as {foo: OtherContr, bar:
-// Str}
+# Would typecheck, as my_value has type Contract, which would be expanded to
+# {foo | OtherContr, bar | Str} and statically extracted as {foo: OtherContr, bar:
+# Str}
 let appendToBar : Str -> Str = fun s => my_value.bar ++ s
 ```
 

@@ -2,12 +2,12 @@ Why Nickel ?
 ============
 
 There already exist quite a few languages with a similar purpose to Nickel:
-[CUE](https://cuelang.org/), [Dhall](https://dhall-lang.org/),
-[Jsonnet](https://jsonnet.org/),
-[Starlark](https://docs.bazel.build/versions/master/skylark/language.html), to
+[CUE](https:#cuelang.org/), [Dhall](https:#dhall-lang.org/),
+[Jsonnet](https:#jsonnet.org/),
+[Starlark](https:#docs.bazel.build/versions/master/skylark/language.html), to
 mention the closest contenders. So why Nickel ?
 
-Nickel originated as an effort to detach the [Nix](https://nixos.org/)
+Nickel originated as an effort to detach the [Nix](https:#nixos.org/)
 expression language from the Nix package manager, while adding typing
 capabilities and improve modularity. We found that in practice, Nix is a simple
 yet expressive language which is particularly well fitted to build programmable
@@ -144,8 +144,8 @@ never requires recursion, this is not the case with library code. Allowing
 recursion makes it possible for programmers to implement new generic
 functionalities \[2\].
 
-\[1\]: [Why Dhall is not Turing complete](http://neilmitchell.blogspot.com/2020/11/turing-incomplete-languages.html)\
-\[2\]: [Turing incomplete languages](http://www.haskellforall.com/2020/01/why-dhall-advertises-absence-of-turing.html)
+\[1\]: [Why Dhall is not Turing complete](http:#neilmitchell.blogspot.com/2020/11/turing-incomplete-languages.html)\
+\[2\]: [Turing incomplete languages](http:#www.haskellforall.com/2020/01/why-dhall-advertises-absence-of-turing.html)
 
 ### Side-Effects
 As for Turing-completeness, most of these languages also forbid side-effects.
@@ -160,7 +160,7 @@ variables.
 
 However, sometimes the situation does not fit in a rigid framework: as for
 Turing-completeness, there may be cases which mandates side-effects. An example
-is when writing [Terraform](https://www.terraform.io/) configurations, some
+is when writing [Terraform](https:#www.terraform.io/) configurations, some
 external values (an IP) used somewhere in the configuration may only be known
 once another part of the configuration has been evaluated and executed
 (deploying machines, in this context). Reading this IP is a side-effect, even if
@@ -176,7 +176,7 @@ specific use-cases.
 Let's compare Nickel with the languages cited at the beginning: Starlark, Dhall, CUE and Jsonnet.
 
 ### Starlark: the standard package
-Starlark is a language originally designed for the [Bazel](https://bazel.build/)
+Starlark is a language originally designed for the [Bazel](https:#bazel.build/)
 build system, but it can also be used independently as a configuration language.
 It is a dialect of Python and includes the following classical features:
 
@@ -198,7 +198,7 @@ code and prevents the expression of data schemas inside the language.
 
 ### Dhall: powerful type system
 Dhall is heavily inspired by Nix, to which it adds a [powerful type
-system](https://github.com/dhall-lang/dhall-lang/blob/master/standard/README.md#summary).
+system](https:#github.com/dhall-lang/dhall-lang/blob/master/standard/README.md#summary).
 Because of its complexity, the type system only supports a limited type
 inference.  This can lead to code that is sometimes heavy on type annotations,
 as in the following example:
