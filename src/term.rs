@@ -203,8 +203,8 @@ pub struct RecordDeps {
     pub dyn_fields: Vec<HashSet<Ident>>,
 }
 
-/// Potential dependencies of a single field over sibling fields in a recursive record.
-pub type FieldDeps = Option<Rc<HashSet<Ident>>>;
+/// Potential dependencies of a single field over the sibling fields in a recursive record.
+pub type FieldDeps = Option<HashSet<Ident>>;
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Copy, Clone)]
 pub enum MergePriority {

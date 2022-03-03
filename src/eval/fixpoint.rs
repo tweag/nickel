@@ -48,11 +48,17 @@ pub fn patch_field(
             .get(var_id)
             .ok_or_else(|| EvalError::UnboundIdentifier(var_id.clone(), rt.pos))?;
 
-        let extension: Vec<_> = rec_env
-            .iter()
-            .filter(|(id, _)| thunk.deps().map(|fv| fv.contains(id)).unwrap_or(true))
-            .cloned()
-            .collect();
+        // Because `deps()` borrows thunk, we have to first build an extension, release the borrow,
+        // and only then we can use `borrow_mut()` and patch the environment.
+        let extension = match thunk.deps() {
+            ThunkDeps::Known(deps) => rec_env
+                .iter()
+                .filter(|(id, _)| deps.contains(id))
+                .cloned()
+                .collect(),
+            ThunkDeps::Unknown => rec_env.clone(),
+            ThunkDeps::Empty => Vec::new(),
+        };
 
         thunk.borrow_mut().env.extend(extension);
     }

@@ -34,7 +34,6 @@ use crate::{
     position::TermPos,
     term::{BindingType, RichTerm, Term},
 };
-use std::rc::Rc;
 
 /// Transform the top-level term of an AST to a share normal form, if it can.
 ///
@@ -92,7 +91,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                         if !t.as_ref().is_constant() {
                             let fresh_var = fresh_var();
                             let pos_t = t.pos;
-                            let field_deps = deps.as_ref().and_then(|deps| deps.stat_fields.get(&id)).cloned().map(Rc::new);
+                            let field_deps = deps.as_ref().and_then(|deps| deps.stat_fields.get(&id)).cloned();
                             // If the fields has an empty set of dependencies, we can eschew the
                             // useless introduction of a revertible thunk. Note that if
                             // `field_deps` being `None` doesn't mean "empty dependencies" but
@@ -121,7 +120,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                         if !t.as_ref().is_constant() {
                             let fresh_var = fresh_var();
                             let pos_t = t.pos;
-                            let field_deps = deps.as_ref().and_then(|deps| deps.dyn_fields.get(index)).cloned().map(Rc::new);
+                            let field_deps = deps.as_ref().and_then(|deps| deps.dyn_fields.get(index)).cloned();
                             bindings.push((fresh_var.clone(), t, BindingType::Revertible(field_deps)));
                             (id_t, RichTerm::new(Term::Var(fresh_var), pos_t))
                         } else {

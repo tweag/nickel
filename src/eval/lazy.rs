@@ -126,10 +126,13 @@ impl ThunkData {
 
     /// Return the potential field dependencies stored in a revertible thunk. Return `None` for a
     /// non revertible thunk. See [`transform::free_vars`].
-    pub fn deps(&self) -> Option<&HashSet<Ident>> {
+    pub fn deps(&self) -> ThunkDeps<&HashSet<Ident>> {
         match self.inner {
-            InnerThunkData::Standard(_) => None,
-            InnerThunkData::Revertible { ref deps, .. } => deps.as_ref().map(|d| d.as_ref()),
+            InnerThunkData::Standard(_) => ThunkDeps::Empty,
+            InnerThunkData::Revertible { ref deps, .. } => deps
+                .as_ref()
+                .map(ThunkDeps::Known)
+                .unwrap_or(ThunkDeps::Unknown),
         }
     }
 }
@@ -246,15 +249,42 @@ impl Thunk {
     /// Return the potential field dependencies stored in a revertible thunk. Return `None` for a
     /// non revertible thunk. Calling `deps` immutably borrows the internal `RefCell`. See
     /// [`transform::free_vars`].
-    pub fn deps(&self) -> Option<Ref<'_, HashSet<Ident>>> {
+    pub fn deps(&self) -> ThunkDeps<Ref<'_, HashSet<Ident>>> {
         let borrowed = self.data.borrow();
 
-        // Once stabilized, use-case for `Ref::filter_map`. See
-        // https://github.com/rust-lang/rust/issues/81061
-        if borrowed.deps().is_some() {
-            Some(Ref::map(borrowed, |data| data.deps().unwrap()))
-        } else {
-            None
+        match borrowed.deps() {
+            ThunkDeps::Known(_) => {
+                ThunkDeps::Known(Ref::map(borrowed, |data| data.deps().unwrap()))
+            }
+            ThunkDeps::Unknown => ThunkDeps::Unknown,
+            ThunkDeps::Empty => ThunkDeps::Empty,
+        }
+    }
+}
+
+/// Different possible states for the field dependencies of a thunk:
+///
+/// The parameter `D` is the type used to represent dependencies. It is usually a form of
+/// `HashSet<Ident>`, but is used with various reference types.
+pub enum ThunkDeps<D> {
+    /// The thunk is revertible, containing potential recursive references to other fields, and the
+    /// set of dependencies has been computed
+    Known(D),
+    /// The thunk is revertible, but thet set of dependencies hasn't been computed. In that case,
+    /// the interpreter should be conservative and assume that any recursive references can appear
+    /// in the content of the corresponding thunk.
+    Unknown,
+    /// The thunk is not revertible and can't contain recursive references. The interpreter can
+    /// safely eschew the environment patching process entirely.
+    Empty,
+}
+
+impl<D> ThunkDeps<D> {
+    pub fn unwrap(self) -> D {
+        match self {
+            ThunkDeps::Known(deps) => deps,
+            ThunkDeps::Unknown => panic!("called `ThunkDeps::unwrap()` on an `Unkown`"),
+            ThunkDeps::Empty => panic!("called `ThunkDeps::unwrap()` on an `Empty`"),
         }
     }
 }
