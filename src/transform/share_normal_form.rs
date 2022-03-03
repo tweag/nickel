@@ -34,6 +34,7 @@ use crate::{
     position::TermPos,
     term::{BindingType, RichTerm, Term},
 };
+use std::collections::HashSet;
 
 /// Transform the top-level term of an AST to a share normal form, if it can.
 ///
@@ -83,6 +84,21 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                 // marker). See comments inside [`RichTerm::closurize`] for more details.
                 let mut bindings = Vec::with_capacity(map.len());
 
+                fn mk_binding_type(field_deps: Option<HashSet<Ident>>) -> BindingType {
+                    // If the fields has an empty set of dependencies, we can eschew the
+                    // useless introduction of a revertible thunk. Note that if
+                    // `field_deps` being `None` doesn't mean "empty dependencies" but
+                    // rather that the dependencies haven't been computed. In the latter
+                    // case, we must be conservative and assume the field is potentially
+                    // recursive.
+                    let is_non_rec = (&field_deps).as_ref().map(|deps| deps.is_empty()).unwrap_or(false);
+                    if is_non_rec {
+                        BindingType::Normal
+                    } else {
+                        BindingType::Revertible(field_deps)
+                    }
+                }
+
                 let map = map
                     .into_iter()
                     .map(|(id, t)| {
@@ -92,18 +108,8 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                             let fresh_var = fresh_var();
                             let pos_t = t.pos;
                             let field_deps = deps.as_ref().and_then(|deps| deps.stat_fields.get(&id)).cloned();
-                            // If the fields has an empty set of dependencies, we can eschew the
-                            // useless introduction of a revertible thunk. Note that if
-                            // `field_deps` being `None` doesn't mean "empty dependencies" but
-                            // rather that the dependencies haven't been computed. In the latter
-                            // case, we must be conservative and assume the field is potentially
-                            // recursive.
                             let is_non_rec = (&field_deps).as_ref().map(|deps| deps.is_empty()).unwrap_or(false);
-                            let btype = if is_non_rec {
-                                BindingType::Normal
-                            } else {
-                                BindingType::Revertible(field_deps)
-                            };
+                            let btype = mk_binding_type(field_deps);
                             bindings.push((fresh_var.clone(), t, btype));
 
                             (id, RichTerm::new(Term::Var(fresh_var), pos_t))
@@ -121,7 +127,8 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                             let fresh_var = fresh_var();
                             let pos_t = t.pos;
                             let field_deps = deps.as_ref().and_then(|deps| deps.dyn_fields.get(index)).cloned();
-                            bindings.push((fresh_var.clone(), t, BindingType::Revertible(field_deps)));
+                            let btype = mk_binding_type(field_deps);
+                            bindings.push((fresh_var.clone(), t, btype));
                             (id_t, RichTerm::new(Term::Var(fresh_var), pos_t))
                         } else {
                             (id_t, t)
