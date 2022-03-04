@@ -264,9 +264,6 @@ RecordOperand: UniTerm = {
 RecordOperationChain: RichTerm = {
     <t: AsTerm<RecordOperand>> "." <id: Ident> => mk_term::op1(UnaryOp::StaticAccess(id), t),
     <t: AsTerm<RecordOperand>> "." <t_id: WithPos<StrChunks>> => mk_access(t_id, t),
-    <t: AsTerm<RecordOperand>> "-$" <t_id: AsTerm<Atom>> => mk_term::op2(BinaryOp::DynRemove(), t_id, t),
-    <r: AsTerm<RecordOperand>> "$[" <id: Term> "=" <t: Term> "]" =>
-        mk_app!(mk_term::op2(BinaryOp::DynExtend(), id, r), t),
 };
 
 RowTail: Types = {
@@ -723,6 +720,8 @@ BOpPre: BinaryOp = {
     "str_contains" => BinaryOp::StrContains(),
     "str_match" => BinaryOp::StrMatch(),
     "str_is_match" => BinaryOp::StrIsMatch(),
+    "record_insert" => BinaryOp::DynExtend(),
+    "record_remove" => BinaryOp::DynRemove(),
 }
 
 NOpPre<ArgRule>: UniTerm = {
@@ -797,10 +796,8 @@ extern {
         "!=" => Token::Normal(NormalToken::NotEquals),
         "&" => Token::Normal(NormalToken::Ampersand),
         "." => Token::Normal(NormalToken::Dot),
-        "$[" => Token::Normal(NormalToken::DollarBracket),
         "%{" => Token::Str(StringToken::Interpolation),
         "multstr %{" => Token::MultiStr(MultiStringToken::Interpolation),
-        "-$" => Token::Normal(NormalToken::MinusDollar),
 
         "+" => Token::Normal(NormalToken::Plus),
         "-" => Token::Normal(NormalToken::Minus),
@@ -852,6 +849,8 @@ extern {
         "unwrap" => Token::Normal(NormalToken::Unwrap),
         "embed" => Token::Normal(NormalToken::Embed),
         "record_map" => Token::Normal(NormalToken::RecordMap),
+        "record_insert" => Token::Normal(NormalToken::RecordInsert),
+        "record_remove" => Token::Normal(NormalToken::RecordRemove),
         "seq" => Token::Normal(NormalToken::Seq),
         "deep_seq" => Token::Normal(NormalToken::DeepSeq),
         "head" => Token::Normal(NormalToken::Head),

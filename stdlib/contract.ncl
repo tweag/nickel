@@ -47,8 +47,11 @@
 
   "$record_extend" = fun field contr cont acc l t =>
       if %has_field% field t then
-          let acc = acc$[field = %assume% contr (%go_field% field l) (t."%{field}")] in
-          let t = t -$ field in
+          let acc = %record_insert%
+            field
+            acc
+            (%assume% contr (%go_field% field l) (t."%{field}")) in
+          let t = %record_remove% field t in
           cont acc l t
       else
           %blame% (%tag% "missing field `%{field}`" l),
@@ -57,7 +60,7 @@
       let magic_fld = "_%wrapped" in
       if pol == (%polarity% l) then
           if %has_field% magic_fld t then
-              let rest = (t -$ magic_fld) in
+              let rest = %record_remove% magic_fld t in
               if rest == {} then
                   let fail = %blame% (%tag% "polymorphic tail mismatch" l) in
                   let inner = %unwrap% sy (t."%{magic_fld}") fail in
@@ -67,7 +70,7 @@
           else
               %blame% (%tag% "missing polymorphic part" l)
       else
-          acc$[magic_fld = %wrap% sy t],
+          %record_insert% magic_fld acc (%wrap% sy t),
 
   "$dyn_tail" = fun acc l t => acc & t,
 
@@ -166,7 +169,7 @@
         records. Moreover, the interpreter performs additional book-keeping for
         error reporting when applying a contract in an expression `value |
         Contract`. You should not use standard function application to apply a
-        contract, but this function instead. 
+        contract, but this function instead.
 
         For example:
         ```

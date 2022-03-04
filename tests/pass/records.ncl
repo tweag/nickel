@@ -10,15 +10,19 @@ let Assert = fun l x => x || %blame% l in
   {"%{if true then "foo" else "bar"}" = false, bar = true}."%{"foo"}"
    == false,
 
-  ({bar = 3}$["foo" = true]).foo == true,
+  (record.insert "foo" true {bar = 3}).foo == true,
 
   # primitive_ops
   record.has_field "foo" {foo = 1, bar = 2},
   record.has_field "fop" {foo = 1, bar = 2} == false,
-  record.has_field "foo" ({foo = 2, bar = 3} -$ "foo")
+  ({foo = 2, bar = 3}
+  |> record.remove "foo"
+  |> record.has_field "foo")
     == false,
 
-  record.has_field "foo" ({bar = 3}$["foo" = 1]),
+  {bar = 3}
+  |> record.insert "foo" 1
+  |> record.has_field "foo",
 
   # lazyness of map
   (record.map (fun x y => y + 1) {foo = 1, bar = "it's lazy"}).foo

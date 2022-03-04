@@ -35,7 +35,9 @@ let Assert = fun l x => x || %blame% l in
 
   # records
   {} == {},
-  {}$["a" = 1]$["b" = true]
+  ({}
+  |> record.insert "a" 1
+  |> record.insert "b" true)
     == {a = 1, b = true},
   {a = 1 + 0, b = 1 + 1, c = 1 + 1 + 1}
     == { a = 1, b = 2, c = 3 },
@@ -45,7 +47,7 @@ let Assert = fun l x => x || %blame% l in
       baz = if true then true else false
     } == {foo = 1, bar = "ab", baz = true},
 
-  {}$["a" = { a = { a = {} } }]
+  record.insert "a" {a.a = {}} {}
     == { a = { a = { a = {} } } },
   {
       foo = {bar = 2 + (-1)},

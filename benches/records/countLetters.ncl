@@ -2,8 +2,8 @@
   run = fun s =>
     let update_dict = fun dict char =>
       if record.has_field char dict then
-        dict -$ char & {"%{char}" = dict."%{char}" + 1}
+        record.update char (dict."%{char}" + 1) dict
       else
-        dict & {"%{char}" = 1} in
+        record.insert "%{char}" 1 dict in
     array.foldl update_dict {} (string.chars s)
 }
