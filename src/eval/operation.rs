@@ -6,20 +6,25 @@
 //! the functions [`process_unary_operation`](fn.process_unary_operation.html) and
 //! [`process_binary_operation`](fn.process_binary_operation.html) receive evaluated operands and
 //! implement the actual semantics of operators.
-use super::merge;
-use super::merge::{merge, MergeMode};
-use super::stack::Stack;
-use crate::error::EvalError;
-use crate::eval::{subst, CallStack, Closure, Environment};
-use crate::identifier::Ident;
-use crate::label::ty_path;
-use crate::position::TermPos;
-use crate::term::make as mk_term;
-use crate::term::{BinaryOp, NAryOp, RichTerm, StrChunk, Term, UnaryOp};
-use crate::transform::Closurizable;
-use crate::{match_sharedterm, mk_record};
-use crate::{mk_app, mk_fun, mk_opn};
-use crate::{serialize, serialize::ExportFormat};
+use super::{
+    callstack, merge,
+    merge::{merge, MergeMode},
+    stack::Stack,
+    subst, CallStack, Closure, Environment,
+};
+
+use crate::{
+    error::EvalError,
+    identifier::Ident,
+    label::ty_path,
+    match_sharedterm, mk_app, mk_fun, mk_opn, mk_record,
+    position::TermPos,
+    serialize,
+    serialize::ExportFormat,
+    term::make as mk_term,
+    term::{BinaryOp, NAryOp, RichTerm, StrChunk, Term, UnaryOp},
+    transform::Closurizable,
+};
 use md5::digest::Digest;
 use simple_counter::*;
 use std::iter::Extend;
@@ -643,21 +648,26 @@ fn process_unary_operation(
                 Err(EvalError::NotEnoughArgs(2, String::from("seq"), pos_op))
             }
         }
-        UnaryOp::DeepSeq() => {
-            /// Build a closure that forces a given array of terms, and at the end resumes the
-            /// evaluation of the argument on the top of the stack.
+        UnaryOp::DeepSeq(_) => {
+            /// Build a closure that forces a given list of terms, and at the end resumes the
+            /// evaluation of the argument on the top of the stack. The argument must iterate over
+            /// a tuple, which first element is an optional call stack element to add to the
+            /// callstack before starting evaluation. This is a temporary fix to have reasonable
+            /// missing definition error when deepsequing a record.
             ///
             /// Requires its first argument to be non-empty.
-            fn seq_terms<I>(mut terms: I, env: Environment, pos_op_inh: TermPos) -> Closure
+            fn seq_terms<I>(mut it: I, env: Environment, pos_op_inh: TermPos) -> Closure
             where
-                I: Iterator<Item = RichTerm>,
+                I: Iterator<Item = (Option<callstack::StackElem>, RichTerm)>,
             {
-                let first = terms
+                let (first_elem, first) = it
                     .next()
                     .expect("expected the argument to be a non-empty iterator");
-                let body = terms.fold(
-                    mk_term::op1(UnaryOp::DeepSeq(), first).with_pos(pos_op_inh),
-                    |acc, t| mk_app!(mk_term::op1(UnaryOp::DeepSeq(), t), acc).with_pos(pos_op_inh),
+                let body = it.fold(
+                    mk_term::op1(UnaryOp::DeepSeq(first_elem), first).with_pos(pos_op_inh),
+                    |acc, (elem, t)| {
+                        mk_app!(mk_term::op1(UnaryOp::DeepSeq(elem), t), acc).with_pos(pos_op_inh)
+                    },
                 );
 
                 Closure { body, env }
@@ -665,10 +675,24 @@ fn process_unary_operation(
 
             match t.into_owned() {
                 Term::Record(map, _) if !map.is_empty() => {
-                    let terms = map.into_iter().map(|(_, t)| t);
+                    let pos_record = pos;
+                    let pos_access = pos_op;
+                    let terms = map.into_iter().map(|(id, t)| {
+                        (
+                            Some(callstack::StackElem::Field {
+                                id,
+                                pos_record,
+                                pos_field: t.pos,
+                                pos_access,
+                            }),
+                            t,
+                        )
+                    });
                     Ok(seq_terms(terms, env, pos_op))
                 }
-                Term::Array(ts) if !ts.is_empty() => Ok(seq_terms(ts.into_iter(), env, pos_op)),
+                Term::Array(ts) if !ts.is_empty() => {
+                    Ok(seq_terms(ts.into_iter().map(|t| (None, t)), env, pos_op))
+                }
                 _ => {
                     if let Some((next, ..)) = stack.pop_arg() {
                         Ok(next)

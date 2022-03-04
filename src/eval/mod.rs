@@ -230,7 +230,7 @@ where
         var.clone(),
         t0,
         mk_app!(
-            mk_term::op1(UnaryOp::DeepSeq(), Term::Var(var.clone())),
+            mk_term::op1(UnaryOp::DeepSeq(None), Term::Var(var.clone())),
             Term::Var(var)
         ),
     );
@@ -407,6 +407,14 @@ where
                 }
                 enriched_strict = true;
                 stack.push_op_cont(OperationCont::Op1(op.clone(), t.pos), call_stack.len(), pos);
+
+                // Special casing (hopefully temporary) due to the need for `DeepSeq` to produce
+                // acceptable error message for missing field definition occurring when sequencing
+                // a record. See the definition of `UnaryOp::DeepSeq`.
+                if let UnaryOp::DeepSeq(Some(stack_elem)) = op {
+                    call_stack.0.push(stack_elem.clone());
+                }
+
                 Closure {
                     body: t.clone(),
                     env,

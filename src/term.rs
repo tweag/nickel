@@ -729,7 +729,11 @@ pub enum UnaryOp {
     ///
     /// Recursive here means that the evaluation does not stop at a WHNF, but the content of arrays
     /// and records is also recursively forced.
-    DeepSeq(),
+    ///
+    /// The parameter is a fix used for error reporting of missing field definitions ocurring
+    /// during the deep sequencing of a record. This is temporary and should be stored somewhere
+    /// else ideally (like on the stack).
+    DeepSeq(Option<crate::eval::callstack::StackElem>),
 
     /// Return the head of an array.
     ArrayHead(),

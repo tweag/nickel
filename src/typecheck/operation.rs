@@ -108,7 +108,7 @@ pub fn get_uop_type(
             )
         }
         // forall a b. a -> b -> b
-        UnaryOp::Seq() | UnaryOp::DeepSeq() => {
+        UnaryOp::Seq() | UnaryOp::DeepSeq(_) => {
             let fst = TypeWrapper::Ptr(state.table.fresh_var());
             let snd = TypeWrapper::Ptr(state.table.fresh_var());
 
