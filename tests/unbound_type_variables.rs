@@ -2,12 +2,12 @@
 // unbound type variable error anymore. Instead, the variable is interpreted as a term variable:
 // the tests should still fail, but they can now fail with a standard unbound identifier error.
 use assert_matches::assert_matches;
-use nickel::{
+use nickel_lang::{
     error::{Error, EvalError, ParseError, ParseErrors, TypecheckError},
     identifier::Ident,
 };
 
-use utilities::eval;
+use nickel_lang_utilities::eval;
 
 macro_rules! assert_unbound {
     ( $term:expr, $var:expr ) => {

@@ -1,7 +1,7 @@
 //! Helpers for tests and benches.
 use codespan::Files;
 use criterion::Criterion;
-use nickel::{
+use nickel_lang::{
     error::{Error, ParseError},
     parser::{grammar, lexer},
     program::Program,

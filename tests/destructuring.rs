@@ -1,8 +1,8 @@
 use assert_matches::assert_matches;
-use nickel::error::{Error, EvalError, TypecheckError};
-use nickel::term::Term;
+use nickel_lang::error::{Error, EvalError, TypecheckError};
+use nickel_lang::term::Term;
 
-use utilities::eval_file;
+use nickel_lang_utilities::eval_file;
 
 #[test]
 fn simple() {

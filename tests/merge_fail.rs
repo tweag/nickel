@@ -1,8 +1,8 @@
 use assert_matches::assert_matches;
-use nickel::error::{Error, EvalError};
-use nickel::position::TermPos;
-use nickel::program::Program;
-use nickel::term::RichTerm;
+use nickel_lang::error::{Error, EvalError};
+use nickel_lang::position::TermPos;
+use nickel_lang::program::Program;
+use nickel_lang::term::RichTerm;
 use std::io::Cursor;
 
 fn eval_full(s: &str) -> Result<RichTerm, Error> {

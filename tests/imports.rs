@@ -1,7 +1,7 @@
 use assert_matches::assert_matches;
-use nickel::error::{Error, EvalError, TypecheckError};
-use nickel::program::Program;
-use nickel::term::Term;
+use nickel_lang::error::{Error, EvalError, TypecheckError};
+use nickel_lang::program::Program;
+use nickel_lang::term::Term;
 use std::io::BufReader;
 use std::path::PathBuf;
 
@@ -85,7 +85,7 @@ fn static_typing_fail() {
 
 #[test]
 fn serialize() {
-    use nickel::term::Term;
+    use nickel_lang::term::Term;
     let mut prog = Program::new_from_source(
         BufReader::new(
             format!(

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use nickel::{identifier::Ident, typecheck::TypeWrapper, types::Types};
+use nickel_lang::{identifier::Ident, typecheck::TypeWrapper, types::Types};
 
 use super::building::ID;
 

@@ -1,9 +1,9 @@
-use nickel::{identifier::Ident, term::Term, transform::free_vars};
+use nickel_lang::{identifier::Ident, term::Term, transform::free_vars};
 
 use std::collections::{HashMap, HashSet};
 use std::iter::IntoIterator;
 
-use utilities::parse;
+use nickel_lang_utilities::parse;
 
 // fn is_subset_of<'a>(free_vars: impl IntoIterator<Item = &'a Ident>, rec_fields: &Vec<&Ident>) -> bool {
 //    free_vars.into_iter().all(|id| rec_fields.contains(&id))

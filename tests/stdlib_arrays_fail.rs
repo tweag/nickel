@@ -1,7 +1,7 @@
 use assert_matches::assert_matches;
-use nickel::error::{Error, EvalError};
+use nickel_lang::error::{Error, EvalError};
 
-use utilities::eval;
+use nickel_lang_utilities::eval;
 
 #[test]
 fn elem_at() {

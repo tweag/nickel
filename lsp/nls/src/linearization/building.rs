@@ -1,7 +1,7 @@
 use std::{collections::HashMap, mem};
 
 use log::debug;
-use nickel::{
+use nickel_lang::{
     identifier::Ident,
     term::{MetaValue, RichTerm, Term},
     typecheck::{

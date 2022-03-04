@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion};
+use nickel_lang_utilities::{bench, EvalMode};
 use pprof::criterion::{Output, PProfProfiler};
-use utilities::{bench, EvalMode};
 
 fn fold_strings(c: &mut Criterion) {
     bench(

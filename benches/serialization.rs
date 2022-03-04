@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use nickel::program::Program;
+use nickel_lang::program::Program;
 use pprof::criterion::{Output, PProfProfiler};
 use std::io::Cursor;
 use std::path::PathBuf;

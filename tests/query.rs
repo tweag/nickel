@@ -1,5 +1,5 @@
-use nickel::program::Program;
-use nickel::term::{SharedTerm, Term};
+use nickel_lang::program::Program;
+use nickel_lang::term::{SharedTerm, Term};
 
 #[test]
 pub fn test_query_metadata_basic() {

@@ -1220,7 +1220,7 @@ impl From<Term> for RichTerm {
 ///
 /// It is used somehow as a match statement, going from
 /// ```
-/// # use nickel::term::{RichTerm, Term};
+/// # use nickel_lang::term::{RichTerm, Term};
 /// let rt = RichTerm::from(Term::Num(5.0));
 ///
 /// match rt.term.into_owned() {
@@ -1231,8 +1231,8 @@ impl From<Term> for RichTerm {
 /// ```
 /// to
 /// ```
-/// # use nickel::term::{RichTerm, Term};
-/// # use nickel::match_sharedterm;
+/// # use nickel_lang::term::{RichTerm, Term};
+/// # use nickel_lang::match_sharedterm;
 /// let rt = RichTerm::from(Term::Num(5.0));
 ///
 /// match_sharedterm!{rt.term, with {

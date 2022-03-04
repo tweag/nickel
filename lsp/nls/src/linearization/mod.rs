@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use codespan::ByteIndex;
 use log::debug;
-use nickel::{
+use nickel_lang::{
     identifier::Ident,
     position::{RawSpan, TermPos},
     term::{MetaValue, RichTerm, Term, UnaryOp},
@@ -26,7 +26,7 @@ pub mod building;
 pub mod completed;
 pub mod interface;
 
-pub type Environment = nickel::environment::Environment<Ident, usize>;
+pub type Environment = nickel_lang::environment::Environment<Ident, usize>;
 
 /// A recorded item of a given state of resolution state
 /// Tracks a unique id used to build a reference table after finalizing
@@ -332,8 +332,8 @@ impl Linearizer for AnalysisHost {
                         Term::StrChunks(chunks) => chunks
                             .iter()
                             .filter_map(|chunk| match chunk {
-                                nickel::term::StrChunk::Literal(_) => None,
-                                nickel::term::StrChunk::Expr(rt, _) => Some(rt),
+                                nickel_lang::term::StrChunk::Literal(_) => None,
+                                nickel_lang::term::StrChunk::Expr(rt, _) => Some(rt),
                             })
                             .for_each(|rt| walk_terms(lin, host.scope(), rt)),
                         Term::App(rt1, rt2) => {
@@ -351,7 +351,7 @@ impl Linearizer for AnalysisHost {
                 fn walk_types(
                     lin: &mut Linearization<Building>,
                     outer_host: &mut AnalysisHost,
-                    t: &nickel::types::Types,
+                    t: &nickel_lang::types::Types,
                 ) {
                     let mut scope = outer_host.scope.clone();
                     let (scope_id, next_scope_id) = outer_host.next_scope_id.next();
