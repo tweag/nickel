@@ -13,6 +13,7 @@ generate_counter!(FreshVarCounter, usize);
 
 pub mod apply_contracts;
 pub mod desugar_destructuring;
+pub mod free_vars;
 pub mod import_resolution;
 pub mod share_normal_form;
 
@@ -22,7 +23,13 @@ pub mod share_normal_form;
 /// Do not perform transformations on the imported files. If needed, either do it yourself using
 /// pending imports returned by [`resolve_imports`](../fn.resolve_imports.html) or use the
 /// [`Cache`](../../cache/struct.Cache.html)
-pub fn transform(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError> {
+pub fn transform(mut rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError> {
+    free_vars::transform(&mut rt);
+    transform_no_free_vars(rt)
+}
+
+/// Same as [`transform`], but doesn't apply the free vars transformation.
+pub fn transform_no_free_vars(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError> {
     let rt = rt.traverse(
         &mut |rt: RichTerm, _| -> Result<RichTerm, UnboundTypeVariableError> {
             // before anything, we have to desugar the syntax

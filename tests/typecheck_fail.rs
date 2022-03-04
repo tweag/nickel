@@ -29,7 +29,6 @@ macro_rules! assert_typecheck_fails {
 
 #[test]
 fn unbound_variable_always_throws() {
-    type_check_expr("x").map_err(|err| println!("{:#?}", err));
     assert_matches!(
         type_check_expr("x"),
         Err(TypecheckError::UnboundIdentifier(..))

@@ -492,7 +492,7 @@ fn type_check_<L: Linearizer>(
         }
         // If some fields are defined dynamically, the only potential type that works is `{_ : a}`
         // for some `a`
-        Term::RecRecord(stat_map, dynamic, _) if !dynamic.is_empty() => {
+        Term::RecRecord(stat_map, dynamic, ..) if !dynamic.is_empty() => {
             let ty_dyn = state.table.fresh_unif_var();
 
             for id in stat_map.keys() {

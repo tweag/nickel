@@ -1,6 +1,8 @@
 //! Thunks and associated devices used to implement lazy evaluation.
 use super::{Closure, IdentKind};
+use crate::{identifier::Ident, term::FieldDeps};
 use std::cell::{Ref, RefCell, RefMut};
+use std::collections::HashSet;
 use std::rc::{Rc, Weak};
 
 /// The state of a thunk.
@@ -29,14 +31,17 @@ pub struct ThunkData {
 /// The part of [ThunkData] responsible for storing the closure itself. It can either be:
 /// - A standard thunk, that is destructively updated once and for all
 /// - A revertible thunk, that can be restored to its original expression. Used to implement
-/// recursive merging of records and overriding (see the [RFC
-/// overriding](https://github.com/tweag/nickel/pull/330))
+///   recursive merging of records and overriding (see the
+///   [RFC overriding](https://github.com/tweag/nickel/pull/330)). A revertible thunks optionally
+///   stores the set of recusive fields it depends on. See the [`transform::free_vars`] for more
+///   details.
 #[derive(Clone, Debug, PartialEq)]
 pub enum InnerThunkData {
     Standard(Closure),
     Revertible {
         orig: Rc<Closure>,
         cached: Rc<Closure>,
+        deps: FieldDeps,
     },
 }
 
@@ -50,13 +55,14 @@ impl ThunkData {
     }
 
     /// Create new revertible thunk data.
-    pub fn new_rev(orig: Closure) -> Self {
+    pub fn new_rev(orig: Closure, deps: FieldDeps) -> Self {
         let rc = Rc::new(orig);
 
         ThunkData {
             inner: InnerThunkData::Revertible {
                 orig: rc.clone(),
                 cached: rc,
+                deps,
             },
             state: ThunkState::Suspended,
         }
@@ -82,7 +88,7 @@ impl ThunkData {
     pub fn into_closure(self) -> Closure {
         match self.inner {
             InnerThunkData::Standard(closure) => closure,
-            InnerThunkData::Revertible { orig, cached } => {
+            InnerThunkData::Revertible { orig, cached, .. } => {
                 std::mem::drop(orig);
                 Rc::try_unwrap(cached).unwrap_or_else(|rc| (*rc).clone())
             }
@@ -105,13 +111,27 @@ impl ThunkData {
     pub fn revert(&self) -> Self {
         match self.inner {
             InnerThunkData::Standard(_) => self.clone(),
-            InnerThunkData::Revertible { ref orig, .. } => ThunkData {
+            InnerThunkData::Revertible {
+                ref orig, ref deps, ..
+            } => ThunkData {
                 inner: InnerThunkData::Revertible {
                     orig: Rc::clone(orig),
                     cached: Rc::clone(orig),
+                    deps: deps.clone(),
                 },
                 state: ThunkState::Suspended,
             },
+        }
+    }
+
+    /// Return the potential field dependencies stored in a revertible thunk. See [`transform::free_vars`]
+    pub fn deps(&self) -> ThunkDeps {
+        match self.inner {
+            InnerThunkData::Standard(_) => ThunkDeps::Empty,
+            InnerThunkData::Revertible { ref deps, .. } => deps
+                .as_ref()
+                .map(|deps| ThunkDeps::Known(Rc::clone(deps)))
+                .unwrap_or(ThunkDeps::Unknown),
         }
     }
 }
@@ -147,9 +167,9 @@ impl Thunk {
     }
 
     /// Create a new revertible thunk.
-    pub fn new_rev(closure: Closure, ident_kind: IdentKind) -> Self {
+    pub fn new_rev(closure: Closure, ident_kind: IdentKind, deps: FieldDeps) -> Self {
         Thunk {
-            data: Rc::new(RefCell::new(ThunkData::new_rev(closure))),
+            data: Rc::new(RefCell::new(ThunkData::new_rev(closure, deps))),
             ident_kind,
         }
     }
@@ -224,6 +244,27 @@ impl Thunk {
         let term = &self.borrow().body.term;
         !term.is_whnf() && !term.is_metavalue()
     }
+
+    /// Return a clone of the potential field dependencies stored in a revertible thunk. See
+    /// [`transform::free_vars`].
+    pub fn deps(&self) -> ThunkDeps {
+        self.data.borrow().deps().clone()
+    }
+}
+
+/// Possible alternatives for the field dependencies of a thunk.
+#[derive(Clone, Debug)]
+pub enum ThunkDeps {
+    /// The thunk is revertible, containing potential recursive references to other fields, and the
+    /// set of dependencies has been computed
+    Known(Rc<HashSet<Ident>>),
+    /// The thunk is revertible, but the set of dependencies hasn't been computed. In that case,
+    /// the interpreter should be conservative and assume that any recursive references can appear
+    /// in the content of the corresponding thunk.
+    Unknown,
+    /// The thunk is not revertible and can't contain recursive references. The interpreter can
+    /// safely eschews the environment patching process entirely.
+    Empty,
 }
 
 /// A thunk update frame.

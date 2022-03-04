@@ -11,3 +11,4 @@ bench = false
 [dependencies]
 nickel = {path = "../"}
 criterion = "0.3"
+codespan = "0.11"

@@ -250,7 +250,7 @@ where
         }
     });
 
-    Term::RecRecord(static_map, dynamic_fields, attrs)
+    Term::RecRecord(static_map, dynamic_fields, attrs, None)
 }
 
 /// Merge two fields by performing the merge of both their value and MetaValue if any.

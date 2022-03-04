@@ -1910,6 +1910,7 @@ checksum = "936e4b492acfd135421d8dca4b1aa80a7bfc26e702ef3af710e0752684df5372"
 name = "utilities"
 version = "0.1.0"
 dependencies = [
+ "codespan",
  "criterion",
  "nickel",
 ]

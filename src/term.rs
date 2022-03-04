@@ -24,7 +24,7 @@ use crate::position::TermPos;
 use crate::types::{AbsType, Types, UnboundTypeVariableError};
 use codespan::FileId;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::fmt;
 use std::ops::Deref;
@@ -93,6 +93,7 @@ pub enum Term {
         HashMap<Ident, RichTerm>,
         Vec<(RichTerm, RichTerm)>, /* field whose name is defined by interpolation */
         RecordAttrs,
+        Option<RecordDeps>, /* dependency tracking between fields. None before the free var pass */
     ),
     /// A switch construct. The evaluation is done by the corresponding unary operator, but we
     /// still need this one for typechecking.
@@ -165,10 +166,12 @@ impl From<MetaValue> for Term {
 /// Type of let-binding. This only affects run-time behavior. Revertible bindings introduce
 /// revertible thunks at evaluation, which are devices used for the implementation of recursive
 /// records merging. See the [`merge`] and [`eval`] modules for more details.
-#[derive(Debug, Eq, PartialEq, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub enum BindingType {
     Normal,
-    Revertible,
+    /// In the revertible case, we also store an optional set of dependencies. See
+    /// [`transform::free_vars`] for more details.
+    Revertible(FieldDeps),
 }
 
 impl Default for BindingType {
@@ -189,6 +192,19 @@ impl RecordAttrs {
         }
     }
 }
+
+/// Store field interdependencies in a recursive record. Map each static and dynamic field to the
+/// set of recursive fields that syntactically appears in their definition as free variables.
+#[derive(Debug, Default, Eq, PartialEq, Clone)]
+pub struct RecordDeps {
+    /// Must have exactly the same keys as the static fields map of the recursive record.
+    pub stat_fields: HashMap<Ident, HashSet<Ident>>,
+    /// Must have exactly the same length as the dynamic fields list of the recursive record.
+    pub dyn_fields: Vec<HashSet<Ident>>,
+}
+
+/// Potential dependencies of a single field over the sibling fields in a recursive record.
+pub type FieldDeps = Option<Rc<HashSet<Ident>>>;
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Copy, Clone)]
 pub enum MergePriority {
@@ -336,7 +352,7 @@ impl Term {
             Record(ref mut static_map, _) => {
                 static_map.iter_mut().for_each(|(_, t)| func(t));
             }
-            RecRecord(ref mut static_map, ref mut dyn_fields, _) => {
+            RecRecord(ref mut static_map, ref mut dyn_fields, ..) => {
                 static_map.iter_mut().for_each(|(_, t)| func(t));
                 dyn_fields.iter_mut().for_each(|(t1, t2)| {
                     func(t1);
@@ -488,14 +504,14 @@ impl Term {
     /// Return a deep string representation of a term, used for printing in the REPL
     pub fn deep_repr(&self) -> String {
         match self {
-            Term::Record(fields, _) | Term::RecRecord(fields, _, _) => {
+            Term::Record(fields, _) | Term::RecRecord(fields, ..) => {
                 let fields_str: Vec<String> = fields
                     .iter()
                     .map(|(ident, term)| format!("{} = {}", ident, term.as_ref().deep_repr()))
                     .collect();
 
                 let suffix = match self {
-                    Term::RecRecord(_, dyn_fields, _) if !dyn_fields.is_empty() => ", ..",
+                    Term::RecRecord(_, dyn_fields, ..) if !dyn_fields.is_empty() => ", ..",
                     _ => "",
                 };
 
@@ -1075,7 +1091,7 @@ impl RichTerm {
                     pos,
                 )
             },
-            Term::RecRecord(map, dyn_fields, attrs) => {
+            Term::RecRecord(map, dyn_fields, attrs, deps) => {
                 // The annotation on `map_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
                 let map_res: Result<HashMap<Ident, RichTerm>, E> = map
@@ -1093,7 +1109,7 @@ impl RichTerm {
                     })
                     .collect();
                 RichTerm::new(
-                    Term::RecRecord(map_res?, dyn_fields_res?, attrs),
+                    Term::RecRecord(map_res?, dyn_fields_res?, attrs, deps),
                     pos,
                 )
             },
