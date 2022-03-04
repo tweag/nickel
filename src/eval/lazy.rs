@@ -125,12 +125,12 @@ impl ThunkData {
     }
 
     /// Return the potential field dependencies stored in a revertible thunk. See [`transform::free_vars`]
-    pub fn deps(&self) -> ThunkDeps<&HashSet<Ident>> {
+    pub fn deps(&self) -> ThunkDeps {
         match self.inner {
             InnerThunkData::Standard(_) => ThunkDeps::Empty,
             InnerThunkData::Revertible { ref deps, .. } => deps
                 .as_ref()
-                .map(ThunkDeps::Known)
+                .map(|deps| ThunkDeps::Known(Rc::clone(deps)))
                 .unwrap_or(ThunkDeps::Unknown),
         }
     }
@@ -247,20 +247,17 @@ impl Thunk {
 
     /// Return a clone of the potential field dependencies stored in a revertible thunk. See
     /// [`transform::free_vars`].
-    pub fn deps(&self) -> ThunkDeps<HashSet<Ident>> {
-        self.data.borrow().deps().cloned()
+    pub fn deps(&self) -> ThunkDeps {
+        self.data.borrow().deps().clone()
     }
 }
 
 /// Possible alternatives for the field dependencies of a thunk.
-///
-/// The parameter `D` is the type used to represent dependencies. It is usually a variant of a
-/// reference to a `HashSet<Ident>`.
 #[derive(Clone, Debug)]
-pub enum ThunkDeps<D> {
+pub enum ThunkDeps {
     /// The thunk is revertible, containing potential recursive references to other fields, and the
     /// set of dependencies has been computed
-    Known(D),
+    Known(Rc<HashSet<Ident>>),
     /// The thunk is revertible, but the set of dependencies hasn't been computed. In that case,
     /// the interpreter should be conservative and assume that any recursive references can appear
     /// in the content of the corresponding thunk.
@@ -268,16 +265,6 @@ pub enum ThunkDeps<D> {
     /// The thunk is not revertible and can't contain recursive references. The interpreter can
     /// safely eschews the environment patching process entirely.
     Empty,
-}
-
-impl<D: Clone> ThunkDeps<&D> {
-    pub fn cloned(self) -> ThunkDeps<D> {
-        match self {
-            ThunkDeps::Known(deps) => ThunkDeps::Known(deps.clone()),
-            ThunkDeps::Unknown => ThunkDeps::Unknown,
-            ThunkDeps::Empty => ThunkDeps::Empty,
-        }
-    }
 }
 
 /// A thunk update frame.

@@ -34,7 +34,8 @@ use crate::{
     position::TermPos,
     term::{BindingType, RichTerm, Term},
 };
-use std::collections::HashSet;
+
+use std::{collections::HashSet, rc::Rc};
 
 /// Transform the top-level term of an AST to a share normal form, if it can.
 ///
@@ -95,7 +96,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                     if is_non_rec {
                         BindingType::Normal
                     } else {
-                        BindingType::Revertible(field_deps)
+                        BindingType::Revertible(field_deps.map(Rc::new))
                     }
                 }
 
