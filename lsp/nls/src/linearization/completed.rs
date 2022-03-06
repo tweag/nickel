@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use codespan::ByteIndex;
-use nickel::{
+use nickel_lang::{
     term::MetaValue,
     typecheck::linearization::{LinearizationState, Scope, ScopeId},
 };

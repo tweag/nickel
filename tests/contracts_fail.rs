@@ -1,8 +1,8 @@
 use assert_matches::assert_matches;
 use codespan::Files;
-use nickel::error::{Error, EvalError, ToDiagnostic};
+use nickel_lang::error::{Error, EvalError, ToDiagnostic};
 
-use utilities::eval;
+use nickel_lang_utilities::eval;
 
 macro_rules! assert_raise_blame {
     ($term:expr) => {{
@@ -134,7 +134,7 @@ fn records_contracts_poly() {
 
 #[test]
 fn lists_contracts() {
-    use nickel::label::ty_path::Elem;
+    use nickel_lang::label::ty_path::Elem;
 
     assert_matches!(
         eval("%deep_seq% ([1, \"a\"] | Array Num) 0"),

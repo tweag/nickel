@@ -1,5 +1,5 @@
 [package]
-name = "nls"
+name = "nickel-lang-nls"
 version = "0.1.0"
 authors = ["Nicl team"]
 license = "MIT OR Apache-2.0"
@@ -25,7 +25,7 @@ lsp-types = "0.88"
 log = "0.4"
 env_logger = "0.9"
 anyhow = "1.0"
-nickel = {path = "../../"}
+nickel-lang = {path = "../../", version = "0.1.0"}
 derive_more = "0.99"
 lazy_static = "1"
 csv = "1"

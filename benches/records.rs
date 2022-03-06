@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion};
+use nickel_lang_utilities::{bench_args, EvalMode};
 use pprof::criterion::{Output, PProfProfiler};
-use utilities::{bench_args, EvalMode};
 
 fn count_letters(c: &mut Criterion) {
     bench_args(

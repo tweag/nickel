@@ -1,7 +1,7 @@
 use assert_matches::assert_matches;
-use nickel::error::{Error, EvalError, TypecheckError};
+use nickel_lang::error::{Error, EvalError, TypecheckError};
 
-use utilities::eval;
+use nickel_lang_utilities::eval;
 
 #[test]
 fn records_access() {

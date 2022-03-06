@@ -1,11 +1,11 @@
 //! Entry point of the program.
-use nickel::error::{Error, IOError};
-use nickel::program::Program;
-use nickel::repl::query_print;
+use nickel_lang::error::{Error, IOError};
+use nickel_lang::program::Program;
+use nickel_lang::repl::query_print;
 #[cfg(feature = "repl")]
-use nickel::repl::rustyline_frontend;
-use nickel::term::{RichTerm, Term};
-use nickel::{serialize, serialize::ExportFormat};
+use nickel_lang::repl::rustyline_frontend;
+use nickel_lang::term::{RichTerm, Term};
+use nickel_lang::{serialize, serialize::ExportFormat};
 use std::path::PathBuf;
 use std::{fs, process};
 // use std::ffi::OsStr;

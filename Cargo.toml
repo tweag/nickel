@@ -1,10 +1,13 @@
 [package]
-name = "nickel"
+name = "nickel-lang"
 version = "0.1.0"
-authors = ["Nicl team"]
-license = "MIT OR Apache-2.0"
+authors = ["Nickel team"]
+license = "MIT"
 readme = "README.md"
 description = "Programmable configuration files."
+homepage = "https://nickel-lang.org"
+repository = "https://github.com/tweag/nickel"
+keywords = ["configuration", "language", "nix"]
 edition = "2018"
 
 [[bin]]
@@ -57,7 +60,7 @@ pretty_assertions = "0.5.1"
 assert_matches = "1.4.0"
 criterion = "0.3"
 pprof = { version = "0.4.4", features = ["criterion", "flamegraph"] }
-utilities = {path = "utilities"}
+nickel-lang-utilities = {path = "utilities", version = "0.1.0"}
 
 [workspace]
 members = [

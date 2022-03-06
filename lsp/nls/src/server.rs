@@ -16,8 +16,8 @@ use lsp_types::{
     TextDocumentSyncOptions, WorkDoneProgressOptions,
 };
 
-use nickel::cache::Cache;
-use nickel::typecheck::Environment;
+use nickel_lang::cache::Cache;
+use nickel_lang::typecheck::Environment;
 
 use crate::{
     linearization::completed::Completed,

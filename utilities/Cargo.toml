@@ -1,7 +1,8 @@
 [package]
-name = "utilities"
+name = "nickel-lang-utilities"
 version = "0.1.0"
-authors = ["Yann Hamdaoui <yann.hamdaoui@gmail.com>"]
+authors = ["The Nickel Team <nickel-lang@protonmail.com>"]
+description = "Common helper functions for the tests and benchmarks of the nickel-lang crate."
 edition = "2018"
 
 [lib]
@@ -9,6 +10,6 @@ bench = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-nickel = {path = "../"}
+nickel-lang = {path = "../", version = "0.1.0"}
 criterion = "0.3"
 codespan = "0.11"

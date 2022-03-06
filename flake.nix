@@ -250,7 +250,7 @@
             # https://github.com/rust-lang/cargo/issues/1596
             # https://github.com/rust-lang/cargo/issues/1197
             # https://github.com/rust-lang/cargo/issues/5777
-            sed -i '/utilities/d' Cargo.toml
+            sed -i '/nickel-lang-utilities/d' Cargo.toml
           '';
 
           buildPhase = ''
@@ -261,7 +261,7 @@
             # (https://github.com/rustwasm/wasm-pack/issues/869), we have to
             # run wasm-opt manually
             echo "[Nix build script]Manually running wasm-opt..."
-            wasm-opt ${if optimize then "-O4 " else "-O0"} pkg/nickel_bg.wasm -o pkg/nickel_bg.wasm
+            wasm-opt ${if optimize then "-O4 " else "-O0"} pkg/nickel_lang_bg.wasm -o pkg/nickel_lang_bg.wasm
 
             runHook postBuild
           '';

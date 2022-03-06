@@ -1,11 +1,11 @@
 use assert_matches::assert_matches;
 use codespan::Files;
-use nickel::cache::resolvers::DummyResolver;
-use nickel::error::TypecheckError;
-use nickel::parser::{grammar, lexer};
-use nickel::term::RichTerm;
-use nickel::typecheck::{type_check_in_env, Environment};
-use nickel::types::Types;
+use nickel_lang::cache::resolvers::DummyResolver;
+use nickel_lang::error::TypecheckError;
+use nickel_lang::parser::{grammar, lexer};
+use nickel_lang::term::RichTerm;
+use nickel_lang::typecheck::{type_check_in_env, Environment};
+use nickel_lang::types::Types;
 
 fn type_check(rt: &RichTerm) -> Result<Types, TypecheckError> {
     type_check_in_env(rt, &Environment::new(), &mut DummyResolver {})

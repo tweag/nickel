@@ -925,7 +925,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4a24736216ec316047a1fc4252e27dabb04218aa4a3f37c6e7ddbf1f9782b54"
 
 [[package]]
-name = "nickel"
+name = "nickel-lang"
 version = "0.1.0"
 dependencies = [
  "ansi_term 0.12.1",
@@ -939,6 +939,7 @@ dependencies = [
  "lalrpop-util",
  "logos",
  "md-5",
+ "nickel-lang-utilities",
  "pprof",
  "pretty_assertions",
  "regex 0.2.11",
@@ -954,9 +955,42 @@ dependencies = [
  "structopt",
  "termimad",
  "toml",
- "utilities",
  "void",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "nickel-lang-nls"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "assert_matches",
+ "codespan",
+ "codespan-lsp",
+ "codespan-reporting",
+ "csv",
+ "derive_more",
+ "env_logger",
+ "lalrpop",
+ "lalrpop-util",
+ "lazy_static",
+ "log",
+ "lsp-server",
+ "lsp-types",
+ "nickel-lang",
+ "pretty_assertions",
+ "serde",
+ "serde_json",
+ "structopt",
+]
+
+[[package]]
+name = "nickel-lang-utilities"
+version = "0.1.0"
+dependencies = [
+ "codespan",
+ "criterion",
+ "nickel-lang",
 ]
 
 [[package]]
@@ -982,31 +1016,6 @@ dependencies = [
  "cfg-if",
  "libc",
  "memoffset",
-]
-
-[[package]]
-name = "nls"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "assert_matches",
- "codespan",
- "codespan-lsp",
- "codespan-reporting",
- "csv",
- "derive_more",
- "env_logger",
- "lalrpop",
- "lalrpop-util",
- "lazy_static",
- "log",
- "lsp-server",
- "lsp-types",
- "nickel",
- "pretty_assertions",
- "serde",
- "serde_json",
- "structopt",
 ]
 
 [[package]]
@@ -1905,15 +1914,6 @@ name = "utf8parse"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "936e4b492acfd135421d8dca4b1aa80a7bfc26e702ef3af710e0752684df5372"
-
-[[package]]
-name = "utilities"
-version = "0.1.0"
-dependencies = [
- "codespan",
- "criterion",
- "nickel",
-]
 
 [[package]]
 name = "uuid"

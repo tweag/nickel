@@ -1,7 +1,7 @@
 use std::ops::Range;
 
 use codespan::FileId;
-use nickel::position::RawSpan;
+use nickel_lang::position::RawSpan;
 
 pub trait RawSpanExt {
     fn to_range(self) -> (FileId, Range<usize>);
