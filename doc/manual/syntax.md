@@ -18,7 +18,7 @@ Internally, those numbers are stored as 64-bits floating point numbers, followin
 
 Examples:
 
-```
+```nickel
 1
 0.543
 42
@@ -210,7 +210,7 @@ false
 An array is a sequence of values. They are delimited by `[` and `]`, and elements are separated with `,`.
 
 Examples:
-```
+```nickel
 [1, 2, 3]
 ["Hello", "World"]
 [1, true, "true"]
@@ -231,7 +231,7 @@ Elements inside a record are unordered.
 Two records can be _merged_ together using the operator `&`. The reader can find more information about merging in the relevant documentation.
 
 Examples:
-```
+```nickel
 {}
 {a = 3}
 {my_id_n5 = "my id number 5", "my id n4" = "my id number 4" }
@@ -372,7 +372,7 @@ To give a type to a value, we write it with `< value > : < type >`.
 More information on typing in the relevant document.
 
 Examples:
-```
+```nickel
 5 : Num
 "Hello" : Str
 

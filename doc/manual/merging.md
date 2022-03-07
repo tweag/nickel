@@ -337,7 +337,7 @@ base & patch
 
 This evaluates to:
 
-```
+```nickel
 {
   firewall = {
     enabled = false,
