@@ -102,7 +102,7 @@ annotation. We will refer to such an annotated expression as a *statically typed
 block*.
 
 Example:
-```
+```nickel
 # Let binding
 let f : Num -> Bool = fun x => x % 2 == 0 in
 
@@ -366,7 +366,7 @@ let r3 = {may = 1300, june = 400, total = may + june} in
 ```
 
 Result:
-```
+```nickel
 {partial1 = 570, partial2 = 1770}
 ```
 

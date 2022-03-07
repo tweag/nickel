@@ -450,7 +450,7 @@ that must hold about the return value of the function.
 Function contracts, as opposed to a contract like `Num`, have the peculiarity of
 involving two parties in the contract checking. For example:
 
-```
+```nickel
 let add_semi | Str -> Str = fun x => x ++ ";" in
 add_semi 1
 
@@ -577,7 +577,7 @@ What we can do is to not perform all the checks right away, but **return a new
 value, which is wrapping the original value with delayed checks inside**. This
 is the rationale behind contracts returning a value. Let us see:
 
-```
+```nickel
 let NumBoolDict = fun label value =>
   if builtin.is_record value then
     let check_fields = value
@@ -608,7 +608,7 @@ iterate through the array without building up anything interesting.
 
 For laziness, the interesting bit happens here:
 
-```
+```nickel
 value
   |> record.map (fun _name value =>
     contract.apply Bool label value)
