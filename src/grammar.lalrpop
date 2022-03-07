@@ -252,7 +252,7 @@ Applicative: UniTerm = {
 };
 
 // The parametrized array type.
-TypeArray: Types = "Array" <AsType<Atom>> =>
+TypeArray: Types = "Array" <AsType<RecordOperand>> =>
     Types(AbsType::Array(Box::new(<>)));
 
 RecordOperand: UniTerm = {
