@@ -163,23 +163,19 @@ $ cargo test
 
 ### Examples
 
-You can find examples in
-the [`./examples`](./examples) directory. Note
-that as the syntax is not yet fixed, and some basic helpers are missing, they
-may seem a bit alien currently.
+You can find examples in the [`./examples`](./examples) directory.
 
-## Roadmap
+## Current state and roadmap
 
-The design is settled and implemented for the most part, but the final syntax
-and other important practical aspects are still being debated. We aim to
-transition from an experimental stage to a minimum viable product stage.  The
-next points to deal with are:
+Nickel has been released in version `0.1`. This version should be functional, it
+is intended to gather feedback and real-life testing. Nickel `0.1` isn't intended
+to be used in production. The next steps we plan to work on are:
 
-- [Stdlib stabilization](https://github.com/tweag/nickel/issues/321)
-- [Overriding](https://github.com/tweag/nickel/pull/330)
-- Memory management (use reference counting) & basic performance improvements
-- [List comprehensions](https://github.com/tweag/nickel/issues/80)
-- [Destructuring](https://github.com/tweag/nickel/issues/81)
+- Nix integration: being able to seamlessly use Nickel to write shells, packages
+  and NixOS modules.
+- Custom merge functions and priorities (second part of the
+  [overriding proposal](https://github.com/tweag/nickel/blob/9fd6e436c0db8f101d4eb26cf97c4993357a7c38/rfcs/001-overriding.md)
+- Performance improvements
 
 ## Related projects and inspirations
 
