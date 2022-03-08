@@ -210,8 +210,8 @@ While it's technically possible to just use strings in place of enum tags, using
 an enum tag insists on the fact that only a finite number of alternatives can be
 used for the corresponding value.
 
-Enum are also handled more finely by the typechecker, however, as of the version
-0.1 of Nickel, enum types have been temporary disabled for incidental reasons.
+Enum will also be handled more finely by the typechecker, however, as of the
+version 0.1 of Nickel, enum types are not yet supported.
 
 ## Equality
 
