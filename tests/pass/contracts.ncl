@@ -52,6 +52,12 @@ let Assert = fun l x => x || %blame% l in
     fun x => switch { `foo => 1, `"bar:baz" => 2, _ => 3, } x in
   f `"boo,grr" == 3,
 
+  # enums_applied
+  # Regression test for enum types converted to contracts outside of annotations
+  # causing issues wrt typechecking
+  let Wrapper = contract.apply [| Foo, Bar |] in
+  (`Foo | Wrapper) == `Foo,
+
   # records_simple
   ({} | {}) == {},
   let x | {a: Num, s: Str} = {a = 1, s = "a"} in
@@ -96,7 +102,7 @@ let Assert = fun l x => x || %blame% l in
   let Contract = {a | Num, ..} & {b | Num, ..} in
   ({a = 0, b = 0, c = 0} | Contract) == {a = 0, b = 0, c = 0},
 
-  # arrays 
+  # arrays
   ([1, "2", false] | Array Dyn) == [1, "2", false],
   ([1, 2, 3] | Array Num) == [1, 2, 3],
   (["1", "2", "false"] | Array Str) == ["1", "2", "false"],
