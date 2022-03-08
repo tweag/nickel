@@ -13,6 +13,8 @@
       = fun label =>
         label
         |> contract.tag "must be one of `Less, `Equal, or `Greater"
+        # The enum type syntax [| ... |] is not stable. Do not rely on it in
+        # your own Nickel programs.
         |> contract.apply [| Less, Equal, Greater |],
 
     NonEmpty

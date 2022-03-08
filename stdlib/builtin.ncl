@@ -19,6 +19,8 @@
         |> contract.tag m%"
           must be one of `TypeNum, `TypeBool, `TypeStr, `TypeFun, `TypeArray`, `TypeRecord or `Other
         "%m
+        # The enum type syntax [| ... |] is not stable. Do not rely on it in
+        # your own Nickel programs.
         | contract.apply [|
             TypeNum,
             TypeBool,
@@ -43,6 +45,8 @@
       = fun label =>
         label
         |> contract.tag "must be one of `Md5, `Sha1, `Sha256, `Sha512"
+        # The enum type syntax [| ... |] is not stable. Do not rely on it in
+        # your own Nickel programs.
         |> contract.apply [| Md5, Sha1, Sha256, Sha512 |],
 
     ExportFormat
@@ -58,6 +62,8 @@
       = fun label =>
         label
         |> contract.tag "must be one of `Json, `Toml or `Yaml"
+        # The enum type syntax [| ... |] is not stable. Do not rely on it in
+        # your own Nickel programs.
         |> contract.apply [| Json, Toml, Yaml |],
 
     is_num : Dyn -> Bool
