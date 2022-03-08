@@ -1,5 +1,20 @@
 {
   array = {
+    ComparisonResult
+      | doc m%"
+          The result of a comparison. Must be one of the tags:
+
+          ```
+            `Less
+            `Equal
+            `Greater
+          ```
+        "%m
+      = fun label =>
+        label
+        |> contract.tag "must be one of `Less, `Equal, or `Greater"
+        |> contract.apply [| Less, Equal, Greater |],
+
     NonEmpty
       | doc m%"
         Contract to ensure the given array is not empty.
@@ -254,7 +269,7 @@
         "%m
       = fun f n => %generate% n f,
 
-    sort : forall a. (a -> a -> [| Less, Equal, Greater |]) -> Array a -> Array a
+    sort | forall a. (a -> a -> ComparisonResult) -> Array a -> Array a
       | doc m%"
         Sorts the given arrays based on the provided comparison operator.
 

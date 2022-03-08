@@ -31,7 +31,7 @@
       if (case t) then
           t
       else
-          %assume% contr (%tag% "NotRowExt" l) t,
+          %assume% contr l t,
 
   "$record" = fun cont l t =>
       if %is_record% t then
