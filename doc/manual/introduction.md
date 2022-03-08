@@ -66,12 +66,23 @@ The motivating use cases are in particular:
 - Build systems: build systems (like [Bazel](https://bazel.build/)) need
     a specification of the dependency graph.
 
-
 ## Getting started
 
 To get a Nickel binary working and run you first program, please follow the
 [Getting Started](https://nickel-lang.org/getting-started) section of the
 website.
+
+## Current state and roadmap
+
+Nickel has been released in version `0.1`. This version should be functional, it
+is intended to gather feedback and real-life testing. Nickel `0.1` isn't intended
+to be used in production. The next steps we plan to work on are:
+
+- Nix integration: being able to seamlessly use Nickel to write shells, packages
+  and NixOS modules.
+- Custom merge functions and priorities (second part of the
+  [overriding proposal](https://github.com/tweag/nickel/blob/9fd6e436c0db8f101d4eb26cf97c4993357a7c38/rfcs/001-overriding.md)
+- Performance improvements
 
 ## Content
 
