@@ -54,8 +54,8 @@
 use crate::error::{ParseError, ParseErrors, TypecheckError};
 use crate::identifier::Ident;
 use crate::term::make as mk_term;
-use crate::term::{RichTerm, Term, UnaryOp};
-use crate::{mk_app, mk_fun};
+use crate::term::{RichTerm, Term};
+use crate::{mk_app, mk_fun, mk_switch};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -256,17 +256,15 @@ impl Types {
                         }
                         AbsType::RowExtend(id, None, rest) => {
                             let rest_contract = form(*rest, h)?;
-                            let mut map = HashMap::new();
-                            map.insert(id, Term::Bool(true).into());
 
                             mk_app!(
                                 contract::row_extend(),
                                 rest_contract,
                                 mk_fun!(
                                     "x",
-                                    mk_app!(
-                                        mk_term::op1(UnaryOp::Switch(true), mk_term::var("x")),
-                                        Term::Record(map, Default::default()),
+                                    mk_switch!(
+                                        mk_term::var("x"),
+                                        (id, Term::Bool(true)) ;
                                         Term::Bool(false)
                                     )
                                 )

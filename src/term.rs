@@ -1320,12 +1320,11 @@ pub mod make {
         };
     }
 
-    /// Multi field record for types implementing `Into<Ident>` (for the identifiers), and
-    /// `Into<RichTerm>` for the fields. Identifiers and corresponding content are specified as a
-    /// tuple: `mk_record!(("field1", t1), ("field2", t2))` corresponds to the record `{ field1 =
-    /// t1; field2 = t2 }`.
+    /// Switch for types implementing `Into<Ident>` (for patterns) and `Into<RichTerm>` for the
+    /// body of each case. Cases are specified as tuple, and the default case (optional) is separated by a `;`:
+    /// `mk_switch!(format, ("Json", json_case), ("Yaml", yaml_case) ; def)` corresponds to
+    /// ``switch { `Json => json_case, `Yaml => yaml_case, _ => def} format``.
     #[macro_export]
-    #[cfg(test)]
     macro_rules! mk_switch {
         ( $exp:expr, $( ($id:expr, $body:expr) ),* ; $default:expr ) => {
             {
