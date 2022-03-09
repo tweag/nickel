@@ -1,10 +1,12 @@
 [package]
-name = "nickel-lang-nls"
+name = "nickel-lang-lsp"
 version = "0.1.0"
-authors = ["Nicl team"]
-license = "MIT OR Apache-2.0"
+authors = ["Nickel team"]
+license = "MIT"
 readme = "README.md"
-description = "Programmable configuration files."
+description = "NLS: A language server for the Nickel configuration language."
+repository = "https://github.com/tweag/nickel"
+keywords = ["nickel", "configuration", "language", "lsp"]
 edition = "2018"
 
 [build-dependencies]

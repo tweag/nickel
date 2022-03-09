@@ -968,7 +968,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "nickel-lang-nls"
+name = "nickel-lang-lsp"
 version = "0.1.0"
 dependencies = [
  "anyhow",
