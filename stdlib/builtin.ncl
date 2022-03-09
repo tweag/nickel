@@ -1,5 +1,71 @@
 {
   builtin = {
+    ValueType
+      | doc m%"
+        Possible dynamic type for a value. Must be one of the tags:
+
+        ```
+         `TypeNum
+         `TypeBool
+         `TypeStr
+         `TypeFun
+         `TypeArray
+         `TypeRecord
+         `Other
+        ```
+        "%m
+      = fun label =>
+        label
+        |> contract.tag m%"
+          must be one of `TypeNum, `TypeBool, `TypeStr, `TypeFun, `TypeArray`, `TypeRecord or `Other
+        "%m
+        # The enum type syntax [| ... |] is not stable. Do not rely on it in
+        # your own Nickel programs.
+        | contract.apply [|
+            TypeNum,
+            TypeBool,
+            TypeStr,
+            TypeFun,
+            TypeArray,
+            TypeRecord,
+            Other
+          |],
+
+    HashAlgorithm
+      | doc m%"
+        Supportd hash algorithm. Must be one of the tag:
+
+        ```
+          `Md5
+          `Sha1
+          `Sha256
+          `Sha512
+        ```
+        "%m
+      = fun label =>
+        label
+        |> contract.tag "must be one of `Md5, `Sha1, `Sha256, `Sha512"
+        # The enum type syntax [| ... |] is not stable. Do not rely on it in
+        # your own Nickel programs.
+        |> contract.apply [| Md5, Sha1, Sha256, Sha512 |],
+
+    ExportFormat
+      | doc m%"
+        Supported import and export format. Must be one of the tag:
+
+        ```
+          `Json
+          `Toml
+          `Yaml
+        ```
+        "%m
+      = fun label =>
+        label
+        |> contract.tag "must be one of `Json, `Toml or `Yaml"
+        # The enum type syntax [| ... |] is not stable. Do not rely on it in
+        # your own Nickel programs.
+        |> contract.apply [| Json, Toml, Yaml |],
+
     is_num : Dyn -> Bool
     | doc m%"
       Checks if the given value is a number.
@@ -84,14 +150,7 @@
       "%m
     = fun x => %is_record% x,
 
-    typeof : Dyn -> [|
-      TypeNum,
-      TypeBool,
-      TypeStr,
-      TypeFun,
-      TypeArray,
-      TypeRecord,
-      Other |]
+    typeof | Dyn -> ValueType
     | doc m%"
       Results in a value representing the type of the typed value.
 
@@ -144,7 +203,7 @@
       "%m
     = fun x y => %deep_seq% x y,
 
-    hash : [| Md5, Sha1, Sha256, Sha512 |] -> Str -> Str
+    hash | HashAlgorithm -> Str -> Str
     | doc m%"
       Hashes the given string provided the desired hash algorithm.
 
@@ -156,7 +215,7 @@
       "%m
     = fun type s => %hash% type s,
 
-    serialize : [| Json, Toml, Yaml |] -> Dyn -> Str
+    serialize | ExportFormat -> Dyn -> Str
     | doc m%"
       Serializes the given value to the desired representation.
 
@@ -171,7 +230,7 @@
       "%m
     = fun format x => %serialize% format (%deep_seq% x x),
 
-    deserialize : [| Json, Toml, Yaml |] -> Str -> Dyn
+    deserialize | ExportFormat -> Str -> Dyn
     | doc m%"
       Deserializes the given string to a nickel value given the encoding of the string.
 

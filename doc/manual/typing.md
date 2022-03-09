@@ -192,21 +192,23 @@ The following type constructors are available:
   let occurences : {_: Num} = {a = 1, b = 3, c = 0} in
   record.map (fun char count => count + 1) occurences : {_ : Num}
   ```
-- **Enum**: `<tag1, .., tagn>`: an enumeration comprised of alternatives `tag1`,
-  .., `tagn`. An enumeration literal is prefixed with a backtick and serialized
-  as a string. It is useful to encode finite alternatives. The advantage over
-  strings is that the typechecker handles them more finely: it is able to detect
-  incomplete matches, for example.
 
-  Example:
-  ```nickel
-  let protocol : <http, ftp, sftp> = `http in
-  (switch {
-    `http => 1,
-    `ftp => 2,
-    `sftp => 3
-  } protocol) : Num
-  ```
+<!-- - **Enum**: `<tag1, .., tagn>`: an enumeration comprised of alternatives `tag1`, -->
+<!--   .., `tagn`. An enumeration literal is prefixed with a backtick and serialized -->
+<!--   as a string. It is useful to encode finite alternatives. The advantage over -->
+<!--   strings is that the typechecker handles them more finely: it is able to detect -->
+<!--   incomplete matches, for example. -->
+<!--  -->
+<!--   Example: -->
+<!--   ```nickel -->
+<!--   let protocol : <http, ftp, sftp> = `http in -->
+<!--   (switch { -->
+<!--     `http => 1, -->
+<!--     `ftp => 2, -->
+<!--     `sftp => 3 -->
+<!--   } protocol) : Num -->
+<!--   ``` -->
+
 - **Arrow (function)**: `S -> T`. A function taking arguments of type `S` and returning a value of
   type `T`. For multi-parameters functions, just iterate the arrow constructor.
 
@@ -383,28 +385,28 @@ could still write `addTotal {total = 1, foo = 1} {total = 2, foo = 2}` but not
 What comes before the tail may include several fields, is in e.g. `forall a.
 {total: Num, subtotal: Num | a} -> Num`.
 
-Note that row polymorphism also works with enums, with the same intuition of a
-tail that can be substituted for something else. For example:
-
-```nickel
-let portOf : forall a. <http, ftp | a> -> Num = fun protocol =>
-switch {
-  `http -> 80,
-  `ftp -> 21,
-  _ -> 8000,
-} protocol
-```
-
-Because the `switch` statement has a catch-all case `_`, this function is indeed
-able to handle other tags than `http` and `ftp`, as expressed by its polymorphic
-type.
+<!-- Note that row polymorphism also works with enums, with the same intuition of a -->
+<!-- tail that can be substituted for something else. For example: -->
+<!--  -->
+<!-- ```nickel -->
+<!-- let portOf : forall a. <http, ftp | a> -> Num = fun protocol => -->
+<!-- switch { -->
+<!--   `http -> 80, -->
+<!--   `ftp -> 21, -->
+<!--   _ -> 8000, -->
+<!-- } protocol -->
+<!-- ``` -->
+<!--  -->
+<!-- Because the `switch` statement has a catch-all case `_`, this function is indeed -->
+<!-- able to handle other tags than `http` and `ftp`, as expressed by its polymorphic -->
+<!-- type. -->
 
 ### Take-away
 
 The type system of Nickel has usual basic types (`Dyn`, `Num`, `Str`, and
-`Bool`) and type constructors for arrays, records, enums and functions. Nickel
+`Bool`) and type constructors for arrays, records and functions. Nickel
 features generics via polymorphism, introduced by the `forall` keyword. A type
-can not only be generic in other types, but records and enums types can also be
+can not only be generic in other types, but records types can also be
 generic in their tail. The tail is delimited by `|`.
 
 ## Interaction between statically typed and dynamically typed code

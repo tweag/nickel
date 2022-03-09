@@ -6,10 +6,11 @@ slug: syntax
 
 ## Simple values
 
-There are three basic kind of values in Nickel :
- 1. numeric values,
- 2. boolean values,
- 3. strings.
+There are four basic kind of values in Nickel :
+ 1. numeric values
+ 2. boolean values
+ 3. strings
+ 4. enum tags
 
 ### Numeric values
 
@@ -177,6 +178,40 @@ def concat(str_array, log=false):
     res.append(s)
   return res"
 ```
+
+#### Enum tags
+
+Enumeration tags are used to express finite alternatives. They are formed
+by writing a backtick `` ` `` followed by any valid identifier. For example,
+`builtin.serialize` takes an export format as a first argument, which is an enum
+tag among `` `Json ``, `` `Toml `` or `` `Yaml `` (as of version 0.1):
+
+```nickel
+builtin.serialize `Json {foo = 1}
+# gives "{
+#          \"foo\": 1
+#        }"
+builtin.serialize `Toml {foo = 1}
+# gives "foo = 1
+#       "
+```
+
+An enum tag `` `foo `` is serialized as the string `"foo"`:
+
+```nickel
+let as_yaml_string = builtin.serialize `Yaml {foo = `bar}
+# gives "---
+#       foo: bar
+#       "
+
+```
+
+While it's technically possible to just use strings in place of enum tags, using
+an enum tag insists on the fact that only a finite number of alternatives can be
+used for the corresponding value.
+
+Enum will also be handled more finely by the typechecker, however, as of the
+version 0.1 of Nickel, enum types are not yet supported.
 
 ## Equality
 
