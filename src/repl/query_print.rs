@@ -152,10 +152,9 @@ impl Default for Attributes {
 }
 
 /// Print the result of a metadata query, which is a "weakly" evaluated term (see
-/// [`eval_meta`](../../eval/fn.eval_meta.html) and [`query`](../../program/fn.query.html)).
+/// [`crate::eval::eval_meta`] and [`crate::program::query`]).
 ///
-/// Wrapper around [`write_query_result_`](./fn.write_query_result_) that selects an adapated
-/// query printer at compile time.
+/// Wrapper around `write_query_result_` that selects an adapated query printer at compile time.
 pub fn write_query_result(
     out: &mut impl Write,
     term: &Term,
@@ -171,7 +170,7 @@ pub fn write_query_result(
 }
 
 /// Print the result of a metadata query, which is a "weakly" evaluated term (see
-/// [`eval_meta`](../../eval/fn.eval_meta.html) and [`query`](../../program/fn.query.html)).
+/// [`crate::eval::eval_meta`] and [`crate::program::query`]).
 fn write_query_result_<R: QueryPrinter>(
     out: &mut impl Write,
     term: &Term,

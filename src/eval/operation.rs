@@ -1,11 +1,11 @@
 //! Implementation of primitive operations.
 //!
 //! Define functions which perform the evaluation of primitive operators. The machinery required
-//! for the strict evaluation of the operands is mainly handled by [`eval`](../eval/index.html),
-//! and marginally in [`continuate_operation`](fn.continuate_operation.html). On the other hand,
-//! the functions [`process_unary_operation`](fn.process_unary_operation.html) and
-//! [`process_binary_operation`](fn.process_binary_operation.html) receive evaluated operands and
-//! implement the actual semantics of operators.
+//! for the strict evaluation of the operands is mainly handled by [crate::eval], and marginally in
+//! [`continuate_operation`].
+//!
+//! On the other hand, the functions `process_unary_operation` and `process_binary_operation`
+//! receive evaluated operands and implement the actual semantics of operators.
 use super::{
     callstack, merge,
     merge::{merge, MergeMode},
@@ -40,7 +40,7 @@ generate_counter!(FreshVariableCounter, usize);
 /// first element of this non-empty list is encoded as the two first parameters of `Eqs`, while the
 /// last vector parameter is the (potentially empty) tail.
 ///
-/// See [`eq`](./fn.eq.html).
+/// See [`eq`].
 enum EqResult {
     Bool(bool),
     Eqs(RichTerm, RichTerm, Vec<(Closure, Closure)>),

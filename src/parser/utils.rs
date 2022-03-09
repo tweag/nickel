@@ -360,10 +360,9 @@ pub fn min_indent(chunks: &[StrChunk<RichTerm>]) -> usize {
 
 /// Strip the common indentation prefix from a multi-line string.
 ///
-/// Determine the minimum indentation level of a multi-line string via
-/// [`min_indent`](./fn.min_indent.html), and strip an equal number of whitespace characters (` `
-/// or `\t`) from the beginning of each line. If the last line is empty or consist only of
-/// whitespace characters, it is filtered out.
+/// Determine the minimum indentation level of a multi-line string via [`min_indent`], and strip an
+/// equal number of whitespace characters (` ` or `\t`) from the beginning of each line. If the
+/// last line is empty or consist only of whitespace characters, it is filtered out.
 ///
 /// The indentation of interpolated expressions in a multi-line string follow the rules:
 /// - if an interpolated expression is alone on a line with whitespaces, its indentation -- minus
@@ -524,7 +523,7 @@ pub fn strip_indent(mut chunks: Vec<StrChunk<RichTerm>>) -> Vec<StrChunk<RichTer
 }
 
 /// Strip the indentation of a documentation metavalue. Wrap it as a literal string chunk and call
-/// [`strip_indent`](./fn.strip_indent.html).
+/// [`strip_indent`].
 pub fn strip_indent_doc(doc: String) -> String {
     let chunk = vec![StrChunk::Literal(doc)];
     strip_indent(chunk)

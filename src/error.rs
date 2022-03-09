@@ -163,11 +163,11 @@ pub enum TypecheckError {
     /// expression is inferred to be `{ field: Type | t}`, then `t` must not be unified later with
     /// a type including a different declaration for field, such as `field: Type2`.
     ///
-    /// A [constraint](../typecheck/type.RowConstr.html) is added accordingly, and if this
-    /// constraint is violated (that is if `t` does end up being unified with a type of the form
+    /// A [constraint][crate::typecheck::RowConstr] is added accordingly, and if this constraint is
+    /// violated (that is if `t` does end up being unified with a type of the form
     /// `{ .., field: Type2, .. }`), `RowConflict` is raised.  We do not have access to the
-    /// original `field: Type` declaration, as opposed to `RowKindMismatch`, which corresponds to the
-    /// direct failure to unify `{ .. , x: T1, .. }` and `{ .., x: T2, .. }`.
+    /// original `field: Type` declaration, as opposed to `RowKindMismatch`, which corresponds to
+    /// the direct failure to unify `{ .. , x: T1, .. }` and `{ .., x: T2, .. }`.
     RowConflict(
         Ident,
         /* the second type assignment which violates the constraint */ Option<Types>,
@@ -188,7 +188,7 @@ pub enum TypecheckError {
     /// let id_mono = fun x => x in let _ign = id_mono true in id_mono 0 : Num
     /// ```
     ///
-    /// This specific error stores additionally the [type path](../label/ty_path/index.html) that
+    /// This specific error stores additionally the [type path][crate::label::ty_path] that
     /// identifies the subtype where unification failed and the corresponding error.
     ArrowTypeMismatch(
         /* the expected arrow type */ Types,
@@ -542,17 +542,17 @@ pub trait ToDiagnostic<FileId> {
     /// # Arguments
     ///
     /// - `files`: to know why it takes a mutable reference to `Files<String>`, see
-    ///   [`label_alt`](fn.label_alt.html).
+    ///   `label_alt`.
     /// - `contract_id` is required to format the callstack when reporting blame errors. For some
-    ///   errors (such as [`ParseError`](./enum.ParseError.html)), contracts may not have been loaded
-    ///   yet, hence the optional. See also [`process_callstack`](fn.process_callstack.html).
+    ///   errors (such as [`ParseError`])), contracts may not have been loaded yet, hence the
+    ///   optional. See also [`crate::eval::callstack::CallStack::group_by_calls`].
     ///
     /// # Return
     ///
     /// Return a list of diagnostics. Most errors generate only one, but showing the callstack
     /// ordered requires to sidestep a limitation of codespan. The current solution is to generate
-    /// one diagnostic per callstack element. See [this
-    /// issue](https://github.com/brendanzab/codespan/issues/285).
+    /// one diagnostic per callstack element. See issue
+    /// [#285](https://github.com/brendanzab/codespan/issues/285).
     fn to_diagnostic(
         &self,
         files: &mut Files<String>,
@@ -643,7 +643,7 @@ fn label_alt(
 /// Create a secondary label from an optional span, or fallback to annotating the alternative snippet
 /// `alt_term` if the span is `None`.
 ///
-/// See [`label_alt`](fn.label_alt.html).
+/// See [`label_alt`].
 fn primary_alt(
     span_opt: Option<RawSpan>,
     alt_term: String,
@@ -655,7 +655,7 @@ fn primary_alt(
 /// Create a primary label from a term, or fallback to annotating the shallow representation of this term
 /// if its span is `None`.
 ///
-/// See [`label_alt`](fn.label_alt.html).
+/// See [`label_alt`].
 fn primary_term(term: &RichTerm, files: &mut Files<String>) -> Label<FileId> {
     primary_alt(term.pos.into_opt(), term.as_ref().shallow_repr(), files)
 }
@@ -663,7 +663,7 @@ fn primary_term(term: &RichTerm, files: &mut Files<String>) -> Label<FileId> {
 /// Create a secondary label from an optional span, or fallback to annotating the alternative snippet
 /// `alt_term` if the span is `None`.
 ///
-/// See [`label_alt`](fn.label_alt.html).
+/// See [`label_alt`].
 fn secondary_alt(span_opt: TermPos, alt_term: String, files: &mut Files<String>) -> Label<FileId> {
     label_alt(span_opt.into_opt(), alt_term, LabelStyle::Secondary, files)
 }
@@ -671,14 +671,13 @@ fn secondary_alt(span_opt: TermPos, alt_term: String, files: &mut Files<String>)
 /// Create a secondary label from a term, or fallback to annotating the shallow representation of this term
 /// if its span is `None`.
 ///
-/// See [`label_alt`](fn.label_alt.html).
+/// See [`label_alt`].
 fn secondary_term(term: &RichTerm, files: &mut Files<String>) -> Label<FileId> {
     secondary_alt(term.pos, term.as_ref().shallow_repr(), files)
 }
 
-/// Generate a codespan label that describes the [type path](../label/enum.TyPath.html) of a
-/// (Nickel) label, and notes to hint at the situation that may have caused the corresponding
-/// error.
+/// Generate a codespan label that describes the [type path][crate::label::TyPath] of a (Nickel)
+/// label, and notes to hint at the situation that may have caused the corresponding error.
 fn report_ty_path(l: &label::Label, files: &mut Files<String>) -> (Label<FileId>, Vec<String>) {
     let end_note = String::from("Note: this is an illustrative example. The actual error may involve deeper nested functions calls.");
 

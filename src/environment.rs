@@ -183,7 +183,7 @@ impl<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> Iterator for EnvLayerIter<'a, K, 
 
 /// An iterator over all the elements inside the `Environment`, from the oldest layer to the current one.
 ///
-/// Created by the [`iter_elems`] method on [`Environment`].
+/// Created by the [`Environment::iter_elems`] method.
 ///
 pub struct EnvElemIter<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> {
     env: Vec<NonNull<HashMap<K, V>>>,

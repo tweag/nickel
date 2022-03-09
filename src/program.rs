@@ -16,11 +16,10 @@
 //! ```
 //!
 //! These .ncl file are not actually distributed as files, instead they are embedded, as plain
-//! text, in the Nickel executable. The embedding is done by way of the [stdlib
-//! module](../stdlib/index.html), which exposes the standard library files as strings. The
-//! embedded strings are then parsed by the functions in this module (see
-//! [`mk_global_env`](./struct.Program.html#method.mk_global_env)).  Each such value is added to
-//! the global environment before the evaluation of the program.
+//! text, in the Nickel executable. The embedding is done by way of the [crate::stdlib], which
+//! exposes the standard library files as strings. The embedded strings are then parsed by the
+//! functions in [`crate::cache`] (see [`crate::cache::Cache::mk_eval_env`]).
+//! Each such value is added to the global environment before the evaluation of the program.
 use crate::cache::*;
 use crate::error::{Error, ToDiagnostic};
 use crate::identifier::Ident;
@@ -95,7 +94,7 @@ impl Program {
         eval::eval_deep(t, &global_env, &mut self.cache).map_err(|e| e.into())
     }
 
-    /// Wrapper for [`query`](./fn.query.html).
+    /// Wrapper for [`query`].
     pub fn query(&mut self, path: Option<String>) -> Result<Term, Error> {
         let global_env = self.cache.prepare_stdlib()?;
         query(&mut self.cache, self.main_id, &global_env, path)
@@ -119,7 +118,7 @@ impl Program {
         Ok(())
     }
 
-    /// Wrapper for [`report`](./fn.report.html).
+    /// Wrapper for [`report`].
     pub fn report<E>(&mut self, error: E)
     where
         E: ToDiagnostic<FileId>,
@@ -183,8 +182,8 @@ pub fn query(
 
 /// Pretty-print an error.
 ///
-/// This function is located here in `Program` because errors need a reference to `files` in
-/// order to produce a diagnostic (see [`label_alt`](../error/fn.label_alt.html)).
+/// This function is located here in `Program` because errors need a reference to `files` in order
+/// to produce a diagnostic (see `crate::error::label_alt`).
 //TODO: not sure where this should go. It seems to embed too much logic to be in `Cache`, but is
 //common to both `Program` and `Repl`. Leaving it here as a stand-alone function for now
 pub fn report<E>(cache: &mut Cache, error: E)

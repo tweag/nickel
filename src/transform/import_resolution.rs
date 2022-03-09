@@ -62,8 +62,7 @@ where
 }
 
 /// Resolve the import if the term is an unresolved import, or return the term unchanged. As
-/// [`share_normal_form::transform_one`](../share_normal_form/fn.transform_one.html), this function
-/// is not recursive.
+/// [`super::share_normal_form::transform_one`], this function is not recursive.
 pub fn transform_one<R>(
     rt: RichTerm,
     resolver: &mut R,

@@ -21,8 +21,8 @@ pub mod share_normal_form;
 /// earlier, as it needs to be done before typechecking.
 ///
 /// Do not perform transformations on the imported files. If needed, either do it yourself using
-/// pending imports returned by [`resolve_imports`](../fn.resolve_imports.html) or use the
-/// [`Cache`](../../cache/struct.Cache.html)
+/// pending imports returned by [`resolve_imports`][import_resolution::resolve_imports] or use the
+/// [cache][crate::cache::Cache].
 pub fn transform(mut rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError> {
     free_vars::transform(&mut rt);
     transform_no_free_vars(rt)
@@ -63,8 +63,8 @@ pub fn fresh_var() -> Ident {
 
 /// Structures which can be packed together with their environment as a closure.
 ///
-/// The typical implementer is [`RichTerm`](../term/enum.RichTerm.html), but structures containing
-/// terms can also be closurizable, such as the contract in a [`Types`](../types/typ.Types.html).
+/// The typical implementer is [`crate::term::RichTerm`], but structures containing
+/// terms can also be closurizable, such as the contract in a [`crate::types::Types`].
 /// In this case, the inner term is closurized.
 pub trait Closurizable {
     /// Pack a closurizable together with its environment `with_env` as a closure in the main

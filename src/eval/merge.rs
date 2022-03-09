@@ -82,8 +82,8 @@ impl Default for MergeMode {
 ///
 /// # Mode
 ///
-/// In `Contract` mode (see [`MergingMode`]()), `t1` must be the value and `t2` must be the
-/// contract. It is important as `merge` is not commutative in this mode.
+/// In [`MergeMode::Contract`] mode, `t1` must be the value and `t2` must be the contract. It is
+/// important as `merge` is not commutative in this mode.
 pub fn merge(
     t1: RichTerm,
     mut env1: Environment,

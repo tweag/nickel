@@ -418,7 +418,7 @@ pub struct Lexer<'input> {
     pub stack: Vec<ModeElt>,
     /// A token that has been buffered and must be returned at the next call to `next()`. This is
     /// made necessary by an issue of Logos (<https://github.com/maciejhirsz/logos/issues/200>). See
-    /// `MultiStringToken::QuotesCandidateInterpolation`.
+    /// [`MultiStringToken::QuotesCandidateInterpolation`].
     pub buffer: Option<(Token<'input>, Range<usize>)>,
 }
 
