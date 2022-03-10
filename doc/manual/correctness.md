@@ -356,8 +356,8 @@ You'll find a in-depth description of the type system and how to use it in the
 cheat-sheet about when to use static typing or contracts, go to
 [Type versus contracts: when to?](./types-vs-contracts.md).
 
-[^1]: This statement is to be nuanced. Using the Nickel LSP server in your
-  editor, for example, does perform checks ahead of time, while you are typing
-  program. You can also perform typechecking separately before distributing a
-  configuration using `nickel typecheck`. However, a source program is not
+[^1]: This statement is to be nuanced. Using the Nickel LSP server in your \
+  editor, for example, does perform checks ahead of time, while you are typing \
+  program. You can also perform typechecking separately before distributing a \
+  configuration using `nickel typecheck`. However, a source program is not \
   guaranteed to have been checked in any way before execution.
