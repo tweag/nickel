@@ -106,6 +106,6 @@
           %record_remove% field r
         else
           r in
-        %record_insert% field r,
+        %record_insert% field r content,
   }
 }
