@@ -94,7 +94,7 @@
         ```nickel
         IsZero = fun label value =>
           if value == 0 then value
-          else contracts.blame label
+          else contract.blame label
         ```
         "%m
       = fun l => %blame% l,
@@ -114,7 +114,7 @@
         ```nickel
         let IsZero = fun label value =>
           if value == 0 then value
-          else contracts.blame_with "Not zero" label in
+          else contract.blame_with "Not zero" label in
         0 | IsZero
         ```
         "%m
@@ -129,7 +129,7 @@
 
         For example:
         ```
-        let IsZero = contracts.from_predicate (fun x => x == 0) in
+        let IsZero = contract.from_predicate (fun x => x == 0) in
         0 | IsZero
         ```
         "%m
@@ -145,11 +145,11 @@
 
         For example:
         ```
-        let ContractNum = contracts.from_predicate (fun x => x > 0 && x < 50) in
+        let ContractNum = contract.from_predicate (fun x => x > 0 && x < 50) in
         Contract = fun label value =>
-          if builtins.is_num value then
+          if builtin.is_num value then
             ContractNum
-              (contracts.tag "num subcontract failed! (out of bound)" label)
+              (contract.tag "num subcontract failed! (out of bound)" label)
               value
           else
             value in
@@ -173,9 +173,9 @@
 
         For example:
         ```
-        let Nullable = fun contract label value =>
+        let Nullable = fun param_contract label value =>
           if value == null then null
-          else contracts.apply contract label value
+          else contract.apply param_contract label value
         in
         let Contract = Nullable {foo | Num} in
         ({foo = 1} | Contract)

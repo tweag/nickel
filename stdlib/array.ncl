@@ -265,7 +265,7 @@
 
         For example:
         ```nickel
-          generate functions.id 4 =>
+          generate function.id 4 =>
             [ 0, 1, 2, 3 ]
         ```
         "%m

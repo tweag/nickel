@@ -82,9 +82,9 @@
 
       For example:
       ```nickel
-        records.has_field ("hello" | Ident) { hello = "hi!" } =>
+        record.has_field ("hello" | Ident) { hello = "hi!" } =>
           true
-        records.has_field ("9" | Ident) { hello = "hi!" } =>
+        record.has_field ("9" | Ident) { hello = "hi!" } =>
           error (invalid enum tag)
       "%m
     = fun l s =>
