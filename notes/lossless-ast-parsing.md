@@ -55,17 +55,28 @@ Of course, rust-analyzer is greatly benefitted by a lossless ast (CSTs as
 they call them). To this extend they created two libraries specifically for
 this purpose. [rowan][rowan] and [ungrammar][ungrammar].
 
-Rowan is a widespread library that has already seen use in existing languages.
-For instance for the
-[slint](https://github.com/slint-ui/slint/) language that make use of rowan for
-their language server and
+Rowan is a library that has been adopted for use in
+[several](https://crates.io/crates/rowan/reverse_dependencies) language servers
+and other programming tools.
+Additionally, there exists at least
+[one language (slin)](https://github.com/slint-ui/slint/) that (aside from a
+language server and formatter) also uses rowan for their
 [compiler](https://github.com/slint-ui/slint/tree/master/internal/compiler).
 Hence we can safely say rowan is likely suitable for nickel.
 
-Ungrammar is a grammar that works to construct the SyntaxNodes as described in
-[syntax overview](https://github.com/rust-analyzer/rust-analyzer/blob/master/docs/dev/syntax.md)
-of rust-analyzer. Ungrammar has not seen use outside of rust-analyzer. I
-personally do not see a need for Nickel to base its SyntaxNodes on ungrammar.
+Ungrammar is "a ... formalism for describing concrete syntax trees". Concretely,
+ungrammar takes a
+[file written in its grammar](https://github.com/rust-analyzer/ungrammar/blob/master/rust.ungram)
+and produces
+[a file](https://github.com/rust-analyzer/rust-analyzer/blob/master/crates/syntax/src/ast/generated/nodes.rs)
+that contains functions used to interact with the GreenNodes/lossess syntax
+tree (typically produced by rowan). Ungrammar has seen limited/no use outside
+of rust-analyzer.
+The main advantage of ungrammar is that it allows the syntax of a language to
+be changed easily without requiring manual changes to the syntax tree. This can
+be a great benefit in the early stages of development when changes to the CST
+are frequent. More on ungrammar can be read in a
+[relevant blogpost](https://rust-analyzer.github.io/blog/2020/10/24/introducing-ungrammar.html).
 
 Since we can no longer use lalrpop, the parser would have to be written by
 hand. Parser combinators are not very suitable to this approach, as many
