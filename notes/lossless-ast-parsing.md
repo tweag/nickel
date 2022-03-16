@@ -106,7 +106,7 @@ to be associated with anything.
 
 ## Tree-sitter?
 In issue [#656](https://github.com/tweag/nickel/issues/656), Yann remarked that
-there are multiple parsers for the nickel language. It would be nice to share a
+there are multiple grammar definitions for the nickel language. It would be nice to share a
 grammar for editors and nickel itself. Tree-sitter's concept is not too far
 removed from rowan (an untyped tree that is easy to update) with similar
 purposes (to ease the creation of development tools). Aside from
