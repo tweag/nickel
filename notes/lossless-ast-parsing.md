@@ -31,10 +31,19 @@ replacing the AST with a [rowan][rowan] based
 alternative. Unfortunately, while it is possible to integrate logos, rowan, and
 lalrpop, comments and whitespace would still be lost. This is an inherent
 problem with lalrpop in which grammar rules match directly on the token input.
-Hence, dealing with whitespace for an operator 4 variants (whitespace optional
-on both sides).
 
-This thus implies that lalrpop has to be replaced.
+# The problem with comments/whitespace
+Above, it was stated that the way lalrpop consumes the token input stream is
+not well suited for a formatter (or other programming tools). This is a general
+problem with parsers that attempt to construct a typed AST directly (there is
+no place for comments in a typed AST. There are ways around this, but they
+broadly fall into two categories:
+1. Don't have a typed AST. For these solutions, an untyped AST is used instead,
+   that is optionally converted to a typed AST when needed.
+2. Lose some information by "intelligently" assigning every comment to a node
+   in the typed AST. The loss in information here means, for instance, that we
+   have to assign a comment surrounded by empty lines to a expression somewhere
+   near it.
 
 # Options
 ## Custom
