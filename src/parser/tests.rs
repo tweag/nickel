@@ -355,10 +355,6 @@ fn multiline_str_escape() {
         parse_without_pos(r##"m%"%Hel%%lo%%%"%m"##),
         mk_single_chunk("%Hel%%lo%%%"),
     );
-    assert_eq!(
-        parse_without_pos(r##"m%"%Hel%%{lo%%%{"%m"##),
-        mk_single_chunk("%Hel%%{lo%%%{"),
-    );
 }
 
 #[test]

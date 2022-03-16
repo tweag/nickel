@@ -520,6 +520,35 @@ impl<'input> Lexer<'input> {
             _ => panic!("lexer::leave_normal"),
         }
     }
+
+    /// Split a candidate interpolation token into a string literal and an interpolation token. Put
+    /// the interpolation token in the buffer to be popped later, and return the literal as the
+    /// next token.
+    ///
+    /// # Precondition
+    ///
+    /// - this function requires `s.len() >= self.count`, or will panic.
+    fn split_candidate_interp(
+        &mut self,
+        s: &'input str,
+        span: Range<usize>,
+    ) -> (Option<Token<'input>>, Range<usize>) {
+        let split_at = s.len() - self.count + 1;
+        let next_token = Token::MultiStr(MultiStringToken::Interpolation);
+        let next_span = Range {
+            start: span.start + split_at,
+            end: span.end,
+        };
+        self.buffer = Some((next_token, next_span));
+
+        let token = Some(Token::MultiStr(MultiStringToken::Literal(&s[0..split_at])));
+        let span = Range {
+            start: span.start,
+            end: span.start + split_at,
+        };
+
+        (token, span)
+    }
 }
 
 impl<'input> Iterator for Lexer<'input> {
@@ -564,11 +593,22 @@ impl<'input> Iterator for Lexer<'input> {
             }
             // If we encounter a `CandidateInterp` token with the right number of characters, this is
             // an interpolation sequence.
+            //
+            // Note that the number of characters may be greater than `count`: in `m"%
+            // %%%{foo} "%m`, the lexer will process `%%%{` as a candidate interpolation with 4
+            // characters, while `count` is 1. In that case, we must emit an `%%` literal and put
+            // an interpolation token in the buffer.
             Some(MultiStr(MultiStringToken::CandidateInterpolation(s)))
-                if s.len() == (self.count - 1) =>
+                if s.len() >= (self.count - 1) =>
             {
-                token = Some(MultiStr(MultiStringToken::Interpolation));
-                self.enter_normal();
+                if s.len() == (self.count - 1) {
+                    token = Some(MultiStr(MultiStringToken::Interpolation));
+                    self.enter_normal();
+                } else {
+                    let (token_fst, span_fst) = self.split_candidate_interp(s, span);
+                    token = token_fst;
+                    span = span_fst;
+                }
             }
             // We never lex something as a `MultiStringToken::Interpolation` directly, but rather
             // generate it in this very function from other tokens. However, such a token could
@@ -587,19 +627,9 @@ impl<'input> Iterator for Lexer<'input> {
             Some(MultiStr(MultiStringToken::QuotesCandidateInterpolation(s)))
                 if s.len() >= self.count =>
             {
-                let split_at = s.len() - self.count + 1;
-                let next_token = MultiStr(MultiStringToken::Interpolation);
-                let next_span = Range {
-                    start: span.start + split_at,
-                    end: span.end,
-                };
-                self.buffer = Some((next_token, next_span));
-
-                token = Some(MultiStr(MultiStringToken::Literal(&s[0..split_at])));
-                span = Range {
-                    start: span.start,
-                    end: span.start + split_at,
-                };
+                let (token_fst, span_fst) = self.split_candidate_interp(s, span);
+                token = token_fst;
+                span = span_fst;
             }
             // Otherwise, it is just part of the string, so we transform the token into a
             // `FalseInterpolation` one

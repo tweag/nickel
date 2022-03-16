@@ -20,5 +20,9 @@ let Assert = fun l x => x || %blame% l in
   let s = "Hello" in m%%""%%{s}" World"%%m == "\"Hello\" World",
   let s = "Hello" in m%%""%%%{s}" World"%%m == "\"%Hello\" World",
   m%%""%%s"%%m == "\"%%s",
+
+  # regression test for issue #659 (https://github.com/tweag/nickel/issues/659)
+  let b = "x" in m%"a%%{b}c"%m == "a%xc",
+  m%"%Hel%%{"1"}lo%%%{"2"}"%m == "%Hel%1lo%%2",
 ]
 |> array.foldl (fun x y => (x | Assert) && y) true
