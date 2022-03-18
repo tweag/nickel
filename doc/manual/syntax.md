@@ -38,7 +38,7 @@ There are a some predefined operators for working with numbers :
 
 > **Remark about the `-` operator:**
 > Since `-` can be used inside an identifier, the subtraction operators **needs** to be surrounded by spaces:
-> write `1 - 1`, not `1-1`.
+> write `a - b`, not `a-b`. `1-2` works as expected, because `1` and `2` are no identifiers.
 
 Numbers can be compared using the following operators :
 | Operator | Description      | Example   |
