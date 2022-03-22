@@ -2,10 +2,13 @@
 use codespan::Files;
 use criterion::Criterion;
 use nickel_lang::{
+    cache::{Cache, ImportResolver},
     error::{Error, ParseError},
+    eval,
     parser::{grammar, lexer},
     program::Program,
     term::{RichTerm, Term},
+    transform::import_resolution,
 };
 
 use std::{io::Cursor, path::PathBuf};
@@ -36,108 +39,143 @@ pub enum EvalMode {
     DeepSeq,
 }
 
-pub fn bench(
-    name: &str,
-    base_dir: &str,
-    subpath: &str,
-    subtest: Option<&str>,
-    iteration: u32,
-    eval_mode: EvalMode,
-    c: &mut Criterion,
-) {
-    bench_args(
-        name,
-        base_dir,
-        subpath,
-        subtest,
-        vec![iteration.to_string()],
-        eval_mode,
-        c,
-    )
-}
-
-pub fn bench_expect<F>(
-    name: &str,
-    base_dir: &str,
-    subpath: &str,
-    subtest: Option<&str>,
-    iteration: u32,
-    eval_mode: EvalMode,
-    pred: F,
-    c: &mut Criterion,
-) where
-    F: Fn(Term) -> bool,
-{
-    bench_args_expect(
-        name,
-        base_dir,
-        subpath,
-        subtest,
-        vec![iteration.to_string()],
-        eval_mode,
-        pred,
-        c,
-    )
-}
-
-pub fn bench_args(
-    name: &str,
-    base_dir: &str,
-    subpath: &str,
-    subtest: Option<&str>,
+pub struct Bench<'b> {
+    name: &'b str,
+    base_dir: &'b str,
+    subpath: &'b str,
+    subtest: Option<&'b str>,
     args: Vec<String>,
     eval_mode: EvalMode,
-    c: &mut Criterion,
-) {
-    bench_args_expect(
-        name,
-        base_dir,
-        subpath,
-        subtest,
-        args,
-        eval_mode,
-        |_| true,
-        c,
-    )
+    pred: Box<dyn Fn(Term) -> bool>,
 }
 
-pub fn bench_args_expect<F>(
-    name: &str,
-    base_dir: &str,
-    subpath: &str,
-    subtest: Option<&str>,
-    args: Vec<String>,
-    eval_mode: EvalMode,
-    pred: F,
-    c: &mut Criterion,
-) where
-    F: Fn(Term) -> bool,
-{
-    let mut path = PathBuf::from(base_dir);
-    path.push(format!("benches/{}.ncl", subpath));
-
-    let field_path = subtest.map(|s| format!(".{}", s)).unwrap_or_default();
-    let content = format!(
-        "(import \"{}\"){}.run {}",
-        path.to_string_lossy(),
-        field_path,
-        args.into_iter()
-            .map(|s| format!("({})", s))
-            .collect::<Vec<String>>()
-            .join(" ")
-    );
-
-    let content = if eval_mode == EvalMode::DeepSeq {
-        format!("%deep_seq% ({}) true", content)
-    } else {
-        content
-    };
-
-    c.bench_function(name, |b| {
-        b.iter_batched_ref(
-            || Program::new_from_source(Cursor::new(content.clone()), name).unwrap(),
-            |p| assert!(pred(p.eval().map(Term::from).unwrap())),
-            criterion::BatchSize::LargeInput,
+impl<'b> Bench<'b> {
+    pub fn bench(
+        name: &'b str,
+        base_dir: &'b str,
+        subpath: &'b str,
+        subtest: Option<&'b str>,
+        iteration: u32,
+        eval_mode: EvalMode,
+    ) -> Self {
+        Self::bench_args(
+            name,
+            base_dir,
+            subpath,
+            subtest,
+            vec![iteration.to_string()],
+            eval_mode,
         )
-    });
+    }
+
+    pub fn bench_expect(
+        name: &'b str,
+        base_dir: &'b str,
+        subpath: &'b str,
+        subtest: Option<&'b str>,
+        iteration: u32,
+        eval_mode: EvalMode,
+        pred: impl Fn(Term) -> bool + 'static,
+    ) -> Self {
+        Self::bench_args_expect(
+            name,
+            base_dir,
+            subpath,
+            subtest,
+            vec![iteration.to_string()],
+            eval_mode,
+            pred,
+        )
+    }
+
+    pub fn bench_args(
+        name: &'b str,
+        base_dir: &'b str,
+        subpath: &'b str,
+        subtest: Option<&'b str>,
+        args: Vec<String>,
+        eval_mode: EvalMode,
+    ) -> Self {
+        Self::bench_args_expect(name, base_dir, subpath, subtest, args, eval_mode, |_| true)
+    }
+
+    pub fn bench_args_expect(
+        name: &'b str,
+        base_dir: &'b str,
+        subpath: &'b str,
+        subtest: Option<&'b str>,
+        args: Vec<String>,
+        eval_mode: EvalMode,
+        pred: impl Fn(Term) -> bool + 'static,
+    ) -> Self {
+        Self {
+            name,
+            base_dir,
+            subpath,
+            subtest,
+            args,
+            eval_mode,
+            pred: Box::new(pred),
+        }
+    }
+
+    pub fn pred(&self, t: Term) -> bool {
+        (self.pred)(t)
+    }
+
+    pub fn term(&self) -> RichTerm {
+        let mut path = self.path();
+
+        let field_path = self.subtest.map(|s| format!(".{}", s)).unwrap_or_default();
+        let content = format!(
+            "(import \"{}\"){}.run {}",
+            path.to_string_lossy(),
+            field_path,
+            self.args
+                .iter()
+                .map(|s| format!("({})", s))
+                .collect::<Vec<String>>()
+                .join(" ")
+        );
+
+        let content = if self.eval_mode == EvalMode::DeepSeq {
+            format!("%deep_seq% ({}) true", content)
+        } else {
+            content
+        };
+        parse(&content).unwrap()
+    }
+
+    pub fn path(&self) -> PathBuf {
+        let mut path = PathBuf::from(self.base_dir);
+        path.push(format!("benches/{}.ncl", self.subpath));
+        path
+    }
+}
+
+pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> {
+    let mut cache = Cache::new();
+    let env = cache.prepare_stdlib().unwrap();
+    let eval_env = env.eval_env.clone();
+    Box::new(move |c: &mut Criterion| {
+        rts.iter().for_each(|bench| {
+            let t = bench.term();
+            c.bench_function(bench.name, |b| {
+                b.iter_batched(
+                    || {
+                        let mut cache = cache.clone();
+                        let id = cache.add_file(bench.path()).unwrap();
+                        let (t, _) =
+                            import_resolution::resolve_imports(t.clone(), &mut cache).unwrap();
+                        (cache, id, t)
+                    },
+                    |(mut c_local, id, t)| {
+                        c_local.prepare(id, &env.type_env).unwrap();
+                        assert!(bench.pred(eval::eval(t, &eval_env, &mut c_local).unwrap().into()))
+                    },
+                    criterion::BatchSize::LargeInput,
+                )
+            });
+        })
+    })
 }
