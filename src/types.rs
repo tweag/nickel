@@ -54,7 +54,7 @@
 use crate::error::{ParseError, ParseErrors, TypecheckError};
 use crate::identifier::Ident;
 use crate::term::make as mk_term;
-use crate::term::{RichTerm, Term};
+use crate::term::{RichTerm, Term, TraverseOrder};
 use crate::{mk_app, mk_fun, mk_switch};
 use std::collections::HashMap;
 use std::fmt;
@@ -365,6 +365,73 @@ impl Types {
             Dyn() | Num() | Bool() | Str() | Var(_) => true,
             Flat(rt) if matches!(*rt.term, Term::Var(_)) => true,
             _ => false,
+        }
+    }
+
+    /// Apply a transformation on a whole type by mapping a faillible function `f` on each node in
+    /// manner as prescribed by the order.
+    /// `f` may return a generic error `E` and use the state `S` which is passed around.
+    pub fn traverse<F, S, E>(
+        self: Types,
+        f: &mut F,
+        state: &mut S,
+        order: TraverseOrder,
+    ) -> Result<Types, E>
+    where
+        F: FnMut(Types, &mut S) -> Result<Types, E>,
+    {
+        let ty = match order {
+            TraverseOrder::TopDown => f(self, state)?,
+            TraverseOrder::BottomUp => self,
+        };
+
+        let abs_ty = match ty.0 {
+            AbsType::Dyn()
+            | AbsType::Num()
+            | AbsType::Bool()
+            | AbsType::Str()
+            | AbsType::Sym()
+            | AbsType::Var(_)
+            | AbsType::RowEmpty()
+            | AbsType::Flat(_) => Ok(ty.0),
+            AbsType::Forall(id, ty_inner) => (*ty_inner)
+                .traverse(f, state, order)
+                .map(|ty| AbsType::Forall(id, Box::new(ty))),
+            AbsType::Enum(ty_inner) => (*ty_inner)
+                .traverse(f, state, order)
+                .map(Box::new)
+                .map(AbsType::Enum),
+            AbsType::StaticRecord(ty_inner) => (*ty_inner)
+                .traverse(f, state, order)
+                .map(Box::new)
+                .map(AbsType::StaticRecord),
+            AbsType::DynRecord(ty_inner) => (*ty_inner)
+                .traverse(f, state, order)
+                .map(Box::new)
+                .map(AbsType::DynRecord),
+            AbsType::Array(ty_inner) => (*ty_inner)
+                .traverse(f, state, order)
+                .map(Box::new)
+                .map(AbsType::Array),
+            AbsType::Arrow(ty1, ty2) => {
+                let ty1 = (*ty1).traverse(f, state, order)?;
+                let ty2 = (*ty2).traverse(f, state, order)?;
+                Ok(AbsType::Arrow(Box::new(ty1), Box::new(ty2)))
+            }
+            AbsType::RowExtend(id, ty_row, tail) => {
+                let ty_row = ty_row
+                    .map(|ty| (*ty).traverse(f, state, order))
+                    .transpose()?;
+                let tail = (*tail).traverse(f, state, order)?;
+                Ok(AbsType::RowExtend(id, ty_row.map(Box::new), Box::new(tail)))
+            }
+        }?;
+
+        let result = Types(abs_ty);
+
+        match order {
+            TraverseOrder::TopDown => Ok(result),
+            TraverseOrder::BottomUp => f(result, state),
         }
     }
 }
