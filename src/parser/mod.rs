@@ -18,6 +18,13 @@ pub mod utils;
 mod tests;
 
 /// Either a term or a toplevel let declaration.
+/// Used exclusively in the REPL to allow the defining of variables without having to specify `in`.
+/// For instance:
+/// ```text
+/// nickel>let foo = 1
+/// nickel>foo
+/// 1
+/// ```
 pub enum ExtendedTerm {
     RichTerm(RichTerm),
     ToplevelLet(Ident, RichTerm),
