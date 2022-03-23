@@ -68,8 +68,8 @@ pub type Environment = GenericEnvironment<Ident, TypeWrapper>;
 /// A structure holding the two typing environments, the global and the local.
 ///
 /// The global typing environment is constructed from the global term environment (see
-/// [`eval`](../eval/fn.eval.html)) which holds the Nickel builtin functions. It is a read-only
-/// shared environment used to retrieve the type of such functions.
+/// [`crate::eval::eval`]) which holds the Nickel builtin functions. It is a read-only shared
+/// environment used to retrieve the type of such functions.
 #[derive(Debug, PartialEq, Clone)]
 pub struct Envs<'a> {
     global: &'a Environment,
@@ -90,8 +90,7 @@ impl<'a> Envs<'a> {
         }
     }
 
-    /// Similar to [`from_global`](./struct.Envs.html#method.from_global), but
-    /// use another `Envs` to provide the global environment.
+    /// Similar to [`Envs::from_global`], but use another `Envs` to provide the global environment.
     pub fn from_envs(envs: &'a Envs) -> Self {
         Envs {
             global: envs.global,
@@ -180,8 +179,8 @@ pub struct State<'a> {
 
 /// Typecheck a term.
 ///
-/// Return the inferred type in case of success. This is just a wrapper that calls
-/// [`type_check_`](fn.type_check_.html) with a fresh unification variable as goal.
+/// Return the inferred type in case of success. This is just a wrapper that calls `type_check_`
+/// with a fresh unification variable as goal.
 ///
 /// Note that this function doesn't recursively typecheck imports (anymore), but just the current
 /// file. It however still needs the resolver to get the apparent type of imports.
@@ -223,16 +222,16 @@ where
     Ok((result, lin))
 }
 
-/// Typecheck a term using the given global typing environment. Same as
-/// [`type_check`](./fun.type_check.html), but it directly takes a global typing environment,
-/// instead of building one from a term environment as `type_check` does.
+/// Typecheck a term using the given global typing environment. Same as [`type_check`], but it
+/// directly takes a global typing environment, instead of building one from a term environment as
+/// `type_check` does.
 ///
 /// This function is used to typecheck an import in a clean environment, when we don't have access
 /// to the original term environment anymore, and hence cannot call `type_check` directly, but we
 /// already have built a global typing environment.
 ///
-/// Return the inferred type in case of success. This is just a wrapper that calls
-/// [`type_check_`](fn.type_check_.html) with a fresh unification variable as goal.
+/// Return the inferred type in case of success. This is just a wrapper that calls `type_check_`
+/// with a fresh unification variable as goal.
 pub fn type_check_in_env(
     t: &RichTerm,
     global: &Environment,
@@ -262,7 +261,7 @@ pub fn type_check_in_env(
 ///
 /// # Arguments
 ///
-/// - `state`: the unification state (see [`State`](struct.State.html)).
+/// - `state`: the unification state (see [`State`]).
 /// - `env`: the typing environment, mapping free variable to types.
 /// - `lin`: The current building linearization of building state `S`
 /// - `linearizer`: A linearizer that can modify the linearization
@@ -711,8 +710,8 @@ fn type_check_<L: Linearizer>(
 /// Determine the type of a let-bound expression, or more generally of any binding (e.g. fields)
 /// that may be stored in a typing environment at some point.
 ///
-/// Call [`apparent_type`](./fn.apparent_type.html) to see if the binding is annotated. If
-/// it is, return this type as a [`TypeWrapper`](./enum.TypeWrapper.html). Otherwise:
+/// Call [`apparent_type`] to see if the binding is annotated. If it is, return this type as a
+/// [`TypeWrapper`]. Otherwise:
 ///     * in non strict mode, we won't (and possibly can't) infer the type of `bound_exp`: just
 ///       return `Dyn`.
 ///     * in strict mode, we will typecheck `bound_exp`: return a new unification variable to be
@@ -734,7 +733,7 @@ fn binding_type(
     }
 }
 
-/// Different kinds of apparent types (see [`apparent_type`](fn.apparent_type.html)).
+/// Different kinds of apparent types (see [`apparent_type`]).
 ///
 /// Indicate the nature of an apparent type. In particular, when in strict mode, the typechecker
 /// throws away approximations as it can do better and infer the actual type of an expression by
@@ -948,7 +947,7 @@ impl From<Types> for TypeWrapper {
 }
 
 /// Look for a binding in a row, or add a new one if it is not present and if allowed by [row
-/// constraints](type.RowConstr.html).
+/// constraints][RowConstr].
 ///
 /// The row may be given as a concrete type or as a unification variable.
 ///
@@ -1151,8 +1150,8 @@ pub fn unify_(
     }
 }
 
-/// Try to unify two row types. Return an [`IllformedRow`](./enum.RowUnifError.html#variant.IllformedRow) error if one of the given type
-/// is not a row type.
+/// Try to unify two row types. Return an [`RowUnifError::IllformedRow`] error if one of the given
+/// type is not a row type.
 pub fn unify_rows(
     state: &mut State,
     t1: AbsType<Box<TypeWrapper>>,
@@ -1229,7 +1228,7 @@ fn to_type(table: &UnifTable, ty: TypeWrapper) -> Types {
 
 /// Type of the parameter controlling instantiation of foralls.
 ///
-/// See [`instantiate_foralls`](./fn.instantiate_foralls.html).
+/// See [`instantiate_foralls`].
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum ForallInst {
     Constant,
@@ -1340,7 +1339,7 @@ pub type RowConstr = HashMap<usize, HashSet<Ident>>;
 
 /// Add a row constraint on a type.
 ///
-/// See [`RowConstr`](type.RowConstr.html).
+/// See [`RowConstr`].
 fn constraint(state: &mut State, x: TypeWrapper, id: Ident) -> Result<(), RowUnifError> {
     match x {
         TypeWrapper::Ptr(p) => match state.table.root(p) {

@@ -8,31 +8,31 @@
 //! The abstract machine is a stack machine composed of the following elements:
 //! - The term being currently evaluated
 //! - The main stack, storing arguments, thunks and pending computations
-//! - A pair of [environments](type.Environment.html), mapping identifiers to [closures](type.Closure.html):
+//! - A pair of [environment][Environment], mapping identifiers to [closures][Closure]:
 //!     * The global environment contains builtin functions accessible from anywhere, and alive
 //!     during the whole evaluation
 //!     * The local environment contains the variables in scope of the current term and is subject
 //!     to garbage collection (currently reference counting based)
-//! - A [callstack](type.CallStack.html), mainly for error reporting purpose
+//! - A [callstack], mainly for error reporting purpose
 //!
 //! Depending on the shape of the current term, the following actions are preformed:
 //!
 //! ## Core calculus
 //! - **Var(id)**: the term bound to `id` in the environment is fetched, and an update thunk is
-//! pushed on the stack to indicate that once this term has been evaluated, the content of the
-//! variable must be updated
+//!   pushed on the stack to indicate that once this term has been evaluated, the content of the
+//!   variable must be updated
 //! - **App(func, arg)**: a closure containing the argument and the current environment is pushed
-//! on the stack, and the applied term `func` is evaluated
+//!   on the stack, and the applied term `func` is evaluated
 //! - **Let(id, term, body)**: `term` is bound to `id` in the environment, and the machine proceeds with the evaluation of the body
 //! - **Fun(id, body)**: Try to pop an argument from the stack. If there is some, we bound it to
-//! `id` in the environment, and proceed with the body of the function. Otherwise, we are done: the
-//! end result is an unapplied function
+//!   `id` in the environment, and proceed with the body of the function. Otherwise, we are done: the
+//!   end result is an unapplied function
 //! - **Thunk on stack**: If the evaluation of the current term is done, and there is one (or
-//! several) thunk on the stack, this means we have to perform an update. Consecutive thunks are
-//! popped from the stack and are updated to point to the current evaluated term.
+//!   several) thunk on the stack, this means we have to perform an update. Consecutive thunks are
+//!   popped from the stack and are updated to point to the current evaluated term.
 //! - **Import**: Import must have been resolved before the evaluation starts. An unresolved import
-//! causes an [`InternalError`](../error/enum.EvalError.html#variant.InternalError). A resolved
-//! import, identified by a `FileId`, is retrieved from the import resolver and evaluation proceeds.
+//!   causes an [`crate::error::EvalError::InternalError`]. A resolved import, identified by a
+//!   `FileId`, is retrieved from the import resolver and evaluation proceeds.
 //!
 //! ## Contracts
 //!
@@ -54,30 +54,30 @@
 //! `op`, the second argument `second` and the current environment, and proceed with the evaluation
 //! of `first`
 //! - **OpFirst on stack**: if the evaluation of the current term is done and there is an `OpFirst`
-//! marker on the stack, then:
+//!   marker on the stack, then:
 //!     1. Extract the saved operator, the second argument and the environment `env2` from the marker
 //!     2. Push an `OpSecond` marker, saving the operator and the evaluated form of the first
 //!        argument with its environment
 //!     3. Proceed with the evaluation of the second argument in environment `env2`
 //! - **OpSecond on stack**: once the second term is evaluated, we can get back the operator and
-//! the first term evaluated, and forward all both arguments evaluated and their respective
-//! environment to the specific implementation of the operator (located in
-//! [operation](../operation/index.html), or in [merge](../merge/index.html) for `merge`).
+//!   the first term evaluated, and forward all both arguments evaluated and their respective
+//!   environment to the specific implementation of the operator (located in [operation], or in
+//!   [merge] for `merge`).
 //!
 //! ## Enriched values
 //!
 //! The evaluation of enriched values is controlled by the parameter `enriched_strict`. If it is
 //! set to true (which is usually the case), the machine tries to extract a simple value from it:
 //!  - **Contract**: raise an error. This usually means that an access to a field was attempted,
-//!  and that this field had a contract to satisfy, but it was never defined.
+//!    and that this field had a contract to satisfy, but it was never defined.
 //!  - **Default(value)**: an access to a field which has a default value. Proceed with the
-//!  evaluation of this value
+//!    evaluation of this value
 //!  - **ContractDefault(type, label, value)**: same as above, but the field also has an attached
-//!  contract.  Proceed with the evaluation of `Assume(type, label, value)` to ensure that the
-//!  default value satisfies this contract.
+//!    contract.  Proceed with the evaluation of `Assume(type, label, value)` to ensure that the
+//!    default value satisfies this contract.
 //!
-//!  If `enriched_strict` is set to false, as it is when evaluating `merge`, the machine does not
-//!  evaluate enriched values further, and consider the term evaluated.
+//! If `enriched_strict` is set to false, as it is when evaluating `merge`, the machine does not
+//! evaluate enriched values further, and consider the term evaluated.
 //!
 //! # Garbage collection
 //!
@@ -177,8 +177,8 @@ pub fn env_add(env: &mut Environment, id: Ident, rt: RichTerm, local_env: Enviro
     env.insert(id, Thunk::new(closure, IdentKind::Let));
 }
 
-/// Evaluate a Nickel term. Wrapper around [eval_closure](fn.eval_closure.html) that starts from an
-/// empty local environment and drops the final environment.
+/// Evaluate a Nickel term. Wrapper around [eval_closure] that starts from an empty local
+/// environment and drops the final environment.
 pub fn eval<R>(
     t0: RichTerm,
     global_env: &Environment,
@@ -272,8 +272,7 @@ where
 ///
 /// Implement the evaluation of the core language, which includes application, thunk update,
 /// evaluation of the arguments of operations, and a few others. The specific implementations of
-/// primitive operations is delegated to the modules [operation](../operation/index.html) and
-/// [merge](../merge/index.html).
+/// primitive operations is delegated to the modules [operation] and [merge].
 ///
 /// # Arguments
 ///

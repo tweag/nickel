@@ -70,8 +70,7 @@ pub mod ty_path {
     /// Return the position span encoded by a type path in the string representation of the
     /// corresponding type.
     ///
-    /// Used in the error reporting of blame errors (see
-    /// [report_ty_path](../error/fn.report_ty_path.html)).
+    /// Used in the error reporting of blame errors (see `crate::error::report_ty_path`).
     ///
     /// # Example
     ///
@@ -198,7 +197,7 @@ pub mod ty_path {
 ///
 /// A label is associated to a contract check (an assume, a promise or a contract as an enriched
 /// value) and contains information to report to the user when a contract fails and a blame occurs.
-/// It includes in particular a [type path](enum.TyPath.html) and a **polarity**.
+/// It includes in particular a [type path][ty_path::Path] and a **polarity**.
 ///
 /// # Polarity
 ///

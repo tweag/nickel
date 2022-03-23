@@ -86,20 +86,20 @@ In other terms, `left & right` is the union of `left` and `right`.
 You can split a configuration into subdomains:
 
 ```nickel
-// file: server.ncl
+# file: server.ncl
 {
     host_name = "example",
     host = "example.org",
     ip_addr = "0.0.0.0",
 }
 
-// file: firewall.ncl
+# file: firewall.ncl
 {
     enable_firewall = true,
     open_ports = [23, 80, 443],
 }
 
-// file: network.ncl
+# file: network.ncl
 let server = import "server.ncl" in
 let firewall = import "firewall.ncl" in
 server & firewall
@@ -122,7 +122,7 @@ This gives:
 Given a configuration, you can use merge to add new fields:
 
 ```nickel
-// file: safe-network.ncl
+# file: safe-network.ncl
 let base = import "network.ncl" in
 base & {use_iptables = true}
 ```
@@ -213,19 +213,19 @@ v1 & v2 = v1    if (type_of(v1) is Num, Bool, Str, Enum or v1 == null)
 ### Example
 
 ```nickel
-// file: udp.ncl
+# file: udp.ncl
 {
-    // same as firewall = {open_ports = {udp = [...]}},
+    # same as firewall = {open_ports = {udp = [...]}},
     firewall.open_ports.udp = [12345,12346],
 }
 
-// file: tcp.ncl
+# file: tcp.ncl
 {
-    // same as firewall = {open_ports = {tcp = [...]}},
+    # same as firewall = {open_ports = {tcp = [...]}},
     firewall.open_ports.tcp = [23, 80, 443],
 }
 
-// firewall.ncl
+# firewall.ncl
 let udp = import "udp.ncl" in
 let tcp = import "tcp.ncl" in
 udp & tcp
@@ -449,7 +449,7 @@ during merging. For example, querying `foo` by using the command `nickel -f
 config.ncl query foo` on:
 
 ```nickel
-// config.ncl
+# config.ncl
 {
   foo | doc "Some documentation"
       | = {}
@@ -516,8 +516,8 @@ let security = {
         @ (if firewall.open_proto.ftp then [21] else [])
         @ (if firewall.open_proto.http then [80] else [])
         @ (if firewall.open_proto.https then [443] else []),
-} in // => security.firewall.open_ports = [21, 80, 443]
-security & {firewall.open_proto.ftp = false} // => firewall.open_ports = [80, 443]
+} in # => security.firewall.open_ports = [21, 80, 443]
+security & {firewall.open_proto.ftp = false} # => firewall.open_ports = [80, 443]
 ```
 
 Here, `security.firewall.open_ports` is `[21, 80, 443]`. But in the returned

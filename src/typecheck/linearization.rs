@@ -13,14 +13,13 @@
 //! # Components
 //!
 //! - [Linearizer]: Implements functionality to record terms (integrated into typechecking)
-//!                 into a temporary [Building] structure and linearize them into a
-//!                 [Completed] Linearization.
+//!                 into a temporary [Linearizer::Building] structure and linearize them into a
+//!                 [Linearizer::Completed] Linearization.
 //!                 Additionally handles registration in different scopes.
 //! - [Linearization]: Linearization in a given state.
 //!                    The state holds context while building or the finalized linearization
 //! - [StubHost]: The purpose of this is to do nothing. It serves as an implementation used
 //!               outside the LSP context meaning to cause as little runtime impact as possible.
-//! - [LinearizationItem]: Abstract information for each term.
 
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
@@ -69,14 +68,6 @@ pub trait LinearizationState {}
 impl LinearizationState for () {}
 impl LinearizationState for Uninit {}
 
-/// Possible resolution states of a LinearizationItem.
-///
-/// [LinearizationItem]s are initialized as [Unresolved] and are
-/// being resolved when completing the linearization
-///
-/// As implementors are used as typestate items of the [LinearizationItem]
-/// to determine the type of the Item.
-
 /// The linearizer trait is what is refered to during typechecking.
 /// It is the interface to recording terms (while tracking their scope)
 /// and finalizing a linearization using generically defined external information
@@ -114,7 +105,7 @@ pub trait Linearizer {
     ) {
     }
 
-    /// Defines how to turn a [Building] Linearization of the tracked type into
+    /// Defines how to turn a [Self::Building] Linearization of the tracked type into
     /// a [Self::Completed] linearization.
     /// By default creates an entirely empty [Self::Completed] object
     fn complete(

@@ -25,16 +25,14 @@ impl NameReg {
 
 /// Create a fresh name candidate for a type variable or a type constant.
 ///
-/// Used by [`to_type_report`](./fn.to_type_report.html) and subfunctions
-/// [`var_to_type`](./fn.var_to_type) and [`cst_to_type`](./fn.cst_to_type) when converting a type
-/// wrapper to a human-readable representation.
+/// Used by [`to_type_report`] and subfunctions `var_to_type` and `cst_to_type` when converting a
+/// type wrapper to a human-readable representation.
 ///
 /// To select a candidate, first check in `names` if the variable or the constant corresponds to a
 /// type variable written by the user. If it is, return the name of the variable. Otherwise, use
 /// the given counter to generate a new single letter.
 ///
-/// Generated name is clearly not necessarily unique. This is handled by
-/// [`select_uniq`](./fn.select_uniq.html).
+/// Generated name is clearly not necessarily unique. This is handled by [`select_uniq`].
 fn mk_name(names: &HashMap<usize, Ident>, counter: &mut usize, id: usize) -> String {
     match names.get(&id) {
         // First check if that constant or variable was introduced by a forall. If it was, try
@@ -54,9 +52,8 @@ fn mk_name(names: &HashMap<usize, Ident>, counter: &mut usize, id: usize) -> Str
 /// Select a name distinct from all the others, starting from a candidate name for a type
 /// variable or a type constant.
 ///
-/// If the name is already taken, it just iterates by adding a numeric suffix `1`, `2`, .., and
-/// so on until a free name is found. See [`var_to_type`](./fn.var_to_type.html) and
-/// [`cst_to_type`](./fn.cst_to_type.html).
+/// If the name is already taken, it just iterates by adding a numeric suffix `1`, `2`, .., and so
+/// on until a free name is found. See `var_to_type` and `cst_to_type`.
 fn select_uniq(name_reg: &mut NameReg, mut name: String, id: usize) -> Ident {
     // To avoid clashing with already picked names, we add a numeric suffix to the picked
     // letter.
@@ -103,9 +100,9 @@ fn cst_to_type(names: &HashMap<usize, Ident>, name_reg: &mut NameReg, c: usize) 
 
 /// Extract a concrete type corresponding to a type wrapper for error reporting.
 ///
-/// Similar to [`to_type`](./fn.to_type.html), excepted that free unification variables and
-/// type constants are replaced by type variables which names are determined by the
-/// [`var_to_type`](./fn.var_to_type.html) and [`cst_to_type`](./fn.cst_tot_type.html).
+/// Similar to [`to_type`], excepted that free unification variables and type constants are
+/// replaced by type variables which names are determined by the `var_to_type` and `cst_to_type`.
+///
 /// Distinguishing occurrences of unification variables and type constants is more informative
 /// than having `Dyn` everywhere.
 pub fn to_type(

@@ -55,8 +55,7 @@ impl InputFormat {
 /// - The term cache, holding parsed terms indexed by `FileId`s.
 ///
 /// Terms possibly undergo typechecking and program transformation. The state of each entry (that
-/// is, the operations that have been performed on this term) is stored in an
-/// [`EntryState`](./enum.EntryState.html).
+/// is, the operations that have been performed on this term) is stored in an [EntryState].
 #[derive(Debug, Clone)]
 pub struct Cache {
     /// The content of the program sources plus imports.
@@ -81,8 +80,8 @@ pub struct GlobalEnv {
     /// The eval environment.
     pub eval_env: eval::Environment,
     /// The typing environment, counterpart of the eval environment for typechecking. Entries are
-    /// [`TypeWrapper`](../typecheck/enum.TypeWrapper.html) for the ease of interacting with the
-    /// typechecker, but there are not any unification variable in it.
+    /// [crate::typecheck::TypeWrapper] for the ease of interacting with the typechecker, but there
+    /// are not any unification variable in it.
     pub type_env: typecheck::Environment,
 }
 
@@ -191,7 +190,7 @@ impl<E> CacheError<E> {
 /// Return status indicating if an import has been resolved from a file (first encounter), or was
 /// retrieved from the cache.
 ///
-/// See [`resolve`](./trait.ImportResolver.html#tymethod.resolve).
+/// See [ImportResolver::resolve].
 #[derive(Debug, PartialEq)]
 pub enum ResolvedTerm {
     FromFile {
@@ -223,8 +222,8 @@ impl Cache {
             .map(|_| self.files.add(path, buffer))
     }
 
-    /// Same as [`add_file`](#method.add_file), but assume that the path is already normalized,
-    /// and take the timestamp as a parameter.
+    /// Same as [Self::add_file], but assume that the path is already normalized, and take the
+    /// timestamp as a parameter.
     fn add_file_(
         &mut self,
         path: impl Into<OsString>,
@@ -255,8 +254,8 @@ impl Cache {
         self.add_file_(normalized, timestamp)
     }
 
-    /// Same as [`get_or_add_file`](#method.get_or_add_file), but assume that the path is already
-    /// normalized, and take the timestamp as a parameter.
+    /// Same as [get_or_add_file], but assume that the path is already normalized, and take the
+    /// timestamp as a parameter.
     fn get_or_add_file_(
         &mut self,
         path: impl Into<OsString>,
@@ -482,10 +481,10 @@ impl Cache {
     /// Apply program transformations to all the fields of a record.
     ///
     /// Used to transform stdlib modules and other records loaded in the environment, when using
-    /// e.g. the `load` command of the REPL. If one just uses [`transform`](#method.transform), the
-    /// share normal form transformation would add let bindings to a record entry `{ ... }`,
-    /// turning it into `let %0 = ... in ... in { ... }`. But stdlib entries are required to be
-    /// syntactically records.
+    /// e.g. the `load` command of the REPL. If one just uses [Self::transform], the share normal
+    /// form transformation would add let bindings to a record entry `{ ... }`, turning it into
+    /// `let %0 = ... in ... in { ... }`. But stdlib entries are required to be syntactically
+    /// records.
     ///
     /// Note that this requirement may be relaxed in the future by e.g. evaluating stdlib entries
     /// before adding their fields to the global environment.
@@ -662,8 +661,9 @@ impl Cache {
         Ok(result)
     }
 
-    /// Same as [`prepare`](#method.prepare), but do not use nor populate the cache. Used for
-    /// inputs which are known to not be reused.
+    /// Same as [Self::prepare], but do not use nor populate the cache. Used for inputs which are
+    /// known to not be reused.
+    ///
     /// In this case, the caller has to process the imports themselves as needed:
     /// - typechecking
     /// - resolve imports performed inside these imports.
@@ -690,9 +690,8 @@ impl Cache {
 
     /// Retrieve the id of a source given a name.
     ///
-    /// Note that files added via [`add_file`](#method.add_file) are indexed by their full
-    /// normalized path (cf [`normalize_path`](./fn.normalize_path.html)). When querying file,
-    /// rather use [`id_of_file`](#method.id_of_file).
+    /// Note that files added via [Self::add_file] are indexed by their full normalized path (cf
+    /// [normalize_path]). When querying file, rather use [Self::id_of_file].
     pub fn id_of(&self, name: impl AsRef<OsStr>) -> Option<FileId> {
         self.file_ids.get(name.as_ref()).map(|entry| entry.id)
     }
@@ -709,8 +708,8 @@ impl Cache {
         Ok(self.id_of_file_(normalized, timestamp))
     }
 
-    /// Retrieve the id of a file given a path. Same as [`id_of_file`](#method.id_of_file), but assume
-    /// that the given path is already normalized and take the timestamp as a parameter.
+    /// Retrieve the id of a file given a path. Same as [Self::id_of_file], but assume that the
+    /// given path is already normalized and take the timestamp as a parameter.
     fn id_of_file_(&self, path: impl AsRef<OsStr>, timestamp: SystemTime) -> Option<FileId> {
         self.file_ids
             .get(path.as_ref())
@@ -727,7 +726,7 @@ impl Cache {
     }
 
     /// Get a mutable reference to the underlying files. Required by
-    /// [`to_diagnostic`](../error/trait.ToDiagnostic.html#tymethod.to_diagnostic).
+    /// [crate::error::ToDiagnostic::to_diagnostic].
     pub fn files_mut(&mut self) -> &mut Files<String> {
         &mut self.files
     }
@@ -914,9 +913,8 @@ pub trait ImportResolver {
     /// Indeed, at import resolution phase, the term of an import encountered for the first time is
     /// queued to be processed (e.g. having its own imports resolved). The path is needed to
     /// resolve nested imports relatively to this parent. Only after this processing the term is
-    /// inserted back in the cache via [`insert`](#method.insert). On the other hand, if it has
-    /// been resolved before, it is already transformed in the cache and do not need further
-    /// processing.
+    /// inserted back in the cache. On the other hand, if it has been resolved before, it is
+    /// already transformed in the cache and do not need further processing.
     fn resolve(
         &mut self,
         path: &OsStr,

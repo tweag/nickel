@@ -342,7 +342,7 @@ impl TryFrom<UniRecord> for Types {
 /// we have to wait until we eventually convert the unirecord to a term (in which case we fix all the
 /// top-level annotations) or a type (in which case we do nothing: the enclosing type will trigger
 /// the fix once it's fully constructed). Fixing a unirecord prior to a conversion to a term is
-/// done by [`fix_fields_types`].
+/// done by [`fix_field_types`].
 pub fn fix_type_vars(ty: &mut Types) {
     fn fix_type_vars_aux(ty: &mut Types, mut bound_vars: Cow<HashSet<Ident>>) {
         match ty.0 {

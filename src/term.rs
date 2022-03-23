@@ -14,8 +14,8 @@
 //!
 //! Enriched values are special terms used to represent metadata about record fields: types or
 //! contracts, default values, documentation, etc. They bring such usually external object down to
-//! the term level, and together with [merge](../merge/index.html), they allow for flexible and
-//! modular definitions of contracts, record and metadata all together.
+//! the term level, and together with [crate::eval::merge], they allow for flexible and modular
+//! definitions of contracts, record and metadata all together.
 use crate::destruct::Destruct;
 use crate::identifier::Ident;
 use crate::label::Label;
@@ -33,7 +33,7 @@ use std::rc::Rc;
 /// The AST of a Nickel expression.
 ///
 /// Parsed terms also need to store their position in the source for error reporting.  This is why
-/// this type is nested with [`RichTerm`](type.RichTerm.html).
+/// this type is nested with [`RichTerm`].
 ///
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -165,12 +165,12 @@ impl From<MetaValue> for Term {
 
 /// Type of let-binding. This only affects run-time behavior. Revertible bindings introduce
 /// revertible thunks at evaluation, which are devices used for the implementation of recursive
-/// records merging. See the [`merge`] and [`eval`] modules for more details.
+/// records merging. See the [`crate::eval::merge`] and [`crate::eval`] modules for more details.
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub enum BindingType {
     Normal,
     /// In the revertible case, we also store an optional set of dependencies. See
-    /// [`transform::free_vars`] for more details.
+    /// [`crate::transform::free_vars`] for more details.
     Revertible(FieldDeps),
 }
 
@@ -710,7 +710,7 @@ pub enum UnaryOp {
     Pol(),
     /// Go to the domain in the type path of a label.
     ///
-    /// If the argument is a label with a [type path](../label/enum.TyPath.html) representing some
+    /// If the argument is a label with a [type path][crate::label::TyPath) representing some
     /// subtype of the type of the original contract, as in:
     ///
     /// ```text
@@ -736,7 +736,7 @@ pub enum UnaryOp {
     /// See `GoDom`.
     GoArray(),
 
-    /// Wrap a term with a type tag (see `Wrapped` in [`Term`](enum.Term.html)).
+    /// Wrap a term with a type tag (see [`Term::Wrapped`]).
     Wrap(),
 
     /// Force the evaluation of its argument and proceed with the second.
@@ -830,7 +830,7 @@ pub enum BinaryOp {
     Assume(),
     /// Unwrap a tagged term.
     ///
-    /// See `Wrap` in [`UnaryOp`](enum.UnaryOp.html).
+    /// See [`UnaryOp::Wrap`].
     Unwrap(),
     /// Go to a specific field in the type path of a label.
     ///
@@ -855,7 +855,7 @@ pub enum BinaryOp {
     ArrayConcat(),
     /// Access the n-th element of an array.
     ArrayElemAt(),
-    /// The merge operator (see the [merge module](../merge/index.html)).
+    /// The merge operator (see [crate::eval::merge]).
     Merge(),
 
     /// Hash a string.
@@ -891,15 +891,12 @@ impl BinaryOp {
 pub enum NAryOp {
     /// Replace a substring by another one in a string.
     StrReplace(),
-    /// Same as [`StrReplace()`], but the pattern is interpreted as a regular expression.
-    ///
-    /// [`StrReplace()`]: NAryOp::StrReplace
+    /// Same as [`NAryOp::StrReplace`], but the pattern is interpreted as a regular expression.
     StrReplaceRegex(),
     /// Return a substring of an original string.
     StrSubstr(),
-    /// The merge operator in contract mode (see the [merge module](../merge/index.html)). The
-    /// arguments are in order the contract's label, the value to check, and the contract as a
-    /// record.
+    /// The merge operator in contract mode (see [crate::eval::merge]). The arguments are in order
+    /// the contract's label, the value to check, and the contract as a record.
     MergeContract(),
 }
 
@@ -935,7 +932,7 @@ pub enum TraverseOrder {
     BottomUp,
 }
 
-/// Wrap [terms](type.Term.html) with positional information.
+/// Wrap [Term] with positional information.
 #[derive(Debug, PartialEq, Clone)]
 pub struct RichTerm {
     pub term: SharedTerm,

@@ -263,7 +263,8 @@ Records are key-value storage, or in Nickel terms, field-value storage. They are
 Field-value elements are noted as `field = value`.
 The fields are strings, but can be written without quotes `"` if they respect identifiers syntax. Values can be of any type.
 Elements inside a record are unordered.
-Two records can be _merged_ together using the operator `&`. The reader can find more information about merging in the relevant documentation.
+Two records can be _merged_ together using the operator `&`. The reader can find
+more information about merging in the [section on merging](./merging.md).
 
 Examples:
 ```nickel

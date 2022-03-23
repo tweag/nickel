@@ -82,7 +82,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                 // the sare normal form transformation ensure the following post-condition: the
                 // fields of recursive records contain either a constant or a *generated* variable,
                 // but never a user-supplied variable directly (the former starts with a special
-                // marker). See comments inside [`RichTerm::closurize`] for more details.
+                // marker). See comments inside [`crate::RichTerm::closurize`] for more details.
                 let mut bindings = Vec::with_capacity(map.len());
 
                 fn mk_binding_type(field_deps: Option<HashSet<Ident>>) -> BindingType {

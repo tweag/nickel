@@ -65,7 +65,8 @@ nickel-lang-utilities = {path = "utilities", version = "0.1.0"}
 [workspace]
 members = [
     ".",
-    "lsp/nls"
+    "lsp/nls",
+    "utilities",
 ]
 
 # Enable this to use flamegraphs

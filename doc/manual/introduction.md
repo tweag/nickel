@@ -81,7 +81,7 @@ to be used in production. The next steps we plan to work on are:
 - Nix integration: being able to seamlessly use Nickel to write shells, packages
   and NixOS modules.
 - Custom merge functions and priorities (second part of the
-  [overriding proposal](https://github.com/tweag/nickel/blob/9fd6e436c0db8f101d4eb26cf97c4993357a7c38/rfcs/001-overriding.md)
+  [overriding proposal](https://github.com/tweag/nickel/blob/9fd6e436c0db8f101d4eb26cf97c4993357a7c38/rfcs/001-overriding.md))
 - Performance improvements
 
 ## Content

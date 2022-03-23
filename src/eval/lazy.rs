@@ -7,13 +7,15 @@ use std::rc::{Rc, Weak};
 
 /// The state of a thunk.
 ///
-/// When created, a thunk is flagged as suspended. When accessed for the first time, a corresponding
-/// [`ThunkUpdateFrame`](./struct.ThunkUpdateFrame.html) is pushed on the stack and the thunk is
-/// flagged as black-hole. This prevents direct infinite recursions, since if a thunk is
-/// re-accessed while still in a black-hole state, we are sure that the evaluation will loop, and
-/// we can thus error out before overflowing the stack or looping forever. Finally, once the
-/// content of a thunk has been evaluated, the thunk is updated with the new value and flagged as
-/// evaluated, so that future accesses won't even push an update frame on the stack.
+/// When created, a thunk is flagged as suspended. When accessed for the first time, a
+/// corresponding [ThunkUpdateFrame] is pushed on the stack and the thunk is flagged as
+/// black-hole.
+///
+/// This prevents direct infinite recursions, since if a thunk is re-accessed while still in a
+/// black-hole state, we are sure that the evaluation will loop, and we can thus error out before
+/// overflowing the stack or looping forever. Finally, once the content of a thunk has been
+/// evaluated, the thunk is updated with the new value and flagged as evaluated, so that future
+/// accesses won't even push an update frame on the stack.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum ThunkState {
     Blackholed,
@@ -33,7 +35,7 @@ pub struct ThunkData {
 /// - A revertible thunk, that can be restored to its original expression. Used to implement
 ///   recursive merging of records and overriding (see the
 ///   [RFC overriding](https://github.com/tweag/nickel/pull/330)). A revertible thunks optionally
-///   stores the set of recusive fields it depends on. See the [`transform::free_vars`] for more
+///   stores the set of recusive fields it depends on. See the [`crate::transform::free_vars`] for more
 ///   details.
 #[derive(Clone, Debug, PartialEq)]
 pub enum InnerThunkData {
@@ -124,7 +126,7 @@ impl ThunkData {
         }
     }
 
-    /// Return the potential field dependencies stored in a revertible thunk. See [`transform::free_vars`]
+    /// Return the potential field dependencies stored in a revertible thunk. See [`crate::transform::free_vars`]
     pub fn deps(&self) -> ThunkDeps {
         match self.inner {
             InnerThunkData::Standard(_) => ThunkDeps::Empty,
@@ -246,7 +248,7 @@ impl Thunk {
     }
 
     /// Return a clone of the potential field dependencies stored in a revertible thunk. See
-    /// [`transform::free_vars`].
+    /// [`crate::transform::free_vars`].
     pub fn deps(&self) -> ThunkDeps {
         self.data.borrow().deps().clone()
     }

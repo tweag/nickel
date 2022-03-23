@@ -37,7 +37,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a RichTerm)>>(
 /// For each field, retrieve the set set of dependencies from the corresponding thunk in the
 /// environment, and only add those dependencies to the environment. This avoid retaining
 /// reference-counted pointers to unused data. If no dependencies are available, conservatively add
-/// all the recursive environment. See [`transform::free_var`].
+/// all the recursive environment. See [`crate::transform::free_vars`].
 pub fn patch_field(
     rt: &RichTerm,
     rec_env: &Vec<(Ident, Thunk)>,

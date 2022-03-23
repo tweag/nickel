@@ -57,7 +57,7 @@ pub trait Repl {
     fn eval_full(&mut self, exp: &str) -> Result<EvalResult, Error>;
     /// Load the content of a file in the environment. Return the loaded record.
     fn load(&mut self, path: impl AsRef<OsStr>) -> Result<RichTerm, Error>;
-    /// Typecheck an expression and return its [apparent type](../typecheck/fn.apparent_type.html).
+    /// Typecheck an expression and return its [apparent type][crate::typecheck::ApparentType].
     fn typecheck(&mut self, exp: &str) -> Result<Types, Error>;
     /// Query the metadata of an expression.
     fn query(&mut self, exp: &str) -> Result<Term, Error>;

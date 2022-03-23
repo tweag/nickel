@@ -30,7 +30,7 @@ pub enum RowUnifError {
     /// typechecking algorithm. We let it as an error for now, but it could be removed in the
     /// future.
     IllformedRow(TypeWrapper),
-    /// A [row constraint](./type.RowConstr.html) was violated.
+    /// A [row constraint][super::RowConstr] was violated.
     UnsatConstr(Ident, Option<TypeWrapper>),
     /// Tried to unify a type constant with another different type.
     WithConst(usize, TypeWrapper),
@@ -44,9 +44,9 @@ impl RowUnifError {
     /// Convert a row unification error to a unification error.
     ///
     /// There is a hierarchy between error types, from the most local/specific to the most high-level:
-    /// - [`RowUnifError`](./enum.RowUnifError.html)
-    /// - [`UnifError`](./enum.UnifError.html)
-    /// - [`TypecheckError`](../errors/enum.TypecheckError.html)
+    /// - [`RowUnifError`]
+    /// - [`UnifError`]
+    /// - [`crate::error::TypecheckError`]
     ///
     /// Each level usually adds information (such as types or positions) and group different
     /// specific errors into most general ones.
@@ -91,7 +91,7 @@ pub enum UnifError {
     /// A row was ill-formed.
     IllformedRow(TypeWrapper),
     /// Tried to unify a unification variable with a row type violating the [row
-    /// constraints](./type.RowConstr.html) of the variable.
+    /// constraints][super::RowConstr] of the variable.
     RowConflict(Ident, Option<TypeWrapper>, TypeWrapper, TypeWrapper),
     /// Tried to unify a type constant with another different type.
     WithConst(usize, TypeWrapper),
@@ -112,8 +112,8 @@ pub enum UnifError {
 impl UnifError {
     /// Convert a unification error to a typechecking error.
     ///
-    /// Wrapper that calls [`to_typecheck_err_`](./fn.to_typecheck_err_.html) with an empty [name
-    /// registry](./reporting/struct.NameReg.html).
+    /// Wrapper that calls [`Self::into_typecheck_err_`] with an empty [name
+    /// registry][reporting::NameReg].
     pub fn into_typecheck_err(self, state: &State, pos_opt: TermPos) -> TypecheckError {
         self.into_typecheck_err_(state, &mut reporting::NameReg::new(), pos_opt)
     }
@@ -121,9 +121,9 @@ impl UnifError {
     /// Convert a unification error to a typechecking error.
     ///
     /// There is a hierarchy between error types, from the most local/specific to the most high-level:
-    /// - [`RowUnifError`](./enum.RowUnifError.html)
-    /// - [`UnifError`](./enum.UnifError.html)
-    /// - [`TypecheckError`](../errors/enum.TypecheckError.html)
+    /// - [`RowUnifError`]
+    /// - [`UnifError`]
+    /// - [`crate::error::TypecheckError`]
     ///
     /// Each level usually adds information (such as types or positions) and group different
     /// specific errors into most general ones.
@@ -132,7 +132,7 @@ impl UnifError {
     ///
     /// - `state`: the state of unification. Used to access the unification table, and the original
     /// names of of unification variable or type constant.
-    /// - `names`: a [name registry](./reporting/struct.NameReg.html), structure used to assign
+    /// - `names`: a [name registry][reporting::NameReg], structure used to assign
     /// unique a humain-readable names to unification variables and type constants.
     /// - `pos_opt`: the position span of the expression that failed to typecheck.
     pub fn into_typecheck_err_(
