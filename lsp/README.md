@@ -58,15 +58,19 @@ nix-env -f . -i
 
 ### Using Cargo
 
-If you already have a working [`cargo`](https://doc.rust-lang.org/cargo/) installation, you can make `nls` available
-globally (it will be built and stored inside the repository) without
-Nix:
+If you already have a working [`cargo`](https://doc.rust-lang.org/cargo/)
+installation, you can make `nls` available globally without Nix:
 
 ```
-git clone https://github.com/tweag/nickel.git
-cd nickel/lsp/nls
-cargo install --path .
+cargo install nickel-lang-lsp
 ```
+
+**WARNING**: the 0.1.0 version of the NLS crate
+([nickel-lang-lsp](https://crates.io/crates/nickel-lang-lsp)) doesn't
+correctly define the name of the binary as `nls`. If you can't find `nls` after
+a successful cargo installation, try to run `nickel-lang-lsp --version`. If this
+command is available, you'll have to substitute `nls` for `nickel-lang-lsp` in
+the instructions that follow.
 
 ## Interfacing with editors
 

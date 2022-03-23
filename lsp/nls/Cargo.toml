@@ -9,6 +9,10 @@ repository = "https://github.com/tweag/nickel"
 keywords = ["nickel", "configuration", "language", "lsp"]
 edition = "2018"
 
+[[bin]]
+name = "nls"
+path = "src/main.rs"
+
 [build-dependencies]
 lalrpop = "0.19.6"
 
