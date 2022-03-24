@@ -119,6 +119,10 @@ pub fn merge(
 
     match (t1.into_owned(), t2.into_owned()) {
         // Merge is idempotent on basic terms
+        (Term::Null, Term::Null) => Ok(Closure::atomic_closure(RichTerm::new(
+            Term::Null,
+            pos_op.into_inherited(),
+        ))),
         (Term::Bool(b1), Term::Bool(b2)) => {
             if b1 == b2 {
                 Ok(Closure::atomic_closure(RichTerm::new(
@@ -219,6 +223,9 @@ pub fn merge(
                 ))
             }
         }
+        (Term::Array(arr1), Term::Array(arr2)) if arr1.is_empty() && arr2.is_empty() => Ok(
+            Closure::atomic_closure(RichTerm::new(Term::Array(arr1), pos_op.into_inherited())),
+        ),
         (Term::MetaValue(meta1), Term::MetaValue(meta2)) => {
             // For now, we blindly closurize things and copy environments in this section. A
             // careful analysis would make it possible to spare a few closurize operations and more

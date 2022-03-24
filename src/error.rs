@@ -951,13 +951,13 @@ impl ToDiagnostic<FileId> for EvalError {
                 // (either variable or field) as the name of the missing field.
                 let mut field: Option<String> = None;
                 let mut pos_record = TermPos::None;
-                let mut pos_access: Option<TermPos> = None;
+                let mut pos_access = TermPos::None;
 
                 for elt in callstack.as_ref().iter().rev() {
                     match elt {
                         StackElem::Var { id, pos, .. } if !id.is_generated() && field.is_none() => {
                             field = Some(id.to_string());
-                            pos_access = Some(*pos);
+                            pos_access = *pos;
                         }
                         StackElem::Field {
                             id,
@@ -965,8 +965,8 @@ impl ToDiagnostic<FileId> for EvalError {
                             pos_access: pos_acc,
                             ..
                         } => {
-                            field.get_or_insert(id.to_string());
-                            pos_access.get_or_insert(*pos_acc);
+                            field = Some(id.to_string());
+                            pos_access = *pos_acc;
                             pos_record = *pos_rec;
                             break;
                         }
@@ -980,7 +980,7 @@ impl ToDiagnostic<FileId> for EvalError {
                     labels.push(primary(&span).with_message("in this record"));
                 }
 
-                if let Some(span) = pos_access.map(TermPos::into_opt).flatten() {
+                if let Some(span) = pos_access.into_opt() {
                     labels.push(secondary(&span).with_message("accessed here"));
                 }
 
