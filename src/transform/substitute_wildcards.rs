@@ -4,12 +4,12 @@
 //! with a concrete type.  If this is the case, this pass will substitute these wildcards with
 //! the type inferred during type checking.  Otherwise, wildcards will be substituted with
 //! `Dyn`.
-use std::rc::Rc;
+use std::{convert::Infallible, rc::Rc};
 
 use crate::{
     label::Label,
     match_sharedterm,
-    term::{Contract, MetaValue, RichTerm, Term},
+    term::{Contract, MetaValue, RichTerm, Term, TraverseOrder},
     typecheck::Wildcards,
     types::{AbsType, Types},
 };
@@ -21,34 +21,21 @@ pub fn transform_one(rt: RichTerm, wildcards: &Wildcards) -> RichTerm {
     match_sharedterm! {rt.term,
         with {
             Term::MetaValue(meta @ MetaValue {
-                types:
-                    Some(Contract {
-                        types: Types(AbsType::Wildcard(_)),
-                        ..
-                    }),
+                types: Some(_),
                 ..
             }) => {
                 let mut meta = meta;
                 let Contract { types, label } = meta.types.take().unwrap();  // Safe, we know there's a type
 
-                // Replace the type annotation
-                let types = if let Types(AbsType::Wildcard(id)) = types {
-                    get_wildcard_type(wildcards, id)
-                } else {
-                    types
-                };
+                // Replace the type annotation and the blame label
+                let types = substitute_wildcards_recursively(types, wildcards);
+                let label_types = substitute_wildcards_recursively(label.types.as_ref().clone(), wildcards);
 
-                // Replace the blame label
                 let label = Label {
-                    types: if let Types(AbsType::Wildcard(id)) = label.types.as_ref() {
-                        Rc::new(get_wildcard_type(wildcards, *id))
-                    } else {
-                        label.types
-                    },
+                    types: Rc::new(label_types),
                     ..label
                 };
-
-                meta.types.replace(Contract { types, label });
+                meta.types = Some(Contract { types, label });
 
                 RichTerm::new(Term::MetaValue(meta), pos)
             }
@@ -58,5 +45,21 @@ pub fn transform_one(rt: RichTerm, wildcards: &Wildcards) -> RichTerm {
 
 /// Get the inferred type for a wildcard, or Dyn if no type was inferred.
 fn get_wildcard_type(wildcards: &Wildcards, id: usize) -> Types {
-    wildcards.get(&id).cloned().unwrap_or(Types(AbsType::Dyn()))
+    wildcards.get(id).cloned().unwrap_or(Types(AbsType::Dyn()))
+}
+
+/// Recursively substitutes wildcards for their inferred type inside a given type.
+fn substitute_wildcards_recursively(ty: Types, wildcards: &Wildcards) -> Types {
+    ty.traverse::<_, _, Infallible>(
+        &mut |ty, _| {
+            if let Types(AbsType::Wildcard(id)) = ty {
+                Ok(get_wildcard_type(wildcards, id))
+            } else {
+                Ok(ty)
+            }
+        },
+        &mut (),
+        TraverseOrder::TopDown,
+    )
+    .unwrap()
 }

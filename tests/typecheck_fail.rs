@@ -4,11 +4,12 @@ use nickel_lang::cache::resolvers::DummyResolver;
 use nickel_lang::error::TypecheckError;
 use nickel_lang::parser::{grammar, lexer};
 use nickel_lang::term::RichTerm;
-use nickel_lang::typecheck::{type_check_in_env, Environment, Wildcards};
-use nickel_lang::types::{AbsType, Types};
+use nickel_lang::typecheck::{type_check_in_env, Environment, TypeCheckingOutput};
+use nickel_lang::types::Types;
 
 fn type_check(rt: &RichTerm) -> Result<Types, TypecheckError> {
-    type_check_in_env(rt, &Environment::new(), &mut DummyResolver {}).map(|(t, _)| t)
+    type_check_in_env(rt, &Environment::new(), &mut DummyResolver {})
+        .map(|TypeCheckingOutput { types, .. }| types)
 }
 
 fn type_check_expr(s: impl std::string::ToString) -> Result<Types, TypecheckError> {

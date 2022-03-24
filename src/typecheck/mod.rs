@@ -66,7 +66,7 @@ use operation::{get_bop_type, get_nop_type, get_uop_type};
 pub type Environment = GenericEnvironment<Ident, TypeWrapper>;
 
 /// Mapping from wildcard ID to inferred type
-pub type Wildcards = HashMap<usize, Types>;
+pub type Wildcards = Vec<Types>;
 
 /// A structure holding the two typing environments, the global and the local.
 ///
@@ -179,7 +179,15 @@ pub struct State<'a> {
     /// Used for error reporting.
     names: &'a mut HashMap<usize, Ident>,
     /// A mapping from wildcard ID to unification variable.
-    wildcard_vars: &'a mut HashMap<usize, TypeWrapper>,
+    wildcard_vars: &'a mut Vec<TypeWrapper>,
+}
+
+/// The result of type checking a term.
+pub struct TypeCheckingOutput {
+    /// Inferred type of the term.
+    pub types: Types,
+    /// Inferred types of wildcards within the term.
+    pub wildcards: Wildcards,
 }
 
 /// Typecheck a term.
@@ -194,14 +202,14 @@ pub fn type_check<LL>(
     global_env: &Environment,
     resolver: &impl ImportResolver,
     mut linearizer: LL,
-) -> Result<(Types, LL::Completed, Wildcards), TypecheckError>
+) -> Result<(TypeCheckingOutput, LL::Completed), TypecheckError>
 where
     LL: Linearizer<CompletionExtra = (UnifTable, HashMap<usize, Ident>)>,
 {
     let (mut table, mut names) = (UnifTable::new(), HashMap::new());
     let mut building = Linearization::new(LL::Building::default());
     let ty = table.fresh_unif_var();
-    let mut wildcard_vars = HashMap::new();
+    let mut wildcard_vars = vec![];
 
     {
         let mut state: State = State {
@@ -223,12 +231,13 @@ where
         )?;
     }
 
-    let wildcards = wildcard_vars_to_type(wildcard_vars, &table);
-
-    let result = to_type(&table, ty);
+    let result = TypeCheckingOutput {
+        types: to_type(&table, ty),
+        wildcards: wildcard_vars_to_type(wildcard_vars, &table),
+    };
     let lin = linearizer.complete(building, (table, names)).into_inner();
 
-    Ok((result, lin, wildcards))
+    Ok((result, lin))
 }
 
 /// Typecheck a term using the given global typing environment. Same as [`type_check`], but it
@@ -245,10 +254,10 @@ pub fn type_check_in_env(
     t: &RichTerm,
     global: &Environment,
     resolver: &dyn ImportResolver,
-) -> Result<(Types, Wildcards), TypecheckError> {
+) -> Result<TypeCheckingOutput, TypecheckError> {
     let mut table = UnifTable::new();
     let ty = table.fresh_unif_var();
-    let mut wildcard_vars = HashMap::new();
+    let mut wildcard_vars = vec![];
 
     {
         let mut state: State = State {
@@ -270,10 +279,10 @@ pub fn type_check_in_env(
         )?;
     }
 
-    Ok((
-        to_type(&table, ty),
-        wildcard_vars_to_type(wildcard_vars, &table),
-    ))
+    Ok(TypeCheckingOutput {
+        types: to_type(&table, ty),
+        wildcards: wildcard_vars_to_type(wildcard_vars, &table),
+    })
 }
 
 /// Typecheck a term against a specific type.
@@ -824,7 +833,7 @@ pub fn apparent_type(
         Term::MetaValue(MetaValue {
             types: Some(Contract { types: ty, .. }),
             ..
-        }) if !ty.0.is_wildcard() => ApparentType::Annotated(ty.clone()),
+        }) => ApparentType::Annotated(ty.clone()),
         // For metavalues, if there's no type annotation, choose the first contract appearing.
         Term::MetaValue(MetaValue { contracts, .. }) if !contracts.is_empty() => {
             ApparentType::Annotated(contracts.get(0).unwrap().types.clone())
@@ -1062,17 +1071,7 @@ pub fn unify_(
         // If either type is a wildcard, unify with the associated type var
         (TypeWrapper::Concrete(AbsType::Wildcard(id)), ty2)
         | (ty2, TypeWrapper::Concrete(AbsType::Wildcard(id))) => {
-            let ty1 = {
-                let State {
-                    table,
-                    wildcard_vars,
-                    ..
-                } = state;
-                wildcard_vars
-                    .entry(id)
-                    .or_insert_with(|| table.fresh_unif_var())
-                    .clone()
-            };
+            let ty1 = get_wildcard_var(state, id);
             unify_(state, ty1, ty2)
         }
         (TypeWrapper::Concrete(s1), TypeWrapper::Concrete(s2)) => match (s1, s2) {
@@ -1515,13 +1514,24 @@ pub fn constr_unify(
     }
 }
 
+/// Get the typevar associated with a given wildcard ID.
+fn get_wildcard_var(state: &mut State, id: usize) -> TypeWrapper {
+    let State {
+        table,
+        wildcard_vars,
+        ..
+    } = state;
+    // If `id` is not in `wildcard_vars`, populate it with fresh vars up to `id`
+    if id <= wildcard_vars.len() {
+        wildcard_vars.extend((wildcard_vars.len()..=id).map(|_| table.fresh_unif_var()));
+    }
+    wildcard_vars[id].clone()
+}
+
 /// Convert a mapping from wildcard ID to type var, into a mapping from wildcard ID to concrete type.
-fn wildcard_vars_to_type(
-    wildcard_vars: HashMap<usize, TypeWrapper>,
-    table: &UnifTable,
-) -> HashMap<usize, Types> {
+fn wildcard_vars_to_type(wildcard_vars: Vec<TypeWrapper>, table: &UnifTable) -> Wildcards {
     wildcard_vars
         .into_iter()
-        .map(|(id, var)| (id, to_type(&table, var)))
+        .map(|var| to_type(&table, var))
         .collect()
 }

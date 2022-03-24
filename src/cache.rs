@@ -6,7 +6,7 @@ use crate::position::TermPos;
 use crate::stdlib as nickel_stdlib;
 use crate::term::{RichTerm, SharedTerm, Term};
 use crate::transform::import_resolution;
-use crate::typecheck::{self, Wildcards};
+use crate::typecheck::{self, TypeCheckingOutput, Wildcards};
 use crate::typecheck::{linearization::StubHost, type_check};
 use crate::types::UnboundTypeVariableError;
 use crate::{eval, parser, transform};
@@ -440,7 +440,7 @@ impl Cache {
             }
             Some(CachedTerm { term, state, .. }) if *state >= EntryState::Parsed => {
                 if *state < EntryState::Typechecking {
-                    let (_, _, wildcards) =
+                    let (TypeCheckingOutput { wildcards, .. }, _) =
                         type_check(term, global_env, self, StubHost::<(), (), _>::new())?;
                     self.update_state(file_id, EntryState::Typechecking);
                     self.wildcards.insert(file_id, wildcards);
@@ -698,7 +698,8 @@ impl Cache {
             return Err(Error::ParseErrors(errs));
         }
         let (term, pending) = import_resolution::resolve_imports(term, self)?;
-        let (_, _, wildcards) = type_check(&term, global_env, self, StubHost::<(), (), _>::new())?;
+        let (TypeCheckingOutput { wildcards, .. }, _) =
+            type_check(&term, global_env, self, StubHost::<(), (), _>::new())?;
         let term = transform::transform(term, Some(&wildcards))
             .map_err(|err| Error::ParseErrors(err.into()))?;
         Ok((term, pending))
