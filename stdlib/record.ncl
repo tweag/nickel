@@ -57,7 +57,7 @@
 
         ```nickel
         insert "foo" foo { bar = "bar" } =>
-          { foo = "foo", bar = "bar }  
+          { foo = "foo", bar = "bar }
 
         {}
         |> insert "file.%{ext}" "data/text"
@@ -74,12 +74,12 @@
 
         ```nickel
         remove "foo" foo { foo = "foo", bar = "bar" } =>
-          { bar = "bar }  
+          { bar = "bar }
         ```
       "%m
       = fun field r => %record_remove% field r,
 
-    update | forall a. Str -> a -> { ; a} -> { ; a}
+    update | forall a. Str -> a -> {_: a} -> {_: a}
       | doc m%"
         Update a field of a record with a new value. `update` doesn't mutate the
         original record but returns a new one instead. If the field to update is absent
@@ -87,21 +87,21 @@
 
         ```nickel
         remove "foo" foo { foo = "foo", bar = "bar" } =>
-          { bar = "bar" }  
+          { bar = "bar" }
         ```
 
         As opposed to overriding a value with the merge operator `&`, `update`
         will only change the specified field and won't automatically update the other
-        fields which depend on it: 
+        fields which depend on it:
 
         ```nickel
         { foo = bar + 1, bar | default = 0 } & { bar = 1 } =>
           { foo = 2, bar = 1 }
         update "bar" 1 {foo = bar + 1, bar | default = 0 } =>
-          { foo = 1, bar = 1 } 
+          { foo = 1, bar = 1 }
         ```
       "%m
-      = fun field content r => 
+      = fun field content r =>
         let r = if %has_field% field r then
           %record_remove% field r
         else
