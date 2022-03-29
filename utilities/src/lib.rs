@@ -40,13 +40,13 @@ pub enum EvalMode {
 }
 
 pub struct Bench<'b> {
-    name: &'b str,
-    base_dir: &'b str,
-    subpath: &'b str,
-    subtest: Option<&'b str>,
-    args: Vec<String>,
-    eval_mode: EvalMode,
-    pred: Box<dyn Fn(Term) -> bool>,
+    pub name: &'b str,
+    pub base_dir: &'b str,
+    pub subpath: &'b str,
+    pub subtest: Option<&'b str>,
+    pub args: Vec<String>,
+    pub eval_mode: EvalMode,
+    pub pred: Box<dyn Fn(Term) -> bool>,
 }
 
 impl<'b> Bench<'b> {
@@ -178,4 +178,73 @@ pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> 
             });
         })
     })
+}
+
+#[macro_export]
+macro_rules! ncl_bench {
+    {
+        name = $name:literal,
+        $( base_dir = $base_dir:literal, )?
+        path = $subpath:literal,
+        $( subtest = $subtest:literal, )?
+        $( args = ( $( $arg:literal ),* ),)?
+        $( eval_mode = $eval_mode:path,)?
+        $( pred = $pred:expr,)?
+    } => {
+        $crate::Bench {
+            $( base_dir: $base_dir,)?
+                $( subtest: Some($subtest),)?
+                $( args: vec![ $( $arg.to_string() ),* ],)?
+                $( eval_mode: $eval_mode,)?
+                $( pred = Box::new($pred),)?
+                ..$crate::Bench {
+                    name: $name,
+                    subpath: $subpath,
+                    base_dir: env!("CARGO_MANIFEST_DIR"),
+                    subtest: None,
+                    args: vec![],
+                    eval_mode: $crate::EvalMode::Normal,
+                    pred: Box::new(|_| true),
+                }
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! ncl_bench_group {
+    (name = $group_name:ident; config = $config:expr; $($b:tt),+ $(,)*) => {
+        pub fn $group_name() {
+            use nickel_lang::{
+                cache::{Cache, ImportResolver},
+                eval::eval,
+                transform::import_resolution::resolve_imports,
+            };
+
+            let mut c: criterion::Criterion<_> = $config
+                .configure_from_args();
+            let mut cache = Cache::new();
+            let env = cache.prepare_stdlib().unwrap();
+            let eval_env = env.eval_env.clone();
+            $(
+                let bench = $crate::ncl_bench!$b;
+                let t = bench.term();
+                c.bench_function(bench.name, |b| {
+                    b.iter_batched(
+                        || {
+                            let mut cache = cache.clone();
+                            let id = cache.add_file(bench.path()).unwrap();
+                            let (t, _) =
+                                resolve_imports(t.clone(), &mut cache).unwrap();
+                            (cache, id, t)
+                        },
+                        |(mut c_local, id, t)| {
+                            c_local.prepare(id, &env.type_env).unwrap();
+                            assert!(bench.pred(eval(t, &eval_env, &mut c_local).unwrap().into()))
+                        },
+                        criterion::BatchSize::LargeInput,
+                        )
+                });
+             )+
+        }
+    }
 }
