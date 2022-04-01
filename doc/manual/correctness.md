@@ -311,7 +311,7 @@ For such custom properties, a contract is the way to go:
 ```nickel
 let level = 4 in
 {
-  opt_level | #OptLevel = "0" ++ string.from_num level,
+  opt_level | OptLevel = "0" ++ string.from_num level,
 }
 ```
 
