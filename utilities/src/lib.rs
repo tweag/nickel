@@ -215,7 +215,7 @@ macro_rules! ncl_bench_group {
     (name = $group_name:ident; config = $config:expr; $($b:tt),+ $(,)*) => {
         pub fn $group_name() {
             use nickel_lang::{
-                cache::{Cache, ImportResolver},
+                cache::{GlobalEnv, Cache, ImportResolver},
                 eval::eval,
                 transform::import_resolution::resolve_imports,
             };
@@ -223,8 +223,7 @@ macro_rules! ncl_bench_group {
             let mut c: criterion::Criterion<_> = $config
                 .configure_from_args();
             let mut cache = Cache::new();
-            let env = cache.prepare_stdlib().unwrap();
-            let eval_env = env.eval_env.clone();
+            let GlobalEnv{eval_env, type_env} = cache.prepare_stdlib().unwrap();
             $(
                 let bench = $crate::ncl_bench!$b;
                 let t = bench.term();
@@ -238,7 +237,7 @@ macro_rules! ncl_bench_group {
                             (cache, id, t)
                         },
                         |(mut c_local, id, t)| {
-                            c_local.prepare(id, &env.type_env).unwrap();
+                            c_local.prepare(id, &type_env).unwrap();
                             assert!(bench.pred(eval(t, &eval_env, &mut c_local).unwrap().into()))
                         },
                         criterion::BatchSize::LargeInput,
