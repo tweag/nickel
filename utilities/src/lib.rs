@@ -187,7 +187,7 @@ macro_rules! ncl_bench {
         $( base_dir = $base_dir:literal, )?
         path = $subpath:literal,
         $( subtest = $subtest:literal, )?
-        $( args = ( $( $arg:literal ),* ),)?
+        $( args = ( $( $arg:expr ),* ),)?
         $( eval_mode = $eval_mode:path,)?
         $( pred = $pred:expr,)?
     } => {
