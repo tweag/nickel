@@ -1355,7 +1355,7 @@ pub mod make {
         Term::Let(id.into(), t1.into(), t2.into(), BindingType::Normal).into()
     }
 
-    pub fn let_pat<I, D, T1, T2>(id: Option<I>, pat: D, t1: T1, t2: T2) -> RichTerm
+    pub fn let_pat<I, D, T1, T2>(rec: bool, id: Option<I>, pat: D, t1: T1, t2: T2) -> RichTerm
     where
         T1: Into<RichTerm>,
         T2: Into<RichTerm>,
