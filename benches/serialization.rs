@@ -1,25 +1,25 @@
-use criterion::{criterion_group, criterion_main, Criterion};
-use nickel_lang::program::Program;
+use criterion::{criterion_main, Criterion};
+use nickel_lang_utilities::ncl_bench_group;
 use pprof::criterion::{Output, PProfProfiler};
-use std::io::Cursor;
+
 use std::path::PathBuf;
 
-fn round_trip(c: &mut Criterion) {
+fn serialization_path(subpath: &str) -> String {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("benches/serialization/input.json");
-
-    let content = format!(
-        "builtin.serialize `Json (import \"{}\")",
-        path.to_string_lossy(),
-    );
-
-    let mut p = Program::new_from_source(Cursor::new(content), "serialize_round_trip").unwrap();
-    c.bench_function("round_trip", |b| b.iter(|| p.eval().unwrap()));
+    path.push(format!("benches/serialization/{}", subpath));
+    path.to_string_lossy().to_string()
 }
 
-criterion_group! {
+ncl_bench_group! {
     name = benches;
     config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)));
-    targets = round_trip
+    {
+        name = "round_trip",
+        path = "serialization/main",
+        // disabled because nickel does not manage dynamic imports.
+        // args = (serialization_path("input.json")),
+        // use subtest instead to have a function per `.json`
+        subtest = "input",
+    }
 }
 criterion_main!(benches);
