@@ -2,7 +2,7 @@
 use codespan::Files;
 use criterion::Criterion;
 use nickel_lang::{
-    cache::{Cache, ImportResolver},
+    cache::Cache,
     error::{Error, ParseError},
     eval,
     parser::{grammar, lexer},
@@ -86,7 +86,7 @@ impl<'b> Bench<'b> {
     }
 
     pub fn term(&self) -> RichTerm {
-        let mut path = self.path();
+        let path = self.path();
 
         let field_path = self.subtest.map(|s| format!(".{}", s)).unwrap_or_default();
         let content = format!(
