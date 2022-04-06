@@ -1,5 +1,5 @@
 use criterion::{criterion_main, Criterion};
-use nickel_lang_utilities::{ncl_bench_group, EvalMode};
+use nickel_lang_utilities::ncl_bench_group;
 use pprof::criterion::{Output, PProfProfiler};
 
 ncl_bench_group! {
