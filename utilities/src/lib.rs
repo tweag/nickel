@@ -46,7 +46,6 @@ pub struct Bench<'b> {
     pub subtest: Option<&'b str>,
     pub args: Vec<String>,
     pub eval_mode: EvalMode,
-    pub pred: Box<dyn Fn(Term) -> bool>,
 }
 
 impl<'b> Bench<'b> {
@@ -68,26 +67,6 @@ impl<'b> Bench<'b> {
         )
     }
 
-    pub fn bench_expect(
-        name: &'b str,
-        base_dir: &'b str,
-        subpath: &'b str,
-        subtest: Option<&'b str>,
-        iteration: u32,
-        eval_mode: EvalMode,
-        pred: impl Fn(Term) -> bool + 'static,
-    ) -> Self {
-        Self::bench_args_expect(
-            name,
-            base_dir,
-            subpath,
-            subtest,
-            vec![iteration.to_string()],
-            eval_mode,
-            pred,
-        )
-    }
-
     pub fn bench_args(
         name: &'b str,
         base_dir: &'b str,
@@ -96,18 +75,6 @@ impl<'b> Bench<'b> {
         args: Vec<String>,
         eval_mode: EvalMode,
     ) -> Self {
-        Self::bench_args_expect(name, base_dir, subpath, subtest, args, eval_mode, |_| true)
-    }
-
-    pub fn bench_args_expect(
-        name: &'b str,
-        base_dir: &'b str,
-        subpath: &'b str,
-        subtest: Option<&'b str>,
-        args: Vec<String>,
-        eval_mode: EvalMode,
-        pred: impl Fn(Term) -> bool + 'static,
-    ) -> Self {
         Self {
             name,
             base_dir,
@@ -115,12 +82,7 @@ impl<'b> Bench<'b> {
             subtest,
             args,
             eval_mode,
-            pred: Box::new(pred),
         }
-    }
-
-    pub fn pred(&self, t: Term) -> bool {
-        (self.pred)(t)
     }
 
     pub fn term(&self) -> RichTerm {
@@ -171,7 +133,7 @@ pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> 
                     },
                     |(mut c_local, id, t)| {
                         c_local.prepare(id, &env.type_env).unwrap();
-                        assert!(bench.pred(eval::eval(t, &eval_env, &mut c_local).unwrap().into()))
+                        eval::eval(t, &eval_env, &mut c_local).unwrap()
                     },
                     criterion::BatchSize::LargeInput,
                 )
@@ -189,14 +151,12 @@ macro_rules! ncl_bench {
         $( subtest = $subtest:literal, )?
         $( args = ( $( $arg:expr ),* ),)?
         $( eval_mode = $eval_mode:path,)?
-        $( pred = $pred:expr,)?
     } => {
         $crate::Bench {
             $( base_dir: $base_dir,)?
                 $( subtest: Some($subtest),)?
                 $( args: vec![ $( $arg.to_string() ),* ],)?
                 $( eval_mode: $eval_mode,)?
-                $( pred = Box::new($pred),)?
                 ..$crate::Bench {
                     name: $name,
                     subpath: $subpath,
@@ -204,7 +164,6 @@ macro_rules! ncl_bench {
                     subtest: None,
                     args: vec![],
                     eval_mode: $crate::EvalMode::Normal,
-                    pred: Box::new(|_| true),
                 }
         }
     }
@@ -238,7 +197,7 @@ macro_rules! ncl_bench_group {
                         },
                         |(mut c_local, id, t)| {
                             c_local.prepare(id, &type_env).unwrap();
-                            assert!(bench.pred(eval(t, &eval_env, &mut c_local).unwrap().into()))
+                            eval(t, &eval_env, &mut c_local).unwrap()
                         },
                         criterion::BatchSize::LargeInput,
                         )
