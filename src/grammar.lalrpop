@@ -166,9 +166,9 @@ UniTerm: UniTerm = {
     InfixExpr,
     AnnotatedInfixExpr,
     AsUniTerm<Forall>,
-    "let" <recursive:"rec"?> <pat:Pattern> <meta: Annot<FixedType>?>
+    "let" <l: @L> <recursive:"rec"?> <r: @R> <pat:Pattern> <meta: Annot<FixedType>?>
         "=" <t1: Term>
-        "in" <t2: Term> => {
+        "in" <t2: Term> =>? {
         let t1 = if let Some(mut meta) = meta {
             let pos = t1.pos;
             meta.value = Some(t1);
@@ -178,9 +178,7 @@ UniTerm: UniTerm = {
             t1
         };
 
-	let is_rec = recursive.is_some();
-
-        UniTerm::from(mk_term::let_pat(is_rec, pat.0, pat.1, t1, t2))
+        Ok(UniTerm::from(mk_let(recursive.is_some(), pat.0, pat.1, t1, t2, mk_span(src_id, l, r))?))
     },
     <l: @L> "fun" <pats: Pattern+> "=>" <t: Term> <r: @R> => {
         let pos = mk_pos(src_id, l, r);

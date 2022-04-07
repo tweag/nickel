@@ -69,7 +69,7 @@ pub enum Term {
 
     /// A let binding.
     #[serde(skip)]
-    Let(Ident, RichTerm, RichTerm, BindingType),
+    Let(Ident, RichTerm, RichTerm, LetAttrs),
     /// A destructuring let-binding.
     #[serde(skip)]
     LetPattern(Option<Ident>, Destruct, RichTerm, RichTerm),
@@ -183,6 +183,15 @@ impl Default for BindingType {
 #[derive(Debug, Default, Eq, PartialEq, Copy, Clone)]
 pub struct RecordAttrs {
     pub open: bool,
+}
+
+/// The attributes of a let binding.
+#[derive(Debug, Default, Eq, PartialEq, Clone)]
+pub struct LetAttrs {
+    /// The type of a let binding. See the documentation of [`BindingType`].
+    pub binding_type: BindingType,
+    /// A recursive let binding adds its binding to the environment of the expression.
+    pub rec: bool,
 }
 
 impl RecordAttrs {
@@ -1002,11 +1011,11 @@ impl RichTerm {
                     pos,
                 )
             },
-            Term::Let(id, t1, t2, btype) => {
+            Term::Let(id, t1, t2, attrs) => {
                 let t1 = t1.traverse(f, state, order)?;
                 let t2 = t2.traverse(f, state, order)?;
                 RichTerm::new(
-                    Term::Let(id, t1, t2, btype),
+                    Term::Let(id, t1, t2, attrs),
                     pos,
                 )
             },
@@ -1346,34 +1355,45 @@ pub mod make {
         Term::Var(v.into()).into()
     }
 
+    fn let_in_<I, T1, T2>(rec: bool, id: I, t1: T1, t2: T2) -> RichTerm
+    where
+        T1: Into<RichTerm>,
+        T2: Into<RichTerm>,
+        I: Into<Ident>,
+    {
+        let attrs = LetAttrs {
+            binding_type: BindingType::Normal,
+            rec,
+        };
+        Term::Let(id.into(), t1.into(), t2.into(), attrs).into()
+    }
+
     pub fn let_in<I, T1, T2>(id: I, t1: T1, t2: T2) -> RichTerm
     where
         T1: Into<RichTerm>,
         T2: Into<RichTerm>,
         I: Into<Ident>,
     {
-        Term::Let(id.into(), t1.into(), t2.into(), BindingType::Normal).into()
+        let_in_(false, id, t1, t2)
     }
 
-    pub fn let_pat<I, D, T1, T2>(rec: bool, id: Option<I>, pat: D, t1: T1, t2: T2) -> RichTerm
+    pub fn let_rec_in<I, T1, T2>(id: I, t1: T1, t2: T2) -> RichTerm
+    where
+        T1: Into<RichTerm>,
+        T2: Into<RichTerm>,
+        I: Into<Ident>,
+    {
+        let_in_(true, id, t1, t2)
+    }
+
+    pub fn let_pat<I, D, T1, T2>(id: Option<I>, pat: D, t1: T1, t2: T2) -> RichTerm
     where
         T1: Into<RichTerm>,
         T2: Into<RichTerm>,
         D: Into<Destruct>,
         I: Into<Ident>,
     {
-        match pat.into() {
-            d @ (Destruct::Record { .. } | Destruct::Array { .. }) => {
-                Term::LetPattern(id.map(|i| i.into()), d, t1.into(), t2.into()).into()
-            }
-            Destruct::Empty => {
-                if let Some(id) = id {
-                    let_in(id, t1, t2)
-                } else {
-                    Term::Null.into()
-                }
-            }
-        }
+        Term::LetPattern(id.map(|i| i.into()), pat.into(), t1.into(), t2.into()).into()
     }
 
     #[cfg(test)]

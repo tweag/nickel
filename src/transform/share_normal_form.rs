@@ -32,7 +32,7 @@ use crate::{
     identifier::Ident,
     match_sharedterm,
     position::TermPos,
-    term::{BindingType, RichTerm, Term},
+    term::{BindingType, LetAttrs, RichTerm, Term},
 };
 
 use std::{collections::HashSet, rc::Rc};
@@ -165,7 +165,11 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                     meta.value
                         .replace(RichTerm::new(Term::Var(fresh_var.clone()), t.pos));
                     let inner = RichTerm::new(Term::MetaValue(meta), pos);
-                    RichTerm::new(Term::Let(fresh_var, t, inner, BindingType::Normal), pos)
+                    let attrs = LetAttrs {
+                        binding_type: BindingType::Normal,
+                        rec : false,
+                    };
+                    RichTerm::new(Term::Let(fresh_var, t, inner, attrs), pos)
             }
         } else rt
     }
@@ -203,6 +207,19 @@ fn with_bindings(
 ) -> RichTerm {
     bindings.into_iter().fold(
         RichTerm::new(body, pos.into_inherited()),
-        |acc, (id, t, btype)| RichTerm::new(Term::Let(id, t, acc, btype), pos),
+        |acc, (id, t, binding_type)| {
+            RichTerm::new(
+                Term::Let(
+                    id,
+                    t,
+                    acc,
+                    LetAttrs {
+                        binding_type,
+                        rec: false,
+                    },
+                ),
+                pos,
+            )
+        },
     )
 }
