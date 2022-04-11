@@ -278,9 +278,6 @@ hesitate to split your pull request into several ones.
    fork and make a pull request on GitHub.
 
 
-Even when a code review is accepting, it may still come with questions or
-comments. Please consider all the review comments and decide to act in
-consequence. Once done, resolve the corresponding conversations.
 
 [cachix-nickel]: https://app.cachix.org/cache/nickel
 [blog-serie]: https://www.tweag.io/blog/2020-10-22-nickel-open-sourcing/
