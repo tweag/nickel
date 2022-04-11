@@ -256,26 +256,13 @@ cosmetic changes or anything not directly related to your original goal in the
 same pull request. If preliminary steps make sense as standalone changes, don't
 hesitate to split your pull request into several ones.
 
-1. Create a new topic branch: `git checkout -b feature/adding-some-stuff`
-2. Implement your changes and commit them. Try to keep commits focused as well.
-3. Documentation: If you added new items (functions, modules) to the public API
+1. Documentation: If you added new items (functions, modules) to the public API
    of a crate, please document those items in-code. If you made an user-facing
    change (syntax, stdlib, language features, etc.), please update the existing
    documentation (in particular the user-manual) in consequence.
-4. Tests: be it for bug fixing or adding new features, try to write extensive
+2. Tests: be it for bug fixing or adding new features, try to write extensive
    tests as much as possible, to ensure the correctness of your changes as well
    as avoiding regressions.
-5. Make sure your PR will pass the CI:
-    * run `cargo test` on the root crate `nickel-lang`
-    * run `cargo check` inside auxiliary crates: `lsp/nls` and
-        `utilities/`, to make sure that your change didn't impact them
-    * run `cargo fmt` at the root of each modified crate
-    * (optional) check that the WebAssembly REPL is building. See [building the
-      WebAssembly REPL](#webassembly-repl). This step may take some time, and
-      should only be required if you added, upgraded or downgraded
-      dependencies.
-6. Once all the previous steps are completed, you can push your branch to your
-   fork and make a pull request on GitHub.
 
 
 
