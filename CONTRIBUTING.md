@@ -92,7 +92,7 @@ The Nickel repository consist in 3 crates:
 Other noteworthy items:
 
 - The user manual in `doc/manual/`, as a bunch of markdown files.
-- A VSCode extension for NLS.
+- A VSCode extension for NLS in `lsp/client-extension/`.
 
 ## Using Nix
 
@@ -114,11 +114,12 @@ Otherwise, you can install the Rust toolchain in a standard way:
 
 ### Nickel
 
-To build the main crate, just run `cargo build` at the root of the repository.
+To build the main crate, just run `cargo build` at the root of this repository.
 Upon success, the binary will be available somewhere inside the `target`
 directory.
 
-You can make the binary available in your path via `cargo install`:
+You can make the binary available in your path via `cargo install` at the root
+of this repository:
 
 ```shell
 $ cargo install --path .
@@ -146,13 +147,15 @@ nickel-lang-lsp 0.1.0
 
 ### WebAssembly REPL
 
-This repository also provide a WebAssembly compilation of the REPL, which is
-used for the online playground on [nickel-lang.org][nickel-lang.org]. While we
-said using `cargo` directly is the recommended way for building, the WASM REPL
-may be an exception. It requires new tools and patching the `Cargo.toml`. On the
-other hand, `Nix` can perform the build in one simple command. The same caveat
-still applies, though: incremental compilation is not as good as with direct
-usage of `cargo`.
+This repository is able to build WebAssembly (WASM) version of the REPL, which
+is used for the online playground on [nickel-lang.org][nickel-lang.org]. While
+using `cargo` directly is the recommended way for building, both methods have
+advantages for the WASM REPL. Building through Cargo alone is possible, but
+requires installing new tools and patching the `Cargo.toml`. On the other hand,
+`Nix` can perform the build in one simple command, but incremental compilation
+is not as good as with direct usage of `cargo`.
+
+Both methods are described below.
 
 #### Using Nix
 
@@ -213,18 +216,19 @@ Tests are run via `cargo test`. They are two types of tests:
 - Integration tests, located in the dedicated crate `tests`.
 
 You can take inspiration from the existing tests to add your own. By convention,
-passing tests are usually written in a standalone Nickel file in `tests/pass/`.
-Each such file define a list of expressions that must individually evaluate to
-the boolean `true`. The whole file is an expression that returns true if and
-only if every tests pass, or fail with a contract failure, to help locating the
-failing tests (as opposed to returning just `false`).
+tests expected to pass are written in a standalone Nickel file in `tests/pass/`.
+Each `.ncl` file defines a list of expressions that must individually evaluate
+to the boolean `true`. The whole file is an expression that returns true if and
+only if every tests pass, or fail with a contract failure to help locating the
+failing test (instead of returning just `false`).
 
-If such a passing test is failing, running it directly using nickel, such as
-`nickel -f tests/pass/test_that_doesnt_pass.ncl`, will potentially provide
-better error messages than `cargo test`.
+If a test expected to pass is failing, run it directly using nickel with `nickel
+-f tests/pass/test_that_doesnt_pass.ncl` to get better error messages than
+`cargo test`.
 
-Tests expected to fail may need to be embedded directly into rust source code, because
-you usually want to test that the error is the one you expect.
+Tests expected to fail are often embedded directly into rust source code,
+because you usually want to additionally check that the error is the one you
+expect.
 
 ## Benchmarking
 
@@ -248,16 +252,16 @@ Once you have made sure the maintainers are aware of your changes, you can start
 the implementation, eventually submitting changes as a pull request.
 
 **Try to keep pull requests small and focused**. Avoid packing refactoring,
-cosmetic changes or anything not directly related to your original motivation in
-the same pull request. If preliminary steps make sense as standalone works,
-don't hesitate to split your pull request into several ones.
+cosmetic changes or anything not directly related to your original goal in the
+same pull request. If preliminary steps make sense as standalone changes, don't
+hesitate to split your pull request into several ones.
 
 1. Create a new topic branch: `git checkout -b feature/adding-some-stuff`
 2. Implement your changes and commit them. Try to keep commits focused as well.
 3. Documentation: If you added new items (functions, modules) to the public API
    of a crate, please document those items in-code. If you made an user-facing
-   change, please update the existing documentation (in particular the user-manual) in
-   consequence.
+   change (syntax, stdlib, language features, etc.), please update the existing
+   documentation (in particular the user-manual) in consequence.
 4. Tests: be it for bug fixing or adding new features, try to write extensive
    tests as much as possible, to ensure the correctness of your changes as well
    as avoiding regressions.
@@ -270,15 +274,17 @@ don't hesitate to split your pull request into several ones.
       WebAssembly REPL](#webassembly-repl). This step may take some time, and
       should only be required if you added, upgraded or downgraded
       dependencies.
-6. Once all the boxes are checked, you can push your branch to the remote
-   repository and make a pull request on GitHub.
+6. Once all the previous steps are completed, you can push your branch to your
+   fork and make a pull request on GitHub.
 
 Your pull request will need at least one approval from a maintainer to be
 merged. Maintainers will review your pull request and may request changes as
-well as leave comments, that needs to be answered in order to the process to
-move forward. Even when a code review is accepting, it may still come with
-comments. Please make sure that you considered all the review comments and
-decided to act in consequence. Resolve the corresponding conversation once done.
+well as leave comments, that needs to be addressed in order to the process to
+move forward.
+
+Even when a code review is accepting, it may still come with questions or
+comments. Please consider all the review comments and decide to act in
+consequence. Once done, resolve the corresponding conversations.
 
 [cachix-nickel]: https://app.cachix.org/cache/nickel
 [blog-serie]: https://www.tweag.io/blog/2020-10-22-nickel-open-sourcing/
