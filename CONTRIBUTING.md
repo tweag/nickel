@@ -136,7 +136,7 @@ $ cd lsp/nls
 lsp/nls $ cargo build
 ```
 
-As for Nickel, you can make the `nls` binary available in your path via `cargo
+Like for Nickel, you can make the `nls` binary available in your path via `cargo
 install`:
 
 ```shell
