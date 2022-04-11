@@ -60,7 +60,7 @@ Nickel is maintained by [Tweag][tweag]. The current lead maintainer is Yann
 Hamdaoui (@yannham).
 
 You can find some of us on our [matrix channel][matrix-nickel] (and in
-particular the Devs room), or fire an email at `nickel-lang@protonmail.com`.
+particular the Devs room), or fire an email at `nickel-lang@tweag.io`.
 
 # Set up a development environment
 
