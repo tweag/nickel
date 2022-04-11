@@ -277,10 +277,6 @@ hesitate to split your pull request into several ones.
 6. Once all the previous steps are completed, you can push your branch to your
    fork and make a pull request on GitHub.
 
-Your pull request will need at least one approval from a maintainer to be
-merged. Maintainers will review your pull request and may request changes as
-well as leave comments, that needs to be addressed in order to the process to
-move forward.
 
 Even when a code review is accepting, it may still come with questions or
 comments. Please consider all the review comments and decide to act in
