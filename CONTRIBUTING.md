@@ -39,7 +39,7 @@ by email, or using any other method with the maintainers of this repository
 The following resources are oriented toward Nickel users:
 
 - The [README](./README.md) and the [design rationale](./RATIONALE.md)
-- The [blog post serie][blog-serie] and the [release blog post][blog-release].
+- The [blog post serie][blog-series] and the [release blog post][blog-release].
 - The [user manual][user-manual].
 
 For Nickel contributors (or aspiring contributors), the following technical
@@ -56,13 +56,8 @@ documentation is relevant:
 
 ## People
 
-Nickel is maintained by [Tweag][tweag]. The current team of maintainers is
-comprised of:
-
-- Yann Hamdaoui (@yannham)
-- François Caddet (@francoiscaddet)
-- Erin Van Der Veen (@...)
-- Steven Shaw (@...)
+Nickel is maintained by [Tweag][tweag]. The current lead maintainer is Yann
+Hamdaoui (@yannham).
 
 You can find some of us on our [matrix channel][matrix-nickel] (and in
 particular the Devs room), or fire an email at `nickel-lang@protonmail.com`.
@@ -112,60 +107,49 @@ Otherwise, you can install the Rust toolchain in a standard way:
 
 ## Building
 
+
 ### Nickel
 
-To build the main crate, just run `cargo build` at the root of this repository.
-Upon success, the binary will be available somewhere inside the `target`
-directory.
-
-You can make the binary available in your path via `cargo install` at the root
-of this repository:
+To build the main crate, just run `cargo build` at the root of this repository:
 
 ```shell
-$ cargo install --path .
-$ nickel --version
+$ cargo build
+$ ./target/debug/nickel --version
 nickel-lang 0.1.0
 ```
 
 ### NLS (nickel-lang-lsp)
 
-To build NLS, the LSP server for Nickel, build the crate inside `lsp/nls`:
+To build NLS, the LSP server for Nickel, build the `nickel-lang-lsp` crate:
 
 ```shell
-$ cd lsp/nls
-lsp/nls $ cargo build
-```
-
-Like for Nickel, you can make the `nls` binary available in your path via `cargo
-install`:
-
-```shell
-$ cargo install --path .
-$ nls --version
+$ cargo build -p nickel-lang-lsp
+$ ./target/debug/nls --version
 nickel-lang-lsp 0.1.0
 ```
 
+(Alternatively, you can run `cargo build` directly inside `lsp/nls/`).
+
 ### WebAssembly REPL
 
-There is a WebAssembly (WASM) version of the REPL, which
-is used for the online playground on [nickel-lang.org][nickel-lang.org]. While
-using `cargo` directly is the recommended way for building, both methods have
-advantages for the WASM REPL. Building through Cargo alone is possible, but
-requires installing new tools and patching the `Cargo.toml`. On the other hand,
-`Nix` can perform the build in one simple command, but incremental compilation
-is not as good as with direct usage of `cargo`.
+There is a WebAssembly (WASM) version of the REPL, which is used for the online
+playground on [nickel-lang.org][nickel-lang.org]. Using Cargo directly for
+building the WASM REPL is possible but requires installing new tools and
+patching `Cargo.toml`. On the other hand, Nix can do the whole build in one
+simple command, but incremental compilation is not as good as with direct usage
+of `cargo`.
 
 Both methods are described below.
 
 #### Using Nix
 
-At the root of the repository, run:
+At the root of the repository:
 
 ```shell
 $ nix build .#buildWasm
+$ ls result/nickel-repl
+LICENSE  package.json nickel_lang_bg.js  nickel_lang_bg.wasm [..]
 ```
-
-The corresponding NPM package is put in `result/`.
 
 #### Using Cargo
 
@@ -228,7 +212,21 @@ If a test expected to pass is failing, run it directly using nickel with `nickel
 
 Tests expected to fail are often embedded directly into rust source code,
 because you usually want to additionally check that the error is the one you
-expect.
+expect. For example ([`tests/records_fail.rs`](./tests/records_fail.rs)):
+
+```rust
+#[test]
+fn non_mergeable() {
+    assert_matches!(
+        eval("({a=1} & {a=2}).a"),
+        Err(Error::EvalError(EvalError::MergeIncompatibleArgs(..)))
+    );
+    assert_matches!(
+        eval("({a | default = false} & {a | default = true}).a"),
+        Err(Error::EvalError(EvalError::MergeIncompatibleArgs(..)))
+    );
+}
+```
 
 ## Benchmarking
 
@@ -248,26 +246,22 @@ of [`cargo bench`][doc-cargo-bench].
 
 # How to submit changes
 
-Once you have made sure the maintainers are aware of your changes, you can start
-the implementation, eventually submitting changes as a pull request.
-
 **Try to keep pull requests small and focused**. Avoid packing refactoring,
 cosmetic changes or anything not directly related to your original goal in the
 same pull request. If preliminary steps make sense as standalone changes, don't
-hesitate to split your pull request into several ones.
+hesitate to split your pull request into several ones. There are a couple
+aspects to consider in particular:
 
-1. Documentation: If you added new items (functions, modules) to the public API
+1. **Documentation**: If you added new items (functions, modules) to the public API
    of a crate, please document those items in-code. If you made an user-facing
    change (syntax, stdlib, language features, etc.), please update the existing
    documentation (in particular the user-manual) in consequence.
-2. Tests: be it for bug fixing or adding new features, try to write extensive
-   tests as much as possible, to ensure the correctness of your changes as well
-   as avoiding regressions.
-
-
+2. **Tests**: be it for bug fixing or adding new features, please try to write
+   extensive tests as much as possible, to ensure the correctness of your
+   changes as well as avoiding regressions.
 
 [cachix-nickel]: https://app.cachix.org/cache/nickel
-[blog-serie]: https://www.tweag.io/blog/2020-10-22-nickel-open-sourcing/
+[blog-series]: https://www.tweag.io/blog/2020-10-22-nickel-open-sourcing/
 [blog-release]: https://www.tweag.io/blog/2022-03-11-nickel-first-release/
 [user-manual]: https://nickel-lang.org/user-manual/introduction/
 [doc-crate]: https://docs.rs/nickel-lang/0.1.0/nickel_lang/
