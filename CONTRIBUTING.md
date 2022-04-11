@@ -147,7 +147,7 @@ nickel-lang-lsp 0.1.0
 
 ### WebAssembly REPL
 
-This repository is able to build WebAssembly (WASM) version of the REPL, which
+There is a WebAssembly (WASM) version of the REPL, which
 is used for the online playground on [nickel-lang.org][nickel-lang.org]. While
 using `cargo` directly is the recommended way for building, both methods have
 advantages for the WASM REPL. Building through Cargo alone is possible, but
