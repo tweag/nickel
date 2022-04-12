@@ -1,238 +1,107 @@
-use criterion::{criterion_group, criterion_main, Criterion};
-use nickel_lang_utilities::{bench, EvalMode};
+use criterion::{criterion_main, Criterion};
+use nickel_lang_utilities::{ncl_bench_group, EvalMode};
 use pprof::criterion::{Output, PProfProfiler};
 
-fn fold_strings(c: &mut Criterion) {
-    bench(
-        "foldr strings 50",
-        env!("CARGO_MANIFEST_DIR"),
-        "arrays/fold",
-        Some("right.strings"),
-        50,
-        EvalMode::Normal,
-        c,
-    );
-}
-
-fn fold_strings_deep(c: &mut Criterion) {
-    bench(
-        "foldr deepseq strings 30",
-        env!("CARGO_MANIFEST_DIR"),
-        "arrays/fold",
-        Some("right.strings"),
-        30,
-        EvalMode::DeepSeq,
-        c,
-    );
-}
-
-fn fold_nums(c: &mut Criterion) {
-    bench(
-        "foldr nums 50",
-        env!("CARGO_MANIFEST_DIR"),
-        "arrays/fold",
-        Some("right.nums"),
-        50,
-        EvalMode::Normal,
-        c,
-    );
-}
-
-fn fold_nums_deep(c: &mut Criterion) {
-    bench(
-        "foldr deepseq nums 30",
-        env!("CARGO_MANIFEST_DIR"),
-        "arrays/fold",
-        Some("right.nums"),
-        30,
-        EvalMode::DeepSeq,
-        c,
-    );
-}
-
-fn fold_arrays(c: &mut Criterion) {
-    bench(
-        "foldr arrays 50",
-        env!("CARGO_MANIFEST_DIR"),
-        "arrays/fold",
-        Some("right.arrays"),
-        50,
-        EvalMode::Normal,
-        c,
-    );
-}
-
-fn fold_arrays_deep(c: &mut Criterion) {
-    bench(
-        "foldr deepseq arrays 30",
-        env!("CARGO_MANIFEST_DIR"),
-        "arrays/fold",
-        Some("right.arrays"),
-        30,
-        EvalMode::DeepSeq,
-        c,
-    );
-}
-
-fn foldl_strings(c: &mut Criterion) {
-    bench(
-        "foldl strings 50",
-        env!("CARGO_MANIFEST_DIR"),
-        "arrays/fold",
-        Some("left.strings"),
-        50,
-        EvalMode::Normal,
-        c,
-    );
-}
-
-fn foldl_strings_deep(c: &mut Criterion) {
-    bench(
-        "foldl deepseq strings 30",
-        env!("CARGO_MANIFEST_DIR"),
-        "arrays/fold",
-        Some("left.strings"),
-        30,
-        EvalMode::DeepSeq,
-        c,
-    );
-}
-
-fn foldl_nums(c: &mut Criterion) {
-    bench(
-        "foldl nums 50",
-        env!("CARGO_MANIFEST_DIR"),
-        "arrays/fold",
-        Some("left.nums"),
-        50,
-        EvalMode::Normal,
-        c,
-    );
-}
-
-fn foldl_nums_deep(c: &mut Criterion) {
-    bench(
-        "foldl deepseq nums 30",
-        env!("CARGO_MANIFEST_DIR"),
-        "arrays/fold",
-        Some("left.nums"),
-        30,
-        EvalMode::DeepSeq,
-        c,
-    );
-}
-
-fn foldl_arrays(c: &mut Criterion) {
-    bench(
-        "foldl arrays 50",
-        env!("CARGO_MANIFEST_DIR"),
-        "arrays/fold",
-        Some("left.arrays"),
-        50,
-        EvalMode::Normal,
-        c,
-    );
-}
-
-fn foldl_arrays_deep(c: &mut Criterion) {
-    bench(
-        "foldl deepseq arrays 30",
-        env!("CARGO_MANIFEST_DIR"),
-        "arrays/fold",
-        Some("left.arrays"),
-        30,
-        EvalMode::DeepSeq,
-        c,
-    );
-}
-
-fn generate_normal(c: &mut Criterion) {
-    bench(
-        "generate normal 50",
-        env!("CARGO_MANIFEST_DIR"),
-        "arrays/generate",
-        None,
-        50,
-        EvalMode::Normal,
-        c,
-    );
-}
-
-fn generate_deepseq(c: &mut Criterion) {
-    bench(
-        "generate deepseq 30",
-        env!("CARGO_MANIFEST_DIR"),
-        "arrays/generate",
-        None,
-        30,
-        EvalMode::DeepSeq,
-        c,
-    );
-}
-
-fn map_normal(c: &mut Criterion) {
-    bench(
-        "map normal 50",
-        env!("CARGO_MANIFEST_DIR"),
-        "arrays/map",
-        None,
-        50,
-        EvalMode::Normal,
-        c,
-    );
-}
-
-fn map_deepseq(c: &mut Criterion) {
-    bench(
-        "map deepseq 30",
-        env!("CARGO_MANIFEST_DIR"),
-        "arrays/map",
-        None,
-        30,
-        EvalMode::DeepSeq,
-        c,
-    );
-}
-
-fn pipe_normal(c: &mut Criterion) {
-    bench(
-        "pipe normal 20",
-        env!("CARGO_MANIFEST_DIR"),
-        "arrays/pipe",
-        None,
-        20,
-        EvalMode::Normal,
-        c,
-    );
-}
-
-fn pipe_deepseq(c: &mut Criterion) {
-    bench(
-        "pipe deepseq 20",
-        env!("CARGO_MANIFEST_DIR"),
-        "arrays/pipe",
-        None,
-        20,
-        EvalMode::DeepSeq,
-        c,
-    );
-}
-
-fn sort_normal(c: &mut Criterion) {
-    bench(
-        "sort normal",
-        env!("CARGO_MANIFEST_DIR"),
-        "arrays/sort",
-        None,
-        20,
-        EvalMode::Normal,
-        c,
-    );
-}
-
-criterion_group! {
-    name = benches;
-    config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)));
-    targets = fold_strings, fold_strings_deep, fold_nums, fold_nums_deep, fold_arrays, fold_arrays_deep, foldl_strings, foldl_strings_deep, foldl_nums, foldl_nums_deep, foldl_arrays, foldl_arrays_deep, generate_normal, generate_deepseq, map_normal, map_deepseq, pipe_normal, pipe_deepseq, sort_normal
+ncl_bench_group! {
+name = benches;
+config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)));
+{
+        name = "foldr strings 50",
+        path = "arrays/fold",
+        subtest = "right.strings",
+        args = (50),
+    }, {
+        name = "foldr deepseq strings 30",
+        path = "arrays/fold",
+        subtest = "right.strings",
+        args = (30),
+        eval_mode = EvalMode::DeepSeq,
+    }, {
+        name = "foldr nums 50",
+        path = "arrays/fold",
+        subtest = "right.nums",
+        args = (50),
+    }, {
+        name = "foldr deepseq nums 30",
+        path = "arrays/fold",
+        subtest = "right.nums",
+        args = (30),
+        eval_mode = EvalMode::DeepSeq,
+    }, {
+        name = "foldr arrays 50",
+        path = "arrays/fold",
+        subtest = "right.arrays",
+        args = (50),
+    }, {
+        name = "foldr deepseq arrays 30",
+        path = "arrays/fold",
+        subtest = "right.arrays",
+        args = (30),
+        eval_mode = EvalMode::DeepSeq,
+    }, {
+        name = "foldl strings 50",
+        path = "arrays/fold",
+        subtest = "left.strings",
+        args = (50),
+    }, {
+        name = "foldl deepseq strings 30",
+        path = "arrays/fold",
+        subtest = "left.strings",
+        args = (30),
+        eval_mode = EvalMode::DeepSeq,
+    }, {
+        name = "foldl nums 50",
+        path = "arrays/fold",
+        subtest = "left.nums",
+        args = (50),
+    }, {
+        name = "foldl deepseq nums 30",
+        path = "arrays/fold",
+        subtest = "left.nums",
+        args = (30),
+        eval_mode = EvalMode::DeepSeq,
+    }, {
+        name = "foldl arrays 50",
+        path = "arrays/fold",
+        subtest = "left.arrays",
+        args = (50),
+    }, {
+        name = "foldl deepseq arrays 30",
+        path = "arrays/fold",
+        subtest = "left.arrays",
+        args = (30),
+        eval_mode = EvalMode::DeepSeq,
+    }, {
+        name = "generate normal 50",
+        path = "arrays/generate",
+        args = (50),
+    }, {
+        name = "generate deepseq 30",
+        path = "arrays/generate",
+        args = (30),
+        eval_mode = EvalMode::DeepSeq,
+    }, {
+        name = "map normal 50",
+        path = "arrays/map",
+        args = (50),
+    }, {
+        name = "map deepseq 30",
+        path = "arrays/map",
+        args = (30),
+        eval_mode = EvalMode::DeepSeq,
+    }, {
+        name = "pipe normal 20",
+        path = "arrays/pipe",
+        args = (20),
+    }, {
+        name = "pipe deepseq 20",
+        path = "arrays/pipe",
+        args = (20),
+        eval_mode = EvalMode::DeepSeq,
+    }, {
+        name = "sort normal",
+        path = "arrays/sort",
+        args = (20),
+    }
 }
 criterion_main!(benches);
