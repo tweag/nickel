@@ -116,9 +116,10 @@ impl<'b> Bench<'b> {
 }
 
 pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> {
+    use nickel_lang::cache::GlobalEnv;
+
     let mut cache = Cache::new();
-    let env = cache.prepare_stdlib().unwrap();
-    let eval_env = env.eval_env.clone();
+    let GlobalEnv { eval_env, type_env } = cache.prepare_stdlib().unwrap();
     Box::new(move |c: &mut Criterion| {
         rts.iter().for_each(|bench| {
             let t = bench.term();
@@ -132,7 +133,7 @@ pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> 
                         (cache, id, t)
                     },
                     |(mut c_local, id, t)| {
-                        c_local.prepare(id, &env.type_env).unwrap();
+                        c_local.prepare(id, &type_env).unwrap();
                         eval::eval(t, &eval_env, &mut c_local).unwrap()
                     },
                     criterion::BatchSize::LargeInput,
