@@ -31,6 +31,15 @@ struct Opt {
 /// Available subcommands.
 #[derive(StructOpt, Debug)]
 enum Command {
+    /// Expend the nickel source after requiered transformation.
+    /// Could be used for debugging.
+    /// By default only format the code with comments droped.
+    Expend {
+        /// Output file. Standard output by default
+        #[structopt(short = "o", long)]
+        #[structopt(parse(from_os_str))]
+        output: Option<PathBuf>,
+    },
     /// Export the result to a different format
     Export {
         /// Available formats: `raw, json, yaml, toml`. Default format: `json`.
@@ -99,6 +108,7 @@ fn main() {
         }
 
         let result = match opts.command {
+            Some(Command::Expend { output }) => program.expend(),
             Some(Command::Export { format, output }) => export(&mut program, format, output),
             Some(Command::Query {
                 path,

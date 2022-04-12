@@ -130,6 +130,19 @@ impl Program {
     pub fn set_skip_stdlib(&mut self) {
         self.cache.skip_stdlib = true;
     }
+
+    pub fn expend(&mut self) -> Result<(), Error> {
+        use crate::pretty::*;
+        use pretty::BoxAllocator;
+
+        let Program { ref main_id, cache } = self;
+        let allocator = BoxAllocator;
+        let mut out = std::io::stdout();
+
+        let doc: DocBuilder<_, ()> = cache.parse_nocache(*main_id).unwrap().0.pretty(&allocator);
+        doc.render(80, &mut out).unwrap();
+        Ok(())
+    }
 }
 
 /// Query the metadata of a path of a term in the cache.
