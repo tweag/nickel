@@ -407,10 +407,16 @@ pub fn merge(
                 .iter()
                 .try_for_each(|rt| fixpoint::patch_field(rt, &rec_env, &env2))?;
 
+            let final_pos = if mode == MergeMode::Standard {
+                pos_op.into_inherited()
+            } else {
+                pos1.into_inherited()
+            };
+
             Ok(Closure {
                 body: RichTerm::new(
                     Term::Record(m, RecordAttrs::merge(attrs1, attrs2)),
-                    pos_op.into_inherited(),
+                    final_pos,
                 ),
                 env,
             })
