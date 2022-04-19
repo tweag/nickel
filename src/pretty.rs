@@ -119,8 +119,9 @@ where
             App(rt1, rt2) => rt1
                 .to_owned()
                 .pretty(allocator)
+                .parens()
                 .append(allocator.line())
-                .append(rt2.to_owned().pretty(allocator))
+                .append(rt2.to_owned().pretty(allocator).parens())
                 .group(),
             Var(id) => allocator.as_string(id),
             Enum(id) => allocator.text(format!("`{}", id)),
