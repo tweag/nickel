@@ -43,7 +43,21 @@ where
             Num(v) => allocator.as_string(v),
             Str(v) => allocator.as_string(v),
             // TODO
-            StrChunks(chunks) => unimplemented!(),
+            StrChunks(chunks) => allocator
+                .text("m%\"")
+                .append(allocator.intersperse(
+                    chunks.iter().map(|c| {
+                        match c {
+                            crate::term::StrChunk::Literal(s) => allocator.as_string(s),
+                            crate::term::StrChunk::Expr(e, i) => allocator
+                                .text("%{")
+                                .append(e.to_owned().pretty(allocator))
+                                .append(allocator.text("}")),
+                        }
+                    }),
+                    allocator.line_(),
+                ))
+                .append(allocator.text("%m")),
             Fun(id, rt) => {
                 println!("pretty fun");
                 let mut params = vec![id];
