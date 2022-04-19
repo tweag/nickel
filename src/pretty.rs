@@ -116,13 +116,25 @@ where
                 println!("pretty let pat");
                 unimplemented!()
             }
-            App(rt1, rt2) => rt1
-                .to_owned()
-                .pretty(allocator)
-                .parens()
-                .append(allocator.line())
-                .append(rt2.to_owned().pretty(allocator).parens())
-                .group(),
+            App(rt1, rt2) => match rt1.as_ref() {
+                Op1(crate::term::UnaryOp::Ite(), _) => rt1
+                    .to_owned()
+                    .pretty(allocator)
+                    .append(allocator.space())
+                    .append(allocator.text("then"))
+                    .append(allocator.line())
+                    .append(rt2.to_owned().pretty(allocator).nest(2))
+                    .append(allocator.line())
+                    .append(allocator.text("else"))
+                    .group(),
+                _ => rt1
+                    .to_owned()
+                    .pretty(allocator)
+                    .parens()
+                    .append(allocator.line())
+                    .append(rt2.to_owned().pretty(allocator).parens())
+                    .group(),
+            },
             Var(id) => allocator.as_string(id),
             Enum(id) => allocator.text(format!("`{}", id)),
             Record(fields, atr) => allocator
@@ -199,7 +211,9 @@ where
                 crate::term::OpPos::Special => {
                     use crate::term::UnaryOp::*;
                     match op {
-                        Ite() => allocator.text("if"),
+                        Ite() => allocator
+                            .text("if ")
+                            .append(rt.to_owned().pretty(allocator)),
                         op => panic!("pretty print is not impleented for {:?}", op),
                     }
                 }
