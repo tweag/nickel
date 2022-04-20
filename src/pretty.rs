@@ -42,7 +42,6 @@ where
             Bool(v) => allocator.as_string(v),
             Num(v) => allocator.as_string(v),
             Str(v) => allocator.as_string(v),
-            // TODO
             StrChunks(chunks) => allocator
                 .text("m%\"")
                 .append(allocator.intersperse(
@@ -59,7 +58,6 @@ where
                 ))
                 .append(allocator.text("\"%m")),
             Fun(id, rt) => {
-                println!("pretty fun");
                 let mut params = vec![id];
                 let mut rt = rt;
                 while let Fun(id, t) = rt.as_ref() {
@@ -68,12 +66,13 @@ where
                 }
                 allocator
                     .text("fun ")
-                    .append(
-                        allocator.intersperse(params.iter().map(|p| allocator.as_string(p)), " "),
-                    )
+                    .append(allocator.intersperse(
+                        params.iter().map(|p| allocator.as_string(p)),
+                        allocator.space(),
+                    ))
                     .append(allocator.text(" =>"))
                     .append(allocator.softline())
-                    .append(rt.to_owned().pretty(allocator))
+                    .append(rt.to_owned().pretty(allocator).nest(2))
             }
             // TODO
             FunPattern(..) => {
@@ -93,12 +92,12 @@ where
                 }
                 allocator
                     .text("fun ")
-                    .append(allocator.intersperse(params, " "))
+                    .append(allocator.intersperse(params, allocator.space()))
                     .append(allocator.text(" =>"))
                     .append(allocator.softline())
-                    .append(rt.to_owned().pretty(allocator))
+                    .append(rt.to_owned().pretty(allocator).nest(2))
             }
-            Lbl(lbl) => allocator.nil(),
+            Lbl(lbl) => allocator.text(format!("<label: {:?}>", lbl)),
             Let(id, rt, body, ty) => allocator
                 .text("let")
                 .append(allocator.space())
@@ -106,12 +105,14 @@ where
                 .append(allocator.line())
                 .append(allocator.text("="))
                 .append(allocator.line())
-                .append(rt.to_owned().pretty(allocator))
+                .append(rt.to_owned().pretty(allocator).nest(2))
                 .append(allocator.line())
                 .append(allocator.text("in"))
-                .append(allocator.softline())
+                .append(allocator.line_())
                 .group()
-                .append(body.to_owned().pretty(allocator)),
+                .append(allocator.line())
+                .append(body.to_owned().pretty(allocator))
+                .group(),
             LetPattern(opt_id, dst, rt, body) => {
                 println!("pretty let pat");
                 unimplemented!()
@@ -267,7 +268,7 @@ where
                 .group(),
             OpN(NAryOp, rts) => unimplemented!(),
 
-            Sym(i32) => unimplemented!(),
+            Sym(sym) => allocator.text(format!("<symbol: {}>", sym)),
 
             Wrapped(i32, RichTerm) => unimplemented!(),
 
@@ -275,7 +276,7 @@ where
             Import(f) => allocator
                 .text("import ")
                 .append(allocator.as_string(f.to_string_lossy()).double_quotes()),
-            ResolvedImport(FileId) => unimplemented!(),
+            ResolvedImport(id) => allocator.text(format!("import <file_id: {:?}>", id)),
             ParseError => allocator.text("## PARCE ERROR! ##"),
         }
     }
@@ -312,6 +313,9 @@ where
                 .map(|c| c.to_owned().types.pretty(allocator))
                 .collect(),
         );
+        if self.priority == crate::term::MergePriority::Default {
+            metas.push(allocator.text("default"));
+        }
         allocator.intersperse(metas, allocator.line().append(allocator.text("| ")))
     }
 }
@@ -339,7 +343,7 @@ where
                     ty.pretty(allocator).nest(2).parens()
                 }),
             Sym() => allocator.text("Sym"),
-            Flat(t) => t.pretty(allocator), //t.as_ref().shallow_repr()),
+            Flat(t) => t.pretty(allocator),
             Var(var) => allocator.as_string(var),
             Forall(id, ref ty) => {
                 let mut curr = ty.as_ref();
@@ -360,7 +364,7 @@ where
                     .append(allocator.line())
                     .append(curr.to_owned().pretty(allocator))
             }
-            Enum(row) => row.pretty(allocator).enclose("|", "|").brackets(),
+            Enum(row) => row.pretty(allocator).enclose("[|", "|]"),
             StaticRecord(row) => row.pretty(allocator).braces().braces(),
             DynRecord(ty) => allocator
                 .line()
