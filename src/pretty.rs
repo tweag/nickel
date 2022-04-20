@@ -146,7 +146,15 @@ where
                     fields.iter().map(|(id, rt)| {
                         allocator
                             .as_string(id)
-                            .append(allocator.text(" = "))
+                            .append(
+                                if let MetaValue(crate::term::MetaValue { value: None, .. }) =
+                                    rt.as_ref()
+                                {
+                                    allocator.line_()
+                                } else {
+                                    allocator.text(" = ")
+                                },
+                            )
                             .append(rt.to_owned().pretty(allocator))
                             .append(allocator.text(","))
                             .append(allocator.line_())
@@ -170,7 +178,15 @@ where
                     fields.iter().map(|(id, rt)| {
                         allocator
                             .as_string(id)
-                            .append(allocator.text(" = "))
+                            .append(
+                                if let MetaValue(crate::term::MetaValue { value: None, .. }) =
+                                    rt.as_ref()
+                                {
+                                    allocator.line_()
+                                } else {
+                                    allocator.text(" = ")
+                                },
+                            )
                             .append(rt.to_owned().pretty(allocator))
                             .append(allocator.text(","))
                             .append(allocator.line_())
