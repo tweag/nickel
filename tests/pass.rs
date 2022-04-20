@@ -117,3 +117,8 @@ fn importing() {
 fn overriding() {
     check_file("overriding.ncl");
 }
+
+#[test]
+fn recursive_let() {
+    check_file("recursive_let.ncl");
+}

@@ -74,6 +74,15 @@ let typecheck = [
     fun x => switch {`blo => `bla, `ble => `bli, _ => `bla} x in
     f `bli,
 
+  # recursive let bindings
+  let rec f : forall a. a -> Num -> a = fun x n =>
+    if n == 0 then x else if f "0" n == "1" then f x (n - 1) else f x (f 1 n) in
+    (f "0" 2 : Str),
+  let rec f : Num -> Num = fun x => if x == 0 then x else f (x - 1) in
+    (f 10 : Num),
+  let rec repeat : forall a. Num -> a -> Array a = fun n x =>
+    if n <= 0 then [] else repeat (n - 1) x @ [x] in (repeat 3 "foo" : Array Str),
+
   # static records
   ({bla = 1} : {bla : Num}),
   ({blo = true, bla = 1} : {bla : Num, blo : Bool}),
