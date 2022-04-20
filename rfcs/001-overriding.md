@@ -898,7 +898,7 @@ absMergeTree e = weakEval e
 weakEval [| e1 & e2 |] @ e = e
 
 // all other cases are defined exactly as for eval
-weakEval e = ... 
+weakEval e = ...
 ```
 
 ### Semantics
