@@ -141,7 +141,7 @@ where
             Var(id) => allocator.as_string(id),
             Enum(id) => allocator.text(format!("`{}", id)),
             Record(fields, attr) => allocator
-                .text("{")
+                .line()
                 .append(allocator.intersperse(
                     fields.iter().map(|(id, rt)| {
                         allocator
@@ -156,24 +156,25 @@ where
                                 },
                             )
                             .append(rt.to_owned().pretty(allocator))
-                            .append(allocator.text(","))
-                            .append(allocator.line_())
                     }),
-                    "",
+                    allocator.text(",").append(allocator.line()),
                 ))
                 .append(if attr.open {
                     allocator.text("...")
                 } else {
                     allocator.nil()
                 })
-                .append(allocator.text("}")),
+                .nest(2)
+                .append(allocator.line())
+                .group()
+                .braces(),
             RecRecord(
                 fields,
                 inter_fields, /* field whose name is defined by interpolation */
                 attr,
                 deps, /* dependency tracking between fields. None before the free var pass */
             ) => allocator
-                .text("{")
+                .line()
                 .append(allocator.intersperse(
                     fields.iter().map(|(id, rt)| {
                         allocator
@@ -188,17 +189,18 @@ where
                                 },
                             )
                             .append(rt.to_owned().pretty(allocator))
-                            .append(allocator.text(","))
-                            .append(allocator.line_())
                     }),
-                    "",
+                    allocator.text(",").append(allocator.line()),
                 ))
                 .append(if attr.open {
                     allocator.text("...")
                 } else {
                     allocator.nil()
                 })
-                .append(allocator.text("}")),
+                .nest(2)
+                .append(allocator.line())
+                .group()
+                .braces(),
             Switch(tst, cases, def) => allocator
                 .text("switch")
                 .append(allocator.space())
