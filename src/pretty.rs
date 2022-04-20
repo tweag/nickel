@@ -57,7 +57,7 @@ where
                     }),
                     allocator.line_(),
                 ))
-                .append(allocator.text("%m")),
+                .append(allocator.text("\"%m")),
             Fun(id, rt) => {
                 println!("pretty fun");
                 let mut params = vec![id];
