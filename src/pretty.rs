@@ -23,7 +23,7 @@ where
             GreaterThan() => allocator.text(">"),
             GreaterOrEq() => allocator.text(">="),
             LessOrEq() => allocator.text("<="),
-            op => panic!("pretty print of {:?} is not implemented", op),
+            op => allocator.as_string(format!("%{:?}%", op).to_lowercase()),
         }
     }
 }
@@ -130,14 +130,17 @@ where
                 _ => rt1
                     .to_owned()
                     .pretty(allocator)
-                    .parens()
                     .append(allocator.line())
-                    .append(rt2.to_owned().pretty(allocator).parens())
+                    .append(if rt2.as_ref().is_atom() {
+                        rt2.to_owned().pretty(allocator)
+                    } else {
+                        rt2.to_owned().pretty(allocator).parens()
+                    })
                     .group(),
             },
             Var(id) => allocator.as_string(id),
             Enum(id) => allocator.text(format!("`{}", id)),
-            Record(fields, atr) => allocator
+            Record(fields, attr) => allocator
                 .text("{")
                 .append(allocator.intersperse(
                     fields.iter().map(|(id, rt)| {
@@ -150,7 +153,7 @@ where
                     }),
                     "",
                 ))
-                .append(if atr.open {
+                .append(if attr.open {
                     allocator.text("...")
                 } else {
                     allocator.nil()
@@ -161,7 +164,25 @@ where
                 inter_fields, /* field whose name is defined by interpolation */
                 attr,
                 deps, /* dependency tracking between fields. None before the free var pass */
-            ) => unimplemented!(), //TODO
+            ) => allocator
+                .text("{")
+                .append(allocator.intersperse(
+                    fields.iter().map(|(id, rt)| {
+                        allocator
+                            .as_string(id)
+                            .append(allocator.text(" = "))
+                            .append(rt.to_owned().pretty(allocator))
+                            .append(allocator.text(","))
+                            .append(allocator.line_())
+                    }),
+                    "",
+                ))
+                .append(if attr.open {
+                    allocator.text("...")
+                } else {
+                    allocator.nil()
+                })
+                .append(allocator.text("}")),
             Switch(tst, cases, def) => allocator
                 .text("switch")
                 .append(allocator.space())
@@ -249,16 +270,38 @@ where
     A: Clone + 'a,
 {
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
-        match self.value {
-            Some(rt) => rt.pretty(allocator),
-            None => allocator.nil(),
+        let mut metas = vec![];
+        if let Some(value) = self.value {
+            metas.push(
+                value
+                    .pretty(allocator)
+                    .append(if let Some(types) = self.types {
+                        allocator
+                            .line()
+                            .append(allocator.text(": "))
+                            .append(types.types.pretty(allocator))
+                    } else {
+                        allocator.nil()
+                    }),
+            );
+        } else {
+            metas.push(allocator.nil());
         }
+        metas.append(
+            &mut self
+                .contracts
+                .iter()
+                .map(|c| c.to_owned().types.pretty(allocator))
+                .collect(),
+        );
+        allocator.intersperse(metas, allocator.line().append(allocator.text("| ")))
     }
 }
 
 impl<'a, D, A> Pretty<'a, D, A> for Types
 where
     D: DocAllocator<'a, A>,
+    D::Doc: Clone,
     A: Clone + 'a,
 {
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
@@ -278,7 +321,7 @@ where
                     ty.pretty(allocator).nest(2).parens()
                 }),
             Sym() => allocator.text("Sym"),
-            Flat(ref t) => allocator.text("{}"), //t.as_ref().shallow_repr()),
+            Flat(t) => t.pretty(allocator), //t.as_ref().shallow_repr()),
             Var(var) => allocator.as_string(var),
             Forall(id, ref ty) => {
                 let mut curr = ty.as_ref();

@@ -599,6 +599,38 @@ impl Term {
             | Term::ParseError => false,
         }
     }
+
+    /// determine if a term is atomic
+    pub fn is_atom(&self) -> bool {
+        match self {
+            Term::Null
+            | Term::Bool(_)
+            | Term::Num(_)
+            | Term::Str(_)
+            | Term::StrChunks(_)
+            | Term::Lbl(_)
+            | Term::Enum(_)
+            | Term::Record(..)
+            | Term::RecRecord(..)
+            | Term::Array(_)
+            | Term::Switch(..)
+            | Term::Var(_)
+            | Term::Op1(_, _)
+            | Term::Sym(_) => true,
+            Term::Let(..)
+            | Term::LetPattern(..)
+            | Term::Fun(_, _)
+            | Term::FunPattern(_, _, _)
+            | Term::App(_, _)
+            | Term::Op2(_, _, _)
+            | Term::OpN(..)
+            | Term::Wrapped(_, _)
+            | Term::MetaValue(_)
+            | Term::Import(_)
+            | Term::ResolvedImport(_)
+            | Term::ParseError => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -805,7 +837,7 @@ impl UnaryOp {
     pub fn pos(&self) -> OpPos {
         use UnaryOp::*;
         match self {
-            BoolNot() | Blame() => OpPos::Infix,
+            BoolNot() | Blame() | DeepSeq(_) => OpPos::Infix,
             BoolAnd() | BoolOr() | StaticAccess(_) => OpPos::Postfix,
             _ => OpPos::Special,
         }
@@ -817,6 +849,7 @@ impl fmt::Display for UnaryOp {
         use UnaryOp::*;
         match self {
             Blame() => write!(f, "%blame%"),
+            DeepSeq(_) => write!(f, "%deep_seq%"),
             BoolNot() => write!(f, "!"),
             BoolAnd() => write!(f, "&&"),
             BoolOr() => write!(f, "||"),
