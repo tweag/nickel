@@ -63,6 +63,7 @@ There a several way of using Nix, and in particular in writing Nix expressions:
 - Flakes: Stand-alone, composable packages
 - NixOS modules: system configuration modules
 
+We aims at handling all of those cases
 Packages: because the other aspects of Nix heavily rely on derivations, anyway.
 Thus, derivations are foundational: it's hard to imagine having a good story for
 the others before having one for derivations. What's more, the derivation story
