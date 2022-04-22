@@ -22,22 +22,18 @@ This note explores the options we have within the rust ecosystem to construct a
 full fidelity (or lossless) syntax tree.
 
 # Glossary
-Concrete Syntax Tree (CST)/Parse Tree: A tree that results from parsing, and
+- **Concrete Syntax Tree (CST)/Parse Tree**: A tree that results from parsing, and
 represents the syntactic structure of a string/file. May be lossless/full
 fidelity.
-
-Abstract Syntax Tree (AST): A tree that represents the abstract syntactic
+- **Abstract Syntax Tree (AST)**: A tree that represents the abstract syntactic
 structure of a string/file. Used for further processing of the file. Not
 lossless/full fidelity. 
-
-Lossless/full fidelity: A lossless CST is a tree that contains all information
+- **Lossless/full fidelity**: A lossless CST is a tree that contains all information
 to recreate the original string/file exactly.
-
-Typed: A Typed Syntax Tree is a tree where the type of the parent implies the
+- **Typed**: A Typed Syntax Tree is a tree where the type of the parent implies the
 type of the children. Every node has a specific type, with specific fields,
 nodes are not interchangeable. Most ASTs are typed.
-
-Untyped: An Untyped Syntax Tree is a tree where the type/kind of a parent node
+- **Untyped**: An Untyped Syntax Tree is a tree where the type/kind of a parent node
 does not force the type/kind of the children nodes. Lossless syntax trees are
 typically untyped.
 
@@ -56,7 +52,7 @@ problem with lalrpop in which grammar rules match directly on the token input.
 Above, it was stated that the way lalrpop consumes the token input stream is
 not well suited for a formatter (or other programming tools). This is a general
 problem with parsers that attempt to construct a typed syntax tree directly
-(there is no place for comments in a typed tree. There are ways around this,
+(there is no place for comments in a typed tree). There are ways around this,
 that fall broadly into three categories:
 1. Don't have a typed syntax tree. For these solutions, an untyped syntax tree
    is used instead, that is optionally converted to a typed tree when needed.
@@ -85,7 +81,7 @@ Rowan and Ungrammar are two libraries created for the
 [rust-analyzer][rust-analyzer] project.
 
 Of course, rust-analyzer is greatly benefited by a lossless concrete syntax tree.
-To this extend they created two libraries specifically for
+To this extent they created two libraries specifically for
 this purpose. [rowan][rowan] and [ungrammar][ungrammar].
 
 Rowan is a library specifically created to represent (lossless) concrete syntax
@@ -187,9 +183,10 @@ the CST to a suitable AST.
 Aside from
 [toy-examples](https://github.com/vanhtuan0409/toon-lang) there are, no
 existing projects that utilize tree-sitter as a parser for a rts/compiler/etc.
-This is due to the fact that tree-sitter's error nodes do not provide
-substantial information about the error that occurred. Some information can be
-derived from the surrounding nodes, but this is obviously suboptimal.
+This is due to the fact that
+[tree-sitter's error nodes do not provide substantial information about the error that occurred](https://github.com/tree-sitter/tree-sitter/issues/1631).
+Some information can be derived from the surrounding nodes, but this is
+obviously suboptimal.
 
 ## Don't use a uniform parser
 While the concept of using the same parser/grammar for the interpreter and
