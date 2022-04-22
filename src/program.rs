@@ -131,16 +131,25 @@ impl Program {
         self.cache.skip_stdlib = true;
     }
 
-    pub fn expend(&mut self) -> Result<(), Error> {
+    pub fn expend(
+        &mut self,
+        out: &mut std::io::BufWriter<Box<dyn std::io::Write>>,
+        apply_transforms: bool,
+    ) -> Result<(), Error> {
         use crate::pretty::*;
         use pretty::BoxAllocator;
 
         let Program { ref main_id, cache } = self;
         let allocator = BoxAllocator;
-        let mut out = std::io::stdout();
 
-        let doc: DocBuilder<_, ()> = cache.parse_nocache(*main_id).unwrap().0.pretty(&allocator);
-        doc.render(80, &mut out).unwrap();
+        let rt = cache.parse_nocache(*main_id)?.0;
+        let rt = if apply_transforms {
+            crate::transform::transform(rt).unwrap()
+        } else {
+            rt
+        };
+        let doc: DocBuilder<_, ()> = rt.pretty(&allocator);
+        doc.render(80, out).unwrap();
         Ok(())
     }
 }

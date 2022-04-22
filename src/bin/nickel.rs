@@ -39,6 +39,8 @@ enum Command {
         #[structopt(short = "o", long)]
         #[structopt(parse(from_os_str))]
         output: Option<PathBuf>,
+        #[structopt(short = "t", long)]
+        transform: bool,
     },
     /// Export the result to a different format
     Export {
@@ -108,7 +110,13 @@ fn main() {
         }
 
         let result = match opts.command {
-            Some(Command::Expend { output }) => program.expend(),
+            Some(Command::Expend { output, transform }) => program.expend(
+                &mut std::io::BufWriter::new(match output {
+                    Some(o) => Box::new(fs::File::create(o).unwrap()),
+                    None => Box::new(std::io::stdout()),
+                }),
+                transform,
+            ),
             Some(Command::Export { format, output }) => export(&mut program, format, output),
             Some(Command::Query {
                 path,

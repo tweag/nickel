@@ -837,9 +837,9 @@ impl UnaryOp {
     pub fn pos(&self) -> OpPos {
         use UnaryOp::*;
         match self {
-            BoolNot() | Blame() | DeepSeq(_) => OpPos::Infix,
             BoolAnd() | BoolOr() | StaticAccess(_) => OpPos::Postfix,
-            _ => OpPos::Special,
+            Ite() => OpPos::Special,
+            _ => OpPos::Infix,
         }
     }
 }
@@ -848,13 +848,13 @@ impl fmt::Display for UnaryOp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use UnaryOp::*;
         match self {
-            Blame() => write!(f, "%blame%"),
-            DeepSeq(_) => write!(f, "%deep_seq%"),
+            Blame() => write!(f, "%blame% "),
+            DeepSeq(_) => write!(f, "%deep_seq% "),
             BoolNot() => write!(f, "!"),
-            BoolAnd() => write!(f, "&&"),
-            BoolOr() => write!(f, "||"),
+            BoolAnd() => write!(f, " &&"),
+            BoolOr() => write!(f, " ||"),
             StaticAccess(id) => write!(f, ".{}", id),
-            op => panic!("Display is not implemented for `UnaryOp::{:?}`", op),
+            op => write!(f, "%{}% ", format!("{:?}", op).to_lowercase()),
         }
     }
 }
