@@ -57,13 +57,17 @@ Above, it was stated that the way lalrpop consumes the token input stream is
 not well suited for a formatter (or other programming tools). This is a general
 problem with parsers that attempt to construct a typed syntax tree directly
 (there is no place for comments in a typed tree. There are ways around this,
-that fall broadly into two categories:
+that fall broadly into three categories:
 1. Don't have a typed syntax tree. For these solutions, an untyped syntax tree
    is used instead, that is optionally converted to a typed tree when needed.
 2. Lose some information by "intelligently" assigning every comment to a node
    in the typed tree. The loss in information here means, for instance, that we
    have to assign a comment surrounded by empty lines to a expression somewhere
    near it.
+3. Lex the whitespace and comments, but don't pass this information to the
+   lalrpop parser. From here, have lalrpop create either an untyped tree, or a
+   stream of event representing an untyped ast. From there, the comments and
+   whitespace can be reinjected into the tree or stream.
 
 # Options
 ## Custom
@@ -153,6 +157,24 @@ intended to be associated with anything.
 ### Disadvantages
 - Not lossless
 
+## Reinjecting whitespace/comments
+Xavier proposed the idea of keeping lalrpop, but having it generate a
+stream/list of what he called "events". These events represent an untyped ast
+in a flat manner. From here, the comments and whitespace can be reinjected into
+this event list before or during the construction of the lossless untyped ast.
+Of course, this method isn't restricted to lalrpop, any parser library can be
+used in this approach.
+
+### Advantages
+- Is a method that is agnostic to the libraries used. We could keep lalrpop in
+  place for instance.
+
+### Disadvantages
+- Perceived complexity. This adds another layer to the parser. Xavier has
+  already applied this approach to a toy language of themselves, so it is at
+  least a valid approach.
+- Doesn't reduce the number of grammars.
+
 ## Tree-sitter?
 In issue [#656](https://github.com/tweag/nickel/issues/656), Yann remarked that
 there are multiple grammar definitions for the nickel language. It would be
@@ -165,8 +187,9 @@ the CST to a suitable AST.
 Aside from
 [toy-examples](https://github.com/vanhtuan0409/toon-lang) there are, no
 existing projects that utilize tree-sitter as a parser for a rts/compiler/etc.
-I don't see a fundamental problem that would stop us from using tree-sitter as
-a parser.
+This is due to the fact that tree-sitter's error nodes do not provide
+substantial information about the error that occurred. Some information can be
+derived from the surrounding nodes, but this is obviously suboptimal.
 
 ## Don't use a uniform parser
 While the concept of using the same parser/grammar for the interpreter and
