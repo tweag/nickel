@@ -9,7 +9,8 @@ author: Yann Hamdaoui
 The goal of the present RFC is to lay out a compelling plan to integrate Nix and
 Nickel. We want to use Nickel as a front-end language for writing Nix
 expressions in a seamless way -- or, at least, such that there is no aspect in
-which Nickel is unreasonably worse than Nix expressions, and is hopefully better in others.
+which Nickel is unreasonably worse than Nix expressions (and will be hopefully
+better in others).
 
 This document is structured as follows:
 
@@ -17,8 +18,8 @@ This document is structured as follows:
    and gives concrete examples of what we want to achieve.
 2. [Challenges](#challenges): identifies the technical challenges, as of today,
    raised by the goals defined in 1.
-3. [Proposal](#proposal): gives concrete proposals to overcome those challenges
-   and achieve the goals of 1.
+3. [Proposal](#proposal): provides concrete proposals to overcome those
+   challenges and achieve the goals of 1.
 
 ## Motivation
 
@@ -36,54 +37,52 @@ some time now, we need operate under the following constraints:
 - _Do not require unreasonable changes to Nix itself_. While it's probably
     illusory to avoid any change in Nix at all, we must strive to keep them
     reasonably small and undisturbing for regular Nix users, at least in the
-    middle term.
-- _Implementable in a reasonable time, if possible incrementally_. This RFC aims
-    at proposing a solid vision for the future and not a temporary work-around.
-    Still, given the finite bandwidth of the Nickel team, the solution should be
-    implementable in limited time (in the order of magnitude months, up to half
-    a year). If possible, the plan should have intermediate milestones enabling
-    new features in a incremental way.
-- _Backward-compatible_. Related to the previous point, we will realistically
-    need to be able to leverage existing Nix code (especially from Nixpkgs) in
-    some way: otherwise, even in the (unlikely) best case scenario where
-    everybody suddenly switches to Nickel right away, it'll take up a very long
-    time to migrate everything.
+    medium term.
+- _Implementable in a reasonable timeline, if possible incrementally_. This RFC
+    aims at proposing a solid vision for the future and not a temporary
+    work-around. Still, given the finite bandwidth of the Nickel team, the
+    proposed solution should be implementable in limited time (in the order of
+    magnitude months, up to half a year). If possible, the plan should have
+    intermediate milestones enabling new capabilities in an incremental way.
+- _Backward-compatible_. We will realistically need to be able to leverage
+    existing Nix code (especially from Nixpkgs) in some way: otherwise, even in
+    the unlikely best case scenario where everybody suddenly switches to Nickel
+    right away, it'll still take up a very long time to migrate everything.
 - _Do not lock ourselves in the current Nixpkgs architecture_. Nixpkgs had
-    made a number of design choices that are, in retrospective, not optimal
-    (stdenv, describing packages as functions instead of data, etc.). While we
-    have to keep a form of backward-compatibility, we want to do so while
-    avoiding to tie ourselves to the current design and implementation. In other
-    words, this document must propose a solution that stay compatible with
-    radically departing from those choices.
+    made a number of design choices that are, in hindsight, not optimal (stdenv,
+    describing packages as functions instead of data, etc.). While we have to
+    keep some form of backward-compatibility, we want to do so while avoiding to
+    tie ourselves to the current design and implementation. In other words, this
+    document must propose a solution that stay compatible with a future radical
+    departure from e.g. the Nixpkgs architecture.
 
 ### Scope
 
-Nix expressions are used to several related but different ends, which come with
-varying goals and constraints:
+Nix expressions are used in related but different ways, each coming with varying
+goals and constraints:
 
 - Nixpkgs: derivations and packages in the original style.
-- Flakes: new format for stand-alone, decentralized and composable packages.
-- NixOS modules: system configuration.
+- Flakes: new format for decentralized and composable packages.
+- NixOS modules: NixOS system configuration.
 
-We aims at handling all those cases in the long term, but the scope of such an
-undertaking appears too large for a single RFC. We decide to focus on the first
-item of the list: writing derivations and Nixpkgs-style packages. Indeed, a
-derivation is the foundational concept on which the whole Nix model is based.
-It's thus hard to imagine having a good story for using Nickel for NixOS or for
-flakes without having one for derivations. It's frequent to use derivations as a
-part of e.g. a NixOS module:
+In the long term, we aims at handling all those cases, but the scope of such an
+undertaking appears very large for a single RFC. We decide to focus on the first
+item: writing derivations and Nixpkgs-style packages.
+
+The rationale is that derivations are the foundational concept on which the
+whole Nix model is based. Flakes and NixOS modules build on derivations, as
+illustrated by the following excerpt from a NixOS module:
 
 ```nix
 systemd.myUnit.UnitConfig.ExecStart = pkgs.writeScript "foo" "..."
 ```
 
-Using `pkgs.writeScript` in an hypothetical NixOS Nickel module implies to know
-how to generate derivations.
+Something as innocent as using `pkgs.writeScript` in an hypothetical NixOS
+Nickel module already implies to know how to generate derivations.
 
-Derivations are in some sense "lower-level" than the other Nix concepts, which
-build on it. It makes sense to tackle derivations first. From there, Nixpkgs is
-probably the thinnest layer over derivations, compared to flake or the NixOS
-module system.
+Thus, tackling derivations first makes sense. From there, Nixpkgs is probably
+the thinnest layer over derivations of the three, and already open a lot of
+possibilities, so we choose to include it as well.
 
 ## Nix-Nickel fantasised
 
@@ -95,43 +94,48 @@ Examples of using Nickel for Nix, in practice. What we want.
 
 There a bunch of actions that require leveraging Nixpkgs:
 
-- **USE**: Using a package from Nixpkgs, for example as a dependency
+- **PKG**: Using a package from Nixpkgs, for example as a dependency
 - **LIB**: Use one of the myriad of helpers from Nixpkgs: `mkShell`,
     `mkDerivation`, `writeText`, etc.
-- **OVERRIDE**: Use a package from Nixpkgs but overriding some of its parameters
+- **OVD**: Use a package from Nixpkgs but overriding some of its parameters
 
-**USE** could be done in a simple way, by just passing around derivations from
-Nix to Nickel. Derivations are just fully evaluated data, that can be encoded as
-e.g. JSON.
+**PKG** could be done in a simple way, by just passing around derivations from
+Nix to Nickel. Derivations are fully evaluated data that can be encoded as e.g.
+JSON.
 
-**LIB** is more involved. Some of those helpers take either functions or lazy
-data as parameters, and an interface (in the form of a FFI) between Nix and
-Nickel would needs to handle those back and forth at the boundary of the two
-languages transparently.
+**LIB** is more involved. Some of Nixpkgs helpers take either functions, but the
+sole laziness of expressions means that an interface (in the form of a FFI)
+between Nix and Nickel would needs to handle going back and forth between the
+two languages transparently.
 
-**OVERRIDE** is in practice technically the same issue as **LIB**, since it
-amounts to calling Nix functions `override`, `overrideAttrs`, etc. That is,
-solving **LIB** automatically solves **OVERRIDE**.
+**OVD** is technically not very different than **LIB**, since it mostly amounts
+to calling Nix functions like `override`, `overrideAttrs`, etc (for any override
+that doesn't operate directly on a derivation, which most are). That is, solving
+**LIB** would solve **OVD** as well.
 
 ### String contexts
 
 [String
 contexts](https://shealevy.com/blog/2018/08/05/understanding-nixs-string-context/)
-are a useful feature of Nix. In a Nix program, each string carries a context
-recording which other variables it depends on at runtime, via string
-interpolation. Nix can then automatically determine the dependencies of a
-derivation.
+is a very useful feature of Nix. In a Nix program, each string carries a context
+recording which other derivations it depends on at runtime, by tracking
+variables usage inside string interpolation. Nix can then automatically
+determine the dependencies of a derivation.
+
+Abandoning the automatic dependency management offered by string contexts in
+Nickel sounds like a degradation of developers' quality of life that is hard to
+justify.
 
 ## Proposal
 
 ### Interaction
 
 As underlined in [Interaction with Nixpkgs](#interaction-with-nixpkgs), an
-FFI-like interaction would imply transparent bidirectional communication between
-Nix and Nickel. This is made very hard by the nature of both languages, which
-are lazy and functional, implying that a Nix function called from Nickel may
-incur calls back to Nickel arbitrarily (and vice-versa) to apply function or to
-evaluate thunks. Not only this looks complex, but maintaining reasonable
+FFI-like interaction would require a transparent bidirectional communication
+between Nix and Nickel. This is made very hard by the nature of both languages,
+which are lazy and functional, meaning that a Nix function called from Nickel
+may incur arbitrary calls back to Nickel (and vice-versa) to apply a function or
+to evaluate a thunk. Not only does this looks complex, but maintaining reasonable
 efficiency seems to be a challenge too.
 
 Another possibility is to have everything evaluate in only one world, either Nix
