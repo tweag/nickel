@@ -31,8 +31,8 @@ flakes and modules.
 
 ### Constraints
 
-Because Nix is a distinct project from Nickel which has existed for quite
-some time now, we need operate under the following constraints:
+Because Nix is a distinct project from Nickel which has existed for quite some
+time now, we need operate under the following constraints:
 
 - _Do not require unreasonable changes to Nix itself_. While it's probably
     illusory to avoid any change in Nix at all, we must strive to keep them
@@ -130,47 +130,95 @@ justify.
 
 ### Interaction
 
-As underlined in [Interaction with Nixpkgs](#interaction-with-nixpkgs), an
-FFI-like interaction would require a transparent bidirectional communication
-between Nix and Nickel. This is made very hard by the nature of both languages,
-which are lazy and functional, meaning that a Nix function called from Nickel
-may incur arbitrary calls back to Nickel (and vice-versa) to apply a function or
-to evaluate a thunk. Not only does this looks complex, but maintaining reasonable
-efficiency seems to be a challenge too.
+As underlined in [Interaction with Nixpkgs](#interaction-with-nixpkgs), an FFI
+mechanism would require a bidirectional communication between Nix and Nickel.
+This is made complicated by the nature of both languages, which are lazy and
+functional, meaning that a Nix function called from Nickel may incur arbitrary
+calls back to Nickel (and vice-versa) to apply functions or to evaluate thunk.
+Not only does this seem complex, but also non trivial to be made efficient.
 
 Another possibility is to have everything evaluate in only one world, either Nix
-and Nickel. Practically, we could either compile the Nix code to Nickel, or the
-Nickel code to Nix, and run everything there. Compiling Nickel to Nix and run
-everything on the Nix side would have the advantage of leveraging all the Nix
-primitives and machinery freely. However, this solution simply nullifies a lot
-of the value proposition of Nickel. Compiling Nickel to Nix is not trivial, and
-would loose the native support for contracts (and thus good error reporting),
-overriding, and so on, going back to potential degraded performance and bad
-error messages.
+or Nickel. Practically, we could compile the Nix code to Nickel or vice-versa,
+and run everything on one side only.
 
-On the other hand, compiling Nix to Nickel appears simpler on paper. Nickel is
-close to being a superset of Nix (the only non-trivial missing features being
-the `with` construct and string contexts). This would preserve the Nickel
-advances, and we could leverage directly any non-builtin Nix function, including
-all the Nixpkgs library functions.
+Compiling Nickel to Nix and run everything on the Nix side would have the
+advantage of leveraging all the Nix primitives and machinery freely. However,
+this solution simply nullifies a lot of the value proposition of Nickel. The
+added value of contracts is mainly due to its careful design as a primitive
+feature of the language, and while it could be simulated to some extent in Nix,
+the error message and performances just wouldn't in par. Similarly, the merge
+system being native is in part motivated by the perspective of better
+performance and error message. This is hard to maintain if we just compile those
+features away back to plain Nix code.
 
-The possible drawbacks of this approach:
-  - Performance
-  - On the fly, or not
-  - dynamic imports and typechecking
+On the other hand, compiling Nix to Nickel looks simpler at first sight. Nickel
+is close to being a superset of Nix (the only non-trivial missing features being
+the `with` construct and string contexts, but the latter doesn't even really
+change the semantics). This would preserve the Nickel advances, and we could
+leverage directly any non-builtin Nix function, including all the Nixpkgs
+library functions.
 
-We will also need to reimplement Nix builtins in Nickel (the compat layer). This
-is an interesting milestone, because even without the compiler, this will allow
-to write derivation in Pure Nickel.
+The potential drawbacks of this approach:
+
+- Performance: Nickel is just not in par with Nix at this point, so the
+  performance of Nixpkgs compiled to Nickel might be prohibitively bad at first.
+  On a positive note, this would provide a great benchmark suite to guide future
+  performance improvements.
+- Some builtin may include effects, which are not trivial to combine with the
+  execution model (reversible thunks). That being said, those effects are in
+  fact idempotent and commutative (creating path in the store, creating
+  derivation, etc.), which should be fine.
+- Compilation could be done on the fly (shouldn't be too long), or have a
+    Nixpkgs snapshot pre-compiled to Nickel, or a mix of both.
+
+This solutions require to reimplement Nix builtins in Nickel (a compatibility
+layer). This is an interesting milestone in itself, because even without a
+Nix-to-Nickel compiler, the compatibility layer would already make writing
+derivations in pure Nickel possible.
+
+Note: what about dynamic imports?
 
 ### String Context
 
-- Overloaded string constructors.
-  * Have a specific string delimiter `nix%"foo %{pkgs.hello}"%`
-  * Have a corresponding contract or builtin to enforce Nix strings everywhere.
-  * Use those in Nickel derivations. That means people will have errors with
-    standard strings.
+Ideally, we would like to have a behavior similar to Nix string contexts
+automatically track dependencies in a transparent way (you don't have to think
+about it in Nix, using strings in a natural way).
 
-The question is how to make this process not Nix-specific but more general. Look
-at g-expr in Guix (a bit of the same idea in the end?). Should the extension be
-specified in Nickel itself, or as an interpreter plugin?
+There is a tension between endowing Nickel with specific features for the Nix
+use-case and keeping it a general and versatile language for configuration.
+
+One solution is to support string contexts in Nickel exactly as in Nix. But that
+would do feel _ad hoc_. Other use-cases would benefit from a similar but more
+flexible mechanism for automatic dependency tracking. For example, in Terraform,
+interpolated expressions can refer to values that are only known after certain
+resources have been deployed. The Terraform evaluator thus uses a similar
+mechanism job to elaborate a deployment plan from string metadata. Using Nickel
+for Terraform may need to replicate this mechanism in some way.
+
+We propose to adopt a more generic mechanism for strings with context, which
+behavior can be parametrized. Strings become (conceptually) pairs `(s, ctxt)`
+where `ctxt` is an arbitrary data structure with additional structure:
+
+```nickel
+{
+  combine: Ctxt -> Ctxt -> Ctxt,
+  pure: Str -> Ctxt,
+  pure_exp: Expr -> Ctxt,
+}
+```
+
+The above functions could either be provided by user code or directly as an
+interpreter plug-in.
+
+- Existing standard strings would be equivalent to having a trivial context
+  `null` and the obvious corresponding trivial structure.
+- Custom contexts would be introduced by specific string delimiters, such as
+    `nix%" %{pkgs.hello}/bin/hello"%`
+- Different kind of strings are incompatible, to avoid accidentally forgetting
+  or losing contexts. Also, we don't know a priori how to convert one context to
+  another.
+- There would be a contract to distinguish the different kind of
+  strings in order enforce the usage of e.g. Nix style contexts for writing
+  Nickel for Nix. We want to avoid users loosing context unknowingly.
+
+Alternative: something like `g-exp`. No magic, no extension, but less ergonomic.
