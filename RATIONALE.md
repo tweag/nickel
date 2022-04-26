@@ -215,19 +215,19 @@ code and prevents the expression of data schemas inside the language.
 
 Nix (sometimes call Nix expressions in full) is the language used by the [Nix
 package manager](https://nixos.org/). It is a direct inspiration for Nickel, and
-writing packages for Nix is a target use-case for Nickel as well.
+writing packages for Nix is an important target use-case.
 
 Nix has a simple core: JSON datatypes combined with higher-order functions,
 recursion and lazy evaluation. Nix features other helpful but less fundamental
 features. The Nix language is rather tightly integrated with the Nix package
 manager, making it not trivial to use as a standalone configuration language.
-Its builtins, including a few side-effects, are also oriented toward this
-package description usage.
+Its builtins, including a few side-effects, are also oriented toward the
+package management use-case.
 
 ### Nix vs Nickel
 
-Nickel builds on the same core as Nix, and is in fact not far from being a
-superset of Nix.
+Nickel builds on the same core as Nix (JSON plus functions), and is in fact not
+far from being a superset of it.
 
 However, Nix lacks any native typing and validation capabilities, which Nickel
 brings through static typing and contracts.
