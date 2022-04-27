@@ -227,7 +227,7 @@ package management use-case.
 ### Nix vs Nickel
 
 Nickel builds on the same core as Nix (JSON plus functions), and is in fact not
-far from being a superset of it.
+far from being a superset of the Nix language.
 
 However, Nix lacks any native typing and validation capabilities, which Nickel
 brings through static typing and contracts.
