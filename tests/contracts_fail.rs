@@ -127,7 +127,7 @@ fn records_contracts_poly() {
                 (forall b. {a: Num, b: Num ; b} -> { a: Num ; b})
                 -> {a: Num ; a}
                 -> { ; a}
-            = fun f rec => %record_remove% \"b\" (%record_remove% \"a\" (f rec)) in
+            = fun f r => %record_remove% \"b\" (%record_remove% \"a\" (f r)) in
         f (fun x => x) {a = 1, b = true, c = 3}"
     );
 }

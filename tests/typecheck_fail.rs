@@ -230,3 +230,10 @@ fn piecewise_signature() {
         Err(TypecheckError::TypeMismatch(..))
     );
 }
+#[test]
+fn recursive_let() {
+    assert_matches!(
+        type_check_expr("let rec f : Num -> Num = fun x => f \"hoi\" in null"),
+        Err(TypecheckError::TypeMismatch(..))
+    );
+}

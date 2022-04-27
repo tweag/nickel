@@ -306,6 +306,9 @@ pub enum ParseError {
         RawSpan, /* tail position */
         RawSpan, /* whole record position */
     ),
+    /// A recursive let pattern was encountered. They are not currently supported because we
+    /// decided it was too involved to implement them.
+    RecursiveLetPattern(RawSpan),
 }
 
 /// An error occurring during the resolution of an import.
@@ -461,6 +464,9 @@ impl ParseError {
                 }
                 InternalParseError::InvalidUniRecord(illegal_pos, tail_pos, pos) => {
                     ParseError::InvalidUniRecord(illegal_pos, tail_pos, pos)
+                }
+                InternalParseError::RecursiveLetPattern(pos) => {
+                    ParseError::RecursiveLetPattern(pos)
                 }
             },
         }
@@ -1219,6 +1225,15 @@ impl ToDiagnostic<FileId> for ParseError {
                 .with_notes(vec![
                     String::from("Using a polymorphic tail in a record `{ ..; a}` requires the rest of the record to be only composed of type annotations, of the form `<field>: <type>`."),
                     String::from("Value assignements, such as `<field> = <expr>`, metadata, etc. are forbidden."),
+                ]),
+            ParseError::RecursiveLetPattern(span) => Diagnostic::error()
+                .with_message(format!("recursive destructuring is not supported"))
+                .with_labels(vec![
+                    primary(span),
+                ])
+                .with_notes(vec![
+                    String::from("A destructuring let-binding can't be recursive. Try removing the `rec` from `let rec`."),
+                    String::from("Note: you can reference other fields of a record recursively from within a field, so you might not need the recursive let."),
                 ]),
         };
 

@@ -81,7 +81,7 @@ let Assert = fun l x => x || %blame% l in
     (remove (extend {}) == {} | Assert) &&
     (extend (remove {foo = 2}) == {foo =1} | Assert) &&
     (let f | forall a b. {f: a -> a, arg: a ; b} -> a =
-        fun rec => rec.f (rec.arg) in
+        fun r => r.f (r.arg) in
       f { f = fun x => x ++ " suffix", arg = "foo" }
       == "foo suffix"
       | Assert)

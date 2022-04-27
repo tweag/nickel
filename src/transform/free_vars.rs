@@ -53,10 +53,15 @@ fn collect_free_vars(rt: &mut RichTerm, free_vars: &mut HashSet<Ident>) {
 
             free_vars.extend(fresh);
         }
-        Term::Let(id, t1, t2, _) => {
+        Term::Let(id, t1, t2, attrs) => {
             let mut fresh = HashSet::new();
 
-            collect_free_vars(t1, free_vars);
+            if attrs.rec {
+                collect_free_vars(t1, &mut fresh);
+            } else {
+                collect_free_vars(t1, free_vars);
+            }
+
             collect_free_vars(t2, &mut fresh);
             fresh.remove(id);
 

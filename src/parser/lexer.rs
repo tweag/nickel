@@ -68,6 +68,8 @@ pub enum NormalToken<'input> {
     In,
     #[token("let")]
     Let,
+    #[token("rec")]
+    Rec,
     #[token("switch")]
     Switch,
 

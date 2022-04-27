@@ -328,7 +328,8 @@ Examples:
 ```
 
 ### Let-In
-Let-in allows the binding of an expression. It is used as `let <ident> = <expr> in <expr>`.
+Let-in allows the binding of an expression. It is used as `let <rec?> <ident> = <expr> in <expr>`.
+The `rec` keyword in Let-in constructs allows the let binding to become recursive, enabling the use of the `<ident>` within the first `<expr>`.
 
 Examples:
 ```
@@ -340,6 +341,15 @@ true
 
 > let a = 1 in let b = 2 in a + b
 3
+
+> let rec f = fun n => if n == 0 then n else n + f (n - 1) in f 10
+55
+
+> let rec fib = fun n => if n <= 2 then 1 else fib (n - 1) + fib (n - 2) in fib 9
+34
+
+> let rec repeat = fun n x => if n <= 0 then [] else repeat (n - 1) x @ [x] in repeat 3 "foo"
+["foo", "foo", "foo"]
 ```
 
 ## Functions
