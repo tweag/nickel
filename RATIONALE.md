@@ -233,10 +233,16 @@ However, Nix lacks any native typing and validation capabilities, which Nickel
 brings through static typing and contracts.
 
 The merge system of Nickel is also in part inspired from the NixOS module
-system. The module system has similar concepts but is implemented fully as a Nix
-library. The rationale behind the merge system of Nickel is to bring back
-merging into the scope of the language itself, to potentially improve ergonomy,
-consistency, performance and error messages.
+system. The NixOS module system has similar concepts but is implemented fully as
+a Nix library. The rationale behind the merge system of Nickel is to bring back
+merging into the scope of the language itself, bringing uniformity and
+consistency, and potentially improving performance and error messages.
+Additionally, native merging is also more ergonomic: in Nickel, merging doesn't
+rely on an external module system, but works out of the box with plain records,
+making it to use for other targets than Nix. Data validation directly leverages
+metavalues and the contract system, instead of user-defined patterns such as
+`mkOption` and the like (making them in particular discoverable by e.g. code
+editors and IDEs)
 
 ### Dhall: powerful type system
 
