@@ -97,6 +97,7 @@ pub enum Term {
     ),
     /// A switch construct. The evaluation is done by the corresponding unary operator, but we
     /// still need this one for typechecking.
+    #[serde(skip)]
     Switch(
         RichTerm,                 /* tested expression */
         HashMap<Ident, RichTerm>, /* cases */
