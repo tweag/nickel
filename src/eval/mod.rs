@@ -345,6 +345,7 @@ where
                     stack.push_strictness(enriched_strict);
                 }
                 enriched_strict = true;
+
                 stack.push_arg(
                     Closure {
                         body: t2.clone(),
@@ -383,6 +384,11 @@ where
                 }
             }
             Term::Switch(exp, cases, default) => {
+                if !enriched_strict {
+                    stack.push_strictness(enriched_strict);
+                }
+                enriched_strict = true;
+
                 let has_default = default.is_some();
 
                 if let Some(t) = default {
