@@ -25,6 +25,7 @@ alternatives.
     - [Side-effects](#side-effects)
 2. [Comparison with alternatives](#comparison-with-alternatives)
     - [Starlark](#starlark-the-standard-package)
+    - [Nix](#nix-json-and-functions)
     - [Dhall](#dhall-powerful-type-system)
     - [CUE](#cue-opinionated-data-validation)
     - [Jsonnet](#jsonnet-json-functions-and-inheritance)
@@ -183,8 +184,8 @@ specific use-cases.
 
 ## Comparison with alternatives
 
-Let's compare Nickel with the languages cited at the beginning: Starlark, Dhall,
-CUE and Jsonnet.
+Let's compare Nickel with the languages cited at the beginning: Starlark, Nix
+expressions, Dhall, CUE, Jsonnet.
 
 ### Starlark: the standard package
 
@@ -209,6 +210,38 @@ good enough to enable the writing of parametrizable and reusable configurations.
 Starlark forbids recursion and side-effects which are allowed in Nickel. It
 lacks a static type system, which hampers the ability to write robust library
 code and prevents the expression of data schemas inside the language.
+
+### Nix: JSON and functions
+
+Nix (sometimes call Nix expressions in full) is the language used by the [Nix
+package manager](https://nixos.org/). It is a direct inspiration for Nickel, and
+writing packages for Nix is an important target use-case.
+
+Nix has a simple core: JSON datatypes combined with higher-order functions,
+recursion and lazy evaluation. The Nix language is rather tightly integrated
+with the Nix package manager, making it not trivial to use as a standalone
+configuration language. Its builtins, including a few side-effects, are also
+oriented toward the package management use-case.
+
+### Nix vs Nickel
+
+Nickel builds on the same core as Nix (JSON plus functions), and is in fact not
+far from being a superset of the Nix language.
+
+However, Nix lacks any native typing and validation capabilities, which Nickel
+brings through static typing and contracts.
+
+The merge system of Nickel is also in part inspired from the NixOS module
+system. The NixOS module system has similar concepts but is implemented fully as
+a Nix library. The rationale behind the merge system of Nickel is to bring back
+merging into the scope of the language itself, bringing uniformity and
+consistency, and potentially improving performance and error messages.
+Additionally, native merging is also more ergonomic: in Nickel, merging doesn't
+rely on an external module system, but works out of the box with plain records,
+making it to use for other targets than Nix. Data validation directly leverages
+metavalues and the contract system, instead of user-defined patterns such as
+`mkOption` and the like (making them in particular discoverable by e.g. code
+editors and IDEs)
 
 ### Dhall: powerful type system
 
@@ -312,13 +345,14 @@ code and has no principled approach to data validation.
 
 ### Summary
 
-| Language | Typing                        | Recursion | Evaluation | Side-effects                                      |
-|----------|-------------------------------|-----------|------------|---------------------------------------------------|
-| Nickel   | Gradual (dynamic + static)    | Yes       | Lazy       | Yes (constrained)                                 |
-| Starlark | Dynamic                       | No        | Strict     | No                                                |
-| Dhall    | Static (requires annotations) | No        | Lazy       | No                                                |
-| CUE      | Static (everything is a type) | No        | Lazy       | No, but allowed in the separated scripting layer  |
-| Jsonnet  | Dynamic                       | Yes       | Lazy       | No                                                |
+| Language | Typing                        | Recursion  | Evaluation | Side-effects                                      |
+|----------|-------------------------------|------------|------------|---------------------------------------------------|
+| Nickel   | Gradual (dynamic + static)    | Yes        | Lazy       | Yes (constrained)                                 |
+| Starlark | Dynamic                       | No         | Strict     | No                                                |
+| Nix      | Dynamic                       | Yes        | Lazy       | Predefined and specialized to package management  |
+| Dhall    | Static (requires annotations) | Restricted | Lazy       | No                                                |
+| CUE      | Static (everything is a type) | No         | Lazy       | No, but allowed in the separated scripting layer  |
+| Jsonnet  | Dynamic                       | Yes        | Lazy       | No                                                |
 
 ## Conclusion
 
