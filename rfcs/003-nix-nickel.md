@@ -61,9 +61,9 @@ time now, we need operate under the following constraints:
 Nix expressions are used in related but different ways, each coming with varying
 goals and constraints:
 
-- Nixpkgs: derivations and packages in the original style.
-- Flakes: new format for decentralized and composable packages.
-- NixOS modules: NixOS system configuration.
+- **Nixpkgs**: derivations and packages in the original style.
+- **Flakes**: new format for decentralized and composable packages.
+- **NixOS modules**: NixOS system configuration.
 
 In the long term, we aims at handling all those cases, but the scope of such an
 undertaking appears very large for a single RFC. We decide to focus on the first
@@ -83,10 +83,6 @@ Nickel module already implies to know how to generate derivations.
 Thus, tackling derivations first makes sense. From there, Nixpkgs is probably
 the thinnest layer over derivations of the three, and already open a lot of
 possibilities, so we choose to include it as well.
-
-## Nix-Nickel fantasised
-
-Examples of using Nickel for Nix, in practice. What we want.
 
 ## Challenges
 
@@ -123,10 +119,113 @@ variables usage inside string interpolation. Nix can then automatically
 determine the dependencies of a derivation.
 
 Abandoning the automatic dependency management offered by string contexts in
-Nickel sounds like a degradation of developers' quality of life that is hard to
-justify.
+Nickel is an unacceptable degradation of the quality of life of Nix users.
 
 ## Proposal
+
+### What could Nix-Nickel look like
+
+Let's imagine what would in practice our ideal way of writing packages in
+Nickel. The main inspiration for this section is Eelco Dolstra's [reflection on
+the Nix language of the future][nix-lang].
+
+#### Package as data
+
+Despite Nix being branded as a _functional_ package manager, a perhaps
+surprising conclusion of Eelco's document is that writing packages as actual
+functions is retrospectively of questionable value. Functions need to be applied
+(and thus arguments be produced) before we can access any data (which hurts
+discoverability), their inputs are hard to override, etc. Overall, functions are
+opaque _computations_ (or _codata_), which makes them hard to inspect and to
+patch. The reflection above pushes to switch to a model where packages are
+rather _data_. Of course, computations still take place -- this is after all the
+whole point of having a configuration language -- but the right representation
+for a package may be better separate and expose pure data and represent
+computations as data dependencies.
+
+Concretely, a derivation would be better represented simply as a recursive
+records:
+
+```nickel
+builders.derivation = {
+
+  # Interface
+
+  name
+    | doc "Name of the derivation, used in the Nix store path."
+    | Str,
+
+  version
+    | doc "Version of the derivation, used in the Nix store path."
+    | Str,
+    | default = "",
+
+  builder
+    | doc "Command to be executed to build the derivation."
+    | Path,
+
+  args
+    | doc "Arguments passed to the builder."
+    | Array Str
+    | default = [],
+
+  outputs
+    | doc "Symbolic names of the outputs of this derivation."
+    | Array Str
+    | default = ["out"],
+
+  env
+    | doc "Structured values passed to the builder."
+    | {_: Str}
+    # inherit doesn't exist in Nickel, but let's pretend, for conciseness
+    = {inherit outputs},
+
+  # Implementation
+
+  drv
+    | doc "The resulting store derivation."
+    =
+    (env & {
+      name = "%{name}-%{version}";
+      inherit builder args;
+    })
+    |> builtin.derivation
+}
+
+# ... other definitions building on this one
+
+# actual package
+pkgs.hello = builders.unix_package & {
+  name = "hello",
+  version = "1.12",
+  description = "A program that produces a familiar, friendly greeting",
+  license = licenses.gpl,
+
+  enable_gui
+    | doc "Enable GTK+ support."
+    | Bool
+    | default false,
+
+  src = builders.fetchurl & { url = ..., sha256 = ... },
+
+  buildInputs = if enable_gui then [ gtk ] else [],
+}
+```
+
+Thanks to laziness, `nix` could extract fields like `name` or `version` directly
+without having to provide inputs or to evaluate `drv`. Those examples and ideas
+are taken directly from [Eelco's report][nix-lang].
+
+<!-- TODO: How to specify the dependencies, like gtk? Are they part of the huge
+fixpoint that will be Nickelpkgs? -->
+
+#### Cohabitation with Nixpkgs
+
+How would that model be able to co-exist with the current Nixpkgs architecture?
+In particular, could we override a package from Nixpkgs and use it in one of our
+derivation?
+
+<!-- TODO: answer that question -->
 
 ### Interaction
 
@@ -222,3 +321,10 @@ interpreter plug-in.
   Nickel for Nix. We want to avoid users loosing context unknowingly.
 
 Alternative: something like `g-exp`. No magic, no extension, but less ergonomic.
+
+<!-- TODO: add a proposal using effects. If string interpolation can perform
+effects, including actual deployment (and not just build free effects AST), that
+may subsume the string contexts usage as well as other like Terraform
+interpolation  -->
+
+[nix-lang]: https://gist.github.com/edolstra/29ce9d8ea399b703a7023073b0dbc00d
