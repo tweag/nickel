@@ -213,7 +213,7 @@ code and prevents the expression of data schemas inside the language.
 
 ### Nix: JSON and functions
 
-Nix (sometimes call Nix expressions in full) is the language used by the [Nix
+Nix (sometimes called Nix expressions in full) is the language used by the [Nix
 package manager](https://nixos.org/). It is a direct inspiration for Nickel, and
 writing packages for Nix is an important target use-case.
 
@@ -238,10 +238,10 @@ merging into the scope of the language itself, bringing uniformity and
 consistency, and potentially improving performance and error messages.
 Additionally, native merging is also more ergonomic: in Nickel, merging doesn't
 rely on an external module system, but works out of the box with plain records,
-making it to use for other targets than Nix. Data validation directly leverages
-metavalues and the contract system, instead of user-defined patterns such as
-`mkOption` and the like (making them in particular discoverable by e.g. code
-editors and IDEs)
+making it possible to use for other targets than Nix. Data validation directly
+leverages metavalues and the contract system, instead of user-defined patterns
+such as `mkOption` and the like (making them in particular discoverable by e.g.
+code editors and IDEs)
 
 ### Dhall: powerful type system
 
