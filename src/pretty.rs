@@ -9,6 +9,14 @@ where
     Self::Doc: Clone,
     A: Clone,
 {
+    fn escaped_string(self: &'a Self, s: &str) -> DocBuilder<'a, Self, A> {
+        self.text(
+            s.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("%", "\\%"),
+        )
+    }
+
     fn metadata(self: &'a Self, mv: &MetaValue, with_doc: bool) -> DocBuilder<'a, Self, A> {
         if let Some(types) = &mv.types {
             self.text(": ")
@@ -86,22 +94,23 @@ where
             Null => allocator.text("null"),
             Bool(v) => allocator.as_string(v),
             Num(v) => allocator.as_string(v),
-            Str(v) => allocator.as_string(v),
+            Str(v) => allocator.escaped_string(v),
             StrChunks(chunks) => allocator
-                .text("m%\"")
-                .append(allocator.intersperse(
-                    chunks.iter().map(|c| {
-                        match c {
-                            crate::term::StrChunk::Literal(s) => allocator.as_string(s),
-                            crate::term::StrChunk::Expr(e, i) => allocator
-                                .text("%{")
-                                .append(e.to_owned().pretty(allocator))
-                                .append(allocator.text("}")),
-                        }
+                .intersperse(
+                    chunks.iter().rev().map(|c| match c {
+                        crate::term::StrChunk::Literal(s) => allocator.escaped_string(s),
+                        crate::term::StrChunk::Expr(e, i) => allocator
+                            .text("%{")
+                            .append(e.to_owned().pretty(allocator))
+                            .append(allocator.text("}")),
                     }),
-                    allocator.line_(),
-                ))
-                .append(allocator.text("\"%m")),
+                    allocator.nil(),
+                )
+                .double_quotes()
+                .enclose(
+                    if chunks.len() > 1 { "m%" } else { "" },
+                    if chunks.len() > 1 { "%m" } else { "" },
+                ),
             Fun(id, rt) => {
                 let mut params = vec![id];
                 let mut rt = rt;
@@ -331,14 +340,17 @@ where
                     }
                 }
             },
-            Op2(op, rtl, rtr) => allocator
-                .atom(rtl)
-                .append(allocator.space())
-                .append(op.clone().pretty(allocator))
-                .append(allocator.line())
-                .append(allocator.atom(rtr))
-                .nest(2)
-                .group(),
+            Op2(op, rtl, rtr) => if (&BinaryOp::Sub(), &Num(0.0)) == (op, rtl.as_ref()) {
+                allocator.nil()
+            } else {
+                allocator.atom(rtl)
+            }
+            .append(allocator.space())
+            .append(op.clone().pretty(allocator))
+            .append(allocator.line())
+            .append(allocator.atom(rtr))
+            .nest(2)
+            .group(),
             OpN(op, rts) => allocator
                 .as_string(op)
                 .append(allocator.line())

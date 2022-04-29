@@ -330,7 +330,7 @@ impl<E> StrChunk<E> {
 }
 
 impl Term {
-    #[cfg(test)]
+    //#[cfg(test)]
     /// Recursively apply a function to all `Term`s contained in a `RichTerm`.
     pub fn apply_to_rich_terms<F>(&mut self, func: F)
     where
@@ -1017,7 +1017,7 @@ impl RichTerm {
     /// Erase recursively the positional information.
     ///
     /// It allows to use rust `Eq` trait to compare the values of the underlying terms.
-    #[cfg(test)]
+    //#[cfg(test)]
     pub fn without_pos(mut self) -> Self {
         fn clean_pos(rt: &mut RichTerm) {
             rt.pos = TermPos::None;
