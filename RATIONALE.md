@@ -218,11 +218,10 @@ package manager](https://nixos.org/). It is a direct inspiration for Nickel, and
 writing packages for Nix is an important target use-case.
 
 Nix has a simple core: JSON datatypes combined with higher-order functions,
-recursion and lazy evaluation. Nix features other helpful but less fundamental
-features. The Nix language is rather tightly integrated with the Nix package
-manager, making it not trivial to use as a standalone configuration language.
-Its builtins, including a few side-effects, are also oriented toward the
-package management use-case.
+recursion and lazy evaluation. The Nix language is rather tightly integrated
+with the Nix package manager, making it not trivial to use as a standalone
+configuration language. Its builtins, including a few side-effects, are also
+oriented toward the package management use-case.
 
 ### Nix vs Nickel
 
