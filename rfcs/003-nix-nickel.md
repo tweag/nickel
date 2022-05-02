@@ -88,7 +88,7 @@ possibilities, so we choose to include it as well.
 
 ### Interaction with Nixpkgs
 
-There a bunch of actions that require leveraging Nixpkgs:
+There is a bunch of scenarios that require leveraging Nixpkgs:
 
 - **PKG**: Using a package from Nixpkgs, for example as a dependency
 - **LIB**: Use one of the myriad of helpers from Nixpkgs: `mkShell`,
