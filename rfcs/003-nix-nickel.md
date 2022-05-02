@@ -136,7 +136,7 @@ surprising conclusion of Eelco Dolstra's document is that writing packages as ac
 functions is retrospectively of questionable value. Functions need to be applied
 (and thus arguments be produced) before we can access any data (which hurts
 discoverability), their inputs are hard to override, etc. Overall, functions are
-opaque _computations_ (or _codata_), which makes them hard to inspect and to
+opaque _computations_, which makes them hard to inspect and to
 patch. The reflection above pushes to switch to a model where packages are
 rather _data_. Of course, computations still take place -- this is after all the
 whole point of having a configuration language -- but the right representation
