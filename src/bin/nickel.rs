@@ -35,10 +35,7 @@ enum Command {
     /// Could be used for debugging.
     /// By default only format the code with comments droped.
     Expand {
-        /// Output file. Standard output by default
-        #[structopt(short = "o", long)]
-        #[structopt(parse(from_os_str))]
-        output: Option<PathBuf>,
+        /// Performs code transformations before printing
         #[structopt(short = "t", long)]
         transform: bool,
     },
@@ -110,11 +107,8 @@ fn main() {
         }
 
         let result = match opts.command {
-            Some(Command::Expand { output, transform }) => program.expand(
-                &mut std::io::BufWriter::new(match output {
-                    Some(o) => Box::new(fs::File::create(o).unwrap()),
-                    None => Box::new(std::io::stdout()),
-                }),
+            Some(Command::Expand { transform }) => program.expand(
+                &mut std::io::BufWriter::new(Box::new(std::io::stdout())),
                 transform,
             ),
             Some(Command::Export { format, output }) => export(&mut program, format, output),

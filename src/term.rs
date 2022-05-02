@@ -604,30 +604,30 @@ impl Term {
     pub fn is_atom(&self) -> bool {
         match self {
             Term::Null
-            | Term::Bool(_)
-            | Term::Num(_)
-            | Term::Str(_)
-            | Term::StrChunks(_)
-            | Term::Lbl(_)
-            | Term::Enum(_)
+            | Term::Bool(..)
+            | Term::Num(..)
+            | Term::Str(..)
+            | Term::StrChunks(..)
+            | Term::Lbl(..)
+            | Term::Enum(..)
             | Term::Record(..)
             | Term::RecRecord(..)
-            | Term::Array(_)
-            | Term::Var(_)
-            | Term::Op1(_, _)
-            | Term::Sym(_) => true,
+            | Term::Array(..)
+            | Term::Var(..)
+            | Term::Op1(..)
+            | Term::Sym(..) => true,
             Term::Let(..)
             | Term::Switch(..)
             | Term::LetPattern(..)
-            | Term::Fun(_, _)
-            | Term::FunPattern(_, _, _)
-            | Term::App(_, _)
-            | Term::Op2(_, _, _)
+            | Term::Fun(..)
+            | Term::FunPattern(..)
+            | Term::App(..)
+            | Term::Op2(..)
             | Term::OpN(..)
-            | Term::Wrapped(_, _)
-            | Term::MetaValue(_)
-            | Term::Import(_)
-            | Term::ResolvedImport(_)
+            | Term::Wrapped(..)
+            | Term::MetaValue(..)
+            | Term::Import(..)
+            | Term::ResolvedImport(..)
             | Term::ParseError => false,
         }
     }

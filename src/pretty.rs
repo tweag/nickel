@@ -212,7 +212,7 @@ where
                     .append(allocator.softline())
                     .append(rt.to_owned().pretty(allocator).nest(2))
             }
-            Lbl(lbl) => allocator.text(format!("<label: {:?}>", lbl)),
+            Lbl(lbl) => allocator.text("# <label>").append(allocator.hardline()),
             Let(id, rt, body, ty) => allocator
                 .text("let")
                 .append(allocator.space())
@@ -321,8 +321,7 @@ where
                                             .map(|v| {
                                                 allocator.text("= ").append(v.pretty(allocator))
                                             })
-                                            .or(Some(allocator.nil()))
-                                            .unwrap(),
+                                            .unwrap_or(allocator.nil()),
                                     )
                             } else {
                                 allocator
@@ -335,7 +334,7 @@ where
                     allocator.line(),
                 ))
                 .append(if attr.open {
-                    allocator.line().append(allocator.text("..."))
+                    allocator.line().append(allocator.text(".."))
                 } else {
                     allocator.nil()
                 })
@@ -345,7 +344,7 @@ where
                 .braces(),
             RecRecord(
                 fields,
-                inter_fields, /* field whose name is defined by interpolation */
+                dyn_fields, /* field whose name is defined by interpolation */
                 attr,
                 deps, /* dependency tracking between fields. None before the free var pass */
             ) => allocator
@@ -365,8 +364,7 @@ where
                                             .map(|v| {
                                                 allocator.text("= ").append(v.pretty(allocator))
                                             })
-                                            .or(Some(allocator.nil()))
-                                            .unwrap(),
+                                            .unwrap_or(allocator.nil()),
                                     )
                             } else {
                                 allocator
@@ -379,7 +377,7 @@ where
                     allocator.line(),
                 ))
                 .append(if attr.open {
-                    allocator.line().append(allocator.text("..."))
+                    allocator.line().append(allocator.text(".."))
                 } else {
                     allocator.nil()
                 })
@@ -457,17 +455,21 @@ where
                 )
                 .group(),
 
-            Sym(sym) => allocator.text(format!("<symbol: {}>", sym)),
+            Sym(sym) => allocator
+                .text(format!("# <symbol: {}>", sym))
+                .append(allocator.hardline()),
 
             // TODO
-            Wrapped(i32, RichTerm) => unimplemented!(),
+            Wrapped(i32, RichTerm) => allocator.text("# <wraped>").append(allocator.hardline()),
 
             MetaValue(mv) => mv.to_owned().pretty(allocator),
             Import(f) => allocator
                 .text("import ")
                 .append(allocator.as_string(f.to_string_lossy()).double_quotes()),
             ResolvedImport(id) => allocator.text(format!("import <file_id: {:?}>", id)),
-            ParseError => allocator.text("## PARCE ERROR! ##"),
+            ParseError => allocator
+                .text("# <PARCE ERROR!>")
+                .append(allocator.hardline()),
         }
     }
 }
@@ -539,7 +541,6 @@ where
                 .append(allocator.text("_: "))
                 .append(ty.pretty(allocator))
                 .append(allocator.line())
-                .braces()
                 .braces(),
             RowEmpty() => allocator.nil(),
             RowExtend(id, ty_opt, tail) => {
