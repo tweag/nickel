@@ -613,11 +613,11 @@ impl Term {
             | Term::Record(..)
             | Term::RecRecord(..)
             | Term::Array(_)
-            | Term::Switch(..)
             | Term::Var(_)
             | Term::Op1(_, _)
             | Term::Sym(_) => true,
             Term::Let(..)
+            | Term::Switch(..)
             | Term::LetPattern(..)
             | Term::Fun(_, _)
             | Term::FunPattern(_, _, _)

@@ -1,6 +1,33 @@
 use crate::term::{BinaryOp, MetaValue, RecordAttrs, RichTerm, Term};
 use crate::types::{AbsType, Types};
 pub use pretty::{DocAllocator, DocBuilder, Pretty};
+use regex::Regex;
+use std::collections::HashMap;
+
+/// helper to find the min number of `%` sign needed to interpolate
+/// a string containing this chunk.
+fn min_interpolate_sign(text: &str) -> usize {
+    let reg = Regex::new(r#"([%]+\{)|("[%]+m)"#).unwrap();
+    reg.find_iter(text).fold(0, |nb, m| {
+        let d = m.end() - m.start();
+        // if the match end with `{` the nb of `%` is equal to the size of the match.
+        // This because a `%*{` match len is nb of `%` + 1. It's corect because we are
+        // looking for the minimum number of `%` to perform interpolation on this string
+        // Finaly, if the match ends with `m` we return match len - 1 because of the
+        // extra `"`. In this case, we could improve, because interpolation actualy
+        // need no more than a different number of `%` than the `"%*m` sequence.
+        // But this way is valid anyway and easyer to describe algorithmicaly.
+        // TODO: Improve the `"%*m` case if necessary.
+        let d = if m.as_str().ends_with("{") { d } else { d - 1 };
+        nb.max(d)
+    })
+}
+
+fn sorted_map<'a, K: Ord, V>(m: &'a HashMap<K, V>) -> Vec<(&'a K, &'a V)> {
+    let mut ret: Vec<(&K, &V)> = m.iter().collect();
+    ret.sort_by(|x, y| x.0.cmp(&y.0));
+    ret
+}
 
 impl<'a, A: Clone + 'a> NickelAllocatorExt<'a, A> for pretty::BoxAllocator {}
 
@@ -10,11 +37,11 @@ where
     A: Clone,
 {
     fn escaped_string(self: &'a Self, s: &str) -> DocBuilder<'a, Self, A> {
-        self.text(
-            s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("%", "\\%"),
-        )
+        let s = s
+            .replace("\\", "\\\\")
+            .replace("%{", "\\%{")
+            .replace("\"", "\\\"");
+        self.text(s)
     }
 
     fn metadata(self: &'a Self, mv: &MetaValue, with_doc: bool) -> DocBuilder<'a, Self, A> {
@@ -76,6 +103,9 @@ where
 
             Merge() => allocator.text("&"),
 
+            StrConcat() => allocator.text("++"),
+            ArrayConcat() => allocator.text("@"),
+
             op => allocator.as_string(format!("%{:?}%", op).to_lowercase()),
         }
     }
@@ -95,22 +125,54 @@ where
             Bool(v) => allocator.as_string(v),
             Num(v) => allocator.as_string(v),
             Str(v) => allocator.escaped_string(v),
-            StrChunks(chunks) => allocator
-                .intersperse(
-                    chunks.iter().rev().map(|c| match c {
-                        crate::term::StrChunk::Literal(s) => allocator.escaped_string(s),
-                        crate::term::StrChunk::Expr(e, i) => allocator
-                            .text("%{")
-                            .append(e.to_owned().pretty(allocator))
-                            .append(allocator.text("}")),
-                    }),
-                    allocator.nil(),
-                )
-                .double_quotes()
-                .enclose(
-                    if chunks.len() > 1 { "m%" } else { "" },
-                    if chunks.len() > 1 { "%m" } else { "" },
-                ),
+            StrChunks(chunks) => {
+                let multiline = chunks.len() > 1;
+                let nb_perc = chunks
+                    .iter()
+                    .map(
+                        |c| {
+                            if let crate::term::StrChunk::Literal(s) = c {
+                                min_interpolate_sign(s)
+                            } else {
+                                1
+                            }
+                        }, // be sure we have at least 1 `%` sign when an interpolation is present
+                    )
+                    .max()
+                    .unwrap();
+                let interp: String = std::iter::repeat("%").take(nb_perc).collect();
+                allocator
+                    .intersperse(
+                        chunks.iter().rev().map(|c| match c {
+                            crate::term::StrChunk::Literal(s) => {
+                                if multiline {
+                                    allocator.as_string(s)
+                                } else {
+                                    allocator.escaped_string(s)
+                                }
+                            }
+                            crate::term::StrChunk::Expr(e, i) => allocator
+                                .text(interp.clone())
+                                .append(allocator.text("{"))
+                                .append(e.to_owned().pretty(allocator))
+                                .append(allocator.text("}")),
+                        }),
+                        allocator.nil(),
+                    )
+                    .double_quotes()
+                    .enclose(
+                        if multiline {
+                            format!("m{}", interp)
+                        } else {
+                            "".to_string()
+                        },
+                        if multiline {
+                            format!("{}m", interp)
+                        } else {
+                            "".to_string()
+                        },
+                    )
+            }
             Fun(id, rt) => {
                 let mut params = vec![id];
                 let mut rt = rt;
@@ -183,11 +245,46 @@ where
                 .append(allocator.line())
                 .append(body.to_owned().pretty(allocator))
                 .group(),
-            LetPattern(opt_id, dst, rt, body) => {
-                // TODO
-                println!("pretty let pat");
-                unimplemented!()
-            }
+            LetPattern(opt_id, dst, rt, body) => allocator
+                .text("let")
+                .append(allocator.space())
+                .append(
+                    opt_id
+                        .clone()
+                        .map(|id| allocator.as_string(id))
+                        .unwrap_or(allocator.nil()),
+                )
+                .append(allocator.space())
+                .append(allocator.text("# <pattern>"))
+                .append(allocator.hardline())
+                .append(if let MetaValue(ref mv) = rt.as_ref() {
+                    allocator.metadata(mv, false)
+                } else {
+                    allocator.nil()
+                })
+                .append(allocator.space())
+                .append(allocator.text("="))
+                .append(allocator.line())
+                .append(
+                    if let MetaValue(crate::term::MetaValue {
+                        value: Some(rt), ..
+                    }) = rt.as_ref()
+                    {
+                        rt
+                    } else {
+                        rt
+                    }
+                    .to_owned()
+                    .pretty(allocator)
+                    .nest(2),
+                )
+                .append(allocator.line())
+                .append(allocator.text("in"))
+                .append(allocator.line_())
+                .group()
+                .append(allocator.line())
+                .append(body.to_owned().pretty(allocator))
+                .group(),
             App(rt1, rt2) => match rt1.as_ref() {
                 Op1(crate::term::UnaryOp::Ite(), _) => rt1
                     .to_owned()
@@ -199,9 +296,8 @@ where
                     .append(allocator.line())
                     .append(allocator.text("else"))
                     .group(),
-                _ => rt1
-                    .to_owned()
-                    .pretty(allocator)
+                _ => allocator
+                    .atom(rt1)
                     .append(allocator.line())
                     .append(allocator.atom(rt2))
                     .group(),
@@ -211,7 +307,7 @@ where
             Record(fields, attr) => allocator
                 .line()
                 .append(allocator.intersperse(
-                    fields.iter().map(|(id, rt)| {
+                    sorted_map(fields).iter().map(|&(id, rt)| {
                         allocator
                             .as_string(id)
                             .append(allocator.space())
@@ -255,7 +351,7 @@ where
             ) => allocator
                 .line()
                 .append(allocator.intersperse(
-                    fields.iter().map(|(id, rt)| {
+                    sorted_map(fields).iter().map(|&(id, rt)| {
                         allocator
                             .as_string(id)
                             .append(allocator.space())
@@ -297,7 +393,7 @@ where
                 .append(
                     allocator
                         .intersperse(
-                            cases.iter().map(|(id, t)| {
+                            sorted_map(cases).iter().map(|&(id, t)| {
                                 allocator
                                     .text(format!("`{} => ", id))
                                     .append(t.to_owned().pretty(allocator))
@@ -314,7 +410,7 @@ where
                         .group(),
                 )
                 .append(allocator.space())
-                .append(tst.to_owned().pretty(allocator)),
+                .append(allocator.atom(tst)),
 
             Array(fields) => allocator
                 .line()
