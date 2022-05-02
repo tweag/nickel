@@ -132,7 +132,7 @@ the Nix language of the future][nix-lang].
 #### Package as data
 
 Despite Nix being branded as a _functional_ package manager, a perhaps
-surprising conclusion of Eelco's document is that writing packages as actual
+surprising conclusion of Eelco Dolstra's document is that writing packages as actual
 functions is retrospectively of questionable value. Functions need to be applied
 (and thus arguments be produced) before we can access any data (which hurts
 discoverability), their inputs are hard to override, etc. Overall, functions are
