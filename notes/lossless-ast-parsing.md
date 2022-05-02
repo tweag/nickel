@@ -159,7 +159,8 @@ stream/list of what he called "events". These events represent an untyped ast
 in a flat manner. From here, the comments and whitespace can be reinjected into
 this event list before or during the construction of the lossless untyped ast.
 Of course, this method isn't restricted to lalrpop, any parser library can be
-used in this approach.
+used in this approach. Rust-analyzer employs this approach as is discussed in
+[event.rs](https://github.com/rust-lang/rust-analyzer/blob/ac736dc667b079e629ad629654956f87c2e08c9a/crates/parser/src/event.rs).
 
 ### Advantages
 - Is a method that is agnostic to the libraries used. We could keep lalrpop in
