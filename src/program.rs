@@ -131,7 +131,7 @@ impl Program {
         self.cache.skip_stdlib = true;
     }
 
-    pub fn expend(
+    pub fn expand(
         &mut self,
         out: &mut std::io::BufWriter<Box<dyn std::io::Write>>,
         apply_transforms: bool,

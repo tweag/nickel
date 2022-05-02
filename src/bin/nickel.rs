@@ -31,10 +31,10 @@ struct Opt {
 /// Available subcommands.
 #[derive(StructOpt, Debug)]
 enum Command {
-    /// Expend the nickel source after requiered transformation.
+    /// Expand the nickel source after requiered transformation.
     /// Could be used for debugging.
     /// By default only format the code with comments droped.
-    Expend {
+    Expand {
         /// Output file. Standard output by default
         #[structopt(short = "o", long)]
         #[structopt(parse(from_os_str))]
@@ -110,7 +110,7 @@ fn main() {
         }
 
         let result = match opts.command {
-            Some(Command::Expend { output, transform }) => program.expend(
+            Some(Command::Expand { output, transform }) => program.expand(
                 &mut std::io::BufWriter::new(match output {
                     Some(o) => Box::new(fs::File::create(o).unwrap()),
                     None => Box::new(std::io::stdout()),
