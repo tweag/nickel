@@ -5,13 +5,13 @@ use nickel_lang::error::TypecheckError;
 use nickel_lang::parser::{grammar, lexer};
 use nickel_lang::term::RichTerm;
 use nickel_lang::typecheck::{type_check_in_env, Environment, Wildcards};
-use nickel_lang::types::Types;
+use nickel_lang::types::{AbsType, Types};
 
-fn type_check(rt: &RichTerm) -> Result<(Types, Wildcards), TypecheckError> {
-    type_check_in_env(rt, &Environment::new(), &mut DummyResolver {})
+fn type_check(rt: &RichTerm) -> Result<Types, TypecheckError> {
+    type_check_in_env(rt, &Environment::new(), &mut DummyResolver {}).map(|(t, _)| t)
 }
 
-fn type_check_expr(s: impl std::string::ToString) -> Result<(Types, Wildcards), TypecheckError> {
+fn type_check_expr(s: impl std::string::ToString) -> Result<Types, TypecheckError> {
     let s = s.to_string();
     let id = Files::new().add("<test>", s.clone());
     type_check(
@@ -170,7 +170,7 @@ fn let_inference() {
 fn polymorphic_row_constraints() {
     // Assert that the result of evaluation is either directly a `RowConflict` error, or a
     // `RowConflict` wrapped in an `ArrowTypeMismatch`.
-    fn assert_row_conflict(res: Result<(Types, Wildcards), TypecheckError>) {
+    fn assert_row_conflict(res: Result<Types, TypecheckError>) {
         assert!(match res.unwrap_err() {
             TypecheckError::RowConflict(_, _, _, _, _) => true,
             TypecheckError::ArrowTypeMismatch(_, _, _, err_boxed, _) => {
@@ -230,10 +230,25 @@ fn piecewise_signature() {
         Err(TypecheckError::TypeMismatch(..))
     );
 }
+
 #[test]
 fn recursive_let() {
     assert_matches!(
         type_check_expr("let rec f : Num -> Num = fun x => f \"hoi\" in null"),
+        Err(TypecheckError::TypeMismatch(..))
+    );
+}
+
+#[test]
+fn fails_only_with_wildcard() {
+    // Without a wildcard annotation, this type checks
+    assert_matches!(
+        type_check_expr("let head = fun l => %head% l in head 10"),
+        Ok(_)
+    );
+    // However, with one, we get a type error
+    assert_matches!(
+        type_check_expr("let head = fun l => %head% l in (head 10) : _"),
         Err(TypecheckError::TypeMismatch(..))
     );
 }

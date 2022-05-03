@@ -400,7 +400,8 @@ impl Types {
             | AbsType::Sym()
             | AbsType::Var(_)
             | AbsType::RowEmpty()
-            | AbsType::Flat(_) => Ok(ty.0),
+            | AbsType::Flat(_)
+            | AbsType::Wildcard(_) => Ok(ty.0),
             AbsType::Forall(id, ty_inner) => (*ty_inner)
                 .traverse(f, state, order)
                 .map(|ty| AbsType::Forall(id, Box::new(ty))),
