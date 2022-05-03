@@ -312,6 +312,8 @@ Nixpkgs model to the PADM doesn't seem trivial at first sight.
 
 ### Supporting string contexts
 
+#### Nix-style
+
 Ideally, we would like to have a behavior similar to Nix string contexts to
 automatically track dependencies in a transparent way (you don't have to think
 about it in Nix, using strings in a natural way).
@@ -355,6 +357,9 @@ interpreter plug-in.
 
 Alternative: something like `g-exp`. No magic, no extension, but less ergonomic.
 
+#### Effects
+
+Another possible route is to use [effects][nickel-effects].
 <!-- TODO: add a proposal using effects. If string interpolation can perform
 effects, including actual deployment (and not just build free effects AST), that
 may subsume the string contexts usage as well as other things like Terraform
@@ -364,3 +369,4 @@ interpolation  -->
 
 [nix-lang]: https://gist.github.com/edolstra/29ce9d8ea399b703a7023073b0dbc00d
 [nix-flakes]: https://nixos.wiki/wiki/Flakes
+[nickel-effects]: https://github.com/tweag/nickel/issues/85
