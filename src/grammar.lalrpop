@@ -66,7 +66,11 @@ use crate::{
     label::Label,
 };
 
-grammar<'input, 'err>(src_id: FileId, errors: &'err mut Vec<ErrorRecovery<usize, Token<'input>, ParseError>>);
+grammar<'input, 'err, 'wcard>(
+    src_id: FileId,
+    errors: &'err mut Vec<ErrorRecovery<usize, Token<'input>, ParseError>>,
+    next_wildcard_id: &'wcard mut usize,
+);
 
 WithPos<Rule>: Rule = <l: @L> <t: Rule> <r: @R> => t.with_pos(mk_pos(src_id, l, r));
 
@@ -762,6 +766,11 @@ TypeAtom: Types = {
         Types(AbsType::Enum(Box::new(ty)))
     },
     "{" "_" ":" <Types> "}" => Types(AbsType::DynRecord(Box::new(<>))),
+    "_" => {
+        let id = *next_wildcard_id;
+        *next_wildcard_id += 1;
+        Types(AbsType::Wildcard(id))
+    },
 }
 
 extern {

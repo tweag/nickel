@@ -4,14 +4,14 @@ use nickel_lang::cache::resolvers::DummyResolver;
 use nickel_lang::error::TypecheckError;
 use nickel_lang::parser::{grammar, lexer};
 use nickel_lang::term::RichTerm;
-use nickel_lang::typecheck::{type_check_in_env, Environment};
+use nickel_lang::typecheck::{type_check_in_env, Environment, Wildcards};
 use nickel_lang::types::Types;
 
-fn type_check(rt: &RichTerm) -> Result<Types, TypecheckError> {
+fn type_check(rt: &RichTerm) -> Result<(Types, Wildcards), TypecheckError> {
     type_check_in_env(rt, &Environment::new(), &mut DummyResolver {})
 }
 
-fn type_check_expr(s: impl std::string::ToString) -> Result<Types, TypecheckError> {
+fn type_check_expr(s: impl std::string::ToString) -> Result<(Types, Wildcards), TypecheckError> {
     let s = s.to_string();
     let id = Files::new().add("<test>", s.clone());
     type_check(
@@ -170,7 +170,7 @@ fn let_inference() {
 fn polymorphic_row_constraints() {
     // Assert that the result of evaluation is either directly a `RowConflict` error, or a
     // `RowConflict` wrapped in an `ArrowTypeMismatch`.
-    fn assert_row_conflict(res: Result<Types, TypecheckError>) {
+    fn assert_row_conflict(res: Result<(Types, Wildcards), TypecheckError>) {
         assert!(match res.unwrap_err() {
             TypecheckError::RowConflict(_, _, _, _, _) => true,
             TypecheckError::ArrowTypeMismatch(_, _, _, err_boxed, _) => {

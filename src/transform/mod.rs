@@ -4,6 +4,7 @@ use crate::{
     eval::{lazy::Thunk, Closure, Environment, IdentKind},
     identifier::Ident,
     term::{Contract, RichTerm, Term, TraverseOrder},
+    typecheck::Wildcards,
     types::{AbsType, Types, UnboundTypeVariableError},
 };
 
@@ -16,6 +17,7 @@ pub mod desugar_destructuring;
 pub mod free_vars;
 pub mod import_resolution;
 pub mod share_normal_form;
+pub mod substitute_wildcards;
 
 /// Apply all program transformations, excepted import resolution that is currently performed
 /// earlier, as it needs to be done before typechecking.
@@ -23,15 +25,25 @@ pub mod share_normal_form;
 /// Do not perform transformations on the imported files. If needed, either do it yourself using
 /// pending imports returned by [`resolve_imports`][import_resolution::resolve_imports] or use the
 /// [cache][crate::cache::Cache].
-pub fn transform(mut rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError> {
+pub fn transform(
+    mut rt: RichTerm,
+    wildcards: Option<&Wildcards>,
+) -> Result<RichTerm, UnboundTypeVariableError> {
     free_vars::transform(&mut rt);
-    transform_no_free_vars(rt)
+    transform_no_free_vars(rt, wildcards)
 }
 
 /// Same as [`transform`], but doesn't apply the free vars transformation.
-pub fn transform_no_free_vars(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError> {
+pub fn transform_no_free_vars(
+    rt: RichTerm,
+    wildcards: Option<&Wildcards>,
+) -> Result<RichTerm, UnboundTypeVariableError> {
     let rt = rt.traverse(
-        &mut |rt: RichTerm, _| -> Result<RichTerm, UnboundTypeVariableError> {
+        &mut |mut rt: RichTerm, _| -> Result<RichTerm, UnboundTypeVariableError> {
+            // Start by substituting any wildcard with its inferred type
+            if let Some(wildcards) = wildcards {
+                rt = substitute_wildcards::transform_one(rt, wildcards);
+            }
             // before anything, we have to desugar the syntax
             let rt = desugar_destructuring::transform_one(rt);
             // We need to do contract generation before wrapping stuff in variables

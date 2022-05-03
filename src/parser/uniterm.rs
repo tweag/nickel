@@ -352,7 +352,8 @@ pub fn fix_type_vars(ty: &mut Types) {
             | AbsType::Str()
             | AbsType::Sym()
             | AbsType::Flat(_)
-            | AbsType::RowEmpty() => (),
+            | AbsType::RowEmpty()
+            | AbsType::Wildcard(_) => (),
             AbsType::Arrow(ref mut s, ref mut t) => {
                 fix_type_vars_aux(s.as_mut(), Cow::Borrowed(bound_vars.as_ref()));
                 fix_type_vars_aux(t.as_mut(), bound_vars);

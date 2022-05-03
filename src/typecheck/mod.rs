@@ -65,6 +65,9 @@ use operation::{get_bop_type, get_nop_type, get_uop_type};
 /// The typing environment.
 pub type Environment = GenericEnvironment<Ident, TypeWrapper>;
 
+/// Mapping from wildcard ID to inferred type
+pub type Wildcards = HashMap<usize, Types>;
+
 /// A structure holding the two typing environments, the global and the local.
 ///
 /// The global typing environment is constructed from the global term environment (see
@@ -175,6 +178,8 @@ pub struct State<'a> {
     ///
     /// Used for error reporting.
     names: &'a mut HashMap<usize, Ident>,
+    /// A mapping from wildcard ID to unification variable.
+    wildcard_vars: &'a mut HashMap<usize, TypeWrapper>,
 }
 
 /// Typecheck a term.
@@ -189,13 +194,14 @@ pub fn type_check<LL>(
     global_env: &Environment,
     resolver: &impl ImportResolver,
     mut linearizer: LL,
-) -> Result<(Types, LL::Completed), TypecheckError>
+) -> Result<(Types, LL::Completed, Wildcards), TypecheckError>
 where
     LL: Linearizer<CompletionExtra = (UnifTable, HashMap<usize, Ident>)>,
 {
     let (mut table, mut names) = (UnifTable::new(), HashMap::new());
     let mut building = Linearization::new(LL::Building::default());
     let ty = table.fresh_unif_var();
+    let mut wildcard_vars = HashMap::new();
 
     {
         let mut state: State = State {
@@ -203,6 +209,7 @@ where
             table: &mut table,
             constr: &mut RowConstr::new(),
             names: &mut names,
+            wildcard_vars: &mut wildcard_vars,
         };
 
         type_check_(
@@ -216,10 +223,12 @@ where
         )?;
     }
 
+    let wildcards = wildcard_vars_to_type(wildcard_vars, &table);
+
     let result = to_type(&table, ty);
     let lin = linearizer.complete(building, (table, names)).into_inner();
 
-    Ok((result, lin))
+    Ok((result, lin, wildcards))
 }
 
 /// Typecheck a term using the given global typing environment. Same as [`type_check`], but it
@@ -236,25 +245,35 @@ pub fn type_check_in_env(
     t: &RichTerm,
     global: &Environment,
     resolver: &dyn ImportResolver,
-) -> Result<Types, TypecheckError> {
-    let mut state = State {
-        resolver,
-        table: &mut UnifTable::new(),
-        constr: &mut RowConstr::new(),
-        names: &mut HashMap::new(),
-    };
-    let ty = state.table.fresh_unif_var();
-    type_check_(
-        &mut state,
-        Envs::from_global(global),
-        &mut Linearization::new(()),
-        StubHost::<()>::new(),
-        false,
-        t,
-        ty.clone(),
-    )?;
+) -> Result<(Types, Wildcards), TypecheckError> {
+    let mut table = UnifTable::new();
+    let ty = table.fresh_unif_var();
+    let mut wildcard_vars = HashMap::new();
 
-    Ok(to_type(state.table, ty))
+    {
+        let mut state: State = State {
+            resolver,
+            table: &mut table,
+            constr: &mut RowConstr::new(),
+            names: &mut HashMap::new(),
+            wildcard_vars: &mut wildcard_vars,
+        };
+
+        type_check_(
+            &mut state,
+            Envs::from_global(global),
+            &mut Linearization::new(()),
+            StubHost::<()>::new(),
+            false,
+            t,
+            ty.clone(),
+        )?;
+    }
+
+    Ok((
+        to_type(&table, ty),
+        wildcard_vars_to_type(wildcard_vars, &table),
+    ))
 }
 
 /// Typecheck a term against a specific type.
@@ -788,7 +807,7 @@ impl From<ApparentType> for TypeWrapper {
 ///
 /// The role of `apparent_type` is precisely to determine the type of `bound_exp`:
 /// - if `bound_exp` is annotated by an `Assume`, a `Promise` or a metavalue, return the
-///   user-provided type.
+///   user-provided type, unless that type is a wildcard.
 /// - if `bound_exp` is a constant (string, number, boolean or symbol) which type can be deduced
 ///   directly without unfolding the expression further, return the corresponding exact type.
 /// - if `bound_exp` is an array, return `Array Dyn`.
@@ -805,7 +824,7 @@ pub fn apparent_type(
         Term::MetaValue(MetaValue {
             types: Some(Contract { types: ty, .. }),
             ..
-        }) => ApparentType::Annotated(ty.clone()),
+        }) if !ty.0.is_wildcard() => ApparentType::Annotated(ty.clone()),
         // For metavalues, if there's no type annotation, choose the first contract appearing.
         Term::MetaValue(MetaValue { contracts, .. }) if !contracts.is_empty() => {
             ApparentType::Annotated(contracts.get(0).unwrap().types.clone())
@@ -933,6 +952,7 @@ impl TypeWrapper {
                 Concrete(AbsType::DynRecord(Box::new(def_ty.subst(id, to))))
             }
             Concrete(AbsType::Array(ty)) => Concrete(AbsType::Array(Box::new(ty.subst(id, to)))),
+            Concrete(AbsType::Wildcard(i)) => Concrete(AbsType::Wildcard(i)),
             Constant(x) => Constant(x),
             Ptr(x) => Ptr(x),
         }
@@ -1039,6 +1059,22 @@ pub fn unify_(
 
     // t1 and t2 are roots of the type
     match (t1, t2) {
+        // If either type is a wildcard, unify with the associated type var
+        (TypeWrapper::Concrete(AbsType::Wildcard(id)), ty2)
+        | (ty2, TypeWrapper::Concrete(AbsType::Wildcard(id))) => {
+            let ty1 = {
+                let State {
+                    table,
+                    wildcard_vars,
+                    ..
+                } = state;
+                wildcard_vars
+                    .entry(id)
+                    .or_insert_with(|| table.fresh_unif_var())
+                    .clone()
+            };
+            unify_(state, ty1, ty2)
+        }
         (TypeWrapper::Concrete(s1), TypeWrapper::Concrete(s2)) => match (s1, s2) {
             (AbsType::Dyn(), AbsType::Dyn()) => Ok(()),
             (AbsType::Num(), AbsType::Num()) => Ok(()),
@@ -1407,7 +1443,8 @@ fn constrain_var(state: &mut State, tyw: &TypeWrapper, p: usize) {
                 | AbsType::Sym()
                 | AbsType::Flat(_)
                 | AbsType::RowEmpty()
-                | AbsType::Var(_) => (),
+                | AbsType::Var(_)
+                | AbsType::Wildcard(_) => (),
                 AbsType::Array(tyw) => constrain_var_(state, HashSet::new(), tyw.as_ref(), p),
                 AbsType::RowExtend(id, tyw, rest) => {
                     constr.insert(id.clone());
@@ -1476,4 +1513,15 @@ pub fn constr_unify(
     } else {
         Ok(())
     }
+}
+
+/// Convert a mapping from wildcard ID to type var, into a mapping from wildcard ID to concrete type.
+fn wildcard_vars_to_type(
+    wildcard_vars: HashMap<usize, TypeWrapper>,
+    table: &UnifTable,
+) -> HashMap<usize, Types> {
+    wildcard_vars
+        .into_iter()
+        .map(|(id, var)| (id, to_type(&table, var)))
+        .collect()
 }

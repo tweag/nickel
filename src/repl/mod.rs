@@ -134,7 +134,8 @@ impl ReplImpl {
                 repl_impl.cache.resolve_imports(*id).unwrap();
             }
 
-            typecheck::type_check_in_env(&t, &repl_impl.env.type_env, &repl_impl.cache)?;
+            let (_, wildcards) =
+                typecheck::type_check_in_env(&t, &repl_impl.env.type_env, &repl_impl.cache)?;
 
             if let Some(id) = id {
                 typecheck::Envs::env_add(
@@ -154,7 +155,8 @@ impl ReplImpl {
                     })?;
             }
 
-            let t = transform::transform(t).map_err(|err| Error::ParseErrors(err.into()))?;
+            let t = transform::transform(t, Some(&wildcards))
+                .map_err(|err| Error::ParseErrors(err.into()))?;
             for id in &pending {
                 repl_impl
                     .cache
@@ -230,7 +232,9 @@ impl Repl for ReplImpl {
         for id in &pending {
             self.cache.resolve_imports(*id).unwrap();
         }
-        typecheck::type_check_in_env(&term, &self.env.type_env, &self.cache)?;
+        // Substitute the wildcard types for their inferred types
+        let (_, wildcards) = typecheck::type_check_in_env(&term, &self.env.type_env, &self.cache)?;
+        let term = transform::substitute_wildcards::transform_one(term, &wildcards);
 
         Ok(typecheck::apparent_type(
             term.as_ref(),

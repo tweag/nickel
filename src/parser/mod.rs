@@ -37,8 +37,9 @@ impl grammar::ExtendedTermParser {
         lexer: lexer::Lexer,
     ) -> Result<(ExtendedTerm, ParseErrors), ParseError> {
         let mut parse_errors = Vec::new();
+        let mut next_wildcard_id = 0;
         let result = self
-            .parse(file_id, &mut parse_errors, lexer)
+            .parse(file_id, &mut parse_errors, &mut next_wildcard_id, lexer)
             .map_err(|err| ParseError::from_lalrpop(err, file_id));
 
         let parse_errors = ParseErrors::from_recoverable(parse_errors, file_id);
@@ -71,8 +72,9 @@ impl grammar::TermParser {
         lexer: lexer::Lexer,
     ) -> Result<(RichTerm, ParseErrors), ParseError> {
         let mut parse_errors = Vec::new();
+        let mut wildcard_id = 0;
         let result = self
-            .parse(file_id, &mut parse_errors, lexer)
+            .parse(file_id, &mut parse_errors, &mut wildcard_id, lexer)
             .map_err(|err| ParseError::from_lalrpop(err, file_id));
 
         let parse_errors = ParseErrors::from_recoverable(parse_errors, file_id);
