@@ -1,6 +1,6 @@
 ---
 feature: nix-nickel
-start-date: 2022-01-12
+start-date: 2022-04-20
 author: Yann Hamdaoui
 ---
 
@@ -81,7 +81,7 @@ Something as innocent as using `pkgs.writeScript` in an hypothetical NixOS
 Nickel module already implies to know how to generate derivations.
 
 Thus, tackling derivations first makes sense. From there, Nixpkgs is probably
-the thinnest layer over derivations of the three, and already open a lot of
+the thinnest layer over derivations of the three, and already opens a lot of
 possibilities, so we choose to include it as well.
 
 ## Challenges
@@ -144,7 +144,7 @@ for a package may be better separate and expose pure data and represent
 computations as data dependencies.
 
 Concretely, a derivation would be better represented simply as a recursive
-records:
+record:
 
 ```nickel
 builders.derivation = {
@@ -219,15 +219,33 @@ are taken directly from [Eelco's report][nix-lang].
 <!-- TODO: How to specify the dependencies, like gtk? Are they part of the huge
 fixpoint that will be Nickelpkgs? -->
 
-#### Cohabitation with Nixpkgs
+#### Aren't we re-invinting flakes?
 
-How would that model be able to co-exist with the current Nixpkgs architecture?
-In particular, could we override a package from Nixpkgs and use it in one of our
-derivation?
+[Flakes][nix-flakes] are a new feature of Nix that make it easy to write and distribute composable
+packages, and in a more reproducible way. The recent version of Nix (>= 2.5) --
+and in particular the CLI -- are centered around the flakes model.
 
-<!-- TODO: answer that question -->
+The schema of flakes is following the approach described above: representing
+packages as data rather than functions. A flake is a record (an attribute set in
+Nix terminology) with directly accessible metadata (like `name`, `description`,
+etc.), an `inputs` field describing what inputs are needed, and an `outputs`
+field which is a function producing derivations.
 
-### Interaction
+Flakes can leverage Nixpkgs transparently as well, which has its own flakes
+wrapper.
+
+<!-- TODO: are they any overriding mechanism for flakes? -->
+<!-- TODO: this is more of a question than an answer -->
+
+### Nickel and Nixpkgs
+
+<!-- How would that model be able to co-exist with the current Nixpkgs architecture? -->
+<!-- In particular, could we override a package from Nixpkgs and use it in one of our -->
+<!-- derivation? -->
+
+<!-- TODO: answer that question, beside the point of how to call Nixpkgs code
+     from Nickel code. Maybe as long as we get a derivation in the end it's fine?
+-->
 
 As underlined in [Interaction with Nixpkgs](#interaction-with-nixpkgs), an FFI
 mechanism would require a bidirectional communication between Nix and Nickel.
@@ -291,8 +309,8 @@ would do feel _ad hoc_. Other use-cases would benefit from a similar but more
 flexible mechanism for automatic dependency tracking. For example, in Terraform,
 interpolated expressions can refer to values that are only known after certain
 resources have been deployed. The Terraform evaluator thus uses a similar
-mechanism job to elaborate a deployment plan from string metadata. Using Nickel
-for Terraform may need to replicate this mechanism in some way.
+mechanism to elaborate a deployment plan from string metadata. Using Nickel for
+Terraform would need to replicate this mechanism in some way.
 
 We propose to adopt a more generic mechanism for strings with context, which
 behavior can be parametrized. Strings become (conceptually) pairs `(s, ctxt)`
@@ -324,7 +342,8 @@ Alternative: something like `g-exp`. No magic, no extension, but less ergonomic.
 
 <!-- TODO: add a proposal using effects. If string interpolation can perform
 effects, including actual deployment (and not just build free effects AST), that
-may subsume the string contexts usage as well as other like Terraform
+may subsume the string contexts usage as well as other things like Terraform
 interpolation  -->
 
 [nix-lang]: https://gist.github.com/edolstra/29ce9d8ea399b703a7023073b0dbc00d
+[nix-flakes]: https://nixos.wiki/wiki/Flakes
