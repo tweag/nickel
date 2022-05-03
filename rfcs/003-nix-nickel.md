@@ -216,36 +216,40 @@ Thanks to laziness, `nix` could extract fields like `name` or `version` directly
 without having to provide inputs or to evaluate `drv`. Those examples and ideas
 are taken directly from [Eelco's report][nix-lang].
 
+We wall call this approach the **PADM** (**P**ackage **A**s **D**ata **M**odel)
+thereafter.
+
 <!-- TODO: How to specify the dependencies, like gtk? Are they part of the huge
 fixpoint that will be Nickelpkgs? -->
 
-#### Aren't we re-invinting flakes?
+#### Aren't we re-inventing flakes?
 
-[Flakes][nix-flakes] are a new feature of Nix that make it easy to write and distribute composable
-packages, and in a more reproducible way. The recent version of Nix (>= 2.5) --
-and in particular the CLI -- are centered around the flakes model.
+<!-- This is a draft answer, but the question remains. The information in this
+     paragraph needs to be confirmed and clarified by Nix team members -->
 
-The schema of flakes is following the approach described above: representing
-packages as data rather than functions. A flake is a record (an attribute set in
-Nix terminology) with directly accessible metadata (like `name`, `description`,
-etc.), an `inputs` field describing what inputs are needed, and an `outputs`
-field which is a function producing derivations.
+[Flakes][nix-flakes] is a new feature of Nix that make it easy to write and
+distribute composable packages, and in a more reproducible way. The recent
+version of Nix (>= 2.5) -- and in particular the CLI -- are centered around the
+flakes model.
 
-Flakes can leverage Nixpkgs transparently as well, which has its own flakes
-wrapper.
+The schema of flakes looks closer to the approach described above than Nixpkgs:
+representing packages as data rather than functions. A flake is a record (an
+attribute set in Nix terminology) with directly accessible metadata (like
+`name`, `description`, etc.), an `inputs` field describing what inputs are
+needed, and an `outputs` field which is a function producing derivations.
 
-<!-- TODO: are they any overriding mechanism for flakes? -->
-<!-- TODO: this is more of a question than an answer -->
+Flakes can leverage packages from Nixpkgs easily as well, which has its own
+flakes wrapper. However, flakes still rely on Nixpkgs-based `mkDerivation` and
+the like to build derivation, and thus on `override` and its variants to
+override packages. While some of the metadata like the name and description are
+top-level and directly accessible without having to evaluate a function, this is
+not the case of a lot of other metadata that are still buried in the
+derivation, like `version`, unlike the PADM.
+
+It remains to see how the PADM would interact with flakes and all the built-in
+support flakes have in Nix today.
 
 ### Nickel and Nixpkgs
-
-<!-- How would that model be able to co-exist with the current Nixpkgs architecture? -->
-<!-- In particular, could we override a package from Nixpkgs and use it in one of our -->
-<!-- derivation? -->
-
-<!-- TODO: answer that question, beside the point of how to call Nixpkgs code
-     from Nickel code. Maybe as long as we get a derivation in the end it's fine?
--->
 
 As underlined in [Interaction with Nixpkgs](#interaction-with-nixpkgs), an FFI
 mechanism would require a bidirectional communication between Nix and Nickel.
@@ -268,36 +272,47 @@ system being native is in part motivated by the perspective of better
 performance and error message. This is hard to maintain if we just compile those
 features away back to plain Nix code.
 
-On the other hand, compiling Nix to Nickel looks simpler at first sight. Nickel
-is close to being a superset of Nix (the only non-trivial missing features being
-the `with` construct and string contexts, but the latter doesn't even really
-change the semantics). This would preserve the Nickel advances, and we could
-leverage directly any non-builtin Nix function, including all the Nixpkgs
-library functions.
+On the other hand, compiling Nix to Nickel looks simpler. Nickel is close to
+being a superset of Nix (the only non-trivial missing features being the `with`
+construct and string contexts, but the latter doesn't even really change the
+semantics). This would preserve the Nickel advances, and we could leverage
+directly any non-builtin Nix function, including all the Nixpkgs library
+functions.
 
 The potential drawbacks of this approach:
 
 - Performance: Nickel is just not in par with Nix at this point, so the
   performance of Nixpkgs compiled to Nickel might be prohibitively bad at first.
-  On a positive note, this would provide a great benchmark suite to guide future
-  performance improvements.
+  On a positive note, this would provide a great benchmark suite and motivation
+  to guide future performance improvements.
 - Some builtin may include effects, which are not trivial to combine with the
-  execution model (reversible thunks). That being said, those effects are in
-  fact idempotent and commutative (creating path in the store, creating
+  execution model (revertible thunks). That being said, those effects are in
+  practice idempotent and commutative (creating paths in the store, creating
   derivation, etc.), which should be fine.
-- Compilation could be done on the fly (shouldn't be too long), or have a
-    Nixpkgs snapshot pre-compiled to Nickel, or a mix of both.
 
-This solutions require to reimplement Nix builtins in Nickel (a compatibility
+Compilation could be done on the fly (shouldn't be too long), or have a Nixpkgs
+snapshot pre-compiled to Nickel, or a mix of both.
+
+This solution requires to reimplement Nix builtins in Nickel (a compatibility
 layer). This is an interesting milestone in itself, because even without a
 Nix-to-Nickel compiler, the compatibility layer would already make writing
 derivations in pure Nickel possible.
 
-Note: what about dynamic imports?
+<!-- TODO: what about dynamic imports? -->
 
-### String Context
+#### Using Nixpkgs in the PADM
 
-Ideally, we would like to have a behavior similar to Nix string contexts
+Using a package from Nixpkgs in the PADM with a Nix-to-Nickel compiler would be
+quite straightforward, as we could evaluate anything to a derivation whenever
+needed. One would need to use Nixpkgs functions and idioms to, say, override an
+attribute, but that's pretty hard to avoid, as a systematic translation from the
+Nixpkgs model to the PADM doesn't seem trivial at first sight.
+
+<!-- TODO: add examples of such interactions -->
+
+### Supporting string contexts
+
+Ideally, we would like to have a behavior similar to Nix string contexts to
 automatically track dependencies in a transparent way (you don't have to think
 about it in Nix, using strings in a natural way).
 
@@ -336,7 +351,7 @@ interpreter plug-in.
   another.
 - There would be a contract to distinguish the different kind of
   strings in order enforce the usage of e.g. Nix style contexts for writing
-  Nickel for Nix. We want to avoid users loosing context unknowingly.
+  Nickel for Nix. We want to avoid users loosing or missing context unknowingly.
 
 Alternative: something like `g-exp`. No magic, no extension, but less ergonomic.
 
@@ -344,6 +359,8 @@ Alternative: something like `g-exp`. No magic, no extension, but less ergonomic.
 effects, including actual deployment (and not just build free effects AST), that
 may subsume the string contexts usage as well as other things like Terraform
 interpolation  -->
+
+<!-- tangentially, effects ~= recursive Nix? -->
 
 [nix-lang]: https://gist.github.com/edolstra/29ce9d8ea399b703a7023073b0dbc00d
 [nix-flakes]: https://nixos.wiki/wiki/Flakes
