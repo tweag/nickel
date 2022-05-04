@@ -216,7 +216,7 @@ Thanks to laziness, `nix` could extract fields like `name` or `version` directly
 without having to provide inputs or to evaluate `drv`. Those examples and ideas
 are taken directly from [Eelco's report][nix-lang].
 
-We wall call this approach the **PADM** (**P**ackage **A**s **D**ata **M**odel)
+We wall call this approach the **PARM** (**P**ackage **A**s **R**records **M**odel)
 thereafter.
 
 <!-- TODO: How to specify the dependencies, like gtk? Are they part of the huge
@@ -244,9 +244,9 @@ the like to build derivation, and thus on `override` and its variants to
 override packages. While some of the metadata like the name and description are
 top-level and directly accessible without having to evaluate a function, this is
 not the case of a lot of other metadata that are still buried in the
-derivation, like `version`, unlike the PADM.
+derivation, like `version`, unlike the PARM.
 
-It remains to see how the PADM would interact with flakes and all the built-in
+It remains to see how the PARM would interact with flakes and all the built-in
 support flakes have in Nix today.
 
 ### Nickel and Nixpkgs
@@ -300,13 +300,13 @@ derivations in pure Nickel possible.
 
 <!-- TODO: what about dynamic imports? -->
 
-#### Using Nixpkgs in the PADM
+#### Using Nixpkgs in the PARM
 
-Using a package from Nixpkgs in the PADM with a Nix-to-Nickel compiler would be
+Using a package from Nixpkgs in the PARM with a Nix-to-Nickel compiler would be
 quite straightforward, as we could evaluate anything to a derivation whenever
 needed. One would need to use Nixpkgs functions and idioms to, say, override an
 attribute, but that's pretty hard to avoid, as a systematic translation from the
-Nixpkgs model to the PADM doesn't seem trivial at first sight.
+Nixpkgs model to the PARM doesn't seem trivial at first sight.
 
 <!-- TODO: add examples of such interactions -->
 
@@ -355,11 +355,14 @@ interpreter plug-in.
   strings in order enforce the usage of e.g. Nix style contexts for writing
   Nickel for Nix. We want to avoid users loosing or missing context unknowingly.
 
+#### G-exps
+
 Alternative: something like `g-exp`. No magic, no extension, but less ergonomic.
 
 #### Effects
 
 Another possible route is to use [effects][nickel-effects].
+
 <!-- TODO: add a proposal using effects. If string interpolation can perform
 effects, including actual deployment (and not just build free effects AST), that
 may subsume the string contexts usage as well as other things like Terraform
