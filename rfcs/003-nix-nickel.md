@@ -219,8 +219,28 @@ are taken directly from [Eelco's report][nix-lang].
 We wall call this approach the **PARM** (**P**ackage **A**s **R**records **M**odel)
 thereafter.
 
-<!-- TODO: How to specify the dependencies, like gtk? Are they part of the huge
-fixpoint that will be Nickelpkgs? -->
+#### Specifying dependencies
+
+<!-- Draft/otes -->
+
+How to specify the dependencies, like gtk? Are they part of the huge fixpoint
+that will be Nickelpkgs? We want to avoid dynamic scoping/open records as it
+opens cans of worms. But specifying interfaces by hand in each packages sounds
+laborious.
+
+The fixpoint could also recursively appear in a sub-field `pkgs` that could be
+protected by the one top-level contract:
+
+```nickel
+let rec PkgsList = { .... } in
+let rec Nickelpkgs = {
+
+} & .. & {
+  buildInputs = [ pkgs.gtk ]
+  pkgs | PkgsList,
+} ..
+& { pkgs | PkgsList = Nickelpkgs }
+```
 
 #### Aren't we re-inventing flakes?
 
@@ -298,7 +318,8 @@ layer). This is an interesting milestone in itself, because even without a
 Nix-to-Nickel compiler, the compatibility layer would already make writing
 derivations in pure Nickel possible.
 
-<!-- TODO: what about dynamic imports? -->
+- TODO: what about dynamic imports?
+- TODO: what about using a Nickel pkgs from Nix?
 
 #### Using Nixpkgs in the PARM
 
