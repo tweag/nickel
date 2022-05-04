@@ -1,9 +1,8 @@
-Contributing to Nickel
-======================
+# Contributing to Nickel
 
 Welcome, and thanks for considering contributing to the Nickel project!
 
-# Contributing
+## Contributing
 
 There are many useful ways to help which don't involve modifying the source of
 Nickel:
@@ -17,14 +16,14 @@ Nickel:
 The rest of this document is concerned with any changes impacting the `nickel`
 repository, which may or may not involve changing the source of Nickel.
 
-# Table of content
+## Table of content
 
 1. [Preamble](#preamble)
 1. [Resources](#resources)
 1. [Setup a development environment](#set-up-a-development-environment)
 1. [How to submit changes](#how-to-submit-changes)
 
-# Preamble
+## Preamble
 
 Before contributing any non trivial change to this repository, please first
 check for the existence of related work such as issues or open pull requests. If
@@ -32,9 +31,9 @@ there are none, it's better to discuss the change you wish to make via an issue,
 by email, or using any other method with the maintainers of this repository
 (listed below) before actually submitting something.
 
-# Resources
+## Resources
 
-## Documentation
+### Documentation
 
 The following resources are oriented toward Nickel users:
 
@@ -46,15 +45,16 @@ For Nickel contributors (or aspiring contributors), the following technical
 documentation is relevant as well:
 
 - The [crate documentation][doc-crate].
-- The [RFCs][rfcs]. There is currently no well established process for RFCs, but as a
-  rule of thumb, impactful changes to the design or the implementation of the
-  language are technically discussed and documented in a dedicated RFC document.
+- The [RFCs][rfcs]. There is currently no well established process for RFCs, but
+  as a rule of thumb, impactful changes to the design or the implementation of
+  the language are technically discussed and documented in a dedicated RFC
+  document.
 - The [technical notes][doc-notes]. Various notes gathering thoughts, proposals,
   or issues about an aspect of the language at one point in time that the author
   thought important to keep for posterity. They are usually more informal than
   RFCs, of smaller scope, and their content may become obsolete more easily.
 
-## People
+### People
 
 Nickel is maintained by [Tweag][tweag]. The current lead maintainer is Yann
 Hamdaoui (@yannham).
@@ -62,12 +62,12 @@ Hamdaoui (@yannham).
 You can find some of us on our [matrix channel][matrix-nickel] (and in
 particular the Devs room), or fire an email at `nickel-lang@tweag.io`.
 
-# Set up a development environment
+## Set up a development environment
 
 Please refer to [`HACKING.md`](./HACKING.md) to setup a development environment
 for Nickel, as well as adding or running tests and benchmarks.
 
-# How to submit changes
+## How to submit changes
 
 **Try to keep pull requests small and focused**. Avoid packing refactoring,
 cosmetic changes or anything not directly related to your original goal in the
@@ -84,7 +84,7 @@ aspects to consider when working on Nickel:
    changes as well as avoiding regressions.
 3. **Benchmarks**: if your change is likely to impact the performance in a
    non-trivial way, it might be useful to run the benchmark suite on both master
-   and on your branch and to report those results in the description of the PR. 
+   and on your branch and to report those results in the description of the PR.
 
 [blog-series]: https://www.tweag.io/blog/2020-10-22-nickel-open-sourcing/
 [blog-release]: https://www.tweag.io/blog/2022-03-11-nickel-first-release/
