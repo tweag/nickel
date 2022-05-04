@@ -132,19 +132,18 @@ the Nix language of the future][nix-lang].
 #### Package as data
 
 Despite Nix being branded as a _functional_ package manager, a perhaps
-surprising conclusion of Eelco Dolstra's document is that writing packages as actual
-functions is retrospectively of questionable value. Functions need to be applied
-(and thus arguments be produced) before we can access any data (which hurts
-discoverability), their inputs are hard to override, etc. Overall, functions are
-opaque _computations_, which makes them hard to inspect and to
+surprising conclusion of Eelco Dolstra's document is that writing packages as
+actual functions is retrospectively of questionable value. Functions need to be
+applied (and thus arguments be produced) before we can access any data (which
+hurts discoverability), their inputs are hard to override, etc. Overall,
+functions are opaque _computations_, which makes them hard to inspect and to
 patch. The reflection above pushes to switch to a model where packages are
 rather _data_. Of course, computations still take place -- this is after all the
 whole point of having a configuration language -- but the right representation
-for a package may be better separate and expose pure data and represent
+for a package may be better separated, exposing pure data and representing
 computations as data dependencies.
 
-Concretely, a derivation would be better represented simply as a recursive
-record:
+Concretely, a derivation would be represented simply as a recursive record:
 
 ```nickel
 builders.derivation = {
@@ -213,34 +212,97 @@ pkgs.hello = builders.unix_package & {
 ```
 
 Thanks to laziness, `nix` could extract fields like `name` or `version` directly
-without having to provide inputs or to evaluate `drv`. Those examples and ideas
-are taken directly from [Eelco's report][nix-lang].
+without having to provide inputs or to evaluate `drv`.
 
-We wall call this approach the **PARM** (**P**ackage **A**s **R**records **M**odel)
-thereafter.
+We wall call this approach the **PARM** (**P**ackage **A**s **R**records
+**M**odel) thereafter.
 
 #### Specifying dependencies
 
-<!-- Draft/otes -->
+The `pkgs.hello` example unveils a difficulty about specifying dependencies. It
+would work in a model where all the packages are defined in one place and
+populate the same huge record that will give Nickelpkgs. But that would be
+totally impracticable and anti-modular.
 
-How to specify the dependencies, like gtk? Are they part of the huge fixpoint
-that will be Nickelpkgs? We want to avoid dynamic scoping/open records as it
-opens cans of worms. But specifying interfaces by hand in each packages sounds
-laborious.
+Writing the `pkgs.hello` in its own file in Nickel today would result in the
+`gtk` occurrence raising an `unbound variable` error, and for a good reason:
+`gtk` is used but seemingly defined nowhere. In practice, `gtk` is expected to
+appear in the final recursive record that would Nickelpkgs. But from a language
+point of view, allowing references to yet-to-be-defined identifiers, that is
+having dynamic scoping, comes with its share of drawbacks: non-locality making
+code harder to understand, inability to detect unbound variables statically
+(incurring late error reporting), inability to properly typecheck such code,
+etc.
 
-The fixpoint could also recursively appear in a sub-field `pkgs` that could be
-protected by the one top-level contract:
+Let us review possible suctions:
+
+##### Explicit list
+
+One possibility is to specify explicitly all the
+dependencies as record fields without definition:
 
 ```nickel
-let rec PkgsList = { .... } in
-let rec Nickelpkgs = {
+# file hello.ncl
+{
+  # dependencies
+  gtk | NickelPackage,
 
-} & .. & {
-  buildInputs = [ pkgs.gtk ]
-  pkgs | PkgsList,
-} ..
-& { pkgs | PkgsList = Nickelpkgs }
+  name = "hello",
+  version = "1.12",
+  description = "A program that produces a familiar, friendly greeting",
+  license = licenses.gpl,
+
+  enable_gui
+    | doc "Enable GTK+ support."
+    | Bool
+    | default false,
+
+  src = builders.fetchurl & { url = ..., sha256 = ... },
+
+  buildInputs = if enable_gui then [ gtk ] else [],
+
+}
 ```
+
+The contract may be optional as the infrastructure of an hypothetical Nickelpkg
+would already apply the contract Package.
+
+<!-- In this design, it would be nice to avoid having to repeat those
+     dependencies in several places (like in inputs). -->
+
+##### Dynamic scoping
+
+<!-- DRAFT. not sure this is a good idea -->
+
+A second solution would be to implement a form of dynamic scoping, but with a
+special syntax, such that it doesn't impact normal uses of variables. Could
+either have a special `self` or `super` keyword that refers to the final version
+of the fixpoint, or a special syntax such as identifiers starting a specific
+character:
+
+```nickel
+{
+  name = "hello",
+  version = "1.12",
+  description = "A program that produces a familiar, friendly greeting",
+  license = licenses.gpl,
+
+  enable_gui
+    | doc "Enable GTK+ support."
+    | Bool
+    | default false,
+
+  src = builders.fetchurl & { url = ..., sha256 = ... },
+
+  buildInputs = if enable_gui then [ super.gtk ] else [],
+
+}
+```
+
+**TODO**: other solutions? The pkg subfield, but seems like a lesser version of
+the first proposal. Bazel-like includes? From experience, the semantics is
+confusing, it's tied to the filesystem structure. And in the end it's still a
+strange form of dynamic scoping: if we are to do it, let go for a proper version.
 
 #### Aren't we re-inventing flakes?
 
@@ -248,26 +310,29 @@ let rec Nickelpkgs = {
      paragraph needs to be confirmed and clarified by Nix team members -->
 
 [Flakes][nix-flakes] is a new feature of Nix that make it easy to write and
-distribute composable packages, and in a more reproducible way. The recent
-version of Nix (>= 2.5) -- and in particular the CLI -- are centered around the
+distribute composable packages, all in a more reproducible way. The recent
+versions of Nix (>= 2.5) -- and in particular the CLI -- are centered around the
 flakes model.
 
-The schema of flakes looks closer to the approach described above than Nixpkgs:
-representing packages as data rather than functions. A flake is a record (an
-attribute set in Nix terminology) with directly accessible metadata (like
-`name`, `description`, etc.), an `inputs` field describing what inputs are
-needed, and an `outputs` field which is a function producing derivations.
+The schema of flakes looks closer to the PARM than to the Nixpkgs style. A flake
+is a record (an attribute set in Nix terminology) with directly accessible
+metadata (like `name`, `description`, etc.), an `inputs` field describing what
+inputs are needed, and an `outputs` field which is a function producing
+derivations.
 
-Flakes can leverage packages from Nixpkgs easily as well, which has its own
-flakes wrapper. However, flakes still rely on Nixpkgs-based `mkDerivation` and
-the like to build derivation, and thus on `override` and its variants to
-override packages. While some of the metadata like the name and description are
-top-level and directly accessible without having to evaluate a function, this is
-not the case of a lot of other metadata that are still buried in the
-derivation, like `version`, unlike the PARM.
+However, this only concerns a few top-level attributes. Other fields of the
+derivation, such as `version`, `license`, etc. are still hidden under the output
+function. Flakes are not a alternative to Nixpkgs, but a schema working on top
+of it. Building derivations in a flake still relies on Nixpkgs mechanisms like
+`mkDerivation`, and the overriding mechanisms are the same as well. Flakes
+solves related but distinct issues (package composition and reproducibility).
 
-It remains to see how the PARM would interact with flakes and all the built-in
-support flakes have in Nix today.
+At first sight, it shouldn't be hard to mechanically wrap a package in the PARM
+as a flake (in general, going from a "data" package to more "functional" package
+is easy). On consideration, though, is that the schema of flakes could be reused
+in the PARM, just for the sake of consistency.
+
+**TODO**: clarify what this last sentence exactly means.
 
 ### Nickel and Nixpkgs
 
@@ -275,8 +340,8 @@ As underlined in [Interaction with Nixpkgs](#interaction-with-nixpkgs), an FFI
 mechanism would require a bidirectional communication between Nix and Nickel.
 This is made complicated by the nature of both languages, which are lazy and
 functional, meaning that a Nix function called from Nickel may incur arbitrary
-calls back to Nickel (and vice-versa) to apply functions or to evaluate thunk.
-Not only does this seem complex, but also non trivial to be made efficient.
+calls back to Nickel (and vice-versa) to apply functions or to evaluate thunks.
+Not only does this seem complex, but also hard to be made efficient.
 
 Another possibility is to have everything evaluate in only one world, either Nix
 or Nickel. Practically, we could compile the Nix code to Nickel or vice-versa,
@@ -287,36 +352,37 @@ advantage of leveraging all the Nix primitives and machinery freely. However,
 this solution simply nullifies a lot of the value proposition of Nickel. The
 added value of contracts is mainly due to its careful design as a primitive
 feature of the language, and while it could be simulated to some extent in Nix,
-the error message and performances just wouldn't in par. Similarly, the merge
+the error message and performances just couldn't be in par. Similarly, the merge
 system being native is in part motivated by the perspective of better
-performance and error message. This is hard to maintain if we just compile those
+performance and error message. This simply becomes moot if we compile those
 features away back to plain Nix code.
 
-On the other hand, compiling Nix to Nickel looks simpler. Nickel is close to
-being a superset of Nix (the only non-trivial missing features being the `with`
-construct and string contexts, but the latter doesn't even really change the
-semantics). This would preserve the Nickel advances, and we could leverage
+On the other hand, compiling Nix to Nickel looks more appealing. Nickel is close
+to being a superset of Nix (the only non-trivial missing features being the
+`with` construct and string contexts, but the latter doesn't even really change
+the semantics). This would preserve the Nickel advances, and we could leverage
 directly any non-builtin Nix function, including all the Nixpkgs library
 functions.
 
 The potential drawbacks of this approach:
 
-- Performance: Nickel is just not in par with Nix at this point, so the
-  performance of Nixpkgs compiled to Nickel might be prohibitively bad at first.
-  On a positive note, this would provide a great benchmark suite and motivation
-  to guide future performance improvements.
-- Some builtin may include effects, which are not trivial to combine with the
+- Performance: Nickel is not expected to be in par with Nix at this point, so
+  the performance of Nixpkgs compiled to Nickel might be prohibitively bad at
+  first. On a positive note, this would provide a great benchmark suite and
+  motivation to guide future performance improvements.
+- Some builtin may incur effects, which are not trivial to combine with the
   execution model (revertible thunks). That being said, those effects are in
   practice idempotent and commutative (creating paths in the store, creating
   derivation, etc.), which should be fine.
 
-Compilation could be done on the fly (shouldn't be too long), or have a Nixpkgs
-snapshot pre-compiled to Nickel, or a mix of both.
+Compilation could be done on the fly, as the compilation process would be rather
+straightforward, or have a Nixpkgs snapshot pre-compiled to Nickel, or a mix of
+both.
 
-This solution requires to reimplement Nix builtins in Nickel (a compatibility
-layer). This is an interesting milestone in itself, because even without a
-Nix-to-Nickel compiler, the compatibility layer would already make writing
-derivations in pure Nickel possible.
+This solution requires to reimplement Nix builtins in Nickel (the nickel-nix
+compatibility layer) . This is an interesting milestone in itself, because even
+without a Nix-to-Nickel compiler, the compatibility layer would already make
+writing derivations in pure Nickel possible.
 
 - TODO: what about dynamic imports?
 - TODO: what about using a Nickel pkgs from Nix?
@@ -324,10 +390,10 @@ derivations in pure Nickel possible.
 #### Using Nixpkgs in the PARM
 
 Using a package from Nixpkgs in the PARM with a Nix-to-Nickel compiler would be
-quite straightforward, as we could evaluate anything to a derivation whenever
-needed. One would need to use Nixpkgs functions and idioms to, say, override an
-attribute, but that's pretty hard to avoid, as a systematic translation from the
-Nixpkgs model to the PARM doesn't seem trivial at first sight.
+straightforward, as we could evaluate anything to a derivation whenever needed.
+One would need to use Nixpkgs functions and idioms to do e.g. overrides though,
+but this seems pretty hard to avoid, as a systematic translation from the
+Nixpkgs model to the PARM doesn't seem trivial, if even doable.
 
 <!-- TODO: add examples of such interactions -->
 
@@ -354,12 +420,10 @@ We propose to adopt a more generic mechanism for strings with context, which
 behavior can be parametrized. Strings become (conceptually) pairs `(s, ctxt)`
 where `ctxt` is an arbitrary data structure with additional structure:
 
-```nickel
-{
-  combine: Ctxt -> Ctxt -> Ctxt,
-  pure: Str -> Ctxt,
-  pure_exp: Expr -> Ctxt,
-}
+```Rust
+combine: Ctxt -> Ctxt -> Ctxt,
+pure: Str -> Ctxt,
+pure_exp: Expr -> Ctxt,
 ```
 
 The above functions could either be provided by user code or directly as an
