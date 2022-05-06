@@ -62,6 +62,9 @@ enum Command {
         #[structopt(long)]
         history_file: Option<PathBuf>,
     },
+    /// Generate the documentation files for the specified nickel file
+    #[cfg(feature = "doc")]
+    Doc {},
 }
 
 fn main() {
@@ -127,6 +130,8 @@ fn main() {
             }
             Some(Command::Typecheck) => program.typecheck().map(|_| ()),
             Some(Command::Repl { .. }) => unreachable!(),
+            #[cfg(feature = "doc")]
+            Some(Command::Doc { .. }) => program.output_doc(),
             None => program
                 .eval_full()
                 .map(|t| println!("{}", Term::from(t).deep_repr())),
