@@ -848,8 +848,12 @@ impl fmt::Display for UnaryOp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use UnaryOp::*;
         match self {
-            Blame() => write!(f, "%blame% "),
             DeepSeq(_) => write!(f, "%deep_seq% "),
+            IsNum() => write!(f, "%is_num% "),
+            IsFun() => write!(f, "%is_fun% "),
+            IsStr() => write!(f, "%is_str% "),
+            IsArray() => write!(f, "%is_array% "),
+            IsRecord() => write!(f, "%is_record% "),
             BoolNot() => write!(f, "!"),
             BoolAnd() => write!(f, " &&"),
             BoolOr() => write!(f, " ||"),

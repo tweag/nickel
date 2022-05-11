@@ -1,3 +1,4 @@
+use crate::destruct::{self, Destruct};
 use crate::term::{BinaryOp, MetaValue, RecordAttrs, RichTerm, Term};
 use crate::types::{AbsType, Types};
 pub use pretty::{DocAllocator, DocBuilder, Pretty};
@@ -106,7 +107,40 @@ where
             StrConcat() => allocator.text("++"),
             ArrayConcat() => allocator.text("@"),
 
+            DynAccess() => allocator.text("."),
+
             op => allocator.as_string(format!("%{:?}%", op).to_lowercase()),
+        }
+    }
+}
+
+impl<'a, D, A> Pretty<'a, D, A> for &Destruct
+where
+    D: NickelAllocatorExt<'a, A>,
+    D::Doc: Clone,
+    A: Clone + 'a,
+{
+    fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
+        match self {
+            Destruct::Record {
+                matches,
+                open,
+                rest,
+                ..
+            } => allocator
+                .intersperse(
+                    matches.iter().map(|m| match m {
+                        destruct::Match::Simple(id, meta) => allocator
+                            .as_string(id)
+                            .append(allocator.space())
+                            .append(allocator.metadata(meta, false)),
+                        _ => unimplemented!(),
+                    }),
+                    allocator.text(", "),
+                )
+                .braces(),
+            Empty => allocator.nil(),
+            _ => unimplemented!(),
         }
     }
 }
@@ -251,12 +285,17 @@ where
                 .append(
                     opt_id
                         .clone()
-                        .map(|id| allocator.as_string(id))
+                        .map(|id| {
+                            allocator.as_string(id).append(if dst.is_empty() {
+                                allocator.nil()
+                            } else {
+                                allocator.text(" @ ")
+                            })
+                        })
                         .unwrap_or(allocator.nil()),
                 )
+                .append(dst.pretty(allocator))
                 .append(allocator.space())
-                .append(allocator.text("# <pattern>"))
-                .append(allocator.hardline())
                 .append(if let MetaValue(ref mv) = rt.as_ref() {
                     allocator.metadata(mv, false)
                 } else {
@@ -296,8 +335,9 @@ where
                     .append(allocator.line())
                     .append(allocator.text("else"))
                     .group(),
-                _ => allocator
-                    .atom(rt1)
+                _ => rt1
+                    .to_owned()
+                    .pretty(allocator)
                     .append(allocator.line())
                     .append(allocator.atom(rt2))
                     .group(),
@@ -349,33 +389,65 @@ where
                 deps, /* dependency tracking between fields. None before the free var pass */
             ) => allocator
                 .line()
-                .append(allocator.intersperse(
-                    sorted_map(fields).iter().map(|&(id, rt)| {
-                        allocator
-                            .as_string(id)
-                            .append(allocator.space())
-                            .append(if let MetaValue(mv) = rt.as_ref() {
+                .append(
+                    allocator.intersperse(
+                        sorted_map(fields)
+                            .iter()
+                            .map(|&(id, rt)| {
                                 allocator
-                                    .metadata(&mv, true)
+                                    .as_string(id)
                                     .append(allocator.space())
-                                    .append(
-                                        mv.value
-                                            .clone()
-                                            .map(|v| {
-                                                allocator.text("= ").append(v.pretty(allocator))
-                                            })
-                                            .unwrap_or(allocator.nil()),
-                                    )
-                            } else {
-                                allocator
-                                    .text("=")
-                                    .append(allocator.line())
-                                    .append(rt.to_owned().pretty(allocator).nest(2))
+                                    .append(if let MetaValue(mv) = rt.as_ref() {
+                                        allocator
+                                            .metadata(&mv, true)
+                                            .append(allocator.space())
+                                            .append(
+                                                mv.value
+                                                    .clone()
+                                                    .map(|v| {
+                                                        allocator
+                                                            .text("= ")
+                                                            .append(v.pretty(allocator))
+                                                    })
+                                                    .unwrap_or(allocator.nil()),
+                                            )
+                                    } else {
+                                        allocator
+                                            .text("=")
+                                            .append(allocator.line())
+                                            .append(rt.to_owned().pretty(allocator).nest(2))
+                                    })
+                                    .append(allocator.text(","))
                             })
-                            .append(allocator.text(","))
-                    }),
-                    allocator.line(),
-                ))
+                            .chain(dyn_fields.iter().map(|(id, rt)| {
+                                id.to_owned()
+                                    .pretty(allocator)
+                                    .append(allocator.space())
+                                    .append(if let MetaValue(mv) = rt.as_ref() {
+                                        allocator
+                                            .metadata(&mv, true)
+                                            .append(allocator.space())
+                                            .append(
+                                                mv.value
+                                                    .clone()
+                                                    .map(|v| {
+                                                        allocator
+                                                            .text("= ")
+                                                            .append(v.pretty(allocator))
+                                                    })
+                                                    .unwrap_or(allocator.nil()),
+                                            )
+                                    } else {
+                                        allocator
+                                            .text("=")
+                                            .append(allocator.line())
+                                            .append(rt.to_owned().pretty(allocator).nest(2))
+                                    })
+                                    .append(allocator.text(","))
+                            })),
+                        allocator.line(),
+                    ),
+                )
                 .append(if attr.open {
                     allocator.line().append(allocator.text(".."))
                 } else {
@@ -434,16 +506,23 @@ where
                     }
                 }
             },
-            Op2(op, rtl, rtr) => if (&BinaryOp::Sub(), &Num(0.0)) == (op, rtl.as_ref()) {
-                allocator.nil()
+            Op2(op, rtl, rtr) => if op == &BinaryOp::DynAccess() {
+                rtr.to_owned()
+                    .pretty(allocator)
+                    .append(op.clone().pretty(allocator))
+                    .append(rtl.to_owned().pretty(allocator))
             } else {
-                allocator.atom(rtl)
+                if (&BinaryOp::Sub(), &Num(0.0)) == (op, rtl.as_ref()) {
+                    allocator.nil()
+                } else {
+                    allocator.atom(rtl)
+                }
+                .append(allocator.space())
+                .append(op.clone().pretty(allocator))
+                .append(allocator.line())
+                .append(allocator.atom(rtr))
+                .nest(2)
             }
-            .append(allocator.space())
-            .append(op.clone().pretty(allocator))
-            .append(allocator.line())
-            .append(allocator.atom(rtr))
-            .nest(2)
             .group(),
             OpN(op, rts) => allocator
                 .as_string(op)
