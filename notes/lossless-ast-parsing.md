@@ -62,8 +62,8 @@ that fall broadly into three categories:
    near it.
 3. Lex the whitespace and comments, but don't pass this information to the
    lalrpop parser. From here, have lalrpop create either an untyped tree, or a
-   stream of event representing an untyped ast. From there, the comments and
-   whitespace can be reinjected into the tree or stream.
+   stream of event representing an untyped ast and reinject the comments and
+   whitespace into said tree or stream.
 
 # Options
 ## Custom
@@ -105,11 +105,11 @@ implementations. This can be a great benefit in the early stages of development
 when changes to the CST are frequent. More on ungrammar can be read in a
 [relevant blogpost](https://rust-analyzer.github.io/blog/2020/10/24/introducing-ungrammar.html).
 
-Rowan is a library that has been adopted for use in
+Rowan is a library that has been adopted in
 [several](https://crates.io/crates/rowan/reverse_dependencies) language servers
 and other programming tools.
 Additionally, there exists at least
-[one language (slin)](https://github.com/slint-ui/slint/) that (aside from a
+[one language (slint)](https://github.com/slint-ui/slint/) that (aside from a
 language server and formatter) also uses rowan for their
 [compiler](https://github.com/slint-ui/slint/tree/master/internal/compiler).
 Hence we can safely say rowan is likely suitable for nickel.
