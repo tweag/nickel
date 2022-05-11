@@ -21,7 +21,7 @@ rows_notail {{ tex \rho }} :: 'rows_notail_' ::=
 
 rows_enum_notail {{ tex \chi }} :: 'rows_enum_notail_' ::=
  | empty                ::  :: Empty
- | l1 , ... , ln         ::  :: Many
+ | l1 , ... , ln        ::  :: Many
  | rows_enum_notail , l ::  :: Append
 
 rows :: 'rows_' ::=
@@ -32,7 +32,6 @@ rows :: 'rows_' ::=
 rows_enum :: 'rows_enum_' ::=
  | rows_enum_notail       ::   :: NoTail
  | rows_enum_notail '|' A ::   :: Tail
-
 
 t_mono {{ tex \rho }} :: 't_mono_' ::=
  | Dyn                        ::   :: Dyn
@@ -45,13 +44,13 @@ t_mono {{ tex \rho }} :: 't_mono_' ::=
  | Array t                    ::   :: Array
  | # e                        ::   :: Contract
  | ( t_mono )                 :: S :: Parens
-% | t_mono [ t_mono' / a ]     :: M :: Subst
-% | t_mono [ rows / A ]        :: M :: SubstRow
+% | t_mono [ t_mono' / a ]    :: M :: Subst
+% | t_mono [ rows / A ]       :: M :: SubstRow
 
 t {{ tex \sigma }}, u {{ tex \tau }} :: 't_' ::=
  | t_mono                     ::   :: Monotype {{ tex [[t_mono]] }}
- | forall type_vars . t_mono  ::   :: Forall {{ tex [[forall]][[type_vars]]{.}[[t]] }}
- | forall row_vars . t_mono   ::   :: ForallRow {{ tex [[forall]][[row_vars]]{.}[[t]] }}
+ | forall type_vars . t_mono  ::   :: Forall {{ tex [[forall]][[type_vars]]{.}[[t_mono]] }}
+ | forall row_vars . t_mono   ::   :: ForallRow {{ tex [[forall]][[row_vars]]{.}[[t_mono]] }}
  | ( t )                      :: S :: Parens
  | t [ u / a ]                :: M :: Subst
  | t [ rows / A ]             :: M :: SubstRow
@@ -94,7 +93,7 @@ t_unif_mono {{ tex \rho }} :: 't_unif_mono_' ::=
  | Array t_unif                     ::   :: Array
  | # e                              ::   :: Contract
  | ( t_unif_mono )                  :: S :: Parens
- | t_unif_mono [ t_unif_mono' / a ] :: M :: Subst
+ | t_unif_mono [ u_unif_mono / a ] :: M :: Subst
  | t_unif_mono [ rows_unif / A ]    :: M :: SubstRow
 
 t_unif {{ tex \sigma }}, u_unif {{ tex \tau }} :: 't_unif_' ::=
@@ -104,7 +103,7 @@ t_unif {{ tex \sigma }}, u_unif {{ tex \tau }} :: 't_unif_' ::=
  | ( t_unif )                      :: S :: Parens
  | t_unif [ u_unif / a ]           :: M :: Subst
  | t_unif [ rows_unif / A ]        :: M :: SubstRow
-
+ | t_unif1 join .. join t_unifn    :: M :: Join
 
 e :: 'e_' ::=
  | null                                       ::   :: Null
@@ -192,22 +191,26 @@ Psi {{ tex \Psi }} :: 'typectx_' ::=
 
 grammar
 formula :: 'formula_' ::=
- | judgement                           :: :: judgement
- | bindings set_in G                   :: :: bindings
- | typebindings set_in Psi             :: :: typebindings
- | n <= m                              :: :: inequality
- | t_unif is_not_var                   :: :: type_not_var
- | t_unif is_not_unif_var              :: :: type_not_unif_var
- | C is_solved                         :: :: constraint_is_solved
- | max t_unif1 ... t_unifn = t_unif    :: :: max_defined
- | max t_unif1 ... t_unifn = bottom    :: :: max_undefined
- | C not_in Ccontext                   :: :: constr_lacks
+ | judgement                                   :: :: judgement
+ | bindings set_in G                           :: :: bindings
+ | typebindings set_in Psi                     :: :: typebindings
+ | n <= m                                      :: :: inequality
+ | t_unif is_not_var                           :: :: type_not_var
+ | t_unif is_not_unif_var                      :: :: type_not_unif_var
+ | C is_solved                                 :: :: constraint_is_solved
+ | Ccontext is_solved                          :: :: context_is_solved
+ | max t_unif1 ... t_unifn = t_unif            :: :: max_defined
+ | max t_unif1 ... t_unifn = bottom            :: :: max_undefined
+ | C not_in Ccontext                           :: :: constr_lacks
+ | t_unif = u_unif                             :: :: type_eq 
+ | exists i . formula                          :: :: exists
 
 terminals :: 'terminals_' ::=
  | ->               ::  :: Arrow  {{ tex \to }}
  | <-               ::  :: BindingArrow {{ tex \leftarrow }}
  | \                ::  :: Lambda {{ tex \lambda }}
  | forall           ::  :: Forall {{ tex \forall }}
+ | exists           ::  :: exists {{ tex \exists }}
  | |-               ::  :: Entails {{ tex \vdash }}
  | infers           ::  :: infers {{ tex {\color{red}\Rightarrow} }}
  | constr_solves    ::  :: constr_solves {{ tex \twoheadrightarrow }}
@@ -227,6 +230,8 @@ terminals :: 'terminals_' ::=
  | is_solved        ::  :: IsSolved {{ tex \text{is solved} }}
  | bottom           ::  :: Bottom {{ tex \bot }}
  | not_in           ::  :: NotIn {{ tex \not\in }}
+ | join             ::  :: Join {{ tex \lor }}
+ | meet             ::  :: Meet {{ tex \land }}
 
 subrules
   t_mono <:: t_unif_mono

@@ -121,7 +121,7 @@
 \ottprodline{|}{\ottkw{Array} \, \sigma}{}{}{}{}\ottprodnewline
 \ottprodline{|}{\ottsym{\#}  \ottnt{e}}{}{}{}{}\ottprodnewline
 \ottprodline{|}{\ottsym{(}  \rho  \ottsym{)}} {\textsf{S}}{}{}{}\ottprodnewline
-\ottprodline{|}{\rho  \ottsym{[}  \rho'  \ottsym{/}  \alpha  \ottsym{]}} {\textsf{M}}{}{}{}\ottprodnewline
+\ottprodline{|}{\rho  \ottsym{[} \, \ottkw{u\_unif\_mono} \, \ottsym{/}  \alpha  \ottsym{]}} {\textsf{M}}{}{}{}\ottprodnewline
 \ottprodline{|}{\rho  \ottsym{[}  \ottnt{rows\_unif}  \ottsym{/}  \theta  \ottsym{]}} {\textsf{M}}{}{}{}}
 
 \newcommand{\otttXXunif}{
@@ -131,7 +131,8 @@
 \ottprodline{|}{ \forall \ottnt{row\_vars} {.} \rho }{}{}{}{}\ottprodnewline
 \ottprodline{|}{\ottsym{(}  \sigma  \ottsym{)}} {\textsf{S}}{}{}{}\ottprodnewline
 \ottprodline{|}{\sigma  \ottsym{[}  \tau  \ottsym{/}  \alpha  \ottsym{]}} {\textsf{M}}{}{}{}\ottprodnewline
-\ottprodline{|}{\sigma  \ottsym{[}  \ottnt{rows\_unif}  \ottsym{/}  \theta  \ottsym{]}} {\textsf{M}}{}{}{}}
+\ottprodline{|}{\sigma  \ottsym{[}  \ottnt{rows\_unif}  \ottsym{/}  \theta  \ottsym{]}} {\textsf{M}}{}{}{}\ottprodnewline
+\ottprodline{|}{\sigma_{{\mathrm{1}}} \, \lor \, .. \, \lor \, \sigma_{\ottmv{n}}} {\textsf{M}}{}{}{}}
 
 \newcommand{\otte}{
 \ottrulehead{\ottnt{e}}{::=}{}\ottprodnewline
@@ -233,9 +234,12 @@
 \ottprodline{|}{\sigma \, \text{not a variable}}{}{}{}{}\ottprodnewline
 \ottprodline{|}{\sigma \, {\neq {?a} }}{}{}{}{}\ottprodnewline
 \ottprodline{|}{\ottnt{C} \, \text{is solved}}{}{}{}{}\ottprodnewline
+\ottprodline{|}{\Xi \, \text{is solved}}{}{}{}{}\ottprodnewline
 \ottprodline{|}{\ottkw{max} \, \sigma_{{\mathrm{1}}} \, ... \, \sigma_{\ottmv{n}}  \ottsym{=}  \sigma}{}{}{}{}\ottprodnewline
 \ottprodline{|}{\ottkw{max} \, \sigma_{{\mathrm{1}}} \, ... \, \sigma_{\ottmv{n}}  \ottsym{=} \, \bot}{}{}{}{}\ottprodnewline
-\ottprodline{|}{\ottnt{C} \, \not\in \, \Xi}{}{}{}{}}
+\ottprodline{|}{\ottnt{C} \, \not\in \, \Xi}{}{}{}{}\ottprodnewline
+\ottprodline{|}{\sigma  \ottsym{=}  \tau}{}{}{}{}\ottprodnewline
+\ottprodline{|}{\exists \, \ottmv{i}  \ottsym{.}  \ottnt{formula}}{}{}{}{}}
 
 \newcommand{\ottterminals}{
 \ottrulehead{\ottnt{terminals}}{::=}{}\ottprodnewline
@@ -243,6 +247,7 @@
 \ottprodline{|}{ \leftarrow }{}{}{}{}\ottprodnewline
 \ottprodline{|}{ \lambda }{}{}{}{}\ottprodnewline
 \ottprodline{|}{ \forall }{}{}{}{}\ottprodnewline
+\ottprodline{|}{ \exists }{}{}{}{}\ottprodnewline
 \ottprodline{|}{ \vdash }{}{}{}{}\ottprodnewline
 \ottprodline{|}{ {\color{red}\Rightarrow} }{}{}{}{}\ottprodnewline
 \ottprodline{|}{ \twoheadrightarrow }{}{}{}{}\ottprodnewline
@@ -261,7 +266,9 @@
 \ottprodline{|}{ {\neq {?a} } }{}{}{}{}\ottprodnewline
 \ottprodline{|}{ \text{is solved} }{}{}{}{}\ottprodnewline
 \ottprodline{|}{ \bot }{}{}{}{}\ottprodnewline
-\ottprodline{|}{ \not\in }{}{}{}{}}
+\ottprodline{|}{ \not\in }{}{}{}{}\ottprodnewline
+\ottprodline{|}{ \lor }{}{}{}{}\ottprodnewline
+\ottprodline{|}{ \land }{}{}{}{}}
 
 \newcommand{\ottJstlc}{
 \ottrulehead{\ottnt{Jstlc}}{::=}{}\ottprodnewline
@@ -271,7 +278,8 @@
 \ottprodline{|}{\Gamma  \vdash  \ottnt{e} \, {\color{red}\Rightarrow} \, \sigma}{}{}{}{}\ottprodnewline
 \ottprodline{|}{\Gamma  \vdash  \ottnt{e} \, {\color{blue}\Leftarrow} \, \sigma}{}{}{}{}\ottprodnewline
 \ottprodline{|}{\Gamma  \vdash  \ottnt{e} \, \rightsquigarrow \, \ottsym{t1,}  \ottsym{..,}  \ottsym{tn,}  \rho}{}{}{}{}\ottprodnewline
-\ottprodline{|}{\Psi  \ottsym{,}  \Xi \, \twoheadrightarrow \, \Xi'}{}{}{}{}}
+\ottprodline{|}{\Psi  \ottsym{,}  \Xi \, \twoheadrightarrow \, \Xi'}{}{}{}{}\ottprodnewline
+\ottprodline{|}{\ottkw{max} \, \sigma_{{\mathrm{1}}} \, .. \, \sigma_{\ottmv{n}}  \ottsym{=}  \tau}{}{}{}{}}
 
 \newcommand{\ottjudgement}{
 \ottrulehead{\ottnt{judgement}}{::=}{}\ottprodnewline
@@ -907,6 +915,13 @@
 }}
 
 
+\newcommand{\ottdruleConstrSolvesXXLowerDyn}[1]{\ottdrule[#1]{%
+}{
+\Psi  \ottsym{,}   \Xi,   \ottkw{Dyn}   \ottsym{<:}   {?a}   \, \twoheadrightarrow \,  \Xi,  {?a}  \ottsym{=}   \ottkw{Dyn}  }{%
+{\ottdrulename{ConstrSolves\_LowerDyn}}{}%
+}}
+
+
 \newcommand{\ottdruleConstrSolvesXXArray}[1]{\ottdrule[#1]{%
 }{
 \Psi  \ottsym{,}   \Xi,   \ottkw{Array} \, \sigma   \ottsym{<:}   \ottkw{Array} \, \tau   \, \twoheadrightarrow \,  \Xi,  \sigma  \ottsym{<:}  \tau }{%
@@ -936,6 +951,7 @@
 
 
 \newcommand{\ottdruleConstrSolvesXXUpperBound}[1]{\ottdrule[#1]{%
+\ottpremise{\Xi \, \text{is solved}}%
 \ottpremise{\sigma_{\ottmv{i}} \, {\neq {?a} }}%
 \ottpremise{\ottkw{max} \, \sigma_{{\mathrm{1}}} \, .. \, \sigma_{\ottmv{j}}  \ottsym{=}  \tau}%
 \ottpremise{ {?a}   \ottsym{<:}  \sigma' \, \not\in \, \Xi}%
@@ -957,6 +973,7 @@
 \ottusedrule{\ottdruleConstrSolvesXXDynRecordUnif{}}
 \ottusedrule{\ottdruleConstrSolvesXXVar{}}
 \ottusedrule{\ottdruleConstrSolvesXXDyn{}}
+\ottusedrule{\ottdruleConstrSolvesXXLowerDyn{}}
 \ottusedrule{\ottdruleConstrSolvesXXArray{}}
 \ottusedrule{\ottdruleConstrSolvesXXDynRecordOne{}}
 \ottusedrule{\ottdruleConstrSolvesXXRecord{}}
@@ -964,9 +981,22 @@
 \ottusedrule{\ottdruleConstrSolvesXXUpperBound{}}
 \end{ottdefnblock}}
 
+%% defn max
+\newcommand{\ottdruleMaxXXMax}[1]{\ottdrule[#1]{%
+\ottpremise{\sigma_{{\mathrm{1}}} \, \lor \, .. \, \lor \, \sigma_{\ottmv{n}}  \ottsym{=}  \tau}%
+\ottpremise{\exists \, \ottmv{i}  \ottsym{.}  \sigma_{\ottmv{i}}  \ottsym{=}  \tau}%
+}{
+\ottkw{max} \, \sigma_{{\mathrm{1}}} \, .. \, \sigma_{\ottmv{n}}  \ottsym{=}  \tau}{%
+{\ottdrulename{Max\_Max}}{}%
+}}
+
+\newcommand{\ottdefnmax}[1]{\begin{ottdefnblock}[#1]{$\ottkw{max} \, \sigma_{{\mathrm{1}}} \, .. \, \sigma_{\ottmv{n}}  \ottsym{=}  \tau$}{}
+\ottusedrule{\ottdruleMaxXXMax{}}
+\end{ottdefnblock}}
+
 
 \newcommand{\ottdefnsJstlc}{
-\ottdefnsubtyping{}\ottdefntype{}\ottdefninfersXXhead{}\ottdefninfers{}\ottdefnchecks{}\ottdefninstXXas{}\ottdefnconstrXXsolves{}}
+\ottdefnsubtyping{}\ottdefntype{}\ottdefninfersXXhead{}\ottdefninfers{}\ottdefnchecks{}\ottdefninstXXas{}\ottdefnconstrXXsolves{}\ottdefnmax{}}
 
 \newcommand{\ottdefnss}{
 \ottdefnsJstlc
@@ -980,7 +1010,7 @@
 \ottall
 
 \begin{verbatim}
-Definition rules:        67 good    0 bad
-Definition rule clauses: 126 good    0 bad
+Definition rules:        69 good    0 bad
+Definition rule clauses: 131 good    0 bad
 \end{verbatim}
 \end{document}

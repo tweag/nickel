@@ -332,6 +332,9 @@ t_unif is_not_unif_var
 -------------------------------------------------------- :: Dyn
 Psi, Ccontext, t_unif <: Dyn constr_solves Ccontext
 
+-------------------------------------------------------- :: LowerDyn
+Psi, Ccontext, Dyn <: d constr_solves Ccontext, d = Dyn
+
 ------------------------------------------------------------------------------------ :: Array
 Psi, Ccontext, Array t_unif <: Array u_unif constr_solves Ccontext, t_unif <: u_unif
 
@@ -347,6 +350,7 @@ Psi, Ccontext , {l1 : t_unif1, .. , li : t_unifi} <: {l1 : u_unif1, .., li : u_u
 Psi, Ccontext , { l1 : t1, .., li : ti} <: {_ : u} constr_solves Ccontext , t1 <: u , .. , ti <: u
 
 % forall C in Ccontext, C solved and C != t <: c
+Ccontext is_solved
 t_unifi is_not_unif_var
 max t1 .. tj = u_unif
 d <: t_unif' not_in Ccontext
@@ -354,7 +358,14 @@ t_unif' <: d not_in Ccontext
 ------------------------------------------------------------------------------------------------------------------------------------------------------- :: UpperBound
 Psi, Ccontext , ( t_unif1 <: d , .. , t_unifi <: d , d1 <: d , .. , dj <: d ) constr_solves Ccontext , ( d1 <: u_unif , .. , dj <: u_unif , d = u_unif )
 
-% then constraint of the form ?d <: a
+defn
+max t_unif1 .. t_unifn = u_unif :: :: max :: Max_
+by
+
+t_unif1 join .. join t_unifn = u_unif
+exists i. t_unifi = u_unif
+------------------------------------- :: Max
+max t_unif1 .. t_unifn = u_unif
 
 %defn
 %e --> e' :: :: Jeval :: E_
@@ -367,3 +378,6 @@ Psi, Ccontext , ( t_unif1 <: d , .. , t_unifi <: d , d1 <: d , .. , dj <: d ) co
 %
 %----------------------- :: AppAbs
 %(\x.e1) e2 --> e1[e2/x]
+
+% don't need the max actually, we can just unify things.
+% remarque d'Alejandro sur le typage
