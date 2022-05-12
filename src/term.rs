@@ -829,6 +829,7 @@ pub enum UnaryOp {
 pub enum OpPos {
     Infix,
     Postfix,
+    Prefix,
     /// A special operator like `if ... then ... else ...`
     Special,
 }
@@ -839,26 +840,7 @@ impl UnaryOp {
         match self {
             BoolAnd() | BoolOr() | StaticAccess(_) => OpPos::Postfix,
             Ite() => OpPos::Special,
-            _ => OpPos::Infix,
-        }
-    }
-}
-
-impl fmt::Display for UnaryOp {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use UnaryOp::*;
-        match self {
-            DeepSeq(_) => write!(f, "%deep_seq% "),
-            IsNum() => write!(f, "%is_num% "),
-            IsFun() => write!(f, "%is_fun% "),
-            IsStr() => write!(f, "%is_str% "),
-            IsArray() => write!(f, "%is_array% "),
-            IsRecord() => write!(f, "%is_record% "),
-            BoolNot() => write!(f, "!"),
-            BoolAnd() => write!(f, " &&"),
-            BoolOr() => write!(f, " ||"),
-            StaticAccess(id) => write!(f, ".{}", id),
-            op => write!(f, "%{}% ", format!("{:?}", op).to_lowercase()),
+            _ => OpPos::Prefix,
         }
     }
 }
@@ -951,6 +933,16 @@ impl BinaryOp {
         match self {
             BinaryOp::Merge() => false,
             _ => true,
+        }
+    }
+
+    pub fn pos(&self) -> OpPos {
+        use BinaryOp::*;
+        match self {
+            Plus() | Sub() | Mult() | Div() | Modulo() | Pow() | StrConcat() | Eq()
+            | LessThan() | LessOrEq() | GreaterThan() | GreaterOrEq() | DynExtend()
+            | DynRemove() | DynAccess() | ArrayConcat() | Merge() => OpPos::Infix,
+            _ => OpPos::Prefix,
         }
     }
 }

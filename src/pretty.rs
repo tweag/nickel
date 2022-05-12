@@ -1,5 +1,5 @@
 use crate::destruct::{self, Destruct};
-use crate::term::{BinaryOp, MetaValue, RecordAttrs, RichTerm, Term};
+use crate::term::{BinaryOp, MetaValue, RecordAttrs, RichTerm, Term, UnaryOp};
 use crate::types::{AbsType, Types};
 pub use pretty::{DocAllocator, DocBuilder, Pretty};
 use regex::Regex;
@@ -37,6 +37,15 @@ where
     Self::Doc: Clone,
     A: Clone,
 {
+    fn quote_if_needed(self: &'a Self, id: &crate::identifier::Ident) -> DocBuilder<'a, Self, A> {
+        let reg = Regex::new("^_?[a-zA-Z][_a-zA-Z0-9-]*$").unwrap();
+        if reg.is_match(&id.to_string()) {
+            self.as_string(id)
+        } else {
+            self.as_string(id).double_quotes()
+        }
+    }
+
     fn escaped_string(self: &'a Self, s: &str) -> DocBuilder<'a, Self, A> {
         let s = s
             .replace("\\", "\\\\")
@@ -47,24 +56,43 @@ where
 
     fn metadata(self: &'a Self, mv: &MetaValue, with_doc: bool) -> DocBuilder<'a, Self, A> {
         if let Some(types) = &mv.types {
-            self.text(": ")
+            self.text(":")
+                .append(self.space())
                 .append(types.types.clone().pretty(self))
                 .append(self.line())
         } else {
             self.nil()
         }
-        .append(
-            self.intersperse(
-                mv.contracts
-                    .iter()
-                    .map(|c| self.text("| ").append(c.to_owned().types.pretty(self))),
-                self.line().clone(),
-            ),
-        )
+        .append(if with_doc {
+            mv.doc
+                .clone()
+                .map(|doc| {
+                    self.text("|")
+                        .append(self.space())
+                        .append(self.text("doc"))
+                        .append(self.space())
+                        .append(
+                            self.hardline()
+                                .append(self.escaped_string(&doc))
+                                .double_quotes(),
+                        )
+                        .append(self.line())
+                })
+                .unwrap_or(self.nil())
+        } else {
+            self.nil()
+        })
+        .append(self.intersperse(
+            mv.contracts.iter().map(|c| {
+                self.text("|")
+                    .append(self.space())
+                    .append(c.to_owned().types.pretty(self))
+            }),
+            self.line().clone(),
+        ))
         .append(if mv.priority == crate::term::MergePriority::Default {
             self.line().append(self.text("| default"))
         } else {
-            // if last field is not default, it will add a optional line break before the `=` sign
             self.nil()
         })
         .nest(2)
@@ -80,7 +108,43 @@ where
     }
 }
 
-impl<'a, D, A> Pretty<'a, D, A> for BinaryOp
+impl<'a, D, A> Pretty<'a, D, A> for &UnaryOp
+where
+    D: NickelAllocatorExt<'a, A>,
+    D::Doc: Clone,
+    A: Clone + 'a,
+{
+    fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
+        use UnaryOp::*;
+        match self {
+            ArrayGen() => allocator.text("%gen%").append(allocator.space()),
+            ArrayMap() => allocator.text("%map%").append(allocator.space()),
+            ArrayLength() => allocator.text("%length%").append(allocator.space()),
+            ArrayTail() => allocator.text("%tail%").append(allocator.space()),
+            ArrayHead() => allocator.text("%head%").append(allocator.space()),
+            DeepSeq(_) => allocator.text("%deep_seq%").append(allocator.space()),
+            IsNum() => allocator.text("%is_num%").append(allocator.space()),
+            IsFun() => allocator.text("%is_fun%").append(allocator.space()),
+            IsStr() => allocator.text("%is_str%").append(allocator.space()),
+            IsArray() => allocator.text("%is_array%").append(allocator.space()),
+            IsRecord() => allocator.text("%is_record%").append(allocator.space()),
+            BoolNot() => allocator.text("!"),
+            BoolAnd() => allocator.space().append(allocator.text("&&")),
+            BoolOr() => allocator.space().append(allocator.text("||")),
+            StaticAccess(id) => allocator.text(".").append(allocator.quote_if_needed(id)),
+            Embed(id) => allocator
+                .text("%embed%")
+                .append(allocator.space())
+                .append(allocator.as_string(id))
+                .append(allocator.space()),
+            op => allocator
+                .text(format!("%{:?}%", op).to_lowercase())
+                .append(allocator.space()),
+        }
+    }
+}
+
+impl<'a, D, A> Pretty<'a, D, A> for &BinaryOp
 where
     D: NickelAllocatorExt<'a, A>,
     D::Doc: Clone,
@@ -108,6 +172,7 @@ where
             ArrayConcat() => allocator.text("@"),
 
             DynAccess() => allocator.text("."),
+            ArrayElemAt() => allocator.text("%elem_at%"),
 
             op => allocator.as_string(format!("%{:?}%", op).to_lowercase()),
         }
@@ -136,10 +201,10 @@ where
                             .append(allocator.metadata(meta, false)),
                         _ => unimplemented!(),
                     }),
-                    allocator.text(", "),
+                    allocator.text(",").append(allocator.space()),
                 )
                 .braces(),
-            Empty => allocator.nil(),
+            Destruct::Empty => allocator.nil(),
             _ => unimplemented!(),
         }
     }
@@ -215,12 +280,14 @@ where
                     rt = t
                 }
                 allocator
-                    .text("fun ")
+                    .text("fun")
+                    .append(allocator.space())
                     .append(allocator.intersperse(
                         params.iter().map(|p| allocator.as_string(p)),
                         allocator.space(),
                     ))
-                    .append(allocator.text(" =>"))
+                    .append(allocator.space())
+                    .append(allocator.text("=>"))
                     .append(allocator.softline())
                     .append(rt.to_owned().pretty(allocator).nest(2))
             }
@@ -240,9 +307,11 @@ where
                     rt = t;
                 }
                 allocator
-                    .text("fun ")
+                    .text("fun")
+                    .append(allocator.space())
                     .append(allocator.intersperse(params, allocator.space()))
-                    .append(allocator.text(" =>"))
+                    .append(allocator.space())
+                    .append(allocator.text("=>"))
                     .append(allocator.softline())
                     .append(rt.to_owned().pretty(allocator).nest(2))
             }
@@ -252,7 +321,7 @@ where
                 .append(allocator.space())
                 .append(allocator.as_string(id))
                 .append(if let MetaValue(ref mv) = rt.as_ref() {
-                    allocator.metadata(mv, false)
+                    allocator.space().append(allocator.metadata(mv, false))
                 } else {
                     allocator.nil()
                 })
@@ -289,15 +358,17 @@ where
                             allocator.as_string(id).append(if dst.is_empty() {
                                 allocator.nil()
                             } else {
-                                allocator.text(" @ ")
+                                allocator
+                                    .space()
+                                    .append(allocator.text("@"))
+                                    .append(allocator.space())
                             })
                         })
                         .unwrap_or(allocator.nil()),
                 )
                 .append(dst.pretty(allocator))
-                .append(allocator.space())
                 .append(if let MetaValue(ref mv) = rt.as_ref() {
-                    allocator.metadata(mv, false)
+                    allocator.space().append(allocator.metadata(mv, false))
                 } else {
                     allocator.nil()
                 })
@@ -335,21 +406,26 @@ where
                     .append(allocator.line())
                     .append(allocator.text("else"))
                     .group(),
-                _ => rt1
+                App(..) => rt1
                     .to_owned()
                     .pretty(allocator)
                     .append(allocator.line())
                     .append(allocator.atom(rt2))
                     .group(),
+                _ => allocator
+                    .atom(rt1)
+                    .append(allocator.line())
+                    .append(allocator.atom(rt2))
+                    .group(),
             },
             Var(id) => allocator.as_string(id),
-            Enum(id) => allocator.text(format!("`{}", id)),
+            Enum(id) => allocator.text("`").append(allocator.quote_if_needed(id)),
             Record(fields, attr) => allocator
                 .line()
                 .append(allocator.intersperse(
                     sorted_map(fields).iter().map(|&(id, rt)| {
                         allocator
-                            .as_string(id)
+                            .quote_if_needed(id)
                             .append(allocator.space())
                             .append(if let MetaValue(mv) = rt.as_ref() {
                                 allocator
@@ -359,7 +435,10 @@ where
                                         mv.value
                                             .clone()
                                             .map(|v| {
-                                                allocator.text("= ").append(v.pretty(allocator))
+                                                allocator
+                                                    .text("=")
+                                                    .append(allocator.space())
+                                                    .append(v.pretty(allocator))
                                             })
                                             .unwrap_or(allocator.nil()),
                                     )
@@ -395,7 +474,7 @@ where
                             .iter()
                             .map(|&(id, rt)| {
                                 allocator
-                                    .as_string(id)
+                                    .quote_if_needed(id)
                                     .append(allocator.space())
                                     .append(if let MetaValue(mv) = rt.as_ref() {
                                         allocator
@@ -406,7 +485,8 @@ where
                                                     .clone()
                                                     .map(|v| {
                                                         allocator
-                                                            .text("= ")
+                                                            .text("=")
+                                                            .append(allocator.space())
                                                             .append(v.pretty(allocator))
                                                     })
                                                     .unwrap_or(allocator.nil()),
@@ -432,7 +512,7 @@ where
                                                     .clone()
                                                     .map(|v| {
                                                         allocator
-                                                            .text("= ")
+                                                            .text("=")
                                                             .append(v.pretty(allocator))
                                                     })
                                                     .unwrap_or(allocator.nil()),
@@ -440,6 +520,7 @@ where
                                     } else {
                                         allocator
                                             .text("=")
+                                            .append(allocator.space())
                                             .append(allocator.line())
                                             .append(rt.to_owned().pretty(allocator).nest(2))
                                     })
@@ -465,15 +546,25 @@ where
                         .intersperse(
                             sorted_map(cases).iter().map(|&(id, t)| {
                                 allocator
-                                    .text(format!("`{} => ", id))
+                                    .text("`")
+                                    .append(allocator.quote_if_needed(id))
+                                    .append(allocator.space())
+                                    .append(allocator.text("=>"))
+                                    .append(allocator.space())
                                     .append(t.to_owned().pretty(allocator))
                                     .append(allocator.text(","))
                             }),
                             allocator.line(),
                         )
-                        .append(allocator.line())
-                        .append(allocator.text("_ => "))
-                        .append(def.to_owned().pretty(allocator))
+                        .append(def.clone().map_or(allocator.nil(), |d| {
+                            allocator
+                                .line()
+                                .append(allocator.text("_"))
+                                .append(allocator.space())
+                                .append(allocator.text("=>"))
+                                .append(allocator.space())
+                                .append(d.to_owned().pretty(allocator))
+                        }))
                         .nest(2)
                         .append(allocator.line_())
                         .braces()
@@ -481,7 +572,6 @@ where
                 )
                 .append(allocator.space())
                 .append(allocator.atom(tst)),
-
             Array(fields) => allocator
                 .line()
                 .append(allocator.intersperse(
@@ -494,13 +584,15 @@ where
                 .brackets(),
 
             Op1(op, rt) => match op.pos() {
-                crate::term::OpPos::Infix => allocator.as_string(op).append(allocator.atom(rt)),
-                crate::term::OpPos::Postfix => allocator.atom(rt).append(allocator.as_string(op)),
+                crate::term::OpPos::Prefix => op.pretty(allocator).append(allocator.atom(rt)),
+                crate::term::OpPos::Postfix => allocator.atom(rt).append(op.pretty(allocator)),
+                crate::term::OpPos::Infix => unreachable!(),
                 crate::term::OpPos::Special => {
-                    use crate::term::UnaryOp::*;
+                    use UnaryOp::*;
                     match op {
                         Ite() => allocator
-                            .text("if ")
+                            .text("if")
+                            .append(allocator.space())
                             .append(rt.to_owned().pretty(allocator)),
                         op => panic!("pretty print is not impleented for {:?}", op),
                     }
@@ -509,16 +601,21 @@ where
             Op2(op, rtl, rtr) => if op == &BinaryOp::DynAccess() {
                 rtr.to_owned()
                     .pretty(allocator)
-                    .append(op.clone().pretty(allocator))
+                    .append(op.pretty(allocator))
                     .append(rtl.to_owned().pretty(allocator))
             } else {
                 if (&BinaryOp::Sub(), &Num(0.0)) == (op, rtl.as_ref()) {
-                    allocator.nil()
+                    allocator.text("-")
+                } else if let crate::term::OpPos::Prefix = op.pos() {
+                    op.pretty(allocator)
+                        .append(allocator.space())
+                        .append(allocator.atom(rtl))
                 } else {
-                    allocator.atom(rtl)
+                    allocator
+                        .atom(rtl)
+                        .append(allocator.space())
+                        .append(op.pretty(allocator))
                 }
-                .append(allocator.space())
-                .append(op.clone().pretty(allocator))
                 .append(allocator.line())
                 .append(allocator.atom(rtr))
                 .nest(2)
@@ -539,11 +636,12 @@ where
                 .append(allocator.hardline()),
 
             // TODO
-            Wrapped(i32, RichTerm) => allocator.text("# <wraped>").append(allocator.hardline()),
+            Wrapped(_i, _rt) => allocator.text("# <wraped>").append(allocator.hardline()),
 
             MetaValue(mv) => mv.to_owned().pretty(allocator),
             Import(f) => allocator
-                .text("import ")
+                .text("import")
+                .append(allocator.space())
                 .append(allocator.as_string(f.to_string_lossy()).double_quotes()),
             ResolvedImport(id) => allocator.text(format!("import <file_id: {:?}>", id)),
             ParseError => allocator
@@ -607,27 +705,31 @@ where
                     .group()
                     .append(allocator.intersperse(
                         foralls.iter().map(|i| allocator.as_string(i)),
-                        " ", //allocator.softline(),
+                        allocator.space(), //allocator.softline(),
                     ))
                     .append(allocator.text("."))
                     .append(allocator.line())
                     .append(curr.to_owned().pretty(allocator))
             }
             Enum(row) => row.pretty(allocator).enclose("[|", "|]"),
-            StaticRecord(row) => row.pretty(allocator).braces().braces(),
+            StaticRecord(row) => row.pretty(allocator).braces(),
             DynRecord(ty) => allocator
                 .line()
-                .append(allocator.text("_: "))
+                .append(allocator.text("_"))
+                .append(allocator.space())
+                .append(allocator.text(":"))
+                .append(allocator.space())
                 .append(ty.pretty(allocator))
                 .append(allocator.line())
                 .braces(),
             RowEmpty() => allocator.nil(),
             RowExtend(id, ty_opt, tail) => {
-                let mut builder = allocator.as_string(id);
+                let mut builder = allocator.quote_if_needed(&id);
 
                 builder = if let Some(ty) = ty_opt {
                     builder
-                        .append(allocator.text(": "))
+                        .append(allocator.text(":"))
+                        .append(allocator.space())
                         .append(ty.pretty(allocator))
                 } else {
                     builder
@@ -635,9 +737,20 @@ where
 
                 match tail.0 {
                     AbsType::RowEmpty() => builder,
-                    AbsType::Var(_) => builder.append(allocator.text(" ; ")),
-                    AbsType::Dyn() => return builder.append(allocator.text(" ; Dyn")),
-                    _ => builder.append(allocator.text(", ")),
+                    AbsType::Var(_) => builder
+                        .append(allocator.space())
+                        .append(allocator.text(";"))
+                        .append(allocator.space()),
+                    AbsType::Dyn() => {
+                        return builder
+                            .append(allocator.space())
+                            .append(allocator.text(";"))
+                            .append(allocator.space())
+                            .append(allocator.text("Dyn"))
+                    }
+                    _ => builder
+                        .append(allocator.text(","))
+                        .append(allocator.space()),
                 }
                 .append(tail.pretty(allocator))
             }
@@ -646,12 +759,14 @@ where
                     .pretty(allocator)
                     .parens()
                     .append(allocator.softline())
-                    .append(allocator.text("-> "))
+                    .append(allocator.text("->"))
+                    .append(allocator.space())
                     .append(codom.pretty(allocator)),
                 _ => dom
                     .pretty(allocator)
                     .append(allocator.softline())
-                    .append(allocator.text("-> "))
+                    .append(allocator.text("->"))
+                    .append(allocator.space())
                     .append(codom.pretty(allocator)),
             },
         }
