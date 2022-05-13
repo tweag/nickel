@@ -659,7 +659,7 @@ where
 {
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
         if let Some(value) = &self.value {
-            value.to_owned().pretty(allocator).append(allocator.space())
+            allocator.atom(value).append(allocator.space())
         } else {
             allocator.nil()
         }
