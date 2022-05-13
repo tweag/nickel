@@ -86,6 +86,7 @@
           true
         record.has_field ("9" | Ident) { hello = "hi!" } =>
           error (invalid enum tag)
+      ```
       "%m
     = fun l s =>
       let pattern = m%"_?[a-zA-Z][_a-zA-Z0-9]*"%m in
@@ -406,6 +407,7 @@
           true
         to_bool "false" =>
           false
+      ```
       "%m
     = fun s => s == "true",
 
