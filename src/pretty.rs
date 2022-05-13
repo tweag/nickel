@@ -1,5 +1,5 @@
 use crate::destruct::{self, Destruct};
-use crate::term::{BinaryOp, MetaValue, RecordAttrs, RichTerm, Term, UnaryOp};
+use crate::term::{BinaryOp, MetaValue, RichTerm, Term, UnaryOp};
 use crate::types::{AbsType, Types};
 pub use pretty::{DocAllocator, DocBuilder, Pretty};
 use regex::Regex;
@@ -192,8 +192,9 @@ where
         match self {
             Destruct::Record {
                 matches,
-                open,
-                rest,
+                // TODO: manage `..}` and `..x}` ending patterns
+                open: _,
+                rest: _,
                 ..
             } => allocator
                 .intersperse(
@@ -253,7 +254,7 @@ where
                                     allocator.escaped_string(s)
                                 }
                             }
-                            crate::term::StrChunk::Expr(e, i) => allocator
+                            crate::term::StrChunk::Expr(e, _i) => allocator
                                 .text(interp.clone())
                                 .append(allocator.text("{"))
                                 .append(e.to_owned().pretty(allocator))
@@ -298,7 +299,7 @@ where
             FunPattern(..) => {
                 let mut params = vec![];
                 let mut rt = &self;
-                while let FunPattern(id, dst, t) = rt.as_ref() {
+                while let FunPattern(id, _dst, t) = rt.as_ref() {
                     params.push(
                         if let Some(id) = id {
                             allocator.as_string(id)
@@ -318,8 +319,8 @@ where
                     .append(allocator.softline())
                     .append(rt.to_owned().pretty(allocator).nest(2))
             }
-            Lbl(lbl) => allocator.text("# <label>").append(allocator.hardline()),
-            Let(id, rt, body, ty) => allocator
+            Lbl(_lbl) => allocator.text("# <label>").append(allocator.hardline()),
+            Let(id, rt, body, _ty) => allocator
                 .text("let")
                 .append(allocator.space())
                 .append(allocator.as_string(id))
@@ -468,7 +469,7 @@ where
                 fields,
                 dyn_fields, /* field whose name is defined by interpolation */
                 attr,
-                deps, /* dependency tracking between fields. None before the free var pass */
+                _deps, /* dependency tracking between fields. None before the free var pass */
             ) => allocator
                 .line()
                 .append(

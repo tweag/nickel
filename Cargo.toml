@@ -55,7 +55,6 @@ wasm-bindgen = { version = "=0.2.74", optional = true, features = ["serde-serial
 js-sys = { version = "0.3", optional = true }
 serde_repr = { version = "0.1", optional = true }
 pretty = "0.11.2"
-similar = "2.1.0"
 
 [dev-dependencies]
 pretty_assertions = "0.5.1"
@@ -63,6 +62,7 @@ assert_matches = "1.4.0"
 criterion = "0.3"
 pprof = { version = "0.4.4", features = ["criterion", "flamegraph"] }
 nickel-lang-utilities = {path = "utilities", version = "0.1.0"}
+similar = "2.1.0"
 
 [workspace]
 members = [

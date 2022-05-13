@@ -2,8 +2,8 @@ use nickel_lang::pretty::*;
 use nickel_lang::term::RichTerm;
 use nickel_lang_utilities::parse;
 use pretty::BoxAllocator;
-use std::borrow::Borrow;
-use std::io::{Cursor, Read, Write};
+
+use std::io::{Cursor, Read};
 use std::path::PathBuf;
 
 fn diff(s1: &str, s2: &str) {
