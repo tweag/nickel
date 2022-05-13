@@ -44,7 +44,7 @@ use crate::cache::ImportResolver;
 use crate::environment::Environment as GenericEnvironment;
 use crate::error::TypecheckError;
 use crate::identifier::Ident;
-use crate::term::{Contract, MetaValue, RichTerm, StrChunk, Term};
+use crate::term::{Contract, MetaValue, RichTerm, StrChunk, Term, TraverseOrder};
 use crate::types::{AbsType, Types};
 use crate::{mk_tyw_arrow, mk_tyw_enum, mk_tyw_enum_row, mk_tyw_record, mk_tyw_row};
 use std::collections::{HashMap, HashSet};
@@ -420,7 +420,14 @@ fn type_check_<L: Linearizer>(
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Let(x, re, rt, attrs) => {
-            let ty_let = binding_type(re.as_ref(), &envs, state.table, strict, state.resolver);
+            let ty_let = binding_type(
+                re.as_ref(),
+                &envs,
+                state.table,
+                state.wildcard_vars,
+                strict,
+                state.resolver,
+            );
             if attrs.rec {
                 envs.insert(x.clone(), ty_let.clone());
             }
@@ -442,7 +449,14 @@ fn type_check_<L: Linearizer>(
             type_check_(state, envs, lin, linearizer, strict, rt, ty)
         }
         Term::LetPattern(x, pat, re, rt) => {
-            let ty_let = binding_type(re.as_ref(), &envs, state.table, strict, state.resolver);
+            let ty_let = binding_type(
+                re.as_ref(),
+                &envs,
+                state.table,
+                state.wildcard_vars,
+                strict,
+                state.resolver,
+            );
             type_check_(
                 state,
                 envs.clone(),
@@ -555,7 +569,14 @@ fn type_check_<L: Linearizer>(
             // Fields defined by interpolation are ignored.
             if let Term::RecRecord(..) = t.as_ref() {
                 for (id, rt) in stat_map {
-                    let tyw = binding_type(rt.as_ref(), &envs, state.table, strict, state.resolver);
+                    let tyw = binding_type(
+                        rt.as_ref(),
+                        &envs,
+                        state.table,
+                        state.wildcard_vars,
+                        strict,
+                        state.resolver,
+                    );
                     envs.insert(id.clone(), tyw.clone());
                     linearizer.retype_ident(lin, id, tyw);
                 }
@@ -751,18 +772,43 @@ fn type_check_<L: Linearizer>(
 ///       associated to `bound_exp`.
 /// As this function is always called in a context where an `ImportResolver` is present, expect
 /// it passed in arguments.
+///
+/// If the annotated type contains any wildcard:
+///     * in non strict mode, wildcards are ignored and the apparent type of the annotated value
+///       is used.
+///     * in strict mode, the wildcard is typechecked, and we return the unification variable
+///       corresponding to it.
 fn binding_type(
     t: &Term,
     envs: &Envs,
     table: &mut UnifTable,
+    wildcard_vars: &mut Vec<TypeWrapper>,
     strict: bool,
     resolver: &dyn ImportResolver,
 ) -> TypeWrapper {
     let ty_apt = apparent_type(t, Some(envs), Some(resolver));
 
     match ty_apt {
+        ApparentType::Wildcard { annotated, .. } if strict => {
+            replace_wildcards_with_var(table, wildcard_vars, annotated)
+        }
+        ApparentType::Wildcard { inferred, .. } if !strict => (*inferred).into(),
         ApparentType::Approximated(_) if strict => table.fresh_unif_var(),
         ty_apt => ty_apt.into(),
+    }
+}
+
+/// Substitute wildcards in a type for their unification variable.
+fn replace_wildcards_with_var(
+    table: &mut UnifTable,
+    wildcard_vars: &mut Vec<TypeWrapper>,
+    ty: Types,
+) -> TypeWrapper {
+    match ty.0 {
+        AbsType::Wildcard(i) => get_wildcard_var(table, wildcard_vars, i),
+        _ => TypeWrapper::Concrete(
+            ty.0.map(|ty| Box::new(replace_wildcards_with_var(table, wildcard_vars, *ty))),
+        ),
     }
 }
 
@@ -773,6 +819,7 @@ fn binding_type(
 /// generating a fresh unification variable.  In non-strict mode, however, the approximation is the
 /// best we can do. This type allows the caller of `apparent_type` to determine which situation it
 /// is.
+#[derive(Debug)]
 pub enum ApparentType {
     /// The apparent type is given by a user-provided annotation, such as an `Assume`, a `Promise`,
     /// or a metavalue.
@@ -784,6 +831,13 @@ pub enum ApparentType {
     /// The apparent type wasn't trivial to determine, and an approximation (most of the time,
     /// `Dyn`) has been returned.
     Approximated(Types),
+    /// The apparent type is annotated, and the annotation contains a wildcard.  We encapsulate both
+    /// the annotated type, and the inferred type of the underlying term, leaving the decision of which
+    /// to use downstream.
+    Wildcard {
+        annotated: Types,
+        inferred: Box<ApparentType>,
+    },
 }
 
 impl From<ApparentType> for Types {
@@ -793,6 +847,8 @@ impl From<ApparentType> for Types {
             | ApparentType::Inferred(ty)
             | ApparentType::Approximated(ty) => ty,
             ApparentType::FromEnv(tyw) => tyw.try_into().ok().unwrap_or(Types(AbsType::Dyn())),
+            // If the type is a wildcard, ignore the annotation and return the inferred type
+            ApparentType::Wildcard { inferred, .. } => (*inferred).into(),
         }
     }
 }
@@ -804,6 +860,8 @@ impl From<ApparentType> for TypeWrapper {
             | ApparentType::Inferred(ty)
             | ApparentType::Approximated(ty) => ty.into(),
             ApparentType::FromEnv(tyw) => tyw,
+            // If the type is a wildcard, ignore the annotation and return the inferred type
+            ApparentType::Wildcard { inferred, .. } => (*inferred).into(),
         }
     }
 }
@@ -832,8 +890,24 @@ pub fn apparent_type(
     match t {
         Term::MetaValue(MetaValue {
             types: Some(Contract { types: ty, .. }),
+            value,
             ..
-        }) => ApparentType::Annotated(ty.clone()),
+        }) => {
+            if has_wildcards(ty) {
+                let annotated = ty.clone();
+                let inferred = if let Some(value) = value {
+                    apparent_type(value.as_ref(), envs, resolver)
+                } else {
+                    ApparentType::Approximated(Types(AbsType::Dyn()))
+                };
+                ApparentType::Wildcard {
+                    annotated,
+                    inferred: Box::new(inferred),
+                }
+            } else {
+                ApparentType::Annotated(ty.clone())
+            }
+        }
         // For metavalues, if there's no type annotation, choose the first contract appearing.
         Term::MetaValue(MetaValue { contracts, .. }) if !contracts.is_empty() => {
             ApparentType::Annotated(contracts.get(0).unwrap().types.clone())
@@ -887,6 +961,24 @@ pub fn infer_type(t: &Term) -> TypeWrapper {
         }) => infer_type(rt.as_ref()),
         t => apparent_type(t, None, None).into(),
     }
+}
+
+/// Deeply check whether a type contains a wildcard.
+fn has_wildcards(ty: &Types) -> bool {
+    let mut has_wildcard = false;
+    ty.clone()
+        .traverse::<_, _, std::convert::Infallible>(
+            &mut |ty, has_wildcard| {
+                if ty.0.is_wildcard() {
+                    *has_wildcard = true;
+                }
+                Ok(ty)
+            },
+            &mut has_wildcard,
+            TraverseOrder::TopDown,
+        )
+        .unwrap();
+    has_wildcard
 }
 
 /// The types on which the unification algorithm operates, which may be either a concrete type, a
@@ -1071,7 +1163,7 @@ pub fn unify_(
         // If either type is a wildcard, unify with the associated type var
         (TypeWrapper::Concrete(AbsType::Wildcard(id)), ty2)
         | (ty2, TypeWrapper::Concrete(AbsType::Wildcard(id))) => {
-            let ty1 = get_wildcard_var(state, id);
+            let ty1 = get_wildcard_var(state.table, state.wildcard_vars, id);
             unify_(state, ty1, ty2)
         }
         (TypeWrapper::Concrete(s1), TypeWrapper::Concrete(s2)) => match (s1, s2) {
@@ -1515,14 +1607,13 @@ pub fn constr_unify(
 }
 
 /// Get the typevar associated with a given wildcard ID.
-fn get_wildcard_var(state: &mut State, id: usize) -> TypeWrapper {
-    let State {
-        table,
-        wildcard_vars,
-        ..
-    } = state;
+fn get_wildcard_var(
+    table: &mut UnifTable,
+    wildcard_vars: &mut Vec<TypeWrapper>,
+    id: usize,
+) -> TypeWrapper {
     // If `id` is not in `wildcard_vars`, populate it with fresh vars up to `id`
-    if id <= wildcard_vars.len() {
+    if id >= wildcard_vars.len() {
         wildcard_vars.extend((wildcard_vars.len()..=id).map(|_| table.fresh_unif_var()));
     }
     wildcard_vars[id].clone()

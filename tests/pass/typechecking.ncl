@@ -192,6 +192,11 @@ let typecheck = [
   (string.split ".") : Str -> Array Str,
   (array.length [] == 0) : Bool,
   (array.map (fun x => x ++ "1") ["a", "b", "c"]) : Array Str,
+
+  # wildcards
+  ("hello" : _) : Str,
+  ((fun x => x + 1) : _ -> Num) : Num -> Num,
+  ({"foo" = 1} : {foo : _}) : {foo: Num}
 ] in
 
 true
