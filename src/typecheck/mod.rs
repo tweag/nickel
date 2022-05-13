@@ -774,8 +774,7 @@ fn type_check_<L: Linearizer>(
 /// it passed in arguments.
 ///
 /// If the annotated type contains any wildcard:
-///     * in non strict mode, wildcards are ignored and the apparent type of the annotated value
-///       is used.
+///     * in non strict mode, wildcards are assigned `Dyn`.
 ///     * in strict mode, the wildcard is typechecked, and we return the unification variable
 ///       corresponding to it.
 fn binding_type(
@@ -789,10 +788,9 @@ fn binding_type(
     let ty_apt = apparent_type(t, Some(envs), Some(resolver));
 
     match ty_apt {
-        ApparentType::Wildcard { annotated, .. } if strict => {
-            replace_wildcards_with_var(table, wildcard_vars, annotated)
+        ApparentType::Annotated(ty) if strict => {
+            replace_wildcards_with_var(table, wildcard_vars, ty)
         }
-        ApparentType::Wildcard { inferred, .. } if !strict => (*inferred).into(),
         ApparentType::Approximated(_) if strict => table.fresh_unif_var(),
         ty_apt => ty_apt.into(),
     }
@@ -831,24 +829,16 @@ pub enum ApparentType {
     /// The apparent type wasn't trivial to determine, and an approximation (most of the time,
     /// `Dyn`) has been returned.
     Approximated(Types),
-    /// The apparent type is annotated, and the annotation contains a wildcard.  We encapsulate both
-    /// the annotated type, and the inferred type of the underlying term, leaving the decision of which
-    /// to use downstream.
-    Wildcard {
-        annotated: Types,
-        inferred: Box<ApparentType>,
-    },
 }
 
 impl From<ApparentType> for Types {
     fn from(at: ApparentType) -> Self {
         match at {
+            ApparentType::Annotated(ty) if has_wildcards(&ty) => Types(AbsType::Dyn()),
             ApparentType::Annotated(ty)
             | ApparentType::Inferred(ty)
             | ApparentType::Approximated(ty) => ty,
             ApparentType::FromEnv(tyw) => tyw.try_into().ok().unwrap_or(Types(AbsType::Dyn())),
-            // If the type is a wildcard, ignore the annotation and return the inferred type
-            ApparentType::Wildcard { inferred, .. } => (*inferred).into(),
         }
     }
 }
@@ -856,12 +846,13 @@ impl From<ApparentType> for Types {
 impl From<ApparentType> for TypeWrapper {
     fn from(at: ApparentType) -> TypeWrapper {
         match at {
+            ApparentType::Annotated(ty) if has_wildcards(&ty) => {
+                TypeWrapper::Concrete(AbsType::Dyn())
+            }
             ApparentType::Annotated(ty)
             | ApparentType::Inferred(ty)
             | ApparentType::Approximated(ty) => ty.into(),
             ApparentType::FromEnv(tyw) => tyw,
-            // If the type is a wildcard, ignore the annotation and return the inferred type
-            ApparentType::Wildcard { inferred, .. } => (*inferred).into(),
         }
     }
 }
@@ -890,24 +881,8 @@ pub fn apparent_type(
     match t {
         Term::MetaValue(MetaValue {
             types: Some(Contract { types: ty, .. }),
-            value,
             ..
-        }) => {
-            if has_wildcards(ty) {
-                let annotated = ty.clone();
-                let inferred = if let Some(value) = value {
-                    apparent_type(value.as_ref(), envs, resolver)
-                } else {
-                    ApparentType::Approximated(Types(AbsType::Dyn()))
-                };
-                ApparentType::Wildcard {
-                    annotated,
-                    inferred: Box::new(inferred),
-                }
-            } else {
-                ApparentType::Annotated(ty.clone())
-            }
-        }
+        }) => ApparentType::Annotated(ty.clone()),
         // For metavalues, if there's no type annotation, choose the first contract appearing.
         Term::MetaValue(MetaValue { contracts, .. }) if !contracts.is_empty() => {
             ApparentType::Annotated(contracts.get(0).unwrap().types.clone())
