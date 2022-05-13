@@ -55,6 +55,7 @@ rustyline-derive = { version = "0.4.0", optional = true }
 wasm-bindgen = { version = "=0.2.74", optional = true, features = ["serde-serialize"] }
 js-sys = { version = "0.3", optional = true }
 serde_repr = { version = "0.1", optional = true }
+pretty = "0.11.2"
 
 comrak = { version = "0.12.1", optional = true, features = [] }
 
@@ -64,6 +65,7 @@ assert_matches = "1.4.0"
 criterion = "0.3"
 pprof = { version = "0.4.4", features = ["criterion", "flamegraph"] }
 nickel-lang-utilities = {path = "utilities", version = "0.1.0"}
+similar = "2.1.0"
 
 [workspace]
 members = [

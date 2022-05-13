@@ -340,7 +340,7 @@ impl<E> StrChunk<E> {
 }
 
 impl Term {
-    #[cfg(test)]
+    //#[cfg(test)]
     /// Recursively apply a function to all `Term`s contained in a `RichTerm`.
     pub fn apply_to_rich_terms<F>(&mut self, func: F)
     where
@@ -609,6 +609,38 @@ impl Term {
             | Term::ParseError => false,
         }
     }
+
+    /// determine if a term is atomic
+    pub fn is_atom(&self) -> bool {
+        match self {
+            Term::Null
+            | Term::Bool(..)
+            | Term::Num(..)
+            | Term::Str(..)
+            | Term::StrChunks(..)
+            | Term::Lbl(..)
+            | Term::Enum(..)
+            | Term::Record(..)
+            | Term::RecRecord(..)
+            | Term::Array(..)
+            | Term::Var(..)
+            | Term::Op1(..)
+            | Term::Sym(..) => true,
+            Term::Let(..)
+            | Term::Switch(..)
+            | Term::LetPattern(..)
+            | Term::Fun(..)
+            | Term::FunPattern(..)
+            | Term::App(..)
+            | Term::Op2(..)
+            | Term::OpN(..)
+            | Term::Wrapped(..)
+            | Term::MetaValue(..)
+            | Term::Import(..)
+            | Term::ResolvedImport(..)
+            | Term::ParseError => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -803,6 +835,26 @@ pub enum UnaryOp {
     EnumFromStr(),
 }
 
+/// position of a unary operator
+pub enum OpPos {
+    Infix,
+    Postfix,
+    Prefix,
+    /// A special operator like `if ... then ... else ...`
+    Special,
+}
+
+impl UnaryOp {
+    pub fn pos(&self) -> OpPos {
+        use UnaryOp::*;
+        match self {
+            BoolAnd() | BoolOr() | StaticAccess(_) => OpPos::Postfix,
+            Ite() => OpPos::Special,
+            _ => OpPos::Prefix,
+        }
+    }
+}
+
 /// Primitive binary operators
 #[derive(Clone, Debug, PartialEq)]
 pub enum BinaryOp {
@@ -893,6 +945,16 @@ impl BinaryOp {
             _ => true,
         }
     }
+
+    pub fn pos(&self) -> OpPos {
+        use BinaryOp::*;
+        match self {
+            Plus() | Sub() | Mult() | Div() | Modulo() | Pow() | StrConcat() | Eq()
+            | LessThan() | LessOrEq() | GreaterThan() | GreaterOrEq() | DynExtend()
+            | DynRemove() | DynAccess() | ArrayConcat() | Merge() => OpPos::Infix,
+            _ => OpPos::Prefix,
+        }
+    }
 }
 
 /// Primitive n-ary operators. Unary and binary operator make up for most of operators and are
@@ -961,7 +1023,7 @@ impl RichTerm {
     /// Erase recursively the positional information.
     ///
     /// It allows to use rust `Eq` trait to compare the values of the underlying terms.
-    #[cfg(test)]
+    //#[cfg(test)]
     pub fn without_pos(mut self) -> Self {
         fn clean_pos(rt: &mut RichTerm) {
             rt.pos = TermPos::None;

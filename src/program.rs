@@ -136,6 +136,28 @@ impl Program {
     pub fn set_skip_stdlib(&mut self) {
         self.cache.skip_stdlib = true;
     }
+
+    pub fn expand(
+        &mut self,
+        out: &mut std::io::BufWriter<Box<dyn std::io::Write>>,
+        apply_transforms: bool,
+    ) -> Result<(), Error> {
+        use crate::pretty::*;
+        use pretty::BoxAllocator;
+
+        let Program { ref main_id, cache } = self;
+        let allocator = BoxAllocator;
+
+        let rt = cache.parse_nocache(*main_id)?.0;
+        let rt = if apply_transforms {
+            crate::transform::transform(rt).unwrap()
+        } else {
+            rt
+        };
+        let doc: DocBuilder<_, ()> = rt.pretty(&allocator);
+        doc.render(80, out).unwrap();
+        Ok(())
+    }
 }
 
 /// Query the metadata of a path of a term in the cache.

@@ -7,6 +7,7 @@ pub mod identifier;
 pub mod label;
 pub mod parser;
 pub mod position;
+pub mod pretty;
 pub mod program;
 pub mod repl;
 pub mod serialize;

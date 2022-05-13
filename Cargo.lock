@@ -80,6 +80,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "arrayvec"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23b62fc65de8e4e7f52534fb52b0f3ed04746ae267519eef2a83941e8085068b"
+
+[[package]]
 name = "ascii-canvas"
 version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -315,7 +321,7 @@ dependencies = [
  "shell-words",
  "syntect",
  "twoway",
- "typed-arena",
+ "typed-arena 1.7.0",
  "unicode_categories",
  "xdg",
 ]
@@ -1108,6 +1114,7 @@ dependencies = [
  "md-5",
  "nickel-lang-utilities",
  "pprof",
+ "pretty",
  "pretty_assertions",
  "regex 0.2.11",
  "rustyline",
@@ -1118,6 +1125,7 @@ dependencies = [
  "serde_yaml",
  "sha-1 0.9.8",
  "sha2",
+ "similar",
  "simple-counter",
  "structopt",
  "termimad",
@@ -1206,7 +1214,7 @@ version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bafe4179722c2894288ee77a9f044f02811c86af699344c498b0840c698a2465"
 dependencies = [
- "arrayvec",
+ "arrayvec 0.4.12",
  "itoa 0.4.8",
 ]
 
@@ -1464,6 +1472,18 @@ name = "precomputed-hash"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
+
+[[package]]
+name = "pretty"
+version = "0.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29afd15870fab34b2a8884481a68f052b3d720cfb29666d7ae0ac2a42ea10289"
+dependencies = [
+ "arrayvec 0.5.2",
+ "log",
+ "typed-arena 2.0.1",
+ "unicode-segmentation",
+]
 
 [[package]]
 name = "pretty_assertions"
@@ -1857,6 +1877,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "similar"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2e24979f63a11545f5f2c60141afe249d4f19f84581ea2138065e400941d83d3"
+
+[[package]]
 name = "simple-counter"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2139,6 +2165,12 @@ name = "typed-arena"
 version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a9b2228007eba4120145f785df0f6c92ea538f5a3635a612ecf4e334c8c1446d"
+
+[[package]]
+name = "typed-arena"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0685c84d5d54d1c26f7d3eb96cd41550adb97baed141a761cf335d3d33bcd0ae"
 
 [[package]]
 name = "typenum"

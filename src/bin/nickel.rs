@@ -31,6 +31,14 @@ struct Opt {
 /// Available subcommands.
 #[derive(StructOpt, Debug)]
 enum Command {
+    /// Expand the nickel source after requiered transformation.
+    /// Could be used for debugging.
+    /// By default only format the code with comments droped.
+    Expand {
+        /// Performs code transformations before printing
+        #[structopt(short = "t", long)]
+        transform: bool,
+    },
     /// Export the result to a different format
     Export {
         /// Available formats: `raw, json, yaml, toml`. Default format: `json`.
@@ -102,6 +110,10 @@ fn main() {
         }
 
         let result = match opts.command {
+            Some(Command::Expand { transform }) => program.expand(
+                &mut std::io::BufWriter::new(Box::new(std::io::stdout())),
+                transform,
+            ),
             Some(Command::Export { format, output }) => export(&mut program, format, output),
             Some(Command::Query {
                 path,
