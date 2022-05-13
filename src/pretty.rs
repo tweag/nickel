@@ -766,7 +766,7 @@ where
                 .append(tail.pretty(allocator))
             }
             Arrow(dom, codom) => match dom.0 {
-                Arrow(_, _) => dom
+                Arrow(..) | Forall(..) => dom
                     .pretty(allocator)
                     .parens()
                     .append(allocator.softline())
