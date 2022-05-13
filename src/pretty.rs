@@ -73,7 +73,10 @@ where
                         .append(self.space())
                         .append(
                             self.hardline()
-                                .append(self.escaped_string(&doc))
+                                .append(self.intersperse(
+                                    doc.lines().map(|d| self.escaped_string(&d)),
+                                    self.hardline().clone(),
+                                ))
                                 .double_quotes(),
                         )
                         .append(self.line())
@@ -712,7 +715,15 @@ where
                     .append(curr.to_owned().pretty(allocator))
             }
             Enum(row) => row.pretty(allocator).enclose("[|", "|]"),
-            StaticRecord(row) => row.pretty(allocator).braces(),
+            StaticRecord(row) => match &row.0 {
+                AbsType::Var(id) => allocator
+                    .space()
+                    .append(allocator.text(";"))
+                    .append(allocator.space())
+                    .append(allocator.as_string(id))
+                    .braces(),
+                _ => row.pretty(allocator).braces(),
+            },
             DynRecord(ty) => allocator
                 .line()
                 .append(allocator.text("_"))
