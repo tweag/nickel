@@ -391,8 +391,12 @@ fn type_check_<L: Linearizer>(
             unify(state, strict, ty, mk_typewrapper::dynamic())
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
-        Term::Let(x, re, rt, _) => {
+        Term::Let(x, re, rt, attrs) => {
             let ty_let = binding_type(re.as_ref(), &envs, state.table, strict, state.resolver);
+            if attrs.rec {
+                envs.insert(x.clone(), ty_let.clone());
+            }
+
             linearizer.retype_ident(lin, x, ty_let.clone());
             type_check_(
                 state,
@@ -404,8 +408,9 @@ fn type_check_<L: Linearizer>(
                 ty_let.clone(),
             )?;
 
-            // TODO move this up once lets are rec
-            envs.insert(x.clone(), ty_let);
+            if !attrs.rec {
+                envs.insert(x.clone(), ty_let);
+            }
             type_check_(state, envs, lin, linearizer, strict, rt, ty)
         }
         Term::LetPattern(x, pat, re, rt) => {

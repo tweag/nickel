@@ -69,7 +69,7 @@ pub enum Term {
 
     /// A let binding.
     #[serde(skip)]
-    Let(Ident, RichTerm, RichTerm, BindingType),
+    Let(Ident, RichTerm, RichTerm, LetAttrs),
     /// A destructuring let-binding.
     #[serde(skip)]
     LetPattern(Option<Ident>, Destruct, RichTerm, RichTerm),
@@ -97,6 +97,7 @@ pub enum Term {
     ),
     /// A switch construct. The evaluation is done by the corresponding unary operator, but we
     /// still need this one for typechecking.
+    #[serde(skip)]
     Switch(
         RichTerm,                 /* tested expression */
         HashMap<Ident, RichTerm>, /* cases */
@@ -183,6 +184,15 @@ impl Default for BindingType {
 #[derive(Debug, Default, Eq, PartialEq, Copy, Clone)]
 pub struct RecordAttrs {
     pub open: bool,
+}
+
+/// The attributes of a let binding.
+#[derive(Debug, Default, Eq, PartialEq, Clone)]
+pub struct LetAttrs {
+    /// The type of a let binding. See the documentation of [`BindingType`].
+    pub binding_type: BindingType,
+    /// A recursive let binding adds its binding to the environment of the expression.
+    pub rec: bool,
 }
 
 impl RecordAttrs {
@@ -1038,12 +1048,12 @@ impl RichTerm {
         self,
         f: &mut F,
         state: &mut S,
-        method: TraverseOrder,
+        order: TraverseOrder,
     ) -> Result<RichTerm, E>
     where
         F: FnMut(RichTerm, &mut S) -> Result<RichTerm, E>,
     {
-        let rt = match method {
+        let rt = match order {
             TraverseOrder::TopDown => f(self, state)?,
             TraverseOrder::BottomUp => self,
         };
@@ -1051,38 +1061,38 @@ impl RichTerm {
 
         let result = match_sharedterm! {rt.term, with {
             Term::Fun(id, t) => {
-                let t = t.traverse(f, state, method)?;
+                let t = t.traverse(f, state, order)?;
                 RichTerm::new(
                     Term::Fun(id, t),
                     pos,
                 )
             },
             Term::FunPattern(id, d, t) => {
-                let t = t.traverse(f, state, method)?;
+                let t = t.traverse(f, state, order)?;
                 RichTerm::new(
                     Term::FunPattern(id, d, t),
                     pos,
                 )
             },
-            Term::Let(id, t1, t2, btype) => {
-                let t1 = t1.traverse(f, state, method)?;
-                let t2 = t2.traverse(f, state, method)?;
+            Term::Let(id, t1, t2, attrs) => {
+                let t1 = t1.traverse(f, state, order)?;
+                let t2 = t2.traverse(f, state, order)?;
                 RichTerm::new(
-                    Term::Let(id, t1, t2, btype),
+                    Term::Let(id, t1, t2, attrs),
                     pos,
                 )
             },
             Term::LetPattern(id, pat, t1, t2) => {
-                let t1 = t1.traverse(f, state, method)?;
-                let t2 = t2.traverse(f, state, method)?;
+                let t1 = t1.traverse(f, state, order)?;
+                let t2 = t2.traverse(f, state, order)?;
                 RichTerm::new(
                     Term::LetPattern(id, pat, t1, t2),
                     pos,
                 )
             },
             Term::App(t1, t2) => {
-                let t1 = t1.traverse(f, state, method)?;
-                let t2 = t2.traverse(f, state, method)?;
+                let t1 = t1.traverse(f, state, order)?;
+                let t2 = t2.traverse(f, state, order)?;
                 RichTerm::new(
                     Term::App(t1, t2),
                     pos,
@@ -1094,12 +1104,12 @@ impl RichTerm {
                 let cases_res: Result<HashMap<Ident, RichTerm>, E> = cases
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(id, t)| t.traverse(f, state, method).map(|t_ok| (id.clone(), t_ok)))
+                    .map(|(id, t)| t.traverse(f, state, order).map(|t_ok| (id.clone(), t_ok)))
                     .collect();
 
-                let default = default.map(|t| t.traverse(f, state, method)).transpose()?;
+                let default = default.map(|t| t.traverse(f, state, order)).transpose()?;
 
-                let t = t.traverse(f, state, method)?;
+                let t = t.traverse(f, state, order)?;
 
                 RichTerm::new(
                     Term::Switch(t, cases_res?, default),
@@ -1107,15 +1117,15 @@ impl RichTerm {
                 )
             },
             Term::Op1(op, t) => {
-                let t = t.traverse(f, state, method)?;
+                let t = t.traverse(f, state, order)?;
                 RichTerm::new(
                     Term::Op1(op, t),
                     pos,
                 )
             },
             Term::Op2(op, t1, t2) => {
-                let t1 = t1.traverse(f, state, method)?;
-                let t2 = t2.traverse(f, state, method)?;
+                let t1 = t1.traverse(f, state, order)?;
+                let t2 = t2.traverse(f, state, order)?;
                 RichTerm::new(Term::Op2(op, t1, t2),
                     pos,
                 )
@@ -1123,7 +1133,7 @@ impl RichTerm {
             Term::OpN(op, ts) => {
                 let ts_res: Result<Vec<RichTerm>, E> = ts
                     .into_iter()
-                    .map(|t| t.traverse(f, state, method))
+                    .map(|t| t.traverse(f, state, order))
                     .collect();
                 RichTerm::new(
                     Term::OpN(op, ts_res?),
@@ -1131,7 +1141,7 @@ impl RichTerm {
                 )
             },
             Term::Wrapped(i, t) => {
-                let t = t.traverse(f, state, method)?;
+                let t = t.traverse(f, state, order)?;
                 RichTerm::new(
                     Term::Wrapped(i, t),
                     pos,
@@ -1143,7 +1153,7 @@ impl RichTerm {
                 let map_res: Result<HashMap<Ident, RichTerm>, E> = map
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(id, t)| t.traverse(f, state, method).map(|t_ok| (id.clone(), t_ok)))
+                    .map(|(id, t)| t.traverse(f, state, order).map(|t_ok| (id.clone(), t_ok)))
                     .collect();
                 RichTerm::new(
                     Term::Record(map_res?, attrs),
@@ -1156,14 +1166,14 @@ impl RichTerm {
                 let map_res: Result<HashMap<Ident, RichTerm>, E> = map
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(id, t)| Ok((id, t.traverse(f, state, method)?)))
+                    .map(|(id, t)| Ok((id, t.traverse(f, state, order)?)))
                     .collect();
                 let dyn_fields_res: Result<Vec<(RichTerm, RichTerm)>, E> = dyn_fields
                     .into_iter()
                     .map(|(id_t, t)| {
                         Ok((
-                            id_t.traverse(f, state, method)?,
-                            t.traverse(f, state, method)?,
+                            id_t.traverse(f, state, order)?,
+                            t.traverse(f, state, order)?,
                         ))
                     })
                     .collect();
@@ -1175,7 +1185,7 @@ impl RichTerm {
             Term::Array(ts) => {
                 let ts_res: Result<Vec<RichTerm>, E> = ts
                     .into_iter()
-                    .map(|t| t.traverse(f, state, method))
+                    .map(|t| t.traverse(f, state, order))
                     .collect();
 
                 RichTerm::new(
@@ -1189,7 +1199,7 @@ impl RichTerm {
                     .map(|chunk| match chunk {
                         chunk @ StrChunk::Literal(_) => Ok(chunk),
                         StrChunk::Expr(t, indent) => {
-                            Ok(StrChunk::Expr(t.traverse(f, state, method)?, indent))
+                            Ok(StrChunk::Expr(t.traverse(f, state, order)?, indent))
                         }
                     })
                     .collect();
@@ -1200,17 +1210,19 @@ impl RichTerm {
                 )
             },
             Term::MetaValue(meta) => {
+                let mut f_on_type = |ty: Types, s: &mut S| {
+                    match ty.0 {
+                        AbsType::Flat(t) => t.traverse(f, s, order).map(|t| Types(AbsType::Flat(t))),
+                        _ => Ok(ty),
+                    }
+                };
+
                 let contracts: Result<Vec<Contract>, _> = meta
                     .contracts
                     .into_iter()
                     .map(|ctr| {
-                        let types = match ctr.types {
-                            Types(AbsType::Flat(t)) => {
-                                Types(AbsType::Flat(t.traverse(f, state, method)?))
-                            }
-                            ty => ty,
-                        };
-                        Ok(Contract { types, ..ctr })
+                        let Contract {types, label} = ctr;
+                        types.traverse(&mut f_on_type, state, order).map(|types| Contract { types, label })
                     })
                     .collect();
                 let contracts = contracts?;
@@ -1218,19 +1230,14 @@ impl RichTerm {
                 let types = meta
                     .types
                     .map(|ctr| {
-                        let types = match ctr.types {
-                            Types(AbsType::Flat(t)) => {
-                                Types(AbsType::Flat(t.traverse(f, state, method)?))
-                            }
-                            ty => ty,
-                        };
-                        Ok(Contract { types, ..ctr })
+                        let Contract {types, label} = ctr;
+                        types.traverse(&mut f_on_type, state, order).map(|types| Contract { types, label })
                     })
                     .transpose()?;
 
                 let value = meta
                     .value
-                    .map(|t| t.traverse(f, state, method))
+                    .map(|t| t.traverse(f, state, order))
                     .map_or(Ok(None), |res| res.map(Some))?;
                     let meta = MetaValue {
                         doc: meta.doc,
@@ -1239,6 +1246,7 @@ impl RichTerm {
                         priority: meta.priority,
                         value,
                     };
+
                 RichTerm::new(
                     Term::MetaValue(meta),
                     pos,
@@ -1246,7 +1254,7 @@ impl RichTerm {
             }} else rt
         };
 
-        match method {
+        match order {
             TraverseOrder::TopDown => Ok(result),
             TraverseOrder::BottomUp => f(result, state),
         }
@@ -1410,13 +1418,35 @@ pub mod make {
         Term::Var(v.into()).into()
     }
 
+    fn let_in_<I, T1, T2>(rec: bool, id: I, t1: T1, t2: T2) -> RichTerm
+    where
+        T1: Into<RichTerm>,
+        T2: Into<RichTerm>,
+        I: Into<Ident>,
+    {
+        let attrs = LetAttrs {
+            binding_type: BindingType::Normal,
+            rec,
+        };
+        Term::Let(id.into(), t1.into(), t2.into(), attrs).into()
+    }
+
     pub fn let_in<I, T1, T2>(id: I, t1: T1, t2: T2) -> RichTerm
     where
         T1: Into<RichTerm>,
         T2: Into<RichTerm>,
         I: Into<Ident>,
     {
-        Term::Let(id.into(), t1.into(), t2.into(), BindingType::Normal).into()
+        let_in_(false, id, t1, t2)
+    }
+
+    pub fn let_rec_in<I, T1, T2>(id: I, t1: T1, t2: T2) -> RichTerm
+    where
+        T1: Into<RichTerm>,
+        T2: Into<RichTerm>,
+        I: Into<Ident>,
+    {
+        let_in_(true, id, t1, t2)
     }
 
     pub fn let_pat<I, D, T1, T2>(id: Option<I>, pat: D, t1: T1, t2: T2) -> RichTerm
@@ -1426,18 +1456,7 @@ pub mod make {
         D: Into<Destruct>,
         I: Into<Ident>,
     {
-        match pat.into() {
-            d @ (Destruct::Record { .. } | Destruct::Array { .. }) => {
-                Term::LetPattern(id.map(|i| i.into()), d, t1.into(), t2.into()).into()
-            }
-            Destruct::Empty => {
-                if let Some(id) = id {
-                    let_in(id, t1, t2)
-                } else {
-                    Term::Null.into()
-                }
-            }
-        }
+        Term::LetPattern(id.map(|i| i.into()), pat.into(), t1.into(), t2.into()).into()
     }
 
     #[cfg(test)]

@@ -163,3 +163,19 @@ fn nested_records() {
         HashMap::from([("a", vec!["c"]), ("b", vec!["a", "c"]), ("c", vec!["b"]),])
     ));
 }
+
+#[test]
+fn recursive_let() {
+    assert!(check_stat_vars(
+        "{
+          a = let rec b = b + a + h in b,
+          b = let rec a = a + b in f (a + 1) z,
+          c = let rec foo = b in let rec bar = c in if a.r then [b] else {foo = c}
+        }",
+        HashMap::from([
+            ("a", vec!["a"]),
+            ("b", vec!["b"]),
+            ("c", vec!["a", "b", "c"])
+        ])
+    ));
+}

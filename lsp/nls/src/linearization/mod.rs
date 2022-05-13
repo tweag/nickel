@@ -161,11 +161,11 @@ impl Linearizer for AnalysisHost {
             Term::LetPattern(ident, destruct, ..) | Term::FunPattern(ident, destruct, _) => {
                 if let Some(ident) = ident {
                     let value_ptr = match term {
-                        Term::LetPattern(_, _, _, _) => {
+                        Term::LetPattern(..) => {
                             self.let_binding = Some(id);
                             ValueState::Unknown
                         }
-                        Term::FunPattern(_, _, _) => {
+                        Term::FunPattern(..) => {
                             // stub object
                             lin.push(LinearizationItem {
                                 id: id_gen.get_and_advance(),
@@ -218,13 +218,13 @@ impl Linearizer for AnalysisHost {
                     });
                 }
             }
-            Term::Let(ident, _, _, _) | Term::Fun(ident, _) => {
+            Term::Let(ident, ..) | Term::Fun(ident, ..) => {
                 let value_ptr = match term {
-                    Term::Let(_, _, _, _) => {
+                    Term::Let(..) => {
                         self.let_binding = Some(id);
                         ValueState::Unknown
                     }
-                    Term::Fun(_, _) => {
+                    Term::Fun(..) => {
                         // stub object
                         lin.push(LinearizationItem {
                             id: id_gen.get_and_advance(),

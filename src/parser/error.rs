@@ -33,4 +33,7 @@ pub enum ParseError {
         RawSpan, /* tail position */
         RawSpan, /* whole record position */
     ),
+    /// A recursive let pattern was encountered. They are not currently supported because we
+    /// decided it was too involved to implement them.
+    RecursiveLetPattern(RawSpan),
 }

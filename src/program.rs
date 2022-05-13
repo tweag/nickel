@@ -126,6 +126,12 @@ impl Program {
         report(&mut self.cache, error)
     }
 
+    /// Create a markdown file with documentation for the specified program in `.nickel/doc/program_main_file_name.md`
+    #[cfg(feature = "doc")]
+    pub fn output_doc(&mut self) -> Result<(), Error> {
+        doc::output_doc(&mut self.cache, self.main_id)
+    }
+
     #[cfg(debug_assertions)]
     pub fn set_skip_stdlib(&mut self) {
         self.cache.skip_stdlib = true;
@@ -227,6 +233,133 @@ where
             err
         ),
     };
+}
+
+#[cfg(feature = "doc")]
+mod doc {
+    use crate::cache::Cache;
+    use crate::error::{Error, IOError};
+    use crate::term::{MetaValue, RichTerm, Term};
+    use codespan::FileId;
+    use comrak::arena_tree::NodeEdge;
+    use comrak::nodes::{Ast, AstNode, NodeCode, NodeHeading, NodeValue};
+    use comrak::{format_commonmark, parse_document, Arena, ComrakOptions};
+    use std::fs::{self, File};
+    use std::path::Path;
+
+    /// Create a markdown file with documentation for the specified FileId.
+    pub fn output_doc(cache: &mut Cache, file_id: FileId) -> Result<(), Error> {
+        cache.parse(file_id)?;
+
+        for (file_id, term) in cache.terms() {
+            let document = AstNode::from(NodeValue::Document);
+
+            // Our nodes in the Markdown document are owned by this arena
+            let arena = Arena::new();
+
+            // The default ComrakOptions disables all extensions (essentially reducing to CommonMark)
+            let options = ComrakOptions::default();
+
+            // Populate the document with the documentation
+            to_markdown(&term.term, 0, &arena, &document, &options)?;
+
+            // Create markdown file and write resulting markdown to it
+            let file_path: &Path = cache.files().name(*file_id).as_ref();
+            let file_name = file_path.file_name().ok_or_else(|| {
+                Error::IOError(IOError(format!(
+                    "Could not get file name of: {}",
+                    file_path.display()
+                )))
+            })?;
+            let docpath: &Path = Path::new(".nickel/doc/");
+            fs::create_dir_all(docpath).map_err(|e| Error::IOError(IOError(e.to_string())))?;
+            let mut markdown_file = docpath.to_path_buf();
+            markdown_file.push(file_name);
+            markdown_file.set_extension("md");
+            let mut file = File::create(markdown_file.clone().into_os_string())
+                .map_err(|e| Error::IOError(IOError(e.to_string())))?;
+            format_commonmark(&document, &options, &mut file)
+                .map_err(|e| Error::IOError(IOError(e.to_string())))?;
+        }
+
+        Ok(())
+    }
+
+    /// Recursively walk the given richterm, recursing into fields of record, looking for documentation.
+    /// This documentation is then added to the provided document.
+    fn to_markdown<'a>(
+        rt: &'a RichTerm,
+        header_level: u32,
+        arena: &'a Arena<AstNode<'a>>,
+        document: &'a AstNode<'a>,
+        options: &ComrakOptions,
+    ) -> Result<(), Error> {
+        match rt.term.as_ref() {
+            Term::MetaValue(MetaValue { doc: Some(md), .. }) => {
+                document.append(&mut parse_documentation(header_level, arena, &md, options))
+            }
+            Term::Record(hm, _) | Term::RecRecord(hm, _, _, _) => {
+                for (ident, rt) in hm {
+                    let header = mk_header(&ident.label, header_level + 1, arena);
+                    document.append(header);
+                    to_markdown(rt, header_level + 1, arena, document, options)?;
+                }
+            }
+            _ => (),
+        }
+        Ok(())
+    }
+
+    /// Parses a string into markdown and increases any headers in the markdown by the specified level.
+    /// This allows having headers in documentation without clashing with the structure of the document.
+    fn parse_documentation<'a>(
+        header_level: u32,
+        arena: &'a Arena<AstNode<'a>>,
+        md: &str,
+        options: &ComrakOptions,
+    ) -> &'a AstNode<'a> {
+        let node = parse_document(arena, md, options);
+
+        // Increase header level of every header
+        for edge in node.traverse() {
+            if let NodeEdge::Start(n) = edge {
+                n.data
+                    .replace_with(|ast| increase_header_level(header_level, ast).clone());
+            }
+        }
+        node
+    }
+
+    fn increase_header_level(header_level: u32, ast: &mut Ast) -> &Ast {
+        if let NodeValue::Heading(NodeHeading { level, setext }) = ast.value {
+            ast.value = NodeValue::Heading(NodeHeading {
+                level: header_level + level,
+                setext,
+            });
+        }
+        return ast;
+    }
+
+    /// Creates a codespan header of the provided string with the provided header level.
+    fn mk_header<'a>(
+        ident: &String,
+        header_level: u32,
+        arena: &'a Arena<AstNode<'a>>,
+    ) -> &'a AstNode<'a> {
+        let res = arena.alloc(AstNode::from(NodeValue::Heading(NodeHeading {
+            level: header_level,
+            setext: false,
+        })));
+
+        let code = arena.alloc(AstNode::from(NodeValue::Code(NodeCode {
+            num_backticks: 1,
+            literal: ident.clone().into_bytes(),
+        })));
+
+        res.append(code);
+
+        res
+    }
 }
 
 #[cfg(test)]

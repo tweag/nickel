@@ -7,7 +7,10 @@ use std::rc::Rc;
 
 use codespan::FileId;
 
+use super::error::ParseError;
+
 use crate::{
+    destruct::Destruct,
     identifier::Ident,
     label::Label,
     mk_app, mk_fun,
@@ -312,6 +315,41 @@ pub fn mk_label(types: Types, src_id: FileId, l: usize, r: usize) -> Label {
         polarity: true,
         path: Vec::new(),
     }
+}
+
+/// Generate a `Let` or a `LetPattern` (depending on `pat` being empty or not) from a the parsing
+/// of a let definition. This function fails if the definition has both a non-empty pattern and
+/// is recursive (`pat != Destruct::Empty && rec`), because recursive let-patterns are currently
+/// not supported.
+pub fn mk_let(
+    rec: bool,
+    id: Option<Ident>,
+    pat: Destruct,
+    t1: RichTerm,
+    t2: RichTerm,
+    span: RawSpan,
+) -> Result<RichTerm, ParseError> {
+    let result = match pat.into() {
+        d @ (Destruct::Record { .. } | Destruct::Array { .. }) => {
+            if rec {
+                return Err(ParseError::RecursiveLetPattern(span));
+            }
+            mk_term::let_pat(id, d, t1, t2)
+        }
+        Destruct::Empty => {
+            if let Some(id) = id {
+                if rec {
+                    mk_term::let_rec_in(id, t1, t2)
+                } else {
+                    mk_term::let_in(id, t1, t2)
+                }
+            } else {
+                panic!("unexpected let-binding without pattern or identifier")
+            }
+        }
+    };
+
+    Ok(result)
 }
 
 /// Determine the minimal level of indentation of a multi-line string.

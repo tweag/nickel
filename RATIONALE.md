@@ -1,5 +1,4 @@
-Why Nickel ?
-============
+# Why Nickel ?
 
 There already exist quite a few languages with a similar purpose to Nickel:
 [CUE](https://cuelang.org/), [Dhall](https://dhall-lang.org/),
@@ -26,6 +25,7 @@ alternatives.
     - [Side-effects](#side-effects)
 2. [Comparison with alternatives](#comparison-with-alternatives)
     - [Starlark](#starlark-the-standard-package)
+    - [Nix](#nix-json-and-functions)
     - [Dhall](#dhall-powerful-type-system)
     - [CUE](#cue-opinionated-data-validation)
     - [Jsonnet](#jsonnet-json-functions-and-inheritance)
@@ -33,6 +33,7 @@ alternatives.
 ## Design rationale
 
 ### Functions
+
 The main contribution of a configuration language over a static configuration is
 *abstraction*: make the same code reusable in different contexts by just varying
 some inputs, instead of pasting variations of the same chunks all over the
@@ -48,6 +49,7 @@ first-class: they can be created everywhere, passed around as any other value,
 and called at will.
 
 ### Typing
+
 One recurring difference between Nickel and other configuration languages is
 that Nickel has a static type system. The trade-offs of static typing for
 configurations are different than in the case of a general purpose programming
@@ -56,6 +58,7 @@ language.
 #### Reusable versus specific code
 
 We can divide code in two categories:
+
 1. Configuration-specific code: local code that will only be used for the
    generation of said configuration.
 2. Reusable code: code that is used in several configurations and will be
@@ -69,9 +72,11 @@ require annotations and forbids correct but non typable code, while not really
 adding value.
 
 On the other hand, reusable code may be called on infinitely many different inputs:
-```
+
+```nickel
 let f x = fun x => if x < 1000 then x + 1 else x ++ 2
 ```
+
 In this contrived but illustrative example, `f` can work fine on a thousand
 inputs, but fails on the next one. Functions in general can never be tested
 exhaustively.  Meanwhile, static typing would catch the typo `x ++ 2` even
@@ -80,6 +85,7 @@ before the first usage.
 To this problem, Nickel offers the solution of a gradual type system which
 supports a mix of both typed and non typed parts, with the following
 perks:
+
 - You get to chose when to use static typing or not.
 - You can write code without any type annotation even when calling to statically
   typed code.
@@ -107,13 +113,15 @@ specification dictated by this tool, which is a priori alien to the generating
 program.
 
 In the following example,
-```
+
+```json
 {
   ...
-  id: "www.github.com/nickel/back",
-  baseURL: 2,
+  "id": "www.github.com/nickel/back",
+  "baseURL": 2
 }
 ```
+
 the configuration language has no reason to suspect that `id` and `baseURL`
 contents have been mistakingly swapped. It would need to be aware of the fact
 that `id` should be an integer and `baseURL` a string. Surely, an error will
@@ -133,6 +141,7 @@ can for example ensure that `baseURL` is not only a string but a valid URL, and
 document that it should be the Github homepage of a project.
 
 ### Turing completeness
+
 All listed languages but Jsonnet forbid general recursion, and are hence non
 Turing-complete. The idea is that generating configuration should always
 terminate, and combinators on collections (e.g. `map` or `fold`) - or equivalent
@@ -148,6 +157,7 @@ functionalities \[2\].
 \[2\]: [Turing incomplete languages](http://www.haskellforall.com/2020/01/why-dhall-advertises-absence-of-turing.html)
 
 ### Side-Effects
+
 As for Turing-completeness, most of these languages also forbid side-effects.
 Side-effects suffer from general drawbacks: they make code harder to reason
 about, to compose, to refactor and to parallelize. In general-purpose
@@ -173,9 +183,12 @@ externally the associated effect handlers in order to customize Nickel for
 specific use-cases.
 
 ## Comparison with alternatives
-Let's compare Nickel with the languages cited at the beginning: Starlark, Dhall, CUE and Jsonnet.
+
+Let's compare Nickel with the languages cited at the beginning: Starlark, Nix
+expressions, Dhall, CUE, Jsonnet.
 
 ### Starlark: the standard package
+
 Starlark is a language originally designed for the [Bazel](https://bazel.build/)
 build system, but it can also be used independently as a configuration language.
 It is a dialect of Python and includes the following classical features:
@@ -185,6 +198,7 @@ It is a dialect of Python and includes the following classical features:
 - Dynamic typing: no type annotations
 
 With the following restrictions:
+
 - No recursion: the language is not Turing-complete
 - No side-effects: execution cannot access the file system, network or system clock.
 
@@ -192,18 +206,52 @@ In summary, Starlark comes with a sensible basic set of capabilities which is
 good enough to enable the writing of parametrizable and reusable configurations.
 
 ### Starlark vs Nickel
+
 Starlark forbids recursion and side-effects which are allowed in Nickel. It
 lacks a static type system, which hampers the ability to write robust library
 code and prevents the expression of data schemas inside the language.
 
+### Nix: JSON and functions
+
+Nix (sometimes called Nix expressions in full) is the language used by the [Nix
+package manager](https://nixos.org/). It is a direct inspiration for Nickel, and
+writing packages for Nix is an important target use-case.
+
+Nix has a simple core: JSON datatypes combined with higher-order functions,
+recursion and lazy evaluation. The Nix language is rather tightly integrated
+with the Nix package manager, making it not trivial to use as a standalone
+configuration language. Its builtins, including a few side-effects, are also
+oriented toward the package management use-case.
+
+### Nix vs Nickel
+
+Nickel builds on the same core as Nix (JSON plus functions), and is in fact not
+far from being a superset of the Nix language.
+
+However, Nix lacks any native typing and validation capabilities, which Nickel
+brings through static typing and contracts.
+
+The merge system of Nickel is also in part inspired from the NixOS module
+system. The NixOS module system has similar concepts but is implemented fully as
+a Nix library. The rationale behind the merge system of Nickel is to bring back
+merging into the scope of the language itself, bringing uniformity and
+consistency, and potentially improving performance and error messages.
+Additionally, native merging is also more ergonomic: in Nickel, merging doesn't
+rely on an external module system, but works out of the box with plain records,
+making it possible to use for other targets than Nix. Data validation directly
+leverages metavalues and the contract system, instead of user-defined patterns
+such as `mkOption` and the like (making them in particular discoverable by e.g.
+code editors and IDEs)
+
 ### Dhall: powerful type system
+
 Dhall is heavily inspired by Nix, to which it adds a [powerful type
 system](https://github.com/dhall-lang/dhall-lang/blob/master/standard/README.md#summary).
 Because of its complexity, the type system only supports a limited type
 inference.  This can lead to code that is sometimes heavy on type annotations,
 as in the following example:
 
-```
+```dhall
 let filterOptional
     : ∀(a : Type) → ∀(b : Type) → (a → Optional b) → List a → List b
     =   λ(a : Type)
@@ -239,19 +287,23 @@ JSON](#typing-json). Typically, Dhall lists must be homogeneous: all elements
 must have the same type. In particular, you can't represent directly the
 following list of objects with different structure, which is valid JSON `[{a:
 1}, {b: 2}]`. One has to write:
-```
+
+```dhall
 let Union = < Left : {a : Natural} | Right : {b : Natural} >
 in [Union.Left {a = 1}, Union.Right {b = 2}]
 ```
+
 and write boilerplate code accordingly when manipulating this list.
 
 ### Dhall vs Nickel
+
 Dhall is entirely statically typed, with an expressive but complex type system.
 It requires type annotations, and may add boilerplate for code that is hard to
 type, while Nickel prefers the mixed approach of gradual typing. As Starlark,
 and as opposed to Nickel, Dhall forbids recursion and side-effects.
 
 ### CUE: opinionated data validation
+
 CUE is quite a different beast. It focuses on data validation rather than
 boilerplate removal. To do so, it sacrifices flexibility by not supporting not
 only general recursion, but even general functions, in exchange of a
@@ -261,6 +313,7 @@ inhabitant. These types form a lattice, which means they come with a union and
 an intersection operation.
 
 This provides:
+
 - Merging: combine mixed schemas and values together in a well behaved way
   (merge is commutative, everywhere defined and idempotent)
 - Querying: synthesize values inhabiting a type
@@ -271,32 +324,38 @@ although the flexibility of Nickel necessarily makes the two system behave
 differently.
 
 ### CUE vs Nickel
+
 CUE is an outsider. While it produces elegant code, is backed by a solid theory
 and is excellent at data validation, it seems less adapted to generating
 configuration in general. It is also heavily constrained, which might be
 limiting for specific use-cases.
 
 ### Jsonnet: JSON, functions and inheritance
+
 In this list, Jsonnet is arguably the closest language to Nickel. As Nickel, it
 is a JSON with higher-order functions, recursion and lazy evaluation. It
 features a simplified object system with inheritance, which achieves similar
 functionalities to Nickel's merge system.
 
 ### Jsonnet vs Nickel
+
 The main difference between Jsonnet and Nickel are types. Jsonnet does not
 feature static types, contracts or enriched values, and thus can't type library
 code and has no principled approach to data validation.
 
 ### Summary
-| Language | Typing                        | Recursion | Evaluation | Side-effects                                      |
-|----------|-------------------------------|-----------|------------|---------------------------------------------------|
-| Nickel   | Gradual (dynamic + static)    | Yes       | Lazy       | Yes (constrained)                                 |
-| Starlark | Dynamic                       | No        | Strict     | No                                                |
-| Dhall    | Static (requires annotations) | No        | Lazy       | No                                                |
-| CUE      | Static (everything is a type) | No        | Lazy       | No, but allowed in the separated scripting layer  |
-| Jsonnet  | Dynamic                       | Yes       | Lazy       | No                                                |
+
+| Language | Typing                        | Recursion  | Evaluation | Side-effects                                      |
+|----------|-------------------------------|------------|------------|---------------------------------------------------|
+| Nickel   | Gradual (dynamic + static)    | Yes        | Lazy       | Yes (constrained)                                 |
+| Starlark | Dynamic                       | No         | Strict     | No                                                |
+| Nix      | Dynamic                       | Yes        | Lazy       | Predefined and specialized to package management  |
+| Dhall    | Static (requires annotations) | Restricted | Lazy       | No                                                |
+| CUE      | Static (everything is a type) | No         | Lazy       | No, but allowed in the separated scripting layer  |
+| Jsonnet  | Dynamic                       | Yes        | Lazy       | No                                                |
 
 ## Conclusion
+
 We outlined our motivations for creating Nickel, our main design choices and why
 we made them. To give an idea of the position of Nickel in the ecosystem, we
 compared it to a handful of related languages.  They are all very well designed

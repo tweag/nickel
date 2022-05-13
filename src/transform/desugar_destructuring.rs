@@ -34,9 +34,7 @@ use crate::destruct::{Destruct, Match};
 use crate::identifier::Ident;
 use crate::match_sharedterm;
 use crate::term::make::{op1, op2};
-use crate::term::{
-    BinaryOp::DynRemove, BindingType, MetaValue, RichTerm, Term, UnaryOp::StaticAccess,
-};
+use crate::term::{BinaryOp::DynRemove, MetaValue, RichTerm, Term, UnaryOp::StaticAccess};
 
 /// Entry point of the patterns desugaring.
 /// It desugar a `RichTerm` if possible (the term is a let pattern or a function with patterns in
@@ -117,7 +115,7 @@ pub fn desugar(rt: RichTerm) -> RichTerm {
                         x.clone(),
                         t_,
                         destruct_term(x.clone(), &pat, bind_open_field(x, &pat, body)),
-                        BindingType::Normal,
+                        Default::default(),
                     ),
                     pos,
                 )
@@ -161,7 +159,7 @@ fn bind_open_field(x: Ident, pat: &Destruct, body: RichTerm) -> RichTerm {
             }
         }),
         body,
-        BindingType::Normal,
+        Default::default(),
     )
     .into()
 }
@@ -177,7 +175,7 @@ fn destruct_term(x: Ident, pat: &Destruct, body: RichTerm) -> RichTerm {
                     id.clone(),
                     op1(StaticAccess(id.clone()), Term::Var(x.clone())),
                     t,
-                    BindingType::Normal,
+                    Default::default(),
                 ),
                 pos,
             ),

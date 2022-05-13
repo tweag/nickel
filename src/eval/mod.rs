@@ -95,8 +95,8 @@ use crate::{
     identifier::Ident,
     match_sharedterm, mk_app,
     term::{
-        make as mk_term, BinaryOp, BindingType, MetaValue, RichTerm, SharedTerm, StrChunk, Term,
-        UnaryOp,
+        make as mk_term, BinaryOp, BindingType, LetAttrs, MetaValue, RichTerm, SharedTerm,
+        StrChunk, Term, UnaryOp,
     },
 };
 
@@ -225,7 +225,7 @@ where
     use crate::transform::fresh_var;
 
     let var = fresh_var();
-    // Desugar to let x = term in deepSeq x x
+    // Desugar to let x = term in %deep_seq% x x
     let wrapper = mk_term::let_in(
         var.clone(),
         t0,
@@ -345,6 +345,7 @@ where
                     stack.push_strictness(enriched_strict);
                 }
                 enriched_strict = true;
+
                 stack.push_arg(
                     Closure {
                         body: t2.clone(),
@@ -357,18 +358,24 @@ where
                     env,
                 }
             }
-            Term::Let(x, s, t, btype) => {
+            Term::Let(x, s, t, LetAttrs { binding_type, rec }) => {
                 let closure = Closure {
                     body: s.clone(),
                     env: env.clone(),
                 };
 
-                let thunk = match btype {
+                let mut thunk = match binding_type {
                     BindingType::Normal => Thunk::new(closure, IdentKind::Let),
                     BindingType::Revertible(deps) => {
                         Thunk::new_rev(closure, IdentKind::Let, deps.clone())
                     }
                 };
+
+                // Patch the environment with the (x <- closure) binding
+                if *rec {
+                    let thunk_ = thunk.clone();
+                    thunk.borrow_mut().env.insert(x.clone(), thunk_);
+                }
 
                 env.insert(x.clone(), thunk);
                 Closure {
@@ -377,6 +384,11 @@ where
                 }
             }
             Term::Switch(exp, cases, default) => {
+                if !enriched_strict {
+                    stack.push_strictness(enriched_strict);
+                }
+                enriched_strict = true;
+
                 let has_default = default.is_some();
 
                 if let Some(t) = default {
@@ -692,11 +704,11 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
             | v @ Term::Enum(_)
             | v @ Term::Import(_)
             | v @ Term::ResolvedImport(_) => RichTerm::new(v, pos),
-            Term::Let(id, t1, t2, btype) => {
+            Term::Let(id, t1, t2, attrs) => {
                 let t1 = subst_(t1, global_env, env, Cow::Borrowed(bound.as_ref()));
                 let t2 = subst_(t2, global_env, env, bound);
 
-                RichTerm::new(Term::Let(id, t1, t2, btype), pos)
+                RichTerm::new(Term::Let(id, t1, t2, attrs), pos)
             }
             p @ Term::LetPattern(..) => panic!("Pattern {:?} has not been transformed before evaluation", p),
             p @ Term::FunPattern(..) => panic!("Pattern {:?} has not been transformed before evaluation", p),

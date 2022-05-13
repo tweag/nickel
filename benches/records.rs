@@ -1,34 +1,20 @@
-use criterion::{criterion_group, criterion_main, Criterion};
-use nickel_lang_utilities::{bench_args, EvalMode};
+use criterion::{criterion_main, Criterion};
+use nickel_lang_utilities::{ncl_bench_group, EvalMode};
 use pprof::criterion::{Output, PProfProfiler};
 
-fn count_letters(c: &mut Criterion) {
-    bench_args(
-        "countLetters",
-        env!("CARGO_MANIFEST_DIR"),
-        "records/countLetters",
-        None,
-        vec![String::from(include_str!("lorem.txt"))],
-        EvalMode::DeepSeq,
-        c,
-    );
-}
-
-fn merge(c: &mut Criterion) {
-    bench_args(
-        "merge",
-        env!("CARGO_MANIFEST_DIR"),
-        "records/merge",
-        None,
-        vec![String::from("500"), String::from("50")],
-        EvalMode::DeepSeq,
-        c,
-    );
-}
-
-criterion_group! {
+ncl_bench_group! {
     name = benches;
     config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)));
-    targets = count_letters, merge
+    {
+            name = "countLetters",
+            path = "records/countLetters",
+            args = (include_str!("lorem.txt")),
+            eval_mode = EvalMode::DeepSeq,
+        }, {
+            name = "merge",
+            path = "records/merge",
+            args = (500, 50),
+            eval_mode = EvalMode::DeepSeq,
+    }
 }
 criterion_main!(benches);
