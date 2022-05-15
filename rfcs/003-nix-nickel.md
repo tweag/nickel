@@ -156,7 +156,7 @@ builders.derivation = {
 
   version
     | doc "Version of the derivation, used in the Nix store path."
-    | Str,
+    | Str
     | default = "",
 
   builder
