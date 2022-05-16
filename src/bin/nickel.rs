@@ -20,7 +20,7 @@ struct Opt {
     file: Option<PathBuf>,
 
     #[cfg(debug_assertions)]
-    /// Skip the standard library import, for debugging only, does not affect REPL
+    /// Skips the standard library import. For debugging only. This does not affect REPL
     #[structopt(long)]
     nostdlib: bool,
 
@@ -31,15 +31,14 @@ struct Opt {
 /// Available subcommands.
 #[derive(StructOpt, Debug)]
 enum Command {
-    /// Expand the nickel source after requiered transformation.
-    /// Could be used for debugging.
-    /// By default only format the code with comments droped.
-    Expand {
+    /// Pretty-prints the program back as a Nickel expression from its parsed representation (AST).
+    /// Used for debugging purpose
+    PrintAst {
         /// Performs code transformations before printing
-        #[structopt(short = "t", long)]
+        #[structopt(long)]
         transform: bool,
     },
-    /// Export the result to a different format
+    /// Exports the result to a different format
     Export {
         /// Available formats: `raw, json, yaml, toml`. Default format: `json`.
         #[structopt(long)]
@@ -49,7 +48,7 @@ enum Command {
         #[structopt(parse(from_os_str))]
         output: Option<PathBuf>,
     },
-    /// Print the metadata attached to an attribute, given as a path
+    /// Prints the metadata attached to an attribute, given as a path
     Query {
         path: Option<String>,
         #[structopt(long)]
@@ -63,14 +62,14 @@ enum Command {
         #[structopt(long)]
         value: bool,
     },
-    /// Typecheck a program, but do not run it
+    /// Typechecks the program but do not run it
     Typecheck,
-    /// Start an REPL session
+    /// Starts an REPL session
     Repl {
         #[structopt(long)]
         history_file: Option<PathBuf>,
     },
-    /// Generate the documentation files for the specified nickel file
+    /// Generates the documentation files for the specified nickel file
     #[cfg(feature = "doc")]
     Doc {},
 }
@@ -110,7 +109,7 @@ fn main() {
         }
 
         let result = match opts.command {
-            Some(Command::Expand { transform }) => program.expand(
+            Some(Command::PrintAst { transform }) => program.expand(
                 &mut std::io::BufWriter::new(Box::new(std::io::stdout())),
                 transform,
             ),
