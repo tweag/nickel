@@ -31,9 +31,9 @@ struct Opt {
 /// Available subcommands.
 #[derive(StructOpt, Debug)]
 enum Command {
-    /// Pretty-prints the program back as a Nickel expression from its parsed representation (AST).
-    /// Used for debugging purpose
-    PrintAst {
+    /// Converts the parsed representation (AST) back to Nickel source code and prints it. Used for
+    /// debugging purpose
+    PprintAst {
         /// Performs code transformations before printing
         #[structopt(long)]
         transform: bool,
@@ -109,7 +109,7 @@ fn main() {
         }
 
         let result = match opts.command {
-            Some(Command::PrintAst { transform }) => program.expand(
+            Some(Command::PprintAst { transform }) => program.expand(
                 &mut std::io::BufWriter::new(Box::new(std::io::stdout())),
                 transform,
             ),
