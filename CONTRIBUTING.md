@@ -38,7 +38,7 @@ by email, or using any other method with the maintainers of this repository
 The following resources are oriented toward Nickel users:
 
 - The [README](./README.md) and the [design rationale](./RATIONALE.md)
-- The [blog post serie][blog-series] and the [release blog post][blog-release].
+- The [blog post series][blog-series] and the [release blog post][blog-release].
 - The [user manual][user-manual].
 
 For Nickel contributors (or aspiring contributors), the following technical

@@ -189,8 +189,8 @@ The following type constructors are available:
 
   Example:
   ```nickel
-  let occurences : {_: Num} = {a = 1, b = 3, c = 0} in
-  record.map (fun char count => count + 1) occurences : {_ : Num}
+  let occurrences : {_: Num} = {a = 1, b = 3, c = 0} in
+  record.map (fun char count => count + 1) occurrences : {_ : Num}
   ```
 
 <!-- - **Enum**: `<tag1, .., tagn>`: an enumeration comprised of alternatives `tag1`, -->
@@ -299,7 +299,7 @@ error: Incompatible types
 
 The reason is that **without an explicit polymorphic annotation, the typechecker
 will always infer non-polymorphic types**. If you need polymorphism, you have to
-write a type anntation. Here, `filter` is inferred to be of type `(Num -> Bool)
+write a type annotation. Here, `filter` is inferred to be of type `(Num -> Bool)
 -> Array Num -> Array Num`, guessed from the application in the right hand side of
 `result`.
 
@@ -579,8 +579,8 @@ expression or do anything non-trivial. Typically, replacing `1` with a compound
 expression `0 + 1` changes the type of `x` type to `Dyn` and makes the example
 fail. For now, the typechecker determines an apparent type that is not `Dyn`
 only for literals (numbers, strings, booleans), arrays, variables, imports and
-annotated expressions. Otherwise, the typechecker fallbacks to `Dyn`. It may do
-more in the future (assign `Dyn -> Dyn` to functions, `{_: Dyn}` to records,
+annotated expressions. Otherwise, the typechecker falls back to `Dyn`. It may
+do more in the future (assign `Dyn -> Dyn` to functions, `{_: Dyn}` to records,
 etc).
 
 ### Take-away
@@ -595,7 +595,7 @@ typechecker on, a contract annotation switches it back off.
 
 ## Using contracts as types
 
-<!-- TODO: find a good name for this section. Will need rework after meging
+<!-- TODO: find a good name for this section. Will need rework after merging
 types and contracts syntax -->
 
 Type annotations and contracts share the same syntax. This means that you can
