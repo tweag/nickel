@@ -97,3 +97,7 @@ harness = false
 [[bench]]
 name = "serialization"
 harness = false
+
+[[bench]]
+name = "mantis"
+harness = false

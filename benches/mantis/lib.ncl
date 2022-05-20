@@ -1,0 +1,49 @@
+{
+  contracts = {
+    AllOf = fun contracts label value => array.fold (fun c acc => c label
+      acc) contracts value,
+    Dummy = fun label value => value,
+    OneOf = fun values => contract.from_predicate (fun value => array.elem value
+      values),
+    Nullable = fun ctr label value =>
+      if value == null then null
+      else contract.apply ctr label value,
+    NotEq = fun x => contract.from_predicate (fun y => x != y),
+    GreaterEq = fun x => contract.from_predicate (fun y => y >= x),
+    Greater = fun x => contract.from_predicate (fun y => y > x),
+    Smaller = fun x => contract.from_predicate (fun y => y < x),
+    SmallerEq = fun x => contract.from_predicate (fun y => y <= x),
+    MatchRegexp = fun regex label value =>
+      if builtin.is_str value then
+        if string.is_match regex value then
+          value
+        else
+          contract.blame_with "no match" label
+      else contract.blame_with "not a string" label,
+    PseudoOr = fun alts label value =>
+      array.fold (fun ctr rest =>
+        if ctr.pred value then
+          ctr.contract value
+        else
+          rest)
+        (contract.blame_with "no alternative matched" label),
+    OrableFromPred : (Dyn -> Bool)
+                     -> {pred : Dyn -> Bool, contract: Dyn -> Dyn -> Dyn },
+    OrableFromPred = fun pred_ => {
+      pred = pred_,
+      contract = fun _lbl value => value,
+    },
+  },
+
+  records = {
+    mapToList = fun f r =>
+      r
+      |> record.map f
+      |> record.values,
+
+   toList = fun r =>
+     r
+     |> record.fields
+     |> array.map (fun key_ => {key = key_, value = r."%{key}"}),
+  }
+}
