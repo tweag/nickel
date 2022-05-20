@@ -49,3 +49,19 @@ fn dynamic_not_recursive() {
         Err(Error::TypecheckError(TypecheckError::UnboundIdentifier(..)))
     );
 }
+
+#[test]
+fn missing_field() {
+    assert_matches!(
+        eval("{foo | Num, bar = foo + 1}.foo"),
+        Err(Error::EvalError(EvalError::MissingFieldDef(..)))
+    );
+    assert_matches!(
+        eval("{foo : Num, bar = foo + 1}.foo"),
+        Err(Error::EvalError(EvalError::MissingFieldDef(..)))
+    );
+    assert_matches!(
+        eval("{foo, bar = foo + 1}.foo"),
+        Err(Error::EvalError(EvalError::MissingFieldDef(..)))
+    )
+}
