@@ -47,7 +47,7 @@ the following commands.
 
 ### Using Nix (without flakes)
 
-Alternatively, you can insall `nickel` and `nls` globally on older Nix versions
+Alternatively, you can install `nickel` and `nls` globally on older Nix versions
 without flakes via `nix-env`:
 
 ```

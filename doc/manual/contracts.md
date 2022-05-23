@@ -102,7 +102,7 @@ Our contract is simple: in the end, it tests the condition `value == "foo"`.
 Unfortunately, it has a few cascading ifs that don't look very nice. This is a
 necessary evil if you want to provide distinct error messages (`not a string`
 and `not a "foo"`). However, one could argue in this case that the information
-of the contract's name (which is automatically printed for contract violiation
+of the contract's name (which is automatically printed for contract violation
 error, as well as various other data) is enough to understand the error. In this
 case, we can write our contract more succinctly as:
 

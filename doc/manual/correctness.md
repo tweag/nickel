@@ -13,7 +13,7 @@ the following properties:
    trying to add a number to a string, or to call to a value which is not a
    function.
 2. The generated configuration is valid. Your program may be correct with
-   respect to the previous point while outputing a field `prto = "80"` instead
+   respect to the previous point while outputting a field `prto = "80"` instead
    of `port = 80`. The consumer of the configuration will probably fail.
    Typically, validity involves respecting a data schema.
 
@@ -208,7 +208,7 @@ function contract for `split` has the following limitations:
 
 #### Using a type annotation
 
-`split` is a generic function operating on builin types. This is a good
+`split` is a generic function operating on builtin types. This is a good
 candidate for static typing, which will help:
 
 - Ensure the property holds for all possible values of the parameter.

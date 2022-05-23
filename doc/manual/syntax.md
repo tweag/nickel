@@ -116,10 +116,10 @@ Multiline strings are useful to write indented lines. The indentation is strippe
 Example:
 ```
 > m%"
-This line has no identation.
+This line has no indentation.
   This line is indented.
     This line is even more indented.
-This line has no more identation.
+This line has no more indentation.
 "%m
 "This line has no indentation.
   This line is indented.

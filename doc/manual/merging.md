@@ -6,7 +6,7 @@ slug: merging
 
 In Nickel, the basic building blocks for data are records (objects in JSON or
 attribute sets in Nix). Merging is a fundamental built-in operation whose role
-is to combine records togethers. Fields common to several records will be
+is to combine records together. Fields common to several records will be
 themselves recursively merged if possible, following the semantics described in
 this document.
 
@@ -413,7 +413,7 @@ let Port
     value >= 0 &&
     value <= 65535) in
 let GreaterThan
-  | doc "A number greater than the paramater"
+  | doc "A number greater than the parameter"
   = fun x => contract.from_predicate (fun value => value > x) in
 
 {

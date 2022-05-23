@@ -179,7 +179,7 @@ to be used in production. The next steps we plan to work on are:
 
 ## Related projects and inspirations
 
-- [Cue](https://cuelang.org/) is a configuration language with a focus on data
+- [CUE](https://cuelang.org/) is a configuration language with a focus on data
     validation. It introduces a new constraint system backed by a solid theory
     which ensures strong guarantees about your code. It allows for very elegant
     schema specifications. In return, the cost to pay is to abandon functions

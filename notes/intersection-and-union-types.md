@@ -34,7 +34,7 @@ On the other hand, the advantages and disadvantages of the Keil paper seem to co
  * They have an implementation roughly based on their ideas.
 
 And some cons:
- * Intersections need to be delayed, but Unions don't. So they need to tranform their types into Unions of Intersections of non-Union types.
+ * Intersections need to be delayed, but Unions don't. So they need to transform their types into Unions of Intersections of non-Union types.
 
 
 #### Next steps after Wadler and Keil
