@@ -525,7 +525,7 @@ impl Term {
                     _ => "",
                 };
 
-                format!("{{ {}{}}}", fields_str.join(", "), suffix)
+                format!("{{ {}{} }}", fields_str.join(", "), suffix)
             }
             Term::Array(elements) => {
                 let elements_str: Vec<String> = elements
