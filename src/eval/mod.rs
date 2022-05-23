@@ -276,7 +276,7 @@ where
 ///
 /// # Arguments
 ///
-/// - `t0`: the term to evaluate
+/// - `clos`: the closure to evaluate
 /// - `global_env`: the global environment containing the builtin functions of the language. Accessible from anywhere in the
 /// program.
 /// - `resolver`: the interface to fetch imports.
@@ -562,7 +562,7 @@ where
             Term::MetaValue(meta) if enriched_strict => {
                 if meta.value.is_some() {
                     /* Since we are forcing a metavalue, we are morally evaluating `force t` rather
-                     * than `t` iteself.  Updating a thunk after having performed this forcing may
+                     * than `t` itself. Updating a thunk after having performed this forcing may
                      * alter the semantics of the program in an unexpected way (see issue
                      * https://github.com/tweag/nickel/issues/123): we update potential thunks now
                      * so that their content remains a meta value.

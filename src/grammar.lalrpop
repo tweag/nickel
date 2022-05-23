@@ -337,7 +337,7 @@ RecordField: (FieldPath, RichTerm) = {
             if let Some(deft) = t {
                 deft
             } else {
-                RichTerm::new(Term::Null, pos)
+                RichTerm::new(Term::MetaValue(MetaValue::new()), pos)
             }
         };
 
