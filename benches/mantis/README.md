@@ -1,3 +1,6 @@
+This bench is a copy of [nickel-mantis-ops](https://github.com/tweag/nickel-mantis-ops)
+by @yannham
+
 # Mantis Ops in Nickel
 
 This is a tentative to convert the [mantis ops repo of

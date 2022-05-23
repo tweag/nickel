@@ -15,7 +15,6 @@ ncl_bench_group! {
         path = "mantis/run",
         subtest = "serialize",
         args = (r#"{namespace = "mantis-staging", job="miner", role=`miner}"#),
-        eval_mode = EvalMode::DeepSeq,
     }
 }
 criterion_main!(benches);
