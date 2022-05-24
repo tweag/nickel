@@ -37,6 +37,7 @@ pub fn parse(s: &str) -> Result<RichTerm, ParseError> {
 pub enum EvalMode {
     Normal,
     DeepSeq,
+    TypeCheck,
 }
 
 pub struct Bench<'b> {
@@ -133,8 +134,12 @@ pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> 
                         (cache, id, t)
                     },
                     |(mut c_local, id, t)| {
-                        c_local.prepare(id, &type_env).unwrap();
-                        eval::eval(t, &eval_env, &mut c_local).unwrap()
+                        if bench.eval_mode == EvalMode::TypeCheck {
+                            c_local.typecheck(id, &type_env).unwrap();
+                        } else {
+                            c_local.prepare(id, &type_env).unwrap();
+                            eval::eval(t, &eval_env, &mut c_local).unwrap();
+                        }
                     },
                     criterion::BatchSize::LargeInput,
                 )
@@ -197,8 +202,13 @@ macro_rules! ncl_bench_group {
                             (cache, id, t)
                         },
                         |(mut c_local, id, t)| {
-                            c_local.prepare(id, &type_env).unwrap();
-                            eval(t, &eval_env, &mut c_local).unwrap()
+                            if bench.eval_mode == $crate::EvalMode::TypeCheck {
+                                c_local.parse(id).unwrap();
+                                c_local.typecheck(id, &type_env).unwrap();
+                            } else {
+                                c_local.prepare(id, &type_env).unwrap();
+                                eval(t, &eval_env, &mut c_local).unwrap();
+                            }
                         },
                         criterion::BatchSize::LargeInput,
                         )

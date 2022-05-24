@@ -105,3 +105,7 @@ harness = false
 [[bench]]
 name = "stdlib"
 harness = false
+
+[[bench]]
+name = "nixpkgs"
+harness = false
