@@ -199,11 +199,13 @@ macro_rules! ncl_bench_group {
                             let id = cache.add_file(bench.path()).unwrap();
                             let (t, _) =
                                 resolve_imports(t.clone(), &mut cache).unwrap();
+                            if bench.eval_mode == $crate::EvalMode::TypeCheck {
+                                cache.parse(id).unwrap();
+                            }
                             (cache, id, t)
                         },
                         |(mut c_local, id, t)| {
                             if bench.eval_mode == $crate::EvalMode::TypeCheck {
-                                c_local.parse(id).unwrap();
                                 c_local.typecheck(id, &type_env).unwrap();
                             } else {
                                 c_local.prepare(id, &type_env).unwrap();
