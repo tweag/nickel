@@ -809,7 +809,8 @@ impl Cache {
         self.typecheck_stdlib_(&global_env)
     }
 
-    /// Internal function to typecheck stdlib. Has to be public because it's used in benches.
+    /// Typecheck the stdlib, provided the initial typing environment. Has to be public because
+    /// it's used in benches. It probably does not have to be used for something else.
     pub fn typecheck_stdlib_(
         &mut self,
         global_env: &typecheck::Environment,
