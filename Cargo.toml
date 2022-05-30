@@ -107,5 +107,5 @@ name = "stdlib"
 harness = false
 
 [[bench]]
-name = "nixpkgs"
+name = "typecheck-nixpkgs-lib"
 harness = false
