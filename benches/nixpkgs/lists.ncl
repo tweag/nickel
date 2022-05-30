@@ -71,7 +71,7 @@
        => "a2345"
   "%m
   = fun op nul list =>
-    let foldl_ = fun n =>
+    let rec foldl_ = fun n =>
         if n == -1
         then nul
         else op (foldl_ (n - 1)) (array.elem_at n list)
