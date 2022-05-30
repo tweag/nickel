@@ -42,7 +42,7 @@
        => "2345a"
   "%m
   = fun op nul list =>
-    let len = %%length%% list in
+    let len = %length% list in
     let fold_ = fun n =>
         if n == len
         then nul
@@ -70,7 +70,7 @@
        lstrange [ 1 2 3 4 ]
        => "a2345"
   "%m
-  foldl = fun op nul list =>
+  = fun op nul list =>
     let foldl_ = fun n =>
         if n == -1
         then nul
@@ -88,24 +88,24 @@
   = fun op nul list => %deep_seq% (foldl op nul list),
 
   imap0: forall a b. (Num -> a -> b) -> (List a) -> (List b)
-  | doc m%"
+  | doc m%%"
       Map with index starting from 0
 
      Example:
-       imap0 (fun i v => "%{v}-%{%to_string% i}") ["a" "b"]
+       imap0 (fun i v => "%{v}-%{%to_string% i}") ["a", "b"]
        >> [ "a-0", "b-1" ]
-  "%m
-  imap0 = fun f list => %gen% (fun n => f n (%elem_at% list n)) (%%length%% list),
+  "%%m
+  = fun f list => %gen% (fun n => f n (%elem_at% list n)) (%length% list),
 
   imap1: forall a b. (Num -> a -> b) -> (Array a) -> (Array b)
-  | doc m%"
+  | doc m%%"
       Map with index starting from 1
 
      Example:
        imap1 (fun i v => "%{v}-%{toString i}") ["a", "b"]
-       >> [ "a-1" "b-2" ]
-  "%m
-  = fun f list => %gen% (fun n => f (n + 1) (%elem_at% list n)) (%%length%% list),
+       >> [ "a-1", "b-2" ]
+  "%%m
+  = fun f list => %gen% (fun n => f (n + 1) (%elem_at% list n)) (%length% list),
 
   concatMap: forall a b. (a -> (Array b)) -> (Array a) -> (Array b)
   | doc m%"
