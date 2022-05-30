@@ -317,7 +317,7 @@ Atom: UniTerm = {
         let terms : Vec<RichTerm> = terms.into_iter()
             .chain(last.into_iter()).collect();
 
-        UniTerm::from(Term::Array(terms))
+        UniTerm::from(Term::Array(terms, Default::default()))
     },
     AsUniTerm<TypeAtom>,
 };

@@ -223,9 +223,15 @@ pub fn merge(
                 ))
             }
         }
-        (Term::Array(arr1), Term::Array(arr2)) if arr1.is_empty() && arr2.is_empty() => Ok(
-            Closure::atomic_closure(RichTerm::new(Term::Array(arr1), pos_op.into_inherited())),
-        ),
+        (Term::Array(arr1, attrs1), Term::Array(arr2, _attrs2))
+            if arr1.is_empty() && arr2.is_empty() =>
+        {
+            Ok(Closure::atomic_closure(RichTerm::new(
+                // TODO: investigate if we should choose attr2 here.
+                Term::Array(arr1, attrs1),
+                pos_op.into_inherited(),
+            )))
+        }
         (Term::MetaValue(meta1), Term::MetaValue(meta2)) => {
             // For now, we blindly closurize things and copy environments in this section. A
             // careful analysis would make it possible to spare a few closurize operations and more

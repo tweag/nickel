@@ -366,7 +366,7 @@ fn type_check_<L: Linearizer>(
             unify(state, strict, ty, arr).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
             type_check_(state, envs, lin, linearizer, strict, t, trg)
         }
-        Term::Array(terms) => {
+        Term::Array(terms, _) => {
             let ty_elts = state.table.fresh_unif_var();
 
             unify(state, strict, ty, mk_typewrapper::array(ty_elts.clone()))
@@ -817,7 +817,7 @@ pub fn apparent_type(
         Term::Bool(_) => ApparentType::Inferred(Types(AbsType::Bool())),
         Term::Sym(_) => ApparentType::Inferred(Types(AbsType::Sym())),
         Term::Str(_) | Term::StrChunks(_) => ApparentType::Inferred(Types(AbsType::Str())),
-        Term::Array(_) => {
+        Term::Array(..) => {
             ApparentType::Approximated(Types(AbsType::Array(Box::new(Types(AbsType::Dyn())))))
         }
         Term::Var(id) => envs

@@ -143,7 +143,7 @@ fn collect_free_vars(rt: &mut RichTerm, free_vars: &mut HashSet<Ident>) {
             // case.
             *deps = Some(new_deps);
         }
-        Term::Array(ts) => {
+        Term::Array(ts, _) => {
             for t in ts {
                 collect_free_vars(t, free_vars);
             }
