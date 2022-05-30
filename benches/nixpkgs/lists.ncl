@@ -24,7 +24,7 @@
         )
         >> [ "1" "2" ]
     "%m
-  = fun xs f => %map% xs f,
+  = fun xs f => array.map f xs,
 
   foldr: forall a b. (a -> b -> b) -> b -> (Array a) -> b
   | doc m%"
@@ -42,11 +42,11 @@
        => "2345a"
   "%m
   = fun op nul list =>
-    let len = %length% list in
-    let fold_ = fun n =>
+    let len = array.length list in
+    let rec fold_ = fun n =>
         if n == len
         then nul
-        else op (%elem_at% list n) (fold_ (n + 1))
+        else op (array.elem_at n list) (fold_ (n + 1))
     in fold_ 0,
 
   fold: forall a b. (a -> b -> b) -> b -> (Array a) -> b
@@ -74,10 +74,10 @@
     let foldl_ = fun n =>
         if n == -1
         then nul
-        else op (foldl_ (n - 1)) (%elem_at% list n)
-    in foldl_ (%length% list - 1),
+        else op (foldl_ (n - 1)) (array.elem_at n list)
+    in foldl_ (array.length list - 1),
 
-  foldl_: forall a b. (b -> a -> b) -> b -> (List a) -> b
+  foldl_: forall a b. (b -> a -> b) -> b -> (Array a) -> b
   | doc m%"
       Strict version of `foldl`.
 
@@ -87,7 +87,7 @@
   "%m
   = fun op nul list => %deep_seq% (foldl op nul list),
 
-  imap0: forall a b. (Num -> a -> b) -> (List a) -> (List b)
+  imap0: forall a b. (Num -> a -> b) -> (Array a) -> (Array b)
   | doc m%%"
       Map with index starting from 0
 
@@ -95,7 +95,7 @@
        imap0 (fun i v => "%{v}-%{%to_string% i}") ["a", "b"]
        >> [ "a-0", "b-1" ]
   "%%m
-  = fun f list => %gen% (fun n => f n (%elem_at% list n)) (%length% list),
+  = fun f list => array.generate (fun n => f n (array.elem_at n list)) (array.length list),
 
   imap1: forall a b. (Num -> a -> b) -> (Array a) -> (Array b)
   | doc m%%"
@@ -105,7 +105,7 @@
        imap1 (fun i v => "%{v}-%{toString i}") ["a", "b"]
        >> [ "a-1", "b-2" ]
   "%%m
-  = fun f list => %gen% (fun n => f (n + 1) (%elem_at% list n)) (%length% list),
+  = fun f list => array.generate (fun n => f (n + 1) (array.elem_at n list)) (array.length list),
 
   concatMap: forall a b. (a -> (Array b)) -> (Array a) -> (Array b)
   | doc m%"
@@ -115,5 +115,5 @@
        concatMap (fun x => [x] @ ["z"]) ["a", "b"]
        >> [ "a", "z", "b", "z" ]
   "%m
-  = (fun f list => %concat% (map f list)),
+  = (fun f list => array.flatten (array.map f list)),
 }
