@@ -85,7 +85,7 @@
      with small whole results (in contrast with lazily-generated list or large
      lists where only a part is consumed.)
   "%m
-  = fun op nul list => %deep_seq% (foldl op nul list),
+  = fun op nul list => array.foldl op nul list,
 
   imap0: forall a b. (Num -> a -> b) -> (Array a) -> (Array b)
   | doc m%%"
