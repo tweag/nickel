@@ -802,14 +802,23 @@ impl Cache {
         // 1. The stdlib is meant to stay relatively light.
         // 2. Typechecking the standard library ought to occur only during development. Once the
         //    stdlib is stable, we won't have typecheck it at every execution.
+        let global_env = self.mk_types_env().map_err(|err| match err {
+            CacheError::NotParsed => CacheError::NotParsed,
+            CacheError::Error(_) => unreachable!(),
+        })?;
+        self.typecheck_stdlib_(&global_env)
+    }
+
+    /// Typecheck the stdlib, provided the initial typing environment. Has to be public because
+    /// it's used in benches. It probably does not have to be used for something else.
+    pub fn typecheck_stdlib_(
+        &mut self,
+        global_env: &typecheck::Environment,
+    ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
         if let Some(ids) = self.stdlib_ids.as_ref().cloned() {
             ids.iter()
                 .try_fold(CacheOp::Cached(()), |cache_op, file_id| {
-                    let global_env = self.mk_types_env().map_err(|err| match err {
-                        CacheError::NotParsed => CacheError::NotParsed,
-                        CacheError::Error(_) => unreachable!(),
-                    })?;
-                    match self.typecheck(*file_id, &global_env)? {
+                    match self.typecheck(*file_id, global_env)? {
                         done @ CacheOp::Done(()) => Ok(done),
                         _ => Ok(cache_op),
                     }

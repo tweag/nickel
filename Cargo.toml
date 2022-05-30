@@ -101,3 +101,7 @@ harness = false
 [[bench]]
 name = "mantis"
 harness = false
+
+[[bench]]
+name = "stdlib"
+harness = false
