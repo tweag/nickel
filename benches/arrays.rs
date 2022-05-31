@@ -74,10 +74,17 @@ config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flam
     }, {
         name = "generate normal 50",
         path = "arrays/generate",
+        subtest = "checked",
+        args = (50),
+    }, {
+        name = "generate normal unchecked 50",
+        path = "arrays/generate",
+        subtest = "unchecked",
         args = (50),
     }, {
         name = "generate deepseq 30",
         path = "arrays/generate",
+        subtest = "checked",
         args = (30),
         eval_mode = EvalMode::DeepSeq,
     }, {
