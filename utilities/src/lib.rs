@@ -37,6 +37,7 @@ pub fn parse(s: &str) -> Result<RichTerm, ParseError> {
 pub enum EvalMode {
     Normal,
     DeepSeq,
+    TypeCheck,
 }
 
 pub struct Bench<'b> {
@@ -133,8 +134,12 @@ pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> 
                         (cache, id, t)
                     },
                     |(mut c_local, id, t)| {
-                        c_local.prepare(id, &type_env).unwrap();
-                        eval::eval(t, &eval_env, &mut c_local).unwrap()
+                        if bench.eval_mode == EvalMode::TypeCheck {
+                            c_local.typecheck(id, &type_env).unwrap();
+                        } else {
+                            c_local.prepare(id, &type_env).unwrap();
+                            eval::eval(t, &eval_env, &mut c_local).unwrap();
+                        }
                     },
                     criterion::BatchSize::LargeInput,
                 )
@@ -194,11 +199,19 @@ macro_rules! ncl_bench_group {
                             let id = cache.add_file(bench.path()).unwrap();
                             let (t, _) =
                                 resolve_imports(t.clone(), &mut cache).unwrap();
+                            if bench.eval_mode == $crate::EvalMode::TypeCheck {
+                                cache.parse(id).unwrap();
+                                cache.resolve_imports(id).unwrap();
+                            }
                             (cache, id, t)
                         },
                         |(mut c_local, id, t)| {
-                            c_local.prepare(id, &type_env).unwrap();
-                            eval(t, &eval_env, &mut c_local).unwrap()
+                            if bench.eval_mode == $crate::EvalMode::TypeCheck {
+                                c_local.typecheck(id, &type_env).unwrap();
+                            } else {
+                                c_local.prepare(id, &type_env).unwrap();
+                                eval(t, &eval_env, &mut c_local).unwrap();
+                            }
                         },
                         criterion::BatchSize::LargeInput,
                         )
