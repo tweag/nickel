@@ -487,9 +487,7 @@ fn process_unary_operation(
                     fields.sort();
                     let terms = fields.into_iter().map(mk_term::string).collect();
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        // TODO: Since the array elements are simply Strings and
-                        // can't contain symbols this should be closurized?
-                        Term::Array(terms, Default::default()),
+                        Term::Array(terms, ArrayAttrs { closurized: true }),
                         pos_op_inh,
                     )))
                 }
@@ -511,7 +509,6 @@ fn process_unary_operation(
                     values.sort_by(|(id1, _), (id2, _)| id1.cmp(id2));
                     let terms = values.into_iter().map(|(_, t)| t).collect();
                     Ok(Closure {
-                        // TODO: see if we can assume this is closurized.
                         body: RichTerm::new(Term::Array(terms, Default::default()), pos_op_inh),
                         env,
                     })
@@ -548,7 +545,7 @@ fn process_unary_operation(
                         Ok(Closure {
                             // TODO: as we've just mapped closurize over the
                             // array, this should be closurized?
-                            body: RichTerm::new(Term::Array(ts, Default::default()), pos_op_inh),
+                            body: RichTerm::new(Term::Array(ts, ArrayAttrs { closurized: true }), pos_op_inh),
                             env: shared_env,
                         })
                     }
@@ -593,9 +590,7 @@ fn process_unary_operation(
 
                     Ok(Closure {
                         body: RichTerm::new(
-                            // TODO: as we've just mapped closurize over the
-                            // array, this should be closurized?
-                            Term::Array(ts, Default::default()),
+                            Term::Array(ts, ArrayAttrs { closurized: true }),
                             pos_op_inh,
                         ),
                         env: shared_env,
@@ -837,9 +832,7 @@ fn process_unary_operation(
                     .map(|c| RichTerm::from(Term::Str(c.to_string())))
                     .collect();
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    // TODO: Since the array elements are simply Strings and
-                    // can't contain symbols this should be closurized?
-                    Term::Array(ts, Default::default()),
+                    Term::Array(ts, ArrayAttrs { closurized: true }),
                     pos_op_inh,
                 )))
             } else {
@@ -1759,7 +1752,7 @@ fn process_binary_operation(
                             ts.extend(ts2.into_iter());
 
                             let mut env = env1.clone();
-                            // TODO: investigate if this is sound?
+                            // TODO: Is there a cheaper way to "merge" two environements?
                             env.extend(env2.iter_elems().map(|(k, v)| (k.clone(), v.clone())));
 
                             Ok(Closure {
@@ -2002,9 +1995,7 @@ fn process_binary_operation(
                     .map(|s| Term::Str(String::from(s)).into())
                     .collect();
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    // TODO: Since the array elements are simply Strings and
-                    // can't contain symbols this should be closurized?
-                    Term::Array(array, Default::default()),
+                    Term::Array(array, ArrayAttrs { closurized: true }),
                     pos_op_inh,
                 )))
             }
@@ -2101,9 +2092,10 @@ fn process_binary_operation(
                         mk_record!(
                             ("match", Term::Str(String::from(first_match.as_str()))),
                             ("index", Term::Num(first_match.start() as f64)),
-                            // TODO: Since the array elements are simply Strings and
-                            // can't contain symbols this should be closurized?
-                            ("groups", Term::Array(groups, Default::default()))
+                            (
+                                "groups",
+                                Term::Array(groups, ArrayAttrs { closurized: true })
+                            )
                         )
                     } else {
                         //FIXME: what should we return when there's no match?
