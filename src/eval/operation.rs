@@ -509,6 +509,8 @@ fn process_unary_operation(
                     values.sort_by(|(id1, _), (id2, _)| id1.cmp(id2));
                     let terms = values.into_iter().map(|(_, t)| t).collect();
                     Ok(Closure {
+                        // TODO: once sure that the Record is properly closurized, we can
+                        // safely assume that the extracted array here is, in turn, also closuried.
                         body: RichTerm::new(Term::Array(terms, Default::default()), pos_op_inh),
                         env,
                     })
