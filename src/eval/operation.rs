@@ -543,8 +543,6 @@ fn process_unary_operation(
                             .collect();
 
                         Ok(Closure {
-                            // TODO: as we've just mapped closurize over the
-                            // array, this should be closurized?
                             body: RichTerm::new(Term::Array(ts, ArrayAttrs { closurized: true }), pos_op_inh),
                             env: shared_env,
                         })
@@ -1739,14 +1737,14 @@ fn process_binary_operation(
         BinaryOp::ArrayConcat() => match_sharedterm! {t1, with {
                 Term::Array(ts1, attrs1) => match_sharedterm! {t2, with {
                         Term::Array(ts2, attrs2) => {
-                            let mut ts: Vec<RichTerm> = Vec::with_capacity(ts1.len() + ts2.len());
-
                             // NOTE: the [eval_closure] function in [eval] should've made sure
                             // that the array is closurized. We leave a debug_assert! here just
                             // in case something goes wrong in the future.
                             // If the assert failed, you may need to map closurize over `ts1` and `ts2`.
                             debug_assert!(attrs1.closurized, "the left-hand side of ArrayConcat (@) is not closurized.");
                             debug_assert!(attrs2.closurized, "the right-hand side of ArrayConcat (@) is not closurized.");
+
+                            let mut ts: Vec<RichTerm> = Vec::with_capacity(ts1.len() + ts2.len());
 
                             ts.extend(ts1.into_iter());
                             ts.extend(ts2.into_iter());
