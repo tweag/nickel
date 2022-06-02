@@ -403,8 +403,20 @@ mod tests {
         let mut expd = parse("[2, \"ab\", [1, [3]]]").unwrap();
 
         // Strings are parsed as StrChunks, but evaluated to Str, so we need to hack the array a bit
-        if let Term::Array(ref mut data) = SharedTerm::make_mut(&mut expd.term) {
+        // The evaluator will change the attributes so we neeed to anticipate that too.
+        if let Term::Array(ref mut data, ref mut attrs) = SharedTerm::make_mut(&mut expd.term) {
             *data.get_mut(1).unwrap() = mk_term::string("ab");
+            attrs.closurized = true;
+            if let Term::Array(data, attrs) =
+                SharedTerm::make_mut(&mut data.get_mut(2).unwrap().term)
+            {
+                attrs.closurized = true;
+                if let Term::Array(_, attrs) =
+                    SharedTerm::make_mut(&mut data.get_mut(1).unwrap().term)
+                {
+                    attrs.closurized = true;
+                }
+            }
         } else {
             panic!();
         }

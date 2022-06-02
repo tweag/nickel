@@ -1,9 +1,9 @@
 //! Serialization of an evaluated program to various data format.
 use crate::error::SerializationError;
 use crate::identifier::Ident;
-use crate::term::{MetaValue, RecordAttrs, RichTerm, Term};
+use crate::term::{ArrayAttrs, MetaValue, RecordAttrs, RichTerm, Term};
 use serde::de::{Deserialize, Deserializer};
-use serde::ser::{Error, Serialize, SerializeMap, Serializer};
+use serde::ser::{Error, Serialize, SerializeMap, SerializeSeq, Serializer};
 use std::collections::HashMap;
 use std::fmt;
 use std::io;
@@ -123,6 +123,32 @@ where
     Ok((map, Default::default()))
 }
 
+/// Serialize for an Array. Required to hide the internal attributes.
+pub fn serialize_array<S>(
+    terms: &Vec<RichTerm>,
+    _attrs: &ArrayAttrs,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let mut seq = serializer.serialize_seq(Some(terms.len()))?;
+    for term in terms.iter() {
+        seq.serialize_element(term)?;
+    }
+
+    seq.end()
+}
+
+/// Deserialize for an Array. Required to set the default attributes.
+pub fn deserialize_array<'de, D>(deserializer: D) -> Result<(Vec<RichTerm>, ArrayAttrs), D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let terms: Vec<RichTerm> = Vec::deserialize(deserializer)?;
+    Ok((terms, Default::default()))
+}
+
 impl Serialize for RichTerm {
     /// Serialize the underlying term.
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -165,7 +191,7 @@ pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), SerializationE
                 map.iter().try_for_each(|(_, t)| validate(format, t))?;
                 Ok(())
             }
-            Array(vec) => {
+            Array(vec, _) => {
                 vec.iter().try_for_each(|t| validate(format, t))?;
                 Ok(())
             }

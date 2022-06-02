@@ -105,7 +105,9 @@ pub enum Term {
     ),
 
     /// An array.
-    Array(Vec<RichTerm>),
+    #[serde(serialize_with = "crate::serialize::serialize_array")]
+    #[serde(deserialize_with = "crate::serialize::deserialize_array")]
+    Array(Vec<RichTerm>, ArrayAttrs),
 
     /// A primitive unary operator.
     #[serde(skip)]
@@ -179,6 +181,16 @@ impl Default for BindingType {
     fn default() -> Self {
         BindingType::Normal
     }
+}
+
+/// The attributes of an Array.
+#[derive(Debug, Default, Eq, PartialEq, Copy, Clone)]
+pub struct ArrayAttrs {
+    /// A `closurized` array verifies the following conditions:
+    ///   - Each element is a generated variable with a unique name (although the same
+    ///     variable can occur in several places, it should always refer to the same thunk anyway).
+    ///   - The environment of the array's closure only contains those generated variables.
+    pub closurized: bool,
 }
 
 #[derive(Debug, Default, Eq, PartialEq, Copy, Clone)]
@@ -393,7 +405,7 @@ impl Term {
                 func(t1);
                 func(t2);
             }
-            OpN(_, ref mut terms) | Array(ref mut terms) => terms.iter_mut().for_each(|t| {
+            OpN(_, ref mut terms) | Array(ref mut terms, _) => terms.iter_mut().for_each(|t| {
                 func(t);
             }),
             StrChunks(chunks) => chunks.iter_mut().for_each(|chunk| match chunk {
@@ -419,7 +431,7 @@ impl Term {
             Term::Lbl(_) => Some("Label"),
             Term::Enum(_) => Some("Enum"),
             Term::Record(..) | Term::RecRecord(..) => Some("Record"),
-            Term::Array(_) => Some("Array"),
+            Term::Array(..) => Some("Array"),
             Term::Sym(_) => Some("Sym"),
             Term::Wrapped(_, _) => Some("Wrapped"),
             Term::MetaValue(_) => Some("Metavalue"),
@@ -471,7 +483,7 @@ impl Term {
                 }
             }
             Term::Record(..) | Term::RecRecord(..) => String::from("{ ... }"),
-            Term::Array(_) => String::from("[ ... ]"),
+            Term::Array(..) => String::from("[ ... ]"),
             Term::Sym(_) => String::from("<sym>"),
             Term::Wrapped(_, _) => String::from("<wrapped>"),
             Term::MetaValue(ref meta) => {
@@ -527,7 +539,7 @@ impl Term {
 
                 format!("{{ {}{} }}", fields_str.join(", "), suffix)
             }
-            Term::Array(elements) => {
+            Term::Array(elements, _) => {
                 let elements_str: Vec<String> = elements
                     .iter()
                     .map(|term| term.as_ref().deep_repr())
@@ -549,7 +561,7 @@ impl Term {
             | Term::Lbl(_)
             | Term::Enum(_)
             | Term::Record(..)
-            | Term::Array(_)
+            | Term::Array(..)
             | Term::Sym(_) => true,
             Term::Let(..)
             | Term::LetPattern(..)
@@ -591,7 +603,7 @@ impl Term {
             Term::Let(..)
             | Term::LetPattern(..)
             | Term::Record(..)
-            | Term::Array(_)
+            | Term::Array(..)
             | Term::Fun(_, _)
             | Term::FunPattern(_, _, _)
             | Term::App(_, _)
@@ -1182,14 +1194,14 @@ impl RichTerm {
                     pos,
                 )
             },
-            Term::Array(ts) => {
+            Term::Array(ts, attrs) => {
                 let ts_res: Result<Vec<RichTerm>, E> = ts
                     .into_iter()
                     .map(|t| t.traverse(f, state, order))
                     .collect();
 
                 RichTerm::new(
-                    Term::Array(ts_res?),
+                    Term::Array(ts_res?, attrs),
                     pos,
                 )
             },

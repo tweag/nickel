@@ -21,7 +21,7 @@ use crate::{
     position::TermPos,
     serialize,
     serialize::ExportFormat,
-    term::make as mk_term,
+    term::{make as mk_term, ArrayAttrs},
     term::{BinaryOp, NAryOp, RichTerm, StrChunk, Term, UnaryOp},
     transform::Closurizable,
 };
@@ -487,7 +487,7 @@ fn process_unary_operation(
                     fields.sort();
                     let terms = fields.into_iter().map(mk_term::string).collect();
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Array(terms),
+                        Term::Array(terms, ArrayAttrs { closurized: true }),
                         pos_op_inh,
                     )))
                 }
@@ -509,7 +509,9 @@ fn process_unary_operation(
                     values.sort_by(|(id1, _), (id2, _)| id1.cmp(id2));
                     let terms = values.into_iter().map(|(_, t)| t).collect();
                     Ok(Closure {
-                        body: RichTerm::new(Term::Array(terms), pos_op_inh),
+                        // TODO: once sure that the Record is properly closurized, we can
+                        // safely assume that the extracted array here is, in turn, also closuried.
+                        body: RichTerm::new(Term::Array(terms, Default::default()), pos_op_inh),
                         env,
                     })
                 }
@@ -527,7 +529,7 @@ fn process_unary_operation(
                 .pop_arg()
                 .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("map"), pos_op))?;
             match_sharedterm! {t, with {
-                    Term::Array(ts) => {
+                    Term::Array(ts, _) => {
                         let mut shared_env = Environment::new();
                         let f_as_var = f.body.closurize(&mut env, f.env);
 
@@ -543,7 +545,7 @@ fn process_unary_operation(
                             .collect();
 
                         Ok(Closure {
-                            body: RichTerm::new(Term::Array(ts), pos_op_inh),
+                            body: RichTerm::new(Term::Array(ts, ArrayAttrs { closurized: true }), pos_op_inh),
                             env: shared_env,
                         })
                     }
@@ -587,7 +589,10 @@ fn process_unary_operation(
                         .collect();
 
                     Ok(Closure {
-                        body: RichTerm::new(Term::Array(ts), pos_op_inh),
+                        body: RichTerm::new(
+                            Term::Array(ts, ArrayAttrs { closurized: true }),
+                            pos_op_inh,
+                        ),
                         env: shared_env,
                     })
                 }
@@ -690,7 +695,7 @@ fn process_unary_operation(
                     });
                     Ok(seq_terms(terms, env, pos_op))
                 }
-                Term::Array(ts) if !ts.is_empty() => {
+                Term::Array(ts, _) if !ts.is_empty() => {
                     Ok(seq_terms(ts.into_iter().map(|t| (None, t)), env, pos_op))
                 }
                 _ => {
@@ -703,7 +708,7 @@ fn process_unary_operation(
             }
         }
         UnaryOp::ArrayHead() => {
-            if let Term::Array(ts) = &*t {
+            if let Term::Array(ts, _) = &*t {
                 if let Some(head) = ts.first() {
                     Ok(Closure {
                         body: head.clone(),
@@ -722,11 +727,11 @@ fn process_unary_operation(
             }
         }
         UnaryOp::ArrayTail() => match_sharedterm! {t, with {
-                    Term::Array(ts) => {
+                    Term::Array(ts, attrs) => {
                         let mut ts_it = ts.into_iter();
                         if ts_it.next().is_some() {
                             Ok(Closure {
-                                body: RichTerm::new(Term::Array(ts_it.collect()), pos_op_inh),
+                                body: RichTerm::new(Term::Array(ts_it.collect(), attrs), pos_op_inh),
                                 env,
                             })
                         } else {
@@ -743,7 +748,7 @@ fn process_unary_operation(
                 }
         },
         UnaryOp::ArrayLength() => {
-            if let Term::Array(ts) = &*t {
+            if let Term::Array(ts, _) = &*t {
                 // A num does not have any free variable so we can drop the environment
                 Ok(Closure {
                     body: RichTerm::new(Term::Num(ts.len() as f64), pos_op_inh),
@@ -827,7 +832,7 @@ fn process_unary_operation(
                     .map(|c| RichTerm::from(Term::Str(c.to_string())))
                     .collect();
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Array(ts),
+                    Term::Array(ts, ArrayAttrs { closurized: true }),
                     pos_op_inh,
                 )))
             } else {
@@ -1732,21 +1737,26 @@ fn process_binary_operation(
             }
         },
         BinaryOp::ArrayConcat() => match_sharedterm! {t1, with {
-                Term::Array(ts1) => match_sharedterm! {t2, with {
-                        Term::Array(ts2) => {
-                            let mut env = Environment::new();
+                Term::Array(ts1, attrs1) => match_sharedterm! {t2, with {
+                        Term::Array(ts2, attrs2) => {
+                            // NOTE: the [eval_closure] function in [eval] should've made sure
+                            // that the array is closurized. We leave a debug_assert! here just
+                            // in case something goes wrong in the future.
+                            // If the assert failed, you may need to map closurize over `ts1` and `ts2`.
+                            debug_assert!(attrs1.closurized, "the left-hand side of ArrayConcat (@) is not closurized.");
+                            debug_assert!(attrs2.closurized, "the right-hand side of ArrayConcat (@) is not closurized.");
+
                             let mut ts: Vec<RichTerm> = Vec::with_capacity(ts1.len() + ts2.len());
-                            ts.extend(
-                                ts1.into_iter()
-                                    .map(|t| t.closurize(&mut env, env1.clone())),
-                            );
-                            ts.extend(
-                                ts2.into_iter()
-                                    .map(|t| t.closurize(&mut env, env2.clone())),
-                            );
+
+                            ts.extend(ts1.into_iter());
+                            ts.extend(ts2.into_iter());
+
+                            let mut env = env1.clone();
+                            // TODO: Is there a cheaper way to "merge" two environements?
+                            env.extend(env2.iter_elems().map(|(k, v)| (k.clone(), v.clone())));
 
                             Ok(Closure {
-                                body: RichTerm::new(Term::Array(ts), pos_op_inh),
+                                body: RichTerm::new(Term::Array(ts, ArrayAttrs { closurized: true }), pos_op_inh),
                                 env,
                             })
                         }
@@ -1776,7 +1786,7 @@ fn process_binary_operation(
             }
         },
         BinaryOp::ArrayElemAt() => match (&*t1, &*t2) {
-            (Term::Array(ts), Term::Num(n)) => {
+            (Term::Array(ts, _), Term::Num(n)) => {
                 let n_int = *n as usize;
                 if n.fract() != 0.0 {
                     Err(EvalError::Other(format!("elemAt: expected the 2nd agument to be an integer, got the floating-point value {}", n), pos_op))
@@ -1789,7 +1799,7 @@ fn process_binary_operation(
                     })
                 }
             }
-            (Term::Array(_), _) => Err(EvalError::TypeError(
+            (Term::Array(..), _) => Err(EvalError::TypeError(
                 String::from("Num"),
                 String::from("elemAt, 2nd argument"),
                 snd_pos,
@@ -1985,7 +1995,7 @@ fn process_binary_operation(
                     .map(|s| Term::Str(String::from(s)).into())
                     .collect();
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Array(array),
+                    Term::Array(array, ArrayAttrs { closurized: true }),
                     pos_op_inh,
                 )))
             }
@@ -2082,14 +2092,17 @@ fn process_binary_operation(
                         mk_record!(
                             ("match", Term::Str(String::from(first_match.as_str()))),
                             ("index", Term::Num(first_match.start() as f64)),
-                            ("groups", Term::Array(groups))
+                            (
+                                "groups",
+                                Term::Array(groups, ArrayAttrs { closurized: true })
+                            )
                         )
                     } else {
                         //FIXME: what should we return when there's no match?
                         mk_record!(
                             ("match", Term::Str(String::new())),
                             ("index", Term::Num(-1.)),
-                            ("groups", Term::Array(Vec::new()))
+                            ("groups", Term::Array(Vec::new(), Default::default()))
                         )
                     };
 
@@ -2378,7 +2391,7 @@ fn eq(env: &mut Environment, c1: Closure, c2: Closure) -> EqResult {
                 gen_eqs(eqs, env, env1, env2)
             }
         }
-        (Term::Array(l1), Term::Array(l2)) if l1.len() == l2.len() => {
+        (Term::Array(l1, _), Term::Array(l2, _)) if l1.len() == l2.len() => {
             // Equalities are tested in reverse order, but that shouldn't matter. If it
             // does, just do `eqs.rev()`
             let eqs = l1.into_iter().zip(l2.into_iter());

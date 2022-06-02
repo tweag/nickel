@@ -95,9 +95,10 @@ use crate::{
     identifier::Ident,
     match_sharedterm, mk_app,
     term::{
-        make as mk_term, BinaryOp, BindingType, LetAttrs, MetaValue, RichTerm, SharedTerm,
-        StrChunk, Term, UnaryOp,
+        make as mk_term, ArrayAttrs, BinaryOp, BindingType, LetAttrs, MetaValue, RichTerm,
+        SharedTerm, StrChunk, Term, UnaryOp,
     },
+    transform::Closurizable,
 };
 
 pub mod callstack;
@@ -612,6 +613,23 @@ where
                     pos,
                 ))
             }
+            // Closurize the array if it's not already done.
+            // This *should* make it unecessary to call closurize in [operation].
+            // See the comment on the `BinaryOp::ArrayConcat` match arm.
+            Term::Array(terms, attrs) if !attrs.closurized => {
+                let mut local_env = Environment::new();
+                let closurized_array = terms
+                    .into_iter()
+                    .map(|t| t.clone().closurize(&mut local_env, env.clone()))
+                    .collect();
+                Closure {
+                    body: RichTerm::new(
+                        Term::Array(closurized_array, ArrayAttrs { closurized: true }),
+                        pos,
+                    ),
+                    env: local_env,
+                }
+            }
             // Continuation of operations and thunk update
             _ if stack.is_top_thunk() || stack.is_top_cont() => {
                 clos = Closure {
@@ -794,13 +812,13 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
 
                 RichTerm::new(Term::RecRecord(map, dyn_fields, attrs, deps), pos)
             }
-            Term::Array(ts) => {
+            Term::Array(ts, attrs) => {
                 let ts = ts
                     .into_iter()
                     .map(|t| subst_(t, global_env, env, Cow::Borrowed(bound.as_ref())))
                     .collect();
 
-                RichTerm::new(Term::Array(ts), pos)
+                RichTerm::new(Term::Array(ts, attrs), pos)
             }
             Term::StrChunks(chunks) => {
                 let chunks = chunks

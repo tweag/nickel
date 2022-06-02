@@ -139,7 +139,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
 
                 with_bindings(Term::RecRecord(map, dyn_fields, attrs, deps), bindings, pos)
             },
-            Term::Array(ts) => {
+            Term::Array(ts, attrs) => {
                 let mut bindings = Vec::with_capacity(ts.len());
 
                 let ts = ts
@@ -156,7 +156,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                     })
                     .collect();
 
-                with_bindings(Term::Array(ts), bindings, pos)
+                with_bindings(Term::Array(ts, attrs), bindings, pos)
             },
             Term::MetaValue(meta) if meta.value.as_ref().map(|t| should_share(&t.term)).unwrap_or(false) => {
                     let mut meta = meta;

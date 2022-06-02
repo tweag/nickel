@@ -576,7 +576,8 @@ where
                 )
                 .append(allocator.space())
                 .append(allocator.atom(tst)),
-            Array(fields) => allocator
+            Array(fields, _) => allocator
+                // NOTE: the Array attributes are ignored here.
                 .line()
                 .append(allocator.intersperse(
                     fields.iter().map(|rt| rt.to_owned().pretty(allocator)),
