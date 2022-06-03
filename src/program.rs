@@ -369,6 +369,7 @@ mod tests {
     use crate::parser::{grammar, lexer};
     use crate::position::TermPos;
     use crate::term::SharedTerm;
+    use assert_matches::assert_matches;
     use codespan::Files;
     use std::io::Cursor;
 

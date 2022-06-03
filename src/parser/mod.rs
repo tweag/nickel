@@ -62,7 +62,10 @@ impl grammar::ExtendedTermParser {
 }
 
 impl grammar::TermParser {
-    pub fn parse_term_tolerant(
+    /// Parse a term from a token stream in an error tolerant way: parse errors are accumulated and
+    /// returned, instead of returning an error. The `Err` variant corresponds to a non-recoverable
+    /// error.
+    pub fn parse_term_lax(
         &self,
         file_id: FileId,
         lexer: lexer::Lexer,
@@ -84,7 +87,7 @@ impl grammar::TermParser {
         file_id: FileId,
         lexer: lexer::Lexer,
     ) -> Result<RichTerm, ParseErrors> {
-        match self.parse_term_tolerant(file_id, lexer) {
+        match self.parse_term_lax(file_id, lexer) {
             Ok((t, e)) if e.no_errors() => Ok(t),
             Ok((_, e)) => Err(e),
             Err(e) => Err(e.into()),

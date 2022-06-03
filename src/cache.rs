@@ -335,8 +335,12 @@ impl Cache {
     }
 
     /// Parse a source and populate the corresponding entry in the cache, or do nothing if the
-    /// entry has already been parsed.
-    pub fn parse(&mut self, file_id: FileId) -> Result<CacheOp<ParseErrors>, ParseError> {
+    /// entry has already been parsed. This function is error tolerant: parts of the source which
+    /// result in parse errors are parsed as [`crate::term::RichTerm::Error`] and the
+    /// corresponding error messages are collected and returned.
+    ///
+    /// The `Err` part of the result corresponds to non-recoverable errors.
+    pub fn parse_lax(&mut self, file_id: FileId) -> Result<CacheOp<ParseErrors>, ParseError> {
         if let Some(CachedTerm { parse_errs, .. }) = self.terms.get(&file_id) {
             Ok(CacheOp::Cached(parse_errs.clone()))
         } else {
@@ -350,6 +354,17 @@ impl Cache {
                 },
             );
             Ok(CacheOp::Done(parse_errs))
+        }
+    }
+
+    /// Parse a source and populate the corresponding entry in the cache, or do nothing if the
+    /// entry has already been parsed. This function is not error tolerant and returns `Err` if at
+    /// least one parse error has been encountered.
+    pub fn parse(&mut self, file_id: FileId) -> Result<CacheOp<()>, ParseErrors> {
+        match self.parse_lax(file_id)? {
+            CacheOp::Done(e) | CacheOp::Cached(e) if !e.no_errors() => Err(e),
+            CacheOp::Done(_) => Ok(CacheOp::Done(())),
+            CacheOp::Cached(_) => Ok(CacheOp::Cached(())),
         }
     }
 
@@ -391,8 +406,8 @@ impl Cache {
 
         match format {
             InputFormat::Nickel => {
-                let (t, parse_errs) = parser::grammar::TermParser::new()
-                    .parse_term_tolerant(file_id, Lexer::new(buf))?;
+                let (t, parse_errs) =
+                    parser::grammar::TermParser::new().parse_term_lax(file_id, Lexer::new(buf))?;
 
                 Ok((t, parse_errs))
             }
@@ -619,13 +634,9 @@ impl Cache {
     ) -> Result<CacheOp<()>, Error> {
         let mut result = CacheOp::Cached(());
 
-        match self.parse(file_id)? {
-            CacheOp::Done(e) | CacheOp::Cached(e) if !e.no_errors() => return Err(e.into()),
-            CacheOp::Done(_) => {
-                result = CacheOp::Done(());
-            }
-            _ => {}
-        };
+        if self.parse(file_id)? == CacheOp::Done(()) {
+            result = CacheOp::Done(());
+        }
 
         let import_res = self.resolve_imports(file_id).map_err(|cache_err| {
             cache_err.unwrap_error(
@@ -783,10 +794,7 @@ impl Cache {
             .collect();
 
         for file_id in file_ids.iter() {
-            let errs = self.parse(*file_id)?.inner();
-            if !errs.no_errors() {
-                return Err(errs.into());
-            }
+            self.parse(*file_id)?;
         }
         self.stdlib_ids.replace(file_ids);
         Ok(CacheOp::Done(()))

@@ -139,7 +139,7 @@ fn main() {
                     query_print::write_query_result(&mut std::io::stdout(), &term, attrs).unwrap()
                 })
             }
-            Some(Command::Typecheck) => program.typecheck().map(|_| ()),
+            Some(Command::Typecheck) => program.typecheck(),
             Some(Command::Repl { .. }) => unreachable!(),
             #[cfg(feature = "doc")]
             Some(Command::Doc { .. }) => program.output_doc(),
