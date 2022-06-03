@@ -1751,13 +1751,11 @@ fn process_binary_operation(
                             ts.extend(ts1.into_iter());
                             ts.extend(ts2.into_iter());
 
-                            let mut env = env1.clone();
-                            // TODO: Is there a cheaper way to "merge" two environements?
-                            env.extend(env2.iter_elems().map(|(k, v)| (k.clone(), v.clone())));
+                            let env = Environment::disjoint_union(&env1, &env2);
 
                             Ok(Closure {
                                 body: RichTerm::new(Term::Array(ts, ArrayAttrs { closurized: true }), pos_op_inh),
-                                env,
+                                env
                             })
                         }
                     } else {

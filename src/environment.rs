@@ -129,6 +129,41 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
     fn was_cloned(&self) -> bool {
         Rc::strong_count(&self.current) > 1
     }
+
+    /// Layer the `left` environement on top of `right`.
+    ///
+    /// # Issues
+    ///
+    /// - This only makes sense for disjoint environements.
+    /// - The resulting environement is list whoose size is the sum of
+    /// the inputs' sizes. Which means longer "non-local" lookups.
+    pub fn disjoint_union(left: &Self, right: &Self) -> Self {
+        // NOTE: it doesn't make sense to take an owned environment because
+        // it would probably be already cloned, with an empty `current`.
+        if left.previous.borrow().is_none() {
+            Environment {
+                current: left.current.clone(),
+                previous: RefCell::new(Some(Rc::new(right.clone()))),
+            }
+        } else if right.previous.borrow().is_none() {
+            Environment {
+                current: right.current.clone(),
+                previous: RefCell::new(Some(Rc::new(left.clone()))),
+            }
+        } else {
+            let tail = Environment {
+                current: right.current.clone(),
+                previous: RefCell::new(Some(Rc::new(Self::disjoint_union(
+                    left.previous.borrow().as_ref().unwrap(),
+                    right.previous.borrow().as_ref().unwrap(),
+                )))),
+            };
+            Environment {
+                current: left.current.clone(),
+                previous: RefCell::new(Some(Rc::new(tail))),
+            }
+        }
+    }
 }
 
 impl<K: Hash + Eq, V: PartialEq> FromIterator<(K, V)> for Environment<K, V> {
