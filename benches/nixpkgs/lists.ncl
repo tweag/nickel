@@ -392,6 +392,156 @@
     let l = array.length xs in
     array.generate (fun n => array.elem_at (l - n - 1) xs) l,
 
+  listDfs:  forall a. Bool -> (a -> a -> Bool) -> Array a -> {visited: Array a, rest: Array a ; Dyn}
+  | doc m%"
+      Depth-First Search (DFS) for lists `list != []`.
+
+     `before a b == true` means that `b` depends on `a` (there's an
+     edge from `b` to `a`).
+
+     Example:
+         listDfs true hasPrefix [ "/home/user" "other" "/" "/home" ]
+           == { minimal = "/",                  # minimal element
+                visited = [ "/home/user" ],     # seen elements (in reverse order)
+                rest    = [ "/home" "other" ],  # everything else
+              }
+
+         listDfs true hasPrefix [ "/home/user" "other" "/" "/home" "/" ]
+           == { cycle   = "/",                  # cycle encountered at this element
+                loops   = [ "/" ],              # and continues to these elements
+                visited = [ "/" "/home/user" ], # elements leading to the cycle (in reverse order)
+                rest    = [ "/home" "other" ],  # everything else
+
+   "%m
+  = fun stopOnCycles before list =>
+    let rec dfs_ = fun us visited_ rest_ =>
+        let c = array.filter (fun x => before x us) visited_ in
+        let b = partition (fun x => before x us) rest_ in
+        if stopOnCycles && (array.length c > 0)
+        then { cycle = us, loops = c, visited = visited_, rest = rest_ }
+        else if array.length b.right == 0
+        then # nothing is before us
+          { minimal = us, visited = visited_, rest = rest_ }
+        else # grab the first one before us and continue
+          (dfs_ (array.head b.right)
+                ([ us ] @ visited_)
+                (array.tail b.right @ b.wrong)
+    ) in
+    dfs_ (array.head list) [] (array.tail list),
+
+  toposort: forall a. (a -> a -> Bool) -> Array a -> {_: Array a}
+  | doc m%"
+      Sort a list based on a partial ordering using DFS. This
+     implementation is O(N^2), if your ordering is linear, use `sort`
+     instead.
+
+     `before a b == true` means that `b` should be after `a`
+     in the result.
+
+     Example:
+
+         toposort hasPrefix [ "/home/user" "other" "/" "/home" ]
+           == { result = [ "/" "/home" "/home/user" "other" ], }
+
+         toposort hasPrefix [ "/home/user" "other" "/" "/home" "/" ]
+           == { cycle = [ "/home/user" "/" "/" ], # path leading to a cycle
+                loops = [ "/" ], }                # loops back to these elements
+
+         toposort hasPrefix [ "other" "/home/user" "/home" "/" ]
+           == { result = [ "other" "/" "/home" "/home/user" ], }
+
+         toposort (a: b: a < b) [ 3 2 1 ] == { result = [ 1 2 3 ], }
+
+  "%m
+  = fun before list =>
+    let dfsthis = listDfs true before list in
+    let toporest = toposort before (dfsthis.visited @ dfsthis.rest) in
+    if array.length list < 2
+    then # finish
+      { result =  list, }
+    else if record.has_field "cycle" dfsthis
+    then # there's a cycle, starting from the current vertex, return it
+      { cycle = reverseList ([ dfsthis.cycle ] @ dfsthis.visited),
+        loops = dfsthis.loops, }
+    else if record.has_field "cycle" toporest
+    then # there's a cycle somewhere else in the graph, return it
+      toporest
+    # Slow, but short. Can be made a bit faster with an explicit stack.
+    else # there are no cycles
+      { result = [ dfsthis.minimal ] @ toporest.result, },
+
+  sort: forall a. (a -> a -> Bool) -> Array a -> Array a
+  | doc m%"
+      Sort a list based on a comparator function which compares two
+     elements and returns true if the first argument is strictly below
+     the second argument.  The returned list is sorted in an increasing
+     order.  The implementation does a quick-sort.
+
+     Example:
+       sort (a: b: a < b) [ 5, 3, 7 ]
+       >> [ 3, 5, 7 ]
+  "%m
+  = fun strictLess list =>
+    let len = array.length list in
+    let first = array.head list in
+    let rec pivot_ = (fun n acc@{ left=left_, right=right_ } =>
+      let el = array.elem_at n list in
+      let next = pivot_ (n + 1) in
+      if n == len
+        then acc
+      else if strictLess first el
+        then next { left = left_, right = [ el ] @ right_ }
+      else next { left = [ el ] @ left_, right = right_ }
+    ) in
+    let pivot = pivot_ 1 { left = [], right = [] } in
+    if len < 2 then list
+    else (sort strictLess pivot.left) @ [ first ] @ (sort strictLess pivot.right),
+
+  compareLists: forall a. (a -> a -> Num) -> Array a -> Array a -> Num
+  | doc m%"
+      Compare two lists element-by-element.
+
+     Example:
+       compareLists compare [] []
+       >> 0
+       compareLists compare [] [ "a" ]
+       >> -1
+       compareLists compare [ "a" ] []
+       >> 1
+       compareLists compare [ "a", "b" ] [ "a", "c" ]
+       >> 1
+  "%m
+  = fun cmp a b =>
+    if a == []
+    then if b == []
+         then 0
+         else -1
+    else if b == []
+         then 1
+         else let rel = cmp (array.head a) (array.head b) in
+              if rel == 0
+              then compareLists cmp (array.tail a) (array.tail b)
+              else rel,
+
+  naturalSort: Array Str -> Array Str
+  | doc m%"
+      Sort list using "Natural sorting".
+     Numeric portions of strings are sorted in numeric order.
+
+     Example:
+       naturalSort ["disk11", "disk8", "disk100", "disk9"]
+       >> ["disk8", "disk9", "disk11", "disk100"]
+       naturalSort ["10.46.133.149", "10.5.16.62", "10.54.16.25"]
+       >> ["10.5.16.62" "10.46.133.149" "10.54.16.25"]
+       naturalSort ["v0.2", "v0.15", "v0.0.9"]
+       >> [ "v0.0.9", "v0.2", "v0.15" ]
+  "%m
+  = fun lst =>
+    let vectorise = fun s => map (fun x => if builtin.is_array x then (head x) | Num else x) (array.split "(0|[1-9][0-9]*)" s) in
+      let prepared = map (fun x => [ (vectorise x) x ]) lst in # remember vectorised version for O(n) regex splits
+      let less = fun a b => (compareLists compare (array.head a) (array.head b)) < 0 in
+      map (fun x => array.elem_at 1 x) (sort less prepared),
+
   take: forall a. Num -> Array a -> Array a
   | doc m%"
       Return the first (at most) N elements of a list.
@@ -479,7 +629,7 @@
     #assert lib.assertMsg (lst != []) "lists.init: list must not be empty!",
     take (array.length lst - 1) lst,
 
-  unique: forall a. Array a -> Array a
+  unique: Array Dyn -> Array Dyn
   | doc m%"
       Remove duplicate elements from the list. O(n^2) complexity.
 
@@ -487,9 +637,9 @@
        unique [ 3, 2, 3, 4 ]
        >> [ 3, 2, 4 ]
    "%m
-  = foldl_ (fun acc e => if array.elem (e | Dyn) (acc | Array Dyn) then acc else acc @ [ e ]) [],
+  = foldl_ (fun acc e => if array.elem e acc then acc else acc @ [ e ]) [],
 
-  intersectLists: forall a. Array a -> Array a -> Array a
+  intersectLists: Array Dyn -> Array Dyn -> Array Dyn
   | doc m%"
       Intersects list 'e' and another list. O(nm) complexity.
 
@@ -497,9 +647,9 @@
        intersectLists [ 1, 2, 3 ] [ 6, 3, 2 ]
        >> [ 3, 2 ]
   "%m
-  = fun e => array.filter (fun x => array.elem (x | Dyn) (e | Array Dyn)),
+  = fun e => array.filter (fun x => array.elem x e),
 
-  subtractLists: forall a. Array a -> Array a -> Array a
+  subtractLists: Array Dyn -> Array Dyn -> Array Dyn
   | doc m%"
       Subtracts list 'e' from another list. O(nm) complexity.
 
@@ -507,13 +657,13 @@
        subtractLists [ 3, 2 ] [ 1, 2, 3, 4, 5, 3 ]
        >> [ 1, 4, 5 ]
   "%m
-  = fun e => array.filter (fun x => !(array.elem (x | Dyn) (e | Array Dyn))),
+  = fun e => array.filter (fun x => !(array.elem x e)),
 
-  mutuallyExclusive: forall a. Array a -> Array a -> Bool
+  mutuallyExclusive: Array Dyn -> Array Dyn -> Bool
   | doc m%"
       Test if two lists have no common element.
      It should be slightly more efficient than (intersectLists a b == [])
   "%m
-  = fun a b => array.length a == 0 || !(any (fun x => array.elem (x | Dyn) (a | Array Dyn)) b),
+  = fun a b => array.length a == 0 || !(any (fun x => array.elem x a) b),
 
 }
