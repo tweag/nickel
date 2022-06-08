@@ -196,6 +196,11 @@ pub struct ArrayAttrs {
 #[derive(Debug, Default, Eq, PartialEq, Copy, Clone)]
 pub struct RecordAttrs {
     pub open: bool,
+    /// A `closurized` record verifies the following conditions:
+    ///   - Each field value (if it exists) is a generated variable with a unique name
+    ///     (although the same variable can occur in several places, it should always refer to the same thunk anyway).
+    ///   - The environment of the record's closure only contains those generated variables.
+    pub closurized: bool,
 }
 
 /// The attributes of a let binding.
@@ -208,9 +213,13 @@ pub struct LetAttrs {
 }
 
 impl RecordAttrs {
+    /// Merge record attributes.
+    /// - The result is open if either one of the arguments is open.
+    /// - The result is closurized if both arguments are closurized.
     pub fn merge(attrs1: RecordAttrs, attrs2: RecordAttrs) -> RecordAttrs {
         RecordAttrs {
             open: attrs1.open || attrs2.open,
+            closurized: attrs1.closurized && attrs2.closurized,
         }
     }
 }

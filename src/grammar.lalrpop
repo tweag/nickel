@@ -281,7 +281,7 @@ UniRecord: UniRecord = {
         let (last_field, attrs) = match last {
             Some(RecordLastField::Field(f)) => (Some(f), Default::default()),
             Some(RecordLastField::Ellipsis) =>
-                (None, RecordAttrs { open: true }),
+                (None, RecordAttrs { open: true, closurized: false }),
             None => (None, Default::default())
         };
 

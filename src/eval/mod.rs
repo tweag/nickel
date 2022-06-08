@@ -95,8 +95,8 @@ use crate::{
     identifier::Ident,
     match_sharedterm, mk_app,
     term::{
-        make as mk_term, ArrayAttrs, BinaryOp, BindingType, LetAttrs, MetaValue, RichTerm,
-        SharedTerm, StrChunk, Term, UnaryOp,
+        make as mk_term, ArrayAttrs, BinaryOp, BindingType, LetAttrs, MetaValue, RecordAttrs,
+        RichTerm, SharedTerm, StrChunk, Term, UnaryOp,
     },
     transform::Closurizable,
 };
@@ -625,6 +625,30 @@ where
                 Closure {
                     body: RichTerm::new(
                         Term::Array(closurized_array, ArrayAttrs { closurized: true }),
+                        pos,
+                    ),
+                    env: local_env,
+                }
+            }
+            // Closurize the record if it's not already done.
+            // - All [`RecRecord`] instances are reduced to [`Record`] so this is a catch-all case.
+            // - After this, all record fields in `operation.rs` and `merge.rs` should be assumed
+            // closurized. Though some work is needed when merging records; namely fusing environments.
+            Term::Record(fields, attrs) if !attrs.closurized => {
+                let mut local_env = Environment::new();
+                let closurized_record = fields
+                    .into_iter()
+                    .map(|(i, t)| (i.clone(), t.clone().closurize(&mut local_env, env.clone())))
+                    .collect();
+                Closure {
+                    body: RichTerm::new(
+                        Term::Record(
+                            closurized_record,
+                            RecordAttrs {
+                                open: attrs.open,
+                                closurized: true,
+                            },
+                        ),
                         pos,
                     ),
                     env: local_env,

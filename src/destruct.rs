@@ -65,7 +65,10 @@ impl Destruct {
                             .into_iter()
                             .map(|m| m.as_meta_field())
                             .collect(),
-                        RecordAttrs { open },
+                        RecordAttrs {
+                            open,
+                            closurized: false,
+                        },
                     )
                     .into(),
                 )),

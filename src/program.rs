@@ -425,10 +425,14 @@ mod tests {
 
         let t = eval_full("let x = 1 in let y = 1 + x in let z = {foo.bar.baz = y} in z").unwrap();
         // Records are parsed as RecRecords, so we need to build one by hand
-        let expd = mk_record!((
-            "foo",
-            mk_record!(("bar", mk_record!(("baz", Term::Num(2.0)))))
-        ));
+        let mut foo = mk_record!(("bar", mk_record!(("baz", Term::Num(2.0)))));
+        if let Term::Record(_, ref mut attrs) = SharedTerm::make_mut(&mut foo.term) {
+            attrs.closurized = true;
+        }
+        let mut expd = mk_record!(("foo", foo));
+        if let Term::Record(_, ref mut attrs) = SharedTerm::make_mut(&mut expd.term) {
+            attrs.closurized = true;
+        }
         assert_eq!(t.without_pos(), expd);
 
         // /!\ [MAY OVERFLOW STACK]
