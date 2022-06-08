@@ -223,7 +223,7 @@ pub fn merge(
                 ))
             }
         }
-        (Term::Array(arr1, attrs1), Term::Array(arr2, _attrs2))
+        (Term::Array(arr1, _attrs1), Term::Array(arr2, _attrs2))
             if arr1.is_empty() && arr2.is_empty() =>
         {
             Ok(Closure::atomic_closure(RichTerm::new(
