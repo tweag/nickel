@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use codespan::ByteIndex;
 use nickel_lang::{
     term::MetaValue,
-    typecheck::linearization::{LinearizationState, Scope, ScopeId},
+    typecheck::linearization::{LinearizationState, Scope},
 };
 
 use super::{

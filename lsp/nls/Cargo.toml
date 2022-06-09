@@ -21,12 +21,12 @@ lalrpop-util = "0.19.6"
 codespan = "0.11"
 codespan-reporting = "0.11"
 codespan-lsp = "0.11"
-serde = { version = "1.0.117", features = ["derive"] }
-serde_json = "1.0.59"
+serde = { version = "1.0.137", features = ["derive"] }
+serde_json = "1.0.81"
 structopt = "0.3"
 
 
-lsp-server = "0.5"
+lsp-server = "0.6"
 lsp-types = "0.88"
 log = "0.4"
 env_logger = "0.9"
@@ -37,5 +37,5 @@ lazy_static = "1"
 csv = "1"
 
 [dev-dependencies]
-pretty_assertions = "0.5.1"
-assert_matches = "1.4.0"
+pretty_assertions = "1.2.1"
+assert_matches = "1.5.0"

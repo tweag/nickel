@@ -65,6 +65,12 @@ impl MarkdownRenderer {
 fn termimad_to_io(err: termimad::Error) -> io::Error {
     match err {
         termimad::Error::IO(err) => err,
+        // Not an IO error per se, but creating a new error type and chaning the signatures of the
+        // query printer functions just for this variant that is specific to the termimad backend
+        // doesn't seem to worth it.
+        termimad::Error::InsufficientWidth(err) => {
+            io::Error::new(io::ErrorKind::Other, format!("{}", err))
+        }
     }
 }
 
