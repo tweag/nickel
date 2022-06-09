@@ -369,6 +369,7 @@ mod tests {
     use crate::parser::{grammar, lexer};
     use crate::position::TermPos;
     use crate::term::SharedTerm;
+    use assert_matches::assert_matches;
     use codespan::Files;
     use std::io::Cursor;
 
@@ -392,6 +393,18 @@ mod tests {
             ))
         })?;
         p.eval_full()
+    }
+
+    fn typecheck(s: &str) -> Result<(), Error> {
+        let src = Cursor::new(s);
+
+        let mut p = Program::new_from_source(src, "<test>").map_err(|io_err| {
+            Error::EvalError(EvalError::Other(
+                format!("IO error: {}", io_err),
+                TermPos::None,
+            ))
+        })?;
+        p.typecheck()
     }
 
     #[test]
@@ -436,5 +449,15 @@ mod tests {
         // example would go into an infinite loop, and stack overflow. If it does, this just means
         // that this test fails.
         eval_full("{y = fun x => x, x = fun y => y}").unwrap();
+    }
+
+    #[test]
+    // Regression test for issue 715 (https://github.com/tweag/nickel/issues/715)
+    // Check that program::typecheck() fail on parse error
+    fn typecheck_invalid_input() {
+        assert_matches!(
+            typecheck("{foo = 1 + `, bar : Str = \"a\"}"),
+            Err(Error::ParseErrors(_))
+        );
     }
 }
