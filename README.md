@@ -1,6 +1,7 @@
 # Nickel
 
 [![Continuous integration](https://github.com/tweag/nickel/workflows/Continuous%20integration/badge.svg)](https://github.com/tweag/nickel/actions?query=branch%3Amaster)
+[![Website](https://img.shields.io/website-up-down-green-red/http/cv.lbesson.qc.to.svg)](https://nickel-lang.org)
 
 Nickel is the cheap configuration language.
 
@@ -70,6 +71,12 @@ general, application-specific languages might suffer from feature creep, lack of
 abstractions or just feel ad hoc. Nickel buys you more for less.
 
 ## Getting started
+
+Please follow the getting started guide for Nickel users on the [nickel-lang
+website](https://nickel-lang.org/getting-started). The instructions below are
+either reproduced for this document to be relatively self-sufficient, or because
+they are aimed toward hacking on the Nickel interpreter itself (e.g. building
+the `nickel-lang` crate documentation).
 
 ### Run
 
@@ -154,6 +161,12 @@ $ cargo test
 ```
 
 ### Documentation
+
+The user manual is available [on the nickel-lang.org
+website](https://nickel-lang.org/user-manual/introduction), and in this
+repository as a collection of Markdown files in `doc/manual`.
+
+To get the documentation of the `nickel-lang` codebase itself:
 
 1. Build the doc:
   ```console
