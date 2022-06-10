@@ -845,6 +845,43 @@ pub enum UnaryOp {
     NumFromStr(),
     /// Transform a string to an enum.
     EnumFromStr(),
+    /// Test if a regex matches a string.
+    /// Like [`StrMatch`], this is a unary operator because we would like a way to share the
+    /// same "compiled regex" for many matching calls. This is done by returning functions
+    /// wrapping [`StrIsMatchCompiled`] and [`StrMatchCompiled`]
+    StrIsMatch(),
+    /// Match a regex on a string, and returns the captured groups together, the index of the
+    /// match, etc.
+    StrMatch(),
+    /// Version of `StrIsMatch` which remembers the compiled regex.
+    StrIsMatchCompiled(CompiledRegex),
+    /// Version of `StrMatch` which remembers the compiled regex.
+    StrMatchCompiled(CompiledRegex),
+}
+
+// See: https://github.com/rust-lang/regex/issues/178
+/// [`regex::Regex`] which implements [`PartialEq`].
+#[derive(Debug, Clone)]
+pub struct CompiledRegex(regex::Regex);
+
+impl PartialEq for CompiledRegex {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.as_str() == other.0.as_str()
+    }
+}
+
+impl Deref for CompiledRegex {
+    type Target = regex::Regex;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<regex::Regex> for CompiledRegex {
+    fn from(item: regex::Regex) -> Self {
+        CompiledRegex(item)
+    }
 }
 
 /// position of a unary operator
@@ -943,11 +980,6 @@ pub enum BinaryOp {
     StrSplit(),
     /// Determine if a string is a substring of another one.
     StrContains(),
-    /// Test if a regex matches a string.
-    StrIsMatch(),
-    /// Match a regex on a string, and returns the captured groups together, the index of the
-    /// match, etc.
-    StrMatch(),
 }
 
 impl BinaryOp {

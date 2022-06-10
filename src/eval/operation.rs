@@ -23,7 +23,7 @@ use crate::{
     serialize::ExportFormat,
     term::{make as mk_term, ArrayAttrs},
     term::{BinaryOp, NAryOp, RichTerm, StrChunk, Term, UnaryOp},
-    transform::Closurizable,
+    transform::{fresh_var, Closurizable},
 };
 use md5::digest::Digest;
 use simple_counter::*;
@@ -982,6 +982,116 @@ fn process_unary_operation(
                 Err(EvalError::TypeError(
                     String::from("Str"),
                     String::from("strLength"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
+            }
+        }
+        UnaryOp::StrIsMatch() => {
+            if let Term::Str(s) = &*t {
+                let re = regex::Regex::new(s)
+                    .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
+
+                let param = fresh_var();
+                let matcher = Term::Fun(
+                    param.clone(),
+                    RichTerm::new(
+                        Term::Op1(
+                            UnaryOp::StrIsMatchCompiled(re.into()),
+                            RichTerm::new(Term::Var(param), pos_op_inh),
+                        ),
+                        pos_op_inh,
+                    ),
+                );
+
+                Ok(Closure::atomic_closure(RichTerm::new(matcher, pos)))
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("str_is_match"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
+            }
+        }
+        UnaryOp::StrMatch() => {
+            if let Term::Str(s) = &*t {
+                let re = regex::Regex::new(s)
+                    .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
+
+                let param = fresh_var();
+                let matcher = Term::Fun(
+                    param.clone(),
+                    RichTerm::new(
+                        Term::Op1(
+                            UnaryOp::StrMatchCompiled(re.into()),
+                            RichTerm::new(Term::Var(param), pos_op_inh),
+                        ),
+                        pos_op_inh,
+                    ),
+                );
+
+                Ok(Closure::atomic_closure(RichTerm::new(matcher, pos)))
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("str_match"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
+            }
+        }
+        UnaryOp::StrIsMatchCompiled(regex) => {
+            if let Term::Str(s) = &*t {
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Bool(regex.is_match(s)),
+                    pos_op_inh,
+                )))
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("str_is_match_compiled"),
+                    arg_pos,
+                    RichTerm { term: t, pos },
+                ))
+            }
+        }
+        UnaryOp::StrMatchCompiled(regex) => {
+            if let Term::Str(s) = &*t {
+                let capt = regex.captures(s);
+                let result = if let Some(capt) = capt {
+                    let first_match = capt.get(0).unwrap();
+                    let groups: Vec<RichTerm> = capt
+                        .iter()
+                        .skip(1)
+                        .map(|s_opt| {
+                            s_opt.map(|s| RichTerm::from(Term::Str(String::from(s.as_str()))))
+                        })
+                        .flatten()
+                        .collect();
+
+                    mk_record!(
+                        ("match", Term::Str(String::from(first_match.as_str()))),
+                        ("index", Term::Num(first_match.start() as f64)),
+                        (
+                            "groups",
+                            Term::Array(groups, ArrayAttrs { closurized: true })
+                        )
+                    )
+                } else {
+                    //FIXME: what should we return when there's no match?
+                    mk_record!(
+                        ("match", Term::Str(String::new())),
+                        ("index", Term::Num(-1.)),
+                        ("groups", Term::Array(Vec::new(), Default::default()))
+                    )
+                };
+
+                Ok(Closure::atomic_closure(result))
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("str_match_compiled"),
                     arg_pos,
                     RichTerm { term: t, pos },
                 ))
@@ -2042,92 +2152,6 @@ fn process_binary_operation(
                 },
             )),
         },
-        BinaryOp::StrIsMatch() => match (&*t1, &*t2) {
-            (Term::Str(s1), Term::Str(s2)) => {
-                let re = regex::Regex::new(s2)
-                    .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
-
-                Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Bool(re.is_match(s1)),
-                    pos_op_inh,
-                )))
-            }
-            (Term::Str(_), _) => Err(EvalError::TypeError(
-                String::from("Str"),
-                String::from("strIsMatch, 2nd argument"),
-                snd_pos,
-                RichTerm {
-                    term: t2,
-                    pos: pos2,
-                },
-            )),
-            (_, _) => Err(EvalError::TypeError(
-                String::from("Str"),
-                String::from("strIsMatch, 1st argument"),
-                fst_pos,
-                RichTerm {
-                    term: t1,
-                    pos: pos1,
-                },
-            )),
-        },
-        BinaryOp::StrMatch() => {
-            match (&*t1, &*t2) {
-                (Term::Str(s1), Term::Str(s2)) => {
-                    let re = regex::Regex::new(s2)
-                        .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
-                    let capt = re.captures(s1);
-
-                    let result = if let Some(capt) = capt {
-                        let first_match = capt.get(0).unwrap();
-                        let groups: Vec<RichTerm> = capt
-                            .iter()
-                            .skip(1)
-                            .map(|s_opt| {
-                                s_opt.map(|s| RichTerm::from(Term::Str(String::from(s.as_str()))))
-                            })
-                            .flatten()
-                            .collect();
-
-                        mk_record!(
-                            ("match", Term::Str(String::from(first_match.as_str()))),
-                            ("index", Term::Num(first_match.start() as f64)),
-                            (
-                                "groups",
-                                Term::Array(groups, ArrayAttrs { closurized: true })
-                            )
-                        )
-                    } else {
-                        //FIXME: what should we return when there's no match?
-                        mk_record!(
-                            ("match", Term::Str(String::new())),
-                            ("index", Term::Num(-1.)),
-                            ("groups", Term::Array(Vec::new(), Default::default()))
-                        )
-                    };
-
-                    Ok(Closure::atomic_closure(result))
-                }
-                (Term::Str(_), _) => Err(EvalError::TypeError(
-                    String::from("Str"),
-                    String::from("strMatch, 2nd argument"),
-                    snd_pos,
-                    RichTerm {
-                        term: t2,
-                        pos: pos2,
-                    },
-                )),
-                (_, _) => Err(EvalError::TypeError(
-                    String::from("Str"),
-                    String::from("strMatch, 1st argument"),
-                    fst_pos,
-                    RichTerm {
-                        term: t1,
-                        pos: pos1,
-                    },
-                )),
-            }
-        }
     }
 }
 

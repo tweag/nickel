@@ -41,9 +41,10 @@
       ```
       "%m
     = let pattern = m%"^[+-]?(\d+(\.\d*)?(e[+-]?\d+)?|\.\d+(e[+-]?\d+)?)$"%m in
+      let is_num_literal = %str_is_match% pattern in
       fun l s =>
         if %is_str% s then
-          if %str_is_match% s pattern then
+          if is_num_literal s then
             s
           else
             %blame% (%tag% "invalid num literal" l)
@@ -271,6 +272,9 @@
     | doc m%"
       `is_match regex str` checks if `str` matches `regex`.
 
+      Note that this function may perform better by sharing its partial application between multiple calls,
+      because in this case the underlying regular expression will only be compiled once.
+
       For example:
       ```nickel
         is_match "^\\d+$" "123" =>
@@ -279,12 +283,15 @@
           false
       ```
       "%m
-    = fun regex s => %str_is_match% s regex,
+    = fun regex => %str_is_match% regex,
 
     match : Str -> Str -> {match: Str, index: Num, groups: Array Str}
     | doc m%"
       `match regex str` matches `str` given `regex`. Results in the part of `str` that matched, the index of the
       first character that was part of the match in `str`, and a arrays of all capture groups if any.
+
+      Note that this function may perform better by sharing its partial application between multiple calls, 
+      because in this case the underlying regular expression will only be compiled once.
 
       For example:
       ```nickel
@@ -294,7 +301,7 @@
           { match = "3", index = 3, groups = [ ] }
       ```
       "%m
-    = fun regex s => %str_match% s regex,
+    = fun regex => %str_match% regex,
 
     length : Str -> Num
     | doc m%"
