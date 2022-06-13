@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::{
     fs::{self, File},
     process,
+    io::Read,
 };
 // use std::ffi::OsStr;
 use directories::BaseDirs;
@@ -40,6 +41,10 @@ struct Opt {
 /// Available subcommands.
 #[derive(StructOpt, Debug)]
 enum Command {
+    /// translate Nix input to Nickel code.
+    /// Only a POC, main target is to be able to run Nix code on nickel.
+    /// May never be a complet source to source transformation.
+    Nixin,
     /// Converts the parsed representation (AST) back to Nickel source code and prints it. Used for
     /// debugging purpose
     PprintAst {
@@ -108,6 +113,17 @@ fn main() {
 
         #[cfg(not(feature = "repl"))]
         eprintln!("error: this executable was not compiled with REPL support");
+    } else if let Some(Command::Nixin) = opts.command {
+        let mut buf = String::new();
+        opts.file
+            .map(std::fs::File::open)
+            .map(|f| f.unwrap().read_to_string(&mut buf))
+            .unwrap_or(std::io::stdin().read_to_string(&mut buf))
+            .unwrap_or_else(|err| {
+                eprintln!("Error when reading input: {}", err);
+                process::exit(1)
+            });
+        println!("{:#?}", nickel_lang::nix::parse(&buf));
     } else {
         let mut program = opts
             .file
@@ -158,7 +174,7 @@ fn main() {
                 })
             }
             Some(Command::Typecheck) => program.typecheck(),
-            Some(Command::Repl { .. }) => unreachable!(),
+            Some(Command::Repl { .. }) | Some(Command::Nixin) => unreachable!(),
             #[cfg(feature = "doc")]
             Some(Command::Doc { ref output }) => output
                 .as_ref()
