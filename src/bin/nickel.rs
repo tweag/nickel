@@ -7,7 +7,7 @@ use nickel_lang::repl::rustyline_frontend;
 use nickel_lang::term::{RichTerm, Term};
 use nickel_lang::{serialize, serialize::ExportFormat};
 use std::path::PathBuf;
-use std::{fs, process};
+use std::{fs, io::Read, process};
 // use std::ffi::OsStr;
 use directories::BaseDirs;
 use structopt::StructOpt;
@@ -31,6 +31,10 @@ struct Opt {
 /// Available subcommands.
 #[derive(StructOpt, Debug)]
 enum Command {
+    /// translate Nix input to Nickel code.
+    /// Only a POC, main target is to be able to run Nix code on nickel.
+    /// May never be a complet source to source transformation.
+    Nixin,
     /// Converts the parsed representation (AST) back to Nickel source code and prints it. Used for
     /// debugging purpose
     PprintAst {
@@ -93,6 +97,17 @@ fn main() {
 
         #[cfg(not(feature = "repl"))]
         eprintln!("error: this executable was not compiled with REPL support");
+    } else if let Some(Command::Nixin) = opts.command {
+        let mut buf = String::new();
+        opts.file
+            .map(std::fs::File::open)
+            .map(|f| f.unwrap().read_to_string(&mut buf))
+            .unwrap_or(std::io::stdin().read_to_string(&mut buf))
+            .unwrap_or_else(|err| {
+                eprintln!("Error when reading input: {}", err);
+                process::exit(1)
+            });
+        println!("{:#?}", nickel_lang::nix::parse(&buf));
     } else {
         let mut program = opts
             .file
@@ -140,7 +155,7 @@ fn main() {
                 })
             }
             Some(Command::Typecheck) => program.typecheck(),
-            Some(Command::Repl { .. }) => unreachable!(),
+            Some(Command::Repl { .. }) | Some(Command::Nixin) => unreachable!(),
             #[cfg(feature = "doc")]
             Some(Command::Doc { .. }) => program.output_doc(),
             None => program
