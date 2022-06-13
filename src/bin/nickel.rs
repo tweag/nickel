@@ -116,7 +116,11 @@ fn main() {
         #[cfg(not(feature = "repl"))]
         eprintln!("error: this executable was not compiled with REPL support");
     } else if let Some(Command::Nixin) = opts.command {
+        use nickel_lang::pretty::*;
+        use pretty::BoxAllocator;
+
         let mut buf = String::new();
+        let mut out: Vec<u8> = Vec::new();
         opts.file
             .map(std::fs::File::open)
             .map(|f| f.unwrap().read_to_string(&mut buf))
@@ -125,7 +129,11 @@ fn main() {
                 eprintln!("Error when reading input: {}", err);
                 process::exit(1)
             });
-        println!("{:#?}", nickel_lang::nix::parse(&buf));
+        let allocator = BoxAllocator;
+        let rt = nickel_lang::nix::parse(&buf).unwrap();
+        let doc: DocBuilder<_, ()> = rt.pretty(&allocator);
+        doc.render(80, &mut out).unwrap();
+        println!("{}", String::from_utf8_lossy(&out).as_ref());
     } else {
         let mut program = opts
             .file
