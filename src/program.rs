@@ -150,7 +150,7 @@ impl Program {
 
         let rt = cache.parse_nocache(*main_id)?.0;
         let rt = if apply_transforms {
-            crate::transform::transform(rt).unwrap()
+            crate::transform::transform(rt, None).unwrap()
         } else {
             rt
         };

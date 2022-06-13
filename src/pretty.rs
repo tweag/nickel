@@ -782,6 +782,7 @@ where
                     .append(allocator.space())
                     .append(codom.pretty(allocator)),
             },
+            Wildcard(_) => allocator.text("_"),
         }
     }
 }
