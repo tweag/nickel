@@ -9,7 +9,6 @@ fn translate(node: &rnix::SyntaxNode) -> RichTerm {
         NODE_ERROR => Term::ParseError.into(),
         NODE_ROOT | NODE_PAREN => node.children().map(|n| translate(&n)).next().unwrap(),
 
-        NODE_IDENT => Term::Var(node.text().to_string().into()).into(),
         NODE_LITERAL => node
             .children_with_tokens()
             .map(|n| {
@@ -23,6 +22,13 @@ fn translate(node: &rnix::SyntaxNode) -> RichTerm {
             })
             .next()
             .unwrap(),
+        NODE_LIST => Term::Array(
+            node.children().map(|n| translate(&n)).collect(),
+            Default::default(),
+        )
+        .into(),
+
+        NODE_IDENT => Term::Var(node.text().to_string().into()).into(),
         NODE_LET_IN => node
             .children()
             .collect::<Vec<SyntaxNode>>()
