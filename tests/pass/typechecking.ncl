@@ -13,10 +13,6 @@ let typecheck = [
   # functions
   (fun x => if x then x + 1 else 34) false,
   let id : Num -> Num = fun x => x in (id 4 : Num),
-  # the id parameter is inferred
-  (fun id => (id 4 : Num)) (fun x => x),
-  # non strict zones don't unify
-  (fun id => (id 4) + (id true: Bool)) (fun x => x),
   # contracts are opaque types
   (let AlwaysTrue = fun l t => if t then t else %blame% l in
   ((fun x => x) : AlwaysTrue -> AlwaysTrue)),
