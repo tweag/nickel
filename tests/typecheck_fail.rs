@@ -249,8 +249,13 @@ fn fails_only_with_wildcard() {
     );
     // However, with one, we get a type error
     assert_matches!(
-        type_check_expr("let head = fun l => %head% l in (head 10) : _"),
+        type_check_expr("(let head = fun l => %head% l in (head 10)) : _"),
         Err(TypecheckError::TypeMismatch(..))
+    );
+    // With an actual array, this passes
+    assert_matches!(
+        type_check_expr("(let head = fun l => %head% l in (head [10])) : _"),
+        Ok(_)
     );
 }
 
