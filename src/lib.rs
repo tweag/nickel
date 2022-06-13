@@ -5,6 +5,7 @@ pub mod error;
 pub mod eval;
 pub mod identifier;
 pub mod label;
+pub mod nix;
 pub mod parser;
 pub mod position;
 pub mod pretty;
