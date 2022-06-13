@@ -437,21 +437,62 @@ fn walk<L: Linearizer>(
                 },
             )
         }
-        // An type anntation switches mode to check.
-        Term::MetaValue(MetaValue {
-            types: Some(Contract { types: ty2, .. }),
-            value: Some(t),
-            ..
-        }) => {
-            let tyw2 = TypeWrapper::from(ty2.clone());
-            let instantiated = instantiate_foralls(state, tyw2.clone(), ForallInst::Constant);
-            type_check_(state, envs, lin, linearizer, t, instantiated)
+        // An type annotation switches mode to check.
+        Term::MetaValue(meta) => {
+            meta.contracts.iter().chain(meta.types.iter()).try_for_each(|ty| walk_type(state, envs.clone(), lin, linearizer.scope(), &ty.types))?;
+
+            match meta {
+                MetaValue {
+                types: Some(Contract { types: ty2, .. }),
+                value: Some(t),
+                ..
+                } => {
+                    let tyw2 = TypeWrapper::from(ty2.clone());
+                    let instantiated = instantiate_foralls(state, tyw2.clone(), ForallInst::Constant);
+                    type_check_(state, envs, lin, linearizer, t, instantiated)
+                }
+                MetaValue {value: Some(t), .. } =>  walk(state, envs, lin, linearizer, t),
+                // A metavalue without a body nor a type annotation is a record field without definition.
+                _ => Ok(()),
+            }
         }
-        Term::MetaValue(MetaValue { value: Some(t), .. }) =>  walk(state, envs, lin, linearizer, t),
-        // A metavalue without a body nor a type annotation is a record field without definition.
-        Term::MetaValue(_) => Ok(()),
         Term::Wrapped(_, t) => walk(state, envs, lin, linearizer, t),
    }
+}
+
+fn walk_type<L: Linearizer>(
+    state: &mut State,
+    envs: Envs,
+    lin: &mut Linearization<L::Building>,
+    mut linearizer: L,
+    ty: &Types,
+) -> Result<(), TypecheckError> {
+    match &ty.0 {
+       AbsType::Dyn()
+       | AbsType::Num()
+       | AbsType::Bool()
+       | AbsType::Str()
+       | AbsType::Sym()
+       // Currently, the parser can't generate unbound type variables, by construction. We don't
+       // check again here for unbound type variables.
+       | AbsType::Var(_)
+       | AbsType::Wildcard(_)
+       | AbsType::RowEmpty() => Ok(()),
+       AbsType::Arrow(ty1, ty2) => {
+           walk_type(state, envs.clone(), lin, linearizer.scope(), ty1.as_ref())?;
+           walk_type(state, envs, lin, linearizer, ty2.as_ref())
+       }
+       AbsType::RowExtend(_, ty_row, tail) => {
+         if let Some(ty_row) = ty_row { walk_type(state, envs.clone(), lin, linearizer.scope(), ty_row)? };
+         walk_type(state, envs, lin,linearizer, tail)
+       }
+       AbsType::Flat(t) => walk(state, envs, lin, linearizer, t),
+       AbsType::Enum(ty2)
+       | AbsType::DynRecord(ty2)
+       | AbsType::StaticRecord(ty2)
+       | AbsType::Array(ty2)
+       | AbsType::Forall(_, ty2) => walk_type(state, envs, lin, linearizer, ty2),
+    }
 }
 
 // TODO: The insertion of values in the type environment is done but everything is
