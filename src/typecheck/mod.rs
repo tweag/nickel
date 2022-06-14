@@ -3,25 +3,29 @@
 //! # Mode
 //!
 //! Typechecking can be made in to different modes:
-//! - **Strict**: correspond to traditional typechecking in strongly, statically typed languages.
-//! This happens inside a `Promise` block. Promise block are introduced by the typing operator `:`,
-//! as in `1 + 1 : Num` or `let f : Num -> Num = fun x => x + 1 in ..`.
-//! - **Non strict**: do not enforce any typing, but still store the annotations of let bindings in
-//! the environment, and continue to traverse the AST looking for other `Promise` blocks to
-//! typecheck.
+//! - **Strict**: correspond to traditional typechecking in statically typed languages. This
+//!   happens inside a statically typed block. Statically typed blocks are introduced by the type
+//!   ascription operator `:`, as in `1 + 1 : Num` or `let f : Num -> Num = fun x => x + 1 in ..`. This is
+//!   implemented by [`type_check_`] and variants.
+//! - **Non strict**: do not enforce any typing but continue to traverse the AST looking for other
+//!   typed blocks to typecheck and store the annotations of let bindings in the environment. This is
+//!   implemented by the [`walk`] function.
 //!
 //! The algorithm starts in non strict mode. It is switched to strict mode when entering a
-//! `Promise` block, and is switched to non-strict mode when entering an `Assume` block.  `Promise`
-//! and `Assume` thus serve both two purposes: annotate a term with a type, and set the
-//! typechecking mode.
+//! statically typed block (an expression annotated with a type), and is switched back to
+//! non-strict mode when entering an expression annotated with a contract. Type and contract
+//! annotations thus serve both another purpose beside enforcing a type or a contract, which is to
+//! switch the typechecking mode.
 //!
 //! # Type inference
 //!
-//! Type inference is done via a standard unification algorithm. The type of unannotated let-bound
-//! expressions (the type of `bound_exp` in `let x = bound_exp in body`) is inferred in strict
-//! mode, but it is never implicitly generalized. For example, the following program is rejected:
+//! Type inference is done via a form of bidirectional typechecking coupled with unification, in
+//! the same spirit as GHC (Haskell), albeit the type system of Nickel is much simpler. The type of
+//! un-annotated let-bound expressions (the type of `bound_exp` in `let x = bound_exp in body`) is
+//! inferred in strict mode, but it is never implicitly generalized. For example, the following
+//! program is rejected:
 //!
-//! ```text
+//! ```nickel
 //! # Rejected
 //! let id = fun x => x in seq (id "a") (id 5) : Num
 //! ```
@@ -31,15 +35,16 @@
 //! call site the typechecker complains that `5` is not of type `Str`.
 //!
 //! This restriction is on purpose, as generalization is not trivial to implement efficiently and
-//! can interact with other parts of type inference. If polymorphism is required, a simple
-//! annotation is sufficient:
+//! more importantly can interact with other components of the type system and type inference. If
+//! polymorphism is required, the user can simply add annotation:
 //!
-//! ```text
+//! ```nickel
 //! # Accepted
 //! let id : forall a. a -> a = fun x => x in seq (id "a") (id 5) : Num
 //! ```
 //!
-//! In non-strict mode, all let-bound expressions are given type `Dyn`, unless annotated.
+//! In non-strict mode, the type of let-bound expressions is inferred in a shallow way (see
+//! [`apparent_type`]).
 use crate::cache::ImportResolver;
 use crate::destruct::*;
 use crate::environment::Environment as GenericEnvironment;
@@ -278,6 +283,8 @@ pub fn type_check_in_env(
     })
 }
 
+/// Walk the AST of a term looking for statically typed block to check. Fill the linearization
+/// alongside and store the apparent type of variable inside the typing environment.
 fn walk<L: Linearizer>(
     state: &mut State,
     mut envs: Envs,
@@ -353,7 +360,6 @@ fn walk<L: Linearizer>(
         }
         Term::LetPattern(x, pat, re, rt) => {
             let ty_let = binding_type(re.as_ref(), &envs, state.table, state.wildcard_vars, false, state.resolver);
-
             walk(state, envs.clone(), lin, linearizer.scope(), re)?;
 
             if let Some(x) = x {
@@ -376,8 +382,6 @@ fn walk<L: Linearizer>(
 
             walk(state, envs, lin, linearizer, exp)
         }
-        // If some fields are defined dynamically, the only potential type that works is `{_ : a}`
-        // for some `a`
         Term::RecRecord(stat_map, dynamic, ..) => {
             for id in stat_map.keys() {
                 let binding_type = binding_type(
@@ -460,6 +464,8 @@ fn walk<L: Linearizer>(
    }
 }
 
+/// Same as [`walk`] but operate on a type, which can contain terms as contracts (`AbsType::Flat`),
+/// instead of a term.
 fn walk_type<L: Linearizer>(
     state: &mut State,
     envs: Envs,
@@ -473,8 +479,8 @@ fn walk_type<L: Linearizer>(
        | AbsType::Bool()
        | AbsType::Str()
        | AbsType::Sym()
-       // Currently, the parser can't generate unbound type variables, by construction. We don't
-       // check again here for unbound type variables.
+       // Currently, the parser can't generate unbound type variables by construction. Thus we
+       // don't check here for unbound type variables again.
        | AbsType::Var(_)
        | AbsType::Wildcard(_)
        | AbsType::RowEmpty() => Ok(()),
@@ -523,7 +529,6 @@ fn inject_pat_vars(pat: &Destruct, envs: &mut Envs) {
 /// - `env`: the typing environment, mapping free variable to types.
 /// - `lin`: The current building linearization of building state `S`
 /// - `linearizer`: A linearizer that can modify the linearization
-/// - `strict`: the typechecking mode.
 /// - `t`: the term to check.
 /// - `ty`: the type to check the term against.
 ///
@@ -851,47 +856,61 @@ fn type_check_<L: Linearizer>(
 
             Ok(())
         }
-        Term::MetaValue(MetaValue {
-            types: Some(Contract { types: ty2, .. }),
-            value: Some(t),
-            ..
-        }) => {
-            let tyw2 = TypeWrapper::from(ty2.clone());
-            let instantiated = instantiate_foralls(state, tyw2.clone(), ForallInst::Constant);
+        Term::MetaValue(meta) => {
+            meta.contracts
+                .iter()
+                .chain(meta.types.iter())
+                .try_for_each(|ty| {
+                    walk_type(state, envs.clone(), lin, linearizer.scope(), &ty.types)
+                })?;
 
-            unify(state, tyw2, ty).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            type_check_(state, envs, lin, linearizer, t, instantiated)
-        }
-        // A metavalue with at least one contract is an assume. If there's several
-        // contracts, we arbitrarily chose the first one as the type annotation.
-        Term::MetaValue(MetaValue {
-            contracts, value, ..
-        }) if !contracts.is_empty() => {
-            let ctr = contracts.get(0).unwrap();
-            let Contract { types: ty2, .. } = ctr;
+            match meta {
+                MetaValue {
+                    types: Some(Contract { types: ty2, .. }),
+                    value: Some(t),
+                    ..
+                } => {
+                    let tyw2 = TypeWrapper::from(ty2.clone());
+                    let instantiated =
+                        instantiate_foralls(state, tyw2.clone(), ForallInst::Constant);
 
-            unify(state, ty, ty2.clone().into())
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+                    unify(state, tyw2, ty).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+                    type_check_(state, envs, lin, linearizer, t, instantiated)
+                }
+                // A metavalue without a type annotation but with a contract annotation switches
+                // the typechecker back to walk mode. If there are several contracts, we
+                // arbitrarily chose the first one as the apparent type.
+                MetaValue {
+                    contracts, value, ..
+                } if !contracts.is_empty() => {
+                    let ctr = contracts.get(0).unwrap();
+                    let Contract { types: ty2, .. } = ctr;
 
-            // if there's an inner value, we have to recursively typecheck it, but in non strict
-            // mode.
-            if let Some(t) = value {
-                walk(state, envs, lin, linearizer, t)
-            } else {
-                Ok(())
+                    unify(state, ty, ty2.clone().into())
+                        .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+
+                    // if there's an inner value, we still have to walk it, as it may contain
+                    // statically typed block.
+                    if let Some(t) = value {
+                        walk(state, envs, lin, linearizer, t)
+                    } else {
+                        Ok(())
+                    }
+                }
+                // A non-empty metavalue without a type or a contract annotation is typechecked in
+                // the same way as its inner value
+                MetaValue { value: Some(t), .. } => {
+                    type_check_(state, envs, lin, linearizer, t, ty)
+                }
+                // A metavalue without a body nor a type annotation is a record field without definition.
+                // We infer it to be of type `Dyn` for now.
+                _ => unify(state, ty, mk_typewrapper::dynamic())
+                    .map_err(|err| err.into_typecheck_err(state, rt.pos)),
             }
         }
         Term::Sym(_) => unify(state, ty, mk_typewrapper::sym())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
         Term::Wrapped(_, t) => type_check_(state, envs, lin, linearizer, t, ty),
-        // A non-empty metavalue without a type or contract annotation is typechecked in the same way as its inner value
-        Term::MetaValue(MetaValue { value: Some(t), .. }) => {
-            type_check_(state, envs, lin, linearizer, t, ty)
-        }
-        // A metavalue without a body nor a type annotation is a record field without definition.
-        // We infer it to be of type `Dyn` for now.
-        Term::MetaValue(_) => unify(state, ty, mk_typewrapper::dynamic())
-            .map_err(|err| err.into_typecheck_err(state, rt.pos)),
         Term::Import(_) => unify(state, ty, mk_typewrapper::dynamic())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
         // We use the apparent type of the import for checking. This function doesn't recursively
