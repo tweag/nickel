@@ -364,8 +364,9 @@ pub fn merge(
             // Merging recursive record is the one operation that may override recursive fields. To
             // have the recursive fields depend on the updated values, we need to revert the thunks
             // first.
-            rev_thunks(m1.values_mut(), &mut env1);
-            rev_thunks(m2.values_mut(), &mut env2);
+            let mut env = Environment::new();
+            rev_thunks(m1.values_mut(), &mut env1, &mut env);
+            rev_thunks(m2.values_mut(), &mut env2, &mut env);
 
             // We save the original fields before they are potentially merged in order to patch
             // their environment in the final record (cf `fixpoint::patch_fields`). Note that we
@@ -387,15 +388,9 @@ pub fn merge(
             };
 
             let mut m = HashMap::with_capacity(left.len() + center.len() + right.len());
-            let mut env = Environment::new();
 
-            for (field, t) in left.into_iter() {
-                m.insert(field, t.closurize(&mut env, env1.clone()));
-            }
-
-            for (field, t) in right.into_iter() {
-                m.insert(field, t.closurize(&mut env, env2.clone()));
-            }
+            m.extend(left.into_iter());
+            m.extend(right.into_iter());
 
             for (field, (t1, t2)) in center.into_iter() {
                 m.insert(
@@ -497,15 +492,16 @@ fn merge_closurize(
     body.closurize(env, local_env)
 }
 
-fn rev_thunks<'a, I: Iterator<Item = &'a mut RichTerm>>(map: I, env: &mut Environment) {
+fn rev_thunks<'a, I: Iterator<Item = &'a mut RichTerm>>(map: I, local_env: &mut Environment, new_env: &mut Environment) {
     use crate::transform::fresh_var;
 
     for rt in map {
         if let Term::Var(id) = rt.as_ref() {
             // This create a fresh variable which is bound to a reverted copy of the original thunk
-            let reverted = env.get(&id).unwrap().revert();
+            let reverted = local_env.get(&id).unwrap().revert();
             let fresh_id = fresh_var();
-            env.insert(fresh_id.clone(), reverted);
+            new_env.insert(fresh_id.clone(), reverted.clone());
+            local_env.insert(fresh_id.clone(), reverted);
             *(SharedTerm::make_mut(&mut rt.term)) = Term::Var(fresh_id);
         }
         // Otherwise, if it is not a variable after the share normal form transformations, it
