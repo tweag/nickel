@@ -100,6 +100,8 @@ pub enum AbsType<Ty> {
     DynRecord(Ty /*, Ty  Row */),
     /// A parametrized array.
     Array(Ty),
+    /// A type wildcard, wrapping an ID unique within a given file.
+    Wildcard(usize),
 }
 
 impl<Ty> AbsType<Ty> {
@@ -130,6 +132,7 @@ impl<Ty> AbsType<Ty> {
             AbsType::StaticRecord(t) => Ok(AbsType::StaticRecord(f(t)?)),
             AbsType::DynRecord(t) => Ok(AbsType::DynRecord(f(t)?)),
             AbsType::Array(t) => Ok(AbsType::Array(f(t)?)),
+            AbsType::Wildcard(i) => Ok(AbsType::Wildcard(i)),
         }
     }
 
@@ -147,6 +150,10 @@ impl<Ty> AbsType<Ty> {
             self,
             AbsType::RowExtend(..) | AbsType::RowEmpty() | AbsType::Dyn()
         )
+    }
+
+    pub fn is_wildcard(&self) -> bool {
+        matches!(self, AbsType::Wildcard(_))
     }
 }
 
@@ -313,6 +320,7 @@ impl Types {
             AbsType::DynRecord(ref ty) => {
                 mk_app!(contract::dyn_record(), ty.subcontract(h, pol, sy)?)
             }
+            AbsType::Wildcard(_) => contract::dynamic(),
         };
 
         Ok(ctr)
@@ -392,7 +400,8 @@ impl Types {
             | AbsType::Sym()
             | AbsType::Var(_)
             | AbsType::RowEmpty()
-            | AbsType::Flat(_) => Ok(ty.0),
+            | AbsType::Flat(_)
+            | AbsType::Wildcard(_) => Ok(ty.0),
             AbsType::Forall(id, ty_inner) => (*ty_inner)
                 .traverse(f, state, order)
                 .map(|ty| AbsType::Forall(id, Box::new(ty))),
@@ -485,6 +494,7 @@ impl fmt::Display for Types {
                 AbsType::Arrow(_, _) => write!(f, "({}) -> {}", dom, codom),
                 _ => write!(f, "{} -> {}", dom, codom),
             },
+            AbsType::Wildcard(_) => write!(f, "_"),
         }
     }
 }
@@ -551,5 +561,10 @@ mod test {
         assert_format_eq("Num -> Array (Array Str) -> Num");
         assert_format_eq("Array (Num -> Num)");
         assert_format_eq("Array (Array (Array Dyn) -> Num)");
+
+        assert_format_eq("_");
+        assert_format_eq("_ -> _");
+        assert_format_eq("{x: _, y: Bool}");
+        assert_format_eq("{_: _}");
     }
 }

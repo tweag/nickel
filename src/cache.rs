@@ -6,7 +6,7 @@ use crate::position::TermPos;
 use crate::stdlib as nickel_stdlib;
 use crate::term::{RichTerm, SharedTerm, Term};
 use crate::transform::import_resolution;
-use crate::typecheck;
+use crate::typecheck::{self, TypeCheckingOutput, Wildcards};
 use crate::typecheck::{linearization::StubHost, type_check};
 use crate::types::UnboundTypeVariableError;
 use crate::{eval, parser, transform};
@@ -68,6 +68,8 @@ pub struct Cache {
     terms: HashMap<FileId, CachedTerm>,
     /// The list of ids corresponding to the stdlib modules
     stdlib_ids: Option<Vec<FileId>>,
+    /// The inferred type of wildcards for each `FileId`.
+    wildcards: HashMap<FileId, Wildcards>,
 
     #[cfg(debug_assertions)]
     /// Skip loading the stdlib, used for debugging purpose
@@ -205,6 +207,7 @@ impl Cache {
             files: Files::new(),
             file_ids: HashMap::new(),
             terms: HashMap::new(),
+            wildcards: HashMap::new(),
             imports: HashMap::new(),
             stdlib_ids: None,
 
@@ -437,8 +440,10 @@ impl Cache {
             }
             Some(CachedTerm { term, state, .. }) if *state >= EntryState::Parsed => {
                 if *state < EntryState::Typechecking {
-                    type_check(term, global_env, self, StubHost::<(), (), _>::new())?;
+                    let (TypeCheckingOutput { wildcards, .. }, _) =
+                        type_check(term, global_env, self, StubHost::<(), (), _>::new())?;
                     self.update_state(file_id, EntryState::Typechecking);
+                    self.wildcards.insert(file_id, wildcards);
                 }
 
                 if let Some(imports) = self.imports.get(&file_id).cloned() {
@@ -469,7 +474,7 @@ impl Cache {
                     let CachedTerm {
                         term, parse_errs, ..
                     } = self.terms.remove(&file_id).unwrap();
-                    let term = transform::transform(term)?;
+                    let term = transform::transform(term, self.wildcards.get(&file_id))?;
                     self.terms.insert(
                         file_id,
                         CachedTerm {
@@ -520,6 +525,7 @@ impl Cache {
                     state,
                     parse_errs,
                 } = self.terms.remove(&file_id).unwrap();
+                let wildcards = self.wildcards.get(&file_id);
 
                 if state < EntryState::Transforming {
                     let pos = term.pos;
@@ -528,7 +534,7 @@ impl Cache {
                         Term::Record(ref mut map, _) => {
                             let map_res: Result<_, UnboundTypeVariableError> = std::mem::take(map)
                                 .into_iter()
-                                .map(|(id, t)| Ok((id, transform::transform(t)?)))
+                                .map(|(id, t)| Ok((id, transform::transform(t, wildcards)?)))
                                 .collect();
                             *map = map_res.map_err(|err| {
                                 CacheError::Error(ImportError::ParseErrors(err.into(), pos))
@@ -537,14 +543,17 @@ impl Cache {
                         Term::RecRecord(ref mut map, ref mut dyn_fields, ..) => {
                             let map_res: Result<_, UnboundTypeVariableError> = std::mem::take(map)
                                 .into_iter()
-                                .map(|(id, t)| Ok((id, transform::transform(t)?)))
+                                .map(|(id, t)| Ok((id, transform::transform(t, wildcards)?)))
                                 .collect();
 
                             let dyn_fields_res: Result<_, UnboundTypeVariableError> =
                                 std::mem::take(dyn_fields)
                                     .into_iter()
                                     .map(|(id_t, t)| {
-                                        Ok((transform::transform(id_t)?, transform::transform(t)?))
+                                        Ok((
+                                            transform::transform(id_t, wildcards)?,
+                                            transform::transform(t, wildcards)?,
+                                        ))
                                     })
                                     .collect();
 
@@ -689,8 +698,10 @@ impl Cache {
             return Err(Error::ParseErrors(errs));
         }
         let (term, pending) = import_resolution::resolve_imports(term, self)?;
-        type_check(&term, global_env, self, StubHost::<(), (), _>::new())?;
-        let term = transform::transform(term).map_err(|err| Error::ParseErrors(err.into()))?;
+        let (TypeCheckingOutput { wildcards, .. }, _) =
+            type_check(&term, global_env, self, StubHost::<(), (), _>::new())?;
+        let term = transform::transform(term, Some(&wildcards))
+            .map_err(|err| Error::ParseErrors(err.into()))?;
         Ok((term, pending))
     }
 

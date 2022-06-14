@@ -178,7 +178,8 @@ fn collect_type_free_vars(ty: &mut Types, set: &mut HashSet<Ident>) {
         | AbsType::Str()
         | AbsType::Sym()
         | AbsType::Var(_)
-        | AbsType::RowEmpty() => (),
+        | AbsType::RowEmpty()
+        | AbsType::Wildcard(_) => (),
         AbsType::Forall(_, ty)
         | AbsType::Enum(ty)
         | AbsType::StaticRecord(ty)

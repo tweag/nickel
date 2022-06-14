@@ -4,11 +4,12 @@ use nickel_lang::cache::resolvers::DummyResolver;
 use nickel_lang::error::TypecheckError;
 use nickel_lang::parser::{grammar, lexer};
 use nickel_lang::term::RichTerm;
-use nickel_lang::typecheck::{type_check_in_env, Environment};
-use nickel_lang::types::Types;
+use nickel_lang::typecheck::{type_check_in_env, Environment, TypeCheckingOutput};
+use nickel_lang::types::{AbsType, Types};
 
 fn type_check(rt: &RichTerm) -> Result<Types, TypecheckError> {
     type_check_in_env(rt, &Environment::new(), &mut DummyResolver {})
+        .map(|TypeCheckingOutput { types, .. }| types)
 }
 
 fn type_check_expr(s: impl std::string::ToString) -> Result<Types, TypecheckError> {
@@ -230,10 +231,50 @@ fn piecewise_signature() {
         Err(TypecheckError::TypeMismatch(..))
     );
 }
+
 #[test]
 fn recursive_let() {
     assert_matches!(
         type_check_expr("let rec f : Num -> Num = fun x => f \"hoi\" in null"),
         Err(TypecheckError::TypeMismatch(..))
+    );
+}
+
+#[test]
+fn fails_only_with_wildcard() {
+    // Without a wildcard annotation, this type checks
+    assert_matches!(
+        type_check_expr("let head = fun l => %head% l in head 10"),
+        Ok(_)
+    );
+    // However, with one, we get a type error
+    assert_matches!(
+        type_check_expr("(let head = fun l => %head% l in (head 10)) : _"),
+        Err(TypecheckError::TypeMismatch(..))
+    );
+    // With an actual array, this passes
+    assert_matches!(
+        type_check_expr("(let head = fun l => %head% l in (head [10])) : _"),
+        Ok(_)
+    );
+}
+
+#[test]
+fn wildcards_apparent_type_is_dyn() {
+    // Wildcard-inferred types don't leak outside of the strict block.
+    // Therefore, even though the body of `g` could type check, `f` has type
+    // `Dyn`, exactly as if there were no wildcards, and the type checker
+    // rejects the expression.
+    assert_matches!(
+        type_check_expr(
+            r#"let f : _ -> _ = fun x => x + 1 in
+let g : Num = f 0 in
+g"#
+        ),
+        Err(TypecheckError::TypeMismatch(
+            Types(AbsType::Arrow(_, _)),
+            Types(AbsType::Dyn()),
+            _
+        ))
     );
 }

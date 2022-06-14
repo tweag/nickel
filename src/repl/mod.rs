@@ -12,6 +12,7 @@ use crate::identifier::Ident;
 use crate::parser::{grammar, lexer, ExtendedTerm};
 use crate::term::{RichTerm, Term};
 use crate::transform::import_resolution;
+use crate::typecheck::TypeCheckingOutput;
 use crate::types::Types;
 use crate::{eval, transform, typecheck};
 use codespan::FileId;
@@ -134,7 +135,8 @@ impl ReplImpl {
                 repl_impl.cache.resolve_imports(*id).unwrap();
             }
 
-            typecheck::type_check_in_env(&t, &repl_impl.env.type_env, &repl_impl.cache)?;
+            let TypeCheckingOutput { wildcards, .. } =
+                typecheck::type_check_in_env(&t, &repl_impl.env.type_env, &repl_impl.cache)?;
 
             if let Some(id) = id {
                 typecheck::Envs::env_add(
@@ -154,7 +156,8 @@ impl ReplImpl {
                     })?;
             }
 
-            let t = transform::transform(t).map_err(|err| Error::ParseErrors(err.into()))?;
+            let t = transform::transform(t, Some(&wildcards))
+                .map_err(|err| Error::ParseErrors(err.into()))?;
             for id in &pending {
                 repl_impl
                     .cache
@@ -230,7 +233,21 @@ impl Repl for ReplImpl {
         for id in &pending {
             self.cache.resolve_imports(*id).unwrap();
         }
-        typecheck::type_check_in_env(&term, &self.env.type_env, &self.cache)?;
+        let TypeCheckingOutput { wildcards, .. } =
+            typecheck::type_check_in_env(&term, &self.env.type_env, &self.cache)?;
+        // Substitute the wildcard types for their inferred types
+        // We need to `traverse` the term, in case the type depends on inner terms that also contain wildcards
+        let term = term
+            .traverse(
+                &mut |rt: RichTerm, _| -> Result<RichTerm, std::convert::Infallible> {
+                    Ok(transform::substitute_wildcards::transform_one(
+                        rt, &wildcards,
+                    ))
+                },
+                &mut (),
+                crate::term::TraverseOrder::TopDown,
+            )
+            .unwrap();
 
         Ok(typecheck::apparent_type(
             term.as_ref(),
