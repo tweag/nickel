@@ -1,6 +1,47 @@
 use crate::term::make;
+use crate::term::{BinaryOp, UnaryOp};
 use crate::term::{RichTerm, Term};
+use rnix::types::{BinOp, TypedNode};
 use rnix::{self, SyntaxNode};
+
+impl From<BinOp> for RichTerm {
+    fn from(op: BinOp) -> Self {
+        use rnix::types::BinOpKind::*;
+        let lhs = op.lhs().unwrap();
+        let rhs = op.rhs().unwrap();
+        match op.operator().unwrap() {
+            // TODO: how to manage diff between strconcat and arrayconcat?
+            Concat => Term::Op2(BinaryOp::ArrayConcat(), translate(&lhs), translate(&rhs)).into(),
+            IsSet => unimplemented!(),
+            Update => unimplemented!(),
+
+            Add => Term::Op2(BinaryOp::Plus(), translate(&lhs), translate(&rhs)).into(),
+            Sub => Term::Op2(BinaryOp::Sub(), translate(&lhs), translate(&rhs)).into(),
+            Mul => Term::Op2(BinaryOp::Mult(), translate(&lhs), translate(&rhs)).into(),
+            Div => Term::Op2(BinaryOp::Div(), translate(&lhs), translate(&rhs)).into(),
+
+            Equal => Term::Op2(BinaryOp::Eq(), translate(&lhs), translate(&rhs)).into(),
+            Less => Term::Op2(BinaryOp::LessThan(), translate(&lhs), translate(&rhs)).into(),
+            More => Term::Op2(BinaryOp::GreaterThan(), translate(&lhs), translate(&rhs)).into(),
+            LessOrEq => Term::Op2(BinaryOp::LessOrEq(), translate(&lhs), translate(&rhs)).into(),
+            MoreOrEq => Term::Op2(BinaryOp::GreaterOrEq(), translate(&lhs), translate(&rhs)).into(),
+            NotEqual => unimplemented!(),
+
+            Implication => unimplemented!(),
+
+            And => Term::App(
+                Term::Op1(UnaryOp::BoolAnd(), translate(&lhs)).into(),
+                translate(&rhs),
+            )
+            .into(),
+            Or => Term::App(
+                Term::Op1(UnaryOp::BoolOr(), translate(&lhs)).into(),
+                translate(&rhs),
+            )
+            .into(),
+        }
+    }
+}
 
 fn translate(node: &rnix::SyntaxNode) -> RichTerm {
     use rnix::SyntaxKind::*;
@@ -44,6 +85,8 @@ fn translate(node: &rnix::SyntaxNode) -> RichTerm {
                     translate(n)
                 }
             }),
+
+        NODE_BIN_OP => BinOp::cast(node.clone()).unwrap().into(),
         _ => panic!("{}", node),
     }
 }
