@@ -63,7 +63,7 @@ let time = {
       Weight | lib.contracts.Nullable (lib.contracts.AllOf [
                  num.Nat,
                  lib.contracts.GreaterEq -100,
-                 LesserEq 100])
+                 lib.contracts.LesserEq 100])
              | default = null,
       SpreadTarget | Array SpreadTargetElem
                    | default = [],
@@ -73,7 +73,7 @@ let time = {
       Value | Str,
       Percent | lib.contracts.Nullable (lib.contracts.AllOf [
                  num.PosNat,
-                 LesserEq 100])
+                 lib.contracts.LesserEq 100])
               | default = null,
     },
 
@@ -161,7 +161,7 @@ let time = {
       Spreads | Array Spread
               | default = [],
       Count | num.Nat
-            | Greater 0,
+            | lib.contracts.Greater 0,
       # TODO: Meta  [string]  string
       Name  | Str,
       RestartPolicy  | lib.contracts.Nullable json.RestartPolicy
@@ -877,7 +877,7 @@ let time = {
       check_restart | lib.contracts.Nullable stanza.check_restart
                     | default = null,
       header | {_: Array Str} | default = {},
-      body | lib.contracts.Nullable str
+      body | lib.contracts.Nullable Str
            | default = null,
       initial_status | (lib.contracts.OneOf ["passing", "warning", "critical", ""])
                      | default = "",
@@ -999,7 +999,7 @@ let time = {
       #  kill_signal: "SIGTERM"
       #}
 
-      kill_timeout | lib.contracts.Nullable duration
+      kill_timeout | lib.contracts.Nullable Duration
                    | default = null,
 
       lifecycle | lib.contracts.Nullable stanza.lifecycle
