@@ -1,0 +1,17 @@
+[package]
+name = "nickel-repl"
+version = "0.1.0"
+authors = ["Nickel team"]
+license = "MIT"
+readme = "README.md"
+description = "WebAssembly REPL for the Nickel programming language."
+homepage = "https://nickel-lang.org"
+repository = "https://github.com/tweag/nickel"
+keywords = ["configuration", "language", "nix", "nickel"]
+edition = "2018"
+
+[dependencies]
+nickel-lang = {default-features = false, path = "../", version = "0.1.0", features=["repl-wasm"]}
+
+[lib]
+crate-type = ["cdylib", "rlib"]

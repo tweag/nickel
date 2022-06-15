@@ -185,7 +185,7 @@
           src = if isDevShell then null else self;
 
           buildPhase = ''
-            cargo build --workspace --release --frozen --offline
+            cargo build --workspace --exclude nickel-repl --release --frozen --offline
           '';
 
           doCheck = true;
@@ -213,7 +213,7 @@
           RUST_SRC_PATH = "${rust}/lib/rustlib/src/rust/library";
         };
 
-      buildNickelWASM =
+      buildNickelWasm =
         { channel ? "stable"
         , optimize ? true
         }:
@@ -228,8 +228,6 @@
 
           src = self;
 
-          nativeBuildInputs = [ pkgs.jq ];
-
           buildInputs = [
             rust
             pkgs.wasm-pack
@@ -238,42 +236,14 @@
             cargoHome
           ] ++ missingSysPkgs;
 
-          preBuild = ''
-            # Wasm-pack requires to change the crate type. Cargo doesn't yet
-            # support having different crate types depending on the target, so
-            # we switch there
-            sed -i 's/\[lib\]/[lib]\ncrate-type = ["cdylib", "rlib"]/' Cargo.toml
-
-            # This is a hack to prevent the fs2 crate from being compiled on wasm.
-            # This may be able to be removed once one or more of these issues are resolved:
-            # https://github.com/bheisler/criterion.rs/issues/461
-            # https://github.com/rust-lang/cargo/issues/1596
-            # https://github.com/rust-lang/cargo/issues/1197
-            # https://github.com/rust-lang/cargo/issues/5777
-            sed -i '/nickel-lang-utilities/d' Cargo.toml
-          '';
-
           buildPhase = ''
-            runHook preBuild
-
-            wasm-pack build --mode no-install -- --no-default-features --features repl-wasm --frozen --offline
+            cd nickel-wasm-repl
+            wasm-pack build --mode no-install -- --no-default-features --frozen --offline
             # Because of wasm-pack not using existing wasm-opt
             # (https://github.com/rustwasm/wasm-pack/issues/869), we have to
             # run wasm-opt manually
-            echo "[Nix build script]Manually running wasm-opt..."
-            wasm-opt ${if optimize then "-O4 " else "-O0"} pkg/nickel_lang_bg.wasm -o pkg/nickel_lang_bg.wasm
-
-            runHook postBuild
-          '';
-
-          postBuild = ''
-            # Wasm-pack forces the name of both the normal crate and the
-            # generated NPM package to be the same. Unfortunately, there already
-            # exists a nickel package in the NPM registry, so we use nickel-repl
-            # instead
-            jq '.name = "nickel-repl"' pkg/package.json > package.json.patched \
-              && rm -f pkg/package.json \
-              && mv package.json.patched pkg/package.json
+            echo "[Nix build script] Manually running wasm-opt..."
+            wasm-opt ${if optimize then "-O4 " else "-O0"} pkg/nickel_repl_bg.wasm -o pkg/nickel_repl.wasm
           '';
 
           installPhase = ''
@@ -345,7 +315,7 @@
       defaultPackage = packages.build;
       packages = {
         build = buildNickel { };
-        buildWasm = buildNickelWASM { optimize = true; };
+        buildWasm = buildNickelWasm { optimize = true; };
         dockerImage = buildDocker packages.build; # TODO: docker image should be a passthru
         inherit vscodeExtension;
         inherit userManual;
@@ -360,7 +330,7 @@
 
       checks = {
         # wasm-opt can take long: eschew optimizations in checks
-        wasm = buildNickelWASM { channel = "stable"; optimize = false; };
+        wasm = buildNickelWasm { channel = "stable"; optimize = false; };
         # out of sync, disabling for now -> https://github.com/tweag/nickel/issue/552
         #specs = makamSpecs;
         pre-commit = defaultPackage.pre-commit;
