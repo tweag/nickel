@@ -114,7 +114,24 @@ fn translate(node: &rnix::SyntaxNode) -> RichTerm {
                     translate(n)
                 }
             }),
+        NODE_LAMBDA => {
+            let fun = rnix::types::Lambda::cast(node.clone()).unwrap();
+            let arg = fun.arg().unwrap();
+            match arg.kind() {
+                NODE_IDENT => Term::Fun(arg.to_string().into(), translate(&fun.body().unwrap())),
+                _ => unimplemented!(),
+            }
+            .into()
+        }
 
+        NODE_APPLY => {
+            let fun = rnix::types::Apply::cast(node.clone()).unwrap();
+            Term::App(
+                translate(&fun.lambda().unwrap()),
+                translate(&fun.value().unwrap()),
+            )
+            .into()
+        }
         NODE_BIN_OP => BinOp::cast(node.clone()).unwrap().into(),
         _ => panic!("{}", node),
     }
