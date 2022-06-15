@@ -1,7 +1,7 @@
 use crate::term::make;
 use crate::term::{BinaryOp, UnaryOp};
 use crate::term::{RichTerm, Term};
-use rnix::types::{BinOp, TypedNode};
+use rnix::types::{BinOp, TokenWrapper, TypedNode};
 use rnix::{self, SyntaxNode};
 
 impl From<BinOp> for RichTerm {
@@ -83,12 +83,22 @@ fn translate(node: &rnix::SyntaxNode) -> RichTerm {
             .into()
         }
         NODE_LIST => Term::Array(
-            node.children().map(|n| translate(&n)).collect(),
+            rnix::types::List::cast(node.clone())
+                .unwrap()
+                .items()
+                .map(|n| translate(&n))
+                .collect(),
             Default::default(),
         )
         .into(),
 
-        NODE_IDENT => Term::Var(node.text().to_string().into()).into(),
+        NODE_IDENT => Term::Var(
+            rnix::types::Ident::cast(node.clone())
+                .unwrap()
+                .as_str()
+                .into(),
+        )
+        .into(),
         NODE_LET_IN => node
             .children()
             .collect::<Vec<SyntaxNode>>()
