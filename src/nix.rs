@@ -75,7 +75,7 @@ fn translate(node: &rnix::SyntaxNode) -> RichTerm {
                             crate::term::StrChunk::Literal(s.clone())
                         }
                         rnix::value::StrPart::Ast(a) => {
-                            crate::term::StrChunk::Expr(translate(a), i)
+                            crate::term::StrChunk::Expr(translate(&a.first_child().unwrap()), i)
                         }
                     })
                     .collect(),
