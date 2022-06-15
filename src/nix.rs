@@ -63,6 +63,25 @@ fn translate(node: &rnix::SyntaxNode) -> RichTerm {
             })
             .next()
             .unwrap(),
+        NODE_STRING => {
+            let parts = rnix::types::Str::cast(node.clone()).unwrap().parts();
+            //TODO: Do we actualy need the `Term::Str` variant in nickel AST?
+            Term::StrChunks(
+                parts
+                    .iter()
+                    .enumerate()
+                    .map(|(i, c)| match c {
+                        rnix::value::StrPart::Literal(s) => {
+                            crate::term::StrChunk::Literal(s.clone())
+                        }
+                        rnix::value::StrPart::Ast(a) => {
+                            crate::term::StrChunk::Expr(translate(a), i)
+                        }
+                    })
+                    .collect(),
+            )
+            .into()
+        }
         NODE_LIST => Term::Array(
             node.children().map(|n| translate(&n)).collect(),
             Default::default(),
