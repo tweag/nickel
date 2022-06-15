@@ -50,6 +50,7 @@ impl From<BinOp> for RichTerm {
 fn translate(node: &rnix::SyntaxNode) -> RichTerm {
     use rnix::SyntaxKind::*;
     println!("{:?}", node);
+    // TODO: is there a nix boolean type?
     match node.kind() {
         NODE_ERROR => Term::ParseError.into(),
         NODE_ROOT | NODE_PAREN => node.children().map(|n| translate(&n)).next().unwrap(),
@@ -133,6 +134,18 @@ fn translate(node: &rnix::SyntaxNode) -> RichTerm {
             Term::App(
                 translate(&fun.lambda().unwrap()),
                 translate(&fun.value().unwrap()),
+            )
+            .into()
+        }
+        NODE_IF_ELSE => {
+            let ifelse = rnix::types::IfElse::cast(node.clone()).unwrap();
+            Term::App(
+                Term::App(
+                    Term::Op1(UnaryOp::Ite(), translate(&ifelse.condition().unwrap())).into(),
+                    translate(&ifelse.body().unwrap()),
+                )
+                .into(),
+                translate(&ifelse.else_body().unwrap()),
             )
             .into()
         }
