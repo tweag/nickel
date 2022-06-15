@@ -1,8 +1,19 @@
 use crate::term::make;
 use crate::term::{BinaryOp, UnaryOp};
 use crate::term::{RichTerm, Term};
-use rnix::types::{BinOp, TokenWrapper, TypedNode};
+use rnix::types::{BinOp, TokenWrapper, TypedNode, UnaryOp as UniOp};
 use rnix::{self, SyntaxNode};
+
+impl From<UniOp> for RichTerm {
+    fn from(op: UniOp) -> Self {
+        use rnix::types::UnaryOpKind::*;
+        let value = op.value().unwrap();
+        match op.operator() {
+            Negate => Term::Op2(BinaryOp::Sub(), Term::Num(0.).into(), translate(&value)).into(),
+            Invert => Term::Op1(UnaryOp::BoolNot(), translate(&value)).into(),
+        }
+    }
+}
 
 impl From<BinOp> for RichTerm {
     fn from(op: BinOp) -> Self {
@@ -150,6 +161,7 @@ fn translate(node: &rnix::SyntaxNode) -> RichTerm {
             .into()
         }
         NODE_BIN_OP => BinOp::cast(node.clone()).unwrap().into(),
+        NODE_UNARY_OP => UniOp::cast(node.clone()).unwrap().into(),
         _ => panic!("{}", node),
     }
 }
