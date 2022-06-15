@@ -25,7 +25,11 @@ impl From<BinOp> for RichTerm {
             More => Term::Op2(BinaryOp::GreaterThan(), translate(&lhs), translate(&rhs)).into(),
             LessOrEq => Term::Op2(BinaryOp::LessOrEq(), translate(&lhs), translate(&rhs)).into(),
             MoreOrEq => Term::Op2(BinaryOp::GreaterOrEq(), translate(&lhs), translate(&rhs)).into(),
-            NotEqual => unimplemented!(),
+            NotEqual => Term::Op1(
+                UnaryOp::BoolNot(),
+                Term::Op2(BinaryOp::Eq(), translate(&lhs), translate(&rhs)).into(),
+            )
+            .into(),
 
             Implication => unimplemented!(),
 
