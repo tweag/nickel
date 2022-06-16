@@ -4,6 +4,10 @@ slug: syntax
 
 # Nickel Syntax
 
+## Identifiers
+
+Nickel identifiers start with an alphabetic character, followed by alphanumeric characters in addition to `"_" and "`'". For example, "this-isn't-invalid" is valid synatx.
+
 ## Simple values
 
 There are four basic kind of values in Nickel :
