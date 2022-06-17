@@ -75,29 +75,6 @@
       else
         %blame% (%tag% "not a string" l),
 
-    Ident
-    | doc m%"
-      Contract to enforce the value is a valid Nickel identifier. Can be used in conjunction with the record field
-      function (e.g. `has_field`).
-
-      For example:
-      ```nickel
-        record.has_field ("hello" | Ident) { hello = "hi!" } =>
-          true
-        record.has_field ("9" | Ident) { hello = "hi!" } =>
-          error (invalid enum tag)
-      ```
-      "%m
-    = fun l s =>
-      let pattern = m%"_?[a-zA-Z][_a-zA-Z0-9]*"%m in
-      if %is_str% s then
-        if %str_is_match% s pattern then
-            s
-          else
-            %blame% (%tag% "invalid enum tag" l)
-      else
-        %blame% (%tag% "not a string" l),
-
     NonEmpty
     | doc m%"
       Contract to enforce the value is a non-empty string.
@@ -411,8 +388,8 @@
       "%m
     = fun s => s == "true",
 
-    # to_enum | Ident -> < | Dyn> = fun s => %enum_from_str% s,
-    to_enum | Ident -> Dyn
+    # to_enum | Str -> < | Dyn> = fun s => %enum_from_str% s,
+    to_enum | Str -> Dyn
     | doc m%"
       Converts any string that represents an enum variant to that enum variant.
 
