@@ -6,7 +6,7 @@ slug: syntax
 
 ## Identifiers
 
-Nickel identifiers start with an alphabetic character, followed by alphanumeric characters in addition to `"_" and "`'". For example, "this-isn't-invalid" is valid synatx.
+Nickel identifiers start with an alphabetic character, followed by alphanumeric characters in addition to `_` (underscore) and `'` (single quote). For example, `this-isn't-invalid` is valid syntax.
 
 ## Simple values
 
