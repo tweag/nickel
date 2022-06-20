@@ -164,7 +164,7 @@ pub fn get_uop_type(
         // Str -> Num
         UnaryOp::StrLength() => (mk_typewrapper::str(), mk_typewrapper::num()),
         // Dyn -> Str
-        UnaryOp::ToStr() => (mk_typewrapper::dynamic(), mk_typewrapper::num()),
+        UnaryOp::ToStr() => (mk_typewrapper::dynamic(), mk_typewrapper::str()),
         // Str -> Num
         UnaryOp::NumFromStr() => (mk_typewrapper::str(), mk_typewrapper::num()),
         // Str -> < | Dyn>
