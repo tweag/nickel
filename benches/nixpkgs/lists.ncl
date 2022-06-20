@@ -142,7 +142,7 @@
        >> [ 1, 4 ]
   "%m
   = # Element to remove from the list
-    fun e => array.filter (fun x => x != e),
+    fun e => array.filter ((!=) e),
 
   findSingle: forall a. (a -> Bool) -> a -> a -> Array a -> a
   | doc m%"
@@ -316,7 +316,7 @@
     ) { right = [], wrong = [] },
 
   # can not be staticaly checked (see issue #423)
-  groupBy| forall a. (a -> Str) -> Array a -> { _: Array a}
+  groupBy | forall a. (a -> Str) -> Array a -> { _: Array a}
   | doc m%"
      Splits the elements of a list into many lists, using the return value of a predicate.
      Predicate should return a string which becomes keys of attrset `groupBy' returns.
@@ -340,7 +340,7 @@
          { "%{key}" = (r."%{key}" @ [e]) } & (record.remove key r)
     ) {},
 
-  groupBy_: forall a b. (b -> a -> b) ->  b -> (a -> Str) -> Array a -> { _: b}
+  groupBy_ : forall a b. (b -> a -> b) ->  b -> (a -> Str) -> Array a -> { _: b}
   | doc m%"
      as `groupBy` and allows to customise the combining function and initial value
 
