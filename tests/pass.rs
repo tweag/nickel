@@ -122,3 +122,8 @@ fn overriding() {
 fn recursive_let() {
     check_file("recursive_let.ncl");
 }
+
+#[test]
+fn quote_in_indentifier() {
+    check_file("quote_in_identifier.ncl")
+}
