@@ -116,10 +116,12 @@ fn main() {
         #[cfg(not(feature = "repl"))]
         eprintln!("error: this executable was not compiled with REPL support");
     } else if let Some(Command::Nixin) = opts.command {
+        use nickel_lang::cache::Cache;
         use nickel_lang::pretty::*;
         use pretty::BoxAllocator;
 
         let mut buf = String::new();
+        let mut cache = Cache::new();
         let mut out: Vec<u8> = Vec::new();
         opts.file
             .map(std::fs::File::open)
@@ -130,7 +132,8 @@ fn main() {
                 process::exit(1)
             });
         let allocator = BoxAllocator;
-        let rt = nickel_lang::nix::parse(&buf).unwrap();
+        let file_id = cache.add_source("<stdin>.nix", buf.as_bytes()).unwrap();
+        let rt = nickel_lang::nix::parse(&cache, file_id).unwrap();
         let doc: DocBuilder<_, ()> = rt.pretty(&allocator);
         doc.render(80, &mut out).unwrap();
         println!("{}", String::from_utf8_lossy(&out).as_ref());
