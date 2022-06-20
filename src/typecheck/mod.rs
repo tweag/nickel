@@ -188,14 +188,6 @@ pub struct State<'a> {
     wildcard_vars: &'a mut Vec<TypeWrapper>,
 }
 
-/// The result of type checking a term.
-pub struct TypeCheckingOutput {
-    /// Inferred type of the term.
-    pub types: Types,
-    /// Inferred types of wildcards within the term.
-    pub wildcards: Wildcards,
-}
-
 /// Typecheck a term.
 ///
 /// Return the inferred type in case of success. This is just a wrapper that calls `type_check_`
@@ -203,12 +195,14 @@ pub struct TypeCheckingOutput {
 ///
 /// Note that this function doesn't recursively typecheck imports (anymore), but just the current
 /// file. It however still needs the resolver to get the apparent type of imports.
+///
+/// Return the type inferred for type wildcards.
 pub fn type_check<LL>(
     t: &RichTerm,
     global_env: &Environment,
     resolver: &impl ImportResolver,
     mut linearizer: LL,
-) -> Result<(TypeCheckingOutput, LL::Completed), TypecheckError>
+) -> Result<(Wildcards, LL::Completed), TypecheckError>
 where
     LL: Linearizer<CompletionExtra = (UnifTable, HashMap<usize, Ident>)>,
 {
@@ -234,10 +228,7 @@ where
         )?;
     }
 
-    let result = TypeCheckingOutput {
-        types: Types(AbsType::Dyn()),
-        wildcards: wildcard_vars_to_type(wildcard_vars, &table),
-    };
+    let result = wildcard_vars_to_type(wildcard_vars, &table);
     let lin = linearizer.complete(building, (table, names)).into_inner();
 
     Ok((result, lin))
@@ -251,13 +242,13 @@ where
 /// to the original term environment anymore, and hence cannot call `type_check` directly, but we
 /// already have built a global typing environment.
 ///
-/// Return the inferred type in case of success. This is just a wrapper that calls `type_check_`
+/// Return the type inferred for type wildcards. This is just a wrapper that calls `type_check_`
 /// with a fresh unification variable as goal.
 pub fn type_check_in_env(
     t: &RichTerm,
     global: &Environment,
     resolver: &dyn ImportResolver,
-) -> Result<TypeCheckingOutput, TypecheckError> {
+) -> Result<Wildcards, TypecheckError> {
     let mut table = UnifTable::new();
     let mut wildcard_vars = Vec::new();
 
@@ -277,10 +268,7 @@ pub fn type_check_in_env(
         t,
     )?;
 
-    Ok(TypeCheckingOutput {
-        types: Types(AbsType::Dyn()),
-        wildcards: wildcard_vars_to_type(wildcard_vars, &table),
-    })
+    Ok(wildcard_vars_to_type(wildcard_vars, &table))
 }
 
 /// Walk the AST of a term looking for statically typed block to check. Fill the linearization

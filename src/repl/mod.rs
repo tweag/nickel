@@ -12,7 +12,6 @@ use crate::identifier::Ident;
 use crate::parser::{grammar, lexer, ExtendedTerm};
 use crate::term::{RichTerm, Term};
 use crate::transform::import_resolution;
-use crate::typecheck::TypeCheckingOutput;
 use crate::types::Types;
 use crate::{eval, transform, typecheck};
 use codespan::FileId;
@@ -135,7 +134,7 @@ impl ReplImpl {
                 repl_impl.cache.resolve_imports(*id).unwrap();
             }
 
-            let TypeCheckingOutput { wildcards, .. } =
+            let wildcards =
                 typecheck::type_check_in_env(&t, &repl_impl.env.type_env, &repl_impl.cache)?;
 
             if let Some(id) = id {
@@ -233,8 +232,7 @@ impl Repl for ReplImpl {
         for id in &pending {
             self.cache.resolve_imports(*id).unwrap();
         }
-        let TypeCheckingOutput { wildcards, .. } =
-            typecheck::type_check_in_env(&term, &self.env.type_env, &self.cache)?;
+        let wildcards = typecheck::type_check_in_env(&term, &self.env.type_env, &self.cache)?;
         // Substitute the wildcard types for their inferred types
         // We need to `traverse` the term, in case the type depends on inner terms that also contain wildcards
         let term = term
