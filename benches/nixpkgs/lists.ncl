@@ -392,7 +392,8 @@
     let l = array.length xs in
     array.generate (fun n => array.elem_at (l - n - 1) xs) l,
 
-  listDfs:  forall a. Bool -> (a -> a -> Bool) -> Array a -> {visited: Array a, rest: Array a ; Dyn}
+  #TODO: is there a way to type staticaly?
+  listDfs |  forall a. Bool -> (a -> a -> Bool) -> Array a -> {visited: Array a, rest: Array a ; Dyn}
   | doc m%"
       Depth-First Search (DFS) for lists `list != []`.
 
@@ -429,7 +430,7 @@
     ) in
     dfs_ (array.head list) [] (array.tail list),
 
-  toposort: forall a. (a -> a -> Bool) -> Array a -> {_: Array a}
+  toposort: forall a. (a -> a -> Bool) -> Array a -> {_: Array Dyn}
   | doc m%"
       Sort a list based on a partial ordering using DFS. This
      implementation is O(N^2), if your ordering is linear, use `sort`
@@ -441,36 +442,36 @@
      Example:
 
          toposort hasPrefix [ "/home/user" "other" "/" "/home" ]
-           == { result = [ "/" "/home" "/home/user" "other" ], }
+           == { result = [ "/", "/home", "/home/user", "other" ], }
 
-         toposort hasPrefix [ "/home/user" "other" "/" "/home" "/" ]
-           == { cycle = [ "/home/user" "/" "/" ], # path leading to a cycle
+         toposort hasPrefix [ "/home/user", "other", "/", "/home", "/" ]
+           == { cycle = [ "/home/user", "/", "/" ], # path leading to a cycle
                 loops = [ "/" ], }                # loops back to these elements
 
-         toposort hasPrefix [ "other" "/home/user" "/home" "/" ]
-           == { result = [ "other" "/" "/home" "/home/user" ], }
+         toposort hasPrefix [ "other", "/home/user", "/home", "/" ]
+           == { result = [ "other", "/", "/home", "/home/user" ], }
 
-         toposort (a: b: a < b) [ 3 2 1 ] == { result = [ 1 2 3 ], }
-
+         toposort (a: b: a < b) [ 3, 2, 1 ] == { result = [ 1, 2, 3 ], }
   "%m
   = fun before list =>
     let dfsthis = listDfs true before list in
     let toporest = toposort before (dfsthis.visited @ dfsthis.rest) in
     if array.length list < 2
     then # finish
-      { result =  list, }
-    else if record.has_field "cycle" dfsthis
+      { result| Array Dyn =  list, }
+    else if record.has_field "cycle" (dfsthis | {_: Dyn})
     then # there's a cycle, starting from the current vertex, return it
-      { cycle = reverseList ([ dfsthis.cycle ] @ dfsthis.visited),
-        loops = dfsthis.loops, }
+      { cycle = reverseList ([ (dfsthis | {cycle: Dyn}).cycle ] @ dfsthis.visited | Array Dyn),
+        loops = (dfsthis | {loops: Array Dyn}).loops, }
     else if record.has_field "cycle" toporest
     then # there's a cycle somewhere else in the graph, return it
       toporest
     # Slow, but short. Can be made a bit faster with an explicit stack.
     else # there are no cycles
-      { result = [ dfsthis.minimal ] @ toporest.result, },
+      { result = [ (dfsthis| {minimal:Dyn}).minimal ] @ (toporest | {result: Array Dyn}).result, },
 
-  sort: forall a. (a -> a -> Bool) -> Array a -> Array a
+  #TODO: can it be staticaly typed?
+  sort | forall a. (a -> a -> Bool) -> Array a -> Array a
   | doc m%"
       Sort a list based on a comparator function which compares two
      elements and returns true if the first argument is strictly below
@@ -488,9 +489,9 @@
       let el = array.elem_at n list in
       let next = pivot_ (n + 1) in
       if n == len
-        then acc
+      then acc
       else if strictLess first el
-        then next { left = left_, right = [ el ] @ right_ }
+      then next { left = left_, right = [ el ] @ right_ }
       else next { left = [ el ] @ left_, right = right_ }
     ) in
     let pivot = pivot_ 1 { left = [], right = [] } in
@@ -523,24 +524,26 @@
               then compareLists cmp (array.tail a) (array.tail b)
               else rel,
 
-  naturalSort: Array Str -> Array Str
-  | doc m%"
-      Sort list using "Natural sorting".
-     Numeric portions of strings are sorted in numeric order.
+# naturalSort: Array Str -> Array Str
+# | doc m%"
+#     Sort list using "Natural sorting".
+#    Numeric portions of strings are sorted in numeric order.
 
-     Example:
-       naturalSort ["disk11", "disk8", "disk100", "disk9"]
-       >> ["disk8", "disk9", "disk11", "disk100"]
-       naturalSort ["10.46.133.149", "10.5.16.62", "10.54.16.25"]
-       >> ["10.5.16.62" "10.46.133.149" "10.54.16.25"]
-       naturalSort ["v0.2", "v0.15", "v0.0.9"]
-       >> [ "v0.0.9", "v0.2", "v0.15" ]
-  "%m
-  = fun lst =>
-    let vectorise = fun s => map (fun x => if builtin.is_array x then (head x) | Num else x) (array.split "(0|[1-9][0-9]*)" s) in
-      let prepared = map (fun x => [ (vectorise x) x ]) lst in # remember vectorised version for O(n) regex splits
-      let less = fun a b => (compareLists compare (array.head a) (array.head b)) < 0 in
-      map (fun x => array.elem_at 1 x) (sort less prepared),
+#    Example:
+#      naturalSort ["disk11", "disk8", "disk100", "disk9"]
+#      >> ["disk8", "disk9", "disk11", "disk100"]
+#      naturalSort ["10.46.133.149", "10.5.16.62", "10.54.16.25"]
+#      >> ["10.5.16.62" "10.46.133.149" "10.54.16.25"]
+#      naturalSort ["v0.2", "v0.15", "v0.0.9"]
+#      >> [ "v0.0.9", "v0.2", "v0.15" ]
+# "%m
+# # TODO: broken. how to implement it in nickel?
+# = fun lst =>
+#   let vectorise = fun s => array.map (fun x => if builtin.is_array x then (array.head x) | Num else x | Num) (string.split "(0|[1-9][0-9]*)" s) | Array Dyn
+#   in
+#     let prepared = array.map (fun x => [ (vectorise x), x ]) lst in # remember vectorised version for O(n) regex splits
+#     let less = fun a b => (compareLists compare (array.head a) (array.head b)) < 0 in
+#     array.map (fun x => array.elem_at 1 x) (sort less prepared),
 
   take: forall a. Num -> Array a -> Array a
   | doc m%"
