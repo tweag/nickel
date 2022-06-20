@@ -90,6 +90,7 @@ impl TermPos {
     }
 
     /// Try to unwrap the underlying span. Panic if `self` is `None`.
+    #[track_caller]
     pub fn unwrap(self) -> RawSpan {
         match self {
             TermPos::Original(x) | TermPos::Inherited(x) => x,
