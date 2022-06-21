@@ -220,7 +220,7 @@
   "%m
   = fun pred => foldr (fun x y => if pred x then y else false) true,
 
-  count: (a -> Bool) -> Array a -> Num
+  count: forall a. (a -> Bool) -> Array a -> Num
   | doc m%"
       Count how many elements of `list` match the supplied predicate
      function.
