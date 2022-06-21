@@ -41,9 +41,10 @@
       ```
       "%m
     = let pattern = m%"^[+-]?(\d+(\.\d*)?(e[+-]?\d+)?|\.\d+(e[+-]?\d+)?)$"%m in
+      let is_num_literal = %str_is_match% pattern in
       fun l s =>
         if %is_str% s then
-          if %str_is_match% s pattern then
+          if is_num_literal s then
             s
           else
             %blame% (%tag% "invalid num literal" l)
@@ -278,8 +279,29 @@
         is_match "\\d{4}" "123" =>
           false
       ```
+
+      For example, in the following program, the whole call to
+      `string.is_match "[0-9]*\\.?[0-9]+ x"` is re-evaluated at each invocation of
+      `is_number`. The regexp will be recompiled 3 times in total:
+
+      ```nickel
+      let is_number = fun x => string.is_match "[0-9]*\\.?[0-9]+" x in
+      ["0", "42", "0.5"] |> array.all is_number =>
+        true
+      ```
+
+      On the other hand, in the version below, the partial application of
+      `string.is_match "[0-9]*\\.?[0-9]+"` is evaluated once, returning a
+      function capturing the compiled regexp. The regexp will only be compiled
+      once and for all:
+
+      ```nickel
+      let is_number' = string.is_match "[0-9]*\\.?[0-9]+" in
+      ["0", "42", "0.5"] |> array.all is_number' =>
+        true
+      ```
       "%m
-    = fun regex s => %str_is_match% s regex,
+    = fun regex => %str_is_match% regex,
 
     match : Str -> Str -> {match: Str, index: Num, groups: Array Str}
     | doc m%"
@@ -293,8 +315,12 @@
         match "3" "01234" =>
           { match = "3", index = 3, groups = [ ] }
       ```
+
+      Note that this function may perform better by sharing its partial application between multiple calls,
+      because in this case the underlying regular expression will only be compiled once (See the documentation
+      of `string.is_match` for more details).
       "%m
-    = fun regex s => %str_match% s regex,
+    = fun regex => %str_match% regex,
 
     length : Str -> Num
     | doc m%"

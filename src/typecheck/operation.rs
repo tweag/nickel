@@ -172,6 +172,34 @@ pub fn get_uop_type(
             mk_typewrapper::str(),
             mk_tyw_enum!(mk_typewrapper::dynamic()),
         ),
+        // Str -> Str -> Bool
+        UnaryOp::StrIsMatch() => (
+            mk_typewrapper::str(),
+            mk_tyw_arrow!(mk_typewrapper::str(), mk_typewrapper::bool()),
+        ),
+        // Str -> Str -> {match: Str, index: Num, groups: Array Str}
+        UnaryOp::StrMatch() => (
+            mk_typewrapper::str(),
+            mk_tyw_arrow!(
+                mk_typewrapper::str(),
+                mk_tyw_record!(
+                    ("match", AbsType::Str()),
+                    ("index", AbsType::Num()),
+                    ("groups", mk_typewrapper::array(AbsType::Str()))
+                )
+            ),
+        ),
+        // Str -> Bool
+        UnaryOp::StrIsMatchCompiled(_) => (mk_typewrapper::str(), mk_typewrapper::bool()),
+        // Str -> {match: Str, index: Num, groups: Array Str}
+        UnaryOp::StrMatchCompiled(_) => (
+            mk_typewrapper::str(),
+            mk_tyw_record!(
+                ("match", AbsType::Str()),
+                ("index", AbsType::Num()),
+                ("groups", mk_typewrapper::array(AbsType::Str()))
+            ),
+        ),
     })
 }
 
@@ -333,22 +361,6 @@ pub fn get_bop_type(
             mk_typewrapper::str(),
             mk_typewrapper::str(),
             mk_typewrapper::bool(),
-        ),
-        // Str -> Str -> Bool
-        BinaryOp::StrIsMatch() => (
-            mk_typewrapper::str(),
-            mk_typewrapper::str(),
-            mk_typewrapper::bool(),
-        ),
-        // Str -> Str -> {match: Str, index: Num, groups: Array Str}
-        BinaryOp::StrMatch() => (
-            mk_typewrapper::str(),
-            mk_typewrapper::str(),
-            mk_tyw_record!(
-                ("match", AbsType::Str()),
-                ("index", AbsType::Num()),
-                ("groups", mk_typewrapper::array(AbsType::Str()))
-            ),
         ),
         // Str -> Str -> Array Str
         BinaryOp::StrSplit() => (

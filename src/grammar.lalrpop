@@ -545,6 +545,8 @@ UOp: UnaryOp = {
     "str_from" => UnaryOp::ToStr(),
     "num_from" => UnaryOp::NumFromStr(),
     "enum_from" => UnaryOp::EnumFromStr(),
+    "str_is_match" => UnaryOp::StrIsMatch(),
+    "str_match" => UnaryOp::StrMatch(),
 };
 
 SwitchCase: SwitchCase = {
@@ -722,8 +724,6 @@ BOpPre: BinaryOp = {
     "pow" => BinaryOp::Pow(),
     "str_split" => BinaryOp::StrSplit(),
     "str_contains" => BinaryOp::StrContains(),
-    "str_match" => BinaryOp::StrMatch(),
-    "str_is_match" => BinaryOp::StrIsMatch(),
     "record_insert" => BinaryOp::DynExtend(),
     "record_remove" => BinaryOp::DynRemove(),
 }
