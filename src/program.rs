@@ -283,8 +283,12 @@ mod doc {
             Term::MetaValue(MetaValue { doc: Some(md), .. }) => {
                 document.append(&mut parse_documentation(header_level, arena, &md, options))
             }
-            Term::Record(hm, _) | Term::RecRecord(hm, _, _, _) => {
-                for (ident, rt) in hm {
+            Term::Record(map, _) | Term::RecRecord(map, _, _, _) => {
+                // Sorting fields for a determinstic output
+                let mut entries: Vec<(_, _)> = map.iter().collect();
+                entries.sort_by_key(|(k, _)| *k);
+
+                for (ident, rt) in entries {
                     let header = mk_header(&ident.label, header_level + 1, arena);
                     document.append(header);
                     to_markdown(rt, header_level + 1, arena, document, options)?;
