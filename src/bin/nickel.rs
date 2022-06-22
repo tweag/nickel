@@ -158,7 +158,7 @@ fn main() {
                 .map(|output| {
                     fs::File::create(output.clone()).map_err(|e| {
                         Error::IOError(IOError(format!(
-                            "error when opening or creating output file `{}`: {}",
+                            "when opening or creating output file `{}`: {}",
                             output.to_string_lossy(),
                             e.to_string()
                         )))
@@ -166,8 +166,13 @@ fn main() {
                 })
                 .unwrap_or_else(|| {
                     let docpath = Path::new(".nickel/doc/");
-                    fs::create_dir_all(docpath)
-                        .map_err(|e| Error::IOError(IOError(e.to_string())))?;
+                    fs::create_dir_all(docpath).map_err(|e| {
+                        Error::IOError(IOError(format!(
+                            "when creating output path `{}`: {}",
+                            docpath.to_string_lossy(),
+                            e.to_string()
+                        )))
+                    })?;
                     let mut markdown_file = docpath.to_path_buf();
 
                     let mut has_file_name = false;
@@ -184,8 +189,13 @@ fn main() {
                     }
 
                     markdown_file.set_extension("md");
-                    File::create(markdown_file.clone().into_os_string())
-                        .map_err(|e| Error::IOError(IOError(e.to_string())))
+                    File::create(markdown_file.clone().into_os_string()).map_err(|e| {
+                        Error::IOError(IOError(format!(
+                            "when opening or creating output file `{}`: {}",
+                            markdown_file.to_string_lossy(),
+                            e.to_string()
+                        )))
+                    })
                 })
                 .and_then(|mut out| program.output_doc(&mut out)),
             None => program
