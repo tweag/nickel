@@ -1268,7 +1268,7 @@ pub fn unify(state: &mut State, mut t1: TypeWrapper, mut t2: TypeWrapper) -> Res
                 _ => Err(UnifError::IllformedFlatType(s)),
             },
             (r1, r2) if r1.is_row_type() && r2.is_row_type() => {
-                unifyrows(state, r1.clone(), r2.clone()).map_err(|err| {
+                unify_rows(state, r1.clone(), r2.clone()).map_err(|err| {
                     err.into_unif_err(TypeWrapper::Concrete(r1), TypeWrapper::Concrete(r2))
                 })
             }
@@ -1276,7 +1276,7 @@ pub fn unify(state: &mut State, mut t1: TypeWrapper, mut t2: TypeWrapper) -> Res
                 (TypeWrapper::Concrete(r1), TypeWrapper::Concrete(r2))
                     if r1.is_row_type() && r2.is_row_type() =>
                 {
-                    unifyrows(state, r1.clone(), r2.clone())
+                    unify_rows(state, r1.clone(), r2.clone())
                         .map_err(|err| err.into_unif_err(mk_tyw_enum!(r1), mk_tyw_enum!(r2)))
                 }
                 (TypeWrapper::Concrete(r), _) if !r.is_row_type() => {
@@ -1291,7 +1291,7 @@ pub fn unify(state: &mut State, mut t1: TypeWrapper, mut t2: TypeWrapper) -> Res
                 (TypeWrapper::Concrete(r1), TypeWrapper::Concrete(r2))
                     if r1.is_row_type() && r2.is_row_type() =>
                 {
-                    unifyrows(state, r1.clone(), r2.clone()).map_err(|err| {
+                    unify_rows(state, r1.clone(), r2.clone()).map_err(|err| {
                         err.into_unif_err(mk_tyw_record!(; r1), mk_tyw_record!(; r2))
                     })
                 }
@@ -1353,7 +1353,7 @@ pub fn unify(state: &mut State, mut t1: TypeWrapper, mut t2: TypeWrapper) -> Res
 
 /// Try to unify two row types. Return an [`RowUnifError::IllformedRow`] error if one of the given
 /// type is not a row type.
-pub fn unifyrows(
+pub fn unify_rows(
     state: &mut State,
     t1: AbsType<Box<TypeWrapper>>,
     t2: AbsType<Box<TypeWrapper>>,
@@ -1384,7 +1384,7 @@ pub fn unifyrows(
 
             match (*t, t2_tail) {
                 (TypeWrapper::Concrete(r1_tail), TypeWrapper::Concrete(r2_tail)) => {
-                    unifyrows(state, r1_tail, r2_tail)
+                    unify_rows(state, r1_tail, r2_tail)
                 }
                 // If one of the tail is not a concrete type, it is either a unification variable
                 // or a constant (rigid type variable). `unify` already knows how to treat these
@@ -1400,7 +1400,7 @@ pub fn unifyrows(
                         RowUnifError::UnsatConstr(id, tyw_opt)
                     }
                     err => panic!(
-                        "typechecker::unifyrows(): unexpected error while unifying row tails {:?}",
+                        "typechecker::unify_rows(): unexpected error while unifying row tails {:?}",
                         err
                     ),
                 }),
