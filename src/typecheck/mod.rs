@@ -319,7 +319,7 @@ fn walk<L: Linearizer>(
         }
         Term::FunPattern(id, pat, t) => {
             if let Some(id) = id {
-                envs.insert(id.clone(), binding_type(t.as_ref(), &envs, state.table, state.wildcard_vars, false, state.resolver));
+                envs.insert(id.clone(), binding_type(state, t.as_ref(), &envs, false));
             }
 
             inject_pat_vars(pat, &mut envs);
@@ -331,7 +331,7 @@ fn walk<L: Linearizer>(
                 walk(state, envs.clone(), lin, linearizer.scope(), t)
             }),
         Term::Let(x, re, rt, attrs) => {
-            let ty_let = binding_type(re.as_ref(), &envs, state.table, state.wildcard_vars, false, state.resolver);
+            let ty_let = binding_type(state, re.as_ref(), &envs, false);
 
             if attrs.rec {
                 envs.insert(x.clone(), ty_let.clone());
@@ -347,7 +347,7 @@ fn walk<L: Linearizer>(
             walk(state, envs, lin, linearizer, rt)
         }
         Term::LetPattern(x, pat, re, rt) => {
-            let ty_let = binding_type(re.as_ref(), &envs, state.table, state.wildcard_vars, false, state.resolver);
+            let ty_let = binding_type(state, re.as_ref(), &envs, false);
             walk(state, envs.clone(), lin, linearizer.scope(), re)?;
 
             if let Some(x) = x {
@@ -373,12 +373,10 @@ fn walk<L: Linearizer>(
         Term::RecRecord(stat_map, dynamic, ..) => {
             for id in stat_map.keys() {
                 let binding_type = binding_type(
+                    state,
                     stat_map.get(id).unwrap().as_ref(),
                     &envs,
-                    state.table,
-                    state.wildcard_vars,
                     false,
-                    state.resolver,
                 );
                 envs.insert(id.clone(), binding_type.clone());
                 linearizer.retype_ident(lin, id, binding_type);
@@ -603,14 +601,7 @@ fn type_check_<L: Linearizer>(
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Let(x, re, rt, attrs) => {
-            let ty_let = binding_type(
-                re.as_ref(),
-                &envs,
-                state.table,
-                state.wildcard_vars,
-                true,
-                state.resolver,
-            );
+            let ty_let = binding_type(state, re.as_ref(), &envs, true);
             if attrs.rec {
                 envs.insert(x.clone(), ty_let.clone());
             }
@@ -631,14 +622,7 @@ fn type_check_<L: Linearizer>(
             type_check_(state, envs, lin, linearizer, rt, ty)
         }
         Term::LetPattern(x, pat, re, rt) => {
-            let ty_let = binding_type(
-                re.as_ref(),
-                &envs,
-                state.table,
-                state.wildcard_vars,
-                true,
-                state.resolver,
-            );
+            let ty_let = binding_type(state, re.as_ref(), &envs, true);
             type_check_(
                 state,
                 envs.clone(),
@@ -739,14 +723,7 @@ fn type_check_<L: Linearizer>(
             // Fields defined by interpolation are ignored.
             if let Term::RecRecord(..) = t.as_ref() {
                 for (id, rt) in stat_map {
-                    let tyw = binding_type(
-                        rt.as_ref(),
-                        &envs,
-                        state.table,
-                        state.wildcard_vars,
-                        true,
-                        state.resolver,
-                    );
+                    let tyw = binding_type(state, rt.as_ref(), &envs, true);
                     envs.insert(id.clone(), tyw.clone());
                     linearizer.retype_ident(lin, id, tyw);
                 }
@@ -922,21 +899,14 @@ fn type_check_<L: Linearizer>(
 ///     * in non strict mode, wildcards are assigned `Dyn`.
 ///     * in strict mode, the wildcard is typechecked, and we return the unification variable
 ///       corresponding to it.
-fn binding_type(
-    t: &Term,
-    envs: &Envs,
-    table: &mut UnifTable,
-    wildcard_vars: &mut Vec<TypeWrapper>,
-    strict: bool,
-    resolver: &dyn ImportResolver,
-) -> TypeWrapper {
-    let ty_apt = apparent_type(t, Some(envs), Some(resolver));
+fn binding_type(state: &mut State, t: &Term, envs: &Envs, strict: bool) -> TypeWrapper {
+    let ty_apt = apparent_type(t, Some(envs), Some(state.resolver));
 
     match ty_apt {
         ApparentType::Annotated(ty) if strict => {
-            replace_wildcards_with_var(table, wildcard_vars, ty)
+            replace_wildcards_with_var(state.table, state.wildcard_vars, ty)
         }
-        ApparentType::Approximated(_) if strict => table.fresh_unif_var(),
+        ApparentType::Approximated(_) if strict => state.table.fresh_unif_var(),
         ty_apt => ty_apt.into(),
     }
 }
