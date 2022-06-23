@@ -179,6 +179,29 @@ fn translate(node: &rnix::SyntaxNode, file_id: FileId) -> RichTerm {
             Default::default(),
         )
         .into(),
+        NODE_ATTR_SET => {
+            use crate::parser::utils::{build_record, elaborate_field_path, FieldPathElem};
+            let attrset = rnix::types::AttrSet::cast(node.clone()).unwrap();
+            let fields: Vec<(_, _)> = attrset
+                .entries()
+                .map(|kv| {
+                    let val = translate(&kv.value().unwrap(), file_id);
+                    let p: Vec<_> = kv
+                        .key()
+                        .unwrap()
+                        .path()
+                        .map(|p| match p.kind() {
+                            NODE_IDENT => FieldPathElem::Ident(
+                                rnix::types::Ident::cast(p).unwrap().as_str().into(),
+                            ),
+                            _ => FieldPathElem::Expr(translate(&p, file_id)),
+                        })
+                        .collect();
+                    elaborate_field_path(p, val)
+                })
+                .collect();
+            build_record(fields, Default::default()).into()
+        }
 
         NODE_IDENT => Term::Var(
             rnix::types::Ident::cast(node.clone())
