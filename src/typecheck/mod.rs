@@ -393,19 +393,6 @@ fn walk<L: Linearizer>(
                 })
         }
         Term::Record(stat_map, _) => {
-            for id in stat_map.keys() {
-                let binding_type = binding_type(
-                    stat_map.get(id).unwrap().as_ref(),
-                    &envs,
-                    state.table,
-                    state.wildcard_vars,
-                    false,
-                    state.resolver,
-                );
-                envs.insert(id.clone(), binding_type.clone());
-                linearizer.retype_ident(lin, id, binding_type);
-            }
-
             stat_map
                 .iter()
                 .try_for_each(|(_, t)| -> Result<(), TypecheckError> {
