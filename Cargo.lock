@@ -1245,6 +1245,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "nickel-repl"
+version = "0.1.0"
+dependencies = [
+ "nickel-lang",
+]
+
+[[package]]
 name = "nix"
 version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

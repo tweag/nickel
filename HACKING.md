@@ -79,12 +79,12 @@ nickel-lang-lsp 0.1.0
 ## WebAssembly REPL
 
 There is a WebAssembly (WASM) version of the REPL, which is used for the online
-playground on [nickel-lang.org][nickel-lang.org]. Using Cargo directly to build
-the WASM REPL is possible but is not a trivial procedure. The Cargo way requires
-installing new tools and patching `Cargo.toml`.
+playground on [nickel-lang.org][nickel-lang.org]. To ease the build, we use the
+`nickel-repl` located in `nickel-wasm-repl`, which just wraps and re-export
+the `nickel-lang` with the right settings for building to WebAssembly.
 
-On the other hand, Nix can do the whole build in one simple command, but
-incremental compilation is not as good as with direct usage of `cargo`.
+The Nix flake has also an output to do the whole build, but incremental
+compilation is not as good as with direct usage of `cargo`.
 
 Both methods are described below.
 
@@ -101,43 +101,15 @@ LICENSE  package.json nickel_lang_bg.js  nickel_lang_bg.wasm [..]
 ### Using Cargo
 
 1. [Install `wasm-pack`][install-wasm-pack]
-2. Add the following line to `Cargo.toml` under the `[lib]` heading:
-
-   ```diff
-   [lib]
-   +crate-type = ["cdylib", "rlib"]
-   ```
-
-3. Remove the following line from `Cargo.toml` (dependency on
-   `nickel-lang-utilities`):
-
-   ```diff
-   -nickel-lang-utilities = {path = "utilities", version = "0.1.0"}
-   ```
-
-4. Run `wasm-pack`:
+2. Run `wasm-pack` on the `nickel-repl` crate:
 
    ```shell
+   cd nickel-repl-wasm
    wasm-pack build -- --no-default-features --features repl-wasm
    ```
 
    A `pkg` directory, containing the corresponding NPM package, should now be
    available.
-5. (Optional) the generated NPM package is named `nickel`, but this name is not
-   very descriptive, and is already in use in the NPM registry. You can patch
-   the name of the NPM package using `jq` to be `nickel-repl` instead:
-
-   ```shell
-   $ jq '.name = "nickel-repl"' pkg/package.json > package.json.patched \
-     && rm -f pkg/package.json \
-     && mv package.json.patched pkg/package.json
-   ```
-
-   If you don't have `jq`, you can do it by hand: replace the `name` attribute
-   in `pkg/package.json` by `"nickel-repl"`.
-
-The `pkg` directory now contains a `nickel-repl` NPM package that can be used
-from JavaScript.
 
 # Testing
 
