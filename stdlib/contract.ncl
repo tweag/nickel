@@ -10,8 +10,8 @@
   "$fail" = fun l t => %blame% l,
 
   "$array" = fun elt l t =>
-    if %typeof% t == `Array then
-      %map% t (fun value => %assume% elt (%go_array% l) value)
+    if %is_array% t then
+      %array_lazy_assume% elt t
     else %blame% l,
 
   "$func" = fun s t l e =>

@@ -998,6 +998,10 @@ pub enum BinaryOp {
     StrSplit(),
     /// Determine if a string is a substring of another one.
     StrContains(),
+
+    /// Lazily apply a contract to an Array.
+    /// This simply inserts a contract into the array attributes.
+    ArrayLazyAssume(),
 }
 
 impl BinaryOp {

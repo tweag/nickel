@@ -21,8 +21,8 @@ use crate::{
     position::TermPos,
     serialize,
     serialize::ExportFormat,
-    term::{make as mk_term, ArrayAttrs},
-    term::{BinaryOp, NAryOp, RichTerm, StrChunk, Term, UnaryOp},
+    term::make as mk_term,
+    term::{ArrayAttrs, BinaryOp, NAryOp, RichTerm, SharedTerm, StrChunk, Term, UnaryOp},
     transform::{fresh_var, Closurizable},
 };
 use md5::digest::Digest;
@@ -1066,10 +1066,7 @@ fn process_unary_operation(
                     mk_record!(
                         ("match", Term::Str(String::from(first_match.as_str()))),
                         ("index", Term::Num(first_match.start() as f64)),
-                        (
-                            "groups",
-                            Term::Array(groups, ArrayAttrs::new_closurized())
-                        )
+                        ("groups", Term::Array(groups, ArrayAttrs::new_closurized()))
                     )
                 } else {
                     //FIXME: what should we return when there's no match?
@@ -2140,6 +2137,38 @@ fn process_binary_operation(
             (_, _) => Err(EvalError::TypeError(
                 String::from("Str"),
                 String::from("strContains, 1st argument"),
+                fst_pos,
+                RichTerm {
+                    term: t1,
+                    pos: pos1,
+                },
+            )),
+        },
+        BinaryOp::ArrayLazyAssume() => match &*t2 {
+            Term::Array(ts, attrs) => {
+                let closure = Closure {
+                    body: RichTerm {
+                        term: SharedTerm::new(Term::Array(
+                            ts.clone(),
+                            ArrayAttrs {
+                                closurized: attrs.closurized,
+                                contracts: vec![RichTerm {
+                                    term: t1,
+                                    pos: pos1,
+                                }],
+                            },
+                        )),
+                        pos: pos2,
+                    },
+                    env: env2,
+                };
+
+                Ok(closure)
+            }
+
+            _ => Err(EvalError::TypeError(
+                String::from("Array"),
+                String::from("array_lazy_assume, 2st argument"),
                 fst_pos,
                 RichTerm {
                     term: t1,
