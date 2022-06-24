@@ -715,6 +715,7 @@ InfixExpr: UniTerm = {
 
 BOpPre: BinaryOp = {
     "assume" => BinaryOp::Assume(),
+    "array_lazy_assume" => BinaryOp::ArrayLazyAssume(),
     "unseal" => BinaryOp::Unseal(),
     "seal" => BinaryOp::Seal(),
     "go_field" => BinaryOp::GoField(),
@@ -846,6 +847,7 @@ extern {
         "tag" => Token::Normal(NormalToken::Tag),
         "typeof" => Token::Normal(NormalToken::Typeof),
         "assume" => Token::Normal(NormalToken::Assume),
+        "array_lazy_assume" => Token::Normal(NormalToken::ArrayLazyAssume),
         "blame" => Token::Normal(NormalToken::Blame),
         "chng_pol" => Token::Normal(NormalToken::ChangePol),
         "polarity" => Token::Normal(NormalToken::Polarity),

@@ -152,6 +152,8 @@ pub enum NormalToken<'input> {
 
     #[token("%assume%")]
     Assume,
+    #[token("%array_lazy_assume%")]
+    ArrayLazyAssume,
     #[token("%blame%")]
     Blame,
     #[token("%chng_pol%")]

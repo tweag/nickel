@@ -658,7 +658,7 @@ where
                     .collect();
                 Closure {
                     body: RichTerm::new(
-                        Term::Array(closurized_array, ArrayAttrs { closurized: true }),
+                        Term::Array(closurized_array, attrs.clone().as_closurized()),
                         pos,
                     ),
                     env: local_env,
