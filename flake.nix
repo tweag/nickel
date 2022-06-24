@@ -176,11 +176,9 @@
           name = "nickel-${version}";
 
           buildInputs =
-            [
-              rust
-            ] ++ missingSysPkgs
-            ++ (if isDevShell then [ pkgs.nodePackages.makam ]
-            else [ cargoHome ]);
+            [ rust ]
+            ++ missingSysPkgs
+            ++ (if !isDevShell then [ cargoHome ] else [ ]);
 
           src = if isDevShell then null else self;
 
@@ -264,24 +262,6 @@
         };
       };
 
-      makamSpecs = pkgs.stdenv.mkDerivation {
-        name = "nickel-makam-specs-${version}";
-        src = ./makam-spec/src;
-        buildInputs =
-          [
-            pkgs.nodePackages.makam
-          ];
-        buildPhase = ''
-          # For some reason (bug) the first time I use makam here it doesn't generate any output
-          # That's why I'm "building" before testing
-          makam init.makam
-          makam --run-tests testnickel.makam
-        '';
-        installPhase = ''
-          echo "WORKS" > $out
-        '';
-      };
-
       vscodeExtension =
         let node-package = (pkgs.callPackage ./lsp/client-extension { }).package;
         in
@@ -331,8 +311,6 @@
       checks = {
         # wasm-opt can take long: eschew optimizations in checks
         wasm = buildNickelWasm { channel = "stable"; optimize = false; };
-        # out of sync, disabling for now -> https://github.com/tweag/nickel/issue/552
-        #specs = makamSpecs;
         pre-commit = defaultPackage.pre-commit;
       } // (forEachRustChannel (channel:
         {

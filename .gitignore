@@ -12,8 +12,6 @@
 # rustfmt Backup file
 **/*.rs.bk
 
-# Makam cache
-/.makam-cache/
 /node_modules
 /lsp/client-extension/node_modules
 /lsp/client-extension/out
