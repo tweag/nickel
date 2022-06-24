@@ -23,7 +23,7 @@
         "%m
         # The enum type syntax [| ... |] is not stable. Do not rely on it in
         # your own Nickel programs.
-        | contract.apply [|
+        |> contract.apply [|
             Num,
             Bool,
             Str,
