@@ -16,7 +16,7 @@ use super::{
 use crate::{
     error::EvalError,
     identifier::Ident,
-    label::ty_path,
+    label::{ty_path, Label},
     match_sharedterm, mk_app, mk_fun, mk_opn, mk_record,
     position::TermPos,
     serialize,
@@ -701,10 +701,23 @@ fn process_unary_operation(
             }
         }
         UnaryOp::ArrayHead() => {
-            if let Term::Array(ts, _) = &*t {
+            if let Term::Array(ts, attrs) = &*t {
                 if let Some(head) = ts.first() {
+                    // FIXME: fold all contracts
+                    // FIXME: track labels
+                    let head_with_contract = mk_app!(
+                        mk_term::op2(
+                            BinaryOp::Assume(),
+                            attrs.contracts.first().cloned().unwrap(),
+                            Term::Lbl(Label::dummy())
+                        )
+                        .with_pos(pos),
+                        head.clone()
+                    )
+                    .with_pos(pos);
+
                     Ok(Closure {
-                        body: head.clone(),
+                        body: head_with_contract,
                         env,
                     })
                 } else {
