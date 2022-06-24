@@ -76,6 +76,53 @@
       else
         %blame% (%tag% "not a string" l),
 
+    EnumTag
+    | doc m%"
+      Contract to enforce the value is an enum tag.
+
+      For example:
+      ```nickel
+        (`foo | EnumTag) =>
+          `foo
+        (`FooBar | EnumTag) =>
+          `FooBar
+        ("tag" | EnumTag) =>
+          error
+      ```
+      "%m
+    = contract.from_predicate builtin.is_enum,
+
+    Stringable
+    | doc m%"
+      Contract to enforce the value is convertible to a string via
+      `builtin.to_string` or `string.from`. Accepted values are:
+
+      - numbers
+      - booleans
+      - strings
+      - enum tags
+      - null
+
+      For example:
+      ```nickel
+        (`Foo | Stringable) =>
+          `Foo
+        (false | Stringable) =>
+          false
+        ("bar" ++ "foo" | Stringable) =>
+          "barfoo"
+        ({foo = "baz"} | Stringable) =>
+          error
+      ```
+      "%m
+    = contract.from_predicate (fun value =>
+      let type = builtin.typeof value in
+      value == null
+      || type == `Num
+      || type == `Bool
+      || type == `Str
+      || type == `Enum),
+
     NonEmpty
     | doc m%"
       Contract to enforce the value is a non-empty string.
@@ -352,17 +399,36 @@
       "%m
     = fun start end s => %str_substr% s start end,
 
+    from | Stringable -> Str
+    | doc m%"
+      Converts a correct value to a string representation. Same as
+      `builtin.to_str`.
+
+      For example:
+      ```nickel
+      from 42 =>
+        "42"
+      from `Foo =>
+        "Foo"
+      from null =>
+        "null"
+      "%m
+    = fun x => %to_str% x,
+
     from_num | Num -> Str
     | doc m%"
       Converts a number to its string representation.
 
+      For example:
+      ```nickel
       from_num 42 =>
         "42"
+      ```
       "%m
-    = fun n => %to_str% n,
+    = from,
 
     # from_enum | < | Dyn> -> Str = fun tag => %to_str% tag,
-    from_enum | Dyn -> Str
+    from_enum | EnumTag -> Str
     | doc m%"
       Converts an enum variant to its string representation.
 
@@ -372,7 +438,7 @@
         "MyEnum"
       ```
       "%m
-    = fun tag => %to_str% tag,
+    = from,
 
     from_bool | Bool -> Str
     | doc m%"
@@ -384,7 +450,7 @@
           "true"
       ```
       "%m
-    = fun b => %to_str% b,
+    = from,
 
     to_num | NumLiteral -> Num
     | doc m%"
@@ -415,7 +481,7 @@
     = fun s => s == "true",
 
     # to_enum | Str -> < | Dyn> = fun s => %enum_from_str% s,
-    to_enum | Str -> Dyn
+    to_enum | Str -> EnumTag
     | doc m%"
       Converts any string that represents an enum variant to that enum variant.
 
