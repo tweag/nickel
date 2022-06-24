@@ -45,8 +45,8 @@ jobs:
     - name: Setup Cachix
       uses: cachix/cachix-action@v10
       with:
-        name: nickel
-        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+        name: tweag-nickel
+        authToken: '${{ secrets.CACHIX_TWEAG_NICKEL_AUTH_TOKEN }}'
 
     - name: Run all checks
       run: |
