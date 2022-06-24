@@ -184,13 +184,41 @@ impl Default for BindingType {
 }
 
 /// The attributes of an Array.
-#[derive(Debug, Default, Eq, PartialEq, Copy, Clone)]
+#[derive(Debug, Default, PartialEq, Clone)]
 pub struct ArrayAttrs {
     /// A `closurized` array verifies the following conditions:
     ///   - Each element is a generated variable with a unique name (although the same
     ///     variable can occur in several places, it should always refer to the same thunk anyway).
     ///   - The environment of the array's closure only contains those generated variables.
     pub closurized: bool,
+    /// List of lazily-applied contracts.
+    /// These are only observed when data enters or leaves the array.
+    pub contracts: Vec<RichTerm>,
+}
+
+impl ArrayAttrs {
+    /// Create an `ArrayAttrs` where closurized is `true`.
+    pub fn new_closurized() -> Self {
+        ArrayAttrs {
+            closurized: true,
+            contracts: Vec::new(),
+        }
+    }
+
+    /// Set closurized to `true`.
+    pub fn as_closurized(mut self) -> Self {
+        self.closurized = true;
+        self
+    }
+
+    /// Extend contracts from an iterator.
+    pub fn with_contracts<I>(mut self, iter: I) -> Self
+    where
+        I: IntoIterator<Item = RichTerm>,
+    {
+        self.contracts.extend(iter);
+        self
+    }
 }
 
 #[derive(Debug, Default, Eq, PartialEq, Copy, Clone)]
