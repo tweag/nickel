@@ -250,6 +250,25 @@ fn translate(node: &rnix::SyntaxNode, file_id: FileId) -> RichTerm {
                     arg.to_string().into(),
                     translate(&fun.body().unwrap(), file_id),
                 ),
+                NODE_PATTERN => {
+                    use crate::destruct::*;
+                    let pat = rnix::types::Pattern::cast(arg).unwrap();
+                    let at = pat.at().map(|id| id.as_str().into());
+                    // TODO: manage default values:
+                    let matches = pat
+                        .entries()
+                        .map(|e| {
+                            Match::Simple(e.name().unwrap().as_str().into(), Default::default())
+                        })
+                        .collect();
+                    let dest = Destruct::Record {
+                        matches,
+                        open: pat.ellipsis(),
+                        rest: None,
+                        span: mk_span(file_id, pos.start().into(), pos.end().into()),
+                    };
+                    Term::FunPattern(at, dest, translate(&fun.body().unwrap(), file_id)).into()
+                }
                 _ => unimplemented!(),
             }
             .into()
