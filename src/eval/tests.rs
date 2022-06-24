@@ -85,17 +85,17 @@ fn simple_plus() {
 
 #[test]
 fn asking_for_various_types() {
-    let num = mk_term::op1(UnaryOp::IsNum(), Term::Num(45.3));
-    assert_eq!(Ok(Term::Bool(true)), eval_no_import(num));
+    let num = mk_term::op1(UnaryOp::Typeof(), Term::Num(45.3));
+    assert_eq!(Ok(Term::Enum("Num".into())), eval_no_import(num));
 
-    let boolean = mk_term::op1(UnaryOp::IsBool(), Term::Bool(true));
-    assert_eq!(Ok(Term::Bool(true)), eval_no_import(boolean));
+    let boolean = mk_term::op1(UnaryOp::Typeof(), Term::Bool(true));
+    assert_eq!(Ok(Term::Enum("Bool".into())), eval_no_import(boolean));
 
     let lambda = mk_term::op1(
-        UnaryOp::IsFun(),
+        UnaryOp::Typeof(),
         mk_fun!("x", mk_app!(mk_term::var("x"), mk_term::var("x"))),
     );
-    assert_eq!(Ok(Term::Bool(true)), eval_no_import(lambda));
+    assert_eq!(Ok(Term::Enum("Fun".into())), eval_no_import(lambda));
 }
 
 fn mk_default(t: RichTerm) -> Term {

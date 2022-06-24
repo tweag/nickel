@@ -709,18 +709,8 @@ pub enum UnaryOp {
     /// If-then-else.
     Ite(),
 
-    /// Test if a term is a numeral.
-    IsNum(),
-    /// Test if a term is a boolean.
-    IsBool(),
-    /// Test if a term is string literal.
-    IsStr(),
-    /// Test if a term is a function.
-    IsFun(),
-    /// Test if a term is an array.
-    IsArray(),
-    /// Test if a term is a record.
-    IsRecord(),
+    /// Return an enum tag representing the type of the term.
+    Typeof(),
 
     // Boolean AND and OR operator are encoded as unary operators so that they can be lazy in their
     // second argument.

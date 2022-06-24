@@ -18,20 +18,23 @@ macro_rules! mk_tyw_arrow {
 }
 
 /// Multi-ary enum row constructor for types implementing `Into<TypeWrapper>`.
-/// `mk_tyw_enum_row!(id1, .., idn, tail)` correspond to `<id1, .., idn | tail>.
+/// `mk_tyw_enum_row!(id1, .., idn; tail)` correspond to `<id1, .., idn | tail>.
 #[macro_export]
 macro_rules! mk_tyw_enum_row {
-    ($id:expr, $tail:expr) => {
+    () => {
+        $crate::typecheck::TypeWrapper::from(AbsType::RowEmpty())
+    };
+    (; $tail:expr) => {
+        $crate::typecheck::TypeWrapper::from($tail)
+    };
+    ( $id:expr $(, $ids:expr )* $(; $tail:expr)?) => {
         $crate::typecheck::TypeWrapper::Concrete(
             $crate::types::AbsType::RowExtend(
                 Ident::from($id),
                 None,
-                Box::new($crate::typecheck::TypeWrapper::from($tail))
+                Box::new(mk_tyw_enum_row!($( $ids ),* $(; $tail)?))
             )
         )
-    };
-    ( $fst:expr, $snd:expr , $( $rest:expr ),+ ) => {
-        mk_tyw_enum_row!($fst, mk_tyw_enum_row!($snd, $( $rest),+))
     };
 }
 
@@ -60,15 +63,12 @@ macro_rules! mk_tyw_row {
 /// Wrapper around `mk_tyw_enum_row!` to build an enum type from an enum row.
 #[macro_export]
 macro_rules! mk_tyw_enum {
-    ( $rows:expr ) => {
+    ($( $ids:expr ),* $(; $tail:expr)?) => {
         $crate::typecheck::TypeWrapper::Concrete(
             $crate::types::AbsType::Enum(
-                Box::new($rows.into())
+                Box::new(mk_tyw_enum_row!($( $ids ),* $(; $tail)?))
             )
         )
-    };
-    ( $fst:expr, $( $rest:expr ),+ ) => {
-        mk_tyw_enum!(mk_tyw_enum_row!($fst, $( $rest),+))
     };
 }
 

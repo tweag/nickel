@@ -1,21 +1,21 @@
 {
   "$dyn" = fun l t => t,
 
-  "$num" = fun l t => if %is_num% t then t else %blame% l,
+  "$num" = fun l t => if %typeof% t == `Num then t else %blame% l,
 
-  "$bool" = fun l t => if %is_bool% t then t else %blame% l,
+  "$bool" = fun l t => if %typeof% t == `Bool then t else %blame% l,
 
-  "$string" = fun l t => if %is_str% t then t else %blame% l,
+  "$string" = fun l t => if %typeof% t == `Str then t else %blame% l,
 
   "$fail" = fun l t => %blame% l,
 
   "$array" = fun elt l t =>
-    if %is_array% t then
+    if %typeof% t == `Array then
       %map% t (fun value => %assume% elt (%go_array% l) value)
     else %blame% l,
 
   "$func" = fun s t l e =>
-      if %is_fun% e then
+      if %typeof% e == `Fun then
           (fun x => %assume% t (%go_codom% l) (e (%assume% s (%chng_pol% (%go_dom% l)) x)))
       else
           %blame% l,
@@ -34,13 +34,13 @@
           %assume% contr l t,
 
   "$record" = fun cont l t =>
-      if %is_record% t then
+      if %typeof% t == `Record then
           %assume% (cont {}) l t
       else
           %blame% (%tag% "not a record" l),
 
   "$dyn_record" = fun contr l t =>
-      if %is_record% t then
+      if %typeof% t == `Record then
           %record_map% t (fun _field value => %assume% contr l value)
       else
           %blame% (%tag% "not a record" l),

@@ -16,7 +16,7 @@
       ```
       "%m
     = fun l s =>
-      if %is_str% s then
+      if %typeof% s == `Str then
         if s == "true" || s == "True" then
           "true"
         else if s == "false" || s == "False" then
@@ -43,7 +43,7 @@
     = let pattern = m%"^[+-]?(\d+(\.\d*)?(e[+-]?\d+)?|\.\d+(e[+-]?\d+)?)$"%m in
       let is_num_literal = %str_is_match% pattern in
       fun l s =>
-        if %is_str% s then
+        if %typeof% s == `Str then
           if is_num_literal s then
             s
           else
@@ -68,7 +68,7 @@
       ```
       "%m
     = fun l s =>
-      if %is_str% s then
+      if %typeof% s == `Str then
         if length s == 1 then
           s
         else
@@ -91,7 +91,7 @@
       ```
       "%m
     = fun l s =>
-      if %is_str% s then
+      if %typeof% s == `Str then
         if %str_length% s > 0 then
           s
         else

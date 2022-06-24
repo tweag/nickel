@@ -670,13 +670,13 @@ fn type_check_<L: Linearizer>(
                 None => cases.iter().try_fold(
                     mk_typewrapper::row_empty(),
                     |acc, x| -> Result<TypeWrapper, TypecheckError> {
-                        Ok(mk_tyw_enum_row!(x.0.clone(), acc))
+                        Ok(mk_tyw_enum_row!(x.0.clone(); acc))
                     },
                 )?,
             };
 
             unify(state, ty, res).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            type_check_(state, envs, lin, linearizer, exp, mk_tyw_enum!(row))
+            type_check_(state, envs, lin, linearizer, exp, mk_tyw_enum!(; row))
         }
         Term::Var(x) => {
             let x_ty = envs
@@ -688,7 +688,7 @@ fn type_check_<L: Linearizer>(
         }
         Term::Enum(id) => {
             let row = state.table.fresh_unif_var();
-            unify(state, ty, mk_tyw_enum!(id.clone(), row))
+            unify(state, ty, mk_tyw_enum!(id.clone(); row))
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         // If some fields are defined dynamically, the only potential type that works is `{_ : a}`
@@ -1277,13 +1277,13 @@ pub fn unify(state: &mut State, mut t1: TypeWrapper, mut t2: TypeWrapper) -> Res
                     if r1.is_row_type() && r2.is_row_type() =>
                 {
                     unify_rows(state, r1.clone(), r2.clone())
-                        .map_err(|err| err.into_unif_err(mk_tyw_enum!(r1), mk_tyw_enum!(r2)))
+                        .map_err(|err| err.into_unif_err(mk_tyw_enum!(; r1), mk_tyw_enum!(; r2)))
                 }
                 (TypeWrapper::Concrete(r), _) if !r.is_row_type() => {
-                    Err(UnifError::IllformedType(mk_tyw_enum!(r)))
+                    Err(UnifError::IllformedType(mk_tyw_enum!(; r)))
                 }
                 (_, TypeWrapper::Concrete(r)) if !r.is_row_type() => {
-                    Err(UnifError::IllformedType(mk_tyw_enum!(r)))
+                    Err(UnifError::IllformedType(mk_tyw_enum!(; r)))
                 }
                 (tyw1, tyw2) => unify(state, tyw1, tyw2),
             },

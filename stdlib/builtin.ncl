@@ -5,29 +5,33 @@
         Possible dynamic type for a value. Must be one of the tags:
 
         ```
-         `TypeNum
-         `TypeBool
-         `TypeStr
-         `TypeFun
-         `TypeArray
-         `TypeRecord
+         `Num
+         `Bool
+         `Str
+         `Enum
+         `Fun
+         `Array
+         `Record
+         `Lbl
          `Other
         ```
         "%m
       = fun label =>
         label
         |> contract.tag m%"
-          must be one of `TypeNum, `TypeBool, `TypeStr, `TypeFun, `TypeArray`, `TypeRecord or `Other
+          must be one of `Num, `Bool, `Str, `Enum, `Fun, `Array`, `Record, `Lbl or `Other
         "%m
         # The enum type syntax [| ... |] is not stable. Do not rely on it in
         # your own Nickel programs.
         | contract.apply [|
-            TypeNum,
-            TypeBool,
-            TypeStr,
-            TypeFun,
-            TypeArray,
-            TypeRecord,
+            Num,
+            Bool,
+            Str,
+            Enum,
+            Lbl,
+            Fun,
+            Array,
+            Record,
             Other
           |],
 
@@ -78,7 +82,7 @@
           false
       ```
       "%m
-    = fun x => %is_num% x,
+    = fun x => %typeof% x == `Num,
 
     is_bool : Dyn -> Bool
     | doc m%"
@@ -92,7 +96,7 @@
           false
       ```
       "%m
-    = fun x => %is_bool% x,
+    = fun x => %typeof% x == `Bool,
 
     is_str : Dyn -> Bool
     | doc m%"
@@ -100,13 +104,13 @@
 
       For example:
       ```nickel
-        is_bool true =>
+        is_str true =>
           false
-        is_bool "Hello, World!" =>
+        is_str "Hello, World!" =>
           true
       ```
       "%m
-    = fun x => %is_str% x,
+    = fun x => %typeof% x == `Str,
 
     is_fun : Dyn -> Bool
     | doc m%"
@@ -120,7 +124,7 @@
           false
       ```
       "%m
-    = fun x => %is_fun% x,
+    = fun x => %typeof% x == `Fun,
 
     is_array : Dyn -> Bool
     | doc m%"
@@ -134,7 +138,7 @@
           false
       ```
       "%m
-    = fun x => %is_array% x,
+    = fun x => %typeof% x == `Array,
 
     is_record : Dyn -> Bool
     | doc m%"
@@ -148,7 +152,7 @@
           true
       ```
       "%m
-    = fun x => %is_record% x,
+    = fun x => %typeof% x == `Record,
 
     typeof | Dyn -> ValueType
     | doc m%"
@@ -157,19 +161,12 @@
       For example:
       ```nickel
         typeof [ 1, 2 ] =>
-          `TypeArray
+          `Array
         typeof (fun x => x) =>
-          `TypeFun
+          `Fun
       ```
       "%m
-    = fun x =>
-      if %is_num% x then `TypeNum
-      else if %is_bool% x then `TypeBool
-      else if %is_str% x then `TypeStr
-      else if %is_fun% x then `TypeFun
-      else if %is_array% x then `TypeArray
-      else if %is_record% x then `TypeRecord
-      else `Other,
+    = fun x => %typeof% x,
 
     seq : forall a. Dyn -> a -> a
     | doc m%"
