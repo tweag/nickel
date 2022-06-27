@@ -937,6 +937,7 @@ fn process_unary_operation(
                 Term::Str(s) => Ok(Term::Str(s)),
                 Term::Bool(b) => Ok(Term::Str(b.to_string())),
                 Term::Enum(id) => Ok(Term::Str(id.to_string())),
+                Term::Null => Ok(Term::Str(String::from("null"))),
             } else {
                 Err(EvalError::Other(
                     format!(
