@@ -16,12 +16,12 @@ use super::{
 use crate::{
     error::EvalError,
     identifier::Ident,
-    label::{ty_path, Label},
+    label::ty_path,
     match_sharedterm, mk_app, mk_fun, mk_opn, mk_record,
     position::TermPos,
     serialize,
     serialize::ExportFormat,
-    term::make as mk_term,
+    term::{make as mk_term, ContractInfo},
     term::{ArrayAttrs, BinaryOp, NAryOp, RichTerm, SharedTerm, StrChunk, Term, UnaryOp},
     transform::{fresh_var, Closurizable},
 };
@@ -705,13 +705,10 @@ fn process_unary_operation(
                 if let Some(head) = ts.first() {
                     // FIXME: fold all contracts
                     // FIXME: track labels
+                    let ContractInfo { contract, label } =
+                        attrs.contract_info.first().cloned().unwrap();
                     let head_with_contract = mk_app!(
-                        mk_term::op2(
-                            BinaryOp::Assume(),
-                            attrs.contracts.first().cloned().unwrap(),
-                            Term::Lbl(Label::dummy())
-                        )
-                        .with_pos(pos),
+                        mk_term::op2(BinaryOp::Assume(), contract, Term::Lbl(label)).with_pos(pos),
                         head.clone()
                     )
                     .with_pos(pos);
@@ -1868,7 +1865,7 @@ fn process_binary_operation(
                             // TODO: Is there a cheaper way to "merge" two environements?
                             env.extend(env2.iter_elems().map(|(k, v)| (k.clone(), v.clone())));
 
-                            let attrs = attrs1.as_closurized().with_contracts(attrs2.contracts);
+                            let attrs = attrs1.as_closurized().with_contracts(attrs2.contract_info);
 
                             Ok(Closure {
                                 body: RichTerm::new(Term::Array(ts, attrs), pos_op_inh),
@@ -2375,7 +2372,7 @@ fn process_nary_operation(
             ) = args_iter.next().unwrap();
             debug_assert!(args_iter.next().is_none());
 
-            let _lbl = match_sharedterm! {t2, with {
+            let lbl = match_sharedterm! {t2, with {
                     Term::Lbl(lbl) => lbl
                 } else return Err(EvalError::TypeError(
                     String::from("Lbl"),
@@ -2400,7 +2397,7 @@ fn process_nary_operation(
                                     ts.clone(),
                                     ArrayAttrs {
                                         closurized: attrs.closurized,
-                                        contracts: vec![rt1],
+                                        contract_info: vec![(rt1, lbl).into()],
                                     },
                                 )),
                                 pos: pos3,
