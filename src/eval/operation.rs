@@ -2347,7 +2347,7 @@ fn process_nary_operation(
             let (
                 Closure {
                     body: rt1,
-                    env: _env1,
+                    env: env1,
                 },
                 _fst_pos,
             ) = args_iter.next().unwrap();
@@ -2369,7 +2369,7 @@ fn process_nary_operation(
                             term: t3,
                             pos: pos3,
                         },
-                    env: env3,
+                    env: mut env3,
                 },
                 thd_pos,
             ) = args_iter.next().unwrap();
@@ -2390,6 +2390,10 @@ fn process_nary_operation(
 
             match_sharedterm! {t3, with {
                     Term::Array(ts, attrs) => {
+
+                        // Preserve the environment of the contract in the resulting array.
+                        env3.extend(env1.iter_elems().map(|(k, v)| (k.clone(), v.clone())));
+
                         let array_with_ctr = Closure {
                             body: RichTerm {
                                 term: SharedTerm::new(Term::Array(
