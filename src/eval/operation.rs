@@ -2157,38 +2157,6 @@ fn process_binary_operation(
                 },
             )),
         },
-        BinaryOp::ArrayLazyAssume() => match &*t2 {
-            Term::Array(ts, attrs) => {
-                let closure = Closure {
-                    body: RichTerm {
-                        term: SharedTerm::new(Term::Array(
-                            ts.clone(),
-                            ArrayAttrs {
-                                closurized: attrs.closurized,
-                                contracts: vec![RichTerm {
-                                    term: t1,
-                                    pos: pos1,
-                                }],
-                            },
-                        )),
-                        pos: pos2,
-                    },
-                    env: env2,
-                };
-
-                Ok(closure)
-            }
-
-            _ => Err(EvalError::TypeError(
-                String::from("Array"),
-                String::from("array_lazy_assume, 2st argument"),
-                fst_pos,
-                RichTerm {
-                    term: t1,
-                    pos: pos1,
-                },
-            )),
-        },
     }
 }
 
@@ -2372,6 +2340,81 @@ fn process_nary_operation(
                 } else {
                     Err(EvalError::InternalError(format!("The MergeContract() operator was expecting a first argument of type Label, got {}", t1.type_of().unwrap_or(String::from("<unevaluated>"))), pos_op))
                 }
+            }
+        }
+        NAryOp::ArrayLazyAssume() => {
+            let mut args_iter = args.into_iter();
+            let (
+                Closure {
+                    body: rt1,
+                    env: _env1,
+                },
+                _fst_pos,
+            ) = args_iter.next().unwrap();
+            let (
+                Closure {
+                    body:
+                        RichTerm {
+                            term: t2,
+                            pos: pos2,
+                        },
+                    env: _env2,
+                },
+                snd_pos,
+            ) = args_iter.next().unwrap();
+            let (
+                Closure {
+                    body:
+                        RichTerm {
+                            term: t3,
+                            pos: pos3,
+                        },
+                    env: env3,
+                },
+                thd_pos,
+            ) = args_iter.next().unwrap();
+            debug_assert!(args_iter.next().is_none());
+
+            let _lbl = match_sharedterm! {t2, with {
+                    Term::Lbl(lbl) => lbl
+                } else return Err(EvalError::TypeError(
+                    String::from("Lbl"),
+                    String::from("arrayLazyAssume, 2nd argument"),
+                    snd_pos,
+                    RichTerm {
+                        term: t2,
+                        pos: pos2,
+                    },
+                ))
+            };
+
+            match_sharedterm! {t3, with {
+                    Term::Array(ts, attrs) => {
+                        let array_with_ctr = Closure {
+                            body: RichTerm {
+                                term: SharedTerm::new(Term::Array(
+                                    ts.clone(),
+                                    ArrayAttrs {
+                                        closurized: attrs.closurized,
+                                        contracts: vec![rt1],
+                                    },
+                                )),
+                                pos: pos3,
+                            },
+                            env: env3,
+                        };
+
+                        Ok(array_with_ctr)
+                    }
+                } else Err(EvalError::TypeError(
+                    String::from("Array"),
+                    String::from("arrayLazyAssume, 3rd argument"),
+                    thd_pos,
+                    RichTerm {
+                        term: t3,
+                        pos: pos3,
+                    },
+                ))
             }
         }
     }

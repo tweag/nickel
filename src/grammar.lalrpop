@@ -717,7 +717,6 @@ InfixExpr: UniTerm = {
 
 BOpPre: BinaryOp = {
     "assume" => BinaryOp::Assume(),
-    "array_lazy_assume" => BinaryOp::ArrayLazyAssume(),
     "unwrap" => BinaryOp::Unwrap(),
     "go_field" => BinaryOp::GoField(),
     "has_field" => BinaryOp::HasField(),
@@ -740,6 +739,8 @@ NOpPre<ArgRule>: UniTerm = {
         UniTerm::from(mk_opn!(NAryOp::StrReplaceRegex(), t1, t2, t3)),
     "str_substr" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
         UniTerm::from(mk_opn!(NAryOp::StrSubstr(), t1, t2, t3)),
+    "array_lazy_assume" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> => 
+        UniTerm::from(mk_opn!(NAryOp::ArrayLazyAssume(), t1, t2, t3)),
 }
 
 TypeBuiltin: Types = {

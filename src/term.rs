@@ -998,10 +998,6 @@ pub enum BinaryOp {
     StrSplit(),
     /// Determine if a string is a substring of another one.
     StrContains(),
-
-    /// Lazily apply a contract to an Array.
-    /// This simply inserts a contract into the array attributes.
-    ArrayLazyAssume(),
 }
 
 impl BinaryOp {
@@ -1036,6 +1032,9 @@ pub enum NAryOp {
     /// The merge operator in contract mode (see [crate::eval::merge]). The arguments are in order
     /// the contract's label, the value to check, and the contract as a record.
     MergeContract(),
+    /// Lazily apply a contract to an Array.
+    /// This simply inserts a contract into the array attributes.
+    ArrayLazyAssume(),
 }
 
 impl NAryOp {
@@ -1044,7 +1043,8 @@ impl NAryOp {
             NAryOp::StrReplace()
             | NAryOp::StrReplaceRegex()
             | NAryOp::StrSubstr()
-            | NAryOp::MergeContract() => 3,
+            | NAryOp::MergeContract()
+            | NAryOp::ArrayLazyAssume() => 3,
         }
     }
 
@@ -1060,6 +1060,7 @@ impl fmt::Display for NAryOp {
             NAryOp::StrReplaceRegex() => write!(f, "strReplaceRegex"),
             NAryOp::StrSubstr() => write!(f, "substring"),
             NAryOp::MergeContract() => write!(f, "mergeContract"),
+            NAryOp::ArrayLazyAssume() => write!(f, "arrayLazyAssume"),
         }
     }
 }
