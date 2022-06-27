@@ -17,10 +17,10 @@ impl From<(UniOp, FileId)> for RichTerm {
             Negate => Term::Op2(
                 BinaryOp::Sub(),
                 Term::Num(0.).into(),
-                translate(&value, file_id),
+                translate(value, file_id),
             )
             .into(),
-            Invert => Term::Op1(UnaryOp::BoolNot(), translate(&value, file_id)).into(),
+            Invert => Term::Op1(UnaryOp::BoolNot(), translate(value, file_id)).into(),
         }
     }
 }
@@ -35,8 +35,8 @@ impl From<(BinOp, FileId)> for RichTerm {
             // TODO: how to manage diff between strconcat and arrayconcat?
             Concat => Term::Op2(
                 BinaryOp::ArrayConcat(),
-                translate(&lhs, file_id),
-                translate(&rhs, file_id),
+                translate(lhs, file_id),
+                translate(rhs, file_id),
             )
             .into(),
             IsSet => unimplemented!(),
@@ -44,65 +44,65 @@ impl From<(BinOp, FileId)> for RichTerm {
 
             Add => Term::Op2(
                 BinaryOp::Plus(),
-                translate(&lhs, file_id),
-                translate(&rhs, file_id),
+                translate(lhs, file_id),
+                translate(rhs, file_id),
             )
             .into(),
             Sub => Term::Op2(
                 BinaryOp::Sub(),
-                translate(&lhs, file_id),
-                translate(&rhs, file_id),
+                translate(lhs, file_id),
+                translate(rhs, file_id),
             )
             .into(),
             Mul => Term::Op2(
                 BinaryOp::Mult(),
-                translate(&lhs, file_id),
-                translate(&rhs, file_id),
+                translate(lhs, file_id),
+                translate(rhs, file_id),
             )
             .into(),
             Div => Term::Op2(
                 BinaryOp::Div(),
-                translate(&lhs, file_id),
-                translate(&rhs, file_id),
+                translate(lhs, file_id),
+                translate(rhs, file_id),
             )
             .into(),
 
             Equal => Term::Op2(
                 BinaryOp::Eq(),
-                translate(&lhs, file_id),
-                translate(&rhs, file_id),
+                translate(lhs, file_id),
+                translate(rhs, file_id),
             )
             .into(),
             Less => Term::Op2(
                 BinaryOp::LessThan(),
-                translate(&lhs, file_id),
-                translate(&rhs, file_id),
+                translate(lhs, file_id),
+                translate(rhs, file_id),
             )
             .into(),
             More => Term::Op2(
                 BinaryOp::GreaterThan(),
-                translate(&lhs, file_id),
-                translate(&rhs, file_id),
+                translate(lhs, file_id),
+                translate(rhs, file_id),
             )
             .into(),
             LessOrEq => Term::Op2(
                 BinaryOp::LessOrEq(),
-                translate(&lhs, file_id),
-                translate(&rhs, file_id),
+                translate(lhs, file_id),
+                translate(rhs, file_id),
             )
             .into(),
             MoreOrEq => Term::Op2(
                 BinaryOp::GreaterOrEq(),
-                translate(&lhs, file_id),
-                translate(&rhs, file_id),
+                translate(lhs, file_id),
+                translate(rhs, file_id),
             )
             .into(),
             NotEqual => Term::Op1(
                 UnaryOp::BoolNot(),
                 Term::Op2(
                     BinaryOp::Eq(),
-                    translate(&lhs, file_id),
-                    translate(&rhs, file_id),
+                    translate(lhs, file_id),
+                    translate(rhs, file_id),
                 )
                 .into(),
             )
@@ -111,20 +111,20 @@ impl From<(BinOp, FileId)> for RichTerm {
             Implication => unimplemented!(),
 
             And => Term::App(
-                Term::Op1(UnaryOp::BoolAnd(), translate(&lhs, file_id)).into(),
-                translate(&rhs, file_id),
+                Term::Op1(UnaryOp::BoolAnd(), translate(lhs, file_id)).into(),
+                translate(rhs, file_id),
             )
             .into(),
             Or => Term::App(
-                Term::Op1(UnaryOp::BoolOr(), translate(&lhs, file_id)).into(),
-                translate(&rhs, file_id),
+                Term::Op1(UnaryOp::BoolOr(), translate(lhs, file_id)).into(),
+                translate(rhs, file_id),
             )
             .into(),
         }
     }
 }
 
-fn translate(node: &rnix::SyntaxNode, file_id: FileId) -> RichTerm {
+fn translate(node: rnix::SyntaxNode, file_id: FileId) -> RichTerm {
     use rnix::SyntaxKind::*;
     let pos = node.text_range();
     println!("{:?}", node);
@@ -133,7 +133,7 @@ fn translate(node: &rnix::SyntaxNode, file_id: FileId) -> RichTerm {
         NODE_ERROR => Term::ParseError.into(),
         NODE_ROOT | NODE_PAREN => node
             .children()
-            .map(|n| translate(&n, file_id))
+            .map(|n| translate(n, file_id))
             .next()
             .unwrap(),
 
@@ -151,7 +151,7 @@ fn translate(node: &rnix::SyntaxNode, file_id: FileId) -> RichTerm {
             .next()
             .unwrap(),
         NODE_STRING => {
-            let parts = rnix::types::Str::cast(node.clone()).unwrap().parts();
+            let parts = rnix::types::Str::cast(node).unwrap().parts();
             //TODO: Do we actualy need the `Term::Str` variant in nickel AST?
             Term::StrChunks(
                 parts
@@ -162,7 +162,7 @@ fn translate(node: &rnix::SyntaxNode, file_id: FileId) -> RichTerm {
                             crate::term::StrChunk::Literal(s.clone())
                         }
                         rnix::value::StrPart::Ast(a) => crate::term::StrChunk::Expr(
-                            translate(&a.first_child().unwrap(), file_id),
+                            translate(a.first_child().unwrap(), file_id),
                             i,
                         ),
                     })
@@ -171,21 +171,21 @@ fn translate(node: &rnix::SyntaxNode, file_id: FileId) -> RichTerm {
             .into()
         }
         NODE_LIST => Term::Array(
-            rnix::types::List::cast(node.clone())
+            rnix::types::List::cast(node)
                 .unwrap()
                 .items()
-                .map(|n| translate(&n, file_id))
+                .map(|n| translate(n, file_id))
                 .collect(),
             Default::default(),
         )
         .into(),
         NODE_ATTR_SET => {
             use crate::parser::utils::{build_record, elaborate_field_path, FieldPathElem};
-            let attrset = rnix::types::AttrSet::cast(node.clone()).unwrap();
+            let attrset = rnix::types::AttrSet::cast(node).unwrap();
             let fields: Vec<(_, _)> = attrset
                 .entries()
                 .map(|kv| {
-                    let val = translate(&kv.value().unwrap(), file_id);
+                    let val = translate(kv.value().unwrap(), file_id);
                     let p: Vec<_> = kv
                         .key()
                         .unwrap()
@@ -194,7 +194,7 @@ fn translate(node: &rnix::SyntaxNode, file_id: FileId) -> RichTerm {
                             NODE_IDENT => FieldPathElem::Ident(
                                 rnix::types::Ident::cast(p).unwrap().as_str().into(),
                             ),
-                            _ => FieldPathElem::Expr(translate(&p, file_id)),
+                            _ => FieldPathElem::Expr(translate(p, file_id)),
                         })
                         .collect();
                     elaborate_field_path(p, val)
@@ -203,18 +203,12 @@ fn translate(node: &rnix::SyntaxNode, file_id: FileId) -> RichTerm {
             build_record(fields, Default::default()).into()
         }
 
-        NODE_IDENT => Term::Var(
-            rnix::types::Ident::cast(node.clone())
-                .unwrap()
-                .as_str()
-                .into(),
-        )
-        .into(),
+        NODE_IDENT => Term::Var(rnix::types::Ident::cast(node).unwrap().as_str().into()).into(),
         NODE_LET_IN => {
             use crate::destruct;
             use crate::identifier::Ident;
             use rnix::types::LetIn;
-            let letin = LetIn::cast(node.clone()).unwrap();
+            let letin = LetIn::cast(node).unwrap();
             let mut destruct_vec = Vec::new();
             let mut fields = HashMap::new();
             for kv in letin.entries() {
@@ -224,7 +218,7 @@ fn translate(node: &rnix::SyntaxNode, file_id: FileId) -> RichTerm {
                     .unwrap()
                     .as_str()
                     .into();
-                let rt = translate(&kv.value().unwrap(), file_id);
+                let rt = translate(kv.value().unwrap(), file_id);
                 destruct_vec.push(destruct::Match::Simple(id.clone(), Default::default()));
                 fields.insert(id.into(), rt);
             }
@@ -237,18 +231,18 @@ fn translate(node: &rnix::SyntaxNode, file_id: FileId) -> RichTerm {
                     span: mk_span(file_id, pos.start().into(), pos.end().into()),
                 },
                 Term::RecRecord(fields, vec![], Default::default(), None).into(),
-                translate(&letin.body().unwrap(), file_id),
+                translate(letin.body().unwrap(), file_id),
             )
             .into()
         }
 
         NODE_LAMBDA => {
-            let fun = rnix::types::Lambda::cast(node.clone()).unwrap();
+            let fun = rnix::types::Lambda::cast(node).unwrap();
             let arg = fun.arg().unwrap();
             match arg.kind() {
                 NODE_IDENT => Term::Fun(
                     arg.to_string().into(),
-                    translate(&fun.body().unwrap(), file_id),
+                    translate(fun.body().unwrap(), file_id),
                 ),
                 NODE_PATTERN => {
                     use crate::destruct::*;
@@ -267,7 +261,7 @@ fn translate(node: &rnix::SyntaxNode, file_id: FileId) -> RichTerm {
                         rest: None,
                         span: mk_span(file_id, pos.start().into(), pos.end().into()),
                     };
-                    Term::FunPattern(at, dest, translate(&fun.body().unwrap(), file_id)).into()
+                    Term::FunPattern(at, dest, translate(fun.body().unwrap(), file_id)).into()
                 }
                 _ => unimplemented!(),
             }
@@ -275,31 +269,31 @@ fn translate(node: &rnix::SyntaxNode, file_id: FileId) -> RichTerm {
         }
 
         NODE_APPLY => {
-            let fun = rnix::types::Apply::cast(node.clone()).unwrap();
+            let fun = rnix::types::Apply::cast(node).unwrap();
             Term::App(
-                translate(&fun.lambda().unwrap(), file_id),
-                translate(&fun.value().unwrap(), file_id),
+                translate(fun.lambda().unwrap(), file_id),
+                translate(fun.value().unwrap(), file_id),
             )
             .into()
         }
         NODE_IF_ELSE => {
-            let ifelse = rnix::types::IfElse::cast(node.clone()).unwrap();
+            let ifelse = rnix::types::IfElse::cast(node).unwrap();
             Term::App(
                 Term::App(
                     Term::Op1(
                         UnaryOp::Ite(),
-                        translate(&ifelse.condition().unwrap(), file_id),
+                        translate(ifelse.condition().unwrap(), file_id),
                     )
                     .into(),
-                    translate(&ifelse.body().unwrap(), file_id),
+                    translate(ifelse.body().unwrap(), file_id),
                 )
                 .into(),
-                translate(&ifelse.else_body().unwrap(), file_id),
+                translate(ifelse.else_body().unwrap(), file_id),
             )
             .into()
         }
-        NODE_BIN_OP => (BinOp::cast(node.clone()).unwrap(), file_id).into(),
-        NODE_UNARY_OP => (UniOp::cast(node.clone()).unwrap(), file_id).into(),
+        NODE_BIN_OP => (BinOp::cast(node).unwrap(), file_id).into(),
+        NODE_UNARY_OP => (UniOp::cast(node).unwrap(), file_id).into(),
         _ => panic!("{}", node),
     }
     .with_pos(crate::position::TermPos::Original(mk_span(
@@ -312,5 +306,5 @@ fn translate(node: &rnix::SyntaxNode, file_id: FileId) -> RichTerm {
 pub fn parse(cache: &Cache, file_id: FileId) -> Result<RichTerm, rnix::parser::ParseError> {
     let source = cache.files().source(file_id);
     let nixast = rnix::parse(source).as_result()?;
-    Ok(translate(nixast.root().node(), file_id))
+    Ok(translate(nixast.node(), file_id))
 }
