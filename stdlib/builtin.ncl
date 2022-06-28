@@ -112,6 +112,21 @@
       "%m
     = fun x => %typeof% x == `Str,
 
+    is_enum : Dyn -> Bool
+    | doc m%"
+      Checks if the given value is an enum tag.
+
+      For example:
+      ```nickel
+        is_enum true =>
+          false
+        is_enum `false =>
+          true
+      ```
+      "%m
+
+    = fun x => %typeof% x == `Enum,
+
     is_fun : Dyn -> Bool
     | doc m%"
       Checks if the given value is a function.
@@ -238,5 +253,22 @@
       ```
       "%m
     = fun format x => %deserialize% format x,
+
+    to_str | string.Stringable -> Str
+    | doc m%"
+      Converts a stringable value to a string representation. Same as
+      `string.from`.
+
+      For example:
+      ```nickel
+      from 42 =>
+        "42"
+      from `Foo =>
+        "Foo"
+      from null =>
+        "null"
+      "%m
+    = fun x => %to_str% x,
+
   }
 }

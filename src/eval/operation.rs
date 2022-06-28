@@ -932,19 +932,21 @@ fn process_unary_operation(
             }
         }
         UnaryOp::ToStr() => {
-            let result = match &*t {
+            let result = match_sharedterm! {t, with {
                 Term::Num(n) => Ok(Term::Str(n.to_string())),
-                Term::Str(s) => Ok(Term::Str(s.clone())),
+                Term::Str(s) => Ok(Term::Str(s)),
                 Term::Bool(b) => Ok(Term::Str(b.to_string())),
                 Term::Enum(id) => Ok(Term::Str(id.to_string())),
-                t => Err(EvalError::Other(
+                Term::Null => Ok(Term::Str(String::from("null"))),
+            } else {
+                Err(EvalError::Other(
                     format!(
                         "strFrom: can't convert the argument of type {} to string",
                         t.type_of().unwrap()
                     ),
                     pos,
-                )),
-            }?;
+                ))
+            }}?;
             Ok(Closure::atomic_closure(RichTerm::new(result, pos_op_inh)))
         }
         UnaryOp::NumFromStr() => {
