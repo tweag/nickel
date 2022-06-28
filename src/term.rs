@@ -186,6 +186,21 @@ impl Default for BindingType {
     }
 }
 
+/// A contract with its associated data.
+#[derive(Debug, PartialEq, Clone)]
+pub struct PendingContract {
+    /// The "pending" contract, can be a function or a record.
+    pub contract: RichTerm,
+    /// The blame label.
+    pub label: Label,
+}
+
+impl PendingContract {
+    pub fn new(contract: RichTerm, label: Label) -> Self {
+        PendingContract { contract, label }
+    }
+}
+
 /// The attributes of an Array.
 #[derive(Debug, Default, PartialEq, Clone)]
 pub struct ArrayAttrs {
@@ -196,7 +211,7 @@ pub struct ArrayAttrs {
     pub closurized: bool,
     /// List of lazily-applied contracts.
     /// These are only observed when data enters or leaves the array.
-    pub contracts: Vec<RichTerm>,
+    pub pending_contracts: Vec<PendingContract>,
 }
 
 impl ArrayAttrs {
@@ -204,7 +219,7 @@ impl ArrayAttrs {
     pub fn new_closurized() -> Self {
         ArrayAttrs {
             closurized: true,
-            contracts: Vec::new(),
+            pending_contracts: Vec::new(),
         }
     }
 
@@ -217,9 +232,9 @@ impl ArrayAttrs {
     /// Extend contracts from an iterator.
     pub fn with_contracts<I>(mut self, iter: I) -> Self
     where
-        I: IntoIterator<Item = RichTerm>,
+        I: IntoIterator<Item = PendingContract>,
     {
-        self.contracts.extend(iter);
+        self.pending_contracts.extend(iter);
         self
     }
 }
