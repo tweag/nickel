@@ -1,11 +1,10 @@
 use crate::cache::Cache;
 use crate::parser::utils::mk_span;
-use crate::term::make;
 use crate::term::{BinaryOp, UnaryOp};
 use crate::term::{RichTerm, Term};
 use codespan::FileId;
+use rnix;
 use rnix::types::{BinOp, EntryHolder, TokenWrapper, TypedNode, UnaryOp as UniOp};
-use rnix::{self, SyntaxNode};
 use std::collections::HashMap;
 
 impl From<(UniOp, FileId)> for RichTerm {
@@ -133,42 +132,37 @@ impl From<(BinOp, FileId)> for RichTerm {
 }
 
 fn translate(node: rnix::SyntaxNode, file_id: FileId) -> RichTerm {
+    use rnix::types::{self, ParsedType, Wrapper};
+    use rnix::value;
     use rnix::SyntaxKind::*;
+    use std::convert::TryInto;
     let pos = node.text_range();
+    let span = mk_span(file_id, pos.start().into(), pos.end().into());
     println!("{:?}", node);
-    // TODO: is there a nix boolean type?
-    match node.kind() {
-        NODE_ERROR => Term::ParseError.into(),
-        NODE_ROOT | NODE_PAREN => node
-            .children()
-            .map(|n| translate(n, file_id))
-            .next()
-            .unwrap(),
+    let node: ParsedType = node.try_into().unwrap();
+    match node {
+        ParsedType::Error(_) => Term::ParseError.into(),
+        ParsedType::Root(n) => translate(n.inner().unwrap(), file_id),
+        ParsedType::Paren(n) => translate(n.inner().unwrap(), file_id),
 
-        NODE_LITERAL => node
-            .children_with_tokens()
-            .map(|n| {
-                println!("  {:?}", n);
-                match n.kind() {
-                    TOKEN_INTEGER | TOKEN_FLOAT => {
-                        Term::Num(n.as_token().unwrap().text().to_string().parse().unwrap()).into()
-                    }
-                    _ => panic!("{} token is not a literal", n),
-                }
-            })
-            .next()
-            .unwrap(),
-        NODE_STRING => {
-            let parts = rnix::types::Str::cast(node).unwrap().parts();
+        ParsedType::Assert(n) => unimplemented!(),
+
+        ParsedType::Value(n) => match n.to_value().unwrap() {
+            value::Value::Float(v) => Term::Num(v).into(),
+            value::Value::Integer(v) => Term::Num(v as f64).into(),
+            value::Value::String(v) => Term::Str(v).into(),
+            // TODO: How to manage Paths in nickel?
+            value::Value::Path(a, v) => Term::Str(v).into(),
+        },
+        ParsedType::Str(n) => {
+            let parts = n.parts();
             //TODO: Do we actualy need the `Term::Str` variant in nickel AST?
             Term::StrChunks(
                 parts
-                    .iter()
+                    .into_iter()
                     .enumerate()
                     .map(|(i, c)| match c {
-                        rnix::value::StrPart::Literal(s) => {
-                            crate::term::StrChunk::Literal(s.clone())
-                        }
+                        rnix::value::StrPart::Literal(s) => crate::term::StrChunk::Literal(s),
                         rnix::value::StrPart::Ast(a) => crate::term::StrChunk::Expr(
                             translate(a.first_child().unwrap(), file_id),
                             i,
@@ -178,19 +172,14 @@ fn translate(node: rnix::SyntaxNode, file_id: FileId) -> RichTerm {
             )
             .into()
         }
-        NODE_LIST => Term::Array(
-            rnix::types::List::cast(node)
-                .unwrap()
-                .items()
-                .map(|n| translate(n, file_id))
-                .collect(),
+        ParsedType::List(n) => Term::Array(
+            n.items().map(|elm| translate(elm, file_id)).collect(),
             Default::default(),
         )
         .into(),
-        NODE_ATTR_SET => {
+        ParsedType::AttrSet(n) => {
             use crate::parser::utils::{build_record, elaborate_field_path, FieldPathElem};
-            let attrset = rnix::types::AttrSet::cast(node).unwrap();
-            let fields: Vec<(_, _)> = attrset
+            let fields: Vec<(_, _)> = n
                 .entries()
                 .map(|kv| {
                     let val = translate(kv.value().unwrap(), file_id);
@@ -211,18 +200,17 @@ fn translate(node: rnix::SyntaxNode, file_id: FileId) -> RichTerm {
             build_record(fields, Default::default()).into()
         }
 
-        NODE_IDENT => Term::Var(rnix::types::Ident::cast(node).unwrap().as_str().into()).into(),
-        NODE_LET_IN => {
+        ParsedType::Ident(n) => Term::Var(n.as_str().into()).into(),
+        ParsedType::LegacyLet(_) => unimplemented!(), // Probably useless to suport it in a short term.
+        ParsedType::LetIn(n) => {
             use crate::destruct;
             use crate::identifier::Ident;
-            use rnix::types::LetIn;
-            let letin = LetIn::cast(node).unwrap();
             let mut destruct_vec = Vec::new();
             let mut fields = HashMap::new();
-            for kv in letin.entries() {
+            for kv in n.entries() {
                 // In `let` blocks, the key is suposed to be a single ident so `Path` exactly one
                 // element.
-                let id: Ident = rnix::types::Ident::cast(kv.key().unwrap().path().next().unwrap())
+                let id: Ident = types::Ident::cast(kv.key().unwrap().path().next().unwrap())
                     .unwrap()
                     .as_str()
                     .into();
@@ -236,21 +224,21 @@ fn translate(node: rnix::SyntaxNode, file_id: FileId) -> RichTerm {
                     matches: destruct_vec,
                     open: false,
                     rest: None,
-                    span: mk_span(file_id, pos.start().into(), pos.end().into()),
+                    span,
                 },
                 Term::RecRecord(fields, vec![], Default::default(), None).into(),
-                translate(letin.body().unwrap(), file_id),
+                translate(n.body().unwrap(), file_id),
             )
             .into()
         }
+        ParsedType::With(n) => unimplemented!(),
 
-        NODE_LAMBDA => {
-            let fun = rnix::types::Lambda::cast(node).unwrap();
-            let arg = fun.arg().unwrap();
+        ParsedType::Lambda(n) => {
+            let arg = n.arg().unwrap();
             match arg.kind() {
                 NODE_IDENT => Term::Fun(
                     arg.to_string().into(),
-                    translate(fun.body().unwrap(), file_id),
+                    translate(n.body().unwrap(), file_id),
                 ),
                 NODE_PATTERN => {
                     use crate::destruct::*;
@@ -267,48 +255,48 @@ fn translate(node: rnix::SyntaxNode, file_id: FileId) -> RichTerm {
                         matches,
                         open: pat.ellipsis(),
                         rest: None,
-                        span: mk_span(file_id, pos.start().into(), pos.end().into()),
+                        span,
                     };
-                    Term::FunPattern(at, dest, translate(fun.body().unwrap(), file_id)).into()
+                    Term::FunPattern(at, dest, translate(n.body().unwrap(), file_id)).into()
                 }
-                _ => unimplemented!(),
+                _ => unreachable!(),
             }
             .into()
         }
 
-        NODE_APPLY => {
-            let fun = rnix::types::Apply::cast(node).unwrap();
+        ParsedType::Apply(n) => Term::App(
+            translate(n.lambda().unwrap(), file_id),
+            translate(n.value().unwrap(), file_id),
+        )
+        .into(),
+        ParsedType::IfElse(n) => Term::App(
             Term::App(
-                translate(fun.lambda().unwrap(), file_id),
-                translate(fun.value().unwrap(), file_id),
+                Term::Op1(UnaryOp::Ite(), translate(n.condition().unwrap(), file_id)).into(),
+                translate(n.body().unwrap(), file_id),
             )
-            .into()
-        }
-        NODE_IF_ELSE => {
-            let ifelse = rnix::types::IfElse::cast(node).unwrap();
-            Term::App(
-                Term::App(
-                    Term::Op1(
-                        UnaryOp::Ite(),
-                        translate(ifelse.condition().unwrap(), file_id),
-                    )
-                    .into(),
-                    translate(ifelse.body().unwrap(), file_id),
-                )
-                .into(),
-                translate(ifelse.else_body().unwrap(), file_id),
-            )
-            .into()
-        }
-        NODE_BIN_OP => (BinOp::cast(node).unwrap(), file_id).into(),
-        NODE_UNARY_OP => (UniOp::cast(node).unwrap(), file_id).into(),
-        _ => panic!("{}", node),
+            .into(),
+            translate(n.else_body().unwrap(), file_id),
+        )
+        .into(),
+        ParsedType::BinOp(n) => (n, file_id).into(),
+        ParsedType::UnaryOp(n) => (n, file_id).into(),
+        ParsedType::OrDefault(n) => unimplemented!(),
+
+        // TODO: what are these?
+        ParsedType::Dynamic(_)
+        | ParsedType::Select(_)
+        | ParsedType::PatBind(_)
+        | ParsedType::PathWithInterpol(_) => unimplemented!(),
+
+        // Is not a `RichTerm` so is transformed as part of actual ones.
+        ParsedType::Pattern(_)
+        | ParsedType::PatEntry(_)
+        | ParsedType::Inherit(..)
+        | ParsedType::InheritFrom(..)
+        | ParsedType::Key(..)
+        | ParsedType::KeyValue(..) => unreachable!(),
     }
-    .with_pos(crate::position::TermPos::Original(mk_span(
-        file_id,
-        pos.start().into(),
-        pos.end().into(),
-    )))
+    .with_pos(crate::position::TermPos::Original(span))
 }
 
 pub fn parse(cache: &Cache, file_id: FileId) -> Result<RichTerm, rnix::parser::ParseError> {
