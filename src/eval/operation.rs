@@ -714,14 +714,14 @@ fn process_unary_operation(
         UnaryOp::ArrayHead() => {
             if let Term::Array(ts, attrs) = &*t {
                 if let Some(head) = ts.first() {
-                    let head_with_contract = apply_contracts(
+                    let head_with_ctr = apply_contracts(
                         head.clone(),
                         attrs.pending_contracts.iter().cloned(),
                         pos.into_inherited(),
                     );
 
                     Ok(Closure {
-                        body: head_with_contract,
+                        body: head_with_ctr,
                         env,
                     })
                 } else {
@@ -1853,8 +1853,10 @@ fn process_binary_operation(
                 ))
             }
         },
-        BinaryOp::ArrayConcat() => match_sharedterm! {t1, with {
-                Term::Array(ts1, attrs1) => match_sharedterm! {t2, with {
+        BinaryOp::ArrayConcat() => match_sharedterm! {t1,
+            with {
+                Term::Array(ts1, attrs1) => match_sharedterm! {t2,
+                    with {
                         Term::Array(ts2, attrs2) => {
                             // NOTE: the [eval_closure] function in [eval] should've made sure
                             // that the array is closurized. We leave a debug_assert! here just
@@ -1865,14 +1867,41 @@ fn process_binary_operation(
 
                             let mut ts: Vec<RichTerm> = Vec::with_capacity(ts1.len() + ts2.len());
 
-                            ts.extend(ts1.into_iter());
-                            ts.extend(ts2.into_iter());
+                            let ctrs_left = attrs1
+                                .pending_contracts
+                                .iter()
+                                .filter(|ctr| !attrs2.pending_contracts.contains(ctr))
+                                .cloned();
+
+                            let ctrs_right = attrs2
+                                .pending_contracts
+                                .iter()
+                                .filter(|ctr| !attrs1.pending_contracts.contains(ctr))
+                                .cloned();
+
+                            ts.extend(ts1.into_iter().map(|t|
+                                apply_contracts(t, ctrs_left.clone(), pos1)
+                            ));
+
+                            ts.extend(ts2.into_iter().map(|t|
+                                apply_contracts(t, ctrs_right.clone(), pos2)
+                            ));
+
+                            let ctrs_common = attrs1
+                                .pending_contracts
+                                .into_iter()
+                                .filter(|ctr| attrs2.pending_contracts.contains(ctr))
+                                .collect();
+
+                            let attrs = ArrayAttrs {
+                                closurized: true,
+                                pending_contracts: ctrs_common
+                            };
 
                             let mut env = env1.clone();
                             // TODO: Is there a cheaper way to "merge" two environements?
                             env.extend(env2.iter_elems().map(|(k, v)| (k.clone(), v.clone())));
 
-                            let attrs = attrs1.as_closurized().with_contracts(attrs2.pending_contracts);
 
                             Ok(Closure {
                                 body: RichTerm::new(Term::Array(ts, attrs), pos_op_inh),
@@ -1905,15 +1934,20 @@ fn process_binary_operation(
             }
         },
         BinaryOp::ArrayElemAt() => match (&*t1, &*t2) {
-            (Term::Array(ts, _), Term::Num(n)) => {
+            (Term::Array(ts, attrs), Term::Num(n)) => {
                 let n_int = *n as usize;
                 if n.fract() != 0.0 {
                     Err(EvalError::Other(format!("elemAt: expected the 2nd agument to be an integer, got the floating-point value {}", n), pos_op))
                 } else if *n < 0.0 || n_int >= ts.len() {
                     Err(EvalError::Other(format!("elemAt: index out of bounds. Expected a value between 0 and {}, got {}", ts.len(), n), pos_op))
                 } else {
+                    let elem_with_ctr = apply_contracts(
+                        ts[n_int].clone(),
+                        attrs.pending_contracts.iter().cloned(),
+                        pos1.into_inherited(),
+                    );
                     Ok(Closure {
-                        body: ts[n_int].clone(),
+                        body: elem_with_ctr,
                         env: env1,
                     })
                 }

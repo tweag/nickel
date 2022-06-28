@@ -200,7 +200,7 @@ pub fn get_uop_type(
 
 /// Type of a binary operation.
 pub fn get_bop_type(
-    _state: &mut State,
+    state: &mut State,
     op: &BinaryOp,
 ) -> Result<(TypeWrapper, TypeWrapper, TypeWrapper), TypecheckError> {
     Ok(match op {
@@ -372,7 +372,7 @@ pub fn get_bop_type(
 }
 
 pub fn get_nop_type(
-    state: &mut State,
+    _state: &mut State,
     op: &NAryOp,
 ) -> Result<(Vec<TypeWrapper>, TypeWrapper), TypecheckError> {
     Ok(match op {
