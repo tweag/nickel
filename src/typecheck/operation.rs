@@ -22,16 +22,11 @@ pub fn get_uop_type(
                 mk_tyw_arrow!(branches.clone(), branches.clone(), branches),
             )
         }
-        // forall a. a -> Bool
-        UnaryOp::IsNum()
-        | UnaryOp::IsBool()
-        | UnaryOp::IsStr()
-        | UnaryOp::IsFun()
-        | UnaryOp::IsArray()
-        | UnaryOp::IsRecord() => {
-            let inp = TypeWrapper::Ptr(state.table.fresh_var());
-            (inp, mk_typewrapper::bool())
-        }
+        // Dyn -> [| Num, Bool, Str, Enum, Fun, Array, Record, Lbl, Other |]
+        UnaryOp::Typeof() => (
+            mk_typewrapper::dynamic(),
+            mk_tyw_enum!("Num", "Bool", "Str", "Enum", "Fun", "Array", "Record", "Lbl", "Other"),
+        ),
         // Bool -> Bool -> Bool
         UnaryOp::BoolAnd() | UnaryOp::BoolOr() => (
             mk_typewrapper::bool(),
@@ -52,7 +47,7 @@ pub fn get_uop_type(
             let row = TypeWrapper::Ptr(state.table.fresh_var());
             // Constraining a freshly created variable should never fail.
             constraint(state, row.clone(), id.clone()).unwrap();
-            (mk_tyw_enum!(row.clone()), mk_tyw_enum!(id.clone(), row))
+            (mk_tyw_enum!(; row.clone()), mk_tyw_enum!(id.clone(); row))
         }
         // This should not happen, as Switch() is only produced during evaluation.
         UnaryOp::Switch(_) => panic!("cannot typecheck Switch()"),
@@ -170,7 +165,7 @@ pub fn get_uop_type(
         // Str -> < | Dyn>
         UnaryOp::EnumFromStr() => (
             mk_typewrapper::str(),
-            mk_tyw_enum!(mk_typewrapper::dynamic()),
+            mk_tyw_enum!(; mk_typewrapper::dynamic()),
         ),
         // Str -> Str -> Bool
         UnaryOp::StrIsMatch() => (
@@ -325,13 +320,7 @@ pub fn get_bop_type(
         ),
         // <Md5, Sha1, Sha256, Sha512> -> Str -> Str
         BinaryOp::Hash() => (
-            mk_tyw_enum!(
-                "Md5",
-                "Sha1",
-                "Sha256",
-                "Sha512",
-                mk_typewrapper::row_empty()
-            ),
+            mk_tyw_enum!("Md5", "Sha1", "Sha256", "Sha512"),
             mk_typewrapper::str(),
             mk_typewrapper::str(),
         ),
@@ -339,14 +328,14 @@ pub fn get_bop_type(
         BinaryOp::Serialize() => {
             let ty_input = TypeWrapper::Ptr(state.table.fresh_var());
             (
-                mk_tyw_enum!("Json", "Yaml", "Toml", mk_typewrapper::row_empty()),
+                mk_tyw_enum!("Json", "Yaml", "Toml"),
                 ty_input,
                 mk_typewrapper::str(),
             )
         }
         // <Json, Yaml, Toml> -> Str -> Dyn
         BinaryOp::Deserialize() => (
-            mk_tyw_enum!("Json", "Yaml", "Toml", mk_typewrapper::row_empty()),
+            mk_tyw_enum!("Json", "Yaml", "Toml"),
             mk_typewrapper::str(),
             mk_typewrapper::dynamic(),
         ),

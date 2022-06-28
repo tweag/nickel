@@ -30,7 +30,7 @@
         ```
         "%m
       = fun label value =>
-       if %is_array% value then
+       if %typeof% value == `Array then
          if %length% value != 0 then
            value
          else

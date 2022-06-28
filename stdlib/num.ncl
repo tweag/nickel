@@ -13,7 +13,7 @@
       ```
       "%m
     = fun label value =>
-      if %is_num% value then
+      if %typeof% value == `Num then
         if value % 1 == 0 then
           value
         else
@@ -36,7 +36,7 @@
       ```
       "%m
     = fun label value =>
-      if %is_num% value then
+      if %typeof% value == `Num then
         if value % 1 == 0 && value >= 0 then
           value
         else
@@ -59,7 +59,7 @@
       ```
       "%m
     = fun label value =>
-      if %is_num% value then
+      if %typeof% value == `Num then
         if value % 1 == 0 && value > 0 then
           value
         else
@@ -80,7 +80,7 @@
       ```
       "%m
     = fun label value =>
-      if %is_num% value then
+      if %typeof% value == `Num then
         if value != 0 then
           value
         else
@@ -100,7 +100,7 @@
           false
       ```
       "%m
-    = fun x => %is_num% x && (x % 1 == 0),
+    = fun x => x % 1 == 0,
 
     min : Num -> Num -> Num
     | doc m%"

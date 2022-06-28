@@ -502,6 +502,15 @@ StaticString: String = StringStart <s: ChunkLiteral?> StringEnd => s.unwrap_or_d
 EnumTag: Ident = {
     <Ident>,
     <StaticString> => <>.into(),
+    // Allow tags of the form `Str, `Bool, etc. This is ad-hoc and should
+    // eventually be replaced with a proper lexing of enum tags, but this is not
+    // a trivial task. For now, to make builtin.typeof usable, we just
+    // special-case builtin types.
+    "Dyn" => "Dyn".into(),
+    "Num" => "Num".into(),
+    "Bool" => "Bool".into(),
+    "Str" => "Str".into(),
+    "Array" => "Array".into(),
 }
 
 ChunkLiteralPart: ChunkLiteralPart<'input> = {
@@ -511,12 +520,7 @@ ChunkLiteralPart: ChunkLiteralPart<'input> = {
 };
 
 UOp: UnaryOp = {
-    "is_num" => UnaryOp::IsNum(),
-    "is_bool" => UnaryOp::IsBool(),
-    "is_str" => UnaryOp::IsStr(),
-    "is_fun" => UnaryOp::IsFun(),
-    "is_array" => UnaryOp::IsArray(),
-    "is_record" => UnaryOp::IsRecord(),
+    "typeof" => UnaryOp::Typeof(),
     "blame" => UnaryOp::Blame(),
     "chng_pol" => UnaryOp::ChangePolarity(),
     "polarity" => UnaryOp::Pol(),
@@ -841,12 +845,7 @@ extern {
         "Array" => Token::Normal(NormalToken::Array),
 
         "tag" => Token::Normal(NormalToken::Tag),
-        "is_num" => Token::Normal(NormalToken::IsNum),
-        "is_bool" => Token::Normal(NormalToken::IsBool),
-        "is_str" => Token::Normal(NormalToken::IsStr),
-        "is_fun" => Token::Normal(NormalToken::IsFun),
-        "is_array" => Token::Normal(NormalToken::IsArray),
-        "is_record" => Token::Normal(NormalToken::IsRecord),
+        "typeof" => Token::Normal(NormalToken::Typeof),
         "assume" => Token::Normal(NormalToken::Assume),
         "blame" => Token::Normal(NormalToken::Blame),
         "chng_pol" => Token::Normal(NormalToken::ChangePol),

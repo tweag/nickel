@@ -29,7 +29,7 @@ let Assert = fun l x => x || %blame% l in
     == 2,
 
   let r = record.map
-      (fun y x => if %is_num% x then x + 1 else 0)
+      (fun y x => if %typeof% x == `Num then x + 1 else 0)
       {foo = 1, bar = "it's lazy"} in
     (r.foo) + (r.bar) == 2,
 

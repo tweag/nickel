@@ -147,18 +147,8 @@ pub enum NormalToken<'input> {
 
     #[token("%tag%")]
     Tag,
-    #[token("%is_num%")]
-    IsNum,
-    #[token("%is_bool%")]
-    IsBool,
-    #[token("%is_str%")]
-    IsStr,
-    #[token("%is_fun%")]
-    IsFun,
-    #[token("%is_array%")]
-    IsArray,
-    #[token("%is_record%")]
-    IsRecord,
+    #[token("%typeof%")]
+    Typeof,
 
     #[token("%assume%")]
     Assume,

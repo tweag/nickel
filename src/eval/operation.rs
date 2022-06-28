@@ -180,30 +180,23 @@ fn process_unary_operation(
                 ))
             }
         }
-        UnaryOp::IsNum() => Ok(Closure::atomic_closure(RichTerm::new(
-            Term::Bool(matches!(*t, Term::Num(..))),
-            pos_op_inh,
-        ))),
-        UnaryOp::IsBool() => Ok(Closure::atomic_closure(RichTerm::new(
-            Term::Bool(matches!(*t, Term::Bool(..))),
-            pos_op_inh,
-        ))),
-        UnaryOp::IsStr() => Ok(Closure::atomic_closure(RichTerm::new(
-            Term::Bool(matches!(*t, Term::Str(..))),
-            pos_op_inh,
-        ))),
-        UnaryOp::IsFun() => Ok(Closure::atomic_closure(RichTerm::new(
-            Term::Bool(matches!(*t, Term::Fun(..))),
-            pos_op_inh,
-        ))),
-        UnaryOp::IsArray() => Ok(Closure::atomic_closure(RichTerm::new(
-            Term::Bool(matches!(*t, Term::Array(..))),
-            pos_op_inh,
-        ))),
-        UnaryOp::IsRecord() => Ok(Closure::atomic_closure(RichTerm::new(
-            Term::Bool(matches!(*t, Term::Record(..) | Term::RecRecord(..))),
-            pos_op_inh,
-        ))),
+        UnaryOp::Typeof() => {
+            let result = match *t {
+                Term::Num(_) => "Num",
+                Term::Bool(_) => "Bool",
+                Term::Str(_) => "Str",
+                Term::Enum(_) => "Enum",
+                Term::Fun(..) => "Fun",
+                Term::Array(..) => "Array",
+                Term::Record(..) | Term::RecRecord(..) => "Record",
+                Term::Lbl(..) => "Lbl",
+                _ => "Other",
+            };
+            Ok(Closure::atomic_closure(RichTerm::new(
+                Term::Enum(Ident::from(result)),
+                pos_op_inh,
+            )))
+        }
         UnaryOp::BoolAnd() =>
         // The syntax should not allow partially applied boolean operators.
         {
