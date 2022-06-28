@@ -2183,7 +2183,7 @@ fn process_binary_operation(
                         let array_with_ctr = Closure {
                             body: RichTerm {
                                 term: SharedTerm::new(Term::Array(
-                                    ts.clone(),
+                                    ts,
                                     attrs.with_contracts([PendingContract::new(rt3, lbl)])
                                 )),
                                 pos: pos2,
