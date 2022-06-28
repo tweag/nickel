@@ -357,11 +357,22 @@ pub fn get_bop_type(
             mk_typewrapper::str(),
             mk_typewrapper::array(AbsType::Str()),
         ),
+        // The first argument is a contract, the second is a label.
+        // forall a. Dyn -> Dyn -> Array a -> Array a
+        BinaryOp::ArrayLazyAssume() => {
+            let ty_elt = TypeWrapper::Ptr(state.table.fresh_var());
+            let ty_array = mk_typewrapper::array(ty_elt);
+            (
+                mk_typewrapper::dynamic(),
+                mk_typewrapper::dynamic(),
+                mk_tyw_arrow!(ty_array.clone(), ty_array),
+            )
+        }
     })
 }
 
 pub fn get_nop_type(
-    state: &mut State,
+    _state: &mut State,
     op: &NAryOp,
 ) -> Result<(Vec<TypeWrapper>, TypeWrapper), TypecheckError> {
     Ok(match op {
@@ -385,19 +396,5 @@ pub fn get_nop_type(
         ),
         // This should not happen, as Switch() is only produced during evaluation.
         NAryOp::MergeContract() => panic!("cannot typecheck MergeContract()"),
-        // The first argument is a contract, the second is a label.
-        // forall a. Dyn -> Dyn -> Array a -> Array a
-        NAryOp::ArrayLazyAssume() => {
-            let ty_elt = TypeWrapper::Ptr(state.table.fresh_var());
-            let ty_array = mk_typewrapper::array(ty_elt);
-            (
-                vec![
-                    mk_typewrapper::dynamic(),
-                    mk_typewrapper::dynamic(),
-                    ty_array.clone(),
-                ],
-                ty_array,
-            )
-        }
     })
 }

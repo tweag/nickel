@@ -185,16 +185,16 @@ impl Default for BindingType {
 
 /// A contract with its associated data.
 #[derive(Debug, PartialEq, Clone)]
-pub struct ContractInfo {
+pub struct PendingContract {
     /// The "pending" contract, can be a function or a record.
     pub contract: RichTerm,
     /// The blame label.
     pub label: Label,
 }
 
-impl From<(RichTerm, Label)> for ContractInfo {
-    fn from((contract, label): (RichTerm, Label)) -> Self {
-        ContractInfo { contract, label }
+impl PendingContract {
+    pub fn new(contract: RichTerm, label: Label) -> Self {
+        PendingContract { contract, label }
     }
 }
 
@@ -208,7 +208,7 @@ pub struct ArrayAttrs {
     pub closurized: bool,
     /// List of lazily-applied contracts.
     /// These are only observed when data enters or leaves the array.
-    pub contract_info: Vec<ContractInfo>,
+    pub pending_contracts: Vec<PendingContract>,
 }
 
 impl ArrayAttrs {
@@ -216,7 +216,7 @@ impl ArrayAttrs {
     pub fn new_closurized() -> Self {
         ArrayAttrs {
             closurized: true,
-            contract_info: Vec::new(),
+            pending_contracts: Vec::new(),
         }
     }
 
@@ -229,9 +229,9 @@ impl ArrayAttrs {
     /// Extend contracts from an iterator.
     pub fn with_contracts<I>(mut self, iter: I) -> Self
     where
-        I: IntoIterator<Item = ContractInfo>,
+        I: IntoIterator<Item = PendingContract>,
     {
-        self.contract_info.extend(iter);
+        self.pending_contracts.extend(iter);
         self
     }
 }
@@ -1013,6 +1013,10 @@ pub enum BinaryOp {
     StrSplit(),
     /// Determine if a string is a substring of another one.
     StrContains(),
+
+    /// Lazily apply a contract to an Array.
+    /// This simply inserts a contract into the array attributes.
+    ArrayLazyAssume(),
 }
 
 impl BinaryOp {
@@ -1047,9 +1051,6 @@ pub enum NAryOp {
     /// The merge operator in contract mode (see [crate::eval::merge]). The arguments are in order
     /// the contract's label, the value to check, and the contract as a record.
     MergeContract(),
-    /// Lazily apply a contract to an Array.
-    /// This simply inserts a contract into the array attributes.
-    ArrayLazyAssume(),
 }
 
 impl NAryOp {
@@ -1058,8 +1059,7 @@ impl NAryOp {
             NAryOp::StrReplace()
             | NAryOp::StrReplaceRegex()
             | NAryOp::StrSubstr()
-            | NAryOp::MergeContract()
-            | NAryOp::ArrayLazyAssume() => 3,
+            | NAryOp::MergeContract() => 3,
         }
     }
 
@@ -1075,7 +1075,6 @@ impl fmt::Display for NAryOp {
             NAryOp::StrReplaceRegex() => write!(f, "strReplaceRegex"),
             NAryOp::StrSubstr() => write!(f, "substring"),
             NAryOp::MergeContract() => write!(f, "mergeContract"),
-            NAryOp::ArrayLazyAssume() => write!(f, "arrayLazyAssume"),
         }
     }
 }
