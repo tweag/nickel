@@ -1842,8 +1842,10 @@ fn process_binary_operation(
                 ))
             }
         },
-        BinaryOp::ArrayConcat() => match_sharedterm! {t1, with {
-                Term::Array(ts1, attrs1) => match_sharedterm! {t2, with {
+        BinaryOp::ArrayConcat() => match_sharedterm! {t1,
+            with {
+                Term::Array(ts1, attrs1) => match_sharedterm! {t2,
+                    with {
                         Term::Array(ts2, attrs2) => {
                             // NOTE: the [eval_closure] function in [eval] should've made sure
                             // that the array is closurized. We leave a debug_assert! here just
@@ -1854,14 +1856,41 @@ fn process_binary_operation(
 
                             let mut ts: Vec<RichTerm> = Vec::with_capacity(ts1.len() + ts2.len());
 
-                            ts.extend(ts1.into_iter());
-                            ts.extend(ts2.into_iter());
+                            let ctrs_left = attrs1
+                                .pending_contracts
+                                .iter()
+                                .filter(|ctr| !attrs2.pending_contracts.contains(ctr))
+                                .cloned();
+
+                            let ctrs_right = attrs2
+                                .pending_contracts
+                                .iter()
+                                .filter(|ctr| !attrs1.pending_contracts.contains(ctr))
+                                .cloned();
+
+                            ts.extend(ts1.into_iter().map(|t|
+                                apply_contracts(t, ctrs_left.clone(), pos1)
+                            ));
+
+                            ts.extend(ts2.into_iter().map(|t|
+                                apply_contracts(t, ctrs_right.clone(), pos2)
+                            ));
+
+                            let ctrs_common = attrs1
+                                .pending_contracts
+                                .into_iter()
+                                .filter(|ctr| attrs2.pending_contracts.contains(ctr))
+                                .collect();
+
+                            let attrs = ArrayAttrs {
+                                closurized: true,
+                                pending_contracts: ctrs_common
+                            };
 
                             let mut env = env1.clone();
                             // TODO: Is there a cheaper way to "merge" two environements?
                             env.extend(env2.iter_elems().map(|(k, v)| (k.clone(), v.clone())));
 
-                            let attrs = attrs1.as_closurized().with_contracts(attrs2.pending_contracts);
 
                             Ok(Closure {
                                 body: RichTerm::new(Term::Array(ts, attrs), pos_op_inh),
