@@ -703,14 +703,14 @@ fn process_unary_operation(
         UnaryOp::ArrayHead() => {
             if let Term::Array(ts, attrs) = &*t {
                 if let Some(head) = ts.first() {
-                    let head_with_contract = apply_contracts(
+                    let head_with_ctr = apply_contracts(
                         head.clone(),
                         attrs.pending_contracts.iter().cloned(),
                         pos.into_inherited(),
                     );
 
                     Ok(Closure {
-                        body: head_with_contract,
+                        body: head_with_ctr,
                         env,
                     })
                 } else {
@@ -1923,15 +1923,20 @@ fn process_binary_operation(
             }
         },
         BinaryOp::ArrayElemAt() => match (&*t1, &*t2) {
-            (Term::Array(ts, _), Term::Num(n)) => {
+            (Term::Array(ts, attrs), Term::Num(n)) => {
                 let n_int = *n as usize;
                 if n.fract() != 0.0 {
                     Err(EvalError::Other(format!("elemAt: expected the 2nd agument to be an integer, got the floating-point value {}", n), pos_op))
                 } else if *n < 0.0 || n_int >= ts.len() {
                     Err(EvalError::Other(format!("elemAt: index out of bounds. Expected a value between 0 and {}, got {}", ts.len(), n), pos_op))
                 } else {
+                    let elem_with_ctr = apply_contracts(
+                        ts[n_int].clone(),
+                        attrs.pending_contracts.iter().cloned(),
+                        pos1.into_inherited(),
+                    );
                     Ok(Closure {
-                        body: ts[n_int].clone(),
+                        body: elem_with_ctr,
                         env: env1,
                     })
                 }
