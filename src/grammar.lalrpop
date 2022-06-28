@@ -717,7 +717,6 @@ InfixExpr: UniTerm = {
 
 BOpPre: BinaryOp = {
     "assume" => BinaryOp::Assume(),
-    "array_lazy_assume" => BinaryOp::ArrayLazyAssume(),
     "unwrap" => BinaryOp::Unwrap(),
     "go_field" => BinaryOp::GoField(),
     "has_field" => BinaryOp::HasField(),
@@ -731,6 +730,7 @@ BOpPre: BinaryOp = {
     "str_contains" => BinaryOp::StrContains(),
     "record_insert" => BinaryOp::DynExtend(),
     "record_remove" => BinaryOp::DynRemove(),
+    "array_lazy_assume" => BinaryOp::Assume(),
 }
 
 NOpPre<ArgRule>: UniTerm = {

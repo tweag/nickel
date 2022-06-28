@@ -200,7 +200,7 @@ pub fn get_uop_type(
 
 /// Type of a binary operation.
 pub fn get_bop_type(
-    state: &mut State,
+    _state: &mut State,
     op: &BinaryOp,
 ) -> Result<(TypeWrapper, TypeWrapper, TypeWrapper), TypecheckError> {
     Ok(match op {
@@ -357,17 +357,22 @@ pub fn get_bop_type(
             mk_typewrapper::str(),
             mk_typewrapper::array(AbsType::Str()),
         ),
-        // forall a. Dyn -> Array a -> Array a
+        // The first argument is a contract, the second is a label.
+        // forall a. Dyn -> Dyn -> Array a -> Array a
         BinaryOp::ArrayLazyAssume() => {
             let ty_elt = TypeWrapper::Ptr(state.table.fresh_var());
             let ty_array = mk_typewrapper::array(ty_elt);
-            (mk_typewrapper::dynamic(), ty_array.clone(), ty_array)
+            (
+                mk_typewrapper::dynamic(),
+                mk_typewrapper::dynamic(),
+                mk_tyw_arrow!(ty_array.clone(), ty_array),
+            )
         }
     })
 }
 
 pub fn get_nop_type(
-    _state: &mut State,
+    state: &mut State,
     op: &NAryOp,
 ) -> Result<(Vec<TypeWrapper>, TypeWrapper), TypecheckError> {
     Ok(match op {

@@ -21,9 +21,9 @@ use crate::{
     position::TermPos,
     serialize,
     serialize::ExportFormat,
-    term::make as mk_term,
+    term::{make as mk_term, PendingContract},
     term::{ArrayAttrs, BinaryOp, NAryOp, RichTerm, SharedTerm, StrChunk, Term, UnaryOp},
-    transform::{fresh_var, Closurizable},
+    transform::{apply_contracts::apply_contracts, fresh_var, Closurizable},
 };
 use md5::digest::Digest;
 use simple_counter::*;
@@ -688,9 +688,20 @@ fn process_unary_operation(
                     });
                     Ok(seq_terms(terms, env, pos_op))
                 }
-                Term::Array(ts, _) if !ts.is_empty() => {
-                    Ok(seq_terms(ts.into_iter().map(|t| (None, t)), env, pos_op))
-                }
+                Term::Array(ts, attrs) if !ts.is_empty() => Ok(seq_terms(
+                    ts.into_iter().map(|t| {
+                        (
+                            None,
+                            apply_contracts(
+                                t,
+                                attrs.pending_contracts.iter().cloned(),
+                                pos.into_inherited(),
+                            ),
+                        )
+                    }),
+                    env,
+                    pos_op,
+                )),
                 _ => {
                     if let Some((next, ..)) = stack.pop_arg() {
                         Ok(next)
@@ -701,10 +712,16 @@ fn process_unary_operation(
             }
         }
         UnaryOp::ArrayHead() => {
-            if let Term::Array(ts, _) = &*t {
+            if let Term::Array(ts, attrs) = &*t {
                 if let Some(head) = ts.first() {
+                    let head_with_contract = apply_contracts(
+                        head.clone(),
+                        attrs.pending_contracts.iter().cloned(),
+                        pos.into_inherited(),
+                    );
+
                     Ok(Closure {
-                        body: head.clone(),
+                        body: head_with_contract,
                         env,
                     })
                 } else {
@@ -1855,7 +1872,7 @@ fn process_binary_operation(
                             // TODO: Is there a cheaper way to "merge" two environements?
                             env.extend(env2.iter_elems().map(|(k, v)| (k.clone(), v.clone())));
 
-                            let attrs = attrs1.as_closurized().with_contracts(attrs2.contracts);
+                            let attrs = attrs1.as_closurized().with_contracts(attrs2.pending_contracts);
 
                             Ok(Closure {
                                 body: RichTerm::new(Term::Array(ts, attrs), pos_op_inh),
@@ -2144,38 +2161,60 @@ fn process_binary_operation(
                 },
             )),
         },
-        BinaryOp::ArrayLazyAssume() => match &*t2 {
-            Term::Array(ts, attrs) => {
-                let closure = Closure {
-                    body: RichTerm {
-                        term: SharedTerm::new(Term::Array(
-                            ts.clone(),
-                            ArrayAttrs {
-                                closurized: attrs.closurized,
-                                contracts: vec![RichTerm {
-                                    term: t1,
-                                    pos: pos1,
-                                }],
-                            },
-                        )),
+        BinaryOp::ArrayLazyAssume() => {
+            let (ctr, _) = stack.pop_arg().ok_or_else(|| {
+                EvalError::NotEnoughArgs(3, String::from("arrayLazyAssume"), pos_op)
+            })?;
+
+            let Closure {
+                body: rt3,
+                env: env3,
+            } = ctr;
+
+            // FIXME: use match?
+            let lbl = match_sharedterm! {t1, with {
+                    Term::Lbl(lbl) => lbl
+                } else return Err(EvalError::TypeError(
+                    String::from("Lbl"),
+                    String::from("arrayLazyAssume, 2nd argument"),
+                    fst_pos,
+                    RichTerm {
+                        term: t2,
                         pos: pos2,
                     },
-                    env: env2,
-                };
+                ))
+            };
 
-                Ok(closure)
+            match_sharedterm! {t2, with {
+                    Term::Array(ts, attrs) => {
+
+                        // Preserve the environment of the contract in the resulting array.
+                        let rt3 = rt3.closurize(&mut env2, env3);
+
+                        let array_with_ctr = Closure {
+                            body: RichTerm {
+                                term: SharedTerm::new(Term::Array(
+                                    ts,
+                                    attrs.with_contracts([PendingContract::new(rt3, lbl)])
+                                )),
+                                pos: pos2,
+                            },
+                            env: env2,
+                        };
+
+                        Ok(array_with_ctr)
+                    }
+                } else Err(EvalError::TypeError(
+                    String::from("Array"),
+                    String::from("arrayLazyAssume, 2nd argument"),
+                    snd_pos,
+                    RichTerm {
+                        term: t2,
+                        pos: pos2,
+                    },
+                ))
             }
-
-            _ => Err(EvalError::TypeError(
-                String::from("Array"),
-                String::from("array_lazy_assume, 2st argument"),
-                fst_pos,
-                RichTerm {
-                    term: t1,
-                    pos: pos1,
-                },
-            )),
-        },
+        }
     }
 }
 
