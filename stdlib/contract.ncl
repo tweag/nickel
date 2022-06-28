@@ -9,7 +9,11 @@
 
   "$fail" = fun l t => %blame% l,
 
-  "$array" = fun elt l t => %array_lazy_assume% elt l t,
+  "$array" = fun elt l t =>
+      if %typeof% t == `Array then
+          %array_lazy_assume% (%go_array% l) t elt
+      else
+          %blame% l,
 
   "$func" = fun s t l e =>
       if %typeof% e == `Fun then
