@@ -135,7 +135,7 @@ fn translate(node: rnix::SyntaxNode, file_id: FileId) -> RichTerm {
     use rnix::types::{self, ParsedType, Wrapper};
     use rnix::value;
     use rnix::SyntaxKind::*;
-    use std::convert::TryInto;
+    use std::convert::{TryFrom, TryInto};
     let pos = node.text_range();
     let span = mk_span(file_id, pos.start().into(), pos.end().into());
     println!("{:?}", node);
@@ -281,10 +281,23 @@ fn translate(node: rnix::SyntaxNode, file_id: FileId) -> RichTerm {
         .into(),
         ParsedType::BinOp(n) => (n, file_id).into(),
         ParsedType::UnaryOp(n) => (n, file_id).into(),
+        ParsedType::Select(n) => match ParsedType::try_from(n.index().unwrap()).unwrap() {
+            ParsedType::Ident(id) => Term::Op1(
+                UnaryOp::StaticAccess(id.as_str().into()),
+                translate(n.set().unwrap(), file_id),
+            )
+            .into(),
+            _ => Term::Op2(
+                BinaryOp::DynAccess(),
+                translate(n.index().unwrap(), file_id),
+                translate(n.set().unwrap(), file_id),
+            )
+            .into(),
+        },
         ParsedType::OrDefault(n) => unimplemented!(),
 
         // TODO: what are these?
-        ParsedType::Select(_) | ParsedType::PatBind(_) | ParsedType::PathWithInterpol(_) => {
+        ParsedType::PatBind(_) | ParsedType::PathWithInterpol(_) => {
             unimplemented!()
         }
 
