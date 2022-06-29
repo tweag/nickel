@@ -144,6 +144,7 @@ fn translate(node: rnix::SyntaxNode, file_id: FileId) -> RichTerm {
         ParsedType::Error(_) => Term::ParseError.into(),
         ParsedType::Root(n) => translate(n.inner().unwrap(), file_id),
         ParsedType::Paren(n) => translate(n.inner().unwrap(), file_id),
+        ParsedType::Dynamic(n) => translate(n.inner().unwrap(), file_id),
 
         ParsedType::Assert(n) => unimplemented!(),
 
@@ -283,10 +284,9 @@ fn translate(node: rnix::SyntaxNode, file_id: FileId) -> RichTerm {
         ParsedType::OrDefault(n) => unimplemented!(),
 
         // TODO: what are these?
-        ParsedType::Dynamic(_)
-        | ParsedType::Select(_)
-        | ParsedType::PatBind(_)
-        | ParsedType::PathWithInterpol(_) => unimplemented!(),
+        ParsedType::Select(_) | ParsedType::PatBind(_) | ParsedType::PathWithInterpol(_) => {
+            unimplemented!()
+        }
 
         // Is not a `RichTerm` so is transformed as part of actual ones.
         ParsedType::Pattern(_)
