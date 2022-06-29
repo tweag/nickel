@@ -1,5 +1,5 @@
 ---
-slug: type-vs-contract
+slug: types-vs-contracts
 ---
 
 # Type vs contract: when to?
@@ -83,7 +83,7 @@ let Schema = {
 ## Computation (compound expressions)
 
 Some expressions are neither immediate data nor functions. Take for example the
-function application `array.map (fun s => "http://#{s}/index") servers`.
+function application `array.map (fun s => "http://%{s}/index") servers`.
 Usually, you should do **nothing**.
 
 - *Inside configuration: nothing*. The function or operator you are using should
