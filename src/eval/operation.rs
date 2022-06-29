@@ -645,28 +645,27 @@ fn process_unary_operation(
             }
         }
         UnaryOp::DeepSeq(_) => {
-            /// Build a closure that forces a given list of terms, and at the end resumes the
+            /// Build a RichTerm that forces a given list of terms, and at the end resumes the
             /// evaluation of the argument on the top of the stack. The argument must iterate over
             /// a tuple, which first element is an optional call stack element to add to the
             /// callstack before starting evaluation. This is a temporary fix to have reasonable
             /// missing definition error when deepsequing a record.
             ///
             /// Requires its first argument to be non-empty.
-            fn seq_terms<I>(mut it: I, env: Environment, pos_op_inh: TermPos) -> Closure
+            fn seq_terms<I>(mut it: I, pos_op_inh: TermPos) -> RichTerm
             where
                 I: Iterator<Item = (Option<callstack::StackElem>, RichTerm)>,
             {
                 let (first_elem, first) = it
                     .next()
                     .expect("expected the argument to be a non-empty iterator");
-                let body = it.fold(
+
+                it.fold(
                     mk_term::op1(UnaryOp::DeepSeq(first_elem), first).with_pos(pos_op_inh),
                     |acc, (elem, t)| {
                         mk_app!(mk_term::op1(UnaryOp::DeepSeq(elem), t), acc).with_pos(pos_op_inh)
                     },
-                );
-
-                Closure { body, env }
+                )
             }
 
             match t.into_owned() {
@@ -688,22 +687,31 @@ fn process_unary_operation(
                                 t,
                             )
                         });
-                    Ok(seq_terms(terms, env.clone(), pos_op))
+                    Ok(Closure {
+                        body: seq_terms(terms, pos_op),
+                        env,
+                    })
                 }
-                Term::Array(ts, attrs) if !ts.is_empty() => Ok(seq_terms(
-                    ts.into_iter().map(|t| {
-                        (
-                            None,
-                            apply_contracts(
+                Term::Array(ts, attrs) if !ts.is_empty() => {
+                    let mut shared_env = Environment::new();
+                    let terms = seq_terms(
+                        ts.into_iter().map(|t| {
+                            let t_with_ctr = apply_contracts(
                                 t,
                                 attrs.pending_contracts.iter().cloned(),
                                 pos.into_inherited(),
-                            ),
-                        )
-                    }),
-                    env,
-                    pos_op,
-                )),
+                            )
+                            .closurize(&mut shared_env, env.clone());
+                            (None, t_with_ctr)
+                        }),
+                        pos_op,
+                    );
+
+                    Ok(Closure {
+                        body: terms,
+                        env: shared_env,
+                    })
+                }
                 _ => {
                     if let Some((next, ..)) = stack.pop_arg() {
                         Ok(next)
