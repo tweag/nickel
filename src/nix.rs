@@ -1,7 +1,7 @@
 use crate::cache::Cache;
 use crate::parser::utils::mk_span;
 use crate::term::{BinaryOp, UnaryOp};
-use crate::term::{RichTerm, Term};
+use crate::term::{MergePriority, MetaValue, RichTerm, Term};
 use codespan::FileId;
 use rnix;
 use rnix::types::{BinOp, EntryHolder, TokenWrapper, TypedNode, UnaryOp as UniOp};
@@ -249,7 +249,16 @@ fn translate(node: rnix::SyntaxNode, file_id: FileId) -> RichTerm {
                     let matches = pat
                         .entries()
                         .map(|e| {
-                            Match::Simple(e.name().unwrap().as_str().into(), Default::default())
+                            let mv = if let Some(def) = e.default() {
+                                MetaValue {
+                                    value: Some(translate(def, file_id)),
+                                    priority: MergePriority::Default,
+                                    ..Default::default()
+                                }
+                            } else {
+                                Default::default()
+                            };
+                            Match::Simple(e.name().unwrap().as_str().into(), mv)
                         })
                         .collect();
                     let dest = Destruct::Record {
