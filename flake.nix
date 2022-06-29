@@ -286,7 +286,21 @@
         src = ./doc/manual;
         installPhase = ''
           mkdir -p $out
-          cp -r ./ "$out"
+          cp -r ./ $out
+        '';
+      };
+
+      stdlibDoc = pkgs.stdenv.mkDerivation {
+        name = "nickel-stdlib-doc-${version}";
+        src = ./stdlib;
+        installPhase = ''
+          mkdir -p $out
+          for file in *
+          do
+            module=$(basename $file .ncl)
+            ${self.defaultPackage."${system}"}/bin/nickel doc -f "$module.ncl" \
+              --output "$out/$module.md"
+          done
         '';
       };
 
@@ -299,6 +313,7 @@
         dockerImage = buildDocker packages.build; # TODO: docker image should be a passthru
         inherit vscodeExtension;
         inherit userManual;
+        inherit stdlibDoc;
       };
 
       devShell = devShells.stable;
