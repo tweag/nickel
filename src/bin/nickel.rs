@@ -77,8 +77,8 @@ enum Command {
     #[cfg(feature = "doc")]
     Doc {
         /// Specify the path of the generated documentation file. Default to
-        /// `~/.nickel/doc/<input-file>.md` for input `<input-file>.ncl`. `<input-file>.md` is set
-        /// to `out.md` when the input comes from stdin.
+        /// `~/.nickel/doc/<input-file>.md` for input `<input-file>.ncl`, or to
+        /// `~/.nickel/doc/out.md` if the input is read from stdin.
         #[structopt(short = "o", long, parse(from_os_str))]
         output: Option<PathBuf>,
     },
