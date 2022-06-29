@@ -26,7 +26,7 @@ fn min_interpolate_sign(text: &str) -> usize {
 
 fn sorted_map<'a, K: Ord, V>(m: &'a HashMap<K, V>) -> Vec<(&'a K, &'a V)> {
     let mut ret: Vec<(&K, &V)> = m.iter().collect();
-    ret.sort_by(|x, y| x.0.cmp(&y.0));
+    ret.sort_by_key(|(k, _)| *k);
     ret
 }
 

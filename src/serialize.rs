@@ -102,7 +102,7 @@ where
     S: Serializer,
 {
     let mut entries: Vec<(_, _)> = map.iter().collect();
-    entries.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
+    entries.sort_by_key(|(k, _)| *k);
 
     let mut map_ser = serializer.serialize_map(Some(entries.len()))?;
     for (id, t) in entries.iter() {
