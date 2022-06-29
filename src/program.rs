@@ -128,8 +128,8 @@ impl Program {
 
     /// Create a markdown file with documentation for the specified program in `.nickel/doc/program_main_file_name.md`
     #[cfg(feature = "doc")]
-    pub fn output_doc(&mut self) -> Result<(), Error> {
-        doc::output_doc(&mut self.cache, self.main_id)
+    pub fn output_doc(&mut self, out: &mut dyn std::io::Write) -> Result<(), Error> {
+        doc::output_doc(&mut self.cache, self.main_id, out)
     }
 
     #[cfg(debug_assertions)]
@@ -137,7 +137,7 @@ impl Program {
         self.cache.skip_stdlib = true;
     }
 
-    pub fn expand(
+    pub fn pprint_ast(
         &mut self,
         out: &mut std::io::BufWriter<Box<dyn std::io::Write>>,
         apply_transforms: bool,
@@ -244,43 +244,28 @@ mod doc {
     use comrak::arena_tree::NodeEdge;
     use comrak::nodes::{Ast, AstNode, NodeCode, NodeHeading, NodeValue};
     use comrak::{format_commonmark, parse_document, Arena, ComrakOptions};
-    use std::fs::{self, File};
-    use std::path::Path;
+    use std::io::Write;
 
     /// Create a markdown file with documentation for the specified FileId.
-    pub fn output_doc(cache: &mut Cache, file_id: FileId) -> Result<(), Error> {
+    pub fn output_doc(
+        cache: &mut Cache,
+        file_id: FileId,
+        out: &mut dyn Write,
+    ) -> Result<(), Error> {
         cache.parse(file_id)?;
+        // unwrap(): at this point the term was correctly parsed and should exist in cache
+        let term = cache.get_ref(file_id).unwrap();
+        let document = AstNode::from(NodeValue::Document);
 
-        for (file_id, term) in cache.terms() {
-            let document = AstNode::from(NodeValue::Document);
+        // Our nodes in the Markdown document are owned by this arena
+        let arena = Arena::new();
 
-            // Our nodes in the Markdown document are owned by this arena
-            let arena = Arena::new();
+        // The default ComrakOptions disables all extensions (essentially reducing to CommonMark)
+        let options = ComrakOptions::default();
 
-            // The default ComrakOptions disables all extensions (essentially reducing to CommonMark)
-            let options = ComrakOptions::default();
-
-            // Populate the document with the documentation
-            to_markdown(&term.term, 0, &arena, &document, &options)?;
-
-            // Create markdown file and write resulting markdown to it
-            let file_path: &Path = cache.files().name(*file_id).as_ref();
-            let file_name = file_path.file_name().ok_or_else(|| {
-                Error::IOError(IOError(format!(
-                    "Could not get file name of: {}",
-                    file_path.display()
-                )))
-            })?;
-            let docpath: &Path = Path::new(".nickel/doc/");
-            fs::create_dir_all(docpath).map_err(|e| Error::IOError(IOError(e.to_string())))?;
-            let mut markdown_file = docpath.to_path_buf();
-            markdown_file.push(file_name);
-            markdown_file.set_extension("md");
-            let mut file = File::create(markdown_file.clone().into_os_string())
-                .map_err(|e| Error::IOError(IOError(e.to_string())))?;
-            format_commonmark(&document, &options, &mut file)
-                .map_err(|e| Error::IOError(IOError(e.to_string())))?;
-        }
+        to_markdown(term, 0, &arena, &document, &options)?;
+        format_commonmark(&document, &options, out)
+            .map_err(|e| Error::IOError(IOError(e.to_string())))?;
 
         Ok(())
     }

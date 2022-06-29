@@ -6,11 +6,15 @@ use nickel_lang::repl::query_print;
 use nickel_lang::repl::rustyline_frontend;
 use nickel_lang::term::{RichTerm, Term};
 use nickel_lang::{serialize, serialize::ExportFormat};
-use std::path::PathBuf;
-use std::{fs, process};
+use std::path::{Path, PathBuf};
+use std::{
+    fs::{self, File},
+    process,
+};
 // use std::ffi::OsStr;
 use directories::BaseDirs;
 use structopt::StructOpt;
+
 /// Command-line options and subcommands.
 #[derive(StructOpt, Debug)]
 /// The interpreter of the Nickel language.
@@ -71,7 +75,13 @@ enum Command {
     },
     /// Generates the documentation files for the specified nickel file
     #[cfg(feature = "doc")]
-    Doc {},
+    Doc {
+        /// Specify the path of the generated documentation file. Default to
+        /// `~/.nickel/doc/<input-file>.md` for input `<input-file>.ncl`, or to
+        /// `~/.nickel/doc/out.md` if the input is read from stdin.
+        #[structopt(short = "o", long, parse(from_os_str))]
+        output: Option<PathBuf>,
+    },
 }
 
 fn main() {
@@ -96,6 +106,7 @@ fn main() {
     } else {
         let mut program = opts
             .file
+            .clone()
             .map(Program::new_from_file)
             .unwrap_or_else(Program::new_from_stdin)
             .unwrap_or_else(|err| {
@@ -109,7 +120,7 @@ fn main() {
         }
 
         let result = match opts.command {
-            Some(Command::PprintAst { transform }) => program.expand(
+            Some(Command::PprintAst { transform }) => program.pprint_ast(
                 &mut std::io::BufWriter::new(Box::new(std::io::stdout())),
                 transform,
             ),
@@ -142,7 +153,51 @@ fn main() {
             Some(Command::Typecheck) => program.typecheck(),
             Some(Command::Repl { .. }) => unreachable!(),
             #[cfg(feature = "doc")]
-            Some(Command::Doc { .. }) => program.output_doc(),
+            Some(Command::Doc { ref output }) => output
+                .as_ref()
+                .map(|output| {
+                    fs::File::create(output.clone()).map_err(|e| {
+                        Error::IOError(IOError(format!(
+                            "when opening or creating output file `{}`: {}",
+                            output.to_string_lossy(),
+                            e.to_string()
+                        )))
+                    })
+                })
+                .unwrap_or_else(|| {
+                    let docpath = Path::new(".nickel/doc/");
+                    fs::create_dir_all(docpath).map_err(|e| {
+                        Error::IOError(IOError(format!(
+                            "when creating output path `{}`: {}",
+                            docpath.to_string_lossy(),
+                            e.to_string()
+                        )))
+                    })?;
+                    let mut markdown_file = docpath.to_path_buf();
+
+                    let mut has_file_name = false;
+
+                    if let Some(path) = opts.file {
+                        if let Some(file_stem) = path.file_stem() {
+                            markdown_file.push(file_stem);
+                            has_file_name = true;
+                        }
+                    }
+
+                    if !has_file_name {
+                        markdown_file.push("out");
+                    }
+
+                    markdown_file.set_extension("md");
+                    File::create(markdown_file.clone().into_os_string()).map_err(|e| {
+                        Error::IOError(IOError(format!(
+                            "when opening or creating output file `{}`: {}",
+                            markdown_file.to_string_lossy(),
+                            e.to_string()
+                        )))
+                    })
+                })
+                .and_then(|mut out| program.output_doc(&mut out)),
             None => program
                 .eval_full()
                 .map(|t| println!("{}", Term::from(t).deep_repr())),
