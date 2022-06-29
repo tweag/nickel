@@ -688,9 +688,20 @@ fn process_unary_operation(
                     });
                     Ok(seq_terms(terms, env, pos_op))
                 }
-                Term::Array(ts, _) if !ts.is_empty() => {
-                    Ok(seq_terms(ts.into_iter().map(|t| (None, t)), env, pos_op))
-                }
+                Term::Array(ts, attrs) if !ts.is_empty() => Ok(seq_terms(
+                    ts.into_iter().map(|t| {
+                        (
+                            None,
+                            apply_contracts(
+                                t,
+                                attrs.pending_contracts.iter().cloned(),
+                                pos.into_inherited(),
+                            ),
+                        )
+                    }),
+                    env,
+                    pos_op,
+                )),
                 _ => {
                     if let Some((next, ..)) = stack.pop_arg() {
                         Ok(next)
