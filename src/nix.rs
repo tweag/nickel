@@ -107,15 +107,10 @@ impl From<(BinOp, FileId)> for RichTerm {
             )
             .into(),
 
-            Implication => Term::App(
-                Term::App(
-                    Term::Op1(UnaryOp::Ite(), translate(lhs, file_id)).into(),
-                    translate(rhs, file_id),
-                )
-                .into(),
-                Term::Bool(true).into(),
-            )
-            .into(),
+            Implication => mk_app!(
+              make::op1(UnaryOp::Ite(), translate(lhs, file_id)),
+              translate(lhs, file_id),
+              make::bool(true)),
 
             And => Term::App(
                 Term::Op1(UnaryOp::BoolAnd(), translate(lhs, file_id)).into(),
