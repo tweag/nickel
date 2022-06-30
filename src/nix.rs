@@ -201,7 +201,17 @@ fn translate(node: rnix::SyntaxNode, file_id: FileId) -> RichTerm {
             build_record(fields, Default::default()).into()
         }
 
-        ParsedType::Ident(n) => Term::Var(n.as_str().into()).into(),
+        // In nix it's allowed to define vars named `true`, `false` or `null`.
+        // Concidering it a bad feature and something probably never used, this parser don't manage
+        // it. Right now it doesn't throw error when defining these vars but only ignore the
+        // definition.
+        ParsedType::Ident(n) => match n.as_str() {
+            "true" => Term::Bool(true),
+            "false" => Term::Bool(false),
+            "null" => Term::Null,
+            id => Term::Var(id.into()),
+        }
+        .into(),
         ParsedType::LegacyLet(_) => unimplemented!(), // Probably useless to suport it in a short term.
         ParsedType::LetIn(n) => {
             use crate::destruct;
