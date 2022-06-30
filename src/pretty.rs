@@ -188,7 +188,6 @@ where
         match self {
             Destruct::Record {
                 matches,
-                // TODO: manage `..}` and `..x}` ending patterns
                 open,
                 rest,
                 ..
@@ -198,7 +197,27 @@ where
                         destruct::Match::Simple(id, meta) => allocator
                             .as_string(id)
                             .append(allocator.space())
-                            .append(allocator.metadata(meta, false)),
+                            .append(match meta.clone() {
+                                MetaValue {
+                                    types,
+                                    contracts,
+                                    priority: crate::term::MergePriority::Default,
+                                    value: Some(value),
+                                    ..
+                                } => allocator
+                                    .text("?")
+                                    .append(allocator.space())
+                                    .append(allocator.atom(&value))
+                                    .append(allocator.metadata(
+                                        &MetaValue {
+                                            types,
+                                            contracts,
+                                            ..Default::default()
+                                        },
+                                        false,
+                                    )),
+                                m => allocator.metadata(&m, false),
+                            }),
                         _ => unimplemented!(),
                     }),
                     allocator.text(",").append(allocator.space()),
@@ -310,7 +329,7 @@ where
                 let mut rt = &self;
                 while let FunPattern(id, dst, t) = rt.as_ref() {
                     params.push(if let Some(id) = id {
-                        allocator.as_string(id).append(if *dst != Destruct::Empty {
+                        allocator.as_string(id).append(if !dst.is_empty() {
                             allocator.text("@").append(dst.pretty(allocator))
                         } else {
                             allocator.nil()
