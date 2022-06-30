@@ -189,8 +189,8 @@ where
             Destruct::Record {
                 matches,
                 // TODO: manage `..}` and `..x}` ending patterns
-                open: _,
-                rest: _,
+                open,
+                rest,
                 ..
             } => allocator
                 .intersperse(
@@ -203,6 +203,19 @@ where
                     }),
                     allocator.text(",").append(allocator.space()),
                 )
+                .append(if *open {
+                    allocator
+                        .text(",")
+                        .append(allocator.space())
+                        .append(allocator.text(".."))
+                        .append(if let Some(rest) = rest {
+                            allocator.as_string(rest)
+                        } else {
+                            allocator.nil()
+                        })
+                } else {
+                    allocator.nil()
+                })
                 .braces(),
             Destruct::Empty => allocator.nil(),
             _ => unimplemented!(),
@@ -295,15 +308,16 @@ where
             FunPattern(..) => {
                 let mut params = vec![];
                 let mut rt = &self;
-                while let FunPattern(id, _dst, t) = rt.as_ref() {
-                    params.push(
-                        if let Some(id) = id {
-                            allocator.as_string(id)
+                while let FunPattern(id, dst, t) = rt.as_ref() {
+                    params.push(if let Some(id) = id {
+                        allocator.as_string(id).append(if *dst != Destruct::Empty {
+                            allocator.text("@").append(dst.pretty(allocator))
                         } else {
                             allocator.nil()
-                        }
-                        .append(allocator.nil()),
-                    );
+                        })
+                    } else {
+                        dst.pretty(allocator)
+                    });
                     rt = t;
                 }
                 allocator
