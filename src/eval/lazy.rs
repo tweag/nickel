@@ -151,7 +151,7 @@ impl ThunkData {
 /// expression. Those aspects are mainly handled in [InnerThunkData].
 #[derive(Clone, Debug, PartialEq)]
 pub struct Thunk {
-    data: Rc<RefCell<ThunkData>>,
+    pub data: Rc<RefCell<ThunkData>>,
     ident_kind: IdentKind,
 }
 
@@ -277,7 +277,7 @@ pub enum ThunkDeps {
 /// closure alive.
 #[derive(Clone, Debug)]
 pub struct ThunkUpdateFrame {
-    data: Weak<RefCell<ThunkData>>,
+    pub data: Weak<RefCell<ThunkData>>,
     _ident_kind: IdentKind,
 }
 

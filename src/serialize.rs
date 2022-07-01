@@ -1,13 +1,21 @@
 //! Serialization of an evaluated program to various data format.
 use crate::error::SerializationError;
 use crate::identifier::Ident;
+use crate::pretty::*;
 use crate::term::{ArrayAttrs, MetaValue, RecordAttrs, RichTerm, Term};
+use pretty::BoxAllocator;
 use serde::de::{Deserialize, Deserializer};
 use serde::ser::{Error, Serialize, SerializeMap, SerializeSeq, Serializer};
 use std::collections::HashMap;
 use std::fmt;
 use std::io;
 use std::str::FromStr;
+
+pub fn pprint_term(rt: RichTerm) {
+    let allocator = BoxAllocator;
+    let doc: DocBuilder<_, ()> = rt.pretty(&allocator);
+    doc.render(80, &mut std::io::stdout()).unwrap();
+}
 
 /// Available export formats.
 // If you add or remove variants, remember to update the CLI docs in `src/bin/nickel.rs'
@@ -174,6 +182,9 @@ impl<'de> Deserialize<'de> for RichTerm {
 pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), SerializationError> {
     use crate::term;
     use Term::*;
+
+    println!("\n\nvalidating term");
+    pprint_term(t.clone());
 
     if format == ExportFormat::Raw {
         if let Term::Str(_) = t.term.as_ref() {

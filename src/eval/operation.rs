@@ -647,6 +647,9 @@ fn process_unary_operation(
             }
         }
         UnaryOp::DeepSeq(_) => {
+            println!("\n\nDeep seq");
+            crate::serialize::pprint_term(RichTerm {term: t.clone(), pos: TermPos::None});
+
             /// Build a RichTerm that forces a given list of terms, and at the end resumes the
             /// evaluation of the argument on the top of the stack. The argument must iterate over
             /// a tuple, which first element is an optional call stack element to add to the
@@ -662,6 +665,7 @@ fn process_unary_operation(
                     .next()
                     .expect("expected the argument to be a non-empty iterator");
 
+                // %deep_seq% t1 (%deep_seq t2 (%deep..  ))
                 it.fold(
                     mk_term::op1(UnaryOp::DeepSeq(first_elem), first).with_pos(pos_op_inh),
                     |acc, (elem, t)| {
@@ -692,8 +696,11 @@ fn process_unary_operation(
                 }
                 Term::Array(ts, attrs) if !ts.is_empty() => {
                     let mut shared_env = Environment::new();
+                    //let unapplied : Vec<_> = ts.iter().cloned().map(|t| (None, t.closurize(&mut shared_env, env.clone()))).collect();
                     let terms = seq_terms(
+                        //unapplied.into_iter().chain(ts.into_iter().map(|t| {
                         ts.into_iter().map(|t| {
+                            // (None, t)
                             let t_with_ctr = apply_contracts(
                                 t,
                                 attrs.pending_contracts.iter().cloned(),
@@ -702,6 +709,7 @@ fn process_unary_operation(
                             .closurize(&mut shared_env, env.clone());
                             (None, t_with_ctr)
                         }),
+                        //})),
                         pos_op,
                     );
 
@@ -2229,19 +2237,14 @@ fn process_binary_operation(
 
             match_sharedterm! {t2, with {
                     Term::Array(ts, attrs) => {
-
                         // Preserve the environment of the contract in the resulting array.
                         let rt3 = rt3.closurize(&mut env2, env3);
 
                         let array_with_ctr = Closure {
-                            body: RichTerm {
-                                term: SharedTerm::new(Term::Array(
+                            body: RichTerm::new(Term::Array(
                                     ts,
-                                    attrs.with_contracts([PendingContract::new(rt3, lbl)])
-                                )),
-                                pos: pos2,
-                            },
-                            env: env2,
+                                    attrs.with_contracts([PendingContract::new(rt3, lbl)]).as_closurized()), pos2),
+                            env: env2
                         };
 
                         Ok(array_with_ctr)

@@ -54,7 +54,7 @@ impl std::fmt::Debug for Marker {
             Marker::Eq(_, _) => write!(f, "Eq"),
             Marker::Arg(_, _) => write!(f, "Arg"),
             Marker::TrackedArg(_, _) => write!(f, "TrackedArg"),
-            Marker::Thunk(_) => write!(f, "Thunk"),
+            Marker::Thunk(frame) => write!(f, "Thunk at {:?}", std::rc::Weak::as_ptr(&frame.data)),
             Marker::Cont(op, sz, _) => write!(f, "Cont {:?} (callstack size {})", op, sz),
             Marker::StrChunk(_) => write!(f, "StrChunk"),
             Marker::StrAcc(_, _, _) => write!(f, "StrAcc"),

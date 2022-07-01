@@ -95,8 +95,8 @@ use crate::{
     identifier::Ident,
     match_sharedterm, mk_app,
     term::{
-        make as mk_term, ArrayAttrs, BinaryOp, BindingType, LetAttrs, MetaValue, RichTerm,
-        SharedTerm, StrChunk, Term, UnaryOp,
+        make as mk_term, ArrayAttrs, BinaryOp, BindingType, LetAttrs, MetaValue, PendingContract,
+        RichTerm, SharedTerm, StrChunk, Term, UnaryOp,
     },
     transform::Closurizable,
 };
@@ -320,6 +320,12 @@ where
                     .get(x)
                     .or_else(|| global_env.get(x))
                     .ok_or_else(|| EvalError::UnboundIdentifier(x.clone(), pos))?;
+                println!(
+                    "\n\nAccessing var {} at addr {:?}: ",
+                    x,
+                    std::rc::Rc::as_ptr(&thunk.data)
+                );
+                crate::serialize::pprint_term(thunk.borrow().clone().body);
                 std::mem::drop(env); // thunk may be a 1RC pointer
 
                 if thunk.state() != ThunkState::Evaluated {
@@ -617,14 +623,45 @@ where
             // This *should* make it unecessary to call closurize in [operation].
             // See the comment on the `BinaryOp::ArrayConcat` match arm.
             Term::Array(terms, attrs) if !attrs.closurized => {
+                // let mut local_env = Environment::new();
+                // let closurized_array = terms
+                //     .into_iter()
+                //     .map(|t| t.clone().closurize(&mut local_env, env.clone()))
+                //     .collect();
+                // Closure {
+                //     body: RichTerm::new(
+                //         Term::Array(closurized_array, attrs.clone().as_closurized()),
+                //         pos,
+                //     ),
+                //     env: local_env,
+                // }
+
                 let mut local_env = Environment::new();
                 let closurized_array = terms
-                    .into_iter()
+                    .iter()
                     .map(|t| t.clone().closurize(&mut local_env, env.clone()))
                     .collect();
+
+                let closurized_ctrs = attrs
+                    .pending_contracts
+                    .iter()
+                    .map(|ctr| {
+                        PendingContract::new(
+                            ctr.contract.clone().closurize(&mut local_env, env.clone()),
+                            ctr.label.clone(),
+                        )
+                    })
+                    .collect();
+
                 Closure {
                     body: RichTerm::new(
-                        Term::Array(closurized_array, attrs.clone().as_closurized()),
+                        Term::Array(
+                            closurized_array,
+                            ArrayAttrs {
+                                closurized: true,
+                                pending_contracts: closurized_ctrs,
+                            },
+                        ),
                         pos,
                     ),
                     env: local_env,
@@ -671,6 +708,7 @@ where
                         pos_app,
                     ));
                 } else {
+                    println!("\n\nEnded on a stack: {:?}", stack);
                     return Ok((RichTerm::new(t.clone(), pos), env));
                 }
             }
@@ -681,6 +719,12 @@ where
 /// Pop and update all the thunks on the top of the stack with the given closure.
 fn update_thunks(stack: &mut Stack, closure: &Closure) {
     while let Some(thunk) = stack.pop_thunk() {
+        println!(
+            "\n\nUpdating thunks at {:?} with:",
+            std::rc::Weak::as_ptr(&thunk.data)
+        );
+        crate::serialize::pprint_term(closure.body.clone());
+        //crate::serialize::pprint_term(subst(closure.body, &closure.env, &Environment::new()));
         thunk.update(closure.clone());
     }
 }
@@ -690,14 +734,19 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
     let RichTerm { term, pos } = rt;
 
     match term.into_owned() {
-        Term::Var(id) => env
+        Term::Var(id) => {
+            let result = env
             .get(&id)
             .or_else(|| global_env.get(&id))
             .map(|thunk| {
+                println!("\n\nSubstituting {} at addr {:?}", id, std::rc::Rc::as_ptr(&thunk.data));
                 let closure = thunk.get_owned();
+                crate::serialize::pprint_term(closure.body.clone());
                 subst(closure.body, global_env, &closure.env)
             })
-            .unwrap_or_else(|| RichTerm::new(Term::Var(id), pos)),
+            .unwrap_or_else(|| RichTerm::new(Term::Var(id), pos));
+            result
+        },
         v @ Term::Null
         | v @ Term::ParseError
         | v @ Term::Bool(_)
