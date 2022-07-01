@@ -5,23 +5,29 @@ pub use pretty::{DocAllocator, DocBuilder, Pretty};
 use regex::Regex;
 use std::collections::HashMap;
 
-/// helper to find the min number of `%` sign needed to interpolate
-/// a string containing this chunk.
+/// Helper to find the min number of `%` sign needed to interpolate a string containing this chunk.
 fn min_interpolate_sign(text: &str) -> usize {
     let reg = Regex::new(r#"([%]+\{)|("[%]+m)"#).unwrap();
-    reg.find_iter(text).fold(0, |nb, m| {
-        let d = m.end() - m.start();
-        // if the match end with `{` the nb of `%` is equal to the size of the match.
-        // This because a `%*{` match len is nb of `%` + 1. It's corect because we are
-        // looking for the minimum number of `%` to perform interpolation on this string
-        // Finaly, if the match ends with `m` we return match len - 1 because of the
-        // extra `"`. In this case, we could improve, because interpolation actualy
-        // need no more than a different number of `%` than the `"%*m` sequence.
-        // But this way is valid anyway and easyer to describe algorithmicaly.
-        // TODO: Improve the `"%*m` case if necessary.
-        let d = if m.as_str().ends_with("{") { d } else { d - 1 };
-        nb.max(d)
-    })
+    reg.find_iter(text)
+        .map(|m| {
+            let d = m.end() - m.start();
+            // We iterate over all sequences `%+{` and `"%+m`, which could clash with the interpolation
+            // syntax, and return the maximum number of `%` insead each sequence.
+            //
+            // For the case of a closing delimiter `"%m`, we could actually be slightly smarter as we
+            // don't necessarily need more `%`, but just a different number of `%`. For example, if the
+            // string contains only one `"%%m`, then single `%` delimiters like `m%"` and `"%m` would
+            // be fine. But picking the maximum
+            //
+            // TODO: Improve the `"%*m` case if necessary.
+            if m.as_str().ends_with("{") {
+                d
+            } else {
+                d - 1
+            }
+        })
+        .max()
+        .unwrap_or(1)
 }
 
 fn sorted_map<'a, K: Ord, V>(m: &'a HashMap<K, V>) -> Vec<(&'a K, &'a V)> {
@@ -270,7 +276,7 @@ where
                         }, // be sure we have at least 1 `%` sign when an interpolation is present
                     )
                     .max()
-                    .unwrap();
+                    .unwrap_or(1);
                 let interp: String = std::iter::repeat("%").take(nb_perc).collect();
                 allocator
                     .intersperse(
