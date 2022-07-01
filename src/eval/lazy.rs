@@ -107,22 +107,27 @@ impl ThunkData {
         self.state = ThunkState::Evaluated;
     }
 
-    /// Create fresh unevaluated thunk data from `self`, reverted to its original state before the
-    /// first update. For standard thunk data, the content is unchanged and the state is conserved:
-    /// in this case, `revert()` is the same as `clone()`.
-    pub fn revert(&self) -> Self {
-        match self.inner {
-            InnerThunkData::Standard(_) => self.clone(),
+    /// Create a freshly unevaluated thunk (minus `ident_type`) from a thunk, reverted to its
+    /// original state before the first update.
+    ///
+    /// For standard thunk data, the content is unchanged and shared with the original thunk: in
+    /// this case, `revert()` is the same as cloning the original thunk.
+    ///
+    /// For revertible thunk data, the result is independent from the original one: any update to
+    /// one of the thunks doesn't affect the other.
+    pub fn revert(thunk: &Rc<RefCell<ThunkData>>) -> Rc<RefCell<ThunkData>> {
+        match thunk.borrow().inner {
+            InnerThunkData::Standard(_) => Rc::clone(thunk),
             InnerThunkData::Revertible {
                 ref orig, ref deps, ..
-            } => ThunkData {
+            } => Rc::new(RefCell::new(ThunkData {
                 inner: InnerThunkData::Revertible {
                     orig: Rc::clone(orig),
                     cached: Rc::clone(orig),
                     deps: deps.clone(),
                 },
                 state: ThunkState::Suspended,
-            },
+            })),
         }
     }
 
@@ -233,7 +238,7 @@ impl Thunk {
     /// this case, `revert()` is the same as `clone()`.
     pub fn revert(&self) -> Self {
         Thunk {
-            data: Rc::new(RefCell::new(self.data.borrow().revert())),
+            data: ThunkData::revert(&self.data),
             ident_kind: self.ident_kind,
         }
     }
