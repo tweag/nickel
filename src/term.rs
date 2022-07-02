@@ -1493,7 +1493,6 @@ pub mod make {
         Term::LetPattern(id.map(|i| i.into()), pat.into(), t1.into(), t2.into()).into()
     }
 
-    #[cfg(test)]
     pub fn if_then_else<T1, T2, T3>(cond: T1, t1: T2, t2: T3) -> RichTerm
     where
         T1: Into<RichTerm>,
