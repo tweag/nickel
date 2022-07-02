@@ -118,7 +118,7 @@ fn main() {
         let mut out: Vec<u8> = Vec::new();
         opts.file
             .map(std::fs::File::open)
-            .map(|f| f.unwrap().read_to_string(&mut buf))
+            .map(|f| f.and_then(|mut f| f.read_to_string(&mut buf)))
             .unwrap_or(std::io::stdin().read_to_string(&mut buf))
             .unwrap_or_else(|err| {
                 eprintln!("Error when reading input: {}", err);
