@@ -128,9 +128,8 @@ impl ToNickel for rnix::SyntaxNode {
             }
 
             // In nix it's allowed to define vars named `true`, `false` or `null`.
-            // Concidering it a bad feature and something probably never used, this parser don't manage
-            // it. Right now it doesn't throw error when defining these vars but only ignore the
-            // definition.
+            // But we prefer to not suport it. If we try to redefine one of these builtins, nickel
+            // will panic (see below in the `LetIn` arm.
             ParsedType::Ident(n) => match n.as_str() {
                 "true" => Term::Bool(true),
                 "false" => Term::Bool(false),
@@ -147,10 +146,16 @@ impl ToNickel for rnix::SyntaxNode {
                 for kv in n.entries() {
                     // In `let` blocks, the key is suposed to be a single ident so `Path` exactly one
                     // element.
-                    let id: Ident = types::Ident::cast(kv.key().unwrap().path().next().unwrap())
-                        .unwrap()
-                        .as_str()
-                        .into();
+                    let id = types::Ident::cast(kv.key().unwrap().path().next().unwrap()).unwrap();
+                    // Check we don't try to redefine builtin values. Even if it's possible in Nix,
+                    // we don't suport it.
+                    let id: Ident = match id.as_str() {
+                        "true" | "false" | "nul" => panic!(
+                            "`let {}` is forbiden. Can not redifine `true`, `false` or `nul`",
+                            id.as_str()
+                        ),
+                        s => s.into(),
+                    };
                     let rt = kv.value().unwrap().translate(file_id);
                     destruct_vec.push(destruct::Match::Simple(id.clone(), Default::default()));
                     fields.insert(id.into(), rt);
