@@ -29,7 +29,7 @@ impl ToNickel for BinOp {
         match self.operator().unwrap() {
             // TODO: Should be fixed using a nickel function `compat.concat` of type `a -> a -> a`
             // using `str_conct` or `array_concat` in respect to `typeof a`.
-            Concat => Term::Op2(BinaryOp::ArrayConcat(), lhs, rhs).into(),
+            Concat => make::op2(BinaryOp::ArrayConcat(), lhs, rhs),
             IsSet => unimplemented!(),
             Update => unimplemented!(),
 
@@ -155,7 +155,7 @@ impl ToNickel for rnix::SyntaxNode {
                     destruct_vec.push(destruct::Match::Simple(id.clone(), Default::default()));
                     fields.insert(id.into(), rt);
                 }
-                Term::LetPattern(
+                make::let_pat::<Ident, _, _, _>(
                     None,
                     destruct::Destruct::Record {
                         matches: destruct_vec,
@@ -166,7 +166,6 @@ impl ToNickel for rnix::SyntaxNode {
                     Term::RecRecord(RecordData::with_fields(fields), vec![], None).into(),
                     n.body().unwrap().translate(file_id),
                 )
-                .into()
             }
             ParsedType::With(n) => unimplemented!(),
 
@@ -202,12 +201,12 @@ impl ToNickel for rnix::SyntaxNode {
                             rest: None,
                             span,
                         };
-                        Term::FunPattern(at, dest, n.body().unwrap().translate(file_id)).into()
+                        Term::FunPattern(at, dest, n.body().unwrap().translate(file_id))
                     }
                     _ => unreachable!(),
                 }
-                .into()
             }
+            .into(),
 
             ParsedType::Apply(n) => Term::App(
                 n.lambda().unwrap().translate(file_id),
