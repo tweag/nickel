@@ -28,7 +28,7 @@ impl ToNickel for BinOp {
         let rhs = self.rhs().unwrap().translate(file_id);
         match self.operator().unwrap() {
             // TODO: Should be fixed using a nickel function `compat.concat` of type `a -> a -> a`
-            // using `str_conct` or `array_concat` in respect to `typeof a`.
+            // using `str_concat` or `array_concat` in respect to `typeof a`.
             Concat => make::op2(BinaryOp::ArrayConcat(), lhs, rhs),
             IsSet => unimplemented!(),
             Update => unimplemented!(),
@@ -90,7 +90,6 @@ impl ToNickel for rnix::SyntaxNode {
             .into(),
             ParsedType::Str(n) => {
                 let parts = n.parts();
-                //TODO: Do we actualy need the `Term::Str` variant in nickel AST?
                 Term::StrChunks(
                     parts
                         .into_iter()
@@ -135,8 +134,8 @@ impl ToNickel for rnix::SyntaxNode {
             }
 
             // In nix it's allowed to define vars named `true`, `false` or `null`.
-            // But we prefer to not suport it. If we try to redefine one of these builtins, nickel
-            // will panic (see below in the `LetIn` arm.
+            // But we prefer to not support it. If we try to redefine one of these builtins, nickel
+            // will panic (see below in the `LetIn` arm).
             ParsedType::Ident(n) => match n.as_str() {
                 "true" => Term::Bool(true),
                 "false" => Term::Bool(false),
@@ -160,7 +159,7 @@ impl ToNickel for rnix::SyntaxNode {
                     // Check we don't try to redefine builtin values. Even if it's possible in Nix,
                     // we don't suport it.
                     let id: Ident = match id.as_str() {
-                        "true" | "false" | "nul" => panic!(
+                        "true" | "false" | "null" => panic!(
                             "`let {}` is forbiden. Can not redifine `true`, `false` or `nul`",
                             id.as_str()
                         ),
@@ -255,8 +254,8 @@ impl ToNickel for rnix::SyntaxNode {
                 unimplemented!()
             }
 
-            // Are not `RichTerm`s and are transformed as part of ones higher in the syntax tree.
-            // Actualy, these variants are not "Terms" in the sens they can not be parsed independently of a Term. They can only be used in a term. Our translate function return a term so these can not be parsed at this level. they are parsed as parts of actual terms.
+            // The following nodes aren't `RichTerm`s but sub-parts of other nodes higher in the syntax tree.
+            // They can't be parsed independently of a term and should never occur at this level of the translation.
             ParsedType::Pattern(_)
             | ParsedType::PatEntry(_)
             | ParsedType::Inherit(..)
