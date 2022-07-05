@@ -231,7 +231,14 @@ impl ArrayAttrs {
     where
         I: IntoIterator<Item = PendingContract>,
     {
-        self.pending_contracts.extend(iter);
+        for ctr in iter {
+            let existing = self.pending_contracts.contains(&ctr);
+
+            if !existing {
+                self.pending_contracts.push(ctr)
+            }
+        }
+
         self
     }
 }
