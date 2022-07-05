@@ -7,7 +7,7 @@ use nickel_lang::repl::rustyline_frontend;
 use nickel_lang::term::{RichTerm, Term};
 use nickel_lang::{serialize, serialize::ExportFormat};
 use std::path::PathBuf;
-use std::{fs, process};
+use std::{fs, io::Read, process};
 // use std::ffi::OsStr;
 use directories::BaseDirs;
 use structopt::StructOpt;
@@ -31,6 +31,10 @@ struct Opt {
 /// Available subcommands.
 #[derive(StructOpt, Debug)]
 enum Command {
+    /// translate Nix input to Nickel code.
+    /// Only a POC, main target is to be able to run Nix code on nickel.
+    /// May never be a complet source to source transformation.
+    Nixin,
     /// Converts the parsed representation (AST) back to Nickel source code and prints it. Used for
     /// debugging purpose
     PprintAst {
@@ -93,6 +97,28 @@ fn main() {
 
         #[cfg(not(feature = "repl"))]
         eprintln!("error: this executable was not compiled with REPL support");
+    } else if let Some(Command::Nixin) = opts.command {
+        use nickel_lang::cache::Cache;
+        use nickel_lang::pretty::*;
+        use pretty::BoxAllocator;
+
+        let mut buf = String::new();
+        let mut cache = Cache::new();
+        let mut out: Vec<u8> = Vec::new();
+        opts.file
+            .map(std::fs::File::open)
+            .map(|f| f.and_then(|mut f| f.read_to_string(&mut buf)))
+            .unwrap_or(std::io::stdin().read_to_string(&mut buf))
+            .unwrap_or_else(|err| {
+                eprintln!("Error when reading input: {}", err);
+                process::exit(1)
+            });
+        let allocator = BoxAllocator;
+        let file_id = cache.add_source("<stdin>.nix", buf.as_bytes()).unwrap();
+        let rt = nickel_lang::nix::parse(&cache, file_id).unwrap();
+        let doc: DocBuilder<_, ()> = rt.pretty(&allocator);
+        doc.render(80, &mut out).unwrap();
+        println!("{}", String::from_utf8_lossy(&out).as_ref());
     } else {
         let mut program = opts
             .file
@@ -140,7 +166,7 @@ fn main() {
                 })
             }
             Some(Command::Typecheck) => program.typecheck(),
-            Some(Command::Repl { .. }) => unreachable!(),
+            Some(Command::Repl { .. }) | Some(Command::Nixin) => unreachable!(),
             #[cfg(feature = "doc")]
             Some(Command::Doc { .. }) => program.output_doc(),
             None => program
