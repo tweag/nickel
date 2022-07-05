@@ -1914,6 +1914,10 @@ fn process_binary_operation(
 
                             let mut ts: Vec<RichTerm> = Vec::with_capacity(ts1.len() + ts2.len());
 
+                            let mut env = env1.clone();
+                            // TODO: Is there a cheaper way to "merge" two environements?
+                            env.extend(env2.iter_elems().map(|(k, v)| (k.clone(), v.clone())));
+
                             let ctrs_left = attrs1
                                 .pending_contracts
                                 .iter()
@@ -1928,10 +1932,12 @@ fn process_binary_operation(
 
                             ts.extend(ts1.into_iter().map(|t|
                                 apply_contracts(t, ctrs_left.clone(), pos1)
+                                .closurize(&mut env, env1.clone())
                             ));
 
                             ts.extend(ts2.into_iter().map(|t|
                                 apply_contracts(t, ctrs_right.clone(), pos2)
+                                .closurize(&mut env, env2.clone())
                             ));
 
                             let ctrs_common = attrs1
@@ -1942,13 +1948,8 @@ fn process_binary_operation(
 
                             let attrs = ArrayAttrs {
                                 closurized: true,
-                                pending_contracts: ctrs_common
+                                pending_contracts: ctrs_common,
                             };
-
-                            let mut env = env1;
-                            // TODO: Is there a cheaper way to "merge" two environements?
-                            env.extend(env2.iter_elems().map(|(k, v)| (k.clone(), v.clone())));
-
 
                             Ok(Closure {
                                 body: RichTerm::new(Term::Array(ts, attrs), pos_op_inh),
