@@ -228,15 +228,11 @@ impl ToNickel for rnix::SyntaxNode {
                 n.value().unwrap().translate(file_id),
             )
             .into(),
-            ParsedType::IfElse(n) => Term::App(
-                Term::App(
-                    Term::Op1(UnaryOp::Ite(), n.condition().unwrap().translate(file_id)).into(),
-                    n.body().unwrap().translate(file_id),
-                )
-                .into(),
+            ParsedType::IfElse(n) => if_then_else(
+                n.condition().unwrap().translate(file_id),
+                n.body().unwrap().translate(file_id),
                 n.else_body().unwrap().translate(file_id),
-            )
-            .into(),
+            ),
             ParsedType::BinOp(n) => n.translate(file_id),
             ParsedType::UnaryOp(n) => n.translate(file_id),
             ParsedType::Select(n) => match ParsedType::try_from(n.index().unwrap()).unwrap() {
