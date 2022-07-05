@@ -674,6 +674,10 @@ impl SharedTerm {
     pub fn make_mut(this: &mut Self) -> &mut Term {
         Rc::make_mut(&mut this.shared)
     }
+
+    pub fn ptr_eq(this: &SharedTerm, that: &SharedTerm) -> bool {
+        Rc::ptr_eq(&this.shared, &that.shared)
+    }
 }
 
 impl AsRef<Term> for SharedTerm {
