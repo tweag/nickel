@@ -137,7 +137,10 @@ impl ToNickel for rnix::SyntaxNode {
                 id => Term::Var(id.into()),
             }
             .into(),
-            ParsedType::LegacyLet(_) => unimplemented!(), // Probably useless to suport it in a short term.
+            ParsedType::LegacyLet(_) => panic!("Legacy let form is not supported"), // Probably useless to suport it in a short term.
+            // `let ... in` blocks are recursive in Nix and not in Nickel. To emulate this, we use
+            // a `let <pattern> = <recrecord> in`. The record provide recursivity then the values
+            // are destructured by the pattern.
             ParsedType::LetIn(n) => {
                 use crate::destruct;
                 use crate::identifier::Ident;
@@ -249,7 +252,8 @@ impl ToNickel for rnix::SyntaxNode {
                 unimplemented!()
             }
 
-            // Is not a `RichTerm` so is transformed as part of actual ones.
+            // Are not `RichTerm`s and are transformed as part of ones higher in the syntax tree.
+            // Actualy, these variants are not "Terms" in the sens they can not be parsed independently of a Term. They can only be used in a term. Our translate function return a term so these can not be parsed at this level. they are parsed as parts of actual terms.
             ParsedType::Pattern(_)
             | ParsedType::PatEntry(_)
             | ParsedType::Inherit(..)
