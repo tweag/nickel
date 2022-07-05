@@ -95,8 +95,8 @@ use crate::{
     identifier::Ident,
     match_sharedterm, mk_app,
     term::{
-        make as mk_term, ArrayAttrs, BinaryOp, BindingType, LetAttrs, MetaValue, RichTerm,
-        SharedTerm, StrChunk, Term, UnaryOp,
+        make as mk_term, ArrayAttrs, BinaryOp, BindingType, LetAttrs, MetaValue, PendingContract,
+        RichTerm, SharedTerm, StrChunk, Term, UnaryOp,
     },
     transform::Closurizable,
 };
@@ -622,9 +622,27 @@ where
                     .into_iter()
                     .map(|t| t.clone().closurize(&mut local_env, env.clone()))
                     .collect();
+
+                let closurized_ctrs = attrs
+                    .pending_contracts
+                    .iter()
+                    .map(|ctr| {
+                        PendingContract::new(
+                            ctr.contract.clone().closurize(&mut local_env, env.clone()),
+                            ctr.label.clone(),
+                        )
+                    })
+                    .collect();
+
                 Closure {
                     body: RichTerm::new(
-                        Term::Array(closurized_array, attrs.clone().as_closurized()),
+                        Term::Array(
+                            closurized_array,
+                            ArrayAttrs {
+                                closurized: true,
+                                pending_contracts: closurized_ctrs,
+                            },
+                        ),
                         pos,
                     ),
                     env: local_env,
