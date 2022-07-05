@@ -7,7 +7,20 @@
 
 use crate::term::RichTerm;
 use codespan::FileId;
+use std::collections::HashSet;
+
+pub struct State {
+    file_id: FileId,
+    env: HashSet<String>,
+}
 
 pub trait ToNickel {
-    fn translate(self, file_id: FileId) -> RichTerm;
+    fn to_nickel(&self, file_id: FileId) -> RichTerm {
+        let state = State {
+            file_id,
+            env: HashSet::new(),
+        };
+        self.translate(state)
+    }
+    fn translate(self, state: State) -> RichTerm;
 }
