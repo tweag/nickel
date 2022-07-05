@@ -76,7 +76,16 @@ impl ToNickel for rnix::SyntaxNode {
                 value::Value::Integer(v) => Term::Num(v as f64),
                 value::Value::String(v) => Term::Str(v),
                 // TODO: How to manage Paths in nickel?
-                value::Value::Path(a, v) => Term::Str(v),
+                value::Value::Path(a, v) => {
+                    use value::Anchor::*;
+                    let strpath = match a {
+                        Absolute => format!("/{}", v),
+                        Relative => format!("./{}", v),
+                        Home => format!("~/{}", v),
+                        Store => format!("<{}>", v),
+                    };
+                    Term::Str(strpath)
+                }
             }
             .into(),
             ParsedType::Str(n) => {
