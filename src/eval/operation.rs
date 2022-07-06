@@ -1921,6 +1921,14 @@ fn process_binary_operation(
                             // TODO: Is there a cheaper way to "merge" two environements?
                             env.extend(env2.iter_elems().map(|(k, v)| (k.clone(), v.clone())));
 
+                            // We have two sets of contracts from the LHS and RHS arrays.
+                            // - Common contracts between the two sides can be put into
+                            // `pending_contracts` of the resulting concatenation as they're
+                            // shared by all elements: we don't have to apply them just yet.
+                            // - Contracts thats are specific to the LHS or the RHS have to
+                            // applied because we don't have a way of tracking which elements
+                            // should take which contracts.
+
                             let ctrs_left = attrs1
                                 .pending_contracts
                                 .iter()
