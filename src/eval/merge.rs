@@ -228,7 +228,7 @@ pub fn merge(
             if arr1.is_empty() && arr2.is_empty() =>
         {
             Ok(Closure::atomic_closure(RichTerm::new(
-                Term::Array(arr1, ArrayAttrs::new_closurized()),
+                Term::Array(arr1, ArrayAttrs::new().closurized()),
                 pos_op.into_inherited(),
             )))
         }

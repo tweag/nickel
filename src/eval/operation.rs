@@ -472,7 +472,7 @@ fn process_unary_operation(
                     fields.sort();
                     let terms = fields.into_iter().map(mk_term::string).collect();
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Array(terms, ArrayAttrs::new_closurized()),
+                        Term::Array(terms, ArrayAttrs::new().closurized()),
                         pos_op_inh,
                     )))
                 }
@@ -536,7 +536,7 @@ fn process_unary_operation(
                             .collect();
 
                         Ok(Closure {
-                            body: RichTerm::new(Term::Array(ts, attrs.as_closurized()), pos_op_inh),
+                            body: RichTerm::new(Term::Array(ts, attrs.closurized()), pos_op_inh),
                             env: shared_env,
                         })
                     }
@@ -581,7 +581,7 @@ fn process_unary_operation(
 
                     Ok(Closure {
                         body: RichTerm::new(
-                            Term::Array(ts, ArrayAttrs::new_closurized()),
+                            Term::Array(ts, ArrayAttrs::new().closurized()),
                             pos_op_inh,
                         ),
                         env: shared_env,
@@ -852,7 +852,7 @@ fn process_unary_operation(
                     .map(|c| RichTerm::from(Term::Str(c.to_string())))
                     .collect();
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Array(ts, ArrayAttrs::new_closurized()),
+                    Term::Array(ts, ArrayAttrs::new().closurized()),
                     pos_op_inh,
                 )))
             } else {
@@ -1094,7 +1094,10 @@ fn process_unary_operation(
                     mk_record!(
                         ("match", Term::Str(String::from(first_match.as_str()))),
                         ("index", Term::Num(first_match.start() as f64)),
-                        ("groups", Term::Array(groups, ArrayAttrs::new_closurized()))
+                        (
+                            "groups",
+                            Term::Array(groups, ArrayAttrs::new().closurized())
+                        )
                     )
                 } else {
                     //FIXME: what should we return when there's no match?
@@ -2197,7 +2200,7 @@ fn process_binary_operation(
                     .map(|s| Term::Str(String::from(s)).into())
                     .collect();
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Array(array, ArrayAttrs::new_closurized()),
+                    Term::Array(array, ArrayAttrs::new().closurized()),
                     pos_op_inh,
                 )))
             }

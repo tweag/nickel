@@ -215,21 +215,20 @@ pub struct ArrayAttrs {
 }
 
 impl ArrayAttrs {
-    /// Create an `ArrayAttrs` where closurized is `true`.
-    pub fn new_closurized() -> Self {
-        ArrayAttrs {
-            closurized: true,
-            pending_contracts: Vec::new(),
-        }
+    /// Create an `ArrayAttrs`.
+    /// By default, the `closurized` flag is set to `false`,
+    /// and `pending_contracts` is empty.
+    pub fn new() -> Self {
+        Default::default()
     }
 
-    /// Set closurized to `true`.
-    pub fn as_closurized(mut self) -> Self {
+    /// Set the `closurized` flag to `true`.
+    pub fn closurized(mut self) -> Self {
         self.closurized = true;
         self
     }
 
-    /// Extend contracts from an iterator.
+    /// Extend contracts from an iterator of `PendingContract`.
     pub fn with_contracts<I>(mut self, iter: I) -> Self
     where
         I: IntoIterator<Item = PendingContract>,
