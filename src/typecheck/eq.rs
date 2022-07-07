@@ -209,8 +209,8 @@ fn contract_eq_bounded(
 
             // We use the same logic as in the typechecker: the type associated to an annotated
             // value is either the type annotation, or the first contract annotation.
-            let ty1 = m1.types.as_ref().or(m1.contracts.first());
-            let ty2 = m2.types.as_ref().or(m2.contracts.first());
+            let ty1 = m1.types.as_ref().or_else(|| m1.contracts.first());
+            let ty2 = m2.types.as_ref().or_else(|| m2.contracts.first());
 
             let ty_eq = match (ty1, ty2) {
                 (None, None) => true,
