@@ -10,7 +10,7 @@
 //! `let Alias = Foo "bar" "baz" in ...`.
 //!
 //! We also want to equate different aliases with the same definition: `Alias type_eq Alias'` if
-//! `let Alias' = Foo "bar" "baz" in ...`, or `let Alias' = Alias in `.
+//! `let Alias' = Foo "bar" "baz" in ...`, or `let Alias' = Alias in ...`.
 //!
 //! ## Recursion
 //!
