@@ -71,8 +71,8 @@ pub struct ReplImpl {
     cache: Cache,
     /// The parser, supporting toplevel let declaration.
     parser: grammar::ExtendedTermParser,
-    /// The current environment. Contain the initial environment with the stdlib, plus toplevel
-    /// declarations and loadings made inside the REPL.
+    /// The current environment (for evaluation and typing). Contain the initial environment with
+    /// the stdlib, plus toplevel declarations and loadings made inside the REPL.
     env: Envs,
     /// The initial type environment, without the toplevel declarations made inside the REPL. Used
     /// to typecheck imports in a fresh environment.
@@ -213,7 +213,14 @@ impl Repl for ReplImpl {
         for id in &pending {
             self.cache.resolve_imports(*id).unwrap();
         }
-        typecheck::env_add_term(&mut self.env.type_env, &term, &self.cache).unwrap();
+        //FIXME: use a non-empty term environment
+        typecheck::env_add_term(
+            &mut self.env.type_env,
+            &term,
+            &typecheck::eq::TermEnvironment::new(),
+            &self.cache,
+        )
+        .unwrap();
         eval::env_add_term(&mut self.env.eval_env, term.clone()).unwrap();
 
         Ok(term)

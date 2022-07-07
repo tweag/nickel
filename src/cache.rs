@@ -92,8 +92,8 @@ pub struct Envs {
     /// The eval environment.
     pub eval_env: eval::Environment,
     /// The typing environment, counterpart of the eval environment for typechecking. Entries are
-    /// [crate::typecheck::TypeWrapper] for the ease of interacting with the typechecker, but there
-    /// are not any unification variable in it.
+    /// [`crate::typecheck::TypeWrapper`] for the ease of interacting with the typechecker, but
+    /// there are not any unification variable in it.
     pub type_env: typecheck::Environment,
 }
 

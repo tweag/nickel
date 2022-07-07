@@ -43,16 +43,41 @@
 //! times. For anything more complex, we return false.
 
 use super::*;
+use crate::eval;
+use crate::term::UnaryOp;
 
 /// The maximal number of variable links we want to unfold before abandoning the check. It should
 /// stay low, but has been fixed arbitrarily: feel fee to increase reasonably if it turns out
 /// legitimate type equalities between simple contracts are unduly rejected in practice.
 pub const MAX_GAS: u8 = 8;
 
-#[derive(PartialEq, Clone)]
-pub struct TermEnvironment<'a>(
-    pub crate::environment::Environment<Ident, (&'a RichTerm, TermEnvironment<'a>)>,
-);
+#[derive(PartialEq, Clone, Debug)]
+pub struct TermEnvironment(pub GenericEnvironment<Ident, (RichTerm, TermEnvironment)>);
+
+impl TermEnvironment {
+    pub fn new() -> Self {
+        TermEnvironment(GenericEnvironment::new())
+    }
+}
+
+impl From<eval::Environment> for TermEnvironment {
+    fn from(eval_env: eval::Environment) -> Self {
+        let generic_env: GenericEnvironment<_, _> = eval_env
+            .iter_elems()
+            .map(|(id, thunk)| {
+                let borrowed = thunk.borrow();
+                (
+                    id.clone(),
+                    (
+                        borrowed.body.clone(),
+                        TermEnvironment::from(borrowed.env.clone()),
+                    ),
+                )
+            })
+            .collect();
+        TermEnvironment(generic_env)
+    }
+}
 
 /// State threaded through the type equality computation.
 #[derive(Copy, Clone, Default)]
@@ -70,8 +95,15 @@ struct State {
 }
 
 impl State {
+    fn new(var_uid: usize) -> Self {
+        State {
+            var_uid,
+            gas: MAX_GAS,
+        }
+    }
+
     /// Create a fresh unique rigid type variable.
-    pub fn fresh_cst(&mut self) -> TypeWrapper {
+    fn fresh_cst(&mut self) -> TypeWrapper {
         let result = self.var_uid;
         self.var_uid += 1;
         TypeWrapper::Constant(result)
@@ -79,7 +111,7 @@ impl State {
 
     /// Try to consume one unit of gas for a variable substitution. Return true in case of success,
     /// or false if the gas was already at zero.
-    pub fn use_gas(&mut self) -> bool {
+    fn use_gas(&mut self) -> bool {
         if self.gas == 0 {
             false
         } else {
@@ -95,8 +127,14 @@ impl State {
 ///
 /// - `env`: an environment mapping variables to their definition (the second placeholder in a
 ///   `let _ = _ in _`)
-pub fn type_eq(t1: &RichTerm, t2: &RichTerm, env: &TermEnvironment) -> bool {
-    contract_eq_bounded(&mut State::default(), t1, env, t2, env)
+pub fn contract_eq(
+    var_uid: usize,
+    t1: &RichTerm,
+    env1: &TermEnvironment,
+    t2: &RichTerm,
+    env2: &TermEnvironment,
+) -> bool {
+    contract_eq_bounded(&mut State::new(var_uid), t1, env1, t2, env2)
 }
 
 /// Decide type equality on contracts in their respective environment and given the remaining gas
@@ -149,24 +187,26 @@ fn contract_eq_bounded(
         // doesn't include the stdlib). In that case, free variables (unbound) may be deemed equal
         // if they have the same identifier: whatever global environment the term will be put in,
         // free variables are not redefined locally and will be bound to the same value in any case.
-        (Var(id1), Var(id2)) => match (env1.0.get(id1), env2.0.get(id2)) {
-            (None, None) => id1 == id2,
-            (Some((t1, env1)), Some((t2, env2))) => {
-                // We may end up using one more gas unit if gas was exactly 1. That is not very
-                // important, and it's simpler to just ignore this case. We still return false
-                // if gas was already at zero.
-                let had_gas = state.use_gas();
-                state.use_gas();
-                had_gas && contract_eq_bounded(state, t1, &env1, t2, &env2)
+        (Var(id1), Var(id2)) => {
+            match (env1.0.get(id1), env2.0.get(id2)) {
+                (None, None) => id1 == id2,
+                (Some((t1, env1)), Some((t2, env2))) => {
+                    // We may end up using one more gas unit if gas was exactly 1. That is not very
+                    // important, and it's simpler to just ignore this case. We still return false
+                    // if gas was already at zero.
+                    let had_gas = state.use_gas();
+                    state.use_gas();
+                    had_gas && contract_eq_bounded(state, &t1, &env1, &t2, &env2)
+                }
+                _ => false,
             }
-            _ => false,
-        },
+        }
         (Var(id), _) => {
             state.use_gas()
                 && env1
                     .0
                     .get(id)
-                    .map(|(t1, env1)| contract_eq_bounded(state, t1, &env1, t2, env2))
+                    .map(|(t1, env1)| contract_eq_bounded(state, &t1, &env1, t2, env2))
                     .unwrap_or(false)
         }
         (_, Var(id)) => {
@@ -174,15 +214,15 @@ fn contract_eq_bounded(
                 && env2
                     .0
                     .get(id)
-                    .map(|(t2, env2)| contract_eq_bounded(state, t1, env1, t2, &env2))
+                    .map(|(t2, env2)| contract_eq_bounded(state, t1, env1, &t2, &env2))
                     .unwrap_or(false)
         }
         (Record(m1, attrs1), Record(m2, attrs2)) => {
             map_eq(contract_eq_bounded, state, m1, env1, m2, env2) && attrs1 == attrs2
         }
         (RecRecord(m1, dyn_fields1, attrs1, _), RecRecord(m2, dyn_fields2, attrs2, _)) =>
-        // We only compare records which field structure is statically known (i.e. without
-        // dynamic fields).
+        // We only compare records whose field structure is statically known (i.e. without dynamic
+        // fields).
         {
             dyn_fields1.is_empty()
                 && dyn_fields2.is_empty()
@@ -216,15 +256,18 @@ fn contract_eq_bounded(
                 (None, None) => true,
                 (Some(ctr1), Some(ctr2)) => type_eq_bounded(
                     state,
-                    &TypeWrapper::from(ctr1.types.clone()),
+                    &TypeWrapper::from_type(ctr1.types.clone(), env1), // &TypeWrapper::from(ctr1.types.clone()),
                     env1,
-                    &TypeWrapper::from(ctr2.types.clone()),
+                    &TypeWrapper::from_type(ctr2.types.clone(), env2), // &TypeWrapper::from(ctr1.types.clone()),
                     env2,
                 ),
                 _ => false,
             };
 
             value_eq && ty_eq
+        }
+        (Op1(UnaryOp::StaticAccess(id1), t1), Op1(UnaryOp::StaticAccess(id2), t2)) => {
+            id1 == id2 && contract_eq_bounded(state, t1, env1, t2, env2)
         }
         // We dont treat imports and parse errors
         _ => false,
