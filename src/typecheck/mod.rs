@@ -45,6 +45,12 @@
 //!
 //! In non-strict mode, the type of let-bound expressions is inferred in a shallow way (see
 //! [`apparent_type`]).
+///
+/// # Lifetimes
+///
+/// Througout this module, `'tc` reprensents the lifetime of references that must be valid for the
+/// whole duration of the typechecking: references to the AST nodes, to the global environment, and so
+/// on.
 use crate::cache::ImportResolver;
 use crate::destruct::*;
 use crate::environment::Environment as GenericEnvironment;
@@ -66,8 +72,8 @@ pub mod reporting;
 pub mod mk_typewrapper;
 pub mod eq;
 
-use error::*;
 use eq::TermEnvironment;
+use error::*;
 use operation::{get_bop_type, get_nop_type, get_uop_type};
 
 /// The typing environment.
@@ -82,10 +88,10 @@ pub type Wildcards = Vec<Types>;
 /// [`crate::eval::eval`]) which holds the Nickel builtin functions. It is a read-only shared
 /// environment used to retrieve the type of such functions.
 #[derive(Debug, PartialEq, Clone)]
-pub struct Envs<'a, 'b> {
-    global: &'a Environment,
+pub struct Envs<'tc> {
+    global: &'tc Environment,
     local: Environment,
-    term_env: TermEnvironment<'b>,
+    term_env: TermEnvironment<'tc>,
 }
 
 #[derive(Clone, Debug)]
@@ -93,9 +99,9 @@ pub enum EnvBuildError {
     NotARecord(RichTerm),
 }
 
-impl<'a, 'b> Envs<'a, 'b> {
+impl<'tc> Envs<'tc> {
     /// Create an `Envs` value with an empty local environment from a global environment.
-    pub fn from_global(global: &'a Environment) -> Self {
+    pub fn from_global(global: &'tc Environment) -> Self {
         Envs {
             global,
             local: Environment::new(),
@@ -104,7 +110,7 @@ impl<'a, 'b> Envs<'a, 'b> {
     }
 
     /// Similar to [`Envs::from_global`], but use another `Envs` to provide the global environment.
-    pub fn from_envs(envs: &'a Envs) -> Self {
+    pub fn from_envs(envs: &'tc Envs) -> Self {
         Envs {
             global: envs.global,
             local: Environment::new(),
@@ -134,11 +140,14 @@ impl<'a, 'b> Envs<'a, 'b> {
     /// Add the bindings of a record to a typing environment. Ignore fields whose name are defined
     /// through interpolation.
     //TODO: support the case of a record with a type annotation.
-    pub fn env_add_term(
-        env: &mut Environment,
-        rt: &RichTerm,
-        resolver: &dyn ImportResolver,
-    ) -> Result<(), EnvBuildError> {
+    pub fn env_add_term<'a>(
+        env: &'a mut Environment,
+        rt: &'tc RichTerm,
+        resolver: &'a impl ImportResolver,
+    ) -> Result<(), EnvBuildError>
+    where
+        'tc: 'a,
+    {
         let RichTerm { term, pos } = rt;
 
         match term.as_ref() {
@@ -157,7 +166,14 @@ impl<'a, 'b> Envs<'a, 'b> {
     }
 
     /// Bind one term in a typing environment.
-    pub fn env_add(env: &mut Environment, id: Ident, rt: &RichTerm, resolver: &dyn ImportResolver) {
+    pub fn env_add<'a>(
+        env: &'a mut Environment,
+        id: Ident,
+        rt: &'tc RichTerm,
+        resolver: &'tc impl ImportResolver,
+    ) where
+        'tc: 'a,
+    {
         env.insert(
             id,
             apparent_type(rt.as_ref(), Some(&Envs::from_global(env)), Some(resolver)).into(),
@@ -175,30 +191,36 @@ impl<'a, 'b> Envs<'a, 'b> {
         self.local.insert(ident, tyw);
     }
 
-    pub fn insert_term<'c>(&'c mut self, ident: Ident, term: &'b RichTerm) where 'b: 'c {
+    pub fn insert_term<'a>(&'a mut self, ident: Ident, term: &'tc RichTerm)
+    where
+        'tc: 'a,
+    {
         self.term_env.0.insert(ident, (term, self.term_env.clone()));
     }
 
-    pub fn term_env(&self) -> &'b TermEnvironment {
+    pub fn term_env<'a>(&self) -> &'tc TermEnvironment
+    where
+        'tc: 'a,
+    {
         &self.term_env
     }
 }
 
 /// The shared state of unification.
-pub struct State<'a> {
+pub struct State<'tc> {
     /// The import resolver, to retrieve and typecheck imports.
-    resolver: &'a dyn ImportResolver,
+    resolver: &'tc dyn ImportResolver,
     /// The unification table.
-    table: &'a mut UnifTable,
+    table: &'tc mut UnifTable,
     /// Row constraints.
-    constr: &'a mut RowConstr,
+    constr: &'tc mut RowConstr,
     /// A mapping from unification variable or constants to the name of the corresponding type
     /// variable which introduced it, if any.
     ///
     /// Used for error reporting.
-    names: &'a mut HashMap<usize, Ident>,
+    names: &'tc mut HashMap<usize, Ident>,
     /// A mapping from wildcard ID to unification variable.
-    wildcard_vars: &'a mut Vec<TypeWrapper>,
+    wildcard_vars: &'tc mut Vec<TypeWrapper>,
 }
 
 /// Typecheck a term.
@@ -210,10 +232,10 @@ pub struct State<'a> {
 /// file. It however still needs the resolver to get the apparent type of imports.
 ///
 /// Return the type inferred for type wildcards.
-pub fn type_check<LL>(
-    t: &RichTerm,
-    global_env: &Environment,
-    resolver: &impl ImportResolver,
+pub fn type_check<'tc, LL>(
+    t: &'tc RichTerm,
+    global_env: &'tc Environment,
+    resolver: &'tc impl ImportResolver,
     mut linearizer: LL,
 ) -> Result<(Wildcards, LL::Completed), TypecheckError>
 where
@@ -257,10 +279,10 @@ where
 ///
 /// Return the type inferred for type wildcards. This is just a wrapper that calls `type_check_`
 /// with a fresh unification variable as goal.
-pub fn type_check_in_env(
-    t: &RichTerm,
-    global: &Environment,
-    resolver: &dyn ImportResolver,
+pub fn type_check_in_env<'tc>(
+    t: &'tc RichTerm,
+    global: &'tc Environment,
+    resolver: &'tc impl ImportResolver,
 ) -> Result<Wildcards, TypecheckError> {
     let mut table = UnifTable::new();
     let mut wildcard_vars = Vec::new();
@@ -286,12 +308,12 @@ pub fn type_check_in_env(
 
 /// Walk the AST of a term looking for statically typed block to check. Fill the linearization
 /// alongside and store the apparent type of variable inside the typing environment.
-fn walk<L: Linearizer>(
-    state: &mut State,
-    mut envs: Envs,
-    lin: &mut Linearization<L::Building>,
+fn walk<'tc: 'a, 'a, L: Linearizer>(
+    state: &'a mut State,
+    mut envs: Envs<'tc>,
+    lin: &'a mut Linearization<L::Building>,
     mut linearizer: L,
-    rt: &RichTerm,
+    rt: &'tc RichTerm,
 ) -> Result<(), TypecheckError> {
     let RichTerm { term: t, pos } = rt;
     linearizer.add_term(lin, t, *pos, mk_typewrapper::dynamic());
@@ -456,12 +478,12 @@ fn walk<L: Linearizer>(
 
 /// Same as [`walk`] but operate on a type, which can contain terms as contracts (`AbsType::Flat`),
 /// instead of a term.
-fn walk_type<L: Linearizer>(
-    state: &mut State,
-    envs: Envs,
-    lin: &mut Linearization<L::Building>,
+fn walk_type<'a, 'tc: 'a, L: Linearizer>(
+    state: &'a mut State,
+    envs: Envs<'tc>,
+    lin: &'a mut Linearization<L::Building>,
     mut linearizer: L,
-    ty: &Types,
+    ty: &'tc Types,
 ) -> Result<(), TypecheckError> {
     match &ty.0 {
        AbsType::Dyn()
@@ -524,12 +546,12 @@ fn inject_pat_vars(pat: &Destruct, envs: &mut Envs) {
 ///
 /// Registers every term with the `linearizer` and makes sure to scope the
 /// liearizer accordingly
-fn type_check_<L: Linearizer>(
-    state: &mut State,
-    mut envs: Envs,
+fn type_check_<'a, 'tc: 'a, L: Linearizer>(
+    state: &'a mut State,
+    mut envs: Envs<'tc>,
     lin: &mut Linearization<L::Building>,
     mut linearizer: L,
-    rt: &RichTerm,
+    rt: &'tc RichTerm,
     ty: TypeWrapper,
 ) -> Result<(), TypecheckError> {
     let RichTerm { term: t, pos } = rt;
