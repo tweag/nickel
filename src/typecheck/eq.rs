@@ -49,7 +49,7 @@ use super::*;
 /// legitimate type equalities between simple contracts are unduly rejected in practice.
 pub const MAX_GAS: u8 = 8;
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Debug)]
 pub struct TermEnvironment<'a>(
     pub crate::environment::Environment<Ident, (&'a RichTerm, TermEnvironment<'a>)>,
 );

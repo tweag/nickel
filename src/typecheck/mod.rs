@@ -67,6 +67,7 @@ pub mod mk_typewrapper;
 pub mod eq;
 
 use error::*;
+use eq::TermEnvironment;
 use operation::{get_bop_type, get_nop_type, get_uop_type};
 
 /// The typing environment.
@@ -81,9 +82,10 @@ pub type Wildcards = Vec<Types>;
 /// [`crate::eval::eval`]) which holds the Nickel builtin functions. It is a read-only shared
 /// environment used to retrieve the type of such functions.
 #[derive(Debug, PartialEq, Clone)]
-pub struct Envs<'a> {
+pub struct Envs<'a, 'b> {
     global: &'a Environment,
     local: Environment,
+    term_env: TermEnvironment<'b>,
 }
 
 #[derive(Clone, Debug)]
@@ -91,12 +93,13 @@ pub enum EnvBuildError {
     NotARecord(RichTerm),
 }
 
-impl<'a> Envs<'a> {
+impl<'a, 'b> Envs<'a, 'b> {
     /// Create an `Envs` value with an empty local environment from a global environment.
     pub fn from_global(global: &'a Environment) -> Self {
         Envs {
             global,
             local: Environment::new(),
+            term_env: TermEnvironment(crate::environment::Environment::new()),
         }
     }
 
@@ -105,6 +108,7 @@ impl<'a> Envs<'a> {
         Envs {
             global: envs.global,
             local: Environment::new(),
+            term_env: TermEnvironment(crate::environment::Environment::new()),
         }
     }
 
@@ -169,6 +173,14 @@ impl<'a> Envs<'a> {
     /// Wrapper to insert a new binding in the local environment.
     pub fn insert(&mut self, ident: Ident, tyw: TypeWrapper) {
         self.local.insert(ident, tyw);
+    }
+
+    pub fn insert_term<'c>(&'c mut self, ident: Ident, term: &'b RichTerm) where 'b: 'c {
+        self.term_env.0.insert(ident, (term, self.term_env.clone()));
+    }
+
+    pub fn term_env(&self) -> &'b TermEnvironment {
+        &self.term_env
     }
 }
 
@@ -333,6 +345,10 @@ fn walk<L: Linearizer>(
             }),
         Term::Let(x, re, rt, attrs) => {
             let ty_let = binding_type(state, re.as_ref(), &envs, false);
+
+            // We don't support recursive let for new when unfolding contracts to check for type
+            // equality
+            envs.insert_term(x.clone(), re);
 
             if attrs.rec {
                 envs.insert(x.clone(), ty_let.clone());
