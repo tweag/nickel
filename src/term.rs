@@ -896,6 +896,10 @@ pub enum UnaryOp {
     StrIsMatchCompiled(CompiledRegex),
     /// Version of `StrMatch` which remembers the compiled regex.
     StrMatchCompiled(CompiledRegex),
+    /// Force "full" evaluation of a term and return it.
+    /// This was added in the context of `ArrayLazyAssume`,
+    /// and may not make much sense on its own.
+    Force(),
 }
 
 // See: https://github.com/rust-lang/regex/issues/178
