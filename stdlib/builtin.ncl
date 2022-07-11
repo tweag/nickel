@@ -225,7 +225,7 @@
           }"
       ```
       "%m
-    = fun format x => %serialize% format (%deep_seq% x x),
+    = fun format x => %serialize% format (%force% x),
 
     deserialize | ExportFormat -> Str -> Dyn
     | doc m%"

@@ -636,8 +636,13 @@ where
                 .text(format!("# <symbol: {}>", sym))
                 .append(allocator.hardline()),
 
-            // TODO
-            Wrapped(_i, _rt) => allocator.text("# <wraped>").append(allocator.hardline()),
+            Wrapped(i, rt) => allocator
+                .text("# <wrapped:")
+                .append(allocator.text(i.to_string()))
+                .append(", ")
+                .append(allocator.atom(rt))
+                .append(">")
+                .append(allocator.hardline()),
 
             MetaValue(mv) => mv.to_owned().pretty(allocator),
             Import(f) => allocator
@@ -646,7 +651,7 @@ where
                 .append(allocator.as_string(f.to_string_lossy()).double_quotes()),
             ResolvedImport(id) => allocator.text(format!("import <file_id: {:?}>", id)),
             ParseError => allocator
-                .text("# <PARCE ERROR!>")
+                .text("# <PARSE ERROR!>")
                 .append(allocator.hardline()),
         }
     }

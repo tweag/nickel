@@ -22,11 +22,12 @@ use crate::{
     serialize,
     serialize::ExportFormat,
     term::{make as mk_term, PendingContract},
-    term::{ArrayAttrs, BinaryOp, NAryOp, RichTerm, SharedTerm, StrChunk, Term, UnaryOp},
+    term::{ArrayAttrs, BinaryOp, NAryOp, RichTerm, StrChunk, Term, UnaryOp},
     transform::{apply_contracts::apply_contracts, fresh_var, Closurizable},
 };
 use md5::digest::Digest;
 use simple_counter::*;
+use std::collections::HashMap;
 use std::iter::Extend;
 
 generate_counter!(FreshVariableCounter, usize);
@@ -532,13 +533,19 @@ fn process_unary_operation(
                         let ts = ts
                             .into_iter()
                             .map(|t| {
-                                RichTerm::new(Term::App(f_as_var.clone(), t), pos_op_inh)
+                                let t_with_ctrs = apply_contracts(
+                                    t,
+                                    attrs.pending_contracts.iter().cloned(),
+                                    pos.into_inherited(),
+                                );
+
+                                RichTerm::new(Term::App(f_as_var.clone(), t_with_ctrs), pos_op_inh)
                                     .closurize(&mut shared_env, env.clone())
                             })
                             .collect();
 
                         Ok(Closure {
-                            body: RichTerm::new(Term::Array(ts, attrs.closurized()), pos_op_inh),
+                            body: RichTerm::new(Term::Array(ts, ArrayAttrs::new().closurized()), pos_op_inh),
                             env: shared_env,
                         })
                     }
@@ -1113,6 +1120,77 @@ fn process_unary_operation(
                     arg_pos,
                     RichTerm { term: t, pos },
                 ))
+            }
+        }
+        UnaryOp::Force() => {
+            /// `Seq` the `terms` iterator and then resume evaluating the `cont` continuation.
+            fn seq_terms<I>(terms: I, pos: TermPos, cont: RichTerm) -> RichTerm
+            where
+                I: Iterator<Item = RichTerm>,
+            {
+                terms
+                    .fold(cont, |acc, t| mk_app!(mk_term::op1(UnaryOp::Seq(), t), acc))
+                    .with_pos(pos)
+            }
+
+            match_sharedterm! {t,
+                with {
+                    Term::Record(map, attrs) if !map.is_empty() => {
+                        let mut shared_env = env.clone();
+                        let map = map
+                            .into_iter()
+                            .map(|(id, t)| {
+                                (
+                                    id,
+                                    mk_term::op1(UnaryOp::Force(), t)
+                                        .closurize(&mut shared_env, env.clone()),
+                                )
+                            })
+                            // It's important to collect here, otherwise the two usages below
+                            // will each do their own .closurize(...) calls and end up with
+                            // different variables, which means that `cont` won't be properly updated.
+                            .collect::<HashMap<_, _>>();
+
+                        let terms = map.clone().into_values();
+                        let cont = RichTerm::new(Term::Record(map, attrs), pos.into_inherited());
+
+                        Ok(Closure {
+                            body: seq_terms(terms, pos_op, cont),
+                            env: shared_env,
+                        })
+                    },
+                    Term::Array(ts, attrs) if !ts.is_empty() => {
+                        let mut shared_env = env.clone();
+                        let ts = ts
+                            .into_iter()
+                            .map(|t| {
+                                mk_term::op1(
+                                    UnaryOp::Force(),
+                                    apply_contracts(
+                                        t,
+                                        attrs.pending_contracts.iter().cloned(),
+                                        pos.into_inherited(),
+                                    ),
+                                )
+                                .closurize(&mut shared_env, env.clone())
+                            })
+                            // It's important to collect here, otherwise the two usages below
+                            // will each do their own .closurize(...) calls and end up with
+                            // different variables, which means that `cont` won't be properly updated.
+                            .collect::<Vec<_>>();
+
+                        let terms = ts.clone().into_iter();
+                        let cont = RichTerm::new(Term::Array(ts, attrs), pos.into_inherited());
+
+                        Ok(Closure {
+                            body: seq_terms(terms, pos_op, cont),
+                            env: shared_env,
+                        })
+                    }
+                } else Ok(Closure {
+                    body: RichTerm { term : t, pos},
+                    env
+                })
             }
         }
     }
@@ -2239,20 +2317,18 @@ fn process_binary_operation(
                 ))
             };
 
-            match_sharedterm! {t2, with {
+            match_sharedterm! {t2,
+                with {
                     Term::Array(ts, attrs) => {
 
                         // Preserve the environment of the contract in the resulting array.
                         let rt3 = rt3.closurize(&mut env2, env3);
 
                         let array_with_ctr = Closure {
-                            body: RichTerm {
-                                term: SharedTerm::new(Term::Array(
-                                    ts,
-                                    attrs.with_contracts([PendingContract::new(rt3, lbl)])
-                                )),
-                                pos: pos2,
-                            },
+                            body: RichTerm::new(
+                                Term::Array(ts, attrs.with_contracts([PendingContract::new(rt3, lbl)])),
+                                pos2,
+                            ),
                             env: env2,
                         };
 
@@ -2532,11 +2608,55 @@ fn eq(env: &mut Environment, c1: Closure, c2: Closure) -> EqResult {
                 gen_eqs(eqs, env, env1, env2)
             }
         }
-        (Term::Array(l1, _), Term::Array(l2, _)) if l1.len() == l2.len() => {
+        (Term::Array(l1, a1), Term::Array(l2, a2)) if l1.len() == l2.len() => {
             // Equalities are tested in reverse order, but that shouldn't matter. If it
             // does, just do `eqs.rev()`
-            let eqs = l1.into_iter().zip(l2.into_iter());
-            gen_eqs(eqs, env, env1, env2)
+
+            // We should apply all contracts here, otheriwse we risk having wrong values,
+            // think record contrats with default contracts, Wrapped terms, etc.
+            let mut shared_env1 = env1.clone();
+            let mut shared_env2 = env2.clone();
+
+            let mut eqs = l1
+                .into_iter()
+                .map(|t| {
+                    let pos = t.pos.into_inherited();
+                    apply_contracts(t, a1.pending_contracts.iter().cloned(), pos)
+                        .closurize(&mut shared_env1, env1.clone())
+                })
+                .zip(l2.into_iter().map(|t| {
+                    let pos = t.pos.into_inherited();
+                    apply_contracts(t, a2.pending_contracts.iter().cloned(), pos)
+                        .closurize(&mut shared_env2, env2.clone())
+                }))
+                .collect::<Vec<_>>();
+
+            match eqs.pop() {
+                None => EqResult::Bool(true),
+                Some((t1, t2)) => {
+                    let eqs = eqs
+                        .into_iter()
+                        .map(|(t1, t2)| {
+                            (
+                                Closure {
+                                    body: t1,
+                                    env: shared_env1.clone(),
+                                },
+                                Closure {
+                                    body: t2,
+                                    env: shared_env2.clone(),
+                                },
+                            )
+                        })
+                        .collect::<Vec<_>>();
+
+                    EqResult::Eqs(
+                        t1.closurize(env, shared_env1),
+                        t2.closurize(env, shared_env2),
+                        eqs,
+                    )
+                }
+            }
         }
         (_, _) => EqResult::Bool(false),
     }

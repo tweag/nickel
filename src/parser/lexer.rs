@@ -185,6 +185,8 @@ pub enum NormalToken<'input> {
     Seq,
     #[token("%deep_seq%")]
     DeepSeq,
+    #[token("%force%")]
+    Force,
     #[token("%head%")]
     Head,
     #[token("%tail%")]

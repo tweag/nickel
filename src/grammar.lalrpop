@@ -534,6 +534,7 @@ UOp: UnaryOp = {
     "record_map" => UnaryOp::RecordMap(),
     "seq" => UnaryOp::Seq(),
     "deep_seq" => UnaryOp::DeepSeq(None),
+    "force" => UnaryOp::Force(),
     "head" => UnaryOp::ArrayHead(),
     "tail" => UnaryOp::ArrayTail(),
     "length" => UnaryOp::ArrayLength(),
@@ -730,7 +731,7 @@ BOpPre: BinaryOp = {
     "str_contains" => BinaryOp::StrContains(),
     "record_insert" => BinaryOp::DynExtend(),
     "record_remove" => BinaryOp::DynRemove(),
-    "array_lazy_assume" => BinaryOp::Assume(),
+    "array_lazy_assume" => BinaryOp::ArrayLazyAssume(),
 }
 
 NOpPre<ArgRule>: UniTerm = {
@@ -849,6 +850,7 @@ extern {
         "typeof" => Token::Normal(NormalToken::Typeof),
         "assume" => Token::Normal(NormalToken::Assume),
         "array_lazy_assume" => Token::Normal(NormalToken::ArrayLazyAssume),
+        "force" => Token::Normal(NormalToken::Force),
         "blame" => Token::Normal(NormalToken::Blame),
         "chng_pol" => Token::Normal(NormalToken::ChangePol),
         "polarity" => Token::Normal(NormalToken::Polarity),
