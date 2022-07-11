@@ -190,6 +190,8 @@ pub fn get_uop_type(
                 ("groups", mk_typewrapper::array(AbsType::Str()))
             ),
         ),
+        // Dyn -> Dyn
+        UnaryOp::Force() => (mk_typewrapper::dynamic(), mk_typewrapper::dynamic()),
     })
 }
 

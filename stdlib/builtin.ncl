@@ -180,7 +180,7 @@
           }"
       ```
       "%m
-    = fun format x => %serialize% format (%deep_seq% x x),
+    = fun format x => %serialize% format (%force% x),
 
     deserialize : [| `Json, `Toml, `Yaml |] -> Str -> Dyn
     | doc m%"
