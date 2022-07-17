@@ -25,7 +25,7 @@
 //! ```
 //!
 //! Because we just follows variables, and don't apply functions, we can detect cycles while
-//! walking the graph. Still, as it is performed potentially many times during typechecking, type
+//! walking the graph. Still, as it is potentially performed many times during typechecking, type
 //! equality ought to stay reasonably cheap. We choose to just set an arbitrary limit (the gas) on
 //! the number of variable links that the type equality may follow. Doing so, we don't have to
 //! worry about loops anymore.
