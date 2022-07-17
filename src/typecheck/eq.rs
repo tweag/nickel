@@ -14,7 +14,7 @@
 //!
 //! ## Recursion
 //!
-//! We must refrain from following all variables links blindly, as their could be cycles in the
+//! We must refrain from following all variables links blindly, as there could be cycles in the
 //! graph leading to an infinite loop:
 //!
 //! ```nickel
