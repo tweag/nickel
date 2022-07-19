@@ -1125,7 +1125,7 @@ fn process_unary_operation(
                 ))
             }
         }
-        UnaryOp::Force() => {
+        UnaryOp::Force(_) => {
             /// `Seq` the `terms` iterator and then resume evaluating the `cont` continuation.
             fn seq_terms<I>(terms: I, pos: TermPos, cont: RichTerm) -> RichTerm
             where
@@ -1140,12 +1140,20 @@ fn process_unary_operation(
                 with {
                     Term::Record(map, attrs) if !map.is_empty() => {
                         let mut shared_env = env.clone();
+
                         let map = map
                             .into_iter()
                             .map(|(id, t)| {
+                                let stack_elem = Some(callstack::StackElem::Field {
+                                    id: id.clone(),
+                                    pos_record: pos,
+                                    pos_field: t.pos,
+                                    pos_access: pos_op,
+                                });
+
                                 (
                                     id,
-                                    mk_term::op1(UnaryOp::Force(), t)
+                                    mk_term::op1(UnaryOp::Force(stack_elem), t)
                                         .closurize(&mut shared_env, env.clone()),
                                 )
                             })
@@ -1168,7 +1176,7 @@ fn process_unary_operation(
                             .into_iter()
                             .map(|t| {
                                 mk_term::op1(
-                                    UnaryOp::Force(),
+                                    UnaryOp::Force(None),
                                     apply_contracts(
                                         t,
                                         attrs.pending_contracts.iter().cloned(),

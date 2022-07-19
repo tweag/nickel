@@ -191,7 +191,7 @@ pub fn get_uop_type(
             ),
         ),
         // Dyn -> Dyn
-        UnaryOp::Force() => (mk_typewrapper::dynamic(), mk_typewrapper::dynamic()),
+        UnaryOp::Force(_) => (mk_typewrapper::dynamic(), mk_typewrapper::dynamic()),
     })
 }
 

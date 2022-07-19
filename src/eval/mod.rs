@@ -448,7 +448,7 @@ where
                 // Special casing (hopefully temporary) due to the need for `DeepSeq` to produce
                 // acceptable error message for missing field definition occurring when sequencing
                 // a record. See the definition of `UnaryOp::DeepSeq`.
-                if let UnaryOp::DeepSeq(Some(stack_elem)) = op {
+                if let UnaryOp::DeepSeq(Some(stack_elem)) | UnaryOp::Force(Some(stack_elem)) = op {
                     call_stack.0.push(stack_elem.clone());
                 }
 
