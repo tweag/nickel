@@ -899,7 +899,7 @@ pub enum UnaryOp {
     /// Force "full" evaluation of a term and return it.
     /// This was added in the context of `ArrayLazyAssume`,
     /// and may not make much sense on its own.
-    Force(),
+    Force(Option<crate::eval::callstack::StackElem>),
 }
 
 // See: https://github.com/rust-lang/regex/issues/178
