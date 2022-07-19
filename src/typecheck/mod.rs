@@ -64,6 +64,7 @@ pub mod operation;
 pub mod reporting;
 #[macro_use]
 pub mod mk_typewrapper;
+pub mod eq;
 
 use error::*;
 use operation::{get_bop_type, get_nop_type, get_uop_type};
