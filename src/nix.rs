@@ -1,5 +1,6 @@
 use crate::cache::Cache;
-use crate::convertion::ToNickel;
+use crate::convertion::State;
+pub use crate::convertion::ToNickel;
 use crate::mk_app;
 use crate::parser::utils::mk_span;
 use crate::term::make::{self, if_then_else};
@@ -11,9 +12,9 @@ use rnix::types::{BinOp, EntryHolder, TokenWrapper, TypedNode, UnaryOp as UniOp}
 use std::collections::HashMap;
 
 impl ToNickel for UniOp {
-    fn translate(self, file_id: FileId) -> RichTerm {
+    fn translate(self, state: &State) -> RichTerm {
         use rnix::types::UnaryOpKind::*;
-        let value = self.value().unwrap().translate(file_id);
+        let value = self.value().unwrap().translate(state);
         match self.operator() {
             Negate => make::op2(BinaryOp::Sub(), Term::Num(0.), value),
             Invert => make::op1(UnaryOp::BoolNot(), value),
@@ -22,10 +23,10 @@ impl ToNickel for UniOp {
 }
 
 impl ToNickel for BinOp {
-    fn translate(self, file_id: FileId) -> RichTerm {
+    fn translate(self, state: &State) -> RichTerm {
         use rnix::types::BinOpKind::*;
-        let lhs = self.lhs().unwrap().translate(file_id);
-        let rhs = self.rhs().unwrap().translate(file_id);
+        let lhs = self.lhs().unwrap().translate(state);
+        let rhs = self.rhs().unwrap().translate(state);
         match self.operator().unwrap() {
             // TODO: Should be fixed using a nickel function `compat.concat` of type `a -> a -> a`
             // using `str_concat` or `array_concat` in respect to `typeof a`.
@@ -54,12 +55,13 @@ impl ToNickel for BinOp {
 }
 
 impl ToNickel for rnix::SyntaxNode {
-    fn translate(self, file_id: FileId) -> RichTerm {
+    fn translate(self, state: &State) -> RichTerm {
         use rnix::types::{self, ParsedType, Wrapper};
         use rnix::value;
         use rnix::SyntaxKind::*;
         use std::convert::{TryFrom, TryInto};
         let pos = self.text_range();
+        let file_id = state.file_id.clone();
         let span = mk_span(file_id, pos.start().into(), pos.end().into());
         println!("{:?}: {}", self, self);
         let node: ParsedType = self.try_into().unwrap();
@@ -67,9 +69,9 @@ impl ToNickel for rnix::SyntaxNode {
             ParsedType::Error(_) => {
                 Term::ParseError(crate::error::ParseError::NixParseError(file_id)).into()
             }
-            ParsedType::Root(n) => n.inner().unwrap().translate(file_id),
-            ParsedType::Paren(n) => n.inner().unwrap().translate(file_id),
-            ParsedType::Dynamic(n) => n.inner().unwrap().translate(file_id),
+            ParsedType::Root(n) => n.inner().unwrap().translate(state),
+            ParsedType::Paren(n) => n.inner().unwrap().translate(state),
+            ParsedType::Dynamic(n) => n.inner().unwrap().translate(state),
 
             ParsedType::Assert(n) => unimplemented!(),
 
@@ -99,7 +101,7 @@ impl ToNickel for rnix::SyntaxNode {
                         .map(|(i, c)| match c {
                             rnix::value::StrPart::Literal(s) => crate::term::StrChunk::Literal(s),
                             rnix::value::StrPart::Ast(a) => crate::term::StrChunk::Expr(
-                                a.first_child().unwrap().translate(file_id),
+                                a.first_child().unwrap().translate(state),
                                 i,
                             ),
                         })
@@ -108,7 +110,7 @@ impl ToNickel for rnix::SyntaxNode {
                 .into()
             }
             ParsedType::List(n) => Term::Array(
-                n.items().map(|elm| elm.translate(file_id)).collect(),
+                n.items().map(|elm| elm.translate(state)).collect(),
                 Default::default(),
             )
             .into(),
@@ -117,7 +119,7 @@ impl ToNickel for rnix::SyntaxNode {
                 let fields: Vec<(_, _)> = n
                     .entries()
                     .map(|kv| {
-                        let val = kv.value().unwrap().translate(file_id);
+                        let val = kv.value().unwrap().translate(state);
                         let p: Vec<_> = kv
                             .key()
                             .unwrap()
@@ -126,7 +128,7 @@ impl ToNickel for rnix::SyntaxNode {
                                 NODE_IDENT => FieldPathElem::Ident(
                                     rnix::types::Ident::cast(p).unwrap().as_str().into(),
                                 ),
-                                _ => FieldPathElem::Expr(p.translate(file_id)),
+                                _ => FieldPathElem::Expr(p.translate(state)),
                             })
                             .collect();
                         elaborate_field_path(p, val)
@@ -167,7 +169,7 @@ impl ToNickel for rnix::SyntaxNode {
                         ),
                         s => s.into(),
                     };
-                    let rt = kv.value().unwrap().translate(file_id);
+                    let rt = kv.value().unwrap().translate(state);
                     destruct_vec.push(destruct::Match::Simple(id.clone(), Default::default()));
                     fields.insert(id.into(), rt);
                 }
@@ -180,7 +182,7 @@ impl ToNickel for rnix::SyntaxNode {
                         span,
                     },
                     Term::RecRecord(RecordData::with_fields(fields), vec![], None).into(),
-                    n.body().unwrap().translate(file_id),
+                    n.body().unwrap().translate(state),
                 )
             }
             ParsedType::With(n) => unimplemented!(),
@@ -189,7 +191,7 @@ impl ToNickel for rnix::SyntaxNode {
                 let arg = n.arg().unwrap();
                 match arg.kind() {
                     NODE_IDENT => {
-                        Term::Fun(arg.to_string().into(), n.body().unwrap().translate(file_id))
+                        Term::Fun(arg.to_string().into(), n.body().unwrap().translate(state))
                     }
                     NODE_PATTERN => {
                         use crate::destruct::*;
@@ -201,7 +203,7 @@ impl ToNickel for rnix::SyntaxNode {
                             .map(|e| {
                                 let mv = if let Some(def) = e.default() {
                                     MetaValue {
-                                        value: Some(def.translate(file_id)),
+                                        value: Some(def.translate(state)),
                                         priority: MergePriority::Bottom,
                                         ..Default::default()
                                     }
@@ -217,7 +219,7 @@ impl ToNickel for rnix::SyntaxNode {
                             rest: None,
                             span,
                         };
-                        Term::FunPattern(at, dest, n.body().unwrap().translate(file_id))
+                        Term::FunPattern(at, dest, n.body().unwrap().translate(state))
                     }
                     _ => unreachable!(),
                 }
@@ -225,27 +227,27 @@ impl ToNickel for rnix::SyntaxNode {
             .into(),
 
             ParsedType::Apply(n) => Term::App(
-                n.lambda().unwrap().translate(file_id),
-                n.value().unwrap().translate(file_id),
+                n.lambda().unwrap().translate(state),
+                n.value().unwrap().translate(state),
             )
             .into(),
             ParsedType::IfElse(n) => if_then_else(
-                n.condition().unwrap().translate(file_id),
-                n.body().unwrap().translate(file_id),
-                n.else_body().unwrap().translate(file_id),
+                n.condition().unwrap().translate(state),
+                n.body().unwrap().translate(state),
+                n.else_body().unwrap().translate(state),
             ),
-            ParsedType::BinOp(n) => n.translate(file_id),
-            ParsedType::UnaryOp(n) => n.translate(file_id),
+            ParsedType::BinOp(n) => n.translate(state),
+            ParsedType::UnaryOp(n) => n.translate(state),
             ParsedType::Select(n) => match ParsedType::try_from(n.index().unwrap()).unwrap() {
                 ParsedType::Ident(id) => Term::Op1(
                     UnaryOp::StaticAccess(id.as_str().into()),
-                    n.set().unwrap().translate(file_id),
+                    n.set().unwrap().translate(state),
                 )
                 .into(),
                 _ => Term::Op2(
                     BinaryOp::DynAccess(),
-                    n.index().unwrap().translate(file_id),
-                    n.set().unwrap().translate(file_id),
+                    n.index().unwrap().translate(state),
+                    n.set().unwrap().translate(state),
                 )
                 .into(),
             },
@@ -272,5 +274,5 @@ impl ToNickel for rnix::SyntaxNode {
 pub fn parse(cache: &Cache, file_id: FileId) -> Result<RichTerm, rnix::parser::ParseError> {
     let source = cache.files().source(file_id);
     let nixast = rnix::parse(source).as_result()?;
-    Ok(nixast.node().translate(file_id))
+    Ok(nixast.node().to_nickel(file_id))
 }
