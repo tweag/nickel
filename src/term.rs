@@ -228,6 +228,12 @@ impl ArrayAttrs {
         self
     }
 
+    /// Drop the pending contracts.
+    pub fn contracts_cleared(mut self) -> Self {
+        self.pending_contracts.clear();
+        self
+    }
+
     /// Extend contracts from an iterator of `PendingContract`.
     pub fn with_contracts<I>(mut self, iter: I) -> Self
     where

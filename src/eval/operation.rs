@@ -543,7 +543,7 @@ fn process_unary_operation(
                             .collect();
 
                         Ok(Closure {
-                            body: RichTerm::new(Term::Array(ts, ArrayAttrs::new().closurized()), pos_op_inh),
+                            body: RichTerm::new(Term::Array(ts, attrs.contracts_cleared().closurized()), pos_op_inh),
                             env: shared_env,
                         })
                     }
