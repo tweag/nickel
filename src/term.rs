@@ -899,13 +899,13 @@ pub enum UnaryOp {
     ///
     /// # `Force` vs. `DeepSeq`
     ///
-    ///   - In [`UnaryOp::DeepSeq`] we evaluated a version of the Array with all contracts mapped,
-    ///     but the Array closure we were given is not necessarily updated because contracts
-    ///     may ignore their arguments, e.g `Ignore = fun label term => null`.
+    /// [`UnaryOp::Force`] updates the thunks containing arrays with a new version where the lazy contracts have all been applied,
+    /// whereas [`UnaryOp::DeepSeq`] evaluates the same expressions, but it never updates the thunk of an array with lazy contracts
+    /// with an array where those contracts have been applied. In a way, the result of lazy contract application in arrays is "lost"
+    /// in [`UnaryOp::DeepSeq`], while it's returned in [`UnaryOp::Force`].
     ///
-    ///   - While in [`UnaryOp::Force`] we evaluated the same Array terms with all the contracts applied
-    ///     (like in [`UnaryOp::DeepSeq`]) but then we *return* this new terms. This means we can observe
-    ///     different results between `deep_seq x x` and `force x`.
+    /// This means we can observe different results between `deep_seq x x` and `force x`, in some cases.
+    ///
     /// It's also worth noting that [`UnaryOp::DeepSeq`] should be, in principle, more efficient that [`UnaryOp::Force`]
     /// as it does less cloning.
     Force(Option<crate::eval::callstack::StackElem>),
