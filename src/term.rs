@@ -887,8 +887,21 @@ pub enum UnaryOp {
     /// Version of [`UnaryOp::StrMatch`] which remembers the compiled regex.
     StrMatchCompiled(CompiledRegex),
     /// Force "full" evaluation of a term and return it.
-    /// This was added in the context of `ArrayLazyAssume`,
+    ///
+    /// This was added in the context of [`BinaryOp::ArrayLazyAssume`],
     /// and may not make much sense on its own.
+    ///
+    /// # `Force` vs. `DeepSeq`
+    ///
+    ///   - In [`UnaryOp::DeepSeq`] we evaluated a version of the Array with all contracts mapped,
+    ///     but the Array closure we were given is not necessarily updated because contracts
+    ///     may ignore their arguments, e.g `Ignore = fun label term => null`.
+    ///
+    ///   - While in [`UnaryOp::Force`] we evaluated the same Array terms with all the contracts applied
+    ///     (like in [`UnaryOp::DeepSeq`]) but then we *return* this new terms. This means we can observe
+    ///     different results between `deep_seq x x` and `force x`.
+    /// It's also worth noting that [`UnaryOp::DeepSeq`] should be, in principle, more efficient that [`UnaryOp::Force`]
+    /// as it does less cloning.
     Force(Option<crate::eval::callstack::StackElem>),
 }
 
