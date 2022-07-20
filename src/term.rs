@@ -885,20 +885,33 @@ pub enum UnaryOp {
     /// Transform a string to an enum.
     EnumFromStr(),
     /// Test if a regex matches a string.
-    /// Like [`StrMatch`], this is a unary operator because we would like a way to share the
+    /// Like [`UnaryOp::StrMatch`], this is a unary operator because we would like a way to share the
     /// same "compiled regex" for many matching calls. This is done by returning functions
-    /// wrapping [`StrIsMatchCompiled`] and [`StrMatchCompiled`]
+    /// wrapping [`UnaryOp::StrIsMatchCompiled`] and [`UnaryOp::StrMatchCompiled`]
     StrIsMatch(),
     /// Match a regex on a string, and returns the captured groups together, the index of the
     /// match, etc.
     StrMatch(),
-    /// Version of `StrIsMatch` which remembers the compiled regex.
+    /// Version of [`UnaryOp::StrIsMatch`] which remembers the compiled regex.
     StrIsMatchCompiled(CompiledRegex),
-    /// Version of `StrMatch` which remembers the compiled regex.
+    /// Version of [`UnaryOp::StrMatch`] which remembers the compiled regex.
     StrMatchCompiled(CompiledRegex),
     /// Force "full" evaluation of a term and return it.
-    /// This was added in the context of `ArrayLazyAssume`,
+    ///
+    /// This was added in the context of [`BinaryOp::ArrayLazyAssume`],
     /// and may not make much sense on its own.
+    ///
+    /// # `Force` vs. `DeepSeq`
+    ///
+    ///   - In [`UnaryOp::DeepSeq`] we evaluated a version of the Array with all contracts mapped,
+    ///     but the Array closure we were given is not necessarily updated because contracts
+    ///     may ignore their arguments, e.g `Ignore = fun label term => null`.
+    ///
+    ///   - While in [`UnaryOp::Force`] we evaluated the same Array terms with all the contracts applied
+    ///     (like in [`UnaryOp::DeepSeq`]) but then we *return* this new terms. This means we can observe
+    ///     different results between `deep_seq x x` and `force x`.
+    /// It's also worth noting that [`UnaryOp::DeepSeq`] should be, in principle, more efficient that [`UnaryOp::Force`]
+    /// as it does less cloning.
     Force(Option<crate::eval::callstack::StackElem>),
 }
 
