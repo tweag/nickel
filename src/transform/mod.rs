@@ -137,10 +137,12 @@ impl Closurizable for RichTerm {
         let pos = self.pos;
 
         let thunk = match self.as_ref() {
-            Term::Var(id) if id.is_generated() => with_env.get(&id).expect(&format!(
+            Term::Var(id) if id.is_generated() => with_env.get(id).unwrap_or_else(|| {
+                panic!(
                 "Internal error(closurize) : generated identifier {} not found in the environment",
                 id
-            )),
+            )
+            }),
             _ => {
                 let closure = Closure {
                     body: self,

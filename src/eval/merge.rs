@@ -503,7 +503,7 @@ fn rev_thunks<'a, I: Iterator<Item = &'a mut RichTerm>>(map: I, env: &mut Enviro
     for rt in map {
         if let Term::Var(id) = rt.as_ref() {
             // This create a fresh variable which is bound to a reverted copy of the original thunk
-            let reverted = env.get(&id).unwrap().revert();
+            let reverted = env.get(id).unwrap().revert();
             let fresh_id = fresh_var();
             env.insert(fresh_id.clone(), reverted);
             *(SharedTerm::make_mut(&mut rt.term)) = Term::Var(fresh_id);

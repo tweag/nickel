@@ -150,9 +150,8 @@ fn collect_free_vars(rt: &mut RichTerm, free_vars: &mut HashSet<Ident>) {
         }
         Term::StrChunks(chunks) => {
             for chunk in chunks {
-                match chunk {
-                    StrChunk::Expr(t, _) => collect_free_vars(t, free_vars),
-                    _ => (),
+                if let StrChunk::Expr(t, _) = chunk {
+                    collect_free_vars(t, free_vars)
                 }
             }
         }

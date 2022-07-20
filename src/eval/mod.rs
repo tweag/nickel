@@ -253,17 +253,14 @@ where
 {
     let (mut rt, env) = eval_closure(Closure::atomic_closure(t), global_env, resolver, false)?;
 
-    match *SharedTerm::make_mut(&mut rt.term) {
-        Term::MetaValue(ref mut meta) => {
-            if let Some(t) = meta.value.take() {
-                let (evaluated, env) =
-                    eval_closure(Closure { body: t, env }, global_env, resolver, true)?;
-                let substituted = subst(evaluated, global_env, &env);
+    if let Term::MetaValue(ref mut meta) = *SharedTerm::make_mut(&mut rt.term) {
+        if let Some(t) = meta.value.take() {
+            let (evaluated, env) =
+                eval_closure(Closure { body: t, env }, global_env, resolver, true)?;
+            let substituted = subst(evaluated, global_env, &env);
 
-                meta.value = Some(substituted);
-            }
+            meta.value = Some(substituted);
         }
-        _ => (),
     };
 
     Ok(rt)
@@ -528,7 +525,7 @@ where
 
                 //TODO: We should probably avoid cloning the `ts` hashmap, using `match_sharedterm`
                 //instead of `match` in the main eval loop, if possible
-                let static_part = RichTerm::new(Term::Record(ts.clone(), attrs.clone()), pos);
+                let static_part = RichTerm::new(Term::Record(ts.clone(), *attrs), pos);
 
                 // Transform the static part `{stat1 = val1, ..., statn = valn}` and the dynamic
                 // part `{exp1 = dyn_val1, ..., expm = dyn_valm}` to a sequence of extensions
@@ -536,7 +533,7 @@ where
                 // The `dyn_val` are given access to the recursive environment, but the recursive
                 // environment only contains the static fields, and not the dynamic fields.
                 let extended = dyn_fields
-                    .into_iter()
+                    .iter()
                     .try_fold::<_, _, Result<RichTerm, EvalError>>(
                         static_part,
                         |acc, (id_t, t)| {
@@ -619,7 +616,7 @@ where
             Term::Array(terms, attrs) if !attrs.closurized => {
                 let mut local_env = Environment::new();
                 let closurized_array = terms
-                    .into_iter()
+                    .iter()
                     .map(|t| t.clone().closurize(&mut local_env, env.clone()))
                     .collect();
                 Closure {

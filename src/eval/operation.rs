@@ -764,7 +764,7 @@ fn process_unary_operation(
                     let indent_str: String = std::iter::once('\n')
                         .chain((0..indent).map(|_| ' '))
                         .collect();
-                    s.replace("\n", &indent_str)
+                    s.replace('\n', &indent_str)
                 } else {
                     s.clone()
                 };
@@ -1059,10 +1059,9 @@ fn process_unary_operation(
                     let groups: Vec<RichTerm> = capt
                         .iter()
                         .skip(1)
-                        .map(|s_opt| {
+                        .filter_map(|s_opt| {
                             s_opt.map(|s| RichTerm::from(Term::Str(String::from(s.as_str()))))
                         })
-                        .flatten()
                         .collect();
 
                     mk_record!(
@@ -1856,7 +1855,7 @@ fn process_binary_operation(
                             ts.extend(ts1.into_iter());
                             ts.extend(ts2.into_iter());
 
-                            let mut env = env1.clone();
+                            let mut env = env1;
                             // TODO: Is there a cheaper way to "merge" two environements?
                             env.extend(env2.iter_elems().map(|(k, v)| (k.clone(), v.clone())));
 
@@ -2328,7 +2327,7 @@ fn process_nary_operation(
                         )
                     }
                 } else {
-                    Err(EvalError::InternalError(format!("The MergeContract() operator was expecting a first argument of type Label, got {}", t1.type_of().unwrap_or(String::from("<unevaluated>"))), pos_op))
+                    Err(EvalError::InternalError(format!("The MergeContract() operator was expecting a first argument of type Label, got {}", t1.type_of().unwrap_or_else(|| String::from("<unevaluated>"))), pos_op))
                 }
             }
         }

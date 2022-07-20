@@ -255,7 +255,7 @@ impl Thunk {
     /// Return a clone of the potential field dependencies stored in a revertible thunk. See
     /// [`crate::transform::free_vars`].
     pub fn deps(&self) -> ThunkDeps {
-        self.data.borrow().deps().clone()
+        self.data.borrow().deps()
     }
 }
 

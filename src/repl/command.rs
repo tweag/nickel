@@ -92,7 +92,7 @@ impl FromStr for Command {
     type Err = ReplError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let cmd_end = s.find(' ').unwrap_or_else(|| s.len());
+        let cmd_end = s.find(' ').unwrap_or(s.len());
         let cmd_str: String = s.chars().take(cmd_end).collect();
         let cmd: CommandType = cmd_str
             .parse()

@@ -138,12 +138,7 @@ impl ReplImpl {
                 typecheck::type_check_in_env(&t, &repl_impl.env.type_env, &repl_impl.cache)?;
 
             if let Some(id) = id {
-                typecheck::Envs::env_add(
-                    &mut repl_impl.env.type_env,
-                    id.clone(),
-                    &t,
-                    &repl_impl.cache,
-                );
+                typecheck::Envs::env_add(&mut repl_impl.env.type_env, id, &t, &repl_impl.cache);
             }
 
             for id in &pending {
@@ -331,7 +326,7 @@ impl InputParser {
 
         match result {
             Ok((t, e)) if e.no_errors() => InputStatus::Complete(t),
-            Ok((_, e)) if e.errors.iter().all(|e| partial(e)) => InputStatus::Partial,
+            Ok((_, e)) if e.errors.iter().all(partial) => InputStatus::Partial,
             Ok((_, e)) => InputStatus::Failed(e),
             Err(e) if partial(&e) => InputStatus::Partial,
             Err(err) => InputStatus::Failed(err.into()),

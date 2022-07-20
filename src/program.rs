@@ -281,7 +281,7 @@ mod doc {
     ) -> Result<(), Error> {
         match rt.term.as_ref() {
             Term::MetaValue(MetaValue { doc: Some(md), .. }) => {
-                document.append(&mut parse_documentation(header_level, arena, &md, options))
+                document.append(parse_documentation(header_level, arena, md, options))
             }
             Term::Record(map, _) | Term::RecRecord(map, _, _, _) => {
                 // Sorting fields for a determinstic output
@@ -326,12 +326,12 @@ mod doc {
                 setext,
             });
         }
-        return ast;
+        ast
     }
 
     /// Creates a codespan header of the provided string with the provided header level.
     fn mk_header<'a>(
-        ident: &String,
+        ident: &str,
         header_level: u32,
         arena: &'a Arena<AstNode<'a>>,
     ) -> &'a AstNode<'a> {
@@ -342,7 +342,7 @@ mod doc {
 
         let code = arena.alloc(AstNode::from(NodeValue::Code(NodeCode {
             num_backticks: 1,
-            literal: ident.clone().into_bytes(),
+            literal: ident.bytes().collect(),
         })));
 
         res.append(code);
