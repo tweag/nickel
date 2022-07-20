@@ -1139,7 +1139,7 @@ fn process_unary_operation(
             match_sharedterm! {t,
                 with {
                     Term::Record(map, attrs) if !map.is_empty() => {
-                        let mut shared_env = env.clone();
+                        let mut shared_env = Environment::new();
 
                         let map = map
                             .into_iter()
@@ -1171,7 +1171,7 @@ fn process_unary_operation(
                         })
                     },
                     Term::Array(ts, attrs) if !ts.is_empty() => {
-                        let mut shared_env = env.clone();
+                        let mut shared_env = Environment::new();
                         let ts = ts
                             .into_iter()
                             .map(|t| {
