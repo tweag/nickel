@@ -1,6 +1,6 @@
 use crate::cache::Cache;
-use crate::convertion::State;
-pub use crate::convertion::ToNickel;
+use crate::conversion::State;
+pub use crate::conversion::ToNickel;
 use crate::mk_app;
 use crate::parser::utils::mk_span;
 use crate::term::make::{self, if_then_else};
