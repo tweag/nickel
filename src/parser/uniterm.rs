@@ -164,7 +164,7 @@ impl UniRecord {
     pub fn into_type_strict(self) -> Result<Types, InvalidRecordTypeError> {
         // An open record (with an ellipsis `..` at the end) can't be translated to a record type.
         // `pos_ellipsis` should be set iff `attrs.open` is true.
-        debug_assert!((self.pos_ellipsis == TermPos::None) == !self.attrs.open);
+        debug_assert!((self.pos_ellipsis == TermPos::None) != self.attrs.open);
 
         if let Some(raw_span) = self.pos_ellipsis.into_opt() {
             return Err(InvalidRecordTypeError(TermPos::Original(raw_span)));
@@ -397,16 +397,13 @@ pub fn fix_type_vars(ty: &mut Types) {
 /// Fix the type variables of types appearing as annotations of record fields. See
 /// [`fix_type_vars`].
 pub fn fix_field_types(rt: &mut RichTerm) {
-    match SharedTerm::make_mut(&mut rt.term) {
-        Term::MetaValue(ref mut m) => {
-            if let Some(Contract { ref mut types, .. }) = m.types {
-                fix_type_vars(types);
-            }
-
-            for ctr in m.contracts.iter_mut() {
-                fix_type_vars(&mut ctr.types);
-            }
+    if let Term::MetaValue(ref mut m) = SharedTerm::make_mut(&mut rt.term) {
+        if let Some(Contract { ref mut types, .. }) = m.types {
+            fix_type_vars(types);
         }
-        _ => (),
+
+        for ctr in m.contracts.iter_mut() {
+            fix_type_vars(&mut ctr.types);
+        }
     }
 }

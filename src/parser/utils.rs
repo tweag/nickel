@@ -283,7 +283,7 @@ fn merge_field(rterm1: RichTerm, rterm2: RichTerm) -> Option<RichTerm> {
             Some(RichTerm::from(Term::MetaValue(new_meta)))
         }
         (Some(meta), None) | (None, Some(meta)) => {
-            let mut new_meta = meta.clone();
+            let mut new_meta = meta;
             new_meta.value = new_value;
             Some(RichTerm::from(Term::MetaValue(new_meta)))
         }
@@ -329,7 +329,7 @@ pub fn mk_let(
     t2: RichTerm,
     span: RawSpan,
 ) -> Result<RichTerm, ParseError> {
-    let result = match pat.into() {
+    let result = match pat {
         d @ (Destruct::Record { .. } | Destruct::Array { .. }) => {
             if rec {
                 return Err(ParseError::RecursiveLetPattern(span));

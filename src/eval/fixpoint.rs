@@ -40,7 +40,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a RichTerm)>>(
 /// all the recursive environment. See [`crate::transform::free_vars`].
 pub fn patch_field(
     rt: &RichTerm,
-    rec_env: &Vec<(Ident, Thunk)>,
+    rec_env: &[(Ident, Thunk)],
     env: &Environment,
 ) -> Result<(), EvalError> {
     if let Term::Var(var_id) = &*rt.term {
@@ -55,7 +55,7 @@ pub fn patch_field(
                 .borrow_mut()
                 .env
                 .extend(rec_env.iter().filter(|(id, _)| deps.contains(id)).cloned()),
-            ThunkDeps::Unknown => thunk.borrow_mut().env.extend(rec_env.clone()),
+            ThunkDeps::Unknown => thunk.borrow_mut().env.extend(rec_env.iter().cloned()),
             ThunkDeps::Empty => (),
         };
     }

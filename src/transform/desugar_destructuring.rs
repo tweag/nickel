@@ -84,7 +84,7 @@ pub fn desugar_with_contract(rt: RichTerm) -> RichTerm {
         with {
             Term::LetPattern(x, pat, t_, body) => {
                 let pos = body.pos;
-                let meta = pat.clone().as_contract();
+                let meta = pat.clone().into_contract();
                 let t_ = {
                     let t_pos = t_.pos;
                     RichTerm::new(
@@ -152,7 +152,7 @@ fn bind_open_field(x: Ident, pat: &Destruct, body: RichTerm) -> RichTerm {
         _ => panic!("A closed pattern can not have a rest binding"),
     };
     Term::Let(
-        var.clone(),
+        var,
         matches.iter().fold(Term::Var(x).into(), |x, m| match m {
             Match::Simple(i, _) | Match::Assign(i, _, _) => {
                 op2(DynRemove(), Term::Str(i.to_string()), x)

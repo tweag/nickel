@@ -160,7 +160,7 @@ fn main() {
                         Error::IOError(IOError(format!(
                             "when opening or creating output file `{}`: {}",
                             output.to_string_lossy(),
-                            e.to_string()
+                            e
                         )))
                     })
                 })
@@ -170,7 +170,7 @@ fn main() {
                         Error::IOError(IOError(format!(
                             "when creating output path `{}`: {}",
                             docpath.to_string_lossy(),
-                            e.to_string()
+                            e
                         )))
                     })?;
                     let mut markdown_file = docpath.to_path_buf();
@@ -193,7 +193,7 @@ fn main() {
                         Error::IOError(IOError(format!(
                             "when opening or creating output file `{}`: {}",
                             markdown_file.to_string_lossy(),
-                            e.to_string()
+                            e
                         )))
                     })
                 })

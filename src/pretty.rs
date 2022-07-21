@@ -20,7 +20,7 @@ fn min_interpolate_sign(text: &str) -> usize {
             // be fine. But picking the maximum
             //
             // TODO: Improve the `"%*m` case if necessary.
-            if m.as_str().ends_with("{") {
+            if m.as_str().ends_with('{') {
                 d
             } else {
                 d - 1
@@ -30,7 +30,7 @@ fn min_interpolate_sign(text: &str) -> usize {
         .unwrap_or(1)
 }
 
-fn sorted_map<'a, K: Ord, V>(m: &'a HashMap<K, V>) -> Vec<(&'a K, &'a V)> {
+fn sorted_map<K: Ord, V>(m: &'_ HashMap<K, V>) -> Vec<(&'_ K, &'_ V)> {
     let mut ret: Vec<(&K, &V)> = m.iter().collect();
     ret.sort_by_key(|(k, _)| *k);
     ret
@@ -43,24 +43,24 @@ where
     Self::Doc: Clone,
     A: Clone,
 {
-    fn quote_if_needed(self: &'a Self, id: &crate::identifier::Ident) -> DocBuilder<'a, Self, A> {
+    fn quote_if_needed(&'a self, id: &crate::identifier::Ident) -> DocBuilder<'a, Self, A> {
         let reg = Regex::new("^_?[a-zA-Z][_a-zA-Z0-9-]*$").unwrap();
-        if reg.is_match(&id.to_string()) {
+        if reg.is_match(id.as_ref()) {
             self.as_string(id)
         } else {
             self.as_string(id).double_quotes()
         }
     }
 
-    fn escaped_string(self: &'a Self, s: &str) -> DocBuilder<'a, Self, A> {
+    fn escaped_string(&'a self, s: &str) -> DocBuilder<'a, Self, A> {
         let s = s
-            .replace("\\", "\\\\")
+            .replace('\\', "\\\\")
             .replace("%{", "\\%{")
-            .replace("\"", "\\\"");
+            .replace('\"', "\\\"");
         self.text(s)
     }
 
-    fn metadata(self: &'a Self, mv: &MetaValue, with_doc: bool) -> DocBuilder<'a, Self, A> {
+    fn metadata(&'a self, mv: &MetaValue, with_doc: bool) -> DocBuilder<'a, Self, A> {
         if let Some(types) = &mv.types {
             self.text(":")
                 .append(self.space())
@@ -80,14 +80,14 @@ where
                         .append(
                             self.hardline()
                                 .append(self.intersperse(
-                                    doc.lines().map(|d| self.escaped_string(&d)),
+                                    doc.lines().map(|d| self.escaped_string(d)),
                                     self.hardline().clone(),
                                 ))
                                 .double_quotes(),
                         )
                         .append(self.line())
                 })
-                .unwrap_or(self.nil())
+                .unwrap_or_else(|| self.nil())
         } else {
             self.nil()
         })
@@ -277,7 +277,7 @@ where
                     )
                     .max()
                     .unwrap_or(1);
-                let interp: String = std::iter::repeat("%").take(nb_perc).collect();
+                let interp: String = "%".repeat(nb_perc);
                 allocator
                     .intersperse(
                         chunks.iter().rev().map(|c| match c {
@@ -403,7 +403,7 @@ where
                                     .append(allocator.space())
                             })
                         })
-                        .unwrap_or(allocator.nil()),
+                        .unwrap_or_else(|| allocator.nil()),
                 )
                 .append(dst.pretty(allocator))
                 .append(if let MetaValue(ref mv) = rt.as_ref() {
@@ -468,7 +468,7 @@ where
                             .append(allocator.space())
                             .append(if let MetaValue(mv) = rt.as_ref() {
                                 allocator
-                                    .metadata(&mv, true)
+                                    .metadata(mv, true)
                                     .append(allocator.space())
                                     .append(
                                         mv.value
@@ -479,7 +479,7 @@ where
                                                     .append(allocator.space())
                                                     .append(v.pretty(allocator))
                                             })
-                                            .unwrap_or(allocator.nil()),
+                                            .unwrap_or_else(|| allocator.nil()),
                                     )
                             } else {
                                 allocator
@@ -517,7 +517,7 @@ where
                                     .append(allocator.space())
                                     .append(if let MetaValue(mv) = rt.as_ref() {
                                         allocator
-                                            .metadata(&mv, true)
+                                            .metadata(mv, true)
                                             .append(allocator.space())
                                             .append(
                                                 mv.value
@@ -528,7 +528,7 @@ where
                                                             .append(allocator.space())
                                                             .append(v.pretty(allocator))
                                                     })
-                                                    .unwrap_or(allocator.nil()),
+                                                    .unwrap_or_else(|| allocator.nil()),
                                             )
                                     } else {
                                         allocator
@@ -544,7 +544,7 @@ where
                                     .append(allocator.space())
                                     .append(if let MetaValue(mv) = rt.as_ref() {
                                         allocator
-                                            .metadata(&mv, true)
+                                            .metadata(mv, true)
                                             .append(allocator.space())
                                             .append(
                                                 mv.value
@@ -554,7 +554,7 @@ where
                                                             .text("=")
                                                             .append(v.pretty(allocator))
                                                     })
-                                                    .unwrap_or(allocator.nil()),
+                                                    .unwrap_or_else(|| allocator.nil()),
                                             )
                                     } else {
                                         allocator
@@ -602,7 +602,7 @@ where
                                 .append(allocator.space())
                                 .append(allocator.text("=>"))
                                 .append(allocator.space())
-                                .append(d.to_owned().pretty(allocator))
+                                .append(d.pretty(allocator))
                         }))
                         .nest(2)
                         .append(allocator.line_())
