@@ -1471,7 +1471,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
                     Diagnostic::note()
                     .with_notes(vec![
                         String::from("Due to a temporary limitation, contracts don't mix well with static types (see https://github.com/tweag/nickel/issues/724). This error may happen when using a contract as a type annotation or when calling to a function whose type contain contracts."),
-                        String::from("As a temporary fix, please annotate the offending expression with its expected type using the pipe operator `|`. This disable static typing for the given expression."),
+                        String::from("As a temporary fix, please annotate the offending expression with its expected type using the pipe operator `|`. This disables static typing for the given expression."),
                         String::from("For example: if `foo` has type `MyContract -> Num`, rewrite `foo value + 1` as `(foo value | Num) + 1`."),
                     ])
                 ]
