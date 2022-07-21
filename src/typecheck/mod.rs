@@ -425,7 +425,7 @@ fn walk<L: Linearizer>(
                 ..
                 } => {
                     let tyw2 = TypeWrapper::from(ty2.clone());
-                    let instantiated = instantiate_foralls(state, tyw2.clone(), ForallInst::Constant);
+                    let instantiated = instantiate_foralls(state, tyw2, ForallInst::Constant);
                     type_check_(state, envs, lin, linearizer, t, instantiated)
                 }
                 MetaValue {value: Some(t), .. } =>  walk(state, envs, lin, linearizer, t),
@@ -487,7 +487,7 @@ fn inject_pat_vars(pat: &Destruct, envs: &mut Envs) {
                 let id = bind_id.as_ref().unwrap_or(id);
                 envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
                 if !pat.is_empty() {
-                    inject_pat_vars(&pat, envs);
+                    inject_pat_vars(pat, envs);
                 }
             }
         });
@@ -1692,6 +1692,6 @@ fn get_wildcard_var(
 fn wildcard_vars_to_type(wildcard_vars: Vec<TypeWrapper>, table: &UnifTable) -> Wildcards {
     wildcard_vars
         .into_iter()
-        .map(|var| to_type(&table, var))
+        .map(|var| to_type(table, var))
         .collect()
 }

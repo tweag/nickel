@@ -369,7 +369,7 @@ FieldPathElem: FieldPathElem = {
 
 // Last field of a pattern
 LastMatch: LastMatch = {
-    Match => LastMatch::Match(<>),
+    Match => LastMatch::Match(Box::new(<>)),
     ".." <Ident?> => LastMatch::Ellipsis(<>),
 };
 
@@ -385,7 +385,7 @@ Destruct: Destruct = {
     <start: @L> "{" <mut matches: (<Match> ",")*> <last:LastMatch?> "}" <end: @R> => {
         let (open, rest) = match last {
 	    Some(LastMatch::Match(m)) => {
-	        matches.push(m);
+	        matches.push(*m);
 	        (false,None)
 	    },
 	    Some(LastMatch::Ellipsis(rest)) => (true, rest),

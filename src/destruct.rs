@@ -25,7 +25,7 @@ pub enum Match {
 pub enum LastMatch {
     /// The last field is a normal match. In this case the pattern is "closed" so every record
     /// fields should be matched.
-    Match(Match),
+    Match(Box<Match>),
     /// The pattern is "open" `, ..}`. Optionaly you can bind a record containing the remaining
     /// fields to an `Identifier` using the syntax `, ..y}`.
     Ellipsis(Option<Ident>),
@@ -50,12 +50,12 @@ pub enum Destruct {
 
 impl Destruct {
     /// generate the metavalue containing the contract representing this pattern.
-    pub fn as_contract(self) -> MetaValue {
+    pub fn into_contract(self) -> MetaValue {
         let label = self.label();
-        self.as_contract_with_lbl(label)
+        self.into_contract_with_lbl(label)
     }
 
-    fn as_contract_with_lbl(self, label: Label) -> MetaValue {
+    fn into_contract_with_lbl(self, label: Label) -> MetaValue {
         let open = self.is_open();
         MetaValue {
             contracts: vec![Contract {
@@ -125,7 +125,7 @@ impl Match {
                 let label = Label { span, ..label };
                 (
                     id,
-                    Term::MetaValue(MetaValue::flatten(m, d.as_contract_with_lbl(label))).into(),
+                    Term::MetaValue(MetaValue::flatten(m, d.into_contract_with_lbl(label))).into(),
                 )
             }
             Match::Assign(_id, _m, (_, _d @ Destruct::Array { .. })) => unimplemented!(),
