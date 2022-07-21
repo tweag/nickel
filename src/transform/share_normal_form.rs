@@ -181,18 +181,18 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
 /// duplicating any work. On the other hand, a WHNF which can contain other shareable
 /// subexpressions, such as a record, should be shared.
 fn should_share(t: &Term) -> bool {
-    !matches!(
-        t,
+    match t {
         Term::Null
-            | Term::Bool(_)
-            | Term::Num(_)
-            | Term::Str(_)
-            | Term::Lbl(_)
-            | Term::Sym(_)
-            | Term::Var(_)
-            | Term::Enum(_)
-            | Term::Fun(_, _)
-    )
+        | Term::Bool(_)
+        | Term::Num(_)
+        | Term::Str(_)
+        | Term::Lbl(_)
+        | Term::Sym(_)
+        | Term::Var(_)
+        | Term::Enum(_)
+        | Term::Fun(_, _) => false,
+        _ => true,
+    }
 }
 
 /// Bind a list of pairs `(identifier, term, binding_type)` in a term.

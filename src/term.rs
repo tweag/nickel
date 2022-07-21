@@ -978,7 +978,10 @@ pub enum BinaryOp {
 
 impl BinaryOp {
     pub fn is_strict(&self) -> bool {
-        !matches!(self, BinaryOp::Merge())
+        match self {
+            BinaryOp::Merge() => false,
+            _ => true,
+        }
     }
 
     pub fn pos(&self) -> OpPos {
