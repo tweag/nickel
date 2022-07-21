@@ -597,7 +597,7 @@ typechecker on, a contract annotation switches it back off.
 
 **Warning**: as of version 0.2.x, using contracts as types won't work in the
 majority of cases (typechecking will fail with a "can't compare contract types"
-error). This is temporary and will likely be fixed in upcoming 0.3.x. For more
+error). This is temporary and will likely be fixed in the upcoming 0.3.x release. For more
 details, see issues [#701](https://github.com/tweag/nickel/issues/701) and
 [#724](https://github.com/tweag/nickel/issues/724).
 
