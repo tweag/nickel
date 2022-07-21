@@ -200,7 +200,7 @@ pub enum TypecheckError {
     /// This is a temporary error due to the current limitation of checking type equality between
     /// contracts. Checking if the unification of two contracts is valid is non-trivial even in
     /// simple cases (see [#724](https://github.com/tweag/nickel/issues/724)). Currently, the
-    /// typechecker simply bails out of any attempt of contracts unification, represented by this
+    /// typechecker simply bails out of any attempt of contract unification, represented by this
     /// error.
     IncomparableFlatTypes(
         RichTerm, /* the expected flat type */
