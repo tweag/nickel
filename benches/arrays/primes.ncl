@@ -1,0 +1,42 @@
+let range
+  | doc "Generate an array of integers in the range [`start`, `end`)."
+  | Num -> Num -> Array Num
+  = fun start end =>
+    if end <= start then 
+      []
+    else
+      array.generate (fun x => x + start) (end - start) 
+in
+
+let is_prime 
+  | doc "Returns true if the argument is a prime number."
+  = fun x => x > 1 && array.all (fun d => x % d != 0) (range 2 (x - 1))
+in
+
+let Prime = fun label value =>
+  if is_prime value then
+    value
+  else
+    contract.blame_with "%{string.from_num value} is not a prime number." label 
+in
+
+let primes 
+  | doc "Generate `max` primes using Sieve of Eratosthenes."
+  | Num -> Array Prime
+  = fun max =>
+    let limit = num.pow max (1 / 2) in # sqrt(max)
+    let drop_multiples = fun x xs => 
+      let to_drop = max
+        |> array.generate (fun y => (y + 2) * x)
+        |> array.filter (fun y => y <= max) in
+      array.filter (fun y => array.all ((!=) y) to_drop) xs in
+    let rec loop = fun x xs =>
+      if x > limit then
+        xs
+      else
+        loop (x + 1) (drop_multiples x xs) in
+    loop 2 (range 2 max) in
+
+{
+  run = primes
+}
