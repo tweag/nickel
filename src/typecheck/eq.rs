@@ -251,32 +251,47 @@ where
         })
 }
 
-/// Convert rows (represented as linked list for the needs of unification) to a hashmap to perform
-/// the type equality comparison.
+/// Convert record rows to a hashmap.
 ///
-/// Require the rows to be closed (i.e. the last element must be RowEmpty), otherwise `None` is
-/// returned. `None` is returned as well if a type encountered is not a row type, a if it is a enum
-/// row.
-fn rows_as_map(ty1: &TypeWrapper) -> Option<HashMap<Ident, &TypeWrapper>> {
+/// Require the rows to be closed (i.e. the last element must be `RowEmpty`), otherwise `None` is
+/// returned. `None` is returned as well if a type encountered is not row, or if it is a enum row.
+fn rows_as_map(ty: &TypeWrapper) -> Option<HashMap<Ident, &TypeWrapper>> {
     let mut map = HashMap::new();
-    let mut curr = ty1;
 
-    loop {
-        match curr {
-            TypeWrapper::Concrete(AbsType::RowEmpty()) => return Some(map),
-            TypeWrapper::Concrete(AbsType::RowExtend(id, Some(ty), tail)) => {
-                map.insert(id.clone(), ty);
-                curr = tail.as_ref();
-            }
-            _ => return None,
+    ty.iter_as_rows().try_for_each(|item| match item {
+        RowIteratorItem::Row(id, Some(ty_row)) => {
+            map.insert(id.clone(), ty_row);
+            Some(())
         }
-    }
+        _ => None,
+    })?;
+
+    Some(map)
+}
+
+/// Convert enum rows to a hashset.
+///
+/// Require the rows to be closed (i.e. the last element must be `RowEmpty`), otherwise `None` is
+/// returned. `None` is returned as well if a type encountered is not row type, or if it is a
+/// record row.
+fn rows_as_set(ty: &TypeWrapper) -> Option<HashSet<Ident>> {
+    let mut set = HashSet::new();
+
+    ty.iter_as_rows().try_for_each(|item| match item {
+        RowIteratorItem::Row(id, None) => {
+            set.insert(id.clone());
+            Some(())
+        }
+        _ => None,
+    })?;
+
+    Some(set)
 }
 
 /// Perform the type equality comparison on types. Structurally recurse into type constructors and test
 /// that subtypes or subterms (contracts) are equals.
 ///
-/// Currently, this function morally operates on `Types` rather than `TypeWrapper`s as it is called
+/// Currently, this function operates on `Types` rather than `TypeWrapper`s as it is called
 /// by `contract_eq_bounded` on type annotations. But we need to substitute variables to correctly
 /// compare `foralls`, hence it accepts more general `TypeWrapper`s. However, we expect to never
 /// meet unification variables (we treat them for completeness and to be future proof), and that
@@ -298,14 +313,18 @@ fn type_eq_bounded(
             | (AbsType::Bool(), AbsType::Bool())
             | (AbsType::Sym(), AbsType::Sym())
             | (AbsType::Str(), AbsType::Str()) => true,
-            (AbsType::Enum(tyw1), AbsType::Enum(tyw2))
-            | (AbsType::DynRecord(tyw1), AbsType::DynRecord(tyw2))
+            (AbsType::DynRecord(tyw1), AbsType::DynRecord(tyw2))
             | (AbsType::Array(tyw1), AbsType::Array(tyw2)) => {
                 type_eq_bounded(state, tyw1, env1, tyw2, env2)
             }
             (AbsType::Arrow(s1, t1), AbsType::Arrow(s2, t2)) => {
                 type_eq_bounded(state, s1, env1, s2, env2)
                     && type_eq_bounded(state, t1, env1, t2, env2)
+            }
+            (AbsType::Enum(tyw1), AbsType::Enum(tyw2)) => {
+                let rows1 = rows_as_set(tyw1);
+                let rows2 = rows_as_set(tyw2);
+                rows1.is_some() && rows2.is_some() && rows1 == rows2
             }
             (AbsType::StaticRecord(tyw1), AbsType::StaticRecord(tyw2)) => {
                 fn type_eq_bounded_wrapper(
