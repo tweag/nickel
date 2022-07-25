@@ -906,7 +906,7 @@ pub enum UnaryOp {
     /// Force full evaluation of a term and return it.
     ///
     /// This was added in the context of [`BinaryOp::ArrayLazyAssume`],
-    /// and may not make much sense on its own.
+    /// in particular to make serialization work with lazy array contracts.
     ///
     /// # `Force` vs. `DeepSeq`
     ///
