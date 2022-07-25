@@ -2665,7 +2665,7 @@ fn eq(env: &mut Environment, c1: Closure, c2: Closure) -> EqResult {
             // does, just do `eqs.rev()`
 
             // We should apply all contracts here, otheriwse we risk having wrong values,
-            // think record contrats with default contracts, Wrapped terms, etc.
+            // think record contrats with default contracts, wrapped terms, etc.
             let mut shared_env1 = env1.clone();
             let mut shared_env2 = env2.clone();
 
