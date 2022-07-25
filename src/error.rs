@@ -197,6 +197,16 @@ pub enum TypecheckError {
         /* the error on the subtype unification */ Box<TypecheckError>,
         TermPos,
     ),
+    /// This is a temporary error due to the current limitation of checking type equality between
+    /// contracts. Checking if the unification of two contracts is valid is non-trivial even in
+    /// simple cases (see [#724](https://github.com/tweag/nickel/issues/724)). Currently, the
+    /// typechecker simply bails out of any attempt of contract unification, represented by this
+    /// error.
+    IncomparableFlatTypes(
+        RichTerm, /* the expected flat type */
+        RichTerm, /* the inferred flat type */
+        TermPos,
+    ),
 }
 
 #[derive(Debug, PartialEq, Clone, Default)]
@@ -1446,6 +1456,23 @@ impl ToDiagnostic<FileId> for TypecheckError {
                 }
 
                 diags
+            }
+            TypecheckError::IncomparableFlatTypes(expd, actual, span_opt) => {
+                vec![Diagnostic::error()
+                    .with_message("can't compare contract types")
+                    .with_labels(mk_expr_label(span_opt))
+                    .with_notes(vec![
+                        format!("The type of the expression was expected to be `{}`", expd.as_ref().shallow_repr()),
+                        format!("The type of the expression was inferred to be `{}`", actual.as_ref().shallow_repr()),
+                        String::from("Nickel can't compare contracts during typechecking"),
+                    ]),
+                    Diagnostic::note()
+                    .with_notes(vec![
+                        String::from("Due to a temporary limitation, contracts don't mix well with static types (see https://github.com/tweag/nickel/issues/724). This error may happen when using a contract as a type annotation or when calling to a function whose type contain contracts."),
+                        String::from("As a temporary fix, please annotate the offending expression with its expected type using the pipe operator `|`. This disables static typing for the given expression."),
+                        String::from("For example: if `foo` has type `MyContract -> Num`, rewrite `foo value + 1` as `(foo value | Num) + 1`."),
+                    ])
+                ]
             }
         }
     }

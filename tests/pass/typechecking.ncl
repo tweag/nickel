@@ -13,9 +13,14 @@ let typecheck = [
   # functions
   (fun x => if x then x + 1 else 34) false,
   let id : Num -> Num = fun x => x in (id 4 : Num),
+
   # contracts are opaque types
-  (let AlwaysTrue = fun l t => if t then t else %blame% l in
-  ((fun x => x) : AlwaysTrue -> AlwaysTrue)),
+  # TODO: restore the following tests once type equality for contracts is
+  # properly implemented (see https://github.com/tweag/nickel/issues/701 and
+  # https://github.com/tweag/nickel/issues/724)
+
+  # (let AlwaysTrue = fun l t => if t then t else %blame% l in
+  #  ((fun x => x) : AlwaysTrue -> AlwaysTrue)),
 
   # simple_polymorphism
   let f : forall a. a -> a = fun x => x in

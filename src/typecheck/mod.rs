@@ -1259,15 +1259,7 @@ pub fn unify(state: &mut State, mut t1: TypeWrapper, mut t2: TypeWrapper) -> Res
                     )
                 })
             }
-            (AbsType::Flat(s), AbsType::Flat(t)) => match (s.as_ref(), t.as_ref()) {
-                (Term::Var(vs), Term::Var(ts)) if vs == ts => Ok(()),
-                (Term::Var(_), Term::Var(_)) => Err(UnifError::TypeMismatch(
-                    TypeWrapper::Concrete(AbsType::Flat(s)),
-                    TypeWrapper::Concrete(AbsType::Flat(t)),
-                )),
-                (Term::Var(_), _) => Err(UnifError::IllformedFlatType(t)),
-                _ => Err(UnifError::IllformedFlatType(s)),
-            },
+            (AbsType::Flat(s), AbsType::Flat(t)) => Err(UnifError::IncomparableFlatTypes(s, t)),
             (r1, r2) if r1.is_row_type() && r2.is_row_type() => {
                 unify_rows(state, r1.clone(), r2.clone()).map_err(|err| {
                     err.into_unif_err(TypeWrapper::Concrete(r1), TypeWrapper::Concrete(r2))
