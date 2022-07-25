@@ -26,7 +26,8 @@ pub fn handle_document_symbols(
             .iter()
             .filter_map(|item| match &item.kind {
                 TermKind::Declaration(name, _, _) => {
-                    let (file_id, span) = item.pos.to_range();
+                    // TODO: can `unwrap` fail here?
+                    let (file_id, span) = item.pos.unwrap().to_range();
 
                     let range =
                         codespan_lsp::byte_span_to_range(server.cache.files(), file_id, span)

@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use codespan::ByteIndex;
 use nickel_lang::{
+    position::TermPos,
     term::MetaValue,
     typecheck::linearization::{LinearizationState, Scope},
 };
@@ -80,19 +81,37 @@ impl Completed {
     ) -> Option<&LinearizationItem<Resolved>> {
         let (file_id, start) = locator;
         let linearization = &self.linearization;
-        let item = match linearization
-            .binary_search_by_key(locator, |item| (item.pos.src_id, item.pos.start))
-        {
+        let item = match linearization.binary_search_by_key(locator, |item| {
+            if item.pos == TermPos::None {
+                (file_id.clone(), 0.into())
+            } else {
+                let pos = item.pos.unwrap();
+                (pos.src_id, pos.start)
+            }
+        }) {
             // Found item(s) starting at `locator`
             // search for most precise element
             Ok(index) => linearization[index..]
                 .iter()
-                .take_while(|item| (item.pos.src_id, item.pos.start) == *locator)
+                .take_while(|item| {
+                    let (src_id, start) = if item.pos == TermPos::None {
+                        (file_id.clone(), 0.into())
+                    } else {
+                        let pos = item.pos.unwrap();
+                        (pos.src_id, pos.start)
+                    };
+                    (src_id, start) == *locator
+                })
                 .last(),
             // No perfect match found
             // iterate back finding the first wrapping linearization item
             Err(index) => linearization[..index].iter().rfind(|item| {
-                let (istart, iend, ifile) = (item.pos.start, item.pos.end, item.pos.src_id);
+                let (istart, iend, ifile) = if item.pos == TermPos::None {
+                    (0.into(), u32::max_value().into(), file_id.clone())
+                } else {
+                    let pos = item.pos.unwrap();
+                    (pos.start, pos.end, pos.src_id)
+                };
 
                 file_id == &ifile && start > &istart && start < &iend
             }),
