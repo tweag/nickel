@@ -893,7 +893,7 @@ pub enum UnaryOp {
     StrIsMatchCompiled(CompiledRegex),
     /// Version of [`UnaryOp::StrMatch`] which remembers the compiled regex.
     StrMatchCompiled(CompiledRegex),
-    /// Force "full" evaluation of a term and return it.
+    /// Force full evaluation of a term and return it.
     ///
     /// This was added in the context of [`BinaryOp::ArrayLazyAssume`],
     /// and may not make much sense on its own.
