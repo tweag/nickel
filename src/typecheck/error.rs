@@ -97,7 +97,7 @@ pub enum UnifError {
     WithConst(usize, TypeWrapper),
     /// A flat type, which is an opaque type corresponding to custom contracts, contained a Nickel
     /// term different from a variable. Only a variables is a legal inner term of a flat type.
-    IllformedFlatType(RichTerm),
+    IncomparableFlatTypes(RichTerm, RichTerm),
     /// A generic type was ill-formed. Currently, this happens if a `StatRecord` or `Enum` type
     /// does not contain a row type.
     IllformedType(TypeWrapper),
@@ -173,8 +173,8 @@ impl UnifError {
                 reporting::to_type(state.table, state.names, names, ty),
                 pos_opt,
             ),
-            UnifError::IllformedFlatType(rt) => {
-                TypecheckError::IllformedType(Types(AbsType::Flat(rt)))
+            UnifError::IncomparableFlatTypes(rt1, rt2) => {
+                TypecheckError::IncomparableFlatTypes(rt1, rt2, pos_opt)
             }
             UnifError::IllformedType(tyw) => TypecheckError::IllformedType(reporting::to_type(
                 state.table,
