@@ -61,6 +61,7 @@ use crate::types::{AbsType, Types};
 use crate::{mk_tyw_arrow, mk_tyw_enum, mk_tyw_enum_row, mk_tyw_record, mk_tyw_row};
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
+use typed_arena::Arena;
 
 use self::linearization::{Linearization, Linearizer, StubHost};
 
@@ -88,10 +89,10 @@ pub type Wildcards = Vec<Types>;
 /// [`crate::eval::eval`]) which holds the Nickel builtin functions. It is a read-only shared
 /// environment used to retrieve the type of such functions.
 #[derive(Debug, PartialEq, Clone)]
-pub struct Envs<'tc> {
+pub struct Envs<'tc : 'block, 'block> {
     global: &'tc Environment,
     local: Environment,
-    term_env: TermEnvironment<'tc>,
+    term_env: &'block mut TermEnvironment<'tc, 'block>,
 }
 
 #[derive(Clone, Debug)]
@@ -99,22 +100,22 @@ pub enum EnvBuildError {
     NotARecord(RichTerm),
 }
 
-impl<'tc> Envs<'tc> {
+impl<'tc, 'block> Envs<'tc, 'block> {
     /// Create an `Envs` value with an empty local environment from a global environment.
-    pub fn from_global(global: &'tc Environment) -> Self {
+    pub fn from_global(arena: &Arena<TermEnvironment>, global: &'tc Environment) -> Self {
         Envs {
             global,
             local: Environment::new(),
-            term_env: TermEnvironment(crate::environment::Environment::new()),
+            term_env: arena.alloc(TermEnvironment(crate::environment::Environment::new())),
         }
     }
 
     /// Similar to [`Envs::from_global`], but use another `Envs` to provide the global environment.
-    pub fn from_envs(envs: &'tc Envs) -> Self {
+    pub fn from_envs(arena: &Arena<TermEnvironment>, envs: &'tc Envs) -> Self {
         Envs {
             global: envs.global,
             local: Environment::new(),
-            term_env: TermEnvironment(crate::environment::Environment::new()),
+            term_env: arena.alloc(TermEnvironment(crate::environment::Environment::new())),
         }
     }
 
@@ -141,6 +142,7 @@ impl<'tc> Envs<'tc> {
     /// through interpolation.
     //TODO: support the case of a record with a type annotation.
     pub fn env_add_term<'a>(
+        arena: &Arena<TermEnvironment>,
         env: &'a mut Environment,
         rt: &'tc RichTerm,
         resolver: &'a impl ImportResolver,
@@ -154,7 +156,7 @@ impl<'tc> Envs<'tc> {
             Term::Record(bindings, _) | Term::RecRecord(bindings, ..) => {
                 for (id, t) in bindings {
                     let tyw: TypeWrapper =
-                        apparent_type(t.as_ref(), Some(&Envs::from_global(env)), Some(resolver))
+                        apparent_type(t.as_ref(), Some(&Envs::from_global(arena, env)), Some(resolver))
                             .into();
                     env.insert(id.clone(), tyw);
                 }
@@ -167,6 +169,7 @@ impl<'tc> Envs<'tc> {
 
     /// Bind one term in a typing environment.
     pub fn env_add<'a>(
+        arena: &Arena<TermEnvironment>,
         env: &'a mut Environment,
         id: Ident,
         rt: &'tc RichTerm,
@@ -176,7 +179,7 @@ impl<'tc> Envs<'tc> {
     {
         env.insert(
             id,
-            apparent_type(rt.as_ref(), Some(&Envs::from_global(env)), Some(resolver)).into(),
+            apparent_type(rt.as_ref(), Some(&Envs::from_global(arena, env)), Some(resolver)).into(),
         );
     }
 
@@ -207,7 +210,7 @@ impl<'tc> Envs<'tc> {
 }
 
 /// The shared state of unification.
-pub struct State<'tc> {
+pub struct State<'tc, 'block> {
     /// The import resolver, to retrieve and typecheck imports.
     resolver: &'tc dyn ImportResolver,
     /// The unification table.
@@ -221,6 +224,8 @@ pub struct State<'tc> {
     names: &'tc mut HashMap<usize, Ident>,
     /// A mapping from wildcard ID to unification variable.
     wildcard_vars: &'tc mut Vec<TypeWrapper>,
+    /// Arena used to allocate term environment.
+    arena: &'block Arena<TermEnvironment<'tc, 'block>>,
 }
 
 /// Typecheck a term.
@@ -244,6 +249,7 @@ where
     let (mut table, mut names) = (UnifTable::new(), HashMap::new());
     let mut building = Linearization::new(LL::Building::default());
     let mut wildcard_vars = Vec::new();
+    let arena = Arena::new();
 
     {
         let mut state: State = State {
@@ -252,11 +258,12 @@ where
             constr: &mut RowConstr::new(),
             names: &mut names,
             wildcard_vars: &mut wildcard_vars,
+            arena: &arena,
         };
 
         walk(
             &mut state,
-            Envs::from_global(global_env),
+            Envs::from_global(&arena, global_env),
             &mut building,
             linearizer.scope(),
             t,
@@ -286,6 +293,7 @@ pub fn type_check_in_env<'tc>(
 ) -> Result<Wildcards, TypecheckError> {
     let mut table = UnifTable::new();
     let mut wildcard_vars = Vec::new();
+    let arena = Arena::new();
 
     let mut state = State {
         resolver,
@@ -293,11 +301,12 @@ pub fn type_check_in_env<'tc>(
         constr: &mut RowConstr::new(),
         names: &mut HashMap::new(),
         wildcard_vars: &mut wildcard_vars,
+        arena: &arena,
     };
 
     walk(
         &mut state,
-        Envs::from_global(global),
+        Envs::from_global(&arena, global),
         &mut Linearization::new(()),
         StubHost::<()>::new(),
         t,
@@ -310,7 +319,7 @@ pub fn type_check_in_env<'tc>(
 /// alongside and store the apparent type of variable inside the typing environment.
 fn walk<'tc: 'a, 'a, L: Linearizer>(
     state: &'a mut State,
-    mut envs: Envs<'tc>,
+    mut envs: Envs<'tc, 'a>,
     lin: &'a mut Linearization<L::Building>,
     mut linearizer: L,
     rt: &'tc RichTerm,
@@ -478,9 +487,9 @@ fn walk<'tc: 'a, 'a, L: Linearizer>(
 
 /// Same as [`walk`] but operate on a type, which can contain terms as contracts (`AbsType::Flat`),
 /// instead of a term.
-fn walk_type<'a, 'tc: 'a, L: Linearizer>(
+fn walk_type<'tc: 'a, 'a, L: Linearizer>(
     state: &'a mut State,
-    envs: Envs<'tc>,
+    envs: Envs<'tc, 'a>,
     lin: &'a mut Linearization<L::Building>,
     mut linearizer: L,
     ty: &'tc Types,
@@ -546,9 +555,9 @@ fn inject_pat_vars(pat: &Destruct, envs: &mut Envs) {
 ///
 /// Registers every term with the `linearizer` and makes sure to scope the
 /// liearizer accordingly
-fn type_check_<'a, 'tc: 'a, L: Linearizer>(
+fn type_check_<'tc: 'a, 'a, L: Linearizer>(
     state: &'a mut State,
-    mut envs: Envs<'tc>,
+    mut envs: Envs<'tc, 'a>,
     lin: &mut Linearization<L::Building>,
     mut linearizer: L,
     rt: &'tc RichTerm,
@@ -913,7 +922,7 @@ fn type_check_<'a, 'tc: 'a, L: Linearizer>(
                 .expect("Internal error: resolved import not found during typechecking.");
             let ty_import: TypeWrapper = apparent_type(
                 t.as_ref(),
-                Some(&Envs::from_envs(&envs)),
+                Some(&Envs::from_envs(&state.arena, &envs)),
                 Some(state.resolver),
             )
             .into();

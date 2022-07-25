@@ -43,6 +43,7 @@
 //! times. For anything more complex, we return false.
 
 use super::*;
+use std::cell::Cell;
 
 /// The maximal number of variable links we want to unfold before abandoning the check. It should
 /// stay low, but has been fixed arbitrarily: feel fee to increase reasonably if it turns out
@@ -50,8 +51,8 @@ use super::*;
 pub const MAX_GAS: u8 = 8;
 
 #[derive(PartialEq, Clone, Debug)]
-pub struct TermEnvironment<'a>(
-    pub crate::environment::Environment<Ident, (&'a RichTerm, TermEnvironment<'a>)>,
+pub struct TermEnvironment<'tc : 'env, 'env>(
+    pub crate::environment::Environment<Ident, (&'tc RichTerm, Cell<&'env TermEnvironment<'tc, 'env>>)>,
 );
 
 /// State threaded through the type equality computation.
