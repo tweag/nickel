@@ -2328,7 +2328,6 @@ fn process_binary_operation(
             match_sharedterm! {t2,
                 with {
                     Term::Array(ts, attrs) => {
-
                         // Preserve the environment of the contract in the resulting array.
                         let rt3 = rt3.closurize(&mut env2, env3);
 
