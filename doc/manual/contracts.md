@@ -1,7 +1,6 @@
 ---
 slug: contracts
 ---
-
 # Contracts in Nickel
 
 (For the motivation behind contracts and a high-level overview of contracts and
@@ -234,7 +233,7 @@ let MyConfig = {
   connection = {
     server_port =
       if host == "localhost" then
-        8080
+        "8080"
       else
         80,
     host = "localhost",
@@ -378,8 +377,7 @@ error: Non mergeable terms
 **Warning: `=` vs `|`**
 
 It may be tempting to use `=` instead of  `|` to attach a record contract to a
-field. That is, writing `Contract = {foo = {bar | Str}}` instead of `Contract =
-{foo | {bar | Str}}`. When applying this contract, the merging operator will
+field. That is, writing `Contract = {foo = {bar | Str}}` instead of `Contract = {foo | {bar | Str}}`. When applying this contract, the merging operator will
 apply the `Str` contract to the field `foo` of the checked value. At first
 sight, `=` also fits the bill. However, there are a number of subtle but
 potentially surprising differences.
@@ -567,8 +565,7 @@ contracts combinators are lazy too.
 
 Imagine we want to write a contract similar to `{_ : Bool}`, that is a
 dictionary of booleans, but we also want keys to be number literals (although
-represented as strings). A valid value could look like `{"1": true, "2": false,
-"10": true}`. If we used boolean predicates as the default for contracts, it
+represented as strings). A valid value could look like `{"1": true, "2": false, "10": true}`. If we used boolean predicates as the default for contracts, it
 would be impossible to make it lazy: as soon as your contract is called, you
 would need to produce a `true` or `false` answer, and checking that fields are
 all `Bool` would force their evaluation.
