@@ -1,6 +1,6 @@
 [package]
 name = "nickel-lang-utilities"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["The Nickel Team <nickel-lang@protonmail.com>"]
 description = "Common helper functions for the tests and benchmarks of the nickel-lang crate."
 edition = "2018"
@@ -10,6 +10,6 @@ bench = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-nickel-lang = {path = "../", version = "0.1.0"}
+nickel-lang = {path = "../", version = "0.2.0"}
 criterion = "0.3"
 codespan = "0.11"
