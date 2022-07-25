@@ -566,10 +566,11 @@ contracts combinators are lazy too.
 
 Imagine we want to write a contract similar to `{_ : Bool}`, that is a
 dictionary of booleans, but we also want keys to be number literals (although
-represented as strings). A valid value could look like `{"1": true, "2": false, "10": true}`. If we used boolean predicates as the default for contracts, it
-would be impossible to make it lazy: as soon as your contract is called, you
-would need to produce a `true` or `false` answer, and checking that fields are
-all `Bool` would force their evaluation.
+represented as strings). A valid value could look like
+`{"1": true, "2": false, "10": true}`. If we used boolean predicates as the
+default for contracts, it would be impossible to make it lazy: as soon as your
+contract is called, you would need to produce a `true` or `false` answer, and
+checking that fields are all `Bool` would force their evaluation.
 
 What we can do is to not perform all the checks right away, but **return a new
 value, which is wrapping the original value with delayed checks inside**. This
