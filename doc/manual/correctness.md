@@ -279,7 +279,7 @@ If we write:
 ```nickel
 let level = 1 in
 {
-  opt_level : OptLevel = "0" ++ srings.from_num level,
+  opt_level : OptLevel = "0" ++ string.from_num level,
 }
 ```
 
@@ -287,10 +287,10 @@ We get:
 
 ```
 error: incompatible types
-  ┌─ repl-input-3:3:27
+  ┌─ repl-input-0:3:26
   │
-3 │   opt_level : OptLevel = "0" ++ (if level == 1 then "1" else "2"),
-  │                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this expression
+3 │   opt_level : OptLevel = "0" ++ string.from_num level,
+  │                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this expression
   │
   = The type of the expression was expected to be `OptLevel`
   = The type of the expression was inferred to be `Str`
