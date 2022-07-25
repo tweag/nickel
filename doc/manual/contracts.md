@@ -377,10 +377,11 @@ error: Non mergeable terms
 **Warning: `=` vs `|`**
 
 It may be tempting to use `=` instead of  `|` to attach a record contract to a
-field. That is, writing `Contract = {foo = {bar | Str}}` instead of `Contract = {foo | {bar | Str}}`. When applying this contract, the merging operator will
-apply the `Str` contract to the field `foo` of the checked value. At first
-sight, `=` also fits the bill. However, there are a number of subtle but
-potentially surprising differences.
+field. That is, writing `Contract = {foo = {bar | Str}}` instead of
+`Contract = {foo | {bar | Str}}`. When applying this contract, the merging
+operator will apply the `Str` contract to the field `foo` of the checked value.
+At first sight, `=` also fits the bill. However, there are a number of subtle
+but potentially surprising differences.
 
 One concerns open contracts. Merging never requires the presence of specific
 fields: thus, the contract `{bar | Str}` attached to `foo` will actually behave
