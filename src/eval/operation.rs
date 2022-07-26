@@ -2325,7 +2325,7 @@ fn process_binary_operation(
 
                         let array_with_ctr = Closure {
                             body: RichTerm::new(
-                                Term::Array(ts, attrs.with_contracts([PendingContract::new(rt3, lbl)])),
+                                Term::Array(ts, attrs.with_extra_contracts([PendingContract::new(rt3, lbl)])),
                                 pos2,
                             ),
                             env: env2,
