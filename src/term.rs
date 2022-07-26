@@ -227,7 +227,7 @@ impl ArrayAttrs {
     }
 
     /// Extend contracts from an iterator.
-    pub fn with_contracts<I>(mut self, iter: I) -> Self
+    pub fn with_extra_contracts<I>(mut self, iter: I) -> Self
     where
         I: IntoIterator<Item = PendingContract>,
     {

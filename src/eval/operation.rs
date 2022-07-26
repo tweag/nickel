@@ -2230,7 +2230,7 @@ fn process_binary_operation(
                             body: RichTerm {
                                 term: SharedTerm::new(Term::Array(
                                     ts,
-                                    attrs.with_contracts([PendingContract::new(rt3, lbl)])
+                                    attrs.with_extra_contracts([PendingContract::new(rt3, lbl)])
                                 )),
                                 pos: pos2,
                             },
