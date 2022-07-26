@@ -13,12 +13,7 @@ let is_prime
   = fun x => x > 1 && array.all (fun d => x % d != 0) (range 2 (x - 1))
 in
 
-let Prime = fun label value =>
-  if is_prime value then
-    value
-  else
-    contract.blame_with "%{string.from_num value} is not a prime number." label 
-in
+let Prime = contract.from_predicate is_prime in
 
 let primes 
   | doc "Generate `max` primes using Sieve of Eratosthenes."
