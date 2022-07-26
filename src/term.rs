@@ -238,7 +238,7 @@ impl ArrayAttrs {
     /// De-duplicate equal contracts. Note that current contract
     /// equality testing is very limited, but this may change in the
     /// future
-    pub fn with_contracts<I>(mut self, iter: I) -> Self
+    pub fn with_extra_contracts<I>(mut self, iter: I) -> Self
     where
         I: IntoIterator<Item = PendingContract>,
     {
