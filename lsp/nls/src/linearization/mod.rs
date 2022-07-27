@@ -4,8 +4,8 @@ use codespan::ByteIndex;
 use log::debug;
 use nickel_lang::{
     identifier::Ident,
-    position::{RawSpan, TermPos},
-    term::{MetaValue, RichTerm, Term, UnaryOp},
+    position::{TermPos},
+    term::{MetaValue, Term, UnaryOp},
     typecheck::{
         linearization::{Linearization, Linearizer, Scope, ScopeId},
         reporting::{to_type, NameReg},
@@ -103,6 +103,7 @@ impl Linearizer for AnalysisHost {
         ty: TypeWrapper,
     ) {
         debug!("adding term: {:?} @ {:?}", term, pos);
+        debug!("Record fields : {:?}", self.record_fields);
         let mut id_gen = lin.id_gen();
 
         // Register record field if appropriate
@@ -293,7 +294,7 @@ impl Linearizer for AnalysisHost {
             Term::Record(fields, _) | Term::RecRecord(fields, ..) => {
                 lin.push(LinearizationItem {
                     id,
-                    pos: pos,
+                    pos,
                     ty,
                     kind: TermKind::Record(HashMap::new()),
                     scope: self.scope.clone(),
@@ -312,76 +313,10 @@ impl Linearizer for AnalysisHost {
                 x.push(ident.to_owned())
             }
             Term::MetaValue(meta) => {
-                // DF walk AST (of Contracts)
-                // adds usages of user defined contracts to the linearization
-                fn walk_terms(
-                    lin: &mut Linearization<Building>,
-                    mut host: AnalysisHost,
-                    RichTerm { term, pos }: &RichTerm,
-                ) {
-                    host.add_term(lin, term, *pos, TypeWrapper::Concrete(AbsType::Dyn()));
-                    match &**term {
-                        Term::Op1(_, rt) => walk_terms(lin, host, rt),
-                        Term::Op2(_, rt1, rt2) => {
-                            walk_terms(lin, host.scope(), rt1);
-                            walk_terms(lin, host.scope(), rt2);
-                        }
-                        Term::OpN(_, rts) => {
-                            rts.iter().for_each(|rt| walk_terms(lin, host.scope(), rt))
-                        }
-                        Term::StrChunks(chunks) => chunks
-                            .iter()
-                            .filter_map(|chunk| match chunk {
-                                nickel_lang::term::StrChunk::Literal(_) => None,
-                                nickel_lang::term::StrChunk::Expr(rt, _) => Some(rt),
-                            })
-                            .for_each(|rt| walk_terms(lin, host.scope(), rt)),
-                        Term::App(rt1, rt2) => {
-                            walk_terms(lin, host.scope(), rt1);
-                            walk_terms(lin, host.scope(), rt2);
-                        }
-                        Term::Record(rts, _) | Term::RecRecord(rts, ..) => rts
-                            .values()
-                            .for_each(|rt| walk_terms(lin, host.scope(), rt)),
-                        _ => {}
-                    }
-                }
-
-                // recursively linearize flat types
-                fn walk_types(
-                    lin: &mut Linearization<Building>,
-                    outer_host: &mut AnalysisHost,
-                    t: &nickel_lang::types::Types,
-                ) {
-                    let mut scope = outer_host.scope.clone();
-                    let (scope_id, next_scope_id) = outer_host.next_scope_id.next();
-                    outer_host.next_scope_id = next_scope_id;
-                    scope.push(scope_id);
-
-                    let inner_host = AnalysisHost {
-                        env: outer_host.env.clone(),
-                        scope,
-                        ..Default::default()
-                    };
-                    match &t.0 {
-                        AbsType::Flat(rt) => walk_terms(lin, inner_host, &rt),
-                        AbsType::Arrow(t1, t2) => {
-                            walk_types(lin, outer_host, &t1);
-                            walk_types(lin, outer_host, &t2);
-                        }
-                        _ => {}
-                    }
-                }
-
                 // Notice 1: No push to lin for the `MetaValue` itself
                 // Notice 2: we discard the encoded value as anything we
                 //           would do with the value will be handled in the following
                 //           call to [Self::add_term]
-                // Notice 3: we walk the inner contract types to resolve references
-
-                meta.contracts
-                    .iter()
-                    .for_each(|c| walk_types(lin, self, &c.types));
 
                 if meta.value.is_some() {
                     self.meta = Some(MetaValue {
@@ -395,7 +330,7 @@ impl Linearizer for AnalysisHost {
 
                 lin.push(LinearizationItem {
                     id,
-                    pos: pos,
+                    pos,
                     ty,
                     scope: self.scope.clone(),
                     kind: TermKind::Structure,
@@ -489,19 +424,30 @@ impl Linearizer for AnalysisHost {
 
         scope.push(scope_id);
 
-        AnalysisHost {
+        debug!("Scoping (id: {:?})", scope_id);
+        debug!("Scoped (id: {:?})", next_scope_id);
+        debug!("Remaining fields (before) : {:?}", self.record_fields);
+
+        let result = AnalysisHost {
             scope,
             env: self.env.clone(),
             next_scope_id: ScopeId::default(),
-            /// when opening a new scope `meta` is assumed to be `None` as meta data
-            /// is immediately followed by a term without opening a scope
-            meta: None,
+            // When processing a metavalue, we start by exploring the inner value in a new scope
+            // and only then we explore the terms inside the type annotation and the contract
+            // annotation. Hence, we need to attach the pending metadata to the first call to
+            // scope(), which is precisely what take() does.
+            meta: self.meta.take(),
             record_fields: self.record_fields.as_mut().and_then(|(record, fields)| {
                 Some(*record).zip(fields.pop().map(|field| vec![field]))
             }),
             let_binding: self.let_binding.take(),
             access: self.access.clone(),
-        }
+        };
+
+        debug!("Remaining fields (after) : {:?}", self.record_fields);
+        debug!("Remaining fields (scoped) : {:?}", result.record_fields);
+
+        result
     }
 
     fn retype_ident(
