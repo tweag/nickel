@@ -81,39 +81,32 @@ impl Completed {
     ) -> Option<&LinearizationItem<Resolved>> {
         let (file_id, start) = locator;
         let linearization = &self.linearization;
-        let item = match linearization.binary_search_by_key(locator, |item| {
-            if item.pos == TermPos::None {
-                (file_id.clone(), 0.into())
-            } else {
-                let pos = item.pos.unwrap();
-                (pos.src_id, pos.start)
-            }
+        let item = match linearization.binary_search_by(|item| {
+            item.pos
+                .as_opt_ref()
+                .map(|pos| (pos.src_id, pos.start).cmp(locator))
+                .unwrap_or(std::cmp::Ordering::Less)
         }) {
             // Found item(s) starting at `locator`
             // search for most precise element
             Ok(index) => linearization[index..]
                 .iter()
+                // TODO: why do we use take_while and not rfind?
                 .take_while(|item| {
-                    let (src_id, start) = if item.pos == TermPos::None {
-                        (file_id.clone(), 0.into())
-                    } else {
-                        let pos = item.pos.unwrap();
-                        (pos.src_id, pos.start)
-                    };
-                    (src_id, start) == *locator
+                    // Here because None is smaller than everything, if binary search result to
+                    // something, we can safely unwrap the position.
+                    let pos = item.pos.unwrap();
+                    (pos.src_id, pos.start) == *locator
                 })
                 .last(),
             // No perfect match found
             // iterate back finding the first wrapping linearization item
             Err(index) => linearization[..index].iter().rfind(|item| {
-                let (istart, iend, ifile) = if item.pos == TermPos::None {
-                    (0.into(), u32::max_value().into(), file_id.clone())
-                } else {
-                    let pos = item.pos.unwrap();
-                    (pos.start, pos.end, pos.src_id)
-                };
-
-                file_id == &ifile && start > &istart && start < &iend
+                item.pos
+                    .as_opt_ref()
+                    .map(|pos| file_id == &pos.src_id && start > &pos.start && start < &pos.end)
+                    // if the item found is None, we can not find a better one.
+                    .unwrap_or(true)
             }),
         };
         item

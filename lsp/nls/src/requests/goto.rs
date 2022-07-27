@@ -117,34 +117,27 @@ pub fn handle_to_usages(
 
     debug!("found referencing item: {:?}", item);
 
-    let locations = match &item.kind {
-        TermKind::Declaration(_, usages, _) | TermKind::RecordField { usages, .. } => {
-            let mut locations = Vec::new();
-
-            for reference_id in usages.iter() {
-                let reference = linearization.get_item(*reference_id).unwrap();
-                if reference.pos == TermPos::None {
-                    continue;
-                } else {
-                    let location = match reference.pos.unwrap() {
-                        RawSpan {
-                            start: ByteIndex(start),
-                            end: ByteIndex(end),
-                            src_id,
-                        } => Location {
-                            uri: Url::parse(&server.cache.name(src_id).to_string_lossy()).unwrap(),
+    let locations: Option<Vec<Location>> = match &item.kind {
+        TermKind::Declaration(_, usages, _) | TermKind::RecordField { usages, .. } => Some(
+            usages
+                .iter()
+                .filter_map(|reference_id| {
+                    linearization
+                        .get_item(*reference_id)
+                        .unwrap()
+                        .pos
+                        .as_opt_ref()
+                        .map(|RawSpan { start, end, src_id }| Location {
+                            uri: Url::parse(&server.cache.name(*src_id).to_string_lossy()).unwrap(),
                             range: Range::from_codespan(
-                                &src_id,
-                                &(start as usize..end as usize),
+                                src_id,
+                                &((*start).into()..(*end).into()),
                                 server.cache.files(),
                             ),
-                        },
-                    };
-                    locations.push(location);
-                }
-            }
-            Some(locations)
-        }
+                        })
+                })
+                .collect(),
+        ),
         _ => None,
     };
 

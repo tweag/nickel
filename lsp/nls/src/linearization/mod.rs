@@ -437,14 +437,16 @@ impl Linearizer for AnalysisHost {
             scope,
         } = lin.into_inner();
 
-        linearization.sort_by(|it1, it2| match (it1.pos, it2.pos) {
-            (TermPos::None, TermPos::None) => std::cmp::Ordering::Equal,
-            (TermPos::None, _) => std::cmp::Ordering::Less,
-            (_, TermPos::None) => std::cmp::Ordering::Greater,
-            (pos1, pos2) => (pos1.unwrap().src_id, pos1.unwrap().start)
-                .partial_cmp(&(pos2.unwrap().src_id, pos2.unwrap().start))
-                .unwrap(),
-        });
+        linearization.sort_by(
+            |it1, it2| match (it1.pos.as_opt_ref(), it2.pos.as_opt_ref()) {
+                (None, None) => std::cmp::Ordering::Equal,
+                (None, _) => std::cmp::Ordering::Less,
+                (_, None) => std::cmp::Ordering::Greater,
+                (Some(pos1), Some(pos2)) => {
+                    (pos1.src_id, pos1.start).cmp(&(pos2.src_id, pos2.start))
+                }
+            },
+        );
 
         // create an index of id -> new position
         let mut id_mapping = HashMap::new();
