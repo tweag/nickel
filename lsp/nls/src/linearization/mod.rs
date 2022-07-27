@@ -4,7 +4,7 @@ use codespan::ByteIndex;
 use log::debug;
 use nickel_lang::{
     identifier::Ident,
-    position::{TermPos},
+    position::TermPos,
     term::{MetaValue, Term, UnaryOp},
     typecheck::{
         linearization::{Linearization, Linearizer, Scope, ScopeId},
@@ -446,6 +446,48 @@ impl Linearizer for AnalysisHost {
 
         debug!("Remaining fields (after) : {:?}", self.record_fields);
         debug!("Remaining fields (scoped) : {:?}", result.record_fields);
+
+        result
+    }
+
+    fn scope_meta(&mut self) -> Self {
+        let mut scope = self.scope.clone();
+        let (scope_id, next_scope_id) = self.next_scope_id.next();
+        self.next_scope_id = next_scope_id;
+
+        scope.push(scope_id);
+
+        debug!("* Meta Scoping (id: {:?})", scope_id);
+        debug!("* Meta Scoped (id: {:?})", next_scope_id);
+        debug!(
+            "* Meta Remaining fields (before) : {:?}",
+            self.record_fields
+        );
+
+        let result = AnalysisHost {
+            scope,
+            env: self.env.clone(),
+            next_scope_id: ScopeId::default(),
+            // When processing a metavalue, the expressions inside the metadata, said metadata
+            // shoudln't be attached expressions contained in the annotations.
+            meta: None,
+            // The generated scope shouldn't interfere with record definition and resolution. We
+            // let record_fields as they are in `self`, and reset them when processing the
+            // annotation.
+            record_fields: None,
+            // Same as with record_fields: the meta annotation shouldn't interfere with a
+            // let-binding.
+            let_binding: None,
+            // Same as for other fields. It's probably even impossible to encounter a metadata
+            // during a field access path.
+            access: None,
+        };
+
+        debug!("*Meta Remaining fields (after) : {:?}", self.record_fields);
+        debug!(
+            "*Meta Remaining fields (scoped) : {:?}",
+            result.record_fields
+        );
 
         result
     }

@@ -129,6 +129,8 @@ pub trait Linearizer {
     /// required or produced in parallel instances should therefore be put
     /// into the Building State `L` which is passed
     fn scope(&mut self) -> Self;
+
+    fn scope_meta(&mut self) -> Self;
 }
 
 /// [Linearizer] that deliberately does not maintain any state or act
@@ -145,6 +147,10 @@ where
     type CompletionExtra = E;
 
     fn scope(&mut self) -> Self {
+        StubHost::new()
+    }
+
+    fn scope_meta(&mut self) -> Self {
         StubHost::new()
     }
 }

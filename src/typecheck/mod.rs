@@ -414,9 +414,9 @@ fn walk<L: Linearizer>(
                 },
             )
         }
-        // An type annotation switches mode to check.
+        // A type annotation switches mode to check.
         Term::MetaValue(meta) => {
-            meta.contracts.iter().chain(meta.types.iter()).try_for_each(|ty| walk_type(state, envs.clone(), lin, linearizer.scope(), &ty.types))?;
+            meta.contracts.iter().chain(meta.types.iter()).try_for_each(|ty| walk_type(state, envs.clone(), lin, linearizer.scope_meta(), &ty.types))?;
 
             match meta {
                 MetaValue {
@@ -813,7 +813,7 @@ fn type_check_<L: Linearizer>(
                 .iter()
                 .chain(meta.types.iter())
                 .try_for_each(|ty| {
-                    walk_type(state, envs.clone(), lin, linearizer.scope(), &ty.types)
+                    walk_type(state, envs.clone(), lin, linearizer.scope_meta(), &ty.types)
                 })?;
 
             match meta {
