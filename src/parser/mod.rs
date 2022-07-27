@@ -1,8 +1,10 @@
 use crate::error::{ParseError, ParseErrors};
 use crate::identifier::Ident;
+use crate::interner::Interner;
 use crate::term::RichTerm;
 use codespan::FileId;
 use lalrpop_util::lalrpop_mod;
+use lazy_static::lazy_static;
 
 lalrpop_mod!(
     #[allow(clippy::all)]

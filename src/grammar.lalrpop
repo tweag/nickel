@@ -64,6 +64,7 @@ use crate::{
     types::{Types, AbsType},
     position::TermPos,
     label::Label,
+    interner::Interner
 };
 
 grammar<'input, 'err, 'wcard>(
