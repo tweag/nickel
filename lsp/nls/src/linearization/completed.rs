@@ -91,10 +91,9 @@ impl Completed {
             // search for most precise element
             Ok(index) => linearization[index..]
                 .iter()
-                // TODO: why do we use take_while and not rfind?
                 .take_while(|item| {
-                    // Here because None is smaller than everything, if binary search result to
-                    // something, we can safely unwrap the position.
+                    // Here because None is smaller than everything, if binary search succeeds,
+                    // we can safely unwrap the position.
                     let pos = item.pos.unwrap();
                     (pos.src_id, pos.start) == *locator
                 })
