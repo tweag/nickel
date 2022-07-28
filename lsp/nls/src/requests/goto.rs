@@ -5,7 +5,7 @@ use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{
     GotoDefinitionParams, GotoDefinitionResponse, Location, Range, ReferenceParams, Url,
 };
-use nickel_lang::position::RawSpan;
+use nickel_lang::position::{RawSpan, TermPos};
 use serde_json::Value;
 
 use crate::{
@@ -57,7 +57,7 @@ pub fn handle_to_definition(
     let location = match item.kind {
         TermKind::Usage(UsageState::Resolved(usage_id)) => {
             let definition = linearization.get_item(usage_id).unwrap();
-            let location = match definition.pos {
+            let location = match definition.pos.unwrap() {
                 RawSpan {
                     start: ByteIndex(start),
                     end: ByteIndex(end),
@@ -117,30 +117,27 @@ pub fn handle_to_usages(
 
     debug!("found referencing item: {:?}", item);
 
-    let locations = match &item.kind {
-        TermKind::Declaration(_, usages, _) | TermKind::RecordField { usages, .. } => {
-            let mut locations = Vec::new();
-
-            for reference_id in usages.iter() {
-                let reference = linearization.get_item(*reference_id).unwrap();
-                let location = match reference.pos {
-                    RawSpan {
-                        start: ByteIndex(start),
-                        end: ByteIndex(end),
-                        src_id,
-                    } => Location {
-                        uri: Url::parse(&server.cache.name(src_id).to_string_lossy()).unwrap(),
-                        range: Range::from_codespan(
-                            &src_id,
-                            &(start as usize..end as usize),
-                            server.cache.files(),
-                        ),
-                    },
-                };
-                locations.push(location);
-            }
-            Some(locations)
-        }
+    let locations: Option<Vec<Location>> = match &item.kind {
+        TermKind::Declaration(_, usages, _) | TermKind::RecordField { usages, .. } => Some(
+            usages
+                .iter()
+                .filter_map(|reference_id| {
+                    linearization
+                        .get_item(*reference_id)
+                        .unwrap()
+                        .pos
+                        .as_opt_ref()
+                        .map(|RawSpan { start, end, src_id }| Location {
+                            uri: Url::parse(&server.cache.name(*src_id).to_string_lossy()).unwrap(),
+                            range: Range::from_codespan(
+                                src_id,
+                                &((*start).into()..(*end).into()),
+                                server.cache.files(),
+                            ),
+                        })
+                })
+                .collect(),
+        ),
         _ => None,
     };
 

@@ -35,7 +35,7 @@ pub type Environment = nickel_lang::environment::Environment<Ident, usize>;
 pub struct LinearizationItem<S: ResolutionState> {
     //term_: Box<Term>,
     pub id: usize,
-    pub pos: RawSpan,
+    pub pos: TermPos,
     pub ty: S,
     pub kind: TermKind,
     pub scope: Scope,
@@ -171,7 +171,7 @@ impl Linearizer for AnalysisHost {
                                 id: id_gen.get_and_advance(),
 
                                 ty: ty.clone(),
-                                pos: ident.pos.clone().unwrap(),
+                                pos: ident.pos.clone(),
                                 scope: self.scope.clone(),
                                 kind: TermKind::Structure,
                                 meta: self.meta.take(),
@@ -187,7 +187,7 @@ impl Linearizer for AnalysisHost {
                     lin.push(LinearizationItem {
                         id,
                         ty,
-                        pos: ident.pos.unwrap(),
+                        pos: ident.pos,
                         scope: self.scope.clone(),
                         kind: TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr),
                         meta: None,
@@ -201,7 +201,7 @@ impl Linearizer for AnalysisHost {
                         id,
                         // TODO: get type from pattern
                         ty: TypeWrapper::Concrete(AbsType::Dyn()),
-                        pos: ident.pos.unwrap(),
+                        pos: ident.pos,
                         scope: self.scope.clone(),
                         kind: TermKind::Declaration(
                             ident.to_owned(),
@@ -230,7 +230,7 @@ impl Linearizer for AnalysisHost {
                             id: id_gen.get_and_advance(),
 
                             ty: ty.clone(),
-                            pos: ident.pos.clone().unwrap(),
+                            pos: ident.pos.clone(),
                             scope: self.scope.clone(),
                             kind: TermKind::Structure,
                             meta: self.meta.take(),
@@ -244,7 +244,7 @@ impl Linearizer for AnalysisHost {
                 lin.push(LinearizationItem {
                     id: id_gen.get(),
                     ty,
-                    pos: ident.pos.unwrap(),
+                    pos: ident.pos,
                     scope: self.scope.clone(),
                     kind: TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr),
                     meta: self.meta.take(),
@@ -260,7 +260,7 @@ impl Linearizer for AnalysisHost {
 
                 lin.push(LinearizationItem {
                     id: root_id,
-                    pos: ident.pos.unwrap(),
+                    pos: ident.pos,
                     ty: TypeWrapper::Concrete(AbsType::Dyn()),
                     scope: self.scope.clone(),
                     kind: TermKind::Usage(UsageState::from(self.env.get(ident))),
@@ -278,7 +278,7 @@ impl Linearizer for AnalysisHost {
                         let id = id_gen.get_and_advance();
                         lin.push(LinearizationItem {
                             id,
-                            pos: accessor.pos.unwrap(),
+                            pos: accessor.pos,
                             ty: TypeWrapper::Concrete(AbsType::Dyn()),
                             scope: self.scope.clone(),
                             kind: TermKind::Usage(UsageState::Deferred {
@@ -293,7 +293,7 @@ impl Linearizer for AnalysisHost {
             Term::Record(fields, _) | Term::RecRecord(fields, ..) => {
                 lin.push(LinearizationItem {
                     id,
-                    pos: pos.unwrap(),
+                    pos: pos,
                     ty,
                     kind: TermKind::Record(HashMap::new()),
                     scope: self.scope.clone(),
@@ -395,7 +395,7 @@ impl Linearizer for AnalysisHost {
 
                 lin.push(LinearizationItem {
                     id,
-                    pos: pos.unwrap(),
+                    pos: pos,
                     ty,
                     scope: self.scope.clone(),
                     kind: TermKind::Structure,
@@ -437,7 +437,16 @@ impl Linearizer for AnalysisHost {
             scope,
         } = lin.into_inner();
 
-        linearization.sort_by_key(|item| (item.pos.src_id, item.pos.start));
+        linearization.sort_by(
+            |it1, it2| match (it1.pos.as_opt_ref(), it2.pos.as_opt_ref()) {
+                (None, None) => std::cmp::Ordering::Equal,
+                (None, _) => std::cmp::Ordering::Less,
+                (_, None) => std::cmp::Ordering::Greater,
+                (Some(pos1), Some(pos2)) => {
+                    (pos1.src_id, pos1.start).cmp(&(pos2.src_id, pos2.start))
+                }
+            },
+        );
 
         // create an index of id -> new position
         let mut id_mapping = HashMap::new();

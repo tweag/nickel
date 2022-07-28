@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use codespan::ByteIndex;
 use nickel_lang::{
+    position::TermPos,
     term::MetaValue,
     typecheck::linearization::{LinearizationState, Scope},
 };
@@ -80,21 +81,31 @@ impl Completed {
     ) -> Option<&LinearizationItem<Resolved>> {
         let (file_id, start) = locator;
         let linearization = &self.linearization;
-        let item = match linearization
-            .binary_search_by_key(locator, |item| (item.pos.src_id, item.pos.start))
-        {
+        let item = match linearization.binary_search_by(|item| {
+            item.pos
+                .as_opt_ref()
+                .map(|pos| (pos.src_id, pos.start).cmp(locator))
+                .unwrap_or(std::cmp::Ordering::Less)
+        }) {
             // Found item(s) starting at `locator`
             // search for most precise element
             Ok(index) => linearization[index..]
                 .iter()
-                .take_while(|item| (item.pos.src_id, item.pos.start) == *locator)
+                .take_while(|item| {
+                    // Here because None is smaller than everything, if binary search succeeds,
+                    // we can safely unwrap the position.
+                    let pos = item.pos.unwrap();
+                    (pos.src_id, pos.start) == *locator
+                })
                 .last(),
             // No perfect match found
             // iterate back finding the first wrapping linearization item
             Err(index) => linearization[..index].iter().rfind(|item| {
-                let (istart, iend, ifile) = (item.pos.start, item.pos.end, item.pos.src_id);
-
-                file_id == &ifile && start > &istart && start < &iend
+                item.pos
+                    .as_opt_ref()
+                    .map(|pos| file_id == &pos.src_id && start > &pos.start && start < &pos.end)
+                    // if the item found is None, we can not find a better one.
+                    .unwrap_or(true)
             }),
         };
         item

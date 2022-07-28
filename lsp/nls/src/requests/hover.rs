@@ -3,6 +3,7 @@ use codespan_lsp::position_to_byte_index;
 use log::debug;
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{Hover, HoverContents, HoverParams, LanguageString, MarkedString, Range};
+use nickel_lang::position::TermPos;
 use serde_json::Value;
 
 use crate::{
@@ -54,9 +55,14 @@ pub fn handle(
 
     let (ty, meta) = linearization.resolve_item_type_meta(&item);
 
+    if item.pos == TermPos::None {
+        server.reply(Response::new_ok(id, Value::Null));
+        return Ok(());
+    }
+    let pos = item.pos.unwrap();
     let range = Range::from_codespan(
         &file_id,
-        &(item.pos.start.to_usize()..item.pos.end.to_usize()),
+        &(pos.start.to_usize()..pos.end.to_usize()),
         server.cache.files(),
     );
 
