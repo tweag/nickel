@@ -1149,6 +1149,15 @@ impl TypeWrapper {
             Ptr(x) => Ptr(x),
         }
     }
+
+    /// Create an iterator on rows represented by this type.
+    ///
+    /// The iterator continues as long as the next item is of the form `RowExtend(..)`, and
+    /// stops once it reaches `RowEmpty` (which ends iteration), or something else which is not a
+    /// `RowExtend` (which produces a last item [`typecheck::RowIteratorItem::Tail`]).
+    pub fn iter_as_rows(&self) -> RowIterator<'_> {
+        RowIterator { next: Some(self) }
+    }
 }
 
 impl From<AbsType<Box<TypeWrapper>>> for TypeWrapper {
@@ -1160,6 +1169,35 @@ impl From<AbsType<Box<TypeWrapper>>> for TypeWrapper {
 impl From<Types> for TypeWrapper {
     fn from(ty: Types) -> Self {
         TypeWrapper::Concrete(ty.0.map(|ty_| Box::new(TypeWrapper::from(*ty_))))
+    }
+}
+
+pub enum RowIteratorItem<'a> {
+    /// A non-empty tail.
+    Tail(&'a TypeWrapper),
+    /// A row binding.
+    Row(&'a Ident, Option<&'a TypeWrapper>),
+}
+
+pub struct RowIterator<'a> {
+    next: Option<&'a TypeWrapper>,
+}
+
+impl<'a> Iterator for RowIterator<'a> {
+    type Item = RowIteratorItem<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next.and_then(|next| match next {
+            TypeWrapper::Concrete(AbsType::RowEmpty()) => None,
+            TypeWrapper::Concrete(AbsType::RowExtend(id, ty_row, tail)) => {
+                self.next = Some(tail);
+                Some(RowIteratorItem::Row(id, ty_row.as_ref().map(Box::as_ref)))
+            }
+            ty => {
+                self.next = None;
+                Some(RowIteratorItem::Tail(ty))
+            }
+        })
     }
 }
 
