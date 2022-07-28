@@ -109,6 +109,15 @@ config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flam
         name = "sort normal",
         path = "arrays/sort",
         args = (20),
+    }, {
+        name = "sum normal 50",
+        path = "arrays/sum",
+        args = (50),
+    }, {
+        name = "sum deepseq 50",
+        path = "arrays/sum",
+        args = (50),
+        eval_mode = EvalMode::DeepSeq,
     }
 }
 criterion_main!(benches);
