@@ -1,4 +1,4 @@
-let sum
+let rec sum
   | Array Num -> Num 
   = fun xs =>
     if array.length xs == 0 then 0

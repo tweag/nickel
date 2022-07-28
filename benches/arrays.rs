@@ -118,6 +118,15 @@ config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flam
         path = "arrays/sum",
         args = (50),
         eval_mode = EvalMode::DeepSeq,
+    }, {
+        name = "primes normal",
+        path = "arrays/primes",
+        args = (30),
+    }, {
+        name = "primes deepseq",
+        path = "arrays/primes",
+        args = (30),
+        eval_mode = EvalMode::DeepSeq,
     }
 }
 criterion_main!(benches);
