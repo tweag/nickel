@@ -1,75 +1,5 @@
 {
   builtin = {
-    ValueType
-      | doc m%"
-        Possible dynamic type for a value. Must be one of the tags:
-
-        ```
-         `Num
-         `Bool
-         `Str
-         `Enum
-         `Fun
-         `Array
-         `Record
-         `Lbl
-         `Other
-        ```
-        "%m
-      = fun label =>
-        label
-        |> contract.tag m%"
-          must be one of `Num, `Bool, `Str, `Enum, `Fun, `Array`, `Record, `Lbl or `Other
-        "%m
-        # The enum type syntax [| ... |] is not stable. Do not rely on it in
-        # your own Nickel programs.
-        |> contract.apply [|
-            Num,
-            Bool,
-            Str,
-            Enum,
-            Lbl,
-            Fun,
-            Array,
-            Record,
-            Other
-          |],
-
-    HashAlgorithm
-      | doc m%"
-        Supportd hash algorithm. Must be one of the tag:
-
-        ```
-          `Md5
-          `Sha1
-          `Sha256
-          `Sha512
-        ```
-        "%m
-      = fun label =>
-        label
-        |> contract.tag "must be one of `Md5, `Sha1, `Sha256, `Sha512"
-        # The enum type syntax [| ... |] is not stable. Do not rely on it in
-        # your own Nickel programs.
-        |> contract.apply [| Md5, Sha1, Sha256, Sha512 |],
-
-    ExportFormat
-      | doc m%"
-        Supported import and export format. Must be one of the tag:
-
-        ```
-          `Json
-          `Toml
-          `Yaml
-        ```
-        "%m
-      = fun label =>
-        label
-        |> contract.tag "must be one of `Json, `Toml or `Yaml"
-        # The enum type syntax [| ... |] is not stable. Do not rely on it in
-        # your own Nickel programs.
-        |> contract.apply [| Json, Toml, Yaml |],
-
     is_num : Dyn -> Bool
     | doc m%"
       Checks if the given value is a number.
@@ -169,7 +99,17 @@
       "%m
     = fun x => %typeof% x == `Record,
 
-    typeof | Dyn -> ValueType
+    typeof : Dyn -> [|
+        `Num,
+        `Bool,
+        `Str,
+        `Enum,
+        `Lbl,
+        `Fun,
+        `Array,
+        `Record,
+        `Other
+      |]
     | doc m%"
       Results in a value representing the type of the typed value.
 
@@ -215,7 +155,7 @@
       "%m
     = fun x y => %deep_seq% x y,
 
-    hash | HashAlgorithm -> Str -> Str
+    hash : [| `Md5, `Sha1, `Sha256, `Sha512 |] -> Str -> Str
     | doc m%"
       Hashes the given string provided the desired hash algorithm.
 
@@ -227,7 +167,7 @@
       "%m
     = fun type s => %hash% type s,
 
-    serialize | ExportFormat -> Dyn -> Str
+    serialize : [| `Json, `Toml, `Yaml |] -> Dyn -> Str
     | doc m%"
       Serializes the given value to the desired representation.
 
@@ -242,7 +182,7 @@
       "%m
     = fun format x => %serialize% format (%deep_seq% x x),
 
-    deserialize | ExportFormat -> Str -> Dyn
+    deserialize : [| `Json, `Toml, `Yaml |] -> Str -> Dyn
     | doc m%"
       Deserializes the given string to a nickel value given the encoding of the string.
 

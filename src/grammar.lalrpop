@@ -316,7 +316,7 @@ Atom: UniTerm = {
     AsUniTerm<StrChunks>,
     Ident => UniTerm::from(UniTermNode::Var(<>)),
     UniRecord => UniTerm::from(UniTermNode::Record(<>)),
-    "`" <EnumTag> => UniTerm::from(Term::Enum(<>)),
+    <EnumTag> => UniTerm::from(Term::Enum(<>)),
     "[" <terms: (<Term> ",")*> <last: Term?> "]" => {
         let terms : Vec<RichTerm> = terms.into_iter()
             .chain(last.into_iter()).collect();
@@ -384,47 +384,50 @@ Pattern: (Option<Ident>,Destruct) = {
 Destruct: Destruct = {
     <start: @L> "{" <mut matches: (<Match> ",")*> <last:LastMatch?> "}" <end: @R> => {
         let (open, rest) = match last {
-	    Some(LastMatch::Match(m)) => {
-	        matches.push(*m);
-	        (false,None)
-	    },
-	    Some(LastMatch::Ellipsis(rest)) => (true, rest),
-	    _ => (false, None),
-	};
-	let span = mk_span(src_id, start, end);
-	Destruct::Record{matches, open, rest, span}
+            Some(LastMatch::Match(m)) => {
+                matches.push(*m);
+                (false,None)
+            },
+            Some(LastMatch::Ellipsis(rest)) => (true, rest),
+            _ => (false, None),
+        };
+
+        let span = mk_span(src_id, start, end);
+        Destruct::Record{matches, open, rest, span}
     },
 };
 
 // A binding `ident = <pattern>` inside a destructuring pattern.
 Match: Match = {
     <left:Ident> <anns: Annot<FixedType>?> <default: DefaultAnnot?> "=" <right: Pattern> => {
-	let meta = match (default, anns) {
-	    (Some(d), Some(m)) => MetaValue::flatten(d,m),
-	    (Some(m),_) | (_,Some(m)) => m,
-  	    _ => MetaValue {
-	            contracts: vec![Contract{
-	                types: Types(AbsType::Dyn().into()),
-		        label: Label{span: left.pos.unwrap(), ..Default::default()},
-		    }],
-		    ..Default::default()
-	    },
-	};
-	Match::Assign(left, meta, right)
+        let meta = match (default, anns) {
+            (Some(d), Some(m)) => MetaValue::flatten(d,m),
+            (Some(m),_) | (_,Some(m)) => m,
+            _ => MetaValue {
+              contracts: vec![Contract{
+                  types: Types(AbsType::Dyn().into()),
+                  label: Label{span: left.pos.unwrap(), ..Default::default()},
+              }],
+              ..Default::default()
+            },
+        };
+
+        Match::Assign(left, meta, right)
     },
     <id:Ident> <anns: Annot<FixedType>?> <default: DefaultAnnot?> => {
-	let meta = match (default, anns) {
-	    (Some(d), Some(m)) => MetaValue::flatten(d,m),
-	    (Some(m),_) | (_,Some(m)) => m,
-  	    _ => MetaValue {
-	            contracts: vec![Contract{
-	                types: Types(AbsType::Dyn().into()),
-		        label: Label{span: id.pos.unwrap(), ..Default::default()},
-		    }],
-		    ..Default::default()
-	    },
-	};
-	Match::Simple(id, meta)
+        let meta = match (default, anns) {
+            (Some(d), Some(m)) => MetaValue::flatten(d,m),
+            (Some(m),_) | (_,Some(m)) => m,
+            _ => MetaValue {
+                  contracts: vec![Contract{
+                      types: Types(AbsType::Dyn().into()),
+                      label: Label{span: id.pos.unwrap(), ..Default::default()},
+                  }],
+                  ..Default::default()
+            },
+        };
+
+        Match::Simple(id, meta)
     },
 };
 
@@ -499,7 +502,9 @@ Interpolation = { "%{", "multstr %{" };
 
 StaticString: String = StringStart <s: ChunkLiteral?> StringEnd => s.unwrap_or_default();
 
-EnumTag: Ident = {
+EnumTag: Ident = "`" <EnumTagContent> => <>;
+
+EnumTagContent: Ident = {
     <Ident>,
     <StaticString> => <>.into(),
     // Allow tags of the form `Str, `Bool, etc. This is ad-hoc and should
@@ -554,7 +559,7 @@ UOp: UnaryOp = {
 };
 
 SwitchCase: SwitchCase = {
-    "`" <id: EnumTag> "=>" <t: Term> => SwitchCase::Normal(id, t),
+    "`" <id: EnumTagContent> "=>" <t: Term> => SwitchCase::Normal(id, t),
     "_" "=>" <t: Term> => SwitchCase::Default(<>),
 }
 
@@ -750,7 +755,7 @@ TypeBuiltin: Types = {
 
 TypeAtom: Types = {
     <TypeBuiltin>,
-    "[|" <rows:(<EnumTag> ",")*> <last: (<EnumTag>)?> <tail: (";" <EnumTag>)?> "|]" => {
+    "[|" <rows:(<EnumTag> ",")*> <last: (<EnumTag>)?> <tail: (";" <Ident>)?> "|]" => {
         let ty = rows.into_iter()
             .chain(last.into_iter())
             // As we build row types as a linked list via a fold on the original
@@ -794,7 +799,7 @@ extern {
         "forall" => Token::Normal(NormalToken::Forall),
         "in" => Token::Normal(NormalToken::In),
         "let" => Token::Normal(NormalToken::Let),
-	"rec" => Token::Normal(NormalToken::Rec),
+        "rec" => Token::Normal(NormalToken::Rec),
         "switch" => Token::Normal(NormalToken::Switch),
 
         "null" => Token::Normal(NormalToken::Null),
