@@ -129,6 +129,12 @@ pub trait Linearizer {
     /// required or produced in parallel instances should therefore be put
     /// into the Building State `L` which is passed
     fn scope(&mut self) -> Self;
+
+    /// Create a scope for the processing of terms potentially contained in metadata (contracts
+    /// expressions in the annotations). When walking such terms, scoping behaves differently with
+    /// respect to the previous state (pending record fields, let binding, metavalue, etc.).
+    /// Mostly, the `self` linearizer keeps the state while the returned one has a clean state.
+    fn scope_meta(&mut self) -> Self;
 }
 
 /// [Linearizer] that deliberately does not maintain any state or act
@@ -146,6 +152,10 @@ where
 
     fn scope(&mut self) -> Self {
         StubHost::new()
+    }
+
+    fn scope_meta(&mut self) -> Self {
+        self.scope()
     }
 }
 

@@ -293,7 +293,7 @@ impl Linearizer for AnalysisHost {
             Term::Record(fields, _) | Term::RecRecord(fields, ..) => {
                 lin.push(LinearizationItem {
                     id,
-                    pos: pos,
+                    pos,
                     ty,
                     kind: TermKind::Record(HashMap::new()),
                     scope: self.scope.clone(),
@@ -312,77 +312,10 @@ impl Linearizer for AnalysisHost {
                 x.push(ident.to_owned())
             }
             Term::MetaValue(meta) => {
-                // DF walk AST (of Contracts)
-                // adds usages of user defined contracts to the linearization
-                fn walk_terms(
-                    lin: &mut Linearization<Building>,
-                    mut host: AnalysisHost,
-                    RichTerm { term, pos }: &RichTerm,
-                ) {
-                    host.add_term(lin, term, *pos, TypeWrapper::Concrete(AbsType::Dyn()));
-                    match &**term {
-                        Term::Op1(_, rt) => walk_terms(lin, host, rt),
-                        Term::Op2(_, rt1, rt2) => {
-                            walk_terms(lin, host.scope(), rt1);
-                            walk_terms(lin, host.scope(), rt2);
-                        }
-                        Term::OpN(_, rts) => {
-                            rts.iter().for_each(|rt| walk_terms(lin, host.scope(), rt))
-                        }
-                        Term::StrChunks(chunks) => chunks
-                            .iter()
-                            .filter_map(|chunk| match chunk {
-                                nickel_lang::term::StrChunk::Literal(_) => None,
-                                nickel_lang::term::StrChunk::Expr(rt, _) => Some(rt),
-                            })
-                            .for_each(|rt| walk_terms(lin, host.scope(), rt)),
-                        Term::App(rt1, rt2) => {
-                            walk_terms(lin, host.scope(), rt1);
-                            walk_terms(lin, host.scope(), rt2);
-                        }
-                        Term::Record(rts, _) | Term::RecRecord(rts, ..) => rts
-                            .values()
-                            .for_each(|rt| walk_terms(lin, host.scope(), rt)),
-                        _ => {}
-                    }
-                }
-
-                // recursively linearize flat types
-                fn walk_types(
-                    lin: &mut Linearization<Building>,
-                    outer_host: &mut AnalysisHost,
-                    t: &nickel_lang::types::Types,
-                ) {
-                    let mut scope = outer_host.scope.clone();
-                    let (scope_id, next_scope_id) = outer_host.next_scope_id.next();
-                    outer_host.next_scope_id = next_scope_id;
-                    scope.push(scope_id);
-
-                    let inner_host = AnalysisHost {
-                        env: outer_host.env.clone(),
-                        scope,
-                        ..Default::default()
-                    };
-                    match &t.0 {
-                        AbsType::Flat(rt) => walk_terms(lin, inner_host, &rt),
-                        AbsType::Arrow(t1, t2) => {
-                            walk_types(lin, outer_host, &t1);
-                            walk_types(lin, outer_host, &t2);
-                        }
-                        _ => {}
-                    }
-                }
-
                 // Notice 1: No push to lin for the `MetaValue` itself
                 // Notice 2: we discard the encoded value as anything we
                 //           would do with the value will be handled in the following
                 //           call to [Self::add_term]
-                // Notice 3: we walk the inner contract types to resolve references
-
-                meta.contracts
-                    .iter()
-                    .for_each(|c| walk_types(lin, self, &c.types));
-
                 if meta.value.is_some() {
                     self.meta = Some(MetaValue {
                         value: None,
@@ -395,7 +328,7 @@ impl Linearizer for AnalysisHost {
 
                 lin.push(LinearizationItem {
                     id,
-                    pos: pos,
+                    pos,
                     ty,
                     scope: self.scope.clone(),
                     kind: TermKind::Structure,
@@ -495,14 +428,35 @@ impl Linearizer for AnalysisHost {
             scope,
             env: self.env.clone(),
             next_scope_id: ScopeId::default(),
-            /// when opening a new scope `meta` is assumed to be `None` as meta data
-            /// is immediately followed by a term without opening a scope
-            meta: None,
+            meta: self.meta.clone(),
             record_fields: self.record_fields.as_mut().and_then(|(record, fields)| {
                 Some(*record).zip(fields.pop().map(|field| vec![field]))
             }),
             let_binding: self.let_binding.take(),
             access: self.access.clone(),
+        }
+    }
+
+    fn scope_meta(&mut self) -> Self {
+        let mut scope = self.scope.clone();
+        let (scope_id, next_scope_id) = self.next_scope_id.next();
+        self.next_scope_id = next_scope_id;
+
+        scope.push(scope_id);
+
+        AnalysisHost {
+            scope,
+            env: self.env.clone(),
+            next_scope_id: ScopeId::default(),
+            // Metadata must be attached to the original scope of the value (`self`), while the new
+            // scope for metadata should be clean.
+            // In general, the scope for the metadata shouldn't interfere with any of the previous
+            // state (record fields, let binding, etc.), which is kept intact inside `self`, while
+            // this new scope gets a cleared stated.
+            meta: None,
+            record_fields: None,
+            let_binding: None,
+            access: None,
         }
     }
 
