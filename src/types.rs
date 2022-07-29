@@ -477,10 +477,10 @@ impl fmt::Display for Types {
             AbsType::DynRecord(ty) => write!(f, "{{_: {}}}", ty),
             AbsType::RowEmpty() => Ok(()),
             AbsType::RowExtend(id, ty_opt, tail) => {
-                write!(f, "{}", id)?;
-
                 if let Some(ty) = ty_opt {
-                    write!(f, ": {}", ty)?;
+                    write!(f, "{}: {}", id, ty)?;
+                } else {
+                    write!(f, "`{}", id)?;
                 }
 
                 match tail.0 {
@@ -553,8 +553,8 @@ mod test {
         assert_format_eq("forall r. {x: Bool, y: Bool, z: Bool ; r}");
         assert_format_eq("{x: Bool, y: Bool, z: Bool}");
 
-        assert_format_eq("[|a, b, c, d|]");
-        assert_format_eq("forall r. [|tag1, tag2, tag3 ; r|]");
+        assert_format_eq("[|`a, `b, `c, `d|]");
+        assert_format_eq("forall r. [|`tag1, `tag2, `tag3 ; r|]");
 
         assert_format_eq("Array Num");
         assert_format_eq("Array (Array Num)");

@@ -28,34 +28,34 @@ let Assert = fun l x => x || %blame% l in
   ("hello" ++ " world" | Str) == "hello world",
 
   # enums_simple
-  (`foo | [| foo, bar |]) == `foo,
-  (`bar | forall r. [| foo, bar ; r|]) == `bar,
+  (`foo | [| `foo, `bar |]) == `foo,
+  (`bar | forall r. [| `foo, `bar ; r|]) == `bar,
 
   # enums_escaped
-  (`"foo:baz" | [| "foo:baz", "bar:baz" |]) == `"foo:baz",
-  (`"bar:baz" | forall r. [| "foo:baz", "bar:baz" ; r |]) == `"bar:baz",
+  (`"foo:baz" | [| `"foo:baz", `"bar:baz" |]) == `"foo:baz",
+  (`"bar:baz" | forall r. [| `"foo:baz", `"bar:baz" ; r |]) == `"bar:baz",
 
   # enums_complex
-  let f : forall r. [| foo, bar ; r |] -> Num =
+  let f : forall r. [| `foo, `bar ; r |] -> Num =
     fun x => switch { `foo => 1, `bar => 2, _ => 3, } x in
   f `bar == 2,
 
-  let f : forall r. [| foo, bar ; r |] -> Num =
+  let f : forall r. [| `foo, `bar ; r |] -> Num =
     fun x => switch { `foo => 1, `bar => 2, _ => 3, } x in
   f `boo == 3,
 
-  let f : forall r. [| foo, "bar:baz" ; r |] -> Num =
+  let f : forall r. [| `foo, `"bar:baz" ; r |] -> Num =
     fun x => switch { `foo => 1, `"bar:baz" => 2, _ => 3, } x in
   f `"bar:baz" == 2,
 
-  let f : forall r. [| foo, "bar:baz" ; r |] -> Num =
+  let f : forall r. [| `foo, `"bar:baz" ; r |] -> Num =
     fun x => switch { `foo => 1, `"bar:baz" => 2, _ => 3, } x in
   f `"boo,grr" == 3,
 
   # enums_applied
   # Regression test for enum types converted to contracts outside of annotations
   # causing issues wrt typechecking
-  let Wrapper = contract.apply [| Foo, Bar |] in
+  let Wrapper = contract.apply [| `Foo, `Bar |] in
   (`Foo | Wrapper) == `Foo,
 
   # records_simple

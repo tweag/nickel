@@ -193,21 +193,21 @@ The following type constructors are available:
   record.map (fun char count => count + 1) occurrences : {_ : Num}
   ```
 
-<!-- - **Enum**: `<tag1, .., tagn>`: an enumeration comprised of alternatives `tag1`, -->
-<!--   .., `tagn`. An enumeration literal is prefixed with a backtick and serialized -->
-<!--   as a string. It is useful to encode finite alternatives. The advantage over -->
-<!--   strings is that the typechecker handles them more finely: it is able to detect -->
-<!--   incomplete matches, for example. -->
-<!--  -->
-<!--   Example: -->
-<!--   ```nickel -->
-<!--   let protocol : <http, ftp, sftp> = `http in -->
-<!--   (switch { -->
-<!--     `http => 1, -->
-<!--     `ftp => 2, -->
-<!--     `sftp => 3 -->
-<!--   } protocol) : Num -->
-<!--   ``` -->
+- **Enum**: ``[| `tag1, .., `tagn |]``: an enumeration comprised of alternatives
+  `tag1`, .., `tagn`. An enumeration literal is prefixed with a backtick and
+  serialized as a string. It is useful to encode finite alternatives. The
+  advantage over strings is that the typechecker handles them more finely: it is
+  able to detect incomplete matches, for example.
+
+  Example:
+  ```nickel
+  let protocol : [| `http, `ftp, `sftp |] = `http in
+  (switch {
+    `http => 1,
+    `ftp => 2,
+    `sftp => 3
+  } protocol) : Num
+  ```
 
 - **Arrow (function)**: `S -> T`. A function taking arguments of type `S` and returning a value of
   type `T`. For multi-parameters functions, just iterate the arrow constructor.

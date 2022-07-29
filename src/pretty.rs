@@ -772,15 +772,14 @@ where
                 .braces(),
             RowEmpty() => allocator.nil(),
             RowExtend(id, ty_opt, tail) => {
-                let mut builder = allocator.quote_if_needed(&id);
-
-                builder = if let Some(ty) = ty_opt {
-                    builder
+                let builder = if let Some(ty) = ty_opt {
+                    allocator
+                        .quote_if_needed(&id)
                         .append(allocator.text(":"))
                         .append(allocator.space())
                         .append(ty.pretty(allocator))
                 } else {
-                    builder
+                    allocator.text("`").append(allocator.quote_if_needed(&id))
                 };
 
                 match tail.0 {

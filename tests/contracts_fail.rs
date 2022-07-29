@@ -32,8 +32,8 @@ fn id_fail() {
 
 #[test]
 fn enum_simple() {
-    assert_raise_blame!("`far | [|foo, bar|]");
-    assert_raise_blame!("123 | [|foo, bar|]");
+    assert_raise_blame!("`far | [|`foo, `bar|]");
+    assert_raise_blame!("123 | [|`foo, `bar|]");
     assert_raise_blame!("`foo | [| |]");
 }
 

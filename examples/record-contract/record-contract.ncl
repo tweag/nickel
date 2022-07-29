@@ -22,7 +22,7 @@ let Container = {
 } in
 
 let KubernetesConfig = {
-  kind | [| ReplicationController, ReplicaSet, Pod |]
+  kind | [| `ReplicationController, `ReplicaSet, `Pod |]
        | doc "The kind of the element being configured."
        | default = `Pod,
 
