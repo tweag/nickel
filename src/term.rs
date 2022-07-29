@@ -836,16 +836,16 @@ pub enum UnaryOp {
     /// Transform a string to an enum.
     EnumFromStr(),
     /// Test if a regex matches a string.
-    /// Like [`StrMatch`], this is a unary operator because we would like a way to share the
+    /// Like [`UnaryOp::StrMatch`], this is a unary operator because we would like a way to share the
     /// same "compiled regex" for many matching calls. This is done by returning functions
-    /// wrapping [`StrIsMatchCompiled`] and [`StrMatchCompiled`]
+    /// wrapping [`UnaryOp::StrIsMatchCompiled`] and [`UnaryOp::StrMatchCompiled`]
     StrIsMatch(),
     /// Match a regex on a string, and returns the captured groups together, the index of the
     /// match, etc.
     StrMatch(),
-    /// Version of `StrIsMatch` which remembers the compiled regex.
+    /// Version of [`UnaryOp::StrIsMatch`] which remembers the compiled regex.
     StrIsMatchCompiled(CompiledRegex),
-    /// Version of `StrMatch` which remembers the compiled regex.
+    /// Version of [`UnaryOp::StrMatch`] which remembers the compiled regex.
     StrMatchCompiled(CompiledRegex),
 }
 
