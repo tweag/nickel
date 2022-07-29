@@ -1,12 +1,8 @@
 //! Internal error types for typechecking.
 use super::{reporting, State, TypeWrapper};
 use crate::{
-    error::TypecheckError,
-    identifier::Ident,
-    label::ty_path,
-    position::TermPos,
-    term::RichTerm,
-    types::{AbsType, Types},
+    error::TypecheckError, identifier::Ident, label::ty_path, position::TermPos, term::RichTerm,
+    types::AbsType,
 };
 
 /// Error during the unification of two row types.

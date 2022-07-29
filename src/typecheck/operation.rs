@@ -22,7 +22,7 @@ pub fn get_uop_type(
                 mk_tyw_arrow!(branches.clone(), branches.clone(), branches),
             )
         }
-        // Dyn -> [| Num, Bool, Str, Enum, Fun, Array, Record, Lbl, Other |]
+        // Dyn -> [| `Num, `Bool, `Str, `Enum, `Fun, `Array, `Record, `Lbl, `Other |]
         UnaryOp::Typeof() => (
             mk_typewrapper::dynamic(),
             mk_tyw_enum!("Num", "Bool", "Str", "Enum", "Fun", "Array", "Record", "Lbl", "Other"),
