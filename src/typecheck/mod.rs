@@ -116,7 +116,7 @@ impl<'a> Envs<'a> {
                 if let Term::RecRecord(rec, ..) = rt.as_ref() {
                     Ok(rec
                         .iter()
-                        .map(|(id, rt)| (id.clone(), infer_type(rt.as_ref()))))
+                        .map(|(id, rt)| (id.clone(), infer_record_type(rt.as_ref()))))
                 } else {
                     Err(EnvBuildError::NotARecord(rt.clone()))
                 }
@@ -1042,23 +1042,30 @@ pub fn apparent_type(
 
 /// Infer the type of a non annotated record by gathering the apparent type of the fields. It's
 /// currently used essentially to type the stdlib.
-pub fn infer_type(t: &Term) -> TypeWrapper {
+pub fn infer_record_type(t: &Term) -> TypeWrapper {
     match t {
+        // An explicit annotation must take precedence over this inference, so let's use it.
+        t @ Term::MetaValue(MetaValue {
+            types, contracts, ..
+        }) if (types.is_some() || !contracts.is_empty()) => apparent_type(t, None, None).into(),
+        // We unwrap meta-values without any type information. Otherwise, something like a
+        // top-level module documentation would stop this function from doing its job.
+        Term::MetaValue(MetaValue {
+            value: Some(rt),
+            types: None,
+            contracts,
+            ..
+        }) if contracts.is_empty() => infer_record_type(rt.as_ref()),
         Term::Record(rec, ..) | Term::RecRecord(rec, ..) => AbsType::StaticRecord(Box::new(
             TypeWrapper::Concrete(rec.iter().fold(AbsType::RowEmpty(), |r, (id, rt)| {
                 AbsType::RowExtend(
                     id.clone(),
-                    Some(Box::new(infer_type(rt.term.as_ref()))),
+                    Some(Box::new(infer_record_type(rt.term.as_ref()))),
                     Box::new(r.into()),
                 )
             })),
         ))
         .into(),
-        Term::MetaValue(MetaValue {
-            value: Some(rt),
-            types: None,
-            ..
-        }) => infer_type(rt.as_ref()),
         t => apparent_type(t, None, None).into(),
     }
 }
