@@ -416,7 +416,7 @@ fn walk<L: Linearizer>(
         }
         // An type annotation switches mode to check.
         Term::MetaValue(meta) => {
-            meta.contracts.iter().chain(meta.types.iter()).try_for_each(|ty| walk_type(state, envs.clone(), lin, linearizer.scope(), &ty.types))?;
+            meta.contracts.iter().chain(meta.types.iter()).try_for_each(|ty| walk_type(state, envs.clone(), lin, linearizer.scope_meta(), &ty.types))?;
 
             match meta {
                 MetaValue {
@@ -430,6 +430,9 @@ fn walk<L: Linearizer>(
                 }
                 MetaValue {value: Some(t), .. } =>  walk(state, envs, lin, linearizer, t),
                 // A metavalue without a body nor a type annotation is a record field without definition.
+                // TODO: we might have something to with the linearizer to clear the current
+                // metadata. It looks like it may be unduly attached to the next field definition,
+                // which is not critical, but still a bug.
                 _ => Ok(()),
             }
         }
@@ -813,7 +816,7 @@ fn type_check_<L: Linearizer>(
                 .iter()
                 .chain(meta.types.iter())
                 .try_for_each(|ty| {
-                    walk_type(state, envs.clone(), lin, linearizer.scope(), &ty.types)
+                    walk_type(state, envs.clone(), lin, linearizer.scope_meta(), &ty.types)
                 })?;
 
             match meta {
@@ -842,10 +845,13 @@ fn type_check_<L: Linearizer>(
                         .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
                     // if there's an inner value, we still have to walk it, as it may contain
-                    // statically typed block.
+                    // statically typed blocks.
                     if let Some(t) = value {
                         walk(state, envs, lin, linearizer, t)
                     } else {
+                        // TODO: we might have something to with the linearizer to clear the current
+                        // metadata. It looks like it may be unduly attached to the next field definition,
+                        // which is not critical, but still a bug.
                         Ok(())
                     }
                 }
@@ -856,6 +862,9 @@ fn type_check_<L: Linearizer>(
                 }
                 // A metavalue without a body nor a type annotation is a record field without definition.
                 // We infer it to be of type `Dyn` for now.
+                // TODO: we might have something to with the linearizer to clear the current
+                // metadata. It looks like it may be unduly attached to the next field definition,
+                // which is not critical, but still a bug.
                 _ => unify(state, ty, mk_typewrapper::dynamic())
                     .map_err(|err| err.into_typecheck_err(state, rt.pos)),
             }
