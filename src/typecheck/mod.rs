@@ -282,7 +282,12 @@ fn walk<L: Linearizer>(
     rt: &RichTerm,
 ) -> Result<(), TypecheckError> {
     let RichTerm { term: t, pos } = rt;
-    linearizer.add_term(lin, t, *pos, mk_typewrapper::dynamic());
+    linearizer.add_term(
+        lin,
+        t,
+        *pos,
+        apparent_type(t, Some(&envs), Some(state.resolver)).into(),
+    );
 
     match t.as_ref() {
         Term::ParseError
