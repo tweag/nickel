@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use codespan::ByteIndex;
 use nickel_lang::{
-    position::TermPos,
     term::MetaValue,
     typecheck::linearization::{LinearizationState, Scope},
 };

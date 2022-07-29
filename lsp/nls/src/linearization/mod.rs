@@ -4,8 +4,8 @@ use codespan::ByteIndex;
 use log::debug;
 use nickel_lang::{
     identifier::Ident,
-    position::{RawSpan, TermPos},
-    term::{MetaValue, RichTerm, Term, UnaryOp},
+    position::TermPos,
+    term::{MetaValue, Term, UnaryOp},
     typecheck::{
         linearization::{Linearization, Linearizer, Scope, ScopeId},
         reporting::{to_type, NameReg},
