@@ -1,15 +1,13 @@
-Version 0.2  (2022-07-XX)
+Version 0.2  (2022-07-29)
 =========================
-
-Various bug fixes, language and tooling improvements.
 
 Breaking changes
 ----------------
 
-- Using a contract as part of a static type annotations will in most cases fail
+- Using a contract as part of a static type annotation will in most cases fail
   with an appropriate error message. This is a temporary limitation in order to
-  fix previously unsound behavior in the typechecker. This will likely be fixed
-  in the upcoming 0.3.x release. For more details, see issues
+  fix previously unsound behavior in the typechecker. This restriction will
+  likely be lifted in the upcoming 0.3.x release. For more details, see issues
   [#701](https://github.com/tweag/nickel/issues/701) and
   [#724](https://github.com/tweag/nickel/issues/724)
 
@@ -25,17 +23,18 @@ Fixes
 Language features
 -----------------
 
-- Merge null values together give null, and merging empty lists together gives
-  an empty list, instead of failing with a `error: non mergeable terms`
+- Merging null values together gives null, and merging empty lists together gives
+  an empty list, instead of failing with `error: non mergeable terms`
 - Add recursive let-bindings (`let rec`)
-- Add type wildcard. Use `_` in place of a type to let the typechecker fill
+- Add type wildcards. Use `_` in place of a type to let the typechecker fill
   the gap. Example: `let foo : _ = array.all ((==) 2) [1,2,3]`
 - Add `builtin.to_str` and `string.from` to convert generic values to a string
+- Re-introduce an official syntax for enum types
 
 Tooling
 -------
 
-- Add the `nickel pprint-ast` command to pretty print a parsed program (for
+- Add the `nickel pprint-ast` command to pretty print a parsed program (mostly
   debugging purpose)
 - Add the `nickel doc` command to produce markdown documentation from the
   in-code `doc` metadata
@@ -43,7 +42,7 @@ Tooling
 Documentation
 -------------
 
-- Fix various typos and use of deprecated syntax in the user manual
+- Fix various typos and remove use of deprecated syntax in the user manual
 
 Version 0.1  (2022-03-10)
 =========================
