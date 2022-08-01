@@ -4,7 +4,6 @@ use crate::interner::Interner;
 use crate::term::RichTerm;
 use codespan::FileId;
 use lalrpop_util::lalrpop_mod;
-use lazy_static::lazy_static;
 
 lalrpop_mod!(
     #[allow(clippy::all)]
@@ -41,8 +40,9 @@ impl grammar::ExtendedTermParser {
     ) -> Result<(ExtendedTerm, ParseErrors), ParseError> {
         let mut parse_errors = Vec::new();
         let mut next_wildcard_id = 0;
+        let mut interner = Interner::new();
         let result = self
-            .parse(file_id, &mut parse_errors, &mut next_wildcard_id, lexer)
+            .parse(file_id, &mut parse_errors, &mut next_wildcard_id, &mut interner, lexer)
             .map_err(|err| ParseError::from_lalrpop(err, file_id));
 
         let parse_errors = ParseErrors::from_recoverable(parse_errors, file_id);
@@ -76,8 +76,9 @@ impl grammar::TermParser {
     ) -> Result<(RichTerm, ParseErrors), ParseError> {
         let mut parse_errors = Vec::new();
         let mut wildcard_id = 0;
+        let mut interner = Interner::new();
         let result = self
-            .parse(file_id, &mut parse_errors, &mut wildcard_id, lexer)
+            .parse(file_id, &mut parse_errors, &mut wildcard_id, &mut interner, lexer)
             .map_err(|err| ParseError::from_lalrpop(err, file_id));
 
         let parse_errors = ParseErrors::from_recoverable(parse_errors, file_id);

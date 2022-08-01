@@ -50,7 +50,7 @@ pub fn handle_completion(
             _ => None,
         })
         .map(|(ident, _)| CompletionItem {
-            label: ident.label,
+            label: ident.label.as_str().to_owned(),
             ..Default::default()
         })
         .collect();

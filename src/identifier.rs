@@ -2,12 +2,12 @@
 use serde::{Deserialize, Serialize};
 use std::{fmt, hash::Hash};
 
-use crate::position::TermPos;
+use crate::{position::TermPos, interner::Symbol};
 
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(into = "String", from = "String")]
 pub struct Ident {
-    pub label: String,
+    pub label: Symbol,
     pub pos: TermPos,
 }
 
@@ -53,7 +53,7 @@ where
 {
     fn from(val: F) -> Self {
         Ident {
-            label: String::from(val),
+            label: Symbol::new(val.into()),
             pos: TermPos::None,
         }
     }
@@ -61,18 +61,18 @@ where
 
 impl Into<String> for Ident {
     fn into(self) -> String {
-        self.label
+        self.label.as_str().to_owned()
     }
 }
 
 impl Ident {
     pub fn is_generated(&self) -> bool {
-        self.label.starts_with(GEN_PREFIX)
+        self.label.as_str().starts_with(GEN_PREFIX)
     }
 }
 
 impl AsRef<str> for Ident {
     fn as_ref(&self) -> &str {
-        &self.label
+        self.label.as_str()
     }
 }

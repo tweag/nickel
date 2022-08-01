@@ -71,6 +71,7 @@ grammar<'input, 'err, 'wcard>(
     src_id: FileId,
     errors: &'err mut Vec<ErrorRecovery<usize, Token<'input>, ParseError>>,
     next_wildcard_id: &'wcard mut usize,
+    interner: &mut Interner,
 );
 
 WithPos<Rule>: Rule = <l: @L> <t: Rule> <r: @R> => t.with_pos(mk_pos(src_id, l, r));
@@ -440,7 +441,7 @@ DefaultAnnot: MetaValue = "?" <t: Term> => MetaValue {
 };
 
 Ident: Ident = <l:@L> <i: "identifier"> <r:@R> =>
-    Ident { label: i.to_string(), pos: mk_pos(src_id, l, r) };
+    Ident { label: interner.intern(i), pos: mk_pos(src_id, l, r) };
 
 Bool: bool = {
     "true" => true,

@@ -16,7 +16,7 @@ use crate::{
     mk_app, mk_fun,
     position::{RawSpan, TermPos},
     term::{make as mk_term, BinaryOp, MetaValue, RecordAttrs, RichTerm, StrChunk, Term, UnaryOp},
-    types::Types,
+    types::Types, interner::Symbol,
 };
 
 /// Distinguish between the standard string separators `"`/`"` and the multi-line string separators
@@ -120,7 +120,7 @@ pub fn mk_access(access: RichTerm, root: RichTerm) -> RichTerm {
     if let Some(label) = label {
         mk_term::op1(
             UnaryOp::StaticAccess(Ident {
-                label,
+                label: Symbol::new(label),
                 pos: access.pos,
             }),
             root,
@@ -166,7 +166,7 @@ pub fn elaborate_field_path(
 
             if let Some(static_access) = static_access {
                 let id = Ident {
-                    label: static_access,
+                    label: Symbol::new(static_access),
                     pos: exp.pos,
                 };
 
@@ -237,7 +237,7 @@ where
                         insert_static_field(
                             &mut static_map,
                             Ident {
-                                label: buffer,
+                                label: Symbol::new(buffer),
                                 pos: e.pos,
                             },
                             t,

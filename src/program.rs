@@ -289,7 +289,7 @@ mod doc {
                 entries.sort_by_key(|(k, _)| *k);
 
                 for (ident, rt) in entries {
-                    let header = mk_header(&ident.label, header_level + 1, arena);
+                    let header = mk_header(ident.label.as_str(), header_level + 1, arena);
                     document.append(header);
                     to_markdown(rt, header_level + 1, arena, document, options)?;
                 }
@@ -342,7 +342,7 @@ mod doc {
 
         let code = arena.alloc(AstNode::from(NodeValue::Code(NodeCode {
             num_backticks: 1,
-            literal: ident.bytes().collect(),
+            literal: ident.as_bytes().to_vec(),
         })));
 
         res.append(code);
