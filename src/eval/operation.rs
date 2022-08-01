@@ -136,7 +136,7 @@ pub fn continuate_operation(
 
                 Ok(next)
             } else {
-                process_nary_operation(op, evaluated, stack, pos)
+                process_nary_operation(op, evaluated, stack, pos, call_stack)
             }
         }
     }
@@ -1935,6 +1935,7 @@ fn process_binary_operation(
             env2,
             pos_op,
             MergeMode::Standard,
+            call_stack
         ),
 
         BinaryOp::Hash() => {
@@ -2158,6 +2159,7 @@ fn process_nary_operation(
     args: Vec<(Closure, TermPos)>,
     _stack: &mut Stack,
     pos_op: TermPos,
+    call_stack: &CallStack,
 ) -> Result<Closure, EvalError> {
     let pos_op_inh = pos_op.into_inherited();
 
@@ -2324,6 +2326,7 @@ fn process_nary_operation(
                             env3,
                             pos_op,
                             MergeMode::Contract(lbl),
+                            call_stack
                         )
                     }
                 } else {
