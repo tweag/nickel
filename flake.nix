@@ -10,8 +10,8 @@
   inputs.import-cargo.url = "github:edolstra/import-cargo";
 
   nixConfig = {
-    extra-substituters = [ "https://nickel.cachix.org" ];
-    extra-trusted-public-keys = [ "nickel.cachix.org-1:ABoCOGpTJbAum7U6c+04VbjvLxG9f0gJP5kYihRRdQs=" ];
+    extra-substituters = [ "https://tweag-nickel.cachix.org" ];
+    extra-trusted-public-keys = [ "tweag-nickel.cachix.org-1:GIthuiK4LRgnW64ALYEoioVUQBWs0jexyoYVeLDBwRA=" ];
   };
 
   outputs =
