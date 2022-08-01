@@ -1935,7 +1935,7 @@ fn process_binary_operation(
             env2,
             pos_op,
             MergeMode::Standard,
-            call_stack
+            call_stack,
         ),
 
         BinaryOp::Hash() => {
