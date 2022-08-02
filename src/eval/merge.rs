@@ -91,6 +91,7 @@ pub fn merge(
     mut env2: Environment,
     pos_op: TermPos,
     mode: MergeMode,
+    call_stack: &CallStack,
 ) -> Result<Closure, EvalError> {
     // Merging a simple value and a metavalue is equivalent to first wrapping the simple value in a
     // new metavalue (with no attribute set excepted the value), and then merging the two
@@ -426,18 +427,24 @@ pub fn merge(
                 env,
             })
         }
-        //The following cases are either errors or not yet implemented
-        (t1_, t2_) => Err(EvalError::MergeIncompatibleArgs(
-            RichTerm {
-                term: SharedTerm::new(t1_),
-                pos: pos1,
-            },
-            RichTerm {
-                term: SharedTerm::new(t2_),
-                pos: pos2,
-            },
-            pos_op,
-        )),
+        (t1_, t2_) => match (mode, &t2_) {
+            // We want to merge a non-record term with a record contract
+            (MergeMode::Contract(label), Term::Record(..)) => {
+                Err(EvalError::BlameError(label, call_stack.clone()))
+            }
+            // The following cases are either errors or not yet implemented
+            _ => Err(EvalError::MergeIncompatibleArgs(
+                RichTerm {
+                    term: SharedTerm::new(t1_),
+                    pos: pos1,
+                },
+                RichTerm {
+                    term: SharedTerm::new(t2_),
+                    pos: pos2,
+                },
+                pos_op,
+            )),
+        },
     }
 }
 
