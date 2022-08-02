@@ -83,6 +83,21 @@
         ];
       };
 
+      # Little helper to include multiple paths in one source without breaking
+      # unpackPhase
+      pathsAsSrc = paths:
+        let isPrefixOf = maybePrefix: s:
+          builtins.substring 0 (builtins.stringLength maybePrefix) s == maybePrefix;
+        pathsToInclude = builtins.map builtins.toPath paths;
+
+        in
+        builtins.path {
+          path = ./.; filter = path: types:
+            builtins.any (pathToInclude:
+              isPrefixOf pathToInclude path)
+              pathsToInclude;
+        };
+
       cargoHome = (import-cargo.builders.importCargo {
         lockFile = ./Cargo.lock;
         inherit pkgs;
@@ -290,6 +305,19 @@
         '';
       };
 
+      userManualMarkdownLint = pkgs.stdenv.mkDerivation {
+        name = "nickel-user-manual-markdown-lint-${version}";
+        src = pathsAsSrc [ ./doc/manual ./.markdownlint.json ];
+        buildInputs = [
+            pkgs.nodePackages.markdownlint-cli2
+        ];
+
+        checkPhase = ''
+          ${pkgs.nodePackages.markdownlint-cli2}/bin/markdownlint-cli2 \
+            doc/manual/*.md
+        ''
+      }
+
       stdlibDoc = pkgs.stdenv.mkDerivation {
         name = "nickel-stdlib-doc-${version}";
         src = ./stdlib;
@@ -327,6 +355,7 @@
         # wasm-opt can take long: eschew optimizations in checks
         wasm = buildNickelWasm { channel = "stable"; optimize = false; };
         pre-commit = defaultPackage.pre-commit;
+        manual-markdown-lint = userManualMarkdownLint;
       } // (forEachRustChannel (channel:
         {
           name = "nickel-against-${channel}-rust-channel";
