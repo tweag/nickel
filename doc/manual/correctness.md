@@ -73,7 +73,7 @@ of properties that can be checked for, such as:
 
 Both types and contracts are enforced in a similar way, using an annotation:
 
-```
+```text
 $ nickel repl
 nickel> 1 + 1.5 : Num
 2.5
@@ -106,7 +106,7 @@ difference between types and contracts in practice.
 Say we need a function to convert an array of key-value pairs to an array of keys
 and an array of values. Let's call it `split`:
 
-```
+```text
 nickel> split [{key = "foo", value = 1}, {key = "bar", value = 2}]
 {keys = ["foo", "bar"], values = [1, 2]}
 
@@ -146,9 +146,10 @@ split [{key = "foo", value = 1}, {key = "bar", value = 2}]
 
 We want to ensure that the callers to `split` pass an array
 verifying:
- - elements are records with a `key` field and a `value` field
- - keys are strings
- - values can be anything, but must all have the same type
+
+- elements are records with a `key` field and a `value` field
+- keys are strings
+- values can be anything, but must all have the same type
 
 We also want to make sure our implementation correctly returns a value which is
 a record with a field `keys` that is an array of strings, and a field `values`
@@ -189,18 +190,20 @@ function contract for `split` has the following limitations:
   potentially back into unhelpful dynamic type errors. Evaluating `config.ncl`
   indeed reports the following error:
 
-        error: Type error
-        ┌─ repl-input-12:6:27
-        │
-      6 │         keys = acc.keys @ pair.key,
-        │                           ^^^^^^^^ This expression has type Str, but Array was expected
-        │
-        ┌─ repl-input-13:1:45
-        │
-      1 │ lib.split [{key = "foo", value = 1}, {key = "bar", value = 2}]
-        │                                             ----- evaluated to this
-        │
-        = @, 2nd operand
+     ```text
+     error: Type error
+       ┌─ repl-input-12:6:27
+       │
+     6 │         keys = acc.keys @ pair.key,
+       │                           ^^^^^^^^ This expression has type Str, but Array was expected
+       │
+       ┌─ repl-input-13:1:45
+       │
+     1 │ lib.split [{key = "foo", value = 1}, {key = "bar", value = 2}]
+       │                                             ----- evaluated to this
+       │
+       = @, 2nd operand
+     ```
 
   This error is not very helpful to the caller. It points to inside the
   implementation of `split`, and to the `key = "bar"` part of the argument,
@@ -223,7 +226,7 @@ correctly reported.
 What's more, intermediate values are also typechecked. Evaluating or just
 typechecking `lib.ncl` already reports an error:
 
-```
+```text
 error: Incompatible rows declaration
   ┌─ repl-input-14:9:7
   │
@@ -285,7 +288,7 @@ let level = 1 in
 
 We get:
 
-```
+```text
 error: incompatible types
   ┌─ repl-input-0:3:26
   │
@@ -317,7 +320,7 @@ let level = 4 in
 
 This correctly reports an error, and even gives the computed offending value:
 
-```
+```text
 error: contract broken by a value.
   ┌─ :1:1
   │

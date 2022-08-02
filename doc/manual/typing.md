@@ -44,7 +44,7 @@ example:
 `version` is a string, and can't be added to a number. If we try to export this
 configuration using `nickel export`, we get a reasonable error message:
 
-```
+```text
 error: Type error
   ┌─ repl-input-3:8:16
   │
@@ -68,7 +68,8 @@ filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
 ```
 
 Result:
-```
+
+```text
 error: Type error
   ┌─ repl-input-11:2:32
   │
@@ -102,6 +103,7 @@ annotation. We will refer to such an annotated expression as a *statically typed
 block*.
 
 Example:
+
 ```nickel
 # Let binding
 let f : Num -> Bool = fun x => x % 2 == 0 in
@@ -126,7 +128,8 @@ filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]) : Array Num
 ```
 
 Result:
-```
+
+```text
 error: Incompatible types
   ┌─ repl-input-12:3:37
   │
@@ -170,24 +173,29 @@ The following type constructors are available:
 - **Array**: `Array T`. An array of elements of type `T`.
 
   Example:
+
   ```nickel
   let x : Array (Array Num) = [[1,2], [3,4]] in
   array.flatten x : Array Num
   ```
+
 - **Record**: `{field1: T1, .., fieldn: Tn}`. A record whose field
   names are known statically as `field1`, .., `fieldn`, respectively of type
   `T1`, .., `Tn`.
 
   Example:
+
   ```nickel
   let pair : {fst: Num, snd: Str} = {fst = 1, snd = "a"} in
   pair.fst : Num
   ```
+
 - **Dynamic record**: `{_: T}`. A record whose field
   names are statically unknown but are all of type `T`.  Typically used to model
   dictionaries.
 
   Example:
+
   ```nickel
   let occurrences : {_: Num} = {a = 1, b = 3, c = 0} in
   record.map (fun char count => count + 1) occurrences : {_ : Num}
@@ -200,6 +208,7 @@ The following type constructors are available:
   able to detect incomplete matches, for example.
 
   Example:
+
   ```nickel
   let protocol : [| `http, `ftp, `sftp |] = `http in
   (switch {
@@ -209,10 +218,12 @@ The following type constructors are available:
   } protocol) : Num
   ```
 
-- **Arrow (function)**: `S -> T`. A function taking arguments of type `S` and returning a value of
-  type `T`. For multi-parameters functions, just iterate the arrow constructor.
+- **Arrow (function)**: `S -> T`. A function taking arguments of type `S` and
+  returning a value of type `T`. For multi-parameters functions, just iterate
+  the arrow constructor.
 
   Example:
+
   ```nickel
   {
     incr : Num -> Num = fun x => x + 1,
@@ -285,7 +296,8 @@ result) : Array Num
 ```
 
 Result:
-```
+
+```text
 error: Incompatible types
   ┌─ repl-input-35:2:37
   │
@@ -332,7 +344,7 @@ let r3 = {may = 1300, june = 400, total = may + june} in
 }) : {partial1: Num, partial2: Num}
 ```
 
-```
+```text
 error: Type error: extra row `sept`
   ┌─ repl-input-40:8:23
   │
@@ -368,6 +380,7 @@ let r3 = {may = 1300, june = 400, total = may + june} in
 ```
 
 Result:
+
 ```nickel
 {partial1 = 570, partial2 = 1770}
 ```
@@ -438,7 +451,8 @@ array.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
 ```
 
 Result:
-```
+
+```text
 error: Blame error: contract broken by the caller.
   ┌─ :1:17
   │
@@ -475,11 +489,11 @@ We call `filter` from a dynamically typed location, but still get a spot-on
 error. To precisely avoid dynamically code injecting values of the wrong type
 inside statically typed blocks via function calls, the interpreter protects said
 blocks by a contract. Contracts form a principled runtime verification scheme.
-Please refer to the [dedicated manual section](./contracts.md) for more details, but
-for now, you can just remember that *any type annotation* (wherever it is) gives
-rise at runtime to a corresponding contract application. In other words, `foo:
-T` and `foo | T` (here `|` is contract application, not the row tail separator)
-behave exactly the same at *runtime*.
+Please refer to the [dedicated manual section](./contracts.md) for more details,
+but for now, you can just remember that *any type annotation* (wherever it is)
+gives rise at runtime to a corresponding contract application. In other words,
+`foo: T` and `foo | T` (here `|` is contract application, not the row tail
+separator) behave exactly the same at *runtime*.
 
 Thanks to this guard, you can statically type your library functions and use
 them from dynamically typed code while still enjoying good error messages.
@@ -496,7 +510,8 @@ let x = 0 + 1 in
 ```
 
 Result:
-```
+
+```text
 error: Incompatible types
   ┌─ repl-input-6:1:6
   │
@@ -514,6 +529,7 @@ evaluates to a number but is rejected by the typechecker because it uses dynamic
 idioms. In this case, we can trade a type annotation for a contract application:
 
 Example:
+
 ```nickel
 let x | Num = if true then 0 else "a" in
 (1 + x : Num)
@@ -544,7 +560,8 @@ because of the type mismatch between the if branches:
 ```
 
 Result:
-```
+
+```text
 error: Incompatible types
   ┌─ repl-input-46:1:27
   │
@@ -556,10 +573,9 @@ error: Incompatible types
   = These types are not compatible
 ```
 
-**Apparent type**
-
-As a side note, annotations are not always needed to use dynamically typed code
-inside a statically typed block. The following example is accepted:
+**Apparent type**: As a side note, annotations are not always needed to use
+dynamically typed code inside a statically typed block. The following example is
+accepted:
 
 ```nickel
 let x = 1 in
@@ -597,8 +613,9 @@ typechecker on, a contract annotation switches it back off.
 
 **Warning**: as of version 0.2.x, using contracts as types won't work in the
 majority of cases (typechecking will fail with a "can't compare contract types"
-error). This is temporary and will likely be fixed in the upcoming 0.3.x release. For more
-details, see issues [#701](https://github.com/tweag/nickel/issues/701) and
+error). This is temporary and will likely be fixed in the upcoming 0.3.x
+release. For more details, see issues
+[#701](https://github.com/tweag/nickel/issues/701) and
 [#724](https://github.com/tweag/nickel/issues/724).
 
 <!-- TODO: find a good name for this section. Will need rework after merging
@@ -621,7 +638,8 @@ let Port = contract.from_predicate (fun value =>
 But this program is unfortunately rejected by the typechecker:
 
 Result:
-```
+
+```text
 error: Incompatible types
   ┌─ repl-input-0:7:2
   │
