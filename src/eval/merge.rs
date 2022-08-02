@@ -432,7 +432,6 @@ pub fn merge(
             (MergeMode::Contract(label), Term::Record(..)) => {
                 Err(EvalError::BlameError(label, call_stack.clone()))
             }
-
             // The following cases are either errors or not yet implemented
             _ => Err(EvalError::MergeIncompatibleArgs(
                 RichTerm {
