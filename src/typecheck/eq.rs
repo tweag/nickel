@@ -123,8 +123,8 @@ fn contract_eq_bounded(
         (Num(n1), Num(n2)) => n1 == n2,
         (Str(s1), Str(s2)) => s1 == s2,
         (Enum(id1), Enum(id2)) => id1 == id2,
-        (Sym(s1), Sym(s2)) => s1 == s2,
-        (Wrapped(key1, inner1), Wrapped(key2, inner2)) => {
+        (SealingKey(s1), SealingKey(s2)) => s1 == s2,
+        (Sealed(key1, inner1), Sealed(key2, inner2)) => {
             key1 == key2 && contract_eq_bounded(state, inner1, env1, inner2, env2)
         }
         // We only compare string chunks when they represent a plain string (they don't contain any

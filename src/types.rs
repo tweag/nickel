@@ -241,9 +241,17 @@ impl Types {
             AbsType::Flat(ref t) => t.clone(),
             AbsType::Var(ref id) => get_var(&h, id, true)?,
             AbsType::Forall(ref i, ref t) => {
-                let inst_var = mk_app!(contract::forall_var(), Term::Sym(*sy), Term::Bool(pol));
+                let inst_var = mk_app!(
+                    contract::forall_var(),
+                    Term::SealingKey(*sy),
+                    Term::Bool(pol)
+                );
 
-                let inst_tail = mk_app!(contract::forall_tail(), Term::Sym(*sy), Term::Bool(pol));
+                let inst_tail = mk_app!(
+                    contract::forall_tail(),
+                    Term::SealingKey(*sy),
+                    Term::Bool(pol)
+                );
 
                 h.insert(i.clone(), (inst_var, inst_tail));
                 *sy += 1;

@@ -110,7 +110,7 @@ fn records_contracts_poly() {
         "let f | forall a. {foo: Num ; a} -> { ; a} = fun x => %record_insert% \"foo\" x 1 in f";
 
     assert_raise_blame!(&format!("{} {{}}", bad_cst));
-    // The polymorphic parts is protected by hiding it. Thus, trying to access the protected field
+    // The polymorphic part is protected by hiding it. Thus, trying to access the protected field
     // gives a field missing error, instead of a blame error.
     assert_matches!(
         eval(&format!("{} {{a=1}}", bad_acc)),
