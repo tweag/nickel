@@ -427,36 +427,25 @@ pub fn merge(
                 env,
             })
         }
-        // We want to merge a non-record term with a record contract
-        (t1_, t2_ @ Term::Record(..)) => {
-            if let MergeMode::Contract(label) = mode {
+        (t1_, t2_) => match (mode, &t2_) {
+            // We want to merge a non-record term with a record contract
+            (MergeMode::Contract(label), Term::Record(..)) => {
                 Err(EvalError::BlameError(label, call_stack.clone()))
-            } else {
-                Err(EvalError::MergeIncompatibleArgs(
-                    RichTerm {
-                        term: SharedTerm::new(t1_),
-                        pos: pos1,
-                    },
-                    RichTerm {
-                        term: SharedTerm::new(t2_),
-                        pos: pos2,
-                    },
-                    pos_op,
-                ))
             }
-        }
-        //The following cases are either errors or not yet implemented
-        (t1_, t2_) => Err(EvalError::MergeIncompatibleArgs(
-            RichTerm {
-                term: SharedTerm::new(t1_),
-                pos: pos1,
-            },
-            RichTerm {
-                term: SharedTerm::new(t2_),
-                pos: pos2,
-            },
-            pos_op,
-        )),
+
+            // The following cases are either errors or not yet implemented
+            _ => Err(EvalError::MergeIncompatibleArgs(
+                RichTerm {
+                    term: SharedTerm::new(t1_),
+                    pos: pos1,
+                },
+                RichTerm {
+                    term: SharedTerm::new(t2_),
+                    pos: pos2,
+                },
+                pos_op,
+            )),
+        },
     }
 }
 
