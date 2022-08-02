@@ -1,6 +1,7 @@
 ---
 slug: contracts
 ---
+
 # Contracts in Nickel
 
 (For the motivation behind contracts and a high-level overview of contracts and
@@ -32,7 +33,7 @@ are performed:
 2. Check that the result is a number.
 3. If it is, return the expression unchanged. Otherwise, raise an error.
 
-```
+```text
 $ nickel repl
 nickel>1 + 1 | Num
 2
@@ -72,8 +73,8 @@ A custom contract is a function of two arguments:
   `contract.blame_with` when the contract isn't satisfied.
 - The value being checked.
 
-Upon success, the contract must return the original value. We will see the reason why
-in the [laziness](#laziness) section. To signal failure, we use
+Upon success, the contract must return the original value. We will see the
+reason why in the [laziness](#laziness) section. To signal failure, we use
 `contract.blame` or its variant `contract.blame_with` that takes an additional
 error message as a parameter. `blame` immediately aborts the execution and
 reports a contract violation error.
@@ -82,7 +83,7 @@ In `IsFoo`, we first test if the value is a string, and then if it is equal to
 `"foo"`, in which case the contract succeeds. Otherwise, the contract fails with
 appropriate error messages. Let us try:
 
-```
+```text
 nickel>1 | IsFoo
 error: contract broken by a value [not a string].
 [..]
@@ -254,7 +255,7 @@ existing contracts seamlessly as building blocks for new contracts.
 
 If we export this example to json, we get:
 
-```
+```console
 $ nickel -f config.ncl export
 error: contract broken by a value.
    ┌─ :1:1
@@ -302,7 +303,7 @@ Additionally to defining the contracts of fields, record contract can also
 attach metadata (see [merging](./merging.md)) to fields, such as a documentation
 or default value:
 
-```
+```text
 nickel>let MyConfig = {
     foo | doc "This documentation will propagate to the final value!"
         | Str
@@ -326,7 +327,7 @@ nickel>:query config.foo
 
 By default, record contracts are closed, meaning that additional fields are forbidden:
 
-```
+```text
 nickel>let Contract = {foo | Str}
 nickel>{foo = "a", bar = 1} | Contract
 error: contract broken by a value [extra field `bar`].
@@ -336,7 +337,7 @@ error: contract broken by a value [extra field `bar`].
 If you want to allow additional fields, append `, ..` after the last field
 definition to define an open contract:
 
-```
+```text
 nickel>let Contract = {foo | Str, ..}
 nickel>{foo = "a", bar = 1} | Contract
 { foo = <contract,value="a">, bar = 1}
@@ -350,7 +351,7 @@ contract or a normal value. If a field is defined both in the contract and the
 checked value, the two definitions will be merged in the final result. For
 example:
 
-```
+```text
 nickel>let Secure = {
   must_be_very_secure | Bool = true,
   data | Str,
@@ -388,7 +389,7 @@ fields: thus, the contract `{bar | Str}` attached to `foo` will actually behave
 as an open contract, even if you didn't use `..`. This is usually not what you
 want:
 
-```
+```text
 nickel>let ContractPipe = {
   sub_field | {foo | Str}
 }
@@ -418,7 +419,7 @@ as contracts. In fact, any type constructor of the
 An array contract checks that the value is an array and applies the parameter
 contract to each element:
 
-```
+```text
 nickel>let VeryBig = contract.from_predicate (fun value =>
   builtin.is_num value
   && value >= 1000)
@@ -474,7 +475,7 @@ have a bug that you need to fix.
 The interpreter automatically performs book-keeping for functions contracts in
 order to make this caller/callee distinction:
 
-```
+```text
 nickel>let add_semi | Str -> Str = fun x => x ++ ";" in
 add_semi 1
 error: contract broken by the caller.
@@ -492,7 +493,7 @@ The beauty of function contracts is that they gracefully scale to higher-order
 functions as well. Higher-order functions are functions that take other
 functions as parameters. Here is an example:
 
-```
+```text
 nickel>let apply_fun | (Num -> Num) -> Num = fun f => f 0 in
 apply_fun (fun x => "a")
 error: contract broken by the caller.
@@ -540,7 +541,7 @@ information on a large configuration without having to actually evaluate
 everything. We will use a dummy failing expression `1 + "a"` to observe where
 evaluation takes place:
 
-```
+```text
 nickel>let config = {fail = 1 + "a", data | doc "Some information" = 42}
 nickel>:query config.data
 * value: 42
@@ -629,7 +630,7 @@ value and continues with the second argument (here, our wrapped `value`).
 
 Let us see if we indeed preserved laziness:
 
-```
+```text
 nickel>let config | NumBoolDict = {
     "1" = 1 + "a", # Same as our previous "fail"
     "0" | doc "Some information" = true,
@@ -642,7 +643,7 @@ nickel>:query config."0"
 Yes! Our contract doesn't unduly cause the evaluation of the field `"1"`. Does
 it check anything, though?
 
-```
+```text
 nickel>let config | NumBoolDict = {
   not_a_number = false,
   "0" | doc "Some information" = false,
