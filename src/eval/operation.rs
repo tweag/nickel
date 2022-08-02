@@ -1976,20 +1976,18 @@ fn process_binary_operation(
                             // applied because we don't have a way of tracking which elements
                             // should take which contracts.
 
-                            let ctrs_left = attrs1
+                            let (ctrs_left, ctrs_common) : (Vec<_>, Vec<_>) = attrs1
                                 .pending_contracts
-                                .iter()
-                                .filter(|ctr| !attrs2.pending_contracts.contains(ctr))
-                                .cloned();
+                                .into_iter()
+                                .partition(|ctr| !attrs2.pending_contracts.contains(ctr));
 
                             let ctrs_right = attrs2
                                 .pending_contracts
-                                .iter()
-                                .filter(|ctr| !attrs1.pending_contracts.contains(ctr))
-                                .cloned();
+                                .into_iter()
+                                .filter(|ctr| !ctrs_left.contains(ctr) && !ctrs_common.contains(ctr));
 
                             ts.extend(ts1.into_iter().map(|t|
-                                apply_contracts(t, ctrs_left.clone(), pos1)
+                                apply_contracts(t, ctrs_left.iter().cloned(), pos1)
                                 .closurize(&mut env, env1.clone())
                             ));
 
@@ -1997,12 +1995,6 @@ fn process_binary_operation(
                                 apply_contracts(t, ctrs_right.clone(), pos2)
                                 .closurize(&mut env, env2.clone())
                             ));
-
-                            let ctrs_common = attrs1
-                                .pending_contracts
-                                .into_iter()
-                                .filter(|ctr| attrs2.pending_contracts.contains(ctr))
-                                .collect();
 
                             let attrs = ArrayAttrs {
                                 closurized: true,
