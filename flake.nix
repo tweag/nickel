@@ -296,27 +296,22 @@
           '';
         }).vsix;
 
-      userManual = pkgs.stdenv.mkDerivation {
+      userManual = {check ? false}: pkgs.stdenv.mkDerivation {
         name = "nickel-user-manual-${version}";
-        src = ./doc/manual;
+        src = pathsAsSrc [ ./doc ./.markdownlint.json ];
+
+        doCheck = check;
+
         installPhase = ''
           mkdir -p $out
           cp -r ./ $out
         '';
-      };
-
-      userManualMarkdownLint = pkgs.stdenv.mkDerivation {
-        name = "nickel-user-manual-markdown-lint-${version}";
-        src = pathsAsSrc [ ./doc/manual ./.markdownlint.json ];
-        buildInputs = [
-            pkgs.nodePackages.markdownlint-cli2
-        ];
 
         checkPhase = ''
           ${pkgs.nodePackages.markdownlint-cli2}/bin/markdownlint-cli2 \
             doc/manual/*.md
-        ''
-      }
+        '';
+      };
 
       stdlibDoc = pkgs.stdenv.mkDerivation {
         name = "nickel-stdlib-doc-${version}";
@@ -334,34 +329,35 @@
 
     in
     rec {
-      defaultPackage = packages.build;
       packages = {
-        build = buildNickel { };
-        buildWasm = buildNickelWasm { optimize = true; };
-        dockerImage = buildDocker packages.build; # TODO: docker image should be a passthru
-        inherit vscodeExtension;
-        inherit userManual;
-        inherit stdlibDoc;
+        #build = buildNickel { };
+        #buildWasm = buildNickelWasm { optimize = true; };
+        #dockerImage = buildDocker packages.build; # TODO: docker image should be a passthru
+        #inherit vscodeExtension;
+        #inherit userManual;
+        #inherit stdlibDoc;
       };
 
-      devShell = devShells.stable;
-      devShells = forEachRustChannel
-        (channel: {
-          name = channel;
-          value = buildNickel { inherit channel; isDevShell = true; };
-        });
+      #devShells = forEachRustChannel
+      #  (channel: {
+      #    name = channel;
+      #    value = buildNickel { inherit channel; isDevShell = true; };
+      #  });
 
       checks = {
-        # wasm-opt can take long: eschew optimizations in checks
-        wasm = buildNickelWasm { channel = "stable"; optimize = false; };
-        pre-commit = defaultPackage.pre-commit;
-        manual-markdown-lint = userManualMarkdownLint;
-      } // (forEachRustChannel (channel:
-        {
-          name = "nickel-against-${channel}-rust-channel";
-          value = buildNickel { inherit channel; };
-        }
-      ));
+        user-manual = userManual {check = true;}; 
+      };
+      # checks = {
+      #   # wasm-opt can take long: eschew optimizations in checks
+      #   wasm = buildNickelWasm { channel = "stable"; optimize = false; };
+      #   pre-commit = defaultPackage.pre-commit;
+      #   manual-markdown-lint = userManualMarkdownLint;
+      # } // (forEachRustChannel (channel:
+      #   {
+      #     name = "nickel-against-${channel}-rust-channel";
+      #     value = buildNickel { inherit channel; };
+      #   }
+      # ));
     }
     );
 }
