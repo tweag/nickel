@@ -11,12 +11,12 @@ use super::error::ParseError;
 
 use crate::{
     destruct::Destruct,
-    identifier::Ident,
+    identifier::{Ident, NickelStr},
     label::Label,
     mk_app, mk_fun,
     position::{RawSpan, TermPos},
     term::{make as mk_term, BinaryOp, MetaValue, RecordAttrs, RichTerm, StrChunk, Term, UnaryOp},
-    types::Types, interner::Symbol,
+    types::Types,
 };
 
 /// Distinguish between the standard string separators `"`/`"` and the multi-line string separators
@@ -120,7 +120,7 @@ pub fn mk_access(access: RichTerm, root: RichTerm) -> RichTerm {
     if let Some(label) = label {
         mk_term::op1(
             UnaryOp::StaticAccess(Ident {
-                label: Symbol::new(label),
+                label: NickelStr::from(label),
                 pos: access.pos,
             }),
             root,
@@ -166,7 +166,7 @@ pub fn elaborate_field_path(
 
             if let Some(static_access) = static_access {
                 let id = Ident {
-                    label: Symbol::new(static_access),
+                    label: NickelStr::from(static_access),
                     pos: exp.pos,
                 };
 
@@ -237,7 +237,7 @@ where
                         insert_static_field(
                             &mut static_map,
                             Ident {
-                                label: Symbol::new(buffer),
+                                label: NickelStr::from(buffer),
                                 pos: e.pos,
                             },
                             t,

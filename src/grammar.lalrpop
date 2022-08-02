@@ -55,7 +55,7 @@ use crate::{
     mk_app,
     mk_opn,
     mk_fun,
-    identifier::Ident,
+    identifier::{Ident, NickelStr},
     destruct::{Match, LastMatch, Destruct},
     term::{
         BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
@@ -64,7 +64,7 @@ use crate::{
     types::{Types, AbsType},
     position::TermPos,
     label::Label,
-    interner::Interner
+    interner::Interner,
 };
 
 grammar<'input, 'err, 'wcard>(
@@ -441,7 +441,7 @@ DefaultAnnot: MetaValue = "?" <t: Term> => MetaValue {
 };
 
 Ident: Ident = <l:@L> <i: "identifier"> <r:@R> =>
-    Ident { label: interner.intern(i), pos: mk_pos(src_id, l, r) };
+    Ident { label: NickelStr::from(interner.intern(i)), pos: mk_pos(src_id, l, r) };
 
 Bool: bool = {
     "true" => true,
