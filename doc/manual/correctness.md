@@ -216,7 +216,7 @@ candidate for static typing, which will help:
 - Report errors before execution takes place.
 
 Even if the call site is not statically typed, a type annotation also gives rise
-to a contract (see the [typing section][./typing.md] for more details). Thus,
+to a contract (see the [typing section](./typing.md) for more details). Thus,
 any issue with the arguments passed or the return value will be caught and
 correctly reported.
 
