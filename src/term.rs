@@ -189,7 +189,7 @@ impl Default for BindingType {
 /// A contract with its associated data.
 #[derive(Debug, PartialEq, Clone)]
 pub struct PendingContract {
-    /// The "pending" contract, can be a function or a record.
+    /// The pending contract, can be a function or a record.
     pub contract: RichTerm,
     /// The blame label.
     pub label: Label,
