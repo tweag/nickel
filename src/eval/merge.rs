@@ -367,12 +367,6 @@ pub fn merge(
             rev_thunks(m1.values_mut(), &mut env1);
             rev_thunks(m2.values_mut(), &mut env2);
 
-            // We save the original fields before they are potentially merged in order to patch
-            // their environment in the final record (cf `fixpoint::patch_fields`). Note that we
-            // are only cloning shared terms (`Rc`s) here.
-            let m1_values: Vec<_> = m1.values().cloned().collect();
-            let m2_values: Vec<_> = m2.values().cloned().collect();
-
             let (left, center, right) = hashmap::split(&m1, &m2);
 
             match mode {
@@ -404,11 +398,9 @@ pub fn merge(
             }));
 
             let rec_env = fixpoint::rec_env(m.iter(), &env)?;
-            m1_values
-                .iter()
+            m1.values()
                 .try_for_each(|rt| fixpoint::patch_field(rt, &rec_env, &env1))?;
-            m2_values
-                .iter()
+            m2.values()
                 .try_for_each(|rt| fixpoint::patch_field(rt, &rec_env, &env2))?;
 
             let final_pos = if mode == MergeMode::Standard {
