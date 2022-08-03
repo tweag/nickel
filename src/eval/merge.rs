@@ -389,20 +389,19 @@ pub fn merge(
             let mut m = HashMap::with_capacity(left.len() + center.len() + right.len());
             let mut env = Environment::new();
 
-            for (field, t) in left.into_iter() {
-                m.insert(field.clone(), t.clone().closurize(&mut env, env1.clone()));
-            }
-
-            for (field, t) in right.into_iter() {
-                m.insert(field.clone(), t.clone().closurize(&mut env, env2.clone()));
-            }
-
-            for (field, (t1, t2)) in center.into_iter() {
-                m.insert(
+            m.extend(
+                left.map(|(field, t)| (field.clone(), t.clone().closurize(&mut env, env1.clone()))),
+            );
+            m.extend(
+                right
+                    .map(|(field, t)| (field.clone(), t.clone().closurize(&mut env, env2.clone()))),
+            );
+            m.extend(center.map(|(field, (t1, t2))| {
+                (
                     field.clone(),
                     merge_closurize(&mut env, t1.clone(), env1.clone(), t2.clone(), env2.clone()),
-                );
-            }
+                )
+            }));
 
             let rec_env = fixpoint::rec_env(m.iter(), &env)?;
             m1_values
