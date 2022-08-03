@@ -56,7 +56,7 @@ pub fn get_uop_type(
             (mk_typewrapper::dynamic(), mk_typewrapper::dynamic())
         }
         // Sym -> Dyn -> Dyn
-        UnaryOp::Wrap() => (
+        UnaryOp::Seal() => (
             mk_typewrapper::sym(),
             mk_tyw_arrow!(AbsType::Dyn(), AbsType::Dyn()),
         ),
@@ -228,7 +228,7 @@ pub fn get_bop_type(
             mk_tyw_arrow!(mk_typewrapper::dynamic(), mk_typewrapper::dynamic()),
         ),
         // Sym -> Dyn -> Dyn -> Dyn
-        BinaryOp::Unwrap() => (
+        BinaryOp::Unseal() => (
             mk_typewrapper::sym(),
             mk_typewrapper::dynamic(),
             mk_tyw_arrow!(AbsType::Dyn(), AbsType::Dyn()),

@@ -119,15 +119,15 @@ pub enum Term {
     #[serde(skip)]
     OpN(NAryOp, Vec<RichTerm>),
 
-    /// A symbol.
+    /// A key locking a sealed term.
     ///
-    /// A unique tag corresponding to a type variable. See `Wrapped` below.
+    /// A unique key corresponding to a type variable. See [`Term::Wrapped`] below.
     #[serde(skip)]
-    Sym(i32),
+    SealingKey(SealingKey),
 
-    /// A wrapped term.
+    /// A sealed term.
     ///
-    /// Wrapped terms are introduced by contracts on polymorphic types. Take the following example:
+    /// Sealed terms are introduced by contracts on polymorphic types. Take the following example:
     ///
     /// ```text
     /// let f = Assume(forall a. forall b. a -> b -> a, fun x y => y) in
@@ -138,13 +138,13 @@ pub enum Term {
     /// - Assign a unique identifier to each type variable: say `a => 1`, `b => 2`
     /// - For each cast on a negative occurrence of a type variable `a` or `b` (corresponding to an
     /// argument position), tag the argument with the associated identifier. In our example, `f
-    /// true "a"` will push `Wrapped(1, true)` then `Wrapped(2, "a")` on the stack.
+    /// true "a"` will push `Sealed(1, true)` then `Sealed(2, "a")` on the stack.
     /// - For each cast on a positive occurrence of a type variable, this contract check that the
-    /// term is of the form `Wrapped(id, term)` where `id` corresponds to the identifier of the
-    /// type variable. In our example, the last cast to `a` finds `Wrapped(2, "a")`, while it
-    /// expected `Wrapped(1, _)`, hence it raises a positive blame.
+    /// term is of the form `Sealed(id, term)` where `id` corresponds to the identifier of the
+    /// type variable. In our example, the last cast to `a` finds `Sealed(2, "a")`, while it
+    /// expected `Sealed(1, _)`, hence it raises a positive blame.
     #[serde(skip)]
-    Wrapped(i32, RichTerm),
+    Sealed(SealingKey, RichTerm),
 
     #[serde(serialize_with = "crate::serialize::serialize_meta_value")]
     #[serde(skip_deserializing)]
@@ -159,6 +159,8 @@ pub enum Term {
     #[serde(skip)]
     ParseError,
 }
+
+pub type SealingKey = i32;
 
 impl From<MetaValue> for Term {
     fn from(m: MetaValue) -> Self {
@@ -380,12 +382,12 @@ impl Term {
                     func(t2);
                 });
             }
-            Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | Sym(_) | Enum(_) | Import(_)
+            Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | SealingKey(_) | Enum(_) | Import(_)
             | ResolvedImport(_) => {}
             Fun(_, ref mut t)
             | FunPattern(_, _, ref mut t)
             | Op1(_, ref mut t)
-            | Wrapped(_, ref mut t) => {
+            | Sealed(_, ref mut t) => {
                 func(t);
             }
             MetaValue(ref mut meta) => {
@@ -432,8 +434,8 @@ impl Term {
             Term::Enum(_) => Some("Enum"),
             Term::Record(..) | Term::RecRecord(..) => Some("Record"),
             Term::Array(..) => Some("Array"),
-            Term::Sym(_) => Some("Sym"),
-            Term::Wrapped(_, _) => Some("Wrapped"),
+            Term::SealingKey(_) => Some("SealingKey"),
+            Term::Sealed(_, _) => Some("Sealed"),
             Term::MetaValue(_) => Some("Metavalue"),
             Term::Let(..)
             | Term::LetPattern(..)
@@ -484,8 +486,8 @@ impl Term {
             }
             Term::Record(..) | Term::RecRecord(..) => String::from("{ ... }"),
             Term::Array(..) => String::from("[ ... ]"),
-            Term::Sym(_) => String::from("<sym>"),
-            Term::Wrapped(_, _) => String::from("<wrapped>"),
+            Term::SealingKey(_) => String::from("<sealing key>"),
+            Term::Sealed(_, _) => String::from("<sealed>"),
             Term::MetaValue(ref meta) => {
                 let mut content = String::new();
 
@@ -562,7 +564,7 @@ impl Term {
             | Term::Enum(_)
             | Term::Record(..)
             | Term::Array(..)
-            | Term::Sym(_) => true,
+            | Term::SealingKey(_) => true,
             Term::Let(..)
             | Term::LetPattern(..)
             | Term::FunPattern(..)
@@ -572,7 +574,7 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
-            | Term::Wrapped(_, _)
+            | Term::Sealed(_, _)
             | Term::MetaValue(_)
             | Term::Import(_)
             | Term::ResolvedImport(_)
@@ -599,7 +601,7 @@ impl Term {
             | Term::Str(_)
             | Term::Lbl(_)
             | Term::Enum(_)
-            | Term::Sym(_) => true,
+            | Term::SealingKey(_) => true,
             Term::Let(..)
             | Term::LetPattern(..)
             | Term::Record(..)
@@ -612,7 +614,7 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
-            | Term::Wrapped(_, _)
+            | Term::Sealed(_, _)
             | Term::MetaValue(_)
             | Term::Import(_)
             | Term::ResolvedImport(_)
@@ -637,7 +639,7 @@ impl Term {
             | Term::Array(..)
             | Term::Var(..)
             | Term::Op1(..)
-            | Term::Sym(..) => true,
+            | Term::SealingKey(..) => true,
             Term::Let(..)
             | Term::Switch(..)
             | Term::LetPattern(..)
@@ -646,7 +648,7 @@ impl Term {
             | Term::App(..)
             | Term::Op2(..)
             | Term::OpN(..)
-            | Term::Wrapped(..)
+            | Term::Sealed(..)
             | Term::MetaValue(..)
             | Term::Import(..)
             | Term::ResolvedImport(..)
@@ -784,8 +786,8 @@ pub enum UnaryOp {
     /// See `GoDom`.
     GoArray(),
 
-    /// Wrap a term with a type tag (see [`Term::Wrapped`]).
-    Wrap(),
+    /// Seal a term with a sealing key (see [`Term::Sealed`]).
+    Seal(),
 
     /// Force the evaluation of its argument and proceed with the second.
     Seq(),
@@ -933,10 +935,10 @@ pub enum BinaryOp {
     /// operation with its argument. Finally, this operator marks the location of the contract
     /// argument for better error reporting.
     Assume(),
-    /// Unwrap a tagged term.
+    /// Unseal a sealed term.
     ///
-    /// See [`UnaryOp::Wrap`].
-    Unwrap(),
+    /// See [`UnaryOp::Seal`].
+    Unseal(),
     /// Go to a specific field in the type path of a label.
     ///
     /// See `GoDom`.
@@ -1177,10 +1179,10 @@ impl RichTerm {
                     pos,
                 )
             },
-            Term::Wrapped(i, t) => {
+            Term::Sealed(i, t) => {
                 let t = t.traverse(f, state, order)?;
                 RichTerm::new(
-                    Term::Wrapped(i, t),
+                    Term::Sealed(i, t),
                     pos,
                 )
             },

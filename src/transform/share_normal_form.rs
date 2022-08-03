@@ -187,7 +187,7 @@ fn should_share(t: &Term) -> bool {
         | Term::Num(_)
         | Term::Str(_)
         | Term::Lbl(_)
-        | Term::Sym(_)
+        | Term::SealingKey(_)
         | Term::Var(_)
         | Term::Enum(_)
         | Term::Fun(_, _) => false,

@@ -704,7 +704,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
         // loop. Although avoidable, this requires some care and is not currently needed.
         | v @ Term::Fun(..)
         | v @ Term::Lbl(_)
-        | v @ Term::Sym(_)
+        | v @ Term::SealingKey(_)
         | v @ Term::Enum(_)
         | v @ Term::Import(_)
         | v @ Term::ResolvedImport(_) => RichTerm::new(v, pos),
@@ -757,10 +757,10 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
 
             RichTerm::new(Term::OpN(op, ts), pos)
         }
-        Term::Wrapped(i, t) => {
+        Term::Sealed(i, t) => {
             let t = subst(t, global_env, env);
 
-            RichTerm::new(Term::Wrapped(i, t), pos)
+            RichTerm::new(Term::Sealed(i, t), pos)
         }
         Term::Record(map, attrs) => {
             let map = map

@@ -167,10 +167,10 @@ pub enum NormalToken<'input> {
     #[token("%go_array%")]
     GoArray,
 
-    #[token("%wrap%")]
-    Wrap,
-    #[token("%unwrap%")]
-    Unwrap,
+    #[token("%seal%")]
+    Seal,
+    #[token("%unseal%")]
+    Unseal,
     #[token("%embed%")]
     Embed,
     #[token("%record_map%")]
