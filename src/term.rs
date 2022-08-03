@@ -121,7 +121,7 @@ pub enum Term {
 
     /// A key locking a sealed term.
     ///
-    /// A unique key corresponding to a type variable. See [`Term::Wrapped`] below.
+    /// A unique key corresponding to a type variable. See [`Term::Sealed`] below.
     #[serde(skip)]
     SealingKey(SealingKey),
 
