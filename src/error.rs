@@ -348,6 +348,17 @@ pub enum SerializationError {
     Other(String),
 }
 
+/// An error occurred during deserialization to Rust.
+#[derive(Debug, PartialEq, Clone)]
+pub enum RustDeserializationError {
+    InvalidType { expected: String, occurred: String },
+    MissingValue,
+    EmptyMetaValue,
+    UnimplementedType { occurred: String },
+    InvalidRecordLength(usize),
+    Other(String),
+}
+
 /// A general I/O error, occurring when reading a source file or writing an export.
 #[derive(Debug, PartialEq, Clone)]
 pub struct IOError(pub String);
@@ -1581,5 +1592,36 @@ impl ToDiagnostic<FileId> for ReplError {
                     .with_notes(notes)]
             }
         }
+    }
+}
+
+impl std::fmt::Display for RustDeserializationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            RustDeserializationError::InvalidType {
+                ref expected,
+                ref occurred,
+            } => write!(f, "invalid type: {occurred}, expected: {expected}"),
+            RustDeserializationError::MissingValue => write!(f, "missing value"),
+            RustDeserializationError::EmptyMetaValue => write!(f, "empty Metavalue"),
+            RustDeserializationError::InvalidRecordLength(len) => {
+                write!(f, "invalid record length, expected {len}")
+            }
+            RustDeserializationError::UnimplementedType { ref occurred } => {
+                write!(f, "unimplemented conversion from type: {occurred}")
+            }
+            RustDeserializationError::Other(ref err) => write!(f, "{err}"),
+        }
+    }
+}
+
+impl std::error::Error for RustDeserializationError {}
+
+impl serde::de::Error for RustDeserializationError {
+    fn custom<T>(msg: T) -> Self
+    where
+        T: std::fmt::Display,
+    {
+        RustDeserializationError::Other(msg.to_string())
     }
 }

@@ -1,4 +1,5 @@
 pub mod cache;
+pub mod deserialize;
 pub mod destruct;
 pub mod environment;
 pub mod error;
