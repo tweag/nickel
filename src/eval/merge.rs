@@ -373,12 +373,12 @@ pub fn merge(
             let m1_values: Vec<_> = m1.values().cloned().collect();
             let m2_values: Vec<_> = m2.values().cloned().collect();
 
-            let (left, center, right) = hashmap::split(m1, m2);
+            let (left, center, right) = hashmap::split(&m1, &m2);
 
             match mode {
-                MergeMode::Contract(mut lbl) if !attrs2.open && !left.is_empty() => {
+                MergeMode::Contract(mut lbl) if !attrs2.open && left.len() > 0 => {
                     let fields: Vec<String> =
-                        left.keys().map(|field| format!("`{}`", field)).collect();
+                        left.map(|(field, _)| format!("`{}`", field)).collect();
                     let plural = if fields.len() == 1 { "" } else { "s" };
                     lbl.tag = format!("extra field{} {}", plural, fields.join(","));
                     return Err(EvalError::BlameError(lbl, CallStack::new()));
@@ -390,17 +390,17 @@ pub fn merge(
             let mut env = Environment::new();
 
             for (field, t) in left.into_iter() {
-                m.insert(field, t.closurize(&mut env, env1.clone()));
+                m.insert(field.clone(), t.clone().closurize(&mut env, env1.clone()));
             }
 
             for (field, t) in right.into_iter() {
-                m.insert(field, t.closurize(&mut env, env2.clone()));
+                m.insert(field.clone(), t.clone().closurize(&mut env, env2.clone()));
             }
 
             for (field, (t1, t2)) in center.into_iter() {
                 m.insert(
-                    field,
-                    merge_closurize(&mut env, t1, env1.clone(), t2, env2.clone()),
+                    field.clone(),
+                    merge_closurize(&mut env, t1.clone(), env1.clone(), t2.clone(), env2.clone()),
                 );
             }
 
@@ -519,26 +519,30 @@ pub mod hashmap {
     /// Split two hashmaps m1 and m2 in three parts (left,center,right), where left holds bindings
     /// `(key,value)` where key is not in `m2.keys()`, right is the dual (keys of m2 that are not
     /// in m1), and center holds bindings for keys that are both in m1 and m2.
-    pub fn split<K, V1, V2>(
-        m1: HashMap<K, V1>,
-        m2: HashMap<K, V2>,
-    ) -> (HashMap<K, V1>, HashMap<K, (V1, V2)>, HashMap<K, V2>)
+    pub fn split<'a, K, V1, V2>(
+        m1: &'a HashMap<K, V1>,
+        m2: &'a HashMap<K, V2>,
+    ) -> (
+        impl ExactSizeIterator<Item = (&'a K, &'a V1)>,
+        impl ExactSizeIterator<Item = (&'a K, (&'a V1, &'a V2))>,
+        impl ExactSizeIterator<Item = (&'a K, &'a V2)>,
+    )
     where
         K: std::hash::Hash + Eq,
     {
-        let mut left = HashMap::new();
-        let mut center = HashMap::new();
-        let mut right = m2;
+        let mut left = vec![];
+        let mut center = vec![];
+        let mut right = m2.iter().collect::<HashMap<_, _>>();
 
         for (key, value) in m1 {
             if let Some(v2) = right.remove(&key) {
-                center.insert(key, (value, v2));
+                center.push((key, (value, v2)));
             } else {
-                left.insert(key, value);
+                left.push((key, value));
             }
         }
 
-        (left, center, right)
+        (left.into_iter(), center.into_iter(), right.into_iter())
     }
 
     #[cfg(test)]
@@ -551,12 +555,13 @@ pub mod hashmap {
             let m2 = HashMap::<isize, isize>::new();
 
             m1.insert(1, 1);
-            let (mut left, center, right) = split(m1, m2);
+            let (left, center, right) = split(&m1, &m2);
+            let mut left: HashMap<_, _> = left.collect();
 
-            if left.remove(&1) == Some(1)
-                && left.is_empty()
-                && center.is_empty()
-                && right.is_empty()
+            if left.remove(&1) == Some(&1)
+                && left.len() == 0
+                && center.len() == 0
+                && right.len() == 0
             {
                 Ok(())
             } else {
@@ -570,12 +575,13 @@ pub mod hashmap {
             let mut m2 = HashMap::new();
 
             m2.insert(1, 1);
-            let (left, center, mut right) = split(m1, m2);
+            let (left, center, right) = split(&m1, &m2);
+            let mut right: HashMap<_, _> = right.collect();
 
-            if right.remove(&1) == Some(1)
-                && right.is_empty()
-                && left.is_empty()
-                && center.is_empty()
+            if right.remove(&1) == Some(&1)
+                && right.len() == 0
+                && left.len() == 0
+                && center.len() == 0
             {
                 Ok(())
             } else {
@@ -592,12 +598,13 @@ pub mod hashmap {
 
             m1.insert(1, 1);
             m2.insert(1, 2);
-            let (left, mut center, right) = split(m1, m2);
+            let (left, center, right) = split(&m1, &m2);
+            let mut center: HashMap<_, _> = center.collect();
 
-            if center.remove(&1) == Some((1, 2))
-                && center.is_empty()
-                && left.is_empty()
-                && right.is_empty()
+            if center.remove(&1) == Some((&1, &2))
+                && center.len() == 0
+                && left.len() == 0
+                && right.len() == 0
             {
                 Ok(())
             } else {
@@ -616,14 +623,17 @@ pub mod hashmap {
             m1.insert(2, 1);
             m2.insert(1, -1);
             m2.insert(3, -1);
-            let (mut left, mut center, mut right) = split(m1, m2);
+            let (left, center, right) = split(&m1, &m2);
+            let mut left: HashMap<_, _> = left.collect();
+            let mut center: HashMap<_, _> = center.collect();
+            let mut right: HashMap<_, _> = right.collect();
 
-            if left.remove(&2) == Some(1)
-                && center.remove(&1) == Some((1, -1))
-                && right.remove(&3) == Some(-1)
-                && left.is_empty()
-                && center.is_empty()
-                && right.is_empty()
+            if left.remove(&2) == Some(&1)
+                && center.remove(&1) == Some((&1, &-1))
+                && right.remove(&3) == Some(&-1)
+                && left.len() == 0
+                && center.len() == 0
+                && right.len() == 0
             {
                 Ok(())
             } else {

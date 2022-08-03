@@ -2398,14 +2398,16 @@ fn eq(env: &mut Environment, c1: Closure, c2: Closure) -> EqResult {
         (Term::Sym(s1), Term::Sym(s2)) => EqResult::Bool(s1 == s2),
         (Term::Enum(id1), Term::Enum(id2)) => EqResult::Bool(id1 == id2),
         (Term::Record(m1, _), Term::Record(m2, _)) => {
-            let (left, center, right) = merge::hashmap::split(m1, m2);
+            let (left, center, right) = merge::hashmap::split(&m1, &m2);
 
-            if !left.is_empty() || !right.is_empty() {
+            if left.len() > 0 || right.len() > 0 {
                 EqResult::Bool(false)
-            } else if center.is_empty() {
+            } else if center.len() == 0 {
                 EqResult::Bool(true)
             } else {
-                let eqs = center.into_iter().map(|(_, (t1, t2))| (t1, t2));
+                let eqs = center
+                    .into_iter()
+                    .map(|(_, (t1, t2))| (t1.clone(), t2.clone()));
                 gen_eqs(eqs, env, env1, env2)
             }
         }
