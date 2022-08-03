@@ -170,6 +170,10 @@
               };
               markdownlint = {
                 enable = true;
+                excludes = [
+                  "notes/(.+)\\.md$"
+                  "^RELEASES\\.md$"
+                ];
               };
             };
           };
@@ -326,7 +330,7 @@
           name = channel;
           value = buildNickel { inherit channel; isDevShell = true; };
         }
-      ));
+        ));
 
       checks = {
         # wasm-opt can take long: eschew optimizations in checks
