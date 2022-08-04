@@ -412,8 +412,6 @@ impl Linearizer for AnalysisHost {
             )
             .collect();
 
-        eprintln!("Linearized {:#?}", &lin_);
-
         Linearization::new(Completed::new(lin_, scope, id_mapping))
     }
 

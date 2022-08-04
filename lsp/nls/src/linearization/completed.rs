@@ -44,10 +44,7 @@ impl Completed {
     ) -> Vec<&LinearizationItem<Resolved>> {
         let empty = Vec::with_capacity(0);
         (0..scope.len())
-            .flat_map(|end| {
-                eprintln!("in scope {:?}: {:?}", scope, self.scope.get(scope));
-                self.scope.get(&scope[..=end]).unwrap_or(&empty)
-            })
+            .flat_map(|end| self.scope.get(&scope[..=end]).unwrap_or(&empty))
             .map(|id| self.get_item(*id))
             .flatten()
             .collect()
