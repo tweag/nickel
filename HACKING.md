@@ -1,5 +1,4 @@
-The Nickel developer guide
-==========================
+# The Nickel developer guide
 
 There are two ways to set up a development environment for Nickel: using
 [Nix][nix], or directly via your preferred system package manager. Nix is able
@@ -12,12 +11,14 @@ itself_. The reason is that incremental compilation for Rust and Nix is not
 there yet, and incremental rebuilds using only Nix are going to be painfully
 long.
 
-# Content
+## Content
 
 The Nickel repository consist in 3 crates:
 
-- `nickel-lang` (path: `.`). The main crate containing the interpreter as a library as well as the `nickel` binary.
-- `nickel-lang-lsp` (path: `lsp/nls/`). the Nickel Language Server (NLS), an LSP server for Nickel.
+- `nickel-lang` (path: `.`). The main crate containing the interpreter as a
+  library as well as the `nickel` binary.
+- `nickel-lang-lsp` (path: `lsp/nls/`). the Nickel Language Server (NLS), an LSP
+  server for Nickel.
 - `nickel-lang-utilities`: (path: `utilities/`). An auxiliary crate regrouping
    helpers for tests and benchmarks. Not required to build `nickel` itself.
 
@@ -26,9 +27,9 @@ Other noteworthy items:
 - The user manual in `doc/manual/`, as a bunch of markdown files.
 - A VSCode extension for NLS in `lsp/client-extension/`.
 
-# Setup a development environment
+## Setup a development environment
 
-## Using Nix
+### Using Nix
 
 To set up a development environment using a recent Nix (>= 2.4):
 
@@ -37,12 +38,12 @@ To set up a development environment using a recent Nix (>= 2.4):
    in a shell with all the required tool to hack on Nickel (`rust`, `cargo`,
    etc.)
 
-## Without Nix
+### Without Nix
 
 Otherwise, you can install the Rust toolchain separately: follow the
 instructions of the [Rust installation guide][install-rust].
 
-# Building
+## Building
 
 You can build all crates at once:
 
@@ -54,7 +55,7 @@ $ ./target/debug/nls --version
 nickel-lang-lsp 0.1.0
 ```
 
-## Nickel
+### Nickel
 
 To only build the main crate `nickel-lang`, run:
 
@@ -64,7 +65,7 @@ $ ./target/debug/nickel --version
 nickel-lang 0.1.0
 ```
 
-## NLS (nickel-lang-lsp)
+### NLS (nickel-lang-lsp)
 
 To build NLS separately, the LSP server for Nickel, build the `nickel-lang-lsp` crate:
 
@@ -76,7 +77,7 @@ nickel-lang-lsp 0.1.0
 
 (Alternatively, you can run `cargo build` directly inside `lsp/nls/`).
 
-## WebAssembly REPL
+### WebAssembly REPL
 
 There is a WebAssembly (WASM) version of the REPL, which is used for the online
 playground on [nickel-lang.org][nickel-lang.org]. To ease the build, we use the
@@ -88,7 +89,7 @@ compilation is not as good as with direct usage of `cargo`.
 
 Both methods are described below.
 
-### Using Nix
+#### Using Nix
 
 At the root of the repository:
 
@@ -98,7 +99,7 @@ $ ls result/nickel-repl
 LICENSE  package.json nickel_lang_bg.js  nickel_lang_bg.wasm [..]
 ```
 
-### Using Cargo
+#### Using Cargo
 
 1. [Install `wasm-pack`][install-wasm-pack]
 2. Run `wasm-pack` on the `nickel-repl` crate:
@@ -111,7 +112,7 @@ LICENSE  package.json nickel_lang_bg.js  nickel_lang_bg.wasm [..]
    A `pkg` directory, containing the corresponding NPM package, should now be
    available.
 
-# Testing
+## Testing
 
 Tests are run via `cargo test`. They are two types of tests:
 
@@ -147,7 +148,7 @@ fn non_mergeable() {
 }
 ```
 
-# Benchmarking
+## Benchmarking
 
 If your change is likely to impact performance, it is recommended to run the
 benchmark suite on master and on your branch to assess any performance changes.
@@ -156,7 +157,7 @@ Please report your findings in the description of the PR.
 The benchmark suite is located in the `benches/` directory. To run it:
 
 ```shell
-$ cargo bench
+cargo bench
 ```
 
 Note that a full run takes some time, up to a dozen of minutes. You can run
