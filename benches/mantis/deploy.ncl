@@ -55,7 +55,7 @@ fun vars =>
     logLevel | default = "INFO",
     loggers = defaultLoggers,
     job = vars.job,
-    role | [| passive, miner, backup |] = vars.role,
+    role | [| `passive, `miner, `backup |] = vars.role,
   } in
 
   let jobDefs = {
