@@ -8,7 +8,7 @@ lalrpop_mod!(
     #[allow(clippy::all)]
     #[allow(unused_parens)]
     #[allow(unused_imports)]
-    pub grammar);
+    pub grammar, "/parser/grammar.rs");
 
 pub mod error;
 pub mod lexer;
