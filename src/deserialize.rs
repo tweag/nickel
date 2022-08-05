@@ -49,7 +49,6 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
     type Error = RustDeserializationError;
 
     /// Catch-all deserialization
-    #[inline]
     fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
@@ -86,7 +85,6 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
     deserialize_number!(deserialize_f64, f64, visit_f64);
 
     /// Deserialize nullable field.
-    #[inline]
     fn deserialize_option<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
@@ -98,7 +96,6 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
     }
 
     /// deserialize `RichTerm::Enum` tags or `RichTerm::Record`s with a single item.
-    #[inline]
     fn deserialize_enum<V>(
         self,
         _name: &str,
@@ -141,7 +138,6 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
     }
 
     /// Deserialize pass-through tuples/structs.
-    #[inline]
     fn deserialize_newtype_struct<V>(
         self,
         _name: &'static str,
