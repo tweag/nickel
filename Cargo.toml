@@ -8,7 +8,7 @@ description = "Programmable configuration files."
 homepage = "https://nickel-lang.org"
 repository = "https://github.com/tweag/nickel"
 keywords = ["configuration", "language", "nix"]
-edition = "2018"
+edition = "2021"
 
 [[bin]]
 name = "nickel"
