@@ -30,27 +30,32 @@ the following commands.
 - *Global installation*: if you want to use `nls` on a regular basis, this is
   what you want to do. To have `nickel` and `nls` available globally, add them
   into your profile:
-  ```
-  nix profile install github:tweag/nickel
-  ```
+
+    ```console
+    nix profile install github:tweag/nickel
+    ```
+
 - *Shell*: Try out for the time of a session. To be dropped in a shell with the
   `nickel` and `nls` commands available, run:
-  ```
-  nix shell github:tweag/nickel
-  ```
+
+    ```console
+    nix shell github:tweag/nickel
+    ```
+
 - *Local build*: if you just wand to build `nickel`
-  and `nls` without installing them:
-  ```
-  # The executables will be placed in ./result/bin/
-  nix build github:tweag/nickel
-  ```
+  and `nls` without installing them (the executables will be placed in
+  ./result/bin/):
+
+    ```shell
+    nix build github:tweag/nickel
+    ```
 
 ### Using Nix (without flakes)
 
 Alternatively, you can install `nickel` and `nls` globally on older Nix versions
 without flakes via `nix-env`:
 
-```
+```console
 git clone https://github.com/tweag/nickel.git
 cd nickel
 nix-env -f . -i
@@ -61,7 +66,7 @@ nix-env -f . -i
 If you already have a working [`cargo`](https://doc.rust-lang.org/cargo/)
 installation, you can make `nls` available globally without Nix:
 
-```
+```console
 cargo install nickel-lang-lsp
 ```
 
@@ -82,35 +87,43 @@ your editor.
 #### Build the extension
 
 NLS is currently not available through the vscode marketplace, but this
-repository includes an extension that can be built locally via Nix (cf []()
-about the Nix setup).
+repository includes an extension that can be built locally via Nix (see the
+section about the Nix setup).
 
-- One-liner (using the [`jq`](https://stedolan.github.io/jq/) command):
-  ```
+- One-liner (using the [jq](https://stedolan.github.io/jq/) command):
+
+  ```console
   code --install-extension $(nix build ./\#vscodeExtension --no-link --json | jq ".[0].outputs.vsix")
   ```
+
 - In two steps, going via VSCode:
   - Build with Nix:
-    ```
-    nix build github:tweag/nickel#vscodeExtension.vsix
-    ```
-  - Then, in VSCode, use `Extension: Install from VSIX` in the vscode command
+
+      ```console
+      nix build github:tweag/nickel#vscodeExtension.vsix
+      ```
+
+  - Then, in VSCode, use "Extension: Install from VSIX" in the vscode command
     palette and choose `./result-vsix/nls-client.vsix`.
 
 #### Configuration
 
-The VS Code extension offers three configuration options: 
+The VS Code extension offers three configuration options:
 
 - `nls.server.path`: Path to nickel language server
 - `nls.server.trace`: Enables performance tracing to the given file
-- `nls.server.debugLog`: Logs the communication between VS Code and the language server.
+- `nls.server.debugLog`: Logs the communication between VS Code and the language
+  server.
 
 ### (Neo)Vim
 
-Before proceeding install the [Nickel syntax highlighting plugin](https://github.com/nickel-lang/vim-nickel) using your Vim plugin manager.
-Without this plugin your LSP client may not start NLS on nickel source files.
+Before proceeding install the [Nickel syntax highlighting
+plugin](https://github.com/nickel-lang/vim-nickel) using your Vim plugin
+manager. Without this plugin your LSP client may not start NLS on nickel source
+files.
 
 With Vim-Plug:
+
 ```vim
 Plug 'nickel-lang/vim-nickel'
 ```
@@ -128,24 +141,25 @@ require('lspconfig')["nickel_ls"].setup {}
 
 #### With Coc.nvim
 
-Add an `nickel_ls` entry to your configuration. Type `:CocConfig` in Neovim (or edit `coc-settings.json`) and add:
+Add an `nickel_ls` entry to your configuration. Type `:CocConfig` in Neovim (or
+edit `coc-settings.json`) and add:
 
-```
+```jsonc
 {
   "languageserver": {
-    # Your other language servers configuration
-    # ...,
+    // Your other language servers configuration
+    // ...,
     "nickel_ls": {
       "command": "nls",
-      # You can enable performance tracing with:
-      # "command": "nls --trace <file>",
+      // You can enable performance tracing with:
+      // "command": "nls --trace <file>",
       "rootPatterns": [
         ".git"
       ],
       "filetypes": [
         "ncl"
       ]
-    },
+    }
   }
 }
 ```
