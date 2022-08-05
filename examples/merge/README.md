@@ -6,6 +6,6 @@ code to run lies in `main.ncl`. The default value `firewall.enabled` defined in
 
 ## Run
 
-```
-$ nickel -f main.ncl export
+```console
+nickel -f main.ncl export
 ```

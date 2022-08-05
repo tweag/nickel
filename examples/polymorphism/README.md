@@ -8,8 +8,8 @@ polymorphic types for you.
 
 ## Run
 
-```
-$ nickel -f polymorphism.ncl
+```console
+nickel -f polymorphism.ncl
 ```
 
 ## Playground

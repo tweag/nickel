@@ -11,15 +11,19 @@ data!
 
 ### From the command line
 
-- *Base values*: some examples just return numbers, strings or booleans. You can run them directly:
-    ```
+- *Base values*: some examples just return numbers, strings or booleans. You can
+  run them directly:
+
+    ```console
     $ nickel -f fibonacci.ncl
-    Done: Num(55.0)
+    55
     ```
-- *Configurations*: some return records representing configuration. Because of laziness, Nickel
-    won't currently print any readable result as is. Please use the `export`
-    subcommand to see the result serialized as JSON:
-    ```
+
+- *Configurations*: some return records representing configuration. Nickel won't
+  currently print a very readable result as is. Please use the `export`
+  subcommand to see the result serialized as JSON:
+
+    ```console
     $ nickel -f merge-main.ncl export
     {
       "firewall": {
@@ -30,7 +34,7 @@ data!
     Alternatively, you can query a configuration or a sub-element to get
     a list of attributes or the documentation:
 
-    ```
+    ```console
     $ nickel -f record-contract.ncl query kind
       • contract: <ReplicationController, ReplicaSet, Pod>
       • value: `ReplicationController
@@ -41,38 +45,41 @@ data!
 
 First start the REPL:
 
-```
+```console
 $ nickel repl
 nickel>
 ```
 
 - Just import a file directly to evaluate it:
-    ```
+
+    ```text
     nickel> import "fibonacci.ncl"
     55
 
     nickel>
     ```
+
 - Use `builtin.serialize` to have the same behavior as the `export` subcommand
   and print the result as JSON:
 
-  ```
-  nickel> builtin.serialize `Json (import "merge-main.ncl")
-  "{
-      \"firewall\": {
-      ...
-  }"
+    ```text
+    nickel> builtin.serialize `Json (import "merge-main.ncl")
+    "{
+        \"firewall\": {
+        ...
+    }"
 
-  nickel>
-  ```
+    nickel>
+    ```
+
 - Use `:query` to retrieve information and documentation about a field:
 
-  ```
-  nickel>let config = import "record-contract.ncl"
-  nickel>:query config.kind
-  • contract: <ReplicationController, ReplicaSet, Pod>
-  • value: `ReplicationController
-  • documentation: The kind of the element being configured.
+    ```text
+    nickel>let config = import "record-contract.ncl"
+    nickel>:query config.kind
+    • contract: <ReplicationController, ReplicaSet, Pod>
+    • value: `ReplicationController
+    • documentation: The kind of the element being configured.
 
-  nickel>
-  ```
+    nickel>
+    ```

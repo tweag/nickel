@@ -5,8 +5,8 @@ invocation of the `gcc` compiler.
 
 ## Run
 
-```
-$ nickel -f config-gcc.ncl export
+```console
+nickel -f config-gcc.ncl export
 ```
 
 ## Contracts
