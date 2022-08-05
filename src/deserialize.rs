@@ -394,7 +394,7 @@ where
     if remaining == 0 {
         Ok(seq)
     } else {
-        Err(RustDeserializationError::InvalidRecordLength(len))
+        Err(RustDeserializationError::InvalidArrayLength(len))
     }
 }
 

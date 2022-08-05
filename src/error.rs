@@ -356,6 +356,7 @@ pub enum RustDeserializationError {
     EmptyMetaValue,
     UnimplementedType { occurred: String },
     InvalidRecordLength(usize),
+    InvalidArrayLength(usize),
     Other(String),
 }
 
@@ -1606,6 +1607,9 @@ impl std::fmt::Display for RustDeserializationError {
             RustDeserializationError::EmptyMetaValue => write!(f, "empty Metavalue"),
             RustDeserializationError::InvalidRecordLength(len) => {
                 write!(f, "invalid record length, expected {len}")
+            }
+            RustDeserializationError::InvalidArrayLength(len) => {
+                write!(f, "invalid array length, expected {len}")
             }
             RustDeserializationError::UnimplementedType { ref occurred } => {
                 write!(f, "unimplemented conversion from type: {occurred}")
