@@ -2,6 +2,24 @@ use criterion::{criterion_main, Criterion};
 use nickel_lang_utilities::{ncl_bench_group, EvalMode};
 use pprof::criterion::{Output, PProfProfiler};
 
+/// Generates a pseaudo-random Nickel array as a string.
+fn ncl_random_array(len: usize) -> String {
+    let m = 2_u64.pow(32);
+    let a = 1664525;
+    let c = 1013904223;
+
+    let mut numbers = Vec::with_capacity(len);
+    numbers.push(1337);
+
+    for _ in 0..len {
+        let x = *numbers.last().unwrap();
+        numbers.push((a * x + c) % m);
+    }
+
+    // HACK: It so happens that this is valid Nickel syntax.
+    format!("{:?}", numbers)
+}
+
 ncl_bench_group! {
 name = benches;
 config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)));
@@ -108,7 +126,7 @@ config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flam
     }, {
         name = "sort normal",
         path = "arrays/sort",
-        args = (20),
+        args = (ncl_random_array(50)),
     }, {
         name = "sum normal 50",
         path = "arrays/sum",
