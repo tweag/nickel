@@ -597,7 +597,7 @@ mod tests {
 
     use serde::Deserialize;
 
-    use crate::error::RustDeserializationError;
+    use super::RustDeserializationError;
     use crate::program::Program;
 
     #[test]
