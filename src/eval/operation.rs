@@ -1109,25 +1109,19 @@ fn process_binary_operation(
     pos_op: TermPos,
 ) -> Result<Closure, EvalError> {
     let Closure {
-        body: RichTerm {
-            term: t1,
-            pos: pos1,
-        },
+        body: rt1,
         env: env1,
     } = fst_clos;
     let Closure {
-        body: RichTerm {
-            term: t2,
-            pos: pos2,
-        },
+        body: rt2,
         env: mut env2,
     } = clos;
     let pos_op_inh = pos_op.into_inherited();
 
     match b_op {
         BinaryOp::Plus() => {
-            if let Term::Num(n1) = *t1 {
-                if let Term::Num(n2) = *t2 {
+            if let Term::Num(n1) = *rt1.term {
+                if let Term::Num(n2) = *rt2.term {
                     Ok(Closure::atomic_closure(RichTerm::new(
                         Term::Num(n1 + n2),
                         pos_op_inh,
@@ -1137,10 +1131,7 @@ fn process_binary_operation(
                         String::from("Num"),
                         String::from("+, 2nd argument"),
                         snd_pos,
-                        RichTerm {
-                            term: t2,
-                            pos: pos2,
-                        },
+                        rt2,
                     ))
                 }
             } else {
@@ -1148,16 +1139,13 @@ fn process_binary_operation(
                     String::from("Num"),
                     String::from("+, 1st argument"),
                     fst_pos,
-                    RichTerm {
-                        term: t1,
-                        pos: pos1,
-                    },
+                    rt1,
                 ))
             }
         }
         BinaryOp::Sub() => {
-            if let Term::Num(n1) = *t1 {
-                if let Term::Num(n2) = *t2 {
+            if let Term::Num(n1) = *rt1.term {
+                if let Term::Num(n2) = *rt2.term {
                     Ok(Closure::atomic_closure(RichTerm::new(
                         Term::Num(n1 - n2),
                         pos_op_inh,
@@ -1167,10 +1155,7 @@ fn process_binary_operation(
                         String::from("Num"),
                         String::from("-, 2nd argument"),
                         snd_pos,
-                        RichTerm {
-                            term: t2,
-                            pos: pos2,
-                        },
+                        rt2,
                     ))
                 }
             } else {
@@ -1178,16 +1163,13 @@ fn process_binary_operation(
                     String::from("Num"),
                     String::from("-, 1st argument"),
                     fst_pos,
-                    RichTerm {
-                        term: t1,
-                        pos: pos1,
-                    },
+                    rt1,
                 ))
             }
         }
         BinaryOp::Mult() => {
-            if let Term::Num(n1) = *t1 {
-                if let Term::Num(n2) = *t2 {
+            if let Term::Num(n1) = *rt1.term {
+                if let Term::Num(n2) = *rt2.term {
                     Ok(Closure::atomic_closure(RichTerm::new(
                         Term::Num(n1 * n2),
                         pos_op_inh,
@@ -1197,10 +1179,7 @@ fn process_binary_operation(
                         String::from("Num"),
                         String::from("*, 2nd argument"),
                         snd_pos,
-                        RichTerm {
-                            term: t2,
-                            pos: pos2,
-                        },
+                        rt2,
                     ))
                 }
             } else {
@@ -1208,16 +1187,13 @@ fn process_binary_operation(
                     String::from("Num"),
                     String::from("*, 1st argument"),
                     fst_pos,
-                    RichTerm {
-                        term: t1,
-                        pos: pos1,
-                    },
+                    rt1,
                 ))
             }
         }
         BinaryOp::Div() => {
-            if let Term::Num(n1) = *t1 {
-                if let Term::Num(n2) = *t2 {
+            if let Term::Num(n1) = *rt1.term {
+                if let Term::Num(n2) = *rt2.term {
                     if n2 == 0.0 {
                         Err(EvalError::Other(String::from("division by zero"), pos_op))
                     } else {
@@ -1231,10 +1207,7 @@ fn process_binary_operation(
                         String::from("Num"),
                         String::from("/, 2nd argument"),
                         snd_pos,
-                        RichTerm {
-                            term: t2,
-                            pos: pos2,
-                        },
+                        rt2,
                     ))
                 }
             } else {
@@ -1242,16 +1215,13 @@ fn process_binary_operation(
                     String::from("Num"),
                     String::from("/, 1st argument"),
                     fst_pos,
-                    RichTerm {
-                        term: t1,
-                        pos: pos1,
-                    },
+                    rt1,
                 ))
             }
         }
         BinaryOp::Modulo() => {
-            if let Term::Num(n1) = *t1 {
-                if let Term::Num(n2) = *t2 {
+            if let Term::Num(n1) = *rt1.term {
+                if let Term::Num(n2) = *rt2.term {
                     Ok(Closure::atomic_closure(RichTerm::new(
                         Term::Num(n1 % n2),
                         pos_op_inh,
@@ -1261,10 +1231,7 @@ fn process_binary_operation(
                         String::from("Num"),
                         String::from("%, 2nd argument"),
                         snd_pos,
-                        RichTerm {
-                            term: t2,
-                            pos: pos2,
-                        },
+                        rt2,
                     ))
                 }
             } else {
@@ -1272,16 +1239,13 @@ fn process_binary_operation(
                     String::from("Num"),
                     String::from("%, 1st argument"),
                     fst_pos,
-                    RichTerm {
-                        term: t1,
-                        pos: pos1,
-                    },
+                    rt1,
                 ))
             }
         }
         BinaryOp::Pow() => {
-            if let Term::Num(n1) = *t1 {
-                if let Term::Num(n2) = *t2 {
+            if let Term::Num(n1) = *rt1.term {
+                if let Term::Num(n2) = *rt2.term {
                     Ok(Closure::atomic_closure(RichTerm::new(
                         Term::Num(n1.powf(n2)),
                         pos_op_inh,
@@ -1291,10 +1255,7 @@ fn process_binary_operation(
                         String::from("Num"),
                         String::from("pow, 2nd argument"),
                         snd_pos,
-                        RichTerm {
-                            term: t2,
-                            pos: pos2,
-                        },
+                        rt2,
                     ))
                 }
             } else {
@@ -1302,16 +1263,13 @@ fn process_binary_operation(
                     String::from("Num"),
                     String::from("pow, 1st argument"),
                     fst_pos,
-                    RichTerm {
-                        term: t1,
-                        pos: pos1,
-                    },
+                    rt1,
                 ))
             }
         }
         BinaryOp::StrConcat() => {
-            if let Term::Str(s1) = &*t1 {
-                if let Term::Str(s2) = &*t2 {
+            if let Term::Str(s1) = &*rt1.term {
+                if let Term::Str(s2) = &*rt2.term {
                     let ss: [&str; 2] = [s1, s2];
                     Ok(Closure::atomic_closure(RichTerm::new(
                         Term::Str(ss.concat()),
@@ -1322,10 +1280,7 @@ fn process_binary_operation(
                         String::from("Str"),
                         String::from("++, 2nd argument"),
                         snd_pos,
-                        RichTerm {
-                            term: t2,
-                            pos: pos2,
-                        },
+                        rt2,
                     ))
                 }
             } else {
@@ -1333,15 +1288,12 @@ fn process_binary_operation(
                     String::from("Str"),
                     String::from("++, 1st argument"),
                     fst_pos,
-                    RichTerm {
-                        term: t1,
-                        pos: pos1,
-                    },
+                    rt1,
                 ))
             }
         }
         BinaryOp::Assume() => {
-            if let Term::Lbl(l) = &*t2 {
+            if let Term::Lbl(l) = &*rt2.term {
                 // Track the contract argument for better error reporting, and push back the label
                 // on the stack, so that it becomes the first argument of the contract.
                 let thunk = stack
@@ -1352,25 +1304,19 @@ fn process_binary_operation(
                 l.arg_thunk = Some(thunk);
 
                 stack.push_arg(
-                    Closure::atomic_closure(RichTerm::new(Term::Lbl(l), pos2.into_inherited())),
-                    pos2.into_inherited(),
+                    Closure::atomic_closure(RichTerm::new(Term::Lbl(l), rt2.pos.into_inherited())),
+                    rt2.pos.into_inherited(),
                 );
 
-                match *t1 {
+                match *rt1.term {
                     Term::Fun(..) => Ok(Closure {
-                        body: RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
+                        body: rt1,
                         env: env1,
                     }),
                     Term::Record(..) => {
                         let mut new_env = Environment::new();
-                        let closurized = RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        }
-                        .closurize(&mut new_env, env1);
+                        let pos = rt1.pos;
+                        let closurized = rt1.closurize(&mut new_env, env1);
 
                         // Convert the record to the function `fun l x => MergeContract l x
                         // contract`.
@@ -1384,7 +1330,7 @@ fn process_binary_operation(
                                 closurized
                             )
                         )
-                        .with_pos(pos1.into_inherited());
+                        .with_pos(pos.into_inherited());
 
                         Ok(Closure { body, env: new_env })
                     }
@@ -1392,10 +1338,7 @@ fn process_binary_operation(
                         String::from("Function or Record"),
                         String::from("assume, 1st argument"),
                         fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
+                        rt1,
                     )),
                 }
             } else {
@@ -1403,19 +1346,16 @@ fn process_binary_operation(
                     String::from("Label"),
                     String::from("assume, 2nd argument"),
                     snd_pos,
-                    RichTerm {
-                        term: t2,
-                        pos: pos2,
-                    },
+                    rt2,
                 ))
             }
         }
         BinaryOp::Unwrap() => {
-            if let Term::Sym(s1) = &*t1 {
+            if let Term::Sym(s1) = &*rt1.term {
                 // Return a function that either behaves like the identity or
                 // const unwrapped_term
 
-                Ok(if let Term::Wrapped(s2, t) = t2.into_owned() {
+                Ok(if let Term::Wrapped(s2, t) = rt2.term.into_owned() {
                     if *s1 == s2 {
                         Closure {
                             body: mk_fun!("-invld", t),
@@ -1432,15 +1372,12 @@ fn process_binary_operation(
                     String::from("Sym"),
                     String::from("unwrap, 1st argument"),
                     fst_pos,
-                    RichTerm {
-                        term: t1,
-                        pos: pos1,
-                    },
+                    rt1,
                 ))
             }
         }
-        BinaryOp::Tag() => match_sharedterm! {t1, with {
-                Term::Str(s) => match_sharedterm!{t2, with {
+        BinaryOp::Tag() => match_sharedterm! {rt1.term, with {
+                Term::Str(s) => match_sharedterm!{rt2.term, with {
                             Term::Lbl(l) => {
                                 let mut l = l;
                                 l.tag = s;
@@ -1454,10 +1391,7 @@ fn process_binary_operation(
                                 String::from("Label"),
                                 String::from("tag, 2nd argument"),
                                 snd_pos,
-                                RichTerm {
-                                    term: t2,
-                                    pos: pos2,
-                                },
+                                rt2,
                             ))
                         }
                     }
@@ -1466,10 +1400,7 @@ fn process_binary_operation(
                     String::from("Str"),
                     String::from("tag, 1st argument"),
                     fst_pos,
-                    RichTerm {
-                        term: t1,
-                        pos: pos1,
-                    },
+                    rt1,
                 ))
             }
         },
@@ -1477,17 +1408,11 @@ fn process_binary_operation(
             let mut env = Environment::new();
 
             let c1 = Closure {
-                body: RichTerm {
-                    term: t1,
-                    pos: pos1,
-                },
+                body: rt1,
                 env: env1,
             };
             let c2 = Closure {
-                body: RichTerm {
-                    term: t2,
-                    pos: pos2,
-                },
+                body: rt2,
                 env: env2,
             };
 
@@ -1525,8 +1450,8 @@ fn process_binary_operation(
             }
         }
         BinaryOp::LessThan() => {
-            if let Term::Num(n1) = *t1 {
-                if let Term::Num(n2) = *t2 {
+            if let Term::Num(n1) = *rt1.term {
+                if let Term::Num(n2) = *rt2.term {
                     Ok(Closure::atomic_closure(RichTerm::new(
                         Term::Bool(n1 < n2),
                         pos_op_inh,
@@ -1536,10 +1461,7 @@ fn process_binary_operation(
                         String::from("Num"),
                         String::from("<, 2nd argument"),
                         snd_pos,
-                        RichTerm {
-                            term: t2,
-                            pos: pos2,
-                        },
+                        rt2,
                     ))
                 }
             } else {
@@ -1547,16 +1469,13 @@ fn process_binary_operation(
                     String::from("Num"),
                     String::from("<, 1st argument"),
                     fst_pos,
-                    RichTerm {
-                        term: t1,
-                        pos: pos1,
-                    },
+                    rt1,
                 ))
             }
         }
         BinaryOp::LessOrEq() => {
-            if let Term::Num(n1) = *t1 {
-                if let Term::Num(n2) = *t2 {
+            if let Term::Num(n1) = *rt1.term {
+                if let Term::Num(n2) = *rt2.term {
                     Ok(Closure::atomic_closure(RichTerm::new(
                         Term::Bool(n1 <= n2),
                         pos_op_inh,
@@ -1566,10 +1485,7 @@ fn process_binary_operation(
                         String::from("Num"),
                         String::from("<, 2nd argument"),
                         snd_pos,
-                        RichTerm {
-                            term: t2,
-                            pos: pos2,
-                        },
+                        rt2,
                     ))
                 }
             } else {
@@ -1577,16 +1493,13 @@ fn process_binary_operation(
                     String::from("Num"),
                     String::from("<, 1st argument"),
                     fst_pos,
-                    RichTerm {
-                        term: t1,
-                        pos: pos1,
-                    },
+                    rt1,
                 ))
             }
         }
         BinaryOp::GreaterThan() => {
-            if let Term::Num(n1) = *t1 {
-                if let Term::Num(n2) = *t2 {
+            if let Term::Num(n1) = *rt1.term {
+                if let Term::Num(n2) = *rt2.term {
                     Ok(Closure::atomic_closure(RichTerm::new(
                         Term::Bool(n1 > n2),
                         pos_op_inh,
@@ -1596,10 +1509,7 @@ fn process_binary_operation(
                         String::from("Num"),
                         String::from(">, 2nd argument"),
                         snd_pos,
-                        RichTerm {
-                            term: t2,
-                            pos: pos2,
-                        },
+                        rt2,
                     ))
                 }
             } else {
@@ -1607,16 +1517,13 @@ fn process_binary_operation(
                     String::from("Num"),
                     String::from(">, 1st argument"),
                     fst_pos,
-                    RichTerm {
-                        term: t1,
-                        pos: pos1,
-                    },
+                    rt1,
                 ))
             }
         }
         BinaryOp::GreaterOrEq() => {
-            if let Term::Num(n1) = *t1 {
-                if let Term::Num(n2) = *t2 {
+            if let Term::Num(n1) = *rt1.term {
+                if let Term::Num(n2) = *rt2.term {
                     Ok(Closure::atomic_closure(RichTerm::new(
                         Term::Bool(n1 >= n2),
                         pos_op_inh,
@@ -1626,10 +1533,7 @@ fn process_binary_operation(
                         String::from("Num"),
                         String::from(">=, 2nd argument"),
                         snd_pos,
-                        RichTerm {
-                            term: t2,
-                            pos: pos2,
-                        },
+                        rt2,
                     ))
                 }
             } else {
@@ -1637,15 +1541,12 @@ fn process_binary_operation(
                     String::from("Num"),
                     String::from(">=, 1st argument"),
                     fst_pos,
-                    RichTerm {
-                        term: t1,
-                        pos: pos1,
-                    },
+                    rt1,
                 ))
             }
         }
-        BinaryOp::GoField() => match_sharedterm! {t1, with {
-                Term::Str(field) => match_sharedterm! {t2, with {
+        BinaryOp::GoField() => match_sharedterm! {rt1.term, with {
+                Term::Str(field) => match_sharedterm! {rt2.term, with {
                         Term::Lbl(l) => {
                             let mut l = l;
                             l.path.push(ty_path::Elem::Field(Ident::from(field)));
@@ -1659,10 +1560,7 @@ fn process_binary_operation(
                             String::from("Label"),
                             String::from("goField, 2nd argument"),
                             snd_pos,
-                            RichTerm {
-                                term: t2,
-                                pos: pos2,
-                            },
+                            rt2,
                         ))
                     }
                 },
@@ -1671,19 +1569,16 @@ fn process_binary_operation(
                     String::from("Str"),
                     String::from("goField, 1st argument"),
                     fst_pos,
-                    RichTerm {
-                        term: t1,
-                        pos: pos1,
-                    },
+                    rt1,
                 ))
             }
         },
-        BinaryOp::DynAccess() => match_sharedterm! {t1, with {
+        BinaryOp::DynAccess() => match_sharedterm! {rt1.term, with {
                 Term::Str(id) => {
-                    if let Term::Record(static_map, _attrs) = &*t2 {
+                    if let Term::Record(static_map, _attrs) = &*rt2.term {
                         match static_map.get(&Ident::from(&id)) {
                             Some(e) => {
-                                call_stack.enter_field(Ident::from(id), pos2, e.pos, pos_op);
+                                call_stack.enter_field(Ident::from(id), rt2.pos, e.pos, pos_op);
                                 Ok(Closure {
                                     body: e.clone(),
                                     env: env2,
@@ -1692,10 +1587,7 @@ fn process_binary_operation(
                             None => Err(EvalError::FieldMissing(
                                 id,
                                 String::from("(.$)"),
-                                RichTerm {
-                                    term: t2,
-                                    pos: pos2,
-                                },
+                                rt2,
                                 pos_op,
                             )),
                         }
@@ -1704,10 +1596,7 @@ fn process_binary_operation(
                             String::from("Record"),
                             String::from(".$"),
                             snd_pos,
-                            RichTerm {
-                                term: t2,
-                                pos: pos2,
-                            },
+                            rt2,
                         ))
                     }
                 }
@@ -1716,10 +1605,7 @@ fn process_binary_operation(
                     String::from("Str"),
                     String::from(".$"),
                     fst_pos,
-                    RichTerm {
-                        term: t1,
-                        pos: pos1,
-                    },
+                    rt1,
                 ))
             }
         },
@@ -1728,8 +1614,8 @@ fn process_binary_operation(
                 .pop_arg()
                 .ok_or_else(|| EvalError::NotEnoughArgs(3, String::from("$[ .. ]"), pos_op))?;
 
-            if let Term::Str(id) = &*t1 {
-                match_sharedterm! {t2, with {
+            if let Term::Str(id) = &*rt1.term {
+                match_sharedterm! {rt2.term, with {
                         Term::Record(static_map, attrs) => {
                             let mut static_map = static_map;
                             let as_var = clos.body.closurize(&mut env2, clos.env);
@@ -1746,10 +1632,7 @@ fn process_binary_operation(
                             String::from("Record"),
                             String::from("$[ .. ]"),
                             snd_pos,
-                            RichTerm {
-                                term: t2,
-                                pos: pos2,
-                            },
+                            rt2,
                         ))
                     }
                 }
@@ -1758,15 +1641,12 @@ fn process_binary_operation(
                     String::from("Str"),
                     String::from("$[ .. ]"),
                     fst_pos,
-                    RichTerm {
-                        term: t1,
-                        pos: pos1,
-                    },
+                    rt1,
                 ))
             }
         }
-        BinaryOp::DynRemove() => match_sharedterm! {t1, with {
-                Term::Str(id) => match_sharedterm! {t2, with {
+        BinaryOp::DynRemove() => match_sharedterm! {rt1.term, with {
+                Term::Str(id) => match_sharedterm! {rt2.term, with {
                         Term::Record(static_map, attrs) => {
                             let mut static_map = static_map;
                             match static_map.remove(&Ident::from(&id)) {
@@ -1775,7 +1655,7 @@ fn process_binary_operation(
                                     String::from("(-$)"),
                                     RichTerm::new(
                                         Term::Record(static_map, attrs),
-                                        pos2,
+                                        rt2.pos,
                                     ),
                                     pos_op,
                                 )),
@@ -1790,10 +1670,7 @@ fn process_binary_operation(
                             String::from("Record"),
                             String::from("-$"),
                             snd_pos,
-                            RichTerm {
-                                term: t2,
-                                pos: pos2,
-                            },
+                            rt2,
                         ))
                     }
                 },
@@ -1802,16 +1679,13 @@ fn process_binary_operation(
                     String::from("Str"),
                     String::from("-$"),
                     fst_pos,
-                    RichTerm {
-                        term: t1,
-                        pos: pos1,
-                    },
+                    rt1,
                 ))
             }
         },
-        BinaryOp::HasField() => match_sharedterm! {t1, with {
+        BinaryOp::HasField() => match_sharedterm! {rt1.term, with {
                 Term::Str(id) => {
-                    if let Term::Record(static_map, _) = &*t2 {
+                    if let Term::Record(static_map, _) = &*rt2.term {
                         Ok(Closure::atomic_closure(RichTerm::new(
                             Term::Bool(static_map.contains_key(&Ident::from(id))),
                             pos_op_inh,
@@ -1821,10 +1695,7 @@ fn process_binary_operation(
                             String::from("Record"),
                             String::from("hasField, 2nd argument"),
                             snd_pos,
-                            RichTerm {
-                                term: t2,
-                                pos: pos2,
-                            },
+                            rt2,
                         ))
                     }
                 }
@@ -1833,15 +1704,12 @@ fn process_binary_operation(
                     String::from("Str"),
                     String::from("hasField, 1st argument"),
                     fst_pos,
-                    RichTerm {
-                        term: t1,
-                        pos: pos1,
-                    },
+                    rt1,
                 ))
             }
         },
-        BinaryOp::ArrayConcat() => match_sharedterm! {t1, with {
-                Term::Array(ts1, attrs1) => match_sharedterm! {t2, with {
+        BinaryOp::ArrayConcat() => match_sharedterm! {rt1.term, with {
+                Term::Array(ts1, attrs1) => match_sharedterm! {rt2.term, with {
                         Term::Array(ts2, attrs2) => {
                             // NOTE: the [eval_closure] function in [eval] should've made sure
                             // that the array is closurized. We leave a debug_assert! here just
@@ -1869,10 +1737,7 @@ fn process_binary_operation(
                             String::from("Array"),
                             String::from("@, 2nd operand"),
                             snd_pos,
-                            RichTerm {
-                                term: t2,
-                                pos: pos2,
-                            },
+                            rt2,
                         ))
 
                     }
@@ -1882,14 +1747,11 @@ fn process_binary_operation(
                     String::from("Array"),
                     String::from("@, 1st operand"),
                     fst_pos,
-                    RichTerm {
-                        term: t1,
-                        pos: pos1,
-                    },
+                    rt1,
                 ))
             }
         },
-        BinaryOp::ArrayElemAt() => match (&*t1, &*t2) {
+        BinaryOp::ArrayElemAt() => match (&*rt1.term, &*rt2.term) {
             (Term::Array(ts, _), Term::Num(n)) => {
                 let n_int = *n as usize;
                 if n.fract() != 0.0 {
@@ -1907,35 +1769,16 @@ fn process_binary_operation(
                 String::from("Num"),
                 String::from("elemAt, 2nd argument"),
                 snd_pos,
-                RichTerm {
-                    term: t2,
-                    pos: pos2,
-                },
+                rt2,
             )),
             (_, _) => Err(EvalError::TypeError(
                 String::from("Array"),
                 String::from("elemAt, 1st argument"),
                 fst_pos,
-                RichTerm {
-                    term: t1,
-                    pos: pos1,
-                },
+                rt1,
             )),
         },
-        BinaryOp::Merge() => merge(
-            RichTerm {
-                term: t1,
-                pos: pos1,
-            },
-            env1,
-            RichTerm {
-                term: t2,
-                pos: pos2,
-            },
-            env2,
-            pos_op,
-            MergeMode::Standard,
-        ),
+        BinaryOp::Merge() => merge(rt1, env1, rt2, env2, pos_op, MergeMode::Standard),
 
         BinaryOp::Hash() => {
             let mk_err_fst = |t1| {
@@ -1943,15 +1786,12 @@ fn process_binary_operation(
                     String::from("Enum <Md5, Sha1, Sha256, Sha512>"),
                     String::from("hash, 1st argument"),
                     fst_pos,
-                    RichTerm {
-                        term: t1,
-                        pos: pos1,
-                    },
+                    t1,
                 ))
             };
 
-            if let Term::Enum(id) = &*t1 {
-                if let Term::Str(s) = &*t2 {
+            if let Term::Enum(id) = &*rt1.term {
+                if let Term::Str(s) = &*rt2.term {
                     let result = match id.as_ref() {
                         "Md5" => {
                             let mut hasher = md5::Md5::new();
@@ -1973,7 +1813,7 @@ fn process_binary_operation(
                             hasher.update(s);
                             format!("{:x}", hasher.finalize())
                         }
-                        _ => return mk_err_fst(t1),
+                        _ => return mk_err_fst(rt1),
                     };
 
                     Ok(Closure::atomic_closure(RichTerm::new(
@@ -1985,14 +1825,11 @@ fn process_binary_operation(
                         String::from("Str"),
                         String::from("hash, 2nd argument"),
                         snd_pos,
-                        RichTerm {
-                            term: t2,
-                            pos: pos2,
-                        },
+                        rt2,
                     ))
                 }
             } else {
-                mk_err_fst(t1)
+                mk_err_fst(rt1)
             }
         }
         BinaryOp::Serialize() => {
@@ -2001,30 +1838,20 @@ fn process_binary_operation(
                     String::from("Enum <Json, Yaml, Toml>"),
                     String::from("serialize, 1st argument"),
                     fst_pos,
-                    RichTerm {
-                        term: t1,
-                        pos: pos1,
-                    },
+                    t1,
                 ))
             };
 
-            if let Term::Enum(ref id) = t1.as_ref() {
+            if let Term::Enum(ref id) = rt1.as_ref() {
                 // Serialization needs all variables term to be fully substituted
                 let global_env = Environment::new();
-                let rt2 = subst(
-                    RichTerm {
-                        term: t2,
-                        pos: pos2,
-                    },
-                    &global_env,
-                    &env2,
-                );
+                let rt2 = subst(rt2, &global_env, &env2);
 
                 let format = match id.to_string().as_str() {
                     "Json" => ExportFormat::Json,
                     "Yaml" => ExportFormat::Yaml,
                     "Toml" => ExportFormat::Toml,
-                    _ => return mk_err_fst(t1),
+                    _ => return mk_err_fst(rt1),
                 };
 
                 serialize::validate(format, &rt2)?;
@@ -2033,7 +1860,7 @@ fn process_binary_operation(
                     pos_op_inh,
                 )))
             } else {
-                mk_err_fst(t1)
+                mk_err_fst(rt1)
             }
         }
         BinaryOp::Deserialize() => {
@@ -2042,15 +1869,12 @@ fn process_binary_operation(
                     String::from("Enum <Json, Yaml, Toml>"),
                     String::from("deserialize, 1st argument"),
                     fst_pos,
-                    RichTerm {
-                        term: t1,
-                        pos: pos1,
-                    },
+                    t1,
                 ))
             };
 
-            if let Term::Enum(id) = &*t1 {
-                if let Term::Str(s) = &*t2 {
+            if let Term::Enum(id) = &*rt1.term {
+                if let Term::Str(s) = &*rt2.term {
                     let rt: RichTerm = match id.as_ref() {
                         "Json" => serde_json::from_str(s).map_err(|err| {
                             EvalError::DeserializationError(
@@ -2073,7 +1897,7 @@ fn process_binary_operation(
                                 pos_op,
                             )
                         })?,
-                        _ => return mk_err_fst(t1),
+                        _ => return mk_err_fst(rt1),
                     };
 
                     Ok(Closure::atomic_closure(rt.with_pos(pos_op_inh)))
@@ -2082,17 +1906,14 @@ fn process_binary_operation(
                         String::from("Str"),
                         String::from("deserialize, 2nd argument"),
                         snd_pos,
-                        RichTerm {
-                            term: t2,
-                            pos: pos2,
-                        },
+                        rt2,
                     ))
                 }
             } else {
-                mk_err_fst(t1)
+                mk_err_fst(rt1)
             }
         }
-        BinaryOp::StrSplit() => match (&*t1, &*t2) {
+        BinaryOp::StrSplit() => match (&*rt1.term, &*rt2.term) {
             (Term::Str(s1), Term::Str(s2)) => {
                 let array: Vec<RichTerm> = s1
                     .split(s2)
@@ -2107,22 +1928,16 @@ fn process_binary_operation(
                 String::from("Str"),
                 String::from("strSplit, 2nd argument"),
                 snd_pos,
-                RichTerm {
-                    term: t2,
-                    pos: pos2,
-                },
+                rt2,
             )),
             (_, _) => Err(EvalError::TypeError(
                 String::from("Str"),
                 String::from("strSplit, 1st argument"),
                 fst_pos,
-                RichTerm {
-                    term: t1,
-                    pos: pos1,
-                },
+                rt1,
             )),
         },
-        BinaryOp::StrContains() => match (&*t1, &*t2) {
+        BinaryOp::StrContains() => match (&*rt1.term, &*rt2.term) {
             (Term::Str(s1), Term::Str(s2)) => Ok(Closure::atomic_closure(RichTerm::new(
                 Term::Bool(s1.contains(s2)),
                 pos_op_inh,
@@ -2131,19 +1946,13 @@ fn process_binary_operation(
                 String::from("Str"),
                 String::from("strContains, 2nd argument"),
                 snd_pos,
-                RichTerm {
-                    term: t2,
-                    pos: pos2,
-                },
+                rt2,
             )),
             (_, _) => Err(EvalError::TypeError(
                 String::from("Str"),
                 String::from("strContains, 1st argument"),
                 fst_pos,
-                RichTerm {
-                    term: t1,
-                    pos: pos1,
-                },
+                rt1,
             )),
         },
     }
