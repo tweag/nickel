@@ -356,7 +356,7 @@ pub fn merge(
         }
         // Merge put together the fields of records, and recursively merge
         // fields that are present in both terms
-        (Term::Record(mut m1, attrs1), Term::Record(mut m2, attrs2)) => {
+        (Term::Record(m1, attrs1), Term::Record(m2, attrs2)) => {
             /* Terms inside m1 and m2 may capture variables of resp. env1 and env2.  Morally, we
              * need to store closures, or a merge of closures, inside the resulting record.  We use
              * the same trick as in the evaluation of the operator DynExtend, and replace each such
@@ -368,10 +368,13 @@ pub fn merge(
             // Merging recursive record is the one operation that may override recursive fields. To
             // have the recursive fields depend on the updated values, we need to revert the thunks
             // first.
-            rev_thunks(m1.values_mut(), &mut env1.borrow_mut());
-            rev_thunks(m2.values_mut(), &mut env2.borrow_mut());
+            let m1 = rev_thunks(&m1, &env1);
+            let m2 = rev_thunks(&m2, &env2);
 
-            let (left, center, right) = hashmap::split(&m1, &m2);
+            let (left, center, right) = hashmap::split(
+                m1.iter().map(|&(a, ref b)| (a, b)),
+                m2.iter().map(|&(a, ref b)| (a, b)),
+            );
 
             match mode {
                 MergeMode::Contract(mut lbl) if !attrs2.open && left.len() > 0 => {
@@ -413,10 +416,10 @@ pub fn merge(
             }));
 
             let rec_env = fixpoint::rec_env(m.iter(), &env)?;
-            m1.values()
-                .try_for_each(|rt| fixpoint::patch_field(rt, &rec_env, &env1.borrow()))?;
-            m2.values()
-                .try_for_each(|rt| fixpoint::patch_field(rt, &rec_env, &env2.borrow()))?;
+            m1.into_iter()
+                .try_for_each(|(_, ref rt)| fixpoint::patch_field(rt, &rec_env, &env1.borrow()))?;
+            m2.into_iter()
+                .try_for_each(|(_, ref rt)| fixpoint::patch_field(rt, &rec_env, &env2.borrow()))?;
 
             let final_pos = if mode == MergeMode::Standard {
                 pos_op.into_inherited()
@@ -503,20 +506,25 @@ fn merge_closurize(
     body.closurize(env, local_env)
 }
 
-fn rev_thunks<'a, I: Iterator<Item = &'a mut RichTerm>>(map: I, env: &mut Environment) {
-    use crate::transform::fresh_var;
-
-    for rt in map {
-        if let Term::Var(id) = rt.as_ref() {
-            // This create a fresh variable which is bound to a reverted copy of the original thunk
-            let reverted = env.get(id).unwrap().revert();
-            let fresh_id = fresh_var();
-            env.insert(fresh_id.clone(), reverted);
-            *(SharedTerm::make_mut(&mut rt.term)) = Term::Var(fresh_id);
-        }
-        // Otherwise, if it is not a variable after the share normal form transformations, it
-        // should be a constant and we don't need to revert anything
-    }
+fn rev_thunks<'a, K: 'a, I: IntoIterator<Item = (K, &'a RichTerm)>>(
+    map: I,
+    env: &'a RefCell<Environment>,
+) -> Vec<(K, RichTerm)> {
+    map.into_iter()
+        .map(move |(k, rt)| {
+            let mut rt = rt.clone();
+            if let Term::Var(id) = rt.as_ref() {
+                // This create a fresh variable which is bound to a reverted copy of the original thunk
+                let reverted = env.borrow().get(id).unwrap().revert();
+                let fresh_id = crate::transform::fresh_var();
+                env.borrow_mut().insert(fresh_id.clone(), reverted);
+                *(SharedTerm::make_mut(&mut rt.term)) = Term::Var(fresh_id);
+            }
+            // Otherwise, if it is not a variable after the share normal form transformations, it
+            // should be a constant and we don't need to revert anything
+            (k, rt)
+        })
+        .collect()
 }
 
 pub mod hashmap {
@@ -525,20 +533,20 @@ pub mod hashmap {
     /// Split two hashmaps m1 and m2 in three parts (left,center,right), where left holds bindings
     /// `(key,value)` where key is not in `m2.keys()`, right is the dual (keys of m2 that are not
     /// in m1), and center holds bindings for keys that are both in m1 and m2.
-    pub fn split<'a, K, V1, V2>(
-        m1: &'a HashMap<K, V1>,
-        m2: &'a HashMap<K, V2>,
+    pub fn split<'a, K: 'a, V1: 'a, V2: 'a>(
+        m1: impl IntoIterator<Item = (K, V1)>,
+        m2: impl IntoIterator<Item = (K, V2)>,
     ) -> (
-        impl ExactSizeIterator<Item = (&'a K, &'a V1)>,
-        impl ExactSizeIterator<Item = (&'a K, (&'a V1, &'a V2))>,
-        impl ExactSizeIterator<Item = (&'a K, &'a V2)>,
+        impl ExactSizeIterator<Item = (K, V1)>,
+        impl ExactSizeIterator<Item = (K, (V1, V2))>,
+        impl ExactSizeIterator<Item = (K, V2)>,
     )
     where
         K: std::hash::Hash + Eq,
     {
         let mut left = vec![];
         let mut center = vec![];
-        let mut right = m2.iter().collect::<HashMap<_, _>>();
+        let mut right = m2.into_iter().collect::<HashMap<_, _>>();
 
         for (key, value) in m1 {
             if let Some(v2) = right.remove(&key) {
