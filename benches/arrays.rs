@@ -145,6 +145,15 @@ config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flam
         path = "arrays/primes",
         args = (30),
         eval_mode = EvalMode::DeepSeq,
+    }, {
+        name = "random normal",
+        path = "arrays/random",
+        args = (50),
+    }, {
+        name = "random deepseq",
+        path = "arrays/random",
+        args = (50),
+        eval_mode = EvalMode::DeepSeq,
     }
 }
 criterion_main!(benches);
