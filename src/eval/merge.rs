@@ -59,6 +59,7 @@ use crate::term::{
     make as mk_term, BinaryOp, Contract, MetaValue, RecordAttrs, RichTerm, SharedTerm, Term,
 };
 use crate::transform::Closurizable;
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 /// Merging mode. Merging is used both to combine standard data and to apply contracts defined as
@@ -86,9 +87,9 @@ impl Default for MergeMode {
 /// important as `merge` is not commutative in this mode.
 pub fn merge(
     t1: RichTerm,
-    mut env1: Environment,
+    env1: Environment,
     t2: RichTerm,
-    mut env2: Environment,
+    env2: Environment,
     pos_op: TermPos,
     mode: MergeMode,
 ) -> Result<Closure, EvalError> {
@@ -361,11 +362,14 @@ pub fn merge(
              * the same trick as in the evaluation of the operator DynExtend, and replace each such
              * term by a variable bound to an appropriate closure in the environment
              */
+            let env1 = RefCell::new(env1);
+            let env2 = RefCell::new(env2);
+
             // Merging recursive record is the one operation that may override recursive fields. To
             // have the recursive fields depend on the updated values, we need to revert the thunks
             // first.
-            rev_thunks(m1.values_mut(), &mut env1);
-            rev_thunks(m2.values_mut(), &mut env2);
+            rev_thunks(m1.values_mut(), &mut env1.borrow_mut());
+            rev_thunks(m2.values_mut(), &mut env2.borrow_mut());
 
             let (left, center, right) = hashmap::split(&m1, &m2);
 
@@ -383,25 +387,36 @@ pub fn merge(
             let mut m = HashMap::with_capacity(left.len() + center.len() + right.len());
             let mut env = Environment::new();
 
-            m.extend(
-                left.map(|(field, t)| (field.clone(), t.clone().closurize(&mut env, env1.clone()))),
-            );
-            m.extend(
-                right
-                    .map(|(field, t)| (field.clone(), t.clone().closurize(&mut env, env2.clone()))),
-            );
+            m.extend(left.map(|(field, t)| {
+                (
+                    field.clone(),
+                    t.clone().closurize(&mut env, env1.borrow().clone()),
+                )
+            }));
+            m.extend(right.map(|(field, t)| {
+                (
+                    field.clone(),
+                    t.clone().closurize(&mut env, env2.borrow().clone()),
+                )
+            }));
             m.extend(center.map(|(field, (t1, t2))| {
                 (
                     field.clone(),
-                    merge_closurize(&mut env, t1.clone(), env1.clone(), t2.clone(), env2.clone()),
+                    merge_closurize(
+                        &mut env,
+                        t1.clone(),
+                        env1.borrow().clone(),
+                        t2.clone(),
+                        env2.borrow().clone(),
+                    ),
                 )
             }));
 
             let rec_env = fixpoint::rec_env(m.iter(), &env)?;
             m1.values()
-                .try_for_each(|rt| fixpoint::patch_field(rt, &rec_env, &env1))?;
+                .try_for_each(|rt| fixpoint::patch_field(rt, &rec_env, &env1.borrow()))?;
             m2.values()
-                .try_for_each(|rt| fixpoint::patch_field(rt, &rec_env, &env2))?;
+                .try_for_each(|rt| fixpoint::patch_field(rt, &rec_env, &env2.borrow()))?;
 
             let final_pos = if mode == MergeMode::Standard {
                 pos_op.into_inherited()
