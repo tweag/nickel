@@ -1,6 +1,6 @@
 //! Evaluation of a Nickel term.
 //!
-//! The implementation of the Nickel abstract machine which evaluates a term. Note that this
+//! The implementation of &the Nickel abstract machine which evaluates a term. Note that this
 //! machine is not currently formalized somewhere and is just a convenient name to designate the
 //! current implementation.
 //!
@@ -312,6 +312,47 @@ where
         }
 
         clos = match &*shared_term {
+            Term::Sealed(_, sk, lbl) => {
+                let stack_item = stack.peek_op_cont();
+                match stack_item {
+                    Some(
+                        OperationCont::Op2First(BinaryOp::Unseal(), _, _)
+                        | OperationCont::Op2Second(BinaryOp::Unseal(), _, _, _),
+                    ) => {
+                        // Copied from the  `_ if stack.is_top_thunk() || stack.is_top_cont()` case
+                        // Maybe we should abstract this out
+                        clos = Closure {
+                            body: RichTerm {
+                                term: shared_term,
+                                pos,
+                            },
+                            env,
+                        };
+                        if stack.is_top_thunk() {
+                            update_thunks(&mut stack, &clos);
+                            clos
+                        } else {
+                            continuate_operation(clos, &mut stack, &mut call_stack)?
+                        }
+                    }
+                    Some(_item) => {
+                        // This cont should not be allowed to evaluate a sealed term;
+                        let RichTerm { term, .. } = lbl;
+                        println!("sealing key: {:?}", sk);
+                        println!("the label: {:?}", term);
+                        if let Term::Lbl(lbl) = &**term {
+                            return Err(EvalError::BlameError(lbl.clone(), call_stack.clone()));
+                        } else {
+                            // Not a label, should be an error
+                            panic!("")
+                        }
+                    }
+                    None => {
+                        // Is this even possible?
+                        panic!("Help!")
+                    }
+                }
+            }
             Term::Var(x) => {
                 let mut thunk = env
                     .get(x)
@@ -757,10 +798,10 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
 
             RichTerm::new(Term::OpN(op, ts), pos)
         }
-        Term::Sealed(i, t) => {
+        Term::Sealed(i, t, lbl) => {
             let t = subst(t, global_env, env);
 
-            RichTerm::new(Term::Sealed(i, t), pos)
+            RichTerm::new(Term::Sealed(i, t, lbl), pos)
         }
         Term::Record(map, attrs) => {
             let map = map

@@ -99,7 +99,10 @@ fn collect_free_vars(rt: &mut RichTerm, free_vars: &mut HashSet<Ident>) {
                 collect_free_vars(t, free_vars);
             }
         }
-        Term::Sealed(_, t) => collect_free_vars(t, free_vars),
+        Term::Sealed(_, t, lbl) => { 
+            collect_free_vars(t, free_vars);
+            collect_free_vars(lbl, free_vars)
+        }
         Term::Record(map, _) => {
             for t in map.values_mut() {
                 collect_free_vars(t, free_vars);

@@ -144,7 +144,7 @@ pub enum Term {
     /// type variable. In our example, the last cast to `a` finds `Sealed(2, "a")`, while it
     /// expected `Sealed(1, _)`, hence it raises a positive blame.
     #[serde(skip)]
-    Sealed(SealingKey, RichTerm),
+    Sealed(SealingKey, RichTerm, RichTerm),
 
     #[serde(serialize_with = "crate::serialize::serialize_meta_value")]
     #[serde(skip_deserializing)]
@@ -386,8 +386,7 @@ impl Term {
             | ResolvedImport(_) => {}
             Fun(_, ref mut t)
             | FunPattern(_, _, ref mut t)
-            | Op1(_, ref mut t)
-            | Sealed(_, ref mut t) => {
+            | Op1(_, ref mut t)  => {
                 func(t);
             }
             MetaValue(ref mut meta) => {
@@ -402,6 +401,7 @@ impl Term {
             }
             Let(_, ref mut t1, ref mut t2, _)
             | LetPattern(_, _, ref mut t1, ref mut t2)
+            | Sealed(_, ref mut t1, ref mut t2)
             | App(ref mut t1, ref mut t2)
             | Op2(_, ref mut t1, ref mut t2) => {
                 func(t1);
@@ -435,7 +435,7 @@ impl Term {
             Term::Record(..) | Term::RecRecord(..) => Some("Record"),
             Term::Array(..) => Some("Array"),
             Term::SealingKey(_) => Some("SealingKey"),
-            Term::Sealed(_, _) => Some("Sealed"),
+            Term::Sealed(_, _, _) => Some("Sealed"),
             Term::MetaValue(_) => Some("Metavalue"),
             Term::Let(..)
             | Term::LetPattern(..)
@@ -487,7 +487,7 @@ impl Term {
             Term::Record(..) | Term::RecRecord(..) => String::from("{ ... }"),
             Term::Array(..) => String::from("[ ... ]"),
             Term::SealingKey(_) => String::from("<sealing key>"),
-            Term::Sealed(_, _) => String::from("<sealed>"),
+            Term::Sealed(_, _, _) => String::from("<sealed>"),
             Term::MetaValue(ref meta) => {
                 let mut content = String::new();
 
@@ -574,7 +574,7 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
-            | Term::Sealed(_, _)
+            | Term::Sealed(_, _, _)
             | Term::MetaValue(_)
             | Term::Import(_)
             | Term::ResolvedImport(_)
@@ -614,7 +614,7 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
-            | Term::Sealed(_, _)
+            | Term::Sealed(_, _, _)
             | Term::MetaValue(_)
             | Term::Import(_)
             | Term::ResolvedImport(_)
@@ -1179,10 +1179,11 @@ impl RichTerm {
                     pos,
                 )
             },
-            Term::Sealed(i, t) => {
-                let t = t.traverse(f, state, order)?;
+            Term::Sealed(i, t1, t2) => {
+                let t1 = t1.traverse(f, state, order)?;
+                let t2 = t2.traverse(f, state, order)?;
                 RichTerm::new(
-                    Term::Sealed(i, t),
+                    Term::Sealed(i, t1, t2),
                     pos,
                 )
             },

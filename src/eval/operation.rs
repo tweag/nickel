@@ -437,7 +437,12 @@ fn process_unary_operation(
         UnaryOp::Seal() => {
             if let Term::SealingKey(s) = &*t {
                 Ok(Closure::atomic_closure(
-                    mk_fun!("x", Term::Sealed(*s, mk_term::var("x"))).with_pos(pos_op_inh),
+                    mk_fun!(
+                        "x",
+                        "l",
+                        Term::Sealed(*s, mk_term::var("x"), mk_term::var("l"))
+                    )
+                    .with_pos(pos_op_inh),
                 ))
             } else {
                 Err(EvalError::TypeError(
@@ -1415,7 +1420,7 @@ fn process_binary_operation(
                 // Return a function that either behaves like the identity or
                 // const unwrapped_term
 
-                Ok(if let Term::Sealed(s2, t) = t2.into_owned() {
+                Ok(if let Term::Sealed(s2, t, _lbl) = t2.into_owned() {
                     if *s1 == s2 {
                         Closure {
                             body: mk_fun!("-invld", t),

@@ -230,6 +230,20 @@ impl Stack {
         }
     }
 
+    pub fn peek_op_cont(&mut self) -> Option<&OperationCont> {
+        // We want to skip the thunks on the stack
+        // I think this would fail if the stack is empty
+        // When else can this fail?
+        let mut last_idx = self.0.len() - 1;
+        while let Marker::Thunk(..) = self.0[last_idx] {
+            last_idx -= 1;
+        }
+        match &self.0[last_idx] {
+            Marker::Cont(cont, _, _) => Some(cont),
+            _ => None,
+        }
+    }
+
     /// Try to pop an equality from the top of the stack. If `None` is returned, the top element
     /// was not an equality and the stack is left unchanged.
     pub fn pop_eq(&mut self) -> Option<(Closure, Closure)> {

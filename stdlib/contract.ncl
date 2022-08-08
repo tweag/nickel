@@ -25,7 +25,7 @@
       if pol == lPol then
           %unseal% sy t (%blame% l)
       else
-          %seal% sy t,
+          %seal% sy t l,
 
   "$row_extend" = fun contr case l t =>
       if (case t) then
@@ -70,7 +70,7 @@
           else
               %blame% (%tag% "missing polymorphic part" l)
       else
-          %record_insert% magic_fld acc (%seal% sy t),
+          %record_insert% magic_fld acc (%seal% sy t l),
 
   "$dyn_tail" = fun acc l t => acc & t,
 
