@@ -309,13 +309,18 @@ pub fn merge(
             // Merging recursive record is the one operation that may override recursive fields. To
             // have the recursive fields depend on the updated values, we need to revert the thunks
             // first.
-            let m1 = rev_thunks(m1, &env1);
-            let m2 = rev_thunks(m2, &env2);
+            let mut m1_values = Vec::with_capacity(m1.len()); // we need to keep the reverted values for later usage
+            let mut m2_values = Vec::with_capacity(m2.len());
+            let m1 = rev_thunks(m1, &env1).map(|(a, b)| {
+                m1_values.push(b.clone());
+                (a, b)
+            });
+            let m2 = rev_thunks(m2, &env2).map(|(a, b)| {
+                m2_values.push(b.clone());
+                (a, b)
+            });
 
-            let (left, center, right) = hashmap::split(
-                m1.iter().map(|&(a, ref b)| (a, b)),
-                m2.iter().map(|&(a, ref b)| (a, b)),
-            );
+            let (left, center, right) = hashmap::split(m1, m2);
 
             match mode {
                 MergeMode::Contract(mut lbl) if !attrs2.open && left.len() > 0 => {
@@ -357,10 +362,12 @@ pub fn merge(
             }));
 
             let rec_env = fixpoint::rec_env(m.iter(), &env)?;
-            m1.into_iter()
-                .try_for_each(|(_, ref rt)| fixpoint::patch_field(rt, &rec_env, &env1.borrow()))?;
-            m2.into_iter()
-                .try_for_each(|(_, ref rt)| fixpoint::patch_field(rt, &rec_env, &env2.borrow()))?;
+            m1_values
+                .into_iter()
+                .try_for_each(|ref rt| fixpoint::patch_field(rt, &rec_env, &env1.borrow()))?;
+            m2_values
+                .into_iter()
+                .try_for_each(|ref rt| fixpoint::patch_field(rt, &rec_env, &env2.borrow()))?;
 
             let final_pos = if mode == MergeMode::Standard {
                 pos_op.into_inherited()
@@ -437,25 +444,23 @@ fn merge_closurize(
     body.closurize(env, local_env)
 }
 
-fn rev_thunks<'a, K: 'a, I: IntoIterator<Item = (K, &'a RichTerm)>>(
+fn rev_thunks<'a, K: 'a, I: IntoIterator<Item = (K, &'a RichTerm)> + 'a>(
     map: I,
     env: &'a RefCell<Environment>,
-) -> Vec<(K, RichTerm)> {
-    map.into_iter()
-        .map(move |(k, rt)| {
-            let mut rt = rt.clone();
-            if let Term::Var(id) = rt.as_ref() {
-                // This create a fresh variable which is bound to a reverted copy of the original thunk
-                let reverted = env.borrow().get(id).unwrap().revert();
-                let fresh_id = crate::transform::fresh_var();
-                env.borrow_mut().insert(fresh_id.clone(), reverted);
-                *(SharedTerm::make_mut(&mut rt.term)) = Term::Var(fresh_id);
-            }
-            // Otherwise, if it is not a variable after the share normal form transformations, it
-            // should be a constant and we don't need to revert anything
-            (k, rt)
-        })
-        .collect()
+) -> impl Iterator<Item = (K, RichTerm)> + 'a {
+    map.into_iter().map(move |(k, rt)| {
+        let mut rt = rt.clone();
+        if let Term::Var(id) = rt.as_ref() {
+            // This create a fresh variable which is bound to a reverted copy of the original thunk
+            let reverted = env.borrow().get(id).unwrap().revert();
+            let fresh_id = crate::transform::fresh_var();
+            env.borrow_mut().insert(fresh_id.clone(), reverted);
+            *(SharedTerm::make_mut(&mut rt.term)) = Term::Var(fresh_id);
+        }
+        // Otherwise, if it is not a variable after the share normal form transformations, it
+        // should be a constant and we don't need to revert anything
+        (k, rt)
+    })
 }
 
 pub mod hashmap {
