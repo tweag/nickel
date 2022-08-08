@@ -76,8 +76,8 @@ members = [
 ]
 
 # Enable this to use flamegraphs
-# [profile.release]
-# debug = true
+[profile.release]
+debug = true
 
 [[bench]]
 name = "numeric"
@@ -91,9 +91,9 @@ harness = false
 name = "arrays"
 harness = false
 
-# [[bench]]
-# name = "records"
-# harness = false
+[[bench]]
+name = "records"
+harness = false
 
 [[bench]]
 name = "serialization"

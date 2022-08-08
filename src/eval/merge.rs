@@ -95,7 +95,7 @@ pub fn merge(
 ) -> Result<Closure, EvalError> {
     // Merging a simple value and a metavalue is equivalent to first wrapping the simple value in a
     // new metavalue (with no attribute set excepted the value), and then merging the two
-    let (t1, t2) = match (t1.term.is_metavalue(), t2.term.is_metavalue()) {
+    let (rt1, rt2) = match (t1.term.is_metavalue(), t2.term.is_metavalue()) {
         (true, false) => {
             let pos = t2.pos;
             let t = Term::MetaValue(MetaValue::from(t2));
@@ -109,126 +109,61 @@ pub fn merge(
         _ => (t1, t2),
     };
 
-    let RichTerm {
-        term: t1,
-        pos: pos1,
-    } = t1;
-    let RichTerm {
-        term: t2,
-        pos: pos2,
-    } = t2;
-
-    match (t1.into_owned(), t2.into_owned()) {
+    match (&*rt1.term, &*rt2.term) {
         // Merge is idempotent on basic terms
-        (Term::Null, Term::Null) => Ok(Closure::atomic_closure(RichTerm::new(
-            Term::Null,
-            pos_op.into_inherited(),
-        ))),
+        (Term::Null, Term::Null) => Ok(Closure::atomic_closure(
+            rt1.with_pos(pos_op.into_inherited()),
+        )),
         (Term::Bool(b1), Term::Bool(b2)) => {
             if b1 == b2 {
-                Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Bool(b1),
-                    pos_op.into_inherited(),
-                )))
-            } else {
-                Err(EvalError::MergeIncompatibleArgs(
-                    RichTerm {
-                        term: SharedTerm::new(Term::Bool(b1)),
-                        pos: pos1,
-                    },
-                    RichTerm {
-                        term: SharedTerm::new(Term::Bool(b2)),
-                        pos: pos2,
-                    },
-                    pos_op,
+                Ok(Closure::atomic_closure(
+                    rt1.with_pos(pos_op.into_inherited()),
                 ))
+            } else {
+                Err(EvalError::MergeIncompatibleArgs(rt1, rt2, pos_op))
             }
         }
         (Term::Num(n1), Term::Num(n2)) => {
             if (n1 - n2).abs() < f64::EPSILON {
-                Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Num(n1),
-                    pos_op.into_inherited(),
-                )))
-            } else {
-                Err(EvalError::MergeIncompatibleArgs(
-                    RichTerm {
-                        term: SharedTerm::new(Term::Num(n1)),
-                        pos: pos1,
-                    },
-                    RichTerm {
-                        term: SharedTerm::new(Term::Num(n2)),
-                        pos: pos2,
-                    },
-                    pos_op,
+                Ok(Closure::atomic_closure(
+                    rt1.with_pos(pos_op.into_inherited()),
                 ))
+            } else {
+                Err(EvalError::MergeIncompatibleArgs(rt1, rt2, pos_op))
             }
         }
         (Term::Str(s1), Term::Str(s2)) => {
             if s1 == s2 {
-                Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Str(s1),
-                    pos_op.into_inherited(),
-                )))
-            } else {
-                Err(EvalError::MergeIncompatibleArgs(
-                    RichTerm {
-                        term: SharedTerm::new(Term::Str(s1)),
-                        pos: pos1,
-                    },
-                    RichTerm {
-                        term: SharedTerm::new(Term::Str(s2)),
-                        pos: pos2,
-                    },
-                    pos_op,
+                Ok(Closure::atomic_closure(
+                    rt1.with_pos(pos_op.into_inherited()),
                 ))
+            } else {
+                Err(EvalError::MergeIncompatibleArgs(rt1, rt2, pos_op))
             }
         }
         (Term::Lbl(l1), Term::Lbl(l2)) => {
             if l1 == l2 {
-                Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Lbl(l1),
-                    pos_op.into_inherited(),
-                )))
-            } else {
-                Err(EvalError::MergeIncompatibleArgs(
-                    RichTerm {
-                        term: SharedTerm::new(Term::Lbl(l1)),
-                        pos: pos1,
-                    },
-                    RichTerm {
-                        term: SharedTerm::new(Term::Lbl(l2)),
-                        pos: pos2,
-                    },
-                    pos_op,
+                Ok(Closure::atomic_closure(
+                    rt1.with_pos(pos_op.into_inherited()),
                 ))
+            } else {
+                Err(EvalError::MergeIncompatibleArgs(rt1, rt2, pos_op))
             }
         }
         (Term::Enum(i1), Term::Enum(i2)) => {
             if i1 == i2 {
-                Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Enum(i1),
-                    pos_op.into_inherited(),
-                )))
-            } else {
-                Err(EvalError::MergeIncompatibleArgs(
-                    RichTerm {
-                        term: SharedTerm::new(Term::Enum(i1)),
-                        pos: pos1,
-                    },
-                    RichTerm {
-                        term: SharedTerm::new(Term::Enum(i2)),
-                        pos: pos2,
-                    },
-                    pos_op,
+                Ok(Closure::atomic_closure(
+                    rt1.with_pos(pos_op.into_inherited()),
                 ))
+            } else {
+                Err(EvalError::MergeIncompatibleArgs(rt1, rt2, pos_op))
             }
         }
         (Term::Array(arr1, _attrs1), Term::Array(arr2, _attrs2))
             if arr1.is_empty() && arr2.is_empty() =>
         {
             Ok(Closure::atomic_closure(RichTerm::new(
-                Term::Array(arr1, ArrayAttrs { closurized: true }),
+                Term::Array(vec![], ArrayAttrs { closurized: true }),
                 pos_op.into_inherited(),
             )))
         }
@@ -252,7 +187,7 @@ pub fn merge(
                 value: value2,
             } = meta2;
 
-            let doc = merge_doc(doc1, doc2);
+            let doc = merge_doc(doc1.as_ref(), doc2.as_ref());
 
             // If:
             // 1. meta1 has a value
@@ -267,14 +202,14 @@ pub fn merge(
                         && (priority1 >= priority2 || value2.is_none()) =>
                 {
                     let (v, e) = cross_apply_contracts(
-                        v1,
+                        v1.clone(),
                         &env1,
                         types2.iter().chain(contracts2.iter()),
                         &env2,
                     )?;
                     (Some(v), e)
                 }
-                v1 => (v1, env1.clone()),
+                v1 => (v1.clone(), env1.clone()),
             };
 
             // Dually, we cross apply meta1's contracts to meta2's value.
@@ -284,14 +219,14 @@ pub fn merge(
                         && (priority2 >= priority1 || value1.is_none()) =>
                 {
                     let (v, e) = cross_apply_contracts(
-                        v2,
+                        v2.clone(),
                         &env2,
                         types1.iter().chain(contracts1.iter()),
                         &env1,
                     )?;
                     (Some(v), e)
                 }
-                v2 => (v2, env2.clone()),
+                v2 => (v2.clone(), env2.clone()),
             };
 
             // Selecting either meta1's value, meta2's value, or the merge of the two values,
@@ -301,14 +236,14 @@ pub fn merge(
                     let mut env = Environment::new();
                     (
                         Some(merge_closurize(&mut env, t1, val_env1, t2, val_env2)),
-                        priority1,
+                        *priority1,
                         env,
                     )
                 }
-                (Some(t1), _) if priority1 > priority2 => (Some(t1), priority1, val_env1),
-                (Some(t1), None) => (Some(t1), priority1, val_env1),
-                (_, Some(t2)) if priority2 > priority1 => (Some(t2), priority2, val_env2),
-                (None, Some(t2)) => (Some(t2), priority2, val_env2),
+                (Some(t1), _) if priority1 > priority2 => (Some(t1), *priority1, val_env1),
+                (Some(t1), None) => (Some(t1), *priority1, val_env1),
+                (_, Some(t2)) if priority2 > priority1 => (Some(t2), *priority2, val_env2),
+                (None, Some(t2)) => (Some(t2), *priority2, val_env2),
                 (None, None) => (None, Default::default(), Environment::new()),
                 _ => unreachable!(),
             };
@@ -316,14 +251,20 @@ pub fn merge(
             // Finally, we also need to closurize the contracts in the final envirnment.
             let mut contracts1: Vec<Contract> = contracts1
                 .into_iter()
+                .cloned()
                 .map(|ctr| ctr.closurize(&mut env, env1.clone()))
                 .collect();
             let contracts2: Vec<Contract> = contracts2
                 .into_iter()
+                .cloned()
                 .map(|ctr| ctr.closurize(&mut env, env2.clone()))
                 .collect();
-            let types1 = types1.map(|ctr| ctr.closurize(&mut env, env1));
-            let types2 = types2.map(|ctr| ctr.closurize(&mut env, env2));
+            let types1 = types1
+                .as_ref()
+                .map(|ctr| ctr.clone().closurize(&mut env, env1));
+            let types2 = types2
+                .as_ref()
+                .map(|ctr| ctr.clone().closurize(&mut env, env2));
 
             // If both have type annotations, we arbitrarily choose the first one. At this point we
             // are evaluating the term, and types annotations and contracts make no difference
@@ -368,8 +309,8 @@ pub fn merge(
             // Merging recursive record is the one operation that may override recursive fields. To
             // have the recursive fields depend on the updated values, we need to revert the thunks
             // first.
-            let m1 = rev_thunks(&m1, &env1);
-            let m2 = rev_thunks(&m2, &env2);
+            let m1 = rev_thunks(m1, &env1);
+            let m2 = rev_thunks(m2, &env2);
 
             let (left, center, right) = hashmap::split(
                 m1.iter().map(|&(a, ref b)| (a, b)),
@@ -424,29 +365,19 @@ pub fn merge(
             let final_pos = if mode == MergeMode::Standard {
                 pos_op.into_inherited()
             } else {
-                pos1.into_inherited()
+                rt1.pos.into_inherited()
             };
 
             Ok(Closure {
                 body: RichTerm::new(
-                    Term::Record(m, RecordAttrs::merge(attrs1, attrs2)),
+                    Term::Record(m, RecordAttrs::merge(*attrs1, *attrs2)),
                     final_pos,
                 ),
                 env,
             })
         }
         //The following cases are either errors or not yet implemented
-        (t1_, t2_) => Err(EvalError::MergeIncompatibleArgs(
-            RichTerm {
-                term: SharedTerm::new(t1_),
-                pos: pos1,
-            },
-            RichTerm {
-                term: SharedTerm::new(t2_),
-                pos: pos2,
-            },
-            pos_op,
-        )),
+        _ => Err(EvalError::MergeIncompatibleArgs(rt1, rt2, pos_op)),
     }
 }
 
@@ -483,9 +414,9 @@ fn cross_apply_contracts<'a>(
 }
 
 /// Merge the two optional documentations of a metavalue.
-fn merge_doc(doc1: Option<String>, doc2: Option<String>) -> Option<String> {
+fn merge_doc(doc1: Option<&String>, doc2: Option<&String>) -> Option<String> {
     //FIXME: how to merge documentation? Just concatenate?
-    doc1.or(doc2)
+    doc1.or(doc2).cloned()
 }
 
 /// Take the current environment, two terms with their local environment, and return a term which
