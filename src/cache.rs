@@ -339,7 +339,7 @@ impl Cache {
 
     /// Parse a source and populate the corresponding entry in the cache, or do nothing if the
     /// entry has already been parsed. This function is error tolerant: parts of the source which
-    /// result in parse errors are parsed as [`crate::term::RichTerm::Error`] and the
+    /// result in parse errors are parsed as [`crate::term::Term::ParseError`] and the
     /// corresponding error messages are collected and returned.
     ///
     /// The `Err` part of the result corresponds to non-recoverable errors.
