@@ -1298,6 +1298,28 @@ impl RichTerm {
             TraverseOrder::BottomUp => f(result, state),
         }
     }
+
+    /// Pretty print a term capped to a given max length (in characters). Useful to limit the size
+    /// of terms reported e.g. in typechecking errors. If the output of pretty printing is greater
+    /// than the bound, the string is truncated to `max_width` and the last character after
+    /// truncate is replaced by the ellipsis unicode character U+2026.
+    pub fn pretty_print_cap(&self, max_width: usize) -> String {
+        let output = format!("{}", self);
+
+        if output.len() <= max_width {
+            output
+        } else {
+            let (end, _) = output.char_indices().nth(max_width).unwrap();
+            let mut truncated = String::from(&output[..end]);
+
+            if max_width >= 2 {
+                truncated.pop();
+                truncated.push('\u{2026}');
+            }
+
+            truncated
+        }
+    }
 }
 
 impl From<RichTerm> for Term {
@@ -1318,6 +1340,18 @@ impl From<Term> for RichTerm {
             term: SharedTerm::new(t),
             pos: TermPos::None,
         }
+    }
+}
+
+impl std::fmt::Display for RichTerm {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        use crate::pretty::*;
+        use pretty::BoxAllocator;
+
+        let allocator = BoxAllocator;
+
+        let doc: DocBuilder<_, ()> = self.clone().pretty(&allocator);
+        doc.render_fmt(80, f)
     }
 }
 
