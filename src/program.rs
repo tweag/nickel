@@ -19,7 +19,7 @@
 //! text, in the Nickel executable. The embedding is done by way of the [crate::stdlib], which
 //! exposes the standard library files as strings. The embedded strings are then parsed by the
 //! functions in [`crate::cache`] (see [`crate::cache::Cache::mk_eval_env`]).
-//! Each such value is added to the global environment before the evaluation of the program.
+//! Each such value is added to the initial environment before the evaluation of the program.
 use crate::cache::*;
 use crate::error::{Error, ToDiagnostic};
 use crate::identifier::Ident;
@@ -68,50 +68,50 @@ impl Program {
         Ok(Program { main_id, cache })
     }
 
-    /// Retrieve the parsed term and typecheck it, and generate a fresh global environment. Return
+    /// Retrieve the parsed term and typecheck it, and generate a fresh initial environment. Return
     /// both.
     fn prepare_eval(&mut self) -> Result<(RichTerm, eval::Environment), Error> {
-        let GlobalEnv { eval_env, type_env } = self.cache.prepare_stdlib()?;
+        let Envs { eval_env, type_env } = self.cache.prepare_stdlib()?;
         self.cache.prepare(self.main_id, &type_env)?;
         Ok((self.cache.get(self.main_id).unwrap(), eval_env))
     }
 
     /// Parse if necessary, typecheck and then evaluate the program.
     pub fn eval(&mut self) -> Result<RichTerm, Error> {
-        let (t, global_env) = self.prepare_eval()?;
-        eval::eval(t, &global_env, &mut self.cache).map_err(|e| e.into())
+        let (t, initial_env) = self.prepare_eval()?;
+        eval::eval(t, &initial_env, &mut self.cache).map_err(|e| e.into())
     }
 
     /// Same as `eval`, but proceeds to a full evaluation.
     pub fn eval_full(&mut self) -> Result<RichTerm, Error> {
-        let (t, global_env) = self.prepare_eval()?;
-        eval::eval_full(t, &global_env, &mut self.cache).map_err(|e| e.into())
+        let (t, initial_env) = self.prepare_eval()?;
+        eval::eval_full(t, &initial_env, &mut self.cache).map_err(|e| e.into())
     }
 
     /// Same as `eval_full`, but does not substitute all variables.
     pub fn eval_deep(&mut self) -> Result<RichTerm, Error> {
-        let (t, global_env) = self.prepare_eval()?;
-        eval::eval_deep(t, &global_env, &mut self.cache).map_err(|e| e.into())
+        let (t, initial_env) = self.prepare_eval()?;
+        eval::eval_deep(t, &initial_env, &mut self.cache).map_err(|e| e.into())
     }
 
     /// Wrapper for [`query`].
     pub fn query(&mut self, path: Option<String>) -> Result<Term, Error> {
-        let global_env = self.cache.prepare_stdlib()?;
-        query(&mut self.cache, self.main_id, &global_env, path)
+        let initial_env = self.cache.prepare_stdlib()?;
+        query(&mut self.cache, self.main_id, &initial_env, path)
     }
 
     /// Load, parse, and typecheck the program and the standard library, if not already done.
     pub fn typecheck(&mut self) -> Result<(), Error> {
         self.cache.parse(self.main_id)?;
         self.cache.load_stdlib()?;
-        let global_env = self.cache.mk_types_env().expect("program::typecheck(): stdlib has been loaded but was not found in cache on mk_types_env()");
+        let initial_env = self.cache.mk_type_env().expect("program::typecheck(): stdlib has been loaded but was not found in cache on mk_types_env()");
         self.cache
             .resolve_imports(self.main_id)
             .map_err(|cache_err| {
                 cache_err.unwrap_error("program::typecheck(): expected source to be parsed")
             })?;
         self.cache
-            .typecheck(self.main_id, &global_env)
+            .typecheck(self.main_id, &initial_env)
             .map_err(|cache_err| {
                 cache_err.unwrap_error("program::typecheck(): expected source to be parsed")
             })?;
@@ -178,10 +178,10 @@ impl Program {
 pub fn query(
     cache: &mut Cache,
     file_id: FileId,
-    global_env: &GlobalEnv,
+    initial_env: &Envs,
     path: Option<String>,
 ) -> Result<Term, Error> {
-    cache.prepare(file_id, &global_env.type_env)?;
+    cache.prepare(file_id, &initial_env.type_env)?;
 
     let t = if let Some(p) = path {
         // Parsing `y.path`. We `seq` it to force the evaluation of the underlying value,
@@ -205,7 +205,7 @@ pub fn query(
         cache.get_owned(file_id).unwrap()
     };
 
-    Ok(eval::eval_meta(t, &global_env.eval_env, cache)?.into())
+    Ok(eval::eval_meta(t, &initial_env.eval_env, cache)?.into())
 }
 
 /// Pretty-print an error.
