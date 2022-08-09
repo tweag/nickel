@@ -14,7 +14,7 @@ let time = {
        Namespace | Str,
        Id | Name,
        Name | Str,
-       Type | [| service, system, batch |],
+       Type | [| `service, `system, `batch |],
        Priority | num.Nat,
        Datacenters | array.NonEmpty,
        TaskGroups | Array TaskGroup
@@ -119,7 +119,7 @@ let time = {
     },
 
     Migrate = {
-      HealthCheck      | [| checks, task_states |]
+      HealthCheck      | [| `checks, `task_states |]
                        | default = `checks,
       HealthyDeadline  | num.Nat
                        | default = 500000000000,
@@ -144,7 +144,7 @@ let time = {
       AutoPromote       | Bool | default = false,
       AutoRevert        | Bool | default = false,
       Canary            | num.Nat | default = 0,
-      HealthCheck       | [| checks, task_states, manual |]
+      HealthCheck       | [| `checks, `task_states, `manual |]
                         | default = `checks,
       HealthyDeadline   | lib.contracts.Nullable num.Nat | default = null,
       MaxParallel       | num.Nat | default = 1,
@@ -201,7 +201,7 @@ let time = {
     },
 
     Network = {
-      Mode | [| host, bridge |] | default = `host,
+      Mode | [| `host, `bridge |] | default = `host,
       Device | Str | default = "",
       CIDR | Str | default = "",
       IP | Str | default = "",
@@ -212,7 +212,7 @@ let time = {
     },
 
     ServiceCheck = {
-      AddressMode | [| alloc, driver, host |],
+      AddressMode | [| `alloc, `driver, `host |],
       Args | lib.contracts.Nullable (Array Str) | default = null,
       CheckRestart | json.CheckRestart,
       Command | Str | default = "",
@@ -230,7 +230,7 @@ let time = {
       TaskName | Str | default = "",
       Timeout | num.Nat,
       TLSSkipVerify | Bool | default = false,
-      Type | [| http, tcp, script, grpc |],
+      Type | [| `http, `tcp, `script, `grpc |],
       Body | lib.contracts.Nullable Str | default = null,
       # TODO  Header  [string]  [...string]
     },
@@ -242,7 +242,7 @@ let time = {
     },
 
     Lifecycle = {
-      Hook | [| prestart, poststart, poststop |],
+      Hook | [| `prestart, `poststart, `poststop |],
       Sidecar | lib.contracts.Nullable Bool | default = null,
     },
 
@@ -261,7 +261,7 @@ let time = {
       EnableTagOverride | Bool
                         | default = false,
       PortLabel | Str,
-      AddressMode | [| alloc, auto, driver, host |],
+      AddressMode | [| `alloc, `auto, `driver, `host |],
       Checks | Array ServiceCheck
              | default = [],
       CheckRestart | json.CheckRestart,
@@ -272,7 +272,7 @@ let time = {
 
     Task = {
       Name | Str,
-      Driver | [| exec, docker, nspawn |],
+      Driver | [| `exec, `docker, `nspawn |],
       Config | stanza.taskConfig
              | {driver | Driver},
       Constraints | Array Constraint
@@ -323,7 +323,7 @@ let time = {
       GetterSource | Str,
       # TODO GetterOptions: [string]: string
       # TODO GetterHeaders: [string]: string
-      GetterMode | [| any, file, dir |] | default = `any,
+      GetterMode | [| `any, `file, `dir |] | default = `any,
       RelativeDest | Str,
     },
 
@@ -331,7 +331,7 @@ let time = {
       SourcePath | Str | default = "",
       DestPath | Str,
       EmbeddedTmpl | Str,
-      ChangeMode | [| restart, noop, signal |] | default = `restart,
+      ChangeMode | [| `restart, `noop, `signal |] | default = `restart,
       ChangeSignal | Str | default = "",
       Splay | num.Nat | default = 5000000000,
       Perms | lib.contracts.MatchRegexp "^[0-7]{4}$" | default = "0644",
@@ -341,7 +341,7 @@ let time = {
     },
 
     Vault = {
-      ChangeMode | [| noop, restart, signal |] | default = `restart,
+      ChangeMode | [| `noop, `restart, `signal |] | default = `restart,
       ChangeSignal | Str | default = "",
       Env | Bool | default = true,
       Namespace | Str | default = "",
@@ -681,7 +681,7 @@ let time = {
   },
 
   stanza = {
-    job = let type_schema = [| batch, service, system |] in {
+    job = let type_schema = [| `batch, `service, `system |] in {
       datacenters | array.NonEmpty,
       namespace | Str,
       type | type_schema
@@ -707,7 +707,7 @@ let time = {
     },
 
     migrate = {
-      health_check | [| checks, task_states |]
+      health_check | [| `checks, `task_states |]
                    | default = `checks,
       healthy_deadline | num.Nat
                        | default = 500000000000,
@@ -780,7 +780,7 @@ let time = {
       },
 
     group = {
-      type | [| service, batch, system |],
+      type | [| `service, `batch, `system |],
       affinities | Array stanza.affinity
                  | default = [],
       constraints | Array stanza.constraint
@@ -800,12 +800,12 @@ let time = {
               | default = null,
       restart_policy | lib.contracts.Nullable stanza.restart
                      | default = null,
-      reschedule | stanza.reschedule & {type | [| service, batch, system |]}
+      reschedule | stanza.reschedule & {type | [| `service, `batch, `system |]}
                  | default = {},
     },
 
     reschedule = {
-      type | [| batch, service, system |]
+      type | [| `batch, `service, `system |]
            | default = `service,
 
       # TODO: convert with ifs or sth
@@ -829,7 +829,7 @@ let time = {
     },
 
     network = {
-      mode | [| host, bridge |],
+      mode | [| `host, `bridge |],
       dns | lib.contracts.Nullable {
               servers | Array Str
                       | default = []
@@ -857,7 +857,7 @@ let time = {
       check_restart | lib.contracts.Nullable stanza.check_restart
                     | default = null,
       port | Str,
-      address_mode | [| alloc, driver, auto, host |]
+      address_mode | [| `alloc, `driver, `auto, `host |]
                    | default = `auto,
       tags | Array Str
            | default = [],
@@ -868,9 +868,9 @@ let time = {
     },
 
     check = {
-      address_mode | [| alloc, driver, host |]
+      address_mode | [| `alloc, `driver, `host |]
                    | default = `driver,
-      type | [| http, tcp, script, grpc |],
+      type | [| `http, `tcp, `script, `grpc |],
       port | Str,
       interval | Duration,
       timeout | Duration,
@@ -945,7 +945,7 @@ let time = {
     },
 
     lifecycle = {
-      hook | [| prestart, poststart, poststop |],
+      hook | [| `prestart, `poststart, `poststop |],
       sidecar | lib.contracts.Nullable Bool
               | default = null,
     },
@@ -967,7 +967,7 @@ let time = {
                    # actually, the key must be the destination
                    # destination | Destination,
                    headers | {_: Str},
-                   mode | [| any, file, dir |]
+                   mode | [| `any, `file, `dir |]
                         | default = `any,
                    options | {_: Str},
                    source | Str,
@@ -986,7 +986,7 @@ let time = {
       # meantime, allow config field:
       config | {..},
 
-      driver | [| exec, docker, nspawn |],
+      driver | [| `exec, `docker, `nspawn |],
 
       env | {_: Str}
           | default = {},
@@ -1028,7 +1028,7 @@ let time = {
                           | default = "",
                    env | Bool
                        | default = false,
-                   change_mode | [| restart, noop, signal |]
+                   change_mode | [| `restart, `noop, `signal |]
                                | default = `restart,
                    change_signal | Str
                                  | default = "",
@@ -1060,7 +1060,7 @@ let time = {
       interval | Duration,
       attempts | num.PosNat,
       delay | Duration,
-      mode | [| delay, fail |],
+      mode | [| `delay, `fail |],
     },
 
     update = {
@@ -1070,7 +1070,7 @@ let time = {
                   | default = false,
       canary | num.Nat
              | default = 0,
-      health_check | [| checks, task_states, manual |]
+      health_check | [| `checks, `task_states, `manual |]
                    | default = `checks,
       healthy_deadline | Duration
                        | default = "5m",
@@ -1085,7 +1085,7 @@ let time = {
     },
 
     vault = {
-      change_mode | [| noop, restart, signal |]
+      change_mode | [| `noop, `restart, `signal |]
                   | default = `restart,
       change_signal | Str
                     | default = "",
@@ -1098,7 +1098,7 @@ let time = {
     },
 
     volume = {
-      type | [| host, csi |],
+      type | [| `host, `csi |],
       source | Str,
       read_only | Bool
                 | default = false,
