@@ -129,6 +129,14 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
     fn was_cloned(&self) -> bool {
         Rc::strong_count(&self.current) > 1
     }
+
+    pub fn reserve(&mut self, additional: usize) {
+        if self.was_cloned() {
+            self.current = Rc::new(HashMap::with_capacity(additional));
+        } else {
+            Rc::get_mut(&mut self.current).unwrap().reserve(additional)
+        }
+    }
 }
 
 impl<K: Hash + Eq, V: PartialEq> FromIterator<(K, V)> for Environment<K, V> {

@@ -458,11 +458,16 @@ fn merge_closurize(
     body.closurize(env, local_env)
 }
 
-fn rev_thunks<'a, K: 'a, I: IntoIterator<Item = (K, &'a RichTerm)> + 'a>(
-    map: I,
+fn rev_thunks<'a, K>(
+    map: &'a HashMap<K, RichTerm>,
     env: &'a RefCell<Environment>,
-) -> impl Iterator<Item = (K, RichTerm)> + 'a {
-    map.into_iter().map(move |(k, rt)| {
+) -> impl Iterator<Item = (&'a K, RichTerm)> + 'a {
+    env.borrow_mut().reserve(
+        map.values()
+            .filter(|&t| matches!(t.as_ref(), Term::Var(_)))
+            .count(),
+    );
+    map.iter().map(move |(k, rt)| {
         let mut rt = rt.clone();
         if let Term::Var(id) = rt.as_ref() {
             // This create a fresh variable which is bound to a reverted copy of the original thunk
