@@ -9,7 +9,7 @@ let baseTags = [""] in
 let Params = {
   count | num.Nat
         | default = 5,
-  role | [| passive, miner, backup |],
+  role | [| `passive, `miner, `backup |],
   datacenters | Dyn,
   job | Dyn,
   namespace | Str,
