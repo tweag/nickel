@@ -94,4 +94,3 @@ aspects to consider when working on Nickel:
 [tweag]: https://www.tweag.io
 [rfcs]: ./rfcs/
 [matrix-nickel]: https://matrix.to/#/#nickel-lang:matrix.org
-[nickel-lang.org]: https://nickel-lang.org

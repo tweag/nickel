@@ -16,9 +16,9 @@ Bool` and use `contract.fromPred` to obtain the corresponding contracts.
 
 ## Run
 
-```
-$ nickel -f simple-contract-bool.ncl
-$ nickel -f simple-contract-div.ncl
+```console
+nickel -f simple-contract-bool.ncl
+nickel -f simple-contract-div.ncl
 ```
 
 ## Playground

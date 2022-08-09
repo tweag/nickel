@@ -26,7 +26,7 @@ nested record.
 A naive and unergonomic of way of doing it is to repeat all the original
 values in a new record:
 
-```
+```nickel
 let record = {
   a = 1,
   b = "str",
@@ -97,6 +97,7 @@ changing an option, I usually want other values depending on this option to be
 updated as well.
 
 ## Comparing override mechanisms
+
 We are going to review various overriding mechanisms of Nix and other related
 languages. Let us sketch some general traits of overriding mechanisms as a
 framework for comparison:
@@ -185,11 +186,12 @@ overriding](https://nixos.org/guides/nix-pills/override-design-pattern.html) or
 
 #### Limits
 
-- ~~**(ERG)**~~ Use a specific representation, rather than handling good old plain records
-  (although the actual representation in Nixpkgs is more ergonomic than a plain
-  function).
-- ~~**(NEST)**~~ Overriding nested attribute sets is painful. If one do the naive thing,
-  the whole subrecord is erased:
+- ~~**(ERG)**~~ Use a specific representation, rather than handling good old
+  plain records (although the actual representation in Nixpkgs is more ergonomic
+  than a plain function).
+- ~~**(NEST)**~~ Overriding nested attribute sets is painful. If one do the
+  naive thing, the whole subrecord is erased:
+
   ```nix
   let rRepr = self: {
     a = {b = self.a.c;};
@@ -242,6 +244,7 @@ dedicated helper functions.
   logical structure.
 - ~~**(NEST)**~~ Overriding nested fields is still clumsy. For example, to
   override `lib.firefoxVersion`:
+
   ```nix
   self: super: { lib = (super.lib or {}) // { firefoxVersion = ...; }; }
   ```
@@ -298,6 +301,7 @@ someModule.paths = [/bar/baz];
     unspecified order.
 
     For example, the following has no equivalent in a merging model:
+
     ```nix
     let overlay = self: super: {b = self.c + 1; a = super.c + 1;}; in #...
     ```
@@ -309,10 +313,11 @@ and this limitation of expressivity may in fact be a good thing.
 ## Overriding elsewhere
 
 ### CUE
+
 CUE allows a form of late-binding for recursive attributes:
 
-```
-$cat test.cue
+```console
+$ cat test.cue
 fields: {
  a: int
  b: a + 1
@@ -329,8 +334,8 @@ fields: {
 Combined with [default values](https://cuelang.org/docs/tutorials/tour/types/defaults/),
 this provides an overriding mechanism:
 
-```
-$cat test2.cue
+```console
+$ cat test2.cue
 fields: {
  a: int | *1
  b: a + 1
@@ -398,6 +403,7 @@ the same way as Nixpkgs overlays, using the `super` keyword.
 
 While not exactly the same, all these overriding mechanisms are based on the
 same underlying principles:
+
 1. Represent recursive records (explicitly or implicitly) as a function of
    `self` (and `super` in some cases)
 2. Compute the combination as a **fixpoint** of several recursive records,
@@ -439,23 +445,19 @@ are required to be grouped in layers of the same priority, instead of logically.
 Summing up the differences between inheritance-based mechanisms and merge-based
 mechanism:
 
-**order-dependency**
+**order-dependency**: Inheritance is order dependent: the chain of extensions
+must be defined with the precise order they will be applied in mind, and
+definitions must be grouped in consequence. On the other hand, merging is
+commutative, and the precedence information is encoded as priorities. Thus,
+overriding by merging can be defined using stand-alone pieces of data, although
+the behavior of priorities is not local.
 
-Inheritance is order dependent: the chain of extensions must be defined with the
-precise order they will be applied in mind, and definitions must be grouped in
-consequence. On the other hand, merging is commutative, and the precedence
-information is encoded as priorities. Thus, overriding by merging can be defined
-using stand-alone pieces of data, although the behavior of priorities is not
-local.
-
-**(EXP)**
-
-Merged records have only access to the final computed fixpoint `self`, while
-objects have access to the previous stage of extension via `super`. However, as
-in the NixOS module system, it is possible to address this issue using custom
-merge functions. This is a bit less expressive, but in a good way: it forces the
-merge strategy to be uniform along each field, while mechanisms like overlays or
-inheritance can do pretty much anything.
+**(EXP)**: Merged records have only access to the final computed fixpoint
+`self`, while objects have access to the previous stage of extension via
+`super`. However, as in the NixOS module system, it is possible to address this
+issue using custom merge functions. This is a bit less expressive, but in a good
+way: it forces the merge strategy to be uniform along each field, while
+mechanisms like overlays or inheritance can do pretty much anything.
 
 ## Proposal overview
 
@@ -481,12 +483,12 @@ constructors - that take a `self` parameter and return a final non recursive rec
 in the same way as the original overriding mechanism of Nixpkgs (the non-existing
 syntax `def := value` is used to insist on the fact that we are defining new objects):
 
-```
+```text
 r = {
   a = 1;
   b = a + 1;
 }
-// Definition of the representation of r
+# Definition of the representation of r
 repr(r) := fun self => {
   a = 1;
   b = self.a + 1;
@@ -495,13 +497,13 @@ repr(r) := fun self => {
 
 Field access amounts to compute a fix-point:
 
-```
+```text
 repr(r).foo := let fix = repr(r) fix in fix.foo
 ```
 
 Merging simply merges the underlying representations:
 
-```
+```text
 repr(r1) & repr(r2) := fun self => r1 self & r2 self
 ```
 
@@ -550,7 +552,7 @@ let block2 = {
   path = ["/bin"]
 } in
 
-// { path = ["usr/local/bin", "/bin"] }
+# { path = ["usr/local/bin", "/bin"] }
 block1 & block2
 ```
 
@@ -569,7 +571,7 @@ only invalidate `self` on a merge. Also, fields that do not depend on a
 recursive variable can be hoisted out of the function, using a representation
 like:
 
-```
+```text
 repr(r) := {
   a = 1;
   b = fun self => self.a + 1;
@@ -591,22 +593,26 @@ trade-off between implementation complexity and performance. See
 Should a record be able to access a yet undefined field because it is expected
 to be provided by a subsequent merge? Two possible approaches:
 
- - **dynamic scoping**: records can reference fields that are not explicitly
-   defined locally, such as:
-   ```nickel
-   {a = b} & {b = 1}
-   ```
-   Dynamic scoping have a number of issues, and is usually considered bad
-   practice.
- - **lexical scoping**: as currently, require self-referenced fields to be
-   defined locally. Note that thanks to contracts, one can require the existence
-   of a field without defining it. For example, we could write the previous
-   example as:
-   ```nickel
-   {a = b, b | Num} & {b = 1}
-   ```
-   This is also a better practice to explicitly state the fields whose presence
-   is assumed in general.
+- **dynamic scoping**: records can reference fields that are not explicitly
+  defined locally, such as:
+
+  ```nickel
+  {a = b} & {b = 1}
+  ```
+
+  Dynamic scoping have a number of issues, and is usually considered bad
+  practice.
+- **lexical scoping**: as currently, require self-referenced fields to be
+  defined locally. Note that thanks to contracts, one can require the existence
+  of a field without defining it. For example, we could write the previous
+  example as:
+
+  ```nickel
+  {a = b, b | Num} & {b = 1}
+  ```
+
+  This is also a better practice to explicitly state the fields whose presence
+  is assumed in general.
 
 This RFC proposes to adopt **lexical scoping**. We could have an even lighter
 syntax, such as `{a = b, b} & {b = 1}` for requiring the presence of a field
@@ -634,13 +640,14 @@ Integer priorities are specified using the `priority` keyword. Defining more
 than one priority in the same meta-value is an error.
 
 Example:
+
 ```nickel
 {
   foo | Num
       | default = 1,
 
   bar | Str,
-  //equivalent to `bar | Str | priority 0`
+  # equivalent to `bar | Str | priority 0`
 
   baz.boo.bor | priority -4 = "value",
 
@@ -660,15 +667,16 @@ described in [#279](https://github.com/tweag/nickel/issues/279). We define the
 new meta-values `default rec` and `force rec`, whose semantics are defined as:
 
 - `eval(expr | default rec)`: case of `eval(expr)`:
-  * `{field1 = value1, .., fieldn = valuen} | annots`: `{field1 = (value1 | default rec aux), .., fieldn =
+  - `{field1 = value1, .., fieldn = valuen} | annots`:
+    `{field1 = (value1 | default rec aux), .., fieldn =
       (valuen | default rec aux)} | annots`
-  * `v | annots` if `v` is not a record: `v | defaulted(annots)` where
+  - `v | annots` if `v` is not a record: `v | defaulted(annots)` where
       `defaulted(annots)` is defined below.
 
 - `defaulted(annots)`:
-  * if `annots` contains the priority metavalue `force`, then `defaulted(annots)
+  - if `annots` contains the priority metavalue `force`, then `defaulted(annots)
     := annots`
-  * otherwise, let `annots' | prio` be the decomposition of `annots` into a
+  - otherwise, let `annots' | prio` be the decomposition of `annots` into a
     priority `prio` (possibly empty) and the other metavalues, then
     `defaulted(annots) := annots' | default`
 
@@ -680,6 +688,7 @@ are written in a liberal way, in that they can be empty).
 default ones. The names `default rec/force rec` are just suggestions.
 
 Example:
+
 ```nickel
 let neutralConf = {
   foo = 1,
@@ -688,31 +697,31 @@ let neutralConf = {
 }
 
 let defaulted | default rec = neutralConf
-// ^ Will evaluate to:
-// {
-//   foo | default = 1,
-//   bar = {
-//     baz | default = "stuff",
-//     bar.blorg | default = false,
-//   },
-// }
-// This is different from `neutralConf | default`! The latter version
-// would be overrided at once, as illustrated below.
+# ^ Will evaluate to:
+# {
+#   foo | default = 1,
+#   bar = {
+#     baz | default = "stuff",
+#     bar.blorg | default = false,
+#   },
+# }
+# This is different from `neutralConf | default`! The latter version
+# would be overrided at once, as illustrated below.
 
 defaulted & {bar.baz = "shapoinkl"}
-// ^ Gives the expected:
-// {
-//   foo | default = 1,
-//   bar = {
-//     baz = "shapoinkl";
-//     bar.blor | default = false,
-//   },
-// }
-// While
+# ^ Gives the expected:
+# {
+#   foo | default = 1,
+#   bar = {
+#     baz = "shapoinkl";
+#     bar.blor | default = false,
+#   },
+# }
+# While
 
 (neutralConf | default) & {bar.baz = "shapoinkl"}
-// ^ This gives only:
-// {bar.baz = "shapoinkl"}
+# ^ This gives only:
+# {bar.baz = "shapoinkl"}
 ```
 
 This way, an existing definition (arbitrarily complex: that could be the root of
@@ -721,7 +730,7 @@ overridable configuration. A possible extension is to have a user-provided
 function that is mapped on priotities: `default/force rec` are just special
 cases of this.
 
-### Custom merge functions
+### Custom merge functions 2
 
 In the case of the NixOS module system, all the configuration is merged in one
 final phase that conceptually evaluates the merge AST.
@@ -741,15 +750,15 @@ let add = fun args => args.lower + args.higher in
 But what about `{a = 1} & {a | merge add = 1} & {a = 2}`? If a merge annotation
 only affects terms on the right hand side, this breaks commutativity.
 
-```
+```nickel
 let r1 = {a = 1} in
 let r2 = {a = 1} in
 let r3 = {a | merge add = 1} in
 
-// {val = 2}
+# {val = 2}
 r1 & r2 & r3
 
-// {val = 3}
+# {val = 3}
 r3 & r1 & r2
 ```
 
@@ -783,7 +792,7 @@ This RFC proposes solution 2. This raises some difficulties:
   In some sense, we would like to have a call-by-name semantics rather than a
   call-by-need.
 
-  * (a) In the case of record fields, overriding has to solve the
+  - (a) In the case of record fields, overriding has to solve the
     same problem of remembering an original expression along an evaluated version.
     If we allow custom merge annotations only on record fields, it is possible to
     recover the original merge AST (abstract syntax tree) and interpret it with
@@ -791,7 +800,7 @@ This RFC proposes solution 2. This raises some difficulties:
     in practice, for the merge expression `val1 & val2` may be obfuscated by some
     program transformations or evaluation artifacts, but doable.
 
-  * (b) A more extreme take is to generalize this to any term: a
+  - (b) A more extreme take is to generalize this to any term: a
     merge expression would behave like a lazy datatype `Merge(t1,t2)` with
     respect to evaluation. Evaluating it would amount to automatically apply
     `eval : Merge(t1,t2) -> t1 & t2` with a potential merge function, which
@@ -820,21 +829,21 @@ Let us define the notion of a *merge tree*. The definition determines what is
 the area of influence of a merge function annotation, answering the following
 questions:
 
-```
+```nickel
 let add = fun x y => x + y in
 
 let var = 1 & 1 in
-var & (1 | merge add) // result?
-(var | merge add) & 1 // result?
+var & (1 | merge add) # result?
+(var | merge add) & 1 # result?
 
-((1 & 1) + (1 & 1)) & (1 | merge add) // result?
-((1 & 1) + (1 & 1) | merge add) & 1 // result?
+((1 & 1) + (1 & 1)) & (1 | merge add) # result?
+((1 & 1) + (1 & 1) | merge add) & 1 # result?
 
-// file: somefile.ncl
+# file: somefile.ncl
 1 & 1
-// file: other.ncl
-(import "somefile") & (1 | merge add) // result?
-(import "somefile" | merge add) & 1 // result?
+# file: other.ncl
+(import "somefile") & (1 | merge add) # result?
+(import "somefile" | merge add) & 1 # result?
 ```
 
 In the following, we will write "meta"-code (think of the code of the Nickel
@@ -872,8 +881,8 @@ expression. It needs to evaluate leafs to see if they contains themselves merge
 expressions, such that `let x = a & b in x & c` and `a & b & c` has the same
 merge tree: that is, merge treee commute with evaluation.
 
-```
-// we maintain an environment of bindings in `env`
+```text
+# we maintain an environment of bindings in `env`
 
 metaData [| e | attr = val, ... |] ::=
   { attr = val, ... }                    if priority is set
@@ -898,7 +907,7 @@ absMergeTree e = weakEval e
 weakEval [| e1 & e2 |] @ e = e
 
 // all other cases are defined exactly as for eval
-weakEval e = ... 
+weakEval e = ...
 ```
 
 ### Semantics
@@ -906,7 +915,7 @@ weakEval e = ...
 Now that we defined merge trees, we need to extract a potential merge fonction
 from it:
 
-```
+```text
 type MergeFunction =
   {value: Dyn, priority: Priority} ->
   {value: Dyn, priority: Priority} -> Dyn
@@ -929,7 +938,7 @@ mergeFunction t = let funs = extractMergeFuns t in
 
 And the interpretation of a merge tree by a merge function:
 
-```
+```text
 // can be extended, as long as it is a partially ordered set
 Priority = Number | -inf | +inf | ...
 
@@ -942,7 +951,7 @@ interpret (Merge(ast_1,meta_1),Merge(ast_2,meta_2)) f =
 
 We can finally define the evaluation of merge:
 
-```
+```text
 eval [| e1 & e2 |] =
   let t = mergeTree [| e1 & e2 |] in
   interpret t (mergeFunction t)

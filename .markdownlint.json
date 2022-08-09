@@ -1,0 +1,10 @@
+{
+    "default": true,
+    "MD013": {
+        "code_blocks": false,
+        "tables": false
+    },
+    "MD024": {
+        "allow_different_nesting": true
+    }
+}

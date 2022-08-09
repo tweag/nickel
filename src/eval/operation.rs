@@ -136,7 +136,7 @@ pub fn continuate_operation(
 
                 Ok(next)
             } else {
-                process_nary_operation(op, evaluated, stack, pos)
+                process_nary_operation(op, evaluated, stack, pos, call_stack)
             }
         }
     }
@@ -434,10 +434,10 @@ fn process_unary_operation(
                 ))
             }
         },
-        UnaryOp::Wrap() => {
-            if let Term::Sym(s) = &*t {
+        UnaryOp::Seal() => {
+            if let Term::SealingKey(s) = &*t {
                 Ok(Closure::atomic_closure(
-                    mk_fun!("x", Term::Wrapped(*s, mk_term::var("x"))).with_pos(pos_op_inh),
+                    mk_fun!("x", Term::Sealed(*s, mk_term::var("x"))).with_pos(pos_op_inh),
                 ))
             } else {
                 Err(EvalError::TypeError(
@@ -1350,12 +1350,12 @@ fn process_binary_operation(
                 ))
             }
         }
-        BinaryOp::Unwrap() => {
-            if let Term::Sym(s1) = &*rt1.term {
+        BinaryOp::Unseal() => {
+            if let Term::SealingKey(s1) = &*rt1.term {
                 // Return a function that either behaves like the identity or
                 // const unwrapped_term
 
-                Ok(if let Term::Wrapped(s2, t) = rt2.term.into_owned() {
+                Ok(if let Term::Sealed(s2, t) = rt2.term.into_owned() {
                     if *s1 == s2 {
                         Closure {
                             body: mk_fun!("-invld", t),
@@ -1778,8 +1778,15 @@ fn process_binary_operation(
                 rt1,
             )),
         },
-        BinaryOp::Merge() => merge(rt1, env1, rt2, env2, pos_op, MergeMode::Standard),
-
+        BinaryOp::Merge() => merge(
+            rt1,
+            env1,
+            rt2,
+            env2,
+            pos_op,
+            MergeMode::Standard,
+            call_stack,
+        ),
         BinaryOp::Hash() => {
             let mk_err_fst = |t1| {
                 Err(EvalError::TypeError(
@@ -1967,6 +1974,7 @@ fn process_nary_operation(
     args: Vec<(Closure, TermPos)>,
     _stack: &mut Stack,
     pos_op: TermPos,
+    call_stack: &CallStack,
 ) -> Result<Closure, EvalError> {
     let pos_op_inh = pos_op.into_inherited();
 
@@ -2133,6 +2141,7 @@ fn process_nary_operation(
                             env3,
                             pos_op,
                             MergeMode::Contract(lbl),
+                            call_stack
                         )
                     }
                 } else {
@@ -2204,7 +2213,7 @@ fn eq(env: &mut Environment, c1: Closure, c2: Closure) -> EqResult {
         (Term::Num(n1), Term::Num(n2)) => EqResult::Bool(n1 == n2),
         (Term::Str(s1), Term::Str(s2)) => EqResult::Bool(s1 == s2),
         (Term::Lbl(l1), Term::Lbl(l2)) => EqResult::Bool(l1 == l2),
-        (Term::Sym(s1), Term::Sym(s2)) => EqResult::Bool(s1 == s2),
+        (Term::SealingKey(s1), Term::SealingKey(s2)) => EqResult::Bool(s1 == s2),
         (Term::Enum(id1), Term::Enum(id2)) => EqResult::Bool(id1 == id2),
         (Term::Record(m1, _), Term::Record(m2, _)) => {
             let (left, center, right) = merge::hashmap::split(&m1, &m2);

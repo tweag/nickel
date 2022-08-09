@@ -10,8 +10,8 @@
   inputs.import-cargo.url = "github:edolstra/import-cargo";
 
   nixConfig = {
-    extra-substituters = [ "https://nickel.cachix.org" ];
-    extra-trusted-public-keys = [ "nickel.cachix.org-1:ABoCOGpTJbAum7U6c+04VbjvLxG9f0gJP5kYihRRdQs=" ];
+    extra-substituters = [ "https://tweag-nickel.cachix.org" ];
+    extra-trusted-public-keys = [ "tweag-nickel.cachix.org-1:GIthuiK4LRgnW64ALYEoioVUQBWs0jexyoYVeLDBwRA=" ];
   };
 
   outputs =
@@ -168,6 +168,13 @@
                 enable = true;
                 entry = pkgs.lib.mkForce "${rust}/bin/cargo-fmt fmt -- --check --color always";
               };
+              markdownlint = {
+                enable = true;
+                excludes = [
+                  "notes/(.+)\\.md$"
+                  "^RELEASES\\.md$"
+                ];
+              };
             };
           };
 
@@ -298,7 +305,7 @@
           for file in *
           do
             module=$(basename $file .ncl)
-            ${self.defaultPackage."${system}"}/bin/nickel doc -f "$module.ncl" \
+            ${self.packages."${system}".default}/bin/nickel doc -f "$module.ncl" \
               --output "$out/$module.md"
           done
         '';
@@ -306,8 +313,8 @@
 
     in
     rec {
-      defaultPackage = packages.build;
       packages = {
+        default = packages.build;
         build = buildNickel { };
         buildWasm = buildNickelWasm { optimize = true; };
         dockerImage = buildDocker packages.build; # TODO: docker image should be a passthru
@@ -316,17 +323,19 @@
         inherit stdlibDoc;
       };
 
-      devShell = devShells.stable;
-      devShells = forEachRustChannel
+      devShells = {
+        default = devShells.stable;
+      } // (forEachRustChannel
         (channel: {
           name = channel;
           value = buildNickel { inherit channel; isDevShell = true; };
-        });
+        }
+        ));
 
       checks = {
         # wasm-opt can take long: eschew optimizations in checks
         wasm = buildNickelWasm { channel = "stable"; optimize = false; };
-        pre-commit = defaultPackage.pre-commit;
+        pre-commit = packages.default.pre-commit;
       } // (forEachRustChannel (channel:
         {
           name = "nickel-against-${channel}-rust-channel";

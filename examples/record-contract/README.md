@@ -7,8 +7,8 @@ configuration.
 
 ## Run
 
-```
-$ nickel -f record-contract.ncl export
+```console
+nickel -f record-contract.ncl export
 ```
 
 ## Playground

@@ -5,7 +5,7 @@ use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{
     GotoDefinitionParams, GotoDefinitionResponse, Location, Range, ReferenceParams, Url,
 };
-use nickel_lang::position::{RawSpan, TermPos};
+use nickel_lang::position::RawSpan;
 use serde_json::Value;
 
 use crate::{

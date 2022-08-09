@@ -37,8 +37,8 @@ is different from the standard typed functional language. We have to:
   exists in the language.
 
 Thus, we can precisely give a meaning to a type `1 + 1` (`#(1 + 1)`) and to a
-term such as `forall a. a -> a` (`§(forall a. a -> a)`). Why we propose to do so is
-explained in the next section.
+term such as `forall a. a -> a` (`§(forall a. a -> a)`). Why we propose to do so
+is explained in the next section.
 
 ## Motivation
 
@@ -98,6 +98,7 @@ that we could just write:
 Which looks more natural all while having a reasonable semantics.
 
 ## Notations
+
 We use the following notations throughout this document:
 
 - `Term` is the subset of the current syntax that includes terms: records,
@@ -228,9 +229,9 @@ complex, whenever possible.
 - Recall that `! : Term + Type -> UniTerm` is the embedding of the current
   syntax to the new unified syntax (erasing `#` and `§`, and changing `|` for
   tails to `;`)
-- In the following, `~` is some flavour of operational equivalence. We won't prove the rules.
-  Those are rather design guidelines. In consequence, we also restrain from
-  giving a formal definition for `~`.
+- In the following, `~` is some flavour of operational equivalence. We won't
+  prove the rules. Those are rather design guidelines. In consequence, we also
+  restrain from giving a formal definition for `~`.
 
 The `term` and `type` functions must satisfy the following coherence laws:
 
@@ -300,7 +301,7 @@ typechecking but fails at runtime on the failure of merging `1` and `2`.
 Because of those issues, **we propose to only translate as types records that
 are already record types in the current syntax**. That is:
 
-```
+```text
 type({f1: t1, .., fn : tn}) = {f1: type(t1), .., fn: type(tn)}
 type({...}) = #term({...}) otherwise
 ```
@@ -313,11 +314,11 @@ possible improvements.
 There is currently no general type application per se, but a special casing for
 `List Foo`, which is a parametrized type. **We propose to keep ground types as
 reserved keywords and special lexemes of the language** for now: it makes things
-simpler as we don't have to ask ourselves what `let List = 1 in [] : List Num` should be
-interpreted as. That way, we can also special case the application of the list
-type and translate an application as a term otherwise:
+simpler as we don't have to ask ourselves what `let List = 1 in [] : List Num`
+should be interpreted as. That way, we can also special case the application of
+the list type and translate an application as a term otherwise:
 
-```
+```text
 type(a b) = List type(f)   if a == List
           = #term(a b)     otherwise (= #term(a) term(b))
 ```
@@ -360,7 +361,7 @@ or not. We sidestep this question as an external implementation detail, assuming
 here that there is a predicate `is_type_var` available during the translation.
 We can now set:
 
-```
+```text
 type(var x) = x   if is_type_var(x)
 type(var x) = #x  otherwise
 ```
@@ -379,7 +380,7 @@ types in the current syntax. It turns out we could extract record types from
 some record contracts too, that often hold the same information. The typical
 example is contracts of the form:
 
-```
+```nickel
 {
   foo | #Contract1,
   bar | #{baz | Str},
@@ -448,7 +449,7 @@ benefit in allowing it would be to capture type variables, as in
 We can even imagine the typechecker being able to evaluate function application,
 to be able to do something like:
 
-```
+```nickel
 let Pair = fun a b => {fst: a, snd: b} in
 fst : forall a b. Pair a b -> a = ...
 ```

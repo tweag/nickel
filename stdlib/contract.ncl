@@ -23,9 +23,9 @@
   "$forall_var" = fun sy pol l t =>
       let lPol = %polarity% l in
       if pol == lPol then
-          %unwrap% sy t (%blame% l)
+          %unseal% sy t (%blame% l)
       else
-          %wrap% sy t,
+          %seal% sy t,
 
   "$row_extend" = fun contr case l t =>
       if (case t) then
@@ -57,20 +57,20 @@
           %blame% (%tag% "missing field `%{field}`" l),
 
   "$forall_tail" = fun sy pol acc l t =>
-      let magic_fld = "_%wrapped" in
+      let magic_fld = "_%sealed" in
       if pol == (%polarity% l) then
           if %has_field% magic_fld t then
               let rest = %record_remove% magic_fld t in
               if rest == {} then
                   let fail = %blame% (%tag% "polymorphic tail mismatch" l) in
-                  let inner = %unwrap% sy (t."%{magic_fld}") fail in
+                  let inner = %unseal% sy (t."%{magic_fld}") fail in
                   acc & inner
               else
                   %blame% (%tag% "extra field `%{%head% (%fields% rest)}`" l)
           else
               %blame% (%tag% "missing polymorphic part" l)
       else
-          %record_insert% magic_fld acc (%wrap% sy t),
+          %record_insert% magic_fld acc (%seal% sy t),
 
   "$dyn_tail" = fun acc l t => acc & t,
 

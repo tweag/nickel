@@ -6,20 +6,24 @@ slug: syntax
 
 ## Identifiers
 
-Nickel identifiers start with an alphabetic character, followed by zero or more alphanumeric characters, `_` (underscores) or `'` (single quotes). For example, `this-isn't-invalid` is a valid identifier.
+Nickel identifiers start with an alphabetic character, followed by zero or more
+alphanumeric characters, `_` (underscores) or `'` (single quotes). For example,
+`this-isn't-invalid` is a valid identifier.
 
 ## Simple values
 
 There are four basic kind of values in Nickel :
- 1. numeric values
- 2. boolean values
- 3. strings
- 4. enum tags
+
+1. numeric values
+2. boolean values
+3. strings
+4. enum tags
 
 ### Numeric values
 
-Nickel has a support for numbers, positive and negative, with or without decimals.
-Internally, those numbers are stored as 64-bits floating point numbers, following the IEEE 754 standard.
+Nickel has a support for numbers, positive and negative, with or without
+decimals. Internally, those numbers are stored as 64-bits floating point
+numbers, following the IEEE 754 standard.
 
 Examples:
 
@@ -40,9 +44,9 @@ There are a some predefined operators for working with numbers :
 | /        | The division operator                                | `1 / 2 = 0.5` |
 | %        | The modulo operator (returns the *signed* remainder) | `5 % 3 = 2`   |
 
-> **Remark about the `-` operator:**
-> Since `-` can be used inside an identifier, the subtraction operators **needs** to be surrounded by spaces:
-> write `a - b`, not `a-b`. `1-2` works as expected, because `1` and `2` are no identifiers.
+> **Remark about the `-` operator:** Since `-` can be used inside an identifier,
+> the subtraction operators **needs** to be surrounded by spaces: write `a - b`,
+> not `a-b`. `1-2` works as expected, because `1` and `2` aren't identifiers.
 
 Numbers can be compared using the following operators :
 | Operator | Description      | Example   |
@@ -68,11 +72,14 @@ In the table below, you will find the operators sorted from highest to lowest pr
 
 The boolean values in Nickel are denoted `true` and `false`.
 
-Nickel features the classical boolean operators *AND* (&&), *OR* (||) and *NOT* (!).
-The _AND_ and _OR_ operators are lazy in the evaluation of the second argument: for example, in `exp1 && exp2`, `exp2` is only evaluated if `exp1` evaluates to `false`.
+Nickel features the classical boolean operators *AND* (&&), *OR* (||) and *NOT*
+(!). The *AND* and *OR* operators are lazy in the evaluation of the second
+argument: for example, in `exp1 && exp2`, `exp2` is only evaluated if `exp1`
+evaluates to `false`.
 
 Examples:
-```
+
+```text
 > true && false
 false
 
@@ -85,15 +92,17 @@ false
 
 ### Strings
 
-Nickel can work with sequences of characters, or strings.
-Strings are enclosed by `" ... "` for a single line string or by `m%" ... "%m` for a multiline string.
-They can be concatenated with the operator `++`.
-Strings must be UTF-8 valid.
+Nickel can work with sequences of characters, or strings. Strings are enclosed
+by `" ... "` for a single line string or by `m%" ... "%m` for a multiline
+string. They can be concatenated with the operator `++`. Strings must be UTF-8
+valid.
 
-The string interpolation syntax is `"%{ < expression that evaluates to a string > }"`.
+The string interpolation syntax is
+`"%{ < expression that evaluates to a string > }"`.
 
 Examples:
-```
+
+```text
 > "Hello, World!"
 "Hello, World!"
 
@@ -115,10 +124,13 @@ error: Type error
 "The number 5."
 ```
 
-Multiline strings are useful to write indented lines. The indentation is stripped from the beginning of the first line, and first and last lines are ignored if they are empty or contain only spaces.
+Multiline strings are useful to write indented lines. The indentation is
+stripped from the beginning of the first line, and first and last lines are
+ignored if they are empty or contain only spaces.
 
 Example:
-```
+
+```text
 > m%"
 This line has no indentation.
   This line is indented.
@@ -134,7 +146,8 @@ This line has no more indentation."
 The only special sequence in a multiline string is the string interpolation.
 
 Examples:
-```
+
+```text
 > m%"Multiline\nString?"%m
 "Multiline\nString?"
 
@@ -143,10 +156,13 @@ Examples:
 String"
 ```
 
-A multiline string can be introduced and closed by multiple `%` signs, as long as this amount is equal. If you want to use string interpolation, you must use the same amount of `%` as in the delimiters.
+A multiline string can be introduced and closed by multiple `%` signs, as long
+as this amount is equal. If you want to use string interpolation, you must use
+the same amount of `%` as in the delimiters.
 
 Examples:
-```
+
+```text
 > m%%"Hello World"%%m
 "Hello World"
 
@@ -160,9 +176,10 @@ Examples:
 "Hello World"
 ```
 
-Multiline strings are "indentation-aware". This means that one could use an indented string interpolation and the indentation would behave as expected:
+Multiline strings are "indentation-aware". This means that one could use an
+indented string interpolation and the indentation would behave as expected:
 
-```
+```text
 > let log = m%"
 if log:
   print("log:", s)
@@ -185,8 +202,8 @@ def concat(str_array, log=false):
 
 #### Enum tags
 
-Enumeration tags are used to express finite alternatives. They are formed
-by writing a backtick `` ` `` followed by any valid identifier. For example,
+Enumeration tags are used to express finite alternatives. They are formed by
+writing a backtick `` ` `` followed by any valid identifier. For example,
 `builtin.serialize` takes an export format as a first argument, which is an enum
 tag among `` `Json ``, `` `Toml `` or `` `Yaml `` (as of version 0.1):
 
@@ -220,10 +237,12 @@ enforce that only valid tags are passed to a function within a typed block. See
 
 ## Equality
 
-Operators `==` and `!=` are used to compare values. Two values of different types are never equal: that is, `==` doesn't perform implicit conversions.
+Operators `==` and `!=` are used to compare values. Two values of different
+types are never equal: that is, `==` doesn't perform implicit conversions.
 
 Examples:
-```
+
+```text
 > 1 == 1
 true
 
@@ -243,13 +262,15 @@ false
 false
 ```
 
-
 ## Composite values
 
 ### Array
-An array is a sequence of values. They are delimited by `[` and `]`, and elements are separated with `,`.
+
+An array is a sequence of values. They are delimited by `[` and `]`, and
+elements are separated with `,`.
 
 Examples:
+
 ```nickel
 [1, 2, 3]
 ["Hello", "World"]
@@ -258,20 +279,24 @@ Examples:
 ```
 
 Arrays can be concatenated with the operator `@`:
-```
+
+```text
 > [1] @ [2, 3]
 [ 1, 2, 3 ]
 ```
 
 ### Record
-Records are key-value storage, or in Nickel terms, field-value storage. They are delimited by `{` and `}`, and elements are separated with `,`.
-Field-value elements are noted as `field = value`.
-The fields are strings, but can be written without quotes `"` if they respect identifiers syntax. Values can be of any type.
-Elements inside a record are unordered.
-Two records can be _merged_ together using the operator `&`. The reader can find
-more information about merging in the [section on merging](./merging.md).
+
+Records are key-value storage, or in Nickel terms, field-value storage. They are
+delimited by `{` and `}`, and elements are separated with `,`. Field-value
+elements are noted as `field = value`. The fields are strings, but can be
+written without quotes `"` if they respect identifiers syntax. Values can be of
+any type. Elements inside a record are unordered. Two records can be *merged*
+together using the operator `&`. The reader can find more information about
+merging in the [section on merging](./merging.md).
 
 Examples:
+
 ```nickel
 {}
 {a = 3}
@@ -280,7 +305,8 @@ Examples:
 ```
 
 Accessing a record field can be done using the `.` operator :
-```
+
+```text
 > { a = 1, b = 5 }.a
 1
 
@@ -291,8 +317,10 @@ error: Missing field
 "one"
 ```
 
-It is possible to write records of records via the *piecewise syntax*, where we separate fields by dots:
-```
+It is possible to write records of records via the *piecewise syntax*, where we
+separate fields by dots:
+
+```text
 > { a = { b = 1 } }
 { a = { b = 1 } }
 
@@ -303,8 +331,10 @@ It is possible to write records of records via the *piecewise syntax*, where we 
 { a = { b = 1, c = 2 }, b = 3 }
 ```
 
-When fields are enclosed with double quotes (`"`), you can use string interpolation to create or access fields:
-```
+When fields are enclosed with double quotes (`"`), you can use string
+interpolation to create or access fields:
+
+```text
 > let k = "a" in { "%{k}" = 1 }
 { a = 1 }
 
@@ -315,10 +345,13 @@ When fields are enclosed with double quotes (`"`), you can use string interpolat
 ## Constructs
 
 ### If-Then-Else
-This construct allows conditional branching in your code. You can use it as `if <bool expr> then <expr> else <expr>`.
+
+This construct allows conditional branching in your code. You can use it as
+`if <bool expr> then <expr> else <expr>`.
 
 Examples:
-```
+
+```text
 > if true then "TRUE :)" else "false :("
 "TRUE :)"
 
@@ -333,11 +366,15 @@ Examples:
 ```
 
 ### Let-In
-Let-in allows the binding of an expression. It is used as `let <rec?> <ident> = <expr> in <expr>`.
-The `rec` keyword in Let-in constructs allows the let binding to become recursive, enabling the use of the `<ident>` within the first `<expr>`.
+
+Let-in allows the binding of an expression. It is used as
+`let <rec?> <ident> = <expr> in <expr>`. The `rec` keyword in Let-in constructs
+allows the let binding to become recursive, enabling the use of the `<ident>`
+within the first `<expr>`.
 
 Examples:
-```
+
+```text
 > let r = { a = "a", b = "b" } in r.a
 "a"
 
@@ -353,17 +390,23 @@ true
 > let rec fib = fun n => if n <= 2 then 1 else fib (n - 1) + fib (n - 2) in fib 9
 34
 
-> let rec repeat = fun n x => if n <= 0 then [] else repeat (n - 1) x @ [x] in repeat 3 "foo"
+> let rec repeat = fun n x => if n <= 0 then [] else repeat (n - 1) x @ [x] in
+repeat 3 "foo"
 ["foo", "foo", "foo"]
 ```
 
 ## Functions
-A function is declared using the `fun` keyword, then arguments separated with spaces, and finally an arrow `=>` to add the body of the function.
-To call a function, just add the arguments after it separated with spaces.
-Functions in Nickel are curried, meaning that a function taking multiple arguments is actually a function that takes a single argument and returns a function taking the rest of the arguments, until it is applied.
+
+A function is declared using the `fun` keyword, then arguments separated with
+spaces, and finally an arrow `=>` to add the body of the function. To call a
+function, just add the arguments after it separated with spaces. Functions in
+Nickel are curried, meaning that a function taking multiple arguments is
+actually a function that takes a single argument and returns a function taking
+the rest of the arguments, until it is applied.
 
 Examples:
-```
+
+```text
 > (fun a b => a + b) 1 2
 3
 
@@ -376,10 +419,12 @@ let add = fun a b => a + b in add 1 2
 3
 ```
 
-All existing infix operators in Nickel can be turned into functions by putting them inside parentheses.
+All existing infix operators in Nickel can be turned into functions by putting
+them inside parentheses.
 
 Examples:
-```
+
+```text
 > 1 + 2
 3
 
@@ -398,11 +443,13 @@ Examples:
 [ 1, 2, 3, 4, 5 ]
 ```
 
-Functions might be composed using the *pipe operator*. The pipe operator allows for a function application `f x` to be written as `x |> f`.
-This operator is left-associative, so `x |> f |> g` will be interpreted as `g (f x)`.
+Functions might be composed using the *pipe operator*. The pipe operator allows
+for a function application `f x` to be written as `x |> f`. This operator is
+left-associative, so `x |> f |> g` will be interpreted as `g (f x)`.
 
 Examples:
-```
+
+```text
 > "Hello World" |> string.split " "
 ["Hello", "World"]
 
@@ -419,10 +466,12 @@ Examples:
 ```
 
 ## Typing
-To give a type to a value, we write it with `< value > : < type >`.
-More information on typing in the relevant document.
+
+To give a type to a value, we write it with `< value > : < type >`. More
+information on typing in the relevant document.
 
 Examples:
+
 ```nickel
 5 : Num
 "Hello" : Str
@@ -438,12 +487,14 @@ let r : { _ : Num } = { a = 1, b = 2 }
 ```
 
 ## Metadata
-Metadata are used to attach contracts (more information in relevant documentation), documentation or priority to values.
-A metadata is introduced with the syntax `<value> | <metadata>`. Multiple metadata can be chained.
 
+Metadata are used to attach contracts (more information in relevant
+documentation), documentation or priority to values. A metadata is introduced
+with the syntax `<value> | <metadata>`. Multiple metadata can be chained.
 
 Examples:
-```
+
+```text
 > 5 | Num
 5
 
@@ -466,9 +517,9 @@ error: Blame error: contract broken by a value.
 3
 ```
 
-Adding documentation can be done with `| doc < string >`.
-Examples:
-```
+Adding documentation can be done with `| doc < string >`. Examples:
+
+```text
 > 5 | doc "The number five"
 5
 
@@ -481,11 +532,13 @@ Examples:
 true
 ```
 
-Record contracts can set default values using the `default` metadata:
-It is noted as `| default = < default value >`.
-This is especially useful when merging records (more about this in the dedicated document about merge).
+Record contracts can set default values using the `default` metadata: It is
+noted as `| default = < default value >`. This is especially useful when merging
+records (more about this in the dedicated document about merge).
+
 Examples:
-```
+
+```text
 > let Ais2ByDefault = { a | default = 2 } in
   {} | Ais2ByDefault
 { a = 2 }
