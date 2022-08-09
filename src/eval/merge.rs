@@ -72,6 +72,15 @@ pub enum MergeMode {
     Contract(Label),
 }
 
+impl MergeMode {
+    pub fn contract_label(&self) -> Option<&Label> {
+        match self {
+            MergeMode::Contract(label) => Some(label),
+            _ => None,
+        }
+    }
+}
+
 impl Default for MergeMode {
     fn default() -> Self {
         MergeMode::Standard
@@ -384,14 +393,12 @@ pub fn merge(
                 env,
             })
         }
-        (_t1, t2) => match (mode, &t2) {
-            // We want to merge a non-record term with a record contract
-            (MergeMode::Contract(label), Term::Record(..)) => {
-                Err(EvalError::BlameError(label, call_stack.clone()))
-            }
-            // The following cases are either errors or not yet implemented
-            _ => Err(EvalError::MergeIncompatibleArgs(rt1, rt2, pos_op)),
-        },
+        (_, Term::Record(..)) if mode.contract_label().is_some() => Err(EvalError::BlameError(
+            mode.contract_label().unwrap().clone(),
+            call_stack.clone(),
+        )),
+        // The following cases are either errors or not yet implemented
+        _ => Err(EvalError::MergeIncompatibleArgs(rt1, rt2, pos_op)),
     }
 }
 
