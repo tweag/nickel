@@ -62,6 +62,13 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
         }
     }
 
+    pub fn with_capacity(cap: usize) -> Self {
+        Self {
+            current: Rc::new(HashMap::with_capacity(cap)),
+            previous: RefCell::new(None),
+        }
+    }
+
     /// Inserts a key-value pair into the Environment.
     pub fn insert(&mut self, key: K, value: V) {
         if self.was_cloned() {

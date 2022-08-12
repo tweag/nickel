@@ -344,7 +344,7 @@ pub fn merge(
             };
 
             let mut m = HashMap::with_capacity(left.len() + center.len() + right.len());
-            let mut env = Environment::new();
+            let mut env = Environment::with_capacity(m.capacity());
 
             m.extend(left.map(|(field, t)| {
                 (
