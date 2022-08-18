@@ -33,7 +33,9 @@ fn collect_free_vars(rt: &mut RichTerm, free_vars: &mut HashSet<Ident>) {
         | Term::SealingKey(_)
         | Term::Enum(_)
         | Term::Import(_)
-        | Term::ResolvedImport(_) => (),
+        | Term::ResolvedImport(_)
+        // Symbols shouldn't be introduced before this transformation.
+        | Term::Symbol(_) => (),
         Term::Fun(id, t) => {
             let mut fresh = HashSet::new();
 

@@ -79,6 +79,8 @@ pub enum Term {
     /// A variable.
     #[serde(skip)]
     Var(Ident),
+    /// A [`Symbol`].
+    Symbol(Symbol),
 
     /// An enum variant.
     Enum(Ident),
@@ -158,6 +160,16 @@ pub enum Term {
     ResolvedImport(FileId),
     #[serde(skip)]
     ParseError,
+}
+
+/// A De Bruijn index alongside meta-data.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Symbol {
+    /// The distance from the current environment to the binder.
+    #[serde(skip)]
+    pub index: usize,
+    /// The original source-level identifier.
+    pub ident: Ident,
 }
 
 pub type SealingKey = i32;
@@ -383,7 +395,7 @@ impl Term {
                 });
             }
             Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | SealingKey(_) | Enum(_) | Import(_)
-            | ResolvedImport(_) => {}
+            | ResolvedImport(_) | Symbol(_) => {}
             Fun(_, ref mut t)
             | FunPattern(_, _, ref mut t)
             | Op1(_, ref mut t)
@@ -441,6 +453,7 @@ impl Term {
             | Term::LetPattern(..)
             | Term::App(_, _)
             | Term::Var(_)
+            | Term::Symbol(_)
             | Term::Switch(..)
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
@@ -512,6 +525,7 @@ impl Term {
                 format!("<{}{}={}>", content, value_label, value)
             }
             Term::Var(id) => id.to_string(),
+            Term::Symbol(sym) => sym.ident.to_string(),
             Term::ParseError => String::from("<parse error>"),
             Term::Let(..)
             | Term::LetPattern(..)
@@ -570,6 +584,7 @@ impl Term {
             | Term::FunPattern(..)
             | Term::App(_, _)
             | Term::Var(_)
+            | Term::Symbol(_)
             | Term::Switch(..)
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
@@ -611,6 +626,7 @@ impl Term {
             | Term::App(_, _)
             | Term::Switch(..)
             | Term::Var(_)
+            | Term::Symbol(_)
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
@@ -638,6 +654,7 @@ impl Term {
             | Term::RecRecord(..)
             | Term::Array(..)
             | Term::Var(..)
+            | Term::Symbol(..)
             | Term::Op1(..)
             | Term::SealingKey(..) => true,
             Term::Let(..)

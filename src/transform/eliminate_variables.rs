@@ -52,7 +52,7 @@ use std::collections::HashMap;
 
 use crate::{
     identifier::Ident,
-    term::{RichTerm, SharedTerm, Term},
+    term::{RichTerm, SharedTerm, Symbol, Term},
 };
 
 /// Apply the full transfomation on a term.
@@ -61,7 +61,7 @@ pub fn transform(rt: &mut RichTerm) {
 }
 
 /// Add a De Bruijn index to all variable terms in the syntax tree.
-fn eliminate_names(rt: &mut RichTerm, layers: HashMap<Ident, usize>) {
+fn eliminate_names(rt: &mut RichTerm, mut layers: HashMap<Ident, usize>) {
     match SharedTerm::make_mut(&mut rt.term) {
         Term::Let(x, t1, t2, _) => {
             let level = layers.len();
@@ -76,9 +76,16 @@ fn eliminate_names(rt: &mut RichTerm, layers: HashMap<Ident, usize>) {
 
             eliminate_names(t, layers);
         }
-        Term::Var(x, attrs) => {
-            /* Replace with a Symbol term pointing to the current layer. */
+        t => {
+            if let Term::Var(x) = t.clone() {
+                let sym = Symbol {
+                    index: layers.get(&x).copied().unwrap(),
+                    ident: x,
+                };
+                *t = Term::Symbol(sym);
+            } else {
+                /* Nothing to do. */
+            }
         }
-        _ => { /* Nothing to do. */ }
     }
 }

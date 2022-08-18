@@ -458,6 +458,7 @@ where
                     .group(),
             },
             Var(id) => allocator.as_string(id),
+            Symbol(sym) => allocator.as_string(&sym.ident),
             Enum(id) => allocator.text("`").append(allocator.quote_if_needed(id)),
             Record(fields, attr) => allocator
                 .line()

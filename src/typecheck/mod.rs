@@ -298,6 +298,7 @@ fn walk<L: Linearizer>(
         | Term::Lbl(_)
         | Term::Enum(_)
         | Term::SealingKey(_)
+        | Term::Symbol(_)
         // This function doesn't recursively typecheck imports: this is the responsibility of the
         // caller.
         | Term::Import(_)
@@ -528,7 +529,7 @@ fn type_check_<L: Linearizer>(
     linearizer.add_term(lin, t, *pos, ty.clone());
 
     match t.as_ref() {
-        Term::ParseError => Ok(()),
+        Term::ParseError | Term::Symbol(_) => Ok(()),
         // null is inferred to be of type Dyn
         Term::Null => unify(state, ty, mk_typewrapper::dynamic())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
