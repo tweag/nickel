@@ -18,6 +18,7 @@ pub mod free_vars;
 pub mod import_resolution;
 pub mod share_normal_form;
 pub mod substitute_wildcards;
+pub mod eliminate_variables;
 
 /// Apply all program transformations, excepted import resolution that is currently performed
 /// earlier, as it needs to be done before typechecking.
