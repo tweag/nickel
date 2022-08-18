@@ -3,6 +3,7 @@ use super::{Closure, IdentKind};
 use crate::{identifier::Ident, term::FieldDeps};
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashSet;
+use std::fmt;
 use std::rc::{Rc, Weak};
 
 /// The state of a thunk.
@@ -158,6 +159,16 @@ impl ThunkData {
 pub struct Thunk {
     data: Rc<RefCell<ThunkData>>,
     ident_kind: IdentKind,
+}
+
+impl fmt::Display for Thunk {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Closure { body, env } = &*self.borrow();
+        writeln!(f, "<thunk>")?;
+        writeln!(f, "T> body = {},", crate::eval::tools::dump!(body.clone()))?;
+        writeln!(f, "T> local = {env}")?;
+        writeln!(f, "</thunk>")
+    }
 }
 
 /// A black-holed thunk was accessed, which would lead to infinite recursion.

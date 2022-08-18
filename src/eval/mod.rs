@@ -113,6 +113,25 @@ use lazy::*;
 use operation::{continuate_operation, OperationCont};
 use stack::Stack;
 
+mod tools {
+
+    macro_rules! dump {
+        ($expr:expr) => {{
+            use crate::pretty::*;
+            use pretty::BoxAllocator;
+
+            let allocator = BoxAllocator;
+
+            let doc: DocBuilder<_, ()> = ($expr).pretty(&allocator);
+            let mut out = Vec::new();
+            doc.render(80, &mut out).unwrap();
+            String::from_utf8(out).unwrap()
+        }};
+    }
+
+    pub(crate) use dump;
+}
+
 impl AsRef<Vec<StackElem>> for CallStack {
     fn as_ref(&self) -> &Vec<StackElem> {
         &self.0

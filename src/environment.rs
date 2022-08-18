@@ -1,6 +1,7 @@
 //! An environment for storing variables with scopes.
 use std::cell::RefCell;
 use std::collections::{hash_map, HashMap};
+use std::fmt;
 use std::hash::Hash;
 use std::iter::FromIterator;
 use std::marker::PhantomData;
@@ -29,6 +30,27 @@ use std::rc::Rc;
 pub struct Environment<K: Hash + Eq, V: PartialEq> {
     current: Rc<HashMap<K, V>>,
     previous: RefCell<Option<Rc<Environment<K, V>>>>,
+}
+
+impl<K, V> fmt::Display for Environment<K, V>
+where
+    K: Hash + Eq + fmt::Display,
+    V: PartialEq + fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "<env>")?;
+        writeln!(f, "E> addr = {:?},", Rc::as_ptr(&self.current))?;
+
+        for (k, v) in &*self.current {
+            writeln!(f, "E> {k} = {v}")?;
+        }
+
+        if let Some(env) = &*self.previous.borrow() {
+            write!(f, "E> prev = {env}")?;
+        }
+
+        writeln!(f, "</env>")
+    }
 }
 
 impl<K: Hash + Eq, V: PartialEq> Clone for Environment<K, V> {
