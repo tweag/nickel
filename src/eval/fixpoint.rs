@@ -7,24 +7,21 @@ use super::*;
 /// [`patch_field`] function.
 pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a RichTerm)>>(
     bindings: I,
-    env: &Environment,
+    env: &Store,
 ) -> Result<Vec<(Ident, Thunk)>, EvalError> {
     bindings
         .map(|(id, rt)| match rt.as_ref() {
-            Term::Var(ref var_id) => {
+            Term::Symbol(ref sym) => {
                 let thunk = env
-                    .get(var_id)
-                    .ok_or_else(|| EvalError::UnboundIdentifier(var_id.clone(), rt.pos))?;
+                    .get(sym)
+                    .ok_or_else(|| EvalError::UnboundIdentifier(sym.ident.clone(), rt.pos))?;
                 Ok((id.clone(), thunk))
             }
             _ => {
                 // If we are in this branch, `rt` must be a constant after the share normal form
                 // transformation, hence it should not need an environment, which is why it is
                 // dropped.
-                let closure = Closure {
-                    body: rt.clone(),
-                    env: Environment::new(),
-                };
+                let closure = Closure::atomic_closure(rt.clone());
                 Ok((id.clone(), Thunk::new(closure, IdentKind::Let)))
             }
         })
@@ -41,23 +38,21 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a RichTerm)>>(
 pub fn patch_field(
     rt: &RichTerm,
     rec_env: &[(Ident, Thunk)],
-    env: &Environment,
+    env: &Store,
 ) -> Result<(), EvalError> {
-    if let Term::Var(var_id) = &*rt.term {
+    if let Term::Symbol(sym) = &*rt.term {
         let mut thunk = env
-            .get(var_id)
-            .ok_or_else(|| EvalError::UnboundIdentifier(var_id.clone(), rt.pos))?;
-
+            .get(sym)
+            .ok_or_else(|| EvalError::UnboundIdentifier(sym.ident.clone(), rt.pos))?;
         let deps = thunk.deps();
 
-        match deps {
-            ThunkDeps::Known(deps) => thunk
-                .borrow_mut()
-                .env
-                .extend(rec_env.iter().filter(|(id, _)| deps.contains(id)).cloned()),
-            ThunkDeps::Unknown => thunk.borrow_mut().env.extend(rec_env.iter().cloned()),
+        thunk.borrow_mut().env.with_front_mut(|env| match deps {
+            ThunkDeps::Known(deps) => {
+                env.extend(rec_env.iter().filter(|(id, _)| deps.contains(id)).cloned())
+            }
+            ThunkDeps::Unknown => env.extend(rec_env.iter().cloned()),
             ThunkDeps::Empty => (),
-        };
+        });
     }
 
     // Thanks to the share normal form transformation, the content is either a constant or a

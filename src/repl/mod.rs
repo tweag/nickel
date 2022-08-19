@@ -170,7 +170,7 @@ impl ReplImpl {
             ExtendedTerm::ToplevelLet(id, t) => {
                 let t = prepare(self, Some(id.clone()), t)?;
                 let local_env = self.env.eval_env.clone();
-                eval::env_add(&mut self.env.eval_env, id.clone(), t, local_env);
+                eval::env_add(&self.env.eval_env, id.clone(), t, local_env);
                 Ok(EvalResult::Bound(id))
             }
         }
@@ -214,7 +214,10 @@ impl Repl for ReplImpl {
             self.cache.resolve_imports(*id).unwrap();
         }
         typecheck::Envs::env_add_term(&mut self.env.type_env, &term, &self.cache).unwrap();
-        eval::env_add_term(&mut self.env.eval_env, term.clone()).unwrap();
+        self.env
+            .eval_env
+            .with_front_mut(|env| eval::env_add_term(env, term.clone()))
+            .unwrap();
 
         Ok(term)
     }

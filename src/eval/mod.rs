@@ -94,9 +94,10 @@ use crate::{
     error::EvalError,
     identifier::Ident,
     match_sharedterm, mk_app,
+    store::{Layer, Store},
     term::{
         make as mk_term, ArrayAttrs, BinaryOp, BindingType, LetAttrs, MetaValue, RichTerm,
-        SharedTerm, StrChunk, Term, UnaryOp,
+        SharedTerm, StrChunk, Symbol, Term, UnaryOp,
     },
     transform::Closurizable,
 };
@@ -113,8 +114,7 @@ use lazy::*;
 use operation::{continuate_operation, OperationCont};
 use stack::Stack;
 
-mod tools {
-
+pub mod tools {
     macro_rules! dump {
         ($expr:expr) => {{
             use crate::pretty::*;
@@ -150,14 +150,14 @@ pub enum IdentKind {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Closure {
     pub body: RichTerm,
-    pub env: Environment,
+    pub env: Store,
 }
 
 impl Closure {
     pub fn atomic_closure(body: RichTerm) -> Closure {
         Closure {
             body,
-            env: Environment::new(),
+            env: Store::new(),
         }
     }
 }
@@ -171,7 +171,7 @@ pub enum EnvBuildError {
 }
 
 /// Add the bindings of a record to an environment. Ignore the fields defined by interpolation.
-pub fn env_add_term(env: &mut Environment, rt: RichTerm) -> Result<(), EnvBuildError> {
+pub fn env_add_term(env: &mut Layer, rt: RichTerm) -> Result<(), EnvBuildError> {
     match_sharedterm! {rt.term, with {
             Term::Record(bindings, _) | Term::RecRecord(bindings, ..) => {
                 let ext = bindings.into_iter().map(|(id, t)| {
@@ -189,21 +189,17 @@ pub fn env_add_term(env: &mut Environment, rt: RichTerm) -> Result<(), EnvBuildE
 }
 
 /// Bind a closure in an environment.
-pub fn env_add(env: &mut Environment, id: Ident, rt: RichTerm, local_env: Environment) {
+pub fn env_add(env: &Store, id: Ident, rt: RichTerm, local_env: Store) {
     let closure = Closure {
         body: rt,
         env: local_env,
     };
-    env.insert(id, Thunk::new(closure, IdentKind::Let));
+    env.with_front_mut(|env| env.insert(id, Thunk::new(closure, IdentKind::Let)));
 }
 
 /// Evaluate a Nickel term. Wrapper around [eval_closure] that starts from an empty local
 /// environment and drops the final environment.
-pub fn eval<R>(
-    t0: RichTerm,
-    global_env: &Environment,
-    resolver: &mut R,
-) -> Result<RichTerm, EvalError>
+pub fn eval<R>(t0: RichTerm, global_env: &Store, resolver: &mut R) -> Result<RichTerm, EvalError>
 where
     R: ImportResolver,
 {
@@ -213,7 +209,7 @@ where
 /// Fully evaluate a Nickel term: the result is not a WHNF but to a value with all variables substituted.
 pub fn eval_full<R>(
     t0: RichTerm,
-    global_env: &Environment,
+    global_env: &Store,
     resolver: &mut R,
 ) -> Result<RichTerm, EvalError>
 where
@@ -225,7 +221,7 @@ where
 /// Fully evaluates a Nickel term like `eval_full`, but does not substitute all variables.
 pub fn eval_deep<R>(
     t0: RichTerm,
-    global_env: &Environment,
+    global_env: &Store,
     resolver: &mut R,
 ) -> Result<RichTerm, EvalError>
 where
@@ -236,9 +232,9 @@ where
 
 fn eval_deep_closure<R>(
     t0: RichTerm,
-    global_env: &Environment,
+    global_env: &Store,
     resolver: &mut R,
-) -> Result<(RichTerm, Environment), EvalError>
+) -> Result<(RichTerm, Store), EvalError>
 where
     R: ImportResolver,
 {
@@ -246,12 +242,13 @@ where
 
     let var = fresh_var();
     // Desugar to let x = term in %deep_seq% x x
+    let sym = Term::Symbol(Symbol::local(var.clone()));
     let wrapper = mk_term::let_in(
         var.clone(),
         t0,
         mk_app!(
-            mk_term::op1(UnaryOp::DeepSeq(None), Term::Var(var.clone())),
-            Term::Var(var)
+            mk_term::op1(UnaryOp::DeepSeq(None), sym.clone()),
+            sym.clone()
         ),
     );
     eval_closure(Closure::atomic_closure(wrapper), global_env, resolver, true)
@@ -264,7 +261,7 @@ where
 /// Used to query the metadata of a value.
 pub fn eval_meta<R>(
     t: RichTerm,
-    global_env: &Environment,
+    global_env: &Store,
     resolver: &mut R,
 ) -> Result<RichTerm, EvalError>
 where
@@ -307,10 +304,10 @@ where
 ///  - the evaluated term with its final environment
 pub fn eval_closure<R>(
     mut clos: Closure,
-    global_env: &Environment,
+    global_env: &Store,
     resolver: &mut R,
     mut enriched_strict: bool,
-) -> Result<(RichTerm, Environment), EvalError>
+) -> Result<(RichTerm, Store), EvalError>
 where
     R: ImportResolver,
 {
@@ -331,11 +328,11 @@ where
         }
 
         clos = match &*shared_term {
-            Term::Var(x) => {
+            Term::Symbol(sym) => {
                 let mut thunk = env
-                    .get(x)
-                    .or_else(|| global_env.get(x))
-                    .ok_or_else(|| EvalError::UnboundIdentifier(x.clone(), pos))?;
+                    .get(sym)
+                    .or_else(|| global_env.get(&sym))
+                    .ok_or_else(|| EvalError::UnboundIdentifier(sym.ident.clone(), pos))?;
                 std::mem::drop(env); // thunk may be a 1RC pointer
 
                 if thunk.state() != ThunkState::Evaluated {
@@ -352,7 +349,7 @@ where
                         thunk.set_evaluated();
                     }
                 }
-                call_stack.enter_var(thunk.ident_kind(), x.clone(), pos);
+                call_stack.enter_var(thunk.ident_kind(), sym.ident.clone(), pos);
                 thunk.into_closure()
             }
             Term::App(t1, t2) => {
@@ -388,16 +385,19 @@ where
                     }
                 };
 
+                // FIXME: handle recursive bindings.
                 // Patch the environment with the (x <- closure) binding
-                if *rec {
-                    let thunk_ = thunk.clone();
-                    thunk.borrow_mut().env.insert(x.clone(), thunk_);
-                }
+                // if *rec {
+                //     let thunk_ = thunk.clone();
+                //     thunk.borrow_mut().env.insert(x.clone(), thunk_);
+                // }
 
-                env.insert(x.clone(), thunk);
+                let mut layer = Layer::new();
+                layer.insert(x.clone(), thunk);
+
                 Closure {
                     body: t.clone(),
-                    env,
+                    env: env.push(layer),
                 }
             }
             Term::Switch(exp, cases, default) => {
@@ -514,7 +514,7 @@ where
                 match chunks_iter.next_back() {
                     None => Closure {
                         body: Term::Str(String::new()).into(),
-                        env: Environment::new(),
+                        env: Store::new(),
                     },
                     Some(chunk) => {
                         let (arg, indent) = match chunk {
@@ -555,7 +555,7 @@ where
                     .iter()
                     .try_fold::<_, _, Result<RichTerm, EvalError>>(
                         static_part,
-                        |acc, (id_t, t)| {
+                        |acc, (id_t, t)| -> Result<RichTerm, EvalError> {
                             let id_t = id_t.clone();
                             let pos = t.pos;
 
@@ -633,17 +633,17 @@ where
             // This *should* make it unecessary to call closurize in [operation].
             // See the comment on the `BinaryOp::ArrayConcat` match arm.
             Term::Array(terms, attrs) if !attrs.closurized => {
-                let mut local_env = Environment::new();
+                let mut layer = Layer::new();
                 let closurized_array = terms
                     .iter()
-                    .map(|t| t.clone().closurize(&mut local_env, env.clone()))
+                    .map(|t| t.clone().closurize(&mut layer, env.clone()))
                     .collect();
                 Closure {
                     body: RichTerm::new(
                         Term::Array(closurized_array, ArrayAttrs { closurized: true }),
                         pos,
                     ),
-                    env: local_env,
+                    env: Store::singleton(layer),
                 }
             }
             // Continuation of operations and thunk update
@@ -666,10 +666,13 @@ where
             Term::Fun(x, t) => {
                 if let Some((thunk, pos_app)) = stack.pop_arg_as_thunk() {
                     call_stack.enter_fun(pos_app);
-                    env.insert(x.clone(), thunk);
+
+                    let mut layer = Layer::new();
+                    layer.insert(x.clone(), thunk);
+
                     Closure {
                         body: t.clone(),
-                        env,
+                        env: env.push(layer),
                     }
                 } else {
                     return Ok((RichTerm::new(Term::Fun(x.clone(), t.clone()), pos), env));
@@ -702,19 +705,29 @@ fn update_thunks(stack: &mut Stack, closure: &Closure) {
 }
 
 /// Recursively substitute each variable occurrence of a term for its value in the environment.
-pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichTerm {
+pub fn subst(rt: RichTerm, global_env: &Store, env: &Store) -> RichTerm {
     let RichTerm { term, pos } = rt;
 
     match term.into_owned() {
-        Term::Var(id) => env
-            .get(&id)
-            .or_else(|| global_env.get(&id))
+        Term::Var(var) => {
+            let sym = Symbol::local(var);
+            env
+                .get(&sym)
+                .or_else(|| global_env.get(&sym))
+                .map(|thunk| {
+                    let closure = thunk.get_owned();
+                    subst(closure.body, global_env, &closure.env)
+                })
+                .unwrap_or_else(|| RichTerm::new(Term::Symbol(sym), pos))
+        }
+        Term::Symbol(sym) => env
+            .get(&sym)
+            .or_else(|| global_env.get(&sym))
             .map(|thunk| {
                 let closure = thunk.get_owned();
                 subst(closure.body, global_env, &closure.env)
             })
-            .unwrap_or_else(|| RichTerm::new(Term::Var(id), pos)),
-        Term::Symbol(sym) => todo!(),
+            .unwrap_or_else(|| RichTerm::new(Term::Symbol(sym), pos)),
         v @ Term::Null
         | v @ Term::ParseError
         | v @ Term::Bool(_)

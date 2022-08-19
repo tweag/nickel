@@ -5,7 +5,7 @@ use crate::parser::error::ParseError as InternalParseError;
 use crate::term::make as mk_term;
 use crate::term::Term::*;
 use crate::term::{BinaryOp, RichTerm, StrChunk, UnaryOp};
-use crate::{mk_app, mk_switch};
+use crate::{mk_app, mk_fun, mk_switch};
 use assert_matches::assert_matches;
 use codespan::Files;
 
@@ -127,7 +127,7 @@ fn variables() {
 fn functions() {
     assert_eq!(
         crate::transform::desugar_destructuring::desugar_fun(parse_without_pos("fun x => x")),
-        mk_term::id()
+        mk_fun!("x", mk_term::var("x"))
     );
 }
 

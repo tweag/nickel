@@ -778,6 +778,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "fral"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "579cac62ab163ca86afd7ff48b0013ae240afa95789f34a86d707db78ef74566"
+
+[[package]]
 name = "generic-array"
 version = "0.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1183,6 +1189,7 @@ dependencies = [
  "comrak",
  "criterion",
  "directories",
+ "fral",
  "js-sys",
  "lalrpop",
  "lalrpop-util",

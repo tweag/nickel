@@ -4,6 +4,7 @@
 use super::operation::OperationCont;
 use crate::eval::{Closure, Environment, IdentKind, Thunk, ThunkUpdateFrame};
 use crate::position::TermPos;
+use crate::store::Store;
 use crate::term::{RichTerm, StrChunk};
 
 /// An element of the stack.
@@ -43,7 +44,7 @@ pub enum Marker {
     StrAcc(
         String,      /* the accumulator */
         usize,       /* the indentation level of the chunk currently evaluated */
-        Environment, /* the common environment of chunks */
+        Store, /* the common environment of chunks */
     ),
     Strictness(bool),
 }
@@ -164,7 +165,7 @@ impl Stack {
     }
 
     /// Push a string accumulator on the stack.
-    pub fn push_str_acc(&mut self, acc: String, indent: usize, env: Environment) {
+    pub fn push_str_acc(&mut self, acc: String, indent: usize, env: Store) {
         self.0.push(Marker::StrAcc(acc, indent, env));
     }
 
@@ -245,7 +246,7 @@ impl Stack {
 
     /// Try to pop the a string accumulator from the stack. If `None` is returned, the top element
     /// was not a string accumulator and the stack is left unchanged.
-    pub fn pop_str_acc(&mut self) -> Option<(String, usize, Environment)> {
+    pub fn pop_str_acc(&mut self) -> Option<(String, usize, Store)> {
         if self.0.last().map(Marker::is_str_acc).unwrap_or(false) {
             match self.0.pop() {
                 Some(Marker::StrAcc(acc, indent, env)) => Some((acc, indent, env)),

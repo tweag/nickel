@@ -73,11 +73,15 @@ fn eliminate_names(rt: &mut RichTerm, mut layers: Vec<Ident>) {
         | Term::Import(_)
         | Term::ResolvedImport(_)
         | Term::ParseError => (),
-        Term::Let(x, t1, t2, _) => {
+        Term::Let(x, t1, t2, attrs) => {
             // TODO: handle recursive-bindings.
-            eliminate_names(t1, layers.clone());
-
-            layers.push(x.clone());
+            if attrs.rec {
+                layers.push(x.clone());
+                eliminate_names(t1, layers.clone());
+            } else {
+                eliminate_names(t1, layers.clone());
+                layers.push(x.clone());
+            }
 
             eliminate_names(t2, layers);
         }
@@ -132,10 +136,14 @@ fn eliminate_names(rt: &mut RichTerm, mut layers: Vec<Ident>) {
             // NOTE: We cannot put the `Term::Var` pattern in the match arm because
             // it will leader to a mutable borrow of `t` and an immutable borrow of `x`.
             // Instead, we reborrow `t` as immutable for a clone and then mutate it at the end.
-            if let Term::Var(x) = t.clone() {
-                let ident = x.clone();
-                let index = layers.into_iter().rev().position(|i| i == x).unwrap();
-                *t = Term::Symbol(Symbol { index, ident });
+            if let Term::Var(ident) = t.clone() {
+                *t = if let Some(index) = layers.into_iter().rev().position(|x| x == ident) {
+                    Term::Symbol(Symbol::new(index, ident))
+                } else {
+                    // FIXME: the symbol isn't in our environment, so it must be a global (?)
+
+                    Term::Symbol(Symbol::local(ident))
+                };
             }
         }
     }

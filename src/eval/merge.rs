@@ -86,9 +86,9 @@ impl Default for MergeMode {
 /// important as `merge` is not commutative in this mode.
 pub fn merge(
     t1: RichTerm,
-    mut env1: Environment,
+    mut env1: Store,
     t2: RichTerm,
-    mut env2: Environment,
+    mut env2: Store,
     pos_op: TermPos,
     mode: MergeMode,
     call_stack: &CallStack,
@@ -254,6 +254,9 @@ pub fn merge(
 
             let doc = merge_doc(doc1, doc2);
 
+            println!("env1 = {:?}", env1);
+            println!("env2 = {:?}", env2);
+
             // If:
             // 1. meta1 has a value
             // 2. meta2 has a contract
@@ -298,32 +301,32 @@ pub fn merge(
             // depending on which is defined and respective priorities.
             let (value, priority, mut env) = match (value1, value2) {
                 (Some(t1), Some(t2)) if priority1 == priority2 => {
-                    let mut env = Environment::new();
-                    (
-                        Some(merge_closurize(&mut env, t1, val_env1, t2, val_env2)),
-                        priority1,
-                        env,
-                    )
+                    let mut layer = Layer::new();
+                    let value = Some(merge_closurize(&mut layer, t1, val_env1, t2, val_env2));
+                    let env = Store::singleton(layer);
+                    (value, priority1, env)
                 }
                 (Some(t1), _) if priority1 > priority2 => (Some(t1), priority1, val_env1),
                 (Some(t1), None) => (Some(t1), priority1, val_env1),
                 (_, Some(t2)) if priority2 > priority1 => (Some(t2), priority2, val_env2),
                 (None, Some(t2)) => (Some(t2), priority2, val_env2),
-                (None, None) => (None, Default::default(), Environment::new()),
+                (None, None) => (None, Default::default(), Store::new()),
                 _ => unreachable!(),
             };
+
+            let mut layer = Layer::new();
 
             // Finally, we also need to closurize the contracts in the final envirnment.
             let mut contracts1: Vec<Contract> = contracts1
                 .into_iter()
-                .map(|ctr| ctr.closurize(&mut env, env1.clone()))
+                .map(|ctr| ctr.closurize(&mut layer, env1.clone()))
                 .collect();
             let contracts2: Vec<Contract> = contracts2
                 .into_iter()
-                .map(|ctr| ctr.closurize(&mut env, env2.clone()))
+                .map(|ctr| ctr.closurize(&mut layer, env2.clone()))
                 .collect();
-            let types1 = types1.map(|ctr| ctr.closurize(&mut env, env1));
-            let types2 = types2.map(|ctr| ctr.closurize(&mut env, env2));
+            let types1 = types1.map(|ctr| ctr.closurize(&mut layer, env1));
+            let types2 = types2.map(|ctr| ctr.closurize(&mut layer, env2));
 
             // If both have type annotations, we arbitrarily choose the first one. At this point we
             // are evaluating the term, and types annotations and contracts make no difference
@@ -351,7 +354,7 @@ pub fn merge(
 
             Ok(Closure {
                 body: RichTerm::new(Term::MetaValue(meta), pos_op.into_inherited()),
-                env,
+                env: Store::singleton(layer),
             })
         }
         // Merge put together the fields of records, and recursively merge
@@ -388,23 +391,24 @@ pub fn merge(
             };
 
             let mut m = HashMap::with_capacity(left.len() + center.len() + right.len());
-            let mut env = Environment::new();
+            let mut layer = Layer::new();
 
             for (field, t) in left.into_iter() {
-                m.insert(field, t.closurize(&mut env, env1.clone()));
+                m.insert(field, t.closurize(&mut layer, env1.clone()));
             }
 
             for (field, t) in right.into_iter() {
-                m.insert(field, t.closurize(&mut env, env2.clone()));
+                m.insert(field, t.closurize(&mut layer, env2.clone()));
             }
 
             for (field, (t1, t2)) in center.into_iter() {
                 m.insert(
                     field,
-                    merge_closurize(&mut env, t1, env1.clone(), t2, env2.clone()),
+                    merge_closurize(&mut layer, t1, env1.clone(), t2, env2.clone()),
                 );
             }
 
+            let env = Store::singleton(layer);
             let rec_env = fixpoint::rec_env(m.iter(), &env)?;
             m1_values
                 .iter()
@@ -457,17 +461,21 @@ pub fn merge(
 /// - the contracts are given as an iterator `it2` together with their environment `env2`
 fn cross_apply_contracts<'a>(
     t1: RichTerm,
-    env1: &Environment,
+    env1: &Store,
     mut it2: impl Iterator<Item = &'a Contract>,
-    env2: &Environment,
-) -> Result<(RichTerm, Environment), EvalError> {
-    let mut env = Environment::new();
-    let mut env1_local = env1.clone();
+    env2: &Store,
+) -> Result<(RichTerm, Store), EvalError> {
+    let mut layer = Layer::new();
+    let mut layer_local = Layer::new();
+
+    println!("t1   = {}", crate::eval::tools::dump!(t1.clone()));
+    println!("env1 = {:?}", env1);
+    println!("env2 = {:?}", env2);
 
     let pos = t1.pos.into_inherited();
     let result = it2
         .try_fold(t1, |acc, ctr| {
-            let ty_closure = ctr.types.clone().closurize(&mut env1_local, env2.clone());
+            let ty_closure = ctr.types.clone().closurize(&mut layer_local, env2.clone());
             mk_term::assume(ty_closure, ctr.label.clone(), acc)
                 .map_err(|crate::types::UnboundTypeVariableError(id)| {
                     let pos = id.pos;
@@ -475,9 +483,9 @@ fn cross_apply_contracts<'a>(
                 })
                 .map(|rt| rt.with_pos(pos))
         })?
-        .closurize(&mut env, env1_local);
+        .closurize(&mut layer, env1.push(layer_local));
 
-    Ok((result, env))
+    Ok((result, Store::singleton(layer)))
 }
 
 /// Merge the two optional documentations of a metavalue.
@@ -489,31 +497,31 @@ fn merge_doc(doc1: Option<String>, doc2: Option<String>) -> Option<String> {
 /// Take the current environment, two terms with their local environment, and return a term which
 /// is the closurized merge of the two.
 fn merge_closurize(
-    env: &mut Environment,
+    env: &mut Layer,
     t1: RichTerm,
-    env1: Environment,
+    env1: Store,
     t2: RichTerm,
-    env2: Environment,
+    env2: Store,
 ) -> RichTerm {
-    let mut local_env = Environment::new();
+    let mut layer = Layer::new();
     let body = RichTerm::from(Term::Op2(
         BinaryOp::Merge(),
-        t1.closurize(&mut local_env, env1),
-        t2.closurize(&mut local_env, env2),
+        t1.closurize(&mut layer, env1),
+        t2.closurize(&mut layer, env2),
     ));
-    body.closurize(env, local_env)
+    body.closurize(env, Store::singleton(layer))
 }
 
-fn rev_thunks<'a, I: Iterator<Item = &'a mut RichTerm>>(map: I, env: &mut Environment) {
+fn rev_thunks<'a, I: Iterator<Item = &'a mut RichTerm>>(map: I, env: &mut Store) {
     use crate::transform::fresh_var;
 
     for rt in map {
-        if let Term::Var(id) = rt.as_ref() {
+        if let Term::Symbol(sym) = rt.as_ref() {
             // This create a fresh variable which is bound to a reverted copy of the original thunk
-            let reverted = env.get(id).unwrap().revert();
+            let reverted = env.get(sym).unwrap().revert();
             let fresh_id = fresh_var();
-            env.insert(fresh_id.clone(), reverted);
-            *(SharedTerm::make_mut(&mut rt.term)) = Term::Var(fresh_id);
+            env.with_front_mut(|env| env.insert(fresh_id.clone(), reverted));
+            *(SharedTerm::make_mut(&mut rt.term)) = Term::Symbol(Symbol::local(fresh_id));
         }
         // Otherwise, if it is not a variable after the share normal form transformations, it
         // should be a constant and we don't need to revert anything

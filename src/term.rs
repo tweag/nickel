@@ -167,9 +167,21 @@ pub enum Term {
 pub struct Symbol {
     /// The distance from the current environment to the binder.
     #[serde(skip)]
-    pub index: usize,
+    pub level: usize,
     /// The original source-level identifier.
     pub ident: Ident,
+}
+
+impl Symbol {
+    /// Creates a symbol that is resolved `level` steps from the immediate layer.
+    pub fn new(level: usize, ident: Ident) -> Self {
+        Self { level, ident }
+    }
+
+    /// Creates a symbol that is resolved in the immediate layer.
+    pub fn local(ident: Ident) -> Self {
+        Self::new(0, ident)
+    }
 }
 
 pub type SealingKey = i32;
@@ -1474,6 +1486,13 @@ pub mod make {
         Term::Var(v.into()).into()
     }
 
+    pub fn local<I>(v: I) -> RichTerm
+    where
+        I: Into<Ident>,
+    {
+        Term::Symbol(Symbol::local(v.into())).into()
+    }
+
     fn let_in_<I, T1, T2>(rec: bool, id: I, t1: T1, t2: T2) -> RichTerm
     where
         T1: Into<RichTerm>,
@@ -1565,7 +1584,7 @@ pub mod make {
     }
 
     pub fn id() -> RichTerm {
-        mk_fun!("x", var("x"))
+        mk_fun!("x", local("x"))
     }
 
     pub fn import<S>(path: S) -> RichTerm

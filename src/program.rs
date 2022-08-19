@@ -24,6 +24,7 @@ use crate::cache::*;
 use crate::error::{Error, ToDiagnostic};
 use crate::identifier::Ident;
 use crate::parser::lexer::Lexer;
+use crate::store::Store;
 use crate::term::{RichTerm, Term};
 use crate::{eval, parser};
 use codespan::FileId;
@@ -70,7 +71,7 @@ impl Program {
 
     /// Retrieve the parsed term and typecheck it, and generate a fresh global environment. Return
     /// both.
-    fn prepare_eval(&mut self) -> Result<(RichTerm, eval::Environment), Error> {
+    fn prepare_eval(&mut self) -> Result<(RichTerm, Store), Error> {
         let GlobalEnv { eval_env, type_env } = self.cache.prepare_stdlib()?;
         self.cache.prepare(self.main_id, &type_env)?;
         Ok((self.cache.get(self.main_id).unwrap(), eval_env))
@@ -193,14 +194,14 @@ pub fn query(
             parser::grammar::TermParser::new().parse_term(query_file_id, Lexer::new(&source))?;
 
         // Substituting `y` for `t`
-        let mut env = eval::Environment::new();
+        let mut env = Store::new();
         eval::env_add(
             &mut env,
             Ident::from("x"),
             cache.get_owned(file_id).unwrap(),
-            eval::Environment::new(),
+            Store::new(),
         );
-        eval::subst(new_term, &eval::Environment::new(), &env)
+        eval::subst(new_term, &Store::new(), &env)
     } else {
         cache.get_owned(file_id).unwrap()
     };

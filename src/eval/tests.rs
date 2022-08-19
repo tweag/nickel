@@ -11,7 +11,7 @@ use codespan::Files;
 
 /// Evaluate a term without import support.
 fn eval_no_import(t: RichTerm) -> Result<Term, EvalError> {
-    eval(t, &Environment::new(), &mut DummyResolver {}).map(Term::from)
+    eval(t, &Store::new(), &mut DummyResolver {}).map(Term::from)
 }
 
 fn parse(s: &str) -> Option<RichTerm> {
@@ -51,7 +51,7 @@ fn blame_panics() {
 #[test]
 #[should_panic]
 fn lone_var_panics() {
-    eval_no_import(mk_term::var("unbound")).unwrap();
+    eval_no_import(mk_term::local("unbound")).unwrap();
 }
 
 #[test]
@@ -67,7 +67,7 @@ fn simple_app() {
 
 #[test]
 fn simple_let() {
-    let t = mk_term::let_in("x", Term::Num(5.0), mk_term::var("x"));
+    let t = mk_term::let_in("x", Term::Num(5.0), mk_term::local("x"));
     assert_eq!(Ok(Term::Num(5.0)), eval_no_import(t));
 }
 
@@ -179,13 +179,13 @@ fn imports() {
     }
 
     // let x = import "does_not_exist" in x
-    match mk_import("x", "does_not_exist", mk_term::var("x"), &mut resolver).unwrap_err() {
+    match mk_import("x", "does_not_exist", mk_term::local("x"), &mut resolver).unwrap_err() {
         ImportError::IOError(_, _, _) => (),
         _ => assert!(false),
     };
 
     // let x = import "bad" in x
-    match mk_import("x", "bad", mk_term::var("x"), &mut resolver).unwrap_err() {
+    match mk_import("x", "bad", mk_term::local("x"), &mut resolver).unwrap_err() {
         ImportError::ParseErrors(_, _) => (),
         _ => assert!(false),
     };
@@ -193,8 +193,8 @@ fn imports() {
     // let x = import "two" in x
     assert_eq!(
         eval(
-            mk_import("x", "two", mk_term::var("x"), &mut resolver).unwrap(),
-            &Environment::new(),
+            mk_import("x", "two", mk_term::local("x"), &mut resolver).unwrap(),
+            &Store::new(),
             &mut resolver
         )
         .map(Term::from)
@@ -208,16 +208,15 @@ fn imports() {
             mk_import(
                 "x",
                 "lib",
-                mk_term::op1(UnaryOp::StaticAccess(Ident::from("f")), mk_term::var("x")),
+                mk_term::op1(UnaryOp::StaticAccess(Ident::from("f")), mk_term::local("x")),
                 &mut resolver,
             )
             .unwrap(),
-            &Environment::new(),
+            &Store::new(),
             &mut resolver
         )
-        .map(Term::from)
-        .unwrap(),
-        Term::Bool(true)
+        .map(Term::from),
+        Ok(Term::Bool(true))
     );
 }
 
@@ -286,46 +285,44 @@ fn interpolation_nested() {
 
 #[test]
 fn global_env() {
-    let mut global_env = Environment::new();
+    let mut layer = Layer::new();
     let mut resolver = DummyResolver {};
-    global_env.insert(
+    layer.insert(
         Ident::from("g"),
         Thunk::new(
             Closure::atomic_closure(Term::Num(1.0).into()),
             IdentKind::Let,
         ),
     );
+    let global_env = Store::singleton(layer);
 
-    let t = mk_term::let_in("x", Term::Num(2.0), mk_term::var("x"));
+    let t = mk_term::let_in("x", Term::Num(2.0), mk_term::local("x"));
     assert_eq!(
         eval(t, &global_env, &mut resolver).map(Term::from),
         Ok(Term::Num(2.0))
     );
 
-    let t = mk_term::let_in("x", Term::Num(2.0), mk_term::var("g"));
+    let t = mk_term::let_in("x", Term::Num(2.0), mk_term::local("g"));
     assert_eq!(
         eval(t, &global_env, &mut resolver).map(Term::from),
         Ok(Term::Num(1.0))
     );
 
     // Shadowing of global environment
-    let t = mk_term::let_in("g", Term::Num(2.0), mk_term::var("g"));
+    let t = mk_term::let_in("g", Term::Num(2.0), mk_term::local("g"));
     assert_eq!(
         eval(t, &global_env, &mut resolver).map(Term::from),
         Ok(Term::Num(2.0))
     );
 }
 
-fn mk_env(bindings: Vec<(&str, RichTerm)>) -> Environment {
-    bindings
-        .into_iter()
-        .map(|(id, t)| {
-            (
-                id.into(),
-                Thunk::new(Closure::atomic_closure(t), IdentKind::Let),
-            )
-        })
-        .collect()
+fn mk_env(bindings: Vec<(&str, RichTerm)>) -> Store {
+    Store::singleton(Layer::from_iter(bindings.into_iter().map(|(id, t)| {
+        (
+            id.into(),
+            Thunk::new(Closure::atomic_closure(t), IdentKind::Let),
+        )
+    })))
 }
 
 #[test]

@@ -4,6 +4,7 @@ use crate::error::{Error, ImportError, ParseError, ParseErrors, TypecheckError};
 use crate::parser::lexer::Lexer;
 use crate::position::TermPos;
 use crate::stdlib as nickel_stdlib;
+use crate::store::{Layer, Store};
 use crate::term::{RichTerm, SharedTerm, Term};
 use crate::transform::import_resolution;
 use crate::typecheck::{self, Wildcards};
@@ -80,7 +81,7 @@ pub struct Cache {
 #[derive(Debug, Clone)]
 pub struct GlobalEnv {
     /// The eval environment.
-    pub eval_env: eval::Environment,
+    pub eval_env: Store,
     /// The typing environment, counterpart of the eval environment for typechecking. Entries are
     /// [crate::typecheck::TypeWrapper] for the ease of interacting with the typechecker, but there
     /// are not any unification variable in it.
@@ -90,7 +91,7 @@ pub struct GlobalEnv {
 impl GlobalEnv {
     pub fn new() -> Self {
         GlobalEnv {
-            eval_env: eval::Environment::new(),
+            eval_env: Store::new(),
             type_env: typecheck::Environment::new(),
         }
     }
@@ -894,12 +895,12 @@ impl Cache {
 
     /// Generate a global evaluation environment from the list of `file_ids` corresponding to the standard
     /// library parts.
-    pub fn mk_eval_env(&self) -> Result<eval::Environment, CacheError<Void>> {
+    pub fn mk_eval_env(&self) -> Result<Store, CacheError<Void>> {
         if let Some(ids) = self.stdlib_ids.as_ref().cloned() {
-            let mut eval_env = eval::Environment::new();
+            let mut eval_layer = Layer::new();
             ids.iter().for_each(|file_id| {
                 let result = eval::env_add_term(
-                    &mut eval_env,
+                    &mut eval_layer,
                     self.get_owned(*file_id).expect(
                         "cache::mk_global_env(): can't build environment, stdlib not parsed",
                     ),
@@ -912,7 +913,7 @@ impl Cache {
                      )
                 }
             });
-            Ok(eval_env)
+            Ok(Store::singleton(eval_layer))
         } else {
             Err(CacheError::NotParsed)
         }

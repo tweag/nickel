@@ -3,7 +3,8 @@ use crate::{
     cache::ImportResolver,
     eval::{lazy::Thunk, Closure, Environment, IdentKind},
     identifier::Ident,
-    term::{Contract, RichTerm, Term, TraverseOrder},
+    store::{Layer, Store},
+    term::{Contract, RichTerm, Symbol, Term, TraverseOrder},
     typecheck::Wildcards,
     types::{AbsType, Types, UnboundTypeVariableError},
 };
@@ -14,11 +15,11 @@ generate_counter!(FreshVarCounter, usize);
 
 pub mod apply_contracts;
 pub mod desugar_destructuring;
+pub mod eliminate_variables;
 pub mod free_vars;
 pub mod import_resolution;
 pub mod share_normal_form;
 pub mod substitute_wildcards;
-pub mod eliminate_variables;
 
 /// Apply all program transformations, excepted import resolution that is currently performed
 /// earlier, as it needs to be done before typechecking.
@@ -83,8 +84,8 @@ pub fn fresh_var() -> Ident {
 /// In this case, the inner term is closurized.
 pub trait Closurizable {
     /// Pack a closurizable together with its environment `with_env` as a closure in the main
-    /// environment `env`.
-    fn closurize(self, env: &mut Environment, with_env: Environment) -> Self;
+    /// environment `env`. Here the resulting Symbol's environment layer defaults to 0.
+    fn closurize(self, env: &mut Layer, with_env: Store) -> Self;
 }
 
 impl Closurizable for RichTerm {
@@ -92,7 +93,7 @@ impl Closurizable for RichTerm {
     ///
     /// Generate a fresh variable, bind it to the corresponding closure `(t,with_env)` in `env`,
     /// and return this variable as a fresh term.
-    fn closurize(self, env: &mut Environment, with_env: Environment) -> RichTerm {
+    fn closurize(self, env: &mut Layer, with_env: Store) -> RichTerm {
         // If the term is already a variable, we don't have to create a useless intermediate
         // closure. We just transfer the original thunk to the new environment. This is not only an
         // optimization: this is relied upon by recursive record merging when computing the
@@ -140,12 +141,14 @@ impl Closurizable for RichTerm {
         let pos = self.pos;
 
         let thunk = match self.as_ref() {
-            Term::Var(id) if id.is_generated() => with_env.get(id).unwrap_or_else(|| {
-                panic!(
+            Term::Symbol(sym) if sym.ident.is_generated() => {
+                with_env.get(sym).unwrap_or_else(|| {
+                    panic!(
                 "Internal error(closurize) : generated identifier {} not found in the environment",
-                id
+                sym.ident
             )
-            }),
+                })
+            }
             _ => {
                 let closure = Closure {
                     body: self,
@@ -156,7 +159,7 @@ impl Closurizable for RichTerm {
         };
 
         env.insert(var.clone(), thunk);
-        RichTerm::new(Term::Var(var), pos.into_inherited())
+        RichTerm::new(Term::Symbol(Symbol::local(var)), pos.into_inherited())
     }
 }
 
@@ -165,7 +168,7 @@ impl Closurizable for Types {
     ///
     /// Extract the underlying contract, closurize it and wrap it back as a flat type (an opaque
     /// type defined by a custom contract).
-    fn closurize(self, env: &mut Environment, with_env: Environment) -> Types {
+    fn closurize(self, env: &mut Layer, with_env: Store) -> Types {
         Types(AbsType::Flat(
             self.contract().unwrap().closurize(env, with_env),
         ))
@@ -173,7 +176,7 @@ impl Closurizable for Types {
 }
 
 impl Closurizable for Contract {
-    fn closurize(self, env: &mut Environment, with_env: Environment) -> Contract {
+    fn closurize(self, env: &mut Layer, with_env: Store) -> Contract {
         Contract {
             types: self.types.closurize(env, with_env),
             label: self.label,

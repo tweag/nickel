@@ -323,7 +323,7 @@ mod tests {
             assert_eq!(
                 $crate::eval::eval(
                     mk_term::op2(BinaryOp::Eq(), from_json, evaluated.clone()),
-                    &Environment::new(),
+                    &crate::store::Store::new(),
                     &mut $crate::cache::resolvers::DummyResolver {}
                 )
                 .map(Term::from),
@@ -332,7 +332,7 @@ mod tests {
             assert_eq!(
                 $crate::eval::eval(
                     mk_term::op2(BinaryOp::Eq(), from_yaml, evaluated.clone()),
-                    &Environment::new(),
+                    &crate::store::Store::new(),
                     &mut $crate::cache::resolvers::DummyResolver {}
                 )
                 .map(Term::from),
@@ -341,7 +341,7 @@ mod tests {
             assert_eq!(
                 $crate::eval::eval(
                     mk_term::op2(BinaryOp::Eq(), from_toml, evaluated),
-                    &Environment::new(),
+                    &crate::store::Store::new(),
                     &mut $crate::cache::resolvers::DummyResolver {}
                 )
                 .map(Term::from),

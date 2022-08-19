@@ -7,8 +7,8 @@
 //! On the other hand, the functions `process_unary_operation` and `process_binary_operation`
 //! receive evaluated operands and implement the actual semantics of operators.
 use super::{
-    callstack, merge,
-    merge::{merge, MergeMode},
+    callstack,
+    merge::{self, merge, MergeMode},
     stack::Stack,
     subst, CallStack, Closure, Environment,
 };
@@ -21,6 +21,7 @@ use crate::{
     position::TermPos,
     serialize,
     serialize::ExportFormat,
+    store::{Layer, Store},
     term::{make as mk_term, ArrayAttrs},
     term::{BinaryOp, NAryOp, RichTerm, StrChunk, Term, UnaryOp},
     transform::{fresh_var, Closurizable},
@@ -523,9 +524,9 @@ fn process_unary_operation(
                 .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("map"), pos_op))?;
             match_sharedterm! {t, with {
                     Term::Array(ts, _) => {
-                        let mut shared_env = Environment::new();
-                        let f_as_var = f.body.closurize(&mut env, f.env);
+                        let f_as_var = env.with_front_mut(|layer| f.body.closurize(layer, f.env.clone()));
 
+                        let mut layer = Layer::new();
                         // Array elements are closurized to preserve lazyness of data structures. It
                         // maintains the invariant that any data structure only contain thunks (that is,
                         // currently, variables).
@@ -533,13 +534,13 @@ fn process_unary_operation(
                             .into_iter()
                             .map(|t| {
                                 RichTerm::new(Term::App(f_as_var.clone(), t), pos_op_inh)
-                                    .closurize(&mut shared_env, env.clone())
+                                    .closurize(&mut layer, env.clone())
                             })
                             .collect();
 
                         Ok(Closure {
                             body: RichTerm::new(Term::Array(ts, ArrayAttrs { closurized: true }), pos_op_inh),
-                            env: shared_env,
+                            env: Store::singleton(layer)
                         })
                     }
                 } else {
@@ -568,16 +569,17 @@ fn process_unary_operation(
                         pos_op,
                     ))
                 } else {
-                    let mut shared_env = Environment::new();
-                    let f_as_var = f.body.closurize(&mut env, f.env);
+                    let f_as_var =
+                        env.with_front_mut(|layer| f.body.closurize(layer, f.env.clone()));
 
+                    let mut layer = Layer::new();
                     // Array elements are closurized to preserve lazyness of data structures. It
                     // maintains the invariant that any data structure only contain thunks (that is,
                     // currently, variables).
                     let ts = (0..n_int)
                         .map(|n| {
                             mk_app!(f_as_var.clone(), Term::Num(n as f64))
-                                .closurize(&mut shared_env, env.clone())
+                                .closurize(&mut layer, env.clone())
                         })
                         .collect();
 
@@ -586,7 +588,7 @@ fn process_unary_operation(
                             Term::Array(ts, ArrayAttrs { closurized: true }),
                             pos_op_inh,
                         ),
-                        env: shared_env,
+                        env: Store::singleton(layer),
                     })
                 }
             } else {
@@ -605,9 +607,9 @@ fn process_unary_operation(
 
             match_sharedterm! {t, with {
                     Term::Record(rec, attr) => {
-                        let mut shared_env = Environment::new();
-                        let f_as_var = f.body.closurize(&mut env, f.env);
+                        let f_as_var = env.with_front_mut(|layer| f.body.closurize(layer, f.env.clone()));
 
+                        let mut layer = Layer::new();
                         // As for `ArrayMap` (see above), we closurize the content of fields
                         let rec = rec
                             .into_iter()
@@ -617,7 +619,7 @@ fn process_unary_operation(
                                 (
                                     id.clone(),
                                     mk_app!(f_as_var.clone(), mk_term::string(id.label), t)
-                                        .closurize(&mut shared_env, env.clone())
+                                        .closurize(&mut layer, env.clone())
                                         .with_pos(pos),
                                 )
                             })
@@ -625,7 +627,7 @@ fn process_unary_operation(
 
                         Ok(Closure {
                             body: RichTerm::new(Term::Record(rec, attr), pos_op_inh),
-                            env: shared_env,
+                            env: Store::singleton(layer),
                         })
                     }
                 } else {
@@ -654,7 +656,7 @@ fn process_unary_operation(
             /// missing definition error when deepsequing a record.
             ///
             /// Requires its first argument to be non-empty.
-            fn seq_terms<I>(mut it: I, env: Environment, pos_op_inh: TermPos) -> Closure
+            fn seq_terms<I>(mut it: I, env: Store, pos_op_inh: TermPos) -> Closure
             where
                 I: Iterator<Item = (Option<callstack::StackElem>, RichTerm)>,
             {
@@ -745,7 +747,7 @@ fn process_unary_operation(
                 // A num does not have any free variable so we can drop the environment
                 Ok(Closure {
                     body: RichTerm::new(Term::Num(ts.len() as f64), pos_op_inh),
-                    env: Environment::new(),
+                    env: Store::new(),
                 })
             } else {
                 Err(EvalError::TypeError(
@@ -1365,12 +1367,12 @@ fn process_binary_operation(
                         env: env1,
                     }),
                     Term::Record(..) => {
-                        let mut new_env = Environment::new();
+                        let mut layer = Layer::new();
                         let closurized = RichTerm {
                             term: t1,
                             pos: pos1,
                         }
-                        .closurize(&mut new_env, env1);
+                        .closurize(&mut layer, env1);
 
                         // Convert the record to the function `fun l x => MergeContract l x
                         // contract`.
@@ -1386,7 +1388,10 @@ fn process_binary_operation(
                         )
                         .with_pos(pos1.into_inherited());
 
-                        Ok(Closure { body, env: new_env })
+                        Ok(Closure {
+                            body,
+                            env: Store::singleton(layer),
+                        })
                     }
                     _ => Err(EvalError::TypeError(
                         String::from("Function or Record"),
@@ -1474,7 +1479,7 @@ fn process_binary_operation(
             }
         },
         BinaryOp::Eq() => {
-            let mut env = Environment::new();
+            let mut layer = Layer::new();
 
             let c1 = Closure {
                 body: RichTerm {
@@ -1491,7 +1496,7 @@ fn process_binary_operation(
                 env: env2,
             };
 
-            match eq(&mut env, c1, c2) {
+            match eq(&mut layer, c1, c2) {
                 EqResult::Bool(b) => match (b, stack.pop_eq()) {
                     (false, _) => {
                         stack.clear_eqs();
@@ -1505,12 +1510,12 @@ fn process_binary_operation(
                         pos_op_inh,
                     ))),
                     (true, Some((c1, c2))) => {
-                        let t1 = c1.body.closurize(&mut env, c1.env);
-                        let t2 = c2.body.closurize(&mut env, c2.env);
+                        let t1 = c1.body.closurize(&mut layer, c1.env);
+                        let t2 = c2.body.closurize(&mut layer, c2.env);
 
                         Ok(Closure {
                             body: RichTerm::new(Term::Op2(BinaryOp::Eq(), t1, t2), pos_op),
-                            env,
+                            env: Store::singleton(layer),
                         })
                     }
                 },
@@ -1519,7 +1524,7 @@ fn process_binary_operation(
 
                     Ok(Closure {
                         body: RichTerm::new(Term::Op2(BinaryOp::Eq(), t1, t2), pos_op),
-                        env,
+                        env: Store::singleton(layer),
                     })
                 }
             }
@@ -1724,46 +1729,47 @@ fn process_binary_operation(
             }
         },
         BinaryOp::DynExtend() => {
-            let (clos, _) = stack
-                .pop_arg()
-                .ok_or_else(|| EvalError::NotEnoughArgs(3, String::from("$[ .. ]"), pos_op))?;
-
-            if let Term::Str(id) = &*t1 {
-                match_sharedterm! {t2, with {
-                        Term::Record(static_map, attrs) => {
-                            let mut static_map = static_map;
-                            let as_var = clos.body.closurize(&mut env2, clos.env);
-                            match static_map.insert(Ident::from(id), as_var) {
-                                Some(_) => Err(EvalError::Other(format!("$[ .. ]: tried to extend record with the field {}, but it already exists", id), pos_op)),
-                                None => Ok(Closure {
-                                    body: Term::Record(static_map, attrs).into(),
-                                    env: env2,
-                                }),
-                            }
-                        }
-                    } else {
-                        Err(EvalError::TypeError(
-                            String::from("Record"),
-                            String::from("$[ .. ]"),
-                            snd_pos,
-                            RichTerm {
-                                term: t2,
-                                pos: pos2,
-                            },
-                        ))
-                    }
-                }
-            } else {
-                Err(EvalError::TypeError(
-                    String::from("Str"),
-                    String::from("$[ .. ]"),
-                    fst_pos,
-                    RichTerm {
-                        term: t1,
-                        pos: pos1,
-                    },
-                ))
-            }
+            // let (clos, _) = stack
+            //     .pop_arg()
+            //     .ok_or_else(|| EvalError::NotEnoughArgs(3, String::from("$[ .. ]"), pos_op))?;
+            //
+            // if let Term::Str(id) = &*t1 {
+            //     match_sharedterm! {t2, with {
+            //             Term::Record(static_map, attrs) => {
+            //                 let mut static_map = static_map;
+            //                 let as_var = clos.body.closurize(&mut env2, clos.env);
+            //                 match static_map.insert(Ident::from(id), as_var) {
+            //                     Some(_) => Err(EvalError::Other(format!("$[ .. ]: tried to extend record with the field {}, but it already exists", id), pos_op)),
+            //                     None => Ok(Closure {
+            //                         body: Term::Record(static_map, attrs).into(),
+            //                         env: env2,
+            //                     }),
+            //                 }
+            //             }
+            //         } else {
+            //             Err(EvalError::TypeError(
+            //                 String::from("Record"),
+            //                 String::from("$[ .. ]"),
+            //                 snd_pos,
+            //                 RichTerm {
+            //                     term: t2,
+            //                     pos: pos2,
+            //                 },
+            //             ))
+            //         }
+            //     }
+            // } else {
+            //     Err(EvalError::TypeError(
+            //         String::from("Str"),
+            //         String::from("$[ .. ]"),
+            //         fst_pos,
+            //         RichTerm {
+            //             term: t1,
+            //             pos: pos1,
+            //         },
+            //     ))
+            // }
+            todo!()
         }
         BinaryOp::DynRemove() => match_sharedterm! {t1, with {
                 Term::Str(id) => match_sharedterm! {t2, with {
@@ -1855,13 +1861,9 @@ fn process_binary_operation(
                             ts.extend(ts1.into_iter());
                             ts.extend(ts2.into_iter());
 
-                            let mut env = env1;
-                            // TODO: Is there a cheaper way to "merge" two environements?
-                            env.extend(env2.iter_elems().map(|(k, v)| (k.clone(), v.clone())));
-
                             Ok(Closure {
                                 body: RichTerm::new(Term::Array(ts, ArrayAttrs { closurized: true }), pos_op_inh),
-                                env,
+                                env: env1.merge_fronts(env2),
                             })
                         }
                     } else {
@@ -2011,7 +2013,7 @@ fn process_binary_operation(
 
             if let Term::Enum(ref id) = t1.as_ref() {
                 // Serialization needs all variables term to be fully substituted
-                let global_env = Environment::new();
+                let global_env = Store::new();
                 let rt2 = subst(
                     RichTerm {
                         term: t2,
@@ -2349,7 +2351,7 @@ fn process_nary_operation(
 ///
 /// Return either a boolean when the equality can be computed directly, or a new non-empty list of
 /// equalities to be checked if operands are composite values.
-fn eq(env: &mut Environment, c1: Closure, c2: Closure) -> EqResult {
+fn eq(env: &mut Layer, c1: Closure, c2: Closure) -> EqResult {
     let Closure {
         body: RichTerm { term: t1, .. },
         env: env1,
@@ -2361,12 +2363,7 @@ fn eq(env: &mut Environment, c1: Closure, c2: Closure) -> EqResult {
 
     // Take a list of subequalities, and either return `EqResult::Bool(true)` if it is empty, or
     // generate an approriate `EqResult::Eqs` variant with closurized terms in it.
-    fn gen_eqs<I>(
-        mut it: I,
-        env: &mut Environment,
-        env1: Environment,
-        env2: Environment,
-    ) -> EqResult
+    fn gen_eqs<I>(mut it: I, env: &mut Layer, env1: Store, env2: Store) -> EqResult
     where
         I: Iterator<Item = (RichTerm, RichTerm)>,
     {
@@ -2442,7 +2439,7 @@ mod tests {
 
         let mut clos = Closure {
             body: Term::Bool(true).into(),
-            env: Environment::new(),
+            env: Store::new(),
         };
 
         stack.push_op_cont(cont, 0, TermPos::None);
@@ -2454,7 +2451,7 @@ mod tests {
             clos,
             Closure {
                 body: Term::Num(46.0).into(),
-                env: Environment::new()
+                env: Store::new()
             }
         );
         assert_eq!(0, stack.count_args());
@@ -2466,14 +2463,14 @@ mod tests {
             BinaryOp::Plus(),
             Closure {
                 body: Term::Num(6.0).into(),
-                env: Environment::new(),
+                env: Store::new(),
             },
             TermPos::None,
         );
 
         let mut clos = Closure {
             body: Term::Num(7.0).into(),
-            env: Environment::new(),
+            env: Store::new(),
         };
         let mut stack = Stack::new();
         stack.push_op_cont(cont, 0, TermPos::None);
@@ -2485,7 +2482,7 @@ mod tests {
             clos,
             Closure {
                 body: Term::Num(6.0).into(),
-                env: Environment::new()
+                env: Store::new()
             }
         );
 
@@ -2496,7 +2493,7 @@ mod tests {
                     BinaryOp::Plus(),
                     Closure {
                         body: Term::Num(7.0).into(),
-                        env: Environment::new(),
+                        env: Store::new(),
                     },
                     TermPos::None,
                     TermPos::None,
@@ -2514,14 +2511,14 @@ mod tests {
             BinaryOp::Plus(),
             Closure {
                 body: Term::Num(7.0).into(),
-                env: Environment::new(),
+                env: Store::new(),
             },
             TermPos::None,
             TermPos::None,
         );
         let mut clos = Closure {
             body: Term::Num(6.0).into(),
-            env: Environment::new(),
+            env: Store::new(),
         };
         let mut stack = Stack::new();
         stack.push_op_cont(cont, 0, TermPos::None);
@@ -2533,7 +2530,7 @@ mod tests {
             clos,
             Closure {
                 body: Term::Num(13.0).into(),
-                env: Environment::new()
+                env: Store::new()
             }
         );
     }

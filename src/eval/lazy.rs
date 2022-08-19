@@ -155,18 +155,18 @@ impl ThunkData {
 /// always give the same result, but some others, such as the ones containing recursive references
 /// inside a record may be invalidated by merging, and thus need to store the unaltered original
 /// expression. Those aspects are mainly handled in [InnerThunkData].
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Thunk {
     data: Rc<RefCell<ThunkData>>,
     ident_kind: IdentKind,
 }
 
-impl fmt::Display for Thunk {
+impl fmt::Debug for Thunk {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let Closure { body, env } = &*self.borrow();
         writeln!(f, "<thunk>")?;
-        writeln!(f, "T> body = {},", crate::eval::tools::dump!(body.clone()))?;
-        writeln!(f, "T> local = {env}")?;
+        writeln!(f, "<body>{}</body>", crate::eval::tools::dump!(body.clone()))?;
+        writeln!(f, "<local>{env:?}</local>")?;
         writeln!(f, "</thunk>")
     }
 }
