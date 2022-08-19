@@ -31,7 +31,9 @@ pub fn transform(
     wildcards: Option<&Wildcards>,
 ) -> Result<RichTerm, UnboundTypeVariableError> {
     free_vars::transform(&mut rt);
-    transform_no_free_vars(rt, wildcards)
+    let mut rt = transform_no_free_vars(rt, wildcards)?;
+    eliminate_variables::transform(&mut rt);
+    Ok(rt)
 }
 
 /// Same as [`transform`], but doesn't apply the free vars transformation.

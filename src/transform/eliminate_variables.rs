@@ -32,7 +32,7 @@
 //!
 //! ```nickel
 //! let = fun =>
-//!   let = #1 % 2
+//!   let = #0 % 2
 //!   in #0
 //! in #0 42
 //! ```
@@ -48,8 +48,6 @@
 //!
 //!         { fun => .. } <- { 42 } <- { #1 % 2 }
 
-use std::collections::HashMap;
-
 use crate::{
     identifier::Ident,
     term::{RichTerm, SharedTerm, Symbol, Term},
@@ -57,34 +55,87 @@ use crate::{
 
 /// Apply the full transfomation on a term.
 pub fn transform(rt: &mut RichTerm) {
-    eliminate_names(rt, HashMap::new())
+    eliminate_names(rt, Vec::new())
 }
 
 /// Add a De Bruijn index to all variable terms in the syntax tree.
-fn eliminate_names(rt: &mut RichTerm, mut layers: HashMap<Ident, usize>) {
+fn eliminate_names(rt: &mut RichTerm, mut layers: Vec<Ident>) {
     match SharedTerm::make_mut(&mut rt.term) {
+        Term::Null
+        | Term::Bool(_)
+        | Term::Num(_)
+        | Term::Str(_)
+        | Term::StrChunks(_)
+        | Term::Lbl(_)
+        | Term::Symbol(_)
+        | Term::Enum(_)
+        | Term::SealingKey(_)
+        | Term::Import(_)
+        | Term::ResolvedImport(_)
+        | Term::ParseError => (),
         Term::Let(x, t1, t2, _) => {
-            let level = layers.len();
-            layers.insert(x.clone(), level);
-
+            // TODO: handle recursive-bindings.
             eliminate_names(t1, layers.clone());
+
+            layers.push(x.clone());
+
             eliminate_names(t2, layers);
         }
         Term::Fun(x, t) => {
-            let level = layers.len();
-            layers.insert(x.clone(), level);
+            layers.push(x.clone());
 
             eliminate_names(t, layers);
         }
+        // TODO: This will require sharing code with `free_vars`.
+        Term::FunPattern(_, _, _) => todo!(),
+        Term::LetPattern(_, _, _, _) => todo!(),
+        Term::App(t0, t1) => {
+            eliminate_names(t0, layers.clone());
+            eliminate_names(t1, layers);
+        }
+        Term::Record(map, _) | Term::RecRecord(map, _, _, _) => {
+            for t in map.values_mut() {
+                eliminate_names(t, layers.clone());
+            }
+        }
+        Term::Switch(t0, ts, t1) => {
+            eliminate_names(t0, layers.clone());
+            for t in ts.values_mut() {
+                eliminate_names(t, layers.clone());
+            }
+            if let Some(t) = t1 {
+                eliminate_names(t, layers);
+            }
+        }
+        Term::Array(ts, _) => {
+            for t in ts.iter_mut() {
+                eliminate_names(t, layers.clone());
+            }
+        }
+        Term::Op1(_, t) => eliminate_names(t, layers),
+        Term::Op2(_, t0, t1) => {
+            eliminate_names(t0, layers.clone());
+            eliminate_names(t1, layers);
+        }
+        Term::OpN(_, ts) => {
+            for t in ts.iter_mut() {
+                eliminate_names(t, layers.clone());
+            }
+        }
+        Term::Sealed(_, t) => eliminate_names(t, layers),
+        Term::MetaValue(mv) => {
+            if let Some(t) = &mut mv.value {
+                eliminate_names(t, layers);
+            }
+        }
         t => {
+            // NOTE: We cannot put the `Term::Var` pattern in the match arm because
+            // it will leader to a mutable borrow of `t` and an immutable borrow of `x`.
+            // Instead, we reborrow `t` as immutable for a clone and then mutate it at the end.
             if let Term::Var(x) = t.clone() {
-                let sym = Symbol {
-                    index: layers.get(&x).copied().unwrap(),
-                    ident: x,
-                };
-                *t = Term::Symbol(sym);
-            } else {
-                /* Nothing to do. */
+                let ident = x.clone();
+                let index = layers.into_iter().rev().position(|i| i == x).unwrap();
+                *t = Term::Symbol(Symbol { index, ident });
             }
         }
     }
