@@ -222,6 +222,65 @@ impl<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> Iterator for EnvIter<'a, K, V> {
     }
 }
 
+mod cache {
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+    use std::hash::Hash;
+    use std::rc::{Rc, Weak};
+
+    pub struct Cache<K, V>
+    where
+        K: Hash + Eq + Clone,
+        V: PartialEq + Clone,
+    {
+        store: RefCell<Vec<(K, Weak<HashMap<K, V>>)>>,
+        capacity: usize,
+    }
+
+    impl<K: Hash + Eq + Clone, V: PartialEq + Clone> Cache<K, V> {
+        pub fn new(capacity: usize) -> Self {
+            Self {
+                store: RefCell::new(vec![]),
+                capacity,
+            }
+        }
+
+        pub fn len(&self) -> usize {
+            self.store.borrow().len()
+        }
+
+        pub fn lookup(&self, key: &K) -> Option<V> {
+            let (i, v) = self
+                .store
+                .borrow()
+                .iter()
+                .enumerate()
+                .find_map(|(i, (k, v))| {
+                    if k == key {
+                        Some((i, v.upgrade().unwrap()[k].clone()))
+                    } else {
+                        None
+                    }
+                })?;
+            self.store.borrow_mut()[..=i].rotate_right(1);
+            Some(v)
+        }
+
+        pub fn add(&mut self, key: &K, value: &Rc<HashMap<K, V>>) {
+            let to_add = (key.clone(), Rc::downgrade(value));
+            if self.len() == self.capacity {
+                let mut store = self.store.borrow_mut();
+                store.rotate_right(1);
+                store[0] = to_add;
+            } else {
+                let mut store = self.store.borrow_mut();
+                store.push(to_add);
+                store.rotate_right(1);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
