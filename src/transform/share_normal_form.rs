@@ -58,7 +58,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                         if should_share(&t.term) {
                             let fresh_var = fresh_var();
                             let pos_t = t.pos;
-                            bindings.push((fresh_var.clone(), t, BindingType::Normal));
+                            bindings.push((fresh_var.clone(), t, LetAttrs::default()));
                             (id, RichTerm::new(Term::Var(fresh_var), pos_t))
                         } else {
                             (id, t)
@@ -85,6 +85,9 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                 // marker). See comments inside [`crate::RichTerm::closurize`] for more details.
                 let mut bindings = Vec::with_capacity(map.len());
 
+                // TODO: introduce a BindingType::Recursive`.
+                let mut rec_bindings: Vec<()> = Vec::with_capacity(map.len());
+
                 fn mk_binding_type(field_deps: Option<HashSet<Ident>>) -> BindingType {
                     // If the fields has an empty set of dependencies, we can eschew the
                     // useless introduction of a revertible thunk. Note that if
@@ -109,9 +112,26 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                             let fresh_var = fresh_var();
                             let pos_t = t.pos;
                             let field_deps = deps.as_ref().and_then(|deps| deps.stat_fields.get(&id)).cloned();
-                            let is_non_rec = (&field_deps).as_ref().map(|deps| deps.is_empty()).unwrap_or(false);
-                            let btype = mk_binding_type(field_deps);
-                            bindings.push((fresh_var.clone(), t, btype));
+                            let rec = field_deps
+                                .as_ref()
+                                .map(|deps| deps.contains(&id))
+                                .unwrap_or(false);
+                            let binding_type = mk_binding_type(field_deps);
+                            dbg!(rec);
+                            bindings.push(
+                                (
+                                    fresh_var.clone(),
+                                    RichTerm::new(Term::Var(id.clone()), pos_t),
+                                    LetAttrs { binding_type, rec: false }
+                                )
+                            );
+                            bindings.push(
+                                (
+                                    id.clone(),
+                                    t,
+                                    LetAttrs { binding_type: BindingType::Normal, rec }
+                                )
+                            );
 
                             (id, RichTerm::new(Term::Var(fresh_var), pos_t))
                         } else {
@@ -128,8 +148,8 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                             let fresh_var = fresh_var();
                             let pos_t = t.pos;
                             let field_deps = deps.as_ref().and_then(|deps| deps.dyn_fields.get(index)).cloned();
-                            let btype = mk_binding_type(field_deps);
-                            bindings.push((fresh_var.clone(), t, btype));
+                            let binding_type = mk_binding_type(field_deps);
+                            bindings.push((fresh_var.clone(), t, LetAttrs { binding_type, rec: false }));
                             (id_t, RichTerm::new(Term::Var(fresh_var), pos_t))
                         } else {
                             (id_t, t)
@@ -148,7 +168,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                         if should_share(&t.term) {
                             let fresh_var = fresh_var();
                             let pos_t = t.pos;
-                            bindings.push((fresh_var.clone(), t, BindingType::Normal));
+                            bindings.push((fresh_var.clone(), t, LetAttrs::default()));
                             RichTerm::new(Term::Var(fresh_var), pos_t)
                         } else {
                             t
@@ -200,26 +220,9 @@ fn should_share(t: &Term) -> bool {
 /// Given the term `body` and bindings of identifiers to terms represented as a list of pairs
 /// `(id_1, term_1), .., (id_n, term_n)`, return the new term `let id_n = term_n in ... let
 /// id_1 = term_1 in body`.
-fn with_bindings(
-    body: Term,
-    bindings: Vec<(Ident, RichTerm, BindingType)>,
-    pos: TermPos,
-) -> RichTerm {
+fn with_bindings(body: Term, bindings: Vec<(Ident, RichTerm, LetAttrs)>, pos: TermPos) -> RichTerm {
     bindings.into_iter().fold(
         RichTerm::new(body, pos.into_inherited()),
-        |acc, (id, t, binding_type)| {
-            RichTerm::new(
-                Term::Let(
-                    id,
-                    t,
-                    acc,
-                    LetAttrs {
-                        binding_type,
-                        rec: false,
-                    },
-                ),
-                pos,
-            )
-        },
+        |acc, (id, t, attrs)| RichTerm::new(Term::Let(id, t, acc, attrs), pos),
     )
 }

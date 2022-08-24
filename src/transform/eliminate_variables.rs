@@ -98,7 +98,7 @@ fn eliminate_names(rt: &mut RichTerm, mut layers: Vec<Ident>) {
             eliminate_names(t1, layers);
         }
         Term::Record(map, _) | Term::RecRecord(map, _, _, _) => {
-            for t in map.values_mut() {
+            for (id, t) in map.iter_mut() {
                 eliminate_names(t, layers.clone());
             }
         }

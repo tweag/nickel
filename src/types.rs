@@ -277,7 +277,7 @@ impl Types {
                                 mk_fun!(
                                     "x",
                                     mk_switch!(
-                                        mk_term::var("x"),
+                                        mk_term::local("x"),
                                         (id, Term::Bool(true)) ;
                                         Term::Bool(false)
                                     )

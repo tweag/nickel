@@ -254,9 +254,6 @@ pub fn merge(
 
             let doc = merge_doc(doc1, doc2);
 
-            println!("env1 = {:?}", env1);
-            println!("env2 = {:?}", env2);
-
             // If:
             // 1. meta1 has a value
             // 2. meta2 has a contract
@@ -468,10 +465,6 @@ fn cross_apply_contracts<'a>(
     let mut layer = Layer::new();
     let mut layer_local = Layer::new();
 
-    println!("t1   = {}", crate::eval::tools::dump!(t1.clone()));
-    println!("env1 = {:?}", env1);
-    println!("env2 = {:?}", env2);
-
     let pos = t1.pos.into_inherited();
     let result = it2
         .try_fold(t1, |acc, ctr| {
@@ -479,6 +472,7 @@ fn cross_apply_contracts<'a>(
             mk_term::assume(ty_closure, ctr.label.clone(), acc)
                 .map_err(|crate::types::UnboundTypeVariableError(id)| {
                     let pos = id.pos;
+                    // println!("{env1:?}");
                     EvalError::UnboundIdentifier(id, pos)
                 })
                 .map(|rt| rt.with_pos(pos))

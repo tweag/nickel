@@ -82,10 +82,15 @@ pub fn fresh_var() -> Ident {
 /// The typical implementer is [`crate::term::RichTerm`], but structures containing
 /// terms can also be closurizable, such as the contract in a [`crate::types::Types`].
 /// In this case, the inner term is closurized.
-pub trait Closurizable {
+pub trait Closurizable: Sized {
     /// Pack a closurizable together with its environment `with_env` as a closure in the main
     /// environment `env`. Here the resulting Symbol's environment layer defaults to 0.
-    fn closurize(self, env: &mut Layer, with_env: Store) -> Self;
+    fn closurize(self, env: &mut Layer, with_env: Store) -> Self {
+        self.closurize_at(env, with_env, 0)
+    }
+    /// Pack a closurizable together with its environment `with_env` as a closure in the main
+    /// environment `env`.
+    fn closurize_at(self, env: &mut Layer, with_env: Store, level: usize) -> Self;
 }
 
 impl Closurizable for RichTerm {
@@ -93,7 +98,7 @@ impl Closurizable for RichTerm {
     ///
     /// Generate a fresh variable, bind it to the corresponding closure `(t,with_env)` in `env`,
     /// and return this variable as a fresh term.
-    fn closurize(self, env: &mut Layer, with_env: Store) -> RichTerm {
+    fn closurize_at(self, env: &mut Layer, with_env: Store, level: usize) -> RichTerm {
         // If the term is already a variable, we don't have to create a useless intermediate
         // closure. We just transfer the original thunk to the new environment. This is not only an
         // optimization: this is relied upon by recursive record merging when computing the
@@ -159,7 +164,7 @@ impl Closurizable for RichTerm {
         };
 
         env.insert(var.clone(), thunk);
-        RichTerm::new(Term::Symbol(Symbol::local(var)), pos.into_inherited())
+        RichTerm::new(Term::Symbol(Symbol::new(level, var)), pos.into_inherited())
     }
 }
 
@@ -168,17 +173,17 @@ impl Closurizable for Types {
     ///
     /// Extract the underlying contract, closurize it and wrap it back as a flat type (an opaque
     /// type defined by a custom contract).
-    fn closurize(self, env: &mut Layer, with_env: Store) -> Types {
+    fn closurize_at(self, env: &mut Layer, with_env: Store, level: usize) -> Types {
         Types(AbsType::Flat(
-            self.contract().unwrap().closurize(env, with_env),
+            self.contract().unwrap().closurize_at(env, with_env, level),
         ))
     }
 }
 
 impl Closurizable for Contract {
-    fn closurize(self, env: &mut Layer, with_env: Store) -> Contract {
+    fn closurize_at(self, env: &mut Layer, with_env: Store, level: usize) -> Contract {
         Contract {
-            types: self.types.closurize(env, with_env),
+            types: self.types.closurize_at(env, with_env, level),
             label: self.label,
         }
     }

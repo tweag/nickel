@@ -1493,6 +1493,13 @@ pub mod make {
         Term::Symbol(Symbol::local(v.into())).into()
     }
 
+    pub fn symbol<I>(level: usize, v: I) -> RichTerm
+    where
+        I: Into<Ident>,
+    {
+        Term::Symbol(Symbol::new(level, v.into())).into()
+    }
+
     fn let_in_<I, T1, T2>(rec: bool, id: I, t1: T1, t2: T2) -> RichTerm
     where
         T1: Into<RichTerm>,
@@ -1584,7 +1591,7 @@ pub mod make {
     }
 
     pub fn id() -> RichTerm {
-        mk_fun!("x", local("x"))
+        mk_fun!("id_param", local("id_param"))
     }
 
     pub fn import<S>(path: S) -> RichTerm

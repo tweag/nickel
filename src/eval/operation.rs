@@ -438,11 +438,15 @@ fn process_unary_operation(
         UnaryOp::Seal() => {
             if let Term::SealingKey(s) = &*t {
                 Ok(Closure::atomic_closure(
-                    mk_fun!("x", Term::Sealed(*s, mk_term::var("x"))).with_pos(pos_op_inh),
+                    mk_fun!(
+                        "seal_param",
+                        Term::Sealed(*s, mk_term::symbol(1, "seal_param"))
+                    )
+                    .with_pos(pos_op_inh),
                 ))
             } else {
                 Err(EvalError::TypeError(
-                    String::from("Sym"),
+                    String::from("Sym"), // TODO: correct this in another PR
                     String::from("wrap"),
                     arg_pos,
                     RichTerm { term: t, pos },
@@ -1372,7 +1376,7 @@ fn process_binary_operation(
                             term: t1,
                             pos: pos1,
                         }
-                        .closurize(&mut layer, env1);
+                        .closurize_at(&mut layer, env1, 2);
 
                         // Convert the record to the function `fun l x => MergeContract l x
                         // contract`.
@@ -1381,8 +1385,8 @@ fn process_binary_operation(
                             "x",
                             mk_opn!(
                                 NAryOp::MergeContract(),
-                                mk_term::var("l"),
-                                mk_term::var("x"),
+                                mk_term::symbol(1, "l"),
+                                mk_term::symbol(0, "x"),
                                 closurized
                             )
                         )
@@ -1729,47 +1733,46 @@ fn process_binary_operation(
             }
         },
         BinaryOp::DynExtend() => {
-            // let (clos, _) = stack
-            //     .pop_arg()
-            //     .ok_or_else(|| EvalError::NotEnoughArgs(3, String::from("$[ .. ]"), pos_op))?;
-            //
-            // if let Term::Str(id) = &*t1 {
-            //     match_sharedterm! {t2, with {
-            //             Term::Record(static_map, attrs) => {
-            //                 let mut static_map = static_map;
-            //                 let as_var = clos.body.closurize(&mut env2, clos.env);
-            //                 match static_map.insert(Ident::from(id), as_var) {
-            //                     Some(_) => Err(EvalError::Other(format!("$[ .. ]: tried to extend record with the field {}, but it already exists", id), pos_op)),
-            //                     None => Ok(Closure {
-            //                         body: Term::Record(static_map, attrs).into(),
-            //                         env: env2,
-            //                     }),
-            //                 }
-            //             }
-            //         } else {
-            //             Err(EvalError::TypeError(
-            //                 String::from("Record"),
-            //                 String::from("$[ .. ]"),
-            //                 snd_pos,
-            //                 RichTerm {
-            //                     term: t2,
-            //                     pos: pos2,
-            //                 },
-            //             ))
-            //         }
-            //     }
-            // } else {
-            //     Err(EvalError::TypeError(
-            //         String::from("Str"),
-            //         String::from("$[ .. ]"),
-            //         fst_pos,
-            //         RichTerm {
-            //             term: t1,
-            //             pos: pos1,
-            //         },
-            //     ))
-            // }
-            todo!()
+            let (clos, _) = stack
+                .pop_arg()
+                .ok_or_else(|| EvalError::NotEnoughArgs(3, String::from("$[ .. ]"), pos_op))?;
+
+            if let Term::Str(id) = &*t1 {
+                match_sharedterm! {t2, with {
+                        Term::Record(static_map, attrs) => {
+                            let mut static_map = static_map;
+                            let as_var = env2.with_front_mut(|env| clos.body.closurize(env, clos.env));
+                            match static_map.insert(Ident::from(id), as_var) {
+                                Some(_) => Err(EvalError::Other(format!("$[ .. ]: tried to extend record with the field {}, but it already exists", id), pos_op)),
+                                None => Ok(Closure {
+                                    body: Term::Record(static_map, attrs).into(),
+                                    env: env2,
+                                }),
+                            }
+                        }
+                    } else {
+                        Err(EvalError::TypeError(
+                            String::from("Record"),
+                            String::from("$[ .. ]"),
+                            snd_pos,
+                            RichTerm {
+                                term: t2,
+                                pos: pos2,
+                            },
+                        ))
+                    }
+                }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Str"),
+                    String::from("$[ .. ]"),
+                    fst_pos,
+                    RichTerm {
+                        term: t1,
+                        pos: pos1,
+                    },
+                ))
+            }
         }
         BinaryOp::DynRemove() => match_sharedterm! {t1, with {
                 Term::Str(id) => match_sharedterm! {t2, with {

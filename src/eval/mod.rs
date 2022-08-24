@@ -332,7 +332,10 @@ where
                 let mut thunk = env
                     .get(sym)
                     .or_else(|| global_env.get(&sym))
-                    .ok_or_else(|| EvalError::UnboundIdentifier(sym.ident.clone(), pos))?;
+                    .ok_or_else(|| {
+                        // println!("{env:?}");
+                        EvalError::UnboundIdentifier(sym.ident.clone(), pos)
+                    })?;
                 std::mem::drop(env); // thunk may be a 1RC pointer
 
                 if thunk.state() != ThunkState::Evaluated {
@@ -385,12 +388,14 @@ where
                     }
                 };
 
-                // FIXME: handle recursive bindings.
                 // Patch the environment with the (x <- closure) binding
-                // if *rec {
-                //     let thunk_ = thunk.clone();
-                //     thunk.borrow_mut().env.insert(x.clone(), thunk_);
-                // }
+                if *rec {
+                    let thunk_ = thunk.clone();
+                    thunk
+                        .borrow_mut()
+                        .env
+                        .with_front_mut(|env| env.insert(x.clone(), thunk_));
+                }
 
                 let mut layer = Layer::new();
                 layer.insert(x.clone(), thunk);

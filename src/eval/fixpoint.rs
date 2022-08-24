@@ -12,9 +12,11 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a RichTerm)>>(
     bindings
         .map(|(id, rt)| match rt.as_ref() {
             Term::Symbol(ref sym) => {
-                let thunk = env
-                    .get(sym)
-                    .ok_or_else(|| EvalError::UnboundIdentifier(sym.ident.clone(), rt.pos))?;
+                let thunk = env.get(sym).ok_or_else(|| {
+                    // println!("{id:?}, {}", crate::eval::tools::dump!(rt.clone()));
+                    // println!("rec_env: {env:?}");
+                    EvalError::UnboundIdentifier(sym.ident.clone(), rt.pos)
+                })?;
                 Ok((id.clone(), thunk))
             }
             _ => {
@@ -41,9 +43,10 @@ pub fn patch_field(
     env: &Store,
 ) -> Result<(), EvalError> {
     if let Term::Symbol(sym) = &*rt.term {
-        let mut thunk = env
-            .get(sym)
-            .ok_or_else(|| EvalError::UnboundIdentifier(sym.ident.clone(), rt.pos))?;
+        let mut thunk = env.get(sym).ok_or_else(|| {
+            // println!("{env:?}");
+            EvalError::UnboundIdentifier(sym.ident.clone(), rt.pos)
+        })?;
         let deps = thunk.deps();
 
         thunk.borrow_mut().env.with_front_mut(|env| match deps {
