@@ -1,7 +1,7 @@
 //! Various post transformations of nickel code.
 use crate::{
     cache::ImportResolver,
-    eval::{lazy::Thunk, Closure, Environment, IdentKind},
+    eval::{lazy::Thunk, Closure, IdentKind},
     identifier::Ident,
     store::{Layer, Store},
     term::{Contract, RichTerm, Symbol, Term, TraverseOrder},
@@ -33,7 +33,7 @@ pub fn transform(
 ) -> Result<RichTerm, UnboundTypeVariableError> {
     free_vars::transform(&mut rt);
     let mut rt = transform_no_free_vars(rt, wildcards)?;
-    eliminate_variables::transform(&mut rt);
+    eliminate_variables::transform(&mut rt)?;
     Ok(rt)
 }
 

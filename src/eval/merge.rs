@@ -311,47 +311,48 @@ pub fn merge(
                 _ => unreachable!(),
             };
 
-            let mut layer = Layer::new();
+            let meta = env.with_front_mut(|layer| {
+                // Finally, we also need to closurize the contracts in the final envirnment.
+                let mut contracts1: Vec<Contract> = contracts1
+                    .into_iter()
+                    .map(|ctr| ctr.closurize(layer, env1.clone()))
+                    .collect();
+                let contracts2: Vec<Contract> = contracts2
+                    .into_iter()
+                    .map(|ctr| ctr.closurize(layer, env2.clone()))
+                    .collect();
+                let types1 = types1.map(|ctr| ctr.closurize(layer, env1));
+                let types2 = types2.map(|ctr| ctr.closurize(layer, env2));
 
-            // Finally, we also need to closurize the contracts in the final envirnment.
-            let mut contracts1: Vec<Contract> = contracts1
-                .into_iter()
-                .map(|ctr| ctr.closurize(&mut layer, env1.clone()))
-                .collect();
-            let contracts2: Vec<Contract> = contracts2
-                .into_iter()
-                .map(|ctr| ctr.closurize(&mut layer, env2.clone()))
-                .collect();
-            let types1 = types1.map(|ctr| ctr.closurize(&mut layer, env1));
-            let types2 = types2.map(|ctr| ctr.closurize(&mut layer, env2));
+                // If both have type annotations, we arbitrarily choose the first one. At this point we
+                // are evaluating the term, and types annotations and contracts make no difference
+                // operationnally. Even for a query, it's strange to show multiple static types. So if
+                // both are set, we turn types2 to a contract and keep type1 as the type annotation.
+                let types = match types2 {
+                    Some(ctr) if types1.is_some() => {
+                        contracts1.push(ctr);
+                        types1
+                    }
+                    _ => types1,
+                };
 
-            // If both have type annotations, we arbitrarily choose the first one. At this point we
-            // are evaluating the term, and types annotations and contracts make no difference
-            // operationnally. Even for a query, it's strange to show multiple static types. So if
-            // both are set, we turn types2 to a contract and keep type1 as the type annotation.
-            let types = match types2 {
-                Some(ctr) if types1.is_some() => {
-                    contracts1.push(ctr);
-                    types1
+                let contracts: Vec<_> = contracts1
+                    .into_iter()
+                    .chain(contracts2.into_iter())
+                    .collect();
+
+                MetaValue {
+                    doc,
+                    types,
+                    contracts,
+                    priority,
+                    value,
                 }
-                _ => types1,
-            };
-
-            let contracts: Vec<_> = contracts1
-                .into_iter()
-                .chain(contracts2.into_iter())
-                .collect();
-            let meta = MetaValue {
-                doc,
-                types,
-                contracts,
-                priority,
-                value,
-            };
+            });
 
             Ok(Closure {
                 body: RichTerm::new(Term::MetaValue(meta), pos_op.into_inherited()),
-                env: Store::singleton(layer),
+                env,
             })
         }
         // Merge put together the fields of records, and recursively merge
@@ -466,18 +467,18 @@ fn cross_apply_contracts<'a>(
     let mut layer_local = Layer::new();
 
     let pos = t1.pos.into_inherited();
+    let t1 = t1.closurize(&mut layer_local, env1.clone());
     let result = it2
         .try_fold(t1, |acc, ctr| {
             let ty_closure = ctr.types.clone().closurize(&mut layer_local, env2.clone());
             mk_term::assume(ty_closure, ctr.label.clone(), acc)
                 .map_err(|crate::types::UnboundTypeVariableError(id)| {
                     let pos = id.pos;
-                    // println!("{env1:?}");
                     EvalError::UnboundIdentifier(id, pos)
                 })
                 .map(|rt| rt.with_pos(pos))
         })?
-        .closurize(&mut layer, env1.push(layer_local));
+        .closurize(&mut layer, Store::singleton(layer_local));
 
     Ok((result, Store::singleton(layer)))
 }

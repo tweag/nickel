@@ -20,7 +20,8 @@ let letter | Num -> string.CharLiteral = fun n =>
   left = {
     strings = {
       run = fun n =>
-        array.foldl (fun acc x => acc ++ x) "" (array.generate (fun n => letter n) n)
+        array.foldl (fun acc x => acc ++ x) "" (array.generate (fun n => letter n) n),
+      res = run 50
     },
     nums = {
       run = fun n =>

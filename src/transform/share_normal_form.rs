@@ -117,23 +117,27 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                                 .map(|deps| deps.contains(&id))
                                 .unwrap_or(false);
                             let binding_type = mk_binding_type(field_deps);
-                            dbg!(rec);
-                            bindings.push(
-                                (
-                                    fresh_var.clone(),
-                                    RichTerm::new(Term::Var(id.clone()), pos_t),
-                                    LetAttrs { binding_type, rec: false }
-                                )
-                            );
-                            bindings.push(
-                                (
-                                    id.clone(),
-                                    t,
-                                    LetAttrs { binding_type: BindingType::Normal, rec }
-                                )
-                            );
+                            // TODO: we can spare one bindings for fields that aren't directly recursive.
+                            // if rec {
+                            //     bindings.push(
+                            //         (
+                            //             fresh_var.clone(),
+                            //             RichTerm::new(Term::Var(id.clone()), pos_t),
+                            //             LetAttrs { binding_type: BindingType::Normal, rec: false }
+                            //         )
+                            //     );
+                            //     bindings.push(
+                            //         (
+                            //             id.clone(),
+                            //             t,
+                            //             LetAttrs { binding_type, rec }
+                            //         )
+                            //     );
+                            // } else {
+                            bindings.push((id.clone(), t, LetAttrs { binding_type, rec }));
+                            // }
 
-                            (id, RichTerm::new(Term::Var(fresh_var), pos_t))
+                            (id.clone(), RichTerm::new(Term::Var(id), pos_t))
                         } else {
                             (id, t)
                         }

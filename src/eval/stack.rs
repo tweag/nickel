@@ -2,7 +2,7 @@
 //!
 //! See [eval](../eval/index.html).
 use super::operation::OperationCont;
-use crate::eval::{Closure, Environment, IdentKind, Thunk, ThunkUpdateFrame};
+use crate::eval::{Closure, IdentKind, Thunk, ThunkUpdateFrame};
 use crate::position::TermPos;
 use crate::store::Store;
 use crate::term::{RichTerm, StrChunk};
@@ -42,9 +42,9 @@ pub enum Marker {
     /// A string accumulator. Used by `ChunksConcat` to store additional state, that is the string being
     /// constructed, the indentation of the chunk being evaluated, and the common initial environment of chunks.
     StrAcc(
-        String,      /* the accumulator */
-        usize,       /* the indentation level of the chunk currently evaluated */
-        Store, /* the common environment of chunks */
+        String, /* the accumulator */
+        usize,  /* the indentation level of the chunk currently evaluated */
+        Store,  /* the common environment of chunks */
     ),
     Strictness(bool),
 }

@@ -10,12 +10,7 @@
 //!
 //! The implementation currently relies on the `fral` crate.
 
-use std::{
-    cell::{RefCell, RefMut},
-    collections::HashMap,
-    fmt,
-    rc::Rc,
-};
+use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
 
 use fral::rc::Fral;
 
@@ -117,7 +112,7 @@ impl Store {
     }
 
     /// Returns the front layer of the environment.
-    pub fn with_front_mut<F, T>(&self, f: F) -> T
+    pub fn with_front_mut<F, T>(&mut self, f: F) -> T
     where
         F: FnOnce(&mut Layer) -> T,
     {
@@ -135,7 +130,7 @@ impl fmt::Debug for Store {
         writeln!(f, "<store>")?;
 
         if let Some((head, tail)) = fral.uncons() {
-            writeln!(f, "<addr>{:?}</addr>", std::rc::Rc::as_ptr(&head))?;
+            writeln!(f, "<addr>{:?}</addr>", Rc::as_ptr(&head))?;
 
             writeln!(f, "<body>")?;
             for (k, v) in head.borrow().0.iter() {
@@ -143,7 +138,9 @@ impl fmt::Debug for Store {
             }
             writeln!(f, "</body>")?;
 
-            write!(f, "<prev>{:?}</prev>", Store(tail))?;
+            if tail.get(0).is_some() {
+                write!(f, "<prev>{:?}</prev>", Store(tail))?;
+            }
         }
 
         writeln!(f, "</store>")

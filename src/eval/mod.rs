@@ -115,7 +115,7 @@ use operation::{continuate_operation, OperationCont};
 use stack::Stack;
 
 pub mod tools {
-    macro_rules! dump {
+    macro_rules! pretty {
         ($expr:expr) => {{
             use crate::pretty::*;
             use pretty::BoxAllocator;
@@ -129,7 +129,14 @@ pub mod tools {
         }};
     }
 
+    macro_rules! dump {
+        ($expr:expr) => {{
+            println!("{}", crate::eval::tools::pretty!($expr))
+        }};
+    }
+
     pub(crate) use dump;
+    pub(crate) use pretty;
 }
 
 impl AsRef<Vec<StackElem>> for CallStack {
@@ -189,7 +196,7 @@ pub fn env_add_term(env: &mut Layer, rt: RichTerm) -> Result<(), EnvBuildError> 
 }
 
 /// Bind a closure in an environment.
-pub fn env_add(env: &Store, id: Ident, rt: RichTerm, local_env: Store) {
+pub fn env_add(env: &mut Store, id: Ident, rt: RichTerm, local_env: Store) {
     let closure = Closure {
         body: rt,
         env: local_env,
@@ -320,7 +327,7 @@ where
                 term: shared_term,
                 pos,
             },
-            mut env,
+            env,
         } = clos;
 
         if let Some(strict) = stack.pop_strictness_marker() {
@@ -333,6 +340,7 @@ where
                     .get(sym)
                     .or_else(|| global_env.get(&sym))
                     .ok_or_else(|| {
+                        // println!("{sym:?}");
                         // println!("{env:?}");
                         EvalError::UnboundIdentifier(sym.ident.clone(), pos)
                     })?;
@@ -343,7 +351,7 @@ where
                         match thunk.mk_update_frame() {
                             Ok(thunk_upd) => stack.push_thunk(thunk_upd),
                             Err(BlackholedError) => {
-                                return Err(EvalError::InfiniteRecursion(call_stack, pos))
+                                return Err(EvalError::InfiniteRecursion(call_stack, pos));
                             }
                         }
                     }

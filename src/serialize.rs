@@ -258,7 +258,6 @@ pub fn to_string(format: ExportFormat, rt: &RichTerm) -> Result<String, Serializ
 mod tests {
     use super::*;
     use crate::error::{Error, EvalError};
-    use crate::eval::Environment;
     use crate::position::TermPos;
     use crate::program::Program;
     use crate::term::{make as mk_term, BinaryOp};

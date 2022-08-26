@@ -10,7 +10,7 @@ use super::{
     callstack,
     merge::{self, merge, MergeMode},
     stack::Stack,
-    subst, CallStack, Closure, Environment,
+    subst, CallStack, Closure,
 };
 
 use crate::{
@@ -24,7 +24,7 @@ use crate::{
     store::{Layer, Store},
     term::{make as mk_term, ArrayAttrs},
     term::{BinaryOp, NAryOp, RichTerm, StrChunk, Term, UnaryOp},
-    transform::{fresh_var, Closurizable},
+    transform::Closurizable,
 };
 use md5::digest::Digest;
 use simple_counter::*;
@@ -993,19 +993,14 @@ fn process_unary_operation(
                 let re = regex::Regex::new(s)
                     .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
 
-                let param = fresh_var();
-                let matcher = Term::Fun(
-                    param.clone(),
-                    RichTerm::new(
-                        Term::Op1(
-                            UnaryOp::StrIsMatchCompiled(re.into()),
-                            RichTerm::new(Term::Var(param), pos_op_inh),
-                        ),
-                        pos_op_inh,
-                    ),
-                );
+                let matcher = mk_fun!(
+                    "s",
+                    mk_term::op1(UnaryOp::StrIsMatchCompiled(re.into()), mk_term::local("s"))
+                        .with_pos(pos_op_inh)
+                )
+                .with_pos(pos);
 
-                Ok(Closure::atomic_closure(RichTerm::new(matcher, pos)))
+                Ok(Closure::atomic_closure(matcher))
             } else {
                 Err(EvalError::TypeError(
                     String::from("Str"),
@@ -1020,19 +1015,14 @@ fn process_unary_operation(
                 let re = regex::Regex::new(s)
                     .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
 
-                let param = fresh_var();
-                let matcher = Term::Fun(
-                    param.clone(),
-                    RichTerm::new(
-                        Term::Op1(
-                            UnaryOp::StrMatchCompiled(re.into()),
-                            RichTerm::new(Term::Var(param), pos_op_inh),
-                        ),
-                        pos_op_inh,
-                    ),
-                );
+                let matcher = mk_fun!(
+                    "s",
+                    mk_term::op1(UnaryOp::StrMatchCompiled(re.into()), mk_term::local("s"))
+                        .with_pos(pos_op_inh)
+                )
+                .with_pos(pos);
 
-                Ok(Closure::atomic_closure(RichTerm::new(matcher, pos)))
+                Ok(Closure::atomic_closure(matcher))
             } else {
                 Err(EvalError::TypeError(
                     String::from("Str"),
@@ -2425,7 +2415,7 @@ fn eq(env: &mut Layer, c1: Closure, c2: Closure) -> EqResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::eval::{CallStack, Environment};
+    use crate::eval::CallStack;
 
     #[test]
     fn ite_operation() {

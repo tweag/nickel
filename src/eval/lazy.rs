@@ -165,7 +165,11 @@ impl fmt::Debug for Thunk {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let Closure { body, env } = &*self.borrow();
         writeln!(f, "<thunk>")?;
-        writeln!(f, "<body>{}</body>", crate::eval::tools::dump!(body.clone()))?;
+        writeln!(
+            f,
+            "<body>{}</body>",
+            crate::eval::tools::pretty!(body.clone())
+        )?;
         writeln!(f, "<local>{env:?}</local>")?;
         writeln!(f, "</thunk>")
     }
