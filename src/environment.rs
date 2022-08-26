@@ -85,12 +85,17 @@ impl<K: Hash + Eq + Clone, V: PartialEq + Clone> Environment<K, V> {
         if self.was_cloned() {
             self.current = Rc::new(HashMap::new());
         }
-        Rc::get_mut(&mut self.current).unwrap().insert(key, value);
+        unsafe { &mut *(Rc::as_ptr(&self.current) as *mut HashMap<_, _>) }
+            .insert(key.clone(), value);
+        // Need to be done AFTER the insertion in case `current` would be cloned in the process
+        self.cache.add(key, &self.current);
     }
 
     /// Tries to find the value of a key in the Environment.
     pub fn get(&self, key: &K) -> Option<V> {
-        self.iter_layers().find_map(|hmap| hmap.get(key).cloned())
+        self.cache
+            .lookup(key)
+            .or_else(|| self.iter_layers().find_map(|hmap| hmap.get(key).cloned()))
     }
 
     /// Creates an iterator that visits all layers from the most recent one to the oldest.
@@ -160,9 +165,12 @@ impl<K: Hash + Eq + Clone, V: PartialEq + Clone> Extend<(K, V)> for Environment<
     fn extend<T: IntoIterator<Item = (K, V)>>(&mut self, iter: T) {
         // if can mut. borrow current, then we just extend, otherwise it means
         // it was cloned, and we recreate a new map from iter for current
-        match Rc::get_mut(&mut self.current) {
-            Some(current) => current.extend(iter),
-            None => self.current = Rc::new(HashMap::from_iter(iter)),
+        if self.was_cloned() {
+            self.current = Rc::new(HashMap::from_iter(iter));
+        } else {
+            unsafe {
+                (&mut *(Rc::as_ptr(&self.current) as *mut HashMap<_, _>)).extend(iter);
+            }
         }
     }
 }
@@ -247,7 +255,7 @@ mod cache {
     #[derive(Debug, Clone)]
     pub struct Cache<K, V>
     where
-        K: Hash + Eq + Clone,
+        K: Hash + Eq,
         V: PartialEq + Clone,
     {
         store: RefCell<Vec<(K, Weak<HashMap<K, V>>)>>,
@@ -270,7 +278,7 @@ mod cache {
                 .enumerate()
                 .find_map(|(i, (k, v))| {
                     if k == key {
-                        Some((i, v.upgrade().unwrap()[k].clone()))
+                        Some((i, v.upgrade()?[k].clone()))
                     } else {
                         None
                     }
@@ -279,8 +287,8 @@ mod cache {
             Some(v)
         }
 
-        pub fn add(&mut self, key: &K, value: &Rc<HashMap<K, V>>) {
-            let to_add = (key.clone(), Rc::downgrade(value));
+        pub fn add(&mut self, key: K, value: &Rc<HashMap<K, V>>) {
+            let to_add = (key, Rc::downgrade(value));
             let mut store = self.store.borrow_mut();
             if store.len() == self.capacity {
                 store.rotate_right(1);
