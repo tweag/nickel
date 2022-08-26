@@ -7,6 +7,8 @@ use std::marker::PhantomData;
 use std::ptr::NonNull;
 use std::rc::Rc;
 
+const CACHE_CAPACITY: usize = 5;
+
 /// An environment as a linked-list of hashmaps.
 ///
 /// Each node of the linked-list corresponds to what is called
@@ -29,7 +31,7 @@ use std::rc::Rc;
 pub struct Environment<K: Hash + Eq + Clone, V: PartialEq + Clone> {
     current: Rc<HashMap<K, V>>,
     previous: RefCell<Option<Rc<Environment<K, V>>>>,
-    //cache: cache::Cache<K, V>,
+    cache: cache::Cache<K, V>,
 }
 
 impl<K: Hash + Eq + Clone, V: PartialEq + Clone> PartialEq for Environment<K, V> {
@@ -56,12 +58,14 @@ impl<K: Hash + Eq + Clone, V: PartialEq + Clone> Clone for Environment<K, V> {
                 Some(Rc::new(Environment {
                     current: self.current.clone(),
                     previous: RefCell::new(old.clone()),
+                    cache: self.cache.clone(),
                 }))
             });
         }
         Self {
             current: Rc::new(HashMap::new()),
             previous: self.previous.clone(),
+            cache: self.cache.clone(),
         }
     }
 }
@@ -72,6 +76,7 @@ impl<K: Hash + Eq + Clone, V: PartialEq + Clone> Environment<K, V> {
         Self {
             current: Rc::new(HashMap::new()),
             previous: RefCell::new(None),
+            cache: cache::Cache::new(CACHE_CAPACITY),
         }
     }
 
@@ -146,6 +151,7 @@ impl<K: Hash + Eq + Clone, V: PartialEq + Clone> FromIterator<(K, V)> for Enviro
         Self {
             current: Rc::new(HashMap::from_iter(iter)),
             previous: RefCell::new(None),
+            cache: cache::Cache::new(CACHE_CAPACITY),
         }
     }
 }
@@ -238,7 +244,7 @@ mod cache {
     use std::hash::Hash;
     use std::rc::{Rc, Weak};
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Cache<K, V>
     where
         K: Hash + Eq + Clone,
