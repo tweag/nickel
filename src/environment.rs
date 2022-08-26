@@ -252,21 +252,29 @@ mod cache {
     use std::hash::Hash;
     use std::rc::{Rc, Weak};
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug)]
     pub struct Cache<K, V>
     where
         K: Hash + Eq,
         V: PartialEq + Clone,
     {
         store: RefCell<Vec<(K, Weak<HashMap<K, V>>)>>,
-        capacity: usize,
+    }
+
+    impl<K: Hash + Eq + Clone, V: PartialEq + Clone> Clone for Cache<K, V> {
+        fn clone(&self) -> Self {
+            let mut store = Vec::with_capacity(self.store.borrow().capacity());
+            store.extend(self.store.borrow().iter().cloned());
+            Self {
+                store: RefCell::new(store),
+            }
+        }
     }
 
     impl<K: Hash + Eq + Clone, V: PartialEq + Clone> Cache<K, V> {
         pub fn new(capacity: usize) -> Self {
             Self {
-                store: RefCell::new(vec![]),
-                capacity,
+                store: RefCell::new(Vec::with_capacity(capacity)),
             }
         }
 
@@ -290,7 +298,7 @@ mod cache {
         pub fn add(&mut self, key: K, value: &Rc<HashMap<K, V>>) {
             let to_add = (key, Rc::downgrade(value));
             let mut store = self.store.borrow_mut();
-            if store.len() == self.capacity {
+            if store.len() == store.capacity() {
                 store.rotate_right(1);
                 store[0] = to_add;
             } else {
