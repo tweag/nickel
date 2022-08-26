@@ -290,7 +290,7 @@ fn walk<L: Linearizer>(
     );
 
     match t.as_ref() {
-        Term::ParseError
+        Term::ParseError(_)
         | Term::Null
         | Term::Bool(_)
         | Term::Num(_)
@@ -528,7 +528,7 @@ fn type_check_<L: Linearizer>(
     linearizer.add_term(lin, t, *pos, ty.clone());
 
     match t.as_ref() {
-        Term::ParseError => Ok(()),
+        Term::ParseError(_) => Ok(()),
         // null is inferred to be of type Dyn
         Term::Null => unify(state, ty, mk_typewrapper::dynamic())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),

@@ -24,7 +24,7 @@ fn collect_free_vars(rt: &mut RichTerm, free_vars: &mut HashSet<Ident>) {
         Term::Var(id) => {
             free_vars.insert(id.clone());
         }
-        Term::ParseError
+        Term::ParseError(_)
         | Term::Null
         | Term::Bool(_)
         | Term::Num(_)

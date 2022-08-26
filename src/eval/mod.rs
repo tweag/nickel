@@ -696,7 +696,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
             })
             .unwrap_or_else(|| RichTerm::new(Term::Var(id), pos)),
         v @ Term::Null
-        | v @ Term::ParseError
+        | v @ Term::ParseError(_)
         | v @ Term::Bool(_)
         | v @ Term::Num(_)
         | v @ Term::Str(_)

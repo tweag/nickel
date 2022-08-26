@@ -684,7 +684,7 @@ where
                 .append(allocator.space())
                 .append(allocator.as_string(f.to_string_lossy()).double_quotes()),
             ResolvedImport(id) => allocator.text(format!("import <file_id: {:?}>", id)),
-            ParseError => allocator
+            ParseError(_) => allocator
                 .text("#<PARSE ERROR!>")
                 .append(allocator.hardline()),
         }

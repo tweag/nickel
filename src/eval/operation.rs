@@ -465,6 +465,8 @@ fn process_unary_operation(
                         pos_op,
                     )), //TODO include the position of operators on the stack
                 }
+            } else if let Term::ParseError(parse_error) = &*t {
+                Err(EvalError::ParseError(parse_error.clone()))
             } else {
                 Err(EvalError::TypeError(
                     String::from("Record"),
