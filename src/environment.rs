@@ -25,13 +25,26 @@ use std::rc::Rc;
 /// the current has been cloned and inserted in the previous environment already,
 /// so it can safely be reset as a new hashmap.
 /// The previous layers are set in order from the most recent one to the oldest.
-#[derive(Debug, PartialEq, Default)]
-pub struct Environment<K: Hash + Eq, V: PartialEq> {
+#[derive(Debug)]
+pub struct Environment<K: Hash + Eq + Clone, V: PartialEq + Clone> {
     current: Rc<HashMap<K, V>>,
     previous: RefCell<Option<Rc<Environment<K, V>>>>,
+    //cache: cache::Cache<K, V>,
 }
 
-impl<K: Hash + Eq, V: PartialEq> Clone for Environment<K, V> {
+impl<K: Hash + Eq + Clone, V: PartialEq + Clone> PartialEq for Environment<K, V> {
+    fn eq(&self, other: &Self) -> bool {
+        self.current == other.current && self.previous == other.previous
+    }
+}
+
+// impl<K: Hash + Eq + Clone, V: PartialEq + Clone> PartialEq for Environment<K, V> {
+//     fn eq(&self, other: &Self) -> bool {
+//         Rc::ptr_eq(&self.current, &other.current)
+//     }
+// }
+
+impl<K: Hash + Eq + Clone, V: PartialEq + Clone> Clone for Environment<K, V> {
     /// Clone has to create a new environment, while ensuring that previous
     /// defined layers are accessible but not modifiable anymore.
     /// For that, it checks if the current Environment has already be cloned,
@@ -53,7 +66,7 @@ impl<K: Hash + Eq, V: PartialEq> Clone for Environment<K, V> {
     }
 }
 
-impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
+impl<K: Hash + Eq + Clone, V: PartialEq + Clone> Environment<K, V> {
     /// Creates a new empty Environment.
     pub fn new() -> Self {
         Self {
@@ -71,10 +84,7 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
     }
 
     /// Tries to find the value of a key in the Environment.
-    pub fn get(&self, key: &K) -> Option<V>
-    where
-        V: Clone,
-    {
+    pub fn get(&self, key: &K) -> Option<V> {
         self.iter_layers().find_map(|hmap| hmap.get(key).cloned())
     }
 
@@ -131,7 +141,7 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
     }
 }
 
-impl<K: Hash + Eq, V: PartialEq> FromIterator<(K, V)> for Environment<K, V> {
+impl<K: Hash + Eq + Clone, V: PartialEq + Clone> FromIterator<(K, V)> for Environment<K, V> {
     fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
         Self {
             current: Rc::new(HashMap::from_iter(iter)),
@@ -140,7 +150,7 @@ impl<K: Hash + Eq, V: PartialEq> FromIterator<(K, V)> for Environment<K, V> {
     }
 }
 
-impl<K: Hash + Eq, V: PartialEq> Extend<(K, V)> for Environment<K, V> {
+impl<K: Hash + Eq + Clone, V: PartialEq + Clone> Extend<(K, V)> for Environment<K, V> {
     fn extend<T: IntoIterator<Item = (K, V)>>(&mut self, iter: T) {
         // if can mut. borrow current, then we just extend, otherwise it means
         // it was cloned, and we recreate a new map from iter for current
@@ -157,12 +167,12 @@ impl<K: Hash + Eq, V: PartialEq> Extend<(K, V)> for Environment<K, V> {
 ///
 /// [`iter_layers`]: Environment::iter_layers
 ///
-pub struct EnvLayerIter<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> {
+pub struct EnvLayerIter<'a, K: 'a + Hash + Eq + Clone, V: 'a + PartialEq + Clone> {
     env: Option<NonNull<Environment<K, V>>>,
     _marker: PhantomData<&'a Environment<K, V>>,
 }
 
-impl<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> Iterator for EnvLayerIter<'a, K, V> {
+impl<'a, K: 'a + Hash + Eq + Clone, V: 'a + PartialEq + Clone> Iterator for EnvLayerIter<'a, K, V> {
     type Item = Rc<HashMap<K, V>>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -185,12 +195,12 @@ impl<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> Iterator for EnvLayerIter<'a, K, 
 ///
 /// Created by the [`Environment::iter_elems`] method.
 ///
-pub struct EnvElemIter<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> {
+pub struct EnvElemIter<'a, K: 'a + Hash + Eq + Clone, V: 'a + PartialEq + Clone> {
     env: Vec<NonNull<HashMap<K, V>>>,
     current_map: std::collections::hash_map::Iter<'a, K, V>,
 }
 
-impl<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> Iterator for EnvElemIter<'a, K, V> {
+impl<'a, K: 'a + Hash + Eq + Clone, V: 'a + PartialEq + Clone> Iterator for EnvElemIter<'a, K, V> {
     type Item = (&'a K, &'a V);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -210,11 +220,11 @@ impl<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> Iterator for EnvElemIter<'a, K, V
 ///
 /// [`iter`]: Environment::iter
 ///
-pub struct EnvIter<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> {
+pub struct EnvIter<'a, K: 'a + Hash + Eq + Clone, V: 'a + PartialEq + Clone> {
     collapsed_map: hash_map::IntoIter<&'a K, &'a V>,
 }
 
-impl<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> Iterator for EnvIter<'a, K, V> {
+impl<'a, K: 'a + Hash + Eq + Clone, V: 'a + PartialEq + Clone> Iterator for EnvIter<'a, K, V> {
     type Item = (&'a K, &'a V);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -228,6 +238,7 @@ mod cache {
     use std::hash::Hash;
     use std::rc::{Rc, Weak};
 
+    #[derive(Debug)]
     pub struct Cache<K, V>
     where
         K: Hash + Eq + Clone,
@@ -243,10 +254,6 @@ mod cache {
                 store: RefCell::new(vec![]),
                 capacity,
             }
-        }
-
-        pub fn len(&self) -> usize {
-            self.store.borrow().len()
         }
 
         pub fn lookup(&self, key: &K) -> Option<V> {
@@ -268,12 +275,11 @@ mod cache {
 
         pub fn add(&mut self, key: &K, value: &Rc<HashMap<K, V>>) {
             let to_add = (key.clone(), Rc::downgrade(value));
-            if self.len() == self.capacity {
-                let mut store = self.store.borrow_mut();
+            let mut store = self.store.borrow_mut();
+            if store.len() == self.capacity {
                 store.rotate_right(1);
                 store[0] = to_add;
             } else {
-                let mut store = self.store.borrow_mut();
                 store.push(to_add);
                 store.rotate_right(1);
             }
@@ -285,7 +291,7 @@ mod cache {
 mod tests {
     use super::*;
 
-    impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
+    impl<K: Hash + Eq + Clone, V: PartialEq + Clone> Environment<K, V> {
         pub fn depth(&self) -> usize {
             1 + self.previous.borrow().as_ref().map_or(0, |p| p.depth())
         }
