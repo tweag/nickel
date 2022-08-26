@@ -1,5 +1,5 @@
 use assert_matches::assert_matches;
-use nickel_lang::error::{Error, EvalError, TypecheckError};
+use nickel_lang::error::{Error, EvalError, ParseError, TypecheckError};
 use nickel_lang::program::Program;
 use nickel_lang::term::Term;
 use std::io::BufReader;
@@ -110,5 +110,26 @@ fn circular_imports_fail() {
     assert_matches!(
         prog.eval().map(Term::from),
         Ok(Term::RecRecord(..)) | Ok(Term::Record(..))
+    );
+}
+
+#[test]
+fn import_parse_error_fail() {
+    let mut prog = Program::new_from_source(
+        BufReader::new(
+            format!(
+                "let x = {} in \"Hello, \" ++ x.name",
+                mk_import("unexpected_token.ncl")
+            )
+            .as_bytes(),
+        ),
+        "should_fail",
+    )
+    .unwrap();
+    assert_matches!(
+        prog.eval(),
+        Err(Error::EvalError(EvalError::ParseError(
+            ParseError::UnexpectedToken(..)
+        )))
     );
 }
