@@ -28,6 +28,8 @@ the associated technical document [RFC001][rfc001].
 The section describes the behavior and use-cases of merge, by considering the
 following situations:
 
+<!-- markdownlint-disable MD051 -->
+
 - [Merging two records without common fields](#simple-merge-(no-common-fields))
 - [Merging records with common fields](#recursive-merge-(with-common-fields))
 - [Merging records with metadata](#merging-record-with-metadata)
@@ -35,6 +37,8 @@ following situations:
   - [Contracts](#contracts)
   - [Documentation](#documentation)
 - [Recursive overriding](#recursive-overriding)
+
+<!-- markdownlint-enable MD051 -->
 
 ## Simple merge (no common fields)
 
