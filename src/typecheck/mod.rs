@@ -150,7 +150,7 @@ pub struct State<'a> {
 /// Typecheck a term.
 ///
 /// Return the inferred type in case of success. This is just a wrapper that calls
-/// `type_check_linearize` with an blanket implementation for the linearizer.
+/// `type_check_linearize` with a blanket implementation for the linearizer.
 ///
 /// Note that this function doesn't recursively typecheck imports (anymore), but just the current
 /// file. It however still needs the resolver to get the apparent type of imports.
