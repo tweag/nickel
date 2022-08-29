@@ -114,12 +114,27 @@ fn circular_imports_fail() {
 }
 
 #[test]
-fn import_parse_error_fail() {
+fn import_unexpected_token_fail() {
+    let mut prog = Program::new_from_source(
+        BufReader::new(mk_import("unexpected_token.ncl").as_bytes()),
+        "should_fail",
+    )
+    .unwrap();
+    assert_matches!(
+        prog.eval(),
+        Err(Error::EvalError(EvalError::ParseError(
+            ParseError::UnexpectedToken(..)
+        )))
+    );
+}
+
+#[test]
+fn import_unexpected_token_in_record_fail() {
     let mut prog = Program::new_from_source(
         BufReader::new(
             format!(
                 "let x = {} in \"Hello, \" ++ x.name",
-                mk_import("unexpected_token.ncl")
+                mk_import("unexpected_token_in_record.ncl")
             )
             .as_bytes(),
         ),

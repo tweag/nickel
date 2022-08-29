@@ -627,6 +627,9 @@ where
                     env: local_env,
                 }
             }
+            Term::ParseError(parse_error) => {
+                return Err(EvalError::ParseError(parse_error.clone()));
+            }
             // Continuation of operations and thunk update
             _ if stack.is_top_thunk() || stack.is_top_cont() => {
                 clos = Closure {
