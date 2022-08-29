@@ -1,6 +1,8 @@
 use criterion::{criterion_main, Criterion};
+use nickel_lang::term::{ArrayAttrs, RichTerm, Term};
 use nickel_lang_utilities::{ncl_bench_group, EvalMode};
 use pprof::criterion::{Output, PProfProfiler};
+use pretty::{BoxAllocator, DocBuilder, Pretty};
 
 /// Generates a pseaudo-random Nickel array as a string.
 fn ncl_random_array(len: usize) -> String {
@@ -9,15 +11,18 @@ fn ncl_random_array(len: usize) -> String {
     let c = 1013904223;
 
     let mut numbers = Vec::with_capacity(len);
-    numbers.push(1337);
+    let mut acc = 1337;
 
     for _ in 0..len {
-        let x = *numbers.last().unwrap();
-        numbers.push((a * x + c) % m);
+        acc = (a * acc + c) % m;
+        numbers.push(RichTerm::from(Term::Num(acc as f64)));
     }
 
-    // HACK: It so happens that this is valid Nickel syntax.
-    format!("{:?}", numbers)
+    let xs = RichTerm::from(Term::Array(numbers, ArrayAttrs::default()));
+    let doc: DocBuilder<_, ()> = xs.pretty(&BoxAllocator);
+    let mut out = Vec::new();
+    doc.render(80, &mut out).unwrap();
+    String::from_utf8(out).unwrap()
 }
 
 ncl_bench_group! {
