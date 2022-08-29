@@ -260,13 +260,13 @@
 
         For example:
         ```nickel
-          sort (fun x y => if x < y then `Less else if (x == y) then `Equal else `Greater) [ 4, 5, 1, 2 ] =>
+          sort (fun x y => if x < y then `Lesser else if (x == y) then `Equal else `Greater) [ 4, 5, 1, 2 ] =>
             [ 1, 2, 4, 5 ]
         ```
         "%m
       = fun cmp l =>
         let first = %head% l in
-        let parts = partition (fun x => (cmp x first == `Less)) (%tail% l) in
+        let parts = partition (fun x => (cmp x first == `Lesser)) (%tail% l) in
         if %length% l <= 1 then
           l
         else
