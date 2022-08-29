@@ -846,7 +846,7 @@ impl Cache {
     }
 
     /// Load, parse, and apply program transformations to the standard library. Do not typecheck
-    /// for performance reason: this is done in the test suite. Return an initial environment
+    /// for performance reasons: this is done in the test suite. Return an initial environment
     /// containing both the evaluation and type environments. If you only need the type environment, use
     /// `load_stdlib` then `mk_type_env` to avoid transformations and evaluation preparation.
     pub fn prepare_stdlib(&mut self) -> Result<Envs, Error> {
