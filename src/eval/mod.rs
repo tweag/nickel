@@ -280,7 +280,7 @@ where
 /// # Arguments
 ///
 /// - `clos`: the closure to evaluate
-/// - `initial_env`: the initial environment containing the builtin functions of the language.
+/// - `initial_env`: the initial environment containing the stdlib items.
 ///   Accessible from anywhere in the program.
 /// - `resolver`: the interface to fetch imports.
 /// - `enriched_strict`: if evaluation is strict with respect to enriched values (metavalues).
