@@ -75,101 +75,59 @@ pub type Environment = GenericEnvironment<Ident, TypeWrapper>;
 /// Mapping from wildcard ID to inferred type
 pub type Wildcards = Vec<Types>;
 
-/// A structure holding the two typing environments, the global and the local.
-///
-/// The global typing environment is constructed from the global term environment (see
-/// [`crate::eval::eval`]) which holds the Nickel builtin functions. It is a read-only shared
-/// environment used to retrieve the type of such functions.
-#[derive(Debug, PartialEq, Clone)]
-pub struct Envs<'a> {
-    global: &'a Environment,
-    local: Environment,
-}
-
 #[derive(Clone, Debug)]
 pub enum EnvBuildError {
     NotARecord(RichTerm),
 }
 
-impl<'a> Envs<'a> {
-    /// Create an `Envs` value with an empty local environment from a global environment.
-    pub fn from_global(global: &'a Environment) -> Self {
-        Envs {
-            global,
-            local: Environment::new(),
-        }
-    }
-
-    /// Similar to [`Envs::from_global`], but use another `Envs` to provide the global environment.
-    pub fn from_envs(envs: &'a Envs) -> Self {
-        Envs {
-            global: envs.global,
-            local: Environment::new(),
-        }
-    }
-
-    /// Populate a new global typing environment from a `Vec` of parsed files.
-    pub fn mk_global(envs: Vec<RichTerm>) -> Result<Environment, EnvBuildError> {
-        Ok(envs
-            .iter()
-            .map(|rt| {
-                if let Term::RecRecord(rec, ..) = rt.as_ref() {
-                    Ok(rec
-                        .iter()
-                        .map(|(id, rt)| (id.clone(), infer_record_type(rt.as_ref()))))
-                } else {
-                    Err(EnvBuildError::NotARecord(rt.clone()))
-                }
-            })
-            .collect::<Result<Vec<_>, EnvBuildError>>()?
-            .into_iter()
-            .flatten()
-            .collect())
-    }
-
-    /// Add the bindings of a record to a typing environment. Ignore fields whose name are defined
-    /// through interpolation.
-    //TODO: support the case of a record with a type annotation.
-    pub fn env_add_term(
-        env: &mut Environment,
-        rt: &RichTerm,
-        resolver: &dyn ImportResolver,
-    ) -> Result<(), EnvBuildError> {
-        let RichTerm { term, pos } = rt;
-
-        match term.as_ref() {
-            Term::Record(bindings, _) | Term::RecRecord(bindings, ..) => {
-                for (id, t) in bindings {
-                    let tyw: TypeWrapper =
-                        apparent_type(t.as_ref(), Some(&Envs::from_global(env)), Some(resolver))
-                            .into();
-                    env.insert(id.clone(), tyw);
-                }
-
-                Ok(())
+/// Populate the initial typing environment from a `Vec` of parsed files.
+pub fn mk_initial_env(initial_env: Vec<RichTerm>) -> Result<Environment, EnvBuildError> {
+    Ok(initial_env
+        .iter()
+        .map(|rt| {
+            if let Term::RecRecord(rec, ..) = rt.as_ref() {
+                Ok(rec
+                    .iter()
+                    .map(|(id, rt)| (id.clone(), infer_record_type(rt.as_ref()))))
+            } else {
+                Err(EnvBuildError::NotARecord(rt.clone()))
             }
-            t => Err(EnvBuildError::NotARecord(RichTerm::new(t.clone(), *pos))),
+        })
+        .collect::<Result<Vec<_>, EnvBuildError>>()?
+        .into_iter()
+        .flatten()
+        .collect())
+}
+
+/// Add the bindings of a record to a typing environment. Ignore fields whose name are defined
+/// through interpolation.
+//TODO: support the case of a record with a type annotation.
+pub fn env_add_term(
+    env: &mut Environment,
+    rt: &RichTerm,
+    resolver: &dyn ImportResolver,
+) -> Result<(), EnvBuildError> {
+    let RichTerm { term, pos } = rt;
+
+    match term.as_ref() {
+        Term::Record(bindings, _) | Term::RecRecord(bindings, ..) => {
+            for (id, t) in bindings {
+                let tyw: TypeWrapper = apparent_type(t.as_ref(), Some(env), Some(resolver)).into();
+                env.insert(id.clone(), tyw);
+            }
+
+            Ok(())
         }
+        t => Err(EnvBuildError::NotARecord(RichTerm::new(t.clone(), *pos))),
     }
+}
 
-    /// Bind one term in a typing environment.
-    pub fn env_add(env: &mut Environment, id: Ident, rt: &RichTerm, resolver: &dyn ImportResolver) {
-        env.insert(
-            id,
-            apparent_type(rt.as_ref(), Some(&Envs::from_global(env)), Some(resolver)).into(),
-        );
-    }
-
-    /// Fetch a binding from the environment. Try first in the local environment, and then in the
-    /// global.
-    pub fn get(&self, ident: &Ident) -> Option<TypeWrapper> {
-        self.local.get(ident).or_else(|| self.global.get(ident))
-    }
-
-    /// Wrapper to insert a new binding in the local environment.
-    pub fn insert(&mut self, ident: Ident, tyw: TypeWrapper) {
-        self.local.insert(ident, tyw);
-    }
+/// Bind one term in a typing environment.
+pub fn env_add(env: &mut Environment, id: Ident, rt: &RichTerm, resolver: &dyn ImportResolver) {
+    env.insert(
+        id,
+        apparent_type(rt.as_ref(), Some(env), Some(resolver)).into(),
+    );
 }
 
 /// The shared state of unification.
@@ -191,16 +149,30 @@ pub struct State<'a> {
 
 /// Typecheck a term.
 ///
-/// Return the inferred type in case of success. This is just a wrapper that calls `type_check_`
-/// with a fresh unification variable as goal.
+/// Return the inferred type in case of success. This is just a wrapper that calls
+/// `type_check_linearize` with a blanket implementation for the linearizer.
 ///
 /// Note that this function doesn't recursively typecheck imports (anymore), but just the current
 /// file. It however still needs the resolver to get the apparent type of imports.
 ///
 /// Return the type inferred for type wildcards.
-pub fn type_check<LL>(
+pub fn type_check(
     t: &RichTerm,
-    global_env: &Environment,
+    initial_env: Environment,
+    resolver: &impl ImportResolver,
+) -> Result<Wildcards, TypecheckError> {
+    type_check_linearize(t, initial_env, resolver, StubHost::<(), (), _>::new())
+        .map(|(wildcards, _)| wildcards)
+}
+
+/// Typecheck a term and build its linearization. A linearization is a sequential data structure
+/// that holds additional information (compared to the AST), such as types of subterms, variable
+/// usages, etc.
+///
+/// Linearization is solely used by the LSP server.
+pub fn type_check_linearize<LL>(
+    t: &RichTerm,
+    initial_env: Environment,
     resolver: &impl ImportResolver,
     mut linearizer: LL,
 ) -> Result<(Wildcards, LL::Completed), TypecheckError>
@@ -222,7 +194,7 @@ where
 
         walk(
             &mut state,
-            Envs::from_global(global_env),
+            initial_env,
             &mut building,
             linearizer.scope(),
             t,
@@ -235,48 +207,11 @@ where
     Ok((result, lin))
 }
 
-/// Typecheck a term using the given global typing environment. Same as [`type_check`], but it
-/// directly takes a global typing environment, instead of building one from a term environment as
-/// `type_check` does.
-///
-/// This function is used to typecheck an import in a clean environment, when we don't have access
-/// to the original term environment anymore, and hence cannot call `type_check` directly, but we
-/// already have built a global typing environment.
-///
-/// Return the type inferred for type wildcards. This is just a wrapper that calls `type_check_`
-/// with a fresh unification variable as goal.
-pub fn type_check_in_env(
-    t: &RichTerm,
-    global: &Environment,
-    resolver: &dyn ImportResolver,
-) -> Result<Wildcards, TypecheckError> {
-    let mut table = UnifTable::new();
-    let mut wildcard_vars = Vec::new();
-
-    let mut state = State {
-        resolver,
-        table: &mut table,
-        constr: &mut RowConstr::new(),
-        names: &mut HashMap::new(),
-        wildcard_vars: &mut wildcard_vars,
-    };
-
-    walk(
-        &mut state,
-        Envs::from_global(global),
-        &mut Linearization::new(()),
-        StubHost::<()>::new(),
-        t,
-    )?;
-
-    Ok(wildcard_vars_to_type(wildcard_vars, &table))
-}
-
 /// Walk the AST of a term looking for statically typed block to check. Fill the linearization
 /// alongside and store the apparent type of variable inside the typing environment.
 fn walk<L: Linearizer>(
     state: &mut State,
-    mut envs: Envs,
+    mut env: Environment,
     lin: &mut Linearization<L::Building>,
     mut linearizer: L,
     rt: &RichTerm,
@@ -286,7 +221,7 @@ fn walk<L: Linearizer>(
         lin,
         t,
         *pos,
-        apparent_type(t, Some(&envs), Some(state.resolver)).into(),
+        apparent_type(t, Some(&env), Some(state.resolver)).into(),
     );
 
     match t.as_ref() {
@@ -302,7 +237,7 @@ fn walk<L: Linearizer>(
         // caller.
         | Term::Import(_)
         | Term::ResolvedImport(_) => Ok(()),
-        Term::Var(x) => envs
+        Term::Var(x) => env
             .get(x)
             .ok_or_else(|| TypecheckError::UnboundIdentifier(x.clone(), *pos))
             .map(|_| ()),
@@ -313,78 +248,78 @@ fn walk<L: Linearizer>(
                     match chunk {
                         StrChunk::Literal(_) => Ok(()),
                         StrChunk::Expr(t, _) => {
-                            walk(state, envs.clone(), lin, linearizer.scope(), t)
+                            walk(state, env.clone(), lin, linearizer.scope(), t)
                         }
                     }
                 })
         }
         Term::Fun(id, t) => {
             // The parameter of an un-annotated function is assigned the type `Dyn`.
-            envs.insert(id.clone(), mk_typewrapper::dynamic());
-            walk(state, envs, lin, linearizer, t)
+            env.insert(id.clone(), mk_typewrapper::dynamic());
+            walk(state, env, lin, linearizer, t)
         }
         Term::FunPattern(id, pat, t) => {
             if let Some(id) = id {
-                envs.insert(id.clone(), binding_type(state, t.as_ref(), &envs, false));
+                env.insert(id.clone(), binding_type(state, t.as_ref(), &env, false));
             }
 
-            inject_pat_vars(pat, &mut envs);
-            walk(state, envs, lin, linearizer, t)
+            inject_pat_vars(pat, &mut env);
+            walk(state, env, lin, linearizer, t)
         }
         Term::Array(terms, _) => terms
             .iter()
             .try_for_each(|t| -> Result<(), TypecheckError> {
-                walk(state, envs.clone(), lin, linearizer.scope(), t)
+                walk(state, env.clone(), lin, linearizer.scope(), t)
             }),
         Term::Let(x, re, rt, attrs) => {
-            let ty_let = binding_type(state, re.as_ref(), &envs, false);
+            let ty_let = binding_type(state, re.as_ref(), &env, false);
 
             if attrs.rec {
-                envs.insert(x.clone(), ty_let.clone());
+                env.insert(x.clone(), ty_let.clone());
             }
 
             linearizer.retype_ident(lin, x, ty_let.clone());
-            walk(state, envs.clone(), lin, linearizer.scope(), re)?;
+            walk(state, env.clone(), lin, linearizer.scope(), re)?;
 
             if !attrs.rec {
-                envs.insert(x.clone(), ty_let);
+                env.insert(x.clone(), ty_let);
             }
 
-            walk(state, envs, lin, linearizer, rt)
+            walk(state, env, lin, linearizer, rt)
         }
         Term::LetPattern(x, pat, re, rt) => {
-            let ty_let = binding_type(state, re.as_ref(), &envs, false);
-            walk(state, envs.clone(), lin, linearizer.scope(), re)?;
+            let ty_let = binding_type(state, re.as_ref(), &env, false);
+            walk(state, env.clone(), lin, linearizer.scope(), re)?;
 
             if let Some(x) = x {
                 linearizer.retype_ident(lin, x, ty_let.clone());
-                envs.insert(x.clone(), ty_let);
+                env.insert(x.clone(), ty_let);
             }
 
-            inject_pat_vars(pat, &mut envs);
+            inject_pat_vars(pat, &mut env);
 
-            walk(state, envs, lin, linearizer, rt)
+            walk(state, env, lin, linearizer, rt)
         }
         Term::App(e, t) => {
-            walk(state, envs.clone(), lin, linearizer.scope(), e)?;
-            walk(state, envs, lin, linearizer, t)
+            walk(state, env.clone(), lin, linearizer.scope(), e)?;
+            walk(state, env, lin, linearizer, t)
         }
         Term::Switch(exp, cases, default) => {
             cases.values().chain(default.iter()).try_for_each(|case| {
-                walk(state, envs.clone(), lin, linearizer.scope(), case)
+                walk(state, env.clone(), lin, linearizer.scope(), case)
             })?;
 
-            walk(state, envs, lin, linearizer, exp)
+            walk(state, env, lin, linearizer, exp)
         }
         Term::RecRecord(stat_map, dynamic, ..) => {
             for id in stat_map.keys() {
                 let binding_type = binding_type(
                     state,
                     stat_map.get(id).unwrap().as_ref(),
-                    &envs,
+                    &env,
                     false,
                 );
-                envs.insert(id.clone(), binding_type.clone());
+                env.insert(id.clone(), binding_type.clone());
                 linearizer.retype_ident(lin, id, binding_type);
             }
 
@@ -393,26 +328,26 @@ fn walk<L: Linearizer>(
                 .map(|(_, t)| t)
                 .chain(dynamic.iter().map(|(_, t)| t))
                 .try_for_each(|t| -> Result<(), TypecheckError> {
-                    walk(state, envs.clone(), lin, linearizer.scope(), t)
+                    walk(state, env.clone(), lin, linearizer.scope(), t)
                 })
         }
         Term::Record(stat_map, _) => {
             stat_map
                 .iter()
                 .try_for_each(|(_, t)| -> Result<(), TypecheckError> {
-                    walk(state, envs.clone(), lin, linearizer.scope(), t)
+                    walk(state, env.clone(), lin, linearizer.scope(), t)
                 })
         }
-        Term::Op1(_, t) => walk(state, envs.clone(), lin, linearizer.scope(), t),
+        Term::Op1(_, t) => walk(state, env.clone(), lin, linearizer.scope(), t),
         Term::Op2(_, t1, t2) => {
-            walk(state, envs.clone(), lin, linearizer.scope(), t1)?;
-            walk(state, envs, lin, linearizer, t2)
+            walk(state, env.clone(), lin, linearizer.scope(), t1)?;
+            walk(state, env, lin, linearizer, t2)
         }
         Term::OpN(_, args) => {
            args.iter().try_for_each(|t| -> Result<(), TypecheckError> {
                     walk(
                         state,
-                        envs.clone(),
+                        env.clone(),
                         lin,
                         linearizer.scope(),
                         t,
@@ -422,7 +357,7 @@ fn walk<L: Linearizer>(
         }
         // An type annotation switches mode to check.
         Term::MetaValue(meta) => {
-            meta.contracts.iter().chain(meta.types.iter()).try_for_each(|ty| walk_type(state, envs.clone(), lin, linearizer.scope_meta(), &ty.types))?;
+            meta.contracts.iter().chain(meta.types.iter()).try_for_each(|ty| walk_type(state, env.clone(), lin, linearizer.scope_meta(), &ty.types))?;
 
             match meta {
                 MetaValue {
@@ -432,9 +367,9 @@ fn walk<L: Linearizer>(
                 } => {
                     let tyw2 = TypeWrapper::from(ty2.clone());
                     let instantiated = instantiate_foralls(state, tyw2, ForallInst::Constant);
-                    type_check_(state, envs, lin, linearizer, t, instantiated)
+                    type_check_(state, env, lin, linearizer, t, instantiated)
                 }
-                MetaValue {value: Some(t), .. } =>  walk(state, envs, lin, linearizer, t),
+                MetaValue {value: Some(t), .. } =>  walk(state, env, lin, linearizer, t),
                 // A metavalue without a body nor a type annotation is a record field without definition.
                 // TODO: we might have something to with the linearizer to clear the current
                 // metadata. It looks like it may be unduly attached to the next field definition,
@@ -442,7 +377,7 @@ fn walk<L: Linearizer>(
                 _ => Ok(()),
             }
         }
-        Term::Sealed(_, t) => walk(state, envs, lin, linearizer, t),
+        Term::Sealed(_, t) => walk(state, env, lin, linearizer, t),
    }
 }
 
@@ -450,7 +385,7 @@ fn walk<L: Linearizer>(
 /// instead of a term.
 fn walk_type<L: Linearizer>(
     state: &mut State,
-    envs: Envs,
+    env: Environment,
     lin: &mut Linearization<L::Building>,
     mut linearizer: L,
     ty: &Types,
@@ -467,36 +402,36 @@ fn walk_type<L: Linearizer>(
        | AbsType::Wildcard(_)
        | AbsType::RowEmpty() => Ok(()),
        AbsType::Arrow(ty1, ty2) => {
-           walk_type(state, envs.clone(), lin, linearizer.scope(), ty1.as_ref())?;
-           walk_type(state, envs, lin, linearizer, ty2.as_ref())
+           walk_type(state, env.clone(), lin, linearizer.scope(), ty1.as_ref())?;
+           walk_type(state, env, lin, linearizer, ty2.as_ref())
        }
        AbsType::RowExtend(_, ty_row, tail) => {
-         if let Some(ty_row) = ty_row { walk_type(state, envs.clone(), lin, linearizer.scope(), ty_row)? };
-         walk_type(state, envs, lin,linearizer, tail)
+         if let Some(ty_row) = ty_row { walk_type(state, env.clone(), lin, linearizer.scope(), ty_row)? };
+         walk_type(state, env, lin,linearizer, tail)
        }
-       AbsType::Flat(t) => walk(state, envs, lin, linearizer, t),
+       AbsType::Flat(t) => walk(state, env, lin, linearizer, t),
        AbsType::Enum(ty2)
        | AbsType::DynRecord(ty2)
        | AbsType::StaticRecord(ty2)
        | AbsType::Array(ty2)
-       | AbsType::Forall(_, ty2) => walk_type(state, envs, lin, linearizer, ty2),
+       | AbsType::Forall(_, ty2) => walk_type(state, env, lin, linearizer, ty2),
     }
 }
 
 // TODO: The insertion of values in the type environment is done but everything is
 // typed as `Dyn`.
-fn inject_pat_vars(pat: &Destruct, envs: &mut Envs) {
+fn inject_pat_vars(pat: &Destruct, env: &mut Environment) {
     if let Destruct::Record { matches, rest, .. } = pat {
         if let Some(id) = rest {
-            envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
+            env.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
         }
         matches.iter().for_each(|m| match m {
-            Match::Simple(id, ..) => envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn())),
+            Match::Simple(id, ..) => env.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn())),
             Match::Assign(id, _, (bind_id, pat)) => {
                 let id = bind_id.as_ref().unwrap_or(id);
-                envs.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
+                env.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
                 if !pat.is_empty() {
-                    inject_pat_vars(pat, envs);
+                    inject_pat_vars(pat, env);
                 }
             }
         });
@@ -518,7 +453,7 @@ fn inject_pat_vars(pat: &Destruct, envs: &mut Envs) {
 /// liearizer accordingly
 fn type_check_<L: Linearizer>(
     state: &mut State,
-    mut envs: Envs,
+    mut env: Environment,
     lin: &mut Linearization<L::Building>,
     mut linearizer: L,
     rt: &RichTerm,
@@ -549,7 +484,7 @@ fn type_check_<L: Linearizer>(
                         StrChunk::Literal(_) => Ok(()),
                         StrChunk::Expr(t, _) => type_check_(
                             state,
-                            envs.clone(),
+                            env.clone(),
                             lin,
                             linearizer.scope(),
                             t,
@@ -568,8 +503,8 @@ fn type_check_<L: Linearizer>(
 
             unify(state, ty, arr).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
-            envs.insert(x.clone(), src);
-            type_check_(state, envs, lin, linearizer, t, trg)
+            env.insert(x.clone(), src);
+            type_check_(state, env, lin, linearizer, t, trg)
         }
         Term::FunPattern(x, pat, t) => {
             let src = state.table.fresh_unif_var();
@@ -579,11 +514,11 @@ fn type_check_<L: Linearizer>(
             let arr = mk_tyw_arrow!(src.clone(), trg.clone());
             if let Some(x) = x {
                 linearizer.retype_ident(lin, x, src.clone());
-                envs.insert(x.clone(), src);
+                env.insert(x.clone(), src);
             }
-            inject_pat_vars(pat, &mut envs);
+            inject_pat_vars(pat, &mut env);
             unify(state, ty, arr).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            type_check_(state, envs, lin, linearizer, t, trg)
+            type_check_(state, env, lin, linearizer, t, trg)
         }
         Term::Array(terms, _) => {
             let ty_elts = state.table.fresh_unif_var();
@@ -596,7 +531,7 @@ fn type_check_<L: Linearizer>(
                 .try_for_each(|t| -> Result<(), TypecheckError> {
                     type_check_(
                         state,
-                        envs.clone(),
+                        env.clone(),
                         lin,
                         linearizer.scope(),
                         t,
@@ -610,15 +545,15 @@ fn type_check_<L: Linearizer>(
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Let(x, re, rt, attrs) => {
-            let ty_let = binding_type(state, re.as_ref(), &envs, true);
+            let ty_let = binding_type(state, re.as_ref(), &env, true);
             if attrs.rec {
-                envs.insert(x.clone(), ty_let.clone());
+                env.insert(x.clone(), ty_let.clone());
             }
 
             linearizer.retype_ident(lin, x, ty_let.clone());
             type_check_(
                 state,
-                envs.clone(),
+                env.clone(),
                 lin,
                 linearizer.scope(),
                 re,
@@ -626,15 +561,15 @@ fn type_check_<L: Linearizer>(
             )?;
 
             if !attrs.rec {
-                envs.insert(x.clone(), ty_let);
+                env.insert(x.clone(), ty_let);
             }
-            type_check_(state, envs, lin, linearizer, rt, ty)
+            type_check_(state, env, lin, linearizer, rt, ty)
         }
         Term::LetPattern(x, pat, re, rt) => {
-            let ty_let = binding_type(state, re.as_ref(), &envs, true);
+            let ty_let = binding_type(state, re.as_ref(), &env, true);
             type_check_(
                 state,
-                envs.clone(),
+                env.clone(),
                 lin,
                 linearizer.scope(),
                 re,
@@ -643,17 +578,17 @@ fn type_check_<L: Linearizer>(
 
             if let Some(x) = x {
                 linearizer.retype_ident(lin, x, ty_let.clone());
-                envs.insert(x.clone(), ty_let);
+                env.insert(x.clone(), ty_let);
             }
-            inject_pat_vars(pat, &mut envs);
-            type_check_(state, envs, lin, linearizer, rt, ty)
+            inject_pat_vars(pat, &mut env);
+            type_check_(state, env, lin, linearizer, rt, ty)
         }
         Term::App(e, t) => {
             let src = state.table.fresh_unif_var();
             let arr = mk_tyw_arrow!(src.clone(), ty);
 
-            type_check_(state, envs.clone(), lin, linearizer.scope(), e, arr)?;
-            type_check_(state, envs, lin, linearizer, t, src)
+            type_check_(state, env.clone(), lin, linearizer.scope(), e, arr)?;
+            type_check_(state, env, lin, linearizer, t, src)
         }
         Term::Switch(exp, cases, default) => {
             // Currently, if it has a default value, we typecheck the whole thing as
@@ -663,7 +598,7 @@ fn type_check_<L: Linearizer>(
             for case in cases.values() {
                 type_check_(
                     state,
-                    envs.clone(),
+                    env.clone(),
                     lin,
                     linearizer.scope(),
                     case,
@@ -673,7 +608,7 @@ fn type_check_<L: Linearizer>(
 
             let row = match default {
                 Some(t) => {
-                    type_check_(state, envs.clone(), lin, linearizer.scope(), t, res.clone())?;
+                    type_check_(state, env.clone(), lin, linearizer.scope(), t, res.clone())?;
                     state.table.fresh_unif_var()
                 }
                 None => cases.iter().try_fold(
@@ -685,10 +620,10 @@ fn type_check_<L: Linearizer>(
             };
 
             unify(state, ty, res).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            type_check_(state, envs, lin, linearizer, exp, mk_tyw_enum!(; row))
+            type_check_(state, env, lin, linearizer, exp, mk_tyw_enum!(; row))
         }
         Term::Var(x) => {
-            let x_ty = envs
+            let x_ty = env
                 .get(x)
                 .ok_or_else(|| TypecheckError::UnboundIdentifier(x.clone(), *pos))?;
 
@@ -706,7 +641,7 @@ fn type_check_<L: Linearizer>(
             let ty_dyn = state.table.fresh_unif_var();
 
             for id in stat_map.keys() {
-                envs.insert(id.clone(), ty_dyn.clone());
+                env.insert(id.clone(), ty_dyn.clone());
                 linearizer.retype_ident(lin, id, ty_dyn.clone())
             }
 
@@ -715,7 +650,7 @@ fn type_check_<L: Linearizer>(
                 .try_for_each(|(_, t)| -> Result<(), TypecheckError> {
                     type_check_(
                         state,
-                        envs.clone(),
+                        env.clone(),
                         lin,
                         linearizer.scope(),
                         t,
@@ -732,8 +667,8 @@ fn type_check_<L: Linearizer>(
             // Fields defined by interpolation are ignored.
             if let Term::RecRecord(..) = t.as_ref() {
                 for (id, rt) in stat_map {
-                    let tyw = binding_type(state, rt.as_ref(), &envs, true);
-                    envs.insert(id.clone(), tyw.clone());
+                    let tyw = binding_type(state, rt.as_ref(), &env, true);
+                    env.insert(id.clone(), tyw.clone());
                     linearizer.retype_ident(lin, id, tyw);
                 }
             }
@@ -751,7 +686,7 @@ fn type_check_<L: Linearizer>(
                     .try_for_each(|(_, t)| -> Result<(), TypecheckError> {
                         type_check_(
                             state,
-                            envs.clone(),
+                            env.clone(),
                             lin,
                             linearizer.scope(),
                             t,
@@ -766,14 +701,14 @@ fn type_check_<L: Linearizer>(
                         // annotations) have already be determined and put in the typing
                         // environment, and we need to use the same.
                         let ty = if let Term::RecRecord(..) = t.as_ref() {
-                            envs.get(id).unwrap()
+                            env.get(id).unwrap()
                         } else {
                             state.table.fresh_unif_var()
                         };
 
                         type_check_(
                             state,
-                            envs.clone(),
+                            env.clone(),
                             lin,
                             linearizer.scope(),
                             field,
@@ -791,7 +726,7 @@ fn type_check_<L: Linearizer>(
         Term::Op1(op, t) => {
             let (ty_arg, ty_res) = get_uop_type(state, op)?;
 
-            type_check_(state, envs.clone(), lin, linearizer.scope(), t, ty_arg)?;
+            type_check_(state, env.clone(), lin, linearizer.scope(), t, ty_arg)?;
 
             let instantiated = instantiate_foralls(state, ty_res, ForallInst::Ptr);
             unify(state, ty, instantiated).map_err(|err| err.into_typecheck_err(state, rt.pos))
@@ -800,8 +735,8 @@ fn type_check_<L: Linearizer>(
             let (ty_arg1, ty_arg2, ty_res) = get_bop_type(state, op)?;
 
             unify(state, ty, ty_res).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            type_check_(state, envs.clone(), lin, linearizer.scope(), t1, ty_arg1)?;
-            type_check_(state, envs, lin, linearizer, t2, ty_arg2)
+            type_check_(state, env.clone(), lin, linearizer.scope(), t1, ty_arg1)?;
+            type_check_(state, env, lin, linearizer, t2, ty_arg2)
         }
         Term::OpN(op, args) => {
             let (tys_op, ty_ret) = get_nop_type(state, op)?;
@@ -810,7 +745,7 @@ fn type_check_<L: Linearizer>(
 
             tys_op.into_iter().zip(args.iter()).try_for_each(
                 |(ty_t, t)| -> Result<_, TypecheckError> {
-                    type_check_(state, envs.clone(), lin, linearizer.scope(), t, ty_t)?;
+                    type_check_(state, env.clone(), lin, linearizer.scope(), t, ty_t)?;
                     Ok(())
                 },
             )?;
@@ -822,7 +757,7 @@ fn type_check_<L: Linearizer>(
                 .iter()
                 .chain(meta.types.iter())
                 .try_for_each(|ty| {
-                    walk_type(state, envs.clone(), lin, linearizer.scope_meta(), &ty.types)
+                    walk_type(state, env.clone(), lin, linearizer.scope_meta(), &ty.types)
                 })?;
 
             match meta {
@@ -836,7 +771,7 @@ fn type_check_<L: Linearizer>(
                         instantiate_foralls(state, tyw2.clone(), ForallInst::Constant);
 
                     unify(state, tyw2, ty).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-                    type_check_(state, envs, lin, linearizer, t, instantiated)
+                    type_check_(state, env, lin, linearizer, t, instantiated)
                 }
                 // A metavalue without a type annotation but with a contract annotation switches
                 // the typechecker back to walk mode. If there are several contracts, we
@@ -853,7 +788,7 @@ fn type_check_<L: Linearizer>(
                     // if there's an inner value, we still have to walk it, as it may contain
                     // statically typed blocks.
                     if let Some(t) = value {
-                        walk(state, envs, lin, linearizer, t)
+                        walk(state, env, lin, linearizer, t)
                     } else {
                         // TODO: we might have something to with the linearizer to clear the current
                         // metadata. It looks like it may be unduly attached to the next field definition,
@@ -863,9 +798,7 @@ fn type_check_<L: Linearizer>(
                 }
                 // A non-empty metavalue without a type or a contract annotation is typechecked in
                 // the same way as its inner value
-                MetaValue { value: Some(t), .. } => {
-                    type_check_(state, envs, lin, linearizer, t, ty)
-                }
+                MetaValue { value: Some(t), .. } => type_check_(state, env, lin, linearizer, t, ty),
                 // A metavalue without a body nor a type annotation is a record field without definition.
                 // We infer it to be of type `Dyn` for now.
                 // TODO: we might have something to with the linearizer to clear the current
@@ -877,7 +810,7 @@ fn type_check_<L: Linearizer>(
         }
         Term::SealingKey(_) => unify(state, ty, mk_typewrapper::sym())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
-        Term::Sealed(_, t) => type_check_(state, envs, lin, linearizer, t, ty),
+        Term::Sealed(_, t) => type_check_(state, env, lin, linearizer, t, ty),
         Term::Import(_) => unify(state, ty, mk_typewrapper::dynamic())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
         // We use the apparent type of the import for checking. This function doesn't recursively
@@ -887,12 +820,8 @@ fn type_check_<L: Linearizer>(
                 .resolver
                 .get(*file_id)
                 .expect("Internal error: resolved import not found during typechecking.");
-            let ty_import: TypeWrapper = apparent_type(
-                t.as_ref(),
-                Some(&Envs::from_envs(&envs)),
-                Some(state.resolver),
-            )
-            .into();
+            let ty_import: TypeWrapper =
+                apparent_type(t.as_ref(), Some(&env), Some(state.resolver)).into();
             unify(state, ty, ty_import).map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
     }
@@ -914,8 +843,8 @@ fn type_check_<L: Linearizer>(
 ///     * in non strict mode, wildcards are assigned `Dyn`.
 ///     * in strict mode, the wildcard is typechecked, and we return the unification variable
 ///       corresponding to it.
-fn binding_type(state: &mut State, t: &Term, envs: &Envs, strict: bool) -> TypeWrapper {
-    let ty_apt = apparent_type(t, Some(envs), Some(state.resolver));
+fn binding_type(state: &mut State, t: &Term, env: &Environment, strict: bool) -> TypeWrapper {
+    let ty_apt = apparent_type(t, Some(env), Some(state.resolver));
 
     match ty_apt {
         ApparentType::Annotated(ty) if strict => {
@@ -1005,7 +934,7 @@ impl From<ApparentType> for TypeWrapper {
 ///   the future, such as `Dyn -> Dyn` for functions, `{ | Dyn}` for records, and so on).
 pub fn apparent_type(
     t: &Term,
-    envs: Option<&Envs>,
+    env: Option<&Environment>,
     resolver: Option<&dyn ImportResolver>,
 ) -> ApparentType {
     match t {
@@ -1018,7 +947,7 @@ pub fn apparent_type(
             ApparentType::Annotated(contracts.get(0).unwrap().types.clone())
         }
         Term::MetaValue(MetaValue { value: Some(v), .. }) => {
-            apparent_type(v.as_ref(), envs, resolver)
+            apparent_type(v.as_ref(), env, resolver)
         }
         Term::Num(_) => ApparentType::Inferred(Types(AbsType::Num())),
         Term::Bool(_) => ApparentType::Inferred(Types(AbsType::Bool())),
@@ -1027,7 +956,7 @@ pub fn apparent_type(
         Term::Array(..) => {
             ApparentType::Approximated(Types(AbsType::Array(Box::new(Types(AbsType::Dyn())))))
         }
-        Term::Var(id) => envs
+        Term::Var(id) => env
             .and_then(|envs| envs.get(id))
             .map(ApparentType::FromEnv)
             .unwrap_or(ApparentType::Approximated(Types(AbsType::Dyn()))),
@@ -1036,7 +965,7 @@ pub fn apparent_type(
                 let t = r
                     .get(*f)
                     .expect("Internal error: resolved import not found during typechecking.");
-                apparent_type(&t.term, envs, Some(r))
+                apparent_type(&t.term, env, Some(r))
             } else {
                 ApparentType::Approximated(Types(AbsType::Dyn()))
             }
