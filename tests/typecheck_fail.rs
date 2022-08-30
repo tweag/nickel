@@ -277,3 +277,20 @@ g"#
         ))
     );
 }
+
+#[test]
+fn locally_different_flat_types() {
+    assert_matches!(
+        type_check_expr(
+            "let lib = {Contract = fun label value => value} in
+             let foo | lib.Contract = null in
+             let lib = {Contract = fun label value => value} in
+             foo : lib.Contract"
+        ),
+        Err(TypecheckError::TypeMismatch(
+            Types(AbsType::Flat(..)),
+            Types(AbsType::Flat(..)),
+            _
+        ))
+    );
+}

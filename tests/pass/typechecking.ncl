@@ -204,6 +204,43 @@ let typecheck = [
   # The (| ExportFormat) cast is only temporary, and can be removed once #671
   # (https://github.com/tweag/nickel/issues/671) is closed
   (record.update "foo" 5 {foo = 1}) : {_: Num},
+
+  # contracts_equality
+  let lib = {
+    Contract = fun label value => value,
+  } in
+  let Proxy1 = lib.Contract in
+  let Proxy2 = Proxy1 in
+  [
+    {
+      identity : lib.Contract = (null | lib.Contract),
+      foo : lib.Contract = identity,
+      bar : Proxy1 = foo,
+      baz : Proxy2 = foo,
+      baz' : Proxy2 = bar,
+
+      # composite type
+      record: {arrow: Dyn -> lib.Contract, dict: {_: Array Proxy2}} = {
+        arrow = fun _x => (_x | Proxy2),
+        dict : {_ : _} = {elt = [foo]},
+      },
+
+      # local definition
+      inline = (let InlineProxy = Proxy2 in foo : InlineProxy),
+    },
+    # the following tests were initially failing while the ones above weren't,
+    # for reasons specific to the handling of type wildcard. We keep both version to
+    # make sure that type wildcards behave correctly with respect to contract
+    # equality.
+    {
+      identity : lib.Contract = (null | lib.Contract),
+      foo : lib.Contract = identity,
+      bar : Proxy1 = foo,
+      baz : Proxy2 = foo,
+      baz' : Proxy2 = bar,
+      inline = (let InlineProxy = Proxy2 in foo : InlineProxy),
+    },
+  ],
 ] in
 
 true
