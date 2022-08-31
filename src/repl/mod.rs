@@ -83,7 +83,7 @@ impl ReplImpl {
     /// Create a new empty REPL.
     pub fn new() -> Self {
         ReplImpl {
-            cache: Cache::new(),
+            cache: Cache::new(false),
             parser: grammar::ExtendedTermParser::new(),
             env: Envs::new(),
             initial_type_env: typecheck::Environment::new(),

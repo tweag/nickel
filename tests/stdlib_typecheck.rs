@@ -3,7 +3,7 @@ use nickel_lang::cache::Cache;
 
 #[test]
 fn stdlib_typecheck() {
-    let mut cache = Cache::new();
+    let mut cache = Cache::new(false);
     assert_matches!(cache.load_stdlib(), Ok(_));
     assert_matches!(cache.typecheck_stdlib(), Ok(_));
 }

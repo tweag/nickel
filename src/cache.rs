@@ -70,6 +70,8 @@ pub struct Cache {
     stdlib_ids: Option<Vec<FileId>>,
     /// The inferred type of wildcards for each `FileId`.
     wildcards: HashMap<FileId, Wildcards>,
+    /// Whether processing should try to continue even in case of errors.
+    error_tolerant: bool,
 
     #[cfg(debug_assertions)]
     /// Skip loading the stdlib, used for debugging purpose
@@ -202,7 +204,7 @@ pub enum ResolvedTerm {
 }
 
 impl Cache {
-    pub fn new() -> Self {
+    pub fn new(error_tolerant: bool) -> Self {
         Cache {
             files: Files::new(),
             file_ids: HashMap::new(),
@@ -210,6 +212,7 @@ impl Cache {
             wildcards: HashMap::new(),
             imports: HashMap::new(),
             stdlib_ids: None,
+            error_tolerant,
 
             #[cfg(debug_assertions)]
             skip_stdlib: false,
@@ -373,7 +376,7 @@ impl Cache {
 
     /// Parse a source and populate the corresponding entry in the cache, or do nothing if the
     /// entry has already been parsed. Support multiple formats.
-    pub fn parse_multi(
+    pub fn parse_multi_lax(
         &mut self,
         file_id: FileId,
         format: InputFormat,
@@ -391,6 +394,22 @@ impl Cache {
                 },
             );
             Ok(CacheOp::Done(parse_errs))
+        }
+    }
+
+    /// Parse a source and populate the corresponding entry in the cache, or do
+    /// nothing if the entry has already been parsed. Support multiple formats.
+    /// This function is not error tolerant and returns `Err` if at least one
+    /// parse error has been encountered.
+    pub fn parse_multi(
+        &mut self,
+        file_id: FileId,
+        format: InputFormat,
+    ) -> Result<CacheOp<()>, ParseErrors> {
+        match self.parse_multi_lax(file_id, format)? {
+            CacheOp::Done(e) | CacheOp::Cached(e) if !e.no_errors() => Err(e),
+            CacheOp::Done(_) => Ok(CacheOp::Done(())),
+            CacheOp::Cached(_) => Ok(CacheOp::Cached(())),
         }
     }
 
@@ -986,9 +1005,14 @@ impl ImportResolver for Cache {
             }
         };
 
-        // We ignore non fatal parse errors while importing.
-        self.parse_multi(file_id, format)
-            .map_err(|err| ImportError::ParseErrors(err.into(), *pos))?;
+        if self.error_tolerant {
+            // We ignore non fatal parse errors while importing.
+            self.parse_multi_lax(file_id, format)
+                .map_err(|err| ImportError::ParseErrors(err.into(), *pos))?;
+        } else {
+            self.parse_multi(file_id, format)
+                .map_err(|err| ImportError::ParseErrors(err.into(), *pos))?;
+        }
 
         Ok((ResolvedTerm::FromFile { path: path_buf }, file_id))
     }
