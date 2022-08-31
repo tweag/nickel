@@ -249,11 +249,13 @@ pub struct Contract {
     pub label: Label,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Default)]
 pub struct MetaValue {
     pub doc: Option<String>,
     pub types: Option<Contract>,
     pub contracts: Vec<Contract>,
+    /// If the field is optional.
+    pub opt: bool,
     pub priority: MergePriority,
     pub value: Option<RichTerm>,
 }
@@ -264,27 +266,16 @@ impl From<RichTerm> for MetaValue {
             doc: None,
             types: None,
             contracts: Vec::new(),
+            opt: false,
             priority: Default::default(),
             value: Some(rt),
         }
     }
 }
 
-impl Default for MetaValue {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl MetaValue {
     pub fn new() -> Self {
-        MetaValue {
-            doc: None,
-            types: None,
-            contracts: Vec::new(),
-            priority: Default::default(),
-            value: None,
-        }
+        Default::default()
     }
 
     /// Flatten two nested metavalues into one, combining their metadata. If data that can't be
@@ -296,38 +287,33 @@ impl MetaValue {
     /// program transformation).
     ///
     /// #Preconditions
+    ///
     /// - `outer.value` is assumed to be `inner`. While `flatten` may still work fine if this
     ///   condition is not fullfilled, the value of the final metavalue is set to be `inner`'s one,
     ///   and `outer`'s one is dropped.
-    pub fn flatten(outer: MetaValue, mut inner: MetaValue) -> MetaValue {
+    pub fn flatten(mut outer: MetaValue, mut inner: MetaValue) -> MetaValue {
         // Keep the outermost value for non-mergeable information, such as documentation, type annotation,
         // and so on, which is the one that is accessible from the outside anyway (by queries, by the typechecker, and
         // so on).
-        // Keep the inner value
-        let MetaValue {
-            doc,
-            types,
-            mut contracts,
-            priority,
-            value: _,
-        } = outer;
+        // Keep the inner value.
 
-        if types.is_some() {
+        if outer.types.is_some() {
             // If both have type annotations, the result will have the outer one as a type annotation.
             // However we still need to enforce the corresponding contract to preserve the operational
             // semantics. Thus, the inner type annotation is derelicted to a contract.
             if let Some(ctr) = inner.types.take() {
-                contracts.push(ctr)
+                outer.contracts.push(ctr)
             }
         }
 
-        contracts.extend(inner.contracts.into_iter());
+        outer.contracts.extend(inner.contracts.into_iter());
 
         MetaValue {
-            doc: doc.or(inner.doc),
-            types: types.or(inner.types),
-            contracts,
-            priority: std::cmp::min(priority, inner.priority),
+            doc: outer.doc.or(inner.doc),
+            types: outer.types.or(inner.types),
+            contracts: outer.contracts,
+            opt: outer.opt || inner.opt,
+            priority: std::cmp::min(outer.priority, inner.priority),
             value: inner.value,
         }
     }
@@ -1283,6 +1269,7 @@ impl RichTerm {
                         doc: meta.doc,
                         types,
                         contracts,
+                        opt: meta.opt,
                         priority: meta.priority,
                         value,
                     };
