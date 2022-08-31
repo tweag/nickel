@@ -355,22 +355,10 @@ mod doc {
 mod tests {
     use super::*;
     use crate::error::EvalError;
-    use crate::parser::{grammar, lexer};
     use crate::position::TermPos;
-    use crate::term::SharedTerm;
+    use crate::term::ArrayAttrs;
     use assert_matches::assert_matches;
-    use codespan::Files;
     use std::io::Cursor;
-
-    fn parse(s: &str) -> Option<RichTerm> {
-        let id = Files::new().add("<test>", String::from(s));
-
-        grammar::TermParser::new()
-            .parse_term(id, lexer::Lexer::new(&s))
-            .map(RichTerm::without_pos)
-            .map_err(|err| println!("{:?}", err))
-            .ok()
-    }
 
     fn eval_full(s: &str) -> Result<RichTerm, Error> {
         let src = Cursor::new(s);
@@ -398,30 +386,21 @@ mod tests {
 
     #[test]
     fn evaluation_full() {
-        use crate::mk_record;
-        use crate::term::make as mk_term;
+        use crate::{mk_array, mk_record};
 
         let t = eval_full("[(1 + 1), (\"a\" ++ \"b\"), ([ 1, [1 + 2] ])]").unwrap();
-        let mut expd = parse("[2, \"ab\", [1, [3]]]").unwrap();
 
-        // Strings are parsed as StrChunks, but evaluated to Str, so we need to hack the array a bit
-        // The evaluator will change the attributes so we neeed to anticipate that too.
-        if let Term::Array(ref mut data, ref mut attrs) = SharedTerm::make_mut(&mut expd.term) {
-            *data.get_mut(1).unwrap() = mk_term::string("ab");
-            attrs.closurized = true;
-            if let Term::Array(data, attrs) =
-                SharedTerm::make_mut(&mut data.get_mut(2).unwrap().term)
-            {
-                attrs.closurized = true;
-                if let Term::Array(_, attrs) =
-                    SharedTerm::make_mut(&mut data.get_mut(1).unwrap().term)
-                {
-                    attrs.closurized = true;
-                }
-            }
-        } else {
-            panic!();
-        }
+        // [2, "ab", [1, [3]]]
+        let expd = mk_array!(
+            Term::Num(2_f64),
+            Term::Str(String::from("ab")),
+            mk_array!(
+                Term::Num(1_f64),
+                mk_array!(Term::Num(3_f64); ArrayAttrs::new().closurized());
+                ArrayAttrs::new().closurized()
+            );
+            ArrayAttrs::new().closurized()
+        );
 
         assert_eq!(t.without_pos(), expd.without_pos());
 

@@ -21,14 +21,14 @@ use crate::{
     position::TermPos,
     serialize,
     serialize::ExportFormat,
-    term::{make as mk_term, PendingContract},
+    term::{array::Array, make as mk_term, PendingContract},
     term::{ArrayAttrs, BinaryOp, NAryOp, RichTerm, StrChunk, Term, UnaryOp},
     transform::{apply_contracts::apply_contracts, fresh_var, Closurizable},
 };
 use md5::digest::Digest;
 use simple_counter::*;
-use std::collections::HashMap;
 use std::iter::Extend;
+use std::{collections::HashMap, rc::Rc};
 
 generate_counter!(FreshVariableCounter, usize);
 
@@ -472,6 +472,7 @@ fn process_unary_operation(
                         .collect();
                     fields.sort();
                     let terms = fields.into_iter().map(mk_term::string).collect();
+
                     Ok(Closure::atomic_closure(RichTerm::new(
                         Term::Array(terms, ArrayAttrs::new().closurized()),
                         pos_op_inh,
@@ -503,7 +504,7 @@ fn process_unary_operation(
                     Ok(Closure {
                         // TODO: once sure that the Record is properly closurized, we can
                         // safely assume that the extracted array here is, in turn, also closuried.
-                        body: RichTerm::new(Term::Array(terms, Default::default()), pos_op_inh),
+                        body: RichTerm::new(Term::Array(terms, ArrayAttrs::default()), pos_op_inh),
                         env,
                     })
                 }
@@ -730,7 +731,7 @@ fn process_unary_operation(
         }
         UnaryOp::ArrayHead() => {
             if let Term::Array(ts, attrs) = &*t {
-                if let Some(head) = ts.first() {
+                if let Some(head) = ts.get(0) {
                     let head_with_ctr = apply_contracts(
                         head.clone(),
                         attrs.pending_contracts.iter().cloned(),
@@ -755,10 +756,9 @@ fn process_unary_operation(
         }
         UnaryOp::ArrayTail() => match_sharedterm! {t, with {
                     Term::Array(ts, attrs) => {
-                        let mut ts_it = ts.into_iter();
-                        if ts_it.next().is_some() {
+                        if !ts.is_empty() {
                             Ok(Closure {
-                                body: RichTerm::new(Term::Array(ts_it.collect(), attrs), pos_op_inh),
+                                body: RichTerm::new(Term::Array(ts.advance_by(1), attrs), pos_op_inh),
                                 env,
                             })
                         } else {
@@ -858,6 +858,7 @@ fn process_unary_operation(
                     .chars()
                     .map(|c| RichTerm::from(Term::Str(c.to_string())))
                     .collect();
+
                 Ok(Closure::atomic_closure(RichTerm::new(
                     Term::Array(ts, ArrayAttrs::new().closurized()),
                     pos_op_inh,
@@ -1090,7 +1091,7 @@ fn process_unary_operation(
                 let capt = regex.captures(s);
                 let result = if let Some(capt) = capt {
                     let first_match = capt.get(0).unwrap();
-                    let groups: Vec<RichTerm> = capt
+                    let groups = capt
                         .iter()
                         .skip(1)
                         .filter_map(|s_opt| {
@@ -1111,7 +1112,10 @@ fn process_unary_operation(
                     mk_record!(
                         ("match", Term::Str(String::new())),
                         ("index", Term::Num(-1.)),
-                        ("groups", Term::Array(Vec::new(), Default::default()))
+                        (
+                            "groups",
+                            Term::Array(Array::default(), ArrayAttrs::default())
+                        )
                     )
                 };
 
@@ -1190,7 +1194,7 @@ fn process_unary_operation(
                             // It's important to collect here, otherwise the two usages below
                             // will each do their own .closurize(...) calls and end up with
                             // different variables, which means that `cont` won't be properly updated.
-                            .collect::<Vec<_>>();
+                            .collect::<Array>();
 
                         let terms = ts.clone().into_iter();
                         let cont = RichTerm::new(Term::Array(ts, attrs), pos.into_inherited());
@@ -2003,6 +2007,13 @@ fn process_binary_operation(
                             debug_assert!(attrs1.closurized, "the left-hand side of ArrayConcat (@) is not closurized.");
                             debug_assert!(attrs2.closurized, "the right-hand side of ArrayConcat (@) is not closurized.");
 
+                            // NOTE: To avoid the extra Vec allocation, we could use Rc<[T]>::new_uninit_slice()
+                            // and fill up the slice manually, but that's a nightly-only experimental API.
+                            // Note that collecting into an Rc<[T]> will also allocate a intermediate vector,
+                            // unless the input iterator implements the nightly-only API TrustedLen, and Array's iterator currently doesn't.
+                            // Even if we could implement TrustedLen we would have to contend with the fact that .chain(..) tends to be slow.
+                            // - Rc<[T]>::from_iter docs: https://doc.rust-lang.org/std/rc/struct.Rc.html#impl-FromIterator%3CT%3E
+                            // - chain issue: https://github.com/rust-lang/rust/issues/63340
                             let mut ts: Vec<RichTerm> = Vec::with_capacity(ts1.len() + ts2.len());
 
                             let mut env = env1.clone();
@@ -2043,7 +2054,7 @@ fn process_binary_operation(
                             };
 
                             Ok(Closure {
-                                body: RichTerm::new(Term::Array(ts, attrs), pos_op_inh),
+                                body: RichTerm::new(Term::Array(Array::new(Rc::from(ts)), attrs), pos_op_inh),
                                 env,
                             })
                         }
@@ -2081,7 +2092,7 @@ fn process_binary_operation(
                     Err(EvalError::Other(format!("elemAt: index out of bounds. Expected a value between 0 and {}, got {}", ts.len(), n), pos_op))
                 } else {
                     let elem_with_ctr = apply_contracts(
-                        ts[n_int].clone(),
+                        ts.get(n_int).unwrap().clone(),
                         attrs.pending_contracts.iter().cloned(),
                         pos1.into_inherited(),
                     );
@@ -2283,10 +2294,11 @@ fn process_binary_operation(
         }
         BinaryOp::StrSplit() => match (&*t1, &*t2) {
             (Term::Str(s1), Term::Str(s2)) => {
-                let array: Vec<RichTerm> = s1
+                let array = s1
                     .split(s2)
                     .map(|s| Term::Str(String::from(s)).into())
                     .collect();
+
                 Ok(Closure::atomic_closure(RichTerm::new(
                     Term::Array(array, ArrayAttrs::new().closurized()),
                     pos_op_inh,

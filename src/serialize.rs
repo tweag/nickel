@@ -3,7 +3,7 @@ use crate::{
     error::SerializationError,
     eval::{self, is_empty_optional},
     identifier::Ident,
-    term::{ArrayAttrs, MetaValue, RecordAttrs, RichTerm, Term},
+    term::{array::Array, ArrayAttrs, MetaValue, RecordAttrs, RichTerm, Term},
 };
 
 use serde::{
@@ -11,7 +11,7 @@ use serde::{
     ser::{Error, Serialize, SerializeMap, SerializeSeq, Serializer},
 };
 
-use std::{collections::HashMap, fmt, io, str::FromStr};
+use std::{collections::HashMap, fmt, io, rc::Rc, str::FromStr};
 
 /// Available export formats.
 // If you add or remove variants, remember to update the CLI docs in `src/bin/nickel.rs'
@@ -134,7 +134,7 @@ where
 
 /// Serialize for an Array. Required to hide the internal attributes.
 pub fn serialize_array<S>(
-    terms: &Vec<RichTerm>,
+    terms: &Array,
     _attrs: &ArrayAttrs,
     serializer: S,
 ) -> Result<S::Ok, S::Error>
@@ -150,11 +150,11 @@ where
 }
 
 /// Deserialize for an Array. Required to set the default attributes.
-pub fn deserialize_array<'de, D>(deserializer: D) -> Result<(Vec<RichTerm>, ArrayAttrs), D::Error>
+pub fn deserialize_array<'de, D>(deserializer: D) -> Result<(Array, ArrayAttrs), D::Error>
 where
     D: Deserializer<'de>,
 {
-    let terms: Vec<RichTerm> = Vec::deserialize(deserializer)?;
+    let terms = Array::new(Rc::from(Vec::deserialize(deserializer)?));
     Ok((terms, Default::default()))
 }
 
@@ -200,8 +200,8 @@ pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), SerializationE
                 map.iter().try_for_each(|(_, t)| validate(format, t))?;
                 Ok(())
             }
-            Array(vec, _) => {
-                vec.iter().try_for_each(|t| validate(format, t))?;
+            Array(array, _) => {
+                array.iter().try_for_each(|t| validate(format, t))?;
                 Ok(())
             }
             //TODO: have a specific error for such missing value.

@@ -144,7 +144,7 @@ fn collect_free_vars(rt: &mut RichTerm, free_vars: &mut HashSet<Ident>) {
             *deps = Some(new_deps);
         }
         Term::Array(ts, _) => {
-            for t in ts {
+            for t in ts.make_mut().iter_mut() {
                 collect_free_vars(t, free_vars);
             }
         }
