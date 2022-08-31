@@ -632,6 +632,9 @@ where
                     env: local_env,
                 }
             }
+            Term::ParseError(parse_error) => {
+                return Err(EvalError::ParseError(parse_error.clone()));
+            }
             // Continuation of operations and thunk update
             _ if stack.is_top_thunk() || stack.is_top_cont() => {
                 clos = Closure {
@@ -701,7 +704,7 @@ pub fn subst(rt: RichTerm, initial_env: &Environment, env: &Environment) -> Rich
             })
             .unwrap_or_else(|| RichTerm::new(Term::Var(id), pos)),
         v @ Term::Null
-        | v @ Term::ParseError
+        | v @ Term::ParseError(_)
         | v @ Term::Bool(_)
         | v @ Term::Num(_)
         | v @ Term::Str(_)

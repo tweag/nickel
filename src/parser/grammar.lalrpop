@@ -219,9 +219,11 @@ UniTerm: UniTerm = {
         UniTerm::from(mk_app!(Term::Op1(UnaryOp::Ite(), cond), t1, t2)),
     <l: @L> <t: !> <r: @R> => {
         let pos = mk_pos(src_id, l, r);
-        errors.push(t);
+        errors.push(t.clone());
 
-        UniTerm::from(RichTerm::new(Term::ParseError, pos))
+        UniTerm::from(RichTerm::new(Term::ParseError(
+            crate::error::ParseError::from_lalrpop(t.error, src_id)
+        ), pos))
     },
 };
 

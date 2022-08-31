@@ -17,6 +17,7 @@
 //! the term level, and together with [crate::eval::merge], they allow for flexible and modular
 //! definitions of contracts, record and metadata all together.
 use crate::destruct::Destruct;
+use crate::error::ParseError;
 use crate::identifier::Ident;
 use crate::label::Label;
 use crate::match_sharedterm;
@@ -157,7 +158,7 @@ pub enum Term {
     #[serde(skip)]
     ResolvedImport(FileId),
     #[serde(skip)]
-    ParseError,
+    ParseError(ParseError),
 }
 
 pub type SealingKey = i32;
@@ -361,7 +362,7 @@ impl Term {
     {
         use self::Term::*;
         match self {
-            Null | ParseError => (),
+            Null | ParseError(_) => (),
             Switch(ref mut t, ref mut cases, ref mut def) => {
                 cases.iter_mut().for_each(|c| {
                     let (_, t) = c;
@@ -448,7 +449,7 @@ impl Term {
             | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
-            | Term::ParseError => None,
+            | Term::ParseError(_) => None,
         }
         .map(String::from)
     }
@@ -512,7 +513,7 @@ impl Term {
                 format!("<{}{}={}>", content, value_label, value)
             }
             Term::Var(id) => id.to_string(),
-            Term::ParseError => String::from("<parse error>"),
+            Term::ParseError(_) => String::from("<parse error>"),
             Term::Let(..)
             | Term::LetPattern(..)
             | Term::App(_, _)
@@ -580,7 +581,7 @@ impl Term {
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
-            | Term::ParseError => false,
+            | Term::ParseError(_) => false,
         }
     }
 
@@ -620,7 +621,7 @@ impl Term {
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
-            | Term::ParseError => false,
+            | Term::ParseError(_) => false,
         }
     }
 
@@ -652,7 +653,7 @@ impl Term {
             | Term::MetaValue(..)
             | Term::Import(..)
             | Term::ResolvedImport(..)
-            | Term::ParseError => false,
+            | Term::ParseError(_) => false,
         }
     }
 }
