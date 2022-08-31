@@ -52,7 +52,7 @@ pub enum EvalError {
         /* position of the original unevaluated expression */ TermPos,
         /* evaluated expression */ RichTerm,
     ),
-    /// A wrapped parse error that causes trouble during evaluation.
+    /// Tried to evaluate a term which wasn't parsed correctly.
     ParseError(/* parse error */ ParseError),
     /// A term which is not a function has been applied to an argument.
     NotAFunc(
