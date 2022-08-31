@@ -1006,8 +1006,9 @@ impl ImportResolver for Cache {
         };
 
         if self.error_tolerant {
-            // We ignore non fatal parse errors while importing.
             self.parse_multi_lax(file_id, format)
+                // We ignore non fatal parse errors while importing. This will
+                // not map any errors, just fix the return type.
                 .map_err(|err| ImportError::ParseErrors(err.into(), *pos))?;
         } else {
             self.parse_multi(file_id, format)
