@@ -210,6 +210,8 @@ pub enum NormalToken<'input> {
     Default,
     #[token("doc")]
     Doc,
+    #[token("optional")]
+    Optional,
 
     #[token("%hash%")]
     OpHash,

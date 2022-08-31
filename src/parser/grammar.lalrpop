@@ -108,6 +108,10 @@ AnnotAtom<TypeRule>: MetaValue = {
         doc: Some(strip_indent_doc(s)),
         ..Default::default()
     },
+    "|" "optional" => MetaValue {
+        opt: true,
+        ..Default::default()
+    },
     ":" <l: @L> <ty: TypeRule> <r: @R> => MetaValue {
         types: Some(Contract {types: ty.clone(), label: mk_label(ty, src_id, l, r)}),
         ..Default::default()
@@ -871,6 +875,7 @@ extern {
         "merge" => Token::Normal(NormalToken::Merge),
         "default" => Token::Normal(NormalToken::Default),
         "doc" => Token::Normal(NormalToken::Doc),
+        "optional" => Token::Normal(NormalToken::Optional),
 
         "hash" => Token::Normal(NormalToken::OpHash),
         "serialize" => Token::Normal(NormalToken::Serialize),
