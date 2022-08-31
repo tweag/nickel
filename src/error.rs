@@ -53,7 +53,7 @@ pub enum EvalError {
         /* evaluated expression */ RichTerm,
     ),
     /// Tried to evaluate a term which wasn't parsed correctly.
-    ParseError(/* parse error */ ParseError),
+    ParseError(ParseError),
     /// A term which is not a function has been applied to an argument.
     NotAFunc(
         /* term */ RichTerm,
