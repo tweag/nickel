@@ -346,7 +346,7 @@ impl Cache {
     /// corresponding error messages are collected and returned.
     ///
     /// The `Err` part of the result corresponds to non-recoverable errors.
-    pub fn parse_lax(&mut self, file_id: FileId) -> Result<CacheOp<ParseErrors>, ParseError> {
+    fn parse_lax(&mut self, file_id: FileId) -> Result<CacheOp<ParseErrors>, ParseError> {
         if let Some(CachedTerm { parse_errs, .. }) = self.terms.get(&file_id) {
             Ok(CacheOp::Cached(parse_errs.clone()))
         } else {
@@ -359,6 +359,7 @@ impl Cache {
                     parse_errs: parse_errs.clone(),
                 },
             );
+
             Ok(CacheOp::Done(parse_errs))
         }
     }
@@ -366,17 +367,23 @@ impl Cache {
     /// Parse a source and populate the corresponding entry in the cache, or do nothing if the
     /// entry has already been parsed. This function is not error tolerant and returns `Err` if at
     /// least one parse error has been encountered.
-    pub fn parse(&mut self, file_id: FileId) -> Result<CacheOp<()>, ParseErrors> {
-        match self.parse_lax(file_id)? {
-            CacheOp::Done(e) | CacheOp::Cached(e) if !e.no_errors() => Err(e),
-            CacheOp::Done(_) => Ok(CacheOp::Done(())),
-            CacheOp::Cached(_) => Ok(CacheOp::Cached(())),
+    pub fn parse(&mut self, file_id: FileId) -> Result<CacheOp<ParseErrors>, ParseErrors> {
+        let result = self.parse_lax(file_id);
+
+        if self.error_tolerant {
+            result.map_err(|err| err.into())
+        } else {
+            match result? {
+                CacheOp::Done(e) | CacheOp::Cached(e) if !e.no_errors() => Err(e),
+                CacheOp::Done(_) => Ok(CacheOp::Done(ParseErrors::none())),
+                CacheOp::Cached(_) => Ok(CacheOp::Cached(ParseErrors::none())),
+            }
         }
     }
 
     /// Parse a source and populate the corresponding entry in the cache, or do nothing if the
     /// entry has already been parsed. Support multiple formats.
-    pub fn parse_multi_lax(
+    fn parse_multi_lax(
         &mut self,
         file_id: FileId,
         format: InputFormat,
@@ -405,11 +412,17 @@ impl Cache {
         &mut self,
         file_id: FileId,
         format: InputFormat,
-    ) -> Result<CacheOp<()>, ParseErrors> {
-        match self.parse_multi_lax(file_id, format)? {
-            CacheOp::Done(e) | CacheOp::Cached(e) if !e.no_errors() => Err(e),
-            CacheOp::Done(_) => Ok(CacheOp::Done(())),
-            CacheOp::Cached(_) => Ok(CacheOp::Cached(())),
+    ) -> Result<CacheOp<ParseErrors>, ParseErrors> {
+        let result = self.parse_multi_lax(file_id, format);
+
+        if self.error_tolerant {
+            result.map_err(|err| err.into())
+        } else {
+            match result? {
+                CacheOp::Done(e) | CacheOp::Cached(e) if !e.no_errors() => Err(e),
+                CacheOp::Done(_) => Ok(CacheOp::Done(ParseErrors::none())),
+                CacheOp::Cached(_) => Ok(CacheOp::Cached(ParseErrors::none())),
+            }
         }
     }
 
@@ -429,6 +442,7 @@ impl Cache {
         match format {
             InputFormat::Nickel => {
                 let (t, parse_errs) =
+                    // TODO: Should this really be parse_term if self.error_tolerant = false?
                     parser::grammar::TermParser::new().parse_term_lax(file_id, Lexer::new(buf))?;
 
                 Ok((t, parse_errs))
@@ -661,7 +675,7 @@ impl Cache {
     ) -> Result<CacheOp<()>, Error> {
         let mut result = CacheOp::Cached(());
 
-        if self.parse(file_id)? == CacheOp::Done(()) {
+        if let CacheOp::Done(_) = self.parse(file_id)? {
             result = CacheOp::Done(());
         }
 
@@ -1005,15 +1019,8 @@ impl ImportResolver for Cache {
             }
         };
 
-        if self.error_tolerant {
-            self.parse_multi_lax(file_id, format)
-                // We ignore non fatal parse errors while importing. This will
-                // not map any errors, just fix the return type.
-                .map_err(|err| ImportError::ParseErrors(err.into(), *pos))?;
-        } else {
-            self.parse_multi(file_id, format)
-                .map_err(|err| ImportError::ParseErrors(err.into(), *pos))?;
-        }
+        self.parse_multi(file_id, format)
+            .map_err(|err| ImportError::ParseErrors(err.into(), *pos))?;
 
         Ok((ResolvedTerm::FromFile { path: path_buf }, file_id))
     }

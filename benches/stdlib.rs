@@ -4,7 +4,7 @@ use pprof::criterion::{Output, PProfProfiler};
 use nickel_lang::cache::Cache;
 
 pub fn typecheck_stdlib(c: &mut Criterion) {
-    let mut cache = Cache::new();
+    let mut cache = Cache::new(false);
     cache.load_stdlib().unwrap();
     let type_env = cache.mk_type_env().unwrap();
     c.bench_function("typecheck stdlib", |b| {

@@ -82,7 +82,7 @@ fn typecheck(server: &mut Server, file_id: FileId) -> Result<CacheOp<()>, Vec<Di
 fn parse_and_typecheck(server: &mut Server, uri: Url, file_id: FileId) -> Result<()> {
     let diagnostics = server
         .cache
-        .parse_lax(file_id)
+        .parse(file_id)
         .map_err(|parse_err| parse_err.to_diagnostic(server.cache.files_mut(), None))
         .map(|parse_errs| {
             // Parse errors are not fatal
