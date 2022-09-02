@@ -364,9 +364,9 @@ impl Cache {
         }
     }
 
-    /// Parse a source and populate the corresponding entry in the cache, or do nothing if the
-    /// entry has already been parsed. This function is not error tolerant and returns `Err` if at
-    /// least one parse error has been encountered.
+    /// Parse a source and populate the corresponding entry in the cache, or do
+    /// nothing if the entry has already been parsed. This function is error
+    /// tolerant if self.error_tolerant = true.
     pub fn parse(&mut self, file_id: FileId) -> Result<CacheOp<ParseErrors>, ParseErrors> {
         let result = self.parse_lax(file_id);
 
@@ -381,8 +381,9 @@ impl Cache {
         }
     }
 
-    /// Parse a source and populate the corresponding entry in the cache, or do nothing if the
-    /// entry has already been parsed. Support multiple formats.
+    /// Parse a source and populate the corresponding entry in the cache, or do
+    /// nothing if the entry has already been parsed. Support multiple formats.
+    /// This function is error tolerant.
     fn parse_multi_lax(
         &mut self,
         file_id: FileId,
@@ -406,8 +407,7 @@ impl Cache {
 
     /// Parse a source and populate the corresponding entry in the cache, or do
     /// nothing if the entry has already been parsed. Support multiple formats.
-    /// This function is not error tolerant and returns `Err` if at least one
-    /// parse error has been encountered.
+    /// This function is error tolerant if self.error_tolerant = true.
     pub fn parse_multi(
         &mut self,
         file_id: FileId,
