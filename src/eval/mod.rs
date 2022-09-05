@@ -312,11 +312,14 @@ where
         }
 
         clos = match &*shared_term {
-            Term::Sealed(_, sk, lbl) => {
+            Term::Sealed(_, inner, lbl) => {
+                // I think that `peek_op_cont` doesn't check the stack well
+                // enough
                 let stack_item = stack.peek_op_cont();
                 match stack_item {
                     Some(
-                        OperationCont::Op2First(BinaryOp::Unseal(), _, _)
+                        OperationCont::Op1(UnaryOp::Seq(), _)
+                        | OperationCont::Op2First(BinaryOp::Unseal(), _, _)
                         | OperationCont::Op2Second(BinaryOp::Unseal(), _, _, _),
                     ) => {
                         // Copied from the  `_ if stack.is_top_thunk() || stack.is_top_cont()` case
@@ -338,13 +341,20 @@ where
                     Some(_item) => {
                         // This cont should not be allowed to evaluate a sealed term;
                         let RichTerm { term, .. } = lbl;
-                        println!("sealing key: {:?}", sk);
-                        println!("the label: {:?}", term);
+                        println!("Sealed Term: {:?}", inner);
+                        println!("The Label: {:?}", term);
                         if let Term::Lbl(lbl) = &**term {
                             return Err(EvalError::BlameError(lbl.clone(), call_stack.clone()));
                         } else {
+                            // Currently, we're hitting this branch
+                            // because the label variable `l` is still
+                            // wrapped inside a `Var(..)`
+
                             // Not a label, should be an error
-                            panic!("")
+                            println!("This is the stack item: {:?}", _item);
+                            println!("This is the stack \n{:?}", stack);
+                            println!("this term is not a label: {:?}", &**term);
+                            panic!("not a label")
                         }
                     }
                     None => {
