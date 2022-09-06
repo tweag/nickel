@@ -1,6 +1,6 @@
 //! Evaluation of a Nickel term.
 //!
-//! The implementation of &the Nickel abstract machine which evaluates a term. Note that this
+//! The implementation of the Nickel abstract machine which evaluates a term. Note that this
 //! machine is not currently formalized somewhere and is just a convenient name to designate the
 //! current implementation.
 //!
@@ -313,17 +313,9 @@ where
 
         clos = match &*shared_term {
             Term::Sealed(_, inner, lbl) => {
-                // I think that `peek_op_cont` doesn't check the stack well
-                // enough
                 let stack_item = stack.peek_op_cont();
                 match stack_item {
-                    Some(
-                        OperationCont::Op1(UnaryOp::Seq(), _)
-                        | OperationCont::Op2First(BinaryOp::Unseal(), _, _)
-                        | OperationCont::Op2Second(BinaryOp::Unseal(), _, _, _),
-                    ) => {
-                        // Copied from the  `_ if stack.is_top_thunk() || stack.is_top_cont()` case
-                        // Maybe we should abstract this out
+                    Some(OperationCont::Op2Second(BinaryOp::Unseal(), _, _, _)) => {
                         clos = Closure {
                             body: RichTerm {
                                 term: shared_term,
@@ -338,29 +330,36 @@ where
                             continuate_operation(clos, &mut stack, &mut call_stack)?
                         }
                     }
-                    Some(_item) => {
-                        // This cont should not be allowed to evaluate a sealed term;
-                        let RichTerm { term, .. } = lbl;
-                        println!("Sealed Term: {:?}", inner);
-                        println!("The Label: {:?}", term);
-                        if let Term::Lbl(lbl) = &**term {
-                            return Err(EvalError::BlameError(lbl.clone(), call_stack.clone()));
-                        } else {
-                            // Currently, we're hitting this branch
-                            // because the label variable `l` is still
-                            // wrapped inside a `Var(..)`
-
-                            // Not a label, should be an error
-                            println!("This is the stack item: {:?}", _item);
-                            println!("This is the stack \n{:?}", stack);
-                            println!("this term is not a label: {:?}", &**term);
-                            panic!("not a label")
+                    Some(OperationCont::Op1(UnaryOp::Seq(), _)) => {
+                        let update_closure = Closure {
+                            body: RichTerm {
+                                term: shared_term.clone(),
+                                pos,
+                            },
+                            env: env.clone(),
+                        };
+                        // Update the original thunk (the thunk which holds the result of the `Seq`) immediately.
+                        // We do this because  we are on a `Sealed` term, and this is in WHNF, and if we don't,
+                        // we will be unwrapping a `Sealed` term and assigning the "unsealed" value to the result
+                        // of the `Seq` operation. See also: https://github.com/tweag/nickel/issues/123
+                        update_thunks(&mut stack, &update_closure);
+                        // Then, evaluate / "seq" the inner value.
+                        Closure {
+                            body: inner.clone(),
+                            env,
                         }
                     }
-                    None => {
-                        // Is this even possible?
-                        panic!("Help!")
+                    Some(_item) => {
+                        // This `Cont` should not be allowed to evaluate a sealed term
+                        return Err(EvalError::BlameError(lbl.clone(), call_stack.clone()));
                     }
+                    None => Closure {
+                        body: RichTerm {
+                            term: shared_term,
+                            pos,
+                        },
+                        env,
+                    },
                 }
             }
             Term::Var(x) => {

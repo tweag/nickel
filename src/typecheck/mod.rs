@@ -437,8 +437,7 @@ fn walk<L: Linearizer>(
                 _ => Ok(()),
             }
         }
-        Term::Sealed(_, t, lbl) => {
-            walk(state, envs.clone(), lin, linearizer.scope(), lbl)?;
+        Term::Sealed(_, t, _lbl) => {
             walk(state, envs, lin, linearizer, t)
         } 
    }
@@ -875,7 +874,7 @@ fn type_check_<L: Linearizer>(
         }
         Term::SealingKey(_) => unify(state, ty, mk_typewrapper::sym())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
-        Term::Sealed(_, t, _lbl) => { 
+        Term::Sealed(_, t, _lbl) => {
             // type_check_(state, envs, lin, linearizer, lbl, ??ty)?;
             type_check_(state, envs, lin, linearizer, t, ty)
         }

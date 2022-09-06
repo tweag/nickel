@@ -144,7 +144,7 @@ pub enum Term {
     /// type variable. In our example, the last cast to `a` finds `Sealed(2, "a")`, while it
     /// expected `Sealed(1, _)`, hence it raises a positive blame.
     #[serde(skip)]
-    Sealed(SealingKey, RichTerm, RichTerm),
+    Sealed(SealingKey, RichTerm, Label),
 
     #[serde(serialize_with = "crate::serialize::serialize_meta_value")]
     #[serde(skip_deserializing)]
@@ -386,7 +386,8 @@ impl Term {
             | ResolvedImport(_) => {}
             Fun(_, ref mut t)
             | FunPattern(_, _, ref mut t)
-            | Op1(_, ref mut t)  => {
+            | Op1(_, ref mut t)
+            | Sealed(_, ref mut t, _) => {
                 func(t);
             }
             MetaValue(ref mut meta) => {
@@ -401,7 +402,6 @@ impl Term {
             }
             Let(_, ref mut t1, ref mut t2, _)
             | LetPattern(_, _, ref mut t1, ref mut t2)
-            | Sealed(_, ref mut t1, ref mut t2)
             | App(ref mut t1, ref mut t2)
             | Op2(_, ref mut t1, ref mut t2) => {
                 func(t1);
@@ -786,9 +786,6 @@ pub enum UnaryOp {
     /// See `GoDom`.
     GoArray(),
 
-    /// Seal a term with a sealing key (see [`Term::Sealed`]).
-    Seal(),
-
     /// Force the evaluation of its argument and proceed with the second.
     Seq(),
     /// Recursively force the evaluation of its first argument then returns the second.
@@ -976,6 +973,8 @@ pub enum BinaryOp {
     StrSplit(),
     /// Determine if a string is a substring of another one.
     StrContains(),
+    /// Seal a term with a sealing key (see [`Term::Sealed`]).
+    Seal(),
 }
 
 impl BinaryOp {
@@ -1179,11 +1178,11 @@ impl RichTerm {
                     pos,
                 )
             },
-            Term::Sealed(i, t1, t2) => {
+            Term::Sealed(i, t1, lbl) => {
                 let t1 = t1.traverse(f, state, order)?;
-                let t2 = t2.traverse(f, state, order)?;
+                // Should we ingore the label? (i.e lbl)
                 RichTerm::new(
-                    Term::Sealed(i, t1, t2),
+                    Term::Sealed(i, t1, lbl),
                     pos,
                 )
             },

@@ -230,16 +230,15 @@ impl Stack {
         }
     }
 
-    pub fn peek_op_cont(&mut self) -> Option<&OperationCont> {
-        // We want to skip the thunks on the stack
-        // I think this would fail if the stack is empty
-        // When else can this fail?
-        let mut last_idx = self.0.len() - 1;
-        while let Marker::Thunk(..) = self.0[last_idx] {
-            last_idx -= 1;
-        }
-        match &self.0[last_idx] {
-            Marker::Cont(cont, _, _) => Some(cont),
+    pub fn peek_op_cont(&self) -> Option<&OperationCont> {
+        let mut it = self
+            .0
+            .iter()
+            .rev()
+            .skip_while(|marker| matches!(marker, Marker::Thunk(..)));
+
+        match it.next() {
+            Some(Marker::Cont(cont, _, _)) => Some(&cont),
             _ => None,
         }
     }
