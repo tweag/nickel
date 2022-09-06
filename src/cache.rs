@@ -70,12 +70,20 @@ pub struct Cache {
     stdlib_ids: Option<Vec<FileId>>,
     /// The inferred type of wildcards for each `FileId`.
     wildcards: HashMap<FileId, Wildcards>,
-    /// Whether processing should try to continue even in case of errors.
-    error_tolerant: bool,
+    /// Whether processing should try to continue even in case of errors. Needed by the NLS.
+    error_tolerance: ErrorTolerance,
 
     #[cfg(debug_assertions)]
     /// Skip loading the stdlib, used for debugging purpose
     pub skip_stdlib: bool,
+}
+
+/// The error tolerance mode used by the parser. The NLS needs to try to
+/// continue even in case of errors.
+#[derive(Debug, Clone)]
+pub enum ErrorTolerance {
+    Tolerant,
+    Strict,
 }
 
 /// wrapping eval environment with typing environment
@@ -204,7 +212,7 @@ pub enum ResolvedTerm {
 }
 
 impl Cache {
-    pub fn new(error_tolerant: bool) -> Self {
+    pub fn new(error_tolerance: ErrorTolerance) -> Self {
         Cache {
             files: Files::new(),
             file_ids: HashMap::new(),
@@ -212,7 +220,7 @@ impl Cache {
             wildcards: HashMap::new(),
             imports: HashMap::new(),
             stdlib_ids: None,
-            error_tolerant,
+            error_tolerance,
 
             #[cfg(debug_assertions)]
             skip_stdlib: false,
@@ -370,14 +378,13 @@ impl Cache {
     pub fn parse(&mut self, file_id: FileId) -> Result<CacheOp<ParseErrors>, ParseErrors> {
         let result = self.parse_lax(file_id);
 
-        if self.error_tolerant {
-            result.map_err(|err| err.into())
-        } else {
-            match result? {
+        match self.error_tolerance {
+            ErrorTolerance::Tolerant => result.map_err(|err| err.into()),
+            ErrorTolerance::Strict => match result? {
                 CacheOp::Done(e) | CacheOp::Cached(e) if !e.no_errors() => Err(e),
                 CacheOp::Done(_) => Ok(CacheOp::Done(ParseErrors::none())),
                 CacheOp::Cached(_) => Ok(CacheOp::Cached(ParseErrors::none())),
-            }
+            },
         }
     }
 
@@ -415,14 +422,13 @@ impl Cache {
     ) -> Result<CacheOp<ParseErrors>, ParseErrors> {
         let result = self.parse_multi_lax(file_id, format);
 
-        if self.error_tolerant {
-            result.map_err(|err| err.into())
-        } else {
-            match result? {
+        match self.error_tolerance {
+            ErrorTolerance::Tolerant => result.map_err(|err| err.into()),
+            ErrorTolerance::Strict => match result? {
                 CacheOp::Done(e) | CacheOp::Cached(e) if !e.no_errors() => Err(e),
                 CacheOp::Done(_) => Ok(CacheOp::Done(ParseErrors::none())),
                 CacheOp::Cached(_) => Ok(CacheOp::Cached(ParseErrors::none())),
-            }
+            },
         }
     }
 

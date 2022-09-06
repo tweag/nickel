@@ -6,7 +6,7 @@
 //! Dually, the frontend is the user-facing part, which may be a CLI, a web application, a
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
-use crate::cache::{Cache, Envs};
+use crate::cache::{Cache, Envs, ErrorTolerance};
 use crate::error::{Error, EvalError, IOError, ParseError, ParseErrors, ReplError};
 use crate::identifier::Ident;
 use crate::parser::{grammar, lexer, ExtendedTerm};
@@ -83,7 +83,7 @@ impl ReplImpl {
     /// Create a new empty REPL.
     pub fn new() -> Self {
         ReplImpl {
-            cache: Cache::new(false),
+            cache: Cache::new(ErrorTolerance::Strict),
             parser: grammar::ExtendedTermParser::new(),
             env: Envs::new(),
             initial_type_env: typecheck::Environment::new(),
