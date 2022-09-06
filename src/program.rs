@@ -50,7 +50,7 @@ impl Program {
     }
 
     pub fn new_from_file(path: impl Into<OsString>) -> std::io::Result<Program> {
-        let mut cache = Cache::new();
+        let mut cache = Cache::new(ErrorTolerance::Strict);
         let main_id = cache.add_file(path)?;
 
         Ok(Program { main_id, cache })
@@ -62,7 +62,7 @@ impl Program {
         T: Read,
         S: Into<OsString> + Clone,
     {
-        let mut cache = Cache::new();
+        let mut cache = Cache::new(ErrorTolerance::Strict);
         let main_id = cache.add_source(source_name, source)?;
 
         Ok(Program { main_id, cache })

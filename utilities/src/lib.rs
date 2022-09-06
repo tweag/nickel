@@ -2,7 +2,7 @@
 use codespan::Files;
 use criterion::Criterion;
 use nickel_lang::{
-    cache::Cache,
+    cache::{Cache, Envs, ErrorTolerance},
     error::{Error, ParseError},
     eval,
     parser::{grammar, lexer},
@@ -117,9 +117,7 @@ impl<'b> Bench<'b> {
 }
 
 pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> {
-    use nickel_lang::cache::Envs;
-
-    let mut cache = Cache::new();
+    let mut cache = Cache::new(ErrorTolerance::Strict);
     let Envs { eval_env, type_env } = cache.prepare_stdlib().unwrap();
     Box::new(move |c: &mut Criterion| {
         rts.iter().for_each(|bench| {

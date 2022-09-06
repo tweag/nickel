@@ -1,5 +1,5 @@
 use assert_matches::assert_matches;
-use nickel_lang::error::{Error, EvalError, ParseError, TypecheckError};
+use nickel_lang::error::{Error, EvalError, ImportError, TypecheckError};
 use nickel_lang::program::Program;
 use nickel_lang::term::Term;
 use std::io::BufReader;
@@ -122,9 +122,7 @@ fn import_unexpected_token_fail() {
     .unwrap();
     assert_matches!(
         prog.eval(),
-        Err(Error::EvalError(EvalError::ParseError(
-            ParseError::UnexpectedToken(..)
-        )))
+        Err(Error::ImportError(ImportError::ParseErrors(..)))
     );
 }
 
@@ -143,8 +141,25 @@ fn import_unexpected_token_in_record_fail() {
     .unwrap();
     assert_matches!(
         prog.eval(),
-        Err(Error::EvalError(EvalError::ParseError(
-            ParseError::UnexpectedToken(..)
-        )))
+        Err(Error::ImportError(ImportError::ParseErrors(..)))
+    );
+}
+
+#[test]
+fn import_unexpected_token_buried_fail() {
+    let mut prog = Program::new_from_source(
+        BufReader::new(
+            format!(
+                "let _ign = {} in 1",
+                mk_import("unexpected_token_buried.ncl")
+            )
+            .as_bytes(),
+        ),
+        "should_fail",
+    )
+    .unwrap();
+    assert_matches!(
+        prog.eval(),
+        Err(Error::ImportError(ImportError::ParseErrors(..)))
     );
 }
