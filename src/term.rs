@@ -435,7 +435,7 @@ impl Term {
             Term::Record(..) | Term::RecRecord(..) => Some("Record"),
             Term::Array(..) => Some("Array"),
             Term::SealingKey(_) => Some("SealingKey"),
-            Term::Sealed(_, _, _) => Some("Sealed"),
+            Term::Sealed(..) => Some("Sealed"),
             Term::MetaValue(_) => Some("Metavalue"),
             Term::Let(..)
             | Term::LetPattern(..)
@@ -487,7 +487,7 @@ impl Term {
             Term::Record(..) | Term::RecRecord(..) => String::from("{ ... }"),
             Term::Array(..) => String::from("[ ... ]"),
             Term::SealingKey(_) => String::from("<sealing key>"),
-            Term::Sealed(_, _, _) => String::from("<sealed>"),
+            Term::Sealed(..) => String::from("<sealed>"),
             Term::MetaValue(ref meta) => {
                 let mut content = String::new();
 
@@ -574,7 +574,7 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
-            | Term::Sealed(_, _, _)
+            | Term::Sealed(..)
             | Term::MetaValue(_)
             | Term::Import(_)
             | Term::ResolvedImport(_)
@@ -614,7 +614,7 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
-            | Term::Sealed(_, _, _)
+            | Term::Sealed(..)
             | Term::MetaValue(_)
             | Term::Import(_)
             | Term::ResolvedImport(_)
