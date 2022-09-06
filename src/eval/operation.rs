@@ -1113,7 +1113,7 @@ fn process_binary_operation(
     match b_op {
         BinaryOp::Seal() => {
             if let Term::SealingKey(s) = &*t1 {
-                if let Term::Lbl(lbl) = &*t1 {
+                if let Term::Lbl(lbl) = &*t2 {
                     Ok(Closure::atomic_closure(
                         mk_fun!("x", Term::Sealed(*s, mk_term::var("x"), lbl.clone()))
                             .with_pos(pos_op_inh),
