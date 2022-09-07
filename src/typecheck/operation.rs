@@ -209,8 +209,8 @@ pub fn get_bop_type(
             mk_typewrapper::num(),
             mk_typewrapper::num(),
         ),
-         // Sym -> Dyn -> Dyn -> Dyn
-         BinaryOp::Seal() => (
+        // Sym -> Dyn -> Dyn -> Dyn
+        BinaryOp::Seal() => (
             mk_typewrapper::sym(),
             mk_typewrapper::dynamic(),
             mk_tyw_arrow!(AbsType::Dyn(), AbsType::Dyn()),
