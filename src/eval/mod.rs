@@ -358,6 +358,8 @@ where
                         // This `Cont` should not be allowed to evaluate a sealed term
                         return Err(EvalError::BlameError(lbl.clone(), call_stack.clone()));
                     }
+                    // The result of the evaluation is a `Sealed` term. 
+                    // Should this be `return Ok((RichTerm { .. }, env))` instead?  
                     None => Closure {
                         body: RichTerm {
                             term: shared_term,
