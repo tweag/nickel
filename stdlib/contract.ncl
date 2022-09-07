@@ -25,7 +25,7 @@
       if pol == lPol then
           %unseal% sy t (%blame% l)
       else
-          %seal% sy t,
+          %seal% sy l t,
 
   "$enums" = fun case l t =>
       if %typeof% t == `Enum then
@@ -73,7 +73,7 @@
           else
               %blame% (%tag% "missing polymorphic part" l)
       else
-          %record_insert% magic_fld acc (%seal% sy t),
+          %record_insert% magic_fld acc (%seal% sy l t),
 
   "$dyn_tail" = fun acc l t => acc & t,
 

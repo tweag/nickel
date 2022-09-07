@@ -317,6 +317,38 @@ where
         }
 
         clos = match &*shared_term {
+            Term::Sealed(_, inner, lbl) => {
+                let stack_item = stack.peek_op_cont();
+                let closure = Closure {
+                    body: RichTerm {
+                        term: shared_term.clone(),
+                        pos,
+                    },
+                    env: env.clone(),
+                };
+                // Update the original thunk (the thunk which holds the result of the op) in both cases,
+                // even if we continue with a seq.
+                // We do this because  we are on a `Sealed` term, and this is in WHNF, and if we don't,
+                // we will be unwrapping a `Sealed` term and assigning the "unsealed" value to the result
+                // of the `Seq` operation. See also: https://github.com/tweag/nickel/issues/123
+                update_thunks(&mut stack, &closure);
+                match stack_item {
+                    Some(OperationCont::Op2Second(BinaryOp::Unseal(), _, _, _)) => {
+                        continuate_operation(closure, &mut stack, &mut call_stack)?
+                    }
+                    Some(OperationCont::Op1(UnaryOp::Seq(), _)) => {
+                        // Then, evaluate / `Seq` the inner value.
+                        Closure {
+                            body: inner.clone(),
+                            env: env.clone(),
+                        }
+                    }
+                    None | Some(..) => {
+                        // This operation should not be allowed to evaluate a sealed term
+                        return Err(EvalError::BlameError(lbl.clone(), call_stack.clone()));
+                    }
+                }
+            }
             Term::Var(x) => {
                 let mut thunk = env
                     .get(x)
@@ -765,10 +797,9 @@ pub fn subst(rt: RichTerm, initial_env: &Environment, env: &Environment) -> Rich
 
             RichTerm::new(Term::OpN(op, ts), pos)
         }
-        Term::Sealed(i, t) => {
+        Term::Sealed(i, t, lbl) => {
             let t = subst(t, initial_env, env);
-
-            RichTerm::new(Term::Sealed(i, t), pos)
+            RichTerm::new(Term::Sealed(i, t, lbl), pos)
         }
         Term::Record(map, attrs) => {
             let map = map

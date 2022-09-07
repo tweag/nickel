@@ -55,11 +55,6 @@ pub fn get_uop_type(
         UnaryOp::ChangePolarity() | UnaryOp::GoDom() | UnaryOp::GoCodom() | UnaryOp::GoArray() => {
             (mk_typewrapper::dynamic(), mk_typewrapper::dynamic())
         }
-        // Sym -> Dyn -> Dyn
-        UnaryOp::Seal() => (
-            mk_typewrapper::sym(),
-            mk_tyw_arrow!(AbsType::Dyn(), AbsType::Dyn()),
-        ),
         // forall rows a. { id: a | rows} -> a
         UnaryOp::StaticAccess(id) => {
             let row = TypeWrapper::Ptr(state.table.fresh_var());
@@ -213,6 +208,12 @@ pub fn get_bop_type(
             mk_typewrapper::num(),
             mk_typewrapper::num(),
             mk_typewrapper::num(),
+        ),
+        // Sym -> Dyn -> Dyn -> Dyn
+        BinaryOp::Seal() => (
+            mk_typewrapper::sym(),
+            mk_typewrapper::dynamic(),
+            mk_tyw_arrow!(AbsType::Dyn(), AbsType::Dyn()),
         ),
         // Str -> Str -> Str
         BinaryOp::StrConcat() => (

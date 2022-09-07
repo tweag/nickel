@@ -122,7 +122,7 @@ pub enum Term {
 
     /// A key locking a sealed term.
     ///
-    /// A unique key corresponding to a type variable. See [`Term::Wrapped`] below.
+    /// A unique key corresponding to a type variable. See [`Term::Sealed`] below.
     #[serde(skip)]
     SealingKey(SealingKey),
 
@@ -145,7 +145,7 @@ pub enum Term {
     /// type variable. In our example, the last cast to `a` finds `Sealed(2, "a")`, while it
     /// expected `Sealed(1, _)`, hence it raises a positive blame.
     #[serde(skip)]
-    Sealed(SealingKey, RichTerm),
+    Sealed(SealingKey, RichTerm, Label),
 
     #[serde(serialize_with = "crate::serialize::serialize_meta_value")]
     #[serde(skip_deserializing)]
@@ -388,7 +388,7 @@ impl Term {
             Fun(_, ref mut t)
             | FunPattern(_, _, ref mut t)
             | Op1(_, ref mut t)
-            | Sealed(_, ref mut t) => {
+            | Sealed(_, ref mut t, _) => {
                 func(t);
             }
             MetaValue(ref mut meta) => {
@@ -436,7 +436,7 @@ impl Term {
             Term::Record(..) | Term::RecRecord(..) => Some("Record"),
             Term::Array(..) => Some("Array"),
             Term::SealingKey(_) => Some("SealingKey"),
-            Term::Sealed(_, _) => Some("Sealed"),
+            Term::Sealed(..) => Some("Sealed"),
             Term::MetaValue(_) => Some("Metavalue"),
             Term::Let(..)
             | Term::LetPattern(..)
@@ -488,7 +488,7 @@ impl Term {
             Term::Record(..) | Term::RecRecord(..) => String::from("{ ... }"),
             Term::Array(..) => String::from("[ ... ]"),
             Term::SealingKey(_) => String::from("<sealing key>"),
-            Term::Sealed(_, _) => String::from("<sealed>"),
+            Term::Sealed(..) => String::from("<sealed>"),
             Term::MetaValue(ref meta) => {
                 let mut content = String::new();
 
@@ -575,7 +575,7 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
-            | Term::Sealed(_, _)
+            | Term::Sealed(..)
             | Term::MetaValue(_)
             | Term::Import(_)
             | Term::ResolvedImport(_)
@@ -615,7 +615,7 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
-            | Term::Sealed(_, _)
+            | Term::Sealed(..)
             | Term::MetaValue(_)
             | Term::Import(_)
             | Term::ResolvedImport(_)
@@ -786,9 +786,6 @@ pub enum UnaryOp {
     ///
     /// See `GoDom`.
     GoArray(),
-
-    /// Seal a term with a sealing key (see [`Term::Sealed`]).
-    Seal(),
 
     /// Force the evaluation of its argument and proceed with the second.
     Seq(),
@@ -977,6 +974,8 @@ pub enum BinaryOp {
     StrSplit(),
     /// Determine if a string is a substring of another one.
     StrContains(),
+    /// Seal a term with a sealing key (see [`Term::Sealed`]).
+    Seal(),
 }
 
 impl BinaryOp {
@@ -1180,10 +1179,10 @@ impl RichTerm {
                     pos,
                 )
             },
-            Term::Sealed(i, t) => {
-                let t = t.traverse(f, state, order)?;
+            Term::Sealed(i, t1, lbl) => {
+                let t1 = t1.traverse(f, state, order)?;
                 RichTerm::new(
-                    Term::Sealed(i, t),
+                    Term::Sealed(i, t1, lbl),
                     pos,
                 )
             },

@@ -47,7 +47,7 @@ enum EqResult {
 }
 
 /// An operation continuation as stored on the stack.
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub enum OperationCont {
     Op1(
         /* unary operation */ UnaryOp,
@@ -434,20 +434,6 @@ fn process_unary_operation(
                 ))
             }
         },
-        UnaryOp::Seal() => {
-            if let Term::SealingKey(s) = &*t {
-                Ok(Closure::atomic_closure(
-                    mk_fun!("x", Term::Sealed(*s, mk_term::var("x"))).with_pos(pos_op_inh),
-                ))
-            } else {
-                Err(EvalError::TypeError(
-                    String::from("Sym"),
-                    String::from("wrap"),
-                    arg_pos,
-                    RichTerm { term: t, pos },
-                ))
-            }
-        }
         UnaryOp::StaticAccess(id) => {
             if let Term::Record(static_map, ..) = &*t {
                 match static_map.get(&id) {
@@ -1125,6 +1111,36 @@ fn process_binary_operation(
     let pos_op_inh = pos_op.into_inherited();
 
     match b_op {
+        BinaryOp::Seal() => {
+            if let Term::SealingKey(s) = &*t1 {
+                if let Term::Lbl(lbl) = &*t2 {
+                    Ok(Closure::atomic_closure(
+                        mk_fun!("x", Term::Sealed(*s, mk_term::var("x"), lbl.clone()))
+                            .with_pos(pos_op_inh),
+                    ))
+                } else {
+                    Err(EvalError::TypeError(
+                        String::from("Lbl"),
+                        String::from("%seal%, 2nd argument"),
+                        snd_pos,
+                        RichTerm {
+                            term: t2,
+                            pos: pos2,
+                        },
+                    ))
+                }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Sym"),
+                    String::from("%seal%, 1st argument"),
+                    fst_pos,
+                    RichTerm {
+                        term: t1,
+                        pos: pos1,
+                    },
+                ))
+            }
+        }
         BinaryOp::Plus() => {
             if let Term::Num(n1) = *t1 {
                 if let Term::Num(n2) = *t2 {
@@ -1415,7 +1431,7 @@ fn process_binary_operation(
                 // Return a function that either behaves like the identity or
                 // const unwrapped_term
 
-                Ok(if let Term::Sealed(s2, t) = t2.into_owned() {
+                Ok(if let Term::Sealed(s2, t, _) = t2.into_owned() {
                     if *s1 == s2 {
                         Closure {
                             body: mk_fun!("-invld", t),

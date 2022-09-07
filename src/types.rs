@@ -74,7 +74,7 @@ pub enum AbsType<Ty> {
     Str(),
     /// A symbol.
     ///
-    /// See [`crate::term::Term::Wrapped`].
+    /// See [`crate::term::Term::Sealed`].
     Sym(),
     /// A type created from a user-defined contract.
     Flat(RichTerm),
@@ -236,7 +236,7 @@ impl Types {
     ///   locally when opening a `forall`.
     /// - `pol` is the current polarity, which is toggled when generating a contract for the argument
     ///   of an arrow type (see [`crate::label::Label`]).
-    /// - `sy` is a counter used to generate fresh symbols for `forall` contracts (see [`crate::term::Wrapped`]).
+    /// - `sy` is a counter used to generate fresh symbols for `forall` contracts (see [`crate::term::Term::Sealed`]).
     fn subcontract(
         &self,
         mut h: HashMap<Ident, (RichTerm, RichTerm)>,
