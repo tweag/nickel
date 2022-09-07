@@ -1132,7 +1132,7 @@ fn process_binary_operation(
             } else {
                 Err(EvalError::TypeError(
                     String::from("Sym"),
-                    String::from("wrap"),
+                    String::from("%seal%, 1st argument"),
                     fst_pos,
                     RichTerm {
                         term: t1,
@@ -1431,7 +1431,7 @@ fn process_binary_operation(
                 // Return a function that either behaves like the identity or
                 // const unwrapped_term
 
-                Ok(if let Term::Sealed(s2, t, _lbl) = t2.into_owned() {
+                Ok(if let Term::Sealed(s2, t, _) = t2.into_owned() {
                     if *s1 == s2 {
                         Closure {
                             body: mk_fun!("-invld", t),

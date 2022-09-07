@@ -382,7 +382,7 @@ fn walk<L: Linearizer>(
                 _ => Ok(()),
             }
         }
-        Term::Sealed(_, t, _lbl) => walk(state, env, lin, linearizer, t)
+        Term::Sealed(_, t, _) => walk(state, env, lin, linearizer, t)
    }
 }
 
@@ -815,7 +815,7 @@ fn type_check_<L: Linearizer>(
         }
         Term::SealingKey(_) => unify(state, ty, mk_typewrapper::sym())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
-        Term::Sealed(_, t, _lbl) => type_check_(state, env, lin, linearizer, t, ty),
+        Term::Sealed(_, t, _) => type_check_(state, env, lin, linearizer, t, ty),
         Term::Import(_) => unify(state, ty, mk_typewrapper::dynamic())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
         // We use the apparent type of the import for checking. This function doesn't recursively

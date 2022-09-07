@@ -339,7 +339,8 @@ where
                             },
                             env: env.clone(),
                         };
-                        // Update the original thunk (the thunk which holds the result of the `Seq`) immediately.
+                        // Update the original thunk (the thunk which holds the result of the op) in both cases,
+                        // even if we continue with a seq.
                         // We do this because  we are on a `Sealed` term, and this is in WHNF, and if we don't,
                         // we will be unwrapping a `Sealed` term and assigning the "unsealed" value to the result
                         // of the `Seq` operation. See also: https://github.com/tweag/nickel/issues/123
@@ -351,7 +352,7 @@ where
                         }
                     }
                     None | Some(..) => {
-                        // This `Continuation` should not be allowed to evaluate a sealed term
+                        // This operation should not be allowed to evaluate a sealed term
                         return Err(EvalError::BlameError(lbl.clone(), call_stack.clone()));
                     }
                 }

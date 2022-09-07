@@ -1181,7 +1181,6 @@ impl RichTerm {
             },
             Term::Sealed(i, t1, lbl) => {
                 let t1 = t1.traverse(f, state, order)?;
-                // Should we ingore the label? (i.e lbl)
                 RichTerm::new(
                     Term::Sealed(i, t1, lbl),
                     pos,
