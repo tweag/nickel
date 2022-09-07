@@ -328,12 +328,8 @@ where
                             },
                             env,
                         };
-                        if stack.is_top_thunk() {
-                            update_thunks(&mut stack, &clos);
-                            clos
-                        } else {
-                            continuate_operation(clos, &mut stack, &mut call_stack)?
-                        }
+                        update_thunks(&mut stack, &clos);
+                        continuate_operation(clos, &mut stack, &mut call_stack)?
                     }
                     Some(OperationCont::Op1(UnaryOp::Seq(), _)) => {
                         let update_closure = Closure {
@@ -348,25 +344,16 @@ where
                         // we will be unwrapping a `Sealed` term and assigning the "unsealed" value to the result
                         // of the `Seq` operation. See also: https://github.com/tweag/nickel/issues/123
                         update_thunks(&mut stack, &update_closure);
-                        // Then, evaluate / "seq" the inner value.
+                        // Then, evaluate / `Seq` the inner value.
                         Closure {
                             body: inner.clone(),
                             env,
                         }
                     }
-                    Some(_item) => {
-                        // This `Cont` should not be allowed to evaluate a sealed term
+                    None | Some(..) => {
+                        // This `Continuation` should not be allowed to evaluate a sealed term
                         return Err(EvalError::BlameError(lbl.clone(), call_stack.clone()));
                     }
-                    // The result of the evaluation is a `Sealed` term.
-                    // Should this be `return Ok((RichTerm { .. }, env))` instead?
-                    None => Closure {
-                        body: RichTerm {
-                            term: shared_term,
-                            pos,
-                        },
-                        env,
-                    },
                 }
             }
             Term::Var(x) => {
