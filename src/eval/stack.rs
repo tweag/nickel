@@ -230,15 +230,15 @@ impl Stack {
         }
     }
 
-    pub fn peek_op_cont(&self) -> Option<&OperationCont> {
+    pub fn peek_op_cont(&self) -> Option<OperationCont> {
         let mut it = self
             .0
             .iter()
             .rev()
-            .skip_while(|marker| matches!(marker, Marker::Thunk(..)));
+            .skip_while(|&marker| matches!(marker, Marker::Thunk(..)));
 
         match it.next() {
-            Some(Marker::Cont(cont, _, _)) => Some(&cont),
+            Some(Marker::Cont(cont, _, _)) => Some(cont.clone()),
             _ => None,
         }
     }

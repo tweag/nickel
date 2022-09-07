@@ -47,7 +47,7 @@ enum EqResult {
 }
 
 /// An operation continuation as stored on the stack.
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub enum OperationCont {
     Op1(
         /* unary operation */ UnaryOp,
