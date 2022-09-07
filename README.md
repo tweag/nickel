@@ -51,6 +51,7 @@ configuration, be it for a single app, a machine, whole infrastructure, or a
 build system.
 
 The motivating use cases are in particular:
+
 - The [Nix package manager](https://nixos.org/): Nix is a declarative package
     manager using its own language for specifying packages. Nickel is an
     evolution of the Nix language, while trying to overcome some of its
@@ -66,7 +67,7 @@ The motivating use cases are in particular:
     a specification of the dependency graph.
 
 Most aforementioned projects have their own bespoke configuration language. See
-[Related projects and inspirations](#Related-projects-and-inspirations). In
+[Related projects and inspirations](#related-projects-and-inspirations). In
 general, application-specific languages might suffer from feature creep, lack of
 abstractions or just feel ad hoc. Nickel buys you more for less.
 
@@ -81,39 +82,46 @@ the `nickel-lang` crate documentation).
 ### Run
 
 1. Start Nickel
-   * with [flake-enabled](https://nixos.wiki/wiki/Flakes) Nix directly
+
+   - with [flake-enabled](https://nixos.wiki/wiki/Flakes) Nix directly
      with `nix run nickel` (which pulls it from the global flakes
      registry), or with `nix run github:tweag/nickel` (which pulls it
      from the repo). You can use [our binary cache](https://nickel.cachix.org) to
      prevent rebuilding a lot of packages. You pass in arguments with
      an extra `--` as in `nix run nickel -- repl`,
-   * with `./nickel`, after [building](#Build) this repo, depending on the
+   - with `./nickel`, after [building](#build) this repo, depending on the
      location of the executable and passing in arguments directly,
-   * or with `cargo run` after [building](#Build), passing in arguments with
+   - or with `cargo run` after [building](#build), passing in arguments with
      an extra `--` as in `cargo run -- -f program.ncl`.
 
 2. Run your first program:
-  ```console
-  $ ./nickel <<< 'let x = 2 in x + x'
-  4
-  ```
-  Or load it from a file:
-  ```console
-  $ echo 'let s = "world" in "Hello, " ++ s' > program.ncl
-  $ ./nickel -f program.ncl
-  "Hello, world"
-  ```
+
+    ```console
+    $ ./nickel <<< 'let x = 2 in x + x'
+    4
+    ```
+
+    Or load it from a file:
+
+    ```console
+    $ echo 'let s = "world" in "Hello, " ++ s' > program.ncl
+    $ ./nickel -f program.ncl
+    "Hello, world"
+    ```
+
 3. Start a REPL:
-  ```console
-  $ ./nickel repl
-  nickel> let x = 2 in x + x
-  4
 
-  nickel>
-  ```
-  Use `:help` for a list of available commands.
+    ```console
+    $ ./nickel repl
+    nickel> let x = 2 in x + x
+    4
 
+    nickel>
+    ```
+
+    Use `:help` for a list of available commands.
 4. Export your configuration to JSON, YAML or TOML:
+
   ```console
   $ ./nickel export --format json <<< '{foo = "Hello, world!"}'
   {
@@ -126,38 +134,46 @@ for help about a specific subcommand.
 
 #### Editor Setup
 
-Nickel has syntax highlighting plugins for Vim/Neovim, and VSCode.
-In-editor diagnostics, type hints, and auto-completion are provided by the Nickel Language Server.
-Please follow [this guide](https://github.com/tweag/nickel/tree/master/lsp) to setup syntax highlighting and NLS.
+Nickel has syntax highlighting plugins for Vim/Neovim, and VSCode. In-editor
+diagnostics, type hints, and auto-completion are provided by the Nickel Language
+Server. Please follow
+[this guide](https://github.com/tweag/nickel/tree/master/lsp) to setup syntax
+highlighting and NLS.
 
 ### Build
 
 [rust-guide]: https://doc.rust-lang.org/cargo/getting-started/installation.html
 
 1. Download build dependencies:
+
    - **With Nix**: If you have [Nix](https://nixos.org/nix) installed:
+
      ```console
-     $ nix-shell shell.nix
+     nix-shell shell.nix
      ```
+
      to be dropped in a shell, ready to build. You can use [our binary
-     cache](https://nickel.cachix.org) to prevent rebuilding a lot of
-     packages.
+     cache](https://nickel.cachix.org) to prevent rebuilding a lot of packages.
    - **Without Nix**: otherwise, follow [this guide][rust-guide] to install Rust
      and Cargo first.
+
 1. Build Nickel:
+
    ```console
-   $ cargo build
+   cargo build
    ```
+
    And voilà! Generated files are placed in `target/debug`.
 1. *(optional)* make a symbolic link to the executable:
+
   ```console
-  $ ln -S nickel target/debug/nickel
+  ln -S nickel target/debug/nickel
   ```
 
 ### Tests
 
 ```console
-$ cargo test
+cargo test
 ```
 
 ### Documentation
@@ -169,9 +185,11 @@ repository as a collection of Markdown files in `doc/manual`.
 To get the documentation of the `nickel-lang` codebase itself:
 
 1. Build the doc:
-  ```console
-  $ cargo doc --no-deps
-  ```
+
+    ```console
+    cargo doc --no-deps
+    ```
+
 2. Open the file `target/doc/nickel/index.html` in your browser.
 
 ### Examples

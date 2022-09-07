@@ -28,13 +28,17 @@ the associated technical document [RFC001][rfc001].
 The section describes the behavior and use-cases of merge, by considering the
 following situations:
 
+<!-- markdownlint-disable MD051 -->
+
 - [Merging two records without common fields](#simple-merge-(no-common-fields))
 - [Merging records with common fields](#recursive-merge-(with-common-fields))
 - [Merging records with metadata](#merging-record-with-metadata)
-  * [Default values](#default-values)
-  * [Contracts](#contracts)
-  * [Documentation](#documentation)
+  - [Default values](#default-values)
+  - [Contracts](#contracts)
+  - [Documentation](#documentation)
 - [Recursive overriding](#recursive-overriding)
+
+<!-- markdownlint-enable MD051 -->
 
 ## Simple merge (no common fields)
 
@@ -46,7 +50,7 @@ to `{foo = 1, bar = "bar", baz = false}`.
 
 Technically, if we write the left operand as:
 
-```
+```text
 left = {
   field_left_1 = value_left_1,
   ..,
@@ -56,7 +60,7 @@ left = {
 
 And the right operand as:
 
-```
+```text
 right {
   field_right_1 = value_right_1,
   ..,
@@ -66,7 +70,7 @@ right {
 
 Then the merge `left & right` evaluates to the record:
 
-```
+```text
 {
   field_left_1 = value_left_1,
   ..,
@@ -161,7 +165,7 @@ unless one of the following condition hold:
 
 ### Specification
 
-```
+```text
 left = {
   field_left_1 = value_left_1,
   ..,
@@ -174,7 +178,7 @@ left = {
 
 And the right operand as:
 
-```
+```text
 right {
   field_right_1 = value_right_1,
   ..,
@@ -188,7 +192,7 @@ right {
 Where the `field_left_i` and `field_right_j` are distinct for all `i` and `j`.
 Then the merge `left & right` evaluates to the record:
 
-```
+```text
 {
   field_left_1 = value_left_1,
   ..,
@@ -204,7 +208,7 @@ Then the merge `left & right` evaluates to the record:
 
 For two values `v1` and `v2`, if at least one value is not a record, then
 
-```
+```text
 v1 & v2 = v1    if (type_of(v1) is Num, Bool, Str, Enum or v1 == null)
                    AND v1 == v2
           _|_   otherwise (indicates failure)
@@ -271,7 +275,7 @@ recursively merged, if the priorities are the same. Without loss of generality,
 we consider the simple case of two records with only one field, which is the
 same on both side:
 
-```
+```text
 {common = left} & {common = right}
 = {
   common = left          if p(left) > p(right)
@@ -308,7 +312,7 @@ Because merging is meant to be symmetric, Nickel is unable to know which value
 to pick between `enabled = true` and `enabled = false` for the firewall, and
 thus fail:
 
-```
+```text
 error: non mergeable terms
   ┌─ repl-input-0:2:22
   │
@@ -426,7 +430,7 @@ let GreaterThan
 
 This fails at evaluation:
 
-```
+```text
 error: contract broken by a value.
 [..]
    ┌─ repl-input-1:16:19
@@ -440,7 +444,6 @@ note:
 13 │     port | GreaterThan 1024
    │            ^^^^^^^^^^^^^^^^ bound here
 ```
-
 
 ### Documentation
 
@@ -458,9 +461,10 @@ config.ncl query foo` on:
 }
 ```
 
-Will print `"Some documentation"` as expected. If both sides have documentation, the behavior
-is unspecified, as merging two distinct blobs of text doesn't make sense
-in general. Currently, Nickel will randomly keeps one of the two in practice.
+Will print `"Some documentation"` as expected. If both sides have documentation,
+the behavior is unspecified, as merging two distinct blobs of text doesn't make
+sense in general. Currently, Nickel will randomly keeps one of the two in
+practice.
 
 ## Recursive overriding
 
@@ -500,8 +504,9 @@ here, `input` -- will also be updated automatically*. For example, `base_config
 }
 ```
 
-Currently, one can only override a field that has been marked as default beforehand. A
-more ergonomic way of overriding is planned, and described in [RFC001][rfc001].
+Currently, one can only override a field that has been marked as default
+beforehand. A more ergonomic way of overriding is planned, and described in
+[RFC001][rfc001].
 
 ### Example
 

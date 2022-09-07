@@ -17,6 +17,7 @@
 //! the term level, and together with [crate::eval::merge], they allow for flexible and modular
 //! definitions of contracts, record and metadata all together.
 use crate::destruct::Destruct;
+use crate::error::ParseError;
 use crate::identifier::Ident;
 use crate::label::Label;
 use crate::match_sharedterm;
@@ -157,7 +158,7 @@ pub enum Term {
     #[serde(skip)]
     ResolvedImport(FileId),
     #[serde(skip)]
-    ParseError,
+    ParseError(ParseError),
 }
 
 pub type SealingKey = i32;
@@ -361,7 +362,7 @@ impl Term {
     {
         use self::Term::*;
         match self {
-            Null | ParseError => (),
+            Null | ParseError(_) => (),
             Switch(ref mut t, ref mut cases, ref mut def) => {
                 cases.iter_mut().for_each(|c| {
                     let (_, t) = c;
@@ -448,7 +449,7 @@ impl Term {
             | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
-            | Term::ParseError => None,
+            | Term::ParseError(_) => None,
         }
         .map(String::from)
     }
@@ -512,7 +513,7 @@ impl Term {
                 format!("<{}{}={}>", content, value_label, value)
             }
             Term::Var(id) => id.to_string(),
-            Term::ParseError => String::from("<parse error>"),
+            Term::ParseError(_) => String::from("<parse error>"),
             Term::Let(..)
             | Term::LetPattern(..)
             | Term::App(_, _)
@@ -580,7 +581,7 @@ impl Term {
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
-            | Term::ParseError => false,
+            | Term::ParseError(_) => false,
         }
     }
 
@@ -620,7 +621,7 @@ impl Term {
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
-            | Term::ParseError => false,
+            | Term::ParseError(_) => false,
         }
     }
 
@@ -652,7 +653,7 @@ impl Term {
             | Term::MetaValue(..)
             | Term::Import(..)
             | Term::ResolvedImport(..)
-            | Term::ParseError => false,
+            | Term::ParseError(_) => false,
         }
     }
 }
@@ -839,16 +840,16 @@ pub enum UnaryOp {
     /// Transform a string to an enum.
     EnumFromStr(),
     /// Test if a regex matches a string.
-    /// Like [`StrMatch`], this is a unary operator because we would like a way to share the
+    /// Like [`UnaryOp::StrMatch`], this is a unary operator because we would like a way to share the
     /// same "compiled regex" for many matching calls. This is done by returning functions
-    /// wrapping [`StrIsMatchCompiled`] and [`StrMatchCompiled`]
+    /// wrapping [`UnaryOp::StrIsMatchCompiled`] and [`UnaryOp::StrMatchCompiled`]
     StrIsMatch(),
     /// Match a regex on a string, and returns the captured groups together, the index of the
     /// match, etc.
     StrMatch(),
-    /// Version of `StrIsMatch` which remembers the compiled regex.
+    /// Version of [`UnaryOp::StrIsMatch`] which remembers the compiled regex.
     StrIsMatchCompiled(CompiledRegex),
-    /// Version of `StrMatch` which remembers the compiled regex.
+    /// Version of [`UnaryOp::StrMatch`] which remembers the compiled regex.
     StrMatchCompiled(CompiledRegex),
 }
 
@@ -1298,6 +1299,28 @@ impl RichTerm {
             TraverseOrder::BottomUp => f(result, state),
         }
     }
+
+    /// Pretty print a term capped to a given max length (in characters). Useful to limit the size
+    /// of terms reported e.g. in typechecking errors. If the output of pretty printing is greater
+    /// than the bound, the string is truncated to `max_width` and the last character after
+    /// truncate is replaced by the ellipsis unicode character U+2026.
+    pub fn pretty_print_cap(&self, max_width: usize) -> String {
+        let output = format!("{}", self);
+
+        if output.len() <= max_width {
+            output
+        } else {
+            let (end, _) = output.char_indices().nth(max_width).unwrap();
+            let mut truncated = String::from(&output[..end]);
+
+            if max_width >= 2 {
+                truncated.pop();
+                truncated.push('\u{2026}');
+            }
+
+            truncated
+        }
+    }
 }
 
 impl From<RichTerm> for Term {
@@ -1318,6 +1341,18 @@ impl From<Term> for RichTerm {
             term: SharedTerm::new(t),
             pos: TermPos::None,
         }
+    }
+}
+
+impl std::fmt::Display for RichTerm {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        use crate::pretty::*;
+        use pretty::BoxAllocator;
+
+        let allocator = BoxAllocator;
+
+        let doc: DocBuilder<_, ()> = self.clone().pretty(&allocator);
+        doc.render_fmt(80, f)
     }
 }
 

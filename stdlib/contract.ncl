@@ -27,11 +27,14 @@
       else
           %seal% sy l t,
 
-  "$row_extend" = fun contr case l t =>
-      if (case t) then
-          t
+  "$enums" = fun case l t =>
+      if %typeof% t == `Enum then
+          %assume% case l t
       else
-          %assume% contr l t,
+          %blame% (%tag% "not an enum tag" l),
+
+  "$enum_fail" = fun l =>
+      %blame% (%tag% "tag not included in the enum type" l),
 
   "$record" = fun cont l t =>
       if %typeof% t == `Record then

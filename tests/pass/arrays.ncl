@@ -10,6 +10,13 @@ let Assert = fun l x => x || %blame% l in
   array.length [1,2,3] == 3,
   array.length ([] @ [1,2] @ [3,4] @ []) == 4,
 
+  # sort
+  let cmp = fun x y =>
+    if x < y then `Lesser
+    else if x == y then `Equal
+    else `Greater
+  in array.sort cmp [3, 42, -1, -5] == [-5, -1, 3, 42],
+
   # Test case added after https://github.com/tweag/nickel/issues/154
   let x = 1 in let l = [x] @ [2] in %head% l == 1,
 

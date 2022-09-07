@@ -2027,13 +2027,13 @@ fn process_binary_operation(
 
             if let Term::Enum(ref id) = t1.as_ref() {
                 // Serialization needs all variables term to be fully substituted
-                let global_env = Environment::new();
+                let initial_env = Environment::new();
                 let rt2 = subst(
                     RichTerm {
                         term: t2,
                         pos: pos2,
                     },
-                    &global_env,
+                    &initial_env,
                     &env2,
                 );
 

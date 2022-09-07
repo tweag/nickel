@@ -40,6 +40,7 @@ What to do depends on the context:
     for the sake of clarity.
 
     Example:
+
     ```nickel
     let foo : Num =
       let addTwo = fun x => x + 2 in
@@ -60,6 +61,7 @@ Types are not adding much for configuration data, while contracts are more
 flexible and expressive.
 
 Example:
+
 ```nickel
 let Schema = {
   name | Str

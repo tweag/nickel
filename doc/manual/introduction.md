@@ -52,6 +52,7 @@ configuration, be it for a single app, a machine, whole infrastructure, or a
 build system.
 
 The motivating use cases are in particular:
+
 - The [Nix package manager](https://nixos.org/): Nix is a declarative package
     manager using its own language for specifying packages. Nickel is an
     evolution of the Nix language, while trying to overcome some of its

@@ -1,3 +1,6 @@
 fn main() {
-    lalrpop::process_root().unwrap();
+    lalrpop::Configuration::new()
+        .use_cargo_dir_conventions()
+        .process_file("src/parser/grammar.lalrpop")
+        .unwrap();
 }

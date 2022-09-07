@@ -2,7 +2,7 @@
 use codespan::Files;
 use criterion::Criterion;
 use nickel_lang::{
-    cache::Cache,
+    cache::{Cache, Envs, ErrorTolerance},
     error::{Error, ParseError},
     eval,
     parser::{grammar, lexer},
@@ -117,10 +117,8 @@ impl<'b> Bench<'b> {
 }
 
 pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> {
-    use nickel_lang::cache::GlobalEnv;
-
-    let mut cache = Cache::new();
-    let GlobalEnv { eval_env, type_env } = cache.prepare_stdlib().unwrap();
+    let mut cache = Cache::new(ErrorTolerance::Strict);
+    let Envs { eval_env, type_env } = cache.prepare_stdlib().unwrap();
     Box::new(move |c: &mut Criterion| {
         rts.iter().for_each(|bench| {
             let t = bench.term();
@@ -180,7 +178,7 @@ macro_rules! ncl_bench_group {
     (name = $group_name:ident; config = $config:expr; $($b:tt),+ $(,)*) => {
         pub fn $group_name() {
             use nickel_lang::{
-                cache::{GlobalEnv, Cache, ImportResolver},
+                cache::{Envs, Cache, ImportResolver},
                 eval::eval,
                 transform::import_resolution::resolve_imports,
             };
@@ -188,7 +186,7 @@ macro_rules! ncl_bench_group {
             let mut c: criterion::Criterion<_> = $config
                 .configure_from_args();
             let mut cache = Cache::new();
-            let GlobalEnv{eval_env, type_env} = cache.prepare_stdlib().unwrap();
+            let Envs {eval_env, type_env} = cache.prepare_stdlib().unwrap();
             $(
                 let bench = $crate::ncl_bench!$b;
                 let t = bench.term();

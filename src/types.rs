@@ -51,13 +51,15 @@
 //! otherwise.  Contract checks are introduced by `Promise` and `Assume` blocks or alternatively by
 //! enriched values `Contract` or `ContractDefault`. They ensure sane interaction between typed and
 //! untyped parts.
-use crate::error::{ParseError, ParseErrors, TypecheckError};
-use crate::identifier::Ident;
-use crate::term::make as mk_term;
-use crate::term::{RichTerm, Term, TraverseOrder};
-use crate::{mk_app, mk_fun, mk_switch};
-use std::collections::HashMap;
-use std::fmt;
+use crate::{
+    error::{ParseError, ParseErrors, TypecheckError},
+    identifier::Ident,
+    mk_app, mk_fun,
+    term::make as mk_term,
+    term::{RichTerm, Term, TraverseOrder},
+};
+
+use std::{collections::HashMap, fmt};
 
 /// A Nickel type.
 #[derive(Clone, PartialEq, Debug)]
@@ -184,6 +186,40 @@ impl From<UnboundTypeVariableError> for ParseErrors {
 #[derive(Clone, PartialEq, Debug)]
 pub struct Types(pub AbsType<Box<Types>>);
 
+/// An item as returned by an iterator over a row type.
+///
+/// The parameter `T` is there because row iterators are implemented for different flavours of
+/// [`AbsType`] (currently for [`Types`] and [`crate::typewrapper::TypeWrapper`]).
+pub enum RowIteratorItem<'a, T> {
+    /// A non-empty tail.
+    Tail(&'a T),
+    /// A row binding.
+    Row(&'a Ident, Option<&'a T>),
+}
+
+/// An iterator over a row type, returning items by reference.
+pub struct RowIterator<'a, T> {
+    pub(crate) next: Option<&'a T>,
+}
+
+impl<'a> Iterator for RowIterator<'a, Types> {
+    type Item = RowIteratorItem<'a, Types>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next.and_then(|next| match next {
+            Types(AbsType::RowEmpty()) => None,
+            Types(AbsType::RowExtend(id, ty_row, tail)) => {
+                self.next = Some(tail);
+                Some(RowIteratorItem::Row(id, ty_row.as_ref().map(Box::as_ref)))
+            }
+            ty => {
+                self.next = None;
+                Some(RowIteratorItem::Tail(ty))
+            }
+        })
+    }
+}
+
 impl Types {
     /// Return the contract corresponding to a type, either as a function or a record. Said
     /// contract must then be applied using the `Assume` primitive operation.
@@ -259,39 +295,59 @@ impl Types {
             }
             AbsType::RowEmpty() | AbsType::RowExtend(..) => contract::fail(),
             AbsType::Enum(ref r) => {
-                fn form(
-                    ty: Types,
-                    h: HashMap<Ident, (RichTerm, RichTerm)>,
-                ) -> Result<RichTerm, UnboundTypeVariableError> {
-                    let ctr = match ty.0 {
-                        AbsType::RowEmpty() => contract::fail(),
-                        AbsType::RowExtend(_, Some(_), _) => {
-                            panic!("It should be a row without type")
-                        }
-                        AbsType::RowExtend(id, None, rest) => {
-                            let rest_contract = form(*rest, h)?;
+                let mut cases = HashMap::new();
+                let mut has_tail = false;
+                let value_arg = Ident::from("x");
+                let label_arg = Ident::from("l");
 
-                            mk_app!(
-                                contract::row_extend(),
-                                rest_contract,
-                                mk_fun!(
-                                    "x",
-                                    mk_switch!(
-                                        mk_term::var("x"),
-                                        (id, Term::Bool(true)) ;
-                                        Term::Bool(false)
-                                    )
-                                )
-                            )
+                for row in r.iter_as_rows() {
+                    match row {
+                        RowIteratorItem::Row(id, _ty) => {
+                            debug_assert!(_ty.is_none());
+                            cases.insert(id.clone(), mk_term::var(value_arg.clone()));
                         }
-                        AbsType::Var(ref id) => get_var(&h, id, true)?,
-                        not_row => panic!("It should be a row!! {:?}", not_row),
-                    };
-
-                    Ok(ctr)
+                        RowIteratorItem::Tail(tail) => {
+                            // We only expect a type variable in tail position
+                            debug_assert!(matches!(tail, Types(AbsType::Var(_))));
+                            has_tail = true;
+                            break;
+                        }
+                    }
                 }
 
-                form(*r.clone(), h)?
+                // If the enum type has a tail, the tail must be a universally quantified variable,
+                // and this means that the tag can be anything.
+                let case_body = if has_tail {
+                    mk_term::var(value_arg.clone())
+                }
+                // Otherwise, we build a switch with all the tags as cases, which just returns the
+                // original argument, and a default case that blames.
+                //
+                // For example, for an enum type [| `foo, `bar, `baz |], the `case` function looks
+                // like:
+                //
+                // ```
+                // fun l x =>
+                //   switch {
+                //     `foo => x,
+                //     `bar => x,
+                //     `baz => x,
+                //     _ => $enum_fail l
+                //   } x
+                // ```
+                else {
+                    RichTerm::from(Term::Switch(
+                        mk_term::var(value_arg.clone()),
+                        cases,
+                        Some(mk_app!(
+                            contract::enum_fail(),
+                            mk_term::var(label_arg.clone())
+                        )),
+                    ))
+                };
+                let case = mk_fun!(label_arg, value_arg, case_body);
+
+                mk_app!(contract::enums(), case)
             }
             AbsType::StaticRecord(ref ty) => {
                 fn form(
@@ -449,6 +505,15 @@ impl Types {
             TraverseOrder::TopDown => Ok(result),
             TraverseOrder::BottomUp => f(result, state),
         }
+    }
+
+    /// Create an iterator on rows represented by this type.
+    ///
+    /// The iterator continues as long as the next item is of the form `RowExtend(..)`, and
+    /// stops once it reaches `RowEmpty` (which ends iteration), or something else which is not a
+    /// `RowExtend` (which produces a last item [`typecheck::RowIteratorItem::Tail`]).
+    pub fn iter_as_rows(&self) -> RowIterator<'_, Types> {
+        RowIterator { next: Some(self) }
     }
 }
 

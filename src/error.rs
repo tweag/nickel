@@ -52,6 +52,8 @@ pub enum EvalError {
         /* position of the original unevaluated expression */ TermPos,
         /* evaluated expression */ RichTerm,
     ),
+    /// Tried to evaluate a term which wasn't parsed correctly.
+    ParseError(ParseError),
     /// A term which is not a function has been applied to an argument.
     NotAFunc(
         /* term */ RichTerm,
@@ -1036,6 +1038,7 @@ impl ToDiagnostic<FileId> for EvalError {
                     .with_labels(labels)
                     .with_notes(vec![msg.clone()])]
             }
+            EvalError::ParseError(parse_error) => parse_error.to_diagnostic(files, contract_id),
             EvalError::NotAFunc(t, arg, pos_opt) => vec![Diagnostic::error()
                 .with_message("not a function")
                 .with_labels(vec![

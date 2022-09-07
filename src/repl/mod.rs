@@ -6,7 +6,7 @@
 //! Dually, the frontend is the user-facing part, which may be a CLI, a web application, a
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
-use crate::cache::{Cache, GlobalEnv};
+use crate::cache::{Cache, Envs, ErrorTolerance};
 use crate::error::{Error, EvalError, IOError, ParseError, ParseErrors, ReplError};
 use crate::identifier::Ident;
 use crate::parser::{grammar, lexer, ExtendedTerm};
@@ -71,22 +71,22 @@ pub struct ReplImpl {
     cache: Cache,
     /// The parser, supporting toplevel let declaration.
     parser: grammar::ExtendedTermParser,
-    /// The global environment. Contain the global environment with the stdlib, plus toplevel
+    /// The current environment. Contain the initial environment with the stdlib, plus toplevel
     /// declarations and loadings made inside the REPL.
-    env: GlobalEnv,
+    env: Envs,
     /// The initial type environment, without the toplevel declarations made inside the REPL. Used
     /// to typecheck imports in a fresh environment.
-    init_type_env: typecheck::Environment,
+    initial_type_env: typecheck::Environment,
 }
 
 impl ReplImpl {
     /// Create a new empty REPL.
     pub fn new() -> Self {
         ReplImpl {
-            cache: Cache::new(),
+            cache: Cache::new(ErrorTolerance::Strict),
             parser: grammar::ExtendedTermParser::new(),
-            env: GlobalEnv::new(),
-            init_type_env: typecheck::Environment::new(),
+            env: Envs::new(),
+            initial_type_env: typecheck::Environment::new(),
         }
     }
 
@@ -94,7 +94,7 @@ impl ReplImpl {
     /// typing environment.
     pub fn load_stdlib(&mut self) -> Result<(), Error> {
         self.env = self.cache.prepare_stdlib()?;
-        self.init_type_env = self.env.type_env.clone();
+        self.initial_type_env = self.env.type_env.clone();
         Ok(())
     }
 
@@ -135,16 +135,16 @@ impl ReplImpl {
             }
 
             let wildcards =
-                typecheck::type_check_in_env(&t, &repl_impl.env.type_env, &repl_impl.cache)?;
+                typecheck::type_check(&t, repl_impl.env.type_env.clone(), &repl_impl.cache)?;
 
             if let Some(id) = id {
-                typecheck::Envs::env_add(&mut repl_impl.env.type_env, id, &t, &repl_impl.cache);
+                typecheck::env_add(&mut repl_impl.env.type_env, id, &t, &repl_impl.cache);
             }
 
             for id in &pending {
                 repl_impl
                     .cache
-                    .typecheck(*id, &repl_impl.init_type_env)
+                    .typecheck(*id, &repl_impl.initial_type_env)
                     .map_err(|cache_err| {
                         cache_err.unwrap_error("repl::eval_(): expected imports to be parsed")
                     })?;
@@ -213,7 +213,7 @@ impl Repl for ReplImpl {
         for id in &pending {
             self.cache.resolve_imports(*id).unwrap();
         }
-        typecheck::Envs::env_add_term(&mut self.env.type_env, &term, &self.cache).unwrap();
+        typecheck::env_add_term(&mut self.env.type_env, &term, &self.cache).unwrap();
         eval::env_add_term(&mut self.env.eval_env, term.clone()).unwrap();
 
         Ok(term)
@@ -227,7 +227,7 @@ impl Repl for ReplImpl {
         for id in &pending {
             self.cache.resolve_imports(*id).unwrap();
         }
-        let wildcards = typecheck::type_check_in_env(&term, &self.env.type_env, &self.cache)?;
+        let wildcards = typecheck::type_check(&term, self.env.type_env.clone(), &self.cache)?;
         // Substitute the wildcard types for their inferred types
         // We need to `traverse` the term, in case the type depends on inner terms that also contain wildcards
         let term = term
@@ -242,12 +242,10 @@ impl Repl for ReplImpl {
             )
             .unwrap();
 
-        Ok(typecheck::apparent_type(
-            term.as_ref(),
-            Some(&typecheck::Envs::from_global(&self.env.type_env)),
-            Some(&self.cache),
+        Ok(
+            typecheck::apparent_type(term.as_ref(), Some(&self.env.type_env), Some(&self.cache))
+                .into(),
         )
-        .into())
     }
 
     fn query(&mut self, exp: &str) -> Result<Term, Error> {
