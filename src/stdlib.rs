@@ -46,7 +46,8 @@ pub mod contract {
     generate_accessor!(func);
     generate_accessor!(forall_var);
     generate_accessor!(fail);
-    generate_accessor!(row_extend);
+    generate_accessor!(enums);
+    generate_accessor!(enum_fail);
     generate_accessor!(record);
     generate_accessor!(dyn_record);
     generate_accessor!(record_extend);

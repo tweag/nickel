@@ -45,16 +45,21 @@
 //!
 //! In non-strict mode, the type of let-bound expressions is inferred in a shallow way (see
 //! [`apparent_type`]).
-use crate::cache::ImportResolver;
-use crate::destruct::*;
-use crate::environment::Environment as GenericEnvironment;
-use crate::error::TypecheckError;
-use crate::identifier::Ident;
-use crate::term::{Contract, MetaValue, RichTerm, StrChunk, Term, TraverseOrder};
-use crate::types::{AbsType, Types};
-use crate::{mk_tyw_arrow, mk_tyw_enum, mk_tyw_enum_row, mk_tyw_record, mk_tyw_row};
-use std::collections::{HashMap, HashSet};
-use std::convert::TryInto;
+use crate::{
+    cache::ImportResolver,
+    destruct::*,
+    environment::Environment as GenericEnvironment,
+    error::TypecheckError,
+    identifier::Ident,
+    term::{Contract, MetaValue, RichTerm, StrChunk, Term, TraverseOrder},
+    types::{AbsType, RowIterator, RowIteratorItem, Types},
+    {mk_tyw_arrow, mk_tyw_enum, mk_tyw_enum_row, mk_tyw_record, mk_tyw_row},
+};
+
+use std::{
+    collections::{HashMap, HashSet},
+    convert::TryInto,
+};
 
 use self::linearization::{Linearization, Linearizer, StubHost};
 
@@ -1105,7 +1110,7 @@ impl TypeWrapper {
     /// The iterator continues as long as the next item is of the form `RowExtend(..)`, and
     /// stops once it reaches `RowEmpty` (which ends iteration), or something else which is not a
     /// `RowExtend` (which produces a last item [`typecheck::RowIteratorItem::Tail`]).
-    pub fn iter_as_rows(&self) -> RowIterator<'_> {
+    pub fn iter_as_rows(&self) -> RowIterator<'_, TypeWrapper> {
         RowIterator { next: Some(self) }
     }
 }
@@ -1122,19 +1127,8 @@ impl From<Types> for TypeWrapper {
     }
 }
 
-pub enum RowIteratorItem<'a> {
-    /// A non-empty tail.
-    Tail(&'a TypeWrapper),
-    /// A row binding.
-    Row(&'a Ident, Option<&'a TypeWrapper>),
-}
-
-pub struct RowIterator<'a> {
-    next: Option<&'a TypeWrapper>,
-}
-
-impl<'a> Iterator for RowIterator<'a> {
-    type Item = RowIteratorItem<'a>;
+impl<'a> Iterator for RowIterator<'a, TypeWrapper> {
+    type Item = RowIteratorItem<'a, TypeWrapper>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.next.and_then(|next| match next {
