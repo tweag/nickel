@@ -909,5 +909,60 @@ pub fn subst(rt: RichTerm, initial_env: &Environment, env: &Environment) -> Rich
     }
 }
 
+/// Checks if the given term is a chain of nested and/or merged metavalues such that:
+///
+/// 1. At least one metavalue has the `optional` flag set
+/// 2. The final value is undefined
+///
+/// This function is used to determine if a record field is an optional field without definition,
+/// and should thus be ignored by record operations.
+///
+/// Beware: correctly checking that a value is an empty optional can incur arbitrary computations
+/// in principle, but this function is supposed to be a quick peek. It's a terminating
+/// approximation and hence is necessarily incomplete. In practice, this function is able to
+/// traverse merge expressions and follow variables links, but within a limit (in the number of
+/// variables followed).
+pub fn is_empty_optional(rt: &RichTerm, env: &Environment) -> bool {
+    fn is_empty_optional_aux(rt: &RichTerm, env: &Environment, is_opt: bool, gas: &mut u8) -> bool {
+        match rt.as_ref() {
+            Term::MetaValue(meta) => {
+                let is_opt = is_opt || meta.opt;
+
+                if let Some(ref next) = meta.value {
+                    is_empty_optional_aux(next, env, is_opt, gas)
+                } else {
+                    is_opt
+                }
+            }
+            Term::Op2(BinaryOp::Merge(), ref t1, ref t2) => {
+                // The aggregated value for is_opt must follow the same logic as in the
+                // implementation of merge: a field is optional if both operands define it as
+                // optional.
+                //
+                // Thus the resulting value is an empty optional if either:
+                // - both branch are empty optionals
+                // - a wrapping metavalue is optional (is_opt is true at this point) and both
+                // branch are empty.
+                is_empty_optional_aux(t1, env, is_opt, gas)
+                    && is_empty_optional_aux(t2, env, is_opt, gas)
+            }
+            Term::Var(id) if *gas > 0 => {
+                if let Some(closure) = env.get(id).as_ref().map(Thunk::borrow) {
+                    *gas -= 1;
+                    is_empty_optional_aux(&closure.body, &closure.env, is_opt, gas)
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
+    }
+
+    // The total amount of gas is rather abritrary, but in any case, it ought to stay low: remember
+    // that is_empty_optional may be called on each field of a record when evaluatinog some record
+    // operations.
+    is_empty_optional_aux(rt, env, false, &mut 8)
+}
+
 #[cfg(test)]
 mod tests;

@@ -210,6 +210,7 @@ impl UniRecord {
                                         doc: None,
                                         types: Some(ctrt),
                                         contracts,
+                                        opt: false,
                                         priority: MergePriority::Normal,
                                         value: None,
                                     }) if contracts.is_empty() => Ok(Types(AbsType::RowExtend(

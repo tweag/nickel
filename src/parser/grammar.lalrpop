@@ -97,32 +97,24 @@ AsUniTerm<Rule>: UniTerm = <l: @L> <ut: Rule> <r: @R> =>
 // `FixedType` (see `FixedType` and `parser::utils::fix_type_vars`).
 AnnotAtom<TypeRule>: MetaValue = {
     "|" <l: @L> <ty: TypeRule> <r: @R> => MetaValue {
-        doc: None,
-        types: None,
         contracts: vec![Contract {types: ty.clone(), label: mk_label(ty, src_id, l, r)}],
-        priority: Default::default(),
-        value: None,
+        ..Default::default()
     },
     "|" "default" => MetaValue {
-        doc: None,
-        types: None,
-        contracts: Vec::new(),
         priority: MergePriority::Default,
-        value: None
+        ..Default::default()
     },
     "|" "doc" <s: StaticString> => MetaValue {
         doc: Some(strip_indent_doc(s)),
-        types: None,
-        contracts: Vec::new(),
-        priority: Default::default(),
-        value: None,
+        ..Default::default()
+    },
+    "|" "optional" => MetaValue {
+        opt: true,
+        ..Default::default()
     },
     ":" <l: @L> <ty: TypeRule> <r: @R> => MetaValue {
-        doc: None,
         types: Some(Contract {types: ty.clone(), label: mk_label(ty, src_id, l, r)}),
-        contracts: Vec::new(),
-        priority: Default::default(),
-        value: None,
+        ..Default::default()
     },
 };
 
@@ -883,6 +875,7 @@ extern {
         "merge" => Token::Normal(NormalToken::Merge),
         "default" => Token::Normal(NormalToken::Default),
         "doc" => Token::Normal(NormalToken::Doc),
+        "optional" => Token::Normal(NormalToken::Optional),
 
         "hash" => Token::Normal(NormalToken::OpHash),
         "serialize" => Token::Normal(NormalToken::Serialize),

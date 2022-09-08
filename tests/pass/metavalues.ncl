@@ -52,5 +52,79 @@ let Assert = fun l x => x || %blame% l in
   ((def & ctr_num & def2).a == 2 | Assert) &&
   # value/contract-default <- contract/contract-default
   ((val & (ctr_num & def)).a == 1 | Assert)),
+
+  # optionals
+  let Contract = {foo | Num, opt | Str | optional} in
+  let value | Contract = {foo = 1} in
+  (
+    (value == {foo = 1} | Assert) &&
+    (builtin.serialize `Json value
+      == builtin.serialize `Json {foo = 1}
+      | Assert) &&
+    (record.has_field "foo" value | Assert) &&
+    (!(record.has_field "opt" value) | Assert) &&
+    (record.values value == [1] | Assert) &&
+    (record.fields value == ["foo"] | Assert)
+  ),
+
+  # Although unintuitive, we have to:
+  # 1. Make Contract open (the `..` at the end)
+  # 2. Repeat foo in `{foo = 1, baz = false}` with the same value
+  # All of this because of #710 (https://github.com/tweag/nickel/issues/710). We
+  # may get rid of both once the merge semantics is clarified.
+  let Contract = {foo | Num, opt | Str | optional, ..} in
+  let with_ctr | Contract = {foo = 1} in
+  let value | Contract = with_ctr & {foo = 1, baz = false} in
+  (
+    (value == {foo = 1, baz = false} | Assert) &&
+    (builtin.serialize `Json value
+      == builtin.serialize `Json {foo = 1, baz = false}
+      | Assert) &&
+    (record.has_field "foo" value | Assert) &&
+    (record.has_field "baz" value | Assert) &&
+    (!(record.has_field "opt" value) | Assert) &&
+    (record.values value == [false, 1] | Assert) &&
+    (record.fields value == ["baz", "foo"] | Assert)
+  ),
+
+  let Contract = {foo | Num, opt | Str | optional} in
+  let value | Contract = {foo = 1 + 0, opt = "a" ++ "b"} in
+  (
+    (value == {foo = 1, opt = "ab"} | Assert) &&
+    (builtin.serialize `Json value
+      == builtin.serialize `Json {foo = 1, opt = "ab"}
+      | Assert) &&
+    (record.has_field "foo" value | Assert) &&
+    (record.has_field "opt" value | Assert) &&
+    (record.values value == [1, "ab"] | Assert) &&
+    (record.fields value == ["foo", "opt"] | Assert)
+  ),
+
+  let Contract = {foo | Num, opt | Str | optional} in
+  let with_ctr | Contract = {foo = 0.5 + 0.5} in
+  # Same as above: we have to repeat `foo` with the same value because of #710
+  let value = with_ctr & {foo = 1, opt = "a" ++ "b"} in
+  (
+    (value == {foo = 1, opt = "ab"} | Assert) &&
+    (builtin.serialize `Json value
+      == builtin.serialize `Json {foo = 1, opt = "ab"}
+      | Assert) &&
+    (record.has_field "foo" value | Assert) &&
+    (record.has_field "opt" value | Assert) &&
+    (record.values value == [1, "ab"] | Assert) &&
+    (record.fields value == ["foo", "opt"] | Assert)
+  ),
+
+  let Contract = {foo | Num, opt | Str | optional} in
+  let with_ctr | Contract = {foo = 0.5 + 0.5} in
+  # Same as above: we have to repeat `foo` with the same value because of #710
+  # opt is required by the right hand side of the merge: it's still undefined,
+  # but should be visible
+  let value = with_ctr & {foo = 1, opt} in
+  (
+    (record.has_field "foo" value | Assert) &&
+    (record.has_field "opt" value | Assert) &&
+    (record.fields value == ["foo", "opt"] | Assert)
+  ),
 ]
 |> array.foldl (fun x y => (x | Assert) && y) true

@@ -241,6 +241,7 @@ pub fn merge(
                 doc: doc1,
                 types: types1,
                 contracts: contracts1,
+                opt: opt1,
                 priority: priority1,
                 value: value1,
             } = meta1;
@@ -248,6 +249,7 @@ pub fn merge(
                 doc: doc2,
                 types: types2,
                 contracts: contracts2,
+                opt: opt2,
                 priority: priority2,
                 value: value2,
             } = meta2;
@@ -345,6 +347,9 @@ pub fn merge(
                 doc,
                 types,
                 contracts,
+                // If one of the record requires this field, then it musn't be optional. The
+                // resulting field is optional iff both are.
+                opt: opt1 && opt2,
                 priority,
                 value,
             };
