@@ -1,13 +1,14 @@
 //! Define the type of an identifier.
 use serde::{Deserialize, Serialize};
+use smol_str::SmolStr;
 use std::{fmt, hash::Hash};
 
 use crate::position::TermPos;
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
-#[serde(into = "String", from = "String")]
+#[serde(into = "SmolStr", from = "SmolStr")]
 pub struct Ident {
-    pub label: String,
+    pub label: SmolStr,
     pub pos: TermPos,
 }
 
@@ -53,7 +54,7 @@ where
 {
     fn from(val: F) -> Self {
         Ident {
-            label: String::from(val),
+            label: SmolStr::new(String::from(val)),
             pos: TermPos::None,
         }
     }
@@ -61,7 +62,7 @@ where
 
 impl Into<String> for Ident {
     fn into(self) -> String {
-        self.label
+        self.label.to_string()
     }
 }
 

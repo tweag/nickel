@@ -59,6 +59,7 @@ pretty = "0.11.3"
 
 comrak = { version = "0.12.1", optional = true, features = [] }
 im-rc = { version = "15.1.0", features = ["pool"] }
+smol_str = { version = "0.1.23", features = ["serde"] }
 
 [dev-dependencies]
 pretty_assertions = "1.2.1"
@@ -92,9 +93,9 @@ harness = false
 name = "arrays"
 harness = false
 
-# [[bench]]
-# name = "records"
-# harness = false
+[[bench]]
+name = "records"
+harness = false
 
 [[bench]]
 name = "serialization"

@@ -70,7 +70,7 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
             Term::Num(v) => visitor.visit_f64(v),
             Term::Str(v) => visitor.visit_string(v),
             Term::Enum(v) => visitor.visit_enum(EnumDeserializer {
-                variant: v.label,
+                variant: v.label.to_string(),
                 rich_term: None,
             }),
             Term::Record(v, _) => visit_record(v, visitor),
@@ -145,7 +145,10 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
             }
         };
 
-        visitor.visit_enum(EnumDeserializer { variant, rich_term })
+        visitor.visit_enum(EnumDeserializer {
+            variant: variant.to_string(),
+            rich_term,
+        })
     }
 
     /// Deserialize pass-through tuples/structs.

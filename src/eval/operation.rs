@@ -459,7 +459,7 @@ fn process_unary_operation(
                         })
                     }
                     None => Err(EvalError::FieldMissing(
-                        id.label,
+                        id.label.to_string(),
                         String::from("(.)"),
                         RichTerm { term: t, pos },
                         pos_op,

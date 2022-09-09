@@ -6,6 +6,7 @@ use std::fmt::Debug;
 use std::rc::Rc;
 
 use codespan::FileId;
+use smol_str::SmolStr;
 
 use super::error::ParseError;
 
@@ -120,7 +121,7 @@ pub fn mk_access(access: RichTerm, root: RichTerm) -> RichTerm {
     if let Some(label) = label {
         mk_term::op1(
             UnaryOp::StaticAccess(Ident {
-                label,
+                label: SmolStr::new(label),
                 pos: access.pos,
             }),
             root,
@@ -166,7 +167,7 @@ pub fn elaborate_field_path(
 
             if let Some(static_access) = static_access {
                 let id = Ident {
-                    label: static_access,
+                    label: SmolStr::new(static_access),
                     pos: exp.pos,
                 };
 
@@ -237,7 +238,7 @@ where
                         insert_static_field(
                             &mut static_map,
                             Ident {
-                                label: buffer,
+                                label: SmolStr::new(buffer),
                                 pos: e.pos,
                             },
                             t,
