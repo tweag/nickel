@@ -90,7 +90,6 @@
 
 use crate::{
     cache::ImportResolver,
-    environment::Environment as GenericEnvironment,
     error::EvalError,
     identifier::Ident,
     match_sharedterm, mk_app,
@@ -143,7 +142,7 @@ impl Closure {
     }
 }
 
-pub type Environment = GenericEnvironment<Ident, Thunk>;
+pub type Environment = im_rc::HashMap<Ident, Thunk>;
 
 /// Raised when trying to build an environment from a term which is not a record.
 #[derive(Clone, Debug)]
@@ -316,6 +315,7 @@ where
                 let mut thunk = env
                     .get(x)
                     .or_else(|| global_env.get(x))
+                    .cloned()
                     .ok_or_else(|| EvalError::UnboundIdentifier(x.clone(), pos))?;
                 std::mem::drop(env); // thunk may be a 1RC pointer
 

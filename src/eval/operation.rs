@@ -1857,7 +1857,7 @@ fn process_binary_operation(
 
                             let mut env = env1;
                             // TODO: Is there a cheaper way to "merge" two environements?
-                            env.extend(env2.iter_elems().map(|(k, v)| (k.clone(), v.clone())));
+                            env.extend(env2);
 
                             Ok(Closure {
                                 body: RichTerm::new(Term::Array(ts, ArrayAttrs { closurized: true }), pos_op_inh),

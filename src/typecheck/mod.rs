@@ -47,7 +47,6 @@
 //! [`apparent_type`]).
 use crate::cache::ImportResolver;
 use crate::destruct::*;
-use crate::environment::Environment as GenericEnvironment;
 use crate::error::TypecheckError;
 use crate::identifier::Ident;
 use crate::term::{Contract, MetaValue, RichTerm, StrChunk, Term, TraverseOrder};
@@ -70,7 +69,7 @@ use error::*;
 use operation::{get_bop_type, get_nop_type, get_uop_type};
 
 /// The typing environment.
-pub type Environment = GenericEnvironment<Ident, TypeWrapper>;
+pub type Environment = im_rc::HashMap<Ident, TypeWrapper>;
 
 /// Mapping from wildcard ID to inferred type
 pub type Wildcards = Vec<Types>;
@@ -163,7 +162,10 @@ impl<'a> Envs<'a> {
     /// Fetch a binding from the environment. Try first in the local environment, and then in the
     /// global.
     pub fn get(&self, ident: &Ident) -> Option<TypeWrapper> {
-        self.local.get(ident).or_else(|| self.global.get(ident))
+        self.local
+            .get(ident)
+            .or_else(|| self.global.get(ident))
+            .cloned()
     }
 
     /// Wrapper to insert a new binding in the local environment.
