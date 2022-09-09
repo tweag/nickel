@@ -432,7 +432,8 @@ impl<'de> MapAccess<'de> for RecordDeserializer {
         match self.iter.next() {
             Some((key, value)) => {
                 self.rich_term = Some(value);
-                seed.deserialize(key.label.into_deserializer()).map(Some)
+                seed.deserialize(key.label.to_string().into_deserializer())
+                    .map(Some)
             }
             None => Ok(None),
         }
