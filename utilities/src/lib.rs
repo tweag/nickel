@@ -178,14 +178,14 @@ macro_rules! ncl_bench_group {
     (name = $group_name:ident; config = $config:expr; $($b:tt),+ $(,)*) => {
         pub fn $group_name() {
             use nickel_lang::{
-                cache::{Envs, Cache, ImportResolver},
+                cache::{Envs, Cache, ErrorTolerance, ImportResolver},
                 eval::eval,
                 transform::import_resolution::resolve_imports,
             };
 
             let mut c: criterion::Criterion<_> = $config
                 .configure_from_args();
-            let mut cache = Cache::new();
+            let mut cache = Cache::new(ErrorTolerance::Strict);
             let Envs {eval_env, type_env} = cache.prepare_stdlib().unwrap();
             $(
                 let bench = $crate::ncl_bench!$b;
