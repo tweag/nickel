@@ -16,6 +16,7 @@ pub struct State {
     pub file_id: FileId,
     /// Variables in scope.
     pub env: HashSet<String>,
+    pub with: Vec<RichTerm>,
 }
 
 pub trait ToNickel: Sized {
@@ -24,6 +25,7 @@ pub trait ToNickel: Sized {
         let state = State {
             file_id,
             env: HashSet::new(),
+            with: Vec::new(),
         };
         self.translate(&state)
     }

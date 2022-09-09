@@ -16,10 +16,13 @@ pub const RECORD: (&str, &str) = ("<stdlib/record>", include_str!("../stdlib/rec
 pub const STRING: (&str, &str) = ("<stdlib/string>", include_str!("../stdlib/string.ncl"));
 pub const NUM: (&str, &str) = ("<stdlib/num>", include_str!("../stdlib/num.ncl"));
 pub const FUNCTION: (&str, &str) = ("<stdlib/function>", include_str!("../stdlib/function.ncl"));
+pub const COMPAT: (&str, &str) = ("<stdlib/compat>", include_str!("../stdlib/compat.ncl"));
 
 /// Return the list `(name, source_code)` of all the stdlib modules.
 pub fn modules() -> Vec<(&'static str, &'static str)> {
-    vec![BUILTIN, CONTRACT, ARRAY, RECORD, STRING, NUM, FUNCTION]
+    vec![
+        BUILTIN, CONTRACT, ARRAY, RECORD, STRING, NUM, FUNCTION, COMPAT,
+    ]
 }
 
 /// Accessors to the builtin contracts.
