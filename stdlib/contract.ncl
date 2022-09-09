@@ -25,13 +25,16 @@
       if pol == lPol then
           %unseal% sy t (%blame% l)
       else
-          %seal% sy t,
+          %seal% sy l t,
 
-  "$row_extend" = fun contr case l t =>
-      if (case t) then
-          t
+  "$enums" = fun case l t =>
+      if %typeof% t == `Enum then
+          %assume% case l t
       else
-          %assume% contr l t,
+          %blame% (%tag% "not an enum tag" l),
+
+  "$enum_fail" = fun l =>
+      %blame% (%tag% "tag not included in the enum type" l),
 
   "$record" = fun cont l t =>
       if %typeof% t == `Record then
@@ -70,7 +73,7 @@
           else
               %blame% (%tag% "missing polymorphic part" l)
       else
-          %record_insert% magic_fld acc (%seal% sy t),
+          %record_insert% magic_fld acc (%seal% sy l t),
 
   "$dyn_tail" = fun acc l t => acc & t,
 

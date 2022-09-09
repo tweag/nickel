@@ -1,6 +1,29 @@
 use criterion::{criterion_main, Criterion};
+use nickel_lang::term::{ArrayAttrs, RichTerm, Term};
 use nickel_lang_utilities::{ncl_bench_group, EvalMode};
 use pprof::criterion::{Output, PProfProfiler};
+use pretty::{BoxAllocator, DocBuilder, Pretty};
+
+/// Generates a pseaudo-random Nickel array as a string.
+fn ncl_random_array(len: usize) -> String {
+    let m = 2_u64.pow(32);
+    let a = 1664525;
+    let c = 1013904223;
+
+    let mut numbers = Vec::with_capacity(len);
+    let mut acc = 1337;
+
+    for _ in 0..len {
+        acc = (a * acc + c) % m;
+        numbers.push(RichTerm::from(Term::Num(acc as f64)));
+    }
+
+    let xs = RichTerm::from(Term::Array(numbers, ArrayAttrs::default()));
+    let doc: DocBuilder<_, ()> = xs.pretty(&BoxAllocator);
+    let mut out = Vec::new();
+    doc.render(80, &mut out).unwrap();
+    String::from_utf8(out).unwrap()
+}
 
 ncl_bench_group! {
 name = benches;
@@ -108,7 +131,7 @@ config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flam
     }, {
         name = "sort normal",
         path = "arrays/sort",
-        args = (20),
+        args = (ncl_random_array(50)),
     }, {
         name = "sum normal 50",
         path = "arrays/sum",
@@ -126,6 +149,15 @@ config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flam
         name = "primes deepseq",
         path = "arrays/primes",
         args = (30),
+        eval_mode = EvalMode::DeepSeq,
+    }, {
+        name = "random normal",
+        path = "arrays/random",
+        args = (50),
+    }, {
+        name = "random deepseq",
+        path = "arrays/random",
+        args = (50),
         eval_mode = EvalMode::DeepSeq,
     }
 }

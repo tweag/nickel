@@ -9,7 +9,7 @@
 //! - The term being currently evaluated
 //! - The main stack, storing arguments, thunks and pending computations
 //! - A pair of [environment][Environment], mapping identifiers to [closures][Closure]:
-//!     * The global environment contains builtin functions accessible from anywhere, and alive
+//!     * The initial environment contains builtin functions accessible from anywhere, and alive
 //!     during the whole evaluation
 //!     * The local environment contains the variables in scope of the current term and is subject
 //!     to garbage collection (currently reference counting based)
@@ -181,42 +181,42 @@ pub fn env_add(env: &mut Environment, id: Ident, rt: RichTerm, local_env: Enviro
 /// environment and drops the final environment.
 pub fn eval<R>(
     t0: RichTerm,
-    global_env: &Environment,
+    initial_env: &Environment,
     resolver: &mut R,
 ) -> Result<RichTerm, EvalError>
 where
     R: ImportResolver,
 {
-    eval_closure(Closure::atomic_closure(t0), global_env, resolver, true).map(|(term, _)| term)
+    eval_closure(Closure::atomic_closure(t0), initial_env, resolver, true).map(|(term, _)| term)
 }
 
 /// Fully evaluate a Nickel term: the result is not a WHNF but to a value with all variables substituted.
 pub fn eval_full<R>(
     t0: RichTerm,
-    global_env: &Environment,
+    initial_env: &Environment,
     resolver: &mut R,
 ) -> Result<RichTerm, EvalError>
 where
     R: ImportResolver,
 {
-    eval_deep_closure(t0, global_env, resolver).map(|(term, env)| subst(term, global_env, &env))
+    eval_deep_closure(t0, initial_env, resolver).map(|(term, env)| subst(term, initial_env, &env))
 }
 
 /// Fully evaluates a Nickel term like `eval_full`, but does not substitute all variables.
 pub fn eval_deep<R>(
     t0: RichTerm,
-    global_env: &Environment,
+    initial_env: &Environment,
     resolver: &mut R,
 ) -> Result<RichTerm, EvalError>
 where
     R: ImportResolver,
 {
-    eval_deep_closure(t0, global_env, resolver).map(|(term, _)| term)
+    eval_deep_closure(t0, initial_env, resolver).map(|(term, _)| term)
 }
 
 fn eval_deep_closure<R>(
     t0: RichTerm,
-    global_env: &Environment,
+    initial_env: &Environment,
     resolver: &mut R,
 ) -> Result<(RichTerm, Environment), EvalError>
 where
@@ -234,7 +234,12 @@ where
             Term::Var(var)
         ),
     );
-    eval_closure(Closure::atomic_closure(wrapper), global_env, resolver, true)
+    eval_closure(
+        Closure::atomic_closure(wrapper),
+        initial_env,
+        resolver,
+        true,
+    )
 }
 
 /// Evaluate a Nickel Term, stopping when a meta value is encountered at the top-level without
@@ -244,19 +249,19 @@ where
 /// Used to query the metadata of a value.
 pub fn eval_meta<R>(
     t: RichTerm,
-    global_env: &Environment,
+    initial_env: &Environment,
     resolver: &mut R,
 ) -> Result<RichTerm, EvalError>
 where
     R: ImportResolver,
 {
-    let (mut rt, env) = eval_closure(Closure::atomic_closure(t), global_env, resolver, false)?;
+    let (mut rt, env) = eval_closure(Closure::atomic_closure(t), initial_env, resolver, false)?;
 
     if let Term::MetaValue(ref mut meta) = *SharedTerm::make_mut(&mut rt.term) {
         if let Some(t) = meta.value.take() {
             let (evaluated, env) =
-                eval_closure(Closure { body: t, env }, global_env, resolver, true)?;
-            let substituted = subst(evaluated, global_env, &env);
+                eval_closure(Closure { body: t, env }, initial_env, resolver, true)?;
+            let substituted = subst(evaluated, initial_env, &env);
 
             meta.value = Some(substituted);
         }
@@ -274,8 +279,8 @@ where
 /// # Arguments
 ///
 /// - `clos`: the closure to evaluate
-/// - `global_env`: the global environment containing the builtin functions of the language. Accessible from anywhere in the
-/// program.
+/// - `initial_env`: the initial environment containing the stdlib items.
+///   Accessible from anywhere in the program.
 /// - `resolver`: the interface to fetch imports.
 /// - `enriched_strict`: if evaluation is strict with respect to enriched values (metavalues).
 ///   Standard evaluation should be strict, but set to false when extracting the metadata of value.
@@ -287,7 +292,7 @@ where
 ///  - the evaluated term with its final environment
 pub fn eval_closure<R>(
     mut clos: Closure,
-    global_env: &Environment,
+    initial_env: &Environment,
     resolver: &mut R,
     mut enriched_strict: bool,
 ) -> Result<(RichTerm, Environment), EvalError>
@@ -311,10 +316,42 @@ where
         }
 
         clos = match &*shared_term {
+            Term::Sealed(_, inner, lbl) => {
+                let stack_item = stack.peek_op_cont();
+                let closure = Closure {
+                    body: RichTerm {
+                        term: shared_term.clone(),
+                        pos,
+                    },
+                    env: env.clone(),
+                };
+                // Update the original thunk (the thunk which holds the result of the op) in both cases,
+                // even if we continue with a seq.
+                // We do this because  we are on a `Sealed` term, and this is in WHNF, and if we don't,
+                // we will be unwrapping a `Sealed` term and assigning the "unsealed" value to the result
+                // of the `Seq` operation. See also: https://github.com/tweag/nickel/issues/123
+                update_thunks(&mut stack, &closure);
+                match stack_item {
+                    Some(OperationCont::Op2Second(BinaryOp::Unseal(), _, _, _)) => {
+                        continuate_operation(closure, &mut stack, &mut call_stack)?
+                    }
+                    Some(OperationCont::Op1(UnaryOp::Seq(), _)) => {
+                        // Then, evaluate / `Seq` the inner value.
+                        Closure {
+                            body: inner.clone(),
+                            env: env.clone(),
+                        }
+                    }
+                    None | Some(..) => {
+                        // This operation should not be allowed to evaluate a sealed term
+                        return Err(EvalError::BlameError(lbl.clone(), call_stack.clone()));
+                    }
+                }
+            }
             Term::Var(x) => {
                 let mut thunk = env
                     .get(x)
-                    .or_else(|| global_env.get(x))
+                    .or_else(|| initial_env.get(x))
                     .cloned()
                     .ok_or_else(|| EvalError::UnboundIdentifier(x.clone(), pos))?;
                 std::mem::drop(env); // thunk may be a 1RC pointer
@@ -627,6 +664,9 @@ where
                     env: local_env,
                 }
             }
+            Term::ParseError(parse_error) => {
+                return Err(EvalError::ParseError(parse_error.clone()));
+            }
             // Continuation of operations and thunk update
             _ if stack.is_top_thunk() || stack.is_top_cont() => {
                 clos = Closure {
@@ -683,20 +723,20 @@ fn update_thunks(stack: &mut Stack, closure: &Closure) {
 }
 
 /// Recursively substitute each variable occurrence of a term for its value in the environment.
-pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichTerm {
+pub fn subst(rt: RichTerm, initial_env: &Environment, env: &Environment) -> RichTerm {
     let RichTerm { term, pos } = rt;
 
     match term.into_owned() {
         Term::Var(id) => env
             .get(&id)
-            .or_else(|| global_env.get(&id))
+            .or_else(|| initial_env.get(&id))
             .map(|thunk| {
                 let closure = thunk.get_owned();
-                subst(closure.body, global_env, &closure.env)
+                subst(closure.body, initial_env, &closure.env)
             })
             .unwrap_or_else(|| RichTerm::new(Term::Var(id), pos)),
         v @ Term::Null
-        | v @ Term::ParseError
+        | v @ Term::ParseError(_)
         | v @ Term::Bool(_)
         | v @ Term::Num(_)
         | v @ Term::Str(_)
@@ -709,58 +749,57 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
         | v @ Term::Import(_)
         | v @ Term::ResolvedImport(_) => RichTerm::new(v, pos),
         Term::Let(id, t1, t2, attrs) => {
-            let t1 = subst(t1, global_env, env);
-            let t2 = subst(t2, global_env, env);
+            let t1 = subst(t1, initial_env, env);
+            let t2 = subst(t2, initial_env, env);
 
             RichTerm::new(Term::Let(id, t1, t2, attrs), pos)
         }
         p @ Term::LetPattern(..) => panic!("Pattern {:?} has not been transformed before evaluation", p),
         p @ Term::FunPattern(..) => panic!("Pattern {:?} has not been transformed before evaluation", p),
         Term::App(t1, t2) => {
-            let t1 = subst(t1, global_env, env);
-            let t2 = subst(t2, global_env, env);
+            let t1 = subst(t1, initial_env, env);
+            let t2 = subst(t2, initial_env, env);
 
             RichTerm::new(Term::App(t1, t2), pos)
         }
         Term::Switch(t, cases, default) => {
             let default =
-                default.map(|d| subst(d, global_env, env));
+                default.map(|d| subst(d, initial_env, env));
             let cases = cases
                 .into_iter()
                 .map(|(id, t)| {
                     (
                         id,
-                        subst(t, global_env, env),
+                        subst(t, initial_env, env),
                     )
                 })
                 .collect();
-            let t = subst(t, global_env, env);
+            let t = subst(t, initial_env, env);
 
             RichTerm::new(Term::Switch(t, cases, default), pos)
         }
         Term::Op1(op, t) => {
-            let t = subst(t, global_env, env);
+            let t = subst(t, initial_env, env);
 
             RichTerm::new(Term::Op1(op, t), pos)
         }
         Term::Op2(op, t1, t2) => {
-            let t1 = subst(t1, global_env, env);
-            let t2 = subst(t2, global_env, env);
+            let t1 = subst(t1, initial_env, env);
+            let t2 = subst(t2, initial_env, env);
 
             RichTerm::new(Term::Op2(op, t1, t2), pos)
         }
         Term::OpN(op, ts) => {
             let ts = ts
                 .into_iter()
-                .map(|t| subst(t, global_env, env))
+                .map(|t| subst(t, initial_env, env))
                 .collect();
 
             RichTerm::new(Term::OpN(op, ts), pos)
         }
-        Term::Sealed(i, t) => {
-            let t = subst(t, global_env, env);
-
-            RichTerm::new(Term::Sealed(i, t), pos)
+        Term::Sealed(i, t, lbl) => {
+            let t = subst(t, initial_env, env);
+            RichTerm::new(Term::Sealed(i, t, lbl), pos)
         }
         Term::Record(map, attrs) => {
             let map = map
@@ -768,7 +807,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
                 .map(|(id, t)| {
                     (
                         id,
-                        subst(t, global_env, env),
+                        subst(t, initial_env, env),
                     )
                 })
                 .collect();
@@ -781,7 +820,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
                 .map(|(id, t)| {
                     (
                         id,
-                        subst(t, global_env, env),
+                        subst(t, initial_env, env),
                     )
                 })
                 .collect();
@@ -790,8 +829,8 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
                 .into_iter()
                 .map(|(id_t, t)| {
                     (
-                        subst(id_t, global_env, env),
-                        subst(t, global_env, env),
+                        subst(id_t, initial_env, env),
+                        subst(t, initial_env, env),
                     )
                 })
                 .collect();
@@ -801,7 +840,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
         Term::Array(ts, attrs) => {
             let ts = ts
                 .into_iter()
-                .map(|t| subst(t, global_env, env))
+                .map(|t| subst(t, initial_env, env))
                 .collect();
 
             RichTerm::new(Term::Array(ts, attrs), pos)
@@ -812,7 +851,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
                 .map(|chunk| match chunk {
                     chunk @ StrChunk::Literal(_) => chunk,
                     StrChunk::Expr(t, indent) => StrChunk::Expr(
-                        subst(t, global_env, env),
+                        subst(t, initial_env, env),
                         indent,
                     ),
                 })
@@ -832,7 +871,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
             //         let types = match ctr.types {
             //             Types(AbsType::Flat(t)) => Types(AbsType::Flat(subst(
             //                 t,
-            //                 global_env,
+            //                 initial_env,
             //                 env,
             //                 Cow::Borrowed(bound.as_ref()),
             //             ))),
@@ -847,7 +886,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
             //     let types = match ctr.types {
             //         Types(AbsType::Flat(t)) => Types(AbsType::Flat(subst(
             //             t,
-            //             global_env,
+            //             initial_env,
             //             env,
             //             Cow::Borrowed(bound.as_ref()),
             //         ))),
@@ -857,7 +896,7 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
             //     Contract { types, ..ctr }
             // });
 
-            let value = meta.value.map(|t| subst(t, global_env, env));
+            let value = meta.value.map(|t| subst(t, initial_env, env));
 
             let meta = MetaValue {
                 doc: meta.doc,
@@ -868,6 +907,61 @@ pub fn subst(rt: RichTerm, global_env: &Environment, env: &Environment) -> RichT
             RichTerm::new(Term::MetaValue(meta), pos)
         }
     }
+}
+
+/// Checks if the given term is a chain of nested and/or merged metavalues such that:
+///
+/// 1. At least one metavalue has the `optional` flag set
+/// 2. The final value is undefined
+///
+/// This function is used to determine if a record field is an optional field without definition,
+/// and should thus be ignored by record operations.
+///
+/// Beware: correctly checking that a value is an empty optional can incur arbitrary computations
+/// in principle, but this function is supposed to be a quick peek. It's a terminating
+/// approximation and hence is necessarily incomplete. In practice, this function is able to
+/// traverse merge expressions and follow variables links, but within a limit (in the number of
+/// variables followed).
+pub fn is_empty_optional(rt: &RichTerm, env: &Environment) -> bool {
+    fn is_empty_optional_aux(rt: &RichTerm, env: &Environment, is_opt: bool, gas: &mut u8) -> bool {
+        match rt.as_ref() {
+            Term::MetaValue(meta) => {
+                let is_opt = is_opt || meta.opt;
+
+                if let Some(ref next) = meta.value {
+                    is_empty_optional_aux(next, env, is_opt, gas)
+                } else {
+                    is_opt
+                }
+            }
+            Term::Op2(BinaryOp::Merge(), ref t1, ref t2) => {
+                // The aggregated value for is_opt must follow the same logic as in the
+                // implementation of merge: a field is optional if both operands define it as
+                // optional.
+                //
+                // Thus the resulting value is an empty optional if either:
+                // - both branch are empty optionals
+                // - a wrapping metavalue is optional (is_opt is true at this point) and both
+                // branch are empty.
+                is_empty_optional_aux(t1, env, is_opt, gas)
+                    && is_empty_optional_aux(t2, env, is_opt, gas)
+            }
+            Term::Var(id) if *gas > 0 => {
+                if let Some(closure) = env.get(id).map(Thunk::borrow) {
+                    *gas -= 1;
+                    is_empty_optional_aux(&closure.body, &closure.env, is_opt, gas)
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
+    }
+
+    // The total amount of gas is rather abritrary, but in any case, it ought to stay low: remember
+    // that is_empty_optional may be called on each field of a record when evaluatinog some record
+    // operations.
+    is_empty_optional_aux(rt, env, false, &mut 8)
 }
 
 #[cfg(test)]

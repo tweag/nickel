@@ -285,10 +285,10 @@ fn interpolation_nested() {
 }
 
 #[test]
-fn global_env() {
-    let mut global_env = Environment::new();
+fn initial_env() {
+    let mut initial_env = Environment::new();
     let mut resolver = DummyResolver {};
-    global_env.insert(
+    initial_env.insert(
         Ident::from("g"),
         Thunk::new(
             Closure::atomic_closure(Term::Num(1.0).into()),
@@ -298,20 +298,20 @@ fn global_env() {
 
     let t = mk_term::let_in("x", Term::Num(2.0), mk_term::var("x"));
     assert_eq!(
-        eval(t, &global_env, &mut resolver).map(Term::from),
+        eval(t, &initial_env, &mut resolver).map(Term::from),
         Ok(Term::Num(2.0))
     );
 
     let t = mk_term::let_in("x", Term::Num(2.0), mk_term::var("g"));
     assert_eq!(
-        eval(t, &global_env, &mut resolver).map(Term::from),
+        eval(t, &initial_env, &mut resolver).map(Term::from),
         Ok(Term::Num(1.0))
     );
 
-    // Shadowing of global environment
+    // Shadowing of the initial environment
     let t = mk_term::let_in("g", Term::Num(2.0), mk_term::var("g"));
     assert_eq!(
-        eval(t, &global_env, &mut resolver).map(Term::from),
+        eval(t, &initial_env, &mut resolver).map(Term::from),
         Ok(Term::Num(2.0))
     );
 }
@@ -330,7 +330,7 @@ fn mk_env(bindings: Vec<(&str, RichTerm)>) -> Environment {
 
 #[test]
 fn substitution() {
-    let global_env = mk_env(vec![
+    let initial_env = mk_env(vec![
         ("glob1", Term::Num(1.0).into()),
         ("glob2", parse("\"Glob2\"").unwrap()),
         ("glob3", Term::Bool(false).into()),
@@ -342,14 +342,14 @@ fn substitution() {
 
     let t = parse("let x = 1 in if loc1 then 1 + loc2 else glob3").unwrap();
     assert_eq!(
-        subst(t, &global_env, &env),
+        subst(t, &initial_env, &env),
         parse("let x = 1 in if true then 1 + (if false then 1 else \"Glob2\") else false").unwrap()
     );
 
     let t = parse("switch {`x => [1, glob1], `y => loc2, `z => {id = true, other = glob3}} loc1")
         .unwrap();
     assert_eq!(
-        subst(t, &global_env, &env),
+        subst(t, &initial_env, &env),
         parse("switch {`x => [1, 1], `y => (if false then 1 else \"Glob2\"), `z => {id = true, other = false}} true").unwrap()
     );
 }

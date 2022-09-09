@@ -17,6 +17,7 @@
 //! the term level, and together with [crate::eval::merge], they allow for flexible and modular
 //! definitions of contracts, record and metadata all together.
 use crate::destruct::Destruct;
+use crate::error::ParseError;
 use crate::identifier::Ident;
 use crate::label::Label;
 use crate::match_sharedterm;
@@ -121,7 +122,7 @@ pub enum Term {
 
     /// A key locking a sealed term.
     ///
-    /// A unique key corresponding to a type variable. See [`Term::Wrapped`] below.
+    /// A unique key corresponding to a type variable. See [`Term::Sealed`] below.
     #[serde(skip)]
     SealingKey(SealingKey),
 
@@ -144,7 +145,7 @@ pub enum Term {
     /// type variable. In our example, the last cast to `a` finds `Sealed(2, "a")`, while it
     /// expected `Sealed(1, _)`, hence it raises a positive blame.
     #[serde(skip)]
-    Sealed(SealingKey, RichTerm),
+    Sealed(SealingKey, RichTerm, Label),
 
     #[serde(serialize_with = "crate::serialize::serialize_meta_value")]
     #[serde(skip_deserializing)]
@@ -157,7 +158,7 @@ pub enum Term {
     #[serde(skip)]
     ResolvedImport(FileId),
     #[serde(skip)]
-    ParseError,
+    ParseError(ParseError),
 }
 
 pub type SealingKey = i32;
@@ -248,11 +249,13 @@ pub struct Contract {
     pub label: Label,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Default)]
 pub struct MetaValue {
     pub doc: Option<String>,
     pub types: Option<Contract>,
     pub contracts: Vec<Contract>,
+    /// If the field is optional.
+    pub opt: bool,
     pub priority: MergePriority,
     pub value: Option<RichTerm>,
 }
@@ -263,27 +266,16 @@ impl From<RichTerm> for MetaValue {
             doc: None,
             types: None,
             contracts: Vec::new(),
+            opt: false,
             priority: Default::default(),
             value: Some(rt),
         }
     }
 }
 
-impl Default for MetaValue {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl MetaValue {
     pub fn new() -> Self {
-        MetaValue {
-            doc: None,
-            types: None,
-            contracts: Vec::new(),
-            priority: Default::default(),
-            value: None,
-        }
+        Default::default()
     }
 
     /// Flatten two nested metavalues into one, combining their metadata. If data that can't be
@@ -295,38 +287,33 @@ impl MetaValue {
     /// program transformation).
     ///
     /// #Preconditions
+    ///
     /// - `outer.value` is assumed to be `inner`. While `flatten` may still work fine if this
     ///   condition is not fullfilled, the value of the final metavalue is set to be `inner`'s one,
     ///   and `outer`'s one is dropped.
-    pub fn flatten(outer: MetaValue, mut inner: MetaValue) -> MetaValue {
+    pub fn flatten(mut outer: MetaValue, mut inner: MetaValue) -> MetaValue {
         // Keep the outermost value for non-mergeable information, such as documentation, type annotation,
         // and so on, which is the one that is accessible from the outside anyway (by queries, by the typechecker, and
         // so on).
-        // Keep the inner value
-        let MetaValue {
-            doc,
-            types,
-            mut contracts,
-            priority,
-            value: _,
-        } = outer;
+        // Keep the inner value.
 
-        if types.is_some() {
+        if outer.types.is_some() {
             // If both have type annotations, the result will have the outer one as a type annotation.
             // However we still need to enforce the corresponding contract to preserve the operational
             // semantics. Thus, the inner type annotation is derelicted to a contract.
             if let Some(ctr) = inner.types.take() {
-                contracts.push(ctr)
+                outer.contracts.push(ctr)
             }
         }
 
-        contracts.extend(inner.contracts.into_iter());
+        outer.contracts.extend(inner.contracts.into_iter());
 
         MetaValue {
-            doc: doc.or(inner.doc),
-            types: types.or(inner.types),
-            contracts,
-            priority: std::cmp::min(priority, inner.priority),
+            doc: outer.doc.or(inner.doc),
+            types: outer.types.or(inner.types),
+            contracts: outer.contracts,
+            opt: outer.opt || inner.opt,
+            priority: std::cmp::min(outer.priority, inner.priority),
             value: inner.value,
         }
     }
@@ -361,7 +348,7 @@ impl Term {
     {
         use self::Term::*;
         match self {
-            Null | ParseError => (),
+            Null | ParseError(_) => (),
             Switch(ref mut t, ref mut cases, ref mut def) => {
                 cases.iter_mut().for_each(|c| {
                     let (_, t) = c;
@@ -387,7 +374,7 @@ impl Term {
             Fun(_, ref mut t)
             | FunPattern(_, _, ref mut t)
             | Op1(_, ref mut t)
-            | Sealed(_, ref mut t) => {
+            | Sealed(_, ref mut t, _) => {
                 func(t);
             }
             MetaValue(ref mut meta) => {
@@ -435,7 +422,7 @@ impl Term {
             Term::Record(..) | Term::RecRecord(..) => Some("Record"),
             Term::Array(..) => Some("Array"),
             Term::SealingKey(_) => Some("SealingKey"),
-            Term::Sealed(_, _) => Some("Sealed"),
+            Term::Sealed(..) => Some("Sealed"),
             Term::MetaValue(_) => Some("Metavalue"),
             Term::Let(..)
             | Term::LetPattern(..)
@@ -448,7 +435,7 @@ impl Term {
             | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
-            | Term::ParseError => None,
+            | Term::ParseError(_) => None,
         }
         .map(String::from)
     }
@@ -487,7 +474,7 @@ impl Term {
             Term::Record(..) | Term::RecRecord(..) => String::from("{ ... }"),
             Term::Array(..) => String::from("[ ... ]"),
             Term::SealingKey(_) => String::from("<sealing key>"),
-            Term::Sealed(_, _) => String::from("<sealed>"),
+            Term::Sealed(..) => String::from("<sealed>"),
             Term::MetaValue(ref meta) => {
                 let mut content = String::new();
 
@@ -512,7 +499,7 @@ impl Term {
                 format!("<{}{}={}>", content, value_label, value)
             }
             Term::Var(id) => id.to_string(),
-            Term::ParseError => String::from("<parse error>"),
+            Term::ParseError(_) => String::from("<parse error>"),
             Term::Let(..)
             | Term::LetPattern(..)
             | Term::App(_, _)
@@ -574,13 +561,13 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
-            | Term::Sealed(_, _)
+            | Term::Sealed(..)
             | Term::MetaValue(_)
             | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
-            | Term::ParseError => false,
+            | Term::ParseError(_) => false,
         }
     }
 
@@ -614,13 +601,13 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
-            | Term::Sealed(_, _)
+            | Term::Sealed(..)
             | Term::MetaValue(_)
             | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
-            | Term::ParseError => false,
+            | Term::ParseError(_) => false,
         }
     }
 
@@ -652,7 +639,7 @@ impl Term {
             | Term::MetaValue(..)
             | Term::Import(..)
             | Term::ResolvedImport(..)
-            | Term::ParseError => false,
+            | Term::ParseError(_) => false,
         }
     }
 }
@@ -785,9 +772,6 @@ pub enum UnaryOp {
     ///
     /// See `GoDom`.
     GoArray(),
-
-    /// Seal a term with a sealing key (see [`Term::Sealed`]).
-    Seal(),
 
     /// Force the evaluation of its argument and proceed with the second.
     Seq(),
@@ -976,6 +960,8 @@ pub enum BinaryOp {
     StrSplit(),
     /// Determine if a string is a substring of another one.
     StrContains(),
+    /// Seal a term with a sealing key (see [`Term::Sealed`]).
+    Seal(),
 }
 
 impl BinaryOp {
@@ -1179,10 +1165,10 @@ impl RichTerm {
                     pos,
                 )
             },
-            Term::Sealed(i, t) => {
-                let t = t.traverse(f, state, order)?;
+            Term::Sealed(i, t1, lbl) => {
+                let t1 = t1.traverse(f, state, order)?;
                 RichTerm::new(
-                    Term::Sealed(i, t),
+                    Term::Sealed(i, t1, lbl),
                     pos,
                 )
             },
@@ -1282,6 +1268,7 @@ impl RichTerm {
                         doc: meta.doc,
                         types,
                         contracts,
+                        opt: meta.opt,
                         priority: meta.priority,
                         value,
                     };
@@ -1296,6 +1283,28 @@ impl RichTerm {
         match order {
             TraverseOrder::TopDown => Ok(result),
             TraverseOrder::BottomUp => f(result, state),
+        }
+    }
+
+    /// Pretty print a term capped to a given max length (in characters). Useful to limit the size
+    /// of terms reported e.g. in typechecking errors. If the output of pretty printing is greater
+    /// than the bound, the string is truncated to `max_width` and the last character after
+    /// truncate is replaced by the ellipsis unicode character U+2026.
+    pub fn pretty_print_cap(&self, max_width: usize) -> String {
+        let output = format!("{}", self);
+
+        if output.len() <= max_width {
+            output
+        } else {
+            let (end, _) = output.char_indices().nth(max_width).unwrap();
+            let mut truncated = String::from(&output[..end]);
+
+            if max_width >= 2 {
+                truncated.pop();
+                truncated.push('\u{2026}');
+            }
+
+            truncated
         }
     }
 }
@@ -1318,6 +1327,18 @@ impl From<Term> for RichTerm {
             term: SharedTerm::new(t),
             pos: TermPos::None,
         }
+    }
+}
+
+impl std::fmt::Display for RichTerm {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        use crate::pretty::*;
+        use pretty::BoxAllocator;
+
+        let allocator = BoxAllocator;
+
+        let doc: DocBuilder<_, ()> = self.clone().pretty(&allocator);
+        doc.render_fmt(80, f)
     }
 }
 

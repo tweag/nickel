@@ -16,7 +16,7 @@ use lsp_types::{
     TextDocumentSyncOptions, WorkDoneProgressOptions,
 };
 
-use nickel_lang::cache::Cache;
+use nickel_lang::cache::{Cache, ErrorTolerance};
 use nickel_lang::typecheck::Environment;
 
 use crate::{
@@ -29,7 +29,7 @@ pub struct Server {
     pub connection: Connection,
     pub cache: Cache,
     pub lin_cache: HashMap<FileId, Completed>,
-    pub global_env: Environment,
+    pub initial_env: Environment,
 }
 
 impl Server {
@@ -59,15 +59,15 @@ impl Server {
     }
 
     pub fn new(connection: Connection) -> Server {
-        let mut cache = Cache::new();
+        let mut cache = Cache::new(ErrorTolerance::Tolerant);
         cache.load_stdlib().unwrap();
-        let global_env = cache.mk_types_env().unwrap();
+        let initial_env = cache.mk_type_env().unwrap();
         let lin_cache = HashMap::new();
         Server {
             connection,
             cache,
             lin_cache,
-            global_env,
+            initial_env,
         }
     }
 

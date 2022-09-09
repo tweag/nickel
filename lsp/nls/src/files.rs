@@ -72,7 +72,7 @@ pub fn handle_save(server: &mut Server, params: DidChangeTextDocumentParams) -> 
 fn typecheck(server: &mut Server, file_id: FileId) -> Result<CacheOp<()>, Vec<Diagnostic<FileId>>> {
     server
         .cache
-        .typecheck_with_analysis(file_id, &server.global_env, &mut server.lin_cache)
+        .typecheck_with_analysis(file_id, &server.initial_env, &mut server.lin_cache)
         .map_err(|error| match error {
             CacheError::Error(tc_error) => tc_error.to_diagnostic(server.cache.files_mut(), None),
             CacheError::NotParsed => unreachable!(),
@@ -82,7 +82,7 @@ fn typecheck(server: &mut Server, file_id: FileId) -> Result<CacheOp<()>, Vec<Di
 fn parse_and_typecheck(server: &mut Server, uri: Url, file_id: FileId) -> Result<()> {
     let diagnostics = server
         .cache
-        .parse_lax(file_id)
+        .parse(file_id)
         .map_err(|parse_err| parse_err.to_diagnostic(server.cache.files_mut(), None))
         .map(|parse_errs| {
             // Parse errors are not fatal

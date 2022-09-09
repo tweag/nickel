@@ -676,7 +676,7 @@ where
                 .append(allocator.hardline()),
 
             // TODO
-            Sealed(_i, _rt) => allocator.text("#<sealed>").append(allocator.hardline()),
+            Sealed(_i, _rt, _lbl) => allocator.text("#<sealed>").append(allocator.hardline()),
 
             MetaValue(mv) => mv.to_owned().pretty(allocator),
             Import(f) => allocator
@@ -684,7 +684,7 @@ where
                 .append(allocator.space())
                 .append(allocator.as_string(f.to_string_lossy()).double_quotes()),
             ResolvedImport(id) => allocator.text(format!("import <file_id: {:?}>", id)),
-            ParseError => allocator
+            ParseError(_) => allocator
                 .text("#<PARSE ERROR!>")
                 .append(allocator.hardline()),
         }

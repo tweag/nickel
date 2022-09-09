@@ -24,7 +24,7 @@ fn collect_free_vars(rt: &mut RichTerm, free_vars: &mut HashSet<Ident>) {
         Term::Var(id) => {
             free_vars.insert(id.clone());
         }
-        Term::ParseError
+        Term::ParseError(_)
         | Term::Null
         | Term::Bool(_)
         | Term::Num(_)
@@ -99,7 +99,7 @@ fn collect_free_vars(rt: &mut RichTerm, free_vars: &mut HashSet<Ident>) {
                 collect_free_vars(t, free_vars);
             }
         }
-        Term::Sealed(_, t) => collect_free_vars(t, free_vars),
+        Term::Sealed(_, t, _) => collect_free_vars(t, free_vars),
         Term::Record(map, _) => {
             for t in map.values_mut() {
                 collect_free_vars(t, free_vars);

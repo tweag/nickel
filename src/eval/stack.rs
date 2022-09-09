@@ -230,6 +230,19 @@ impl Stack {
         }
     }
 
+    pub fn peek_op_cont(&self) -> Option<OperationCont> {
+        let mut it = self
+            .0
+            .iter()
+            .rev()
+            .skip_while(|&marker| matches!(marker, Marker::Thunk(..)));
+
+        match it.next() {
+            Some(Marker::Cont(cont, _, _)) => Some(cont.clone()),
+            _ => None,
+        }
+    }
+
     /// Try to pop an equality from the top of the stack. If `None` is returned, the top element
     /// was not an equality and the stack is left unchanged.
     pub fn pop_eq(&mut self) -> Option<(Closure, Closure)> {

@@ -7,7 +7,7 @@
 //! On the other hand, the functions `process_unary_operation` and `process_binary_operation`
 //! receive evaluated operands and implement the actual semantics of operators.
 use super::{
-    callstack, merge,
+    callstack, is_empty_optional, merge,
     merge::{merge, MergeMode},
     stack::Stack,
     subst, CallStack, Closure, Environment,
@@ -47,7 +47,7 @@ enum EqResult {
 }
 
 /// An operation continuation as stored on the stack.
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub enum OperationCont {
     Op1(
         /* unary operation */ UnaryOp,
@@ -434,20 +434,6 @@ fn process_unary_operation(
                 ))
             }
         },
-        UnaryOp::Seal() => {
-            if let Term::SealingKey(s) = &*t {
-                Ok(Closure::atomic_closure(
-                    mk_fun!("x", Term::Sealed(*s, mk_term::var("x"))).with_pos(pos_op_inh),
-                ))
-            } else {
-                Err(EvalError::TypeError(
-                    String::from("Sym"),
-                    String::from("wrap"),
-                    arg_pos,
-                    RichTerm { term: t, pos },
-                ))
-            }
-        }
         UnaryOp::StaticAccess(id) => {
             if let Term::Record(static_map, ..) = &*t {
                 match static_map.get(&id) {
@@ -476,7 +462,13 @@ fn process_unary_operation(
         }
         UnaryOp::FieldsOf() => match_sharedterm! {t, with {
                 Term::Record(map, ..) => {
-                    let mut fields: Vec<String> = map.into_keys().map(|id| id.to_string()).collect();
+                    let mut fields: Vec<String> = map
+                        .into_iter()
+                        // Ignore optional fields without definitions.
+                        .filter_map(|(id, t)| {
+                            (!is_empty_optional(&t, &env)).then(|| id.to_string())
+                        })
+                        .collect();
                     fields.sort();
                     let terms = fields.into_iter().map(mk_term::string).collect();
                     Ok(Closure::atomic_closure(RichTerm::new(
@@ -500,7 +492,13 @@ fn process_unary_operation(
                     // require to copy the identifiers because of the lack of HKT. See
                     // https://github.com/rust-lang/rust/issues/34162.
                     values.sort_by(|(id1, _), (id2, _)| id1.cmp(id2));
-                    let terms = values.into_iter().map(|(_, t)| t).collect();
+                    let terms = values
+                        .into_iter()
+                        // Ignore optional fields without definitions.
+                        .filter_map(|(_, t)| {
+                            (!is_empty_optional(&t, &env)).then(|| t)
+                        })
+                        .collect();
                     Ok(Closure {
                         // TODO: once sure that the Record is properly closurized, we can
                         // safely assume that the extracted array here is, in turn, also closuried.
@@ -611,8 +609,8 @@ fn process_unary_operation(
                         // As for `ArrayMap` (see above), we closurize the content of fields
                         let rec = rec
                             .into_iter()
-                            .map(|e| {
-                                let (id, t) = e;
+                            .filter(|(_, t)| !is_empty_optional(t, &env))
+                            .map(|(id, t)| {
                                 let pos = t.pos.into_inherited();
                                 (
                                     id.clone(),
@@ -675,18 +673,22 @@ fn process_unary_operation(
                 Term::Record(map, _) if !map.is_empty() => {
                     let pos_record = pos;
                     let pos_access = pos_op;
-                    let terms = map.into_iter().map(|(id, t)| {
-                        (
-                            Some(callstack::StackElem::Field {
-                                id,
-                                pos_record,
-                                pos_field: t.pos,
-                                pos_access,
-                            }),
-                            t,
-                        )
-                    });
-                    Ok(seq_terms(terms, env, pos_op))
+                    let terms = map
+                        .into_iter()
+                        // We ignore empty optional fields
+                        .filter(|(_, t)| !is_empty_optional(t, &env))
+                        .map(|(id, t)| {
+                            (
+                                Some(callstack::StackElem::Field {
+                                    id,
+                                    pos_record,
+                                    pos_field: t.pos,
+                                    pos_access,
+                                }),
+                                t,
+                            )
+                        });
+                    Ok(seq_terms(terms, env.clone(), pos_op))
                 }
                 Term::Array(ts, _) if !ts.is_empty() => {
                     Ok(seq_terms(ts.into_iter().map(|t| (None, t)), env, pos_op))
@@ -1125,6 +1127,36 @@ fn process_binary_operation(
     let pos_op_inh = pos_op.into_inherited();
 
     match b_op {
+        BinaryOp::Seal() => {
+            if let Term::SealingKey(s) = &*t1 {
+                if let Term::Lbl(lbl) = &*t2 {
+                    Ok(Closure::atomic_closure(
+                        mk_fun!("x", Term::Sealed(*s, mk_term::var("x"), lbl.clone()))
+                            .with_pos(pos_op_inh),
+                    ))
+                } else {
+                    Err(EvalError::TypeError(
+                        String::from("Lbl"),
+                        String::from("%seal%, 2nd argument"),
+                        snd_pos,
+                        RichTerm {
+                            term: t2,
+                            pos: pos2,
+                        },
+                    ))
+                }
+            } else {
+                Err(EvalError::TypeError(
+                    String::from("Sym"),
+                    String::from("%seal%, 1st argument"),
+                    fst_pos,
+                    RichTerm {
+                        term: t1,
+                        pos: pos1,
+                    },
+                ))
+            }
+        }
         BinaryOp::Plus() => {
             if let Term::Num(n1) = *t1 {
                 if let Term::Num(n2) = *t2 {
@@ -1372,7 +1404,7 @@ fn process_binary_operation(
                         }
                         .closurize(&mut new_env, env1);
 
-                        // Convert the record to the function `fun l x => MergeContract l x
+                        // Convert the record to the function `fun l x => MergeContract l x t1
                         // contract`.
                         let body = mk_fun!(
                             "l",
@@ -1415,7 +1447,7 @@ fn process_binary_operation(
                 // Return a function that either behaves like the identity or
                 // const unwrapped_term
 
-                Ok(if let Term::Sealed(s2, t) = t2.into_owned() {
+                Ok(if let Term::Sealed(s2, t, _) = t2.into_owned() {
                     if *s1 == s2 {
                         Closure {
                             body: mk_fun!("-invld", t),
@@ -1734,8 +1766,8 @@ fn process_binary_operation(
                             let mut static_map = static_map;
                             let as_var = clos.body.closurize(&mut env2, clos.env);
                             match static_map.insert(Ident::from(id), as_var) {
-                                Some(_) => Err(EvalError::Other(format!("$[ .. ]: tried to extend record with the field {}, but it already exists", id), pos_op)),
-                                None => Ok(Closure {
+                                Some(t) if !is_empty_optional(&t, &env2) => Err(EvalError::Other(format!("$[ .. ]: tried to extend record with the field {}, but it already exists", id), pos_op)),
+                                _ => Ok(Closure {
                                     body: Term::Record(static_map, attrs).into(),
                                     env: env2,
                                 }),
@@ -1769,8 +1801,10 @@ fn process_binary_operation(
                 Term::Str(id) => match_sharedterm! {t2, with {
                         Term::Record(static_map, attrs) => {
                             let mut static_map = static_map;
-                            match static_map.remove(&Ident::from(&id)) {
-                                None => Err(EvalError::FieldMissing(
+                            let fetched = static_map.remove(&Ident::from(&id));
+                            if fetched.is_none()
+                               || matches!(fetched, Some(t) if is_empty_optional(&t, &env2)) {
+                                Err(EvalError::FieldMissing(
                                     id,
                                     String::from("(-$)"),
                                     RichTerm::new(
@@ -1778,11 +1812,15 @@ fn process_binary_operation(
                                         pos2,
                                     ),
                                     pos_op,
-                                )),
-                                Some(_) => Ok(Closure {
-                                    body: RichTerm::new(Term::Record(static_map, attrs), pos_op_inh),
+                                ))
+                            }
+                            else {
+                                Ok(Closure {
+                                    body: RichTerm::new(
+                                        Term::Record(static_map, attrs), pos_op_inh
+                                    ),
                                     env: env2,
-                                }),
+                                })
                             }
                         }
                     } else {
@@ -1811,9 +1849,9 @@ fn process_binary_operation(
         },
         BinaryOp::HasField() => match_sharedterm! {t1, with {
                 Term::Str(id) => {
-                    if let Term::Record(static_map, _) = &*t2 {
+                    if let Term::Record(map, _) = &*t2 {
                         Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Bool(static_map.contains_key(&Ident::from(id))),
+                            Term::Bool(matches!(map.get(&Ident::from(id)), Some(t5) if !is_empty_optional(t5, &env2))),
                             pos_op_inh,
                         )))
                     } else {
@@ -2011,13 +2049,13 @@ fn process_binary_operation(
 
             if let Term::Enum(ref id) = t1.as_ref() {
                 // Serialization needs all variables term to be fully substituted
-                let global_env = Environment::new();
+                let initial_env = Environment::new();
                 let rt2 = subst(
                     RichTerm {
                         term: t2,
                         pos: pos2,
                     },
-                    &global_env,
+                    &initial_env,
                     &env2,
                 );
 
@@ -2403,7 +2441,10 @@ fn eq(env: &mut Environment, c1: Closure, c2: Closure) -> EqResult {
         (Term::Record(m1, _), Term::Record(m2, _)) => {
             let (left, center, right) = merge::hashmap::split(m1, m2);
 
-            if !left.is_empty() || !right.is_empty() {
+            // As for other record operations, we ignore optional fields without a definition.
+            if !left.values().all(|rt| is_empty_optional(&rt, &env1))
+                || !right.values().all(|rt| is_empty_optional(&rt, &env2))
+            {
                 EqResult::Bool(false)
             } else if center.is_empty() {
                 EqResult::Bool(true)

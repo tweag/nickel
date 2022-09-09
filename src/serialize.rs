@@ -1,13 +1,17 @@
 //! Serialization of an evaluated program to various data format.
-use crate::error::SerializationError;
-use crate::identifier::Ident;
-use crate::term::{ArrayAttrs, MetaValue, RecordAttrs, RichTerm, Term};
-use serde::de::{Deserialize, Deserializer};
-use serde::ser::{Error, Serialize, SerializeMap, SerializeSeq, Serializer};
-use std::collections::HashMap;
-use std::fmt;
-use std::io;
-use std::str::FromStr;
+use crate::{
+    error::SerializationError,
+    eval::{self, is_empty_optional},
+    identifier::Ident,
+    term::{ArrayAttrs, MetaValue, RecordAttrs, RichTerm, Term},
+};
+
+use serde::{
+    de::{Deserialize, Deserializer},
+    ser::{Error, Serialize, SerializeMap, SerializeSeq, Serializer},
+};
+
+use std::{collections::HashMap, fmt, io, str::FromStr};
 
 /// Available export formats.
 // If you add or remove variants, remember to update the CLI docs in `src/bin/nickel.rs'
@@ -101,7 +105,12 @@ pub fn serialize_record<S>(
 where
     S: Serializer,
 {
-    let mut entries: Vec<(_, _)> = map.iter().collect();
+    let mut entries: Vec<(_, _)> = map
+        .iter()
+        // Filtering out optional fields without a definition. All variable should have been
+        // substituted at this point, so we pass an empty environment.
+        .filter(|(_, t)| !is_empty_optional(t, &eval::Environment::new()))
+        .collect();
     entries.sort_by_key(|(k, _)| *k);
 
     let mut map_ser = serializer.serialize_map(Some(entries.len()))?;
@@ -199,6 +208,8 @@ pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), SerializationE
             MetaValue(term::MetaValue {
                 value: Some(ref t), ..
             }) => validate(format, t),
+            // Optional field without definition are accepted and ignored during serialization.
+            _ if is_empty_optional(t, &eval::Environment::new()) => Ok(()),
             _ => Err(SerializationError::NonSerializable(t.clone())),
         }
     }
