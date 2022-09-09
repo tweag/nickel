@@ -4,8 +4,9 @@ use crate::identifier::Ident;
 use crate::term::make as mk_term;
 use crate::term::RichTerm;
 
+<<<<<<< HEAD
 /// This is an array containing all the Nickel standard library modules.
-pub fn modules() -> [StdlibModule; 8] {
+pub fn modules() -> [StdlibModule; 9] {
     [
         StdlibModule::Builtin,
         StdlibModule::Contract,
@@ -15,8 +16,10 @@ pub fn modules() -> [StdlibModule; 8] {
         StdlibModule::Num,
         StdlibModule::Function,
         StdlibModule::Internals,
+        StdlibModule::Compat,
     ]
 }
+
 
 /// Represents a particular Nickel standard library module.
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
@@ -29,6 +32,7 @@ pub enum StdlibModule {
     Num,
     Function,
     Internals,
+    Compat,
 }
 
 impl StdlibModule {
@@ -42,6 +46,7 @@ impl StdlibModule {
             StdlibModule::Num => "<stdlib/num.ncl>",
             StdlibModule::Function => "<stdlib/function.ncl>",
             StdlibModule::Internals => "<stdlib/internals.ncl>",
+            StdlibModule::Compat => "<stdlib/compat.ncl>",
         }
     }
 
@@ -55,6 +60,7 @@ impl StdlibModule {
             StdlibModule::Num => include_str!("../stdlib/num.ncl"),
             StdlibModule::Function => include_str!("../stdlib/function.ncl"),
             StdlibModule::Internals => include_str!("../stdlib/internals.ncl"),
+            StdlibModule::Compat => include_str!("../stdlib/compat.ncl"),
         }
     }
 }
@@ -74,6 +80,7 @@ impl TryFrom<Ident> for StdlibModule {
             "num" => StdlibModule::Num,
             "function" => StdlibModule::Function,
             "internals" => StdlibModule::Internals,
+            "compat" => StdlibModule::Compat,
             _ => return Err(UnknownStdlibModule),
         };
         Ok(module)
@@ -91,6 +98,7 @@ impl From<StdlibModule> for Ident {
             StdlibModule::Num => "num",
             StdlibModule::Function => "function",
             StdlibModule::Internals => "internals",
+            StdlibModule::Compat=> "Compat",
         };
         Ident::from(name)
     }
