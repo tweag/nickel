@@ -104,6 +104,10 @@ AnnotAtom<TypeRule>: MetaValue = {
         priority: MergePriority::Default,
         ..Default::default()
     },
+    "|" "priority" <"num literal"> => MetaValue {
+        priority: MergePriority::Default,
+        ..Default::default()
+    },
     "|" "doc" <s: StaticString> => MetaValue {
         doc: Some(strip_indent_doc(s)),
         ..Default::default()
@@ -880,6 +884,7 @@ extern {
         "default" => Token::Normal(NormalToken::Default),
         "doc" => Token::Normal(NormalToken::Doc),
         "optional" => Token::Normal(NormalToken::Optional),
+        "priority" => Token::Normal(NormalToken::Priority),
 
         "hash" => Token::Normal(NormalToken::OpHash),
         "serialize" => Token::Normal(NormalToken::Serialize),

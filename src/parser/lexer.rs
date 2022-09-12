@@ -216,6 +216,8 @@ pub enum NormalToken<'input> {
     Doc,
     #[token("optional")]
     Optional,
+    #[token("priority")]
+    Priority,
 
     #[token("%hash%")]
     OpHash,
