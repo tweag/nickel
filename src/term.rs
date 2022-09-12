@@ -16,20 +16,28 @@
 //! contracts, default values, documentation, etc. They bring such usually external object down to
 //! the term level, and together with [crate::eval::merge], they allow for flexible and modular
 //! definitions of contracts, record and metadata all together.
-use crate::destruct::Destruct;
-use crate::error::ParseError;
-use crate::identifier::Ident;
-use crate::label::Label;
-use crate::match_sharedterm;
-use crate::position::TermPos;
-use crate::types::{AbsType, Types, UnboundTypeVariableError};
+use crate::{
+    destruct::Destruct,
+    error::ParseError,
+    identifier::Ident,
+    label::Label,
+    match_sharedterm,
+    position::TermPos,
+    types::{AbsType, Types, UnboundTypeVariableError},
+};
+
 use codespan::FileId;
+
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
-use std::ffi::OsString;
-use std::fmt;
-use std::ops::Deref;
-use std::rc::Rc;
+
+use std::{
+    cmp::{Ordering, PartialOrd},
+    collections::{HashMap, HashSet},
+    ffi::OsString,
+    fmt,
+    ops::Deref,
+    rc::Rc,
+};
 
 /// The AST of a Nickel expression.
 ///
@@ -287,15 +295,131 @@ pub struct RecordDeps {
 /// Potential dependencies of a single field over the sibling fields in a recursive record.
 pub type FieldDeps = Option<Rc<HashSet<Ident>>>;
 
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Copy, Clone)]
+/// A wrapper around f64 which makes `NaN` not representable. As opposed to floats, it is `Eq` and
+/// `Ord`.
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
+pub struct NumeralPriority(f64);
+
+/// Error raised when trying to convert a float with `NaN` value to a `NumeralPriority`.
+#[derive(Debug, Copy, Clone)]
+pub struct PriorityIsNaN;
+
+// The following impl are ok because `NumeralPriority(NaN)` can't be constructed.
+impl Eq for NumeralPriority {}
+impl Ord for NumeralPriority {
+    fn cmp(&self, other: &Self) -> Ordering {
+        // Ok: NaN is forbidden
+        self.partial_cmp(other).unwrap()
+    }
+}
+
+impl NumeralPriority {
+    pub fn zero() -> Self {
+        NumeralPriority(0.0)
+    }
+}
+
+impl TryFrom<f64> for NumeralPriority {
+    type Error = PriorityIsNaN;
+
+    fn try_from(f: f64) -> Result<Self, Self::Error> {
+        if f.is_nan() {
+            Err(PriorityIsNaN)
+        } else {
+            Ok(NumeralPriority(f))
+        }
+    }
+}
+
+impl From<NumeralPriority> for f64 {
+    fn from(n: NumeralPriority) -> Self {
+        n.0
+    }
+}
+
+impl fmt::Display for NumeralPriority {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
 pub enum MergePriority {
-    Default,
-    Normal,
+    /// The priority of default values that are overridden by everything else.
+    Bottom,
+    /// The priority by default, when no priority annotation (`default`, `force`, `priority`) is
+    /// provided.
+    ///
+    /// Act as the value `MergePriority::Numeral(0.0)` with respect to ordering and equality
+    /// testing. The only way to discriminate this variant is to pattern match on it.
+    Neutral,
+    /// A numeral priority. The inner value should never be `NaN`. Comparing a `MergePriority` with
+    /// a `NaN` value will panic.
+    Numeral(NumeralPriority),
+    /// The priority of values that override everything else and can't be overridden.
+    Top,
+}
+
+impl PartialOrd for MergePriority {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for MergePriority {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (MergePriority::Bottom, MergePriority::Bottom)
+            | (MergePriority::Neutral, MergePriority::Neutral)
+            | (MergePriority::Top, MergePriority::Top) => true,
+            (MergePriority::Numeral(p1), MergePriority::Numeral(p2)) => p1 == p2,
+            (MergePriority::Neutral, MergePriority::Numeral(p))
+            | (MergePriority::Numeral(p), MergePriority::Neutral)
+                if p == &NumeralPriority::zero() =>
+            {
+                true
+            }
+            _ => false,
+        }
+    }
+}
+
+impl Eq for MergePriority {}
+
+impl Ord for MergePriority {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self, other) {
+            // Equalities
+            (MergePriority::Bottom, MergePriority::Bottom)
+            | (MergePriority::Top, MergePriority::Top)
+            | (MergePriority::Neutral, MergePriority::Neutral) => Ordering::Equal,
+            (MergePriority::Numeral(p1), MergePriority::Numeral(p2)) => p1.cmp(p2),
+
+            // Top and bottom.
+            (MergePriority::Bottom, _) | (_, MergePriority::Top) => Ordering::Less,
+            (MergePriority::Top, _) | (_, MergePriority::Bottom) => Ordering::Greater,
+
+            // Neutral and numeral.
+            (MergePriority::Neutral, MergePriority::Numeral(n)) => NumeralPriority::zero().cmp(n),
+            (MergePriority::Numeral(n), MergePriority::Neutral) => n.cmp(&NumeralPriority::zero()),
+        }
+    }
 }
 
 impl Default for MergePriority {
     fn default() -> Self {
-        Self::Normal
+        Self::Neutral
+    }
+}
+
+impl fmt::Display for MergePriority {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            MergePriority::Bottom => write!(f, "default"),
+            MergePriority::Neutral => write!(f, "{}", NumeralPriority::zero()),
+            MergePriority::Numeral(p) => write!(f, "{}", p),
+            MergePriority::Top => write!(f, "force"),
+        }
     }
 }
 
@@ -335,7 +459,7 @@ impl MetaValue {
     }
 
     /// Flatten two nested metavalues into one, combining their metadata. If data that can't be
-    /// combined (typically, the documentation or the type annotation) are set by both metavalues,
+    /// combined (typically, the documentation, the type annotation or the priority) are set by both metavalues,
     /// outer's one are kept.
     ///
     /// Note that no environment management such as closurization takes place, because this
@@ -345,7 +469,7 @@ impl MetaValue {
     /// #Preconditions
     ///
     /// - `outer.value` is assumed to be `inner`. While `flatten` may still work fine if this
-    ///   condition is not fullfilled, the value of the final metavalue is set to be `inner`'s one,
+    ///   condition is not fulfilled, the value of the final metavalue is set to be `inner`'s one,
     ///   and `outer`'s one is dropped.
     pub fn flatten(mut outer: MetaValue, mut inner: MetaValue) -> MetaValue {
         // Keep the outermost value for non-mergeable information, such as documentation, type annotation,
@@ -364,12 +488,21 @@ impl MetaValue {
 
         outer.contracts.extend(inner.contracts.into_iter());
 
+        let priority = match (outer.priority, inner.priority) {
+            // Neutral corresponds to the case where no priority was specified. In that case, the
+            // other priority takes precedence.
+            (MergePriority::Neutral, p) | (p, MergePriority::Neutral) => p,
+            // Otherwise, we keep the maximum of both priorities, as we would do when merging
+            // values.
+            (p1, p2) => std::cmp::max(p1, p2),
+        };
+
         MetaValue {
             doc: outer.doc.or(inner.doc),
             types: outer.types.or(inner.types),
             contracts: outer.contracts,
             opt: outer.opt || inner.opt,
-            priority: std::cmp::min(outer.priority, inner.priority),
+            priority,
             value: inner.value,
         }
     }
@@ -541,7 +674,7 @@ impl Term {
                     content.push_str("contract,");
                 }
 
-                let value_label = if meta.priority == MergePriority::Default {
+                let value_label = if meta.priority == MergePriority::Bottom {
                     "default"
                 } else {
                     "value"

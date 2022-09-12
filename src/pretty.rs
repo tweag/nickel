@@ -99,7 +99,7 @@ where
             }),
             self.line().clone(),
         ))
-        .append(if mv.priority == crate::term::MergePriority::Default {
+        .append(if mv.priority == crate::term::MergePriority::Bottom {
             self.line().append(self.text("| default"))
         } else {
             self.nil()
@@ -207,7 +207,7 @@ where
                                 MetaValue {
                                     types,
                                     contracts,
-                                    priority: crate::term::MergePriority::Default,
+                                    priority: crate::term::MergePriority::Bottom,
                                     value: Some(value),
                                     ..
                                 } => allocator

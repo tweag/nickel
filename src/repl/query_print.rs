@@ -235,7 +235,7 @@ fn write_query_result_<R: QueryPrinter>(
 
             match &meta {
                 MetaValue {
-                    priority: MergePriority::Default,
+                    priority: MergePriority::Bottom,
                     value: Some(t),
                     ..
                 } if selected_attrs.default => {
@@ -243,10 +243,11 @@ fn write_query_result_<R: QueryPrinter>(
                     found = true;
                 }
                 MetaValue {
-                    priority: MergePriority::Normal,
+                    priority: MergePriority::Numeral(n),
                     value: Some(t),
                     ..
                 } if selected_attrs.value => {
+                    renderer.write_metadata(out, "priority", &format!("{}", n))?;
                     renderer.write_metadata(out, "value", &t.as_ref().shallow_repr())?;
                     found = true;
                 }

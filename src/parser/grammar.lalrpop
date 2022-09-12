@@ -60,7 +60,7 @@ use crate::{
     term::{
         BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
         MergePriority, Contract, NAryOp, RecordAttrs, SharedTerm,
-        make as mk_term},
+        NumeralPriority, make as mk_term},
     types::{Types, AbsType},
     position::TermPos,
     label::Label,
@@ -101,11 +101,12 @@ AnnotAtom<TypeRule>: MetaValue = {
         ..Default::default()
     },
     "|" "default" => MetaValue {
-        priority: MergePriority::Default,
+        priority: MergePriority::Bottom,
         ..Default::default()
     },
     "|" "priority" <"num literal"> => MetaValue {
-        priority: MergePriority::Default,
+        // unwrap(): a literal can't be NaN
+        priority: MergePriority::Numeral(NumeralPriority::try_from(<>).unwrap()),
         ..Default::default()
     },
     "|" "doc" <s: StaticString> => MetaValue {
@@ -431,7 +432,7 @@ Match: Match = {
 
 // A default annotation in a pattern.
 DefaultAnnot: MetaValue = "?" <t: Term> => MetaValue {
-    priority: MergePriority::Default,
+    priority: MergePriority::Bottom,
     value: Some(t),
     ..Default::default()
 };
