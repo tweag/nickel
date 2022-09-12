@@ -152,6 +152,8 @@ pub enum NormalToken<'input> {
 
     #[token("%assume%")]
     Assume,
+    #[token("%array_lazy_assume%")]
+    ArrayLazyAssume,
     #[token("%blame%")]
     Blame,
     #[token("%chng_pol%")]
@@ -183,6 +185,8 @@ pub enum NormalToken<'input> {
     Seq,
     #[token("%deep_seq%")]
     DeepSeq,
+    #[token("%force%")]
+    Force,
     #[token("%head%")]
     Head,
     #[token("%tail%")]

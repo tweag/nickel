@@ -186,14 +186,70 @@ impl Default for BindingType {
     }
 }
 
+/// A contract with its associated data.
+#[derive(Debug, PartialEq, Clone)]
+pub struct PendingContract {
+    /// The pending contract, can be a function or a record.
+    pub contract: RichTerm,
+    /// The blame label.
+    pub label: Label,
+}
+
+impl PendingContract {
+    pub fn new(contract: RichTerm, label: Label) -> Self {
+        PendingContract { contract, label }
+    }
+}
+
 /// The attributes of an Array.
-#[derive(Debug, Default, Eq, PartialEq, Copy, Clone)]
+#[derive(Debug, Default, PartialEq, Clone)]
 pub struct ArrayAttrs {
     /// A `closurized` array verifies the following conditions:
     ///   - Each element is a generated variable with a unique name (although the same
     ///     variable can occur in several places, it should always refer to the same thunk anyway).
     ///   - The environment of the array's closure only contains those generated variables.
     pub closurized: bool,
+    /// List of lazily-applied contracts.
+    /// These are only observed when data enters or leaves the array.
+    pub pending_contracts: Vec<PendingContract>,
+}
+
+impl ArrayAttrs {
+    /// Create an `ArrayAttrs`.
+    /// By default, the `closurized` flag is set to `false`,
+    /// and `pending_contracts` is empty.
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    /// Set the `closurized` flag to `true`.
+    pub fn closurized(mut self) -> Self {
+        self.closurized = true;
+        self
+    }
+
+    /// Drop the pending contracts.
+    pub fn contracts_cleared(mut self) -> Self {
+        self.pending_contracts.clear();
+        self
+    }
+
+    /// Extend contracts from an iterator of `PendingContract`.
+    /// De-duplicate equal contracts. Note that current contract
+    /// equality testing is very limited, but this may change in the
+    /// future
+    pub fn with_extra_contracts<I>(mut self, iter: I) -> Self
+    where
+        I: IntoIterator<Item = PendingContract>,
+    {
+        for ctr in iter {
+            if !self.pending_contracts.contains(&ctr) {
+                self.pending_contracts.push(ctr)
+            }
+        }
+
+        self
+    }
 }
 
 #[derive(Debug, Default, Eq, PartialEq, Copy, Clone)]
@@ -837,6 +893,23 @@ pub enum UnaryOp {
     StrIsMatchCompiled(CompiledRegex),
     /// Version of [`UnaryOp::StrMatch`] which remembers the compiled regex.
     StrMatchCompiled(CompiledRegex),
+    /// Force full evaluation of a term and return it.
+    ///
+    /// This was added in the context of [`BinaryOp::ArrayLazyAssume`],
+    /// in particular to make serialization work with lazy array contracts.
+    ///
+    /// # `Force` vs. `DeepSeq`
+    ///
+    /// [`UnaryOp::Force`] updates the thunks containing arrays with a new version where the lazy contracts have all been applied,
+    /// whereas [`UnaryOp::DeepSeq`] evaluates the same expressions, but it never updates the thunk of an array with lazy contracts
+    /// with an array where those contracts have been applied. In a way, the result of lazy contract application in arrays is "lost"
+    /// in [`UnaryOp::DeepSeq`], while it's returned in [`UnaryOp::Force`].
+    ///
+    /// This means we can observe different results between `deep_seq x x` and `force x`, in some cases.
+    ///
+    /// It's also worth noting that [`UnaryOp::DeepSeq`] should be, in principle, more efficient that [`UnaryOp::Force`]
+    /// as it does less cloning.
+    Force(Option<crate::eval::callstack::StackElem>),
 }
 
 // See: https://github.com/rust-lang/regex/issues/178
@@ -962,6 +1035,10 @@ pub enum BinaryOp {
     StrContains(),
     /// Seal a term with a sealing key (see [`Term::Sealed`]).
     Seal(),
+
+    /// Lazily apply a contract to an Array.
+    /// This simply inserts a contract into the array attributes.
+    ArrayLazyAssume(),
 }
 
 impl BinaryOp {

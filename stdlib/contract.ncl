@@ -11,8 +11,9 @@
 
   "$array" = fun elt l t =>
     if %typeof% t == `Array then
-      %map% t (fun value => %assume% elt (%go_array% l) value)
-    else %blame% l,
+        %array_lazy_assume% (%go_array% l) t elt
+    else
+        %blame% l,
 
   "$func" = fun s t l e =>
       if %typeof% e == `Fun then

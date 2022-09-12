@@ -137,7 +137,7 @@ fn lists_contracts() {
     use nickel_lang::label::ty_path::Elem;
 
     assert_matches!(
-        eval("%deep_seq% ([1, \"a\"] | Array Num) 0"),
+        eval("%force% ([1, \"a\"] | Array Num) 0"),
         Err(Error::EvalError(EvalError::BlameError(..)))
     );
     assert_matches!(
@@ -149,7 +149,7 @@ fn lists_contracts() {
         Err(Error::EvalError(EvalError::BlameError(..)))
     );
 
-    let res = eval("%deep_seq% ([{a = [1]}] | Array {a: Array Str}) false");
+    let res = eval("%force% ([{a = [1]}] | Array {a: Array Str}) false");
     match &res {
         Err(Error::EvalError(EvalError::BlameError(ref l, _))) => {
             assert_matches!(l.path.as_slice(), [Elem::Array, Elem::Field(id), Elem::Array] if &id.to_string() == "a")

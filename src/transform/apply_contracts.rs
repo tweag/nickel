@@ -10,7 +10,8 @@
 //! value is unwrapped.
 use crate::{
     match_sharedterm, mk_app,
-    term::{make as mk_term, BinaryOp, RichTerm, Term},
+    position::TermPos,
+    term::{make as mk_term, BinaryOp, PendingContract, RichTerm, Term},
     types::UnboundTypeVariableError,
 };
 
@@ -24,21 +25,15 @@ pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError>
             Term::MetaValue(meta) if meta.value.is_some() => {
                 let mut meta = meta;
                 let pos_inh = pos.into_inherited();
-                let inner = meta.types.iter().chain(meta.contracts.iter()).try_fold(
-                    meta.value.take().unwrap(),
-                    |acc, ctr| {
-                        Ok(mk_app!(
-                            mk_term::op2(
-                                BinaryOp::Assume(),
-                                ctr.types.contract()?,
-                                Term::Lbl(ctr.label.clone())
-                            )
-                            .with_pos(pos_inh),
-                            acc
-                        )
-                        .with_pos(pos_inh))
-                    },
-                )?;
+
+                let ctrs = meta
+                    .types
+                    .iter()
+                    .chain(meta.contracts.iter())
+                    .map(|ctr| Ok(PendingContract::new(ctr.types.contract()?, ctr.label.clone())))
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                let inner = apply_contracts(meta.value.take().unwrap(), ctrs.into_iter(), pos_inh);
 
                 meta.value.replace(inner);
                 RichTerm::new(Term::MetaValue(meta), pos)
@@ -46,4 +41,17 @@ pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError>
         } else rt
     };
     Ok(result)
+}
+
+pub fn apply_contracts<I>(rt: RichTerm, contracts: I, pos: TermPos) -> RichTerm
+where
+    I: Iterator<Item = PendingContract>,
+{
+    contracts.fold(rt, |acc, ctr| {
+        mk_app!(
+            mk_term::op2(BinaryOp::Assume(), ctr.contract, Term::Lbl(ctr.label)).with_pos(pos),
+            acc
+        )
+        .with_pos(pos)
+    })
 }
