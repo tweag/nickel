@@ -1143,6 +1143,8 @@ fn process_unary_operation(
 
                         let map = map
                             .into_iter()
+                            // We ignore empty optional fields
+                            .filter(|(_, t)| !is_empty_optional(t, &env))
                             .map(|(id, t)| {
                                 let stack_elem = Some(callstack::StackElem::Field {
                                     id: id.clone(),
