@@ -102,7 +102,7 @@ fn mk_default(t: RichTerm) -> Term {
     use crate::term::MergePriority;
 
     let mut meta = MetaValue::from(t);
-    meta.priority = MergePriority::Default;
+    meta.priority = MergePriority::Bottom;
     Term::MetaValue(meta)
 }
 

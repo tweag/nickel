@@ -211,7 +211,7 @@ impl UniRecord {
                                         types: Some(ctrt),
                                         contracts,
                                         opt: false,
-                                        priority: MergePriority::Normal,
+                                        priority: MergePriority::Neutral,
                                         value: None,
                                     }) if contracts.is_empty() => Ok(Types(AbsType::RowExtend(
                                         id,
