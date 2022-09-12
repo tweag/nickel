@@ -208,8 +208,6 @@ pub enum NormalToken<'input> {
     ElemAt,
     #[token("%generate%")]
     ArrayGen,
-    #[token("merge")]
-    Merge,
     #[token("default")]
     Default,
     #[token("doc")]

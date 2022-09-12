@@ -876,7 +876,6 @@ extern {
         "map" => Token::Normal(NormalToken::Map),
         "generate" => Token::Normal(NormalToken::ArrayGen),
         "elem_at" => Token::Normal(NormalToken::ElemAt),
-        "merge" => Token::Normal(NormalToken::Merge),
         "default" => Token::Normal(NormalToken::Default),
         "doc" => Token::Normal(NormalToken::Doc),
         "optional" => Token::Normal(NormalToken::Optional),
