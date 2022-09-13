@@ -1,4 +1,4 @@
-let Assert = fun l x => x || %blame% l in
+let {check, ..} = import "testlib.ncl" in
 
 [
   # interpolation
@@ -25,4 +25,4 @@ let Assert = fun l x => x || %blame% l in
   let b = "x" in m%"a%%{b}c"%m == "a%xc",
   m%"%Hel%%{"1"}lo%%%{"2"}"%m == "%Hel%1lo%%2",
 ]
-|> array.foldl (fun x y => (x | Assert) && y) true
+|> check

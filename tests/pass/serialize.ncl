@@ -1,4 +1,4 @@
-let Assert = fun l x => x || %blame% l in
+let {check, ..} = import "testlib.ncl" in
 
 let assertSerInv = fun x =>
     let assertAux = fun format x =>
@@ -62,4 +62,4 @@ let assertDeserInv = fun x =>
   let ext = {foo = {some = {}}} in
   assertSerInv (base & ext),
 ]
-|> array.foldl (fun x y => (x | Assert) && y) true
+|> check
