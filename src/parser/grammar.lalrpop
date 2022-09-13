@@ -108,7 +108,7 @@ AnnotAtom<TypeRule>: MetaValue = {
         priority: MergePriority::Top,
         ..Default::default()
     },
-    "|" "priority" <"num literal"> => MetaValue {
+    "|" "priority" <SignedNumLiteral> => MetaValue {
         // unwrap(): a literal can't be NaN
         priority: MergePriority::Numeral(NumeralPriority::try_from(<>).unwrap()),
         ..Default::default()
@@ -786,6 +786,14 @@ TypeAtom: Types = {
         Types(AbsType::Wildcard(id))
     },
 }
+
+SignedNumLiteral: f64 = <sign: "-"?> <value: "num literal"> => {
+    if sign.is_some() {
+        -value
+    } else {
+        value
+    }
+};
 
 extern {
     type Location = usize;
