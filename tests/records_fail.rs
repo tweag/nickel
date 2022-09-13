@@ -43,6 +43,22 @@ fn non_mergeable_piecewise() {
 }
 
 #[test]
+fn non_mergeable_prio() {
+    assert_matches!(
+        eval("({a.b | priority 0 = 1, a = {b = 2}}).a.b"),
+        Err(Error::EvalError(EvalError::MergeIncompatibleArgs(..)))
+    );
+    assert_matches!(
+        eval("({a | force = false} & {a | force = true}).a"),
+        Err(Error::EvalError(EvalError::MergeIncompatibleArgs(..)))
+    );
+    assert_matches!(
+        eval("({foo.bar | priority -10 = false, foo.bar | priority -10 = true}).foo.bar"),
+        Err(Error::EvalError(EvalError::MergeIncompatibleArgs(..)))
+    );
+}
+
+#[test]
 fn dynamic_not_recursive() {
     assert_matches!(
         eval("let x = \"foo\" in {\"%{x}\" = 1, bar = foo}.bar"),
