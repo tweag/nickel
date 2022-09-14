@@ -353,8 +353,7 @@ pub enum MergePriority {
     /// Act as the value `MergePriority::Numeral(0.0)` with respect to ordering and equality
     /// testing. The only way to discriminate this variant is to pattern match on it.
     Neutral,
-    /// A numeral priority. The inner value should never be `NaN`. Comparing a `MergePriority` with
-    /// a `NaN` value will panic.
+    /// A numeral priority.
     Numeral(NumeralPriority),
     /// The priority of values that override everything else and can't be overridden.
     Top,
