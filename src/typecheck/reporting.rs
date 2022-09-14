@@ -100,8 +100,9 @@ fn cst_to_type(names: &HashMap<usize, Ident>, name_reg: &mut NameReg, c: usize) 
 
 /// Extract a concrete type corresponding to a type wrapper for error reporting.
 ///
-/// Similar to [`to_type`], excepted that free unification variables and type constants are
-/// replaced by type variables which names are determined by the `var_to_type` and `cst_to_type`.
+/// Similar [`crate::types::Types::from`], excepted that free unification variables and type
+/// constants are replaced by type variables which names are determined by the `var_to_type` and
+/// `cst_to_type`.
 ///
 /// Distinguishing occurrences of unification variables and type constants is more informative
 /// than having `Dyn` everywhere.
@@ -121,5 +122,6 @@ pub fn to_type(
             let mapped = t.map(|btyp| Box::new(to_type(table, reported_names, names, *btyp)));
             Types(mapped)
         }
+        TypeWrapper::Contract(t, _) => Types(AbsType::Flat(t)),
     }
 }
