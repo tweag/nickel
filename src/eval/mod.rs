@@ -334,7 +334,9 @@ where
                     }
                     None | Some(..) => {
                         // This operation should not be allowed to evaluate a sealed term
-                        return Err(EvalError::BlameError(lbl.clone(), call_stack.clone()));
+                        let mut l = lbl.clone();
+                        l.polarity = true;
+                        return Err(EvalError::BlameError(l, call_stack.clone()));
                     }
                 }
             }
