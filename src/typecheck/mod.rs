@@ -676,6 +676,7 @@ fn type_check_<L: Linearizer>(
             let x_ty = ctxt
                 .type_env
                 .get(x)
+                .cloned()
                 .ok_or_else(|| TypecheckError::UnboundIdentifier(x.clone(), *pos))?;
 
             let instantiated = instantiate_foralls(state, x_ty, ForallInst::Ptr);
@@ -755,7 +756,7 @@ fn type_check_<L: Linearizer>(
                         // annotations) have already be determined and put in the typing
                         // ctxtironment, and we need to use the same.
                         let ty = if let Term::RecRecord(..) = t.as_ref() {
-                            ctxt.type_env.get(id).unwrap()
+                            ctxt.type_env.get(id).cloned().unwrap()
                         } else {
                             state.table.fresh_unif_var()
                         };
@@ -1010,7 +1011,7 @@ pub fn apparent_type(
             ApparentType::Approximated(Types(AbsType::Array(Box::new(Types(AbsType::Dyn())))))
         }
         Term::Var(id) => env
-            .and_then(|envs| envs.get(id))
+            .and_then(|envs| envs.get(id).cloned())
             .map(ApparentType::FromEnv)
             .unwrap_or(ApparentType::Approximated(Types(AbsType::Dyn()))),
         Term::ResolvedImport(f) => {

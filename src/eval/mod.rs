@@ -342,6 +342,7 @@ where
                 let mut thunk = env
                     .get(x)
                     .or_else(|| initial_env.get(x))
+                    .cloned()
                     .ok_or_else(|| EvalError::UnboundIdentifier(x.clone(), pos))?;
                 std::mem::drop(env); // thunk may be a 1RC pointer
 
@@ -954,7 +955,7 @@ pub fn is_empty_optional(rt: &RichTerm, env: &Environment) -> bool {
                     && is_empty_optional_aux(t2, env, is_opt, gas)
             }
             Term::Var(id) if *gas > 0 => {
-                if let Some(closure) = env.get(id).as_ref().map(Thunk::borrow) {
+                if let Some(closure) = env.get(id).map(Thunk::borrow) {
                     *gas -= 1;
                     is_empty_optional_aux(&closure.body, &closure.env, is_opt, gas)
                 } else {

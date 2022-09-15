@@ -14,6 +14,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a RichTerm)>>(
             Term::Var(ref var_id) => {
                 let thunk = env
                     .get(var_id)
+                    .cloned()
                     .ok_or_else(|| EvalError::UnboundIdentifier(var_id.clone(), rt.pos))?;
                 Ok((id.clone(), thunk))
             }
@@ -46,6 +47,7 @@ pub fn patch_field(
     if let Term::Var(var_id) = &*rt.term {
         let mut thunk = env
             .get(var_id)
+            .cloned()
             .ok_or_else(|| EvalError::UnboundIdentifier(var_id.clone(), rt.pos))?;
 
         let deps = thunk.deps();

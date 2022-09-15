@@ -263,12 +263,12 @@ impl Linearizer for AnalysisHost {
                     pos: ident.pos,
                     ty: TypeWrapper::Concrete(AbsType::Dyn()),
                     scope: self.scope.clone(),
-                    kind: TermKind::Usage(UsageState::from(self.env.get(ident))),
+                    kind: TermKind::Usage(UsageState::from(self.env.get(ident).copied())),
                     meta: self.meta.take(),
                 });
 
                 if let Some(referenced) = self.env.get(ident) {
-                    lin.add_usage(referenced, root_id)
+                    lin.add_usage(*referenced, root_id)
                 }
 
                 if let Some(chain) = self.access.take() {
@@ -467,7 +467,7 @@ impl Linearizer for AnalysisHost {
         if let Some(item) = self
             .env
             .get(ident)
-            .and_then(|index| lin.linearization.get_mut(index))
+            .and_then(|index| lin.linearization.get_mut(*index))
         {
             debug!("retyping {:?} to {:?}", ident, new_type);
             item.ty = new_type;
