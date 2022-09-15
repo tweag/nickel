@@ -334,13 +334,7 @@ where
                     }
                     None | Some(..) => {
                         // This operation should not be allowed to evaluate a sealed term
-                        let l = crate::label::Label {
-                            // We are trying to evaluate a sealed term, so the blame
-                            // should be on us because we're not respecting polymorphism.
-                            polarity: true,
-                            ..lbl.clone()
-                        };
-                        return Err(EvalError::BlameError(l, call_stack.clone()));
+                        return Err(EvalError::BlameError(lbl.clone(), call_stack.clone()));
                     }
                 }
             }

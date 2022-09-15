@@ -26,7 +26,7 @@
       if pol == lPol then
           %unseal% sy t (%blame% l)
       else
-          %seal% sy l t,
+          %seal% sy (%chng_pol% l) t,
 
   "$enums" = fun case l t =>
       if %typeof% t == `Enum then
