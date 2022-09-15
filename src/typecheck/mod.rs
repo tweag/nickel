@@ -71,7 +71,7 @@ pub mod reporting;
 pub mod mk_typewrapper;
 pub mod eq;
 
-use eq::TermEnvironment;
+use eq::{SimpleTermEnvironment, TermEnvironment};
 use error::*;
 use operation::{get_bop_type, get_nop_type, get_uop_type};
 
@@ -85,7 +85,7 @@ pub type Wildcards = Vec<Types>;
 #[derive(Debug, PartialEq, Clone)]
 pub struct Context {
     pub type_env: Environment,
-    pub term_env: TermEnvironment,
+    pub term_env: SimpleTermEnvironment,
 }
 
 #[derive(Clone, Debug)]
@@ -102,7 +102,7 @@ pub fn mk_initial_env(initial_env: Vec<RichTerm>) -> Result<Environment, EnvBuil
                 Ok(rec.iter().map(|(id, rt)| {
                     (
                         id.clone(),
-                        infer_record_type(rt.as_ref(), &TermEnvironment::new()),
+                        infer_record_type(rt.as_ref(), &SimpleTermEnvironment::new()),
                     )
                 }))
             } else {
@@ -121,7 +121,7 @@ pub fn mk_initial_env(initial_env: Vec<RichTerm>) -> Result<Environment, EnvBuil
 pub fn env_add_term(
     env: &mut Environment,
     rt: &RichTerm,
-    term_env: &TermEnvironment,
+    term_env: &SimpleTermEnvironment,
     resolver: &dyn ImportResolver,
 ) -> Result<(), EnvBuildError> {
     let RichTerm { term, pos } = rt;
@@ -150,7 +150,7 @@ pub fn env_add(env: &mut Environment, id: Ident, rt: &RichTerm, resolver: &dyn I
         id,
         TypeWrapper::from_apparent_type(
             apparent_type(rt.as_ref(), Some(env), Some(resolver)),
-            &TermEnvironment::new(),
+            &SimpleTermEnvironment::new(),
         ),
     );
 }
@@ -221,7 +221,7 @@ where
             &mut state,
             Context {
                 type_env: initial_env,
-                term_env: TermEnvironment::new(),
+                term_env: SimpleTermEnvironment::new(),
             },
             &mut building,
             linearizer.scope(),
@@ -926,7 +926,7 @@ fn replace_wildcards_with_var(
     table: &mut UnifTable,
     wildcard_vars: &mut Vec<TypeWrapper>,
     ty: Types,
-    env: &TermEnvironment,
+    env: &SimpleTermEnvironment,
 ) -> TypeWrapper {
     match ty.0 {
         AbsType::Wildcard(i) => get_wildcard_var(table, wildcard_vars, i),
@@ -1030,7 +1030,7 @@ pub fn apparent_type(
 
 /// Infer the type of a non annotated record by gathering the apparent type of the fields. It's
 /// currently used essentially to type the stdlib.
-pub fn infer_record_type(t: &Term, term_env: &TermEnvironment) -> TypeWrapper {
+pub fn infer_record_type(t: &Term, term_env: &SimpleTermEnvironment) -> TypeWrapper {
     match t {
         // An explicit annotation must take precedence over this inference, so let's use it.
         t @ Term::MetaValue(MetaValue {
@@ -1056,7 +1056,10 @@ pub fn infer_record_type(t: &Term, term_env: &TermEnvironment) -> TypeWrapper {
             })),
         ))
         .into(),
-        t => TypeWrapper::from_apparent_type(apparent_type(t, None, None), &TermEnvironment::new()),
+        t => TypeWrapper::from_apparent_type(
+            apparent_type(t, None, None),
+            &SimpleTermEnvironment::new(),
+        ),
     }
 }
 
@@ -1080,66 +1083,60 @@ fn has_wildcards(ty: &Types) -> bool {
 
 /// The types on which the unification algorithm operates, which may be either a concrete type, a
 /// type constant or a unification variable.
+///
+/// Contracts store an additional term environment for contract equality checking, which is
+/// represented by `E`. The typechecker always uses the same type for `E`. However, the evaluation
+/// phase may also resort to checking contract equality, using a different environment
+/// representation, hence the parametrization.
 #[derive(Clone, PartialEq, Debug)]
-pub enum TypeWrapper {
+pub enum GenericTypeWrapper<E: TermEnvironment + Clone> {
     /// A concrete type (like `Num` or `Str -> Str`).
-    Concrete(AbsType<Box<TypeWrapper>>),
+    Concrete(AbsType<Box<GenericTypeWrapper<E>>>),
     /// A contract, seen as an opaque type. In order to compute type equality between contracts or
     /// between a contract and a type, we need to carry an additional environment. This is why we
     /// don't reuse the variant from [`crate::types::AbsType`].
-    Contract(RichTerm, TermEnvironment),
+    Contract(RichTerm, E),
     /// A rigid type constant which cannot be unified with anything but itself.
     Constant(usize),
     /// A unification variable.
     Ptr(usize),
 }
 
-impl std::convert::TryInto<Types> for TypeWrapper {
+impl<E: TermEnvironment + Clone> std::convert::TryInto<Types> for GenericTypeWrapper<E> {
     type Error = ();
 
     fn try_into(self) -> Result<Types, ()> {
         match self {
-            TypeWrapper::Concrete(ty) => {
+            GenericTypeWrapper::Concrete(ty) => {
                 let converted: AbsType<Box<Types>> = ty.try_map(|tyw_boxed| {
                     let ty: Types = (*tyw_boxed).try_into()?;
                     Ok(Box::new(ty))
                 })?;
                 Ok(Types(converted))
             }
-            TypeWrapper::Contract(t, _) => Ok(Types(AbsType::Flat(t))),
+            GenericTypeWrapper::Contract(t, _) => Ok(Types(AbsType::Flat(t))),
             _ => Err(()),
         }
     }
 }
 
-impl TypeWrapper {
+impl<E: TermEnvironment + Clone> GenericTypeWrapper<E> {
     /// Create a TypeWrapper from a Types. Contracts are represented as the separate variant
     /// [`TypeWrapper::Contract`] which also stores a term environment, required for checking type
     /// equality involving contracts.
-    pub fn from_type(ty: Types, env: &TermEnvironment) -> Self {
+    pub fn from_type(ty: Types, env: &E) -> Self {
         match ty.0 {
-            AbsType::Flat(t) => TypeWrapper::Contract(t.clone(), env.clone()),
-            ty => TypeWrapper::Concrete(ty.map(|ty_| Box::new(TypeWrapper::from_type(*ty_, env)))),
-        }
-    }
-
-    /// Create a TypeWrapper from an apparent type. As for [`from_type`], this function requires
-    /// the current term environment.
-    pub fn from_apparent_type(at: ApparentType, env: &TermEnvironment) -> Self {
-        match at {
-            ApparentType::Annotated(ty) if has_wildcards(&ty) => {
-                TypeWrapper::Concrete(AbsType::Dyn())
-            }
-            ApparentType::Annotated(ty)
-            | ApparentType::Inferred(ty)
-            | ApparentType::Approximated(ty) => TypeWrapper::from_type(ty, env),
-            ApparentType::FromEnv(tyw) => tyw,
+            AbsType::Flat(t) => GenericTypeWrapper::Contract(t.clone(), env.clone()),
+            ty => GenericTypeWrapper::Concrete(
+                ty.map(|ty_| Box::new(GenericTypeWrapper::from_type(*ty_, env))),
+            ),
         }
     }
 
     /// Substitute all the occurrences of a type variable for a typewrapper.
-    pub fn subst(self, id: Ident, to: TypeWrapper) -> TypeWrapper {
-        use self::TypeWrapper::*;
+    pub fn subst(self, id: Ident, to: GenericTypeWrapper<E>) -> GenericTypeWrapper<E> {
+        use self::GenericTypeWrapper::*;
+
         match self {
             Concrete(AbsType::Var(ref i)) if *i == id => to,
             Concrete(AbsType::Forall(i, t)) => {
@@ -1191,10 +1188,28 @@ impl TypeWrapper {
     /// The iterator continues as long as the next item is of the form `RowExtend(..)`, and
     /// stops once it reaches `RowEmpty` (which ends iteration), or something else which is not a
     /// `RowExtend` (which produces a last item [`typecheck::RowIteratorItem::Tail`]).
-    pub fn iter_as_rows(&self) -> RowIterator<'_, TypeWrapper> {
+    pub fn iter_as_rows(&self) -> RowIterator<'_, GenericTypeWrapper<E>> {
         RowIterator { next: Some(self) }
     }
 }
+
+impl GenericTypeWrapper<SimpleTermEnvironment> {
+    /// Create a TypeWrapper from an apparent type. As for [`from_type`], this function requires
+    /// the current term environment.
+    pub fn from_apparent_type(at: ApparentType, env: &SimpleTermEnvironment) -> Self {
+        match at {
+            ApparentType::Annotated(ty) if has_wildcards(&ty) => {
+                GenericTypeWrapper::Concrete(AbsType::Dyn())
+            }
+            ApparentType::Annotated(ty)
+            | ApparentType::Inferred(ty)
+            | ApparentType::Approximated(ty) => GenericTypeWrapper::from_type(ty, env),
+            ApparentType::FromEnv(tyw) => tyw,
+        }
+    }
+}
+
+pub type TypeWrapper = GenericTypeWrapper<SimpleTermEnvironment>;
 
 // This implementation assumes that `AbsType::Flat` is not possible. If TypeWrappers have been
 // correctly created from a type using `from_type`, this must be the case.
@@ -1205,13 +1220,13 @@ impl From<AbsType<Box<TypeWrapper>>> for TypeWrapper {
     }
 }
 
-impl<'a> Iterator for RowIterator<'a, TypeWrapper> {
-    type Item = RowIteratorItem<'a, TypeWrapper>;
+impl<'a, E: TermEnvironment> Iterator for RowIterator<'a, GenericTypeWrapper<E>> {
+    type Item = RowIteratorItem<'a, GenericTypeWrapper<E>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.next.and_then(|next| match next {
-            TypeWrapper::Concrete(AbsType::RowEmpty()) => None,
-            TypeWrapper::Concrete(AbsType::RowExtend(id, ty_row, tail)) => {
+            GenericTypeWrapper::Concrete(AbsType::RowEmpty()) => None,
+            GenericTypeWrapper::Concrete(AbsType::RowExtend(id, ty_row, tail)) => {
                 self.next = Some(tail);
                 Some(RowIteratorItem::Row(id, ty_row.as_ref().map(Box::as_ref)))
             }
