@@ -43,24 +43,60 @@
 //! times. For anything more complex, we return false.
 
 use super::*;
-use crate::eval;
-use crate::term::UnaryOp;
+use crate::{eval, term::UnaryOp};
 
 /// The maximal number of variable links we want to unfold before abandoning the check. It should
 /// stay low, but has been fixed arbitrarily: feel fee to increase reasonably if it turns out
 /// legitimate type equalities between simple contracts are unduly rejected in practice.
 pub const MAX_GAS: u8 = 8;
 
-#[derive(PartialEq, Clone, Debug)]
-pub struct TermEnvironment(pub GenericEnvironment<Ident, (RichTerm, TermEnvironment)>);
+/// Abstract over the term environment, which is represented differently in the typechecker and
+/// during evaluation.
+///
+/// The evaluation environment holds [`crate::eval::lazy::Thunks`], which are `Rc<RefCell<_>>`
+/// under the hood, while the term environment used during typechecking is just maps identifiers to
+/// a pair `(RichTerm, Environment)`. To have an interface that works with both,
+/// `TermEnvironment::get_then` has to take a closure representing the continuation of the task to
+/// do with the result instead of merely returning it.
+pub trait TermEnvironment: Clone {
+    fn get_then<F, T>(&self, id: &Ident, f: F) -> T
+    where
+        F: FnOnce(Option<(&RichTerm, &Self)>) -> T;
+}
 
-impl TermEnvironment {
+/// A simple term environment, as a mapping from identifiers to a tuple of a term and an
+/// environment (i.e. a closure), sufficient for the needs of typechecking.
+#[derive(PartialEq, Clone, Debug)]
+pub struct SimpleTermEnvironment(pub GenericEnvironment<Ident, (RichTerm, SimpleTermEnvironment)>);
+
+impl SimpleTermEnvironment {
     pub fn new() -> Self {
-        TermEnvironment(GenericEnvironment::new())
+        SimpleTermEnvironment(GenericEnvironment::new())
     }
 }
 
-impl From<eval::Environment> for TermEnvironment {
+impl TermEnvironment for SimpleTermEnvironment {
+    fn get_then<F, T>(&self, id: &Ident, f: F) -> T
+    where
+        F: FnOnce(Option<(&RichTerm, &SimpleTermEnvironment)>) -> T,
+    {
+        f(self.0.get(id).map(|(rt, env)| (rt, env)))
+    }
+}
+
+impl TermEnvironment for eval::Environment {
+    fn get_then<F, T>(&self, id: &Ident, f: F) -> T
+    where
+        F: FnOnce(Option<(&RichTerm, &eval::Environment)>) -> T,
+    {
+        match self.get(id).map(eval::lazy::Thunk::borrow) {
+            Some(closure_ref) => f(Some((&closure_ref.body, &closure_ref.env))),
+            None => f(None),
+        }
+    }
+}
+
+impl From<eval::Environment> for SimpleTermEnvironment {
     fn from(eval_env: eval::Environment) -> Self {
         let generic_env: GenericEnvironment<_, _> = eval_env
             .iter_elems()
@@ -70,12 +106,12 @@ impl From<eval::Environment> for TermEnvironment {
                     id.clone(),
                     (
                         borrowed.body.clone(),
-                        TermEnvironment::from(borrowed.env.clone()),
+                        SimpleTermEnvironment::from(borrowed.env.clone()),
                     ),
                 )
             })
             .collect();
-        TermEnvironment(generic_env)
+        SimpleTermEnvironment(generic_env)
     }
 }
 
@@ -103,10 +139,10 @@ impl State {
     }
 
     /// Create a fresh unique rigid type variable.
-    fn fresh_cst(&mut self) -> TypeWrapper {
+    fn fresh_cst<E: TermEnvironment>(&mut self) -> GenericTypeWrapper<E> {
         let result = self.var_uid;
         self.var_uid += 1;
-        TypeWrapper::Constant(result)
+        GenericTypeWrapper::Constant(result)
     }
 
     /// Try to consume one unit of gas for a variable substitution. Return true in case of success,
@@ -127,24 +163,24 @@ impl State {
 ///
 /// - `env`: an environment mapping variables to their definition (the second placeholder in a
 ///   `let _ = _ in _`)
-pub fn contract_eq(
+pub fn contract_eq<E: TermEnvironment>(
     var_uid: usize,
     t1: &RichTerm,
-    env1: &TermEnvironment,
+    env1: &E,
     t2: &RichTerm,
-    env2: &TermEnvironment,
+    env2: &E,
 ) -> bool {
     contract_eq_bounded(&mut State::new(var_uid), t1, env1, t2, env2)
 }
 
 /// Decide type equality on contracts in their respective environment and given the remaining gas
 /// `gas`.
-fn contract_eq_bounded(
+fn contract_eq_bounded<E: TermEnvironment>(
     state: &mut State,
     t1: &RichTerm,
-    env1: &TermEnvironment,
+    env1: &E,
     t2: &RichTerm,
-    env2: &TermEnvironment,
+    env2: &E,
 ) -> bool {
     use Term::*;
 
@@ -188,34 +224,38 @@ fn contract_eq_bounded(
         // if they have the same identifier: whatever global environment the term will be put in,
         // free variables are not redefined locally and will be bound to the same value in any case.
         (Var(id1), Var(id2)) => {
-            match (env1.0.get(id1), env2.0.get(id2)) {
-                (None, None) => id1 == id2,
-                (Some((t1, env1)), Some((t2, env2))) => {
-                    // We may end up using one more gas unit if gas was exactly 1. That is not very
-                    // important, and it's simpler to just ignore this case. We still return false
-                    // if gas was already at zero.
-                    let had_gas = state.use_gas();
-                    state.use_gas();
-                    had_gas && contract_eq_bounded(state, &t1, &env1, &t2, &env2)
-                }
-                _ => false,
-            }
+            env1.get_then(id1, |binding1| {
+                env2.get_then(id2, |binding2| {
+                    match (binding1, binding2) {
+                        (None, None) => id1 == id2,
+                        (Some((t1, env1)), Some((t2, env2))) => {
+                            // We may end up using one more gas unit if gas was exactly 1. That is not very
+                            // important, and it's simpler to just ignore this case. We still return false
+                            // if gas was already at zero.
+                            let had_gas = state.use_gas();
+                            state.use_gas();
+                            had_gas && contract_eq_bounded(state, t1, env1, t2, env2)
+                        }
+                        _ => false,
+                    }
+                })
+            })
         }
         (Var(id), _) => {
             state.use_gas()
-                && env1
-                    .0
-                    .get(id)
-                    .map(|(t1, env1)| contract_eq_bounded(state, &t1, &env1, t2, env2))
-                    .unwrap_or(false)
+                && env1.get_then(id, |binding| {
+                    binding
+                        .map(|(t1, env1)| contract_eq_bounded(state, t1, env1, t2, env2))
+                        .unwrap_or(false)
+                })
         }
         (_, Var(id)) => {
             state.use_gas()
-                && env2
-                    .0
-                    .get(id)
-                    .map(|(t2, env2)| contract_eq_bounded(state, t1, env1, &t2, &env2))
-                    .unwrap_or(false)
+                && env2.get_then(id, |binding| {
+                    binding
+                        .map(|(t2, env2)| contract_eq_bounded(state, t1, env1, t2, env2))
+                        .unwrap_or(false)
+                })
         }
         (Record(m1, attrs1), Record(m2, attrs2)) => {
             map_eq(contract_eq_bounded, state, m1, env1, m2, env2) && attrs1 == attrs2
@@ -256,9 +296,9 @@ fn contract_eq_bounded(
                 (None, None) => true,
                 (Some(ctr1), Some(ctr2)) => type_eq_bounded(
                     state,
-                    &TypeWrapper::from_type(ctr1.types.clone(), env1), // &TypeWrapper::from(ctr1.types.clone()),
+                    &GenericTypeWrapper::from_type(ctr1.types.clone(), env1), // &TypeWrapper::from(ctr1.types.clone()),
                     env1,
-                    &TypeWrapper::from_type(ctr2.types.clone(), env2), // &TypeWrapper::from(ctr1.types.clone()),
+                    &GenericTypeWrapper::from_type(ctr2.types.clone(), env2), // &TypeWrapper::from(ctr1.types.clone()),
                     env2,
                 ),
                 _ => false,
@@ -275,16 +315,16 @@ fn contract_eq_bounded(
 }
 
 /// Compute the equality between two hashmaps holding either types or terms.
-fn map_eq<V, F>(
+fn map_eq<V, F, E>(
     mut f: F,
     state: &mut State,
     map1: &HashMap<Ident, V>,
-    env1: &TermEnvironment,
+    env1: &E,
     map2: &HashMap<Ident, V>,
-    env2: &TermEnvironment,
+    env2: &E,
 ) -> bool
 where
-    F: FnMut(&mut State, &V, &TermEnvironment, &V, &TermEnvironment) -> bool,
+    F: FnMut(&mut State, &V, &E, &V, &E) -> bool,
 {
     map1.len() == map2.len()
         && map1.iter().all(|(id, v1)| {
@@ -298,7 +338,9 @@ where
 ///
 /// Require the rows to be closed (i.e. the last element must be `RowEmpty`), otherwise `None` is
 /// returned. `None` is returned as well if a type encountered is not row, or if it is a enum row.
-fn rows_as_map(ty: &TypeWrapper) -> Option<HashMap<Ident, &TypeWrapper>> {
+fn rows_as_map<E: TermEnvironment>(
+    ty: &GenericTypeWrapper<E>,
+) -> Option<HashMap<Ident, &GenericTypeWrapper<E>>> {
     let mut map = HashMap::new();
 
     ty.iter_as_rows().try_for_each(|item| match item {
@@ -317,7 +359,7 @@ fn rows_as_map(ty: &TypeWrapper) -> Option<HashMap<Ident, &TypeWrapper>> {
 /// Require the rows to be closed (i.e. the last element must be `RowEmpty`), otherwise `None` is
 /// returned. `None` is returned as well if a type encountered is not row type, or if it is a
 /// record row.
-fn rows_as_set(ty: &TypeWrapper) -> Option<HashSet<Ident>> {
+fn rows_as_set<E: TermEnvironment>(ty: &GenericTypeWrapper<E>) -> Option<HashSet<Ident>> {
     let mut set = HashSet::new();
 
     ty.iter_as_rows().try_for_each(|item| match item {
@@ -341,15 +383,15 @@ fn rows_as_set(ty: &TypeWrapper) -> Option<HashSet<Ident>> {
 /// all the rigid type variables encountered have been introduced by `type_eq_bounded` itself. This
 /// is why we don't need unique identifiers that are distinct from the one used during
 /// typechecking, and we can just start from `0`.
-fn type_eq_bounded(
+fn type_eq_bounded<E: TermEnvironment>(
     state: &mut State,
-    ty1: &TypeWrapper,
-    env1: &TermEnvironment,
-    ty2: &TypeWrapper,
-    env2: &TermEnvironment,
+    ty1: &GenericTypeWrapper<E>,
+    env1: &E,
+    ty2: &GenericTypeWrapper<E>,
+    env2: &E,
 ) -> bool {
     match (ty1, ty2) {
-        (TypeWrapper::Concrete(s1), TypeWrapper::Concrete(s2)) => match (s1, s2) {
+        (GenericTypeWrapper::Concrete(s1), GenericTypeWrapper::Concrete(s2)) => match (s1, s2) {
             (AbsType::Wildcard(id1), AbsType::Wildcard(id2)) => id1 == id2,
             (AbsType::Dyn(), AbsType::Dyn())
             | (AbsType::Num(), AbsType::Num())
@@ -370,12 +412,12 @@ fn type_eq_bounded(
                 rows1.is_some() && rows2.is_some() && rows1 == rows2
             }
             (AbsType::StaticRecord(tyw1), AbsType::StaticRecord(tyw2)) => {
-                fn type_eq_bounded_wrapper(
+                fn type_eq_bounded_wrapper<E: TermEnvironment>(
                     state: &mut State,
-                    tyw1: &&TypeWrapper,
-                    env1: &TermEnvironment,
-                    tyw2: &&TypeWrapper,
-                    env2: &TermEnvironment,
+                    tyw1: &&GenericTypeWrapper<E>,
+                    env1: &E,
+                    tyw2: &&GenericTypeWrapper<E>,
+                    env2: &E,
                 ) -> bool {
                     type_eq_bounded(state, *tyw1, env1, *tyw2, env2)
                 }
@@ -391,7 +433,7 @@ fn type_eq_bounded(
                 contract_eq_bounded(state, t1, env1, t2, env2)
             }
             (AbsType::Forall(i1, tyw1), AbsType::Forall(i2, tyw2)) => {
-                let constant_type: TypeWrapper = state.fresh_cst();
+                let constant_type: GenericTypeWrapper<E> = state.fresh_cst();
 
                 type_eq_bounded(
                     state,
@@ -405,14 +447,14 @@ fn type_eq_bounded(
             // all type variables should have been substituted at this point, so we bail out.
             _ => false,
         },
-        (TypeWrapper::Ptr(p1), TypeWrapper::Ptr(p2)) => {
+        (GenericTypeWrapper::Ptr(p1), GenericTypeWrapper::Ptr(p2)) => {
             debug_assert!(
                 false,
                 "we shouldn't come across unification variables during type equality computation"
             );
             p1 == p2
         }
-        (TypeWrapper::Constant(i1), TypeWrapper::Constant(i2)) => i1 == i2,
+        (GenericTypeWrapper::Constant(i1), GenericTypeWrapper::Constant(i2)) => i1 == i2,
         _ => false,
     }
 }
