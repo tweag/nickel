@@ -1,4 +1,4 @@
-let Assert = fun l x => x || %blame% l in
+let {check, Assert, ..} = import "testlib.ncl" in
 
 [
   (10 | default | Num) == 10,
@@ -27,11 +27,10 @@ let Assert = fun l x => x || %blame% l in
 
   # composed
   let Even = fun l x => if x % 2 == 0 then x else %blame% l in
-    let DivBy3 = fun l x => if x % 3 ==  0 then x else %blame% l in
-    let composed = {a | Even} & {a | DivBy3} in
-    (composed & {a = 6} == {a = 6} | Assert) &&
-    (composed & {a = 12} == {a = 12} | Assert),
-
+  let DivBy3 = fun l x => if x % 3 ==  0 then x else %blame% l in
+  let composed = {a | Even} & {a | DivBy3} in
+  (composed & {a = 6} == {a = 6} | Assert) &&
+  (composed & {a = 12} == {a = 12} | Assert),
 
   # Check that the environments of contracts are correctly saved and restored when merging. See
   # issue [#117](https://github.com/tweag/nickel/issues/117)
@@ -127,4 +126,4 @@ let Assert = fun l x => x || %blame% l in
     (record.fields value == ["foo", "opt"] | Assert)
   ),
 ]
-|> array.foldl (fun x y => (x | Assert) && y) true
+|> check

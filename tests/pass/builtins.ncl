@@ -1,4 +1,4 @@
-let Assert = fun l x => x || %blame% l in
+let {check, ..} = import "testlib.ncl" in
 
 [
   # is_record
@@ -27,4 +27,4 @@ let Assert = fun l x => x || %blame% l in
    |> builtin.deserialize `Json
    == [3,4],
 ]
-|> array.foldl (fun x y => (x | Assert) && y) true
+|> check

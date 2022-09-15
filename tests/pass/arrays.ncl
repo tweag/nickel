@@ -1,4 +1,4 @@
-let Assert = fun l x => x || %blame% l in
+let {check, ..} = import "testlib.ncl" in
 
 [
   # accesses
@@ -40,4 +40,4 @@ let Assert = fun l x => x || %blame% l in
     let isZ = fun x => x == 0 in
     all isZ [0, 0, 0, 1] == false,
 ]
-|> array.foldl (fun x y => (x | Assert) && y) true
+|> check
