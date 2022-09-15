@@ -71,11 +71,8 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
     }
 
     /// Tries to find the value of a key in the Environment.
-    pub fn get(&self, key: &K) -> Option<V>
-    where
-        V: Clone,
-    {
-        self.iter_layers().find_map(|hmap| hmap.get(key).cloned())
+    pub fn get(&self, key: &K) -> Option<&V> {
+        self.iter_layers().find_map(|hmap| hmap.get(key))
     }
 
     /// Creates an iterator that visits all layers from the most recent one to the oldest.
@@ -163,12 +160,12 @@ pub struct EnvLayerIter<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> {
 }
 
 impl<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> Iterator for EnvLayerIter<'a, K, V> {
-    type Item = Rc<HashMap<K, V>>;
+    type Item = &'a Rc<HashMap<K, V>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         // SAFETY: NonNull being in an option, we know it cannot be null and can be dereferenceable
         self.env.map(|env| unsafe {
-            let res = env.as_ref().current.clone();
+            let res = &env.as_ref().current;
             self.env = env
                 .as_ref()
                 .previous
@@ -236,7 +233,7 @@ mod tests {
     fn test_env_base() {
         let mut env_base = Environment::new();
         env_base.insert(1, 'a');
-        assert_eq!(env_base.get(&1), Some('a'));
+        assert_eq!(env_base.get(&1), Some(&'a'));
         assert_eq!(env_base.get(&5), None);
         assert_eq!(env_base.depth(), 1);
     }
@@ -248,13 +245,13 @@ mod tests {
 
         let mut env2 = env_base.clone();
         env2.insert(2, 'b');
-        assert_eq!(env2.get(&1), Some('a'));
-        assert_eq!(env2.get(&2), Some('b'));
+        assert_eq!(env2.get(&1), Some(&'a'));
+        assert_eq!(env2.get(&2), Some(&'b'));
         env_base.insert(3, 'c');
         assert_eq!(env2.get(&3), None);
-        assert_eq!(env_base.get(&3), Some('c'));
+        assert_eq!(env_base.get(&3), Some(&'c'));
         env_base.insert(2, 'z');
-        assert_eq!(env_base.get(&2), Some('z'));
+        assert_eq!(env_base.get(&2), Some(&'z'));
 
         assert_eq!(env_base.depth(), 2);
         assert_eq!(env2.depth(), 2);
