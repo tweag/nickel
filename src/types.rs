@@ -164,14 +164,14 @@ pub struct UnboundTypeVariableError(pub Ident);
 
 impl From<UnboundTypeVariableError> for TypecheckError {
     fn from(err: UnboundTypeVariableError) -> Self {
-        let pos = err.0.pos;
+        let pos = err.0.pos();
         TypecheckError::UnboundTypeVariable(err.0, pos)
     }
 }
 
 impl From<UnboundTypeVariableError> for ParseError {
     fn from(err: UnboundTypeVariableError) -> Self {
-        let pos = err.0.pos;
+        let pos = err.0.pos();
         ParseError::UnboundTypeVariables(vec![err.0], pos.unwrap())
     }
 }

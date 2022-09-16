@@ -289,7 +289,7 @@ mod doc {
                 entries.sort_by_key(|(k, _)| *k);
 
                 for (ident, rt) in entries {
-                    let header = mk_header(&ident.label, header_level + 1, arena);
+                    let header = mk_header(ident.label(), header_level + 1, arena);
                     document.append(header);
                     to_markdown(rt, header_level + 1, arena, document, options)?;
                 }

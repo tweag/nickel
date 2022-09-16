@@ -475,7 +475,7 @@ fn cross_apply_contracts<'a>(
             let ty_closure = ctr.types.clone().closurize(&mut env1_local, env2.clone());
             mk_term::assume(ty_closure, ctr.label.clone(), acc)
                 .map_err(|crate::types::UnboundTypeVariableError(id)| {
-                    let pos = id.pos;
+                    let pos = id.pos();
                     EvalError::UnboundIdentifier(id, pos)
                 })
                 .map(|rt| rt.with_pos(pos))

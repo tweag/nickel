@@ -121,7 +121,7 @@ impl Match {
             // - missing field on the `id`
             Match::Assign(id, m, (_, d @ Destruct::Record { .. })) => {
                 let label @ Label { span, .. } = d.label();
-                let span = RawSpan::fuse(id.pos.unwrap(), span).unwrap();
+                let span = RawSpan::fuse(id.pos().unwrap(), span).unwrap();
                 let label = Label { span, ..label };
                 (
                     id,
