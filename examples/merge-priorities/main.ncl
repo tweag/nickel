@@ -4,8 +4,8 @@ let server = import "server.ncl" in
 let security = import "security.ncl" in
 # Disabling firewall in the final result
 server & security & {
-  #As opposed to the simple merge example, this would now fail
-  #firewall.enabled = false
+  # As opposed to the simple merge example, this would now fail
+  # firewall.enabled = false
 
   firewall.open_ports | priority 10 = [80],
   firewall.type = "superiptables",
