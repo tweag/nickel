@@ -184,7 +184,7 @@ impl ToNickel for rnix::SyntaxNode {
                             })
                             .collect(),
                     )
-                    .map(|e| e.clone())
+                    .cloned()
                     .collect();
                 let state = State {
                     env,
