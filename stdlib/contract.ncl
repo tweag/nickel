@@ -26,6 +26,10 @@
       if pol == lPol then
           %unseal% sy t (%blame% l)
       else
+          # Here, we know that this term should be sealed, but to give the right 
+          # blame for the contract, we have to change the polarity to match the 
+          # polarity of the `Forall`, because this is what's important for 
+          # blaming polymorphic contracts.
           %seal% sy (%chng_pol% l) t,
 
   "$enums" = fun case l t =>
