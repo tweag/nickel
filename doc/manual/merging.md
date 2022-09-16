@@ -270,7 +270,7 @@ merged as specified in this document, which can mean failure if the values can't
 be meaningfully merged:
 
 ```text
-nickel>{foo | default = 1} & {foo = 2}
+nickel> {foo = 1} & {foo = 2}
 error: non mergeable terms
   ┌─ repl-input-1:1:8
   │
@@ -286,10 +286,10 @@ On the other hand, if the priorities differ, the value with highest priority
 simply erases the other in the final result:
 
 ```text
-nickel>{foo | priority 1 = 1} & {foo = 2}
+nickel> {foo | priority 1 = 1} & {foo = 2}
 { foo = 1 }
 
-nickel>{foo | priority -1 = 1} & {foo = 2}
+nickel> {foo | priority -1 = 1} & {foo = 2}
 { foo = 2 }
 ```
 
