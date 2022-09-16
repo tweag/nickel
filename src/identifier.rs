@@ -1,14 +1,41 @@
 //! Define the type of an identifier.
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use std::{fmt, hash::Hash};
+use std::fmt;
+use std::hash::Hash;
+use std::sync::{Arc, Mutex};
 
 use crate::position::TermPos;
+
+static INTERNER: Lazy<Mutex<interner::Interner>> =
+    Lazy::new(|| Mutex::new(interner::Interner::new()));
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(into = "String", from = "String")]
 pub struct Ident {
-    pub label: String,
-    pub pos: TermPos,
+    label: Arc<String>,
+    pos: TermPos,
+}
+
+impl Ident {
+    pub fn new_with_pos(label: impl AsRef<str>, pos: TermPos) -> Self {
+        Self {
+            label: INTERNER.lock().unwrap().get_or_intern(label),
+            pos,
+        }
+    }
+
+    pub fn new(label: impl AsRef<str>) -> Self {
+        Self::new_with_pos(label, TermPos::None)
+    }
+
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+
+    pub fn pos(&self) -> TermPos {
+        self.pos
+    }
 }
 
 /// Special character used for generating fresh identifiers. It must be syntactically impossible to
@@ -52,16 +79,13 @@ where
     String: From<F>,
 {
     fn from(val: F) -> Self {
-        Ident {
-            label: String::from(val),
-            pos: TermPos::None,
-        }
+        Self::new(String::from(val))
     }
 }
 
 impl Into<String> for Ident {
     fn into(self) -> String {
-        self.label
+        self.label().to_string()
     }
 }
 
@@ -74,5 +98,31 @@ impl Ident {
 impl AsRef<str> for Ident {
     fn as_ref(&self) -> &str {
         &self.label
+    }
+}
+
+mod interner {
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    #[derive(Default)]
+    pub struct Interner {
+        map: HashMap<String, Arc<String>>, // we need Arc as this struct will be declared static
+    }
+
+    impl Interner {
+        pub(crate) fn new() -> Self {
+            Self {
+                map: HashMap::new(),
+            }
+        }
+
+        pub(crate) fn get_or_intern(&mut self, string: impl AsRef<str>) -> Arc<String> {
+            if !self.map.contains_key(string.as_ref()) {
+                let string = string.as_ref().to_string();
+                self.map.insert(string.clone(), Arc::new(string));
+            }
+            self.map[string.as_ref()].clone()
+        }
     }
 }

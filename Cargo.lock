@@ -1189,6 +1189,7 @@ dependencies = [
  "logos",
  "md-5",
  "nickel-lang-utilities",
+ "once_cell",
  "pprof",
  "pretty",
  "pretty_assertions",
@@ -1339,9 +1340,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.12.0"
+version = "1.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7709cef83f0c1f58f666e746a08b21e0085f7440fa6a29cc194d68aac97a4225"
+checksum = "2f7254b99e31cad77da24b08ebf628882739a608578bb1bcdfc1f9c21260d7c0"
 
 [[package]]
 name = "onig"
