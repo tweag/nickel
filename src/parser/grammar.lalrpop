@@ -60,7 +60,7 @@ use crate::{
     term::{
         BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
         MergePriority, Contract, NAryOp, RecordAttrs, SharedTerm,
-        make as mk_term},
+        NumeralPriority, make as mk_term},
     types::{Types, AbsType},
     position::TermPos,
     label::Label,
@@ -101,7 +101,16 @@ AnnotAtom<TypeRule>: MetaValue = {
         ..Default::default()
     },
     "|" "default" => MetaValue {
-        priority: MergePriority::Default,
+        priority: MergePriority::Bottom,
+        ..Default::default()
+    },
+    "|" "force" => MetaValue {
+        priority: MergePriority::Top,
+        ..Default::default()
+    },
+    "|" "priority" <SignedNumLiteral> => MetaValue {
+        // unwrap(): a literal can't be NaN
+        priority: MergePriority::Numeral(NumeralPriority::try_from(<>).unwrap()),
         ..Default::default()
     },
     "|" "doc" <s: StaticString> => MetaValue {
@@ -427,7 +436,7 @@ Match: Match = {
 
 // A default annotation in a pattern.
 DefaultAnnot: MetaValue = "?" <t: Term> => MetaValue {
-    priority: MergePriority::Default,
+    priority: MergePriority::Bottom,
     value: Some(t),
     ..Default::default()
 };
@@ -532,7 +541,7 @@ UOp: UnaryOp = {
     "record_map" => UnaryOp::RecordMap(),
     "seq" => UnaryOp::Seq(),
     "deep_seq" => UnaryOp::DeepSeq(None),
-    "force" => UnaryOp::Force(None),
+    "op force" => UnaryOp::Force(None),
     "head" => UnaryOp::ArrayHead(),
     "tail" => UnaryOp::ArrayTail(),
     "length" => UnaryOp::ArrayLength(),
@@ -778,6 +787,14 @@ TypeAtom: Types = {
     },
 }
 
+SignedNumLiteral: f64 = <sign: "-"?> <value: "num literal"> => {
+    if sign.is_some() {
+        -value
+    } else {
+        value
+    }
+};
+
 extern {
     type Location = usize;
     type Error = ParseError;
@@ -849,7 +866,7 @@ extern {
         "typeof" => Token::Normal(NormalToken::Typeof),
         "assume" => Token::Normal(NormalToken::Assume),
         "array_lazy_assume" => Token::Normal(NormalToken::ArrayLazyAssume),
-        "force" => Token::Normal(NormalToken::Force),
+        "op force" => Token::Normal(NormalToken::OpForce),
         "blame" => Token::Normal(NormalToken::Blame),
         "chng_pol" => Token::Normal(NormalToken::ChangePol),
         "polarity" => Token::Normal(NormalToken::Polarity),
@@ -878,8 +895,10 @@ extern {
         "elem_at" => Token::Normal(NormalToken::ElemAt),
         "merge" => Token::Normal(NormalToken::Merge),
         "default" => Token::Normal(NormalToken::Default),
+        "force" => Token::Normal(NormalToken::Force),
         "doc" => Token::Normal(NormalToken::Doc),
         "optional" => Token::Normal(NormalToken::Optional),
+        "priority" => Token::Normal(NormalToken::Priority),
 
         "hash" => Token::Normal(NormalToken::OpHash),
         "serialize" => Token::Normal(NormalToken::Serialize),

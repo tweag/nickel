@@ -254,16 +254,64 @@ final record:
 ## Merging record with metadata
 
 Metadata can be attached to values thanks to the `|` operator. Metadata
-currently includes contract annotations, default value, and documentation. We
-describe in this section how metadata interacts with merging.
+currently includes contract annotations, default value, merge priority, and
+documentation. We describe in this section how metadata interacts with merging.
 
-### Default values
+### Merge priorities
+
+Priorities are specified using the `priority` annotation, followed by a number
+literal. There are also two other special priorities, the bottom priority, specified
+using the `default` annotation, and the top priority, specified using the
+`force` annotation.
+
+Priorities dictate which values take precedence over other values. By default,
+values are given the priority `0`. Values with the same priority are recursively
+merged as specified in this document, which can mean failure if the values can't
+be meaningfully merged:
+
+```text
+nickel> {foo = 1} & {foo = 2}
+error: non mergeable terms
+  ┌─ repl-input-1:1:8
+  │
+1 │ {foo = 1} & {foo = 2}
+  │        ^           ^ with this expression
+  │        │
+  │        cannot merge this expression
+  │
+  = Both values have the same merge priority but they can't be combined
+```
+
+On the other hand, if the priorities differ, the value with highest priority
+simply erases the other in the final result:
+
+```text
+nickel> {foo | priority 1 = 1} & {foo = 2}
+{ foo = 1 }
+
+nickel> {foo | priority -1 = 1} & {foo = 2}
+{ foo = 2 }
+```
+
+The priorities are ordered in the following way:
+
+- bottom is the lowest priority
+- numeral priorities are ordered as usual numbers (priorities can be any valid Nickel
+  number, including fractions and negative values)
+- top is the highest priority
+
+#### Default values
 
 A `default` annotation can be used to provide a base value, but let it be
 overridable through merging. For example, `{foo | default = 1} & {foo = 2}`
-evaluates to `{foo = 2}`. Without the default value, this merge would have
-failed with a `non mergeable fields` error, because merging being symmetric, it
-doesn't know how to combine `1` and `2` in a generic and meaningful way.
+evaluates to `{foo = 2}`. A default value is just a special case of a priority,
+being the lowest possible one.
+
+#### Forcing values
+
+Dually, values with the `force` annotation are given the highest priority. Such
+a value can never be overriden, and will either take precedence over another
+value or be tentatively merged if the other value is forcing as well.
 
 #### Specification
 
@@ -283,10 +331,6 @@ same on both side:
            left & right  if p(left) = p(right)
 }
 ```
-
-Currently, there are only two priorities, `normal` (by default, when nothing is
-specified) and the `default` one, with `default < normal`. We plan to add more
-in the future (see [RFC001](https://github.com/tweag/nickel/blob/c21cf280dc610821fceed4c2caafedb60ce7177c/rfcs/001-overriding.md#priorities)).
 
 #### Example
 

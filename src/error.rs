@@ -1116,7 +1116,10 @@ impl ToDiagnostic<FileId> for EvalError {
 
                 vec![Diagnostic::error()
                     .with_message("non mergeable terms")
-                    .with_labels(labels)]
+                    .with_labels(labels)
+                    .with_notes(vec![String::from(
+                        "Both values have the same merge priority but they can't be combined",
+                    )])]
             }
             EvalError::UnboundIdentifier(ident, span_opt) => vec![Diagnostic::error()
                 .with_message("unbound identifier")

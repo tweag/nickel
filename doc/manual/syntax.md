@@ -12,7 +12,7 @@ alphanumeric characters, `_` (underscores) or `'` (single quotes). For example,
 
 ## Simple values
 
-There are four basic kind of values in Nickel :
+There are four basic kinds of values in Nickel :
 
 1. numeric values
 2. boolean values
@@ -532,9 +532,14 @@ Adding documentation can be done with `| doc < string >`. Examples:
 true
 ```
 
-Record contracts can set default values using the `default` metadata: It is
-noted as `| default = < default value >`. This is especially useful when merging
-records (more about this in the dedicated document about merge).
+Metadata can also set merge priorities using the following annotations:
+
+- `default` gives the lowest priority (default values)
+- `priority NN`, where `NN` is a number literal, gives a numeral priority
+- `force` gives the highest priority
+
+If there is no priority specified, `priority 0` is given by default. See more
+about this in the dedicated section on merging.
 
 Examples:
 
@@ -552,4 +557,13 @@ Examples:
 
 > {foo | default = 1, bar = foo + 1} & {foo = 2}
 { foo = 2, bar = 3 }
+
+> {foo | force = 1, bar = foo + 1} & {foo = 2}
+{ bar = 2, foo = 1 }
+
+> {foo | priority 10 = 1} & {foo | priority 8 = 2} & {foo = 3}
+{ foo = 1 }
+
+> {foo | priority -1 = 1} & {foo = 2}
+{ foo = 2 }
 ```
