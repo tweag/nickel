@@ -97,8 +97,8 @@ impl TermEnvironment for eval::Environment {
     }
 }
 
-impl From<eval::Environment> for SimpleTermEnvironment {
-    fn from(eval_env: eval::Environment) -> Self {
+impl From<&eval::Environment> for SimpleTermEnvironment {
+    fn from(eval_env: &eval::Environment) -> Self {
         let generic_env: GenericEnvironment<_, _> = eval_env
             .iter_elems()
             .map(|(id, thunk)| {
@@ -107,7 +107,7 @@ impl From<eval::Environment> for SimpleTermEnvironment {
                     id.clone(),
                     (
                         borrowed.body.clone(),
-                        SimpleTermEnvironment::from(borrowed.env.clone()),
+                        SimpleTermEnvironment::from(&borrowed.env),
                     ),
                 )
             })
@@ -247,7 +247,7 @@ fn contract_eq_bounded<E: TermEnvironment>(
                 && env1.get_then(id, |binding| {
                     binding
                         .map(|(t1, env1)| contract_eq_bounded(state, t1, env1, t2, env2))
-                        .unwrap_or(false)
+                        .unwrap()
                 })
         }
         (_, Var(id)) => {
@@ -255,7 +255,7 @@ fn contract_eq_bounded<E: TermEnvironment>(
                 && env2.get_then(id, |binding| {
                     binding
                         .map(|(t2, env2)| contract_eq_bounded(state, t1, env1, t2, env2))
-                        .unwrap_or(false)
+                        .unwrap()
                 })
         }
         (Record(m1, attrs1), Record(m2, attrs2)) => {
@@ -310,7 +310,7 @@ fn contract_eq_bounded<E: TermEnvironment>(
         (Op1(UnaryOp::StaticAccess(id1), t1), Op1(UnaryOp::StaticAccess(id2), t2)) => {
             id1 == id2 && contract_eq_bounded(state, t1, env1, t2, env2)
         }
-        // We dont treat imports and parse errors
+        // We don't treat imports and parse errors
         _ => false,
     }
 }

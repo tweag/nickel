@@ -1,25 +1,29 @@
 //! Source cache.
 
-use crate::error::{Error, ImportError, ParseError, ParseErrors, TypecheckError};
-use crate::parser::lexer::Lexer;
-use crate::position::TermPos;
-use crate::stdlib as nickel_stdlib;
-use crate::term::{RichTerm, SharedTerm, Term};
-use crate::transform::import_resolution;
-use crate::typecheck::type_check;
-use crate::typecheck::{self, Wildcards};
-use crate::types::UnboundTypeVariableError;
-use crate::{eval, parser, transform};
+use crate::{
+    error::{Error, ImportError, ParseError, ParseErrors, TypecheckError},
+    parser::lexer::Lexer,
+    position::TermPos,
+    stdlib as nickel_stdlib,
+    term::{RichTerm, SharedTerm, Term},
+    transform::import_resolution,
+    typecheck::{self, eq::SimpleTermEnvironment, type_check, Wildcards},
+    types::UnboundTypeVariableError,
+    {eval, parser, transform},
+};
+
 use codespan::{FileId, Files};
 use io::Read;
-use std::collections::hash_map;
-use std::collections::{HashMap, HashSet};
-use std::ffi::{OsStr, OsString};
-use std::fs;
-use std::io;
-use std::path::{Path, PathBuf};
-use std::result::Result;
-use std::time::SystemTime;
+
+use std::{
+    collections::{hash_map, HashMap, HashSet},
+    ffi::{OsStr, OsString},
+    fs, io,
+    path::{Path, PathBuf},
+    result::Result,
+    time::SystemTime,
+};
+
 use void::Void;
 
 /// Supported input formats.
@@ -471,7 +475,8 @@ impl Cache {
     pub fn typecheck(
         &mut self,
         file_id: FileId,
-        initial_env: &typecheck::Environment,
+        init_type_env: &typecheck::Environment,
+        init_term_env: &typecheck::eq::SimpleTermEnvironment,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
         match self.terms.get(&file_id) {
             Some(CachedTerm { state, .. }) if *state >= EntryState::Typechecked => {
@@ -479,14 +484,15 @@ impl Cache {
             }
             Some(CachedTerm { term, state, .. }) if *state >= EntryState::Parsed => {
                 if *state < EntryState::Typechecking {
-                    let wildcards = type_check(term, initial_env.clone(), self)?;
+                    let wildcards =
+                        type_check(term, init_type_env.clone(), init_term_env.clone(), self)?;
                     self.update_state(file_id, EntryState::Typechecking);
                     self.wildcards.insert(file_id, wildcards);
                 }
 
                 if let Some(imports) = self.imports.get(&file_id).cloned() {
                     for f in imports.into_iter() {
-                        self.typecheck(f, initial_env)?;
+                        self.typecheck(f, init_type_env, init_term_env)?;
                     }
                 }
 
@@ -694,10 +700,13 @@ impl Cache {
             result = CacheOp::Done(());
         };
 
-        let typecheck_res = self.typecheck(file_id, initial_env).map_err(|cache_err| {
-            cache_err
-                .unwrap_error("cache::prepare(): expected source to be parsed before typechecking")
-        })?;
+        let typecheck_res = self
+            .typecheck(file_id, initial_env, &SimpleTermEnvironment::new())
+            .map_err(|cache_err| {
+                cache_err.unwrap_error(
+                    "cache::prepare(): expected source to be parsed before typechecking",
+                )
+            })?;
         if typecheck_res == CacheOp::Done(()) {
             result = CacheOp::Done(());
         };
@@ -717,29 +726,6 @@ impl Cache {
         };
 
         Ok(result)
-    }
-
-    /// Same as [Self::prepare], but do not use nor populate the cache. Used for inputs which are
-    /// known to not be reused.
-    ///
-    /// In this case, the caller has to process the imports themselves as needed:
-    /// - typechecking
-    /// - resolve imports performed inside these imports.
-    /// - apply program transformations.
-    pub fn prepare_nocache(
-        &mut self,
-        file_id: FileId,
-        initial_env: &typecheck::Environment,
-    ) -> Result<(RichTerm, Vec<FileId>), Error> {
-        let (term, errs) = self.parse_nocache(file_id)?;
-        if errs.no_errors() {
-            return Err(Error::ParseErrors(errs));
-        }
-        let (term, pending) = import_resolution::resolve_imports(term, self)?;
-        let wildcards = type_check(&term, initial_env.clone(), self)?;
-        let term = transform::transform(term, Some(&wildcards))
-            .map_err(|err| Error::ParseErrors(err.into()))?;
-        Ok((term, pending))
     }
 
     /// Retrieve the name of a source given an id.
@@ -862,19 +848,20 @@ impl Cache {
             CacheError::NotParsed => CacheError::NotParsed,
             CacheError::Error(_) => unreachable!(),
         })?;
-        self.typecheck_stdlib_(&initial_env)
+        self.typecheck_stdlib_(&initial_env, &SimpleTermEnvironment::new())
     }
 
     /// Typecheck the stdlib, provided the initial typing environment. Has to be public because
     /// it's used in benches. It probably does not have to be used for something else.
     pub fn typecheck_stdlib_(
         &mut self,
-        initial_env: &typecheck::Environment,
+        init_type_env: &typecheck::Environment,
+        init_term_env: &typecheck::eq::SimpleTermEnvironment,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
         if let Some(ids) = self.stdlib_ids.as_ref().cloned() {
             ids.iter()
                 .try_fold(CacheOp::Cached(()), |cache_op, file_id| {
-                    match self.typecheck(*file_id, initial_env)? {
+                    match self.typecheck(*file_id, init_type_env, init_term_env)? {
                         done @ CacheOp::Done(()) => Ok(done),
                         _ => Ok(cache_op),
                     }

@@ -6,20 +6,27 @@
 //! Dually, the frontend is the user-facing part, which may be a CLI, a web application, a
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
-use crate::cache::{Cache, Envs, ErrorTolerance};
-use crate::error::{Error, EvalError, IOError, ParseError, ParseErrors, ReplError};
-use crate::identifier::Ident;
-use crate::parser::{grammar, lexer, ExtendedTerm};
-use crate::term::{RichTerm, Term};
-use crate::transform::import_resolution;
-use crate::types::Types;
-use crate::{eval, transform, typecheck};
+use crate::{
+    cache::{Cache, Envs, ErrorTolerance},
+    error::{Error, EvalError, IOError, ParseError, ParseErrors, ReplError},
+    eval,
+    identifier::Ident,
+    parser::{grammar, lexer, ExtendedTerm},
+    term::{RichTerm, Term},
+    transform::{self, import_resolution},
+    typecheck::{self, eq::SimpleTermEnvironment},
+    types::Types,
+};
+
 use codespan::FileId;
 use simple_counter::*;
-use std::ffi::{OsStr, OsString};
-use std::io::Write;
-use std::result::Result;
-use std::str::FromStr;
+
+use std::{
+    ffi::{OsStr, OsString},
+    io::Write,
+    result::Result,
+    str::FromStr,
+};
 
 #[cfg(feature = "repl")]
 use rustyline::validate::{ValidationContext, ValidationResult};
@@ -77,6 +84,20 @@ pub struct ReplImpl {
     /// The initial type environment, without the toplevel declarations made inside the REPL. Used
     /// to typecheck imports in a fresh environment.
     initial_type_env: typecheck::Environment,
+    /// The term environment. Store similar information as the eval environment, but in a slightly
+    /// different form. The term environment is used during typechecking to check for contract
+    /// equality.
+    ///
+    /// Theoretically, we could get by just using [`crate::eval::Environment`] which implements
+    /// implements [`crate::typecheck::eq::TermEnvironment`], and get rid of `term_env`. However,
+    /// because the latter is captured inside the typing environment via the typechecker, this
+    /// would entail to change a lot of occurrences of `TypeWrapper` to `GenericTypeWrapper<E>` and
+    /// to add corresponding generic parameters to a number of functions composing the API of
+    /// [`crate::typecheck`].
+    ///
+    /// We chose to maintain a separate term environment instead, which seems like a small overhead
+    /// and a lesser pain, letting `typecheck` untouched.
+    term_env: typecheck::eq::SimpleTermEnvironment,
 }
 
 impl ReplImpl {
@@ -87,6 +108,7 @@ impl ReplImpl {
             parser: grammar::ExtendedTermParser::new(),
             env: Envs::new(),
             initial_type_env: typecheck::Environment::new(),
+            term_env: SimpleTermEnvironment::new(),
         }
     }
 
@@ -134,17 +156,31 @@ impl ReplImpl {
                 repl_impl.cache.resolve_imports(*id).unwrap();
             }
 
-            let wildcards =
-                typecheck::type_check(&t, repl_impl.env.type_env.clone(), &repl_impl.cache)?;
+            let wildcards = typecheck::type_check(
+                &t,
+                repl_impl.env.type_env.clone(),
+                repl_impl.term_env.clone(),
+                &repl_impl.cache,
+            )?;
 
             if let Some(id) = id {
-                typecheck::env_add(&mut repl_impl.env.type_env, id, &t, &repl_impl.cache);
+                typecheck::env_add(
+                    &mut repl_impl.env.type_env,
+                    id,
+                    &t,
+                    &repl_impl.term_env,
+                    &repl_impl.cache,
+                );
             }
 
             for id in &pending {
                 repl_impl
                     .cache
-                    .typecheck(*id, &repl_impl.initial_type_env)
+                    .typecheck(
+                        *id,
+                        &repl_impl.initial_type_env,
+                        &SimpleTermEnvironment::new(),
+                    )
                     .map_err(|cache_err| {
                         cache_err.unwrap_error("repl::eval_(): expected imports to be parsed")
                     })?;
@@ -170,7 +206,10 @@ impl ReplImpl {
             ExtendedTerm::ToplevelLet(id, t) => {
                 let t = prepare(self, Some(id.clone()), t)?;
                 let local_env = self.env.eval_env.clone();
-                eval::env_add(&mut self.env.eval_env, id.clone(), t, local_env);
+                eval::env_add(&mut self.env.eval_env, id.clone(), t.clone(), local_env);
+                self.term_env
+                    .0
+                    .insert(id.clone(), (t, self.term_env.clone()));
                 Ok(EvalResult::Bound(id))
             }
         }
@@ -214,13 +253,8 @@ impl Repl for ReplImpl {
             self.cache.resolve_imports(*id).unwrap();
         }
         //FIXME: use a non-empty term environment
-        typecheck::env_add_term(
-            &mut self.env.type_env,
-            &term,
-            &typecheck::eq::SimpleTermEnvironment::new(),
-            &self.cache,
-        )
-        .unwrap();
+        typecheck::env_add_term(&mut self.env.type_env, &term, &self.term_env, &self.cache)
+            .unwrap();
         eval::env_add_term(&mut self.env.eval_env, term.clone()).unwrap();
 
         Ok(term)
@@ -234,7 +268,12 @@ impl Repl for ReplImpl {
         for id in &pending {
             self.cache.resolve_imports(*id).unwrap();
         }
-        let wildcards = typecheck::type_check(&term, self.env.type_env.clone(), &self.cache)?;
+        let wildcards = typecheck::type_check(
+            &term,
+            self.env.type_env.clone(),
+            self.term_env.clone(),
+            &self.cache,
+        )?;
         // Substitute the wildcard types for their inferred types
         // We need to `traverse` the term, in case the type depends on inner terms that also contain wildcards
         let term = term

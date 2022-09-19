@@ -143,14 +143,18 @@ pub fn env_add_term(
 }
 
 /// Bind one term in a typing environment.
-pub fn env_add(env: &mut Environment, id: Ident, rt: &RichTerm, resolver: &dyn ImportResolver) {
-    // FIXME: we probably need to build an initial term environment first, instead of
-    // using an empty one.
+pub fn env_add(
+    env: &mut Environment,
+    id: Ident,
+    rt: &RichTerm,
+    term_env: &SimpleTermEnvironment,
+    resolver: &dyn ImportResolver,
+) {
     env.insert(
         id,
         TypeWrapper::from_apparent_type(
             apparent_type(rt.as_ref(), Some(env), Some(resolver)),
-            &SimpleTermEnvironment::new(),
+            term_env,
         ),
     );
 }
@@ -183,11 +187,18 @@ pub struct State<'a> {
 /// Return the type inferred for type wildcards.
 pub fn type_check(
     t: &RichTerm,
-    initial_env: Environment,
+    init_type_env: Environment,
+    init_term_env: SimpleTermEnvironment,
     resolver: &impl ImportResolver,
 ) -> Result<Wildcards, TypecheckError> {
-    type_check_linearize(t, initial_env, resolver, StubHost::<(), (), _>::new())
-        .map(|(wildcards, _)| wildcards)
+    type_check_linearize(
+        t,
+        init_type_env,
+        init_term_env,
+        resolver,
+        StubHost::<(), (), _>::new(),
+    )
+    .map(|(wildcards, _)| wildcards)
 }
 
 /// Typecheck a term and build its linearization. A linearization is a sequential data structure
@@ -197,7 +208,8 @@ pub fn type_check(
 /// Linearization is solely used by the LSP server.
 pub fn type_check_linearize<LL>(
     t: &RichTerm,
-    initial_env: Environment,
+    init_type_env: Environment,
+    init_term_env: SimpleTermEnvironment,
     resolver: &impl ImportResolver,
     mut linearizer: LL,
 ) -> Result<(Wildcards, LL::Completed), TypecheckError>
@@ -220,8 +232,8 @@ where
         walk(
             &mut state,
             Context {
-                type_env: initial_env,
-                term_env: SimpleTermEnvironment::new(),
+                type_env: init_type_env,
+                term_env: init_term_env,
             },
             &mut building,
             linearizer.scope(),

@@ -111,7 +111,11 @@ impl Program {
                 cache_err.unwrap_error("program::typecheck(): expected source to be parsed")
             })?;
         self.cache
-            .typecheck(self.main_id, &initial_env)
+            .typecheck(
+                self.main_id,
+                &initial_env,
+                &crate::typecheck::eq::SimpleTermEnvironment::new(),
+            )
             .map_err(|cache_err| {
                 cache_err.unwrap_error("program::typecheck(): expected source to be parsed")
             })?;
