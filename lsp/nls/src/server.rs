@@ -17,7 +17,7 @@ use lsp_types::{
 };
 
 use nickel_lang::cache::{Cache, ErrorTolerance};
-use nickel_lang::typecheck::Environment;
+use nickel_lang::typecheck::Context;
 
 use crate::{
     linearization::completed::Completed,
@@ -29,7 +29,7 @@ pub struct Server {
     pub connection: Connection,
     pub cache: Cache,
     pub lin_cache: HashMap<FileId, Completed>,
-    pub initial_env: Environment,
+    pub initial_ctxt: Context,
 }
 
 impl Server {
@@ -61,13 +61,13 @@ impl Server {
     pub fn new(connection: Connection) -> Server {
         let mut cache = Cache::new(ErrorTolerance::Tolerant);
         cache.load_stdlib().unwrap();
-        let initial_env = cache.mk_type_env().unwrap();
+        let initial_ctxt = cache.mk_type_ctxt().unwrap();
         let lin_cache = HashMap::new();
         Server {
             connection,
             cache,
             lin_cache,
-            initial_env,
+            initial_ctxt,
         }
     }
 

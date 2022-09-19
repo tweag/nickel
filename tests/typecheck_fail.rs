@@ -5,10 +5,10 @@ use nickel_lang::error::TypecheckError;
 use nickel_lang::parser::{grammar, lexer};
 use nickel_lang::term::RichTerm;
 use nickel_lang::types::{AbsType, Types};
-use nickel_lang::{typecheck, typecheck::Environment};
+use nickel_lang::{typecheck, typecheck::Context};
 
 fn type_check(rt: &RichTerm) -> Result<(), TypecheckError> {
-    typecheck::type_check(rt, Environment::new(), &mut DummyResolver {}).map(|_| ())
+    typecheck::type_check(rt, Context::new(), &mut DummyResolver {}).map(|_| ())
 }
 
 fn type_check_expr(s: impl std::string::ToString) -> Result<(), TypecheckError> {

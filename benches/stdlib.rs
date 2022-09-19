@@ -6,7 +6,7 @@ use nickel_lang::cache::{Cache, ErrorTolerance};
 pub fn typecheck_stdlib(c: &mut Criterion) {
     let mut cache = Cache::new(ErrorTolerance::Strict);
     cache.load_stdlib().unwrap();
-    let type_env = cache.mk_type_env().unwrap();
+    let type_env = cache.mk_type_ctxt().unwrap();
     c.bench_function("typecheck stdlib", |b| {
         b.iter_batched(
             || cache.clone(),

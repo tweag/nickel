@@ -88,31 +88,46 @@ pub struct Context {
     pub term_env: SimpleTermEnvironment,
 }
 
+impl Context {
+    pub fn new() -> Self {
+        Context {
+            type_env: Environment::new(),
+            term_env: SimpleTermEnvironment::new(),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum EnvBuildError {
     NotARecord(RichTerm),
 }
 
 /// Populate the initial typing environment from a `Vec` of parsed files.
-pub fn mk_initial_env(initial_env: Vec<RichTerm>) -> Result<Environment, EnvBuildError> {
-    Ok(initial_env
+pub fn mk_initial_ctxt(initial_env: &Vec<RichTerm>) -> Result<Context, EnvBuildError> {
+    // Collect the bindings for each module, clone them and flatten the result to a single list.
+    let bindings = initial_env
         .iter()
         .map(|rt| {
             if let Term::RecRecord(rec, ..) = rt.as_ref() {
-                Ok(rec.iter().map(|(id, rt)| {
-                    (
-                        id.clone(),
-                        infer_record_type(rt.as_ref(), &SimpleTermEnvironment::new()),
-                    )
-                }))
+                Ok(rec.iter().map(|(id, rt)| (id.clone(), rt.clone())))
             } else {
                 Err(EnvBuildError::NotARecord(rt.clone()))
             }
         })
         .collect::<Result<Vec<_>, EnvBuildError>>()?
         .into_iter()
-        .flatten()
-        .collect())
+        .flatten();
+
+    let term_env = bindings
+        .clone()
+        .map(|(id, rt)| (id, (rt, SimpleTermEnvironment::new())))
+        .collect();
+
+    let type_env = bindings
+        .map(|(id, rt)| (id.clone(), infer_record_type(rt.as_ref(), &term_env)))
+        .collect();
+
+    Ok(Context { type_env, term_env })
 }
 
 /// Add the bindings of a record to a typing environment. Ignore fields whose name are defined
@@ -143,14 +158,18 @@ pub fn env_add_term(
 }
 
 /// Bind one term in a typing environment.
-pub fn env_add(env: &mut Environment, id: Ident, rt: &RichTerm, resolver: &dyn ImportResolver) {
-    // FIXME: we probably need to build an initial term environment first, instead of
-    // using an empty one.
+pub fn env_add(
+    env: &mut Environment,
+    id: Ident,
+    rt: &RichTerm,
+    term_env: &SimpleTermEnvironment,
+    resolver: &dyn ImportResolver,
+) {
     env.insert(
         id,
         TypeWrapper::from_apparent_type(
             apparent_type(rt.as_ref(), Some(env), Some(resolver)),
-            &SimpleTermEnvironment::new(),
+            term_env,
         ),
     );
 }
@@ -183,10 +202,10 @@ pub struct State<'a> {
 /// Return the type inferred for type wildcards.
 pub fn type_check(
     t: &RichTerm,
-    initial_env: Environment,
+    initial_ctxt: Context,
     resolver: &impl ImportResolver,
 ) -> Result<Wildcards, TypecheckError> {
-    type_check_linearize(t, initial_env, resolver, StubHost::<(), (), _>::new())
+    type_check_linearize(t, initial_ctxt, resolver, StubHost::<(), (), _>::new())
         .map(|(wildcards, _)| wildcards)
 }
 
@@ -197,7 +216,7 @@ pub fn type_check(
 /// Linearization is solely used by the LSP server.
 pub fn type_check_linearize<LL>(
     t: &RichTerm,
-    initial_env: Environment,
+    initial_ctxt: Context,
     resolver: &impl ImportResolver,
     mut linearizer: LL,
 ) -> Result<(Wildcards, LL::Completed), TypecheckError>
@@ -219,10 +238,7 @@ where
 
         walk(
             &mut state,
-            Context {
-                type_env: initial_env,
-                term_env: SimpleTermEnvironment::new(),
-            },
+            initial_ctxt,
             &mut building,
             linearizer.scope(),
             t,

@@ -91,17 +91,21 @@ pub enum ErrorTolerance {
 pub struct Envs {
     /// The eval environment.
     pub eval_env: eval::Environment,
-    /// The typing environment, counterpart of the eval environment for typechecking. Entries are
-    /// [`crate::typecheck::TypeWrapper`] for the ease of interacting with the typechecker, but
-    /// there are not any unification variable in it.
-    pub type_env: typecheck::Environment,
+    /// The typing context.
+    ///
+    /// The typing context includes the typing environment, counterpart of the eval environment for
+    /// typechecking. Entries are of type [`crate::typecheck::TypeWrapper`] for the ease of
+    /// interacting with the typechecker, but there are not any unification variable in it.
+    ///
+    /// The context also includes the term environment, used to check for contract equality.
+    pub type_ctxt: typecheck::Context,
 }
 
 impl Envs {
     pub fn new() -> Self {
         Envs {
             eval_env: eval::Environment::new(),
-            type_env: typecheck::Environment::new(),
+            type_ctxt: typecheck::Context::new(),
         }
     }
 }
@@ -471,7 +475,7 @@ impl Cache {
     pub fn typecheck(
         &mut self,
         file_id: FileId,
-        initial_env: &typecheck::Environment,
+        initial_ctxt: &typecheck::Context,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
         match self.terms.get(&file_id) {
             Some(CachedTerm { state, .. }) if *state >= EntryState::Typechecked => {
@@ -479,14 +483,14 @@ impl Cache {
             }
             Some(CachedTerm { term, state, .. }) if *state >= EntryState::Parsed => {
                 if *state < EntryState::Typechecking {
-                    let wildcards = type_check(term, initial_env.clone(), self)?;
+                    let wildcards = type_check(term, initial_ctxt.clone(), self)?;
                     self.update_state(file_id, EntryState::Typechecking);
                     self.wildcards.insert(file_id, wildcards);
                 }
 
                 if let Some(imports) = self.imports.get(&file_id).cloned() {
                     for f in imports.into_iter() {
-                        self.typecheck(f, initial_env)?;
+                        self.typecheck(f, initial_ctxt)?;
                     }
                 }
 
@@ -677,7 +681,7 @@ impl Cache {
     pub fn prepare(
         &mut self,
         file_id: FileId,
-        initial_env: &typecheck::Environment,
+        initial_ctxt: &typecheck::Context,
     ) -> Result<CacheOp<()>, Error> {
         let mut result = CacheOp::Cached(());
 
@@ -694,7 +698,7 @@ impl Cache {
             result = CacheOp::Done(());
         };
 
-        let typecheck_res = self.typecheck(file_id, initial_env).map_err(|cache_err| {
+        let typecheck_res = self.typecheck(file_id, initial_ctxt).map_err(|cache_err| {
             cache_err
                 .unwrap_error("cache::prepare(): expected source to be parsed before typechecking")
         })?;
@@ -729,14 +733,14 @@ impl Cache {
     pub fn prepare_nocache(
         &mut self,
         file_id: FileId,
-        initial_env: &typecheck::Environment,
+        initial_ctxt: &typecheck::Context,
     ) -> Result<(RichTerm, Vec<FileId>), Error> {
         let (term, errs) = self.parse_nocache(file_id)?;
         if errs.no_errors() {
             return Err(Error::ParseErrors(errs));
         }
         let (term, pending) = import_resolution::resolve_imports(term, self)?;
-        let wildcards = type_check(&term, initial_env.clone(), self)?;
+        let wildcards = type_check(&term, initial_ctxt.clone(), self)?;
         let term = transform::transform(term, Some(&wildcards))
             .map_err(|err| Error::ParseErrors(err.into()))?;
         Ok((term, pending))
@@ -858,7 +862,7 @@ impl Cache {
         // 1. The stdlib is meant to stay relatively light.
         // 2. Typechecking the standard library ought to occur only during development. Once the
         //    stdlib is stable, we won't have typecheck it at every execution.
-        let initial_env = self.mk_type_env().map_err(|err| match err {
+        let initial_env = self.mk_type_ctxt().map_err(|err| match err {
             CacheError::NotParsed => CacheError::NotParsed,
             CacheError::Error(_) => unreachable!(),
         })?;
@@ -869,12 +873,12 @@ impl Cache {
     /// it's used in benches. It probably does not have to be used for something else.
     pub fn typecheck_stdlib_(
         &mut self,
-        initial_env: &typecheck::Environment,
+        initial_ctxt: &typecheck::Context,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
         if let Some(ids) = self.stdlib_ids.as_ref().cloned() {
             ids.iter()
                 .try_fold(CacheOp::Cached(()), |cache_op, file_id| {
-                    match self.typecheck(*file_id, initial_env)? {
+                    match self.typecheck(*file_id, initial_ctxt)? {
                         done @ CacheOp::Done(()) => Ok(done),
                         _ => Ok(cache_op),
                     }
@@ -894,7 +898,7 @@ impl Cache {
             return Ok(Envs::new());
         }
         self.load_stdlib()?;
-        let type_env = self.mk_type_env().unwrap();
+        let type_ctxt = self.mk_type_ctxt().unwrap();
 
         self.stdlib_ids
             .as_ref()
@@ -907,12 +911,15 @@ impl Cache {
                     .unwrap_error("cache::prepare_stdlib(): expected standard library to be parsed")
             })?;
         let eval_env = self.mk_eval_env().unwrap();
-        Ok(Envs { eval_env, type_env })
+        Ok(Envs {
+            eval_env,
+            type_ctxt,
+        })
     }
 
-    /// Generate the initial typing environment from the list of `file_ids` corresponding to the
+    /// Generate the initial typing context from the list of `file_ids` corresponding to the
     /// standard library parts.
-    pub fn mk_type_env(&self) -> Result<typecheck::Environment, CacheError<Void>> {
+    pub fn mk_type_ctxt(&self) -> Result<typecheck::Context, CacheError<Void>> {
         let stdlib_terms_vec =
             self.stdlib_ids
                 .as_ref()
@@ -926,7 +933,7 @@ impl Cache {
                         })
                         .collect())
                 })?;
-        Ok(typecheck::mk_initial_env(stdlib_terms_vec).unwrap())
+        Ok(typecheck::mk_initial_ctxt(&stdlib_terms_vec).unwrap())
     }
 
     /// Generate the initial evaluation environment from the list of `file_ids` corresponding to the standard
