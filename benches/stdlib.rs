@@ -10,7 +10,7 @@ pub fn typecheck_stdlib(c: &mut Criterion) {
     c.bench_function("typecheck stdlib", |b| {
         b.iter_batched(
             || cache.clone(),
-            |mut c_local| c_local.typecheck_stdlib_(&type_env).unwrap(),
+            |mut c_local| c_local.typecheck_stdlib_(&type_env, SimpleTerm).unwrap(),
             criterion::BatchSize::LargeInput,
         )
     });

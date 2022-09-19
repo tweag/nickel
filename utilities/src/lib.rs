@@ -133,7 +133,7 @@ pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> 
                     },
                     |(mut c_local, id, t)| {
                         if bench.eval_mode == EvalMode::TypeCheck {
-                            c_local.typecheck(id, &type_env).unwrap();
+                            c_local.typecheck(id, &type_env, &nickel_lang::typecheck::eq::SimpleTermEnvironment::new()).unwrap();
                         } else {
                             c_local.prepare(id, &type_env).unwrap();
                             eval::eval(t, &eval_env, &mut c_local).unwrap();
@@ -205,7 +205,7 @@ macro_rules! ncl_bench_group {
                         },
                         |(mut c_local, id, t)| {
                             if bench.eval_mode == $crate::EvalMode::TypeCheck {
-                                c_local.typecheck(id, &type_env).unwrap();
+                                c_local.typecheck(id, &type_env, &nickel_lang::typecheck::eq::SimpleTermEnvironment::new()).unwrap();
                             } else {
                                 c_local.prepare(id, &type_env).unwrap();
                                 eval(t, &eval_env, &mut c_local).unwrap();
