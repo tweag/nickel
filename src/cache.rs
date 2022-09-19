@@ -916,6 +916,17 @@ impl Cache {
         Ok(typecheck::mk_initial_env(stdlib_terms_vec).unwrap())
     }
 
+    /// Generate the initial term environment to be passed to the typechecker from the list of
+    /// `file_ids` corresponding to the standard library parts.
+    ///
+    /// **Warning**: currently, this function simply creates an empty term environment, as it seems
+    /// to be sufficient as a first step for checking contract equality. It can be made smarter if
+    /// needed later on.
+    pub fn mk_term_env(&self) -> Result<SimpleTermEnvironment, CacheError<Void>> {
+        Ok(typecheck::mk_term_env)
+    }
+
+
     /// Generate the initial evaluation environment from the list of `file_ids` corresponding to the standard
     /// library parts.
     pub fn mk_eval_env(&self) -> Result<eval::Environment, CacheError<Void>> {
