@@ -1207,6 +1207,7 @@ dependencies = [
  "structopt",
  "termimad",
  "toml",
+ "typed-arena 2.0.1",
  "void",
  "wasm-bindgen",
 ]

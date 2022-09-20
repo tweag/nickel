@@ -3,25 +3,28 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::hash::Hash;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use crate::position::TermPos;
 
 static INTERNER: Lazy<Mutex<interner::Interner>> =
     Lazy::new(|| Mutex::new(interner::Interner::new()));
 
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 #[serde(into = "String", from = "String")]
 pub struct Ident {
-    label: Arc<String>,
+    label: interner::Symbol,
     pos: TermPos,
+    generated: bool,
 }
 
 impl Ident {
     pub fn new_with_pos(label: impl AsRef<str>, pos: TermPos) -> Self {
+        let generated = label.as_ref().starts_with(GEN_PREFIX);
         Self {
-            label: INTERNER.lock().unwrap().get_or_intern(label),
+            label: INTERNER.lock().unwrap().intern(label),
             pos,
+            generated,
         }
     }
 
@@ -30,7 +33,7 @@ impl Ident {
     }
 
     pub fn label(&self) -> &str {
-        &self.label
+        INTERNER.lock().unwrap().lookup(self.label)
     }
 
     pub fn pos(&self) -> TermPos {
@@ -44,13 +47,13 @@ pub const GEN_PREFIX: char = '%';
 
 impl PartialOrd for Ident {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.label.partial_cmp(&other.label)
+        self.label().partial_cmp(other.label())
     }
 }
 
 impl Ord for Ident {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.label.cmp(&other.label)
+        self.label().cmp(other.label())
     }
 }
 
@@ -70,7 +73,7 @@ impl Hash for Ident {
 
 impl fmt::Display for Ident {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.label)
+        write!(f, "{}", self.label())
     }
 }
 
@@ -85,44 +88,58 @@ where
 
 impl Into<String> for Ident {
     fn into(self) -> String {
-        self.label().to_string()
+        self.as_ref().to_owned()
     }
 }
 
 impl Ident {
     pub fn is_generated(&self) -> bool {
-        self.label.starts_with(GEN_PREFIX)
+        self.generated
     }
 }
 
 impl AsRef<str> for Ident {
     fn as_ref(&self) -> &str {
-        &self.label
+        self.label()
     }
 }
 
 mod interner {
     use std::collections::HashMap;
-    use std::sync::Arc;
 
-    #[derive(Default)]
-    pub struct Interner {
-        map: HashMap<String, Arc<String>>, // we need Arc as this struct will be declared static
+    use typed_arena::Arena;
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub(crate) struct Symbol(u32);
+
+    pub(crate) struct Interner {
+        map: HashMap<&'static str, Symbol>,
+        vec: Vec<&'static str>,
+        arena: Arena<u8>,
     }
 
     impl Interner {
         pub(crate) fn new() -> Self {
             Self {
                 map: HashMap::new(),
+                vec: Vec::new(),
+                arena: Arena::new(),
             }
         }
 
-        pub(crate) fn get_or_intern(&mut self, string: impl AsRef<str>) -> Arc<String> {
-            if !self.map.contains_key(string.as_ref()) {
-                let string = string.as_ref().to_string();
-                self.map.insert(string.clone(), Arc::new(string));
+        pub(crate) fn intern(&mut self, string: impl AsRef<str>) -> Symbol {
+            if let Some(sym) = self.map.get(string.as_ref()) {
+                return *sym;
             }
-            self.map[string.as_ref()].clone()
+            let string_in = unsafe { &*(self.arena.alloc_str(string.as_ref()) as *const str) };
+            let sym = Symbol(self.vec.len() as u32);
+            self.vec.push(string_in);
+            self.map.insert(string_in, sym);
+            sym
+        }
+
+        pub(crate) fn lookup(&self, sym: Symbol) -> &'static str {
+            self.vec[sym.0 as usize]
         }
     }
 }
