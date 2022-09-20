@@ -233,16 +233,16 @@
     # Predicate
     pred => foldl_ (fun c x => if pred x then c + 1 else c) 0,
 
-  optional: forall a. Bool -> a -> Array a
+  optional': forall a. Bool -> a -> Array a
   | doc m%"
       Return a singleton list or an empty list, depending on a boolean
      value.  Useful when building lists with optional elements
-     (e.g. `++ optional (system == "i686-linux") firefox').
+     (e.g. `++ optional' (system == "i686-linux") firefox').
 
      Example:
-       optional true "foo"
+       optional' true "foo"
        >> [ "foo" ]
-       optional false "foo"
+       optional' false "foo"
        >> [ ]
   "%m
   = fun cond elem => if cond then [elem] else [],
