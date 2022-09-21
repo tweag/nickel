@@ -86,18 +86,12 @@ pub enum ErrorTolerance {
     Strict,
 }
 
-/// wrapping eval environment with typing environment
+/// The different environments maintained during the REPL session for evaluation and typechecking.
 #[derive(Debug, Clone)]
 pub struct Envs {
     /// The eval environment.
     pub eval_env: eval::Environment,
     /// The typing context.
-    ///
-    /// The typing context includes the typing environment, counterpart of the eval environment for
-    /// typechecking. Entries are of type [`crate::typecheck::TypeWrapper`] for the ease of
-    /// interacting with the typechecker, but there are not any unification variable in it.
-    ///
-    /// The context also includes the term environment, used to check for contract equality.
     pub type_ctxt: typecheck::Context,
 }
 

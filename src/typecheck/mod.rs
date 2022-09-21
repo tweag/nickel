@@ -81,7 +81,11 @@ pub type Environment = GenericEnvironment<Ident, TypeWrapper>;
 /// Mapping from wildcard ID to inferred type
 pub type Wildcards = Vec<Types>;
 
-/// A structure holding the typing context, that is, scoped, environment-like data.
+/// The typing context is a structure holding the scoped, environment-like data structures required
+/// to perform typechecking.
+///
+/// The typing context currently includes the typing environment, counterpart of the eval
+/// environment for typechecking, and the term environment.
 #[derive(Debug, PartialEq, Clone)]
 pub struct Context {
     pub type_env: Environment,
