@@ -642,9 +642,11 @@ where
             // See the comment on the `BinaryOp::ArrayConcat` match arm.
             Term::Array(terms, attrs) if !attrs.closurized => {
                 let mut local_env = Environment::new();
+
                 let closurized_array = terms
-                    .iter()
-                    .map(|t| t.clone().closurize(&mut local_env, env.clone()))
+                    .clone()
+                    .into_iter()
+                    .map(|t| t.closurize(&mut local_env, env.clone()))
                     .collect();
 
                 let closurized_ctrs = attrs

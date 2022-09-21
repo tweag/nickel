@@ -60,7 +60,8 @@ use crate::{
     term::{
         BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
         MergePriority, Contract, NAryOp, RecordAttrs, SharedTerm,
-        NumeralPriority, make as mk_term},
+        NumeralPriority, array::Array, make as mk_term,
+    },
     types::{Types, AbsType},
     position::TermPos,
     label::Label,
@@ -321,8 +322,10 @@ Atom: UniTerm = {
     UniRecord => UniTerm::from(UniTermNode::Record(<>)),
     <EnumTag> => UniTerm::from(Term::Enum(<>)),
     "[" <terms: (<Term> ",")*> <last: Term?> "]" => {
-        let terms : Vec<RichTerm> = terms.into_iter()
-            .chain(last.into_iter()).collect();
+        let terms = terms
+            .into_iter()
+            .chain(last.into_iter())
+            .collect();
 
         UniTerm::from(Term::Array(terms, Default::default()))
     },

@@ -1,6 +1,7 @@
 //! Deserialization of an evaluated program to plain Rust types.
 
 use std::collections::HashMap;
+use std::iter::ExactSizeIterator;
 
 use serde::de::{
     Deserialize, DeserializeSeed, EnumAccess, IntoDeserializer, MapAccess, SeqAccess,
@@ -8,6 +9,7 @@ use serde::de::{
 };
 
 use crate::identifier::Ident;
+use crate::term::array::{self, Array};
 use crate::term::{MetaValue, RichTerm, Term};
 
 macro_rules! deserialize_number {
@@ -340,13 +342,13 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
 }
 
 struct ArrayDeserializer {
-    iter: std::vec::IntoIter<RichTerm>,
+    iter: array::IntoIter,
 }
 
 impl ArrayDeserializer {
-    fn new(vec: Vec<RichTerm>) -> Self {
+    fn new(array: Array) -> Self {
         ArrayDeserializer {
-            iter: vec.into_iter(),
+            iter: array.into_iter(),
         }
     }
 }
@@ -387,10 +389,7 @@ fn unwrap_term(mut rich_term: RichTerm) -> Result<Term, RustDeserializationError
     }
 }
 
-fn visit_array<'de, V>(
-    array: Vec<RichTerm>,
-    visitor: V,
-) -> Result<V::Value, RustDeserializationError>
+fn visit_array<'de, V>(array: Array, visitor: V) -> Result<V::Value, RustDeserializationError>
 where
     V: Visitor<'de>,
 {

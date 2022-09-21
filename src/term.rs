@@ -16,6 +16,8 @@
 //! contracts, default values, documentation, etc. They bring such usually external object down to
 //! the term level, and together with [crate::eval::merge], they allow for flexible and modular
 //! definitions of contracts, record and metadata all together.
+use array::Array;
+
 use crate::{
     destruct::Destruct,
     error::ParseError,
@@ -116,7 +118,7 @@ pub enum Term {
     /// An array.
     #[serde(serialize_with = "crate::serialize::serialize_array")]
     #[serde(deserialize_with = "crate::serialize::deserialize_array")]
-    Array(Vec<RichTerm>, ArrayAttrs),
+    Array(Array, ArrayAttrs),
 
     /// A primitive unary operator.
     #[serde(skip)]
@@ -209,7 +211,161 @@ impl PendingContract {
     }
 }
 
-/// The attributes of an Array.
+pub mod array {
+    use std::mem::transmute;
+    use std::mem::ManuallyDrop;
+
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct Array {
+        inner: Rc<[RichTerm]>,
+        start: usize,
+        end: usize,
+    }
+
+    impl Array {
+        /// Creates a Nickel array from reference-counted slice.
+        pub fn new(inner: Rc<[RichTerm]>) -> Self {
+            let start = 0;
+            let end = inner.len();
+
+            Self { inner, start, end }
+        }
+
+        /// Returns the effective length of the array.
+        pub fn len(&self) -> usize {
+            self.end - self.start
+        }
+
+        /// Returns `true` if the array is empty.
+        pub fn is_empty(&self) -> bool {
+            self.end == self.start
+        }
+
+        /// Returns a reference to the term at the given index.
+        pub fn get(&self, idx: usize) -> Option<&RichTerm> {
+            self.inner.get(self.start + idx)
+        }
+
+        /// Discards the first `diff` terms of the array.
+        pub fn advance_by(mut self, diff: usize) -> Self {
+            self.start += usize::min(diff, self.len());
+            self
+        }
+
+        /// Makes a mutable slice into the given `Array`.
+        pub fn make_mut(&mut self) -> &mut [RichTerm] {
+            // NOTE: trying to use `Rc::make_mut` will result in the following compiler error:
+            // > the trait `Clone` is not implemented for `[term::RichTerm]`
+            // This seems to be an edge-case in the standard library.
+            // As a workaround, if `get_mut` fails we recollect the array into a new `Rc` by cloning all terms.
+            // Thus we make sure that the second call to `get_mut` won't fail.
+
+            // This condition is the same as `!Rc::is_unique(&mut self.inner)`, but that function
+            // is not public.
+            if Rc::strong_count(&mut self.inner) != 1 || Rc::weak_count(&mut self.inner) != 0 {
+                self.inner = self.iter().cloned().collect::<Rc<[_]>>();
+            }
+
+            Rc::get_mut(&mut self.inner).expect("non-unique Rc after deep-cloning Array")
+        }
+
+        /// Returns an iterator of references over the array.
+        pub fn iter(&self) -> std::slice::Iter<'_, RichTerm> {
+            self.as_ref().iter()
+        }
+    }
+
+    impl Default for Array {
+        fn default() -> Self {
+            Self::new(Rc::new([]))
+        }
+    }
+
+    impl FromIterator<RichTerm> for Array {
+        fn from_iter<T: IntoIterator<Item = RichTerm>>(iter: T) -> Self {
+            let inner = iter.into_iter().collect::<Rc<[_]>>();
+            let start = 0;
+            let end = inner.len();
+
+            Self { inner, start, end }
+        }
+    }
+
+    impl AsRef<[RichTerm]> for Array {
+        fn as_ref(&self) -> &[RichTerm] {
+            &self.inner[self.start..self.end]
+        }
+    }
+
+    impl IntoIterator for Array {
+        type Item = RichTerm;
+
+        type IntoIter = IntoIter;
+
+        fn into_iter(self) -> Self::IntoIter {
+            // SAFETY: If there are no other strong or weak references
+            // to the inner slice, then we can:
+            // - Drop the elements outside our inner view,
+            // - Move out the elements inside out inner view.
+            // Otherwise, we clone everything.
+
+            unsafe {
+                let mut inner: Rc<[ManuallyDrop<RichTerm>]> = transmute(self.inner);
+                let idx = self.start;
+                let end = self.end;
+
+                if let Some(slice) = Rc::get_mut(&mut inner) {
+                    for term in &mut slice[..idx] {
+                        ManuallyDrop::drop(term)
+                    }
+                    for term in &mut slice[end..] {
+                        ManuallyDrop::drop(term)
+                    }
+                }
+
+                IntoIter { inner, idx, end }
+            }
+        }
+    }
+
+    pub struct IntoIter {
+        inner: Rc<[ManuallyDrop<RichTerm>]>,
+        idx: usize,
+        end: usize,
+    }
+
+    impl Iterator for IntoIter {
+        type Item = RichTerm;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            if self.idx == self.end {
+                None
+            } else {
+                let term = match Rc::get_mut(&mut self.inner) {
+                    None => self.inner[..self.end]
+                        .get(self.idx)
+                        .cloned()
+                        .map(ManuallyDrop::into_inner),
+                    Some(slice) => slice[..self.end]
+                        .get_mut(self.idx)
+                        .map(|t| unsafe { ManuallyDrop::take(t) }),
+                };
+
+                self.idx += 1;
+                term
+            }
+        }
+    }
+
+    impl ExactSizeIterator for IntoIter {
+        fn len(&self) -> usize {
+            self.end - self.idx
+        }
+    }
+}
+
 #[derive(Debug, Default, PartialEq, Clone)]
 pub struct ArrayAttrs {
     /// A `closurized` array verifies the following conditions:
@@ -582,9 +738,10 @@ impl Term {
                 func(t1);
                 func(t2);
             }
-            OpN(_, ref mut terms) | Array(ref mut terms, _) => terms.iter_mut().for_each(|t| {
+            OpN(_, ref mut terms) => terms.iter_mut().for_each(|t| {
                 func(t);
             }),
+            Array(ref mut terms, _) => terms.make_mut().iter_mut().for_each(|t| func(t)),
             StrChunks(chunks) => chunks.iter_mut().for_each(|chunk| match chunk {
                 StrChunk::Literal(_) => (),
                 StrChunk::Expr(e, _) => func(e),
@@ -1417,13 +1574,13 @@ impl RichTerm {
                 )
             },
             Term::Array(ts, attrs) => {
-                let ts_res: Result<Vec<RichTerm>, E> = ts
+                let ts_res = Array::new(ts
                     .into_iter()
                     .map(|t| t.traverse(f, state, order))
-                    .collect();
+                    .collect::<Result<Rc<[_]>, _>>()?);
 
                 RichTerm::new(
-                    Term::Array(ts_res?, attrs),
+                    Term::Array(ts_res, attrs),
                     pos,
                 )
             },
@@ -1632,7 +1789,7 @@ pub mod make {
     #[macro_export]
     macro_rules! mk_fun {
         ( $id:expr, $body:expr ) => {
-            $crate::term::RichTerm::from($crate::term::Term::Fun($crate::identifier::Ident::from($id), $crate::term::RichTerm::from($body).into()))
+            $crate::term::RichTerm::from($crate::term::Term::Fun($crate::identifier::Ident::from($id), $crate::term::RichTerm::from($body)))
         };
         ( $id1:expr, $id2:expr , $( $rest:expr ),+ ) => {
             mk_fun!($crate::identifier::Ident::from($id1), mk_fun!($id2, $( $rest ),+))
@@ -1677,6 +1834,25 @@ pub mod make {
                     map.insert($id.into(), $body.into());
                 )*
                 $crate::term::RichTerm::from($crate::term::Term::Switch($crate::term::RichTerm::from($exp), map, None))
+        };
+    }
+
+    /// Array for types implementing `Into<RichTerm>` (for elements).
+    /// The array's attributes are a trailing (optional) `ArrayAttrs`, separated by a `;`.
+    /// `mk_array!(Term::Num(42)) corresponds to `[42]`. Here the attributes are `ArrayAttrs::default()`, though the evaluated array may have different attributes.
+    #[macro_export]
+    macro_rules! mk_array {
+        ( $( $terms:expr ),* ; $attrs:expr ) => {
+            {
+                let ts = $crate::term::array::Array::new(std::rc::Rc::new([$( crate::term::RichTerm::from($terms) ),*]));
+                $crate::term::RichTerm::from(Term::Array(ts, $attrs))
+            }
+        };
+        ( $( $terms:expr ),* ) => {
+            {
+                let ts = $crate::term::array::Array::new(std::rc::Rc::new([$( crate::term::RichTerm::from($terms) ),*]));
+                $crate::term::RichTerm::from(Term::Array(ts, ArrayAttrs::default()))
+            }
         };
     }
 

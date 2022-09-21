@@ -1,5 +1,7 @@
+use std::rc::Rc;
+
 use criterion::{criterion_main, Criterion};
-use nickel_lang::term::{ArrayAttrs, RichTerm, Term};
+use nickel_lang::term::{array::Array, ArrayAttrs, RichTerm, Term};
 use nickel_lang_utilities::{ncl_bench_group, EvalMode};
 use pprof::criterion::{Output, PProfProfiler};
 use pretty::{BoxAllocator, DocBuilder, Pretty};
@@ -18,7 +20,10 @@ fn ncl_random_array(len: usize) -> String {
         numbers.push(RichTerm::from(Term::Num(acc as f64)));
     }
 
-    let xs = RichTerm::from(Term::Array(numbers, ArrayAttrs::default()));
+    let xs = RichTerm::from(Term::Array(
+        Array::new(Rc::from(numbers)),
+        ArrayAttrs::default(),
+    ));
     let doc: DocBuilder<_, ()> = xs.pretty(&BoxAllocator);
     let mut out = Vec::new();
     doc.render(80, &mut out).unwrap();
