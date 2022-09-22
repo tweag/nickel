@@ -11,12 +11,16 @@ use super::error::ParseError;
 
 use crate::{
     destruct::Destruct,
+    eval::operation::PushPriority,
     identifier::Ident,
     label::Label,
     mk_app, mk_fun,
     position::{RawSpan, TermPos},
-    term::{make as mk_term, BinaryOp, MetaValue, RecordAttrs, RichTerm, StrChunk, Term, UnaryOp},
-    types::Types,
+    term::{
+        make as mk_term, BinaryOp, Contract, MetaValue, RecordAttrs, RichTerm, StrChunk, Term,
+        UnaryOp,
+    },
+    types::{AbsType, Types},
 };
 
 /// Distinguish between the standard string separators `"`/`"` and the multi-line string separators
@@ -96,6 +100,114 @@ impl InfixOp {
                 "x2",
                 mk_term::op2(op, mk_term::var("x1"), mk_term::var("x2")).with_pos(pos)
             ),
+        }
+    }
+}
+
+/// General interface for structures representing a series of annotations.
+pub trait Annot: Default + From<MetaValue> {
+    /// Attach the annotation to a term.
+    fn attach(self, value: RichTerm, pos: TermPos) -> RichTerm;
+    /// Combine two annotations.
+    fn combine(outer: Self, inner: Self) -> Self;
+}
+
+/// Consistency of naming inside the parser module.
+pub type MetaAnnot = MetaValue;
+
+impl Annot for MetaValue {
+    fn attach(mut self, value: RichTerm, pos: TermPos) -> RichTerm {
+        self.value = Some(value);
+        RichTerm::new(Term::MetaValue(self), pos)
+    }
+
+    fn combine(outer: Self, inner: Self) -> Self {
+        Self::flatten(outer, inner)
+    }
+}
+
+/// Used to combine annotations in a pattern. If at least one annotation is not `None`, then this
+/// just calls [`Annot::combine`] and substitute a potential `None` by the default value.
+///
+/// If both arguments are `None`, we still need a label to report useful error diagnostics. In this
+/// case, `combine_match_annots` returns a value with a dummy `Dyn` contract and a label with the
+/// position set to `span`.
+pub fn combine_match_annots(
+    anns: Option<MetaAnnot>,
+    default: Option<MetaAnnot>,
+    span: RawSpan,
+) -> MetaAnnot {
+    match (anns, default) {
+        (anns @ Some(_), default) | (anns, default @ Some(_)) => {
+            Annot::combine(anns.unwrap_or_default(), default.unwrap_or_default())
+        }
+        (None, None) => MetaValue {
+            contracts: vec![Contract {
+                types: Types(AbsType::Dyn().into()),
+                label: Label {
+                    span,
+                    ..Default::default()
+                },
+            }],
+            ..Default::default()
+        },
+    }
+}
+
+/// Some constructs are introduced with the metavalue pipe operator `|`, but aren't metadata per se
+/// (ex: `push force`/`push default`). Those are collected in this extended annotation and then
+/// desugared into a standard metavalue.
+#[derive(Clone, Debug, Default)]
+pub struct ExtdAnnot {
+    /// Standard metadata.
+    pub meta: MetaValue,
+    /// Presence of an annotation `push force`
+    pub push_force: bool,
+    /// Presence of an annotation `push default`
+    pub push_default: bool,
+}
+
+impl ExtdAnnot {
+    pub fn new() -> Self {
+        Default::default()
+    }
+}
+
+impl Annot for ExtdAnnot {
+    fn attach(mut self, value: RichTerm, pos: TermPos) -> RichTerm {
+        if self.push_force || self.push_default {
+            let push_prio = if self.push_force {
+                PushPriority::Top
+            } else {
+                PushPriority::Bottom
+            };
+
+            self.meta.value = Some(push_prio.apply_push_op(value).with_pos(pos));
+        } else {
+            self.meta.value = Some(value);
+        }
+
+        RichTerm::new(Term::MetaValue(self.meta), pos)
+    }
+
+    fn combine(outer: Self, inner: Self) -> Self {
+        let meta = MetaValue::flatten(outer.meta, inner.meta);
+        let push_force = outer.push_force || inner.push_force;
+        let push_default = outer.push_default || inner.push_default;
+
+        ExtdAnnot {
+            meta,
+            push_force,
+            push_default,
+        }
+    }
+}
+
+impl From<MetaValue> for ExtdAnnot {
+    fn from(meta: MetaValue) -> Self {
+        ExtdAnnot {
+            meta,
+            ..Default::default()
         }
     }
 }
