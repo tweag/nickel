@@ -217,7 +217,7 @@ impl Repl for ReplImpl {
         typecheck::env_add_term(
             &mut self.env.type_env,
             &term,
-            &typecheck::eq::TermEnvironment::new(),
+            &typecheck::eq::SimpleTermEnvironment::new(),
             &self.cache,
         )
         .unwrap();
