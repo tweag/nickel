@@ -118,7 +118,10 @@ impl<'b> Bench<'b> {
 
 pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> {
     let mut cache = Cache::new(ErrorTolerance::Strict);
-    let Envs { eval_env, type_env } = cache.prepare_stdlib().unwrap();
+    let Envs {
+        eval_env,
+        type_ctxt,
+    } = cache.prepare_stdlib().unwrap();
     Box::new(move |c: &mut Criterion| {
         rts.iter().for_each(|bench| {
             let t = bench.term();
@@ -133,9 +136,9 @@ pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> 
                     },
                     |(mut c_local, id, t)| {
                         if bench.eval_mode == EvalMode::TypeCheck {
-                            c_local.typecheck(id, &type_env).unwrap();
+                            c_local.typecheck(id, &type_ctxt).unwrap();
                         } else {
-                            c_local.prepare(id, &type_env).unwrap();
+                            c_local.prepare(id, &type_ctxt).unwrap();
                             eval::eval(t, &eval_env, &mut c_local).unwrap();
                         }
                     },
@@ -186,7 +189,7 @@ macro_rules! ncl_bench_group {
             let mut c: criterion::Criterion<_> = $config
                 .configure_from_args();
             let mut cache = Cache::new(ErrorTolerance::Strict);
-            let Envs {eval_env, type_env} = cache.prepare_stdlib().unwrap();
+            let Envs {eval_env, type_ctxt} = cache.prepare_stdlib().unwrap();
             $(
                 let bench = $crate::ncl_bench!$b;
                 let t = bench.term();
@@ -205,9 +208,9 @@ macro_rules! ncl_bench_group {
                         },
                         |(mut c_local, id, t)| {
                             if bench.eval_mode == $crate::EvalMode::TypeCheck {
-                                c_local.typecheck(id, &type_env).unwrap();
+                                c_local.typecheck(id, &type_ctxt).unwrap();
                             } else {
-                                c_local.prepare(id, &type_env).unwrap();
+                                c_local.prepare(id, &type_ctxt).unwrap();
                                 eval(t, &eval_env, &mut c_local).unwrap();
                             }
                         },

@@ -71,8 +71,11 @@ impl Program {
     /// Retrieve the parsed term and typecheck it, and generate a fresh initial environment. Return
     /// both.
     fn prepare_eval(&mut self) -> Result<(RichTerm, eval::Environment), Error> {
-        let Envs { eval_env, type_env } = self.cache.prepare_stdlib()?;
-        self.cache.prepare(self.main_id, &type_env)?;
+        let Envs {
+            eval_env,
+            type_ctxt,
+        } = self.cache.prepare_stdlib()?;
+        self.cache.prepare(self.main_id, &type_ctxt)?;
         Ok((self.cache.get(self.main_id).unwrap(), eval_env))
     }
 
@@ -104,7 +107,7 @@ impl Program {
     pub fn typecheck(&mut self) -> Result<(), Error> {
         self.cache.parse(self.main_id)?;
         self.cache.load_stdlib()?;
-        let initial_env = self.cache.mk_type_env().expect("program::typecheck(): stdlib has been loaded but was not found in cache on mk_types_env()");
+        let initial_env = self.cache.mk_type_ctxt().expect("program::typecheck(): stdlib has been loaded but was not found in cache on mk_types_env()");
         self.cache
             .resolve_imports(self.main_id)
             .map_err(|cache_err| {
@@ -181,7 +184,7 @@ pub fn query(
     initial_env: &Envs,
     path: Option<String>,
 ) -> Result<Term, Error> {
-    cache.prepare(file_id, &initial_env.type_env)?;
+    cache.prepare(file_id, &initial_env.type_ctxt)?;
 
     let t = if let Some(p) = path {
         // Parsing `y.path`. We `seq` it to force the evaluation of the underlying value,

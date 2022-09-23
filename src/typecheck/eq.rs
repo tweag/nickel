@@ -84,6 +84,17 @@ impl TermEnvironment for SimpleTermEnvironment {
     }
 }
 
+impl std::iter::FromIterator<(Ident, (RichTerm, SimpleTermEnvironment))> for SimpleTermEnvironment {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = (Ident, (RichTerm, SimpleTermEnvironment))>,
+    {
+        SimpleTermEnvironment(
+            GenericEnvironment::<Ident, (RichTerm, SimpleTermEnvironment)>::from_iter(iter),
+        )
+    }
+}
+
 impl TermEnvironment for eval::Environment {
     fn get_then<F, T>(&self, id: &Ident, f: F) -> T
     where

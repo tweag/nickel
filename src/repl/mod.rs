@@ -74,9 +74,9 @@ pub struct ReplImpl {
     /// The current environment (for evaluation and typing). Contain the initial environment with
     /// the stdlib, plus toplevel declarations and loadings made inside the REPL.
     env: Envs,
-    /// The initial type environment, without the toplevel declarations made inside the REPL. Used
-    /// to typecheck imports in a fresh environment.
-    initial_type_env: typecheck::Environment,
+    /// The initial typing context, without the toplevel declarations made inside the REPL. Used to
+    /// typecheck imports in a fresh environment.
+    initial_type_ctxt: typecheck::Context,
 }
 
 impl ReplImpl {
@@ -86,7 +86,7 @@ impl ReplImpl {
             cache: Cache::new(ErrorTolerance::Strict),
             parser: grammar::ExtendedTermParser::new(),
             env: Envs::new(),
-            initial_type_env: typecheck::Environment::new(),
+            initial_type_ctxt: typecheck::Context::new(),
         }
     }
 
@@ -94,7 +94,7 @@ impl ReplImpl {
     /// typing environment.
     pub fn load_stdlib(&mut self) -> Result<(), Error> {
         self.env = self.cache.prepare_stdlib()?;
-        self.initial_type_env = self.env.type_env.clone();
+        self.initial_type_ctxt = self.env.type_ctxt.clone();
         Ok(())
     }
 
@@ -135,16 +135,28 @@ impl ReplImpl {
             }
 
             let wildcards =
-                typecheck::type_check(&t, repl_impl.env.type_env.clone(), &repl_impl.cache)?;
+                typecheck::type_check(&t, repl_impl.env.type_ctxt.clone(), &repl_impl.cache)?;
 
             if let Some(id) = id {
-                typecheck::env_add(&mut repl_impl.env.type_env, id, &t, &repl_impl.cache);
+                typecheck::env_add(
+                    &mut repl_impl.env.type_ctxt.type_env,
+                    id.clone(),
+                    &t,
+                    &repl_impl.env.type_ctxt.term_env,
+                    &repl_impl.cache,
+                );
+                repl_impl
+                    .env
+                    .type_ctxt
+                    .term_env
+                    .0
+                    .insert(id, (t.clone(), repl_impl.env.type_ctxt.term_env.clone()));
             }
 
             for id in &pending {
                 repl_impl
                     .cache
-                    .typecheck(*id, &repl_impl.initial_type_env)
+                    .typecheck(*id, &repl_impl.initial_type_ctxt)
                     .map_err(|cache_err| {
                         cache_err.unwrap_error("repl::eval_(): expected imports to be parsed")
                     })?;
@@ -213,11 +225,10 @@ impl Repl for ReplImpl {
         for id in &pending {
             self.cache.resolve_imports(*id).unwrap();
         }
-        //FIXME: use a non-empty term environment
         typecheck::env_add_term(
-            &mut self.env.type_env,
+            &mut self.env.type_ctxt.type_env,
             &term,
-            &typecheck::eq::SimpleTermEnvironment::new(),
+            &self.env.type_ctxt.term_env,
             &self.cache,
         )
         .unwrap();
@@ -234,7 +245,7 @@ impl Repl for ReplImpl {
         for id in &pending {
             self.cache.resolve_imports(*id).unwrap();
         }
-        let wildcards = typecheck::type_check(&term, self.env.type_env.clone(), &self.cache)?;
+        let wildcards = typecheck::type_check(&term, self.env.type_ctxt.clone(), &self.cache)?;
         // Substitute the wildcard types for their inferred types
         // We need to `traverse` the term, in case the type depends on inner terms that also contain wildcards
         let term = term
@@ -249,10 +260,12 @@ impl Repl for ReplImpl {
             )
             .unwrap();
 
-        Ok(
-            typecheck::apparent_type(term.as_ref(), Some(&self.env.type_env), Some(&self.cache))
-                .into(),
+        Ok(typecheck::apparent_type(
+            term.as_ref(),
+            Some(&self.env.type_ctxt.type_env),
+            Some(&self.cache),
         )
+        .into())
     }
 
     fn query(&mut self, exp: &str) -> Result<Term, Error> {

@@ -14,7 +14,7 @@ pub trait CacheExt {
     fn typecheck_with_analysis(
         &mut self,
         file_id: FileId,
-        initial_env: &typecheck::Environment,
+        initial_ctxt: &typecheck::Context,
         lin_cache: &mut HashMap<FileId, Completed>,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>>;
 }
@@ -35,7 +35,7 @@ impl CacheExt for Cache {
     fn typecheck_with_analysis<'a>(
         &mut self,
         file_id: FileId,
-        initial_env: &typecheck::Environment,
+        initial_ctxt: &typecheck::Context,
         lin_cache: &mut HashMap<FileId, Completed>,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
         if !self.terms_mut().contains_key(&file_id) {
@@ -50,7 +50,7 @@ impl CacheExt for Cache {
         } else if *state >= EntryState::Parsed {
             let host = AnalysisHost::new();
             let (_, linearized) =
-                typecheck::type_check_linearize(term, initial_env.clone(), self, host)?;
+                typecheck::type_check_linearize(term, initial_ctxt.clone(), self, host)?;
             self.update_state(file_id, EntryState::Typechecked);
             lin_cache.insert(file_id, linearized);
             Ok(CacheOp::Done(()))
