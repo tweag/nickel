@@ -361,7 +361,7 @@ pub fn fix_type_vars(ty: &mut Types) {
             }
             AbsType::Var(ref mut id) => {
                 if !bound_vars.contains(id) {
-                    let id = std::mem::replace(id, unsafe { std::mem::zeroed() });
+                    let id = *id;
                     let pos = id.pos();
                     ty.0 = AbsType::Flat(RichTerm::new(Term::Var(id), pos));
                 }
