@@ -1314,6 +1314,54 @@ fn row_add(
     }
 }
 
+/// Get the set of all unification variables in a type.
+fn get_free_variables(wildcards: &Vec<TypeWrapper>, t: TypeWrapper) -> HashSet<usize> {
+    match t {
+        TypeWrapper::Ptr(i) => HashSet::from([i]),
+        TypeWrapper::Concrete(ty) => match ty {
+            AbsType::Dyn()
+            | AbsType::Num()
+            | AbsType::Bool()
+            | AbsType::Str()
+            | AbsType::Sym()
+            | AbsType::Flat(_)
+            | AbsType::Var(_)
+            | AbsType::RowEmpty() => HashSet::new(),
+            // TODO: replace with get_wilccard_var(..)
+            AbsType::Wildcard(id) => wildcards
+                .get(id)
+                .map(|ty| get_free_variables(wildcards, ty.clone()))
+                .unwrap_or(HashSet::new()),
+            AbsType::Arrow(ty1, ty2) => {
+                let a = get_free_variables(wildcards, *ty1);
+                let b = get_free_variables(wildcards, *ty2);
+                a.union(&b).map(|i| *i).collect()
+            }
+            AbsType::Forall(_, ty)
+            | AbsType::Enum(ty)
+            | AbsType::StaticRecord(ty)
+            | AbsType::DynRecord(ty)
+            | AbsType::Array(ty) => get_free_variables(wildcards, *ty),
+            AbsType::RowExtend(_, ty_row, tail) => ty_row
+                .map(|ty| get_free_variables(wildcards, *ty))
+                .unwrap_or(HashSet::new())
+                .union(&get_free_variables(wildcards, *tail))
+                .map(|i| *i)
+                .collect(),
+        },
+        TypeWrapper::Contract(..) | TypeWrapper::Constant(_) => HashSet::new(),
+    }
+}
+
+/// Check if the type variable `ptr` occurs in `t`
+fn occurs_check(ptr: usize, state: &State, t: TypeWrapper) -> bool {
+    let free_vars = get_free_variables(state.wildcard_vars, t);
+    let result = free_vars
+        .iter()
+        .any(|other_ptr| state.table.root(ptr) == state.table.root(*other_ptr));
+    result
+}
+
 /// Try to unify two types.
 pub fn unify(
     state: &mut State,
@@ -1420,6 +1468,11 @@ pub fn unify(
             )),
         },
         (TypeWrapper::Ptr(p1), TypeWrapper::Ptr(p2)) if p1 == p2 => Ok(()),
+        (TypeWrapper::Ptr(p), tyw) | (tyw, TypeWrapper::Ptr(p))
+            if occurs_check(p, state, tyw.clone()) =>
+        {
+            Err(UnifError::InfiniteRecursiveType(TypeWrapper::Ptr(p), tyw))
+        }
         // The two following cases are not merged just to correctly distinguish between the
         // expected type (first component of the tuple) and the inferred type when reporting a row
         // unification error.

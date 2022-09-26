@@ -103,6 +103,9 @@ pub enum UnifError {
     DomainMismatch(TypeWrapper, TypeWrapper, Box<UnifError>),
     /// An error occurred when unifying the codomains of two arrows.
     CodomainMismatch(TypeWrapper, TypeWrapper, Box<UnifError>),
+    /// An error occurred when trying to unify to terms which have overlapping unification
+    /// variables.
+    InfiniteRecursiveType(TypeWrapper, TypeWrapper),
 }
 
 impl UnifError {
@@ -138,11 +141,13 @@ impl UnifError {
         pos_opt: TermPos,
     ) -> TypecheckError {
         match self {
-            UnifError::TypeMismatch(ty1, ty2) => TypecheckError::TypeMismatch(
-                reporting::to_type(state.table, state.names, names, ty1),
-                reporting::to_type(state.table, state.names, names, ty2),
-                pos_opt,
-            ),
+            UnifError::InfiniteRecursiveType(ty1, ty2) | UnifError::TypeMismatch(ty1, ty2) => {
+                TypecheckError::TypeMismatch(
+                    reporting::to_type(state.table, state.names, names, ty1),
+                    reporting::to_type(state.table, state.names, names, ty2),
+                    pos_opt,
+                )
+            }
             UnifError::RowMismatch(ident, tyw1, tyw2, err) => TypecheckError::RowMismatch(
                 ident,
                 reporting::to_type(state.table, state.names, names, tyw1),
