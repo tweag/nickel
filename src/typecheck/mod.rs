@@ -1355,11 +1355,9 @@ fn get_free_variables(wildcards: &Vec<TypeWrapper>, t: TypeWrapper) -> HashSet<u
 
 /// Check if the type variable `ptr` occurs in `t`
 fn occurs_check(ptr: usize, state: &State, t: TypeWrapper) -> bool {
-    let free_vars = get_free_variables(state.wildcard_vars, t);
-    let result = free_vars
+    get_free_variables(state.wildcard_vars, t)
         .iter()
-        .any(|other_ptr| state.table.root(ptr) == state.table.root(*other_ptr));
-    result
+        .any(|other_ptr| state.table.root(ptr) == state.table.root(*other_ptr))
 }
 
 /// Try to unify two types.
