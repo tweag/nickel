@@ -1494,19 +1494,22 @@ pub fn unify_rows(
                 // cases, so we delegate the work. However it returns `UnifError` instead of
                 // `RowUnifError`, hence we have a bit of wrapping and unwrapping to do. Note that
                 // since we are unifying types with a constant or a unification variable somewhere,
-                // the only unification errors that should be possible are related to constants or
-                // row constraints.
+                // the only unification errors that should be possible are related to constants,
+                // row constraints, or type mismatches.
                 (t1_tail, t2_tail) => {
                     unify(state, ctxt, t1_tail, t2_tail).map_err(|err| match err {
                         UnifError::ConstMismatch(c1, c2) => RowUnifError::ConstMismatch(c1, c2),
                         UnifError::WithConst(c1, tyw) => RowUnifError::WithConst(c1, tyw),
                         UnifError::RowConflict(id, tyw_opt, _, _) => {
                             RowUnifError::UnsatConstr(id, tyw_opt)
-                        }
+                        },
+                        UnifError::RowMismatch(id, _, _, unif_err) => {
+                            RowUnifError::RowMismatch(id, unif_err)
+                        },
                         err => panic!(
-                        "typechecker::unify_rows(): unexpected error while unifying row tails {:?}",
-                        err
-                    ),
+                            "typechecker::unify_rows(): unexpected error while unifying row tails {:?}",
+                            err
+                        ),
                     })
                 }
             }
