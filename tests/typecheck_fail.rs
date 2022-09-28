@@ -206,7 +206,7 @@ fn row_type_unification_variable_mismatch() {
     use nickel_lang::error::Error;
 
     // We run the example multiple times as the order in which row types
-    // are checked is not deteministic, and failures are handled differently
+    // are checked is not deterministic, and failures are handled differently
     // depending on whether they occur in the row head or tail.
     for _ in 0..10 {
         assert_matches!(
