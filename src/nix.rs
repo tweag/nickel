@@ -5,7 +5,7 @@ use crate::identifier::Ident;
 use crate::mk_app;
 use crate::parser::utils::mk_span;
 use crate::term::make::{self, if_then_else};
-use crate::term::{BinaryOp, RecordData, UnaryOp};
+use crate::term::{record::RecordData, BinaryOp, UnaryOp};
 use crate::term::{MergePriority, MetaValue, RichTerm, Term};
 use codespan::FileId;
 use rnix;
@@ -150,13 +150,7 @@ impl ToNickel for rnix::SyntaxNode {
                         Term::Var(id.into())
                     } else {
                         Term::App(
-                            mk_app!(
-                                make::op1(
-                                    UnaryOp::StaticAccess("with".into()),
-                                    Term::Var("compat".into()),
-                                ),
-                                Term::Array(state.with.clone(), Default::default())
-                            ),
+                            crate::stdlib::compat::with(state.with.clone().into_iter().collect()),
                             Term::Str(id.into()).into(),
                         )
                     }
@@ -216,13 +210,13 @@ impl ToNickel for rnix::SyntaxNode {
                         rest: None,
                         span,
                     },
-                    Term::RecRecord(RecordData::with_fields(fields), vec![], None).into(),
+                    Term::RecRecord(RecordData::with_fields(fields), vec![], None),
                     n.body().unwrap().translate(&state),
                 )
             }
             ParsedType::With(n) => {
                 let mut state = state.clone();
-                state.with.push(n.namespace().unwrap().translate(state));
+                state.with.push(n.namespace().unwrap().translate(&state));
                 n.body().unwrap().translate(&state)
             }
 

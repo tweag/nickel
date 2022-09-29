@@ -11,6 +11,7 @@ use std::collections::HashSet;
 
 /// State of the conversion. It contains the definitions in scope of the currently converted node (e.g.:
 /// `with` environments, declared variables, current file id...), required for elaborate compilation (`with`).
+#[derive(Clone)]
 pub struct State {
     /// The current transformation file ID.
     pub file_id: FileId,
