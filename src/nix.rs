@@ -219,14 +219,9 @@ impl ToNickel for rnix::SyntaxNode {
                 )
             }
             ParsedType::With(n) => {
-                let State { file_id, env, with } = state;
-                let mut with = with.clone();
-                with.push(n.namespace().unwrap().translate(state));
-                n.body().unwrap().translate(&State {
-                    file_id: file_id.clone(),
-                    env: env.clone(),
-                    with,
-                })
+                let mut state = state.clone();
+                state.with.push(n.namespace().unwrap().translate(state));
+                n.body().unwrap().translate(&state)
             }
 
             ParsedType::Lambda(n) => {
