@@ -6,7 +6,7 @@ use std::hash::Hash;
 
 use crate::position::TermPos;
 
-static INTERNER: Lazy<interner::Interner> = Lazy::new(|| interner::Interner::new());
+static INTERNER: Lazy<interner::Interner> = Lazy::new(interner::Interner::new);
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 #[serde(into = "String", from = "String")]
@@ -114,27 +114,27 @@ mod interner {
     pub(crate) struct Interner<'a>(RwLock<InnerInterner<'a>>);
 
     impl<'a> Interner<'a> {
-        pub fn new() -> Self {
+        pub(crate) fn new() -> Self {
             Self(RwLock::new(InnerInterner::new()))
         }
 
-        pub fn intern(&self, string: impl AsRef<str>) -> Symbol {
+        pub(crate) fn intern(&self, string: impl AsRef<str>) -> Symbol {
             self.0.write().unwrap().intern(string)
         }
 
-        pub fn lookup(&self, sym: Symbol) -> &str {
+        pub(crate) fn lookup(&self, sym: Symbol) -> &str {
             unsafe { std::mem::transmute(self.0.read().unwrap().lookup(sym)) }
         }
     }
 
-    pub(crate) struct InnerInterner<'a> {
+    struct InnerInterner<'a> {
         arena: Mutex<Arena<u8>>,
         map: HashMap<&'a str, Symbol>,
         vec: Vec<&'a str>,
     }
 
     impl<'a> InnerInterner<'a> {
-        pub(crate) fn new() -> Self {
+        fn new() -> Self {
             Self {
                 arena: Mutex::new(Arena::new()),
                 map: HashMap::new(),
@@ -142,7 +142,7 @@ mod interner {
             }
         }
 
-        pub(crate) fn intern(&mut self, string: impl AsRef<str>) -> Symbol {
+        fn intern(&mut self, string: impl AsRef<str>) -> Symbol {
             if let Some(sym) = self.map.get(string.as_ref()) {
                 return *sym;
             }
@@ -155,7 +155,7 @@ mod interner {
             sym
         }
 
-        pub(crate) fn lookup(&self, sym: Symbol) -> &str {
+        fn lookup(&self, sym: Symbol) -> &str {
             self.vec[sym.0 as usize]
         }
     }
