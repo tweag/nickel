@@ -148,13 +148,7 @@ impl ToNickel for rnix::SyntaxNode {
                         Term::Var(id.into())
                     } else {
                         Term::App(
-                            mk_app!(
-                                make::op1(
-                                    UnaryOp::StaticAccess("with".into()),
-                                    Term::Var("compat".into()),
-                                ),
-                                Term::Array(state.with.clone(), Default::default())
-                            ),
+                            crate::stdlib::compat::with(state.with.clone()),
                             Term::Str(id.into()).into(),
                         )
                     }
@@ -220,7 +214,7 @@ impl ToNickel for rnix::SyntaxNode {
             }
             ParsedType::With(n) => {
                 let mut state = state.clone();
-                state.with.push(n.namespace().unwrap().translate(state));
+                state.with.push(n.namespace().unwrap().translate(&state));
                 n.body().unwrap().translate(&state)
             }
 
