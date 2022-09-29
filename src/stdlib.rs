@@ -144,3 +144,24 @@ pub mod internals {
     generate_accessor!(rec_default);
     generate_accessor!(rec_force);
 }
+
+/// Contains functions helper for Nix evaluation by Nickel.
+pub mod compat {
+    use super::*;
+    use crate::identifier::*;
+    use crate::mk_app;
+    use crate::term::make::op1;
+    use crate::term::{array::Array, Term, UnaryOp};
+
+    /// Generate the `with` compatibility Nickel function which may be applied to an `Ident`
+    /// you have to pass a list of with records in ordered from outer-most to inner-most one.
+    pub fn with(array: Array) -> RichTerm {
+        mk_app!(
+            op1(
+                UnaryOp::StaticAccess("with".into()),
+                Term::Var("compat".into()),
+            ),
+            Term::Array(array, Default::default())
+        )
+    }
+}
