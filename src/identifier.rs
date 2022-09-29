@@ -189,4 +189,34 @@ mod interner {
             self.vec[sym.0 as usize]
         }
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn test_intern_then_lookup() {
+            let interner = Interner::new();
+            let test_string = "test_string";
+            let sym = interner.intern(test_string);
+            assert_eq!(interner.lookup(sym), test_string);
+        }
+
+        #[test]
+        fn test_intern_twice_has_same_symbol() {
+            let interner = Interner::new();
+            let test_string = "test_string";
+            let sym1 = interner.intern(test_string);
+            let sym2 = interner.intern(test_string);
+            assert_eq!(sym1, sym2);
+        }
+
+        #[test]
+        fn test_intern_two_different_has_different_symbols() {
+            let interner = Interner::new();
+            let sym1 = interner.intern("a");
+            let sym2 = interner.intern("b");
+            assert_ne!(sym1, sym2);
+        }
+    }
 }
