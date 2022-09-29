@@ -6,6 +6,7 @@ use nickel_lang::parser::{grammar, lexer};
 use nickel_lang::term::RichTerm;
 use nickel_lang::types::{AbsType, Types};
 use nickel_lang::{typecheck, typecheck::Context};
+use nickel_lang_utilities::typecheck_fixture;
 
 fn type_check(rt: &RichTerm) -> Result<(), TypecheckError> {
     typecheck::type_check(rt, Context::new(), &mut DummyResolver {}).map(|_| ())
@@ -195,6 +196,24 @@ fn polymorphic_row_constraints() {
            (let bad = remove (remove {a = \"a\"}) in 0) : Num",
     );
     assert_row_conflict(res);
+}
+
+/// Regression test following [#841](https://github.com/tweag/nickel/issues/841).
+/// Checks that type mismatches occurring in the tail of a row type with
+/// unification variables don't cause a panic.
+#[test]
+fn row_type_unification_variable_mismatch() {
+    use nickel_lang::error::Error;
+
+    // We run the example multiple times as the order in which row types
+    // are checked is not deterministic, and failures are handled differently
+    // depending on whether they occur in the row head or tail.
+    for _ in 0..10 {
+        assert_matches!(
+            typecheck_fixture("typecheck_fail/row_type_unification_variable_mismatch.ncl"),
+            Err(Error::TypecheckError(TypecheckError::RowMismatch(..)))
+        )
+    }
 }
 
 #[test]

@@ -19,9 +19,7 @@ pub fn eval(s: impl std::string::ToString) -> Result<Term, Error> {
 }
 
 pub fn eval_file(f: &str) -> Result<Term, Error> {
-    let path = format!("{}/../tests/{}", env!("CARGO_MANIFEST_DIR"), f);
-    let mut p = Program::new_from_file(&path)
-        .unwrap_or_else(|e| panic!("Could not create program from `{}`\n {}", path, e));
+    let mut p = program_from_test_fixture(f);
     p.eval().map(Term::from)
 }
 
@@ -31,6 +29,17 @@ pub fn parse(s: &str) -> Result<RichTerm, ParseError> {
     grammar::TermParser::new()
         .parse_term(id, lexer::Lexer::new(&s))
         .map_err(|errs| errs.errors.first().unwrap().clone())
+}
+
+pub fn typecheck_fixture(f: &str) -> Result<(), Error> {
+    let mut p = program_from_test_fixture(f);
+    p.typecheck()
+}
+
+fn program_from_test_fixture(f: &str) -> Program {
+    let path = format!("{}/../tests/{}", env!("CARGO_MANIFEST_DIR"), f);
+    Program::new_from_file(&path)
+        .unwrap_or_else(|e| panic!("Could not create program from `{}`\n {}", path, e))
 }
 
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
