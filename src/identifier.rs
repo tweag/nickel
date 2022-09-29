@@ -123,6 +123,10 @@ mod interner {
         }
 
         pub(crate) fn lookup(&self, sym: Symbol) -> &str {
+            // SAFETY: We are making the returned &str lifetime the same as our struct,
+            // which is okay here since the InnerInterner uses a typed_arena which prevents
+            // deallocations, so the reference will be valid while the InnerInterner exists,
+            // hence while the struct exists.
             unsafe { std::mem::transmute(self.0.read().unwrap().lookup(sym)) }
         }
     }
@@ -146,6 +150,11 @@ mod interner {
             if let Some(sym) = self.map.get(string.as_ref()) {
                 return *sym;
             }
+            // SAFETY: here we are transmuting the reference lifetime:
+            // &'arena str -> &'self str
+            // This is okay since the lifetime of the arena is identical to the one of the struct.
+            // It is also okay to use it from inside the mutex, since typed_arena does not allow deallocation,
+            // so references are valid until the arena drop, which is tied to the struct drop.
             let in_string = unsafe {
                 std::mem::transmute(self.arena.lock().unwrap().alloc_str(string.as_ref()))
             };
