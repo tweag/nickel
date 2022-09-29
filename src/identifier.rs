@@ -108,20 +108,30 @@ mod interner {
 
     use typed_arena::Arena;
 
+    /// A symbol is a correspondance between an [Ident](super::Ident) and its string representation stored in the [Interner].
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct Symbol(u32);
 
+    /// The interner, which serves a double purpose: it pre-allocates space
+    /// so that [Ident](super::Ident) labels are created faster
+    /// and it makes it so that labels are stored only once, saving space.
     pub(crate) struct Interner<'a>(RwLock<InnerInterner<'a>>);
 
     impl<'a> Interner<'a> {
+        /// Creates an empty [Interner].
         pub(crate) fn new() -> Self {
             Self(RwLock::new(InnerInterner::new()))
         }
 
+        /// Stores a string inside the [Interner] if it does not exists, and returns the corresponding [Symbol].
         pub(crate) fn intern(&self, string: impl AsRef<str>) -> Symbol {
             self.0.write().unwrap().intern(string)
         }
 
+        /// Looks up for the stored string corresponding to the [Symbol].
+        ///
+        /// This operation cannot fails since the only way to have a [Symbol] is to have [interned](Interner::intern)
+        /// the corresponding string first.
         pub(crate) fn lookup(&self, sym: Symbol) -> &str {
             // SAFETY: We are making the returned &str lifetime the same as our struct,
             // which is okay here since the InnerInterner uses a typed_arena which prevents
@@ -131,6 +141,12 @@ mod interner {
         }
     }
 
+    /// The main part of the Interner.
+    ///
+    /// It is made out of 3 parts:
+    /// - the arena, that preallocates space where strings are stored
+    /// - the map, which prevents the arena from creating different [Symbols](Symbol) for the same string,
+    /// - the vec, which allows for retrieving a string from a [Symbol].
     struct InnerInterner<'a> {
         arena: Mutex<Arena<u8>>,
         map: HashMap<&'a str, Symbol>,
@@ -138,6 +154,7 @@ mod interner {
     }
 
     impl<'a> InnerInterner<'a> {
+        /// Creates an empty [InnerInterner].
         fn new() -> Self {
             Self {
                 arena: Mutex::new(Arena::new()),
@@ -146,6 +163,7 @@ mod interner {
             }
         }
 
+        /// Stores a string inside the [InnerInterner] if it does not exists, and returns the corresponding [Symbol].
         fn intern(&mut self, string: impl AsRef<str>) -> Symbol {
             if let Some(sym) = self.map.get(string.as_ref()) {
                 return *sym;
@@ -163,7 +181,10 @@ mod interner {
             self.map.insert(in_string, sym);
             sym
         }
-
+        /// Looks up for the stored string corresponding to the [Symbol].
+        ///
+        /// This operation cannot fails since the only way to have a [Symbol]
+        /// is to have [interned](InnerInterner::intern) the corresponding string first.
         fn lookup(&self, sym: Symbol) -> &str {
             self.vec[sym.0 as usize]
         }
