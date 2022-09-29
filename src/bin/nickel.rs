@@ -113,11 +113,12 @@ fn main() {
         eprintln!("error: this executable was not compiled with REPL support");
     } else if let Some(Command::Nixin) = opts.command {
         use nickel_lang::cache::Cache;
+        use nickel_lang::cache::ErrorTolerance;
         use nickel_lang::pretty::*;
         use pretty::BoxAllocator;
 
         let mut buf = String::new();
-        let mut cache = Cache::new();
+        let mut cache = Cache::new(ErrorTolerance::Strict);
         let mut out: Vec<u8> = Vec::new();
         opts.file
             .map(std::fs::File::open)
