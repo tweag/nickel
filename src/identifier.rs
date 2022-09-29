@@ -3,13 +3,10 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::hash::Hash;
-use std::sync::Mutex;
-use typed_arena::Arena;
 
 use crate::position::TermPos;
 
-static ARENA: Lazy<Mutex<Arena<u8>>> = Lazy::new(|| Mutex::new(Arena::new()));
-static INTERNER: Lazy<interner::Interner> = Lazy::new(|| interner::Interner::new(&ARENA));
+static INTERNER: Lazy<interner::Interner> = Lazy::new(|| interner::Interner::new());
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 #[serde(into = "String", from = "String")]
@@ -117,8 +114,8 @@ mod interner {
     pub(crate) struct Interner<'a>(RwLock<InnerInterner<'a>>);
 
     impl<'a> Interner<'a> {
-        pub fn new(arena: &'a Mutex<Arena<u8>>) -> Self {
-            Self(RwLock::new(InnerInterner::new(arena)))
+        pub fn new() -> Self {
+            Self(RwLock::new(InnerInterner::new()))
         }
 
         pub fn intern(&self, string: impl AsRef<str>) -> Symbol {
@@ -131,15 +128,15 @@ mod interner {
     }
 
     pub(crate) struct InnerInterner<'a> {
-        arena: &'a Mutex<Arena<u8>>,
+        arena: Mutex<Arena<u8>>,
         map: HashMap<&'a str, Symbol>,
         vec: Vec<&'a str>,
     }
 
     impl<'a> InnerInterner<'a> {
-        pub(crate) fn new(arena: &'a Mutex<Arena<u8>>) -> Self {
+        pub(crate) fn new() -> Self {
             Self {
-                arena,
+                arena: Mutex::new(Arena::new()),
                 map: HashMap::new(),
                 vec: Vec::new(),
             }
