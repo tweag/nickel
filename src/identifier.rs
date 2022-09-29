@@ -4,11 +4,12 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::hash::Hash;
 use std::sync::Mutex;
+use typed_arena::Arena;
 
 use crate::position::TermPos;
 
-static INTERNER: Lazy<Mutex<interner::Interner>> =
-    Lazy::new(|| Mutex::new(interner::Interner::new()));
+static ARENA: Lazy<Mutex<Arena<u8>>> = Lazy::new(|| Mutex::new(Arena::new()));
+static INTERNER: Lazy<interner::Interner> = Lazy::new(|| interner::Interner::new(&ARENA));
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 #[serde(into = "String", from = "String")]
@@ -22,7 +23,7 @@ impl Ident {
     pub fn new_with_pos(label: impl AsRef<str>, pos: TermPos) -> Self {
         let generated = label.as_ref().starts_with(GEN_PREFIX);
         Self {
-            label: INTERNER.lock().unwrap().intern(label),
+            label: INTERNER.intern(label),
             pos,
             generated,
         }
@@ -33,7 +34,7 @@ impl Ident {
     }
 
     pub fn label(&self) -> &str {
-        INTERNER.lock().unwrap().lookup(self.label)
+        INTERNER.lookup(self.label)
     }
 
     pub fn pos(&self) -> TermPos {
@@ -106,24 +107,41 @@ impl AsRef<str> for Ident {
 
 mod interner {
     use std::collections::HashMap;
+    use std::sync::{Mutex, RwLock};
 
     use typed_arena::Arena;
 
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    pub(crate) struct Symbol(u32);
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub struct Symbol(u32);
 
-    pub(crate) struct Interner {
-        map: HashMap<&'static str, Symbol>,
-        vec: Vec<&'static str>,
-        arena: Arena<u8>,
+    pub(crate) struct Interner<'a>(RwLock<InnerInterner<'a>>);
+
+    impl<'a> Interner<'a> {
+        pub fn new(arena: &'a Mutex<Arena<u8>>) -> Self {
+            Self(RwLock::new(InnerInterner::new(arena)))
+        }
+
+        pub fn intern(&self, string: impl AsRef<str>) -> Symbol {
+            self.0.write().unwrap().intern(string)
+        }
+
+        pub fn lookup(&self, sym: Symbol) -> &str {
+            unsafe { std::mem::transmute(self.0.read().unwrap().lookup(sym)) }
+        }
     }
 
-    impl Interner {
-        pub(crate) fn new() -> Self {
+    pub(crate) struct InnerInterner<'a> {
+        arena: &'a Mutex<Arena<u8>>,
+        map: HashMap<&'a str, Symbol>,
+        vec: Vec<&'a str>,
+    }
+
+    impl<'a> InnerInterner<'a> {
+        pub(crate) fn new(arena: &'a Mutex<Arena<u8>>) -> Self {
             Self {
+                arena,
                 map: HashMap::new(),
                 vec: Vec::new(),
-                arena: Arena::new(),
             }
         }
 
@@ -131,14 +149,16 @@ mod interner {
             if let Some(sym) = self.map.get(string.as_ref()) {
                 return *sym;
             }
-            let string_in = unsafe { &*(self.arena.alloc_str(string.as_ref()) as *const str) };
+            let in_string = unsafe {
+                std::mem::transmute(self.arena.lock().unwrap().alloc_str(string.as_ref()))
+            };
             let sym = Symbol(self.vec.len() as u32);
-            self.vec.push(string_in);
-            self.map.insert(string_in, sym);
+            self.vec.push(in_string);
+            self.map.insert(in_string, sym);
             sym
         }
 
-        pub(crate) fn lookup(&self, sym: Symbol) -> &'static str {
+        pub(crate) fn lookup(&self, sym: Symbol) -> &str {
             self.vec[sym.0 as usize]
         }
     }
