@@ -1316,40 +1316,51 @@ fn row_add(
 
 /// Get the set of all unification variables in a type.
 fn get_free_unif_vars(wildcards: &Vec<TypeWrapper>, t: TypeWrapper) -> HashSet<usize> {
-    match t {
-        TypeWrapper::Ptr(i) => HashSet::from([i]),
-        TypeWrapper::Concrete(ty) => match ty {
-            AbsType::Dyn()
-            | AbsType::Num()
-            | AbsType::Bool()
-            | AbsType::Str()
-            | AbsType::Sym()
-            | AbsType::Flat(_)
-            | AbsType::Var(_)
-            | AbsType::RowEmpty() => HashSet::new(),
-            AbsType::Wildcard(id) => wildcards
-                .get(id)
-                .map(|ty| get_free_unif_vars(wildcards, ty.clone()))
-                .unwrap_or(HashSet::new()),
-            AbsType::Arrow(ty1, ty2) => {
-                let a = get_free_unif_vars(wildcards, *ty1);
-                let b = get_free_unif_vars(wildcards, *ty2);
-                a.union(&b).map(|i| *i).collect()
+    let mut set: HashSet<usize> = HashSet::new();
+    fn get_free_unif_vars_inner(
+        set: &mut HashSet<usize>,
+        wildcards: &Vec<TypeWrapper>,
+        t: TypeWrapper,
+    ) {
+        match t {
+            TypeWrapper::Ptr(i) => {
+                set.insert(i);
+                ()
             }
-            AbsType::Forall(_, ty)
-            | AbsType::Enum(ty)
-            | AbsType::StaticRecord(ty)
-            | AbsType::DynRecord(ty)
-            | AbsType::Array(ty) => get_free_unif_vars(wildcards, *ty),
-            AbsType::RowExtend(_, ty_row, tail) => ty_row
-                .map(|ty| get_free_unif_vars(wildcards, *ty))
-                .unwrap_or(HashSet::new())
-                .union(&get_free_unif_vars(wildcards, *tail))
-                .map(|i| *i)
-                .collect(),
-        },
-        TypeWrapper::Contract(..) | TypeWrapper::Constant(_) => HashSet::new(),
+            TypeWrapper::Contract(..) | TypeWrapper::Constant(_) => (),
+            TypeWrapper::Concrete(ty) => match ty {
+                AbsType::Dyn()
+                | AbsType::Num()
+                | AbsType::Bool()
+                | AbsType::Str()
+                | AbsType::Sym()
+                | AbsType::Flat(_)
+                | AbsType::Var(_)
+                | AbsType::RowEmpty() => (),
+                AbsType::Wildcard(id) => wildcards
+                    .get(id)
+                    .map(|ty| get_free_unif_vars_inner(set, wildcards, ty.clone()))
+                    .unwrap_or(()),
+                AbsType::Arrow(ty1, ty2) => {
+                    get_free_unif_vars_inner(set, wildcards, *ty1);
+                    get_free_unif_vars_inner(set, wildcards, *ty2)
+                }
+                AbsType::Forall(_, ty)
+                | AbsType::Enum(ty)
+                | AbsType::StaticRecord(ty)
+                | AbsType::DynRecord(ty)
+                | AbsType::Array(ty) => get_free_unif_vars_inner(set, wildcards, *ty),
+                AbsType::RowExtend(_, ty_row, tail) => {
+                    ty_row
+                        .map(|ty| get_free_unif_vars_inner(set, wildcards, *ty))
+                        .unwrap_or(());
+                    get_free_unif_vars_inner(set, wildcards, *tail)
+                }
+            },
+        }
     }
+    get_free_unif_vars_inner(&mut set, wildcards, t);
+    set
 }
 
 /// Check if the type variable `ptr` occurs in `t`
