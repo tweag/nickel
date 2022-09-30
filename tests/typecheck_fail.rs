@@ -294,3 +294,21 @@ fn locally_different_flat_types() {
         ))
     );
 }
+
+#[test]
+fn infinite_recursive_types() {
+    assert_matches!(
+        type_check_expr("let f :  _ = fun x => x x in f"),
+        Err(TypecheckError::TypeMismatch(..))
+    );
+
+    assert_matches!(
+        type_check_expr("let f :  _ =  fun esv es e => e esv e (es e) in f"),
+        Err(TypecheckError::TypeMismatch(..))
+    );
+
+    assert_matches!(
+        type_check_expr("{g = g 0}.g : Num"),
+        Err(TypecheckError::TypeMismatch(..))
+    )
+}
