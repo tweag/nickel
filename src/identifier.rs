@@ -218,5 +218,25 @@ mod interner {
             let sym2 = interner.intern("b");
             assert_ne!(sym1, sym2);
         }
+
+        #[test]
+        fn test_large_number_of_interns() {
+            let interner = Interner::new();
+            for i in 0..10000 {
+                let i = i.to_string();
+                let sym = interner.intern(&i);
+                assert_eq!(i, interner.lookup(sym));
+            }
+            assert_eq!(10000, interner.0.read().unwrap().map.len());
+            assert_eq!(10000, interner.0.read().unwrap().vec.len());
+            // doing the same a second time should not add anything to the interner
+            for i in 0..10000 {
+                let i = i.to_string();
+                let sym = interner.intern(&i);
+                assert_eq!(i, interner.lookup(sym));
+            }
+            assert_eq!(10000, interner.0.read().unwrap().map.len());
+            assert_eq!(10000, interner.0.read().unwrap().vec.len());
+        }
     }
 }
