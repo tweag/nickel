@@ -1354,7 +1354,7 @@ fn get_free_variables(wildcards: &Vec<TypeWrapper>, t: TypeWrapper) -> HashSet<u
 }
 
 /// Check if the type variable `ptr` occurs in `t`
-fn occurs_check(ptr: usize, state: &State, t: TypeWrapper) -> bool {
+fn occurs_check(state: &State, ptr: usize, t: TypeWrapper) -> bool {
     get_free_variables(state.wildcard_vars, t)
         .iter()
         .any(|other_ptr| state.table.root(ptr) == state.table.root(*other_ptr))
@@ -1467,7 +1467,7 @@ pub fn unify(
         },
         (TypeWrapper::Ptr(p1), TypeWrapper::Ptr(p2)) if p1 == p2 => Ok(()),
         (TypeWrapper::Ptr(p), tyw) | (tyw, TypeWrapper::Ptr(p))
-            if occurs_check(p, state, tyw.clone()) =>
+            if occurs_check(state,p, tyw.clone()) =>
         {
             Err(UnifError::InfiniteRecursiveType(TypeWrapper::Ptr(p), tyw))
         }
