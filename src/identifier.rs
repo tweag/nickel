@@ -11,7 +11,7 @@ static INTERNER: Lazy<interner::Interner> = Lazy::new(interner::Interner::new);
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 #[serde(into = "String", from = "String")]
 pub struct Ident {
-    label: interner::Symbol,
+    symbol: interner::Symbol,
     pos: TermPos,
     generated: bool,
 }
@@ -20,7 +20,7 @@ impl Ident {
     pub fn new_with_pos(label: impl AsRef<str>, pos: TermPos) -> Self {
         let generated = label.as_ref().starts_with(GEN_PREFIX);
         Self {
-            label: INTERNER.intern(label),
+            symbol: INTERNER.intern(label),
             pos,
             generated,
         }
@@ -31,7 +31,7 @@ impl Ident {
     }
 
     pub fn label(&self) -> &str {
-        INTERNER.lookup(self.label)
+        INTERNER.lookup(self.symbol)
     }
 
     pub fn pos(&self) -> TermPos {
@@ -57,7 +57,7 @@ impl Ord for Ident {
 
 impl PartialEq for Ident {
     fn eq(&self, other: &Self) -> bool {
-        self.label == other.label
+        self.symbol == other.symbol
     }
 }
 
@@ -65,7 +65,7 @@ impl Eq for Ident {}
 
 impl Hash for Ident {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.label.hash(state);
+        self.symbol.hash(state);
     }
 }
 
