@@ -1315,7 +1315,7 @@ fn row_add(
 }
 
 /// Get the set of all unification variables in a type.
-fn get_free_variables(wildcards: &Vec<TypeWrapper>, t: TypeWrapper) -> HashSet<usize> {
+fn get_free_unif_vars(wildcards: &Vec<TypeWrapper>, t: TypeWrapper) -> HashSet<usize> {
     match t {
         TypeWrapper::Ptr(i) => HashSet::from([i]),
         TypeWrapper::Concrete(ty) => match ty {
@@ -1327,25 +1327,24 @@ fn get_free_variables(wildcards: &Vec<TypeWrapper>, t: TypeWrapper) -> HashSet<u
             | AbsType::Flat(_)
             | AbsType::Var(_)
             | AbsType::RowEmpty() => HashSet::new(),
-            // TODO: replace with get_wilccard_var(..)
             AbsType::Wildcard(id) => wildcards
                 .get(id)
-                .map(|ty| get_free_variables(wildcards, ty.clone()))
+                .map(|ty| get_free_unif_vars(wildcards, ty.clone()))
                 .unwrap_or(HashSet::new()),
             AbsType::Arrow(ty1, ty2) => {
-                let a = get_free_variables(wildcards, *ty1);
-                let b = get_free_variables(wildcards, *ty2);
+                let a = get_free_unif_vars(wildcards, *ty1);
+                let b = get_free_unif_vars(wildcards, *ty2);
                 a.union(&b).map(|i| *i).collect()
             }
             AbsType::Forall(_, ty)
             | AbsType::Enum(ty)
             | AbsType::StaticRecord(ty)
             | AbsType::DynRecord(ty)
-            | AbsType::Array(ty) => get_free_variables(wildcards, *ty),
+            | AbsType::Array(ty) => get_free_unif_vars(wildcards, *ty),
             AbsType::RowExtend(_, ty_row, tail) => ty_row
-                .map(|ty| get_free_variables(wildcards, *ty))
+                .map(|ty| get_free_unif_vars(wildcards, *ty))
                 .unwrap_or(HashSet::new())
-                .union(&get_free_variables(wildcards, *tail))
+                .union(&get_free_unif_vars(wildcards, *tail))
                 .map(|i| *i)
                 .collect(),
         },
@@ -1355,7 +1354,7 @@ fn get_free_variables(wildcards: &Vec<TypeWrapper>, t: TypeWrapper) -> HashSet<u
 
 /// Check if the type variable `ptr` occurs in `t`
 fn occurs_check(state: &State, ptr: usize, t: TypeWrapper) -> bool {
-    get_free_variables(state.wildcard_vars, t)
+    get_free_unif_vars(state.wildcard_vars, t)
         .iter()
         .any(|other_ptr| state.table.root(ptr) == state.table.root(*other_ptr))
 }
@@ -1467,7 +1466,7 @@ pub fn unify(
         },
         (TypeWrapper::Ptr(p1), TypeWrapper::Ptr(p2)) if p1 == p2 => Ok(()),
         (TypeWrapper::Ptr(p), tyw) | (tyw, TypeWrapper::Ptr(p))
-            if occurs_check(state,p, tyw.clone()) =>
+            if occurs_check(state, p, tyw.clone()) =>
         {
             Err(UnifError::InfiniteRecursiveType(TypeWrapper::Ptr(p), tyw))
         }
