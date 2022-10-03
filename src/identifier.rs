@@ -12,7 +12,7 @@ static INTERNER: Lazy<interner::Interner> = Lazy::new(interner::Interner::new);
 #[serde(into = "String", from = "String")]
 pub struct Ident {
     symbol: interner::Symbol,
-    pos: TermPos,
+    pub pos: TermPos,
     generated: bool,
 }
 
@@ -32,10 +32,6 @@ impl Ident {
 
     pub fn label(&self) -> &str {
         INTERNER.lookup(self.symbol)
-    }
-
-    pub fn pos(&self) -> TermPos {
-        self.pos
     }
 }
 

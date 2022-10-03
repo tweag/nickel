@@ -400,7 +400,7 @@ Match: Match = {
             _ => MetaValue {
               contracts: vec![Contract{
                   types: Types(AbsType::Dyn().into()),
-                  label: Label{span: left.pos().unwrap(), ..Default::default()},
+                  label: Label{span: left.pos.unwrap(), ..Default::default()},
               }],
               ..Default::default()
             },
@@ -415,7 +415,7 @@ Match: Match = {
             _ => MetaValue {
                   contracts: vec![Contract{
                       types: Types(AbsType::Dyn().into()),
-                      label: Label{span: id.pos().unwrap(), ..Default::default()},
+                      label: Label{span: id.pos.unwrap(), ..Default::default()},
                   }],
                   ..Default::default()
             },

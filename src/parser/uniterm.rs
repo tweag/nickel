@@ -91,7 +91,7 @@ impl TryFrom<UniTerm> for RichTerm {
             UniTermNode::Types(ty) => {
                 ty.contract().map_err(|UnboundTypeVariableError(id)| {
                     // We unwrap the position of the identifier, which must be set at this stage of parsing
-                    let pos = id.pos();
+                    let pos = id.pos;
                     ParseError::UnboundTypeVariables(vec![id], pos.unwrap())
                 })?
             }
@@ -187,7 +187,7 @@ impl UniRecord {
                         let span = path
                             .into_iter()
                             .map(|path_elem| match path_elem {
-                                FieldPathElem::Ident(id) => id.pos().into_opt(),
+                                FieldPathElem::Ident(id) => id.pos.into_opt(),
                                 FieldPathElem::Expr(rt) => rt.pos.into_opt(),
                             })
                             .reduce(|acc, pos| {
@@ -221,7 +221,7 @@ impl UniRecord {
                                     _ => {
                                         // Position of identifiers must always be set at this stage
                                         // (parsing)
-                                        let span_id = id.pos().unwrap();
+                                        let span_id = id.pos.unwrap();
                                         let term_pos = rt.pos.into_opt().unwrap_or(span_id);
                                         Err(InvalidRecordTypeError(TermPos::Original(
                                             RawSpan::fuse(span_id, term_pos).unwrap(),
@@ -362,7 +362,7 @@ pub fn fix_type_vars(ty: &mut Types) {
             AbsType::Var(ref mut id) => {
                 if !bound_vars.contains(id) {
                     let id = *id;
-                    let pos = id.pos();
+                    let pos = id.pos;
                     ty.0 = AbsType::Flat(RichTerm::new(Term::Var(id), pos));
                 }
             }
