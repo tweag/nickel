@@ -113,12 +113,12 @@ impl Linearizer for AnalysisHost {
             term,
             Term::Op1(UnaryOp::StaticAccess(_), _) | Term::MetaValue(_)
         ) {
-            if let Some((record, (offset, ident))) = self
+            if let Some((record, (offset, Ident { pos: field_pos, .. }))) = self
                 .record_fields
                 .take()
                 .map(|(record, mut fields)| (record, fields.pop().unwrap()))
             {
-                pos = ident.pos().map(|mut pos| {
+                pos = field_pos.map(|mut pos| {
                     pos.start = ByteIndex(0);
                     pos.end = ByteIndex(0);
                     pos
@@ -171,7 +171,7 @@ impl Linearizer for AnalysisHost {
                                 id: id_gen.get_and_advance(),
 
                                 ty: ty.clone(),
-                                pos: ident.pos(),
+                                pos: ident.pos.clone(),
                                 scope: self.scope.clone(),
                                 kind: TermKind::Structure,
                                 meta: self.meta.take(),
@@ -187,7 +187,7 @@ impl Linearizer for AnalysisHost {
                     lin.push(LinearizationItem {
                         id,
                         ty,
-                        pos: ident.pos(),
+                        pos: ident.pos,
                         scope: self.scope.clone(),
                         kind: TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr),
                         meta: None,
@@ -201,7 +201,7 @@ impl Linearizer for AnalysisHost {
                         id,
                         // TODO: get type from pattern
                         ty: TypeWrapper::Concrete(AbsType::Dyn()),
-                        pos: ident.pos(),
+                        pos: ident.pos,
                         scope: self.scope.clone(),
                         kind: TermKind::Declaration(
                             ident.to_owned(),
@@ -230,7 +230,7 @@ impl Linearizer for AnalysisHost {
                             id: id_gen.get_and_advance(),
 
                             ty: ty.clone(),
-                            pos: ident.pos(),
+                            pos: ident.pos.clone(),
                             scope: self.scope.clone(),
                             kind: TermKind::Structure,
                             meta: self.meta.take(),
@@ -244,7 +244,7 @@ impl Linearizer for AnalysisHost {
                 lin.push(LinearizationItem {
                     id: id_gen.get(),
                     ty,
-                    pos: ident.pos(),
+                    pos: ident.pos,
                     scope: self.scope.clone(),
                     kind: TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr),
                     meta: self.meta.take(),
@@ -260,7 +260,7 @@ impl Linearizer for AnalysisHost {
 
                 lin.push(LinearizationItem {
                     id: root_id,
-                    pos: ident.pos(),
+                    pos: ident.pos,
                     ty: TypeWrapper::Concrete(AbsType::Dyn()),
                     scope: self.scope.clone(),
                     kind: TermKind::Usage(UsageState::from(self.env.get(ident).copied())),
@@ -278,7 +278,7 @@ impl Linearizer for AnalysisHost {
                         let id = id_gen.get_and_advance();
                         lin.push(LinearizationItem {
                             id,
-                            pos: accessor.pos(),
+                            pos: accessor.pos,
                             ty: TypeWrapper::Concrete(AbsType::Dyn()),
                             scope: self.scope.clone(),
                             kind: TermKind::Usage(UsageState::Deferred {
