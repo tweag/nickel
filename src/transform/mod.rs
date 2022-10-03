@@ -66,6 +66,7 @@ pub fn transform_no_free_vars(
         .unwrap())
 }
 
+#[deprecated = "use [Ident::generate] instead"]
 /// Generate a new fresh variable which do not clash with user-defined variables.
 pub fn fresh_var() -> Ident {
     use crate::identifier::GEN_PREFIX;
