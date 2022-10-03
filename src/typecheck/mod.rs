@@ -1314,7 +1314,7 @@ fn row_add(
     }
 }
 
-/// Checks if the "root type" of the unification variable `ptr` is also 
+/// Checks if the "root type" of the unification variable `ptr` is also
 /// the root type of any unification variable in `t`
 fn occurs_check(state: &State, ptr: usize, t: TypeWrapper) -> bool {
     match t {
