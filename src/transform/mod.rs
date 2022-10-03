@@ -134,7 +134,7 @@ impl Closurizable for RichTerm {
         // affect the invariant mentioned above, because the share normal form must ensure that the
         // fields of a record all contain generated variables (or constant), but never
         // user-supplied variables.
-        let var = fresh_var();
+        let var = Ident::generate();
         let pos = self.pos;
 
         let thunk = match self.as_ref() {
