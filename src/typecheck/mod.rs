@@ -1314,60 +1314,43 @@ fn row_add(
     }
 }
 
-/// Get the set of all unification variables in a type.
-fn get_free_unif_vars(wildcards: &Vec<TypeWrapper>, t: TypeWrapper) -> HashSet<usize> {
-    let mut set: HashSet<usize> = HashSet::new();
-    fn get_free_unif_vars_inner(
-        set: &mut HashSet<usize>,
-        wildcards: &Vec<TypeWrapper>,
-        t: TypeWrapper,
-    ) {
-        match t {
-            TypeWrapper::Ptr(i) => {
-                set.insert(i);
-                ()
-            }
-            TypeWrapper::Contract(..) | TypeWrapper::Constant(_) => (),
-            TypeWrapper::Concrete(ty) => match ty {
-                AbsType::Dyn()
-                | AbsType::Num()
-                | AbsType::Bool()
-                | AbsType::Str()
-                | AbsType::Sym()
-                | AbsType::Flat(_)
-                | AbsType::Var(_)
-                | AbsType::RowEmpty() => (),
-                AbsType::Wildcard(id) => wildcards
-                    .get(id)
-                    .map(|ty| get_free_unif_vars_inner(set, wildcards, ty.clone()))
-                    .unwrap_or(()),
-                AbsType::Arrow(ty1, ty2) => {
-                    get_free_unif_vars_inner(set, wildcards, *ty1);
-                    get_free_unif_vars_inner(set, wildcards, *ty2)
-                }
-                AbsType::Forall(_, ty)
-                | AbsType::Enum(ty)
-                | AbsType::StaticRecord(ty)
-                | AbsType::DynRecord(ty)
-                | AbsType::Array(ty) => get_free_unif_vars_inner(set, wildcards, *ty),
-                AbsType::RowExtend(_, ty_row, tail) => {
-                    ty_row
-                        .map(|ty| get_free_unif_vars_inner(set, wildcards, *ty))
-                        .unwrap_or(());
-                    get_free_unif_vars_inner(set, wildcards, *tail)
-                }
-            },
-        }
-    }
-    get_free_unif_vars_inner(&mut set, wildcards, t);
-    set
-}
-
-/// Check if the type variable `ptr` occurs in `t`
+/// Checks if the "root type" of the unification variable `ptr` is also 
+/// the root type of any unification variable in `t`
 fn occurs_check(state: &State, ptr: usize, t: TypeWrapper) -> bool {
-    get_free_unif_vars(state.wildcard_vars, t)
-        .iter()
-        .any(|other_ptr| state.table.root(ptr) == state.table.root(*other_ptr))
+    match t {
+        TypeWrapper::Ptr(i) if i == ptr => state.table.root(i) == state.table.root(ptr),
+        TypeWrapper::Ptr(_) => false,
+        TypeWrapper::Contract(..) | TypeWrapper::Constant(_) => false,
+        TypeWrapper::Concrete(ty) => match ty {
+            AbsType::Dyn()
+            | AbsType::Num()
+            | AbsType::Bool()
+            | AbsType::Str()
+            | AbsType::Sym()
+            | AbsType::Flat(_)
+            | AbsType::Var(_)
+            | AbsType::RowEmpty() => false,
+            AbsType::Wildcard(id) => state
+                .wildcard_vars
+                .get(id)
+                .map(|ty| occurs_check(state, ptr, ty.clone()))
+                .unwrap_or(false),
+            AbsType::Arrow(ty1, ty2) => {
+                occurs_check(state, ptr, *ty1) || occurs_check(state, ptr, *ty2)
+            }
+            AbsType::Forall(_, ty)
+            | AbsType::Enum(ty)
+            | AbsType::StaticRecord(ty)
+            | AbsType::DynRecord(ty)
+            | AbsType::Array(ty) => occurs_check(state, ptr, *ty),
+            AbsType::RowExtend(_, ty_row, tail) => {
+                ty_row
+                    .map(|ty| occurs_check(state, ptr, *ty))
+                    .unwrap_or(false)
+                    || occurs_check(state, ptr, *tail)
+            }
+        },
+    }
 }
 
 /// Try to unify two types.
