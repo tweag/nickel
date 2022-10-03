@@ -33,6 +33,10 @@ impl Ident {
     pub fn label(&self) -> &str {
         INTERNER.lookup(self.symbol)
     }
+
+    pub fn into_label(self) -> String {
+        self.label().to_owned()
+    }
 }
 
 /// Special character used for generating fresh identifiers. It must be syntactically impossible to
@@ -82,7 +86,7 @@ where
 
 impl Into<String> for Ident {
     fn into(self) -> String {
-        self.as_ref().to_owned()
+        self.into_label()
     }
 }
 
