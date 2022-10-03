@@ -8,10 +8,6 @@ use crate::{
     types::{AbsType, Types, UnboundTypeVariableError},
 };
 
-use simple_counter::*;
-
-generate_counter!(FreshVarCounter, usize);
-
 pub mod apply_contracts;
 pub mod desugar_destructuring;
 pub mod free_vars;
@@ -69,9 +65,7 @@ pub fn transform_no_free_vars(
 #[deprecated = "use [Ident::generate] instead"]
 /// Generate a new fresh variable which do not clash with user-defined variables.
 pub fn fresh_var() -> Ident {
-    use crate::identifier::GEN_PREFIX;
-
-    format!("{}{}", GEN_PREFIX, FreshVarCounter::next()).into()
+    Ident::generate()
 }
 
 /// Structures which can be packed together with their environment as a closure.
