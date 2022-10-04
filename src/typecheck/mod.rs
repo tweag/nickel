@@ -1318,8 +1318,8 @@ fn row_add(
 /// the root type of any unification variable in `t`
 fn occurs_check(state: &State, ptr: usize, t: TypeWrapper) -> bool {
     match t {
-        TypeWrapper::Ptr(i) if i == ptr => state.table.root(i) == state.table.root(ptr),
-        TypeWrapper::Ptr(_) => false,
+        TypeWrapper::Ptr(i) if state.table.get(i).is_none() => i == ptr,
+        TypeWrapper::Ptr(i) => occurs_check(state, ptr, state.table.root(i)),
         TypeWrapper::Contract(..) | TypeWrapper::Constant(_) => false,
         TypeWrapper::Concrete(ty) => match ty {
             AbsType::Dyn()
