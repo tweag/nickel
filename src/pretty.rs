@@ -261,7 +261,7 @@ where
             Null => allocator.text("null"),
             Bool(v) => allocator.as_string(v),
             Num(v) => allocator.as_string(v),
-            Str(v) => allocator.escaped_string(v),
+            Str(v) => allocator.escaped_string(v).double_quotes(),
             StrChunks(chunks) => {
                 let multiline = chunks.len() > 1;
                 let nb_perc = chunks

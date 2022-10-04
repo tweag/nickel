@@ -1,5 +1,5 @@
 use nickel_lang::pretty::*;
-use nickel_lang::term::RichTerm;
+use nickel_lang::term::{RichTerm, StrChunk, Term};
 use nickel_lang_utilities::parse;
 use pretty::BoxAllocator;
 
@@ -137,4 +137,12 @@ fn importing() {
 #[test]
 fn overriding() {
     check_file("overriding.ncl");
+}
+
+#[test]
+fn str_vs_strchunks() {
+    assert_eq!(
+        pretty(&Term::Str("string".to_string()).into()),
+        pretty(&Term::StrChunks(vec![StrChunk::Literal("string".to_string())]).into())
+    );
 }
