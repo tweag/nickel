@@ -310,5 +310,10 @@ fn infinite_recursive_types() {
     assert_matches!(
         type_check_expr("{g = g 0}.g : Num"),
         Err(TypecheckError::TypeMismatch(..))
+    );
+
+    assert_matches!(
+        type_check_expr("let f : (_ -> _) -> _ ->  _ = fun f x => let v = f x in [f,x] in f"),
+        Err(TypecheckError::TypeMismatch(..))
     )
 }
