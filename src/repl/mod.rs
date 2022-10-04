@@ -100,9 +100,9 @@ impl ReplImpl {
 
     fn eval_(&mut self, exp: &str, eval_full: bool) -> Result<EvalResult, Error> {
         let eval_function = if eval_full {
-            eval::eval_full
+            eval::VirtualMachine::eval_full
         } else {
-            eval::eval
+            eval::VirtualMachine::eval
         };
 
         let file_id = self.cache.add_string(
@@ -177,7 +177,12 @@ impl ReplImpl {
         match term {
             ExtendedTerm::RichTerm(t) => {
                 let t = prepare(self, None, t)?;
-                Ok(eval_function(t, &self.env.eval_env, &mut self.cache)?.into())
+                Ok(eval_function(
+                    &mut eval::VirtualMachine::new(&mut self.cache),
+                    t,
+                    &self.env.eval_env,
+                )?
+                .into())
             }
             ExtendedTerm::ToplevelLet(id, t) => {
                 let t = prepare(self, Some(id.clone()), t)?;

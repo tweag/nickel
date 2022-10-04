@@ -21,6 +21,7 @@ use array::Array;
 use crate::{
     destruct::Destruct,
     error::ParseError,
+    eval::EvalMode,
     identifier::Ident,
     label::Label,
     match_sharedterm,
@@ -1331,10 +1332,10 @@ pub enum BinaryOp {
 }
 
 impl BinaryOp {
-    pub fn is_strict(&self) -> bool {
+    pub fn eval_mode(&self) -> EvalMode {
         match self {
-            BinaryOp::Merge() => false,
-            _ => true,
+            BinaryOp::Merge() => EvalMode::StopAtMeta,
+            _ => EvalMode::UnwrapMeta,
         }
     }
 
@@ -1374,8 +1375,8 @@ impl NAryOp {
         }
     }
 
-    pub fn is_strict(&self) -> bool {
-        true
+    pub fn eval_mode(&self) -> EvalMode {
+        EvalMode::UnwrapMeta
     }
 }
 
