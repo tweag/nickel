@@ -26,11 +26,11 @@ macro_rules! assert_unbound {
                 assert_matches!(err,
                     TypecheckError::UnboundIdentifier(id, ..)
                     | TypecheckError::UnboundTypeVariable(id, ..)
-                    if id.label.as_str() == $var),
+                    if id.label() == $var),
             Err(Error::EvalError(err)) =>
                 assert_matches!(err,
                     EvalError::UnboundIdentifier(id, ..)
-                    if id.label.as_str() == $var),
+                    if id.label() == $var),
             _ => unreachable!(),
         };
     }

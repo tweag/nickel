@@ -445,7 +445,7 @@ DefaultAnnot: MetaValue = "?" <t: Term> => MetaValue {
 };
 
 Ident: Ident = <l:@L> <i: "identifier"> <r:@R> =>
-    Ident { label: i.to_string(), pos: mk_pos(src_id, l, r) };
+    Ident::new_with_pos(i, mk_pos(src_id, l, r));
 
 Bool: bool = {
     "true" => true,

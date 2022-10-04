@@ -119,10 +119,7 @@ pub fn mk_access(access: RichTerm, root: RichTerm) -> RichTerm {
 
     if let Some(label) = label {
         mk_term::op1(
-            UnaryOp::StaticAccess(Ident {
-                label,
-                pos: access.pos,
-            }),
+            UnaryOp::StaticAccess(Ident::new_with_pos(label, access.pos)),
             root,
         )
     } else {
@@ -165,11 +162,7 @@ pub fn elaborate_field_path(
             };
 
             if let Some(static_access) = static_access {
-                let id = Ident {
-                    label: static_access,
-                    pos: exp.pos,
-                };
-
+                let id = Ident::new_with_pos(static_access, exp.pos);
                 let mut map = HashMap::new();
                 map.insert(id, acc);
                 Term::Record(map, Default::default()).into()
@@ -234,14 +227,7 @@ where
                     });
 
                     if is_static.is_ok() {
-                        insert_static_field(
-                            &mut static_map,
-                            Ident {
-                                label: buffer,
-                                pos: e.pos,
-                            },
-                            t,
-                        )
+                        insert_static_field(&mut static_map, Ident::new_with_pos(buffer, e.pos), t)
                     } else {
                         dynamic_fields.push((e, t));
                     }

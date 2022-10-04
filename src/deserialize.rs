@@ -72,7 +72,7 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
             Term::Num(v) => visitor.visit_f64(v),
             Term::Str(v) => visitor.visit_string(v),
             Term::Enum(v) => visitor.visit_enum(EnumDeserializer {
-                variant: v.label,
+                variant: v.into_label(),
                 rich_term: None,
             }),
             Term::Record(v, _) => visit_record(v, visitor),
@@ -119,7 +119,7 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
         V: Visitor<'de>,
     {
         let (variant, rich_term) = match unwrap_term(self)? {
-            Term::Enum(ident) => (ident.label, None),
+            Term::Enum(ident) => (ident.into_label(), None),
             Term::Record(v, _) => {
                 let mut iter = v.into_iter();
                 let (variant, value) = match iter.next() {
@@ -137,7 +137,7 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
                         occurred: "Record with multiple keys".to_string(),
                     });
                 }
-                (variant.label, Some(value))
+                (variant.into_label(), Some(value))
             }
             other => {
                 return Err(RustDeserializationError::InvalidType {
@@ -428,7 +428,7 @@ impl<'de> MapAccess<'de> for RecordDeserializer {
         match self.iter.next() {
             Some((key, value)) => {
                 self.rich_term = Some(value);
-                seed.deserialize(key.label.into_deserializer()).map(Some)
+                seed.deserialize(key.label().into_deserializer()).map(Some)
             }
             None => Ok(None),
         }

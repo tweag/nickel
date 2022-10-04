@@ -446,7 +446,7 @@ fn process_unary_operation(
                         })
                     }
                     None => Err(EvalError::FieldMissing(
-                        id.label,
+                        id.into_label(),
                         String::from("(.)"),
                         RichTerm { term: t, pos },
                         pos_op,
@@ -622,7 +622,7 @@ fn process_unary_operation(
                                 let pos = t.pos.into_inherited();
                                 (
                                     id.clone(),
-                                    mk_app!(f_as_var.clone(), mk_term::string(id.label), t)
+                                    mk_app!(f_as_var.clone(), mk_term::string(id.label()), t)
                                         .closurize(&mut shared_env, env.clone())
                                         .with_pos(pos),
                                 )
