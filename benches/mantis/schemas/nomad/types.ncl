@@ -361,7 +361,7 @@ let time = {
     Datacenters = job.datacenters,
     Namespace = job.namespace,
     Type = job.type,
-    Priority = job.priority,
+    Priority = job.priority_,
 
     # TODO: cannot convert to merge yet because job.update is located in another
     # piece of the record.
@@ -698,8 +698,8 @@ let time = {
              | default = null,
       vaultc | lib.contracts.Nullable stanza.vault
              | default = null,
-      priority | num.Nat
-               | default = 50,
+      priority_ | num.Nat
+                | default = 50,
       periodic | lib.contracts.Nullable stanza.periodic
                | default = null,
       migrate | lib.contracts.Nullable stanza.migrate
