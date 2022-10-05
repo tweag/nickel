@@ -164,25 +164,13 @@ impl ToNickel for rnix::SyntaxNode {
                 use crate::identifier::Ident;
                 let mut destruct_vec = Vec::new();
                 let mut fields = HashMap::new();
-                let env = state
-                    .env
-                    .union(
-                        &n.entries()
-                            .map(|kv| {
-                                types::Ident::cast(kv.key().unwrap().path().next().unwrap())
-                                    .unwrap()
-                                    .as_str()
-                                    .to_string()
-                            })
-                            .collect(),
-                    )
-                    .cloned()
-                    .collect();
-                let state = State {
-                    env,
-                    file_id: state.file_id.clone(),
-                    with: state.with.clone(),
-                };
+                let mut state = state.clone();
+                state.env.extend(n.entries().map(|kv| {
+                    types::Ident::cast(kv.key().unwrap().path().next().unwrap())
+                        .unwrap()
+                        .as_str()
+                        .to_string()
+                }));
                 for kv in n.entries() {
                     // In `let` blocks, the key is suposed to be a single ident so `Path` exactly one
                     // element.
