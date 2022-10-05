@@ -225,11 +225,11 @@ pub fn type_check_linearize<LL>(
     mut linearizer: LL,
 ) -> Result<(Wildcards, LL::Completed), TypecheckError>
 where
-    LL: Linearizer<CompletionExtra = (UnifTable, HashMap<usize, Ident>)>,
+    LL: Linearizer<CompletionExtra = (UnifTable, HashMap<usize, Ident>, Vec<TypeWrapper>)>,
 {
     let (mut table, mut names) = (UnifTable::new(), HashMap::new());
     let mut building = Linearization::new(LL::Building::default());
-    let mut wildcard_vars = Vec::new();
+    let mut wildcard_vars: Vec<TypeWrapper> = Vec::new();
 
     {
         let mut state: State = State {
@@ -249,8 +249,10 @@ where
         )?;
     }
 
-    let result = wildcard_vars_to_type(wildcard_vars, &table);
-    let lin = linearizer.complete(building, (table, names)).into_inner();
+    let result = wildcard_vars_to_type(wildcard_vars.clone(), &table);
+    let lin = linearizer
+        .complete(building, (table, names, wildcard_vars.clone()))
+        .into_inner();
 
     Ok((result, lin))
 }

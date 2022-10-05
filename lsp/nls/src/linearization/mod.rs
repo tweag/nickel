@@ -93,7 +93,7 @@ impl Default for AnalysisHost {
 impl Linearizer for AnalysisHost {
     type Building = Building;
     type Completed = Completed;
-    type CompletionExtra = (UnifTable, HashMap<usize, Ident>);
+    type CompletionExtra = (UnifTable, HashMap<usize, Ident>, Vec<TypeWrapper>);
 
     fn add_term(
         &mut self,
@@ -347,7 +347,11 @@ impl Linearizer for AnalysisHost {
     fn complete(
         self,
         mut lin: Linearization<Building>,
-        (table, reported_names): (UnifTable, HashMap<usize, Ident>),
+        (table, reported_names, wildcard_vars): (
+            UnifTable,
+            HashMap<usize, Ident>,
+            Vec<TypeWrapper>,
+        ),
     ) -> Linearization<Completed> {
         debug!("linearizing");
 
@@ -390,9 +394,21 @@ impl Linearizer for AnalysisHost {
                 id_mapping.insert(*id, index);
             });
 
+        fn transform_wildcard(wildcars: Vec<TypeWrapper>, t: TypeWrapper) -> TypeWrapper {
+            match t {
+                TypeWrapper::Concrete(AbsType::Wildcard(i)) => {
+                    wildcars.get(i).unwrap_or(&t).clone()
+                }
+                _ => t,
+            }
+        }
         // resolve types
         let lin_ = linearization
             .into_iter()
+            .map(|item| LinearizationItem {
+                ty: transform_wildcard(wildcard_vars.clone(), item.ty),
+                ..item
+            })
             .map(
                 |LinearizationItem {
                      id,
