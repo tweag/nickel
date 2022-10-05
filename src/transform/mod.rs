@@ -62,12 +62,6 @@ pub fn transform_no_free_vars(
         .unwrap())
 }
 
-#[deprecated = "use [Ident::generate] instead"]
-/// Generate a new fresh variable which do not clash with user-defined variables.
-pub fn fresh_var() -> Ident {
-    Ident::fresh()
-}
-
 /// Structures which can be packed together with their environment as a closure.
 ///
 /// The typical implementer is [`crate::term::RichTerm`], but structures containing
