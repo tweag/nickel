@@ -23,7 +23,7 @@ use crate::{
     serialize::ExportFormat,
     term::{array::Array, make as mk_term, PendingContract},
     term::{ArrayAttrs, BinaryOp, NAryOp, RichTerm, StrChunk, Term, UnaryOp},
-    transform::{apply_contracts::apply_contracts, fresh_var, Closurizable},
+    transform::{apply_contracts::apply_contracts, Closurizable},
 };
 use md5::digest::Digest;
 use simple_counter::*;
@@ -1022,7 +1022,7 @@ fn process_unary_operation(
                 let re = regex::Regex::new(s)
                     .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
 
-                let param = fresh_var();
+                let param = Ident::fresh();
                 let matcher = Term::Fun(
                     param.clone(),
                     RichTerm::new(
@@ -1049,7 +1049,7 @@ fn process_unary_operation(
                 let re = regex::Regex::new(s)
                     .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
 
-                let param = fresh_var();
+                let param = Ident::fresh();
                 let matcher = Term::Fun(
                     param.clone(),
                     RichTerm::new(

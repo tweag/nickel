@@ -8,10 +8,6 @@ use crate::{
     types::{AbsType, Types, UnboundTypeVariableError},
 };
 
-use simple_counter::*;
-
-generate_counter!(FreshVarCounter, usize);
-
 pub mod apply_contracts;
 pub mod desugar_destructuring;
 pub mod free_vars;
@@ -64,13 +60,6 @@ pub fn transform_no_free_vars(
             TraverseOrder::BottomUp,
         )
         .unwrap())
-}
-
-/// Generate a new fresh variable which do not clash with user-defined variables.
-pub fn fresh_var() -> Ident {
-    use crate::identifier::GEN_PREFIX;
-
-    format!("{}{}", GEN_PREFIX, FreshVarCounter::next()).into()
 }
 
 /// Structures which can be packed together with their environment as a closure.
@@ -133,7 +122,7 @@ impl Closurizable for RichTerm {
         // affect the invariant mentioned above, because the share normal form must ensure that the
         // fields of a record all contain generated variables (or constant), but never
         // user-supplied variables.
-        let var = fresh_var();
+        let var = Ident::fresh();
         let pos = self.pos;
 
         let thunk = match self.as_ref() {

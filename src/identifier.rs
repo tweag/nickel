@@ -6,6 +6,7 @@ use std::hash::Hash;
 
 use crate::position::TermPos;
 
+simple_counter::generate_counter!(GeneratedCounter, usize);
 static INTERNER: Lazy<interner::Interner> = Lazy::new(interner::Interner::new);
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
@@ -28,6 +29,10 @@ impl Ident {
 
     pub fn new(label: impl AsRef<str>) -> Self {
         Self::new_with_pos(label, TermPos::None)
+    }
+
+    pub fn fresh() -> Self {
+        Self::new(format!("{}{}", GEN_PREFIX, GeneratedCounter::next()))
     }
 
     pub fn label(&self) -> &str {

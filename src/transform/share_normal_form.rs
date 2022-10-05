@@ -27,7 +27,6 @@
 //!
 //! Newly introduced variables begin with a special character to avoid clashing with user-defined
 //! variables.
-use super::fresh_var;
 use crate::{
     identifier::Ident,
     match_sharedterm,
@@ -56,7 +55,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                     .into_iter()
                     .map(|(id, t)| {
                         if should_share(&t.term) {
-                            let fresh_var = fresh_var();
+                            let fresh_var = Ident::fresh();
                             let pos_t = t.pos;
                             bindings.push((fresh_var.clone(), t, BindingType::Normal));
                             (id, RichTerm::new(Term::Var(fresh_var), pos_t))
@@ -106,7 +105,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                         // CHANGE THIS CONDITION CAREFULLY. Doing so can break the post-condition
                         // explained above.
                         if !t.as_ref().is_constant() {
-                            let fresh_var = fresh_var();
+                            let fresh_var = Ident::fresh();
                             let pos_t = t.pos;
                             let field_deps = deps.as_ref().and_then(|deps| deps.stat_fields.get(&id)).cloned();
                             let is_non_rec = (&field_deps).as_ref().map(|deps| deps.is_empty()).unwrap_or(false);
@@ -125,7 +124,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                     .enumerate()
                     .map(|(index, (id_t, t))| {
                         if !t.as_ref().is_constant() {
-                            let fresh_var = fresh_var();
+                            let fresh_var = Ident::fresh();
                             let pos_t = t.pos;
                             let field_deps = deps.as_ref().and_then(|deps| deps.dyn_fields.get(index)).cloned();
                             let btype = mk_binding_type(field_deps);
@@ -146,7 +145,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                     .into_iter()
                     .map(|t| {
                         if should_share(&t.term) {
-                            let fresh_var = fresh_var();
+                            let fresh_var = Ident::fresh();
                             let pos_t = t.pos;
                             bindings.push((fresh_var.clone(), t, BindingType::Normal));
                             RichTerm::new(Term::Var(fresh_var), pos_t)
@@ -160,7 +159,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
             },
             Term::MetaValue(meta) if meta.value.as_ref().map(|t| should_share(&t.term)).unwrap_or(false) => {
                     let mut meta = meta;
-                    let fresh_var = fresh_var();
+                    let fresh_var = Ident::fresh();
                     let t = meta.value.take().unwrap();
                     meta.value
                         .replace(RichTerm::new(Term::Var(fresh_var.clone()), t.pos));
