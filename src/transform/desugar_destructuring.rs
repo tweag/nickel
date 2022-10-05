@@ -56,7 +56,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
 pub fn desugar_fun(rt: RichTerm) -> RichTerm {
     match_sharedterm! {rt.term, with {
         Term::FunPattern(x, pat, t_) if !pat.is_empty() => {
-            let x = x.unwrap_or_else(Ident::generate);
+            let x = x.unwrap_or_else(Ident::fresh);
             let t_pos = t_.pos;
             RichTerm::new(
                 Term::Fun(
@@ -109,7 +109,7 @@ pub fn desugar(rt: RichTerm) -> RichTerm {
         with {
             Term::LetPattern(x, pat, t_, body) => {
                 let pos = body.pos;
-                let x = x.unwrap_or_else(Ident::generate);
+                let x = x.unwrap_or_else(Ident::fresh);
                 RichTerm::new(
                     Term::Let(
                         x.clone(),
@@ -142,7 +142,7 @@ fn bind_open_field(x: Ident, pat: &Destruct, body: RichTerm) -> RichTerm {
             open: true,
             rest: None,
             ..
-        } => (matches, Ident::generate()),
+        } => (matches, Ident::fresh()),
         Destruct::Record {
             open: false,
             rest: None,

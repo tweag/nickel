@@ -65,7 +65,7 @@ pub fn transform_no_free_vars(
 #[deprecated = "use [Ident::generate] instead"]
 /// Generate a new fresh variable which do not clash with user-defined variables.
 pub fn fresh_var() -> Ident {
-    Ident::generate()
+    Ident::fresh()
 }
 
 /// Structures which can be packed together with their environment as a closure.
@@ -128,7 +128,7 @@ impl Closurizable for RichTerm {
         // affect the invariant mentioned above, because the share normal form must ensure that the
         // fields of a record all contain generated variables (or constant), but never
         // user-supplied variables.
-        let var = Ident::generate();
+        let var = Ident::fresh();
         let pos = self.pos;
 
         let thunk = match self.as_ref() {

@@ -31,7 +31,7 @@ impl Ident {
         Self::new_with_pos(label, TermPos::None)
     }
 
-    pub fn generate() -> Self {
+    pub fn fresh() -> Self {
         Self::new(format!("{}{}", GEN_PREFIX, GeneratedCounter::next()))
     }
 

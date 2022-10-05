@@ -1022,7 +1022,7 @@ fn process_unary_operation(
                 let re = regex::Regex::new(s)
                     .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
 
-                let param = Ident::generate();
+                let param = Ident::fresh();
                 let matcher = Term::Fun(
                     param.clone(),
                     RichTerm::new(
@@ -1049,7 +1049,7 @@ fn process_unary_operation(
                 let re = regex::Regex::new(s)
                     .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
 
-                let param = Ident::generate();
+                let param = Ident::fresh();
                 let matcher = Term::Fun(
                     param.clone(),
                     RichTerm::new(
