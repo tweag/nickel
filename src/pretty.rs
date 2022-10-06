@@ -99,6 +99,11 @@ where
             }),
             self.line().clone(),
         ))
+        .append(if mv.opt {
+            self.line().append(self.text("| optional"))
+        } else {
+            self.nil()
+        })
         .append(if mv.priority == crate::term::MergePriority::Bottom {
             self.line().append(self.text("| default"))
         } else {
