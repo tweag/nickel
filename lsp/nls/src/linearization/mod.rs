@@ -90,10 +90,11 @@ impl Default for AnalysisHost {
     }
 }
 
+use nickel_lang::types::Types;
 impl Linearizer for AnalysisHost {
     type Building = Building;
     type Completed = Completed;
-    type CompletionExtra = (UnifTable, HashMap<usize, Ident>, Vec<TypeWrapper>);
+    type CompletionExtra = (UnifTable, HashMap<usize, Ident>, Vec<Types>);
 
     fn add_term(
         &mut self,
@@ -347,11 +348,7 @@ impl Linearizer for AnalysisHost {
     fn complete(
         self,
         mut lin: Linearization<Building>,
-        (table, reported_names, wildcard_vars): (
-            UnifTable,
-            HashMap<usize, Ident>,
-            Vec<TypeWrapper>,
-        ),
+        (table, reported_names, wildcard_vars): (UnifTable, HashMap<usize, Ident>, Vec<Types>),
     ) -> Linearization<Completed> {
         debug!("linearizing");
 
@@ -394,21 +391,15 @@ impl Linearizer for AnalysisHost {
                 id_mapping.insert(*id, index);
             });
 
-        fn transform_wildcard(wildcars: Vec<TypeWrapper>, t: TypeWrapper) -> TypeWrapper {
+        fn transform_wildcard(wildcars: Vec<Types>, t: Types) -> Types {
             match t {
-                TypeWrapper::Concrete(AbsType::Wildcard(i)) => {
-                    wildcars.get(i).unwrap_or(&t).clone()
-                }
+                Types(AbsType::Wildcard(i)) => wildcars.get(i).unwrap_or(&t).clone(),
                 _ => t,
             }
         }
         // resolve types
         let lin_ = linearization
             .into_iter()
-            .map(|item| LinearizationItem {
-                ty: transform_wildcard(wildcard_vars.clone(), item.ty),
-                ..item
-            })
             .map(
                 |LinearizationItem {
                      id,
@@ -426,6 +417,10 @@ impl Linearizer for AnalysisHost {
                     meta,
                 },
             )
+            .map(|item| LinearizationItem {
+                ty: transform_wildcard(wildcard_vars.clone(), item.ty),
+                ..item
+            })
             .collect();
 
         Linearization::new(Completed::new(lin_, scope, id_mapping))
