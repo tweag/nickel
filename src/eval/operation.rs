@@ -85,7 +85,7 @@ impl std::fmt::Debug for OperationCont {
     }
 }
 
-impl<'a, R: ImportResolver> VirtualMachine<'a, R> {
+impl<R: ImportResolver> VirtualMachine<R> {
     /// Process to the next step of the evaluation of an operation.
     ///
     /// Depending on the content of the stack, it either starts the evaluation of the first argument,

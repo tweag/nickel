@@ -148,7 +148,7 @@ pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> 
                             c_local.typecheck(id, &type_ctxt).unwrap();
                         } else {
                             c_local.prepare(id, &type_ctxt).unwrap();
-                            VirtualMachine::new(&mut c_local)
+                            VirtualMachine::new(c_local)
                                 .eval(t, &eval_env)
                                 .unwrap();
                         }
@@ -222,7 +222,7 @@ macro_rules! ncl_bench_group {
                                 c_local.typecheck(id, &type_ctxt).unwrap();
                             } else {
                                 c_local.prepare(id, &type_ctxt).unwrap();
-                                VirtualMachine::new(&mut c_local).eval(t, &eval_env).unwrap();
+                                VirtualMachine::new(c_local).eval(t, &eval_env).unwrap();
                             }
                         },
                         criterion::BatchSize::LargeInput,
