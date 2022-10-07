@@ -82,19 +82,22 @@ impl Program {
     /// Parse if necessary, typecheck and then evaluate the program.
     pub fn eval(&mut self) -> Result<RichTerm, Error> {
         let (t, initial_env) = self.prepare_eval()?;
-        eval::eval(t, &initial_env, &mut self.cache).map_err(|e| e.into())
+        let mut vm = eval::VirtualMachine::new(&mut self.cache);
+        vm.eval(t, &initial_env).map_err(|e| e.into())
     }
 
     /// Same as `eval`, but proceeds to a full evaluation.
     pub fn eval_full(&mut self) -> Result<RichTerm, Error> {
         let (t, initial_env) = self.prepare_eval()?;
-        eval::eval_full(t, &initial_env, &mut self.cache).map_err(|e| e.into())
+        let mut vm = eval::VirtualMachine::new(&mut self.cache);
+        vm.eval_full(t, &initial_env).map_err(|e| e.into())
     }
 
     /// Same as `eval_full`, but does not substitute all variables.
     pub fn eval_deep(&mut self) -> Result<RichTerm, Error> {
         let (t, initial_env) = self.prepare_eval()?;
-        eval::eval_deep(t, &initial_env, &mut self.cache).map_err(|e| e.into())
+        let mut vm = eval::VirtualMachine::new(&mut self.cache);
+        vm.eval_deep(t, &initial_env).map_err(|e| e.into())
     }
 
     /// Wrapper for [`query`].
@@ -185,7 +188,6 @@ pub fn query(
     path: Option<String>,
 ) -> Result<Term, Error> {
     cache.prepare(file_id, &initial_env.type_ctxt)?;
-
     let t = if let Some(p) = path {
         // Parsing `y.path`. We `seq` it to force the evaluation of the underlying value,
         // which can be then showed to the user. The newline gives better messages in case of
@@ -208,7 +210,8 @@ pub fn query(
         cache.get_owned(file_id).unwrap()
     };
 
-    Ok(eval::eval_meta(t, &initial_env.eval_env, cache)?.into())
+    let mut vm = eval::VirtualMachine::new(cache);
+    Ok(vm.eval_meta(t, &initial_env.eval_env)?.into())
 }
 
 /// Pretty-print an error.

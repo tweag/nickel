@@ -1096,6 +1096,7 @@ pub mod resolvers {
     /// Resolve imports from a mockup file database. Used to test imports without accessing the
     /// file system. File name are stored as strings, and silently converted from/to `OsString`
     /// when needed: don't use this resolver with source code that import non UTF-8 paths.
+    #[derive(Clone)]
     pub struct SimpleResolver {
         files: Files<String>,
         file_cache: HashMap<String, FileId>,

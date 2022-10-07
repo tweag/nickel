@@ -66,8 +66,9 @@
 //!
 //! ## Enriched values
 //!
-//! The evaluation of enriched values is controlled by the parameter `enriched_strict`. If it is
-//! set to true (which is usually the case), the machine tries to extract a simple value from it:
+//! The evaluation of enriched values is controlled by the parameter `eval_mode`. If it is
+//! set to `UnwrapMeta` (which is usually the case), the machine tries to extract a simple
+//! value from it:
 //!  - **Contract**: raise an error. This usually means that an access to a field was attempted,
 //!    and that this field had a contract to satisfy, but it was never defined.
 //!  - **Default(value)**: an access to a field which has a default value. Proceed with the
@@ -76,7 +77,7 @@
 //!    contract.  Proceed with the evaluation of `Assume(type, label, value)` to ensure that the
 //!    default value satisfies this contract.
 //!
-//! If `enriched_strict` is set to false, as it is when evaluating `merge`, the machine does not
+//! If `eval_mode` is set to StopAtMeta, as it is when evaluating `merge`, the machine does not
 //! evaluate enriched values further, and consider the term evaluated.
 //!
 //! # Garbage collection
@@ -110,12 +111,580 @@ pub mod stack;
 
 use callstack::*;
 use lazy::*;
-use operation::{continuate_operation, OperationCont};
+use operation::OperationCont;
 use stack::Stack;
 
 impl AsRef<Vec<StackElem>> for CallStack {
     fn as_ref(&self) -> &Vec<StackElem> {
         &self.0
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum EvalMode {
+    UnwrapMeta,
+    StopAtMeta,
+}
+
+impl Default for EvalMode {
+    fn default() -> Self {
+        EvalMode::UnwrapMeta
+    }
+}
+
+// The current state of the Nickel virtual machine.
+pub struct VirtualMachine<'a, R: ImportResolver> {
+    // Behavior of evaluation with respect to metavalues.
+    eval_mode: EvalMode,
+    // The main stack, storing arguments, thunks and pending computations.
+    stack: Stack,
+    // The call stack, for error reporting.
+    call_stack: CallStack,
+    // The interface used to fetch imports.
+    import_resolver: &'a mut R,
+}
+
+impl<'a, R: ImportResolver> VirtualMachine<'a, R> {
+    pub fn new(import_resolver: &'a mut R) -> Self {
+        VirtualMachine {
+            import_resolver,
+            eval_mode: Default::default(),
+            call_stack: Default::default(),
+            stack: Default::default(),
+        }
+    }
+
+    /// Reset the state of the machine (stacks and eval mode) to prepare for another evaluation round.
+    pub fn reset(&mut self) {
+        self.eval_mode = Default::default();
+        self.call_stack.0.clear();
+        self.stack.clear();
+    }
+
+    fn set_mode(&mut self, new_mode: EvalMode) {
+        if self.eval_mode != new_mode {
+            self.stack.push_strictness(self.eval_mode);
+        }
+
+        self.eval_mode = new_mode;
+    }
+
+    /// Evaluate a Nickel term. Wrapper around [eval_closure] that starts from an empty local
+    /// environment and drops the final environment.
+    pub fn eval(&mut self, t0: RichTerm, initial_env: &Environment) -> Result<RichTerm, EvalError> {
+        self.eval_closure(Closure::atomic_closure(t0), initial_env)
+            .map(|(term, _)| term)
+    }
+
+    /// Fully evaluate a Nickel term: the result is not a WHNF but to a value with all variables substituted.
+    pub fn eval_full(
+        &mut self,
+        t0: RichTerm,
+        initial_env: &Environment,
+    ) -> Result<RichTerm, EvalError> {
+        self.eval_deep_closure(t0, initial_env)
+            .map(|(term, env)| subst(term, initial_env, &env))
+    }
+
+    /// Fully evaluates a Nickel term like `eval_full`, but does not substitute all variables.
+    pub fn eval_deep(
+        &mut self,
+        t0: RichTerm,
+        initial_env: &Environment,
+    ) -> Result<RichTerm, EvalError> {
+        self.eval_deep_closure(t0, initial_env)
+            .map(|(term, _)| term)
+    }
+
+    fn eval_deep_closure(
+        &mut self,
+        rt: RichTerm,
+        initial_env: &Environment,
+    ) -> Result<(RichTerm, Environment), EvalError> {
+        let wrapper = mk_term::op1(UnaryOp::Force(None), rt);
+        self.eval_closure(Closure::atomic_closure(wrapper), initial_env)
+    }
+
+    /// Evaluate a Nickel Term, stopping when a meta value is encountered at the top-level without
+    /// unwrapping it. Then evaluate the underlying value, and substitute variables in order to obtain
+    /// a WHNF that is printable.
+    ///
+    /// Used to query the metadata of a value.
+    pub fn eval_meta(
+        &mut self,
+        t: RichTerm,
+        initial_env: &Environment,
+    ) -> Result<RichTerm, EvalError> {
+        self.eval_mode = EvalMode::StopAtMeta;
+        let (mut rt, env) = self.eval_closure(Closure::atomic_closure(t), initial_env)?;
+
+        if let Term::MetaValue(ref mut meta) = *SharedTerm::make_mut(&mut rt.term) {
+            if let Some(t) = meta.value.take() {
+                self.reset();
+                let (evaluated, env) = self.eval_closure(Closure { body: t, env }, initial_env)?;
+                let substituted = subst(evaluated, initial_env, &env);
+
+                meta.value = Some(substituted);
+            }
+        };
+
+        Ok(rt)
+    }
+
+    /// The main loop of evaluation.
+    ///
+    /// Implement the evaluation of the core language, which includes application, thunk update,
+    /// evaluation of the arguments of operations, and a few others. The specific implementations of
+    /// primitive operations is delegated to the modules [operation] and [merge].
+    ///
+    /// # Arguments
+    ///
+    /// - `clos`: the closure to evaluate
+    /// - `initial_env`: the initial environment containing the stdlib items.
+    ///   Accessible from anywhere in the program.
+    ///
+    /// # Return
+    ///
+    /// Either:
+    ///  - an evaluation error
+    ///  - the evaluated term with its final environment
+    pub fn eval_closure(
+        &mut self,
+        mut clos: Closure,
+        initial_env: &Environment,
+    ) -> Result<(RichTerm, Environment), EvalError> {
+        loop {
+            let Closure {
+                body:
+                    RichTerm {
+                        term: shared_term,
+                        pos,
+                    },
+                mut env,
+            } = clos;
+
+            if let Some(eval_mode) = self.stack.pop_strictness_marker() {
+                self.eval_mode = eval_mode;
+            }
+
+            clos = match &*shared_term {
+                Term::Sealed(_, inner, lbl) => {
+                    let stack_item = self.stack.peek_op_cont();
+                    let closure = Closure {
+                        body: RichTerm {
+                            term: shared_term.clone(),
+                            pos,
+                        },
+                        env: env.clone(),
+                    };
+                    // Update the original thunk (the thunk which holds the result of the op) in both cases,
+                    // even if we continue with a seq.
+                    // We do this because  we are on a `Sealed` term, and this is in WHNF, and if we don't,
+                    // we will be unwrapping a `Sealed` term and assigning the "unsealed" value to the result
+                    // of the `Seq` operation. See also: https://github.com/tweag/nickel/issues/123
+                    update_thunks(&mut self.stack, &closure);
+                    match stack_item {
+                        Some(OperationCont::Op2Second(BinaryOp::Unseal(), _, _, _)) => {
+                            self.continuate_operation(closure)?
+                        }
+                        Some(OperationCont::Op1(UnaryOp::Seq(), _)) => {
+                            // Then, evaluate / `Seq` the inner value.
+                            Closure {
+                                body: inner.clone(),
+                                env: env.clone(),
+                            }
+                        }
+                        None | Some(..) => {
+                            // This operation should not be allowed to evaluate a sealed term
+                            return Err(EvalError::BlameError(
+                                lbl.clone(),
+                                self.call_stack.clone(),
+                            ));
+                        }
+                    }
+                }
+                Term::Var(x) => {
+                    let mut thunk = env
+                        .get(x)
+                        .or_else(|| initial_env.get(x))
+                        .cloned()
+                        .ok_or_else(|| EvalError::UnboundIdentifier(x.clone(), pos))?;
+                    std::mem::drop(env); // thunk may be a 1RC pointer
+
+                    if thunk.state() != ThunkState::Evaluated {
+                        if thunk.should_update() {
+                            match thunk.mk_update_frame() {
+                                Ok(thunk_upd) => self.stack.push_thunk(thunk_upd),
+                                Err(BlackholedError) => {
+                                    return Err(EvalError::InfiniteRecursion(
+                                        self.call_stack.clone(),
+                                        pos,
+                                    ))
+                                }
+                            }
+                        }
+                        // If the thunk isn't to be updated, directly set the evaluated flag.
+                        else {
+                            thunk.set_evaluated();
+                        }
+                    }
+                    self.call_stack
+                        .enter_var(thunk.ident_kind(), x.clone(), pos);
+                    thunk.into_closure()
+                }
+                Term::App(t1, t2) => {
+                    self.call_stack.enter_app(pos);
+                    self.set_mode(EvalMode::UnwrapMeta);
+
+                    self.stack.push_arg(
+                        Closure {
+                            body: t2.clone(),
+                            env: env.clone(),
+                        },
+                        pos,
+                    );
+                    Closure {
+                        body: t1.clone(),
+                        env,
+                    }
+                }
+                Term::Let(x, s, t, LetAttrs { binding_type, rec }) => {
+                    let closure = Closure {
+                        body: s.clone(),
+                        env: env.clone(),
+                    };
+
+                    let mut thunk = match binding_type {
+                        BindingType::Normal => Thunk::new(closure, IdentKind::Let),
+                        BindingType::Revertible(deps) => {
+                            Thunk::new_rev(closure, IdentKind::Let, deps.clone())
+                        }
+                    };
+
+                    // Patch the environment with the (x <- closure) binding
+                    if *rec {
+                        let thunk_ = thunk.clone();
+                        thunk.borrow_mut().env.insert(x.clone(), thunk_);
+                    }
+
+                    env.insert(x.clone(), thunk);
+                    Closure {
+                        body: t.clone(),
+                        env,
+                    }
+                }
+                Term::Switch(exp, cases, default) => {
+                    self.set_mode(EvalMode::UnwrapMeta);
+
+                    let has_default = default.is_some();
+
+                    if let Some(t) = default {
+                        self.stack.push_arg(
+                            Closure {
+                                body: t.clone(),
+                                env: env.clone(),
+                            },
+                            pos,
+                        );
+                    }
+
+                    self.stack.push_arg(
+                        Closure {
+                            body: RichTerm::new(
+                                Term::Record(cases.clone(), Default::default()),
+                                pos,
+                            ),
+                            env: env.clone(),
+                        },
+                        pos,
+                    );
+
+                    Closure {
+                        body: RichTerm::new(
+                            Term::Op1(UnaryOp::Switch(has_default), exp.clone()),
+                            pos,
+                        ),
+                        env,
+                    }
+                }
+                Term::Op1(op, t) => {
+                    self.set_mode(EvalMode::UnwrapMeta);
+
+                    self.stack.push_op_cont(
+                        OperationCont::Op1(op.clone(), t.pos),
+                        self.call_stack.len(),
+                        pos,
+                    );
+
+                    // Special casing (hopefully temporary) due to the need for `DeepSeq` to produce
+                    // acceptable error message for missing field definition occurring when sequencing
+                    // a record. See the definition of `UnaryOp::DeepSeq`.
+                    if let UnaryOp::DeepSeq(Some(stack_elem)) | UnaryOp::Force(Some(stack_elem)) =
+                        op
+                    {
+                        self.call_stack.0.push(stack_elem.clone());
+                    }
+
+                    Closure {
+                        body: t.clone(),
+                        env,
+                    }
+                }
+                Term::Op2(op, fst, snd) => {
+                    self.set_mode(op.eval_mode());
+
+                    self.stack.push_op_cont(
+                        OperationCont::Op2First(
+                            op.clone(),
+                            Closure {
+                                body: snd.clone(),
+                                env: env.clone(),
+                            },
+                            fst.pos,
+                        ),
+                        self.call_stack.len(),
+                        pos,
+                    );
+                    Closure {
+                        body: fst.clone(),
+                        env,
+                    }
+                }
+                Term::OpN(op, args) => {
+                    self.set_mode(op.eval_mode());
+
+                    // Arguments are passed as a stack to the operation continuation, so we reverse the
+                    // original list.
+                    let mut args_iter = args.iter();
+                    let fst = args_iter
+                        .next()
+                        .cloned()
+                        .ok_or_else(|| EvalError::NotEnoughArgs(op.arity(), op.to_string(), pos))?;
+
+                    let pending: Vec<Closure> = args_iter
+                        .rev()
+                        .map(|t| Closure {
+                            body: t.clone(),
+                            env: env.clone(),
+                        })
+                        .collect();
+
+                    self.stack.push_op_cont(
+                        OperationCont::OpN {
+                            op: op.clone(),
+                            evaluated: Vec::with_capacity(pending.len() + 1),
+                            pending,
+                            current_pos: fst.pos,
+                        },
+                        self.call_stack.len(),
+                        pos,
+                    );
+
+                    Closure { body: fst, env }
+                }
+                Term::StrChunks(chunks) => {
+                    let mut chunks_iter = chunks.iter();
+                    match chunks_iter.next_back() {
+                        None => Closure {
+                            body: Term::Str(String::new()).into(),
+                            env: Environment::new(),
+                        },
+                        Some(chunk) => {
+                            let (arg, indent) = match chunk {
+                                StrChunk::Literal(s) => (Term::Str(s.clone()).into(), 0),
+                                StrChunk::Expr(e, indent) => (e.clone(), *indent),
+                            };
+
+                            self.set_mode(EvalMode::UnwrapMeta);
+                            self.stack.push_str_chunks(chunks_iter.cloned());
+                            self.stack.push_str_acc(String::new(), indent, env.clone());
+
+                            Closure {
+                                body: RichTerm::new(Term::Op1(UnaryOp::ChunksConcat(), arg), pos),
+                                env,
+                            }
+                        }
+                    }
+                }
+                Term::RecRecord(ts, dyn_fields, attrs, _) => {
+                    let rec_env = fixpoint::rec_env(ts.iter(), &env)?;
+
+                    ts.iter()
+                        .try_for_each(|(_, rt)| fixpoint::patch_field(rt, &rec_env, &env))?;
+
+                    //TODO: We should probably avoid cloning the `ts` hashmap, using `match_sharedterm`
+                    //instead of `match` in the main eval loop, if possible
+                    let static_part = RichTerm::new(Term::Record(ts.clone(), *attrs), pos);
+
+                    // Transform the static part `{stat1 = val1, ..., statn = valn}` and the dynamic
+                    // part `{exp1 = dyn_val1, ..., expm = dyn_valm}` to a sequence of extensions
+                    // `%record_insert% exp1 (... (%record_insert% expn {stat1 = val1, ..., statn = valn} dyn_valn)) dyn_val1`
+                    // The `dyn_val` are given access to the recursive environment, but the recursive
+                    // environment only contains the static fields, and not the dynamic fields.
+                    let extended = dyn_fields
+                        .iter()
+                        .try_fold::<_, _, Result<RichTerm, EvalError>>(
+                            static_part,
+                            |acc, (id_t, t)| {
+                                let id_t = id_t.clone();
+                                let pos = t.pos;
+
+                                fixpoint::patch_field(t, &rec_env, &env)?;
+                                Ok(RichTerm::new(
+                                    Term::App(
+                                        mk_term::op2(BinaryOp::DynExtend(), id_t, acc),
+                                        t.clone(),
+                                    ),
+                                    pos.into_inherited(),
+                                ))
+                            },
+                        )?;
+
+                    Closure {
+                        body: extended.with_pos(pos),
+                        env,
+                    }
+                }
+                // Unwrapping of enriched terms
+                Term::MetaValue(meta) if self.eval_mode == EvalMode::UnwrapMeta => {
+                    if meta.value.is_some() {
+                        /* Since we are forcing a metavalue, we are morally evaluating `force t` rather
+                         * than `t` itself. Updating a thunk after having performed this forcing may
+                         * alter the semantics of the program in an unexpected way (see issue
+                         * https://github.com/tweag/nickel/issues/123): we update potential thunks now
+                         * so that their content remains a meta value.
+                         */
+                        let update_closure = Closure {
+                            body: RichTerm {
+                                term: shared_term.clone(),
+                                pos,
+                            },
+                            env,
+                        };
+                        update_thunks(&mut self.stack, &update_closure);
+
+                        let Closure {
+                            body: RichTerm { term, .. },
+                            env,
+                        } = update_closure;
+
+                        match term.into_owned() {
+                            Term::MetaValue(MetaValue {
+                                value: Some(inner), ..
+                            }) => Closure { body: inner, env },
+                            _ => unreachable!(),
+                        }
+                    } else {
+                        let label = meta
+                            .contracts
+                            .last()
+                            .or(meta.types.as_ref())
+                            .map(|ctr| ctr.label.clone());
+                        return Err(EvalError::MissingFieldDef(label, self.call_stack.clone()));
+                    }
+                }
+                Term::ResolvedImport(id) => {
+                    if let Some(t) = self.import_resolver.get(*id) {
+                        Closure::atomic_closure(t)
+                    } else {
+                        return Err(EvalError::InternalError(
+                            format!("Resolved import not found ({:?})", id),
+                            pos,
+                        ));
+                    }
+                }
+                Term::Import(path) => {
+                    return Err(EvalError::InternalError(
+                        format!("Unresolved import ({})", path.to_string_lossy()),
+                        pos,
+                    ))
+                }
+                // Closurize the array if it's not already done.
+                // This *should* make it unecessary to call closurize in [operation].
+                // See the comment on the `BinaryOp::ArrayConcat` match arm.
+                Term::Array(terms, attrs) if !attrs.closurized => {
+                    let mut local_env = Environment::new();
+
+                    let closurized_array = terms
+                        .clone()
+                        .into_iter()
+                        .map(|t| t.closurize(&mut local_env, env.clone()))
+                        .collect();
+
+                    let closurized_ctrs = attrs
+                        .pending_contracts
+                        .iter()
+                        .map(|ctr| {
+                            PendingContract::new(
+                                ctr.contract.clone().closurize(&mut local_env, env.clone()),
+                                ctr.label.clone(),
+                            )
+                        })
+                        .collect();
+
+                    Closure {
+                        body: RichTerm::new(
+                            Term::Array(
+                                closurized_array,
+                                ArrayAttrs {
+                                    closurized: true,
+                                    pending_contracts: closurized_ctrs,
+                                },
+                            ),
+                            pos,
+                        ),
+                        env: local_env,
+                    }
+                }
+                Term::ParseError(parse_error) => {
+                    return Err(EvalError::ParseError(parse_error.clone()));
+                }
+                // Continuation of operations and thunk update
+                _ if self.stack.is_top_thunk() || self.stack.is_top_cont() => {
+                    clos = Closure {
+                        body: RichTerm {
+                            term: shared_term,
+                            pos,
+                        },
+                        env,
+                    };
+                    if self.stack.is_top_thunk() {
+                        update_thunks(&mut self.stack, &clos);
+                        clos
+                    } else {
+                        self.continuate_operation(clos)?
+                    }
+                }
+                // Function call
+                Term::Fun(x, t) => {
+                    if let Some((thunk, pos_app)) = self.stack.pop_arg_as_thunk() {
+                        self.call_stack.enter_fun(pos_app);
+                        env.insert(x.clone(), thunk);
+                        Closure {
+                            body: t.clone(),
+                            env,
+                        }
+                    } else {
+                        return Ok((RichTerm::new(Term::Fun(x.clone(), t.clone()), pos), env));
+                    }
+                }
+                // Otherwise, this is either an ill-formed application, or we are done
+                t => {
+                    if let Some((arg, pos_app)) = self.stack.pop_arg() {
+                        return Err(EvalError::NotAFunc(
+                            RichTerm {
+                                term: shared_term.clone(),
+                                pos,
+                            },
+                            arg.body,
+                            pos_app,
+                        ));
+                    } else {
+                        return Ok((RichTerm::new(t.clone(), pos), env));
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -176,553 +745,6 @@ pub fn env_add(env: &mut Environment, id: Ident, rt: RichTerm, local_env: Enviro
         env: local_env,
     };
     env.insert(id, Thunk::new(closure, IdentKind::Let));
-}
-
-/// Evaluate a Nickel term. Wrapper around [eval_closure] that starts from an empty local
-/// environment and drops the final environment.
-pub fn eval<R>(
-    t0: RichTerm,
-    initial_env: &Environment,
-    resolver: &mut R,
-) -> Result<RichTerm, EvalError>
-where
-    R: ImportResolver,
-{
-    eval_closure(Closure::atomic_closure(t0), initial_env, resolver, true).map(|(term, _)| term)
-}
-
-/// Fully evaluate a Nickel term: the result is not a WHNF but to a value with all variables substituted.
-pub fn eval_full<R>(
-    t0: RichTerm,
-    initial_env: &Environment,
-    resolver: &mut R,
-) -> Result<RichTerm, EvalError>
-where
-    R: ImportResolver,
-{
-    eval_deep_closure(t0, initial_env, resolver).map(|(term, env)| subst(term, initial_env, &env))
-}
-
-/// Fully evaluates a Nickel term like `eval_full`, but does not substitute all variables.
-pub fn eval_deep<R>(
-    t0: RichTerm,
-    initial_env: &Environment,
-    resolver: &mut R,
-) -> Result<RichTerm, EvalError>
-where
-    R: ImportResolver,
-{
-    eval_deep_closure(t0, initial_env, resolver).map(|(term, _)| term)
-}
-
-fn eval_deep_closure<R>(
-    rt: RichTerm,
-    initial_env: &Environment,
-    resolver: &mut R,
-) -> Result<(RichTerm, Environment), EvalError>
-where
-    R: ImportResolver,
-{
-    let wrapper = mk_term::op1(UnaryOp::Force(None), rt);
-    eval_closure(
-        Closure::atomic_closure(wrapper),
-        initial_env,
-        resolver,
-        true,
-    )
-}
-
-/// Evaluate a Nickel Term, stopping when a meta value is encountered at the top-level without
-/// unwrapping it. Then evaluate the underlying value, and substitute variables in order to obtain
-/// a WHNF that is printable.
-///
-/// Used to query the metadata of a value.
-pub fn eval_meta<R>(
-    t: RichTerm,
-    initial_env: &Environment,
-    resolver: &mut R,
-) -> Result<RichTerm, EvalError>
-where
-    R: ImportResolver,
-{
-    let (mut rt, env) = eval_closure(Closure::atomic_closure(t), initial_env, resolver, false)?;
-
-    if let Term::MetaValue(ref mut meta) = *SharedTerm::make_mut(&mut rt.term) {
-        if let Some(t) = meta.value.take() {
-            let (evaluated, env) =
-                eval_closure(Closure { body: t, env }, initial_env, resolver, true)?;
-            let substituted = subst(evaluated, initial_env, &env);
-
-            meta.value = Some(substituted);
-        }
-    };
-
-    Ok(rt)
-}
-
-/// The main loop of evaluation.
-///
-/// Implement the evaluation of the core language, which includes application, thunk update,
-/// evaluation of the arguments of operations, and a few others. The specific implementations of
-/// primitive operations is delegated to the modules [operation] and [merge].
-///
-/// # Arguments
-///
-/// - `clos`: the closure to evaluate
-/// - `initial_env`: the initial environment containing the stdlib items.
-///   Accessible from anywhere in the program.
-/// - `resolver`: the interface to fetch imports.
-/// - `enriched_strict`: if evaluation is strict with respect to enriched values (metavalues).
-///   Standard evaluation should be strict, but set to false when extracting the metadata of value.
-///
-/// # Return
-///
-/// Either:
-///  - an evaluation error
-///  - the evaluated term with its final environment
-pub fn eval_closure<R>(
-    mut clos: Closure,
-    initial_env: &Environment,
-    resolver: &mut R,
-    mut enriched_strict: bool,
-) -> Result<(RichTerm, Environment), EvalError>
-where
-    R: ImportResolver,
-{
-    let mut call_stack = CallStack::new();
-    let mut stack = Stack::new();
-
-    loop {
-        let Closure {
-            body: RichTerm {
-                term: shared_term,
-                pos,
-            },
-            mut env,
-        } = clos;
-
-        if let Some(strict) = stack.pop_strictness_marker() {
-            enriched_strict = strict;
-        }
-
-        clos = match &*shared_term {
-            Term::Sealed(_, inner, lbl) => {
-                let stack_item = stack.peek_op_cont();
-                let closure = Closure {
-                    body: RichTerm {
-                        term: shared_term.clone(),
-                        pos,
-                    },
-                    env: env.clone(),
-                };
-                // Update the original thunk (the thunk which holds the result of the op) in both cases,
-                // even if we continue with a seq.
-                // We do this because  we are on a `Sealed` term, and this is in WHNF, and if we don't,
-                // we will be unwrapping a `Sealed` term and assigning the "unsealed" value to the result
-                // of the `Seq` operation. See also: https://github.com/tweag/nickel/issues/123
-                update_thunks(&mut stack, &closure);
-                match stack_item {
-                    Some(OperationCont::Op2Second(BinaryOp::Unseal(), _, _, _)) => {
-                        continuate_operation(closure, &mut stack, &mut call_stack)?
-                    }
-                    Some(OperationCont::Op1(UnaryOp::Seq(), _)) => {
-                        // Then, evaluate / `Seq` the inner value.
-                        Closure {
-                            body: inner.clone(),
-                            env: env.clone(),
-                        }
-                    }
-                    None | Some(..) => {
-                        // This operation should not be allowed to evaluate a sealed term
-                        return Err(EvalError::BlameError(lbl.clone(), call_stack.clone()));
-                    }
-                }
-            }
-            Term::Var(x) => {
-                let mut thunk = env
-                    .get(x)
-                    .or_else(|| initial_env.get(x))
-                    .cloned()
-                    .ok_or_else(|| EvalError::UnboundIdentifier(x.clone(), pos))?;
-                std::mem::drop(env); // thunk may be a 1RC pointer
-
-                if thunk.state() != ThunkState::Evaluated {
-                    if thunk.should_update() {
-                        match thunk.mk_update_frame() {
-                            Ok(thunk_upd) => stack.push_thunk(thunk_upd),
-                            Err(BlackholedError) => {
-                                return Err(EvalError::InfiniteRecursion(call_stack, pos))
-                            }
-                        }
-                    }
-                    // If the thunk isn't to be updated, directly set the evaluated flag.
-                    else {
-                        thunk.set_evaluated();
-                    }
-                }
-                call_stack.enter_var(thunk.ident_kind(), x.clone(), pos);
-                thunk.into_closure()
-            }
-            Term::App(t1, t2) => {
-                call_stack.enter_app(pos);
-
-                if !enriched_strict {
-                    stack.push_strictness(enriched_strict);
-                }
-                enriched_strict = true;
-
-                stack.push_arg(
-                    Closure {
-                        body: t2.clone(),
-                        env: env.clone(),
-                    },
-                    pos,
-                );
-                Closure {
-                    body: t1.clone(),
-                    env,
-                }
-            }
-            Term::Let(x, s, t, LetAttrs { binding_type, rec }) => {
-                let closure = Closure {
-                    body: s.clone(),
-                    env: env.clone(),
-                };
-
-                let mut thunk = match binding_type {
-                    BindingType::Normal => Thunk::new(closure, IdentKind::Let),
-                    BindingType::Revertible(deps) => {
-                        Thunk::new_rev(closure, IdentKind::Let, deps.clone())
-                    }
-                };
-
-                // Patch the environment with the (x <- closure) binding
-                if *rec {
-                    let thunk_ = thunk.clone();
-                    thunk.borrow_mut().env.insert(x.clone(), thunk_);
-                }
-
-                env.insert(x.clone(), thunk);
-                Closure {
-                    body: t.clone(),
-                    env,
-                }
-            }
-            Term::Switch(exp, cases, default) => {
-                if !enriched_strict {
-                    stack.push_strictness(enriched_strict);
-                }
-                enriched_strict = true;
-
-                let has_default = default.is_some();
-
-                if let Some(t) = default {
-                    stack.push_arg(
-                        Closure {
-                            body: t.clone(),
-                            env: env.clone(),
-                        },
-                        pos,
-                    );
-                }
-
-                stack.push_arg(
-                    Closure {
-                        body: RichTerm::new(Term::Record(cases.clone(), Default::default()), pos),
-                        env: env.clone(),
-                    },
-                    pos,
-                );
-
-                Closure {
-                    body: RichTerm::new(Term::Op1(UnaryOp::Switch(has_default), exp.clone()), pos),
-                    env,
-                }
-            }
-            Term::Op1(op, t) => {
-                if !enriched_strict {
-                    stack.push_strictness(enriched_strict);
-                }
-                enriched_strict = true;
-                stack.push_op_cont(OperationCont::Op1(op.clone(), t.pos), call_stack.len(), pos);
-
-                // Special casing (hopefully temporary) due to the need for `DeepSeq` to produce
-                // acceptable error message for missing field definition occurring when sequencing
-                // a record. See the definition of `UnaryOp::DeepSeq`.
-                if let UnaryOp::DeepSeq(Some(stack_elem)) | UnaryOp::Force(Some(stack_elem)) = op {
-                    call_stack.0.push(stack_elem.clone());
-                }
-
-                Closure {
-                    body: t.clone(),
-                    env,
-                }
-            }
-            Term::Op2(op, fst, snd) => {
-                let strict_op = op.is_strict();
-                if enriched_strict != strict_op {
-                    stack.push_strictness(enriched_strict);
-                }
-                enriched_strict = strict_op;
-                stack.push_op_cont(
-                    OperationCont::Op2First(
-                        op.clone(),
-                        Closure {
-                            body: snd.clone(),
-                            env: env.clone(),
-                        },
-                        fst.pos,
-                    ),
-                    call_stack.len(),
-                    pos,
-                );
-                Closure {
-                    body: fst.clone(),
-                    env,
-                }
-            }
-            Term::OpN(op, args) => {
-                let strict_op = op.is_strict();
-                if enriched_strict != strict_op {
-                    stack.push_strictness(enriched_strict);
-                }
-                enriched_strict = strict_op;
-
-                // Arguments are passed as a stack to the operation continuation, so we reverse the
-                // original list.
-                let mut args_iter = args.iter();
-                let fst = args_iter
-                    .next()
-                    .cloned()
-                    .ok_or_else(|| EvalError::NotEnoughArgs(op.arity(), op.to_string(), pos))?;
-
-                let pending: Vec<Closure> = args_iter
-                    .rev()
-                    .map(|t| Closure {
-                        body: t.clone(),
-                        env: env.clone(),
-                    })
-                    .collect();
-
-                stack.push_op_cont(
-                    OperationCont::OpN {
-                        op: op.clone(),
-                        evaluated: Vec::with_capacity(pending.len() + 1),
-                        pending,
-                        current_pos: fst.pos,
-                    },
-                    call_stack.len(),
-                    pos,
-                );
-
-                Closure { body: fst, env }
-            }
-            Term::StrChunks(chunks) => {
-                let mut chunks_iter = chunks.iter();
-                match chunks_iter.next_back() {
-                    None => Closure {
-                        body: Term::Str(String::new()).into(),
-                        env: Environment::new(),
-                    },
-                    Some(chunk) => {
-                        let (arg, indent) = match chunk {
-                            StrChunk::Literal(s) => (Term::Str(s.clone()).into(), 0),
-                            StrChunk::Expr(e, indent) => (e.clone(), *indent),
-                        };
-
-                        if !enriched_strict {
-                            stack.push_strictness(enriched_strict);
-                        }
-                        enriched_strict = true;
-                        stack.push_str_chunks(chunks_iter.cloned());
-                        stack.push_str_acc(String::new(), indent, env.clone());
-
-                        Closure {
-                            body: RichTerm::new(Term::Op1(UnaryOp::ChunksConcat(), arg), pos),
-                            env,
-                        }
-                    }
-                }
-            }
-            Term::RecRecord(ts, dyn_fields, attrs, _) => {
-                let rec_env = fixpoint::rec_env(ts.iter(), &env)?;
-
-                ts.iter()
-                    .try_for_each(|(_, rt)| fixpoint::patch_field(rt, &rec_env, &env))?;
-
-                //TODO: We should probably avoid cloning the `ts` hashmap, using `match_sharedterm`
-                //instead of `match` in the main eval loop, if possible
-                let static_part = RichTerm::new(Term::Record(ts.clone(), *attrs), pos);
-
-                // Transform the static part `{stat1 = val1, ..., statn = valn}` and the dynamic
-                // part `{exp1 = dyn_val1, ..., expm = dyn_valm}` to a sequence of extensions
-                // `%record_insert% exp1 (... (%record_insert% expn {stat1 = val1, ..., statn = valn} dyn_valn)) dyn_val1`
-                // The `dyn_val` are given access to the recursive environment, but the recursive
-                // environment only contains the static fields, and not the dynamic fields.
-                let extended = dyn_fields
-                    .iter()
-                    .try_fold::<_, _, Result<RichTerm, EvalError>>(
-                        static_part,
-                        |acc, (id_t, t)| {
-                            let id_t = id_t.clone();
-                            let pos = t.pos;
-
-                            fixpoint::patch_field(t, &rec_env, &env)?;
-                            Ok(RichTerm::new(
-                                Term::App(
-                                    mk_term::op2(BinaryOp::DynExtend(), id_t, acc),
-                                    t.clone(),
-                                ),
-                                pos.into_inherited(),
-                            ))
-                        },
-                    )?;
-
-                Closure {
-                    body: extended.with_pos(pos),
-                    env,
-                }
-            }
-            // Unwrapping of enriched terms
-            Term::MetaValue(meta) if enriched_strict => {
-                if meta.value.is_some() {
-                    /* Since we are forcing a metavalue, we are morally evaluating `force t` rather
-                     * than `t` itself. Updating a thunk after having performed this forcing may
-                     * alter the semantics of the program in an unexpected way (see issue
-                     * https://github.com/tweag/nickel/issues/123): we update potential thunks now
-                     * so that their content remains a meta value.
-                     */
-                    let update_closure = Closure {
-                        body: RichTerm {
-                            term: shared_term.clone(),
-                            pos,
-                        },
-                        env,
-                    };
-                    update_thunks(&mut stack, &update_closure);
-
-                    let Closure {
-                        body: RichTerm { term, .. },
-                        env,
-                    } = update_closure;
-
-                    match term.into_owned() {
-                        Term::MetaValue(MetaValue {
-                            value: Some(inner), ..
-                        }) => Closure { body: inner, env },
-                        _ => unreachable!(),
-                    }
-                } else {
-                    let label = meta
-                        .contracts
-                        .last()
-                        .or(meta.types.as_ref())
-                        .map(|ctr| ctr.label.clone());
-                    return Err(EvalError::MissingFieldDef(label, call_stack));
-                }
-            }
-            Term::ResolvedImport(id) => {
-                if let Some(t) = resolver.get(*id) {
-                    Closure::atomic_closure(t)
-                } else {
-                    return Err(EvalError::InternalError(
-                        format!("Resolved import not found ({:?})", id),
-                        pos,
-                    ));
-                }
-            }
-            Term::Import(path) => {
-                return Err(EvalError::InternalError(
-                    format!("Unresolved import ({})", path.to_string_lossy()),
-                    pos,
-                ))
-            }
-            // Closurize the array if it's not already done.
-            // This *should* make it unecessary to call closurize in [operation].
-            // See the comment on the `BinaryOp::ArrayConcat` match arm.
-            Term::Array(terms, attrs) if !attrs.closurized => {
-                let mut local_env = Environment::new();
-
-                let closurized_array = terms
-                    .clone()
-                    .into_iter()
-                    .map(|t| t.closurize(&mut local_env, env.clone()))
-                    .collect();
-
-                let closurized_ctrs = attrs
-                    .pending_contracts
-                    .iter()
-                    .map(|ctr| {
-                        PendingContract::new(
-                            ctr.contract.clone().closurize(&mut local_env, env.clone()),
-                            ctr.label.clone(),
-                        )
-                    })
-                    .collect();
-
-                Closure {
-                    body: RichTerm::new(
-                        Term::Array(
-                            closurized_array,
-                            ArrayAttrs {
-                                closurized: true,
-                                pending_contracts: closurized_ctrs,
-                            },
-                        ),
-                        pos,
-                    ),
-                    env: local_env,
-                }
-            }
-            Term::ParseError(parse_error) => {
-                return Err(EvalError::ParseError(parse_error.clone()));
-            }
-            // Continuation of operations and thunk update
-            _ if stack.is_top_thunk() || stack.is_top_cont() => {
-                clos = Closure {
-                    body: RichTerm {
-                        term: shared_term,
-                        pos,
-                    },
-                    env,
-                };
-                if stack.is_top_thunk() {
-                    update_thunks(&mut stack, &clos);
-                    clos
-                } else {
-                    continuate_operation(clos, &mut stack, &mut call_stack)?
-                }
-            }
-            // Function call
-            Term::Fun(x, t) => {
-                if let Some((thunk, pos_app)) = stack.pop_arg_as_thunk() {
-                    call_stack.enter_fun(pos_app);
-                    env.insert(x.clone(), thunk);
-                    Closure {
-                        body: t.clone(),
-                        env,
-                    }
-                } else {
-                    return Ok((RichTerm::new(Term::Fun(x.clone(), t.clone()), pos), env));
-                }
-            }
-            // Otherwise, this is either an ill-formed application, or we are done
-            t => {
-                if let Some((arg, pos_app)) = stack.pop_arg() {
-                    return Err(EvalError::NotAFunc(
-                        RichTerm {
-                            term: shared_term.clone(),
-                            pos,
-                        },
-                        arg.body,
-                        pos_app,
-                    ));
-                } else {
-                    return Ok((RichTerm::new(t.clone(), pos), env));
-                }
-            }
-        }
-    }
 }
 
 /// Pop and update all the thunks on the top of the stack with the given closure.

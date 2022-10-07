@@ -2,6 +2,7 @@
 //!
 //! See [eval](../eval/index.html).
 use super::operation::OperationCont;
+use crate::eval::EvalMode;
 use crate::eval::{Closure, Environment, IdentKind, Thunk, ThunkUpdateFrame};
 use crate::position::TermPos;
 use crate::term::{RichTerm, StrChunk};
@@ -45,7 +46,7 @@ pub enum Marker {
         usize,       /* the indentation level of the chunk currently evaluated */
         Environment, /* the common environment of chunks */
     ),
-    Strictness(bool),
+    Strictness(EvalMode),
 }
 
 impl std::fmt::Debug for Marker {
@@ -58,7 +59,7 @@ impl std::fmt::Debug for Marker {
             Marker::Cont(op, sz, _) => write!(f, "Cont {:?} (callstack size {})", op, sz),
             Marker::StrChunk(_) => write!(f, "StrChunk"),
             Marker::StrAcc(_, _, _) => write!(f, "StrAcc"),
-            Marker::Strictness(s) => write!(f, "Strictness = {}", s),
+            Marker::Strictness(s) => write!(f, "Strictness = {:?}", s),
         }
     }
 }
@@ -94,6 +95,7 @@ impl Marker {
 }
 
 /// The evaluation stack.
+#[derive(Default)]
 pub struct Stack(Vec<Marker>);
 
 impl IntoIterator for Stack {
@@ -124,6 +126,10 @@ impl Stack {
             }
         }
         count
+    }
+
+    pub fn clear(&mut self) {
+        self.0.clear();
     }
 
     /// Count the number of arguments at the top of the stack.
@@ -168,8 +174,8 @@ impl Stack {
         self.0.push(Marker::StrAcc(acc, indent, env));
     }
 
-    pub fn push_strictness(&mut self, strict: bool) {
-        self.0.push(Marker::Strictness(strict));
+    pub fn push_strictness(&mut self, eval_mode: EvalMode) {
+        self.0.push(Marker::Strictness(eval_mode));
     }
 
     /// Try to pop an argument from the top of the stack. If `None` is returned, the top element
@@ -282,7 +288,7 @@ impl Stack {
         }
     }
 
-    pub fn pop_strictness_marker(&mut self) -> Option<bool> {
+    pub fn pop_strictness_marker(&mut self) -> Option<EvalMode> {
         if self.0.last().map(Marker::is_strictness).unwrap_or(false) {
             match self.0.pop() {
                 Some(Marker::Strictness(s)) => Some(s),
@@ -439,21 +445,21 @@ mod tests {
         let mut s = Stack::new();
         assert_eq!(0, s.count_args());
 
-        s.push_strictness(true);
+        s.push_strictness(EvalMode::UnwrapMeta);
         assert_eq!(0, s.count_args());
         s.push_arg(some_closure(), TermPos::None);
         s.push_arg(some_closure(), TermPos::None);
         assert_eq!(2, s.count_args());
-        s.push_strictness(false);
+        s.push_strictness(EvalMode::StopAtMeta);
         assert_eq!(0, s.count_args());
 
-        assert_eq!(s.pop_strictness_marker(), Some(false));
+        assert_eq!(s.pop_strictness_marker(), Some(EvalMode::StopAtMeta));
         assert_eq!(2, s.count_args());
         assert_matches!(s.pop_arg(), Some(..));
         assert_matches!(s.pop_arg(), Some(..));
         assert_eq!(s.pop_arg(), None);
         assert_eq!(0, s.count_args());
-        assert_eq!(s.pop_strictness_marker(), Some(true));
+        assert_eq!(s.pop_strictness_marker(), Some(EvalMode::UnwrapMeta));
         assert_eq!(0, s.count_args());
     }
 }

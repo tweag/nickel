@@ -4,7 +4,7 @@ use criterion::Criterion;
 use nickel_lang::{
     cache::{Cache, Envs, ErrorTolerance},
     error::{Error, ParseError},
-    eval,
+    eval::VirtualMachine,
     parser::{grammar, lexer},
     program::Program,
     term::{RichTerm, Term},
@@ -148,7 +148,9 @@ pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> 
                             c_local.typecheck(id, &type_ctxt).unwrap();
                         } else {
                             c_local.prepare(id, &type_ctxt).unwrap();
-                            eval::eval(t, &eval_env, &mut c_local).unwrap();
+                            VirtualMachine::new(&mut c_local)
+                                .eval(t, &eval_env)
+                                .unwrap();
                         }
                     },
                     criterion::BatchSize::LargeInput,
@@ -191,7 +193,7 @@ macro_rules! ncl_bench_group {
         pub fn $group_name() {
             use nickel_lang::{
                 cache::{Envs, Cache, ErrorTolerance, ImportResolver},
-                eval::eval,
+                eval::VirtualMachine,
                 transform::import_resolution::resolve_imports,
             };
 
@@ -220,7 +222,7 @@ macro_rules! ncl_bench_group {
                                 c_local.typecheck(id, &type_ctxt).unwrap();
                             } else {
                                 c_local.prepare(id, &type_ctxt).unwrap();
-                                eval(t, &eval_env, &mut c_local).unwrap();
+                                VirtualMachine::new(&mut c_local).eval(t, &eval_env).unwrap();
                             }
                         },
                         criterion::BatchSize::LargeInput,

@@ -11,7 +11,9 @@ use codespan::Files;
 
 /// Evaluate a term without import support.
 fn eval_no_import(t: RichTerm) -> Result<Term, EvalError> {
-    eval(t, &Environment::new(), &mut DummyResolver {}).map(Term::from)
+    VirtualMachine::new(&mut DummyResolver {})
+        .eval(t, &Environment::new())
+        .map(Term::from)
 }
 
 fn parse(s: &str) -> Option<RichTerm> {
@@ -191,32 +193,27 @@ fn imports() {
     };
 
     // let x = import "two" in x
+    let mk_import_two = mk_import("x", "two", mk_term::var("x"), &mut resolver).unwrap();
     assert_eq!(
-        eval(
-            mk_import("x", "two", mk_term::var("x"), &mut resolver).unwrap(),
-            &Environment::new(),
-            &mut resolver
-        )
-        .map(Term::from)
-        .unwrap(),
+        VirtualMachine::new(&mut resolver)
+            .eval(mk_import_two, &Environment::new(),)
+            .map(Term::from)
+            .unwrap(),
         Term::Num(2.0)
     );
 
     // let x = import "lib" in x.f
+    let mk_import_lib = mk_import(
+        "x",
+        "lib",
+        mk_term::op1(UnaryOp::StaticAccess(Ident::from("f")), mk_term::var("x")),
+        &mut resolver,
+    );
     assert_eq!(
-        eval(
-            mk_import(
-                "x",
-                "lib",
-                mk_term::op1(UnaryOp::StaticAccess(Ident::from("f")), mk_term::var("x")),
-                &mut resolver,
-            )
+        VirtualMachine::new(&mut resolver)
+            .eval(mk_import_lib.unwrap(), &Environment::new(),)
+            .map(Term::from)
             .unwrap(),
-            &Environment::new(),
-            &mut resolver
-        )
-        .map(Term::from)
-        .unwrap(),
         Term::Bool(true)
     );
 }
@@ -298,20 +295,26 @@ fn initial_env() {
 
     let t = mk_term::let_in("x", Term::Num(2.0), mk_term::var("x"));
     assert_eq!(
-        eval(t, &initial_env, &mut resolver).map(Term::from),
+        VirtualMachine::new(&mut resolver)
+            .eval(t, &initial_env)
+            .map(Term::from),
         Ok(Term::Num(2.0))
     );
 
     let t = mk_term::let_in("x", Term::Num(2.0), mk_term::var("g"));
     assert_eq!(
-        eval(t, &initial_env, &mut resolver).map(Term::from),
+        VirtualMachine::new(&mut resolver)
+            .eval(t, &initial_env)
+            .map(Term::from),
         Ok(Term::Num(1.0))
     );
 
     // Shadowing of the initial environment
     let t = mk_term::let_in("g", Term::Num(2.0), mk_term::var("g"));
     assert_eq!(
-        eval(t, &initial_env, &mut resolver).map(Term::from),
+        VirtualMachine::new(&mut resolver)
+            .eval(t, &initial_env)
+            .map(Term::from),
         Ok(Term::Num(2.0))
     );
 }

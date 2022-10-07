@@ -268,8 +268,9 @@ pub fn to_string(format: ExportFormat, rt: &RichTerm) -> Result<String, Serializ
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cache::resolvers::DummyResolver;
     use crate::error::{Error, EvalError};
-    use crate::eval::Environment;
+    use crate::eval::{Environment, VirtualMachine};
     use crate::position::TermPos;
     use crate::program::Program;
     use crate::term::{make as mk_term, BinaryOp};
@@ -332,30 +333,30 @@ mod tests {
                     .unwrap();
 
             assert_eq!(
-                $crate::eval::eval(
-                    mk_term::op2(BinaryOp::Eq(), from_json, evaluated.clone()),
-                    &Environment::new(),
-                    &mut $crate::cache::resolvers::DummyResolver {}
-                )
-                .map(Term::from),
+                VirtualMachine::new(&mut DummyResolver {})
+                    .eval(
+                        mk_term::op2(BinaryOp::Eq(), from_json, evaluated.clone()),
+                        &Environment::new(),
+                    )
+                    .map(Term::from),
                 Ok(Term::Bool(true))
             );
             assert_eq!(
-                $crate::eval::eval(
-                    mk_term::op2(BinaryOp::Eq(), from_yaml, evaluated.clone()),
-                    &Environment::new(),
-                    &mut $crate::cache::resolvers::DummyResolver {}
-                )
-                .map(Term::from),
+                VirtualMachine::new(&mut DummyResolver {})
+                    .eval(
+                        mk_term::op2(BinaryOp::Eq(), from_yaml, evaluated.clone()),
+                        &Environment::new(),
+                    )
+                    .map(Term::from),
                 Ok(Term::Bool(true))
             );
             assert_eq!(
-                $crate::eval::eval(
-                    mk_term::op2(BinaryOp::Eq(), from_toml, evaluated),
-                    &Environment::new(),
-                    &mut $crate::cache::resolvers::DummyResolver {}
-                )
-                .map(Term::from),
+                VirtualMachine::new(&mut DummyResolver {})
+                    .eval(
+                        mk_term::op2(BinaryOp::Eq(), from_toml, evaluated),
+                        &Environment::new(),
+                    )
+                    .map(Term::from),
                 Ok(Term::Bool(true))
             );
         };
