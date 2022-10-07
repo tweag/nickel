@@ -2726,8 +2726,7 @@ mod tests {
     #[test]
     fn ite_operation() {
         let cont = OperationCont::Op1(UnaryOp::Ite(), TermPos::None);
-        let mut resolver = DummyResolver {};
-        let mut vm = VirtualMachine::new(&mut resolver);
+        let mut vm = VirtualMachine::new(DummyResolver {});
 
         vm.stack.push_arg(
             Closure::atomic_closure(Term::Num(5.0).into()),
@@ -2772,8 +2771,7 @@ mod tests {
             body: Term::Num(7.0).into(),
             env: Environment::new(),
         };
-        let mut resolver = DummyResolver {};
-        let mut vm = VirtualMachine::new(&mut resolver);
+        let mut vm = VirtualMachine::new(DummyResolver {});
         vm.stack.push_op_cont(cont, 0, TermPos::None);
 
         clos = vm.continuate_operation(clos).unwrap();
@@ -2817,8 +2815,7 @@ mod tests {
             TermPos::None,
         );
 
-        let mut resolver = DummyResolver {};
-        let mut vm = VirtualMachine::new(&mut resolver);
+        let mut vm = VirtualMachine::new(DummyResolver {});
         let mut clos = Closure {
             body: Term::Num(6.0).into(),
             env: Environment::new(),

@@ -333,7 +333,7 @@ mod tests {
                     .unwrap();
 
             assert_eq!(
-                VirtualMachine::new(&mut DummyResolver {})
+                VirtualMachine::new(DummyResolver {})
                     .eval(
                         mk_term::op2(BinaryOp::Eq(), from_json, evaluated.clone()),
                         &Environment::new(),
@@ -342,7 +342,7 @@ mod tests {
                 Ok(Term::Bool(true))
             );
             assert_eq!(
-                VirtualMachine::new(&mut DummyResolver {})
+                VirtualMachine::new(DummyResolver {})
                     .eval(
                         mk_term::op2(BinaryOp::Eq(), from_yaml, evaluated.clone()),
                         &Environment::new(),
@@ -351,7 +351,7 @@ mod tests {
                 Ok(Term::Bool(true))
             );
             assert_eq!(
-                VirtualMachine::new(&mut DummyResolver {})
+                VirtualMachine::new(DummyResolver {})
                     .eval(
                         mk_term::op2(BinaryOp::Eq(), from_toml, evaluated),
                         &Environment::new(),

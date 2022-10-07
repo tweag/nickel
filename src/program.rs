@@ -55,7 +55,7 @@ impl Program {
     pub fn new_from_file(path: impl Into<OsString>) -> std::io::Result<Program> {
         let mut cache = Cache::new(ErrorTolerance::Strict);
         let main_id = cache.add_file(path)?;
-        let mut vm = VirtualMachine::new(cache);
+        let vm = VirtualMachine::new(cache);
 
         Ok(Program { main_id, vm })
     }
@@ -68,7 +68,7 @@ impl Program {
     {
         let mut cache = Cache::new(ErrorTolerance::Strict);
         let main_id = cache.add_source(source_name, source)?;
-        let mut vm = VirtualMachine::new(cache);
+        let vm = VirtualMachine::new(cache);
 
         Ok(Program { main_id, vm })
     }
