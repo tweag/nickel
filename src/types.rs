@@ -153,7 +153,7 @@ impl<Ty> AbsType<Ty> {
     }
 
     /// Determine if a type is a type defined by a Nickel term.
-    pub fn is_flat_type(&self) -> bool {
+    pub fn is_flat(&self) -> bool {
         matches!(self, AbsType::Flat(_))
     }
 
