@@ -103,6 +103,7 @@ impl ReplImpl {
     }
 
     fn eval_(&mut self, exp: &str, eval_full: bool) -> Result<EvalResult, Error> {
+        self.vm.reset();
         let eval_function = if eval_full {
             eval::VirtualMachine::eval_full
         } else {
