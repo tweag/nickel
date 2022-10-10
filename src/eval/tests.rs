@@ -148,9 +148,12 @@ fn merge_incompatible_defaults() {
 #[test]
 fn imports() {
     let mut vm = VirtualMachine::new(SimpleResolver::new());
-    vm.import_resolver_mut().add_source(String::from("two"), String::from("1 + 1"));
-    vm.import_resolver_mut().add_source(String::from("lib"), String::from("{f = true}"));
-    vm.import_resolver_mut().add_source(String::from("bad"), String::from("^$*/.23ab 0°@"));
+    vm.import_resolver_mut()
+        .add_source(String::from("two"), String::from("1 + 1"));
+    vm.import_resolver_mut()
+        .add_source(String::from("lib"), String::from("{f = true}"));
+    vm.import_resolver_mut()
+        .add_source(String::from("bad"), String::from("^$*/.23ab 0°@"));
     vm.import_resolver_mut().add_source(
         String::from("nested"),
         String::from("let x = import \"two\" in x + 1"),
@@ -168,7 +171,7 @@ fn imports() {
         var: &str,
         import: &str,
         body: RichTerm,
-        vm: &mut VirtualMachine<R>
+        vm: &mut VirtualMachine<R>,
     ) -> Result<RichTerm, ImportError>
     where
         R: ImportResolver,

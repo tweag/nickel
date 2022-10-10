@@ -43,7 +43,7 @@ pub struct Program {
     /// The cache holding the sources and parsed terms of the main source as well as imports.
     //cache: Cache,
     ///
-    vm: VirtualMachine<Cache>
+    vm: VirtualMachine<Cache>,
 }
 
 impl Program {
@@ -80,8 +80,13 @@ impl Program {
             eval_env,
             type_ctxt,
         } = self.vm.import_resolver_mut().prepare_stdlib()?;
-        self.vm.import_resolver_mut().prepare(self.main_id, &type_ctxt)?;
-        Ok((self.vm.import_resolver().get(self.main_id).unwrap(), eval_env))
+        self.vm
+            .import_resolver_mut()
+            .prepare(self.main_id, &type_ctxt)?;
+        Ok((
+            self.vm.import_resolver().get(self.main_id).unwrap(),
+            eval_env,
+        ))
     }
 
     /// Parse if necessary, typecheck and then evaluate the program.
@@ -116,12 +121,14 @@ impl Program {
         self.vm.import_resolver_mut().parse(self.main_id)?;
         self.vm.import_resolver_mut().load_stdlib()?;
         let initial_env = self.vm.import_resolver().mk_type_ctxt().expect("program::typecheck(): stdlib has been loaded but was not found in cache on mk_types_env()");
-        self.vm.import_resolver_mut()
+        self.vm
+            .import_resolver_mut()
             .resolve_imports(self.main_id)
             .map_err(|cache_err| {
                 cache_err.unwrap_error("program::typecheck(): expected source to be parsed")
             })?;
-        self.vm.import_resolver_mut()
+        self.vm
+            .import_resolver_mut()
             .typecheck(self.main_id, &initial_env)
             .map_err(|cache_err| {
                 cache_err.unwrap_error("program::typecheck(): expected source to be parsed")
@@ -192,7 +199,8 @@ pub fn query(
     initial_env: &Envs,
     path: Option<String>,
 ) -> Result<Term, Error> {
-    vm.import_resolver_mut().prepare(file_id, &initial_env.type_ctxt)?;
+    vm.import_resolver_mut()
+        .prepare(file_id, &initial_env.type_ctxt)?;
     let t = if let Some(p) = path {
         // Parsing `y.path`. We `seq` it to force the evaluation of the underlying value,
         // which can be then showed to the user. The newline gives better messages in case of
