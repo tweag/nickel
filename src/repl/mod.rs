@@ -68,8 +68,6 @@ pub trait Repl {
 
 /// Standard implementation of the REPL backend.
 pub struct ReplImpl {
-    /// The underlying cache, storing input, loaded files and parsed terms.
-    //cache: Cache,
     /// The parser, supporting toplevel let declaration.
     parser: grammar::ExtendedTermParser,
     /// The current environment (for evaluation and typing). Contain the initial environment with
@@ -78,7 +76,7 @@ pub struct ReplImpl {
     /// The initial typing context, without the toplevel declarations made inside the REPL. Used to
     /// typecheck imports in a fresh environment.
     initial_type_ctxt: typecheck::Context,
-    ///
+    /// The state of the Nickel virtual machine, holding a cache of loaded files and parsed terms.
     vm: VirtualMachine<Cache>,
 }
 
