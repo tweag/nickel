@@ -33,7 +33,9 @@ use crate::parser::error::{LexicalError, ParseError};
 use logos::Logos;
 use std::ops::Range;
 
-// When adding or removing tokens that might be parsed as identifiers please update the KEYWORDS
+// **IMPORTANT**
+// When adding or removing tokens that might be parsed as identifiers,
+// please update the KEYWORDS array
 // list
 /// The tokens in normal mode.
 #[derive(Logos, Debug, PartialEq, Clone)]
