@@ -9,7 +9,7 @@ use nickel_lang::{
     typecheck::{
         linearization::{Linearization, Linearizer, Scope, ScopeId},
         reporting::{to_type, NameReg},
-        TypeWrapper, UnifTable,
+        TypeWrapper,
     },
     types::AbsType,
 };
@@ -90,11 +90,12 @@ impl Default for AnalysisHost {
     }
 }
 
+use nickel_lang::typecheck::Extra;
 use nickel_lang::types::Types;
 impl Linearizer for AnalysisHost {
     type Building = Building;
     type Completed = Completed;
-    type CompletionExtra = (UnifTable, HashMap<usize, Ident>, Vec<Types>);
+    type CompletionExtra = Extra;
 
     fn add_term(
         &mut self,
@@ -348,7 +349,11 @@ impl Linearizer for AnalysisHost {
     fn complete(
         self,
         mut lin: Linearization<Building>,
-        (table, reported_names, wildcard_vars): (UnifTable, HashMap<usize, Ident>, Vec<Types>),
+        Extra {
+            table,
+            names: reported_names,
+            wildcards,
+        }: Extra,
     ) -> Linearization<Completed> {
         debug!("linearizing");
 
@@ -418,7 +423,7 @@ impl Linearizer for AnalysisHost {
                 },
             )
             .map(|item| LinearizationItem {
-                ty: transform_wildcard(&wildcard_vars, item.ty),
+                ty: transform_wildcard(&wildcards, item.ty),
                 ..item
             })
             .collect();

@@ -195,6 +195,14 @@ pub struct State<'a> {
     wildcard_vars: &'a mut Vec<TypeWrapper>,
 }
 
+/// Immutable and owned data, required by the LSP to carry out specific analysis.
+/// It is basically an owned-subset of the typecheking state.
+pub struct Extra {
+    pub table: UnifTable,
+    pub names: HashMap<usize, Ident>,
+    pub wildcards: Vec<Types>,
+}
+
 /// Typecheck a term.
 ///
 /// Return the inferred type in case of success. This is just a wrapper that calls
@@ -225,7 +233,7 @@ pub fn type_check_linearize<LL>(
     mut linearizer: LL,
 ) -> Result<(Wildcards, LL::Completed), TypecheckError>
 where
-    LL: Linearizer<CompletionExtra = (UnifTable, HashMap<usize, Ident>, Vec<Types>)>,
+    LL: Linearizer<CompletionExtra = Extra>,
 {
     let (mut table, mut names) = (UnifTable::new(), HashMap::new());
     let mut building = Linearization::new(LL::Building::default());
@@ -250,9 +258,12 @@ where
     }
 
     let result = wildcard_vars_to_type(wildcard_vars.clone(), &table);
-    let lin = linearizer
-        .complete(building, (table, names, result.clone()))
-        .into_inner();
+    let extra = Extra {
+        table,
+        names,
+        wildcards: result.clone(),
+    };
+    let lin = linearizer.complete(building, extra).into_inner();
 
     Ok((result, lin))
 }
