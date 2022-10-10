@@ -86,7 +86,6 @@ impl ReplImpl {
     /// Create a new empty REPL.
     pub fn new() -> Self {
         ReplImpl {
-            //cache: Cache::new(ErrorTolerance::Strict),
             parser: grammar::ExtendedTermParser::new(),
             env: Envs::new(),
             initial_type_ctxt: typecheck::Context::new(),
