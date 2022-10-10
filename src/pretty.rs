@@ -104,10 +104,15 @@ where
         } else {
             self.nil()
         })
-        .append(if mv.priority == crate::term::MergePriority::Bottom {
-            self.line().append(self.text("| default"))
-        } else {
-            self.nil()
+        .append(match mv.priority {
+            crate::term::MergePriority::Bottom => self.line().append(self.text("| default")),
+            crate::term::MergePriority::Neutral => self.nil(),
+            crate::term::MergePriority::Numeral(p) => self
+                .line()
+                .append(self.text("| priority"))
+                .append(self.space())
+                .append(self.as_string(p)),
+            crate::term::MergePriority::Top => self.line().append(self.text("| force")),
         })
         .nest(2)
         .group()
