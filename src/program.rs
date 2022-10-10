@@ -22,6 +22,7 @@
 //! Each such value is added to the initial environment before the evaluation of the program.
 use crate::cache::*;
 use crate::error::{Error, ToDiagnostic};
+use crate::eval::VirtualMachine;
 use crate::identifier::Ident;
 use crate::parser::lexer::Lexer;
 use crate::term::{RichTerm, Term};
@@ -39,8 +40,8 @@ use std::result::Result;
 pub struct Program {
     /// The id of the program source in the file database.
     main_id: FileId,
-    /// The cache holding the sources and parsed terms of the main source as well as imports.
-    cache: Cache,
+    /// The state of the Nickel virtual machine.
+    vm: VirtualMachine<Cache>,
 }
 
 impl Program {
@@ -52,8 +53,9 @@ impl Program {
     pub fn new_from_file(path: impl Into<OsString>) -> std::io::Result<Program> {
         let mut cache = Cache::new(ErrorTolerance::Strict);
         let main_id = cache.add_file(path)?;
+        let vm = VirtualMachine::new(cache);
 
-        Ok(Program { main_id, cache })
+        Ok(Program { main_id, vm })
     }
 
     /// Create a program by reading it from a generic source.
@@ -64,8 +66,9 @@ impl Program {
     {
         let mut cache = Cache::new(ErrorTolerance::Strict);
         let main_id = cache.add_source(source_name, source)?;
+        let vm = VirtualMachine::new(cache);
 
-        Ok(Program { main_id, cache })
+        Ok(Program { main_id, vm })
     }
 
     /// Retrieve the parsed term and typecheck it, and generate a fresh initial environment. Return
@@ -74,49 +77,56 @@ impl Program {
         let Envs {
             eval_env,
             type_ctxt,
-        } = self.cache.prepare_stdlib()?;
-        self.cache.prepare(self.main_id, &type_ctxt)?;
-        Ok((self.cache.get(self.main_id).unwrap(), eval_env))
+        } = self.vm.import_resolver_mut().prepare_stdlib()?;
+        self.vm
+            .import_resolver_mut()
+            .prepare(self.main_id, &type_ctxt)?;
+        Ok((
+            self.vm.import_resolver().get(self.main_id).unwrap(),
+            eval_env,
+        ))
     }
 
     /// Parse if necessary, typecheck and then evaluate the program.
     pub fn eval(&mut self) -> Result<RichTerm, Error> {
         let (t, initial_env) = self.prepare_eval()?;
-        let mut vm = eval::VirtualMachine::new(&mut self.cache);
-        vm.eval(t, &initial_env).map_err(|e| e.into())
+        self.vm.reset();
+        self.vm.eval(t, &initial_env).map_err(|e| e.into())
     }
 
     /// Same as `eval`, but proceeds to a full evaluation.
     pub fn eval_full(&mut self) -> Result<RichTerm, Error> {
         let (t, initial_env) = self.prepare_eval()?;
-        let mut vm = eval::VirtualMachine::new(&mut self.cache);
-        vm.eval_full(t, &initial_env).map_err(|e| e.into())
+        self.vm.reset();
+        self.vm.eval_full(t, &initial_env).map_err(|e| e.into())
     }
 
     /// Same as `eval_full`, but does not substitute all variables.
     pub fn eval_deep(&mut self) -> Result<RichTerm, Error> {
         let (t, initial_env) = self.prepare_eval()?;
-        let mut vm = eval::VirtualMachine::new(&mut self.cache);
-        vm.eval_deep(t, &initial_env).map_err(|e| e.into())
+        self.vm.reset();
+        self.vm.eval_deep(t, &initial_env).map_err(|e| e.into())
     }
 
     /// Wrapper for [`query`].
     pub fn query(&mut self, path: Option<String>) -> Result<Term, Error> {
-        let initial_env = self.cache.prepare_stdlib()?;
-        query(&mut self.cache, self.main_id, &initial_env, path)
+        let initial_env = self.vm.import_resolver_mut().prepare_stdlib()?;
+        query(&mut self.vm, self.main_id, &initial_env, path)
     }
 
     /// Load, parse, and typecheck the program and the standard library, if not already done.
     pub fn typecheck(&mut self) -> Result<(), Error> {
-        self.cache.parse(self.main_id)?;
-        self.cache.load_stdlib()?;
-        let initial_env = self.cache.mk_type_ctxt().expect("program::typecheck(): stdlib has been loaded but was not found in cache on mk_types_env()");
-        self.cache
+        self.vm.import_resolver_mut().parse(self.main_id)?;
+        self.vm.import_resolver_mut().load_stdlib()?;
+        let initial_env = self.vm.import_resolver().mk_type_ctxt().expect("program::typecheck(): stdlib has been loaded but was not found in cache on mk_types_env()");
+        self.vm
+            .import_resolver_mut()
             .resolve_imports(self.main_id)
             .map_err(|cache_err| {
                 cache_err.unwrap_error("program::typecheck(): expected source to be parsed")
             })?;
-        self.cache
+        self.vm
+            .import_resolver_mut()
             .typecheck(self.main_id, &initial_env)
             .map_err(|cache_err| {
                 cache_err.unwrap_error("program::typecheck(): expected source to be parsed")
@@ -129,18 +139,18 @@ impl Program {
     where
         E: ToDiagnostic<FileId>,
     {
-        report(&mut self.cache, error)
+        report(self.vm.import_resolver_mut(), error)
     }
 
     /// Create a markdown file with documentation for the specified program in `.nickel/doc/program_main_file_name.md`
     #[cfg(feature = "doc")]
     pub fn output_doc(&mut self, out: &mut dyn std::io::Write) -> Result<(), Error> {
-        doc::output_doc(&mut self.cache, self.main_id, out)
+        doc::output_doc(self.vm.import_resolver_mut(), self.main_id, out)
     }
 
     #[cfg(debug_assertions)]
     pub fn set_skip_stdlib(&mut self) {
-        self.cache.skip_stdlib = true;
+        self.vm.import_resolver_mut().skip_stdlib = true;
     }
 
     pub fn pprint_ast(
@@ -151,10 +161,10 @@ impl Program {
         use crate::pretty::*;
         use pretty::BoxAllocator;
 
-        let Program { ref main_id, cache } = self;
+        let Program { ref main_id, vm } = self;
         let allocator = BoxAllocator;
 
-        let rt = cache.parse_nocache(*main_id)?.0;
+        let rt = vm.import_resolver().parse_nocache(*main_id)?.0;
         let rt = if apply_transforms {
             crate::transform::transform(rt, None).unwrap()
         } else {
@@ -182,18 +192,19 @@ impl Program {
 //TODO: not sure where this should go. It seems to embed too much logic to be in `Cache`, but is
 //common to both `Program` and `Repl`. Leaving it here as a stand-alone function for now
 pub fn query(
-    cache: &mut Cache,
+    vm: &mut VirtualMachine<Cache>,
     file_id: FileId,
     initial_env: &Envs,
     path: Option<String>,
 ) -> Result<Term, Error> {
-    cache.prepare(file_id, &initial_env.type_ctxt)?;
+    vm.import_resolver_mut()
+        .prepare(file_id, &initial_env.type_ctxt)?;
     let t = if let Some(p) = path {
         // Parsing `y.path`. We `seq` it to force the evaluation of the underlying value,
         // which can be then showed to the user. The newline gives better messages in case of
         // errors.
         let source = format!("x.{}", p);
-        let query_file_id = cache.add_tmp("<query>", source.clone());
+        let query_file_id = vm.import_resolver_mut().add_tmp("<query>", source.clone());
         let new_term =
             parser::grammar::TermParser::new().parse_term(query_file_id, Lexer::new(&source))?;
 
@@ -202,15 +213,15 @@ pub fn query(
         eval::env_add(
             &mut env,
             Ident::from("x"),
-            cache.get_owned(file_id).unwrap(),
+            vm.import_resolver().get_owned(file_id).unwrap(),
             eval::Environment::new(),
         );
         eval::subst(new_term, &eval::Environment::new(), &env)
     } else {
-        cache.get_owned(file_id).unwrap()
+        vm.import_resolver().get_owned(file_id).unwrap()
     };
 
-    let mut vm = eval::VirtualMachine::new(cache);
+    vm.reset();
     Ok(vm.eval_meta(t, &initial_env.eval_env)?.into())
 }
 

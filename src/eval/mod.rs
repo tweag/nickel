@@ -133,7 +133,7 @@ impl Default for EvalMode {
 }
 
 // The current state of the Nickel virtual machine.
-pub struct VirtualMachine<'a, R: ImportResolver> {
+pub struct VirtualMachine<R: ImportResolver> {
     // Behavior of evaluation with respect to metavalues.
     eval_mode: EvalMode,
     // The main stack, storing arguments, thunks and pending computations.
@@ -141,11 +141,11 @@ pub struct VirtualMachine<'a, R: ImportResolver> {
     // The call stack, for error reporting.
     call_stack: CallStack,
     // The interface used to fetch imports.
-    import_resolver: &'a mut R,
+    import_resolver: R,
 }
 
-impl<'a, R: ImportResolver> VirtualMachine<'a, R> {
-    pub fn new(import_resolver: &'a mut R) -> Self {
+impl<R: ImportResolver> VirtualMachine<R> {
+    pub fn new(import_resolver: R) -> Self {
         VirtualMachine {
             import_resolver,
             eval_mode: Default::default(),
@@ -167,6 +167,14 @@ impl<'a, R: ImportResolver> VirtualMachine<'a, R> {
         }
 
         self.eval_mode = new_mode;
+    }
+
+    pub fn import_resolver(&self) -> &R {
+        &self.import_resolver
+    }
+
+    pub fn import_resolver_mut(&mut self) -> &mut R {
+        &mut self.import_resolver
     }
 
     /// Evaluate a Nickel term. Wrapper around [eval_closure] that starts from an empty local

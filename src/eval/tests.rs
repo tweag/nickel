@@ -11,7 +11,7 @@ use codespan::Files;
 
 /// Evaluate a term without import support.
 fn eval_no_import(t: RichTerm) -> Result<Term, EvalError> {
-    VirtualMachine::new(&mut DummyResolver {})
+    VirtualMachine::new(DummyResolver {})
         .eval(t, &Environment::new())
         .map(Term::from)
 }
@@ -147,19 +147,22 @@ fn merge_incompatible_defaults() {
 
 #[test]
 fn imports() {
-    let mut resolver = SimpleResolver::new();
-    resolver.add_source(String::from("two"), String::from("1 + 1"));
-    resolver.add_source(String::from("lib"), String::from("{f = true}"));
-    resolver.add_source(String::from("bad"), String::from("^$*/.23ab 0°@"));
-    resolver.add_source(
+    let mut vm = VirtualMachine::new(SimpleResolver::new());
+    vm.import_resolver_mut()
+        .add_source(String::from("two"), String::from("1 + 1"));
+    vm.import_resolver_mut()
+        .add_source(String::from("lib"), String::from("{f = true}"));
+    vm.import_resolver_mut()
+        .add_source(String::from("bad"), String::from("^$*/.23ab 0°@"));
+    vm.import_resolver_mut().add_source(
         String::from("nested"),
         String::from("let x = import \"two\" in x + 1"),
     );
-    resolver.add_source(
+    vm.import_resolver_mut().add_source(
         String::from("cycle"),
         String::from("let x = import \"cycle_b\" in {a = 1, b = x.a}"),
     );
-    resolver.add_source(
+    vm.import_resolver_mut().add_source(
         String::from("cycle_b"),
         String::from("let x = import \"cycle\" in {a = x.a}"),
     );
@@ -168,35 +171,35 @@ fn imports() {
         var: &str,
         import: &str,
         body: RichTerm,
-        resolver: &mut R,
+        vm: &mut VirtualMachine<R>,
     ) -> Result<RichTerm, ImportError>
     where
         R: ImportResolver,
     {
         resolve_imports(
             mk_term::let_in(var, mk_term::import(import), body),
-            resolver,
+            vm.import_resolver_mut(),
         )
         .map(|(t, _)| t)
     }
 
     // let x = import "does_not_exist" in x
-    match mk_import("x", "does_not_exist", mk_term::var("x"), &mut resolver).unwrap_err() {
+    match mk_import("x", "does_not_exist", mk_term::var("x"), &mut vm).unwrap_err() {
         ImportError::IOError(_, _, _) => (),
         _ => assert!(false),
     };
 
     // let x = import "bad" in x
-    match mk_import("x", "bad", mk_term::var("x"), &mut resolver).unwrap_err() {
+    match mk_import("x", "bad", mk_term::var("x"), &mut vm).unwrap_err() {
         ImportError::ParseErrors(_, _) => (),
         _ => assert!(false),
     };
 
     // let x = import "two" in x
-    let mk_import_two = mk_import("x", "two", mk_term::var("x"), &mut resolver).unwrap();
+    let mk_import_two = mk_import("x", "two", mk_term::var("x"), &mut vm).unwrap();
+    vm.reset();
     assert_eq!(
-        VirtualMachine::new(&mut resolver)
-            .eval(mk_import_two, &Environment::new(),)
+        vm.eval(mk_import_two, &Environment::new(),)
             .map(Term::from)
             .unwrap(),
         Term::Num(2.0)
@@ -207,11 +210,11 @@ fn imports() {
         "x",
         "lib",
         mk_term::op1(UnaryOp::StaticAccess(Ident::from("f")), mk_term::var("x")),
-        &mut resolver,
+        &mut vm,
     );
+    vm.reset();
     assert_eq!(
-        VirtualMachine::new(&mut resolver)
-            .eval(mk_import_lib.unwrap(), &Environment::new(),)
+        vm.eval(mk_import_lib.unwrap(), &Environment::new(),)
             .map(Term::from)
             .unwrap(),
         Term::Bool(true)
@@ -284,7 +287,6 @@ fn interpolation_nested() {
 #[test]
 fn initial_env() {
     let mut initial_env = Environment::new();
-    let mut resolver = DummyResolver {};
     initial_env.insert(
         Ident::from("g"),
         Thunk::new(
@@ -295,7 +297,7 @@ fn initial_env() {
 
     let t = mk_term::let_in("x", Term::Num(2.0), mk_term::var("x"));
     assert_eq!(
-        VirtualMachine::new(&mut resolver)
+        VirtualMachine::new(DummyResolver {})
             .eval(t, &initial_env)
             .map(Term::from),
         Ok(Term::Num(2.0))
@@ -303,7 +305,7 @@ fn initial_env() {
 
     let t = mk_term::let_in("x", Term::Num(2.0), mk_term::var("g"));
     assert_eq!(
-        VirtualMachine::new(&mut resolver)
+        VirtualMachine::new(DummyResolver {})
             .eval(t, &initial_env)
             .map(Term::from),
         Ok(Term::Num(1.0))
@@ -312,7 +314,7 @@ fn initial_env() {
     // Shadowing of the initial environment
     let t = mk_term::let_in("g", Term::Num(2.0), mk_term::var("g"));
     assert_eq!(
-        VirtualMachine::new(&mut resolver)
+        VirtualMachine::new(DummyResolver {})
             .eval(t, &initial_env)
             .map(Term::from),
         Ok(Term::Num(2.0))
