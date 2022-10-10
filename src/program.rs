@@ -40,9 +40,7 @@ use std::result::Result;
 pub struct Program {
     /// The id of the program source in the file database.
     main_id: FileId,
-    /// The cache holding the sources and parsed terms of the main source as well as imports.
-    //cache: Cache,
-    ///
+    /// The state of the Nickel virtual machine.
     vm: VirtualMachine<Cache>,
 }
 
