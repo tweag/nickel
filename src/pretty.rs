@@ -1,4 +1,5 @@
 use crate::destruct::{self, Destruct};
+use crate::parser::lexer::KEYWORDS;
 use crate::term::{BinaryOp, MetaValue, RichTerm, Term, UnaryOp};
 use crate::types::{AbsType, Types};
 pub use pretty::{DocAllocator, DocBuilder, Pretty};
@@ -45,7 +46,7 @@ where
 {
     fn quote_if_needed(&'a self, id: &crate::identifier::Ident) -> DocBuilder<'a, Self, A> {
         let reg = Regex::new("^_?[a-zA-Z][_a-zA-Z0-9-]*$").unwrap();
-        if reg.is_match(id.as_ref()) {
+        if reg.is_match(id.as_ref()) && !KEYWORDS.contains(&id.as_ref()) {
             self.as_string(id)
         } else {
             self.as_string(id).double_quotes()

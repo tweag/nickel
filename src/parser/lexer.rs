@@ -33,6 +33,10 @@ use crate::parser::error::{LexicalError, ParseError};
 use logos::Logos;
 use std::ops::Range;
 
+// **IMPORTANT**
+// When adding or removing tokens that might be parsed as identifiers,
+// please update the KEYWORDS array
+// list
 /// The tokens in normal mode.
 #[derive(Logos, Debug, PartialEq, Clone)]
 pub enum NormalToken<'input> {
@@ -289,6 +293,12 @@ pub enum NormalToken<'input> {
     #[regex("#[^\n]*")]
     LineComment,
 }
+
+pub const KEYWORDS: &[&str] = &[
+    "Dyn", "Num", "Bool", "Str", "Array", "if", "then", "else", "forall", "in", "let", "rec",
+    "switch", "null", "true", "false", "fun", "import", "merge", "default", "doc", "optional",
+    "priority", "force",
+];
 
 /// The tokens in string mode.
 #[derive(Logos, Debug, PartialEq, Clone)]
