@@ -391,7 +391,7 @@ impl Linearizer for AnalysisHost {
                 id_mapping.insert(*id, index);
             });
 
-        fn transform_wildcard(wildcars: Vec<Types>, t: Types) -> Types {
+        fn transform_wildcard(wildcars: &Vec<Types>, t: Types) -> Types {
             match t {
                 Types(AbsType::Wildcard(i)) => wildcars.get(i).unwrap_or(&t).clone(),
                 _ => t,
@@ -418,7 +418,7 @@ impl Linearizer for AnalysisHost {
                 },
             )
             .map(|item| LinearizationItem {
-                ty: transform_wildcard(wildcard_vars.clone(), item.ty),
+                ty: transform_wildcard(&wildcard_vars, item.ty),
                 ..item
             })
             .collect();
