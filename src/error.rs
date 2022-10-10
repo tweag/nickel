@@ -1328,7 +1328,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
             ,
             TypecheckError::TypeMismatch(expd, actual, span_opt) => {
                 fn get_note(ty: &Types) -> String {
-                    if ty.0.is_flat_type() {
+                    if ty.0.is_flat() {
                         String::from("the term")
                     } else {
                         String::from("a type expression")
