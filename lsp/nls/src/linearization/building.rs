@@ -55,6 +55,7 @@ impl Building {
             TermKind::Structure => unreachable!(),
             TermKind::Usage(_) => unreachable!(),
             TermKind::Record(_) => unreachable!(),
+            TermKind::RecordBind { .. } => unreachable!(),
             TermKind::Declaration(_, ref mut usages, _)
             | TermKind::RecordField { ref mut usages, .. } => usages.push(usage),
         };

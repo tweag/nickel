@@ -5,7 +5,7 @@ use log::debug;
 use nickel_lang::{
     identifier::Ident,
     position::TermPos,
-    term::{MetaValue, Term, UnaryOp},
+    term::{MetaValue, RichTerm, Term, UnaryOp},
     typecheck::{
         linearization::{Linearization, Linearizer, Scope, ScopeId},
         reporting::{to_type, NameReg},
@@ -104,6 +104,36 @@ impl Linearizer for AnalysisHost {
         mut pos: TermPos,
         ty: TypeWrapper,
     ) {
+        fn _register_record_completion(
+            ty: TypeWrapper,
+            scope: Scope,
+            meta: Option<MetaValue>,
+            ident: &Ident,
+            id: usize,
+            term: &RichTerm,
+            lin: &mut Linearization<Building>,
+        ) {
+            let t = term.as_ref();
+
+            match t {
+                Term::Record(fields, ..) => {
+                    let fields = fields.keys().map(|item| item.clone()).collect();
+                    lin.push(LinearizationItem {
+                        id,
+                        ty,
+                        pos: ident.pos.clone(),
+                        scope,
+                        kind: TermKind::RecordBind {
+                            ident: ident.clone(),
+                            fields,
+                        },
+                        meta,
+                    })
+                }
+                _ => (),
+            }
+        }
+
         debug!("adding term: {:?} @ {:?}", term, pos);
         let mut id_gen = lin.id_gen();
 
@@ -197,6 +227,9 @@ impl Linearizer for AnalysisHost {
                 }
                 for matched in destruct.to_owned().inner() {
                     let (ident, term) = matched.as_meta_field();
+
+                    // register_record_completion(&ident, &term, &mut lin);
+
                     let id = id_gen.get_and_advance();
                     self.env.insert(ident.to_owned(), id);
                     lin.push(LinearizationItem {

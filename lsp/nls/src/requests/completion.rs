@@ -46,13 +46,20 @@ pub fn handle_completion(
         .get_in_scope(&item)
         .iter()
         .filter_map(|i| match i.kind {
-            TermKind::Declaration(ref ident, _, _) => Some((ident.clone(), i.ty.clone())),
+            TermKind::Declaration(ref ident, _, _) => Some((vec![ident.clone()], i.ty.clone())),
+            TermKind::RecordBind { ref fields, .. } => Some((fields.clone(), i.ty.clone())),
             _ => None,
         })
-        .map(|(ident, _)| CompletionItem {
-            label: ident.into_label(),
-            ..Default::default()
+        .map(|(idents, _)| {
+            idents
+                .iter()
+                .map(|ident| CompletionItem {
+                    label: ident.into_label(),
+                    ..Default::default()
+                })
+                .collect::<Vec<_>>()
         })
+        .flatten()
         .collect();
 
     server.reply(Response::new_ok(id, in_scope));
