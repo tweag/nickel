@@ -9,7 +9,7 @@ use nickel_lang::{
     typecheck::{
         linearization::{Linearization, Linearizer, Scope, ScopeId},
         reporting::{to_type, NameReg},
-        TypeWrapper, UnifTable,
+        TypeWrapper,
     },
     types::AbsType,
 };
@@ -90,10 +90,12 @@ impl Default for AnalysisHost {
     }
 }
 
+use nickel_lang::typecheck::Extra;
+use nickel_lang::types::Types;
 impl Linearizer for AnalysisHost {
     type Building = Building;
     type Completed = Completed;
-    type CompletionExtra = (UnifTable, HashMap<usize, Ident>);
+    type CompletionExtra = Extra;
 
     fn add_term(
         &mut self,
@@ -347,7 +349,11 @@ impl Linearizer for AnalysisHost {
     fn complete(
         self,
         mut lin: Linearization<Building>,
-        (table, reported_names): (UnifTable, HashMap<usize, Ident>),
+        Extra {
+            table,
+            names: reported_names,
+            wildcards,
+        }: Extra,
     ) -> Linearization<Completed> {
         debug!("linearizing");
 
@@ -390,6 +396,12 @@ impl Linearizer for AnalysisHost {
                 id_mapping.insert(*id, index);
             });
 
+        fn transform_wildcard(wildcars: &Vec<Types>, t: Types) -> Types {
+            match t {
+                Types(AbsType::Wildcard(i)) => wildcars.get(i).unwrap_or(&t).clone(),
+                _ => t,
+            }
+        }
         // resolve types
         let lin_ = linearization
             .into_iter()
@@ -410,6 +422,10 @@ impl Linearizer for AnalysisHost {
                     meta,
                 },
             )
+            .map(|item| LinearizationItem {
+                ty: transform_wildcard(&wildcards, item.ty),
+                ..item
+            })
             .collect();
 
         Linearization::new(Completed::new(lin_, scope, id_mapping))
