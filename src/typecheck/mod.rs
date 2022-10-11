@@ -237,7 +237,7 @@ where
 {
     let (mut table, mut names) = (UnifTable::new(), HashMap::new());
     let mut building = Linearization::new(LL::Building::default());
-    let mut wildcard_vars: Vec<TypeWrapper> = Vec::new();
+    let mut wildcard_vars = Vec::new();
 
     {
         let mut state: State = State {
