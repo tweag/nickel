@@ -55,16 +55,16 @@ pub fn handle_completion(
 
     // Can we seperate record completion from just normal completion?
 
-    // Extract identifiers from a row type which forms a record
-    // Ensure that ty is a row type.
+    /// Extract identifiers from a row type which forms a record.
+    /// Ensure that ty is really a row type.
     fn extract_ident(ty: &Box<Types>) -> Vec<Ident> {
         let mut fields = Vec::new();
-        let mut item = (**ty).clone();
+        let mut item = &**ty;
         loop {
             match item {
                 Types(AbsType::RowExtend(ident, _, ref next)) => {
-                    fields.push(ident);
-                    item = (**next).clone();
+                    fields.push(ident.clone());
+                    item = &**next;
                 }
                 Types(AbsType::RowEmpty()) => break,
                 _ => unreachable!(),
