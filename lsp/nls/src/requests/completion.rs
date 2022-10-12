@@ -42,12 +42,22 @@ pub fn handle_completion(
 
     let item = item.unwrap().to_owned();
 
+    // How can we get data for record completion based on the TermKind
+    // 1. Record: just list it's fields
+    // 2. RecordRef: list the field it contains if the item we're at corresponds with it's ID
+    // 3. Check the type of the term: If it's a record, list it's fields
+    // 4. Check the MetaValue for it's contract: if it's a record, list it's fields
+
+    // Can we seperate record completion from just normal completion?
+
     let in_scope: Vec<_> = linearization
         .get_in_scope(&item)
         .iter()
         .filter_map(|i| match i.kind {
             TermKind::Declaration(ref ident, _, _) => Some((vec![ident.clone()], i.ty.clone())),
-            TermKind::RecordBind { ref fields, .. } => Some((fields.clone(), i.ty.clone())),
+            TermKind::RecordRef { ref fields, .. } if i.id == item.id => {
+                Some((fields.clone(), i.ty.clone()))
+            }
             _ => None,
         })
         .map(|(idents, _)| {

@@ -123,7 +123,7 @@ impl Linearizer for AnalysisHost {
                         ty,
                         pos: ident.pos.clone(),
                         scope,
-                        kind: TermKind::RecordBind {
+                        kind: TermKind::RecordRef {
                             ident: ident.clone(),
                             fields,
                         },
@@ -227,11 +227,11 @@ impl Linearizer for AnalysisHost {
                 }
                 for matched in destruct.to_owned().inner() {
                     let (ident, term) = matched.as_meta_field();
-
-                    // register_record_completion(&ident, &term, &mut lin);
-
                     let id = id_gen.get_and_advance();
                     self.env.insert(ident.to_owned(), id);
+
+                    // register record completion here
+
                     lin.push(LinearizationItem {
                         id,
                         // TODO: get type from pattern
@@ -254,6 +254,8 @@ impl Linearizer for AnalysisHost {
                 }
             }
             Term::Let(ident, ..) | Term::Fun(ident, ..) => {
+                // register record completion here
+
                 let value_ptr = match term {
                     Term::Let(..) => {
                         self.let_binding = Some(id);
