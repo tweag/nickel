@@ -782,7 +782,7 @@ TypeAtom: Types = {
             );
         Types(AbsType::Enum(Box::new(ty)))
     },
-    "{" "_" ":" <Types> "}" => Types(AbsType::DynRecord(Box::new(<>))),
+    "{" "_" ":" <Types> "}" => Types(AbsType::Dict(Box::new(<>))),
     "_" => {
         let id = *next_wildcard_id;
         *next_wildcard_id += 1;

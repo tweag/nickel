@@ -385,7 +385,7 @@ pub fn fix_type_vars(ty: &mut Types) {
                     fix_type_vars_aux(tail.as_mut(), bound_vars);
                 }
             }
-            AbsType::DynRecord(ref mut ty)
+            AbsType::Dict(ref mut ty)
             | AbsType::Array(ref mut ty)
             | AbsType::Enum(ref mut ty)
             | AbsType::StaticRecord(ref mut ty) => fix_type_vars_aux(ty.as_mut(), bound_vars),

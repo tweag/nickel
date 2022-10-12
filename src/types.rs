@@ -32,12 +32,10 @@
 //! The type `{ myField : Num, a }` indicates that any argument must have at least the field
 //! `myField` of type `Num`, but may contain any other fields (or no additional field at all).
 //!
-//! ## Dynamic records
+//! ## Dictionaries
 //!
-//! A second type available for records is the dynamic record type `{ _ : Type }`. A record of this
-//! type may have any number of fields with any names, but they must all be of the same `Type`.
-//! This is useful when using record as dictionaries, as such record is indeed a dictionary with
-//! string keys and `Type` values. It can be mapped over and accessed in a type-safe manner.
+//! A dictionary type: `{ _ : Type }`. It has string keys and `Type` values. It can be mapped
+//! over and accessed in a type-safe manner.
 //!
 //! # Enum types
 //!
@@ -97,9 +95,9 @@ pub enum AbsType<Ty> {
     Enum(Ty /* Row */),
     /// A record type, wrapping a row type for records.
     StaticRecord(Ty /* Row */),
-    /// A dynamic record type, where all fields must have the same type.
-    // DynRecord will only have a default type, this is simpler for now, I don't think we lose much
-    DynRecord(Ty /*, Ty  Row */),
+    /// A dictionary type.
+    // Dict will only have a default type, this is simpler for now, I don't think we lose much
+    Dict(Ty),
     /// A parametrized array.
     Array(Ty),
     /// A type wildcard, wrapping an ID unique within a given file.
@@ -132,7 +130,7 @@ impl<Ty> AbsType<Ty> {
             }
             AbsType::Enum(t) => Ok(AbsType::Enum(f(t)?)),
             AbsType::StaticRecord(t) => Ok(AbsType::StaticRecord(f(t)?)),
-            AbsType::DynRecord(t) => Ok(AbsType::DynRecord(f(t)?)),
+            AbsType::Dict(t) => Ok(AbsType::Dict(f(t)?)),
             AbsType::Array(t) => Ok(AbsType::Array(f(t)?)),
             AbsType::Wildcard(i) => Ok(AbsType::Wildcard(i)),
         }
@@ -381,7 +379,7 @@ impl Types {
 
                 mk_app!(contract::record(), form(sy, pol, ty, h)?)
             }
-            AbsType::DynRecord(ref ty) => {
+            AbsType::Dict(ref ty) => {
                 mk_app!(contract::dyn_record(), ty.subcontract(h, pol, sy)?)
             }
             AbsType::Wildcard(_) => contract::dynamic(),
@@ -477,10 +475,10 @@ impl Types {
                 .traverse(f, state, order)
                 .map(Box::new)
                 .map(AbsType::StaticRecord),
-            AbsType::DynRecord(ty_inner) => (*ty_inner)
+            AbsType::Dict(ty_inner) => (*ty_inner)
                 .traverse(f, state, order)
                 .map(Box::new)
-                .map(AbsType::DynRecord),
+                .map(AbsType::Dict),
             AbsType::Array(ty_inner) => (*ty_inner)
                 .traverse(f, state, order)
                 .map(Box::new)
@@ -547,7 +545,7 @@ impl fmt::Display for Types {
             }
             AbsType::Enum(row) => write!(f, "[|{}|]", row),
             AbsType::StaticRecord(row) => write!(f, "{{{}}}", row),
-            AbsType::DynRecord(ty) => write!(f, "{{_: {}}}", ty),
+            AbsType::Dict(ty) => write!(f, "{{_: {}}}", ty),
             AbsType::RowEmpty() => Ok(()),
             AbsType::RowExtend(id, ty_opt, tail) => {
                 if let Some(ty) = ty_opt {

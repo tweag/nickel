@@ -409,7 +409,7 @@ fn type_eq_bounded<E: TermEnvironment>(
             | (AbsType::Bool(), AbsType::Bool())
             | (AbsType::Sym(), AbsType::Sym())
             | (AbsType::Str(), AbsType::Str()) => true,
-            (AbsType::DynRecord(tyw1), AbsType::DynRecord(tyw2))
+            (AbsType::Dict(tyw1), AbsType::Dict(tyw2))
             | (AbsType::Array(tyw1), AbsType::Array(tyw2)) => {
                 type_eq_bounded(state, tyw1, env1, tyw2, env2)
             }

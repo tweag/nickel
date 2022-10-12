@@ -487,7 +487,7 @@ fn walk_type<L: Linearizer>(
        }
        AbsType::Flat(t) => walk(state, ctxt, lin, linearizer, t),
        AbsType::Enum(ty2)
-       | AbsType::DynRecord(ty2)
+       | AbsType::Dict(ty2)
        | AbsType::StaticRecord(ty2)
        | AbsType::Array(ty2)
        | AbsType::Forall(_, ty2) => walk_type(state, ctxt, lin, linearizer, ty2),
@@ -767,8 +767,8 @@ fn type_check_<L: Linearizer>(
                 ty.clone()
             };
 
-            if let TypeWrapper::Concrete(AbsType::DynRecord(rec_ty)) = root_ty {
-                // Checking for a dynamic record
+            if let TypeWrapper::Concrete(AbsType::Dict(rec_ty)) = root_ty {
+                // Checking for a dictionaries
                 stat_map
                     .iter()
                     .try_for_each(|(_, t)| -> Result<(), TypecheckError> {
@@ -1195,8 +1195,8 @@ impl<E: TermEnvironment + Clone> GenericTypeWrapper<E> {
             Concrete(AbsType::StaticRecord(row)) => {
                 Concrete(AbsType::StaticRecord(Box::new(row.subst(id, to))))
             }
-            Concrete(AbsType::DynRecord(def_ty)) => {
-                Concrete(AbsType::DynRecord(Box::new(def_ty.subst(id, to))))
+            Concrete(AbsType::Dict(def_ty)) => {
+                Concrete(AbsType::Dict(Box::new(def_ty.subst(id, to))))
             }
             Concrete(AbsType::Array(ty)) => Concrete(AbsType::Array(Box::new(ty.subst(id, to)))),
             // Cases are spelled out instead of using a catch-all case `_ => ` to force
@@ -1412,7 +1412,7 @@ pub fn unify(
                 }
                 (tyw1, tyw2) => unify(state, ctxt, tyw1, tyw2),
             },
-            (AbsType::DynRecord(t), AbsType::DynRecord(t2)) => unify(state, &ctxt, *t, *t2),
+            (AbsType::Dict(t), AbsType::Dict(t2)) => unify(state, &ctxt, *t, *t2),
             (AbsType::Forall(i1, t1t), AbsType::Forall(i2, t2t)) => {
                 // Very stupid (slow) implementation
                 let constant_type = state.table.fresh_const();
@@ -1745,7 +1745,7 @@ fn constrain_var(state: &mut State, tyw: &TypeWrapper, p: usize) {
                 }
                 AbsType::Enum(row) => constrain_var_(state, constr, row, p),
                 AbsType::StaticRecord(row) => constrain_var_(state, constr, row, p),
-                AbsType::DynRecord(tyw) => constrain_var_(state, constr, tyw, p),
+                AbsType::Dict(tyw) => constrain_var_(state, constr, tyw, p),
             },
             TypeWrapper::Constant(_) | TypeWrapper::Contract(..) => (),
         }

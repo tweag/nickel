@@ -770,7 +770,7 @@ where
                     .braces(),
                 _ => row.pretty(allocator).braces(),
             },
-            DynRecord(ty) => allocator
+            Dict(ty) => allocator
                 .line()
                 .append(allocator.text("_"))
                 .append(allocator.space())
