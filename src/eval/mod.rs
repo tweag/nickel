@@ -154,10 +154,11 @@ impl<R: ImportResolver> VirtualMachine<R> {
         }
     }
 
-    /// Reset the state of the machine (stacks and eval mode) to prepare for another evaluation round.
+    /// Reset the state of the machine (stacks, eval mode and thunk state) to prepare for another evaluation round.
     pub fn reset(&mut self) {
         self.eval_mode = Default::default();
         self.call_stack.0.clear();
+        reset_thunks(&mut self.stack);
         self.stack.clear();
     }
 
@@ -175,6 +176,10 @@ impl<R: ImportResolver> VirtualMachine<R> {
 
     pub fn import_resolver_mut(&mut self) -> &mut R {
         &mut self.import_resolver
+    }
+
+    pub fn stack_mut(&mut self) -> &mut Stack {
+        &mut self.stack
     }
 
     /// Evaluate a Nickel term. Wrapper around [eval_closure] that starts from an empty local
@@ -759,6 +764,12 @@ pub fn env_add(env: &mut Environment, id: Ident, rt: RichTerm, local_env: Enviro
 fn update_thunks(stack: &mut Stack, closure: &Closure) {
     while let Some(thunk) = stack.pop_thunk() {
         thunk.update(closure.clone());
+    }
+}
+
+fn reset_thunks(stack: &mut Stack) {
+    while let Some(thunk) = stack.pop_thunk() {
+        thunk.reset_state();
     }
 }
 
