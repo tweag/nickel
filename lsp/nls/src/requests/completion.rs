@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use codespan::ByteIndex;
 use codespan_lsp::position_to_byte_index;
 use log::debug;
@@ -6,7 +8,7 @@ use lsp_types::{CompletionItem, CompletionParams};
 use nickel_lang::{
     identifier::Ident,
     term::{Contract, MetaValue},
-    types::{AbsType, Types},
+    types::{AbsType, RowIteratorItem, Types},
 };
 use serde_json::Value;
 
@@ -58,19 +60,12 @@ pub fn handle_completion(
     /// Extract identifiers from a row type which forms a record.
     /// Ensure that ty is really a row type.
     fn extract_ident(ty: &Box<Types>) -> Vec<Ident> {
-        let mut fields = Vec::new();
-        let mut item = &**ty;
-        loop {
-            match item {
-                Types(AbsType::RowExtend(ident, _, ref next)) => {
-                    fields.push(ident.clone());
-                    item = &**next;
-                }
-                Types(AbsType::RowEmpty()) => break,
-                _ => unreachable!(),
-            }
-        }
-        fields
+        ty.iter_as_rows()
+            .filter_map(|item| match item {
+                RowIteratorItem::Row(ident, _) => Some(ident.clone()),
+                RowIteratorItem::Tail(..) => None,
+            })
+            .collect::<Vec<_>>()
     }
 
     let in_scope: Vec<_> = linearization
