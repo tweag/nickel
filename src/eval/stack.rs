@@ -223,6 +223,20 @@ impl Stack {
         }
     }
 
+    /// Pops all items in the stack and resets the state of the thunks it encounters.
+    pub fn reset_thunks(&mut self) {
+        match self.0.pop() {
+            Some(Marker::Thunk(thunk)) => { 
+                thunk.reset_state();
+                self.reset_thunks();
+            }
+            Some(_m) => {
+                self.reset_thunks();
+            }
+            None => {}
+        }
+    }
+
     /// Try to pop an operator continuation from the top of the stack. If `None` is returned, the
     /// top element was not an operator continuation and the stack is left unchanged.
     pub fn pop_op_cont(&mut self) -> Option<(OperationCont, usize, TermPos)> {
