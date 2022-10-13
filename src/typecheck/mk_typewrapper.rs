@@ -97,7 +97,7 @@ pub fn dyn_record<T>(ty: T) -> TypeWrapper
 where
     T: Into<TypeWrapper>,
 {
-    TypeWrapper::Concrete(AbsType::DynRecord(Box::new(ty.into())))
+    TypeWrapper::Concrete(AbsType::Dict(Box::new(ty.into())))
 }
 
 pub fn array<T>(ty: T) -> TypeWrapper
