@@ -226,7 +226,7 @@ impl Stack {
     /// Pops all items in the stack and resets the state of the thunks it encounters.
     pub fn reset_thunks(&mut self) {
         match self.0.pop() {
-            Some(Marker::Thunk(thunk)) => { 
+            Some(Marker::Thunk(thunk)) => {
                 thunk.reset_state();
                 self.reset_thunks();
             }
