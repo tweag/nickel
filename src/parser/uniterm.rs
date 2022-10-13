@@ -234,7 +234,7 @@ impl UniRecord {
                     }
                 },
             )?;
-        Ok(Types(AbsType::StaticRecord(Box::new(ty))))
+        Ok(Types(AbsType::Record(Box::new(ty))))
     }
 
     pub fn with_pos(mut self, pos: TermPos) -> Self {
@@ -388,7 +388,7 @@ pub fn fix_type_vars(ty: &mut Types) {
             AbsType::Dict(ref mut ty)
             | AbsType::Array(ref mut ty)
             | AbsType::Enum(ref mut ty)
-            | AbsType::StaticRecord(ref mut ty) => fix_type_vars_aux(ty.as_mut(), bound_vars),
+            | AbsType::Record(ref mut ty) => fix_type_vars_aux(ty.as_mut(), bound_vars),
         }
     }
 
