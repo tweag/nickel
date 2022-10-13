@@ -154,16 +154,57 @@ fn unary_op() {
 
 #[test]
 fn enum_terms() {
-    assert_eq!(parse_without_pos("`foo"), Enum(Ident::from("foo")).into(),);
-    assert_eq!(
-        parse_without_pos("`\"foo:bar\""),
-        Enum(Ident::from("foo:bar")).into(),
-    );
+    let success_cases = [
+        (
+            "simple raw enum tag",
+            "`foo",
+            Enum(Ident::from("foo")).into(),
+        ),
+        (
+            "raw enum tag with keyword ident",
+            "`if",
+            Enum(Ident::from("if")).into(),
+        ),
+        ("empty string tag", "`\"\"", Enum(Ident::from("")).into()),
+        (
+            "string tag with non-ident chars",
+            "`\"foo:bar\"",
+            Enum(Ident::from("foo:bar")).into(),
+        ),
+        (
+            "string with spaces",
+            "`\"this works!\"",
+            Enum(Ident::from("this works!")).into(),
+        ),
+        (
+            "switch with raw tags",
+            "switch { `foo => true, `bar => false, _ => 456, } 123",
+            mk_switch!(Num(123.), ("foo", Bool(true)), ("bar", Bool(false)) ; Num(456.)),
+        ),
+        (
+            "switch with string tags",
+            "switch { `\"one:two\" => true, `\"three four\" => false, _ => 13 } 1",
+            mk_switch!(Num(1.), ("one:two", Bool(true)), ("three four", Bool(false)) ; Num(13.)),
+        ),
+    ];
 
-    assert_eq!(
-        parse_without_pos("switch { `foo => true, `bar => false, _ => 456, } 123"),
-        mk_switch!(Num(123.), ("foo", Bool(true)), ("bar", Bool(false)) ; Num(456.))
-    )
+    for (name, input, expected) in success_cases {
+        let actual = parse_without_pos(input);
+        assert_eq!(actual, expected, "test case \"{}\" failed", name,);
+    }
+
+    let failure_cases = [
+        ("whitespace between backtick & identifier", "`     test"),
+        ("invalid identifier", "`$s"),
+        ("empty raw identifier", "`"),
+        ("multiline string", "`m%\"words\"%m"),
+        ("interpolation", "`\"%{x}\""),
+    ];
+
+    for (name, input) in failure_cases {
+        let actual = parse(input);
+        assert_matches!(actual, Err(..), "test case \"{}\" failed", name);
+    }
 }
 
 #[test]

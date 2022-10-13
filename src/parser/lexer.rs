@@ -41,13 +41,25 @@ use std::ops::Range;
 #[derive(Logos, Debug, PartialEq, Clone)]
 pub enum NormalToken<'input> {
     #[regex("[ \r\t\n]+", logos::skip)]
+    // multiline strings cannot be used as enum tags, so we explicitly
+    // disallow that pattern.
+    #[regex("`m(%)+\"")]
     #[error]
     Error,
 
+    // **IMPORTANT**
+    // This regex should be kept in sync with the one for RawEnumTag below.
     #[regex("_?[a-zA-Z][_a-zA-Z0-9-']*")]
     Identifier(&'input str),
     #[regex("[0-9]*\\.?[0-9]+", |lex| lex.slice().parse())]
     NumLiteral(f64),
+
+    // **IMPORTANT**
+    // This regex should be kept in sync with the one for Identifier above.
+    #[regex("`_?[a-zA-Z][_a-zA-Z0-9-']*", |lex| lex.slice().split_at(1).1)]
+    RawEnumTag(&'input str),
+    #[token("`\"")]
+    StrEnumTagBegin,
 
     #[token("Dyn")]
     Dyn,
@@ -142,8 +154,6 @@ pub enum NormalToken<'input> {
     SimpleArrow,
     #[token("=>")]
     DoubleArrow,
-    #[token("`")]
-    Backtick,
     #[token("_")]
     Underscore,
     #[regex("m(%+)\"", |lex| lex.slice().len())]
@@ -579,7 +589,9 @@ impl<'input> Iterator for Lexer<'input> {
         };
 
         match token.as_ref() {
-            Some(Normal(NormalToken::DoubleQuote)) => self.enter_str(),
+            Some(Normal(NormalToken::DoubleQuote | NormalToken::StrEnumTagBegin)) => {
+                self.enter_str()
+            }
             Some(Normal(NormalToken::MultiStringStart(hash_count))) => {
                 self.enter_indstr(*hash_count)
             }
