@@ -158,8 +158,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
     pub fn reset(&mut self) {
         self.eval_mode = Default::default();
         self.call_stack.0.clear();
-        self.stack.reset_thunks();
-        self.stack.clear(); //Do we even need to call this at this point?
+        self.stack.reset();
     }
 
     fn set_mode(&mut self, new_mode: EvalMode) {

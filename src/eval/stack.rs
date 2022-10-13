@@ -128,21 +128,12 @@ impl Stack {
         count
     }
 
-    pub fn clear(&mut self) {
-        self.0.clear();
-    }
-
     /// Pops all items in the stack and resets the state of the thunks it encounters.
-    pub fn reset_thunks(&mut self) {
-        match self.0.pop() {
-            Some(Marker::Thunk(thunk)) => {
+    pub fn reset(&mut self) {
+        while let Some(marker) = self.0.pop() {
+            if let Marker::Thunk(thunk) = marker {
                 thunk.reset_state();
-                self.reset_thunks();
             }
-            Some(_m) => {
-                self.reset_thunks();
-            }
-            None => {}
         }
     }
 
