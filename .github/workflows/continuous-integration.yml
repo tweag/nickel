@@ -43,7 +43,7 @@ jobs:
           experimental-features = nix-command flakes
 
     - name: Setup Cachix
-      uses: cachix/cachix-action@v10
+      uses: cachix/cachix-action@v11
       with:
         name: tweag-nickel
         authToken: '${{ secrets.CACHIX_TWEAG_NICKEL_AUTH_TOKEN }}'
