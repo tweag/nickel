@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use codespan::ByteIndex;
 use codespan_lsp::position_to_byte_index;
 use log::debug;
