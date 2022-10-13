@@ -488,7 +488,7 @@ fn walk_type<L: Linearizer>(
        AbsType::Flat(t) => walk(state, ctxt, lin, linearizer, t),
        AbsType::Enum(ty2)
        | AbsType::Dict(ty2)
-       | AbsType::StaticRecord(ty2)
+       | AbsType::Record(ty2)
        | AbsType::Array(ty2)
        | AbsType::Forall(_, ty2) => walk_type(state, ctxt, lin, linearizer, ty2),
     }
@@ -1079,7 +1079,7 @@ pub fn infer_record_type(t: &Term, term_env: &SimpleTermEnvironment) -> TypeWrap
             contracts,
             ..
         }) if contracts.is_empty() => infer_record_type(rt.as_ref(), term_env),
-        Term::Record(rec, ..) | Term::RecRecord(rec, ..) => AbsType::StaticRecord(Box::new(
+        Term::Record(rec, ..) | Term::RecRecord(rec, ..) => AbsType::Record(Box::new(
             TypeWrapper::Concrete(rec.iter().fold(AbsType::RowEmpty(), |r, (id, rt)| {
                 AbsType::RowExtend(
                     id.clone(),
@@ -1192,8 +1192,8 @@ impl<E: TermEnvironment + Clone> GenericTypeWrapper<E> {
                 Box::new(rest.subst(id, to)),
             )),
             Concrete(AbsType::Enum(row)) => Concrete(AbsType::Enum(Box::new(row.subst(id, to)))),
-            Concrete(AbsType::StaticRecord(row)) => {
-                Concrete(AbsType::StaticRecord(Box::new(row.subst(id, to))))
+            Concrete(AbsType::Record(row)) => {
+                Concrete(AbsType::Record(Box::new(row.subst(id, to))))
             }
             Concrete(AbsType::Dict(def_ty)) => {
                 Concrete(AbsType::Dict(Box::new(def_ty.subst(id, to))))
@@ -1393,7 +1393,7 @@ pub fn unify(
                 }
                 (tyw1, tyw2) => unify(state, ctxt, tyw1, tyw2),
             },
-            (AbsType::StaticRecord(tyw1), AbsType::StaticRecord(tyw2)) => match (*tyw1, *tyw2) {
+            (AbsType::Record(tyw1), AbsType::Record(tyw2)) => match (*tyw1, *tyw2) {
                 (TypeWrapper::Concrete(r1), TypeWrapper::Concrete(r2))
                     if r1.is_row_type() && r2.is_row_type() =>
                 {
@@ -1744,7 +1744,7 @@ fn constrain_var(state: &mut State, tyw: &TypeWrapper, p: usize) {
                     constrain_var_(state, constr, rest, p)
                 }
                 AbsType::Enum(row) => constrain_var_(state, constr, row, p),
-                AbsType::StaticRecord(row) => constrain_var_(state, constr, row, p),
+                AbsType::Record(row) => constrain_var_(state, constr, row, p),
                 AbsType::Dict(tyw) => constrain_var_(state, constr, tyw, p),
             },
             TypeWrapper::Constant(_) | TypeWrapper::Contract(..) => (),

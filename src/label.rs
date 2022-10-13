@@ -140,7 +140,7 @@ pub mod ty_path {
                     _ => panic!(),
                 }
             }
-            (AbsType::StaticRecord(rows), Some(Elem::Field(ident))) => {
+            (AbsType::Record(rows), Some(Elem::Field(ident))) => {
                 // initial "{"
                 let mut start_offset = 1;
                 // middle ": " between the field name and the type

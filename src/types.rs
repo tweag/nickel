@@ -18,7 +18,7 @@
 //!
 //! The type systems feature structural records with row-polymorphism.
 //!
-//! ## Static records (row types)
+//! ## Records (row types)
 //!
 //! A row type for a record is a linked list of pairs `(id, type)` indicating the name and the type
 //! of each field. Row-polymorphism means that the tail of this list can be a type variable which
@@ -94,7 +94,7 @@ pub enum AbsType<Ty> {
     /// An enum type, wrapping a row type for enums.
     Enum(Ty /* Row */),
     /// A record type, wrapping a row type for records.
-    StaticRecord(Ty /* Row */),
+    Record(Ty /* Row */),
     /// A dictionary type.
     // Dict will only have a default type, this is simpler for now, I don't think we lose much
     Dict(Ty),
@@ -129,7 +129,7 @@ impl<Ty> AbsType<Ty> {
                 Ok(AbsType::RowExtend(id, t1_mapped, f(t2)?))
             }
             AbsType::Enum(t) => Ok(AbsType::Enum(f(t)?)),
-            AbsType::StaticRecord(t) => Ok(AbsType::StaticRecord(f(t)?)),
+            AbsType::Record(t) => Ok(AbsType::Record(f(t)?)),
             AbsType::Dict(t) => Ok(AbsType::Dict(f(t)?)),
             AbsType::Array(t) => Ok(AbsType::Array(f(t)?)),
             AbsType::Wildcard(i) => Ok(AbsType::Wildcard(i)),
@@ -347,7 +347,7 @@ impl Types {
 
                 mk_app!(contract::enums(), case)
             }
-            AbsType::StaticRecord(ref ty) => {
+            AbsType::Record(ref ty) => {
                 fn form(
                     sy: &mut i32,
                     pol: bool,
@@ -471,10 +471,10 @@ impl Types {
                 .traverse(f, state, order)
                 .map(Box::new)
                 .map(AbsType::Enum),
-            AbsType::StaticRecord(ty_inner) => (*ty_inner)
+            AbsType::Record(ty_inner) => (*ty_inner)
                 .traverse(f, state, order)
                 .map(Box::new)
-                .map(AbsType::StaticRecord),
+                .map(AbsType::Record),
             AbsType::Dict(ty_inner) => (*ty_inner)
                 .traverse(f, state, order)
                 .map(Box::new)
@@ -544,7 +544,7 @@ impl fmt::Display for Types {
                 write!(f, ". {}", curr)
             }
             AbsType::Enum(row) => write!(f, "[|{}|]", row),
-            AbsType::StaticRecord(row) => write!(f, "{{{}}}", row),
+            AbsType::Record(row) => write!(f, "{{{}}}", row),
             AbsType::Dict(ty) => write!(f, "{{_: {}}}", ty),
             AbsType::RowEmpty() => Ok(()),
             AbsType::RowExtend(id, ty_opt, tail) => {
