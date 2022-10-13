@@ -154,11 +154,11 @@ impl<R: ImportResolver> VirtualMachine<R> {
         }
     }
 
-    /// Reset the state of the machine (stacks and eval mode) to prepare for another evaluation round.
+    /// Reset the state of the machine (stacks, eval mode and thunk state) to prepare for another evaluation round.
     pub fn reset(&mut self) {
         self.eval_mode = Default::default();
         self.call_stack.0.clear();
-        self.stack.clear();
+        self.stack.reset();
     }
 
     fn set_mode(&mut self, new_mode: EvalMode) {

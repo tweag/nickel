@@ -301,4 +301,12 @@ impl ThunkUpdateFrame {
             false
         }
     }
+
+    /// Reset the state of the thunk to Suspended
+    /// Mainly used to reset the state of the vm between REPL runs
+    pub fn reset_state(self) {
+        if let Some(data) = Weak::upgrade(&self.data) {
+            data.borrow_mut().state = ThunkState::Suspended;
+        }
+    }
 }
