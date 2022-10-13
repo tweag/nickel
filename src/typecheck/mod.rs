@@ -768,7 +768,7 @@ fn type_check_<L: Linearizer>(
             };
 
             if let TypeWrapper::Concrete(AbsType::Dict(rec_ty)) = root_ty {
-                // Checking for a dictionaries
+                // Checking for a dictionary
                 stat_map
                     .iter()
                     .try_for_each(|(_, t)| -> Result<(), TypecheckError> {
