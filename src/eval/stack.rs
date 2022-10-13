@@ -132,6 +132,20 @@ impl Stack {
         self.0.clear();
     }
 
+    /// Pops all items in the stack and resets the state of the thunks it encounters.
+    pub fn reset_thunks(&mut self) {
+        match self.0.pop() {
+            Some(Marker::Thunk(thunk)) => {
+                thunk.reset_state();
+                self.reset_thunks();
+            }
+            Some(_m) => {
+                self.reset_thunks();
+            }
+            None => {}
+        }
+    }
+
     /// Count the number of arguments at the top of the stack.
     pub fn count_args(&self) -> usize {
         Stack::count(self, Marker::is_arg)
@@ -220,20 +234,6 @@ impl Stack {
                 None
             }
             _ => None,
-        }
-    }
-
-    /// Pops all items in the stack and resets the state of the thunks it encounters.
-    pub fn reset_thunks(&mut self) {
-        match self.0.pop() {
-            Some(Marker::Thunk(thunk)) => {
-                thunk.reset_state();
-                self.reset_thunks();
-            }
-            Some(_m) => {
-                self.reset_thunks();
-            }
-            None => {}
         }
     }
 
