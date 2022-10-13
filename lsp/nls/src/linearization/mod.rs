@@ -104,7 +104,7 @@ impl Linearizer for AnalysisHost {
         mut pos: TermPos,
         ty: TypeWrapper,
     ) {
-        fn get_record_bind_item(
+        fn get_record_ref_item(
             ty: TypeWrapper,
             scope: Scope,
             ident: &Ident,
@@ -223,7 +223,7 @@ impl Linearizer for AnalysisHost {
                     });
                     match term {
                         Term::LetPattern(_, _, body, _) => {
-                            get_record_bind_item(ty, self.scope.clone(), ident, id, body)
+                            get_record_ref_item(ty, self.scope.clone(), ident, id, body)
                                 .map_or((), |item| lin.push(item))
                         }
                         _ => (),
@@ -255,7 +255,7 @@ impl Linearizer for AnalysisHost {
                     });
 
                     match term {
-                        Term::LetPattern(..) => get_record_bind_item(
+                        Term::LetPattern(..) => get_record_ref_item(
                             TypeWrapper::Concrete(AbsType::Dyn()),
                             self.scope.clone(),
                             &ident,
@@ -301,7 +301,7 @@ impl Linearizer for AnalysisHost {
 
                 match term {
                     Term::LetPattern(_, _, body, _) => {
-                        get_record_bind_item(ty, self.scope.clone(), ident, id, body)
+                        get_record_ref_item(ty, self.scope.clone(), ident, id, body)
                             .map_or((), |item| lin.push(item))
                     }
                     _ => (),
