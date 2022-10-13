@@ -190,7 +190,9 @@ The following type constructors are available:
   pair.fst : Num
   ```
 
-- **Dictionary**: `{_: T}`. A dictionary mapping string keys to `T`.
+- **Dictionary**: `{_: T}`. A record whose field
+  names are statically unknown but are all of type `T`. Typically used to model
+  dictionaries.
 
   Example:
 
