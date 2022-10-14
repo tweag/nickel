@@ -50,7 +50,7 @@ impl Server {
             definition_provider: Some(OneOf::Left(true)),
             references_provider: Some(OneOf::Left(true)),
             completion_provider: Some(CompletionOptions {
-                trigger_characters: Some(vec![]),
+                trigger_characters: Some(vec![".".to_owned()]),
                 ..Default::default()
             }),
             document_symbol_provider: Some(OneOf::Left(true)),
