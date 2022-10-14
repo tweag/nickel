@@ -136,5 +136,13 @@ let Assert = fun l x => x || %blame% l in
   ({bar = 1, foo = 1} | Contract)
     & ({baz = 1} | Id)
    == {foo = 1, bar = 1, baz = 1},
+
+   # regression tests for #758
+  let A = fun param label value => value in
+  let B = fun label value => value in
+  ([1] | A (Array B)) == [1],
+  let B = fun label value => value in
+  let Contract = Array B in
+  true,
 ]
 |> array.foldl (fun x y => (x | Assert) && y) true
