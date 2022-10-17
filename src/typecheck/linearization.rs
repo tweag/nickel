@@ -24,7 +24,7 @@
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 
-use super::TypeWrapper;
+use super::UnifType;
 use crate::{identifier::Ident, position::TermPos, term::Term};
 
 /// Holds the state of a linearization, either in progress or finalized
@@ -92,7 +92,7 @@ pub trait Linearizer {
         _lin: &mut Linearization<Self::Building>,
         _term: &Term,
         _pos: TermPos,
-        _ty: TypeWrapper,
+        _ty: UnifType,
     ) {
     }
 
@@ -101,7 +101,7 @@ pub trait Linearizer {
         &mut self,
         _lin: &mut Linearization<Self::Building>,
         _ident: &Ident,
-        _new_type: TypeWrapper,
+        _new_type: UnifType,
     ) {
     }
 

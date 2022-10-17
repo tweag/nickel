@@ -1,5 +1,5 @@
 //! Helpers for building `TypeWrapper`s.
-use super::{TypeF, RowsF, RecordRowF, EnumRow, TypeWrapper};
+use super::{TypeF, RowsF, RecordRowF, EnumRow, UnifType};
 
 /// Multi-ary arrow constructor for types implementing `Into<TypeWrapper>`.
 #[macro_export]
@@ -92,18 +92,18 @@ macro_rules! generate_builder {
     };
 }
 
-pub fn dyn_record<T>(ty: T) -> TypeWrapper
+pub fn dyn_record<T>(ty: T) -> UnifType
 where
-    T: Into<TypeWrapper>,
+    T: Into<UnifType>,
 {
-    TypeWrapper::Concrete(AbsType::Dict(Box::new(ty.into())))
+    UnifType::Concrete(AbsType::Dict(Box::new(ty.into())))
 }
 
-pub fn array<T>(ty: T) -> TypeWrapper
+pub fn array<T>(ty: T) -> UnifType
 where
-    T: Into<TypeWrapper>,
+    T: Into<UnifType>,
 {
-    TypeWrapper::Concrete(AbsType::Array(Box::new(ty.into())))
+    UnifType::Concrete(AbsType::Array(Box::new(ty.into())))
 }
 
 // dyn is a reserved keyword

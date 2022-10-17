@@ -150,10 +150,10 @@ impl State {
     }
 
     /// Create a fresh unique rigid type variable.
-    fn fresh_cst<E: TermEnvironment>(&mut self) -> GenericTypeWrapper<E> {
+    fn fresh_cst<E: TermEnvironment>(&mut self) -> GenericUnifType<E> {
         let result = self.var_uid;
         self.var_uid += 1;
-        GenericTypeWrapper::Constant(result)
+        GenericUnifType::Constant(result)
     }
 
     /// Try to consume one unit of gas for a variable substitution. Return true in case of success,
@@ -321,9 +321,9 @@ fn contract_eq_bounded<E: TermEnvironment>(
                 (None, None) => true,
                 (Some(ctr1), Some(ctr2)) => type_eq_bounded(
                     state,
-                    &GenericTypeWrapper::from_type(ctr1.types.clone(), env1), // &TypeWrapper::from(ctr1.types.clone()),
+                    &GenericUnifType::from_type(ctr1.types.clone(), env1), // &TypeWrapper::from(ctr1.types.clone()),
                     env1,
-                    &GenericTypeWrapper::from_type(ctr2.types.clone(), env2), // &TypeWrapper::from(ctr1.types.clone()),
+                    &GenericUnifType::from_type(ctr2.types.clone(), env2), // &TypeWrapper::from(ctr1.types.clone()),
                     env2,
                 ),
                 _ => false,
@@ -364,8 +364,8 @@ where
 /// Require the rows to be closed (i.e. the last element must be `RowEmpty`), otherwise `None` is
 /// returned. `None` is returned as well if a type encountered is not row, or if it is a enum row.
 fn rows_as_map<E: TermEnvironment>(
-    ty: &GenericTypeWrapper<E>,
-) -> Option<HashMap<Ident, &GenericTypeWrapper<E>>> {
+    ty: &GenericUnifType<E>,
+) -> Option<HashMap<Ident, &GenericUnifType<E>>> {
     let mut map = HashMap::new();
 
     ty.iter_as_rows().try_for_each(|item| match item {
@@ -384,7 +384,7 @@ fn rows_as_map<E: TermEnvironment>(
 /// Require the rows to be closed (i.e. the last element must be `RowEmpty`), otherwise `None` is
 /// returned. `None` is returned as well if a type encountered is not row type, or if it is a
 /// record row.
-fn rows_as_set<E: TermEnvironment>(ty: &GenericTypeWrapper<E>) -> Option<HashSet<Ident>> {
+fn rows_as_set<E: TermEnvironment>(ty: &GenericUnifType<E>) -> Option<HashSet<Ident>> {
     let mut set = HashSet::new();
 
     ty.iter_as_rows().try_for_each(|item| match item {
@@ -410,13 +410,13 @@ fn rows_as_set<E: TermEnvironment>(ty: &GenericTypeWrapper<E>) -> Option<HashSet
 /// typechecking, and we can just start from `0`.
 fn type_eq_bounded<E: TermEnvironment>(
     state: &mut State,
-    ty1: &GenericTypeWrapper<E>,
+    ty1: &GenericUnifType<E>,
     env1: &E,
-    ty2: &GenericTypeWrapper<E>,
+    ty2: &GenericUnifType<E>,
     env2: &E,
 ) -> bool {
     match (ty1, ty2) {
-        (GenericTypeWrapper::Concrete(s1), GenericTypeWrapper::Concrete(s2)) => match (s1, s2) {
+        (GenericUnifType::Concrete(s1), GenericUnifType::Concrete(s2)) => match (s1, s2) {
             (AbsType::Wildcard(id1), AbsType::Wildcard(id2)) => id1 == id2,
             (AbsType::Dyn(), AbsType::Dyn())
             | (AbsType::Num(), AbsType::Num())
@@ -439,9 +439,9 @@ fn type_eq_bounded<E: TermEnvironment>(
             (AbsType::Record(tyw1), AbsType::Record(tyw2)) => {
                 fn type_eq_bounded_wrapper<E: TermEnvironment>(
                     state: &mut State,
-                    tyw1: &&GenericTypeWrapper<E>,
+                    tyw1: &&GenericUnifType<E>,
                     env1: &E,
-                    tyw2: &&GenericTypeWrapper<E>,
+                    tyw2: &&GenericUnifType<E>,
                     env2: &E,
                 ) -> bool {
                     type_eq_bounded(state, *tyw1, env1, *tyw2, env2)
@@ -458,7 +458,7 @@ fn type_eq_bounded<E: TermEnvironment>(
                 contract_eq_bounded(state, t1, env1, t2, env2)
             }
             (AbsType::Forall(i1, tyw1), AbsType::Forall(i2, tyw2)) => {
-                let constant_type: GenericTypeWrapper<E> = state.fresh_cst();
+                let constant_type: GenericUnifType<E> = state.fresh_cst();
 
                 type_eq_bounded(
                     state,
@@ -472,14 +472,14 @@ fn type_eq_bounded<E: TermEnvironment>(
             // all type variables should have been substituted at this point, so we bail out.
             _ => false,
         },
-        (GenericTypeWrapper::Ptr(p1), GenericTypeWrapper::Ptr(p2)) => {
+        (GenericUnifType::Ptr(p1), GenericUnifType::Ptr(p2)) => {
             debug_assert!(
                 false,
                 "we shouldn't come across unification variables during type equality computation"
             );
             p1 == p2
         }
-        (GenericTypeWrapper::Constant(i1), GenericTypeWrapper::Constant(i2)) => i1 == i2,
+        (GenericUnifType::Constant(i1), GenericUnifType::Constant(i2)) => i1 == i2,
         _ => false,
     }
 }

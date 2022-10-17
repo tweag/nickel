@@ -9,7 +9,7 @@ use nickel_lang::{
     typecheck::{
         linearization::{Linearization, Linearizer},
         reporting::{to_type, NameReg},
-        TypeWrapper,
+        UnifType,
     },
     types::AbsType,
 };
@@ -96,7 +96,7 @@ impl Linearizer for AnalysisHost {
         lin: &mut Linearization<Building>,
         term: &Term,
         mut pos: TermPos,
-        ty: TypeWrapper,
+        ty: UnifType,
     ) {
         debug!("adding term: {:?} @ {:?}", term, pos);
         let mut id_gen = lin.id_gen();
@@ -197,7 +197,7 @@ impl Linearizer for AnalysisHost {
                         env: self.env.clone(),
                         id,
                         // TODO: get type from pattern
-                        ty: TypeWrapper::Concrete(AbsType::Dyn()),
+                        ty: UnifType::Concrete(AbsType::Dyn()),
                         pos: ident.pos,
                         kind: TermKind::Declaration(
                             ident.to_owned(),
@@ -258,7 +258,7 @@ impl Linearizer for AnalysisHost {
                     env: self.env.clone(),
                     id: root_id,
                     pos: ident.pos,
-                    ty: TypeWrapper::Concrete(AbsType::Dyn()),
+                    ty: UnifType::Concrete(AbsType::Dyn()),
                     kind: TermKind::Usage(UsageState::from(self.env.get(ident).copied())),
                     meta: self.meta.take(),
                 });
@@ -276,7 +276,7 @@ impl Linearizer for AnalysisHost {
                             env: self.env.clone(),
                             id,
                             pos: accessor.pos,
-                            ty: TypeWrapper::Concrete(AbsType::Dyn()),
+                            ty: UnifType::Concrete(AbsType::Dyn()),
                             kind: TermKind::Usage(UsageState::Deferred {
                                 parent: id - 1,
                                 child: accessor.to_owned(),
@@ -452,7 +452,7 @@ impl Linearizer for AnalysisHost {
         &mut self,
         lin: &mut Linearization<Building>,
         ident: &Ident,
-        new_type: TypeWrapper,
+        new_type: UnifType,
     ) {
         if let Some(item) = self
             .env

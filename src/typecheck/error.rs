@@ -1,5 +1,5 @@
 //! Internal error types for typechecking.
-use super::{reporting, State, TypeWrapper};
+use super::{reporting, State, UnifType};
 use crate::{
     error::TypecheckError, identifier::Ident, label::ty_path, position::TermPos, term::RichTerm,
     types::AbsType,
@@ -19,17 +19,17 @@ pub enum RowUnifError {
     /// There were two incompatible definitions for the same row.
     RowMismatch(Ident, Box<UnifError>),
     /// Tried to unify an enum row and a record row.
-    RowKindMismatch(Ident, Option<TypeWrapper>, Option<TypeWrapper>),
+    RowKindMismatch(Ident, Option<UnifType>, Option<UnifType>),
     /// One of the row was ill-formed (typically, a tail was neither a row, a variable nor `Dyn`).
     ///
     /// This should probably not happen with proper restrictions on the parser and a correct
     /// typechecking algorithm. We let it as an error for now, but it could be removed in the
     /// future.
-    IllformedRow(TypeWrapper),
+    IllformedRow(UnifType),
     /// A [row constraint][super::RowConstr] was violated.
-    UnsatConstr(Ident, Option<TypeWrapper>),
+    UnsatConstr(Ident, Option<UnifType>),
     /// Tried to unify a type constant with another different type.
-    WithConst(usize, TypeWrapper),
+    WithConst(usize, UnifType),
     /// Tried to unify two distinct type constants.
     ConstMismatch(usize, usize),
     /// An unbound type variable was referenced.
@@ -46,7 +46,7 @@ impl RowUnifError {
     ///
     /// Each level usually adds information (such as types or positions) and group different
     /// specific errors into most general ones.
-    pub fn into_unif_err(self, left: TypeWrapper, right: TypeWrapper) -> UnifError {
+    pub fn into_unif_err(self, left: UnifType, right: UnifType) -> UnifError {
         match self {
             RowUnifError::MissingRow(id) => UnifError::MissingRow(id, left, right),
             RowUnifError::MissingDynTail() => UnifError::MissingDynTail(left, right),
@@ -69,40 +69,40 @@ impl RowUnifError {
 #[derive(Debug, PartialEq)]
 pub enum UnifError {
     /// Tried to unify two incompatible types.
-    TypeMismatch(TypeWrapper, TypeWrapper),
+    TypeMismatch(UnifType, UnifType),
     /// There are two incompatible definitions for the same row.
-    RowMismatch(Ident, TypeWrapper, TypeWrapper, Box<UnifError>),
+    RowMismatch(Ident, UnifType, UnifType, Box<UnifError>),
     /// Tried to unify an enum row and a record row.
-    RowKindMismatch(Ident, Option<TypeWrapper>, Option<TypeWrapper>),
+    RowKindMismatch(Ident, Option<UnifType>, Option<UnifType>),
     /// Tried to unify two distinct type constants.
     ConstMismatch(usize, usize),
     /// Tried to unify two rows, but an identifier of the LHS was absent from the RHS.
-    MissingRow(Ident, TypeWrapper, TypeWrapper),
+    MissingRow(Ident, UnifType, UnifType),
     /// Tried to unify two rows, but the `Dyn` tail of the RHS was absent from the LHS.
-    MissingDynTail(TypeWrapper, TypeWrapper),
+    MissingDynTail(UnifType, UnifType),
     /// Tried to unify two rows, but an identifier of the RHS was absent from the LHS.
-    ExtraRow(Ident, TypeWrapper, TypeWrapper),
+    ExtraRow(Ident, UnifType, UnifType),
     /// Tried to unify two rows, but the `Dyn` tail of the RHS was absent from the LHS.
-    ExtraDynTail(TypeWrapper, TypeWrapper),
+    ExtraDynTail(UnifType, UnifType),
     /// A row was ill-formed.
-    IllformedRow(TypeWrapper),
+    IllformedRow(UnifType),
     /// Tried to unify a unification variable with a row type violating the [row
     /// constraints][super::RowConstr] of the variable.
-    RowConflict(Ident, Option<TypeWrapper>, TypeWrapper, TypeWrapper),
+    RowConflict(Ident, Option<UnifType>, UnifType, UnifType),
     /// Tried to unify a type constant with another different type.
-    WithConst(usize, TypeWrapper),
+    WithConst(usize, UnifType),
     /// A flat type, which is an opaque type corresponding to custom contracts, contained a Nickel
     /// term different from a variable. Only a variables is a legal inner term of a flat type.
     IncomparableFlatTypes(RichTerm, RichTerm),
     /// A generic type was ill-formed. Currently, this happens if a `StatRecord` or `Enum` type
     /// does not contain a row type.
-    IllformedType(TypeWrapper),
+    IllformedType(UnifType),
     /// An unbound type variable was referenced.
     UnboundTypeVariable(Ident),
     /// An error occurred when unifying the domains of two arrows.
-    DomainMismatch(TypeWrapper, TypeWrapper, Box<UnifError>),
+    DomainMismatch(UnifType, UnifType, Box<UnifError>),
     /// An error occurred when unifying the codomains of two arrows.
-    CodomainMismatch(TypeWrapper, TypeWrapper, Box<UnifError>),
+    CodomainMismatch(UnifType, UnifType, Box<UnifError>),
 }
 
 impl UnifError {
@@ -160,12 +160,12 @@ impl UnifError {
             // usual type mismatch. It could be nice to have a specific error message in the
             // future.
             UnifError::ConstMismatch(c1, c2) => TypecheckError::TypeMismatch(
-                reporting::to_type(state.table, state.names, names, TypeWrapper::Constant(c1)),
-                reporting::to_type(state.table, state.names, names, TypeWrapper::Constant(c2)),
+                reporting::to_type(state.table, state.names, names, UnifType::Constant(c1)),
+                reporting::to_type(state.table, state.names, names, UnifType::Constant(c2)),
                 pos_opt,
             ),
             UnifError::WithConst(c, ty) => TypecheckError::TypeMismatch(
-                reporting::to_type(state.table, state.names, names, TypeWrapper::Constant(c)),
+                reporting::to_type(state.table, state.names, names, UnifType::Constant(c)),
                 reporting::to_type(state.table, state.names, names, ty),
                 pos_opt,
             ),
@@ -249,18 +249,18 @@ impl UnifError {
     ///  - the original actual type.
     ///  - a type path pointing at the subtypes which failed to be unified.
     ///  - the final error, which is the actual cause of that failure.
-    pub fn into_type_path(self) -> Option<(TypeWrapper, TypeWrapper, ty_path::Path, Self)> {
+    pub fn into_type_path(self) -> Option<(UnifType, UnifType, ty_path::Path, Self)> {
         let mut curr: Self = self;
         let mut path = ty_path::Path::new();
         // The original expected and actual type. They are just updated once, in the first
         // iteration of the loop below.
-        let mut tyws: Option<(TypeWrapper, TypeWrapper)> = None;
+        let mut tyws: Option<(UnifType, UnifType)> = None;
 
         loop {
             match curr {
                 UnifError::DomainMismatch(
-                    tyw1 @ TypeWrapper::Concrete(AbsType::Arrow(_, _)),
-                    tyw2 @ TypeWrapper::Concrete(AbsType::Arrow(_, _)),
+                    tyw1 @ UnifType::Concrete(AbsType::Arrow(_, _)),
+                    tyw2 @ UnifType::Concrete(AbsType::Arrow(_, _)),
                     err,
                 ) => {
                     tyws = tyws.or(Some((tyw1, tyw2)));
@@ -271,8 +271,8 @@ impl UnifError {
                     "typechecking::to_type_path(): domain mismatch error on a non arrow type"
                 ),
                 UnifError::CodomainMismatch(
-                    tyw1 @ TypeWrapper::Concrete(AbsType::Arrow(_, _)),
-                    tyw2 @ TypeWrapper::Concrete(AbsType::Arrow(_, _)),
+                    tyw1 @ UnifType::Concrete(AbsType::Arrow(_, _)),
+                    tyw2 @ UnifType::Concrete(AbsType::Arrow(_, _)),
                     err,
                 ) => {
                     tyws = tyws.or(Some((tyw1, tyw2)));

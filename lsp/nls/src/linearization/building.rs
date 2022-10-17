@@ -4,7 +4,10 @@ use log::debug;
 use nickel_lang::{
     identifier::Ident,
     term::{MetaValue, RichTerm, Term},
-    typecheck::{linearization::LinearizationState, TypeWrapper},
+    typecheck::{
+        linearization::LinearizationState,
+        UnifType,
+    },
     types::AbsType,
 };
 
@@ -68,7 +71,7 @@ impl Building {
                 id,
                 pos: ident.pos,
                 // temporary, the actual type is resolved later and the item retyped
-                ty: TypeWrapper::Concrete(AbsType::Dyn()),
+                ty: UnifType::Concrete(AbsType::Dyn()),
                 kind: TermKind::RecordField {
                     record,
                     ident: ident.clone(),
@@ -108,8 +111,8 @@ impl Building {
 
     pub(super) fn resolve_reference<'a>(
         &'a self,
-        item: &'a LinearizationItem<TypeWrapper>,
-    ) -> Option<&'a LinearizationItem<TypeWrapper>> {
+        item: &'a LinearizationItem<UnifType>,
+    ) -> Option<&'a LinearizationItem<UnifType>> {
         // if item is a usage, resolve the usage first
         match item.kind {
             TermKind::Usage(UsageState::Resolved(pointed)) => self.linearization.get(pointed),
@@ -226,7 +229,7 @@ impl Building {
             );
 
             {
-                let child: &mut LinearizationItem<TypeWrapper> =
+                let child: &mut LinearizationItem<UnifType> =
                     self.linearization.get_mut(*child_item).unwrap();
                 child.kind = TermKind::Usage(UsageState::from(referenced_id));
             }

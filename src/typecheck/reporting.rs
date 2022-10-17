@@ -110,18 +110,18 @@ pub fn to_type(
     table: &UnifTable,
     reported_names: &HashMap<usize, Ident>,
     names: &mut NameReg,
-    ty: TypeWrapper,
+    ty: UnifType,
 ) -> Types {
     match ty {
-        TypeWrapper::Ptr(p) => match table.root(p) {
-            TypeWrapper::Ptr(p) => var_to_type(reported_names, names, p),
+        UnifType::Ptr(p) => match table.root(p) {
+            UnifType::Ptr(p) => var_to_type(reported_names, names, p),
             tyw => to_type(table, reported_names, names, tyw),
         },
-        TypeWrapper::Constant(c) => cst_to_type(reported_names, names, c),
-        TypeWrapper::Concrete(t) => {
+        UnifType::Constant(c) => cst_to_type(reported_names, names, c),
+        UnifType::Concrete(t) => {
             let mapped = t.map(|btyp| Box::new(to_type(table, reported_names, names, *btyp)));
             Types(mapped)
         }
-        TypeWrapper::Contract(t, _) => Types(AbsType::Flat(t)),
+        UnifType::Contract(t, _) => Types(AbsType::Flat(t)),
     }
 }
