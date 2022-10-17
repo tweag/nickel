@@ -113,8 +113,8 @@ pub fn to_type(
     ty: UnifType,
 ) -> Types {
     match ty {
-        UnifType::Ptr(p) => match table.root(p) {
-            UnifType::Ptr(p) => var_to_type(reported_names, names, p),
+        UnifType::UnifVar(p) => match table.root(p) {
+            UnifType::UnifVar(p) => var_to_type(reported_names, names, p),
             tyw => to_type(table, reported_names, names, tyw),
         },
         UnifType::Constant(c) => cst_to_type(reported_names, names, c),

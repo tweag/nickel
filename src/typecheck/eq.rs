@@ -472,7 +472,7 @@ fn type_eq_bounded<E: TermEnvironment>(
             // all type variables should have been substituted at this point, so we bail out.
             _ => false,
         },
-        (GenericUnifType::Ptr(p1), GenericUnifType::Ptr(p2)) => {
+        (GenericUnifType::UnifVar(p1), GenericUnifType::UnifVar(p2)) => {
             debug_assert!(
                 false,
                 "we shouldn't come across unification variables during type equality computation"

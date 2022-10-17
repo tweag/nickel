@@ -765,7 +765,7 @@ fn type_check_<L: Linearizer>(
                 }
             }
 
-            let root_ty = if let UnifType::Ptr(p) = ty {
+            let root_ty = if let UnifType::UnifVar(p) = ty {
                 state.table.root(p)
             } else {
                 ty.clone()
@@ -1140,7 +1140,7 @@ pub enum GenericUnifType<E: TermEnvironment + Clone> {
     /// A rigid type constant which cannot be unified with anything but itself.
     Constant(usize),
     /// A unification variable.
-    Ptr(usize),
+    UnifVar(usize),
 }
 
 impl<E: TermEnvironment + Clone> std::convert::TryInto<Types> for GenericUnifType<E> {
@@ -1220,7 +1220,7 @@ impl<E: TermEnvironment + Clone> GenericUnifType<E> {
             | Concrete(AbsType::Wildcard(_))
             | Contract(..)
             | Constant(_)
-            | Ptr(_) => self,
+            | UnifVar(_) => self,
         }
     }
 
@@ -1295,7 +1295,7 @@ fn row_add(
     ty: Option<Box<UnifType>>,
     mut r: UnifType,
 ) -> Result<(Option<Box<UnifType>>, UnifType), RowUnifError> {
-    if let UnifType::Ptr(p) = r {
+    if let UnifType::UnifVar(p) = r {
         r = state.table.root(p);
     }
     match r {
@@ -1313,7 +1313,7 @@ fn row_add(
                 ))
             }
         }
-        UnifType::Ptr(root) => {
+        UnifType::UnifVar(root) => {
             if let Some(set) = state.constr.get(&root) {
                 if set.contains(id) {
                     return Err(RowUnifError::UnsatConstr(id.clone(), ty.map(|tyw| *tyw)));
@@ -1342,10 +1342,10 @@ pub fn unify(
     mut t1: UnifType,
     mut t2: UnifType,
 ) -> Result<(), UnifError> {
-    if let UnifType::Ptr(pt1) = t1 {
+    if let UnifType::UnifVar(pt1) = t1 {
         t1 = state.table.root(pt1);
     }
-    if let UnifType::Ptr(pt2) = t2 {
+    if let UnifType::UnifVar(pt2) = t2 {
         t2 = state.table.root(pt2);
     }
 
@@ -1440,19 +1440,19 @@ pub fn unify(
                 UnifType::Concrete(ty2),
             )),
         },
-        (UnifType::Ptr(p1), UnifType::Ptr(p2)) if p1 == p2 => Ok(()),
+        (UnifType::UnifVar(p1), UnifType::UnifVar(p2)) if p1 == p2 => Ok(()),
         // The two following cases are not merged just to correctly distinguish between the
         // expected type (first component of the tuple) and the inferred type when reporting a row
         // unification error.
-        (UnifType::Ptr(p), tyw) => {
+        (UnifType::UnifVar(p), tyw) => {
             constr_unify(state.constr, p, &tyw)
-                .map_err(|err| err.into_unif_err(UnifType::Ptr(p), tyw.clone()))?;
+                .map_err(|err| err.into_unif_err(UnifType::UnifVar(p), tyw.clone()))?;
             state.table.assign(p, tyw);
             Ok(())
         }
-        (tyw, UnifType::Ptr(p)) => {
+        (tyw, UnifType::UnifVar(p)) => {
             constr_unify(state.constr, p, &tyw)
-                .map_err(|err| err.into_unif_err(tyw.clone(), UnifType::Ptr(p)))?;
+                .map_err(|err| err.into_unif_err(tyw.clone(), UnifType::UnifVar(p)))?;
             state.table.assign(p, tyw);
             Ok(())
         }
@@ -1544,7 +1544,7 @@ pub fn unify_rows(
 /// as type constants are replaced with the type `Dyn`.
 fn to_type(table: &UnifTable, ty: UnifType) -> Types {
     match ty {
-        UnifType::Ptr(p) => match table.root(p) {
+        UnifType::UnifVar(p) => match table.root(p) {
             t @ UnifType::Concrete(_) => to_type(table, t),
             _ => Types(AbsType::Dyn()),
         },
@@ -1581,7 +1581,7 @@ enum ForallInst {
 /// - `ty`: the polymorphic type to instantiate
 /// - `inst`: the type of instantiation, either by a type constant or by a unification variable
 fn instantiate_foralls(state: &mut State, mut ty: UnifType, inst: ForallInst) -> UnifType {
-    if let UnifType::Ptr(p) = ty {
+    if let UnifType::UnifVar(p) = ty {
         ty = state.table.root(p);
     }
 
@@ -1589,7 +1589,7 @@ fn instantiate_foralls(state: &mut State, mut ty: UnifType, inst: ForallInst) ->
         let fresh_id = state.table.fresh_var();
         let var = match inst {
             ForallInst::Constant => UnifType::Constant(fresh_id),
-            ForallInst::Ptr => UnifType::Ptr(fresh_id),
+            ForallInst::Ptr => UnifType::UnifVar(fresh_id),
         };
         state.names.insert(fresh_id, id.clone());
         ty = forall_ty.subst(id, var);
@@ -1634,7 +1634,7 @@ impl UnifTable {
 
     /// Create a fresh unification variable and allocate a corresponding slot in the table.
     pub fn fresh_unif_var(&mut self) -> UnifType {
-        UnifType::Ptr(self.fresh_var())
+        UnifType::UnifVar(self.fresh_var())
     }
 
     /// Create a fresh type constant.
@@ -1652,8 +1652,8 @@ impl UnifTable {
         // must always exist in `state`. If not, the typechecking algorithm is not correct, and we
         // panic.
         match &self.0[x] {
-            None => UnifType::Ptr(x),
-            Some(UnifType::Ptr(y)) => self.root(*y),
+            None => UnifType::UnifVar(x),
+            Some(UnifType::UnifVar(y)) => self.root(*y),
             Some(ty) => ty.clone(),
         }
     }
@@ -1680,9 +1680,9 @@ pub type RowConstr = HashMap<usize, HashSet<Ident>>;
 /// See [`RowConstr`].
 fn constraint(state: &mut State, x: UnifType, id: Ident) -> Result<(), RowUnifError> {
     match x {
-        UnifType::Ptr(p) => match state.table.root(p) {
+        UnifType::UnifVar(p) => match state.table.root(p) {
             ty @ UnifType::Concrete(_) => constraint(state, ty, id),
-            UnifType::Ptr(root) => {
+            UnifType::UnifVar(root) => {
                 if let Some(v) = state.constr.get_mut(&root) {
                     v.insert(id);
                 } else {
@@ -1722,11 +1722,11 @@ fn constraint(state: &mut State, x: UnifType, id: Ident) -> Result<(), RowUnifEr
 fn constrain_var(state: &mut State, tyw: &UnifType, p: usize) {
     fn constrain_var_(state: &mut State, mut constr: HashSet<Ident>, tyw: &UnifType, p: usize) {
         match tyw {
-            UnifType::Ptr(u) if p == *u && !constr.is_empty() => {
+            UnifType::UnifVar(u) if p == *u && !constr.is_empty() => {
                 state.constr.insert(p, constr);
             }
-            UnifType::Ptr(u) => match state.table.root(*u) {
-                UnifType::Ptr(_) => (),
+            UnifType::UnifVar(u) => match state.table.root(*u) {
+                UnifType::UnifVar(_) => (),
                 tyw => constrain_var_(state, constr, &tyw, p),
             },
             UnifType::Concrete(ty) => match ty {
@@ -1797,7 +1797,7 @@ pub fn constr_unify(
                     ))
                 }
                 UnifType::Concrete(AbsType::RowExtend(_, _, tail)) => tyw = tail,
-                UnifType::Ptr(u) if *u != p => {
+                UnifType::UnifVar(u) if *u != p => {
                     if let Some(u_constr) = constr.get_mut(u) {
                         u_constr.extend(p_constr.into_iter());
                     } else {

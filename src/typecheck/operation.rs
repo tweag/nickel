@@ -15,7 +15,7 @@ pub fn get_uop_type(
     Ok(match op {
         // forall a. bool -> a -> a -> a
         UnaryOp::Ite() => {
-            let branches = UnifType::Ptr(state.table.fresh_var());
+            let branches = UnifType::UnifVar(state.table.fresh_var());
 
             (
                 mk_typewrapper::bool(),
@@ -36,7 +36,7 @@ pub fn get_uop_type(
         UnaryOp::BoolNot() => (mk_typewrapper::bool(), mk_typewrapper::bool()),
         // forall a. Dyn -> a
         UnaryOp::Blame() => {
-            let res = UnifType::Ptr(state.table.fresh_var());
+            let res = UnifType::UnifVar(state.table.fresh_var());
 
             (mk_typewrapper::dynamic(), res)
         }
@@ -44,7 +44,7 @@ pub fn get_uop_type(
         UnaryOp::Pol() => (mk_typewrapper::dynamic(), mk_typewrapper::bool()),
         // forall rows. < | rows> -> <id | rows>
         UnaryOp::Embed(id) => {
-            let row = UnifType::Ptr(state.table.fresh_var());
+            let row = UnifType::UnifVar(state.table.fresh_var());
             // Constraining a freshly created variable should never fail.
             constraint(state, row.clone(), id.clone()).unwrap();
             (mk_tyw_enum!(; row.clone()), mk_tyw_enum!(id.clone(); row))
@@ -57,15 +57,15 @@ pub fn get_uop_type(
         }
         // forall rows a. { id: a | rows} -> a
         UnaryOp::StaticAccess(id) => {
-            let row = UnifType::Ptr(state.table.fresh_var());
-            let res = UnifType::Ptr(state.table.fresh_var());
+            let row = UnifType::UnifVar(state.table.fresh_var());
+            let res = UnifType::UnifVar(state.table.fresh_var());
 
             (mk_tyw_record!((id.clone(), res.clone()); row), res)
         }
         // forall a b. Array a -> (a -> b) -> Array b
         UnaryOp::ArrayMap() => {
-            let a = UnifType::Ptr(state.table.fresh_var());
-            let b = UnifType::Ptr(state.table.fresh_var());
+            let a = UnifType::UnifVar(state.table.fresh_var());
+            let b = UnifType::UnifVar(state.table.fresh_var());
 
             let f_type = mk_tyw_arrow!(a.clone(), b.clone());
             (
@@ -75,7 +75,7 @@ pub fn get_uop_type(
         }
         // forall a. Num -> (Num -> a) -> Array a
         UnaryOp::ArrayGen() => {
-            let a = UnifType::Ptr(state.table.fresh_var());
+            let a = UnifType::UnifVar(state.table.fresh_var());
 
             let f_type = mk_tyw_arrow!(AbsType::Num(), a.clone());
             (
@@ -88,8 +88,8 @@ pub fn get_uop_type(
             // Assuming f has type Str -> a -> b,
             // this has type Dict(a) -> Dict(b)
 
-            let a = UnifType::Ptr(state.table.fresh_var());
-            let b = UnifType::Ptr(state.table.fresh_var());
+            let a = UnifType::UnifVar(state.table.fresh_var());
+            let b = UnifType::UnifVar(state.table.fresh_var());
 
             let f_type = mk_tyw_arrow!(AbsType::Str(), a.clone(), b.clone());
             (
@@ -99,19 +99,19 @@ pub fn get_uop_type(
         }
         // forall a b. a -> b -> b
         UnaryOp::Seq() | UnaryOp::DeepSeq(_) => {
-            let fst = UnifType::Ptr(state.table.fresh_var());
-            let snd = UnifType::Ptr(state.table.fresh_var());
+            let fst = UnifType::UnifVar(state.table.fresh_var());
+            let snd = UnifType::UnifVar(state.table.fresh_var());
 
             (fst, mk_tyw_arrow!(snd.clone(), snd))
         }
         // forall a. Array a -> a
         UnaryOp::ArrayHead() => {
-            let ty_elt = UnifType::Ptr(state.table.fresh_var());
+            let ty_elt = UnifType::UnifVar(state.table.fresh_var());
             (mk_typewrapper::array(ty_elt.clone()), ty_elt)
         }
         // forall a. Array a -> Array a
         UnaryOp::ArrayTail() => {
-            let ty_elt = UnifType::Ptr(state.table.fresh_var());
+            let ty_elt = UnifType::UnifVar(state.table.fresh_var());
             (
                 mk_typewrapper::array(ty_elt.clone()),
                 mk_typewrapper::array(ty_elt),
@@ -119,7 +119,7 @@ pub fn get_uop_type(
         }
         // forall a. Array a -> Num
         UnaryOp::ArrayLength() => {
-            let ty_elt = UnifType::Ptr(state.table.fresh_var());
+            let ty_elt = UnifType::UnifVar(state.table.fresh_var());
             (mk_typewrapper::array(ty_elt), mk_typewrapper::num())
         }
         // This should not happen, as ChunksConcat() is only produced during evaluation.
@@ -254,8 +254,8 @@ pub fn get_bop_type(
         ),
         // forall a b. a -> b -> Bool
         BinaryOp::Eq() => (
-            UnifType::Ptr(state.table.fresh_var()),
-            UnifType::Ptr(state.table.fresh_var()),
+            UnifType::UnifVar(state.table.fresh_var()),
+            UnifType::UnifVar(state.table.fresh_var()),
             mk_typewrapper::bool(),
         ),
         // Num -> Num -> Bool
@@ -275,7 +275,7 @@ pub fn get_bop_type(
         ),
         // forall a. Str -> { _ : a} -> a
         BinaryOp::DynAccess() => {
-            let res = UnifType::Ptr(state.table.fresh_var());
+            let res = UnifType::UnifVar(state.table.fresh_var());
 
             (
                 mk_typewrapper::str(),
@@ -285,7 +285,7 @@ pub fn get_bop_type(
         }
         // forall a. Str -> { _ : a } -> a -> { _ : a }
         BinaryOp::DynExtend() => {
-            let res = UnifType::Ptr(state.table.fresh_var());
+            let res = UnifType::UnifVar(state.table.fresh_var());
             (
                 mk_typewrapper::str(),
                 mk_typewrapper::dyn_record(res.clone()),
@@ -294,7 +294,7 @@ pub fn get_bop_type(
         }
         // forall a. Str -> { _ : a } -> { _ : a}
         BinaryOp::DynRemove() => {
-            let res = UnifType::Ptr(state.table.fresh_var());
+            let res = UnifType::UnifVar(state.table.fresh_var());
             (
                 mk_typewrapper::str(),
                 mk_typewrapper::dyn_record(res.clone()),
@@ -303,7 +303,7 @@ pub fn get_bop_type(
         }
         // forall a. Str -> {_: a} -> Bool
         BinaryOp::HasField() => {
-            let ty_elt = UnifType::Ptr(state.table.fresh_var());
+            let ty_elt = UnifType::UnifVar(state.table.fresh_var());
             (
                 mk_typewrapper::str(),
                 mk_typewrapper::dyn_record(ty_elt),
@@ -312,13 +312,13 @@ pub fn get_bop_type(
         }
         // forall a. Array a -> Array a -> Array a
         BinaryOp::ArrayConcat() => {
-            let ty_elt = UnifType::Ptr(state.table.fresh_var());
+            let ty_elt = UnifType::UnifVar(state.table.fresh_var());
             let ty_array = mk_typewrapper::array(ty_elt);
             (ty_array.clone(), ty_array.clone(), ty_array)
         }
         // forall a. Array a -> Num -> a
         BinaryOp::ArrayElemAt() => {
-            let ty_elt = UnifType::Ptr(state.table.fresh_var());
+            let ty_elt = UnifType::UnifVar(state.table.fresh_var());
             (
                 mk_typewrapper::array(ty_elt.clone()),
                 mk_typewrapper::num(),
@@ -339,7 +339,7 @@ pub fn get_bop_type(
         ),
         // forall a. <Json, Yaml, Toml> -> a -> Str
         BinaryOp::Serialize() => {
-            let ty_input = UnifType::Ptr(state.table.fresh_var());
+            let ty_input = UnifType::UnifVar(state.table.fresh_var());
             (
                 mk_tyw_enum!("Json", "Yaml", "Toml"),
                 ty_input,
@@ -373,7 +373,7 @@ pub fn get_bop_type(
         // The first argument is a contract, the second is a label.
         // forall a. Dyn -> Dyn -> Array a -> Array a
         BinaryOp::ArrayLazyAssume() => {
-            let ty_elt = UnifType::Ptr(state.table.fresh_var());
+            let ty_elt = UnifType::UnifVar(state.table.fresh_var());
             let ty_array = mk_typewrapper::array(ty_elt);
             (
                 mk_typewrapper::dynamic(),
