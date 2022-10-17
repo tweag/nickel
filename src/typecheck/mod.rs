@@ -1122,6 +1122,24 @@ fn has_wildcards(ty: &Types) -> bool {
     has_wildcard
 }
 
+pub type VarId = usize;
+
+pub type GenericUnifRecordRow<E : TermEnvironment + Clone> = RecordRowF<Box<GenericUnifType<E>>>;
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum GenericUnifRecordRows<E : TermEnvironment + Clone> {
+    Concrete(RowsF<GenericUnifRecordRow<E>, Box<GenericUnifRecordRows<E>>>),
+    Constant(VarId),
+    UnifVar(VarId),
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum UnifEnumRows {
+    Concrete(RowsF<EnumRow, Box<GenericUnifEnumRows>>),
+    Constant(VarId),
+    UnifVar(VarId),
+}
+
 /// The types on which the unification algorithm operates, which may be either a concrete type, a
 /// type constant or a unification variable.
 ///
@@ -1132,15 +1150,15 @@ fn has_wildcards(ty: &Types) -> bool {
 #[derive(Clone, PartialEq, Debug)]
 pub enum GenericUnifType<E: TermEnvironment + Clone> {
     /// A concrete type (like `Num` or `Str -> Str`).
-    Concrete(AbsType<Box<GenericUnifType<E>>>),
+    Concrete(TypeF<Box<GenericUnifType<E>>, GenericUnifRecordRows<E>, UnifEnumRows>),
     /// A contract, seen as an opaque type. In order to compute type equality between contracts or
     /// between a contract and a type, we need to carry an additional environment. This is why we
     /// don't reuse the variant from [`crate::types::AbsType`].
     Contract(RichTerm, E),
     /// A rigid type constant which cannot be unified with anything but itself.
-    Constant(usize),
+    Constant(VarId),
     /// A unification variable.
-    UnifVar(usize),
+    UnifVar(VarId),
 }
 
 impl<E: TermEnvironment + Clone> std::convert::TryInto<Types> for GenericUnifType<E> {
@@ -1250,6 +1268,8 @@ impl GenericUnifType<SimpleTermEnvironment> {
     }
 }
 
+pub type UnifRecordRow = GenericUnifRecordRow<SimpleTermEnvironment>;
+pub type UnifRecordRows = GenericUnifRecordRows<SimpleTermEnvironment>;
 pub type UnifType = GenericUnifType<SimpleTermEnvironment>;
 
 // This implementation assumes that `AbsType::Flat` is not possible. If TypeWrappers have been
@@ -1607,7 +1627,11 @@ fn instantiate_foralls(state: &mut State, mut ty: UnifType, inst: ForallInst) ->
 /// Map each unification variable to either another type variable or a concrete type it has been
 /// unified with. Each binding `(ty, var)` in this map should be thought of an edge in a
 /// unification graph.
-pub struct UnifTable(Vec<Option<UnifType>>);
+pub struct UnifTable {
+    types: Vec<Option<UnifType>>,
+    record_rows: Vec<Option<UnifRecordRows>>,
+    enum_rows: Vec<Option<UnifEnumRows>>,
+}
 
 impl UnifTable {
     pub fn new() -> Self {
