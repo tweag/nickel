@@ -128,7 +128,7 @@ impl Linearizer for AnalysisHost {
                     Some(LinearizationItem {
                         id,
                         ty,
-                        pos: ident.pos.clone(),
+                        pos: TermPos::None,
                         scope,
                         kind: TermKind::RecordBind {
                             ident: ident.clone(),

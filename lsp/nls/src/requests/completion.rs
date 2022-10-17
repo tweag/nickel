@@ -51,11 +51,6 @@ pub fn handle_completion(
         .rev()
         .collect::<String>();
 
-    // Make sure you parse the string to support:
-    // 1. Normal Identifiers
-    // 2. Record Index
-    // 3. Record terms - Maybe this can be gotten from the Linearizer
-
     // This is the environment containing stdlib stuff.
     // let env = &server.initial_ctxt.type_env;
 
@@ -88,8 +83,11 @@ pub fn handle_completion(
             .collect::<Vec<_>>()
     }
 
+    // TODO: handler variables from stdlib
     let in_scope = match trigger {
         // Record completion
+        // TODO: handle duplicates 
+        // TODO: handle nested records
         Some(s) if s == "." => linearization
             .linearization
             .iter()
