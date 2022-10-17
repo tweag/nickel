@@ -72,8 +72,8 @@ use std::{
 /// unfoldings (here, `Ty` for `TypeF`). See [`TypeF`] for more details.
 #[derive(Clone, PartialEq, Debug)]
 pub struct RecordRowF<Ty> {
-    id: Ident,
-    types: Ty,
+    pub id: Ident,
+    pub types: Ty,
 }
 
 /// An enum row, which is just an identifier. An enum type is a set of identifiers, represented as
@@ -218,6 +218,42 @@ pub struct RecordRows(pub RowsF<RecordRow, Box<RecordRows>>);
 /// Concrete, recursive definition for a Nickel type.
 #[derive(Clone, PartialEq, Debug)]
 pub struct Types(pub TypeF<Box<Types>, RecordRows, EnumRows>);
+
+impl<R, Rs> RowsF<R, Rs> {
+    // We would like to express that RRows and ERows are of the form RRows<Ty> and ERows<Ty>,
+    // because we lack higher-kinded types. Thus, we need to provide three mapping functions, which
+    // is a bit painful :(
+    pub fn try_map<RO, RsO, FR, FRs, E>(
+        self,
+        mut f_rrow: FR,
+        mut f_rrows: FRs,
+    ) -> Result<RowsF<RO, RsO>, E>
+    where
+        FR: FnMut(R) -> Result<RO, E>,
+        FRs: FnMut(Rs) -> Result<RsO, E>,
+    {
+        match self {
+            RowsF::Empty  => Ok(RowsF::Empty),
+            RowsF::Extend {row, tail} => Ok(RowsF::Extend { row: f_rrow(row)?, tail: f_rrows(tail)? }),
+            RowsF::TailDyn => Ok(RowsF::TailDyn),
+            RowsF::TailVar(id) => Ok(RowsF::TailVar(id)),
+        }
+    }
+
+    pub fn map<RO, RsO, FR, FRs>(
+        self,
+        mut f_rrow: FR,
+        mut f_rrows: FRs,
+    ) -> RowsF<RO, RsO>
+    where
+        FR: FnMut(R) -> RO,
+        FRs: FnMut(Rs) -> RsO,
+    {
+        let f_rrow_lifted = |rrow: R| -> Result<RO, ()> { Ok(f_rrow(rrow)) };
+        let f_rrows_lifted = |rrows: Rs| -> Result<RsO, ()> { Ok(f_rrows(rrows)) };
+        self.try_map(f_rrow_lifted, f_rrows_lifted).unwrap()
+    }
+}
 
 impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
     // TODO: doc 
