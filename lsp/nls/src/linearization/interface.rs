@@ -34,7 +34,7 @@ pub enum TermKind {
         usages: Vec<ID>,
         value: ValueState,
     },
-    RecordRef {
+    RecordBind {
         ident: Ident,
         fields: Vec<Ident>,
     },

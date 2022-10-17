@@ -104,23 +104,33 @@ impl Linearizer for AnalysisHost {
         mut pos: TermPos,
         ty: TypeWrapper,
     ) {
-        fn get_record_ref_item(
+        // TODO: add support for nested records
+        fn get_record_bind_item(
             ty: TypeWrapper,
             scope: Scope,
             ident: &Ident,
             id: usize,
             term: &RichTerm,
         ) -> Option<LinearizationItem<Unresolved>> {
-            let t = term.as_ref();
+            let mut t = term.as_ref();
             match t {
-                Term::Record(fields, ..) => {
+                Term::MetaValue(MetaValue {
+                    value: Some(term), ..
+                }) => {
+                    t = term.as_ref();
+                }
+                _ => (),
+            }
+            match t {
+                Term::Record(fields, ..) | Term::RecRecord(fields, ..) => {
+                    // panic!("{:?}", fields);
                     let fields = fields.keys().map(|item| item.clone()).collect();
                     Some(LinearizationItem {
                         id,
                         ty,
                         pos: ident.pos.clone(),
                         scope,
-                        kind: TermKind::RecordRef {
+                        kind: TermKind::RecordBind {
                             ident: ident.clone(),
                             fields,
                         },
@@ -223,7 +233,7 @@ impl Linearizer for AnalysisHost {
                     });
                     match term {
                         Term::LetPattern(_, _, body, _) => {
-                            get_record_ref_item(ty, self.scope.clone(), ident, id, body)
+                            get_record_bind_item(ty, self.scope.clone(), ident, id, body)
                                 .map_or((), |item| lin.push(item))
                         }
                         _ => (),
@@ -255,7 +265,7 @@ impl Linearizer for AnalysisHost {
                     });
 
                     match term {
-                        Term::LetPattern(..) => get_record_ref_item(
+                        Term::LetPattern(..) => get_record_bind_item(
                             TypeWrapper::Concrete(AbsType::Dyn()),
                             self.scope.clone(),
                             &ident,
@@ -267,7 +277,8 @@ impl Linearizer for AnalysisHost {
                     }
                 }
             }
-            Term::Let(ident, ..) | Term::Fun(ident, ..) => {
+            Term::Let(ident, body, ..) | Term::Fun(ident, body) => {
+                // panic!("{:?}",term);
                 let value_ptr = match term {
                     Term::Let(..) => {
                         self.let_binding = Some(id);
@@ -299,13 +310,14 @@ impl Linearizer for AnalysisHost {
                     meta: self.meta.take(),
                 });
 
-                match term {
-                    Term::LetPattern(_, _, body, _) => {
-                        get_record_ref_item(ty, self.scope.clone(), ident, id, body)
-                            .map_or((), |item| lin.push(item))
-                    }
-                    _ => (),
-                }
+                get_record_bind_item(ty, self.scope.clone(), ident, id, body)
+                    .map_or((), |item| lin.push(item))
+                // match term {
+                //     Term::Let(_, _, body, _) => {
+
+                //     }
+                //     _ => (),
+                // }
             }
             Term::Var(ident) => {
                 let root_id = id_gen.get_and_advance();
@@ -483,7 +495,7 @@ impl Linearizer for AnalysisHost {
             })
             .collect();
 
-        Linearization::new(Completed::new(lin_, scope, id_mapping))
+        Linearization::new(Completed::new(lin_, scope, id_mapping, self.env))
     }
 
     fn scope(&mut self) -> Self {

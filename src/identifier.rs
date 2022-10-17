@@ -9,7 +9,7 @@ use crate::position::TermPos;
 simple_counter::generate_counter!(GeneratedCounter, usize);
 static INTERNER: Lazy<interner::Interner> = Lazy::new(interner::Interner::new);
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Copy, Deserialize, Serialize)]
 #[serde(into = "String", from = "String")]
 pub struct Ident {
     symbol: interner::Symbol,
@@ -114,7 +114,7 @@ mod interner {
     use typed_arena::Arena;
 
     /// A symbol is a correspondance between an [Ident](super::Ident) and its string representation stored in the [Interner].
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct Symbol(u32);
 
     /// The interner, which serves a double purpose: it pre-allocates space
