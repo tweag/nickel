@@ -1327,17 +1327,17 @@ impl ToDiagnostic<FileId> for TypecheckError {
                     ])]
             ,
             TypecheckError::TypeMismatch(expd, actual, span_opt) => {
-                fn addendum(ty: &Types) -> String {
+                fn addendum(ty: &Types) -> &str {
                     if ty.0.is_flat() {
-                        String::from(" (a contract)")
+                        " (a contract)"
                     } else {
-                        String::from("")
+                        ""
                     }
                 }
                 let last_note = if expd.0.is_flat() ^ actual.0.is_flat() {
-                    String::from("Static types and contracts are not compatible")
+                    "Static types and contracts are not compatible"
                 } else {
-                    String::from("These types are not compatible")
+                    "These types are not compatible"
                 };
 
                 vec![
@@ -1347,7 +1347,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
                         .with_notes(vec![
                             format!("The type of the expression was expected to be `{}`{}", expd, addendum(expd)),
                             format!("The type of the expression was inferred to be `{}`{}", actual, addendum(actual)),
-                            last_note,
+                            String::from(last_note),
                         ])]
             }
             TypecheckError::RowKindMismatch(ident, expd, actual, span_opt) => {
