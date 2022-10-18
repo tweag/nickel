@@ -487,8 +487,8 @@ fn walk_type<L: Linearizer>(
        }
        AbsType::Flat(t) => walk(state, ctxt, lin, linearizer, t),
        AbsType::Enum(ty2)
-       | AbsType::DynRecord(ty2)
-       | AbsType::StaticRecord(ty2)
+       | AbsType::Dict(ty2)
+       | AbsType::Record(ty2)
        | AbsType::Array(ty2)
        | AbsType::Forall(_, ty2) => walk_type(state, ctxt, lin, linearizer, ty2),
     }
@@ -767,8 +767,8 @@ fn type_check_<L: Linearizer>(
                 ty.clone()
             };
 
-            if let TypeWrapper::Concrete(AbsType::DynRecord(rec_ty)) = root_ty {
-                // Checking for a dynamic record
+            if let TypeWrapper::Concrete(AbsType::Dict(rec_ty)) = root_ty {
+                // Checking for a dictionary
                 stat_map
                     .iter()
                     .try_for_each(|(_, t)| -> Result<(), TypecheckError> {
@@ -1079,7 +1079,7 @@ pub fn infer_record_type(t: &Term, term_env: &SimpleTermEnvironment) -> TypeWrap
             contracts,
             ..
         }) if contracts.is_empty() => infer_record_type(rt.as_ref(), term_env),
-        Term::Record(rec, ..) | Term::RecRecord(rec, ..) => AbsType::StaticRecord(Box::new(
+        Term::Record(rec, ..) | Term::RecRecord(rec, ..) => AbsType::Record(Box::new(
             TypeWrapper::Concrete(rec.iter().fold(AbsType::RowEmpty(), |r, (id, rt)| {
                 AbsType::RowExtend(
                     id.clone(),
@@ -1192,11 +1192,11 @@ impl<E: TermEnvironment + Clone> GenericTypeWrapper<E> {
                 Box::new(rest.subst(id, to)),
             )),
             Concrete(AbsType::Enum(row)) => Concrete(AbsType::Enum(Box::new(row.subst(id, to)))),
-            Concrete(AbsType::StaticRecord(row)) => {
-                Concrete(AbsType::StaticRecord(Box::new(row.subst(id, to))))
+            Concrete(AbsType::Record(row)) => {
+                Concrete(AbsType::Record(Box::new(row.subst(id, to))))
             }
-            Concrete(AbsType::DynRecord(def_ty)) => {
-                Concrete(AbsType::DynRecord(Box::new(def_ty.subst(id, to))))
+            Concrete(AbsType::Dict(def_ty)) => {
+                Concrete(AbsType::Dict(Box::new(def_ty.subst(id, to))))
             }
             Concrete(AbsType::Array(ty)) => Concrete(AbsType::Array(Box::new(ty.subst(id, to)))),
             // Cases are spelled out instead of using a catch-all case `_ => ` to force
@@ -1393,7 +1393,7 @@ pub fn unify(
                 }
                 (tyw1, tyw2) => unify(state, ctxt, tyw1, tyw2),
             },
-            (AbsType::StaticRecord(tyw1), AbsType::StaticRecord(tyw2)) => match (*tyw1, *tyw2) {
+            (AbsType::Record(tyw1), AbsType::Record(tyw2)) => match (*tyw1, *tyw2) {
                 (TypeWrapper::Concrete(r1), TypeWrapper::Concrete(r2))
                     if r1.is_row_type() && r2.is_row_type() =>
                 {
@@ -1412,7 +1412,7 @@ pub fn unify(
                 }
                 (tyw1, tyw2) => unify(state, ctxt, tyw1, tyw2),
             },
-            (AbsType::DynRecord(t), AbsType::DynRecord(t2)) => unify(state, &ctxt, *t, *t2),
+            (AbsType::Dict(t), AbsType::Dict(t2)) => unify(state, &ctxt, *t, *t2),
             (AbsType::Forall(i1, t1t), AbsType::Forall(i2, t2t)) => {
                 // Very stupid (slow) implementation
                 let constant_type = state.table.fresh_const();
@@ -1744,8 +1744,8 @@ fn constrain_var(state: &mut State, tyw: &TypeWrapper, p: usize) {
                     constrain_var_(state, constr, rest, p)
                 }
                 AbsType::Enum(row) => constrain_var_(state, constr, row, p),
-                AbsType::StaticRecord(row) => constrain_var_(state, constr, row, p),
-                AbsType::DynRecord(tyw) => constrain_var_(state, constr, tyw, p),
+                AbsType::Record(row) => constrain_var_(state, constr, row, p),
+                AbsType::Dict(tyw) => constrain_var_(state, constr, tyw, p),
             },
             TypeWrapper::Constant(_) | TypeWrapper::Contract(..) => (),
         }

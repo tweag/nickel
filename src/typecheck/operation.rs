@@ -86,7 +86,7 @@ pub fn get_uop_type(
         // forall a b. { _ : a} -> (Str -> a -> b) -> { _ : b }
         UnaryOp::RecordMap() => {
             // Assuming f has type Str -> a -> b,
-            // this has type DynRecord(a) -> DynRecord(b)
+            // this has type Dict(a) -> Dict(b)
 
             let a = TypeWrapper::Ptr(state.table.fresh_var());
             let b = TypeWrapper::Ptr(state.table.fresh_var());
@@ -192,6 +192,16 @@ pub fn get_uop_type(
         ),
         // Dyn -> Dyn
         UnaryOp::Force(_) => (mk_typewrapper::dynamic(), mk_typewrapper::dynamic()),
+        // forall a. a -> a
+        UnaryOp::PushDefault() => {
+            let ty = TypeWrapper::Ptr(state.table.fresh_var());
+            (ty.clone(), ty)
+        }
+        // forall a. a -> a
+        UnaryOp::PushForce() => {
+            let ty = TypeWrapper::Ptr(state.table.fresh_var());
+            (ty.clone(), ty)
+        }
     })
 }
 

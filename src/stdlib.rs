@@ -16,23 +16,29 @@ pub const RECORD: (&str, &str) = ("<stdlib/record>", include_str!("../stdlib/rec
 pub const STRING: (&str, &str) = ("<stdlib/string>", include_str!("../stdlib/string.ncl"));
 pub const NUM: (&str, &str) = ("<stdlib/num>", include_str!("../stdlib/num.ncl"));
 pub const FUNCTION: (&str, &str) = ("<stdlib/function>", include_str!("../stdlib/function.ncl"));
+pub const INTERNALS: (&str, &str) = (
+    "<stdlib/internals>",
+    include_str!("../stdlib/internals.ncl"),
+);
 
 /// Return the list `(name, source_code)` of all the stdlib modules.
 pub fn modules() -> Vec<(&'static str, &'static str)> {
-    vec![BUILTIN, CONTRACT, ARRAY, RECORD, STRING, NUM, FUNCTION]
+    vec![
+        BUILTIN, CONTRACT, ARRAY, RECORD, STRING, NUM, FUNCTION, INTERNALS,
+    ]
+}
+
+macro_rules! generate_accessor {
+    ($value:ident) => {
+        pub fn $value() -> RichTerm {
+            mk_term::var(format!("${}", stringify!($value)))
+        }
+    };
 }
 
 /// Accessors to the builtin contracts.
 pub mod contract {
     use super::*;
-
-    macro_rules! generate_accessor {
-        ($value:ident) => {
-            pub fn $value() -> RichTerm {
-                mk_term::var(format!("${}", stringify!($value)))
-            }
-        };
-    }
 
     // `dyn` is a reserved keyword in rust
     pub fn dynamic() -> RichTerm {
@@ -54,4 +60,11 @@ pub mod contract {
     generate_accessor!(forall_tail);
     generate_accessor!(dyn_tail);
     generate_accessor!(empty_tail);
+}
+
+pub mod internals {
+    use super::*;
+
+    generate_accessor!(push_default);
+    generate_accessor!(push_force);
 }

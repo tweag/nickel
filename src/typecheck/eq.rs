@@ -409,7 +409,7 @@ fn type_eq_bounded<E: TermEnvironment>(
             | (AbsType::Bool(), AbsType::Bool())
             | (AbsType::Sym(), AbsType::Sym())
             | (AbsType::Str(), AbsType::Str()) => true,
-            (AbsType::DynRecord(tyw1), AbsType::DynRecord(tyw2))
+            (AbsType::Dict(tyw1), AbsType::Dict(tyw2))
             | (AbsType::Array(tyw1), AbsType::Array(tyw2)) => {
                 type_eq_bounded(state, tyw1, env1, tyw2, env2)
             }
@@ -422,7 +422,7 @@ fn type_eq_bounded<E: TermEnvironment>(
                 let rows2 = rows_as_set(tyw2);
                 rows1.is_some() && rows2.is_some() && rows1 == rows2
             }
-            (AbsType::StaticRecord(tyw1), AbsType::StaticRecord(tyw2)) => {
+            (AbsType::Record(tyw1), AbsType::Record(tyw2)) => {
                 fn type_eq_bounded_wrapper<E: TermEnvironment>(
                     state: &mut State,
                     tyw1: &&GenericTypeWrapper<E>,

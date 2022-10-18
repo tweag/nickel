@@ -181,8 +181,8 @@ fn collect_type_free_vars(ty: &mut Types, set: &mut HashSet<Ident>) {
         | AbsType::Wildcard(_) => (),
         AbsType::Forall(_, ty)
         | AbsType::Enum(ty)
-        | AbsType::StaticRecord(ty)
-        | AbsType::DynRecord(ty)
+        | AbsType::Record(ty)
+        | AbsType::Dict(ty)
         | AbsType::Array(ty) => collect_type_free_vars(ty.as_mut(), set),
         AbsType::Arrow(ty1, ty2) => {
             collect_type_free_vars(ty1.as_mut(), set);

@@ -11,23 +11,34 @@ use super::{
     merge::{merge, MergeMode},
     subst, Closure, Environment, ImportResolver, VirtualMachine,
 };
+use crate::term::MergePriority;
+use crate::term::MetaValue;
 
 use crate::{
     error::EvalError,
+    eval,
     identifier::Ident,
     label::ty_path,
     match_sharedterm, mk_app, mk_fun, mk_opn, mk_record,
     position::TermPos,
     serialize,
     serialize::ExportFormat,
-    term::{array::Array, make as mk_term, PendingContract},
-    term::{ArrayAttrs, BinaryOp, NAryOp, RichTerm, StrChunk, Term, UnaryOp},
+    stdlib::internals,
+    term::{
+        array::Array, make as mk_term, ArrayAttrs, BinaryOp, NAryOp, PendingContract, RecordAttrs,
+        RichTerm, SharedTerm, StrChunk, Term, UnaryOp,
+    },
     transform::{apply_contracts::apply_contracts, Closurizable},
 };
+
 use md5::digest::Digest;
+
 use simple_counter::*;
-use std::iter::Extend;
-use std::{collections::HashMap, rc::Rc};
+
+use std::{
+    iter::Extend,
+    {collections::HashMap, rc::Rc},
+};
 
 generate_counter!(FreshVariableCounter, usize);
 
@@ -1207,6 +1218,8 @@ impl<R: ImportResolver> VirtualMachine<R> {
                     })
                 }
             }
+            UnaryOp::PushDefault() => Ok(PushPriority::Bottom.push_into(t, env, pos)),
+            UnaryOp::PushForce() => Ok(PushPriority::Top.push_into(t, env, pos)),
         }
     }
 
@@ -2585,6 +2598,186 @@ impl<R: ImportResolver> VirtualMachine<R> {
     }
 }
 
+/// A merge priority that can be pushed down to the leafs of a record. Currently only `default`
+/// (`Bottom`) and `force` (`Top`) can be pushed down a value.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum PushPriority {
+    Bottom,
+    Top,
+}
+
+impl From<PushPriority> for MergePriority {
+    fn from(push_prio: PushPriority) -> Self {
+        match push_prio {
+            PushPriority::Top => MergePriority::Top,
+            PushPriority::Bottom => MergePriority::Bottom,
+        }
+    }
+}
+
+impl PushPriority {
+    /// Return the push operator corresponding to this priority (`$push_force` or `$push_default`)
+    /// applied to the given term.
+    pub fn apply_push_op(&self, rt: RichTerm) -> RichTerm {
+        let pos = rt.pos;
+
+        let op = match self {
+            PushPriority::Top => internals::push_force(),
+            PushPriority::Bottom => internals::push_default(),
+        };
+
+        mk_app!(op, rt).with_pos(pos)
+    }
+
+    /// Push the priority down the fields of a record.
+    fn push_into_record(
+        &self,
+        map: HashMap<Ident, RichTerm>,
+        attrs: RecordAttrs,
+        env: &Environment,
+        pos: TermPos,
+    ) -> Closure {
+        let mut new_env = Environment::new();
+
+        let map: HashMap<_, _> = map
+            .into_iter()
+            .filter(|(_, rt)| !is_empty_optional(rt, &env))
+            .map(|(id, rt)| {
+                // There is a subtlety with respect to overriding here. Take:
+                //
+                // ```nickel
+                // ({foo = bar + 1, bar = 1} | _push_default) & {bar = 2}
+                // ```
+                //
+                // In the example above, if we just map `$push_default` on the value of `foo` and
+                // closurize it into a new, normal thunk (non revertible), we lose the ability to
+                // override `foo` and we end up with the unexpected result `{foo = 2, bar = 2}`.
+                //
+                // What we want is that:
+                //
+                // ```nickel
+                // {foo = bar + 1, bar = 1} | _push_default
+                // ```
+                //
+                // is equivalent to writing:
+                //
+                // ```nickel
+                // {foo | default = bar + 1, bar | default = 1}
+                // ```
+                //
+                // For revertible thunks, we don't want to only map the push operator on the
+                // current cached value, but also on the original expression.
+                //
+                // To do so, we create a new independent copy of the original thunk by mapping the
+                // function over both expressions (in the sense of both the original expression and
+                // the cached expression). This logic is encapsulated by `Thunk::map`.
+                let pos = rt.pos;
+
+                let thunk = match rt.as_ref() {
+                    Term::Var(id) => {
+                        env.get(id)
+                            .unwrap()
+                            .map(|Closure { ref body, ref env }| Closure {
+                                body: self.apply_push_op(body.clone()),
+                                env: env.clone(),
+                            })
+                    }
+                    _ => eval::lazy::Thunk::new(
+                        Closure {
+                            body: self.apply_push_op(rt),
+                            env: env.clone(),
+                        },
+                        eval::IdentKind::Record,
+                    ),
+                };
+
+                let fresh_id = Ident::fresh();
+                new_env.insert(fresh_id.clone(), thunk);
+                (id, RichTerm::new(Term::Var(fresh_id), pos))
+            })
+            .collect();
+
+        Closure {
+            body: RichTerm::new(Term::Record(map, attrs), pos),
+            env: new_env,
+        }
+    }
+
+    /// Push the priority into an evaluated expression.
+    ///
+    /// # Preconditions
+    ///
+    /// - `st` must represent an evaluated term (a weak head normal form), that is `st.is_whnf()`
+    ///   must be true. Otherwise, this function panics
+    fn push_into(&self, st: SharedTerm, env: Environment, pos: TermPos) -> Closure {
+        let update_priority = |meta: &mut MetaValue| {
+            if let MergePriority::Neutral = meta.priority {
+                meta.priority = (*self).into();
+            }
+        };
+
+        let t = st.into_owned();
+
+        if let Term::Record(maps, attrs) = t {
+            self.push_into_record(maps, attrs, &env, pos)
+        } else {
+            // Extract the metavalue, or if `st` isn't a metavalue, wrap it in a new one to set the merge
+            // priority.
+            let (mut meta, mut env) = match t {
+                Term::MetaValue(meta) => (meta, env),
+                t => {
+                    let mut meta = MetaValue::new();
+                    let mut new_env = Environment::new();
+                    let rt = RichTerm::new(t, pos);
+
+                    if crate::transform::share_normal_form::should_share(rt.as_ref()) {
+                        meta.value = Some(rt.closurize(&mut new_env, env));
+                    } else {
+                        meta.value = Some(rt);
+                    }
+
+                    (meta, new_env)
+                }
+            };
+
+            if let Some(inner) = meta.value.take() {
+                // The term is expected to be forced before calling to push_priority, which means that
+                // inner is either a simple value, or a thunk containing a weak head normal form.
+                let (inner, env_inner) = if let Term::Var(id) = inner.as_ref() {
+                    let closure = env.get(id).unwrap().get_owned();
+                    (closure.body, closure.env)
+                } else {
+                    (inner, env.clone())
+                };
+
+                let pos_inner = inner.pos;
+
+                match inner.term.into_owned() {
+                    Term::Record(map, attrs) => {
+                        let Closure {
+                            body,
+                            env: record_env,
+                        } = self.push_into_record(map, attrs, &env_inner, pos_inner);
+                        meta.value = Some(body.closurize(&mut env, record_env));
+                    }
+                    t if t.is_whnf() => {
+                        update_priority(&mut meta);
+                        meta.value =
+                            Some(RichTerm::new(t, pos_inner).closurize(&mut env, env_inner));
+                    }
+                    _ => panic!("push_priority: expected an evaluated form"),
+                }
+            } else {
+                update_priority(&mut meta);
+            }
+
+            Closure {
+                body: RichTerm::new(Term::MetaValue(meta), pos),
+                env,
+            }
+        }
+    }
+}
 /// Compute the equality of two terms, represented as closures.
 ///
 /// # Parameters

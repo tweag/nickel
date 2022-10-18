@@ -77,7 +77,7 @@ macro_rules! mk_tyw_enum {
 macro_rules! mk_tyw_record {
     ($(($ids:expr, $tys:expr)),* $(; $tail:expr)?) => {
         $crate::typecheck::TypeWrapper::Concrete(
-            $crate::types::AbsType::StaticRecord(
+            $crate::types::AbsType::Record(
                 Box::new(mk_tyw_row!($(($ids, $tys)),* $(; $tail)?))
             )
         )
@@ -97,7 +97,7 @@ pub fn dyn_record<T>(ty: T) -> TypeWrapper
 where
     T: Into<TypeWrapper>,
 {
-    TypeWrapper::Concrete(AbsType::DynRecord(Box::new(ty.into())))
+    TypeWrapper::Concrete(AbsType::Dict(Box::new(ty.into())))
 }
 
 pub fn array<T>(ty: T) -> TypeWrapper

@@ -86,6 +86,9 @@ AsType<Rule>: Types = <ut: WithPos<Rule>> =>?
 AsUniTerm<Rule>: UniTerm = <l: @L> <ut: Rule> <r: @R> =>
     UniTerm::from(ut).with_pos(mk_pos(src_id, l, r));
 
+AnnotSeries<AnnotAtom>: AnnotAtom = <AnnotAtom+> =>
+    <>.into_iter().fold(Default::default(), Annot::combine);
+
 // A single type or meta-data annotation. The `Types` rule forbids the use of
 // constructs that can themselves have annotation on the right, such as a `let`.
 // Otherwise, `foo | let x = 1 in x : Num` is ambiguous (the annotation could be
@@ -128,8 +131,23 @@ AnnotAtom<TypeRule>: MetaValue = {
     },
 };
 
-// An annotation, with possibly many metadata annotations chained.
-Annot<TypeRule>: MetaValue = <anns: AnnotAtom<TypeRule>+> => anns.into_iter().fold(MetaValue::new(), MetaValue::flatten);
+ExtdAnnotAtom<TypeRule>: ExtdAnnot = {
+    <AnnotAtom<TypeRule>> => <>.into(),
+    "|" "push force" => ExtdAnnot {
+        push_force: true,
+        ..Default::default()
+    },
+    "|" "push default" => ExtdAnnot {
+        push_default: true,
+        ..Default::default()
+    },
+}
+
+// An annotation, with possibly many annotations chained.
+Annot<TypeRule>: MetaAnnot = AnnotSeries<AnnotAtom<TypeRule>>;
+
+// An extended annotation, with possibly many annotations chained.
+ExtdAnnot<TypeRule>: ExtdAnnot = AnnotSeries<ExtdAnnotAtom<TypeRule>>;
 
 // A general term. Wrap the root of the grammar as a `RichTerm`.
 pub Term: RichTerm = AsTerm<UniTerm>;
@@ -152,15 +170,11 @@ FixedType: Types = {
 // Either a term or a top-level let-binding (a let-binding without an `in`).
 // Used exclusively for the REPL.
 pub ExtendedTerm: ExtendedTerm = {
-    "let" <id: Ident> <meta: Annot<FixedType>?> "=" <t: Term> => {
-        let t = if let Some(mut meta) = meta {
+    "let" <id: Ident> <ann: ExtdAnnot<FixedType>?> "=" <mut t: Term> => {
+        if let Some(ann) = ann {
             let pos = t.pos;
-            meta.value = Some(t);
-            RichTerm::new(Term::MetaValue(meta), pos)
+            t = ann.attach(t, pos);
         }
-        else {
-            t
-        };
 
         ExtendedTerm::ToplevelLet(id, t)
     },
@@ -172,17 +186,13 @@ UniTerm: UniTerm = {
     InfixExpr,
     AnnotatedInfixExpr,
     AsUniTerm<Forall>,
-    "let" <l: @L> <recursive:"rec"?> <r: @R> <pat:Pattern> <meta: Annot<FixedType>?>
-        "=" <t1: Term>
+    "let" <l: @L> <recursive:"rec"?> <r: @R> <pat:Pattern> <ann: ExtdAnnot<FixedType>?>
+        "=" <mut t1: Term>
         "in" <t2: Term> =>? {
-        let t1 = if let Some(mut meta) = meta {
+        if let Some(ann) = ann {
             let pos = t1.pos;
-            meta.value = Some(t1);
-            RichTerm::new(Term::MetaValue(meta), pos)
+            t1 = ann.attach(t1, pos);
         }
-        else {
-            t1
-        };
 
         Ok(UniTerm::from(mk_let(recursive.is_some(), pat.0, pat.1, t1, t2, mk_span(src_id, l, r))?))
     },
@@ -230,10 +240,9 @@ UniTerm: UniTerm = {
 };
 
 AnnotatedInfixExpr: UniTerm = {
-    <t: AsTerm<InfixExpr>> <mut meta: Annot<FixedType>> => {
+    <t: AsTerm<InfixExpr>> <ann: ExtdAnnot<FixedType>> => {
         let pos = t.pos;
-        meta.value = Some(t);
-        UniTerm::from(RichTerm::new(Term::MetaValue(meta), pos))
+        UniTerm::from(ann.attach(t, pos))
     },
 };
 
@@ -336,19 +345,22 @@ Atom: UniTerm = {
 // variables inside the annotation right away (note the `Annot<Types>` instead
 // of `Annot<Fixed>`).
 RecordField: (FieldPath, RichTerm) = {
-    <l: @L> <path: FieldPath> <ann: Annot<Types>?> <r: @R> <t: ("=" <Term>)?> => {
+    <l: @L> <path: FieldPath> <ann: ExtdAnnot<Types>?> <r: @R> <t: ("=" <Term>)?> => {
         let pos = t.as_ref()
             .map(|t| t.pos.clone())
             .unwrap_or(mk_pos(src_id, l, r));
-        let term = if let Some(mut meta) = ann {
-            meta.value = t;
-            RichTerm::new(Term::MetaValue(meta), pos)
-        } else {
-            if let Some(deft) = t {
-                deft
-            } else {
-                RichTerm::new(Term::MetaValue(MetaValue::new()), pos)
+        let term = match (ann, t) {
+            (Some(ExtdAnnot { meta, push_force: false, push_default: false }), None) => {
+                RichTerm::new(Term::MetaValue(meta), pos)
             }
+            (Some(ann), Some(t)) => {
+                ann.attach(t, pos)
+            }
+            (Some(_), None) => {
+                panic!("can't use push default/push force on a field without definition");
+            }
+            (None, Some(t)) => t,
+            (None, None) => RichTerm::new(Term::MetaValue(MetaValue::new()), pos),
         };
 
         (path, term)
@@ -406,39 +418,17 @@ Destruct: Destruct = {
 // A binding `ident = <pattern>` inside a destructuring pattern.
 Match: Match = {
     <left:Ident> <anns: Annot<FixedType>?> <default: DefaultAnnot?> "=" <right: Pattern> => {
-        let meta = match (default, anns) {
-            (Some(d), Some(m)) => MetaValue::flatten(d,m),
-            (Some(m),_) | (_,Some(m)) => m,
-            _ => MetaValue {
-              contracts: vec![Contract{
-                  types: Types(AbsType::Dyn().into()),
-                  label: Label{span: left.pos.unwrap(), ..Default::default()},
-              }],
-              ..Default::default()
-            },
-        };
-
+        let meta = combine_match_annots(anns, default, left.pos.unwrap());
         Match::Assign(left, meta, right)
     },
     <id:Ident> <anns: Annot<FixedType>?> <default: DefaultAnnot?> => {
-        let meta = match (default, anns) {
-            (Some(d), Some(m)) => MetaValue::flatten(d,m),
-            (Some(m),_) | (_,Some(m)) => m,
-            _ => MetaValue {
-                  contracts: vec![Contract{
-                      types: Types(AbsType::Dyn().into()),
-                      label: Label{span: id.pos.unwrap(), ..Default::default()},
-                  }],
-                  ..Default::default()
-            },
-        };
-
+        let meta = combine_match_annots(anns, default, id.pos.unwrap());
         Match::Simple(id, meta)
     },
 };
 
 // A default annotation in a pattern.
-DefaultAnnot: MetaValue = "?" <t: Term> => MetaValue {
+DefaultAnnot: MetaAnnot = "?" <t: Term> => MetaValue {
     priority: MergePriority::Bottom,
     value: Some(t),
     ..Default::default()
@@ -506,23 +496,18 @@ ChunkExpr: StrChunk<RichTerm> = Interpolation <t: WithPos<Term>> "}" => StrChunk
 
 Interpolation = { "%{", "multstr %{" };
 
-StaticString: String = StringStart <s: ChunkLiteral?> StringEnd => s.unwrap_or_default();
+// A construct which looks like a string, but is generic over its delimiters.
+// Used to implement `StaticString` as well as `StringEnumTag`.
+DelimitedStaticString<Start, End>: String = Start <s: ChunkLiteral?> End => s.unwrap_or_default();
 
-EnumTag: Ident = "`" <EnumTagContent> => <>;
+StaticString = DelimitedStaticString<StringStart, StringEnd>;
 
-EnumTagContent: Ident = {
-    <Ident>,
-    <StaticString> => <>.into(),
-    // Allow tags of the form `Str, `Bool, etc. This is ad-hoc and should
-    // eventually be replaced with a proper lexing of enum tags, but this is not
-    // a trivial task. For now, to make builtin.typeof usable, we just
-    // special-case builtin types.
-    "Dyn" => "Dyn".into(),
-    "Num" => "Num".into(),
-    "Bool" => "Bool".into(),
-    "Str" => "Str".into(),
-    "Array" => "Array".into(),
-}
+StringEnumTag = DelimitedStaticString<"`\"", "\"">;
+
+EnumTag: Ident = {
+  "raw enum tag" => <>.into(),
+  <StringEnumTag> => <>.into(),
+};
 
 ChunkLiteralPart: ChunkLiteralPart<'input> = {
     "str literal" => ChunkLiteralPart::Str(<>),
@@ -562,10 +547,12 @@ UOp: UnaryOp = {
     "enum_from" => UnaryOp::EnumFromStr(),
     "str_is_match" => UnaryOp::StrIsMatch(),
     "str_match" => UnaryOp::StrMatch(),
+    "push_force_op" => UnaryOp::PushForce(),
+    "push_default_op" => UnaryOp::PushDefault(),
 };
 
 SwitchCase: SwitchCase = {
-    "`" <id: EnumTagContent> "=>" <t: Term> => SwitchCase::Normal(id, t),
+    <id: EnumTag> "=>" <t: Term> => SwitchCase::Normal(id, t),
     "_" "=>" <t: Term> => SwitchCase::Default(<>),
 }
 
@@ -782,7 +769,7 @@ TypeAtom: Types = {
             );
         Types(AbsType::Enum(Box::new(ty)))
     },
-    "{" "_" ":" <Types> "}" => Types(AbsType::DynRecord(Box::new(<>))),
+    "{" "_" ":" <Types> "}" => Types(AbsType::Dict(Box::new(<>))),
     "_" => {
         let id = *next_wildcard_id;
         *next_wildcard_id += 1;
@@ -808,6 +795,9 @@ extern {
         "str esc char" => Token::Str(StringToken::EscapedChar(<char>)),
         "multstr literal" => Token::MultiStr(MultiStringToken::Literal(<&'input str>)),
         "num literal" => Token::Normal(NormalToken::NumLiteral(<f64>)),
+
+        "raw enum tag" => Token::Normal(NormalToken::RawEnumTag(<&'input str>)),
+        "`\"" => Token::Normal(NormalToken::StrEnumTagBegin),
 
         "if" => Token::Normal(NormalToken::If),
         "then" => Token::Normal(NormalToken::Then),
@@ -853,7 +843,6 @@ extern {
         "|>" => Token::Normal(NormalToken::RightPipe),
         "->" => Token::Normal(NormalToken::SimpleArrow),
         "=>" => Token::Normal(NormalToken::DoubleArrow),
-        "`" => Token::Normal(NormalToken::Backtick),
         "_" => Token::Normal(NormalToken::Underscore),
         "\"" => Token::Normal(NormalToken::DoubleQuote),
         "\"%m" => Token::MultiStr(MultiStringToken::End),
@@ -891,17 +880,22 @@ extern {
         "fields" => Token::Normal(NormalToken::FieldsOf),
         "values" => Token::Normal(NormalToken::ValuesOf),
         "pow" => Token::Normal(NormalToken::Pow),
+        "push_force_op" => Token::Normal(NormalToken::PushForceOp),
+        "push_default_op" => Token::Normal(NormalToken::PushDefaultOp),
 
         "has_field" => Token::Normal(NormalToken::HasField),
         "map" => Token::Normal(NormalToken::Map),
         "generate" => Token::Normal(NormalToken::ArrayGen),
         "elem_at" => Token::Normal(NormalToken::ElemAt),
+
         "merge" => Token::Normal(NormalToken::Merge),
         "default" => Token::Normal(NormalToken::Default),
         "force" => Token::Normal(NormalToken::Force),
         "doc" => Token::Normal(NormalToken::Doc),
         "optional" => Token::Normal(NormalToken::Optional),
         "priority" => Token::Normal(NormalToken::Priority),
+        "push force" => Token::Normal(NormalToken::PushForce),
+        "push default" => Token::Normal(NormalToken::PushDefault),
 
         "hash" => Token::Normal(NormalToken::OpHash),
         "serialize" => Token::Normal(NormalToken::Serialize),

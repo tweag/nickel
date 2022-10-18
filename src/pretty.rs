@@ -761,7 +761,7 @@ where
                     .append(curr.to_owned().pretty(allocator))
             }
             Enum(row) => row.pretty(allocator).enclose("[|", "|]"),
-            StaticRecord(row) => match &row.0 {
+            Record(row) => match &row.0 {
                 AbsType::Var(id) => allocator
                     .space()
                     .append(allocator.text(";"))
@@ -770,7 +770,7 @@ where
                     .braces(),
                 _ => row.pretty(allocator).braces(),
             },
-            DynRecord(ty) => allocator
+            Dict(ty) => allocator
                 .line()
                 .append(allocator.text("_"))
                 .append(allocator.space())

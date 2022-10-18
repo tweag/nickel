@@ -154,11 +154,11 @@ impl<R: ImportResolver> VirtualMachine<R> {
         }
     }
 
-    /// Reset the state of the machine (stacks and eval mode) to prepare for another evaluation round.
+    /// Reset the state of the machine (stacks, eval mode and thunk state) to prepare for another evaluation round.
     pub fn reset(&mut self) {
         self.eval_mode = Default::default();
         self.call_stack.0.clear();
-        self.stack.clear();
+        self.stack.reset();
     }
 
     fn set_mode(&mut self, new_mode: EvalMode) {
@@ -416,7 +416,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                     }
                 }
                 Term::Op1(op, t) => {
-                    self.set_mode(EvalMode::UnwrapMeta);
+                    self.set_mode(op.eval_mode());
 
                     self.stack.push_op_cont(
                         OperationCont::Op1(op.clone(), t.pos),

@@ -131,6 +131,33 @@ impl ThunkData {
         }
     }
 
+    /// Map a function over the content of the thunk to create a new independent thunk. If the
+    /// thunk is revertible, the mapping function is applied on both the original expression and
+    /// the cached expression.
+    pub fn map<F>(&self, mut f: F) -> Self
+    where
+        F: FnMut(&Closure) -> Closure,
+    {
+        match self.inner {
+            InnerThunkData::Standard(ref c) => ThunkData {
+                inner: InnerThunkData::Standard(f(c)),
+                state: self.state,
+            },
+            InnerThunkData::Revertible {
+                ref orig,
+                ref deps,
+                ref cached,
+            } => ThunkData {
+                inner: InnerThunkData::Revertible {
+                    orig: Rc::new(f(orig)),
+                    cached: Rc::new(f(cached)),
+                    deps: deps.clone(),
+                },
+                state: self.state,
+            },
+        }
+    }
+
     /// Return the potential field dependencies stored in a revertible thunk. See [`crate::transform::free_vars`]
     pub fn deps(&self) -> ThunkDeps {
         match self.inner {
@@ -243,6 +270,19 @@ impl Thunk {
         }
     }
 
+    /// Map a function over the content of the thunk to create a new, fresh independent thunk. If
+    /// the thunk is revertible, the function is applied to both the original expression and the
+    /// cached expression.
+    pub fn map<F>(&self, f: F) -> Self
+    where
+        F: FnMut(&Closure) -> Closure,
+    {
+        Thunk {
+            data: Rc::new(RefCell::new(self.data.borrow().map(f))),
+            ident_kind: self.ident_kind,
+        }
+    }
+
     /// Determine if a thunk is worth being put on the stack for future update.
     ///
     /// Typically, WHNFs and enriched values will not be evaluated to a simpler expression and are not
@@ -299,6 +339,14 @@ impl ThunkUpdateFrame {
             true
         } else {
             false
+        }
+    }
+
+    /// Reset the state of the thunk to Suspended
+    /// Mainly used to reset the state of the vm between REPL runs
+    pub fn reset_state(self) {
+        if let Some(data) = Weak::upgrade(&self.data) {
+            data.borrow_mut().state = ThunkState::Suspended;
         }
     }
 }

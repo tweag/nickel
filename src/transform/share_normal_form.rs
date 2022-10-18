@@ -179,7 +179,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
 /// Sharing is typically useless if the subterm is already a WHNF which can be copied without
 /// duplicating any work. On the other hand, a WHNF which can contain other shareable
 /// subexpressions, such as a record, should be shared.
-fn should_share(t: &Term) -> bool {
+pub fn should_share(t: &Term) -> bool {
     match t {
         Term::Null
         | Term::Bool(_)

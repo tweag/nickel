@@ -88,7 +88,8 @@ impl TryFrom<UniTerm> for RichTerm {
         let rt = match node {
             UniTermNode::Var(id) => RichTerm::new(Term::Var(id), pos),
             UniTermNode::Record(r) => RichTerm::try_from(r)?,
-            UniTermNode::Types(ty) => {
+            UniTermNode::Types(mut ty) => {
+                fix_type_vars(&mut ty);
                 ty.contract().map_err(|UnboundTypeVariableError(id)| {
                     // We unwrap the position of the identifier, which must be set at this stage of parsing
                     let pos = id.pos;
@@ -234,7 +235,7 @@ impl UniRecord {
                     }
                 },
             )?;
-        Ok(Types(AbsType::StaticRecord(Box::new(ty))))
+        Ok(Types(AbsType::Record(Box::new(ty))))
     }
 
     pub fn with_pos(mut self, pos: TermPos) -> Self {
@@ -352,8 +353,8 @@ pub fn fix_type_vars(ty: &mut Types) {
             | AbsType::Bool()
             | AbsType::Str()
             | AbsType::Sym()
-            | AbsType::Flat(_)
             | AbsType::RowEmpty()
+            | AbsType::Flat(_)
             | AbsType::Wildcard(_) => (),
             AbsType::Arrow(ref mut s, ref mut t) => {
                 fix_type_vars_aux(s.as_mut(), Cow::Borrowed(bound_vars.as_ref()));
@@ -385,10 +386,10 @@ pub fn fix_type_vars(ty: &mut Types) {
                     fix_type_vars_aux(tail.as_mut(), bound_vars);
                 }
             }
-            AbsType::DynRecord(ref mut ty)
+            AbsType::Dict(ref mut ty)
             | AbsType::Array(ref mut ty)
             | AbsType::Enum(ref mut ty)
-            | AbsType::StaticRecord(ref mut ty) => fix_type_vars_aux(ty.as_mut(), bound_vars),
+            | AbsType::Record(ref mut ty) => fix_type_vars_aux(ty.as_mut(), bound_vars),
         }
     }
 

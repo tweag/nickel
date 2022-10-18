@@ -18,7 +18,7 @@
 //!
 //! The type systems feature structural records with row-polymorphism.
 //!
-//! ## Static records (row types)
+//! ## Records (row types)
 //!
 //! A row type for a record is a linked list of pairs `(id, type)` indicating the name and the type
 //! of each field. Row-polymorphism means that the tail of this list can be a type variable which
@@ -32,12 +32,10 @@
 //! The type `{ myField : Num, a }` indicates that any argument must have at least the field
 //! `myField` of type `Num`, but may contain any other fields (or no additional field at all).
 //!
-//! ## Dynamic records
+//! ## Dictionaries
 //!
-//! A second type available for records is the dynamic record type `{ _ : Type }`. A record of this
-//! type may have any number of fields with any names, but they must all be of the same `Type`.
-//! This is useful when using record as dictionaries, as such record is indeed a dictionary with
-//! string keys and `Type` values. It can be mapped over and accessed in a type-safe manner.
+//! A dictionary type: `{ _ : Type }`. It has string keys and `Type` values. It can be mapped
+//! over and accessed in a type-safe manner.
 //!
 //! # Enum types
 //!
@@ -96,10 +94,10 @@ pub enum AbsType<Ty> {
     /// An enum type, wrapping a row type for enums.
     Enum(Ty /* Row */),
     /// A record type, wrapping a row type for records.
-    StaticRecord(Ty /* Row */),
-    /// A dynamic record type, where all fields must have the same type.
-    // DynRecord will only have a default type, this is simpler for now, I don't think we lose much
-    DynRecord(Ty /*, Ty  Row */),
+    Record(Ty /* Row */),
+    /// A dictionary type.
+    // Dict will only have a default type, this is simpler for now, I don't think we lose much
+    Dict(Ty),
     /// A parametrized array.
     Array(Ty),
     /// A type wildcard, wrapping an ID unique within a given file.
@@ -131,8 +129,8 @@ impl<Ty> AbsType<Ty> {
                 Ok(AbsType::RowExtend(id, t1_mapped, f(t2)?))
             }
             AbsType::Enum(t) => Ok(AbsType::Enum(f(t)?)),
-            AbsType::StaticRecord(t) => Ok(AbsType::StaticRecord(f(t)?)),
-            AbsType::DynRecord(t) => Ok(AbsType::DynRecord(f(t)?)),
+            AbsType::Record(t) => Ok(AbsType::Record(f(t)?)),
+            AbsType::Dict(t) => Ok(AbsType::Dict(f(t)?)),
             AbsType::Array(t) => Ok(AbsType::Array(f(t)?)),
             AbsType::Wildcard(i) => Ok(AbsType::Wildcard(i)),
         }
@@ -152,6 +150,11 @@ impl<Ty> AbsType<Ty> {
             self,
             AbsType::RowExtend(..) | AbsType::RowEmpty() | AbsType::Dyn()
         )
+    }
+
+    /// Determine if a type is a type defined by a Nickel term.
+    pub fn is_flat(&self) -> bool {
+        matches!(self, AbsType::Flat(_))
     }
 
     pub fn is_wildcard(&self) -> bool {
@@ -349,7 +352,7 @@ impl Types {
 
                 mk_app!(contract::enums(), case)
             }
-            AbsType::StaticRecord(ref ty) => {
+            AbsType::Record(ref ty) => {
                 fn form(
                     sy: &mut i32,
                     pol: bool,
@@ -381,7 +384,7 @@ impl Types {
 
                 mk_app!(contract::record(), form(sy, pol, ty, h)?)
             }
-            AbsType::DynRecord(ref ty) => {
+            AbsType::Dict(ref ty) => {
                 mk_app!(contract::dyn_record(), ty.subcontract(h, pol, sy)?)
             }
             AbsType::Wildcard(_) => contract::dynamic(),
@@ -473,14 +476,14 @@ impl Types {
                 .traverse(f, state, order)
                 .map(Box::new)
                 .map(AbsType::Enum),
-            AbsType::StaticRecord(ty_inner) => (*ty_inner)
+            AbsType::Record(ty_inner) => (*ty_inner)
                 .traverse(f, state, order)
                 .map(Box::new)
-                .map(AbsType::StaticRecord),
-            AbsType::DynRecord(ty_inner) => (*ty_inner)
+                .map(AbsType::Record),
+            AbsType::Dict(ty_inner) => (*ty_inner)
                 .traverse(f, state, order)
                 .map(Box::new)
-                .map(AbsType::DynRecord),
+                .map(AbsType::Dict),
             AbsType::Array(ty_inner) => (*ty_inner)
                 .traverse(f, state, order)
                 .map(Box::new)
@@ -546,8 +549,8 @@ impl fmt::Display for Types {
                 write!(f, ". {}", curr)
             }
             AbsType::Enum(row) => write!(f, "[|{}|]", row),
-            AbsType::StaticRecord(row) => write!(f, "{{{}}}", row),
-            AbsType::DynRecord(ty) => write!(f, "{{_: {}}}", ty),
+            AbsType::Record(row) => write!(f, "{{{}}}", row),
+            AbsType::Dict(ty) => write!(f, "{{_: {}}}", ty),
             AbsType::RowEmpty() => Ok(()),
             AbsType::RowExtend(id, ty_opt, tail) => {
                 if let Some(ty) = ty_opt {

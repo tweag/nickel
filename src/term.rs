@@ -599,12 +599,8 @@ pub struct MetaValue {
 impl From<RichTerm> for MetaValue {
     fn from(rt: RichTerm) -> Self {
         MetaValue {
-            doc: None,
-            types: None,
-            contracts: Vec::new(),
-            opt: false,
-            priority: Default::default(),
             value: Some(rt),
+            ..Default::default()
         }
     }
 }
@@ -615,14 +611,14 @@ impl MetaValue {
     }
 
     /// Flatten two nested metavalues into one, combining their metadata. If data that can't be
-    /// combined (typically, the documentation, the type annotation or the priority) are set by both metavalues,
+    /// combined (typically, the documentation or the type annotation) are set by both metavalues,
     /// outer's one are kept.
     ///
     /// Note that no environment management such as closurization takes place, because this
     /// function is expected to be used on the AST before the evaluation (in the parser or during
     /// program transformation).
     ///
-    /// #Preconditions
+    /// # Preconditions
     ///
     /// - `outer.value` is assumed to be `inner`. While `flatten` may still work fine if this
     ///   condition is not fulfilled, the value of the final metavalue is set to be `inner`'s one,
@@ -1200,6 +1196,11 @@ pub enum UnaryOp {
     /// It's also worth noting that [`UnaryOp::DeepSeq`] should be, in principle, more efficient that [`UnaryOp::Force`]
     /// as it does less cloning.
     Force(Option<crate::eval::callstack::StackElem>),
+
+    /// doc: TODO
+    PushDefault(),
+    /// doc: TODO
+    PushForce(),
 }
 
 // See: https://github.com/rust-lang/regex/issues/178
@@ -1227,7 +1228,7 @@ impl From<regex::Regex> for CompiledRegex {
     }
 }
 
-/// position of a unary operator
+/// Position of a unary operator
 pub enum OpPos {
     Infix,
     Postfix,
@@ -1237,6 +1238,13 @@ pub enum OpPos {
 }
 
 impl UnaryOp {
+    pub fn eval_mode(&self) -> EvalMode {
+        match self {
+            UnaryOp::PushDefault() | UnaryOp::PushForce() => EvalMode::StopAtMeta,
+            _ => EvalMode::default(),
+        }
+    }
+
     pub fn pos(&self) -> OpPos {
         use UnaryOp::*;
         match self {
@@ -1335,7 +1343,7 @@ impl BinaryOp {
     pub fn eval_mode(&self) -> EvalMode {
         match self {
             BinaryOp::Merge() => EvalMode::StopAtMeta,
-            _ => EvalMode::UnwrapMeta,
+            _ => EvalMode::default(),
         }
     }
 
@@ -1376,7 +1384,7 @@ impl NAryOp {
     }
 
     pub fn eval_mode(&self) -> EvalMode {
-        EvalMode::UnwrapMeta
+        EvalMode::default()
     }
 }
 

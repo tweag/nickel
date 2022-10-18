@@ -1332,17 +1332,30 @@ impl ToDiagnostic<FileId> for TypecheckError {
                         format!("Maybe you forgot to put a `forall {}.` somewhere in the enclosing type ?", ident),
                     ])]
             ,
-            TypecheckError::TypeMismatch(expd, actual, span_opt) =>
+            TypecheckError::TypeMismatch(expd, actual, span_opt) => {
+                fn addendum(ty: &Types) -> &str {
+                    if ty.0.is_flat() {
+                        " (a contract)"
+                    } else {
+                        ""
+                    }
+                }
+                let last_note = if expd.0.is_flat() ^ actual.0.is_flat() {
+                    "Static types and contracts are not compatible"
+                } else {
+                    "These types are not compatible"
+                };
+
                 vec![
                     Diagnostic::error()
                         .with_message("incompatible types")
                         .with_labels(mk_expr_label(span_opt))
                         .with_notes(vec![
-                            format!("The type of the expression was expected to be `{}`", expd),
-                            format!("The type of the expression was inferred to be `{}`", actual),
-                            String::from("These types are not compatible"),
+                            format!("The type of the expression was expected to be `{}`{}", expd, addendum(expd)),
+                            format!("The type of the expression was inferred to be `{}`{}", actual, addendum(actual)),
+                            String::from(last_note),
                         ])]
-            ,
+            }
             TypecheckError::RowKindMismatch(ident, expd, actual, span_opt) => {
                 let (expd_str, actual_str) = match (expd, actual) {
                     (Some(_), None) => ("an enum type", "a record type"),
