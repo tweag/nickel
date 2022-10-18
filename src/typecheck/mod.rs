@@ -1017,6 +1017,8 @@ impl From<ApparentType> for Types {
 /// - if `bound_exp` is an array, return `Array Dyn`.
 /// - if `bound_exp` is a resolved import, return the apparent type of the imported term. Returns
 ///   `Dyn` if the resolver is not passed as a parameter to the function.
+/// - if `bound_exp` is a record, recursively find the apparent type for each of the record fields
+///   and return it as a Record type with those types as its fields.
 /// - Otherwise, return an approximation of the type (currently `Dyn`, but could be more precise in
 ///   the future, such as `Dyn -> Dyn` for functions, `{ | Dyn}` for records, and so on).
 pub fn apparent_type(
