@@ -96,10 +96,10 @@ pub fn handle_completion(
                         // Get static type info
                         TermKind::Declaration(ident, ..)
                             if ident.label() == name
-                                && matches!(ty, Types(AbsType::StaticRecord(..))) =>
+                                && matches!(ty, Types(AbsType::Record(..))) =>
                         {
                             match &ty {
-                                Types(AbsType::StaticRecord(row)) => {
+                                Types(AbsType::Record(row)) => {
                                     Some((extract_ident(row), i.ty.clone()))
                                 }
                                 _ => unreachable!(),
@@ -116,7 +116,7 @@ pub fn handle_completion(
                                         .clone()
                                         .iter()
                                         .map(|Contract { types, .. }| match types {
-                                            Types(AbsType::StaticRecord(row)) => extract_ident(row),
+                                            Types(AbsType::Record(row)) => extract_ident(row),
                                             _ => vec![],
                                         })
                                         .flatten()
