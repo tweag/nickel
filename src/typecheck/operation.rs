@@ -192,6 +192,16 @@ pub fn get_uop_type(
         ),
         // Dyn -> Dyn
         UnaryOp::Force(_) => (mk_typewrapper::dynamic(), mk_typewrapper::dynamic()),
+        // forall a. a -> a
+        UnaryOp::PushDefault() => {
+            let ty = TypeWrapper::Ptr(state.table.fresh_var());
+            (ty.clone(), ty)
+        }
+        // forall a. a -> a
+        UnaryOp::PushForce() => {
+            let ty = TypeWrapper::Ptr(state.table.fresh_var());
+            (ty.clone(), ty)
+        }
     })
 }
 

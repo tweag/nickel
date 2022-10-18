@@ -222,6 +222,11 @@ pub enum NormalToken<'input> {
     ElemAt,
     #[token("%generate%")]
     ArrayGen,
+    #[token("%push_force%")]
+    PushForceOp,
+    #[token("%push_default%")]
+    PushDefaultOp,
+
     #[token("merge")]
     Merge,
     #[token("default")]
@@ -234,6 +239,10 @@ pub enum NormalToken<'input> {
     Priority,
     #[token("force")]
     Force,
+    #[token("_push_force")]
+    PushForce,
+    #[token("_push_default")]
+    PushDefault,
 
     #[token("%hash%")]
     OpHash,
