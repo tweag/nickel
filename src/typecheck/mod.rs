@@ -1047,6 +1047,21 @@ pub fn apparent_type(
             .and_then(|envs| envs.get(id).cloned())
             .map(ApparentType::FromEnv)
             .unwrap_or(ApparentType::Approximated(Types(AbsType::Dyn()))),
+        Term::Record(fields, ..) | Term::RecRecord(fields, ..) => {
+            let row = fields
+                .iter()
+                .fold(Types(AbsType::RowEmpty()), |row, (ident, t)| {
+                    if let Some(r) = resolver {
+                        let ty = Box::new(Types::from(apparent_type(&t.term, env, Some(r))));
+                        Types(AbsType::RowExtend(ident.clone(), Some(ty), Box::new(row)))
+                    } else {
+                        let ty = Box::new(Types::from(apparent_type(&t.term, env, None)));
+                        Types(AbsType::RowExtend(ident.clone(), Some(ty), Box::new(row)))
+                    }
+                });
+            let t = Types(AbsType::Record(Box::new(row)));
+            ApparentType::Approximated(t)
+        }
         Term::ResolvedImport(f) => {
             if let Some(r) = resolver {
                 let t = r
