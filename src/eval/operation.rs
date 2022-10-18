@@ -2617,7 +2617,7 @@ impl From<PushPriority> for MergePriority {
 
 impl PushPriority {
     /// Return the push operator corresponding to this priority (`$push_force` or `$push_default`)
-    /// and apply it to the given term.
+    /// applied to the given term.
     pub fn apply_push_op(&self, rt: RichTerm) -> RichTerm {
         let pos = rt.pos;
 
