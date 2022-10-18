@@ -1,6 +1,6 @@
 use codespan::ByteIndex;
 use codespan_lsp::position_to_byte_index;
-// use log::debug;
+use log::debug;
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{CompletionContext, CompletionItem, CompletionParams};
 use nickel_lang::{
@@ -21,13 +21,6 @@ pub fn handle_completion(
     id: RequestId,
     server: &mut Server,
 ) -> Result<(), ResponseError> {
-    // let mut file = OpenOptions::new()
-    //     .write(true)
-    //     .append(false)
-    //     .create(true)
-    //     .open("/home/ebresafegaga/server.log")
-    //     .unwrap();
-
     let file_id = server
         .cache
         .id_of(params.text_document_position.text_document.uri.as_str())
@@ -41,18 +34,9 @@ pub fn handle_completion(
     )
     .unwrap();
 
-    let name = text[..start - 1]
-        .chars()
-        .rev()
-        .take_while(|c| c.is_ascii_alphabetic() || *c == '.')
-        .skip_while(|c| *c == '.') // skip . (if any)
-        .collect::<String>()
-        .chars()
-        .rev()
-        .collect::<String>();
-
     // This is the environment containing stdlib stuff.
-    // let env = &server.initial_ctxt.type_env;
+    // stdlib terms should be loaded here
+    let _env = &server.initial_ctxt.type_env;
 
     // lin_env is a mapping from idents to IDs.
     // This is from the Linearizer used to build this linearization.
@@ -83,53 +67,70 @@ pub fn handle_completion(
             .collect::<Vec<_>>()
     }
 
-    // TODO: handler variables from stdlib
     let in_scope = match trigger {
-        // Record completion
-        // TODO: handle duplicates 
-        // TODO: handle nested records
-        Some(s) if s == "." => linearization
-            .linearization
-            .iter()
-            .filter_map(|i| match i.kind {
-                TermKind::RecordBind {
-                    ident, ref fields, ..
-                } if ident.label() == name => Some((fields.clone(), i.ty.clone())),
+        Some(s) if s == "." => {
+            // Get the ID before the .
+            // if the current source is `let var = {a = 10} in var.`
+            // name = var
+            // TODO: handle nested record completion from here
+            let name = text[..start - 1]
+                .chars()
+                .rev()
+                .take_while(|c| c.is_ascii_alphabetic() || *c == '.')
+                .skip_while(|c| *c == '.') // skip . (if any)
+                .collect::<String>()
+                .chars()
+                .rev()
+                .collect::<String>();
 
-                // Get static type info
-                TermKind::Declaration(ident, ..)
-                    if ident.label() == name
-                        && matches!(i.ty, Types(AbsType::StaticRecord(..))) =>
-                {
-                    match &i.ty {
-                        Types(AbsType::StaticRecord(row)) => {
-                            Some((extract_ident(row), i.ty.clone()))
-                        }
-                        _ => unreachable!(),
-                    }
-                }
+            linearization
+                .linearization
+                .iter()
+                .filter_map(|i| {
+                    let (ty, _) = linearization.resolve_item_type_meta(i);
+                    match i.kind {
+                        TermKind::RecordBind {
+                            ident, ref fields, ..
+                        } if ident.label() == name => Some((fields.clone(), i.ty.clone())),
 
-                // Get contract info
-                TermKind::Declaration(ident, ..) if ident.label() == name && i.meta.is_some() => {
-                    match &i.meta {
-                        Some(MetaValue { contracts, .. }) => {
-                            let fields = contracts
-                                .clone()
-                                .iter()
-                                .map(|Contract { types, .. }| match types {
-                                    Types(AbsType::StaticRecord(row)) => extract_ident(row),
-                                    _ => vec![],
-                                })
-                                .flatten()
-                                .collect();
-                            Some((fields, i.ty.clone()))
+                        // Get static type info
+                        TermKind::Declaration(ident, ..)
+                            if ident.label() == name
+                                && matches!(ty, Types(AbsType::StaticRecord(..))) =>
+                        {
+                            match &ty {
+                                Types(AbsType::StaticRecord(row)) => {
+                                    Some((extract_ident(row), i.ty.clone()))
+                                }
+                                _ => unreachable!(),
+                            }
                         }
-                        _ => unreachable!(),
+
+                        // Get contract info
+                        TermKind::Declaration(ident, ..)
+                            if ident.label() == name && i.meta.is_some() =>
+                        {
+                            match &i.meta {
+                                Some(MetaValue { contracts, .. }) => {
+                                    let fields = contracts
+                                        .clone()
+                                        .iter()
+                                        .map(|Contract { types, .. }| match types {
+                                            Types(AbsType::StaticRecord(row)) => extract_ident(row),
+                                            _ => vec![],
+                                        })
+                                        .flatten()
+                                        .collect();
+                                    Some((fields, i.ty.clone()))
+                                }
+                                _ => unreachable!(),
+                            }
+                        }
+                        _ => None,
                     }
-                }
-                _ => None,
-            })
-            .collect(),
+                })
+                .collect()
+        }
 
         // variable name completion
         Some(..) | None => {
@@ -139,6 +140,7 @@ pub fn handle_completion(
                 return Ok(());
             } else {
                 let item = item.unwrap().to_owned();
+                debug!("found closest item: {:?}", item);
                 linearization
                     .get_in_scope(&item)
                     .iter()
@@ -153,16 +155,7 @@ pub fn handle_completion(
         }
     };
 
-    // How can we get data for record completion based on the TermKind
-    // 1. Record: just list it's fields
-    // 2. RecordRef: list the field it contains if the item we're at corresponds with it's ID
-    // 3. Check the type of the term: If it's a record, list it's fields
-    // 4. Check the MetaValue for it's contract: if it's a record, list it's fields
-
-    // Can we seperate record completion from just normal completion?
-
-    // We also need data form the standard library functions
-
+    // TODO: remove duplicates gotten from type info and record bind info
     let in_scope: Vec<_> = in_scope
         .iter()
         .map(|(idents, _)| {
@@ -179,6 +172,5 @@ pub fn handle_completion(
 
     server.reply(Response::new_ok(id, in_scope));
 
-    // debug!("found closest item: {:?}", item);
     Ok(())
 }

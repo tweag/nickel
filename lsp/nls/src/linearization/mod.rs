@@ -104,7 +104,6 @@ impl Linearizer for AnalysisHost {
         mut pos: TermPos,
         ty: TypeWrapper,
     ) {
-        // TODO: add support for nested records
         fn get_record_bind_item(
             ty: TypeWrapper,
             scope: Scope,
@@ -123,7 +122,6 @@ impl Linearizer for AnalysisHost {
             }
             match t {
                 Term::Record(fields, ..) | Term::RecRecord(fields, ..) => {
-                    // panic!("{:?}", fields);
                     let fields = fields.keys().map(|item| item.clone()).collect();
                     Some(LinearizationItem {
                         id,
@@ -264,21 +262,17 @@ impl Linearizer for AnalysisHost {
                         },
                     });
 
-                    match term {
-                        Term::LetPattern(..) => get_record_bind_item(
-                            TypeWrapper::Concrete(AbsType::Dyn()),
-                            self.scope.clone(),
-                            &ident,
-                            id,
-                            &body,
-                        )
-                        .map_or((), |item| lin.push(item)),
-                        _ => (),
-                    }
+                    get_record_bind_item(
+                        TypeWrapper::Concrete(AbsType::Dyn()),
+                        self.scope.clone(),
+                        &ident,
+                        id,
+                        &body,
+                    )
+                    .map_or((), |item| lin.push(item));
                 }
             }
             Term::Let(ident, body, ..) | Term::Fun(ident, body) => {
-                // panic!("{:?}",term);
                 let value_ptr = match term {
                     Term::Let(..) => {
                         self.let_binding = Some(id);
@@ -312,12 +306,6 @@ impl Linearizer for AnalysisHost {
 
                 get_record_bind_item(ty, self.scope.clone(), ident, id, body)
                     .map_or((), |item| lin.push(item))
-                // match term {
-                //     Term::Let(_, _, body, _) => {
-
-                //     }
-                //     _ => (),
-                // }
             }
             Term::Var(ident) => {
                 let root_id = id_gen.get_and_advance();
