@@ -110,21 +110,18 @@ pub fn handle_completion(
                         TermKind::Declaration(ident, ..)
                             if ident.label() == name && i.meta.is_some() =>
                         {
-                            match &i.meta {
-                                Some(MetaValue { contracts, .. }) => {
-                                    let fields = contracts
-                                        .clone()
-                                        .iter()
-                                        .map(|Contract { types, .. }| match types {
-                                            Types(AbsType::Record(row)) => extract_ident(row),
-                                            _ => vec![],
-                                        })
-                                        .flatten()
-                                        .collect();
-                                    Some((fields, i.ty.clone()))
-                                }
-                                _ => unreachable!(),
-                            }
+                            i.meta.as_ref().map(|MetaValue { contracts, .. }| {
+                                let fields = contracts
+                                    .clone()
+                                    .iter()
+                                    .map(|Contract { types, .. }| match types {
+                                        Types(AbsType::Record(row)) => extract_ident(row),
+                                        _ => vec![],
+                                    })
+                                    .flatten()
+                                    .collect();
+                                (fields, i.ty.clone())
+                            })
                         }
                         _ => None,
                     }

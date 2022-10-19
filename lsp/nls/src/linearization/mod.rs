@@ -90,6 +90,41 @@ impl Default for AnalysisHost {
     }
 }
 
+fn get_record_bind_item(
+    ty: TypeWrapper,
+    scope: Scope,
+    ident: &Ident,
+    id: usize,
+    term: &RichTerm,
+) -> Option<LinearizationItem<Unresolved>> {
+    // Handle deep nesting of meta values
+    let mut t = term.as_ref();
+    while let Term::MetaValue(MetaValue {
+        value: Some(term), ..
+    }) = t
+    {
+        t = term.as_ref();
+    }
+
+    match t {
+        Term::Record(fields, ..) | Term::RecRecord(fields, ..) => {
+            let fields = fields.keys().map(|item| item.clone()).collect();
+            Some(LinearizationItem {
+                id,
+                ty,
+                pos: TermPos::None,
+                scope,
+                kind: TermKind::RecordBind {
+                    ident: ident.clone(),
+                    fields,
+                },
+                meta: None,
+            })
+        }
+        _ => None,
+    }
+}
+
 use nickel_lang::typecheck::Extra;
 use nickel_lang::types::Types;
 impl Linearizer for AnalysisHost {
@@ -104,41 +139,6 @@ impl Linearizer for AnalysisHost {
         mut pos: TermPos,
         ty: TypeWrapper,
     ) {
-        fn get_record_bind_item(
-            ty: TypeWrapper,
-            scope: Scope,
-            ident: &Ident,
-            id: usize,
-            term: &RichTerm,
-        ) -> Option<LinearizationItem<Unresolved>> {
-            let mut t = term.as_ref();
-            match t {
-                Term::MetaValue(MetaValue {
-                    value: Some(term), ..
-                }) => {
-                    t = term.as_ref();
-                }
-                _ => (),
-            }
-            match t {
-                Term::Record(fields, ..) | Term::RecRecord(fields, ..) => {
-                    let fields = fields.keys().map(|item| item.clone()).collect();
-                    Some(LinearizationItem {
-                        id,
-                        ty,
-                        pos: TermPos::None,
-                        scope,
-                        kind: TermKind::RecordBind {
-                            ident: ident.clone(),
-                            fields,
-                        },
-                        meta: None,
-                    })
-                }
-                _ => None,
-            }
-        }
-
         debug!("adding term: {:?} @ {:?}", term, pos);
         let mut id_gen = lin.id_gen();
 
@@ -229,12 +229,10 @@ impl Linearizer for AnalysisHost {
                         kind: TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr),
                         meta: None,
                     });
-                    match term {
-                        Term::LetPattern(_, _, body, _) => {
-                            get_record_bind_item(ty, self.scope.clone(), ident, id, body)
-                                .map_or((), |item| lin.push(item))
-                        }
-                        _ => (),
+
+                    if let Term::LetPattern(_, _, body, _) = term {
+                        get_record_bind_item(ty, self.scope.clone(), ident, id, body)
+                            .map_or((), |item| lin.push(item))
                     }
                 }
                 for matched in destruct.to_owned().inner() {

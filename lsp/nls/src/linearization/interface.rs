@@ -20,7 +20,7 @@ impl ResolutionState for Resolved {}
 /// 1. Declarations
 /// 2. Usages
 /// 3. Records, listing their fields
-/// 4. Recrod Ref, a variable usage of a let or pattern binding, which binds a record.
+/// 4. Record Bind, a let or pattern binding, which binds a record.
 /// 5. wildcard (Structure) for any other kind of term.
 /// Can be extended later to represent Contracts, Records, etc.
 #[derive(Debug, Clone, PartialEq)]
