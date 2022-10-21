@@ -11,7 +11,10 @@ use nickel_lang::{
 use serde_json::Value;
 
 use crate::{
-    linearization::{completed::Completed, interface::TermKind},
+    linearization::{
+        interface::{TermKind, UsageState, ValueState},
+        LinearizationItem,
+    },
     server::Server,
     trace::{Enrich, Trace},
 };
@@ -34,17 +37,40 @@ pub fn handle_completion(
     )
     .unwrap();
 
-    // This is the environment containing stdlib stuff.
-    // stdlib terms should be loaded here
-    let _env = &server.initial_ctxt.type_env;
-
+    let locator = (file_id, ByteIndex((start - 1) as u32));
+    let linearization = server.lin_cache_get(&file_id)?;
     // lin_env is a mapping from idents to IDs.
     // This is from the Linearizer used to build this linearization.
-    // idealy we should get the id and use it instead of comparing strings
-    let Completed { lin_env: _, .. } = &server.lin_cache.get(&file_id).unwrap();
+    // idealy we should get the id and use it instead of comparing strings labels
+    let _lin_env = &linearization.lin_env;
 
-    let locator = (file_id, ByteIndex(start as u32));
-    let linearization = server.lin_cache_get(&file_id)?;
+    // Try your best to find all record fields
+    fn find_record_fields(
+        linearization: &Vec<LinearizationItem<Types>>,
+        id: usize,
+    ) -> Option<Vec<Ident>> {
+        linearization.iter().find_map(|item| match item.kind {
+            TermKind::Record(ref fields) if item.id == id => {
+                Some(fields.keys().map(|ident| ident.clone()).collect())
+            }
+            TermKind::Declaration(_, _, ValueState::Known(new_id))
+            | TermKind::Usage(UsageState::Resolved(new_id))
+                if item.id == id =>
+            {
+                find_record_fields(linearization, new_id)
+            }
+            _ => None,
+        })
+    }
+
+    let item = linearization.item_at(&locator);
+    if item == None {
+        // NOTE: this might result in a case where completion is not working.
+        // This happens when an item cannot be found from the linearization.
+        server.reply(Response::new_ok(id, Value::Null));
+        return Ok(());
+    }
+    let item = item.unwrap().to_owned();
 
     Trace::enrich(&id, linearization);
 
@@ -72,7 +98,6 @@ pub fn handle_completion(
             // Get the ID before the .
             // if the current source is `let var = {a = 10} in var.`
             // name = var
-            // TODO: handle nested record completion from here
             let name = text[..start - 1]
                 .chars()
                 .rev()
@@ -89,11 +114,16 @@ pub fn handle_completion(
                 .filter_map(|i| {
                     let (ty, _) = linearization.resolve_item_type_meta(i);
                     match i.kind {
-                        TermKind::RecordBind {
-                            ident, ref fields, ..
-                        } if ident.label() == name => Some((fields.clone(), i.ty.clone())),
+                        // Get record fields from lexical scoping
+                        TermKind::Declaration(ident, _, ValueState::Known(body_id))
+                            if ident.label() == name =>
+                        {
+                            find_record_fields(&linearization.linearization, body_id)
+                                .map(|idents| Some((idents, i.ty.clone())))
+                                .unwrap_or(None)
+                        }
 
-                        // Get static type info
+                        // Get record fields from static type info
                         TermKind::Declaration(ident, ..)
                             if ident.label() == name
                                 && matches!(ty, Types(AbsType::Record(..))) =>
@@ -106,7 +136,7 @@ pub fn handle_completion(
                             }
                         }
 
-                        // Get contract info
+                        // Get record fields from contract metadata
                         TermKind::Declaration(ident, ..)
                             if ident.label() == name && i.meta.is_some() =>
                         {
@@ -130,29 +160,17 @@ pub fn handle_completion(
         }
 
         // variable name completion
-        Some(..) | None => {
-            let item = linearization.item_at(&locator);
-            if item == None {
-                server.reply(Response::new_ok(id, Value::Null));
-                return Ok(());
-            } else {
-                let item = item.unwrap().to_owned();
-                debug!("found closest item: {:?}", item);
-                linearization
-                    .get_in_scope(&item)
-                    .iter()
-                    .filter_map(|i| match i.kind {
-                        TermKind::Declaration(ref ident, _, _) => {
-                            Some((vec![ident.clone()], i.ty.clone()))
-                        }
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-            }
-        }
+        Some(..) | None => linearization
+            .get_in_scope(&item)
+            .iter()
+            .filter_map(|i| match i.kind {
+                TermKind::Declaration(ref ident, _, _) => Some((vec![ident.clone()], i.ty.clone())),
+                _ => None,
+            })
+            .collect::<Vec<_>>(),
     };
 
-    // TODO: remove duplicates gotten from type info and record bind info
+    // TODO: remove duplicates
     let in_scope: Vec<_> = in_scope
         .iter()
         .map(|(idents, _)| {
@@ -168,6 +186,8 @@ pub fn handle_completion(
         .collect();
 
     server.reply(Response::new_ok(id, in_scope));
+
+    debug!("found closest item: {:?}", item);
 
     Ok(())
 }

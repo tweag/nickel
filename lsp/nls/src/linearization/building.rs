@@ -25,6 +25,7 @@ use super::{
 pub struct Building {
     pub linearization: Vec<LinearizationItem<Unresolved>>,
     pub scope: HashMap<Scope, Vec<ID>>,
+    pub env: Environment
 }
 
 pub type ID = usize;
@@ -55,7 +56,6 @@ impl Building {
             TermKind::Structure => unreachable!(),
             TermKind::Usage(_) => unreachable!(),
             TermKind::Record(_) => unreachable!(),
-            TermKind::RecordBind { .. } => unreachable!(),
             TermKind::Declaration(_, ref mut usages, _)
             | TermKind::RecordField { ref mut usages, .. } => usages.push(usage),
         };
@@ -101,6 +101,7 @@ impl Building {
                 },
             });
             env.insert(ident.clone(), id);
+            self.env.insert(ident.clone(), id);
             self.add_record_field(record, (ident.clone(), id))
         }
     }

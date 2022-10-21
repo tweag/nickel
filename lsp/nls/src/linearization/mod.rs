@@ -5,7 +5,7 @@ use log::debug;
 use nickel_lang::{
     identifier::Ident,
     position::TermPos,
-    term::{MetaValue, RichTerm, Term, UnaryOp},
+    term::{MetaValue, Term, UnaryOp},
     typecheck::{
         linearization::{Linearization, Linearizer, Scope, ScopeId},
         reporting::{to_type, NameReg},
@@ -14,12 +14,10 @@ use nickel_lang::{
     types::AbsType,
 };
 
-use crate::linearization::interface::{Unresolved, ValueState};
-
 use self::{
     building::{Building, ID},
     completed::Completed,
-    interface::{ResolutionState, TermKind, UsageState},
+    interface::{ResolutionState, TermKind, UsageState, ValueState},
 };
 
 pub mod building;
@@ -87,41 +85,6 @@ impl Default for AnalysisHost {
             let_binding: Default::default(),
             access: Default::default(),
         }
-    }
-}
-
-fn get_record_bind_item(
-    ty: TypeWrapper,
-    scope: Scope,
-    ident: &Ident,
-    id: usize,
-    term: &RichTerm,
-) -> Option<LinearizationItem<Unresolved>> {
-    // Handle deep nesting of meta values
-    let mut t = term.as_ref();
-    while let Term::MetaValue(MetaValue {
-        value: Some(term), ..
-    }) = t
-    {
-        t = term.as_ref();
-    }
-
-    match t {
-        Term::Record(fields, ..) | Term::RecRecord(fields, ..) => {
-            let fields = fields.keys().map(|item| item.clone()).collect();
-            Some(LinearizationItem {
-                id,
-                ty,
-                pos: TermPos::None,
-                scope,
-                kind: TermKind::RecordBind {
-                    ident: ident.clone(),
-                    fields,
-                },
-                meta: None,
-            })
-        }
-        _ => None,
     }
 }
 
@@ -221,6 +184,7 @@ impl Linearizer for AnalysisHost {
 
                     let id = id_gen.get_and_advance();
                     self.env.insert(ident.to_owned(), id);
+                    lin.env.insert(ident.to_owned(), id);
                     lin.push(LinearizationItem {
                         id,
                         ty: ty.clone(),
@@ -229,16 +193,12 @@ impl Linearizer for AnalysisHost {
                         kind: TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr),
                         meta: None,
                     });
-
-                    if let Term::LetPattern(_, _, body, _) = term {
-                        get_record_bind_item(ty, self.scope.clone(), ident, id, body)
-                            .map_or((), |item| lin.push(item))
-                    }
                 }
                 for matched in destruct.to_owned().inner() {
                     let (ident, body) = matched.as_meta_field();
                     let id = id_gen.get_and_advance();
                     self.env.insert(ident.to_owned(), id);
+                    lin.env.insert(ident.to_owned(), id);
 
                     lin.push(LinearizationItem {
                         id,
@@ -259,18 +219,9 @@ impl Linearizer for AnalysisHost {
                             _ => None,
                         },
                     });
-
-                    get_record_bind_item(
-                        TypeWrapper::Concrete(AbsType::Dyn()),
-                        self.scope.clone(),
-                        &ident,
-                        id,
-                        &body,
-                    )
-                    .map_or((), |item| lin.push(item));
                 }
             }
-            Term::Let(ident, body, ..) | Term::Fun(ident, body) => {
+            Term::Let(ident, ..) | Term::Fun(ident, ..) => {
                 let value_ptr = match term {
                     Term::Let(..) => {
                         self.let_binding = Some(id);
@@ -293,6 +244,7 @@ impl Linearizer for AnalysisHost {
                     _ => unreachable!(),
                 };
                 self.env.insert(ident.to_owned(), id_gen.get());
+                lin.env.insert(ident.to_owned(), id_gen.get());
                 lin.push(LinearizationItem {
                     id: id_gen.get(),
                     ty: ty.clone(),
@@ -301,9 +253,6 @@ impl Linearizer for AnalysisHost {
                     kind: TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr),
                     meta: self.meta.take(),
                 });
-
-                get_record_bind_item(ty, self.scope.clone(), ident, id, body)
-                    .map_or((), |item| lin.push(item))
             }
             Term::Var(ident) => {
                 let root_id = id_gen.get_and_advance();
@@ -427,6 +376,7 @@ impl Linearizer for AnalysisHost {
         let Building {
             mut linearization,
             scope,
+            env,
         } = lin.into_inner();
 
         linearization.sort_by(
@@ -480,8 +430,7 @@ impl Linearizer for AnalysisHost {
                 ..item
             })
             .collect();
-
-        Linearization::new(Completed::new(lin_, scope, id_mapping, self.env))
+        Linearization::new(Completed::new(lin_, scope, id_mapping, env))
     }
 
     fn scope(&mut self) -> Self {

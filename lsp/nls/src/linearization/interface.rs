@@ -20,8 +20,7 @@ impl ResolutionState for Resolved {}
 /// 1. Declarations
 /// 2. Usages
 /// 3. Records, listing their fields
-/// 4. Record Bind, a let or pattern binding, which binds a record.
-/// 5. wildcard (Structure) for any other kind of term.
+/// 4. wildcard (Structure) for any other kind of term.
 /// Can be extended later to represent Contracts, Records, etc.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TermKind {
@@ -33,10 +32,6 @@ pub enum TermKind {
         record: ID,
         usages: Vec<ID>,
         value: ValueState,
-    },
-    RecordBind {
-        ident: Ident,
-        fields: Vec<Ident>,
     },
     Structure,
 }
