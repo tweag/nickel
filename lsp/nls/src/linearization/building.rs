@@ -25,7 +25,7 @@ use super::{
 pub struct Building {
     pub linearization: Vec<LinearizationItem<Unresolved>>,
     pub scope: HashMap<Scope, Vec<ID>>,
-    pub env: Environment
+    pub env: Environment,
 }
 
 pub type ID = usize;
