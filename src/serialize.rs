@@ -1,8 +1,13 @@
 //! Serialization of an evaluated program to various data format.
 use crate::{
     error::SerializationError,
-    eval::{self, is_empty_optional},
-    term::{array::Array, record::RecordData, ArrayAttrs, MetaValue, RichTerm, Term},
+    eval::{
+        self,
+        cache::{CBNCache, Cache},
+        is_empty_optional,
+    },
+    identifier::Ident,
+    term::{array::Array, record::RecordData, ArrayAttrs, MetaValue, RecordAttrs, RichTerm, Term},
 };
 
 use serde::{
@@ -105,7 +110,7 @@ where
         .iter()
         // Filtering out optional fields without a definition. All variable should have been
         // substituted at this point, so we pass an empty environment.
-        .filter(|(_, t)| !is_empty_optional(t, &eval::Environment::new()))
+        .filter(|(_, t)| !is_empty_optional(&CBNCache {}, t, &eval::Environment::<CBNCache>::new()))
         .collect();
     entries.sort_by_key(|(k, _)| *k);
 
@@ -174,6 +179,7 @@ impl<'de> Deserialize<'de> for RichTerm {
 
 /// Check that a term is serializable. Serializable terms are booleans, numbers, strings, enum,
 /// arrays of serializable terms or records of serializable terms.
+/// TODO: We should have a NoCache impl of Cache or adapt the signature of [is_empty_optional()]
 pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), SerializationError> {
     use crate::term;
     use Term::*;
@@ -206,7 +212,10 @@ pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), SerializationE
                 value: Some(ref t), ..
             }) => validate(format, t),
             // Optional field without definition are accepted and ignored during serialization.
-            _ if is_empty_optional(t, &eval::Environment::new()) => Ok(()),
+            // TODO: This shouldn't spin a new cache
+            _ if is_empty_optional(&CBNCache::new(), t, &eval::Environment::<CBNCache>::new()) => {
+                Ok(())
+            }
             _ => Err(SerializationError::NonSerializable(t.clone())),
         }
     }
@@ -267,14 +276,16 @@ mod tests {
     use super::*;
     use crate::cache::resolvers::DummyResolver;
     use crate::error::{Error, EvalError};
-    use crate::eval::{Environment, VirtualMachine};
+    use crate::eval::{cache::CBNCache, Environment, VirtualMachine};
     use crate::position::TermPos;
     use crate::program::Program;
     use crate::term::{make as mk_term, BinaryOp};
     use serde_json::json;
     use std::io::Cursor;
 
-    fn mk_program(s: &str) -> Result<Program, Error> {
+    type EC = CBNCache;
+
+    fn mk_program(s: &str) -> Result<Program<EC>, Error> {
         let src = Cursor::new(s);
 
         Program::new_from_source(src, "<test>").map_err(|io_err| {
@@ -330,28 +341,28 @@ mod tests {
                     .unwrap();
 
             assert_eq!(
-                VirtualMachine::new(DummyResolver {})
+                VirtualMachine::<_, EC>::new(DummyResolver {})
                     .eval(
                         mk_term::op2(BinaryOp::Eq(), from_json, evaluated.clone()),
-                        &Environment::new(),
+                        &Environment::<EC>::new(),
                     )
                     .map(Term::from),
                 Ok(Term::Bool(true))
             );
             assert_eq!(
-                VirtualMachine::new(DummyResolver {})
+                VirtualMachine::<_, EC>::new(DummyResolver {})
                     .eval(
                         mk_term::op2(BinaryOp::Eq(), from_yaml, evaluated.clone()),
-                        &Environment::new(),
+                        &Environment::<EC>::new(),
                     )
                     .map(Term::from),
                 Ok(Term::Bool(true))
             );
             assert_eq!(
-                VirtualMachine::new(DummyResolver {})
+                VirtualMachine::<_, EC>::new(DummyResolver {})
                     .eval(
                         mk_term::op2(BinaryOp::Eq(), from_toml, evaluated),
-                        &Environment::new(),
+                        &Environment::<EC>::new(),
                     )
                     .map(Term::from),
                 Ok(Term::Bool(true))

@@ -85,15 +85,16 @@ impl Default for MergeMode {
 ///
 /// In [`MergeMode::Contract`] mode, `t1` must be the value and `t2` must be the contract. It is
 /// important as `merge` is not commutative in this mode.
-pub fn merge(
+pub fn merge<C: Cache>(
+    cache: &mut C,
     t1: RichTerm,
-    mut env1: Environment,
+    mut env1: Environment<C>,
     t2: RichTerm,
-    mut env2: Environment,
+    mut env2: Environment<C>,
     pos_op: TermPos,
     mode: MergeMode,
     call_stack: &CallStack,
-) -> Result<Closure, EvalError> {
+) -> Result<Closure<C>, EvalError> {
     // Merging a simple value and a metavalue is equivalent to first wrapping the simple value in a
     // new metavalue (with no attribute set excepted the value), and then merging the two
     let (t1, t2) = match (t1.term.is_metavalue(), t2.term.is_metavalue()) {
@@ -270,6 +271,7 @@ pub fn merge(
                         && (priority1 >= priority2 || value2.is_none()) =>
                 {
                     let (v, e) = cross_apply_contracts(
+                        cache,
                         v1,
                         &env1,
                         types2.iter().chain(contracts2.iter()),
@@ -287,6 +289,7 @@ pub fn merge(
                         && (priority2 >= priority1 || value1.is_none()) =>
                 {
                     let (v, e) = cross_apply_contracts(
+                        cache,
                         v2,
                         &env2,
                         types1.iter().chain(contracts1.iter()),
@@ -301,9 +304,9 @@ pub fn merge(
             // depending on which is defined and respective priorities.
             let (value, priority, mut env) = match (value1, value2) {
                 (Some(t1), Some(t2)) if priority1 == priority2 => {
-                    let mut env = Environment::new();
+                    let mut env = Environment::<C>::new();
                     (
-                        Some(merge_closurize(&mut env, t1, val_env1, t2, val_env2)),
+                        Some(merge_closurize(cache, &mut env, t1, val_env1, t2, val_env2)),
                         priority1,
                         env,
                     )
@@ -312,14 +315,14 @@ pub fn merge(
                 (Some(t1), None) => (Some(t1), priority1, val_env1),
                 (_, Some(t2)) if priority2 > priority1 => (Some(t2), priority2, val_env2),
                 (None, Some(t2)) => (Some(t2), priority2, val_env2),
-                (None, None) => (None, Default::default(), Environment::new()),
+                (None, None) => (None, Default::default(), Environment::<C>::new()),
                 _ => unreachable!(),
             };
 
             // Finally, we also need to closurize the contracts in the final envirnment.
             let mut contracts1: Vec<Contract> = contracts1
                 .into_iter()
-                .map(|ctr| ctr.closurize(&mut env, env1.clone()))
+                .map(|ctr| ctr.closurize(cache, &mut env, env1.clone()))
                 .collect();
             // Clippy is wrong to complain about the useless `collect` here:
             // It is necessary to release the mutable borrow on `env`
@@ -327,10 +330,10 @@ pub fn merge(
             #[allow(clippy::needless_collect)]
             let contracts2: Vec<Contract> = contracts2
                 .into_iter()
-                .map(|ctr| ctr.closurize(&mut env, env2.clone()))
+                .map(|ctr| ctr.closurize(cache, &mut env, env2.clone()))
                 .collect();
-            let types1 = types1.map(|ctr| ctr.closurize(&mut env, env1));
-            let types2 = types2.map(|ctr| ctr.closurize(&mut env, env2));
+            let types1 = types1.map(|ctr| ctr.closurize(cache, &mut env, env1));
+            let types2 = types2.map(|ctr| ctr.closurize(cache, &mut env, env2));
 
             // If both have type annotations, we arbitrarily choose the first one. At this point we
             // are evaluating the term, and types annotations and contracts make no difference
@@ -375,8 +378,8 @@ pub fn merge(
             // Merging recursive record is the one operation that may override recursive fields. To
             // have the recursive fields depend on the updated values, we need to revert the thunks
             // first.
-            rev_thunks(r1.fields.values_mut(), &mut env1);
-            rev_thunks(r2.fields.values_mut(), &mut env2);
+            rev_thunks::<_, C>(r1.fields.values_mut(), &mut env1);
+            rev_thunks::<_, C>(r2.fields.values_mut(), &mut env2);
 
             // We save the original fields before they are potentially merged in order to patch
             // their environment in the final record (cf `fixpoint::patch_fields`). Note that we
@@ -402,30 +405,30 @@ pub fn merge(
             };
 
             let mut m = HashMap::with_capacity(left.len() + center.len() + right.len());
-            let mut env = Environment::new();
+            let mut env = Environment::<C>::new();
 
             for (field, t) in left.into_iter() {
-                m.insert(field, t.closurize(&mut env, env1.clone()));
+                m.insert(field, t.closurize(cache, &mut env, env1.clone()));
             }
 
             for (field, t) in right.into_iter() {
-                m.insert(field, t.closurize(&mut env, env2.clone()));
+                m.insert(field, t.closurize(cache, &mut env, env2.clone()));
             }
 
             for (field, (t1, t2)) in center.into_iter() {
                 m.insert(
                     field,
-                    merge_closurize(&mut env, t1, env1.clone(), t2, env2.clone()),
+                    merge_closurize(cache, &mut env, t1, env1.clone(), t2, env2.clone()),
                 );
             }
 
-            let rec_env = fixpoint::rec_env(m.iter(), &env)?;
+            let rec_env = fixpoint::rec_env(cache, m.iter(), &env)?;
             m1_values
                 .iter()
-                .try_for_each(|rt| fixpoint::patch_field(rt, &rec_env, &env1))?;
+                .try_for_each(|rt| fixpoint::patch_field(cache, rt, &rec_env, &env1))?;
             m2_values
                 .iter()
-                .try_for_each(|rt| fixpoint::patch_field(rt, &rec_env, &env2))?;
+                .try_for_each(|rt| fixpoint::patch_field(cache, rt, &rec_env, &env2))?;
 
             let final_pos = if mode == MergeMode::Standard {
                 pos_op.into_inherited()
@@ -469,19 +472,23 @@ pub fn merge(
 ///
 /// - the term is given by `t1` in its environment `env1`
 /// - the contracts are given as an iterator `it2` together with their environment `env2`
-fn cross_apply_contracts<'a>(
+fn cross_apply_contracts<'a, C: Cache>(
+    cache: &mut C,
     t1: RichTerm,
-    env1: &Environment,
+    env1: &Environment<C>,
     mut it2: impl Iterator<Item = &'a Contract>,
-    env2: &Environment,
-) -> Result<(RichTerm, Environment), EvalError> {
-    let mut env = Environment::new();
+    env2: &Environment<C>,
+) -> Result<(RichTerm, Environment<C>), EvalError> {
+    let mut env = Environment::<C>::new();
     let mut env1_local = env1.clone();
 
     let pos = t1.pos.into_inherited();
     let result = it2
         .try_fold(t1, |acc, ctr| {
-            let ty_closure = ctr.types.clone().closurize(&mut env1_local, env2.clone());
+            let ty_closure = ctr
+                .types
+                .clone()
+                .closurize(cache, &mut env1_local, env2.clone());
             mk_term::assume(ty_closure, ctr.label.clone(), acc)
                 .map_err(|crate::types::UnboundTypeVariableError(id)| {
                     let pos = id.pos;
@@ -489,7 +496,7 @@ fn cross_apply_contracts<'a>(
                 })
                 .map(|rt| rt.with_pos(pos))
         })?
-        .closurize(&mut env, env1_local);
+        .closurize(cache, &mut env, env1_local);
 
     Ok((result, env))
 }
@@ -502,23 +509,27 @@ fn merge_doc(doc1: Option<String>, doc2: Option<String>) -> Option<String> {
 
 /// Take the current environment, two terms with their local environment, and return a term which
 /// is the closurized merge of the two.
-fn merge_closurize(
-    env: &mut Environment,
+fn merge_closurize<C: Cache>(
+    cache: &mut C,
+    env: &mut Environment<C>,
     t1: RichTerm,
-    env1: Environment,
+    env1: Environment<C>,
     t2: RichTerm,
-    env2: Environment,
+    env2: Environment<C>,
 ) -> RichTerm {
-    let mut local_env = Environment::new();
+    let mut local_env = Environment::<C>::new();
     let body = RichTerm::from(Term::Op2(
         BinaryOp::Merge(),
-        t1.closurize(&mut local_env, env1),
-        t2.closurize(&mut local_env, env2),
+        t1.closurize(cache, &mut local_env, env1),
+        t2.closurize(cache, &mut local_env, env2),
     ));
-    body.closurize(env, local_env)
+    body.closurize(cache, env, local_env)
 }
 
-fn rev_thunks<'a, I: Iterator<Item = &'a mut RichTerm>>(map: I, env: &mut Environment) {
+fn rev_thunks<'a, I: Iterator<Item = &'a mut RichTerm>, C: Cache>(
+    map: I,
+    env: &mut Environment<C>,
+) {
     for rt in map {
         if let Term::Var(id) = rt.as_ref() {
             // This create a fresh variable which is bound to a reverted copy of the original thunk

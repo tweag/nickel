@@ -1,14 +1,15 @@
 //! Define the main evaluation stack of the Nickel abstract machine and related operations.
 //!
 //! See [eval](../eval/index.html).
+use super::cache::Cache;
 use super::operation::OperationCont;
 use crate::eval::EvalMode;
-use crate::eval::{Closure, Environment, IdentKind, Thunk, ThunkUpdateFrame};
+use crate::eval::{Closure, Environment, IdentKind};
 use crate::position::TermPos;
-use crate::term::{RichTerm, StrChunk};
+use crate::term::{BindingType, RichTerm, StrChunk};
 
 /// An element of the stack.
-pub enum Marker {
+pub enum Marker<C: Cache> {
     /// An equality to test.
     ///
     /// When evaluating one equality `t1 == t2`, the abstract machine may generate several new
@@ -16,19 +17,19 @@ pub enum Marker {
     /// first equality is evaluated and the remaining ones - the continuation of the whole
     /// computation - are put on the stack as `Eq` elements. If an equality evaluates to `false` at
     /// some point, all the consecutive `Eq` elements at the top of the stack are discarded.
-    Eq(Closure, Closure),
+    Eq(Closure<C>, Closure<C>),
     /// An argument of an application.
-    Arg(Closure, TermPos),
+    Arg(Closure<C>, TermPos),
     /// A tracked argument. Behave the same as a standard argument, but is given directly as a thunk, such that
     /// it can be shared with other part of the program.
     ///
     /// In particular, contract arguments are tracked, in order to report the actual, evaluated offending term in case of blame.
-    TrackedArg(Thunk, TermPos),
+    TrackedArg(C::Index, TermPos),
     /// A thunk, which is pointer to a mutable memory cell to be updated.
-    Thunk(ThunkUpdateFrame),
+    Thunk(C::UpdateIndex),
     /// The continuation of a primitive operation.
     Cont(
-        OperationCont,
+        OperationCont<C>,
         usize,   /*callStack size*/
         TermPos, /*position span of the operation*/
     ),
@@ -42,14 +43,14 @@ pub enum Marker {
     /// A string accumulator. Used by `ChunksConcat` to store additional state, that is the string being
     /// constructed, the indentation of the chunk being evaluated, and the common initial environment of chunks.
     StrAcc(
-        String,      /* the accumulator */
-        usize,       /* the indentation level of the chunk currently evaluated */
-        Environment, /* the common environment of chunks */
+        String,         /* the accumulator */
+        usize,          /* the indentation level of the chunk currently evaluated */
+        Environment<C>, /* the common environment of chunks */
     ),
     Strictness(EvalMode),
 }
 
-impl std::fmt::Debug for Marker {
+impl<C: Cache> std::fmt::Debug for Marker<C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Marker::Eq(_, _) => write!(f, "Eq"),
@@ -64,7 +65,7 @@ impl std::fmt::Debug for Marker {
     }
 }
 
-impl Marker {
+impl<C: Cache> Marker<C> {
     pub fn is_arg(&self) -> bool {
         matches!(*self, Marker::Arg(..) | Marker::TrackedArg(..))
     }
@@ -96,26 +97,26 @@ impl Marker {
 
 /// The evaluation stack.
 #[derive(Default)]
-pub struct Stack(Vec<Marker>);
+pub struct Stack<C: Cache>(Vec<Marker<C>>);
 
-impl IntoIterator for Stack {
-    type Item = Marker;
-    type IntoIter = ::std::vec::IntoIter<Marker>;
+impl<C: Cache> IntoIterator for Stack<C> {
+    type Item = Marker<C>;
+    type IntoIter = ::std::vec::IntoIter<Marker<C>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
     }
 }
 
-impl Stack {
-    pub fn new() -> Stack {
+impl<C: Cache> Stack<C> {
+    pub fn new() -> Stack<C> {
         Stack(Vec::new())
     }
 
     /// Count the number of consecutive elements satisfying `pred` from the top of the stack.
     fn count<P>(&self, pred: P) -> usize
     where
-        P: Fn(&Marker) -> bool,
+        P: Fn(&Marker<C>) -> bool,
     {
         let mut count = 0;
         for marker in self.0.iter().rev() {
@@ -129,10 +130,10 @@ impl Stack {
     }
 
     /// Pops all items in the stack and resets the state of the thunks it encounters.
-    pub fn reset(&mut self) {
+    pub fn reset(&mut self, cache: &mut C) {
         while let Some(marker) = self.0.pop() {
-            if let Marker::Thunk(thunk) = marker {
-                thunk.reset_state();
+            if let Marker::Thunk(mut thunk) = marker {
+                cache.reset_index_state(&mut thunk);
             }
         }
     }
@@ -142,26 +143,26 @@ impl Stack {
         Stack::count(self, Marker::is_arg)
     }
 
-    pub fn push_arg(&mut self, arg: Closure, pos: TermPos) {
+    pub fn push_arg(&mut self, arg: Closure<C>, pos: TermPos) {
         self.0.push(Marker::Arg(arg, pos))
     }
 
-    pub fn push_tracked_arg(&mut self, arg_thunk: Thunk, pos: TermPos) {
-        self.0.push(Marker::TrackedArg(arg_thunk, pos))
+    pub fn push_tracked_arg(&mut self, idx: C::Index, pos: TermPos) {
+        self.0.push(Marker::TrackedArg(idx, pos))
     }
 
-    pub fn push_thunk(&mut self, thunk: ThunkUpdateFrame) {
-        self.0.push(Marker::Thunk(thunk))
+    pub fn push_update_index(&mut self, uidx: C::UpdateIndex) {
+        self.0.push(Marker::Thunk(uidx))
     }
 
-    pub fn push_op_cont(&mut self, cont: OperationCont, len: usize, pos: TermPos) {
+    pub fn push_op_cont(&mut self, cont: OperationCont<C>, len: usize, pos: TermPos) {
         self.0.push(Marker::Cont(cont, len, pos))
     }
 
     /// Push a sequence of equalities on the stack.
     pub fn push_eqs<I>(&mut self, it: I)
     where
-        I: Iterator<Item = (Closure, Closure)>,
+        I: Iterator<Item = (Closure<C>, Closure<C>)>,
     {
         self.0.extend(it.map(|(t1, t2)| Marker::Eq(t1, t2)));
     }
@@ -175,7 +176,7 @@ impl Stack {
     }
 
     /// Push a string accumulator on the stack.
-    pub fn push_str_acc(&mut self, acc: String, indent: usize, env: Environment) {
+    pub fn push_str_acc(&mut self, acc: String, indent: usize, env: Environment<C>) {
         self.0.push(Marker::StrAcc(acc, indent, env));
     }
 
@@ -187,10 +188,10 @@ impl Stack {
     /// was not an argument and the stack is left unchanged.
     ///
     /// If the argument is tracked, it is automatically converted into an owned closure.
-    pub fn pop_arg(&mut self) -> Option<(Closure, TermPos)> {
+    pub fn pop_arg(&mut self, cache: &C) -> Option<(Closure<C>, TermPos)> {
         match self.0.pop() {
             Some(Marker::Arg(arg, pos)) => Some((arg, pos)),
-            Some(Marker::TrackedArg(arg_thunk, pos)) => Some((arg_thunk.into_closure(), pos)),
+            Some(Marker::TrackedArg(arg_thunk, pos)) => Some((cache.get(arg_thunk), pos)),
             Some(m) => {
                 self.0.push(m);
                 None
@@ -203,9 +204,11 @@ impl Stack {
     /// returned, the top element was not an argument and the stack is left unchanged.
     ///
     /// If the argument is not tracked, it is directly returned.
-    pub fn pop_arg_as_thunk(&mut self) -> Option<(Thunk, TermPos)> {
+    pub fn pop_arg_as_thunk(&mut self, cache: &mut C) -> Option<(C::Index, TermPos)> {
         match self.0.pop() {
-            Some(Marker::Arg(arg, pos)) => Some((Thunk::new(arg, IdentKind::Lambda), pos)),
+            Some(Marker::Arg(arg, pos)) => {
+                Some((cache.add(arg, IdentKind::Lambda, BindingType::Normal), pos))
+            }
             Some(Marker::TrackedArg(arg_thunk, pos)) => Some((arg_thunk, pos)),
             Some(m) => {
                 self.0.push(m);
@@ -217,9 +220,9 @@ impl Stack {
 
     /// Try to pop a thunk from the top of the stack. If `None` is returned, the top element was
     /// not a thunk and the stack is left unchanged.
-    pub fn pop_thunk(&mut self) -> Option<ThunkUpdateFrame> {
+    pub fn pop_thunk(&mut self) -> Option<C::UpdateIndex> {
         match self.0.pop() {
-            Some(Marker::Thunk(thunk)) => Some(thunk),
+            Some(Marker::Thunk(uidx)) => Some(uidx),
             Some(m) => {
                 self.0.push(m);
                 None
@@ -230,7 +233,7 @@ impl Stack {
 
     /// Try to pop an operator continuation from the top of the stack. If `None` is returned, the
     /// top element was not an operator continuation and the stack is left unchanged.
-    pub fn pop_op_cont(&mut self) -> Option<(OperationCont, usize, TermPos)> {
+    pub fn pop_op_cont(&mut self) -> Option<(OperationCont<C>, usize, TermPos)> {
         match self.0.pop() {
             Some(Marker::Cont(cont, len, pos)) => Some((cont, len, pos)),
             Some(m) => {
@@ -241,7 +244,7 @@ impl Stack {
         }
     }
 
-    pub fn peek_op_cont(&self) -> Option<OperationCont> {
+    pub fn peek_op_cont(&self) -> Option<OperationCont<C>> {
         let mut it = self
             .0
             .iter()
@@ -256,7 +259,7 @@ impl Stack {
 
     /// Try to pop an equality from the top of the stack. If `None` is returned, the top element
     /// was not an equality and the stack is left unchanged.
-    pub fn pop_eq(&mut self) -> Option<(Closure, Closure)> {
+    pub fn pop_eq(&mut self) -> Option<(Closure<C>, Closure<C>)> {
         if self.0.last().map(Marker::is_eq).unwrap_or(false) {
             match self.0.pop() {
                 Some(Marker::Eq(c1, c2)) => Some((c1, c2)),
@@ -269,7 +272,7 @@ impl Stack {
 
     /// Try to pop the a string accumulator from the stack. If `None` is returned, the top element
     /// was not a string accumulator and the stack is left unchanged.
-    pub fn pop_str_acc(&mut self) -> Option<(String, usize, Environment)> {
+    pub fn pop_str_acc(&mut self) -> Option<(String, usize, Environment<C>)> {
         if self.0.last().map(Marker::is_str_acc).unwrap_or(false) {
             match self.0.pop() {
                 Some(Marker::StrAcc(acc, indent, env)) => Some((acc, indent, env)),
@@ -322,21 +325,21 @@ impl Stack {
 
     /// Turning the top element of the stack into a tracked arg if it was not already. Returns the
     /// corresponding thunk, or `None` if the top element wasn't an argument.
-    pub fn track_arg(&mut self) -> Option<Thunk> {
+    pub fn track_arg(&mut self, cache: &mut C) -> Option<C::Index> {
         match self.0.last_mut() {
-            Some(Marker::TrackedArg(thunk, _)) => Some(thunk.clone()),
+            Some(Marker::TrackedArg(idx, _)) => Some(idx.clone()),
             Some(Marker::Arg(..)) => {
-                let (closure, pos) = self.pop_arg().unwrap();
-                let thunk = Thunk::new(closure, IdentKind::Lambda);
-                self.push_tracked_arg(thunk.clone(), pos);
-                Some(thunk)
+                let (closure, pos) = self.pop_arg(cache).unwrap();
+                let idx = cache.add(closure, IdentKind::Lambda, BindingType::Normal);
+                self.push_tracked_arg(idx.clone(), pos);
+                Some(idx)
             }
             _ => None,
         }
     }
 }
 
-impl std::fmt::Debug for Stack {
+impl<C: Cache> std::fmt::Debug for Stack<C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "--- STACK ---")?;
         for marker in self.0.iter().rev() {
@@ -349,11 +352,13 @@ impl std::fmt::Debug for Stack {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::eval::{IdentKind, Thunk};
+    use crate::eval::{cache::CBNCache, IdentKind, Thunk};
     use crate::term::{Term, UnaryOp};
     use assert_matches::assert_matches;
 
-    impl Stack {
+    type EC = CBNCache;
+
+    impl Stack<EC> {
         /// Count the number of thunks at the top of the stack.
         pub fn count_thunks(&self) -> usize {
             Stack::count(self, Marker::is_thunk)
@@ -365,24 +370,24 @@ mod tests {
         }
     }
 
-    fn some_closure() -> Closure {
+    fn some_closure() -> Closure<EC> {
         Closure::atomic_closure(Term::Bool(true).into())
     }
 
-    fn some_cont() -> OperationCont {
+    fn some_cont() -> OperationCont<EC> {
         OperationCont::Op1(UnaryOp::Typeof(), TermPos::None)
     }
 
-    fn some_arg_marker() -> Marker {
+    fn some_arg_marker() -> Marker<EC> {
         Marker::Arg(some_closure(), TermPos::None)
     }
 
-    fn some_thunk_marker() -> Marker {
+    fn some_thunk_marker() -> Marker<EC> {
         let mut thunk = Thunk::new(some_closure(), IdentKind::Let);
         Marker::Thunk(thunk.mk_update_frame().unwrap())
     }
 
-    fn some_cont_marker() -> Marker {
+    fn some_cont_marker() -> Marker<EC> {
         Marker::Cont(some_cont(), 42, TermPos::None)
     }
 
@@ -401,7 +406,10 @@ mod tests {
         s.push_arg(some_closure(), TermPos::None);
         s.push_arg(some_closure(), TermPos::None);
         assert_eq!(2, s.count_args());
-        assert_eq!(some_closure(), s.pop_arg().expect("Already checked").0);
+        assert_eq!(
+            some_closure(),
+            s.pop_arg(&CBNCache {}).expect("Already checked").0
+        );
         assert_eq!(1, s.count_args());
     }
 
@@ -411,9 +419,10 @@ mod tests {
         assert_eq!(0, s.count_thunks());
 
         let mut thunk = Thunk::new(some_closure(), IdentKind::Let);
-        s.push_thunk(thunk.mk_update_frame().unwrap());
+        s.push_update_index(thunk.mk_update_frame().unwrap());
+        // TODO: This is not generic
         thunk = Thunk::new(some_closure(), IdentKind::Let);
-        s.push_thunk(thunk.mk_update_frame().unwrap());
+        s.push_update_index(thunk.mk_update_frame().unwrap());
 
         assert_eq!(2, s.count_thunks());
         s.pop_thunk().expect("Already checked");
@@ -448,6 +457,7 @@ mod tests {
     #[test]
     fn pushing_and_poping_strictness_markers() {
         let mut s = Stack::new();
+        let cache = CBNCache {};
         assert_eq!(0, s.count_args());
 
         s.push_strictness(EvalMode::UnwrapMeta);
@@ -460,9 +470,9 @@ mod tests {
 
         assert_eq!(s.pop_strictness_marker(), Some(EvalMode::StopAtMeta));
         assert_eq!(2, s.count_args());
-        assert_matches!(s.pop_arg(), Some(..));
-        assert_matches!(s.pop_arg(), Some(..));
-        assert_eq!(s.pop_arg(), None);
+        assert_matches!(s.pop_arg(&cache), Some(..));
+        assert_matches!(s.pop_arg(&cache), Some(..));
+        assert_eq!(s.pop_arg(&cache), None);
         assert_eq!(0, s.count_args());
         assert_eq!(s.pop_strictness_marker(), Some(EvalMode::UnwrapMeta));
         assert_eq!(0, s.count_args());

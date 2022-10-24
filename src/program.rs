@@ -22,6 +22,7 @@
 //! Each such value is added to the initial environment before the evaluation of the program.
 use crate::cache::*;
 use crate::error::{Error, ToDiagnostic};
+use crate::eval::cache::Cache as EvalCache;
 use crate::eval::VirtualMachine;
 use crate::identifier::Ident;
 use crate::parser::lexer::Lexer;
@@ -37,29 +38,29 @@ use std::result::Result;
 ///
 /// Manage a file database, which stores the original source code of the program and eventually the
 /// code of imported expressions, and a dictionary which stores corresponding parsed terms.
-pub struct Program {
+pub struct Program<EC: EvalCache> {
     /// The id of the program source in the file database.
     main_id: FileId,
     /// The state of the Nickel virtual machine.
-    vm: VirtualMachine<Cache>,
+    vm: VirtualMachine<Cache, EC>,
 }
 
-impl Program {
+impl<EC: EvalCache> Program<EC> {
     /// Create a program by reading it from the standard input.
-    pub fn new_from_stdin() -> std::io::Result<Program> {
+    pub fn new_from_stdin() -> std::io::Result<Self> {
         Program::new_from_source(io::stdin(), "<stdin>")
     }
 
-    pub fn new_from_file(path: impl Into<OsString>) -> std::io::Result<Program> {
+    pub fn new_from_file(path: impl Into<OsString>) -> std::io::Result<Self> {
         let mut cache = Cache::new(ErrorTolerance::Strict);
         let main_id = cache.add_file(path)?;
         let vm = VirtualMachine::new(cache);
 
-        Ok(Program { main_id, vm })
+        Ok(Self { main_id, vm })
     }
 
     /// Create a program by reading it from a generic source.
-    pub fn new_from_source<T, S>(source: T, source_name: S) -> std::io::Result<Program>
+    pub fn new_from_source<T, S>(source: T, source_name: S) -> std::io::Result<Self>
     where
         T: Read,
         S: Into<OsString> + Clone,
@@ -68,16 +69,21 @@ impl Program {
         let main_id = cache.add_source(source_name, source)?;
         let vm = VirtualMachine::new(cache);
 
-        Ok(Program { main_id, vm })
+        Ok(Self { main_id, vm })
     }
 
     /// Retrieve the parsed term and typecheck it, and generate a fresh initial environment. Return
     /// both.
-    fn prepare_eval(&mut self) -> Result<(RichTerm, eval::Environment), Error> {
+    fn prepare_eval(&mut self) -> Result<(RichTerm, eval::Environment<EC>), Error> {
+        self.vm.prepare_eval(self.main_id)
+        /*
         let Envs {
             eval_env,
             type_ctxt,
-        } = self.vm.import_resolver_mut().prepare_stdlib()?;
+        }: Envs<EC> = self
+            .vm
+            .import_resolver_mut()
+            .prepare_stdlib(&mut self.vm.cache)?;
         self.vm
             .import_resolver_mut()
             .prepare(self.main_id, &type_ctxt)?;
@@ -85,6 +91,7 @@ impl Program {
             self.vm.import_resolver().get(self.main_id).unwrap(),
             eval_env,
         ))
+        */
     }
 
     /// Parse if necessary, typecheck and then evaluate the program.
@@ -110,7 +117,7 @@ impl Program {
 
     /// Wrapper for [`query`].
     pub fn query(&mut self, path: Option<String>) -> Result<Term, Error> {
-        let initial_env = self.vm.import_resolver_mut().prepare_stdlib()?;
+        let initial_env = self.vm.prepare_stdlib()?;
         query(&mut self.vm, self.main_id, &initial_env, path)
     }
 
@@ -191,10 +198,10 @@ impl Program {
 //would additionally report `type: Num` for example.
 //TODO: not sure where this should go. It seems to embed too much logic to be in `Cache`, but is
 //common to both `Program` and `Repl`. Leaving it here as a stand-alone function for now
-pub fn query(
-    vm: &mut VirtualMachine<Cache>,
+pub fn query<EC: EvalCache>(
+    vm: &mut VirtualMachine<Cache, EC>,
     file_id: FileId,
-    initial_env: &Envs,
+    initial_env: &Envs<EC>,
     path: Option<String>,
 ) -> Result<Term, Error> {
     vm.import_resolver_mut()
@@ -209,14 +216,16 @@ pub fn query(
             parser::grammar::TermParser::new().parse_term(query_file_id, Lexer::new(&source))?;
 
         // Substituting `y` for `t`
-        let mut env = eval::Environment::new();
+        let mut env = eval::Environment::<EC>::new();
+        let rt = vm.import_resolver().get_owned(file_id).unwrap();
         eval::env_add(
+            &mut vm.cache,
             &mut env,
             Ident::from("x"),
-            vm.import_resolver().get_owned(file_id).unwrap(),
-            eval::Environment::new(),
+            rt,
+            eval::Environment::<EC>::new(),
         );
-        eval::subst(new_term, &eval::Environment::new(), &env)
+        eval::subst(&vm.cache, new_term, &eval::Environment::<EC>::new(), &env)
     } else {
         vm.import_resolver().get_owned(file_id).unwrap()
     };
@@ -372,15 +381,18 @@ mod doc {
 mod tests {
     use super::*;
     use crate::error::EvalError;
+    use crate::eval::cache::CBNCache;
     use crate::position::TermPos;
     use crate::term::ArrayAttrs;
     use assert_matches::assert_matches;
     use std::io::Cursor;
 
+    type EC = CBNCache;
+
     fn eval_full(s: &str) -> Result<RichTerm, Error> {
         let src = Cursor::new(s);
 
-        let mut p = Program::new_from_source(src, "<test>").map_err(|io_err| {
+        let mut p: Program<EC> = Program::new_from_source(src, "<test>").map_err(|io_err| {
             Error::EvalError(EvalError::Other(
                 format!("IO error: {}", io_err),
                 TermPos::None,
@@ -392,7 +404,7 @@ mod tests {
     fn typecheck(s: &str) -> Result<(), Error> {
         let src = Cursor::new(s);
 
-        let mut p = Program::new_from_source(src, "<test>").map_err(|io_err| {
+        let mut p: Program<EC> = Program::new_from_source(src, "<test>").map_err(|io_err| {
             Error::EvalError(EvalError::Other(
                 format!("IO error: {}", io_err),
                 TermPos::None,

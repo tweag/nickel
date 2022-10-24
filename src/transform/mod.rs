@@ -1,9 +1,9 @@
 //! Various post transformations of nickel code.
 use crate::{
     cache::ImportResolver,
-    eval::{lazy::Thunk, Closure, Environment, IdentKind},
+    eval::{cache::Cache, Closure, Environment, IdentKind},
     identifier::Ident,
-    term::{Contract, RichTerm, Term, TraverseOrder},
+    term::{BindingType, Contract, RichTerm, Term, TraverseOrder},
     typecheck::Wildcards,
     types::{TypeF, Types, UnboundTypeVariableError},
 };
@@ -70,7 +70,12 @@ pub fn transform_no_free_vars(
 pub trait Closurizable {
     /// Pack a closurizable together with its environment `with_env` as a closure in the main
     /// environment `env`.
-    fn closurize(self, env: &mut Environment, with_env: Environment) -> Self;
+    fn closurize<C: Cache>(
+        self,
+        cache: &mut C,
+        env: &mut Environment<C>,
+        with_env: Environment<C>,
+    ) -> Self;
 }
 
 impl Closurizable for RichTerm {
@@ -78,7 +83,12 @@ impl Closurizable for RichTerm {
     ///
     /// Generate a fresh variable, bind it to the corresponding closure `(t,with_env)` in `env`,
     /// and return this variable as a fresh term.
-    fn closurize(self, env: &mut Environment, with_env: Environment) -> RichTerm {
+    fn closurize<C: Cache>(
+        self,
+        cache: &mut C,
+        env: &mut Environment<C>,
+        with_env: Environment<C>,
+    ) -> RichTerm {
         // If the term is already a variable, we don't have to create a useless intermediate
         // closure. We just transfer the original thunk to the new environment. This is not only an
         // optimization: this is relied upon by recursive record merging when computing the
@@ -133,11 +143,11 @@ impl Closurizable for RichTerm {
             )
             }),
             _ => {
-                let closure = Closure {
+                let closure: Closure<C> = Closure {
                     body: self,
                     env: with_env,
                 };
-                Thunk::new(closure, IdentKind::Record)
+                cache.add(closure, IdentKind::Record, BindingType::Normal)
             }
         };
 
@@ -151,17 +161,27 @@ impl Closurizable for Types {
     ///
     /// Extract the underlying contract, closurize it and wrap it back as a flat type (an opaque
     /// type defined by a custom contract).
-    fn closurize(self, env: &mut Environment, with_env: Environment) -> Types {
+    fn closurize<C: Cache>(
+        self,
+        cache: &mut C,
+        env: &mut Environment<C>,
+        with_env: Environment<C>,
+    ) -> Types {
         Types(TypeF::Flat(
-            self.contract().unwrap().closurize(env, with_env),
+            self.contract().unwrap().closurize(cache, env, with_env),
         ))
     }
 }
 
 impl Closurizable for Contract {
-    fn closurize(self, env: &mut Environment, with_env: Environment) -> Contract {
+    fn closurize<C: Cache>(
+        self,
+        cache: &mut C,
+        env: &mut Environment<C>,
+        with_env: Environment<C>,
+    ) -> Contract {
         Contract {
-            types: self.types.closurize(env, with_env),
+            types: self.types.closurize(cache, env, with_env),
             label: self.label,
         }
     }

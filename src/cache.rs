@@ -1,6 +1,7 @@
 //! Source cache.
 
 use crate::error::{Error, ImportError, ParseError, ParseErrors, TypecheckError};
+use crate::eval::cache::Cache as EvalCache;
 use crate::parser::lexer::Lexer;
 use crate::position::TermPos;
 use crate::stdlib as nickel_stdlib;
@@ -89,17 +90,17 @@ pub enum ErrorTolerance {
 
 /// The different environments maintained during the REPL session for evaluation and typechecking.
 #[derive(Debug, Clone)]
-pub struct Envs {
+pub struct Envs<EC: EvalCache> {
     /// The eval environment.
-    pub eval_env: eval::Environment,
+    pub eval_env: eval::Environment<EC>,
     /// The typing context.
     pub type_ctxt: typecheck::Context,
 }
 
-impl Envs {
+impl<EC: EvalCache> Envs<EC> {
     pub fn new() -> Self {
         Envs {
-            eval_env: eval::Environment::new(),
+            eval_env: eval::Environment::<EC>::new(),
             type_ctxt: typecheck::Context::new(),
         }
     }
@@ -889,7 +890,7 @@ impl Cache {
     /// for performance reasons: this is done in the test suite. Return an initial environment
     /// containing both the evaluation and type environments. If you only need the type environment, use
     /// `load_stdlib` then `mk_type_env` to avoid transformations and evaluation preparation.
-    pub fn prepare_stdlib(&mut self) -> Result<Envs, Error> {
+    pub fn prepare_stdlib<EC: EvalCache>(&mut self, evalcache: &mut EC) -> Result<Envs<EC>, Error> {
         #[cfg(debug_assertions)]
         if self.skip_stdlib {
             return Ok(Envs::new());
@@ -907,7 +908,7 @@ impl Cache {
                 cache_err
                     .unwrap_error("cache::prepare_stdlib(): expected standard library to be parsed")
             })?;
-        let eval_env = self.mk_eval_env().unwrap();
+        let eval_env = self.mk_eval_env(evalcache).unwrap();
         Ok(Envs {
             eval_env,
             type_ctxt,
@@ -935,11 +936,15 @@ impl Cache {
 
     /// Generate the initial evaluation environment from the list of `file_ids` corresponding to the standard
     /// library parts.
-    pub fn mk_eval_env(&self) -> Result<eval::Environment, CacheError<Void>> {
+    pub fn mk_eval_env<EC: EvalCache>(
+        &self,
+        evalcache: &mut EC,
+    ) -> Result<eval::Environment<EC>, CacheError<Void>> {
         if let Some(ids) = self.stdlib_ids.as_ref().cloned() {
-            let mut eval_env = eval::Environment::new();
+            let mut eval_env = eval::Environment::<EC>::new();
             ids.iter().for_each(|file_id| {
                 let result = eval::env_add_term(
+                    evalcache,
                     &mut eval_env,
                     self.get_owned(*file_id).expect(
                         "cache::mk_eval_env(): can't build environment, stdlib not parsed",

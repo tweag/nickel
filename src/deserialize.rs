@@ -594,10 +594,12 @@ impl serde::de::Error for RustDeserializationError {
 mod tests {
     use std::io::Cursor;
 
+    use nickel_lang_utilities::TestProgram;
     use serde::Deserialize;
 
+    use crate::{eval::cache::CBNCache, program::Program};
+
     use super::RustDeserializationError;
-    use crate::program::Program;
 
     #[test]
     fn rust_deserialize_struct_with_fields() {
@@ -629,7 +631,7 @@ mod tests {
 
         assert_eq!(
             A::deserialize(
-                Program::new_from_source(
+                TestProgram::new_from_source(
                     Cursor::new(
                         br#"{ a = 10, b = "test string", c = null, d = true, e = `foo, f = null, g = -10, h = { bar = "some other string" } }"#.to_vec()
                     ),
@@ -657,7 +659,7 @@ mod tests {
     fn rust_deserialize_array_of_numbers() {
         assert_eq!(
             Vec::<f64>::deserialize(
-                Program::new_from_source(Cursor::new(br#"[1, 2, 3, 4]"#.to_vec()), "source")
+                TestProgram::new_from_source(Cursor::new(br#"[1, 2, 3, 4]"#.to_vec()), "source")
                     .expect("program should't fail")
                     .eval_full()
                     .expect("evaluation should't fail")
@@ -672,13 +674,16 @@ mod tests {
         #[derive(Debug, PartialEq, Deserialize)]
         struct A;
 
+        let mut p = Program::<CBNCache>::new_from_source(
+            Cursor::new(br#"fun a b => a + b"#.to_vec()),
+            "source",
+        )
+        .expect("program should't fail");
+
+        let q = p.eval_full().expect("evaluation should't fail");
+
         assert_eq!(
-            A::deserialize(
-                Program::new_from_source(Cursor::new(br#"fun a b => a + b"#.to_vec()), "source")
-                    .expect("program should't fail")
-                    .eval_full()
-                    .expect("evaluation should't fail")
-            ),
+            A::deserialize(q),
             Err(RustDeserializationError::InvalidType {
                 expected: "Null".to_string(),
                 occurred: "Fun".to_string()
@@ -695,10 +700,13 @@ mod tests {
 
         assert_eq!(
             A::deserialize(
-                Program::new_from_source(Cursor::new(br#"{ a = (10 | Num) }"#.to_vec()), "source")
-                    .expect("program should't fail")
-                    .eval_full()
-                    .expect("evaluation should't fail")
+                TestProgram::new_from_source(
+                    Cursor::new(br#"{ a = (10 | Num) }"#.to_vec()),
+                    "source"
+                )
+                .expect("program should't fail")
+                .eval_full()
+                .expect("evaluation should't fail")
             )
             .expect("deserialization should't fail"),
             A { a: 10.0 }

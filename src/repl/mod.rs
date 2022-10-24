@@ -8,6 +8,7 @@
 //! formatting), etc.
 use crate::cache::{Cache, Envs, ErrorTolerance};
 use crate::error::{Error, EvalError, IOError, ParseError, ParseErrors, ReplError};
+use crate::eval::cache::Cache as EvalCache;
 use crate::eval::VirtualMachine;
 use crate::identifier::Ident;
 use crate::parser::{grammar, lexer, ExtendedTerm};
@@ -67,20 +68,20 @@ pub trait Repl {
 }
 
 /// Standard implementation of the REPL backend.
-pub struct ReplImpl {
+pub struct ReplImpl<EC: EvalCache> {
     /// The parser, supporting toplevel let declaration.
     parser: grammar::ExtendedTermParser,
     /// The current environment (for evaluation and typing). Contain the initial environment with
     /// the stdlib, plus toplevel declarations and loadings made inside the REPL.
-    env: Envs,
+    env: Envs<EC>,
     /// The initial typing context, without the toplevel declarations made inside the REPL. Used to
     /// typecheck imports in a fresh environment.
     initial_type_ctxt: typecheck::Context,
     /// The state of the Nickel virtual machine, holding a cache of loaded files and parsed terms.
-    vm: VirtualMachine<Cache>,
+    vm: VirtualMachine<Cache, EC>,
 }
 
-impl ReplImpl {
+impl<EC: EvalCache> ReplImpl<EC> {
     /// Create a new empty REPL.
     pub fn new() -> Self {
         ReplImpl {
@@ -94,7 +95,7 @@ impl ReplImpl {
     /// Load and process the stdlib, and use it to populate the eval environment as well as the
     /// typing environment.
     pub fn load_stdlib(&mut self) -> Result<(), Error> {
-        self.env = self.vm.import_resolver_mut().prepare_stdlib()?;
+        self.env = self.vm.prepare_stdlib()?;
         self.initial_type_ctxt = self.env.type_ctxt.clone();
         Ok(())
     }
@@ -126,8 +127,8 @@ impl ReplImpl {
         // `id` must be set to `None` for normal lets and to `Some(id_)` for top-level lets. In the
         // latter case, we need to update the current type environment before doing program
         // transformations in the case of a top-level let.
-        fn prepare(
-            repl_impl: &mut ReplImpl,
+        fn prepare<EC: EvalCache>(
+            repl_impl: &mut ReplImpl<EC>,
             id: Option<Ident>,
             t: RichTerm,
         ) -> Result<RichTerm, Error> {
@@ -194,14 +195,14 @@ impl ReplImpl {
             ExtendedTerm::ToplevelLet(id, t) => {
                 let t = prepare(self, Some(id), t)?;
                 let local_env = self.env.eval_env.clone();
-                eval::env_add(&mut self.env.eval_env, id, t, local_env);
+                eval::env_add(&mut self.vm.cache, &mut self.env.eval_env, id, t, local_env);
                 Ok(EvalResult::Bound(id))
             }
         }
     }
 }
 
-impl Repl for ReplImpl {
+impl<EC: EvalCache> Repl for ReplImpl<EC> {
     fn eval(&mut self, exp: &str) -> Result<EvalResult, Error> {
         self.eval_(exp, false)
     }
@@ -249,7 +250,7 @@ impl Repl for ReplImpl {
             self.vm.import_resolver(),
         )
         .unwrap();
-        eval::env_add_term(&mut self.env.eval_env, term.clone()).unwrap();
+        eval::env_add_term(&mut self.vm.cache, &mut self.env.eval_env, term.clone()).unwrap();
 
         Ok(term)
     }

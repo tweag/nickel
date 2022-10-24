@@ -1,10 +1,11 @@
-use nickel_lang::program::Program;
 use nickel_lang::term::{MetaValue, SharedTerm, Term};
+use nickel_lang_utilities::TestProgram;
 
 #[test]
 pub fn test_query_metadata_basic() {
     let mut program =
-        Program::new_from_source("(1+1) | doc \"Test basic\"".as_bytes(), "regr_tests").unwrap();
+        TestProgram::new_from_source("(1+1) | doc \"Test basic\"".as_bytes(), "regr_tests")
+            .unwrap();
     let result = program.query(None).unwrap();
 
     if let Term::MetaValue(meta) = result {
@@ -17,7 +18,7 @@ pub fn test_query_metadata_basic() {
 
 #[test]
 pub fn test_query_metadata_from_func() {
-    let mut program = Program::new_from_source(
+    let mut program = TestProgram::new_from_source(
         "builtin.seq 2 ((3+1) | doc \"Test from func\")".as_bytes(),
         "regr_tests",
     )
@@ -36,11 +37,11 @@ pub fn test_query_metadata_from_func() {
 pub fn test_query_with_wildcard() {
     /// Checks whether `lhs` and `rhs` both evaluate to terms with the same static type
     fn assert_types_eq(lhs: &str, rhs: &str) {
-        let term1 = Program::new_from_source(lhs.as_bytes(), "regr_tests")
+        let term1 = TestProgram::new_from_source(lhs.as_bytes(), "regr_tests")
             .unwrap()
             .query(None)
             .unwrap();
-        let term2 = Program::new_from_source(rhs.as_bytes(), "regr_tests")
+        let term2 = TestProgram::new_from_source(rhs.as_bytes(), "regr_tests")
             .unwrap()
             .query(None)
             .unwrap();
@@ -66,7 +67,7 @@ pub fn test_query_with_wildcard() {
     }
 
     // Without wildcard, the result has no type annotation
-    let mut program = Program::new_from_source("10".as_bytes(), "regr_tests").unwrap();
+    let mut program = TestProgram::new_from_source("10".as_bytes(), "regr_tests").unwrap();
     let result = program.query(None).unwrap();
     assert!(!matches!(result, Term::MetaValue(_)));
 
