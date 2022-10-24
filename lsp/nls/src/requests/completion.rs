@@ -2,7 +2,7 @@ use codespan::ByteIndex;
 use codespan_lsp::position_to_byte_index;
 use log::debug;
 use lsp_server::{RequestId, Response, ResponseError};
-use lsp_types::{CompletionContext, CompletionItem, CompletionParams};
+use lsp_types::{CompletionItem, CompletionParams};
 use nickel_lang::{
     identifier::Ident,
     term::{Contract, MetaValue},
@@ -42,7 +42,7 @@ pub fn handle_completion(
     // lin_env is a mapping from idents to IDs.
     // This is from the Linearizer used to build this linearization.
     // idealy we should get the id and use it instead of comparing strings labels
-    let _lin_env = &linearization.lin_env;
+    let lin_env = &linearization.lin_env;
 
     // Try your best to find all record fields
     fn find_record_fields(
@@ -63,24 +63,30 @@ pub fn handle_completion(
         })
     }
 
-    let item = linearization.item_at(&locator);
-    if item == None {
-        // NOTE: this might result in a case where completion is not working.
-        // This happens when an item cannot be found from the linearization.
-        server.reply(Response::new_ok(id, Value::Null));
-        return Ok(());
+    fn find_record_contract(
+        linearization: &Vec<LinearizationItem<Types>>,
+        id: usize,
+    ) -> Option<Contract> {
+        linearization.iter().find_map(|item| match &item.meta {
+            Some(MetaValue { contracts, .. }) if item.id == id => {
+                contracts.iter().find_map(|contract| {
+                    if let Types(AbsType::Record(..)) = contract.types {
+                        Some(contract.clone())
+                    } else {
+                        None
+                    }
+                })
+            }
+            _ if item.id == id => match item.kind {
+                TermKind::Declaration(_, _, ValueState::Known(new_id))
+                | TermKind::Usage(UsageState::Resolved(new_id)) => {
+                    find_record_contract(&linearization, new_id)
+                }
+                _ => None,
+            },
+            _ => None,
+        })
     }
-    let item = item.unwrap().to_owned();
-
-    Trace::enrich(&id, linearization);
-
-    let trigger = match params.context {
-        Some(CompletionContext {
-            trigger_character: Some(s),
-            ..
-        }) => Some(s),
-        _ => None,
-    };
 
     /// Extract identifiers from a row type which forms a record.
     /// Ensure that ty is really a row type.
@@ -93,40 +99,55 @@ pub fn handle_completion(
             .collect::<Vec<_>>()
     }
 
+    let item = linearization.item_at(&locator);
+    if item == None {
+        // NOTE: this might result in a case where completion is not working.
+        // This happens when an item cannot be found from the linearization.
+        server.reply(Response::new_ok(id, Value::Null));
+        return Ok(());
+    }
+    let item = item.unwrap().to_owned();
+
+    Trace::enrich(&id, linearization);
+
+    let trigger = params.context.and_then(|context| context.trigger_character);
     let in_scope = match trigger {
+        // Record Completion
         Some(s) if s == "." => {
             // Get the ID before the .
             // if the current source is `let var = {a = 10} in var.`
-            // name = var
+            // name = "var"
             let name = text[..start - 1]
                 .chars()
                 .rev()
-                .take_while(|c| c.is_ascii_alphabetic() || *c == '.')
                 .skip_while(|c| *c == '.') // skip . (if any)
+                .take_while(|c| c.is_ascii_alphabetic())
                 .collect::<String>()
                 .chars()
                 .rev()
                 .collect::<String>();
 
+            let name_id = lin_env
+                .iter()
+                .find(|(ident, _)| ident.label() == name)
+                .map(|(_, id)| *id);
+            if name_id == None {
+                // NOTE: this might result in a case where completion is not working.
+                // This happens when an item cannot be found from the linearization.
+                server.reply(Response::new_ok(id, Value::Null));
+                return Ok(());
+            }
+            let name_id = name_id.unwrap();
+
             linearization
-                .linearization
+                .get_in_scope(&item)
                 .iter()
                 .filter_map(|i| {
                     let (ty, _) = linearization.resolve_item_type_meta(i);
                     match i.kind {
-                        // Get record fields from lexical scoping
-                        TermKind::Declaration(ident, _, ValueState::Known(body_id))
-                            if ident.label() == name =>
-                        {
-                            find_record_fields(&linearization.linearization, body_id)
-                                .map(|idents| Some((idents, i.ty.clone())))
-                                .unwrap_or(None)
-                        }
-
                         // Get record fields from static type info
-                        TermKind::Declaration(ident, ..)
-                            if ident.label() == name
-                                && matches!(ty, Types(AbsType::Record(..))) =>
+                        TermKind::Declaration(..)
+                            if name_id == i.id && matches!(ty, Types(AbsType::Record(..))) =>
                         {
                             match &ty {
                                 Types(AbsType::Record(row)) => {
@@ -135,24 +156,32 @@ pub fn handle_completion(
                                 _ => unreachable!(),
                             }
                         }
-
                         // Get record fields from contract metadata
-                        TermKind::Declaration(ident, ..)
-                            if ident.label() == name && i.meta.is_some() =>
+                        TermKind::Declaration(_, _, ValueState::Known(body_id))
+                            if name_id == i.id
+                                && find_record_contract(&linearization.linearization, body_id)
+                                    .is_some() =>
                         {
-                            i.meta.as_ref().map(|MetaValue { contracts, .. }| {
-                                let fields = contracts
-                                    .clone()
-                                    .iter()
-                                    .map(|Contract { types, .. }| match types {
-                                        Types(AbsType::Record(row)) => extract_ident(row),
-                                        _ => vec![],
-                                    })
-                                    .flatten()
-                                    .collect();
-                                (fields, i.ty.clone())
-                            })
+                            // unwrapping is safe here because of the pattern condition.
+                            let contract =
+                                find_record_contract(&linearization.linearization, body_id)
+                                    .unwrap();
+                            let fields = match &contract.types {
+                                Types(AbsType::Record(row)) => extract_ident(row),
+                                _ => Vec::with_capacity(0),
+                            };
+                            Some((fields, i.ty.clone()))
                         }
+
+                        // Get record fields from lexical scoping
+                        TermKind::Declaration(_, _, ValueState::Known(body_id))
+                            if name_id == i.id =>
+                        {
+                            find_record_fields(&linearization.linearization, body_id)
+                                .map(|idents| Some((idents, i.ty.clone())))
+                                .unwrap_or(None)
+                        }
+
                         _ => None,
                     }
                 })
