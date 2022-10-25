@@ -19,7 +19,7 @@ use crate::{
     trace::{Enrich, Trace},
 };
 
-// Try your best to find all record fields
+/// Find record fields for an item with the specified id.
 fn find_record_fields(
     linearization: &Vec<LinearizationItem<Types>>,
     id: usize,
@@ -38,6 +38,7 @@ fn find_record_fields(
     })
 }
 
+/// Find a record contract of the item with the specified id.
 fn find_record_contract(
     linearization: &Vec<LinearizationItem<Types>>,
     id: usize,
