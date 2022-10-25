@@ -96,6 +96,21 @@ pub enum RowsF<R, Rs> {
     TailDyn,
 }
 
+/// The kind of a quantified type variable.
+///
+/// Nickel uses several form of polymorphism. A type variable can be substituted for a type, as in
+/// `id : forall a. a -> a`, for record rows as in `acess_foo : forall a . {foo : Num; a} -> Num}`,
+/// or for enum rows. This information is implicit in the source syntax: we don't require users to
+/// write e.g. `forall a :: Type` or `forall a :: Rows`. But the kind of variable is required for
+/// the typechecker. It is thus determined during parsing and stored as `VarKind` where type
+/// variable are introduced, that is, on forall quantifiers.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum VarKind {
+    Type,
+    EnumRow,
+    RecordRow,
+}
+
 /// A Nickel type.
 ///
 /// # Generic representation (functor)
@@ -163,6 +178,7 @@ pub enum RowsF<R, Rs> {
 /// Here, `TypeF` also takes two additional type parameters for the recursive unfolding of record
 /// rows and enum rows. We have other, distinct recursive subcomponents (or subtrees) in our
 /// complete definition, but the approach is unchanged.
+
 #[derive(Clone, PartialEq, Debug)]
 pub enum TypeF<Ty, RRows, ERows> {
     /// The dynamic type, or unitype. Affected to values which actual type is not statically known
@@ -185,7 +201,11 @@ pub enum TypeF<Ty, RRows, ERows> {
     /// A type variable.
     Var(Ident),
     /// A forall binder.
-    Forall(Ident, Ty),
+    Forall {
+        var: Ident,
+        var_kind: VarKind,
+        body: Ty,
+    },
 
     /// An enum type, composed of a sequence of enum rows.
     Enum(ERows),
