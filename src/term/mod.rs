@@ -868,6 +868,10 @@ impl Deref for SharedTerm {
 /// y`.
 #[derive(Clone, Debug, PartialEq)]
 pub enum UnaryOp {
+    // WIP!
+    // Nix like inherit keyword, implemented as an operator in nickel.
+    // Only used for Nix compatibility. Do not try to use it in Nickel.
+    __Inherit__(Vec<Ident>),
     /// If-then-else.
     Ite(),
 
@@ -1128,6 +1132,10 @@ impl UnaryOp {
 /// Primitive binary operators
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BinaryOp {
+    // WIP!
+    // Nix like "inherit from" keyword, implemented as an operator in nickel.
+    // Only used for Nix compatibility. Do not try to use it in Nickel.
+    __Inherit__(Vec<Ident>),
     /// Addition of numerals.
     Plus(),
     /// Substraction of numerals.

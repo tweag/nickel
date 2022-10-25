@@ -156,7 +156,15 @@ impl ToNickel for rnix::ast::Expr {
                         elaborate_field_path(p, val)
                     })
                     .collect();
-                build_record(fields, Default::default()).into()
+                let rec = RichTerm::from(build_record(fields, Default::default()));
+                n.inherits().fold(rec, |rt, inh| {
+                    let term_from = inh.from().map(|n| n.node().clone().translate(state));
+                    let ids: Vec<Ident> = inh.idents().map(|id| id.as_str().into()).collect();
+                    term_from.map_or(
+                        make::op1(UnaryOp::__Inherit__(ids.clone()), rt.clone()),
+                        |tf| make::op2(BinaryOp::__Inherit__(ids), tf, rt),
+                    )
+                })
             }
 
             // In nix it's allowed to define vars named `true`, `false` or `null`.
