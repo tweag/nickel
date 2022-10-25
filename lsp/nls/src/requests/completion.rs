@@ -110,10 +110,16 @@ pub fn handle_completion(
 
     Trace::enrich(&id, linearization);
 
-    let trigger = params.context.and_then(|context| context.trigger_character);
+    let trigger = params.context.as_ref().and_then(|context| {
+        context
+            .trigger_character
+            .as_ref()
+            .map(|trigger| trigger.as_str())
+    });
+
     let in_scope = match trigger {
         // Record Completion
-        Some(s) if s == "." => {
+        Some(".") => {
             // Get the ID before the .
             // if the current source is `let var = {a = 10} in var.`
             // name = "var"
