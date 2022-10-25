@@ -1,7 +1,7 @@
 use codespan::ByteIndex;
 use codespan_lsp::position_to_byte_index;
 use log::debug;
-use lsp_server::{RequestId, Response, ResponseError};
+use lsp_server::{ErrorCode, RequestId, Response, ResponseError};
 use lsp_types::{CompletionItem, CompletionParams};
 use nickel_lang::{
     identifier::Ident,
@@ -117,22 +117,29 @@ pub fn handle_completion(
             .map(|trigger| trigger.as_str())
     });
 
+    /// Get the identifier before the `.`, for record completion.
+    fn get_identifier(text: &str) -> Result<String, ResponseError> {
+        let name: String = text
+            .chars()
+            .rev()
+            .skip_while(|c| *c == '.') // skip . (if any)
+            .collect();
+
+        // unwrap is safe here because we know this is a correct regex.
+        let regex = regex::Regex::new(r"_?[a-zA-Z][_a-zA-Z0-9-']*").unwrap();
+        let name = regex.find(&name).ok_or(ResponseError {
+            code: ErrorCode::InternalError as i32,
+            message: "Couldn't get identifier for record completion".to_owned(),
+            data: None,
+        })?;
+
+        Ok(name.as_str().chars().rev().collect())
+    }
+
     let in_scope = match trigger {
         // Record Completion
         Some(".") => {
-            // Get the ID before the .
-            // if the current source is `let var = {a = 10} in var.`
-            // name = "var"
-            let name = text[..start - 1]
-                .chars()
-                .rev()
-                .skip_while(|c| *c == '.') // skip . (if any)
-                .take_while(|c| c.is_ascii_alphabetic())
-                .collect::<String>()
-                .chars()
-                .rev()
-                .collect::<String>();
-
+            let name = get_identifier(&text[..start - 1])?;
             let name_id = lin_env
                 .iter()
                 .find(|(ident, _)| ident.label() == name)
