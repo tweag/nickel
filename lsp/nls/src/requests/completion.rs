@@ -19,6 +19,80 @@ use crate::{
     trace::{Enrich, Trace},
 };
 
+// Try your best to find all record fields
+fn find_record_fields(
+    linearization: &Vec<LinearizationItem<Types>>,
+    id: usize,
+) -> Option<Vec<Ident>> {
+    linearization.iter().find_map(|item| match item.kind {
+        TermKind::Record(ref fields) if item.id == id => {
+            Some(fields.keys().map(|ident| ident.clone()).collect())
+        }
+        TermKind::Declaration(_, _, ValueState::Known(new_id))
+        | TermKind::Usage(UsageState::Resolved(new_id))
+            if item.id == id =>
+        {
+            find_record_fields(linearization, new_id)
+        }
+        _ => None,
+    })
+}
+
+fn find_record_contract(
+    linearization: &Vec<LinearizationItem<Types>>,
+    id: usize,
+) -> Option<Contract> {
+    linearization.iter().find_map(|item| match &item.meta {
+        Some(MetaValue { contracts, .. }) if item.id == id => {
+            contracts.iter().find_map(|contract| {
+                if let Types(AbsType::Record(..)) = contract.types {
+                    Some(contract.clone())
+                } else {
+                    None
+                }
+            })
+        }
+        _ if item.id == id => match item.kind {
+            TermKind::Declaration(_, _, ValueState::Known(new_id))
+            | TermKind::Usage(UsageState::Resolved(new_id)) => {
+                find_record_contract(&linearization, new_id)
+            }
+            _ => None,
+        },
+        _ => None,
+    })
+}
+
+/// Extract identifiers from a row type which forms a record.
+/// Ensure that ty is really a row type.
+fn extract_ident(ty: &Box<Types>) -> Vec<Ident> {
+    ty.iter_as_rows()
+        .filter_map(|item| match item {
+            RowIteratorItem::Row(ident, _) => Some(ident.clone()),
+            RowIteratorItem::Tail(..) => None,
+        })
+        .collect::<Vec<_>>()
+}
+
+/// Get the identifier before the `.`, for record completion.
+fn get_identifier(text: &str) -> Result<String, ResponseError> {
+    let name: String = text
+        .chars()
+        .rev()
+        .skip_while(|c| *c == '.') // skip . (if any)
+        .collect();
+
+    // unwrap is safe here because we know this is a correct regex.
+    let regex = regex::Regex::new(r"_?[a-zA-Z[_a-zA-Z0-9-']*]").unwrap();
+    let name = regex.find(&name).ok_or(ResponseError {
+        code: ErrorCode::InternalError as i32,
+        message: "Couldn't get identifier for record completion".to_owned(),
+        data: None,
+    })?;
+
+    Ok(name.as_str().chars().rev().collect())
+}
+
 pub fn handle_completion(
     params: CompletionParams,
     id: RequestId,
@@ -44,61 +118,6 @@ pub fn handle_completion(
     // idealy we should get the id and use it instead of comparing strings labels
     let lin_env = &linearization.lin_env;
 
-    // Try your best to find all record fields
-    fn find_record_fields(
-        linearization: &Vec<LinearizationItem<Types>>,
-        id: usize,
-    ) -> Option<Vec<Ident>> {
-        linearization.iter().find_map(|item| match item.kind {
-            TermKind::Record(ref fields) if item.id == id => {
-                Some(fields.keys().map(|ident| ident.clone()).collect())
-            }
-            TermKind::Declaration(_, _, ValueState::Known(new_id))
-            | TermKind::Usage(UsageState::Resolved(new_id))
-                if item.id == id =>
-            {
-                find_record_fields(linearization, new_id)
-            }
-            _ => None,
-        })
-    }
-
-    fn find_record_contract(
-        linearization: &Vec<LinearizationItem<Types>>,
-        id: usize,
-    ) -> Option<Contract> {
-        linearization.iter().find_map(|item| match &item.meta {
-            Some(MetaValue { contracts, .. }) if item.id == id => {
-                contracts.iter().find_map(|contract| {
-                    if let Types(AbsType::Record(..)) = contract.types {
-                        Some(contract.clone())
-                    } else {
-                        None
-                    }
-                })
-            }
-            _ if item.id == id => match item.kind {
-                TermKind::Declaration(_, _, ValueState::Known(new_id))
-                | TermKind::Usage(UsageState::Resolved(new_id)) => {
-                    find_record_contract(&linearization, new_id)
-                }
-                _ => None,
-            },
-            _ => None,
-        })
-    }
-
-    /// Extract identifiers from a row type which forms a record.
-    /// Ensure that ty is really a row type.
-    fn extract_ident(ty: &Box<Types>) -> Vec<Ident> {
-        ty.iter_as_rows()
-            .filter_map(|item| match item {
-                RowIteratorItem::Row(ident, _) => Some(ident.clone()),
-                RowIteratorItem::Tail(..) => None,
-            })
-            .collect::<Vec<_>>()
-    }
-
     let item = linearization.item_at(&locator);
     if item == None {
         // NOTE: this might result in a case where completion is not working.
@@ -116,25 +135,6 @@ pub fn handle_completion(
             .as_ref()
             .map(|trigger| trigger.as_str())
     });
-
-    /// Get the identifier before the `.`, for record completion.
-    fn get_identifier(text: &str) -> Result<String, ResponseError> {
-        let name: String = text
-            .chars()
-            .rev()
-            .skip_while(|c| *c == '.') // skip . (if any)
-            .collect();
-
-        // unwrap is safe here because we know this is a correct regex.
-        let regex = regex::Regex::new(r"_?[a-zA-Z][_a-zA-Z0-9-']*").unwrap();
-        let name = regex.find(&name).ok_or(ResponseError {
-            code: ErrorCode::InternalError as i32,
-            message: "Couldn't get identifier for record completion".to_owned(),
-            data: None,
-        })?;
-
-        Ok(name.as_str().chars().rev().collect())
-    }
 
     let in_scope = match trigger {
         // Record Completion
