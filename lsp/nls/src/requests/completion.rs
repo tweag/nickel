@@ -83,7 +83,7 @@ fn get_identifier(text: &str) -> Result<String, ResponseError> {
         .collect();
 
     // unwrap is safe here because we know this is a correct regex.
-    let regex = regex::Regex::new(r"_?[a-zA-Z[_a-zA-Z0-9-']*]").unwrap();
+    let regex = regex::Regex::new(r"[_a-zA-Z0-9-']*[a-zA-Z]_?").unwrap();
     let name = regex.find(&name).ok_or(ResponseError {
         code: ErrorCode::InternalError as i32,
         message: "Couldn't get identifier for record completion".to_owned(),
