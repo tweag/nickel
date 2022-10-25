@@ -52,7 +52,7 @@ use crate::{
     error::TypecheckError,
     identifier::Ident,
     term::{Contract, MetaValue, RichTerm, StrChunk, Term, TraverseOrder},
-    types::{TypeF, RowsF, RecordRowF, RecordRow, EnumRow, RowIterator, RowIteratorItem, Types, RecordRows, EnumRows},
+    types::{TypeF, RowsF, RecordRowF, RecordRow, EnumRow, RowIterator, RowIteratorItem, Types, RecordRows, EnumRows, VarKind},
     {mk_tyw_arrow, mk_tyw_enum, mk_tyw_enum_row, mk_tyw_record, mk_tyw_row},
 };
 
@@ -199,11 +199,8 @@ impl<E: TermEnvironment + Clone> Subst for GenericUnifType<E> {
 
         match self {
             Concrete(TypeF::Var(ref i)) if *i == *id => to.clone(),
-            Concrete(TypeF::Forall(i, t)) if i == *id=> Concrete(TypeF::Forall(i, t)),
-            Concrete(TypeF::Forall(i, t)) => {
-                let tt = *t;
-                Concrete(TypeF::Forall(i, Box::new(tt.subst(id, to))))
-            }
+            Concrete(TypeF::Forall {var, var_kind: VarKind::Type, body}) if var == *id => Concrete(TypeF::Forall {var, var_kind: VarKind::Type, body}),
+            Concrete(TypeF::Forall {var, var_kind, body}) => Concrete(TypeF::Forall {var, var_kind, body: Box::new((*body).subst(id, to))}),
             Concrete(TypeF::Arrow(s, t)) => {
                 let fs = s.subst(id, to);
                 let ft = t.subst(id, to);
@@ -785,7 +782,7 @@ fn walk_type<L: Linearizer>(
        TypeF::Flat(t) => walk(state, ctxt, lin, linearizer, t),
        TypeF::Dict(ty2)
        | TypeF::Array(ty2)
-       | TypeF::Forall(_, ty2) => walk_type(state, ctxt, lin, linearizer, ty2),
+       | TypeF::Forall {body: ty2, ..} => walk_type(state, ctxt, lin, linearizer, ty2),
     }
 }
 
@@ -1624,15 +1621,15 @@ pub fn unify(
                 // (tyw1, tyw2) => unify(state, ctxt, tyw1, tyw2),
             // },
             (TypeF::Dict(t1), TypeF::Dict(t2)) => unify(state, &ctxt, *t1, *t2),
-            (TypeF::Forall(i1, t1t), TypeF::Forall(i2, t2t)) => {
+            (TypeF::Forall {var: var1, var_kind: var_kind1, body: body1}, TypeF::Forall {var: var2, var_kind: var_kind2, body: body2}) => {
                 // Very stupid (slow) implementation
                 let constant_type = state.table.fresh_type_const();
 
                 unify(
                     state,
                     &ctxt,
-                    t1t.subst(&i1, &constant_type),
-                    t2t.subst(&i2, &constant_type),
+                    body1.subst(&var1, &constant_type),
+                    body2.subst(&var2, &constant_type),
                 )
             }
             (TypeF::Var(ident), _) | (_, TypeF::Var(ident)) => {
@@ -1791,14 +1788,15 @@ fn instantiate_foralls(state: &mut State, mut ty: UnifType, inst: ForallInst) ->
         ty = state.table.root_type(p);
     }
 
-    while let UnifType::Concrete(TypeF::Forall(id, forall_ty)) = ty {
+    while let UnifType::Concrete(TypeF::Forall {var, var_kind, body }) = ty {
+        match var_kind {
         let fresh_id = state.table.fresh_var();
         let var = match inst {
             ForallInst::Constant => UnifType::Constant(fresh_id),
             ForallInst::Ptr => UnifType::UnifVar(fresh_id),
         };
-        state.names.insert(fresh_id, id.clone());
-        ty = forall_ty.subst(&id, &var);
+        state.names.insert(fresh_id, var.clone());
+        ty = body.subst(&var, &var);
 
         if inst == ForallInst::Ptr {
             constrain_var(state, &ty, fresh_id)

@@ -92,12 +92,12 @@ pub mod ty_path {
                 let repr = format!("{}", ty);
                 return (0, repr.len());
             }
-            (TypeF::Forall(_, _), Some(_)) => {
+            (TypeF::Forall{..}, Some(_)) => {
                 // The length of "forall" plus the final separating dot and whitespace ". "
                 let mut result = 8;
-                while let TypeF::Forall(id, body) = &ty.0 {
+                while let TypeF::Forall {var, body, ..} = &ty.0 {
                     // The length of the identifier plus the preceding whitespace
-                    result += id.to_string().len() + 1;
+                    result += var.to_string().len() + 1;
                     ty = body.as_ref();
                 }
 

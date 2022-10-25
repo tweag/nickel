@@ -253,18 +253,17 @@ impl<R, Rs> RowsF<R, Rs> {
         FRs: FnMut(Rs) -> Result<RsO, E>,
     {
         match self {
-            RowsF::Empty  => Ok(RowsF::Empty),
-            RowsF::Extend {row, tail} => Ok(RowsF::Extend { row: f_rrow(row)?, tail: f_rrows(tail)? }),
+            RowsF::Empty => Ok(RowsF::Empty),
+            RowsF::Extend { row, tail } => Ok(RowsF::Extend {
+                row: f_rrow(row)?,
+                tail: f_rrows(tail)?,
+            }),
             RowsF::TailDyn => Ok(RowsF::TailDyn),
             RowsF::TailVar(id) => Ok(RowsF::TailVar(id)),
         }
     }
 
-    pub fn map<RO, RsO, FR, FRs>(
-        self,
-        mut f_rrow: FR,
-        mut f_rrows: FRs,
-    ) -> RowsF<RO, RsO>
+    pub fn map<RO, RsO, FR, FRs>(self, mut f_rrow: FR, mut f_rrows: FRs) -> RowsF<RO, RsO>
     where
         FR: FnMut(R) -> RO,
         FRs: FnMut(Rs) -> RsO,
@@ -297,7 +296,15 @@ impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
             TypeF::Flat(t) => Ok(TypeF::Flat(t)),
             TypeF::Arrow(s, t) => Ok(TypeF::Arrow(f(s)?, f(t)?)),
             TypeF::Var(i) => Ok(TypeF::Var(i)),
-            TypeF::Forall(i, t) => Ok(TypeF::Forall(i, f(t)?)),
+            TypeF::Forall {
+                var,
+                var_kind,
+                body,
+            } => Ok(TypeF::Forall {
+                var,
+                var_kind,
+                body: f(body)?,
+            }),
             TypeF::Enum(t) => Ok(TypeF::Enum(todo!())),
             TypeF::Record(t) => Ok(TypeF::Record(todo!())),
             TypeF::Dict(t) => Ok(TypeF::Dict(f(t)?)),
@@ -553,7 +560,9 @@ impl Types {
             ),
             TypeF::Flat(ref t) => t.clone(),
             TypeF::Var(ref id) => get_var(&h, id, true)?,
-            TypeF::Forall(ref i, ref t) => {
+            TypeF::Forall {
+                ref var, ref body, ..
+            } => {
                 let inst_var = mk_app!(
                     contract::forall_var(),
                     Term::SealingKey(*sy),
@@ -566,9 +575,9 @@ impl Types {
                     Term::Bool(pol)
                 );
 
-                h.insert(i.clone(), (inst_var, inst_tail));
+                h.insert(var.clone(), (inst_var, inst_tail));
                 *sy += 1;
-                t.subcontract(h, pol, sy)?
+                body.subcontract(h, pol, sy)?
             }
             //TODO: IMPLEMENT THAT
             // AbsType::RowEmpty() | AbsType::RowExtend(..) => contract::fail(),
@@ -786,9 +795,15 @@ impl Types {
             | TypeF::Var(_)
             | TypeF::Flat(_)
             | TypeF::Wildcard(_) => Ok(ty.0),
-            TypeF::Forall(id, ty_inner) => (*ty_inner)
-                .traverse(f, state, order)
-                .map(|ty| TypeF::Forall(id, Box::new(ty))),
+            TypeF::Forall {
+                var,
+                var_kind,
+                body,
+            } => (*body).traverse(f, state, order).map(|ty| TypeF::Forall {
+                var,
+                var_kind,
+                body: Box::new(ty),
+            }),
             TypeF::Enum(erows) => erows.traverse(f, state, order).map(TypeF::Enum),
             TypeF::Record(rrows) => rrows.traverse(f, state, order).map(TypeF::Record),
             TypeF::Dict(ty_inner) => (*ty_inner)
@@ -861,12 +876,12 @@ impl Display for Types {
             TypeF::Sym => write!(f, "Sym"),
             TypeF::Flat(ref t) => write!(f, "{}", t.pretty_print_cap(32)),
             TypeF::Var(var) => write!(f, "{}", var),
-            TypeF::Forall(i, ref ty) => {
-                let mut curr: &Types = ty.as_ref();
-                write!(f, "forall {}", i)?;
-                while let Types(TypeF::Forall(i, ref ty)) = curr {
-                    write!(f, " {}", i)?;
-                    curr = ty;
+            TypeF::Forall { var, ref body, .. } => {
+                let mut curr: &Types = body.as_ref();
+                write!(f, "forall {}", var)?;
+                while let Types(TypeF::Forall { var, ref body, .. }) = curr {
+                    write!(f, " {}", var)?;
+                    curr = body;
                 }
                 write!(f, ". {}", curr)
             }
