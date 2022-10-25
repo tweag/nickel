@@ -199,7 +199,22 @@ pub fn handle_completion(
             .collect::<Vec<_>>(),
     };
 
-    // TODO: remove duplicates
+    // O(n^2)
+    fn remove_duplicates(items: &Vec<CompletionItem>) -> Vec<CompletionItem> {
+        let mut seen: Vec<CompletionItem> = Vec::with_capacity(0);
+        for item in items {
+            if seen
+                .iter()
+                .find(|seen_item| seen_item.label == item.label)
+                .is_none()
+            {
+                seen.push(item.clone())
+            }
+        }
+
+        seen
+    }
+
     let in_scope: Vec<_> = in_scope
         .iter()
         .map(|(idents, _)| {
@@ -213,6 +228,7 @@ pub fn handle_completion(
         })
         .flatten()
         .collect();
+    let in_scope = remove_duplicates(&in_scope);
 
     server.reply(Response::new_ok(id, in_scope));
 
