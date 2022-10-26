@@ -45,7 +45,6 @@ pub struct LinearizationItem<S: ResolutionState> {
 /// Tracks a _scope stable_ environment managing variable ident
 /// resolution
 pub struct AnalysisHost {
-    env: Environment,
     scope: Scope,
     next_scope_id: ScopeId,
     meta: Option<MetaValue>,
@@ -77,7 +76,6 @@ impl AnalysisHost {
 impl Default for AnalysisHost {
     fn default() -> Self {
         Self {
-            env: Environment::new(),
             scope: Default::default(),
             next_scope_id: Default::default(),
             meta: Default::default(),
@@ -183,7 +181,6 @@ impl Linearizer for AnalysisHost {
                     };
 
                     let id = id_gen.get_and_advance();
-                    self.env.insert(ident.to_owned(), id);
                     lin.env.insert(ident.to_owned(), id);
                     lin.push(LinearizationItem {
                         id,
@@ -197,7 +194,6 @@ impl Linearizer for AnalysisHost {
                 for matched in destruct.to_owned().inner() {
                     let (ident, body) = matched.as_meta_field();
                     let id = id_gen.get_and_advance();
-                    self.env.insert(ident.to_owned(), id);
                     lin.env.insert(ident.to_owned(), id);
 
                     lin.push(LinearizationItem {
@@ -243,7 +239,6 @@ impl Linearizer for AnalysisHost {
                     }
                     _ => unreachable!(),
                 };
-                self.env.insert(ident.to_owned(), id_gen.get());
                 lin.env.insert(ident.to_owned(), id_gen.get());
                 lin.push(LinearizationItem {
                     id: id_gen.get(),
@@ -262,17 +257,19 @@ impl Linearizer for AnalysisHost {
                     ident, self.access
                 );
 
-                lin.push(LinearizationItem {
+                let item = LinearizationItem {
                     id: root_id,
                     pos: ident.pos,
                     ty: TypeWrapper::Concrete(AbsType::Dyn()),
                     scope: self.scope.clone(),
-                    kind: TermKind::Usage(UsageState::from(self.env.get(ident).copied())),
+                    kind: TermKind::Usage(UsageState::from(lin.env.get(ident).copied())),
                     meta: self.meta.take(),
-                });
+                };
+                lin.push(item);
 
-                if let Some(referenced) = self.env.get(ident) {
-                    lin.add_usage(*referenced, root_id)
+                let key = lin.env.get(ident).cloned();
+                if let Some(referenced) = key {
+                    lin.add_usage(referenced, root_id)
                 }
 
                 if let Some(chain) = self.access.take() {
@@ -304,7 +301,7 @@ impl Linearizer for AnalysisHost {
                     meta: self.meta.take(),
                 });
 
-                lin.register_fields(fields, id, self.scope.clone(), &mut self.env);
+                lin.register_fields(fields, id, self.scope.clone());
                 let mut field_names = fields.keys().cloned().collect::<Vec<_>>();
                 field_names.sort_unstable();
 
@@ -442,7 +439,6 @@ impl Linearizer for AnalysisHost {
 
         AnalysisHost {
             scope,
-            env: self.env.clone(),
             next_scope_id: ScopeId::default(),
             meta: self.meta.clone(),
             record_fields: self.record_fields.as_mut().and_then(|(record, fields)| {
@@ -462,7 +458,6 @@ impl Linearizer for AnalysisHost {
 
         AnalysisHost {
             scope,
-            env: self.env.clone(),
             next_scope_id: ScopeId::default(),
             // Metadata must be attached to the original scope of the value (`self`), while the new
             // scope for metadata should be clean.
@@ -482,8 +477,8 @@ impl Linearizer for AnalysisHost {
         ident: &Ident,
         new_type: TypeWrapper,
     ) {
-        if let Some(item) = self
-            .env
+        let env = lin.env.clone();
+        if let Some(item) = env
             .get(ident)
             .and_then(|index| lin.linearization.get_mut(*index))
         {
