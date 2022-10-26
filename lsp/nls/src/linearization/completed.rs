@@ -14,7 +14,7 @@ use super::{
     LinearizationItem,
 };
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Completed {
     pub linearization: Vec<LinearizationItem<Resolved>>,
     pub lin_env: Environment<Ident, usize>,

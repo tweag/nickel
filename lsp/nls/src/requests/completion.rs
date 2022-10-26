@@ -12,6 +12,7 @@ use serde_json::Value;
 
 use crate::{
     linearization::{
+        completed::Completed,
         interface::{TermKind, UsageState, ValueState},
         LinearizationItem,
     },
@@ -77,7 +78,7 @@ fn extract_ident(ty: &Box<Types>) -> Vec<Ident> {
 
 /// Get the identifier before the `.`, for record completion.
 fn get_identifier(text: &str) -> Result<String, ResponseError> {
-    let name: String = text
+    let text: String = text
         .chars()
         .rev()
         .skip_while(|c| *c == '.') // skip . (if any)
@@ -85,7 +86,7 @@ fn get_identifier(text: &str) -> Result<String, ResponseError> {
 
     // unwrap is safe here because we know this is a correct regex.
     let regex = regex::Regex::new(r"[_a-zA-Z0-9-']*[a-zA-Z]_?").unwrap();
-    let name = regex.find(&name).ok_or(ResponseError {
+    let name = regex.find(&text).ok_or(ResponseError {
         code: ErrorCode::InternalError as i32,
         message: "Couldn't get identifier for record completion".to_owned(),
         data: None,
@@ -94,67 +95,36 @@ fn get_identifier(text: &str) -> Result<String, ResponseError> {
     Ok(name.as_str().chars().rev().collect())
 }
 
-pub fn handle_completion(
-    params: CompletionParams,
-    id: RequestId,
-    server: &mut Server,
-) -> Result<(), ResponseError> {
-    let file_id = server
-        .cache
-        .id_of(params.text_document_position.text_document.uri.as_str())
-        .unwrap();
-
-    let text = server.cache.files().source(file_id);
-    let start = position_to_byte_index(
-        server.cache.files(),
-        file_id,
-        &params.text_document_position.position,
-    )
-    .unwrap();
-
-    let locator = (file_id, ByteIndex((start - 1) as u32));
-    let linearization = server.lin_cache_get(&file_id)?;
-    // lin_env is a mapping from idents to IDs.
-    // This is from the Linearizer used to build this linearization.
-    // idealy we should get the id and use it instead of comparing strings labels
-    let lin_env = &linearization.lin_env;
-
-    let item = linearization.item_at(&locator);
-    if item == None {
-        // NOTE: this might result in a case where completion is not working.
-        // This happens when an item cannot be found from the linearization.
-        server.reply(Response::new_ok(id, Value::Null));
-        return Ok(());
+fn remove_duplicates(items: &Vec<CompletionItem>) -> Vec<CompletionItem> {
+    let mut seen: Vec<CompletionItem> = Vec::new();
+    for item in items {
+        if !seen.iter().any(|seen_item| seen_item.label == item.label) {
+            seen.push(item.clone())
+        }
     }
-    let item = item.unwrap().to_owned();
+    seen
+}
 
-    Trace::enrich(&id, linearization);
-
-    let trigger = params.context.as_ref().and_then(|context| {
-        context
-            .trigger_character
-            .as_ref()
-            .map(|trigger| trigger.as_str())
-    });
-
+fn get_completion_identifiers(
+    source: &str,
+    trigger: Option<&str>,
+    linearization: &Completed,
+    item: &LinearizationItem<Types>,
+) -> Result<Vec<CompletionItem>, ResponseError> {
+    let lin_env = &linearization.lin_env;
     let in_scope = match trigger {
         // Record Completion
         Some(".") => {
-            let name = get_identifier(&text[..start - 1])?;
+            let name = get_identifier(source)?;
             let name_id = lin_env
                 .iter()
                 .find(|(ident, _)| ident.label() == name)
                 .map(|(_, id)| *id);
-            if name_id == None {
-                // NOTE: this might result in a case where completion is not working.
-                // This happens when an item cannot be found from the linearization.
-                server.reply(Response::new_ok(id, Value::Null));
-                return Ok(());
-            }
+            // unsafe unwrap here
             let name_id = name_id.unwrap();
 
             linearization
-                .get_in_scope(&item)
+                .get_in_scope(item)
                 .iter()
                 .filter_map(|i| {
                     let (ty, _) = linearization.resolve_item_type_meta(i);
@@ -204,7 +174,7 @@ pub fn handle_completion(
 
         // variable name completion
         Some(..) | None => linearization
-            .get_in_scope(&item)
+            .get_in_scope(item)
             .iter()
             .filter_map(|i| match i.kind {
                 TermKind::Declaration(ref ident, _, _) => Some((vec![ident.clone()], i.ty.clone())),
@@ -212,26 +182,9 @@ pub fn handle_completion(
             })
             .collect::<Vec<_>>(),
     };
-
-    // O(n^2)
-    fn remove_duplicates(items: &Vec<CompletionItem>) -> Vec<CompletionItem> {
-        let mut seen: Vec<CompletionItem> = Vec::with_capacity(0);
-        for item in items {
-            if seen
-                .iter()
-                .find(|seen_item| seen_item.label == item.label)
-                .is_none()
-            {
-                seen.push(item.clone())
-            }
-        }
-
-        seen
-    }
-
     let in_scope: Vec<_> = in_scope
         .iter()
-        .map(|(idents, _)| {
+        .flat_map(|(idents, _)| {
             idents
                 .iter()
                 .map(|ident| CompletionItem {
@@ -240,13 +193,58 @@ pub fn handle_completion(
                 })
                 .collect::<Vec<_>>()
         })
-        .flatten()
         .collect();
     let in_scope = remove_duplicates(&in_scope);
+    Ok(in_scope)
+}
 
-    server.reply(Response::new_ok(id, in_scope));
+pub fn handle_completion(
+    params: CompletionParams,
+    id: RequestId,
+    server: &mut Server,
+) -> Result<(), ResponseError> {
+    let file_id = server
+        .cache
+        .id_of(params.text_document_position.text_document.uri.as_str())
+        .unwrap();
 
-    debug!("found closest item: {:?}", item);
+    let text = server.cache.files().source(file_id);
+    let start = position_to_byte_index(
+        server.cache.files(),
+        file_id,
+        &params.text_document_position.position,
+    )
+    .unwrap();
 
-    Ok(())
+    let locator = (file_id, ByteIndex((start - 1) as u32));
+    let linearization = server.lin_cache_get(&file_id)?;
+    // Cloning to avoid mutable borrow and shared borrow at the same time,
+    // which won't compile
+    let linearization = linearization.clone();
+
+    let item = linearization.item_at(&locator);
+    Trace::enrich(&id, &linearization);
+
+    match item {
+        Some(item) => {
+            let trigger = params.context.as_ref().and_then(|context| {
+                context
+                    .trigger_character
+                    .as_ref()
+                    .map(|trigger| trigger.as_str())
+            });
+
+            let in_scope =
+                get_completion_identifiers(&text[..start], trigger, &linearization, &item)?;
+
+            server.reply(Response::new_ok(id, in_scope));
+            debug!("found closest item: {:?}", item);
+
+            Ok(())
+        }
+        None => {
+            server.reply(Response::new_ok(id, Value::Null));
+            return Ok(());
+        }
+    }
 }
