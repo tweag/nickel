@@ -30,9 +30,9 @@ following situations:
 
 <!-- markdownlint-disable MD051 -->
 
-- [Merging two records without common fields](#simple-merge-(no-common-fields))
-- [Merging records with common fields](#recursive-merge-(with-common-fields))
-- [Merging records with metadata](#merging-record-with-metadata)
+- [Merging records without common fields](#simple-merge-no-common-fields)
+- [Merging records with common fields](#recursive-merge-with-common-fields)
+- [Merging records with metadata](#merging-records-with-metadata)
   - [Default values](#default-values)
   - [Contracts](#contracts)
   - [Documentation](#documentation)
@@ -251,7 +251,7 @@ final record:
 }
 ```
 
-## Merging record with metadata
+## Merging records with metadata
 
 Metadata can be attached to values thanks to the `|` operator. Metadata
 currently includes contract annotations, default value, merge priority, and
