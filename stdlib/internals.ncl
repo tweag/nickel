@@ -45,28 +45,48 @@
   "$enum_fail" = fun l =>
       %blame% (%tag% "tag not included in the enum type" l),
 
-  "$record" = fun cont l t =>
-      if %typeof% t == `Record then
-          %assume% (cont {}) l t
+  "$record" = fun field_contracts tail_contract l t =>
+    if %typeof% t == `Record then
+      # Returns the sub-record of `l` containing only those
+      # fields which are not present in `r`.
+      let field_diff = fun l r => array.foldl
+        (fun acc f =>
+          if %has_field% f r then
+            acc
+          else
+            %record_insert% f acc (l."%{f}"))
+        {}
+        (%fields% l)
+      in
+
+      let contracts_not_in_t = field_diff field_contracts t in
+      let missing_fields = %fields% contracts_not_in_t in
+
+      if %length% missing_fields == 0 then
+        let tail_fields = field_diff t field_contracts in
+        let fields_with_contracts = array.foldl
+          (fun acc f =>
+            if %has_field% f field_contracts then
+              let contract = field_contracts."%{f}" in
+              let label = %go_field% f l in
+              let val = t."%{f}" in
+              %record_insert% f acc (%assume% contract label val)
+            else
+              acc)
+          {}
+          (%fields% t)
+        in
+        tail_contract fields_with_contracts l tail_fields
       else
-          %blame% (%tag% "not a record" l),
+        %blame% (%tag% "missing field %{%head% missing_fields}" l)
+    else
+      %blame% (%tag% "not a record" l),
 
   "$dyn_record" = fun contr l t =>
       if %typeof% t == `Record then
           %record_map% t (fun _field value => %assume% contr l value)
       else
           %blame% (%tag% "not a record" l),
-
-  "$record_extend" = fun field contr cont acc l t =>
-      if %has_field% field t then
-          let acc = %record_insert%
-            field
-            acc
-            (%assume% contr (%go_field% field l) (t."%{field}")) in
-          let t = %record_remove% field t in
-          cont acc l t
-      else
-          %blame% (%tag% "missing field `%{field}`" l),
 
   "$forall_tail" = fun sy pol acc l t =>
       let magic_fld = "_%sealed" in
@@ -89,7 +109,6 @@
   "$empty_tail" = fun acc l t =>
       if t == {} then acc
       else %blame% (%tag% "extra field `%{%head% (%fields% t)}`" l),
-
 
   # Push priorities operators
 
