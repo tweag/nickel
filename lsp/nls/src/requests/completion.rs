@@ -129,23 +129,23 @@ fn get_completion_identifiers(
                 Some(name_id) => linearization
                     .get_in_scope(item)
                     .iter()
-                    .filter_map(|i| {
-                        let (ty, _) = linearization.resolve_item_type_meta(i);
-                        match i.kind {
+                    .filter_map(|item| {
+                        let (ty, _) = linearization.resolve_item_type_meta(item);
+                        match item.kind {
                             // Get record fields from static type info
                             TermKind::Declaration(..)
-                                if name_id == i.id && matches!(ty, Types(AbsType::Record(..))) =>
+                                if name_id == item.id && matches!(ty, Types(AbsType::Record(..))) =>
                             {
                                 match &ty {
                                     Types(AbsType::Record(row)) => {
-                                        Some((extract_ident(row), i.ty.clone()))
+                                        Some((extract_ident(row), item.ty.clone()))
                                     }
                                     _ => unreachable!(),
                                 }
                             }
                             // Get record fields from contract metadata
                             TermKind::Declaration(_, _, ValueState::Known(body_id))
-                                if name_id == i.id
+                                if name_id == item.id
                                     && find_record_contract(
                                         &linearization.linearization,
                                         body_id,
@@ -160,15 +160,15 @@ fn get_completion_identifiers(
                                     Types(AbsType::Record(row)) => extract_ident(row),
                                     _ => Vec::with_capacity(0),
                                 };
-                                Some((fields, i.ty.clone()))
+                                Some((fields, item.ty.clone()))
                             }
 
                             // Get record fields from lexical scoping
                             TermKind::Declaration(_, _, ValueState::Known(body_id))
-                                if name_id == i.id =>
+                                if name_id == item.id =>
                             {
                                 find_record_fields(&linearization.linearization, body_id)
-                                    .map(|idents| Some((idents, i.ty.clone())))
+                                    .map(|idents| Some((idents, item.ty.clone())))
                                     .unwrap_or(None)
                             }
 
