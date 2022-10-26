@@ -17,7 +17,7 @@ use crate::{
         interface::{TermKind, UsageState, ValueState},
         LinearizationItem,
     },
-    server::{Server, self},
+    server::{self, Server},
     trace::{Enrich, Trace},
 };
 
