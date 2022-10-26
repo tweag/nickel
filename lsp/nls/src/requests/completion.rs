@@ -113,7 +113,7 @@ fn get_completion_identifiers(
     source: &str,
     trigger: Option<&str>,
     linearization: &Completed,
-    item: &LinearizationItem<Types>,
+    item: &LinearizationItem<Types>
 ) -> Result<Vec<CompletionItem>, ResponseError> {
     let lin_env = &linearization.lin_env;
     let in_scope = match trigger {
@@ -124,56 +124,60 @@ fn get_completion_identifiers(
                 .iter()
                 .find(|(ident, _)| ident.label() == name)
                 .map(|(_, id)| *id);
-            // unsafe unwrap here
-            let name_id = name_id.unwrap();
 
-            linearization
-                .get_in_scope(item)
-                .iter()
-                .filter_map(|i| {
-                    let (ty, _) = linearization.resolve_item_type_meta(i);
-                    match i.kind {
-                        // Get record fields from static type info
-                        TermKind::Declaration(..)
-                            if name_id == i.id && matches!(ty, Types(AbsType::Record(..))) =>
-                        {
-                            match &ty {
-                                Types(AbsType::Record(row)) => {
-                                    Some((extract_ident(row), i.ty.clone()))
+            match name_id {
+                Some(name_id) => linearization
+                    .get_in_scope(item)
+                    .iter()
+                    .filter_map(|i| {
+                        let (ty, _) = linearization.resolve_item_type_meta(i);
+                        match i.kind {
+                            // Get record fields from static type info
+                            TermKind::Declaration(..)
+                                if name_id == i.id && matches!(ty, Types(AbsType::Record(..))) =>
+                            {
+                                match &ty {
+                                    Types(AbsType::Record(row)) => {
+                                        Some((extract_ident(row), i.ty.clone()))
+                                    }
+                                    _ => unreachable!(),
                                 }
-                                _ => unreachable!(),
                             }
-                        }
-                        // Get record fields from contract metadata
-                        TermKind::Declaration(_, _, ValueState::Known(body_id))
-                            if name_id == i.id
-                                && find_record_contract(&linearization.linearization, body_id)
+                            // Get record fields from contract metadata
+                            TermKind::Declaration(_, _, ValueState::Known(body_id))
+                                if name_id == i.id
+                                    && find_record_contract(
+                                        &linearization.linearization,
+                                        body_id,
+                                    )
                                     .is_some() =>
-                        {
-                            // unwrapping is safe here because of the pattern condition.
-                            let contract =
-                                find_record_contract(&linearization.linearization, body_id)
-                                    .unwrap();
-                            let fields = match &contract.types {
-                                Types(AbsType::Record(row)) => extract_ident(row),
-                                _ => Vec::with_capacity(0),
-                            };
-                            Some((fields, i.ty.clone()))
-                        }
+                            {
+                                // unwrapping is safe here because of the pattern condition.
+                                let contract =
+                                    find_record_contract(&linearization.linearization, body_id)
+                                        .unwrap();
+                                let fields = match &contract.types {
+                                    Types(AbsType::Record(row)) => extract_ident(row),
+                                    _ => Vec::with_capacity(0),
+                                };
+                                Some((fields, i.ty.clone()))
+                            }
 
-                        // Get record fields from lexical scoping
-                        TermKind::Declaration(_, _, ValueState::Known(body_id))
-                            if name_id == i.id =>
-                        {
-                            find_record_fields(&linearization.linearization, body_id)
-                                .map(|idents| Some((idents, i.ty.clone())))
-                                .unwrap_or(None)
-                        }
+                            // Get record fields from lexical scoping
+                            TermKind::Declaration(_, _, ValueState::Known(body_id))
+                                if name_id == i.id =>
+                            {
+                                find_record_fields(&linearization.linearization, body_id)
+                                    .map(|idents| Some((idents, i.ty.clone())))
+                                    .unwrap_or(None)
+                            }
 
-                        _ => None,
-                    }
-                })
-                .collect()
+                            _ => None,
+                        }
+                    })
+                    .collect(),
+                None => return Ok(Vec::new())
+            }
         }
 
         // variable name completion
@@ -220,6 +224,8 @@ pub fn handle_completion(
     )
     .unwrap();
 
+    // -1 because at the current cursor position, there is no linearization item there,
+    // so we try to get the item just before the cursor.
     let locator = (file_id, ByteIndex((start - 1) as u32));
     let linearization = server.lin_cache_get(&file_id)?;
     // Cloning to avoid mutable borrow and shared borrow at the same time,
