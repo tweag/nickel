@@ -81,6 +81,8 @@ fn extract_ident(ty: &Box<Types>) -> Vec<Ident> {
 fn get_identifier(text: &str) -> Result<String, ResponseError> {
     lazy_static! {
         // unwrap is safe here because we know this is a correct regex.
+        // This regexp must be the reverse of the regexp in the lexer (nickel_lang::parser::lexer)
+        // to correctly parse identifiers.
         static ref RE: regex::Regex = regex::Regex::new(r"[_a-zA-Z0-9-']*[a-zA-Z]_?").unwrap();
     }
 
