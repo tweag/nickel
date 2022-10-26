@@ -17,7 +17,7 @@ use crate::{
         interface::{TermKind, UsageState, ValueState},
         LinearizationItem,
     },
-    server::Server,
+    server::{Server, self},
     trace::{Enrich, Trace},
 };
 
@@ -118,7 +118,7 @@ fn get_completion_identifiers(
     let lin_env = &linearization.lin_env;
     let in_scope = match trigger {
         // Record Completion
-        Some(".") => {
+        Some(server::DOT_COMPL_TRIGGER) => {
             let name = get_identifier(source)?;
             let name_id = lin_env
                 .iter()
