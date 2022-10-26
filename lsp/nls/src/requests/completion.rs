@@ -1,5 +1,6 @@
 use codespan::ByteIndex;
 use codespan_lsp::position_to_byte_index;
+use lazy_static::lazy_static;
 use log::debug;
 use lsp_server::{ErrorCode, RequestId, Response, ResponseError};
 use lsp_types::{CompletionItem, CompletionParams};
@@ -78,15 +79,18 @@ fn extract_ident(ty: &Box<Types>) -> Vec<Ident> {
 
 /// Get the identifier before the `.`, for record completion.
 fn get_identifier(text: &str) -> Result<String, ResponseError> {
+    lazy_static! {
+        // unwrap is safe here because we know this is a correct regex.
+        static ref RE: regex::Regex = regex::Regex::new(r"[_a-zA-Z0-9-']*[a-zA-Z]_?").unwrap();
+    }
+
     let text: String = text
         .chars()
         .rev()
         .skip_while(|c| *c == '.') // skip . (if any)
         .collect();
 
-    // unwrap is safe here because we know this is a correct regex.
-    let regex = regex::Regex::new(r"[_a-zA-Z0-9-']*[a-zA-Z]_?").unwrap();
-    let name = regex.find(&text).ok_or(ResponseError {
+    let name = RE.find(&text).ok_or(ResponseError {
         code: ErrorCode::InternalError as i32,
         message: "Couldn't get identifier for record completion".to_owned(),
         data: None,
