@@ -153,8 +153,7 @@ fn get_completion_identifiers(
                                     // Get record fields from lexical scoping
                                     None => {
                                         find_record_fields(&linearization.linearization, *body_id)
-                                            .map(|idents| Some((idents, item.ty.clone())))
-                                            .unwrap_or(None)
+                                            .map(|idents| (idents, item.ty.clone()))
                                     }
                                 }
                             }
