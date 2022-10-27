@@ -283,9 +283,12 @@ fn contract_eq_bounded<E: TermEnvironment>(
                 env2,
             ) && r1.attrs == r2.attrs
         }
-        (RecRecord(r1, dyn_fields1, _), RecRecord(r2, dyn_fields2, _)) =>
+        (RecRecord(r1, dyn_fields1, _, inh1), RecRecord(r2, dyn_fields2, _, inh2)) => //TODO should
+                                                                                      //manage
+                                                                                      //inherits
+                                                                                      //case?
         // We only compare records whose field structure is statically known (i.e. without dynamic
-        // fields).
+        // fields). Inherited fields should probably concidered as static fields TODO.
         {
             dyn_fields1.is_empty()
                 && dyn_fields2.is_empty()

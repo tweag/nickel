@@ -467,6 +467,7 @@ pub fn merge<C: Cache>(
                         RecordData::new(m, RecordAttrs::merge(r1.attrs, r2.attrs), None),
                         Vec::new(),
                         None,
+                        Vec::new(),
                     ),
                     final_pos,
                 ),

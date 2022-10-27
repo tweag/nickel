@@ -111,6 +111,7 @@ pub enum Term {
         RecordData,
         Vec<(RichTerm, RichTerm)>, /* field whose name is defined by interpolation */
         Option<RecordDeps>, /* dependency tracking between fields. None before the free var pass */
+        Vec<(Vec<Ident>, Option<RichTerm>)>, /* inherited fields with optional record from which to inherit */
     ),
     /// A match construct. Correspond only to the match cases: this expression is still to be
     /// applied to an argument to match on. Once applied, the evaluation is done by the
@@ -498,11 +499,15 @@ impl Term {
             Record(ref mut r) => {
                 r.fields.iter_mut().for_each(|(_, t)| func(t));
             }
-            RecRecord(ref mut r, ref mut dyn_fields, ..) => {
+            RecRecord(ref mut r, ref mut dyn_fields, _, ref mut inh) => {
                 r.fields.iter_mut().for_each(|(_, t)| func(t));
                 dyn_fields.iter_mut().for_each(|(t1, t2)| {
                     func(t1);
                     func(t2);
+                });
+                inh.iter_mut().for_each(|(_, t)| match t {
+                    Some(t) => func(t),
+                    _ => (),
                 });
             }
             Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | SealingKey(_) | Enum(_) | Import(_)
@@ -868,10 +873,6 @@ impl Deref for SharedTerm {
 /// y`.
 #[derive(Clone, Debug, PartialEq)]
 pub enum UnaryOp {
-    // WIP!
-    // Nix like inherit keyword, implemented as an operator in nickel.
-    // Only used for Nix compatibility. Do not try to use it in Nickel.
-    __Inherit__(Vec<Ident>),
     /// If-then-else.
     Ite(),
 
@@ -1132,10 +1133,6 @@ impl UnaryOp {
 /// Primitive binary operators
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BinaryOp {
-    // WIP!
-    // Nix like "inherit from" keyword, implemented as an operator in nickel.
-    // Only used for Nix compatibility. Do not try to use it in Nickel.
-    __Inherit__(Vec<Ident>),
     /// Addition of numerals.
     Plus(),
     /// Substraction of numerals.
@@ -1454,13 +1451,18 @@ impl RichTerm {
                     .collect();
                 RichTerm::new(Term::Record(RecordData::new(fields_res?, record.attrs, record.sealed_tail)), pos)
             },
-            Term::RecRecord(record, dyn_fields, deps) => {
+            Term::RecRecord(record, dyn_fields, deps, inh) => {
                 // The annotation on `map_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
                 let static_fields_res: Result<HashMap<Ident, RichTerm>, E> = record.fields
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
                     .map(|(id, t)| Ok((id, t.traverse(f, state, order)?)))
+                    .collect();
+                let inh_res: Result<Vec<(Vec<_>, Option<RichTerm>)>, E> = inh
+                    .into_iter()
+                    // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
+                    .map(|(ids, t)| Ok((ids, t.map(|t| t.traverse(f, state, order)).transpose()?)))
                     .collect();
                 let dyn_fields_res: Result<Vec<(RichTerm, RichTerm)>, E> = dyn_fields
                     .into_iter()
@@ -1472,7 +1474,7 @@ impl RichTerm {
                     })
                     .collect();
                 RichTerm::new(
-                    Term::RecRecord(RecordData::new(static_fields_res?, record.attrs, record.sealed_tail), dyn_fields_res?, deps),
+                    Term::RecRecord(RecordData::new(static_fields_res?, record.attrs, record.sealed_tail), dyn_fields_res?, deps, inh_res?),
                     pos,
                 )
             },

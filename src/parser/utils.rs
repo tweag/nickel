@@ -390,6 +390,7 @@ where
         RecordData::new(static_fields, attrs, None),
         dynamic_fields,
         None,
+        vec![],
     )
 }
 

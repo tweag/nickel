@@ -12,6 +12,7 @@ pub mod apply_contracts;
 pub mod desugar_destructuring;
 pub mod free_vars;
 pub mod import_resolution;
+pub mod inherit;
 pub mod share_normal_form;
 pub mod substitute_wildcards;
 

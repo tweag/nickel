@@ -487,7 +487,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         }
                     }
                 }
-                Term::RecRecord(record, dyn_fields, _) => {
+                Term::RecRecord(record, dyn_fields, _, _inh) => {
                     let rec_env = fixpoint::rec_env(&mut self.cache, record.fields.iter(), &env)?;
 
                     record.fields.iter().try_for_each(|(_, rt)| {
@@ -793,6 +793,7 @@ pub fn env_add_term<C: Cache>(
     env: &mut Environment,
     rt: RichTerm,
 ) -> Result<(), EnvBuildError> {
+    /// TODO: Should we do something here for inherited fields? Have they been transformed already?
     match_sharedterm! {rt.term, with {
             Term::Record(record) | Term::RecRecord(record, ..) => {
                 let ext = record.fields.into_iter().map(|(id, t)| {
@@ -919,8 +920,10 @@ pub fn subst<C: Cache>(
 
             RichTerm::new(Term::Record(record), pos)
         }
-        Term::RecRecord(record, dyn_fields, deps) => {
+        Term::RecRecord(record, dyn_fields, deps, inh) => {
             let record = record.map_fields(|_, t| subst(cache, t, initial_env, env));
+
+            assert_eq!(inh.len(), 0);
 
             let dyn_fields = dyn_fields
                 .into_iter()
@@ -932,7 +935,7 @@ pub fn subst<C: Cache>(
                 })
                 .collect();
 
-            RichTerm::new(Term::RecRecord(record, dyn_fields, deps), pos)
+            RichTerm::new(Term::RecRecord(record, dyn_fields, deps, inh), pos)
         }
         Term::Array(ts, attrs) => {
             let ts = ts

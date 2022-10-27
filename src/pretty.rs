@@ -515,6 +515,7 @@ where
                 record,
                 dyn_fields, /* field whose name is defined by interpolation */
                 _deps,      /* dependency tracking between fields. None before the free var pass */
+                _inh, /* inherited fields. As for `deep_repr` does not print it because the syntax is not defined already for Nickel TODO */
             ) => allocator
                 .line()
                 .append(

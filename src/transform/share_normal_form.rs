@@ -62,7 +62,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
 
                 with_bindings(Term::Record(record), bindings, pos)
             },
-            Term::RecRecord(record, dyn_fields, deps) => {
+            Term::RecRecord(record, dyn_fields, deps, inh) => {
                 // When a recursive record is evaluated, all fields need to be turned to closures
                 // anyway (see the corresponding case in `eval::eval()`), which is what the share
                 // normal form transformation does. This is why the test is more lax here than for
@@ -77,6 +77,10 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                 // fields of recursive records contain either a constant or a *generated* variable,
                 // but never a user-supplied variable directly (the former starts with a special
                 // marker). See comments inside [`crate::RichTerm::closurize`] for more details.
+                //
+                // TODO: Be sure the inherited fields are desugared before share normal form
+                // application. If not, we will have to apply it on the record from which we
+                // inherit thefields in the inherit from form.
                 let mut bindings = Vec::with_capacity(record.fields.len());
 
                 fn mk_binding_type(field_deps: Option<FieldDeps>) -> BindingType {
@@ -128,7 +132,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                     })
                     .collect();
 
-                with_bindings(Term::RecRecord(record, dyn_fields, deps), bindings, pos)
+                with_bindings(Term::RecRecord(record, dyn_fields, deps, inh), bindings, pos)
             },
             Term::Array(ts, attrs) => {
                 let mut bindings = Vec::with_capacity(ts.len());
