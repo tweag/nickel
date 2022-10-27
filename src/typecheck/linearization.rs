@@ -105,6 +105,17 @@ pub trait Linearizer {
     ) {
     }
 
+    fn retype_ident_with_closure<F>(
+        &mut self,
+        lin: &mut Linearization<Self::Building>,
+        ident: &Ident,
+        mut new_type: F,
+    ) where
+        F: FnMut() -> TypeWrapper,
+    {
+        self.retype_ident(lin, ident, new_type())
+    }
+
     /// Defines how to turn a [Self::Building] Linearization of the tracked type into
     /// a [Self::Completed] linearization.
     /// By default creates an entirely empty [Self::Completed] object

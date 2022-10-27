@@ -70,6 +70,7 @@ pub mod reporting;
 #[macro_use]
 pub mod mk_typewrapper;
 pub mod eq;
+pub mod lsp;
 
 use eq::{SimpleTermEnvironment, TermEnvironment};
 use error::*;
@@ -337,7 +338,6 @@ fn walk<L: Linearizer>(
             }),
         Term::Let(x, re, rt, attrs) => {
             let ty_let = binding_type(state, re.as_ref(), &ctxt, false);
-
             // We don't support recursive binding when checking for contract equality.
             //
             // This would quickly lead to cycles, which are hard to deal with without leaking
@@ -351,7 +351,7 @@ fn walk<L: Linearizer>(
                 ctxt.type_env.insert(x.clone(), ty_let.clone());
             }
 
-            linearizer.retype_ident(lin, x, ty_let.clone());
+            linearizer.retype_ident_with_closure(lin, x, || lsp::binding_type(state, re.as_ref(), &ctxt, false));
             walk(state, ctxt.clone(), lin, linearizer.scope(), re)?;
 
             if !attrs.rec {
@@ -365,7 +365,7 @@ fn walk<L: Linearizer>(
             walk(state, ctxt.clone(), lin, linearizer.scope(), re)?;
 
             if let Some(x) = x {
-                linearizer.retype_ident(lin, x, ty_let.clone());
+                linearizer.retype_ident_with_closure(lin, x, || lsp::binding_type(state, re.as_ref(), &ctxt, false));
                 ctxt.type_env.insert(x.clone(), ty_let);
             }
 
@@ -633,7 +633,9 @@ fn type_check_<L: Linearizer>(
                 ctxt.type_env.insert(x.clone(), ty_let.clone());
             }
 
-            linearizer.retype_ident(lin, x, ty_let.clone());
+            linearizer.retype_ident_with_closure(lin, x, || {
+                lsp::binding_type(state, re.as_ref(), &ctxt, false)
+            });
             type_check_(
                 state,
                 ctxt.clone(),
@@ -660,7 +662,9 @@ fn type_check_<L: Linearizer>(
             )?;
 
             if let Some(x) = x {
-                linearizer.retype_ident(lin, x, ty_let.clone());
+                linearizer.retype_ident_with_closure(lin, x, || {
+                    lsp::binding_type(state, re.as_ref(), &ctxt, false)
+                });
                 ctxt.type_env.insert(x.clone(), ty_let);
             }
             inject_pat_vars(pat, &mut ctxt.type_env);
