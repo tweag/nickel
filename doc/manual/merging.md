@@ -413,7 +413,7 @@ both cases, `foo` must satisfy the contract `Num`. What happens if the value of
 
 - Should `{foo | default | Num = 1} & {foo = "bar"}` succeed, although `foo`
   would be a string in the final result?
-- Should `{foo.subfield | Str = "a"} & {foo.other_subfield = 1}`
+- Should `{foo | {subfield | Str} = {subfield = "a"}} & {foo.other_subfield = 1}`
   succeed, although a closed contract `{subfield | Str}` is attached to `foo`,
   and the final result would have an additional field `other_subfield` ?
 
