@@ -105,6 +105,8 @@ pub trait Linearizer {
     ) {
     }
 
+    /// Allows to amend the type of an ident in scope, but with a thunk
+    /// that evaluates to a type, instead of a type.
     fn retype_ident_with_closure<F>(
         &mut self,
         lin: &mut Linearization<Self::Building>,

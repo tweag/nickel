@@ -1,4 +1,4 @@
-//! Special typing analysis that should be done when we run the type checker in LSP mode
+//! Special typing analysis utils that should be done when we run the type checker in LSP mode
 
 use crate::{
     cache::ImportResolver,
@@ -8,6 +8,7 @@ use crate::{
 
 use super::{replace_wildcards_with_var, ApparentType, Context, Environment, State, TypeWrapper};
 
+/// Similar to [`super::apparent_type`], but it adds support for type inference on record terms.
 pub fn apparent_type(
     t: &Term,
     env: Option<&Environment>,
@@ -60,6 +61,8 @@ pub fn apparent_type(
     }
 }
 
+/// The LSP's version of [`super::binding_type`], but it delegates to a local type inference function
+/// that allows type inference for record terms.
 pub fn binding_type(state: &mut State, t: &Term, ctxt: &Context, strict: bool) -> TypeWrapper {
     let ty_apt = apparent_type(t, Some(&ctxt.type_env), Some(state.resolver));
 
