@@ -159,7 +159,7 @@ impl ToNickel for rnix::ast::Expr {
                 let inherited: Vec<(_, Option<RichTerm>)> = n
                     .inherits()
                     .map(|inh| {
-                        let term_from = inh.from().map(|n| n.node().clone().translate(state));
+                        let term_from = inh.from().map(|n| n.inner().unwrap().translate(state));
                         let ids: Vec<Ident> = inh.idents().map(|id| id.as_str().into()).collect();
                         (ids, term_from)
                     })
