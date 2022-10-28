@@ -185,7 +185,7 @@
           buildInputs =
             [ rust ]
             ++ missingSysPkgs
-            ++ (if !isDevShell then [ cargoHome ] else [ ]);
+            ++ (if isDevShell then [ pkgs.rust-analyzer ] else [ cargoHome ]);
 
           src = if isDevShell then null else self;
 
