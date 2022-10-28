@@ -127,3 +127,8 @@ fn recursive_let() {
 fn quote_in_indentifier() {
     check_file("quote_in_identifier.ncl")
 }
+
+#[test]
+fn nix() {
+    check_file("nix.ncl");
+}
