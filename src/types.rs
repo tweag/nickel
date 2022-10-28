@@ -258,7 +258,7 @@ pub struct EnumRows(pub EnumRowsF<Box<EnumRows>>);
 pub type RecordRow = RecordRowF<Box<Types>>;
 #[derive(Clone, PartialEq, Debug)]
 /// Concrete, recursive definition for record rows.
-pub struct RecordRows(pub RecordRowsF<RecordRow, Box<RecordRows>>);
+pub struct RecordRows(pub RecordRowsF<Box<Types>, Box<RecordRows>>);
 /// Concrete, recursive type for a Nickel type.
 #[derive(Clone, PartialEq, Debug)]
 pub struct Types(pub TypeF<Box<Types>, RecordRows, EnumRows>);
@@ -276,8 +276,14 @@ impl<Ty, RRows> RecordRowsF<Ty, RRows> {
     {
         match self {
             RecordRowsF::Empty => Ok(RecordRowsF::Empty),
-            RecordRowsF::Extend { row: RecordRowF { id, types }, tail } => Ok(RecordRowsF::Extend {
-                row: RecordRowF { id, types: f_ty(types)?},
+            RecordRowsF::Extend {
+                row: RecordRowF { id, types },
+                tail,
+            } => Ok(RecordRowsF::Extend {
+                row: RecordRowF {
+                    id,
+                    types: f_ty(types)?,
+                },
                 tail: f_rrows(tail)?,
             }),
             RecordRowsF::TailDyn => Ok(RecordRowsF::TailDyn),
@@ -286,7 +292,11 @@ impl<Ty, RRows> RecordRowsF<Ty, RRows> {
     }
 
     // TODO: doc
-    pub fn map<TyO, RRowsO, FTy, FRRows>(self, mut f_ty: FTy, mut f_rrows: FRRows) -> RecordRowsF<TyO, RRowsO>
+    pub fn map<TyO, RRowsO, FTy, FRRows>(
+        self,
+        mut f_ty: FTy,
+        mut f_rrows: FRRows,
+    ) -> RecordRowsF<TyO, RRowsO>
     where
         FTy: FnMut(Ty) -> TyO,
         FRRows: FnMut(RRows) -> RRowsO,
@@ -299,10 +309,7 @@ impl<Ty, RRows> RecordRowsF<Ty, RRows> {
 
 impl<ERows> EnumRowsF<ERows> {
     // TODO: doc
-    pub fn try_map<ERowsO, FERows, E>(
-        self,
-        mut f_erows: FERows,
-    ) -> Result<EnumRowsF<ERowsO>, E>
+    pub fn try_map<ERowsO, FERows, E>(self, mut f_erows: FERows) -> Result<EnumRowsF<ERowsO>, E>
     where
         FERows: FnMut(ERows) -> Result<ERowsO, E>,
     {
