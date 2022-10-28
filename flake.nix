@@ -185,6 +185,16 @@
           buildInputs =
             [ rust ]
             ++ missingSysPkgs
+            # cargoHome is used for a fully, hermetic, nixified build. This is
+            # what we want for e.g. nix-build. However, when hacking on Nickel,
+            # we rather provide the necessary tooling but let people use the
+            # native way (`cargo build`), because:
+            #
+            # - we don't care as much about hermeticity when iterating quickly
+            #   over the codebase
+            # - we get incremental build and a build order of magnitudes
+            #   faster
+            # - etc.
             ++ (if isDevShell then [ pkgs.rust-analyzer ] else [ cargoHome ]);
 
           src = if isDevShell then null else self;
