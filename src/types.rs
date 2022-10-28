@@ -286,21 +286,19 @@ impl<Ty, RRows> RecordRowsF<Ty, RRows> {
     }
 
     // TODO: doc
-    pub fn map<TyO, RRowsO, FTy, FRRows>(self, mut f_rrow: FR, mut f_rrows: FRRows) -> RecordRowsF<RO, RRowsO>
+    pub fn map<TyO, RRowsO, FTy, FRRows>(self, mut f_ty: FTy, mut f_rrows: FRRows) -> RecordRowsF<TyO, RRowsO>
     where
-        FR: FnMut(Ty) -> RO,
+        FTy: FnMut(Ty) -> TyO,
         FRRows: FnMut(RRows) -> RRowsO,
     {
-        let f_rrow_lifted = |rrow: Ty| -> Result<RO, ()> { Ok(f_rrow(rrow)) };
+        let f_ty_lifted = |rrow: Ty| -> Result<TyO, ()> { Ok(f_ty(rrow)) };
         let f_rrows_lifted = |rrows: RRows| -> Result<RRowsO, ()> { Ok(f_rrows(rrows)) };
-        self.try_map(f_rrow_lifted, f_rrows_lifted).unwrap()
+        self.try_map(f_ty_lifted, f_rrows_lifted).unwrap()
     }
 }
 
 impl<ERows> EnumRowsF<ERows> {
-    // We would like to express that RRows and ERows are of the form RRows<Ty> and ERows<Ty>,
-    // because we lack higher-kinded types. Thus, we need to provide three mapping functions, which
-    // is a bit painful :(
+    // TODO: doc
     pub fn try_map<ERowsO, FERows, E>(
         self,
         mut f_erows: FERows,
@@ -319,7 +317,7 @@ impl<ERows> EnumRowsF<ERows> {
     }
 
     // TODO: doc
-    pub fn map<ERowsO, FERows>(self, mut f_erows: ERows) -> EnumRowsF<ERowsO>
+    pub fn map<ERowsO, FERows>(self, mut f_erows: FERows) -> EnumRowsF<ERowsO>
     where
         FERows: FnMut(ERows) -> ERowsO,
     {

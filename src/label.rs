@@ -44,7 +44,7 @@ pub mod ty_path {
 
     use crate::{
         identifier::Ident,
-        types::{TypeF, Types, RowsF, RecordRowF},
+        types::{TypeF, Types, RecordRowsF, RecordRowF},
     };
 
     /// An element of a path type.
@@ -153,13 +153,13 @@ pub mod ty_path {
                 let mut row = &rows.0;
                 loop {
                     match row {
-                        RowsF::Extend { row: RecordRowF {id, types: ty}, tail: _ } if id == ident => {
+                        RecordRowsF::Extend { row: RecordRowF {id, types: ty}, tail: _ } if id == ident => {
                             todo!()
                             // let (sub_start, sub_end) = span(path_it, ty);
                             // let full_offset = start_offset + format!("{}", id).len() + id_offset;
                             // break (full_offset + sub_start, full_offset + sub_end);
                         }
-                        RowsF::Extend { row: RecordRowF {id, types: ty}, tail: _ } => {
+                        RecordRowsF::Extend { row: RecordRowF {id, types: ty}, tail: _ } => {
                             todo!()
                             // // The last +1 is for the
                             // start_offset += format!("{}", id).len()
