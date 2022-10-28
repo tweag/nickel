@@ -78,22 +78,48 @@ pub struct RecordRowF<Ty> {
 
 /// An enum row, which is just an identifier. An enum type is a set of identifiers, represented as
 /// a sequence of `EnumRow`s, ending potentially with a type variable tail position.
-pub type EnumRow = Ident;
+///
+/// `EnumRowF` is the same as `EnumRow` and doesn't have any type parameter. We introduce the alias
+/// nontheless for consistency with other parametrized type definitions. See [`TypeF`] for more
+/// details.
+pub type EnumRowF = Ident;
+pub type EnumRow = EnumRowF;
 
-/// Generic sequence of rows potentially with a type variable or `Dyn` in tail position. Depending
-/// on the instantiation of `R` and `R`s, `RowsF` can represent both enum rows or records rows.
+/// Generic sequence of record rows potentially with a type variable or `Dyn` in tail position.
+/// Depending on the instantiation of `R` and `R`s, `RowsF` can represent both enum rows or records
+/// rows.
+///
+/// As other types with the `F` suffix, this type is parametrized by one or more recursive
+/// unfoldings. See [`TypeF`] for more details.
 ///
 /// # Type parameters
-/// - `R` is the type a row (in practice, an instantiation of `RecordRowF` or
-///   `EnumRow`)
-/// - `Rs`: as other types with the `F` suffix, this type is parametrized by one or more recursive
-///   unfoldings (here, `Rs` for `RowsF`). See [`TypeF`] for more details.
+///
+/// - `Ty` is the recursive unfolding of a Nickel type stored inside one row. In practice, a
+///   wrapper around an instantiation of `TypeF`.
+/// - `RRows` is the recursive unfolding of record rows (the tail of this row sequence). In
+///   practice, a wrapper around an instantiation of `RecordRowsF`.
 #[derive(Clone, PartialEq, Debug)]
-pub enum RowsF<R, Rs> {
+pub enum RecordRowsF<Ty, RRows> {
     Empty,
-    Extend { row: R, tail: Rs },
+    Extend { row: RecordRowF<Ty>, tail: RRows },
     TailVar(Ident),
     TailDyn,
+}
+
+/// Generic sequence of enum rows potentially with a type variable in tail position.
+///
+/// As other types with the `F` suffix, this type is parametrized by one or more recursive
+/// unfoldings. See [`TypeF`] for more details.
+///
+/// # Type parameters
+///
+/// - `ERows` is the recursive unfolding of enum rows (the tail of this row sequence). In practice,
+///   a wrapper around of `EnumRowsF`.
+#[derive(Clone, PartialEq, Debug)]
+pub enum EnumRowsF<ERows> {
+    Empty,
+    Extend { row: EnumRowF, tail: ERows },
+    TailVar(Ident),
 }
 
 /// The kind of a quantified type variable.
@@ -178,7 +204,6 @@ pub enum VarKind {
 /// Here, `TypeF` also takes two additional type parameters for the recursive unfolding of record
 /// rows and enum rows. We have other, distinct recursive subcomponents (or subtrees) in our
 /// complete definition, but the approach is unchanged.
-
 #[derive(Clone, PartialEq, Debug)]
 pub enum TypeF<Ty, RRows, ERows> {
     /// The dynamic type, or unitype. Affected to values which actual type is not statically known
@@ -227,118 +252,79 @@ pub enum TypeF<Ty, RRows, ERows> {
 // `RecordRow` itself potentially contains occurrences of `Types` and `RecordRows`, which need to
 // be boxed. Hence, we don't need to additionally box `RecordRow`.
 
-#[derive(Clone, PartialEq, Debug)]
 /// Concrete, recursive definition for enum rows.
-pub struct EnumRows(pub RowsF<EnumRow, Box<EnumRows>>);
+pub struct EnumRows(pub EnumRowsF<Box<EnumRows>>);
 /// Concrete, recursive definition for a record row.
 pub type RecordRow = RecordRowF<Box<Types>>;
 #[derive(Clone, PartialEq, Debug)]
 /// Concrete, recursive definition for record rows.
-pub struct RecordRows(pub RowsF<RecordRow, Box<RecordRows>>);
-/// Concrete, recursive definition for a Nickel type.
+pub struct RecordRows(pub RecordRowsF<RecordRow, Box<RecordRows>>);
+/// Concrete, recursive type for a Nickel type.
 #[derive(Clone, PartialEq, Debug)]
 pub struct Types(pub TypeF<Box<Types>, RecordRows, EnumRows>);
 
-impl<R, Rs> RowsF<R, Rs> {
-    // We would like to express that RRows and ERows are of the form RRows<Ty> and ERows<Ty>,
-    // because we lack higher-kinded types. Thus, we need to provide three mapping functions, which
-    // is a bit painful :(
-    pub fn try_map<RO, RsO, FR, FRs, E>(
+impl<Ty, RRows> RecordRowsF<Ty, RRows> {
+    // TODO: doc
+    pub fn try_map<TyO, RRowsO, FTy, FRRows, E>(
         self,
-        mut f_rrow: FR,
-        mut f_rrows: FRs,
-    ) -> Result<RowsF<RO, RsO>, E>
-    where
-        FR: FnMut(R) -> Result<RO, E>,
-        FRs: FnMut(Rs) -> Result<RsO, E>,
-    {
-        match self {
-            RowsF::Empty => Ok(RowsF::Empty),
-            RowsF::Extend { row, tail } => Ok(RowsF::Extend {
-                row: f_rrow(row)?,
-                tail: f_rrows(tail)?,
-            }),
-            RowsF::TailDyn => Ok(RowsF::TailDyn),
-            RowsF::TailVar(id) => Ok(RowsF::TailVar(id)),
-        }
-    }
-
-    pub fn map<RO, RsO, FR, FRs>(self, mut f_rrow: FR, mut f_rrows: FRs) -> RowsF<RO, RsO>
-    where
-        FR: FnMut(R) -> RO,
-        FRs: FnMut(Rs) -> RsO,
-    {
-        let f_rrow_lifted = |rrow: R| -> Result<RO, ()> { Ok(f_rrow(rrow)) };
-        let f_rrows_lifted = |rrows: Rs| -> Result<RsO, ()> { Ok(f_rrows(rrows)) };
-        self.try_map(f_rrow_lifted, f_rrows_lifted).unwrap()
-    }
-}
-
-impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
-    // TODO: doc 
-    pub fn try_map<TyO, RRowsO, ERowsO, FTy, FRRows, FERows, E>(
-        self,
-        mut f: FTy,
+        mut f_ty: FTy,
         mut f_rrows: FRRows,
-        mut f_erows: FERows,
-    ) -> Result<TypeF<TyO, RRowsO, ERowsO>, E>
+    ) -> Result<RecordRowsF<TyO, RRowsO>, E>
     where
         FTy: FnMut(Ty) -> Result<TyO, E>,
         FRRows: FnMut(RRows) -> Result<RRowsO, E>,
-        FERows: FnMut(ERows) -> Result<ERowsO, E>,
     {
         match self {
-            TypeF::Dyn => Ok(TypeF::Dyn),
-            TypeF::Num => Ok(TypeF::Num),
-            TypeF::Bool => Ok(TypeF::Bool),
-            TypeF::Str => Ok(TypeF::Str),
-            TypeF::Sym => Ok(TypeF::Sym),
-            TypeF::Flat(t) => Ok(TypeF::Flat(t)),
-            TypeF::Arrow(s, t) => Ok(TypeF::Arrow(f(s)?, f(t)?)),
-            TypeF::Var(i) => Ok(TypeF::Var(i)),
-            TypeF::Forall {
-                var,
-                var_kind,
-                body,
-            } => Ok(TypeF::Forall {
-                var,
-                var_kind,
-                body: f(body)?,
+            RecordRowsF::Empty => Ok(RecordRowsF::Empty),
+            RecordRowsF::Extend { row: RecordRowF { id, types }, tail } => Ok(RecordRowsF::Extend {
+                row: RecordRowF { id, types: f_ty(types)?},
+                tail: f_rrows(tail)?,
             }),
-            TypeF::Enum(t) => Ok(TypeF::Enum(todo!())),
-            TypeF::Record(t) => Ok(TypeF::Record(todo!())),
-            TypeF::Dict(t) => Ok(TypeF::Dict(f(t)?)),
-            TypeF::Array(t) => Ok(TypeF::Array(f(t)?)),
-            TypeF::Wildcard(i) => Ok(TypeF::Wildcard(i)),
+            RecordRowsF::TailDyn => Ok(RecordRowsF::TailDyn),
+            RecordRowsF::TailVar(id) => Ok(RecordRowsF::TailVar(id)),
         }
     }
 
     // TODO: doc
-    pub fn map<TyO, RRowsO, ERowsO, FTy, FRRows, FERows>(
-        self,
-        mut f: FTy,
-        mut f_rrows: FRRows,
-        mut f_erows: FERows,
-    ) -> TypeF<TyO, RRowsO, ERowsO>
+    pub fn map<TyO, RRowsO, FTy, FRRows>(self, mut f_rrow: FR, mut f_rrows: FRRows) -> RecordRowsF<RO, RRowsO>
     where
-        FTy: FnMut(Ty) -> TyO,
+        FR: FnMut(Ty) -> RO,
         FRRows: FnMut(RRows) -> RRowsO,
+    {
+        let f_rrow_lifted = |rrow: Ty| -> Result<RO, ()> { Ok(f_rrow(rrow)) };
+        let f_rrows_lifted = |rrows: RRows| -> Result<RRowsO, ()> { Ok(f_rrows(rrows)) };
+        self.try_map(f_rrow_lifted, f_rrows_lifted).unwrap()
+    }
+}
+
+impl<ERows> EnumRowsF<ERows> {
+    // We would like to express that RRows and ERows are of the form RRows<Ty> and ERows<Ty>,
+    // because we lack higher-kinded types. Thus, we need to provide three mapping functions, which
+    // is a bit painful :(
+    pub fn try_map<ERowsO, FERows, E>(
+        self,
+        mut f_erows: FERows,
+    ) -> Result<EnumRowsF<ERowsO>, E>
+    where
+        FERows: FnMut(ERows) -> Result<ERowsO, E>,
+    {
+        match self {
+            EnumRowsF::Empty => Ok(EnumRowsF::Empty),
+            EnumRowsF::Extend { row, tail } => Ok(EnumRowsF::Extend {
+                row,
+                tail: f_erows(tail)?,
+            }),
+            EnumRowsF::TailVar(id) => Ok(EnumRowsF::TailVar(id)),
+        }
+    }
+
+    // TODO: doc
+    pub fn map<ERowsO, FERows>(self, mut f_erows: ERows) -> EnumRowsF<ERowsO>
+    where
         FERows: FnMut(ERows) -> ERowsO,
     {
-        let f_lifted = |ty: Ty| -> Result<TyO, ()> { Ok(f(ty)) };
-        let f_rrows_lifted = |rrows: RRows| -> Result<RRowsO, ()> { Ok(f_rrows(rrows)) };
         let f_erows_lifted = |erows: ERows| -> Result<ERowsO, ()> { Ok(f_erows(erows)) };
-        self.try_map(f_lifted, f_rrows_lifted, f_erows_lifted)
-            .unwrap()
-    }
-
-    /// Determine if a type is a type defined by a Nickel term.
-    pub fn is_flat(&self) -> bool {
-        matches!(self, TypeF::Flat(_))
-    }
-
-    pub fn is_wildcard(&self) -> bool {
-        matches!(self, TypeF::Wildcard(_))
+        self.try_map(f_erows_lifted).unwrap()
     }
 }
 
@@ -417,7 +403,7 @@ impl EnumRows {
     /// markers (such as a row type). Used in formatting to decide if parentheses need to be
     /// inserted during pretty pretting.
     pub fn fmt_is_atom(&self) -> bool {
-        matches!(self.0, RowsF::TailDyn | RowsF::TailVar(_))
+        matches!(self.0, EnumRowsF::TailVar(_))
     }
 
     /// Apply a transformation on a whole type by mapping a faillible function `f` on each node in
@@ -488,7 +474,7 @@ impl RecordRows {
     /// markers (such as a row type). Used in formatting to decide if parentheses need to be
     /// inserted during pretty pretting.
     pub fn fmt_is_atom(&self) -> bool {
-        matches!(self.0, RowsF::TailDyn | RowsF::TailVar(_))
+        matches!(self.0, RecordRowsF::TailDyn | RecordRowsF::TailVar(_))
     }
 
     /// Apply a transformation on a whole type by mapping a faillible function `f` on each node in
