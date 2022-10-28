@@ -192,7 +192,7 @@
             #
             # - we don't care as much about hermeticity when iterating quickly
             #   over the codebase
-            # - we get incremental computation and a build order of magnitudes
+            # - we get incremental build and a build order of magnitudes
             #   faster
             # - etc.
             ++ (if isDevShell then [ pkgs.rust-analyzer ] else [ cargoHome ]);
