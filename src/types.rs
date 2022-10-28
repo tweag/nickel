@@ -133,8 +133,8 @@ pub enum EnumRowsF<ERows> {
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum VarKind {
     Type,
-    EnumRow,
-    RecordRow,
+    EnumRows,
+    RecordRows,
 }
 
 /// A Nickel type.

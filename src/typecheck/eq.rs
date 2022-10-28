@@ -417,26 +417,26 @@ fn type_eq_bounded<E: TermEnvironment>(
 ) -> bool {
     match (ty1, ty2) {
         (GenericUnifType::Concrete(s1), GenericUnifType::Concrete(s2)) => match (s1, s2) {
-            (AbsType::Wildcard(id1), AbsType::Wildcard(id2)) => id1 == id2,
-            (AbsType::Dyn(), AbsType::Dyn())
-            | (AbsType::Num(), AbsType::Num())
-            | (AbsType::Bool(), AbsType::Bool())
-            | (AbsType::Sym(), AbsType::Sym())
-            | (AbsType::Str(), AbsType::Str()) => true,
-            (AbsType::Dict(tyw1), AbsType::Dict(tyw2))
-            | (AbsType::Array(tyw1), AbsType::Array(tyw2)) => {
+            (TypeF::Wildcard(id1), TypeF::Wildcard(id2)) => id1 == id2,
+            (TypeF::Dyn(), TypeF::Dyn())
+            | (TypeF::Num(), TypeF::Num())
+            | (TypeF::Bool(), TypeF::Bool())
+            | (TypeF::Sym(), TypeF::Sym())
+            | (TypeF::Str(), TypeF::Str()) => true,
+            (TypeF::Dict(tyw1), TypeF::Dict(tyw2))
+            | (TypeF::Array(tyw1), TypeF::Array(tyw2)) => {
                 type_eq_bounded(state, tyw1, env1, tyw2, env2)
             }
-            (AbsType::Arrow(s1, t1), AbsType::Arrow(s2, t2)) => {
+            (TypeF::Arrow(s1, t1), TypeF::Arrow(s2, t2)) => {
                 type_eq_bounded(state, s1, env1, s2, env2)
                     && type_eq_bounded(state, t1, env1, t2, env2)
             }
-            (AbsType::Enum(tyw1), AbsType::Enum(tyw2)) => {
+            (TypeF::Enum(tyw1), TypeF::Enum(tyw2)) => {
                 let rows1 = rows_as_set(tyw1);
                 let rows2 = rows_as_set(tyw2);
                 rows1.is_some() && rows2.is_some() && rows1 == rows2
             }
-            (AbsType::Record(tyw1), AbsType::Record(tyw2)) => {
+            (TypeF::Record(tyw1), TypeF::Record(tyw2)) => {
                 fn type_eq_bounded_wrapper<E: TermEnvironment>(
                     state: &mut State,
                     tyw1: &&GenericUnifType<E>,
@@ -454,10 +454,10 @@ fn type_eq_bounded<E: TermEnvironment>(
                     .map(|(m1, m2)| map_eq(type_eq_bounded_wrapper, state, &m1, env1, &m2, env2))
                     .unwrap_or(false)
             }
-            (AbsType::Flat(t1), AbsType::Flat(t2)) => {
+            (TypeF::Flat(t1), TypeF::Flat(t2)) => {
                 contract_eq_bounded(state, t1, env1, t2, env2)
             }
-            (AbsType::Forall(i1, tyw1), AbsType::Forall(i2, tyw2)) => {
+            (TypeF::Forall(i1, tyw1), TypeF::Forall(i2, tyw2)) => {
                 let constant_type: GenericUnifType<E> = state.fresh_cst();
 
                 type_eq_bounded(

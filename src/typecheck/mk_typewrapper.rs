@@ -1,5 +1,5 @@
 //! Helpers for building `TypeWrapper`s.
-use super::{TypeF, RowsF, RecordRowF, EnumRow, UnifType};
+use super::{TypeF, EnumRowsF, RecordRowsF, RecordRowF, EnumRow, UnifType};
 
 /// Multi-ary arrow constructor for types implementing `Into<TypeWrapper>`.
 #[macro_export]
@@ -22,14 +22,14 @@ macro_rules! mk_tyw_arrow {
 #[macro_export]
 macro_rules! mk_tyw_enum_row {
     () => {
-        $crate::typecheck::UnifEnumRows::Concrete(RowsF::Empty)
+        $crate::typecheck::UnifEnumRows::Concrete(EnumRowsF::Empty)
     };
     (; $tail:expr) => {
         $crate::typecheck::UnifEnumRows::from($tail)
     };
     ( $id:expr $(, $ids:expr )* $(; $tail:expr)?) => {
         $crate::typecheck::UnifEnumRows::Concrete(
-            $crate::types::RowsF::Extend {
+            $crate::types::EnumRowsF::Extend {
                 row: Ident::from($id),
                 tail: Box::new(mk_tyw_enum_row!($( $ids ),* $(; $tail)?))
             }
@@ -43,15 +43,15 @@ macro_rules! mk_tyw_enum_row {
 #[macro_export]
 macro_rules! mk_tyw_row {
     () => {
-        $crate::typecheck::UnifRecordRows::Concrete(RowsF::Empty)
+        $crate::typecheck::UnifRecordRows::Concrete(RecordRowsF::Empty)
     };
     (; $tail:expr) => {
         $crate::typecheck::UnifRecordRows::from($tail)
     };
     (($id:expr, $ty:expr) $(,($ids:expr, $tys:expr))* $(; $tail:expr)?) => {
         $crate::typecheck::UnifRecordRows::Concrete(
-            $crate::types::RowsF::Extend {
-                row: $crate::typecheck::RecordRow {
+            $crate::types::RecordRowsF::Extend {
+                row: $crate::typecheck::RecordRowF {
                     id: Ident::from($id),
                     types: Box::new($ty.into()),
                 },
@@ -106,10 +106,6 @@ where
     T: Into<UnifType>,
 {
     UnifType::Concrete(TypeF::Array(Box::new(ty.into())))
-}
-
-pub fn rows_empty<R, Rs>() -> RowsF<R, Rs> {
-    RowsF::Empty
 }
 
 // dyn is a reserved keyword

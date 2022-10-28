@@ -46,7 +46,7 @@ pub fn get_uop_type(
         UnaryOp::Embed(id) => {
             let row = UnifType::UnifVar(state.table.fresh_var());
             // Constraining a freshly created variable should never fail.
-            constraint(state, row.clone(), id.clone()).unwrap();
+            constrain_rrows(state, row.clone(), id.clone()).unwrap();
             (mk_tyw_enum!(; row.clone()), mk_tyw_enum!(id.clone(); row))
         }
         // This should not happen, as Switch() is only produced during evaluation.

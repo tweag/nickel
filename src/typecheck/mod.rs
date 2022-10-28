@@ -52,7 +52,7 @@ use crate::{
     error::TypecheckError,
     identifier::Ident,
     term::{Contract, MetaValue, RichTerm, StrChunk, Term, TraverseOrder},
-    types::{TypeF, RecordRowsF, EnumRowsF, RecordRowF, RecordRow, EnumRow, RowIterator, RowIteratorItem, Types, RecordRows, EnumRows, VarKind, TraverseType, TraverseEnumRows, TraverseRecordRows},
+    types::{TypeF, RecordRowsF, EnumRowsF, RecordRowF, RecordRow, EnumRow, Types, RecordRows, EnumRows, VarKind, TraverseType, TraverseEnumRows, TraverseRecordRows},
     {mk_tyw_arrow, mk_tyw_enum, mk_tyw_enum_row, mk_tyw_record, mk_tyw_row},
 };
 
@@ -270,16 +270,6 @@ impl<E: TermEnvironment + Clone> GenericUnifType<E> {
             )),
         }
     }
-
-
-    /// Create an iterator on rows represented by this type.
-    ///
-    /// The iterator continues as long as the next item is of the form `RowExtend(..)`, and
-    /// stops once it reaches `Empty` (which ends iteration), or something else which is not a
-    /// `RowExtend` (which produces a last item [`typecheck::RowIteratorItem::Tail`]).
-    pub fn iter_as_rows(&self) -> RowIterator<'_, GenericUnifType<E>> {
-        RowIterator { next: Some(self) }
-    }
 }
 
 pub type UnifRecordRow = GenericUnifRecordRow<SimpleTermEnvironment>;
@@ -293,11 +283,11 @@ impl UnifRecordRows {
         match self {
             UnifRecordRows::UnifVar(p) => match table.root_rrows(p) {
                 t @ UnifRecordRows::Concrete(_) => t.into_rrows(table),
-                _ => RecordRows(RowsF::Empty),
+                _ => RecordRows(RecordRowsF::Empty),
             },
-            UnifRecordRows::Constant(_) => RecordRows(RowsF::Empty),
+            UnifRecordRows::Constant(_) => RecordRows(RecordRowsF::Empty),
             UnifRecordRows::Concrete(t) => {
-                let mapped = t.map(|UnifRecordRow {id, types}| RecordRow {id, types: Box::new((*types).into_type(table))}, |x| todo!());
+                let mapped = t.map(|ty| Box::new(ty.into_type(table)), |rrows| Box::new(rrows.into_rrows(table)));
                 RecordRows(mapped)
             }
         }
@@ -338,7 +328,7 @@ impl UnifType {
             ApparentType::Annotated(ty)
             | ApparentType::Inferred(ty)
             | ApparentType::Approximated(ty) => GenericUnifType::from_type(ty, env),
-            ApparentType::FromEnv(tyw) => tyw,
+            ApparentType::FromEnv(uty) => uty,
         }
     }
 
@@ -369,14 +359,14 @@ impl From<TypeF<Box<UnifType>, UnifRecordRows, UnifEnumRows>> for UnifType {
     }
 }
 
-impl From<RowsF<UnifRecordRow, Box<UnifRecordRows>>> for UnifRecordRows {
-    fn from(rrows: RowsF<UnifRecordRow, Box<UnifRecordRows>>) -> Self {
+impl From<RecordRowsF<Box<UnifType>, Box<UnifRecordRows>>> for UnifRecordRows {
+    fn from(rrows: RecordRowsF<Box<UnifType>, Box<UnifRecordRows>>) -> Self {
         UnifRecordRows::Concrete(rrows)
     }
 }
 
-impl From<RowsF<EnumRow, Box<UnifEnumRows>>> for UnifEnumRows {
-    fn from(ty: RowsF<EnumRow, Box<UnifEnumRows>>) -> Self {
+impl From<EnumRowsF<Box<UnifEnumRows>>> for UnifEnumRows {
+    fn from(ty: EnumRowsF<Box<UnifEnumRows>>) -> Self {
         UnifEnumRows::Concrete(ty)
     }
 }
@@ -469,11 +459,11 @@ pub fn env_add_term(
     match term.as_ref() {
         Term::Record(record) | Term::RecRecord(record, ..) => {
             for (id, t) in &record.fields {
-                let tyw: UnifType = UnifType::from_apparent_type(
+                let uty: UnifType = UnifType::from_apparent_type(
                     apparent_type(t.as_ref(), Some(env), Some(resolver)),
                     term_env,
                 );
-                env.insert(id.clone(), tyw);
+                env.insert(id.clone(), uty);
             }
 
             Ok(())
@@ -762,8 +752,8 @@ fn walk<L: Linearizer>(
                 value: Some(t),
                 ..
                 } => {
-                    let tyw2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
-                    let instantiated = instantiate_foralls(state, tyw2, ForallInst::Constant);
+                    let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
+                    let instantiated = instantiate_foralls(state, uty2, ForallInst::Constant);
                     type_check_(state, ctxt, lin, linearizer, t, instantiated)
                 }
                 MetaValue {value: Some(t), .. } =>  walk(state, ctxt, lin, linearizer, t),
@@ -819,12 +809,12 @@ fn walk_rrows<L: Linearizer>(
     rrows: &RecordRows,
 ) -> Result<(), TypecheckError> {
     match rrows.0 {
-        RowsF::Empty
+        RecordRowsF::Empty
         // Currently, the parser can't generate unbound type variables by construction. Thus we
         // don't check here for unbound type variables again.
-        | RowsF::TailVar(_)
-        | RowsF::TailDyn => Ok(()),
-        RowsF::Extend { row, tail } => {
+        | RecordRowsF::TailVar(_)
+        | RecordRowsF::TailDyn => Ok(()),
+        RecordRowsF::Extend { row, tail } => {
             walk_type(state, ctxt, lin, linearizer, &*row.types)?;
             walk_rrows(state, ctxt, lin, linearizer, &*tail)
         }
@@ -1032,7 +1022,7 @@ fn type_check_<L: Linearizer>(
                     state.table.fresh_erows_uvar()
                 }
                 None => cases.iter().try_fold(
-                    mk_typewrapper::rows_empty().into(),
+                    EnumRowsF::Empty.into(),
                     |acc, x| -> Result<UnifEnumRows, TypecheckError> {
                         Ok(mk_tyw_enum_row!(x.0.clone(); acc))
                     },
@@ -1093,9 +1083,9 @@ fn type_check_<L: Linearizer>(
             // Fields defined by interpolation are ignored.
             if let Term::RecRecord(..) = t.as_ref() {
                 for (id, rt) in &record.fields {
-                    let tyw = binding_type(state, rt.as_ref(), &ctxt, true);
-                    ctxt.type_env.insert(id.clone(), tyw.clone());
-                    linearizer.retype_ident(lin, id, tyw);
+                    let uty = binding_type(state, rt.as_ref(), &ctxt, true);
+                    ctxt.type_env.insert(id.clone(), uty.clone());
+                    linearizer.retype_ident(lin, id, uty);
                 }
             }
 
@@ -1194,11 +1184,11 @@ fn type_check_<L: Linearizer>(
                     value: Some(t),
                     ..
                 } => {
-                    let tyw2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
+                    let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
                     let instantiated =
-                        instantiate_foralls(state, tyw2.clone(), ForallInst::Constant);
+                        instantiate_foralls(state, uty2.clone(), ForallInst::Constant);
 
-                    unify(state, &ctxt, tyw2, ty)
+                    unify(state, &ctxt, uty2, ty)
                         .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
                     type_check_(state, ctxt, lin, linearizer, t, instantiated)
                 }
@@ -1340,7 +1330,7 @@ impl From<ApparentType> for Types {
             ApparentType::Annotated(ty)
             | ApparentType::Inferred(ty)
             | ApparentType::Approximated(ty) => ty,
-            ApparentType::FromEnv(tyw) => tyw.try_into().ok().unwrap_or(Types(TypeF::Dyn)),
+            ApparentType::FromEnv(uty) => uty.try_into().ok().unwrap_or(Types(TypeF::Dyn)),
         }
     }
 }
@@ -1421,14 +1411,14 @@ pub fn infer_record_type(t: &Term, term_env: &SimpleTermEnvironment) -> UnifType
             contracts,
             ..
         }) if contracts.is_empty() => infer_record_type(rt.as_ref(), term_env),
-        Term::Record(record) | Term::RecRecord(record, ..) => UnifType::from(TypeF::Record(Box::new(
-            UnifRecordRows::Concrete(record.fields.iter().fold(RowsF::Empty, |r, (id, rt)| {
-                RowsF::Extend {
+        Term::Record(record) | Term::RecRecord(record, ..) => UnifType::from(TypeF::Record(
+            UnifRecordRows::Concrete(record.fields.iter().fold(RecordRowsF::Empty, |r, (id, rt)| {
+                RecordRowsF::Extend {
                     row : UnifRecordRow { id: id.clone(), types: Box::new(infer_record_type(rt.term.as_ref(), term_env)) },
                     tail: Box::new(r.into()),
                 }}
             ))
-        ))),
+        )),
         t => UnifType::from_apparent_type(
             apparent_type(t, None, None),
             &SimpleTermEnvironment::new(),
@@ -1492,7 +1482,7 @@ fn rrow_add(
     //     UnifType::UnifVar(root) => {
     //         if let Some(set) = state.constr.get(&root) {
     //             if set.contains(id) {
-    //                 return Err(RowUnifError::UnsatConstr(id.clone(), ty.map(|tyw| *tyw)));
+    //                 return Err(RowUnifError::UnsatConstr(id.clone(), ty.map(|uty| *uty)));
     //             }
     //         }
     //         let new_row = state.table.fresh_unif_var();
@@ -1538,7 +1528,7 @@ fn erow_add(
     //     UnifType::UnifVar(root) => {
     //         if let Some(set) = state.constr.get(&root) {
     //             if set.contains(id) {
-    //                 return Err(RowUnifError::UnsatConstr(id.clone(), ty.map(|tyw| *tyw)));
+    //                 return Err(RowUnifError::UnsatConstr(id.clone(), ty.map(|uty| *uty)));
     //             }
     //         }
     //         let new_row = state.table.fresh_unif_var();
@@ -1585,7 +1575,7 @@ pub fn unify(
             | (TypeF::Bool, TypeF::Bool)
             | (TypeF::Str, TypeF::Str)
             | (TypeF::Sym, TypeF::Sym) => Ok(()),
-            (TypeF::Array(tyw1), TypeF::Array(tyw2)) => unify(state, ctxt, *tyw1, *tyw2),
+            (TypeF::Array(uty1), TypeF::Array(uty2)) => unify(state, ctxt, *uty1, *uty2),
             (TypeF::Arrow(s1s, s1t), TypeF::Arrow(s2s, s2t)) => {
                 unify(state, ctxt, (*s1s).clone(), (*s2s).clone()).map_err(|err| {
                     UnifError::DomainMismatch(
@@ -1609,7 +1599,7 @@ pub fn unify(
             //     })
             // }
             (TypeF::Enum(erows1), TypeF::Enum(erows2)) => unify_erows(state, ctxt, erows1, erows2).map_err(|err| err.into_unif_err(mk_tyw_enum!(; erows1), mk_tyw_enum!(; erows2))),
-            // match (*tyw1, *tyw2) {
+            // match (*uty1, *uty2) {
             //     (UnifType::Concrete(r1), UnifType::Concrete(r2))
             //         if r1.is_row_type() && r2.is_row_type() =>
             //     {
@@ -1622,7 +1612,7 @@ pub fn unify(
             //     (_, UnifType::Concrete(r)) if !r.is_row_type() => {
             //         Err(UnifError::IllformedType(mk_tyw_enum!(; r)))
             //     }
-            //     (tyw1, tyw2) => unify(state, ctxt, tyw1, tyw2),
+            //     (uty1, uty2) => unify(state, ctxt, uty1, uty2),
             // },
             (TypeF::Record(rrows1), TypeF::Record(rrows2)) => unify_rrows(state, ctxt, rrows1, rrows2).map_err(|err| {
                          err.into_unif_err(mk_tyw_record!(; rrows1), mk_tyw_record!(; rrows2))
@@ -1643,18 +1633,32 @@ pub fn unify(
                 // {
                 //     Err(UnifError::IllformedType(mk_tyw_record!(; r)))
                 // }
-                // (tyw1, tyw2) => unify(state, ctxt, tyw1, tyw2),
+                // (uty1, uty2) => unify(state, ctxt, uty1, uty2),
             // },
             (TypeF::Dict(t1), TypeF::Dict(t2)) => unify(state, &ctxt, *t1, *t2),
-            (TypeF::Forall {var: var1, var_kind: var_kind1, body: body1}, TypeF::Forall {var: var2, var_kind: var_kind2, body: body2}) => {
+            (TypeF::Forall {var: var1, var_kind: var_kind1, body: body1}, TypeF::Forall {var: var2, var_kind: var_kind2, body: body2}) if var_kind1 == var_kind2 => {
+
                 // Very stupid (slow) implementation
-                let constant_type = state.table.fresh_type_const();
+                let (substd1, substd2) = match var_kind1 {
+                    VarKind::Type => {
+                        let constant_type = state.table.fresh_type_const();
+                        (body1.subst_type(&var1, &constant_type), body2.subst_type(&var2, &constant_type))
+                    },
+                    VarKind::RecordRows => {
+                        let constant_type = state.table.fresh_rrows_const();
+                        (body1.subst_rrows(&var1, &constant_type), body2.subst_rrows(&var2, &constant_type))
+                    }
+                    VarKind::EnumRows => {
+                        let constant_type = state.table.fresh_erows_const();
+                        (body1.subst_erows(&var1, &constant_type), body2.subst_erows(&var2, &constant_type))
+                    },
+                };
 
                 unify(
                     state,
                     &ctxt,
-                    body1.subst(&var1, &constant_type),
-                    body2.subst(&var2, &constant_type),
+                    substd1,
+                    substd2,
                 )
             }
             (TypeF::Var(ident), _) | (_, TypeF::Var(ident)) => {
@@ -1669,16 +1673,18 @@ pub fn unify(
         // The two following cases are not merged just to correctly distinguish between the
         // expected type (first component of the tuple) and the inferred type when reporting a row
         // unification error.
-        (UnifType::UnifVar(p), tyw) => {
-            constr_unify(state.constr, p, &tyw)
-                .map_err(|err| err.into_unif_err(UnifType::UnifVar(p), tyw.clone()))?;
-            state.table.assign_type(p, tyw);
+        (UnifType::UnifVar(p), uty) => {
+            // TODO: only for row types
+            // constr_unify(state.constr, p, &uty)
+            //     .map_err(|err| err.into_unif_err(UnifType::UnifVar(p), uty.clone()))?;
+            state.table.assign_type(p, uty);
             Ok(())
         }
-        (tyw, UnifType::UnifVar(p)) => {
-            constr_unify(state.constr, p, &tyw)
-                .map_err(|err| err.into_unif_err(tyw.clone(), UnifType::UnifVar(p)))?;
-            state.table.assign_type(p, tyw);
+        (uty, UnifType::UnifVar(p)) => {
+            //TODO: only for row types
+            // constr_unify(state.constr, p, &uty)
+            //     .map_err(|err| err.into_unif_err(uty.clone(), UnifType::UnifVar(p)))?;
+            state.table.assign_type(p, uty);
             Ok(())
         }
         (UnifType::Constant(i1), UnifType::Constant(i2)) if i1 == i2 => Ok(()),
@@ -1693,8 +1699,8 @@ pub fn unify(
         {
             Ok(())
         }
-        (tyw1 @ UnifType::Contract(..), tyw2) | (tyw1, tyw2 @ UnifType::Contract(..)) => {
-            Err(UnifError::TypeMismatch(tyw1, tyw2))
+        (uty1 @ UnifType::Contract(..), uty2) | (uty1, uty2 @ UnifType::Contract(..)) => {
+            Err(UnifError::TypeMismatch(uty1, uty2))
         }
     }
 }
@@ -1708,17 +1714,17 @@ pub fn unify_rrows(
 ) -> Result<(), RowUnifError> {
     match (urrows1, urrows2) {
         (UnifRecordRows::Concrete(rrows1), UnifRecordRows::Concrete(rrows2)) => match (rrows1, rrows2) {
-            (RowsF::TailVar(id), _) | (_, RowsF::TailVar(id)) => Err(RowUnifError::UnboundTypeVariable(id)),
-            (RowsF::Empty, RowsF::Empty) | (RowsF::TailDyn, RowsF::TailDyn) => Ok(()),
-            (RowsF::Empty, RowsF::TailDyn) => Err(RowUnifError::ExtraDynTail()),
-            (RowsF::TailDyn, RowsF::Empty) => Err(RowUnifError::MissingDynTail()),
-            (RowsF::Empty, RowsF::Extend { row: UnifRecordRow {id, ..}, .. })
-            | (RowsF::TailDyn, RowsF::Extend { row: UnifRecordRow {id, ..}, .. }) => Err(RowUnifError::ExtraRow(id)),
-            (RowsF::Extend { row: UnifRecordRow {id, ..}, ..}, RowsF::TailDyn)
-            | (RowsF::Extend { row: UnifRecordRow {id, ..}, ..}, RowsF::Empty) => {
+            (RecordRowsF::TailVar(id), _) | (_, RecordRowsF::TailVar(id)) => Err(RowUnifError::UnboundTypeVariable(id)),
+            (RecordRowsF::Empty, RecordRowsF::Empty) | (RecordRowsF::TailDyn, RecordRowsF::TailDyn) => Ok(()),
+            (RecordRowsF::Empty, RecordRowsF::TailDyn) => Err(RowUnifError::ExtraDynTail()),
+            (RecordRowsF::TailDyn, RecordRowsF::Empty) => Err(RowUnifError::MissingDynTail()),
+            (RecordRowsF::Empty, RecordRowsF::Extend { row: UnifRecordRow {id, ..}, .. })
+            | (RecordRowsF::TailDyn, RecordRowsF::Extend { row: UnifRecordRow {id, ..}, .. }) => Err(RowUnifError::ExtraRow(id)),
+            (RecordRowsF::Extend { row: UnifRecordRow {id, ..}, ..}, RecordRowsF::TailDyn)
+            | (RecordRowsF::Extend { row: UnifRecordRow {id, ..}, ..}, RecordRowsF::Empty) => {
                 Err(RowUnifError::MissingRow(id))
             }
-            (RowsF::Extend {row: UnifRecordRow {id, types}, tail }, r2 @ RowsF::Extend {..}) => {
+            (RecordRowsF::Extend {row: UnifRecordRow {id, types}, tail }, r2 @ RecordRowsF::Extend {..}) => {
                 let (ty2, t2_tail) = rrow_add(state, &id, types.clone(), UnifRecordRows::Concrete(r2))?;
                 unify(state, ctxt, *types, *ty2).map_err(|err| RowUnifError::RowMismatch(id.clone(), Box::new(err)))?;
                 unify_rrows(state, ctxt, *tail, t2_tail) 
@@ -1737,9 +1743,9 @@ pub fn unify_rrows(
                 //         todo!()
                 //         // unify(state, ctxt, t1_tail, t2_tail).map_err(|err| match err {
                 //         //     UnifError::ConstMismatch(c1, c2) => RowUnifError::ConstMismatch(c1, c2),
-                //         //     UnifError::WithConst(c1, tyw) => RowUnifError::WithConst(c1, tyw),
-                //         //     UnifError::RowConflict(id, tyw_opt, _, _) => {
-                //         //         RowUnifError::UnsatConstr(id, tyw_opt)
+                //         //     UnifError::WithConst(c1, uty) => RowUnifError::WithConst(c1, uty),
+                //         //     UnifError::RowConflict(id, uty_opt, _, _) => {
+                //         //         RowUnifError::UnsatConstr(id, uty_opt)
                 //         //     },
                 //         //     UnifError::RowMismatch(id, _, _, unif_err) => {
                 //         //         RowUnifError::RowMismatch(id, unif_err)
@@ -1767,15 +1773,11 @@ pub fn unify_erows(
 ) -> Result<(), RowUnifError> {
     match (uerows1, uerows2) {
         (UnifEnumRows::Concrete(erows1), UnifEnumRows::Concrete(erows2)) => match (erows1, erows2) {
-            (RowsF::TailVar(id), _) | (_, RowsF::TailVar(id)) => Err(RowUnifError::UnboundTypeVariable(id)),
-            (RowsF::Empty, RowsF::Empty) | (RowsF::TailDyn, RowsF::TailDyn) => Ok(()),
-            (RowsF::Empty, RowsF::TailDyn) => Err(RowUnifError::ExtraDynTail()),
-            (RowsF::TailDyn, RowsF::Empty) => Err(RowUnifError::MissingDynTail()),
-            (RowsF::Empty, RowsF::Extend { row: ident, ..})
-            | (RowsF::TailDyn, RowsF::Extend { row: ident, ..}) => Err(RowUnifError::ExtraRow(ident)),
-            (RowsF::Extend { row: ident, ..}, RowsF::Empty)
-            | (RowsF::Extend { row: ident, ..}, RowsF::TailDyn) => Err(RowUnifError::MissingRow(ident)),
-            (RowsF::Extend {row: id, tail }, r2 @ RowsF::Extend {..}) => {
+            (EnumRowsF::TailVar(id), _) | (_, EnumRowsF::TailVar(id)) => Err(RowUnifError::UnboundTypeVariable(id)),
+            (EnumRowsF::Empty, EnumRowsF::Empty)  => Ok(()),
+            (EnumRowsF::Empty, EnumRowsF::Extend { row: ident, ..}) => Err(RowUnifError::ExtraRow(ident)),
+            (EnumRowsF::Extend { row: ident, ..}, EnumRowsF::Empty) => Err(RowUnifError::MissingRow(ident)),
+            (EnumRowsF::Extend {row: id, tail }, r2 @ EnumRowsF::Extend {..}) => {
                 let t2_tail = erow_add(state, &id, UnifEnumRows::Concrete(r2))?;
                 unify_erows(state, ctxt, *tail, t2_tail)
             }
@@ -1822,9 +1824,9 @@ fn instantiate_foralls(state: &mut State, mut ty: UnifType, inst: ForallInst) ->
                     ForallInst::Ptr => UnifType::UnifVar(fresh_uid),
                 };
                 state.names.insert(fresh_uid, var.clone());
-                ty = body.subst(&var, &uvar);
+                ty = body.subst_type(&var, &uvar);
             },
-            VarKind::RecordRow => {
+            VarKind::RecordRows => {
                 let fresh_uid = state.table.fresh_rrows_var_id();
                 let uvar = match inst {
                     ForallInst::Constant => UnifRecordRows::Constant(fresh_uid),
@@ -1834,10 +1836,10 @@ fn instantiate_foralls(state: &mut State, mut ty: UnifType, inst: ForallInst) ->
                 ty = body.subst_rrows(&var, &uvar);
 
                 if inst == ForallInst::Ptr {
-                    constrain_var(state, &ty, fresh_uid)
+                    ty.constrain_fresh_rrows_var(state, fresh_uid)
                 }
             },
-            VarKind::EnumRow => {
+            VarKind::EnumRows => {
                 let fresh_uid = state.table.fresh_rrows_var_id();
                 let uvar = match inst {
                     ForallInst::Constant => UnifEnumRows::Constant(fresh_uid),
@@ -1847,22 +1849,10 @@ fn instantiate_foralls(state: &mut State, mut ty: UnifType, inst: ForallInst) ->
                 ty = body.subst_erows(&var, &uvar);
 
                 if inst == ForallInst::Ptr {
-                    constrain_var(state, &ty, fresh_uid)
+                    ty.constrain_fresh_erows_var(state, fresh_uid)
                 }
             },
         };
-
-        let fresh_id = state.table.fresh_var();
-        let var = match inst {
-            ForallInst::Constant => UnifType::Constant(fresh_id),
-            ForallInst::Ptr => UnifType::UnifVar(fresh_id),
-        };
-        state.names.insert(fresh_id, var.clone());
-        ty = body.subst(&var, &var);
-
-        if inst == ForallInst::Ptr {
-            constrain_var(state, &ty, fresh_id)
-        }
     }
 
     ty
@@ -1886,9 +1876,9 @@ impl UnifTable {
     }
 
     /// Assign a type to a unification variable.
-    pub fn assign_type(&mut self, var: usize, tyw: UnifType) {
+    pub fn assign_type(&mut self, var: usize, uty: UnifType) {
         debug_assert!(self.types[var].is_none());
-        self.types[var] = Some(tyw);
+        self.types[var] = Some(uty);
     }
 
     /// Assign a type to a unification variable.
@@ -2050,14 +2040,15 @@ impl UnifTable {
 /// String}`.
 pub type RowConstr = HashMap<usize, HashSet<Ident>>;
 
-/// Add a row constraint on a type.
-///
-/// See [`RowConstr`].
-fn constraint(state: &mut State, x: UnifType, id: Ident) -> Result<(), RowUnifError> {
-    match x {
-        UnifType::UnifVar(p) => match state.table.root(p) {
-            ty @ UnifType::Concrete(_) => constraint(state, ty, id),
-            UnifType::UnifVar(root) => {
+/// Constrain record rows `rrows` to not contain a row declaration for `id`. Propagae those
+/// constraint to potential record rows unification variable. Return an error if a row declaration
+/// with label `id` is encountered.
+fn constrain_rrows(state: &mut State, rrows: UnifRecordRows, id: Ident) -> Result<(), RowUnifError> {
+    match rrows {
+        UnifRecordRows::UnifVar(p) => match state.table.root_rrows(p) {
+            ty @ UnifRecordRows::Concrete(_) => constrain_rrows(state, ty, id),
+            // Constraints only applies to row unification variables
+            UnifRecordRows::UnifVar(root) => {
                 if let Some(v) = state.constr.get_mut(&root) {
                     v.insert(id);
                 } else {
@@ -2065,126 +2056,253 @@ fn constraint(state: &mut State, x: UnifType, id: Ident) -> Result<(), RowUnifEr
                 }
                 Ok(())
             }
-            tyw @ UnifType::Constant(_) | tyw @ UnifType::Contract(..) => {
-                Err(RowUnifError::IllformedRow(tyw))
-            }
-        },
-        UnifType::Concrete(TypeF::Empty) => Ok(()),
-        UnifType::Concrete(TypeF::RowExtend(id2, tyw, t)) => {
-            if id2 == id {
-                Err(RowUnifError::UnsatConstr(id, tyw.map(|tyw| *tyw)))
+            //TODO: previously ill formed row exception. Now that can't happen, but is it really ok
+            //to constrain on a existential variable without doing anything?
+            UnifRecordRows::Constant(_) => Ok(()),
+        }
+        UnifRecordRows::Concrete(RecordRowsF::Empty) => Ok(()),
+        UnifRecordRows::Concrete(RecordRowsF::Extend {row, tail}) => {
+            if row.id == id {
+                Err(RowUnifError::UnsatConstr(id, Some(*row.types)))
             } else {
-                constraint(state, *t, id)
+                constrain_rrows(state, *tail, id)
             }
         }
-        other => Err(RowUnifError::IllformedRow(other)),
+        UnifRecordRows::Concrete(RecordRowsF::TailVar(id)) => Err(RowUnifError::UnboundTypeVariable(id)),
+        //TODO: previously ill formed row exception. Now that can't happen, but is it really ok
+        //to constrain on a existential variable without doing anything?
+        UnifRecordRows::Concrete(RecordRowsF::TailDyn)
+        | UnifRecordRows::Constant(_) => Ok(()),
     }
 }
 
-/// Add row constraints on a freshly instantiated type variable.
-///
-/// When instantiating a quantified type variable with a unification variable, row constraints may
-/// apply. For example, if we instantiate `forall a. {x: Num | a} -> Num` by replacing `a` with a
-/// unification variable `Ptr(p)`, this unification variable requires a constraint to avoid being
-/// unified with a row type containing another declaration for the field `x`.
-///
-/// # Preconditions
-///
-/// Because `constraint_var` should be called on a fresh unification variable `p`, the following is
-/// assumed:
-/// - `state.table.root_of(p) == p`
-/// - `state.constr.get(&p) == None`
-fn constrain_var(state: &mut State, tyw: &UnifType, p: usize) {
-    fn constrain_var_(state: &mut State, mut constr: HashSet<Ident>, tyw: &UnifType, p: usize) {
-        match tyw {
-            UnifType::UnifVar(u) if p == *u && !constr.is_empty() => {
-                state.constr.insert(p, constr);
-            }
-            UnifType::UnifVar(u) => match state.table.root(*u) {
-                UnifType::UnifVar(_) => (),
-                tyw => constrain_var_(state, constr, &tyw, p),
-            },
-            UnifType::Concrete(ty) => match ty {
-                TypeF::Arrow(tyw1, tyw2) => {
-                    constrain_var_(state, HashSet::new(), tyw1.as_ref(), p);
-                    constrain_var_(state, HashSet::new(), tyw2.as_ref(), p);
-                }
-                TypeF::Forall(_, tyw) => constrain_var_(state, HashSet::new(), tyw.as_ref(), p),
-                TypeF::Dyn
-                | TypeF::Num
-                | TypeF::Bool
-                | TypeF::Str
-                | TypeF::Sym
-                | TypeF::Flat(_)
-                // | TypeF::Empty
-                | TypeF::Var(_)
-                | TypeF::Wildcard(_) => (),
-                TypeF::Array(tyw) => constrain_var_(state, HashSet::new(), tyw.as_ref(), p),
-                TypeF::RowExtend(id, tyw, rest) => {
-                    constr.insert(id.clone());
-                    tyw.iter()
-                        .for_each(|tyw| constrain_var_(state, HashSet::new(), tyw.as_ref(), p));
-                    constrain_var_(state, constr, rest, p)
-                }
-                TypeF::Enum(row) => constrain_var_(state, constr, row, p),
-                TypeF::Record(row) => constrain_var_(state, constr, row, p),
-                TypeF::Dict(tyw) => constrain_var_(state, constr, tyw, p),
-            },
-            UnifType::Constant(_) | UnifType::Contract(..) => (),
-        }
-    }
+trait ConstrainFreshRRowsVar {
+    /// Add row constraints on a freshly instantiated type variable.
+    ///
+    /// When instantiating a quantified type variable with a unification variable, row constraints may
+    /// apply. For example, if we instantiate `forall a. {x: Num | a} -> Num` by replacing `a` with a
+    /// unification variable `Ptr(p)`, this unification variable requires a constraint to avoid being
+    /// unified with a row type containing another declaration for the field `x`.
+    ///
+    /// This function traverses the type `ty`, looking for all occurrences of the unification variable
+    /// `p` inside a row type, to add the corresponding constraints.
+    ///
+    /// # Preconditions
+    ///
+    /// Because `constraint_var` should be called on a fresh unification variable `p`, the following
+    /// preconditions are assumed:
+    ///
+    /// - `state.table.root_rrows(p) == p`
+    fn constrain_fresh_rrows_var(&self, state: &mut State, p: usize);
+}
 
-    constrain_var_(state, HashSet::new(), tyw, p);
+trait ConstrainFreshERowsVar {
+    /// Add row constraints on a freshly instantiated type variable.
+    ///
+    /// When instantiating a quantified type variable with a unification variable, row constraints may
+    /// apply. For example, if we instantiate `forall a. {x: Num | a} -> Num` by replacing `a` with a
+    /// unification variable `Ptr(p)`, this unification variable requires a constraint to avoid being
+    /// unified with a row type containing another declaration for the field `x`.
+    ///
+    /// This function traverses the type `ty`, looking for all occurrences of the unification variable
+    /// `p` inside a row type, to add the corresponding constraints.
+    ///
+    /// # Preconditions
+    ///
+    /// Because `constraint_var` should be called on a fresh unification variable `p`, the following
+    /// preconditions are assumed:
+    ///
+    /// - `state.table.root_rrows(p) == p`
+    fn constrain_fresh_erows_var(&self, state: &mut State, p: usize);
+}
+
+impl ConstrainFreshRRowsVar for UnifType {
+    fn constrain_fresh_rrows_var(&self, state: &mut State, p: usize) {
+        match self {
+                UnifType::UnifVar(u) => match state.table.root_type(*u) {
+                    UnifType::UnifVar(_) => (),
+                    ty => ty.constrain_fresh_rrows_var(state, p),
+                },
+                UnifType::Concrete(ty) => match ty {
+                    TypeF::Arrow(uty1, uty2) => {
+                        uty1.constrain_fresh_rrows_var(state, p);
+                        uty2.constrain_fresh_rrows_var(state, p);
+                    }
+                    TypeF::Forall {body, ..} => body.constrain_fresh_rrows_var(state, p),
+                    TypeF::Dyn
+                    | TypeF::Num
+                    | TypeF::Bool
+                    | TypeF::Str
+                    | TypeF::Sym
+                    | TypeF::Flat(_)
+                    | TypeF::Var(_)
+                    // There can be no record rows unification variable inside an enum type
+                    | TypeF::Enum(_) => (),
+                    | TypeF::Wildcard(_) => (),
+                    TypeF::Record(rrows) => rrows.constrain_fresh_rrows_var(state, p),
+                    TypeF::Array(uty)
+                    | TypeF::Dict(uty) => uty.constrain_fresh_rrows_var(state, p),
+                },
+                UnifType::Constant(_) | UnifType::Contract(..) => (),
+            }
+        }
+}
+
+impl ConstrainFreshRRowsVar for UnifRecordRows {
+    fn constrain_fresh_rrows_var(&self, state: &mut State, p: usize) {
+        fn constrain_var(state: &mut State, mut constr: HashSet<Ident>, uty: &UnifRecordRows, p: usize) {
+            match uty {
+                UnifRecordRows::UnifVar(u) if p == *u && !constr.is_empty() => {
+                    state.constr.insert(p, constr);
+                }
+                UnifRecordRows::UnifVar(u) => match state.table.root_rrows(*u) {
+                    UnifRecordRows::UnifVar(_) => (),
+                    rrows => constrain_var(state, constr, &rrows, p),
+                },
+                UnifRecordRows::Concrete(ty) => match ty {
+                    RecordRowsF::Empty
+                    | RecordRowsF::TailDyn
+                    | RecordRowsF::TailVar(_) => (),
+                    RecordRowsF::Extend {row, tail} => {
+                        constr.insert(row.id.clone());
+                        row.types.constrain_fresh_rrows_var(state, p);
+                        constrain_var(state, constr, &*tail, p);
+                    }
+                },
+                UnifRecordRows::Constant(_) => (),
+            }
+        }
+
+        constrain_var(state, HashSet::new(), self, p);
+    }
+}
+
+impl ConstrainFreshERowsVar for UnifType {
+    fn constrain_fresh_erows_var(&self, state: &mut State, p: usize) {
+        match self {
+                UnifType::UnifVar(u) => match state.table.root_type(*u) {
+                    UnifType::UnifVar(_) => (),
+                    ty => ty.constrain_fresh_erows_var(state, p),
+                },
+                UnifType::Concrete(ty) => match ty {
+                    TypeF::Arrow(uty1, uty2) => {
+                        uty1.constrain_fresh_erows_var(state, p);
+                        uty2.constrain_fresh_erows_var(state, p);
+                    }
+                    TypeF::Forall {body, ..} => body.constrain_fresh_erows_var(state, p),
+                    TypeF::Dyn
+                    | TypeF::Num
+                    | TypeF::Bool
+                    | TypeF::Str
+                    | TypeF::Sym
+                    | TypeF::Flat(_)
+                    | TypeF::Var(_)
+                    | TypeF::Wildcard(_) => (),
+                    TypeF::Enum(erows) => erows.constrain_fresh_erows_var(state, p),
+                    TypeF::Record(rrows) => rrows.constrain_fresh_erows_var(state, p),
+                    TypeF::Array(uty)
+                    | TypeF::Dict(uty) => uty.constrain_fresh_erows_var(state, p),
+                },
+                UnifType::Constant(_) | UnifType::Contract(..) => (),
+            }
+        }
+}
+
+impl ConstrainFreshERowsVar for UnifRecordRows {
+    fn constrain_fresh_erows_var(&self, state: &mut State, p: usize) {
+            match self {
+                UnifRecordRows::UnifVar(u) => match state.table.root_rrows(*u) {
+                    UnifRecordRows::UnifVar(_) => (),
+                    rrows => rrows.constrain_fresh_erows_var(state, p),
+                },
+                UnifRecordRows::Concrete(ty) => match ty {
+                    RecordRowsF::Empty
+                    | RecordRowsF::TailDyn
+                    | RecordRowsF::TailVar(_) => (),
+                    RecordRowsF::Extend {row, tail} => {
+                        row.types.constrain_fresh_erows_var(state, p);
+                        tail.constrain_fresh_erows_var(state, p);
+                    }
+                },
+                UnifRecordRows::Constant(_) => (),
+            }
+    }
+}
+
+impl ConstrainFreshERowsVar for UnifEnumRows {
+    fn constrain_fresh_erows_var(&self, state: &mut State, p: usize) {
+        fn constrain_var(state: &mut State, mut constr: HashSet<Ident>, uty: &UnifEnumRows, p: usize) {
+            match uty {
+                UnifEnumRows::UnifVar(u) if p == *u && !constr.is_empty() => {
+                    state.constr.insert(p, constr);
+                }
+                UnifEnumRows::UnifVar(u) => match state.table.root_erows(*u) {
+                    UnifEnumRows::UnifVar(_) => (),
+                    erows => constrain_var(state, constr, &erows, p),
+                },
+                UnifEnumRows::Concrete(ty) => match ty {
+                    EnumRowsF::Empty
+                    | EnumRowsF::TailVar(_) => (),
+                    EnumRowsF::Extend {row, tail} => {
+                        constr.insert(row.clone());
+                        constrain_var(state, constr, &*tail, p);
+                    }
+                },
+                UnifEnumRows::Constant(_) => (),
+            }
+        }
+
+        constrain_var(state, HashSet::new(), self, p);
+    }
 }
 
 /// Check that unifying a variable with a type doesn't violate row constraints, and update the row
 /// constraints of the unified type accordingly if needed.
 ///
-/// When a unification variable `Ptr(p)` is unified with a type `tyw` which is either a row type or
+/// When a unification variable `Ptr(p)` is unified with a type `uty` which is either a row type or
 /// another unification variable which could be later unified with a row type itself, the following
 /// operations are required:
 ///
-/// 1. If `tyw` is a concrete row, check that it doesn't contain an identifier which is forbidden
+/// 1. If `uty` is a concrete row, check that it doesn't contain an identifier which is forbidden
 ///    by a row constraint on `p`.
 /// 2. If the type is either a unification variable or a row type ending with a unification
-///    variable `Ptr(u)`, we must add the constraints of `p` to the constraints of `u`. Indeed,
-///    take the following situation: `p` appears in a row type `{a: Num | p}`, hence has a
-///    constraint that it must not contain a field `a`. Then `p` is unified with a fresh type
-///    variable `u`. If we don't constrain `u`, `u` could be unified later with a row type `{a :
-///    Str}` which violates the original constraint on `p`. Thus, when unifying `p` with `u` or a
-///    row ending with `u`, `u` must inherit all the constraints of `p`.
+///    variable `u`, we must add the constraints of `p` to the constraints of `u`. Indeed, take the
+///    following situation: `p` appears in a row type `{a: Num | p}`, hence has a constraint that
+///    it must not contain a field `a`. Then `p` is unified with a fresh type variable `u`. If we
+///    don't constrain `u`, `u` could be unified later with a row type `{a : Str}` which violates
+///    the original constraint on `p`. Thus, when unifying `p` with `u` or a row ending with `u`,
+///    `u` must inherit all the constraints of `p`.
 ///
-/// If `tyw` is neither a row nor a unification variable, `constr_unify` immediately returns `Ok(())`.
-pub fn constr_unify(
+/// If `uty` is neither a row nor a unification variable, `constr_unify` immediately returns `Ok(())`.
+pub fn constr_unify_rrows(
     constr: &mut RowConstr,
     p: usize,
-    mut tyw: &UnifType,
+    mut rrows: &UnifRecordRows,
 ) -> Result<(), RowUnifError> {
     if let Some(p_constr) = constr.remove(&p) {
-        loop {
-            match tyw {
-                UnifType::Concrete(TypeF::RowExtend(ident, ty, _))
-                    if p_constr.contains(ident) =>
+            match rrows {
+                UnifRecordRows::Concrete(RecordRowsF::Extend {row, ..})
+                    if p_constr.contains(&row.id) =>
                 {
-                    break Err(RowUnifError::UnsatConstr(
-                        ident.clone(),
-                        ty.as_ref().map(|boxed| (**boxed).clone()),
+                    Err(RowUnifError::UnsatConstr(
+                        row.id.clone(),
+                        Some(UnifType::Concrete(TypeF::Record(rrows.clone()))),
                     ))
                 }
-                UnifType::Concrete(TypeF::RowExtend(_, _, tail)) => tyw = tail,
-                UnifType::UnifVar(u) if *u != p => {
+                UnifRecordRows::Concrete(RecordRowsF::Extend {tail, ..}) => constr_unify_rrows(constr, p, tail),
+                UnifRecordRows::UnifVar(u) if *u != p => {
                     if let Some(u_constr) = constr.get_mut(u) {
                         u_constr.extend(p_constr.into_iter());
                     } else {
                         constr.insert(*u, p_constr);
                     }
 
-                    break Ok(());
+                    Ok(())
                 }
-                _ => break Ok(()),
+                _ => Ok(()),
             }
         }
-    } else {
+    else {
         Ok(())
     }
 }
