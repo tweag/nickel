@@ -182,6 +182,54 @@ trait Subst {
     fn subst(self, id: &Ident, to: &Self) -> Self;
 }
 
+impl<E: TermEnvironment + Clone> Subst for GenericUnifRecordRows<E> {
+    fn subst(self, id: &Ident, to: &GenericUnifRecordRows<E>) -> GenericUnifRecordRows<E> {
+        use self::GenericUnifRecordRows::*;
+
+        fn subst_rrows<E: TermEnvironment + Clone>(rrows: GenericUnifRecordRows<E>, id: &Ident, to: &GenericUnifType<E>) -> GenericUnifRecordRows<E> {
+            match rrows {
+                GenericUnifRecordRows::Concrete(RowsF::Empty)
+                | GenericUnifRecordRows::Concrete(RowsF::TailDyn)
+                | GenericUnifRecordRows::Concrete(RowsF::TailVar(_)) => rrows,
+                GenericUnifRecordRows::Concrete(RowsF::Extend { row, tail }) => GenericUnifRecordRows::Concrete(RowsF::Extend { row: RecordRowF { id: row.id, types: Box::new(row.types.subst(id, to)) }, tail: Box::new(subst_rrows(*tail, id, to)) }), 
+                _ => rrows,
+            }
+        }
+
+        match self {
+            Concrete(TypeF::Var(ref i)) if *i == *id => to.clone(),
+            Concrete(TypeF::Forall {var, var_kind: VarKind::Type, body}) if var == *id => Concrete(TypeF::Forall {var, var_kind: VarKind::Type, body}),
+            Concrete(TypeF::Forall {var, var_kind, body}) => Concrete(TypeF::Forall {var, var_kind, body: Box::new((*body).subst(id, to))}),
+            Concrete(TypeF::Arrow(s, t)) => {
+                let fs = s.subst(id, to);
+                let ft = t.subst(id, to);
+
+                Concrete(TypeF::Arrow(Box::new(fs), Box::new(ft)))
+            }
+            Concrete(TypeF::Record(rrows)) => Concrete(TypeF::Record(subst_rrows(rrows, id, to))),
+            Concrete(TypeF::Dict(def_ty)) => {
+                Concrete(TypeF::Dict(Box::new(def_ty.subst(id, to))))
+            }
+            Concrete(TypeF::Array(ty)) => Concrete(TypeF::Array(Box::new(ty.subst(id, to)))),
+            // Cases are spelled out instead of using a catch-all case `_ => ` to force
+            // contributors to patch this code when they add new types constructors.
+            Concrete(TypeF::Var(_))
+            | Concrete(TypeF::Dyn)
+            | Concrete(TypeF::Num)
+            | Concrete(TypeF::Bool)
+            | Concrete(TypeF::Str)
+            | Concrete(TypeF::Sym)
+            | Concrete(TypeF::Flat(_))
+            | Concrete(TypeF::Wildcard(_))
+            | Contract(..)
+            | Constant(_)
+            // There can't be a standard type variable hiding inside an enum row.
+            | Concrete(TypeF::Enum(_))
+            | UnifVar(_) => self,
+        }
+    }
+}
+
 impl<E: TermEnvironment + Clone> Subst for GenericUnifType<E> {
     /// Substitute all the occurrences of a type variable for a typewrapper.
     fn subst(self, id: &Ident, to: &GenericUnifType<E>) -> GenericUnifType<E> {
@@ -1790,6 +1838,43 @@ fn instantiate_foralls(state: &mut State, mut ty: UnifType, inst: ForallInst) ->
 
     while let UnifType::Concrete(TypeF::Forall {var, var_kind, body }) = ty {
         match var_kind {
+            VarKind::Type => {
+                let fresh_uid = state.table.fresh_type_var_id();
+                let uvar = match inst {
+                    ForallInst::Constant => UnifType::Constant(fresh_uid),
+                    ForallInst::Ptr => UnifType::UnifVar(fresh_uid),
+                };
+                state.names.insert(fresh_uid, var.clone());
+                ty = body.subst(&var, &uvar);
+            },
+            VarKind::RecordRow => {
+                let fresh_uid = state.table.fresh_rrows_var_id();
+                let uvar = match inst {
+                    ForallInst::Constant => UnifRecordRows::Constant(fresh_uid),
+                    ForallInst::Ptr => UnifRecordRows::UnifVar(fresh_uid),
+                };
+                state.names.insert(fresh_uid, var.clone());
+                ty = body.subst_rrows(&var, &uvar);
+
+                if inst == ForallInst::Ptr {
+                    constrain_var(state, &ty, fresh_uid)
+                }
+            },
+            VarKind::EnumRow => {
+                let fresh_uid = state.table.fresh_rrows_var_id();
+                let uvar = match inst {
+                    ForallInst::Constant => UnifEnumRows::Constant(fresh_uid),
+                    ForallInst::Ptr => UnifEnumRows::UnifVar(fresh_uid),
+                };
+                state.names.insert(fresh_uid, var.clone());
+                ty = body.subst_erows(&var, &uvar);
+
+                if inst == ForallInst::Ptr {
+                    constrain_var(state, &ty, fresh_uid)
+                }
+            },
+        };
+
         let fresh_id = state.table.fresh_var();
         let var = match inst {
             ForallInst::Constant => UnifType::Constant(fresh_id),
