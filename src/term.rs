@@ -417,6 +417,18 @@ impl ArrayAttrs {
     }
 }
 
+pub mod record {
+    use super::{RecordAttrs, RichTerm};
+    use crate::identifier::Ident;
+    use std::collections::HashMap;
+
+    #[derive(Clone, Debug, PartialEq)]
+    pub struct RecordData {
+        pub fields: HashMap<Ident, RichTerm>,
+        pub attrs: RecordAttrs,
+    }
+}
+
 #[derive(Debug, Default, Eq, PartialEq, Copy, Clone)]
 pub struct RecordAttrs {
     pub open: bool,
