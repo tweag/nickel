@@ -356,6 +356,45 @@ impl From<UnboundTypeVariableError> for ParseErrors {
     }
 }
 
+pub struct RecordRowsIterator<'a, Ty, RRows> {
+    pub(crate) rrows: Option<&'a RRows>,
+    ty: std::marker::PhantomData<Ty>,
+}
+
+pub enum RecordRowsIteratorItem<'a, Ty> {
+    TailDyn,
+    TailVar(&'a Ident),
+    Row(RecordRowF<&'a Ty>),
+}
+
+impl<'a> Iterator for RecordRowsIterator<'a, Types, RecordRows> {
+    type Item = RecordRowsIteratorItem<'a, Types>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.rrows.and_then(|next| match next.0 {
+            RecordRowsF::Empty => {
+                self.rrows = None;
+                None
+            }
+            RecordRowsF::TailDyn => {
+                self.rrows = None;
+                Some(RecordRowsIteratorItem::TailDyn)
+            }
+            RecordRowsF::TailVar(id) => {
+                self.rrows = None;
+                Some(RecordRowsIteratorItem::TailVar(&id))
+            }
+            RecordRowsF::Extend { row, tail } => {
+                self.rrows = Some(&*tail);
+                Some(RecordRowsIteratorItem::Row(RecordRowF {
+                    id: row.id.clone(),
+                    types: row.types.as_ref(),
+                }))
+            }
+        })
+    }
+}
+
 // /// Concrete, recursive type for a Nickel type.
 // // #[derive(Clone, PartialEq, Debug)]
 // // pub struct Types(pub TypeF<Box<Types>>);
@@ -435,44 +474,32 @@ impl RecordRows {
         todo!()
     }
 
-    /// Find a binding in a record row type. Return `None` if there is no such binding, if the type
-    /// is not a row type, or if the row is an enum row.
-    pub fn row_find(&self, ident: &Ident) -> Option<Self> {
-        todo!()
-        //TODO: just use iterator stuff?
-        // match &self.0 {
-        //     TypeF::RowExtend(id, Some(ty), _) if *id == *ident => Some((**ty).clone()),
-        //     TypeF::RowExtend(_, _, tail) => tail.row_find(ident),
-        //     _ => None,
-        // }
-    }
-
     /// Find a nested binding in a record row type. The nested field is given as a list of
-    /// successive fields, that is, as a path. Return `None` if there is no such binding, if the
-    /// type is not a row type, or if the final row is an enum row.
+    /// successive fields, that is, as a path. Return `None` if there is no such binding.
     ///
     /// # Example
     ///
     /// - self: ` { {| a : { {| b : Num |} } |} }`
     /// - path: `["a", "b"]`
     /// - result: `Some(Num)`
-    pub fn row_find_path(&self, path: &[Ident]) -> Option<Self> {
-        todo!()
-        //TODO: just use iterator stuff?
-        // if path.is_empty() {
-        //     return None;
-        // }
-        //
-        // let next = self.row_find(&path[0]);
-        //
-        // if path.len() == 1 {
-        //     next
-        // } else {
-        //     match next {
-        //         Some(ty) => ty.row_find_path(&path[1..]),
-        //         _ => None,
-        //     }
-        // }
+    pub fn row_find_path(&self, path: &[Ident]) -> Option<Types> {
+        if path.is_empty() {
+            return None;
+        }
+
+        let next = self.iter().find_map(|item| match item {
+            RecordRowsIteratorItem::Row(row) if row.id == path[0] => Some(row.types.clone()),
+            _ => None,
+        });
+
+        if path.len() == 1 {
+            next
+        } else {
+            match next.map(|ty| ty.0) {
+                Some(TypeF::Record(rrows)) => rrows.row_find_path(&path[1..]),
+                _ => None,
+            }
+        }
     }
 
     /// Determine if a type is an atom, that is a either an atom or a type delimited by specific
@@ -492,6 +519,13 @@ impl RecordRows {
         order: TraverseOrder,
     ) -> Result<Self, E> {
         todo!()
+    }
+
+    pub fn iter<'a>(&'a self) -> RecordRowsIterator<'a, Types, RecordRows> {
+        RecordRowsIterator {
+            rrows: Some(self),
+            ty: std::marker::PhantomData,
+        }
     }
 }
 
@@ -825,15 +859,6 @@ impl Types {
             TraverseOrder::BottomUp => f(result, state),
         }
     }
-
-    // /// Create an iterator on rows represented by this type.
-    // ///
-    // /// The iterator continues as long as the next item is of the form `RowExtend(..)`, and
-    // /// stops once it reaches `RowEmpty` (which ends iteration), or something else which is not a
-    // /// `RowExtend` (which produces a last item [`typecheck::RowIteratorItem::Tail`]).
-    // pub fn iter_as_rows(&self) -> RowIterator<'_, Types> {
-    //     RowIterator { next: Some(self) }
-    // }
 }
 
 impl Display for RecordRows {
