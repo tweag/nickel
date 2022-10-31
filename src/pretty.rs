@@ -470,10 +470,10 @@ where
             },
             Var(id) => allocator.as_string(id),
             Enum(id) => allocator.text("`").append(allocator.quote_if_needed(id)),
-            Record(fields, attr) => allocator
+            Record(record) => allocator
                 .line()
                 .append(allocator.intersperse(
-                    sorted_map(fields).iter().map(|&(id, rt)| {
+                    sorted_map(&record.fields).iter().map(|&(id, rt)| {
                         allocator
                             .quote_if_needed(id)
                             .append(allocator.space())
@@ -502,7 +502,7 @@ where
                     }),
                     allocator.line(),
                 ))
-                .append(if attr.open {
+                .append(if record.attrs.open {
                     allocator.line().append(allocator.text(".."))
                 } else {
                     allocator.nil()

@@ -31,7 +31,7 @@ use crate::{
     identifier::Ident,
     match_sharedterm,
     position::TermPos,
-    term::{BindingType, LetAttrs, RichTerm, Term},
+    term::{record::RecordData, BindingType, LetAttrs, RichTerm, Term},
 };
 
 use std::{collections::HashSet, rc::Rc};
@@ -48,10 +48,10 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
     let pos = rt.pos;
     match_sharedterm! {rt.term,
         with {
-            Term::Record(map, attrs) => {
-                let mut bindings = Vec::with_capacity(map.len());
+            Term::Record(RecordData { fields, attrs }) => {
+                let mut bindings = Vec::with_capacity(fields.len());
 
-                let map = map
+                let fields = fields
                     .into_iter()
                     .map(|(id, t)| {
                         if should_share(&t.term) {
@@ -65,7 +65,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                     })
                     .collect();
 
-                with_bindings(Term::Record(map, attrs), bindings, pos)
+                with_bindings(Term::Record(RecordData { fields, attrs }), bindings, pos)
             },
             Term::RecRecord(map, dyn_fields, attrs, deps) => {
                 // When a recursive record is evaluated, all fields need to be turned to closures

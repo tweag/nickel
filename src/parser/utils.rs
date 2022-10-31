@@ -17,8 +17,8 @@ use crate::{
     mk_app, mk_fun,
     position::{RawSpan, TermPos},
     term::{
-        make as mk_term, BinaryOp, Contract, MetaValue, RecordAttrs, RichTerm, StrChunk, Term,
-        UnaryOp,
+        make as mk_term, record::RecordData, BinaryOp, Contract, MetaValue, RecordAttrs, RichTerm,
+        StrChunk, Term, UnaryOp,
     },
     types::{AbsType, Types},
 };
@@ -253,9 +253,13 @@ pub fn elaborate_field_path(
 
     let content = it.rev().fold(content, |acc, path_elem| match path_elem {
         FieldPathElem::Ident(id) => {
-            let mut map = HashMap::new();
-            map.insert(id, acc);
-            Term::Record(map, Default::default()).into()
+            let mut fields = HashMap::new();
+            fields.insert(id, acc);
+            Term::Record(RecordData {
+                fields,
+                attrs: Default::default(),
+            })
+            .into()
         }
         FieldPathElem::Expr(exp) => {
             let static_access = match exp.term.as_ref() {
@@ -275,11 +279,18 @@ pub fn elaborate_field_path(
 
             if let Some(static_access) = static_access {
                 let id = Ident::new_with_pos(static_access, exp.pos);
-                let mut map = HashMap::new();
-                map.insert(id, acc);
-                Term::Record(map, Default::default()).into()
+                let mut fields = HashMap::new();
+                fields.insert(id, acc);
+                Term::Record(RecordData {
+                    fields,
+                    attrs: Default::default(),
+                })
+                .into()
             } else {
-                let empty = Term::Record(HashMap::new(), Default::default());
+                let empty = Term::Record(RecordData {
+                    fields: HashMap::new(),
+                    attrs: Default::default(),
+                });
                 mk_app!(mk_term::op2(BinaryOp::DynExtend(), exp, empty), acc)
             }
         }

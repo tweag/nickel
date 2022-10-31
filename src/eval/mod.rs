@@ -96,8 +96,8 @@ use crate::{
     identifier::Ident,
     match_sharedterm,
     term::{
-        make as mk_term, ArrayAttrs, BinaryOp, BindingType, LetAttrs, MetaValue, PendingContract,
-        RichTerm, SharedTerm, StrChunk, Term, UnaryOp,
+        make as mk_term, record::RecordData, ArrayAttrs, BinaryOp, BindingType, LetAttrs,
+        MetaValue, PendingContract, RichTerm, SharedTerm, StrChunk, Term, UnaryOp,
     },
     transform::Closurizable,
 };
@@ -399,7 +399,10 @@ impl<R: ImportResolver> VirtualMachine<R> {
                     self.stack.push_arg(
                         Closure {
                             body: RichTerm::new(
-                                Term::Record(cases.clone(), Default::default()),
+                                Term::Record(RecordData {
+                                    fields: cases.clone(),
+                                    attrs: Default::default(),
+                                }),
                                 pos,
                             ),
                             env: env.clone(),
@@ -522,7 +525,13 @@ impl<R: ImportResolver> VirtualMachine<R> {
 
                     //TODO: We should probably avoid cloning the `ts` hashmap, using `match_sharedterm`
                     //instead of `match` in the main eval loop, if possible
-                    let static_part = RichTerm::new(Term::Record(ts.clone(), *attrs), pos);
+                    let static_part = RichTerm::new(
+                        Term::Record(RecordData {
+                            fields: ts.clone(),
+                            attrs: *attrs,
+                        }),
+                        pos,
+                    );
 
                     // Transform the static part `{stat1 = val1, ..., statn = valn}` and the dynamic
                     // part `{exp1 = dyn_val1, ..., expm = dyn_valm}` to a sequence of extensions
@@ -731,8 +740,8 @@ pub enum EnvBuildError {
 /// Add the bindings of a record to an environment. Ignore the fields defined by interpolation.
 pub fn env_add_term(env: &mut Environment, rt: RichTerm) -> Result<(), EnvBuildError> {
     match_sharedterm! {rt.term, with {
-            Term::Record(bindings, _) | Term::RecRecord(bindings, ..) => {
-                let ext = bindings.into_iter().map(|(id, t)| {
+            Term::Record(RecordData { fields, .. }) | Term::RecRecord(fields, ..) => {
+                let ext = fields.into_iter().map(|(id, t)| {
                     (
                         id,
                         Thunk::new(Closure::atomic_closure(t), IdentKind::Record),
@@ -841,8 +850,8 @@ pub fn subst(rt: RichTerm, initial_env: &Environment, env: &Environment) -> Rich
             let t = subst(t, initial_env, env);
             RichTerm::new(Term::Sealed(i, t, lbl), pos)
         }
-        Term::Record(map, attrs) => {
-            let map = map
+        Term::Record(record) => {
+            let fields = record.fields
                 .into_iter()
                 .map(|(id, t)| {
                     (
@@ -852,7 +861,7 @@ pub fn subst(rt: RichTerm, initial_env: &Environment, env: &Environment) -> Rich
                 })
                 .collect();
 
-            RichTerm::new(Term::Record(map, attrs), pos)
+            RichTerm::new(Term::Record(RecordData { fields, attrs: record.attrs }), pos)
         }
         Term::RecRecord(map, dyn_fields, attrs, deps) => {
             let map = map

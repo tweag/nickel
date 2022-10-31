@@ -42,6 +42,8 @@ use std::{
     rc::Rc,
 };
 
+use self::record::RecordData;
+
 /// The AST of a Nickel expression.
 ///
 /// Parsed terms also need to store their position in the source for error reporting.  This is why
@@ -98,7 +100,7 @@ pub enum Term {
     /// A record, mapping identifiers to terms.
     #[serde(serialize_with = "crate::serialize::serialize_record")]
     #[serde(deserialize_with = "crate::serialize::deserialize_record")]
-    Record(HashMap<Ident, RichTerm>, RecordAttrs),
+    Record(RecordData),
     /// A recursive record, where the fields can reference each others.
     #[serde(skip)]
     RecRecord(
@@ -170,6 +172,12 @@ pub enum Term {
     ResolvedImport(FileId),
     #[serde(skip)]
     ParseError(ParseError),
+}
+
+impl Term {
+    pub(crate) fn new_record(fields: HashMap<Ident, RichTerm>, attrs: RecordAttrs) -> Self {
+        Term::Record(record::RecordData { fields, attrs })
+    }
 }
 
 pub type SealingKey = i32;
@@ -712,8 +720,8 @@ impl Term {
                     func(def)
                 }
             }
-            Record(ref mut static_map, _) => {
-                static_map.iter_mut().for_each(|(_, t)| func(t));
+            Record(ref mut r) => {
+                r.fields.iter_mut().for_each(|(_, t)| func(t));
             }
             RecRecord(ref mut static_map, ref mut dyn_fields, ..) => {
                 static_map.iter_mut().for_each(|(_, t)| func(t));
@@ -869,7 +877,7 @@ impl Term {
     /// Return a deep string representation of a term, used for printing in the REPL
     pub fn deep_repr(&self) -> String {
         match self {
-            Term::Record(fields, _) | Term::RecRecord(fields, ..) => {
+            Term::Record(record::RecordData { fields, .. }) | Term::RecRecord(fields, ..) => {
                 let fields_str: Vec<String> = fields
                     .iter()
                     .map(|(ident, term)| format!("{} = {}", ident, term.as_ref().deep_repr()))
@@ -1559,18 +1567,15 @@ impl RichTerm {
                     pos,
                 )
             },
-            Term::Record(map, attrs) => {
-                // The annotation on `map_res` uses Result's corresponding trait to convert from
+            Term::Record(record::RecordData { fields, attrs }) => {
+                // The annotation on `fields_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
-                let map_res: Result<HashMap<Ident, RichTerm>, E> = map
+                let fields_res: Result<HashMap<Ident, RichTerm>, E> = fields
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
                     .map(|(id, t)| t.traverse(f, state, order).map(|t_ok| (id.clone(), t_ok)))
                     .collect();
-                RichTerm::new(
-                    Term::Record(map_res?, attrs),
-                    pos,
-                )
+                RichTerm::new(Term::new_record(fields_res?, attrs), pos)
             },
             Term::RecRecord(map, dyn_fields, attrs, deps) => {
                 // The annotation on `map_res` uses Result's corresponding trait to convert from
@@ -1825,11 +1830,11 @@ pub mod make {
     macro_rules! mk_record {
         ( $( ($id:expr, $body:expr) ),* ) => {
             {
-                let mut map = std::collections::HashMap::new();
+                let mut fields = std::collections::HashMap::new();
                 $(
-                    map.insert($id.into(), $body.into());
+                    fields.insert($id.into(), $body.into());
                 )*
-                $crate::term::RichTerm::from($crate::term::Term::Record(map, Default::default()))
+                $crate::term::RichTerm::from($crate::term::Term::new_record(fields, Default::default()))
             }
         };
     }

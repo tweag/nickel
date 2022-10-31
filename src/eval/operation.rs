@@ -11,8 +11,8 @@ use super::{
     merge::{merge, MergeMode},
     subst, Closure, Environment, ImportResolver, VirtualMachine,
 };
-use crate::term::MergePriority;
 use crate::term::MetaValue;
+use crate::term::{record::RecordData, MergePriority};
 
 use crate::{
     error::EvalError,
@@ -320,7 +320,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                     } = cases_closure;
 
                     let mut cases = match cases_term.into_owned() {
-                        Term::Record(map, _) => map,
+                        Term::Record(r) => r.fields,
                         _ => panic!("invalid argument for switch"),
                     };
 
@@ -441,8 +441,8 @@ impl<R: ImportResolver> VirtualMachine<R> {
                 }
             },
             UnaryOp::StaticAccess(id) => {
-                if let Term::Record(static_map, ..) = &*t {
-                    match static_map.get(&id) {
+                if let Term::Record(record) = &*t {
+                    match record.fields.get(&id) {
                         Some(e) => {
                             self.call_stack.enter_field(id, pos, e.pos, pos_op);
                             Ok(Closure {
@@ -467,8 +467,8 @@ impl<R: ImportResolver> VirtualMachine<R> {
                 }
             }
             UnaryOp::FieldsOf() => match_sharedterm! {t, with {
-                    Term::Record(map, ..) => {
-                        let mut fields: Vec<String> = map
+                    Term::Record(record) => {
+                        let mut fields: Vec<String> = record.fields
                             .into_iter()
                             // Ignore optional fields without definitions.
                             .filter_map(|(id, t)| {
@@ -493,8 +493,8 @@ impl<R: ImportResolver> VirtualMachine<R> {
                 }
             },
             UnaryOp::ValuesOf() => match_sharedterm! {t, with {
-                    Term::Record(map, ..) => {
-                        let mut values: Vec<_> = map.into_iter().collect();
+                    Term::Record(record) => {
+                        let mut values: Vec<_> = record.fields.into_iter().collect();
                         // Although it seems that sort_by_key would be easier here, it would actually
                         // require to copy the identifiers because of the lack of HKT. See
                         // https://github.com/rust-lang/rust/issues/34162.
@@ -617,12 +617,12 @@ impl<R: ImportResolver> VirtualMachine<R> {
                 })?;
 
                 match_sharedterm! {t, with {
-                        Term::Record(rec, attr) => {
+                        Term::Record(record) => {
                             let mut shared_env = Environment::new();
                             let f_as_var = f.body.closurize(&mut env, f.env);
 
                             // As for `ArrayMap` (see above), we closurize the content of fields
-                            let rec = rec
+                            let fields = record.fields
                                 .into_iter()
                                 .filter(|(_, t)| !is_empty_optional(t, &env))
                                 .map(|(id, t)| {
@@ -637,7 +637,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                                 .collect();
 
                             Ok(Closure {
-                                body: RichTerm::new(Term::Record(rec, attr), pos_op_inh),
+                                body: RichTerm::new(Term::Record(RecordData { fields, attrs: record.attrs }), pos_op_inh),
                                 env: shared_env,
                             })
                         }
@@ -685,10 +685,11 @@ impl<R: ImportResolver> VirtualMachine<R> {
                 }
 
                 match t.into_owned() {
-                    Term::Record(map, _) if !map.is_empty() => {
+                    Term::Record(record) if !record.fields.is_empty() => {
                         let pos_record = pos;
                         let pos_access = pos_op;
-                        let terms = map
+                        let terms = record
+                            .fields
                             .into_iter()
                             // We ignore empty optional fields
                             .filter(|(_, t)| !is_empty_optional(t, &env))
@@ -1150,10 +1151,10 @@ impl<R: ImportResolver> VirtualMachine<R> {
 
                 match_sharedterm! {t,
                     with {
-                        Term::Record(map, attrs) if !map.is_empty() => {
+                        Term::Record(record) if !record.fields.is_empty() => {
                             let mut shared_env = Environment::new();
 
-                            let map = map
+                            let fields = record.fields
                                 .into_iter()
                                 // We ignore empty optional fields
                                 .filter(|(_, t)| !is_empty_optional(t, &env))
@@ -1176,8 +1177,8 @@ impl<R: ImportResolver> VirtualMachine<R> {
                                 // different variables, which means that `cont` won't be properly updated.
                                 .collect::<HashMap<_, _>>();
 
-                            let terms = map.clone().into_values();
-                            let cont = RichTerm::new(Term::Record(map, attrs), pos.into_inherited());
+                            let terms = fields.clone().into_values();
+                            let cont = RichTerm::new(Term::Record(RecordData { fields, attrs: record.attrs }), pos.into_inherited());
 
                             Ok(Closure {
                                 body: seq_terms(terms, pos_op, cont),
@@ -1838,8 +1839,8 @@ impl<R: ImportResolver> VirtualMachine<R> {
             },
             BinaryOp::DynAccess() => match_sharedterm! {t1, with {
                     Term::Str(id) => {
-                        if let Term::Record(static_map, _attrs) = &*t2 {
-                            match static_map.get(&Ident::from(&id)) {
+                        if let Term::Record(record) = &*t2 {
+                            match record.fields.get(&Ident::from(&id)) {
                                 Some(e) => {
                                     self.call_stack.enter_field(Ident::from(id), pos2, e.pos, pos_op);
                                     Ok(Closure {
@@ -1889,13 +1890,13 @@ impl<R: ImportResolver> VirtualMachine<R> {
 
                 if let Term::Str(id) = &*t1 {
                     match_sharedterm! {t2, with {
-                            Term::Record(static_map, attrs) => {
-                                let mut static_map = static_map;
+                            Term::Record(record) => {
+                                let mut fields = record.fields;
                                 let as_var = clos.body.closurize(&mut env2, clos.env);
-                                match static_map.insert(Ident::from(id), as_var) {
+                                match fields.insert(Ident::from(id), as_var) {
                                     Some(t) if !is_empty_optional(&t, &env2) => Err(EvalError::Other(format!("$[ .. ]: tried to extend record with the field {}, but it already exists", id), pos_op)),
                                     _ => Ok(Closure {
-                                        body: Term::Record(static_map, attrs).into(),
+                                        body: Term::Record(RecordData { fields, attrs: record.attrs }).into(),
                                         env: env2,
                                     }),
                                 }
@@ -1926,16 +1927,16 @@ impl<R: ImportResolver> VirtualMachine<R> {
             }
             BinaryOp::DynRemove() => match_sharedterm! {t1, with {
                     Term::Str(id) => match_sharedterm! {t2, with {
-                            Term::Record(static_map, attrs) => {
-                                let mut static_map = static_map;
-                                let fetched = static_map.remove(&Ident::from(&id));
+                            Term::Record(record) => {
+                                let mut fields = record.fields;
+                                let fetched = fields.remove(&Ident::from(&id));
                                 if fetched.is_none()
                                    || matches!(fetched, Some(t) if is_empty_optional(&t, &env2)) {
                                     Err(EvalError::FieldMissing(
                                         id,
                                         String::from("(-$)"),
                                         RichTerm::new(
-                                            Term::Record(static_map, attrs),
+                                            Term::Record(RecordData { fields, attrs: record.attrs }),
                                             pos2,
                                         ),
                                         pos_op,
@@ -1944,7 +1945,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                                 else {
                                     Ok(Closure {
                                         body: RichTerm::new(
-                                            Term::Record(static_map, attrs), pos_op_inh
+                                            Term::Record(RecordData { fields, attrs: record.attrs }), pos_op_inh
                                         ),
                                         env: env2,
                                     })
@@ -1976,9 +1977,9 @@ impl<R: ImportResolver> VirtualMachine<R> {
             },
             BinaryOp::HasField() => match_sharedterm! {t1, with {
                     Term::Str(id) => {
-                        if let Term::Record(map, _) = &*t2 {
+                        if let Term::Record(record) = &*t2 {
                             Ok(Closure::atomic_closure(RichTerm::new(
-                                Term::Bool(matches!(map.get(&Ident::from(id)), Some(t5) if !is_empty_optional(t5, &env2))),
+                                Term::Bool(matches!(record.fields.get(&Ident::from(id)), Some(t5) if !is_empty_optional(t5, &env2))),
                                 pos_op_inh,
                             )))
                         } else {
@@ -2632,14 +2633,14 @@ impl PushPriority {
     /// Push the priority down the fields of a record.
     fn push_into_record(
         &self,
-        map: HashMap<Ident, RichTerm>,
+        fields: HashMap<Ident, RichTerm>,
         attrs: RecordAttrs,
         env: &Environment,
         pos: TermPos,
     ) -> Closure {
         let mut new_env = Environment::new();
 
-        let map: HashMap<_, _> = map
+        let fields: HashMap<_, _> = fields
             .into_iter()
             .filter(|(_, rt)| !is_empty_optional(rt, &env))
             .map(|(id, rt)| {
@@ -2698,7 +2699,7 @@ impl PushPriority {
             .collect();
 
         Closure {
-            body: RichTerm::new(Term::Record(map, attrs), pos),
+            body: RichTerm::new(Term::Record(RecordData { fields, attrs }), pos),
             env: new_env,
         }
     }
@@ -2718,8 +2719,8 @@ impl PushPriority {
 
         let t = st.into_owned();
 
-        if let Term::Record(maps, attrs) = t {
-            self.push_into_record(maps, attrs, &env, pos)
+        if let Term::Record(record) = t {
+            self.push_into_record(record.fields, record.attrs, &env, pos)
         } else {
             // Extract the metavalue, or if `st` isn't a metavalue, wrap it in a new one to set the merge
             // priority.
@@ -2753,11 +2754,16 @@ impl PushPriority {
                 let pos_inner = inner.pos;
 
                 match inner.term.into_owned() {
-                    Term::Record(map, attrs) => {
+                    Term::Record(record) => {
                         let Closure {
                             body,
                             env: record_env,
-                        } = self.push_into_record(map, attrs, &env_inner, pos_inner);
+                        } = self.push_into_record(
+                            record.fields,
+                            record.attrs,
+                            &env_inner,
+                            pos_inner,
+                        );
                         meta.value = Some(body.closurize(&mut env, record_env));
                     }
                     t if t.is_whnf() => {
@@ -2841,8 +2847,8 @@ fn eq(env: &mut Environment, c1: Closure, c2: Closure) -> EqResult {
         (Term::Lbl(l1), Term::Lbl(l2)) => EqResult::Bool(l1 == l2),
         (Term::SealingKey(s1), Term::SealingKey(s2)) => EqResult::Bool(s1 == s2),
         (Term::Enum(id1), Term::Enum(id2)) => EqResult::Bool(id1 == id2),
-        (Term::Record(m1, _), Term::Record(m2, _)) => {
-            let (left, center, right) = merge::hashmap::split(m1, m2);
+        (Term::Record(r1), Term::Record(r2)) => {
+            let (left, center, right) = merge::hashmap::split(r1.fields, r2.fields);
 
             // As for other record operations, we ignore optional fields without a definition.
             if !left.values().all(|rt| is_empty_optional(&rt, &env1))

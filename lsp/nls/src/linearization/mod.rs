@@ -5,7 +5,7 @@ use log::debug;
 use nickel_lang::{
     identifier::Ident,
     position::TermPos,
-    term::{MetaValue, Term, UnaryOp},
+    term::{record::RecordData, MetaValue, Term, UnaryOp},
     typecheck::{
         linearization::{Linearization, Linearizer, Scope, ScopeId},
         reporting::{to_type, NameReg},
@@ -292,7 +292,7 @@ impl Linearizer for AnalysisHost {
                     }
                 }
             }
-            Term::Record(fields, _) | Term::RecRecord(fields, ..) => {
+            Term::Record(RecordData { fields, .. }) | Term::RecRecord(fields, ..) => {
                 lin.push(LinearizationItem {
                     id,
                     pos,

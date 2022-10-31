@@ -55,6 +55,7 @@ use super::*;
 use crate::error::EvalError;
 use crate::label::Label;
 use crate::position::TermPos;
+use crate::term::record::RecordData;
 use crate::term::{
     make as mk_term, BinaryOp, Contract, MetaValue, RecordAttrs, RichTerm, SharedTerm, Term,
 };
@@ -361,7 +362,9 @@ pub fn merge(
         }
         // Merge put together the fields of records, and recursively merge
         // fields that are present in both terms
-        (Term::Record(mut m1, attrs1), Term::Record(mut m2, attrs2)) => {
+        (Term::Record(r1), Term::Record(r2)) => {
+            let mut m1 = r1.fields;
+            let mut m2 = r2.fields;
             /* Terms inside m1 and m2 may capture variables of resp. env1 and env2.  Morally, we
              * need to store closures, or a merge of closures, inside the resulting record.  We use
              * the same trick as in the evaluation of the operator DynExtend, and replace each such
@@ -380,6 +383,9 @@ pub fn merge(
             let m2_values: Vec<_> = m2.values().cloned().collect();
 
             let (left, center, right) = hashmap::split(m1, m2);
+
+            let attrs1 = r1.attrs;
+            let attrs2 = r2.attrs;
 
             match mode {
                 MergeMode::Contract(mut lbl) if !attrs2.open && !left.is_empty() => {
@@ -426,7 +432,10 @@ pub fn merge(
 
             Ok(Closure {
                 body: RichTerm::new(
-                    Term::Record(m, RecordAttrs::merge(attrs1, attrs2)),
+                    Term::Record(RecordData {
+                        fields: m,
+                        attrs: RecordAttrs::merge(attrs1, attrs2),
+                    }),
                     final_pos,
                 ),
                 env,

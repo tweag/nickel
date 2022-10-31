@@ -51,7 +51,7 @@ use crate::{
     environment::Environment as GenericEnvironment,
     error::TypecheckError,
     identifier::Ident,
-    term::{Contract, MetaValue, RichTerm, StrChunk, Term, TraverseOrder},
+    term::{record::RecordData, Contract, MetaValue, RichTerm, StrChunk, Term, TraverseOrder},
     types::{AbsType, RowIterator, RowIteratorItem, Types},
     {mk_tyw_arrow, mk_tyw_enum, mk_tyw_enum_row, mk_tyw_record, mk_tyw_row},
 };
@@ -146,8 +146,8 @@ pub fn env_add_term(
     let RichTerm { term, pos } = rt;
 
     match term.as_ref() {
-        Term::Record(bindings, _) | Term::RecRecord(bindings, ..) => {
-            for (id, t) in bindings {
+        Term::Record(RecordData { fields, .. }) | Term::RecRecord(fields, ..) => {
+            for (id, t) in fields {
                 let tyw: TypeWrapper = TypeWrapper::from_apparent_type(
                     apparent_type(t.as_ref(), Some(env), Some(resolver)),
                     term_env,
@@ -407,8 +407,8 @@ fn walk<L: Linearizer>(
                     walk(state, ctxt.clone(), lin, linearizer.scope(), t)
                 })
         }
-        Term::Record(stat_map, _) => {
-            stat_map
+        Term::Record(record) => {
+            record.fields
                 .iter()
                 .try_for_each(|(_, t)| -> Result<(), TypecheckError> {
                     walk(state, ctxt.clone(), lin, linearizer.scope(), t)
@@ -749,12 +749,12 @@ fn type_check_<L: Linearizer>(
             unify(state, &ctxt, ty, mk_typewrapper::dyn_record(ty_dyn))
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
-        Term::Record(stat_map, _) | Term::RecRecord(stat_map, ..) => {
+        Term::Record(RecordData { fields, .. }) | Term::RecRecord(fields, ..) => {
             // For recursive records, we look at the apparent type of each field and bind it in
             // ctxt before actually typechecking the content of fields.
             // Fields defined by interpolation are ignored.
             if let Term::RecRecord(..) = t.as_ref() {
-                for (id, rt) in stat_map {
+                for (id, rt) in fields {
                     let tyw = binding_type(state, rt.as_ref(), &ctxt, true);
                     ctxt.type_env.insert(id.clone(), tyw.clone());
                     linearizer.retype_ident(lin, id, tyw);
@@ -769,7 +769,7 @@ fn type_check_<L: Linearizer>(
 
             if let TypeWrapper::Concrete(AbsType::Dict(rec_ty)) = root_ty {
                 // Checking for a dictionary
-                stat_map
+                fields
                     .iter()
                     .try_for_each(|(_, t)| -> Result<(), TypecheckError> {
                         type_check_(
@@ -782,7 +782,7 @@ fn type_check_<L: Linearizer>(
                         )
                     })
             } else {
-                let row = stat_map.iter().try_fold(
+                let row = fields.iter().try_fold(
                     mk_tyw_row!(),
                     |acc, (id, field)| -> Result<TypeWrapper, TypecheckError> {
                         // In the case of a recursive record, new types (either type variables or
@@ -1079,16 +1079,19 @@ pub fn infer_record_type(t: &Term, term_env: &SimpleTermEnvironment) -> TypeWrap
             contracts,
             ..
         }) if contracts.is_empty() => infer_record_type(rt.as_ref(), term_env),
-        Term::Record(rec, ..) | Term::RecRecord(rec, ..) => AbsType::Record(Box::new(
-            TypeWrapper::Concrete(rec.iter().fold(AbsType::RowEmpty(), |r, (id, rt)| {
-                AbsType::RowExtend(
-                    id.clone(),
-                    Some(Box::new(infer_record_type(rt.term.as_ref(), term_env))),
-                    Box::new(r.into()),
-                )
-            })),
-        ))
-        .into(),
+        Term::Record(RecordData { fields, .. }) | Term::RecRecord(fields, ..) => {
+            AbsType::Record(Box::new(TypeWrapper::Concrete(fields.iter().fold(
+                AbsType::RowEmpty(),
+                |r, (id, rt)| {
+                    AbsType::RowExtend(
+                        id.clone(),
+                        Some(Box::new(infer_record_type(rt.term.as_ref(), term_env))),
+                        Box::new(r.into()),
+                    )
+                },
+            ))))
+            .into()
+        }
         t => TypeWrapper::from_apparent_type(
             apparent_type(t, None, None),
             &SimpleTermEnvironment::new(),
