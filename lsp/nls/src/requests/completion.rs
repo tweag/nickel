@@ -93,8 +93,8 @@ fn get_identifier_before_dot(text: &str) -> Result<String, ResponseError> {
         message: "Couldn't get identifier for record completion".to_owned(),
         data: None,
     })?;
-
-    Ok(name.as_str().chars().rev().collect())
+    let name: String = name.as_str().chars().rev().collect();
+    Ok(name)
 }
 
 /// Get the identifier before `.<text>` for record completion.
@@ -110,7 +110,6 @@ fn get_identifier_before_field(text: &str) -> Option<String> {
         .collect();
 
     let name = get_identifier_before_dot(&text[..]).ok()?;
-
     Some(name)
 }
 
@@ -182,9 +181,10 @@ fn get_completion_identifiers(
                 None => return Ok(Vec::new()),
             }
         }
-
-        // variable name completion
         Some(..) | None => {
+            // This is also record completion, but it is in the form
+            // <record var>.<partially-typed-field>
+            // we also want to give completion based on <record var> in this case.
             if let Some(name) = get_identifier_before_field(source) {
                 let ident = Ident::from(name);
                 let name_id = lin_env.get(&ident).cloned();
@@ -193,6 +193,7 @@ fn get_completion_identifiers(
                     None => return Ok(Vec::new()),
                 }
             } else {
+                // variable name completion
                 linearization
                     .get_in_scope(item)
                     .iter()
@@ -206,11 +207,20 @@ fn get_completion_identifiers(
             }
         }
     };
+
+    fn adjust_name(name: &String) -> String {
+        if name.is_ascii() {
+            name.clone()
+        } else {
+            format!("\"{}\"", name)
+        }
+    }
+
     let in_scope: Vec<_> = in_scope
         .iter()
         .flat_map(|(idents, _)| {
             idents.iter().map(|ident| CompletionItem {
-                label: ident.into_label(),
+                label: adjust_name(&ident.into_label()),
                 ..Default::default()
             })
         })
