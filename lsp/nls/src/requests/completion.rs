@@ -175,11 +175,8 @@ fn get_completion_identifiers(
         // Record Completion
         Some(server::DOT_COMPL_TRIGGER) => {
             let name = get_identifier_before_dot(source)?;
-            let name_id = lin_env
-                .iter()
-                .find(|(ident, _)| ident.label() == name)
-                .map(|(_, id)| *id);
-
+            let ident = Ident::from(name);
+            let name_id = lin_env.get(&ident).cloned();
             match name_id {
                 Some(name_id) => collect_record_info(linearization, item, name_id),
                 None => return Ok(Vec::new()),
@@ -189,10 +186,8 @@ fn get_completion_identifiers(
         // variable name completion
         Some(..) | None => {
             if let Some(name) = get_identifier_before_field(source) {
-                let name_id = lin_env
-                    .iter()
-                    .find(|(ident, _)| ident.label() == name)
-                    .map(|(_, id)| *id);
+                let ident = Ident::from(name);
+                let name_id = lin_env.get(&ident).cloned();
                 match name_id {
                     Some(name_id) => collect_record_info(linearization, item, name_id),
                     None => return Ok(Vec::new()),
