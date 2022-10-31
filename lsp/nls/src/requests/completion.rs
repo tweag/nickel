@@ -22,11 +22,9 @@ use crate::{
 };
 
 /// Find record fields for an item with the specified id.
-fn find_record_fields(
-    linearization: &Vec<LinearizationItem<Types>>,
-    id: usize,
-) -> Option<Vec<Ident>> {
-    linearization.iter().find_map(|item| match item.kind {
+fn find_record_fields(linearization: &Completed, id: usize) -> Option<Vec<Ident>> {
+    let item = linearization.get_item(id)?;
+    match item.kind {
         TermKind::Record(ref fields) if item.id == id => {
             Some(fields.keys().map(|ident| ident.clone()).collect())
         }
@@ -37,15 +35,13 @@ fn find_record_fields(
             find_record_fields(linearization, new_id)
         }
         _ => None,
-    })
+    }
 }
 
 /// Find a record contract of the item with the specified id.
-fn find_record_contract(
-    linearization: &Vec<LinearizationItem<Types>>,
-    id: usize,
-) -> Option<Contract> {
-    linearization.iter().find_map(|item| match &item.meta {
+fn find_record_contract(linearization: &Completed, id: usize) -> Option<Contract> {
+    let item = linearization.get_item(id)?;
+    match &item.meta {
         Some(MetaValue { contracts, .. }) if item.id == id => {
             contracts.iter().find_map(|contract| {
                 if let Types(AbsType::Record(..)) = contract.types {
@@ -63,7 +59,7 @@ fn find_record_contract(
             _ => None,
         },
         _ => None,
-    })
+    }
 }
 
 /// Extract identifiers from a row type which forms a record.
@@ -146,7 +142,7 @@ fn collect_record_info(
                     Some((extract_ident(&row), item.ty.clone()))
                 }
                 (TermKind::Declaration(_, _, ValueState::Known(body_id)), _) if name == item.id => {
-                    match find_record_contract(&linearization.linearization, *body_id) {
+                    match find_record_contract(&linearization, *body_id) {
                         // Get record fields from contract metadata
                         Some(contract) => {
                             let fields = match &contract.types {
@@ -156,7 +152,7 @@ fn collect_record_info(
                             Some((fields, item.ty.clone()))
                         }
                         // Get record fields from lexical scoping
-                        None => find_record_fields(&linearization.linearization, *body_id)
+                        None => find_record_fields(&linearization, *body_id)
                             .map(|idents| (idents, item.ty.clone())),
                     }
                 }
