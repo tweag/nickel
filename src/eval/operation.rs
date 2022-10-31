@@ -25,8 +25,8 @@ use crate::{
     serialize::ExportFormat,
     stdlib::internals,
     term::{
-        array::Array, make as mk_term, ArrayAttrs, BinaryOp, NAryOp, PendingContract, RecordAttrs,
-        RichTerm, SharedTerm, StrChunk, Term, UnaryOp,
+        array::Array, make as mk_term, ArrayAttrs, BinaryOp, NAryOp, PendingContract, RichTerm,
+        SharedTerm, StrChunk, Term, UnaryOp,
     },
     transform::{apply_contracts::apply_contracts, Closurizable},
 };
@@ -35,10 +35,7 @@ use md5::digest::Digest;
 
 use simple_counter::*;
 
-use std::{
-    iter::Extend,
-    {collections::HashMap, rc::Rc},
-};
+use std::{iter::Extend, rc::Rc};
 
 generate_counter!(FreshVariableCounter, usize);
 
@@ -622,22 +619,18 @@ impl<R: ImportResolver> VirtualMachine<R> {
                             let f_as_var = f.body.closurize(&mut env, f.env);
 
                             // As for `ArrayMap` (see above), we closurize the content of fields
-                            let fields = record.fields
-                                .into_iter()
-                                .filter(|(_, t)| !is_empty_optional(t, &env))
-                                .map(|(id, t)| {
+                            let record = record.filter_map_fields(|id, t| {
+                                if is_empty_optional(&t, &env) { None } else {
                                     let pos = t.pos.into_inherited();
-                                    (
-                                        id.clone(),
-                                        mk_app!(f_as_var.clone(), mk_term::string(id.label()), t)
-                                            .closurize(&mut shared_env, env.clone())
-                                            .with_pos(pos),
-                                    )
-                                })
-                                .collect();
+                                    let map_app = mk_app!(f_as_var.clone(), mk_term::string(id.label()), t)
+                                        .closurize(&mut shared_env, env.clone())
+                                        .with_pos(pos);
+                                    Some(map_app)
+                                }
+                            });
 
                             Ok(Closure {
-                                body: RichTerm::new(Term::Record(RecordData { fields, attrs: record.attrs }), pos_op_inh),
+                                body: RichTerm::new(Term::Record(record), pos_op_inh),
                                 env: shared_env,
                             })
                         }
@@ -1154,31 +1147,22 @@ impl<R: ImportResolver> VirtualMachine<R> {
                         Term::Record(record) if !record.fields.is_empty() => {
                             let mut shared_env = Environment::new();
 
-                            let fields = record.fields
-                                .into_iter()
-                                // We ignore empty optional fields
-                                .filter(|(_, t)| !is_empty_optional(t, &env))
-                                .map(|(id, t)| {
+                            let record = record.filter_map_fields(|id, t| {
+                                if is_empty_optional(&t, &env) { None } else {
                                     let stack_elem = Some(callstack::StackElem::Field {
                                         id: id.clone(),
                                         pos_record: pos,
                                         pos_field: t.pos,
                                         pos_access: pos_op,
                                     });
+                                    let forced = mk_term::op1(UnaryOp::Force(stack_elem), t)
+                                        .closurize(&mut shared_env, env.clone());
+                                    Some(forced)
+                                }
+                            });
 
-                                    (
-                                        id,
-                                        mk_term::op1(UnaryOp::Force(stack_elem), t)
-                                            .closurize(&mut shared_env, env.clone()),
-                                    )
-                                })
-                                // It's important to collect here, otherwise the two usages below
-                                // will each do their own .closurize(...) calls and end up with
-                                // different variables, which means that `cont` won't be properly updated.
-                                .collect::<HashMap<_, _>>();
-
-                            let terms = fields.clone().into_values();
-                            let cont = RichTerm::new(Term::Record(RecordData { fields, attrs: record.attrs }), pos.into_inherited());
+                            let terms = record.fields.clone().into_values();
+                            let cont = RichTerm::new(Term::Record(record), pos.into_inherited());
 
                             Ok(Closure {
                                 body: seq_terms(terms, pos_op, cont),
@@ -2631,19 +2615,13 @@ impl PushPriority {
     }
 
     /// Push the priority down the fields of a record.
-    fn push_into_record(
-        &self,
-        fields: HashMap<Ident, RichTerm>,
-        attrs: RecordAttrs,
-        env: &Environment,
-        pos: TermPos,
-    ) -> Closure {
+    fn push_into_record(&self, record: RecordData, env: &Environment, pos: TermPos) -> Closure {
         let mut new_env = Environment::new();
 
-        let fields: HashMap<_, _> = fields
-            .into_iter()
-            .filter(|(_, rt)| !is_empty_optional(rt, &env))
-            .map(|(id, rt)| {
+        let record = record.filter_map_fields(|_, rt| {
+            if is_empty_optional(&rt, &env) {
+                None
+            } else {
                 // There is a subtlety with respect to overriding here. Take:
                 //
                 // ```nickel
@@ -2694,12 +2672,12 @@ impl PushPriority {
 
                 let fresh_id = Ident::fresh();
                 new_env.insert(fresh_id.clone(), thunk);
-                (id, RichTerm::new(Term::Var(fresh_id), pos))
-            })
-            .collect();
+                Some(RichTerm::new(Term::Var(fresh_id), pos))
+            }
+        });
 
         Closure {
-            body: RichTerm::new(Term::Record(RecordData { fields, attrs }), pos),
+            body: RichTerm::new(Term::Record(record), pos),
             env: new_env,
         }
     }
@@ -2720,7 +2698,7 @@ impl PushPriority {
         let t = st.into_owned();
 
         if let Term::Record(record) = t {
-            self.push_into_record(record.fields, record.attrs, &env, pos)
+            self.push_into_record(record, &env, pos)
         } else {
             // Extract the metavalue, or if `st` isn't a metavalue, wrap it in a new one to set the merge
             // priority.
@@ -2758,12 +2736,7 @@ impl PushPriority {
                         let Closure {
                             body,
                             env: record_env,
-                        } = self.push_into_record(
-                            record.fields,
-                            record.attrs,
-                            &env_inner,
-                            pos_inner,
-                        );
+                        } = self.push_into_record(record, &env_inner, pos_inner);
                         meta.value = Some(body.closurize(&mut env, record_env));
                     }
                     t if t.is_whnf() => {

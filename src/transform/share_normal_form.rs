@@ -31,7 +31,7 @@ use crate::{
     identifier::Ident,
     match_sharedterm,
     position::TermPos,
-    term::{record::RecordData, BindingType, LetAttrs, RichTerm, Term},
+    term::{BindingType, LetAttrs, RichTerm, Term},
 };
 
 use std::{collections::HashSet, rc::Rc};
@@ -48,24 +48,21 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
     let pos = rt.pos;
     match_sharedterm! {rt.term,
         with {
-            Term::Record(RecordData { fields, attrs }) => {
-                let mut bindings = Vec::with_capacity(fields.len());
+            Term::Record(record) => {
+                let mut bindings = Vec::with_capacity(record.fields.len());
 
-                let fields = fields
-                    .into_iter()
-                    .map(|(id, t)| {
-                        if should_share(&t.term) {
-                            let fresh_var = Ident::fresh();
-                            let pos_t = t.pos;
-                            bindings.push((fresh_var.clone(), t, BindingType::Normal));
-                            (id, RichTerm::new(Term::Var(fresh_var), pos_t))
-                        } else {
-                            (id, t)
-                        }
-                    })
-                    .collect();
+                let record = record.map_fields(|id, t| {
+                    if should_share(&t.term) {
+                        let fresh_var = Ident::fresh();
+                        let pos_t = t.pos;
+                        bindings.push((fresh_var.clone(), t, BindingType::Normal));
+                        RichTerm::new(Term::Var(fresh_var), pos_t)
+                    } else {
+                        t
+                    }
+                });
 
-                with_bindings(Term::Record(RecordData { fields, attrs }), bindings, pos)
+                with_bindings(Term::Record(record), bindings, pos)
             },
             Term::RecRecord(record, dyn_fields, deps) => {
                 // When a recursive record is evaluated, all fields need to be turned to closures
@@ -99,25 +96,22 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                     }
                 }
 
-                let static_fields = record.fields
-                    .into_iter()
-                    .map(|(id, t)| {
-                        // CHANGE THIS CONDITION CAREFULLY. Doing so can break the post-condition
-                        // explained above.
-                        if !t.as_ref().is_constant() {
-                            let fresh_var = Ident::fresh();
-                            let pos_t = t.pos;
-                            let field_deps = deps.as_ref().and_then(|deps| deps.stat_fields.get(&id)).cloned();
-                            let is_non_rec = (&field_deps).as_ref().map(|deps| deps.is_empty()).unwrap_or(false);
-                            let btype = mk_binding_type(field_deps);
-                            bindings.push((fresh_var.clone(), t, btype));
+                let record = record.map_fields(|id, t| {
+                    // CHANGE THIS CONDITION CAREFULLY. Doing so can break the post-condition
+                    // explained above.
+                    if !t.as_ref().is_constant() {
+                        let fresh_var = Ident::fresh();
+                        let pos_t = t.pos;
+                        let field_deps = deps.as_ref().and_then(|deps| deps.stat_fields.get(&id)).cloned();
+                        let is_non_rec = (&field_deps).as_ref().map(|deps| deps.is_empty()).unwrap_or(false);
+                        let btype = mk_binding_type(field_deps);
+                        bindings.push((fresh_var.clone(), t, btype));
 
-                            (id, RichTerm::new(Term::Var(fresh_var), pos_t))
-                        } else {
-                            (id, t)
-                        }
-                    })
-                    .collect();
+                        RichTerm::new(Term::Var(fresh_var), pos_t)
+                    } else {
+                        t
+                    }
+                });
 
                 let dyn_fields = dyn_fields
                     .into_iter()
@@ -136,7 +130,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                     })
                     .collect();
 
-                with_bindings(Term::RecRecord(RecordData { fields: static_fields, attrs: record.attrs }, dyn_fields, deps), bindings, pos)
+                with_bindings(Term::RecRecord(record, dyn_fields, deps), bindings, pos)
             },
             Term::Array(ts, attrs) => {
                 let mut bindings = Vec::with_capacity(ts.len());

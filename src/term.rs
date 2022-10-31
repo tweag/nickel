@@ -423,9 +423,15 @@ pub mod record {
     use crate::identifier::Ident;
     use std::collections::HashMap;
 
-    #[derive(Clone, Debug, PartialEq)]
+    /// The base structure of a Nickel record.
+    ///
+    /// Used to group together fields common to both the [Record](Term::Record) and
+    /// [RecRecord](Term::RecRecord) terms.
+    #[derive(Clone, Debug, Default, PartialEq)]
     pub struct RecordData {
+        /// Fields whose names are known statically.
         pub fields: HashMap<Ident, RichTerm>,
+        /// Attributes which may be applied to a record.
         pub attrs: RecordAttrs,
     }
 
@@ -443,6 +449,36 @@ pub mod record {
         pub fn with_fields(fields: HashMap<Ident, RichTerm>) -> Self {
             let attrs = Default::default();
             RecordData { fields, attrs }
+        }
+
+        /// Returns the record resulting from applying the provided function
+        /// to each field.
+        ///
+        /// Note that `f` is taken as `mut` in order to allow it to mutate
+        /// external state while iterating.
+        pub fn map_fields<F>(self, mut f: F) -> Self
+        where
+            F: FnMut(Ident, RichTerm) -> RichTerm,
+        {
+            self.filter_map_fields(|id, t| Some(f(id, t)))
+        }
+
+        /// Returns the record resulting from applying the provided function
+        /// to each field, and removing any field for which the function returns
+        /// None.
+        ///
+        /// Note that `f` is taken as `mut` in order to allow it to mutate
+        /// external state while iterating.
+        pub fn filter_map_fields<F>(self, mut f: F) -> Self
+        where
+            F: FnMut(Ident, RichTerm) -> Option<RichTerm>,
+        {
+            let fields = self
+                .fields
+                .into_iter()
+                .filter_map(|(id, t)| f(id, t).map(|t| (id, t)))
+                .collect();
+            RecordData { fields, ..self }
         }
     }
 }

@@ -844,28 +844,12 @@ pub fn subst(rt: RichTerm, initial_env: &Environment, env: &Environment) -> Rich
             RichTerm::new(Term::Sealed(i, t, lbl), pos)
         }
         Term::Record(record) => {
-            let fields = record.fields
-                .into_iter()
-                .map(|(id, t)| {
-                    (
-                        id,
-                        subst(t, initial_env, env),
-                    )
-                })
-                .collect();
+            let record = record.map_fields(|_, t| subst(t, initial_env, env));
 
-            RichTerm::new(Term::Record(RecordData { fields, attrs: record.attrs }), pos)
+            RichTerm::new(Term::Record(record), pos)
         }
         Term::RecRecord(record, dyn_fields, deps) => {
-            let fields = record.fields
-                .into_iter()
-                .map(|(id, t)| {
-                    (
-                        id,
-                        subst(t, initial_env, env),
-                    )
-                })
-                .collect();
+            let record = record.map_fields(|_, t| subst(t, initial_env, env));
 
             let dyn_fields = dyn_fields
                 .into_iter()
@@ -877,7 +861,7 @@ pub fn subst(rt: RichTerm, initial_env: &Environment, env: &Environment) -> Rich
                 })
                 .collect();
 
-            RichTerm::new(Term::RecRecord(RecordData { fields, attrs: record.attrs }, dyn_fields, deps), pos)
+            RichTerm::new(Term::RecRecord(record, dyn_fields, deps), pos)
         }
         Term::Array(ts, attrs) => {
             let ts = ts
