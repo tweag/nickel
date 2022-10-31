@@ -77,15 +77,15 @@ fn extract_ident(ty: &Box<Types>) -> Vec<Ident> {
         .collect::<Vec<_>>()
 }
 
-/// Get the identifier before the `.`, for record completion.
-fn get_identifier(text: &str) -> Result<String, ResponseError> {
-    lazy_static! {
-        // unwrap is safe here because we know this is a correct regex.
-        // This regexp must be the reverse of the regexp in the lexer (nickel_lang::parser::lexer)
-        // to correctly parse identifiers.
-        static ref RE: regex::Regex = regex::Regex::new(r"[_a-zA-Z0-9-']*[a-zA-Z]_?").unwrap();
-    }
+lazy_static! {
+    // unwrap is safe here because we know this is a correct regex.
+    // This regexp must be the reverse of the regexp in the lexer (nickel_lang::parser::lexer)
+    // to correctly parse identifiers.
+    static ref RE: regex::Regex = regex::Regex::new(r"[_a-zA-Z0-9-']*[a-zA-Z]_?").unwrap();
+}
 
+/// Get the identifier before the `.`, for record completion.
+fn get_identifier_before_dot(text: &str) -> Result<String, ResponseError> {
     let text: String = text
         .chars()
         .rev()
@@ -101,6 +101,23 @@ fn get_identifier(text: &str) -> Result<String, ResponseError> {
     Ok(name.as_str().chars().rev().collect())
 }
 
+/// Get the identifier before `.<text>` for record completion.
+fn get_identifier_before_field(text: &str) -> Option<String> {
+    // Skip `<text>`
+    let text: String = text
+        .chars()
+        .rev()
+        .skip_while(|c| RE.is_match(c.to_string().as_ref()))
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect();
+
+    let name = get_identifier_before_dot(&text[..]).ok()?;
+
+    Some(name)
+}
+
 fn remove_duplicates(items: &Vec<CompletionItem>) -> Vec<CompletionItem> {
     let mut seen: Vec<CompletionItem> = Vec::new();
     for item in items {
@@ -111,6 +128,46 @@ fn remove_duplicates(items: &Vec<CompletionItem>) -> Vec<CompletionItem> {
     seen
 }
 
+/// Search the linearization to find the record information associated with a
+/// partiular ID.
+fn collect_record_info(
+    linearization: &Completed,
+    item: &LinearizationItem<Types>,
+    name: usize,
+) -> Vec<(Vec<Ident>, Types)> {
+    linearization
+        .get_in_scope(item)
+        .iter()
+        .filter_map(|item| {
+            let (ty, _) = linearization.resolve_item_type_meta(item);
+            match (&item.kind, ty) {
+                // Get record fields from static type info
+                (TermKind::Declaration(..), Types(AbsType::Record(row))) if name == item.id => {
+                    Some((extract_ident(&row), item.ty.clone()))
+                }
+                (TermKind::Declaration(_, _, ValueState::Known(body_id)), _) if name == item.id => {
+                    match find_record_contract(&linearization.linearization, *body_id) {
+                        // Get record fields from contract metadata
+                        Some(contract) => {
+                            let fields = match &contract.types {
+                                Types(AbsType::Record(row)) => extract_ident(row),
+                                _ => Vec::with_capacity(0),
+                            };
+                            Some((fields, item.ty.clone()))
+                        }
+                        // Get record fields from lexical scoping
+                        None => find_record_fields(&linearization.linearization, *body_id)
+                            .map(|idents| (idents, item.ty.clone())),
+                    }
+                }
+                _ => None,
+            }
+        })
+        .collect()
+}
+
+/// Generate possible completion Identifiers given a source text, and its
+/// linearization.
 fn get_completion_identifiers(
     source: &str,
     trigger: Option<&str>,
@@ -121,72 +178,50 @@ fn get_completion_identifiers(
     let in_scope = match trigger {
         // Record Completion
         Some(server::DOT_COMPL_TRIGGER) => {
-            let name = get_identifier(source)?;
+            let name = get_identifier_before_dot(source)?;
             let name_id = lin_env
                 .iter()
                 .find(|(ident, _)| ident.label() == name)
                 .map(|(_, id)| *id);
 
             match name_id {
-                Some(name_id) => linearization
-                    .get_in_scope(item)
-                    .iter()
-                    .filter_map(|item| {
-                        let (ty, _) = linearization.resolve_item_type_meta(item);
-                        match (&item.kind, ty) {
-                            // Get record fields from static type info
-                            (TermKind::Declaration(..), Types(AbsType::Record(row)))
-                                if name_id == item.id =>
-                            {
-                                Some((extract_ident(&row), item.ty.clone()))
-                            }
-                            (TermKind::Declaration(_, _, ValueState::Known(body_id)), _)
-                                if name_id == item.id =>
-                            {
-                                match find_record_contract(&linearization.linearization, *body_id) {
-                                    // Get record fields from contract metadata
-                                    Some(contract) => {
-                                        let fields = match &contract.types {
-                                            Types(AbsType::Record(row)) => extract_ident(row),
-                                            _ => Vec::with_capacity(0),
-                                        };
-                                        Some((fields, item.ty.clone()))
-                                    }
-                                    // Get record fields from lexical scoping
-                                    None => {
-                                        find_record_fields(&linearization.linearization, *body_id)
-                                            .map(|idents| (idents, item.ty.clone()))
-                                    }
-                                }
-                            }
-                            _ => None,
-                        }
-                    })
-                    .collect(),
-                None => return Ok(Vec::with_capacity(0)),
+                Some(name_id) => collect_record_info(linearization, item, name_id),
+                None => return Ok(Vec::new()),
             }
         }
 
         // variable name completion
-        Some(..) | None => linearization
-            .get_in_scope(item)
-            .iter()
-            .filter_map(|i| match i.kind {
-                TermKind::Declaration(ref ident, _, _) => Some((vec![ident.clone()], i.ty.clone())),
-                _ => None,
-            })
-            .collect::<Vec<_>>(),
+        Some(..) | None => {
+            if let Some(name) = get_identifier_before_field(source) {
+                let name_id = lin_env
+                    .iter()
+                    .find(|(ident, _)| ident.label() == name)
+                    .map(|(_, id)| *id);
+                match name_id {
+                    Some(name_id) => collect_record_info(linearization, item, name_id),
+                    None => return Ok(Vec::new()),
+                }
+            } else {
+                linearization
+                    .get_in_scope(item)
+                    .iter()
+                    .filter_map(|i| match i.kind {
+                        TermKind::Declaration(ref ident, _, _) => {
+                            Some((vec![ident.clone()], i.ty.clone()))
+                        }
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+            }
+        }
     };
     let in_scope: Vec<_> = in_scope
         .iter()
         .flat_map(|(idents, _)| {
-            idents
-                .iter()
-                .map(|ident| CompletionItem {
-                    label: ident.into_label(),
-                    ..Default::default()
-                })
-                .collect::<Vec<_>>()
+            idents.iter().map(|ident| CompletionItem {
+                label: ident.into_label(),
+                ..Default::default()
+            })
         })
         .collect();
     let in_scope = remove_duplicates(&in_scope);
@@ -217,12 +252,12 @@ pub fn handle_completion(
     let linearization = server.lin_cache_get(&file_id)?;
     // Cloning to avoid mutable borrow and shared borrow at the same time,
     // which won't compile
-    let linearization = linearization.clone();
+    // let linearization = linearization.clone();
 
-    let item = linearization.item_at(&locator);
-    Trace::enrich(&id, &linearization);
+    let item = linearization.item_at(&locator).cloned();
+    Trace::enrich(&id, linearization);
 
-    match item {
+    let result = match &item {
         Some(item) => {
             let trigger = params.context.as_ref().and_then(|context| {
                 context
@@ -232,16 +267,21 @@ pub fn handle_completion(
             });
 
             let in_scope =
-                get_completion_identifiers(&text[..start], trigger, &linearization, &item)?;
+                get_completion_identifiers(&text[..start], trigger, linearization, item)?;
 
-            server.reply(Response::new_ok(id, in_scope));
+            Some(in_scope)
+        }
+        None => None,
+    };
+
+    result
+        .map(|in_scope| {
+            server.reply(Response::new_ok(id.clone(), in_scope));
             debug!("found closest item: {:?}", item);
-
             Ok(())
-        }
-        None => {
+        })
+        .unwrap_or_else(|| {
             server.reply(Response::new_ok(id, Value::Null));
-            return Ok(());
-        }
-    }
+            Ok(())
+        })
 }
