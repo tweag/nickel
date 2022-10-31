@@ -147,7 +147,7 @@ fn collect_record_info(
                         Some(contract) => {
                             let fields = match &contract.types {
                                 Types(AbsType::Record(row)) => extract_ident(row),
-                                _ => Vec::with_capacity(0),
+                                _ => Vec::new(),
                             };
                             Some((fields, item.ty.clone()))
                         }
