@@ -434,6 +434,14 @@ pub mod record {
         pub fields: HashMap<Ident, RichTerm>,
         pub attrs: RecordAttrs,
     }
+
+    impl RecordData {
+        /// A record with the provided fields & the default set of attributes.
+        pub fn with_fields(fields: HashMap<Ident, RichTerm>) -> Self {
+            let attrs = Default::default();
+            RecordData { fields, attrs }
+        }
+    }
 }
 
 #[derive(Debug, Default, Eq, PartialEq, Copy, Clone)]

@@ -255,11 +255,7 @@ pub fn elaborate_field_path(
         FieldPathElem::Ident(id) => {
             let mut fields = HashMap::new();
             fields.insert(id, acc);
-            Term::Record(RecordData {
-                fields,
-                attrs: Default::default(),
-            })
-            .into()
+            Term::Record(RecordData::with_fields(fields)).into()
         }
         FieldPathElem::Expr(exp) => {
             let static_access = match exp.term.as_ref() {
@@ -281,11 +277,7 @@ pub fn elaborate_field_path(
                 let id = Ident::new_with_pos(static_access, exp.pos);
                 let mut fields = HashMap::new();
                 fields.insert(id, acc);
-                Term::Record(RecordData {
-                    fields,
-                    attrs: Default::default(),
-                })
-                .into()
+                Term::Record(RecordData::with_fields(fields)).into()
             } else {
                 let empty = Term::Record(RecordData {
                     fields: HashMap::new(),

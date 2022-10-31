@@ -375,10 +375,7 @@ impl Types {
                     ),
                 };
 
-                let rec = RichTerm::from(Term::Record(RecordData {
-                    fields: fcs,
-                    attrs: Default::default(),
-                }));
+                let rec = RichTerm::from(Term::Record(RecordData::with_fields(fcs)));
 
                 mk_app!(contract::record(), rec, tail)
             }

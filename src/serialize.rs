@@ -123,10 +123,7 @@ where
     D: Deserializer<'de>,
 {
     let fields = HashMap::deserialize(deserializer)?;
-    Ok(RecordData {
-        fields,
-        attrs: Default::default(),
-    })
+    Ok(RecordData::with_fields(fields))
 }
 
 /// Serialize for an Array. Required to hide the internal attributes.

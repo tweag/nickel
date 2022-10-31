@@ -399,10 +399,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                     self.stack.push_arg(
                         Closure {
                             body: RichTerm::new(
-                                Term::Record(RecordData {
-                                    fields: cases.clone(),
-                                    attrs: Default::default(),
-                                }),
+                                Term::Record(RecordData::with_fields(cases.clone())),
                                 pos,
                             ),
                             env: env.clone(),
