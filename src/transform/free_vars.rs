@@ -105,15 +105,15 @@ fn collect_free_vars(rt: &mut RichTerm, free_vars: &mut HashSet<Ident>) {
                 collect_free_vars(t, free_vars);
             }
         }
-        Term::RecRecord(map, dyn_fields, _, deps) => {
-            let rec_fields: HashSet<Ident> = map.keys().cloned().collect();
+        Term::RecRecord(record, dyn_fields, deps) => {
+            let rec_fields: HashSet<Ident> = record.fields.keys().cloned().collect();
             let mut fresh = HashSet::new();
             let mut new_deps = RecordDeps {
-                stat_fields: HashMap::with_capacity(map.len()),
+                stat_fields: HashMap::with_capacity(record.fields.len()),
                 dyn_fields: Vec::with_capacity(dyn_fields.len()),
             };
 
-            for (id, t) in map.iter_mut() {
+            for (id, t) in record.fields.iter_mut() {
                 fresh.clear();
 
                 collect_free_vars(t, &mut fresh);

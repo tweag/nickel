@@ -578,11 +578,12 @@ impl Cache {
                                 CacheError::Error(ImportError::ParseErrors(err.into(), pos))
                             })?;
                         }
-                        Term::RecRecord(ref mut map, ref mut dyn_fields, ..) => {
-                            let map_res: Result<_, UnboundTypeVariableError> = std::mem::take(map)
-                                .into_iter()
-                                .map(|(id, t)| Ok((id, transform::transform(t, wildcards)?)))
-                                .collect();
+                        Term::RecRecord(ref mut record, ref mut dyn_fields, ..) => {
+                            let map_res: Result<_, UnboundTypeVariableError> =
+                                std::mem::take(&mut record.fields)
+                                    .into_iter()
+                                    .map(|(id, t)| Ok((id, transform::transform(t, wildcards)?)))
+                                    .collect();
 
                             let dyn_fields_res: Result<_, UnboundTypeVariableError> =
                                 std::mem::take(dyn_fields)
@@ -595,7 +596,7 @@ impl Cache {
                                     })
                                     .collect();
 
-                            *map = map_res.map_err(|err| {
+                            record.fields = map_res.map_err(|err| {
                                 CacheError::Error(ImportError::ParseErrors(err.into(), pos))
                             })?;
                             *dyn_fields = dyn_fields_res.map_err(|err| {

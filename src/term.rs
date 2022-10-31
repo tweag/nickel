@@ -104,9 +104,8 @@ pub enum Term {
     /// A recursive record, where the fields can reference each others.
     #[serde(skip)]
     RecRecord(
-        HashMap<Ident, RichTerm>,
+        RecordData,
         Vec<(RichTerm, RichTerm)>, /* field whose name is defined by interpolation */
-        RecordAttrs,
         Option<RecordDeps>, /* dependency tracking between fields. None before the free var pass */
     ),
     /// A switch construct. The evaluation is done by the corresponding unary operator, but we
@@ -723,8 +722,8 @@ impl Term {
             Record(ref mut r) => {
                 r.fields.iter_mut().for_each(|(_, t)| func(t));
             }
-            RecRecord(ref mut static_map, ref mut dyn_fields, ..) => {
-                static_map.iter_mut().for_each(|(_, t)| func(t));
+            RecRecord(ref mut r, ref mut dyn_fields, ..) => {
+                r.fields.iter_mut().for_each(|(_, t)| func(t));
                 dyn_fields.iter_mut().for_each(|(t1, t2)| {
                     func(t1);
                     func(t2);
@@ -877,8 +876,9 @@ impl Term {
     /// Return a deep string representation of a term, used for printing in the REPL
     pub fn deep_repr(&self) -> String {
         match self {
-            Term::Record(record::RecordData { fields, .. }) | Term::RecRecord(fields, ..) => {
-                let fields_str: Vec<String> = fields
+            Term::Record(r) | Term::RecRecord(r, ..) => {
+                let fields_str: Vec<String> = r
+                    .fields
                     .iter()
                     .map(|(ident, term)| format!("{} = {}", ident, term.as_ref().deep_repr()))
                     .collect();
@@ -1577,10 +1577,10 @@ impl RichTerm {
                     .collect();
                 RichTerm::new(Term::new_record(fields_res?, attrs), pos)
             },
-            Term::RecRecord(map, dyn_fields, attrs, deps) => {
+            Term::RecRecord(record, dyn_fields, deps) => {
                 // The annotation on `map_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
-                let map_res: Result<HashMap<Ident, RichTerm>, E> = map
+                let static_fields_res: Result<HashMap<Ident, RichTerm>, E> = record.fields
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
                     .map(|(id, t)| Ok((id, t.traverse(f, state, order)?)))
@@ -1595,7 +1595,7 @@ impl RichTerm {
                     })
                     .collect();
                 RichTerm::new(
-                    Term::RecRecord(map_res?, dyn_fields_res?, attrs, deps),
+                    Term::RecRecord(RecordData { fields: static_fields_res?, attrs: record.attrs }, dyn_fields_res?, deps),
                     pos,
                 )
             },

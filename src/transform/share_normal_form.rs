@@ -67,7 +67,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
 
                 with_bindings(Term::Record(RecordData { fields, attrs }), bindings, pos)
             },
-            Term::RecRecord(map, dyn_fields, attrs, deps) => {
+            Term::RecRecord(record, dyn_fields, deps) => {
                 // When a recursive record is evaluated, all fields need to be turned to closures
                 // anyway (see the corresponding case in `eval::eval()`), which is what the share
                 // normal form transformation does. This is why the test is more lax here than for
@@ -82,7 +82,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                 // fields of recursive records contain either a constant or a *generated* variable,
                 // but never a user-supplied variable directly (the former starts with a special
                 // marker). See comments inside [`crate::RichTerm::closurize`] for more details.
-                let mut bindings = Vec::with_capacity(map.len());
+                let mut bindings = Vec::with_capacity(record.fields.len());
 
                 fn mk_binding_type(field_deps: Option<HashSet<Ident>>) -> BindingType {
                     // If the fields has an empty set of dependencies, we can eschew the
@@ -99,7 +99,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                     }
                 }
 
-                let map = map
+                let static_fields = record.fields
                     .into_iter()
                     .map(|(id, t)| {
                         // CHANGE THIS CONDITION CAREFULLY. Doing so can break the post-condition
@@ -136,7 +136,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                     })
                     .collect();
 
-                with_bindings(Term::RecRecord(map, dyn_fields, attrs, deps), bindings, pos)
+                with_bindings(Term::RecRecord(RecordData { fields: static_fields, attrs: record.attrs }, dyn_fields, deps), bindings, pos)
             },
             Term::Array(ts, attrs) => {
                 let mut bindings = Vec::with_capacity(ts.len());

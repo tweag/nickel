@@ -512,15 +512,14 @@ where
                 .group()
                 .braces(),
             RecRecord(
-                fields,
+                record,
                 dyn_fields, /* field whose name is defined by interpolation */
-                attr,
-                _deps, /* dependency tracking between fields. None before the free var pass */
+                _deps,      /* dependency tracking between fields. None before the free var pass */
             ) => allocator
                 .line()
                 .append(
                     allocator.intersperse(
-                        sorted_map(fields)
+                        sorted_map(&record.fields)
                             .iter()
                             .map(|&(id, rt)| {
                                 allocator
@@ -579,7 +578,7 @@ where
                         allocator.line(),
                     ),
                 )
-                .append(if attr.open {
+                .append(if record.attrs.open {
                     allocator.line().append(allocator.text(".."))
                 } else {
                     allocator.nil()
