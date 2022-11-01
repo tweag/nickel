@@ -212,16 +212,16 @@ fn record_terms() {
     assert_eq!(
         parse_without_pos("{ a = 1, b = 2, c = 3}"),
         RecRecord(
-            record::RecordData {
-                fields: vec![
+            record::RecordData::new(
+                vec![
                     (Ident::from("a"), Num(1.).into()),
                     (Ident::from("b"), Num(2.).into()),
                     (Ident::from("c"), Num(3.).into()),
                 ]
                 .into_iter()
                 .collect(),
-                attrs: Default::default(),
-            },
+                Default::default(),
+            ),
             Vec::new(),
             None,
         )
@@ -231,15 +231,15 @@ fn record_terms() {
     assert_eq!(
         parse_without_pos("{ a = 1, \"%{123}\" = (if 4 then 5 else 6), d = 42}"),
         RecRecord(
-            record::RecordData {
-                fields: vec![
+            record::RecordData::new(
+                vec![
                     (Ident::from("a"), Num(1.).into()),
                     (Ident::from("d"), Num(42.).into()),
                 ]
                 .into_iter()
                 .collect(),
-                attrs: Default::default(),
-            },
+                Default::default(),
+            ),
             vec![(
                 StrChunks(vec![StrChunk::expr(RichTerm::from(Num(123.)))]).into(),
                 mk_app!(mk_term::op1(UnaryOp::Ite(), Num(4.)), Num(5.), Num(6.))
@@ -252,15 +252,15 @@ fn record_terms() {
     assert_eq!(
         parse_without_pos("{ a = 1, \"\\\"%}%\" = 2}"),
         RecRecord(
-            record::RecordData {
-                fields: vec![
+            record::RecordData::new(
+                vec![
                     (Ident::from("a"), Num(1.).into()),
                     (Ident::from("\"%}%"), Num(2.).into()),
                 ]
                 .into_iter()
                 .collect(),
-                attrs: Default::default(),
-            },
+                Default::default(),
+            ),
             Vec::new(),
             None,
         )

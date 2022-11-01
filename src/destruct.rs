@@ -61,14 +61,13 @@ impl Destruct {
         MetaValue {
             contracts: vec![Contract {
                 types: Types(AbsType::Flat(
-                    Term::Record(RecordData {
-                        fields: self
-                            .inner()
+                    Term::Record(RecordData::new(
+                        self.inner()
                             .into_iter()
                             .map(|m| m.as_meta_field())
                             .collect(),
-                        attrs: RecordAttrs { open },
-                    })
+                        RecordAttrs { open },
+                    ))
                     .into(),
                 )),
                 label,

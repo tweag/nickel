@@ -361,14 +361,7 @@ where
         }
     });
 
-    Term::RecRecord(
-        RecordData {
-            fields: static_fields,
-            attrs,
-        },
-        dynamic_fields,
-        None,
-    )
+    Term::RecRecord(RecordData::new(static_fields, attrs), dynamic_fields, None)
 }
 
 /// Merge two fields by performing the merge of both their value and MetaValue if any.

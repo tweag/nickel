@@ -173,12 +173,6 @@ pub enum Term {
     ParseError(ParseError),
 }
 
-impl Term {
-    pub(crate) fn new_record(fields: HashMap<Ident, RichTerm>, attrs: RecordAttrs) -> Self {
-        Term::Record(record::RecordData { fields, attrs })
-    }
-}
-
 pub type SealingKey = i32;
 
 impl From<MetaValue> for Term {
@@ -436,6 +430,15 @@ pub mod record {
     }
 
     impl RecordData {
+        pub fn new(fields: HashMap<Ident, RichTerm>, attrs: RecordAttrs) -> Self {
+            RecordData { fields, attrs }
+        }
+
+        /// A record with no fields and the default set of attributes.
+        pub fn empty() -> Self {
+            Default::default()
+        }
+
         /// A record with the provided fields & the default set of attributes.
         pub fn with_fields(fields: HashMap<Ident, RichTerm>) -> Self {
             let attrs = Default::default();
@@ -1575,15 +1578,15 @@ impl RichTerm {
                     pos,
                 )
             },
-            Term::Record(record::RecordData { fields, attrs }) => {
+            Term::Record(record) => {
                 // The annotation on `fields_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
-                let fields_res: Result<HashMap<Ident, RichTerm>, E> = fields
+                let fields_res: Result<HashMap<Ident, RichTerm>, E> = record.fields
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
                     .map(|(id, t)| t.traverse(f, state, order).map(|t_ok| (id.clone(), t_ok)))
                     .collect();
-                RichTerm::new(Term::new_record(fields_res?, attrs), pos)
+                RichTerm::new(Term::Record(RecordData::new(fields_res?, record.attrs)), pos)
             },
             Term::RecRecord(record, dyn_fields, deps) => {
                 // The annotation on `map_res` uses Result's corresponding trait to convert from
@@ -1603,7 +1606,7 @@ impl RichTerm {
                     })
                     .collect();
                 RichTerm::new(
-                    Term::RecRecord(RecordData { fields: static_fields_res?, attrs: record.attrs }, dyn_fields_res?, deps),
+                    Term::RecRecord(RecordData::new(static_fields_res?, record.attrs), dyn_fields_res?, deps),
                     pos,
                 )
             },
@@ -1842,7 +1845,7 @@ pub mod make {
                 $(
                     fields.insert($id.into(), $body.into());
                 )*
-                $crate::term::RichTerm::from($crate::term::Term::new_record(fields, Default::default()))
+                $crate::term::RichTerm::from($crate::term::Term::Record($crate::term::record::RecordData::new(fields, Default::default())))
             }
         };
     }

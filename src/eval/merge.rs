@@ -432,10 +432,7 @@ pub fn merge(
 
             Ok(Closure {
                 body: RichTerm::new(
-                    Term::Record(RecordData {
-                        fields: m,
-                        attrs: RecordAttrs::merge(attrs1, attrs2),
-                    }),
+                    Term::Record(RecordData::new(m, RecordAttrs::merge(attrs1, attrs2))),
                     final_pos,
                 ),
                 env,
