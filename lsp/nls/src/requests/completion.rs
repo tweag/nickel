@@ -208,9 +208,9 @@ fn get_completion_identifiers(
         }
     };
 
-    fn adjust_name(name: &String) -> String {
+    fn adjust_name(name: String) -> String {
         if name.is_ascii() {
-            name.clone()
+            name
         } else {
             format!("\"{}\"", name)
         }
@@ -220,7 +220,7 @@ fn get_completion_identifiers(
         .iter()
         .flat_map(|(idents, _)| {
             idents.iter().map(|ident| CompletionItem {
-                label: adjust_name(&ident.into_label()),
+                label: adjust_name(ident.into_label()),
                 ..Default::default()
             })
         })
@@ -285,4 +285,55 @@ pub fn handle_completion(
             server.reply(Response::new_ok(id, Value::Null));
             Ok(())
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+    use super::*;
+    
+    #[test]
+    fn test_remove_duplicates() {
+        fn completion_item(names: Vec<&str>) -> Vec<CompletionItem> {
+            names
+                .iter()
+                .map(|name| CompletionItem {
+                    label: String::from(*name),
+                    ..Default::default()
+                })
+                .collect::<Vec<_>>()
+        }
+        fn single_test(actual: Vec<&str>, expected: Vec<&str>) {
+            // We're using a Hashset, because we don't want to be
+            // particular about the order of the completion items.
+            let actual: HashSet<_> = remove_duplicates(&completion_item(actual))
+                .iter()
+                .map(|item| item.label.clone())
+                .collect();
+
+            let expected: HashSet<_> = expected.iter().cloned().map(String::from).collect();
+
+            assert_eq!(actual, expected)
+        }
+
+        let test_cases = [
+            (
+                vec!["foo", "bar", "bar", "baz", "bar"],
+                vec!["baz", "foo", "bar"],
+            ),
+            (vec![], vec![]),
+            (vec!["c", "c", "c"], vec!["c"]),
+            (
+                vec!["aaa", "aaa", "b", "b", "c", "c"],
+                vec!["aaa", "b", "c"],
+            ),
+            (vec!["foo"], vec!["foo"]),
+            (vec!["foo", "bar"], vec!["foo", "bar"]),
+            (vec!["a", "b", "c", "a"], vec!["a", "b", "c"]),
+        ];
+
+        for (actual, expected) in test_cases {
+            single_test(actual, expected)
+        }
+    }
 }
