@@ -25,9 +25,7 @@ use crate::{
 fn find_record_fields(linearization: &Completed, id: usize) -> Option<Vec<Ident>> {
     let item = linearization.get_item(id)?;
     match item.kind {
-        TermKind::Record(ref fields) if item.id == id => {
-            Some(fields.keys().cloned().collect())
-        }
+        TermKind::Record(ref fields) if item.id == id => Some(fields.keys().cloned().collect()),
         TermKind::Declaration(_, _, ValueState::Known(new_id))
         | TermKind::Usage(UsageState::Resolved(new_id))
             if item.id == id =>
