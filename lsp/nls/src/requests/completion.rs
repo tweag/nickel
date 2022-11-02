@@ -85,20 +85,15 @@ lazy_static! {
 }
 
 /// Get the identifier before the `.`, for record completion.
-fn get_identifier_before_dot(text: &str) -> Result<String, ResponseError> {
+fn get_identifier_before_dot(text: &str) -> Option<String> {
     let text: String = text
         .chars()
         .rev()
         .skip_while(|c| *c == '.') // skip . (if any)
         .collect();
 
-    let name = RE.find(&text).ok_or(ResponseError {
-        code: ErrorCode::InternalError as i32,
-        message: "Couldn't get identifier for record completion".to_owned(),
-        data: None,
-    })?;
-    let name: String = name.as_str().chars().rev().collect();
-    Ok(name)
+    let name = RE.find(&text)?;
+    Some(name.as_str().chars().rev().collect())
 }
 
 /// Get the identifier before `.<text>` for record completion.
@@ -113,7 +108,7 @@ fn get_identifier_before_field(text: &str) -> Option<String> {
         .rev()
         .collect();
 
-    let name = get_identifier_before_dot(&text[..]).ok()?;
+    let name = get_identifier_before_dot(&text[..])?;
     Some(name)
 }
 
@@ -171,7 +166,11 @@ fn get_completion_identifiers(
     let in_scope = match trigger {
         // Record Completion
         Some(server::DOT_COMPL_TRIGGER) => {
-            let name = get_identifier_before_dot(source)?;
+            let name = get_identifier_before_dot(source).ok_or(ResponseError {
+                code: ErrorCode::InternalError as i32,
+                message: "Couldn't get identifier for record completion".to_owned(),
+                data: None,
+            })?;
             let ident = Ident::from(name);
             let name_id = lin_env.get(&ident).cloned();
             match name_id {
