@@ -109,7 +109,7 @@ pub enum UnifEnumRows {
 /// phase may also resort to checking contract equality, using a different environment
 /// representation, hence the parametrization.
 #[derive(Clone, PartialEq, Debug)]
-pub enum GenericUnifType<E: TermEnvironment + Clone> {
+pub enum GenericUnifType<E: TermEnvironment> {
     /// A concrete type (like `Num` or `Str -> Str`).
     Concrete(TypeF<Box<GenericUnifType<E>>, GenericUnifRecordRows<E>, UnifEnumRows>),
     /// A contract, seen as an opaque type. In order to compute type equality between contracts or
@@ -195,11 +195,11 @@ impl<E: TermEnvironment> GenericUnifRecordRows<E> {
     }
 }
 
-trait SubstType<E: TermEnvironment + Clone> {
+trait SubstType<E: TermEnvironment> {
     fn subst_type(self, id: &Ident, to: &GenericUnifType<E>) -> Self;
 }
 
-trait SubstRRows<E: TermEnvironment + Clone> {
+trait SubstRRows<E: TermEnvironment> {
     fn subst_rrows(self, id: &Ident, to: &GenericUnifRecordRows<E>) -> Self;
 }
 
@@ -207,7 +207,7 @@ trait SubstERows {
     fn subst_erows(self, id: &Ident, to: &UnifEnumRows) -> Self;
 }
 
-impl<E: TermEnvironment + Clone> SubstType<E> for GenericUnifType<E> {
+impl<E: TermEnvironment> SubstType<E> for GenericUnifType<E> {
     fn subst_type(self, id: &Ident, to: &GenericUnifType<E>) -> Self {
         match self {
             GenericUnifType::Concrete(TypeF::Var(var_id)) if var_id == *id => to.clone(),
@@ -217,7 +217,7 @@ impl<E: TermEnvironment + Clone> SubstType<E> for GenericUnifType<E> {
     }
 }
 
-impl<E: TermEnvironment + Clone> SubstType<E> for GenericUnifRecordRows<E> {
+impl<E: TermEnvironment> SubstType<E> for GenericUnifRecordRows<E> {
     fn subst_type(self, id: &Ident, to: &GenericUnifType<E>) -> Self {
         match self {
             GenericUnifRecordRows::Concrete(rrows) => GenericUnifRecordRows::Concrete(rrows.map(|ty| Box::new(ty.subst_type(id, to)), |rrows| Box::new(rrows.subst_type(id, to)))),
@@ -226,7 +226,7 @@ impl<E: TermEnvironment + Clone> SubstType<E> for GenericUnifRecordRows<E> {
     }
 }
 
-impl<E: TermEnvironment + Clone> SubstRRows<E> for GenericUnifType<E> {
+impl<E: TermEnvironment> SubstRRows<E> for GenericUnifType<E> {
     fn subst_rrows(self, id: &Ident, to: &GenericUnifRecordRows<E>) -> Self {
         match self {
             GenericUnifType::Concrete(t) => GenericUnifType::Concrete(t.map(|ty| Box::new(ty.subst_rrows(id, to)), |rrows| rrows.subst_rrows(id, to), |erows| erows)),
@@ -235,7 +235,7 @@ impl<E: TermEnvironment + Clone> SubstRRows<E> for GenericUnifType<E> {
     }
 }
 
-impl<E: TermEnvironment + Clone> SubstRRows<E> for GenericUnifRecordRows<E> {
+impl<E: TermEnvironment> SubstRRows<E> for GenericUnifRecordRows<E> {
     fn subst_rrows(self, id: &Ident, to: &GenericUnifRecordRows<E>) -> Self {
         match self {
             GenericUnifRecordRows::Concrete(RecordRowsF::TailVar(var_id)) if var_id == *id => to.clone(),
@@ -245,7 +245,7 @@ impl<E: TermEnvironment + Clone> SubstRRows<E> for GenericUnifRecordRows<E> {
     }
 }
 
-impl<E: TermEnvironment + Clone> SubstERows for GenericUnifType<E> {
+impl<E: TermEnvironment> SubstERows for GenericUnifType<E> {
     fn subst_erows(self, id: &Ident, to: &UnifEnumRows) -> Self {
         match self {
             GenericUnifType::Concrete(t) => GenericUnifType::Concrete(t.map(|ty| Box::new(ty.subst_erows(id, to)), |rrows| rrows.subst_erows(id, to), |erows| erows.subst_erows(id, to))),
@@ -254,7 +254,7 @@ impl<E: TermEnvironment + Clone> SubstERows for GenericUnifType<E> {
     }
 }
 
-impl<E: TermEnvironment + Clone> SubstERows for GenericUnifRecordRows<E> {
+impl<E: TermEnvironment> SubstERows for GenericUnifRecordRows<E> {
     fn subst_erows(self, id: &Ident, to: &UnifEnumRows) -> Self {
         match self {
             GenericUnifRecordRows::Concrete(rrows) => GenericUnifRecordRows::Concrete(rrows.map(|ty| Box::new(ty.subst_erows(id, to)), |rrows| Box::new(rrows.subst_erows(id, to)))),
