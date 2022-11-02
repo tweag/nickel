@@ -32,6 +32,7 @@ pub type Environment = nickel_lang::environment::Environment<Ident, usize>;
 #[derive(Debug, Clone, PartialEq)]
 pub struct LinearizationItem<S: ResolutionState> {
     //term_: Box<Term>,
+    pub env: Environment,
     pub id: usize,
     pub pos: TermPos,
     pub ty: S,
@@ -168,6 +169,7 @@ impl Linearizer for AnalysisHost {
                         Term::FunPattern(..) => {
                             // stub object
                             lin.push(LinearizationItem {
+                                env: self.env.clone(),
                                 id: id_gen.get_and_advance(),
 
                                 ty: ty.clone(),
@@ -185,6 +187,7 @@ impl Linearizer for AnalysisHost {
                     let id = id_gen.get_and_advance();
                     self.env.insert(ident.to_owned(), id);
                     lin.push(LinearizationItem {
+                        env: self.env.clone(),
                         id,
                         ty: ty.clone(),
                         pos: ident.pos,
@@ -198,6 +201,7 @@ impl Linearizer for AnalysisHost {
                     let id = id_gen.get_and_advance();
                     self.env.insert(ident.to_owned(), id);
                     lin.push(LinearizationItem {
+                        env: self.env.clone(),
                         id,
                         // TODO: get type from pattern
                         ty: TypeWrapper::Concrete(AbsType::Dyn()),
@@ -227,6 +231,7 @@ impl Linearizer for AnalysisHost {
                     Term::Fun(..) => {
                         // stub object
                         lin.push(LinearizationItem {
+                            env: self.env.clone(),
                             id: id_gen.get_and_advance(),
 
                             ty: ty.clone(),
@@ -242,6 +247,7 @@ impl Linearizer for AnalysisHost {
                 };
                 self.env.insert(ident.to_owned(), id_gen.get());
                 lin.push(LinearizationItem {
+                    env: self.env.clone(),
                     id: id_gen.get(),
                     ty: ty.clone(),
                     pos: ident.pos,
@@ -259,6 +265,7 @@ impl Linearizer for AnalysisHost {
                 );
 
                 lin.push(LinearizationItem {
+                    env: self.env.clone(),
                     id: root_id,
                     pos: ident.pos,
                     ty: TypeWrapper::Concrete(AbsType::Dyn()),
@@ -277,6 +284,7 @@ impl Linearizer for AnalysisHost {
                     for accessor in chain.iter() {
                         let id = id_gen.get_and_advance();
                         lin.push(LinearizationItem {
+                            env: self.env.clone(),
                             id,
                             pos: accessor.pos,
                             ty: TypeWrapper::Concrete(AbsType::Dyn()),
@@ -292,6 +300,7 @@ impl Linearizer for AnalysisHost {
             }
             Term::Record(fields, _) | Term::RecRecord(fields, ..) => {
                 lin.push(LinearizationItem {
+                    env: self.env.clone(),
                     id,
                     pos,
                     ty,
@@ -327,6 +336,7 @@ impl Linearizer for AnalysisHost {
                 debug!("Add wildcard item: {:?}", other);
 
                 lin.push(LinearizationItem {
+                    env: self.env.clone(),
                     id,
                     pos,
                     ty,
@@ -405,6 +415,7 @@ impl Linearizer for AnalysisHost {
             .into_iter()
             .map(
                 |LinearizationItem {
+                     env,
                      id,
                      pos,
                      ty,
@@ -413,6 +424,7 @@ impl Linearizer for AnalysisHost {
                      meta,
                  }| LinearizationItem {
                     ty: to_type(&table, &reported_names, &mut NameReg::new(), ty),
+                    env,
                     id,
                     pos,
                     kind,

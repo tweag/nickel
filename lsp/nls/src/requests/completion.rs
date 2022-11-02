@@ -126,7 +126,7 @@ fn remove_duplicates(items: &Vec<CompletionItem>) -> Vec<CompletionItem> {
 fn collect_record_info(
     linearization: &Completed,
     item: &LinearizationItem<Types>,
-    name: Ident,
+    name: usize,
 ) -> Vec<(Vec<Ident>, Types)> {
     linearization
         .get_in_scope(item)
@@ -135,14 +135,10 @@ fn collect_record_info(
             let (ty, _) = linearization.resolve_item_type_meta(item);
             match (&item.kind, ty) {
                 // Get record fields from static type info
-                (TermKind::Declaration(ident, ..), Types(AbsType::Record(row)))
-                    if name == *ident =>
-                {
+                (TermKind::Declaration(..), Types(AbsType::Record(row))) if name == item.id => {
                     Some((extract_ident(&row), item.ty.clone()))
                 }
-                (TermKind::Declaration(ident, _, ValueState::Known(body_id)), _)
-                    if name == *ident =>
-                {
+                (TermKind::Declaration(_, _, ValueState::Known(body_id)), _) if name == item.id => {
                     match find_record_contract_fields(&linearization, *body_id) {
                         // Get record fields from contract metadata
                         Some(fields) => Some((fields, item.ty.clone())),
@@ -174,7 +170,11 @@ fn get_completion_identifiers(
                 data: None,
             })?;
             let name = Ident::from(name);
-            collect_record_info(linearization, item, name)
+            if let Some(name) = item.env.get(&name).cloned() {
+                collect_record_info(linearization, item, name)
+            } else {
+                return Ok(Vec::new());
+            }
         }
         Some(..) | None => {
             // This is also record completion, but it is in the form
@@ -182,7 +182,11 @@ fn get_completion_identifiers(
             // we also want to give completion based on <record var> in this case.
             if let Some(name) = get_identifier_before_field(source) {
                 let name = Ident::from(name);
-                collect_record_info(linearization, item, name)
+                if let Some(name) = item.env.get(&name).cloned() {
+                    collect_record_info(linearization, item, name)
+                } else {
+                    return Ok(Vec::new());
+                }
             } else {
                 // variable name completion
                 linearization
@@ -282,6 +286,8 @@ pub fn handle_completion(
 mod tests {
     use nickel_lang::position::TermPos;
 
+    use crate::linearization::Environment;
+
     use super::*;
     use std::collections::{HashMap, HashSet};
 
@@ -334,6 +340,7 @@ mod tests {
     fn test_find_record_fields() {
         fn make_linearization_item(id: usize, kind: TermKind) -> LinearizationItem<Types> {
             LinearizationItem {
+                env: Environment::new(),
                 id,
                 pos: TermPos::None,
                 ty: Types(AbsType::Dyn()),
