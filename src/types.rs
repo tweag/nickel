@@ -395,6 +395,36 @@ impl<'a> Iterator for RecordRowsIterator<'a, Types, RecordRows> {
     }
 }
 
+pub struct EnumRowsIterator<'a, ERows> {
+    pub(crate) erows: Option<&'a ERows>,
+}
+
+pub enum EnumRowsIteratorItem<'a> {
+    TailVar(&'a Ident),
+    Row(&'a EnumRowF),
+}
+
+impl<'a> Iterator for EnumRowsIterator<'a, EnumRows> {
+    type Item = EnumRowsIteratorItem<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.erows.and_then(|next| match next.0 {
+            EnumRowsF::Empty => {
+                self.erows = None;
+                None
+            }
+            EnumRowsF::TailVar(id) => {
+                self.erows = None;
+                Some(EnumRowsIteratorItem::TailVar(&id))
+            }
+            EnumRowsF::Extend { row, tail } => {
+                self.erows = Some(&*tail);
+                Some(EnumRowsIteratorItem::Row(&row))
+            }
+        })
+    }
+}
+
 // /// Concrete, recursive type for a Nickel type.
 // // #[derive(Clone, PartialEq, Debug)]
 // // pub struct Types(pub TypeF<Box<Types>>);
@@ -460,6 +490,12 @@ impl EnumRows {
         order: TraverseOrder,
     ) -> Result<Self, E> {
         todo!()
+    }
+
+    pub fn iter<'a>(&'a self) -> EnumRowsIterator<'a, EnumRows> {
+        EnumRowsIterator {
+            erows: Some(self),
+        }
     }
 }
 
