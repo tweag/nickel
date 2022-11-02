@@ -289,9 +289,9 @@ pub fn handle_completion(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
     use super::*;
-    
+    use std::collections::HashSet;
+
     #[test]
     fn test_remove_duplicates() {
         fn completion_item(names: Vec<&str>) -> Vec<CompletionItem> {
