@@ -45,6 +45,8 @@
 //!
 //! In non-strict mode, the type of let-bound expressions is inferred in a shallow way (see
 //! [`apparent_type`]).
+use crate::types::EnumRowsIterator;
+use crate::types::RecordRowsIterator;
 use crate::{
     cache::ImportResolver,
     destruct::*,
@@ -162,6 +164,12 @@ impl UnifEnumRows {
     pub fn from_enum_rows(erows: EnumRows) -> Self {
         todo!() 
     }
+
+    pub fn iter<'a>(&'a self) -> EnumRowsIterator<'a, UnifEnumRows> {
+        EnumRowsIterator {
+            erows: Some(self),
+        }
+    }
 }
 
 impl<E: TermEnvironment + Clone> GenericUnifRecordRows<E> {
@@ -175,6 +183,15 @@ impl<E: TermEnvironment + Clone> GenericUnifRecordRows<E> {
         GenericUnifRecordRows::Concrete(
             rrows.0.map(f_rrow, f_rrows)
         )
+    }
+}
+
+impl<E: TermEnvironment> GenericUnifRecordRows<E> {
+    pub fn iter<'a>(&'a self) -> RecordRowsIterator<'a, GenericUnifType<E>, GenericUnifRecordRows<E>> {
+        RecordRowsIterator {
+            rrows: Some(self),
+            ty: std::marker::PhantomData,
+        }
     }
 }
 
@@ -368,6 +385,95 @@ impl From<RecordRowsF<Box<UnifType>, Box<UnifRecordRows>>> for UnifRecordRows {
 impl From<EnumRowsF<Box<UnifEnumRows>>> for UnifEnumRows {
     fn from(ty: EnumRowsF<Box<UnifEnumRows>>) -> Self {
         UnifEnumRows::Concrete(ty)
+    }
+}
+
+pub enum GenericUnifRecordRowsIteratorItem<'a, E : TermEnvironment> {
+    TailDyn,
+    TailVar(&'a Ident),
+    TailUnifVar(VarId),
+    TailConstant(VarId),
+    Row(RecordRowF<&'a GenericUnifType<E>>),
+}
+pub type UnifRecordRowsIteratorItem<'a> = GenericUnifRecordRowsIteratorItem<'a, SimpleTermEnvironment>;
+
+impl<'a, E: TermEnvironment> Iterator for RecordRowsIterator<'a, GenericUnifType<E>, GenericUnifRecordRows<E>> {
+    type Item = GenericUnifRecordRowsIteratorItem<'a, E>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.rrows.and_then(|next| match next {
+            GenericUnifRecordRows::Concrete(rrows) => {
+                match rrows {
+                    RecordRowsF::Empty => {
+                        self.rrows = None;
+                        None
+                    }
+                    RecordRowsF::TailDyn => {
+                        self.rrows = None;
+                        Some(GenericUnifRecordRowsIteratorItem::TailDyn)
+                    }
+                    RecordRowsF::TailVar(id) => {
+                        self.rrows = None;
+                        Some(GenericUnifRecordRowsIteratorItem::TailVar(&id))
+                    }
+                    RecordRowsF::Extend { row, tail } => {
+                        self.rrows = Some(&*tail);
+                        Some(GenericUnifRecordRowsIteratorItem::Row(RecordRowF {
+                            id: row.id.clone(),
+                            types: row.types.as_ref(),
+                        }))
+                    }
+                }
+            }
+            GenericUnifRecordRows::UnifVar(var_id) => {
+                self.rrows = None;
+                Some(GenericUnifRecordRowsIteratorItem::TailUnifVar(*var_id))
+            }
+            GenericUnifRecordRows::Constant(var_id) => {
+                self.rrows = None;
+                Some(GenericUnifRecordRowsIteratorItem::TailConstant(*var_id))
+            }
+        })
+    }
+}
+
+pub enum UnifEnumRowsIteratorItem<'a> {
+    TailVar(&'a Ident),
+    TailUnifVar(VarId),
+    TailConstant(VarId),
+    Row(&'a EnumRow),
+}
+
+impl<'a> Iterator for EnumRowsIterator<'a, UnifEnumRows> {
+    type Item = UnifEnumRowsIteratorItem<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.erows.and_then(|next| match next {
+            UnifEnumRows::Concrete(erows) => {
+                match erows {
+                    EnumRowsF::Empty => {
+                        self.erows = None;
+                        None
+                    }
+                    EnumRowsF::TailVar(id) => {
+                        self.erows = None;
+                        Some(UnifEnumRowsIteratorItem::TailVar(&id))
+                    }
+                    EnumRowsF::Extend { row, tail } => {
+                        self.erows = Some(&*tail);
+                        Some(UnifEnumRowsIteratorItem::Row(&row))
+                    }
+                }
+            }
+            UnifEnumRows::UnifVar(var_id) => {
+                self.erows = None;
+                Some(UnifEnumRowsIteratorItem::TailUnifVar(*var_id))
+            }
+            UnifEnumRows::Constant(var_id) => {
+                self.erows = None;
+                Some(UnifEnumRowsIteratorItem::TailConstant(*var_id))
+            }
+        })
     }
 }
 

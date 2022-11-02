@@ -364,19 +364,14 @@ where
 /// Require the rows to be closed (i.e. the last element must be `RowEmpty`), otherwise `None` is
 /// returned. `None` is returned as well if a type encountered is not row, or if it is a enum row.
 fn rows_as_map<E: TermEnvironment>(
-    ty: &GenericUnifType<E>,
+    erows: &GenericUnifRecordRows<E>,
 ) -> Option<HashMap<Ident, &GenericUnifType<E>>> {
-    let mut map = HashMap::new();
-
-    ty.iter_as_rows().try_for_each(|item| match item {
-        RowIteratorItem::Row(id, Some(ty_row)) => {
-            map.insert(id.clone(), ty_row);
-            Some(())
-        }
+    let map : Option<HashMap<Ident, _>> = erows.iter().map(|item| match item {
+        GenericUnifRecordRowsIteratorItem::Row(RecordRowF {id, types}) => Some((id, types)),
         _ => None,
-    })?;
+    }).collect();
 
-    Some(map)
+    map
 }
 
 /// Convert enum rows to a hashset.
@@ -384,18 +379,13 @@ fn rows_as_map<E: TermEnvironment>(
 /// Require the rows to be closed (i.e. the last element must be `RowEmpty`), otherwise `None` is
 /// returned. `None` is returned as well if a type encountered is not row type, or if it is a
 /// record row.
-fn rows_as_set<E: TermEnvironment>(ty: &GenericUnifType<E>) -> Option<HashSet<Ident>> {
-    let mut set = HashSet::new();
-
-    ty.iter_as_rows().try_for_each(|item| match item {
-        RowIteratorItem::Row(id, None) => {
-            set.insert(id.clone());
-            Some(())
-        }
+fn rows_as_set(erows: &UnifEnumRows) -> Option<HashSet<Ident>> {
+    let set : Option<HashSet<_>> = erows.iter().map(|item| match item {
+        UnifEnumRowsIteratorItem::Row(id) => Some(id.clone()),
         _ => None,
-    })?;
+    }).collect();
 
-    Some(set)
+    set
 }
 
 /// Perform the type equality comparison on types. Structurally recurse into type constructors and test
