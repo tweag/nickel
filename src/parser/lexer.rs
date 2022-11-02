@@ -49,7 +49,7 @@ pub enum NormalToken<'input> {
 
     // **IMPORTANT**
     // This regex should be kept in sync with the one for RawEnumTag below.
-    // Also, any change in the lexer regex must also be backported in the LSP's
+    // Also, any change in the lexer regex must also be backported in the LSP's 
     // regex for checking identifiers at ../lsp/nls/src/requests/completion.rs
     #[regex("_?[a-zA-Z][_a-zA-Z0-9-']*")]
     Identifier(&'input str),

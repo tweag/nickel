@@ -76,6 +76,7 @@ impl Building {
         record_fields: &HashMap<Ident, RichTerm>,
         record: usize,
         scope: Scope,
+        env: &mut Environment,
     ) {
         for (ident, value) in record_fields.iter() {
             let id = self.id_gen().get_and_advance();
@@ -99,6 +100,7 @@ impl Building {
                     _ => None,
                 },
             });
+            env.insert(ident.clone(), id);
             self.env.insert(ident.clone(), id);
             self.add_record_field(record, (ident.clone(), id))
         }
