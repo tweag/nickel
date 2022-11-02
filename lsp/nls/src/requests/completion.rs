@@ -108,8 +108,7 @@ fn get_identifier_before_field(text: &str) -> Option<String> {
         .rev()
         .collect();
 
-    let name = get_identifier_before_dot(&text[..])?;
-    Some(name)
+    get_identifier_before_dot(&text[..])
 }
 
 fn remove_duplicates(items: &Vec<CompletionItem>) -> Vec<CompletionItem> {
