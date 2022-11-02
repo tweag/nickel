@@ -189,7 +189,7 @@ impl Linearizer for AnalysisHost {
                     lin.push(LinearizationItem {
                         env: self.env.clone(),
                         id,
-                        ty: ty.clone(),
+                        ty,
                         pos: ident.pos,
                         scope: self.scope.clone(),
                         kind: TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr),
@@ -249,7 +249,7 @@ impl Linearizer for AnalysisHost {
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
                     id: id_gen.get(),
-                    ty: ty.clone(),
+                    ty,
                     pos: ident.pos,
                     scope: self.scope.clone(),
                     kind: TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr),
