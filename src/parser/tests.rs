@@ -229,6 +229,7 @@ fn record_terms() {
             ),
             Vec::new(),
             None,
+            Vec::new(),
         )
         .into()
     );
@@ -249,6 +250,7 @@ fn record_terms() {
                 mk_app!(mk_term::op1(UnaryOp::Ite(), Num(4.)), Num(5.), Num(6.))
             )],
             None,
+            Vec::new(),
         )
         .into()
     );
@@ -266,9 +268,11 @@ fn record_terms() {
             ),
             Vec::new(),
             None,
+            Vec::new(),
         )
         .into()
     );
+    // TODO: add tests for inherited fields.
 }
 
 /// Regression test for [#876](https://github.com/tweag/nickel/issues/876)
