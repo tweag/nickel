@@ -287,8 +287,10 @@ pub fn handle_completion(
 
 #[cfg(test)]
 mod tests {
+    use nickel_lang::{environment::Environment, position::TermPos};
+
     use super::*;
-    use std::collections::HashSet;
+    use std::collections::{HashMap, HashSet};
 
     #[test]
     fn test_remove_duplicates() {
@@ -333,5 +335,106 @@ mod tests {
         for (actual, expected) in test_cases {
             single_test(actual, expected)
         }
+    }
+
+    #[test]
+    fn test_find_record_fields() {
+        fn make_linearization_item(id: usize, kind: TermKind) -> LinearizationItem<Types> {
+            LinearizationItem {
+                id,
+                pos: TermPos::None,
+                ty: Types(AbsType::Dyn()),
+                kind,
+                scope: Vec::new(),
+                meta: None,
+            }
+        }
+        fn make_completed(linearization: Vec<LinearizationItem<Types>>) -> Completed {
+            let id_to_index: HashMap<_, _> = linearization
+                .iter()
+                .map(|item| item.id)
+                .enumerate()
+                .map(|(index, id)| (id, index))
+                .collect();
+            let scope = HashMap::new();
+            let env = Environment::new();
+            Completed::new(linearization, scope, id_to_index, env)
+        }
+
+        // ids is an array of the ids from this linearization
+        // which would give the expected output
+        fn single_case<const N: usize>(
+            linearization: Vec<LinearizationItem<Types>>,
+            ids: [usize; N],
+            mut expected: Vec<Ident>,
+        ) {
+            expected.sort();
+            let completed = make_completed(linearization);
+            for id in ids {
+                let mut actual = find_record_fields(&completed, id).expect("Expected Some");
+                actual.sort();
+                assert_eq!(actual, expected)
+            }
+        }
+
+        let a = make_linearization_item(
+            0,
+            TermKind::Declaration(Ident::from("a"), vec![3], ValueState::Known(1)),
+        );
+        let b = make_linearization_item(
+            1,
+            TermKind::Record(HashMap::from([
+                (Ident::from("foo"), 2),
+                (Ident::from("bar"), 2),
+                (Ident::from("baz"), 2),
+            ])),
+        );
+        let c = make_linearization_item(2, TermKind::Structure);
+        let d = make_linearization_item(
+            3,
+            TermKind::Declaration(Ident::from("d"), Vec::new(), ValueState::Known(4)),
+        );
+        let e = make_linearization_item(4, TermKind::Usage(UsageState::Resolved(0)));
+        let linearization = vec![a, b, c, d, e];
+        let expected = vec![Ident::from("foo"), Ident::from("bar"), Ident::from("baz")];
+        single_case(linearization, [0, 3], expected);
+
+        let a = make_linearization_item(
+            0,
+            TermKind::Declaration(Ident::from("a"), Vec::new(), ValueState::Known(1)),
+        );
+        let b = make_linearization_item(
+            1,
+            TermKind::Record(HashMap::from([
+                (Ident::from("one"), 2),
+                (Ident::from("two"), 2),
+                (Ident::from("three"), 2),
+                (Ident::from("four"), 2),
+            ])),
+        );
+        let c = make_linearization_item(2, TermKind::Structure);
+        let d = make_linearization_item(
+            3,
+            TermKind::Declaration(Ident::from("d"), Vec::new(), ValueState::Known(13)),
+        );
+        let e = make_linearization_item(
+            4,
+            TermKind::Declaration(Ident::from("e"), Vec::new(), ValueState::Known(14)),
+        );
+        let f = make_linearization_item(
+            5,
+            TermKind::Declaration(Ident::from("f"), Vec::new(), ValueState::Known(15)),
+        );
+        let g = make_linearization_item(13, TermKind::Usage(UsageState::Resolved(0)));
+        let h = make_linearization_item(14, TermKind::Usage(UsageState::Resolved(3)));
+        let i = make_linearization_item(15, TermKind::Usage(UsageState::Resolved(4)));
+        let expected = vec![
+            Ident::from("one"),
+            Ident::from("two"),
+            Ident::from("three"),
+            Ident::from("four"),
+        ];
+        let linearization = vec![a, b, c, d, e, f, g, h, i];
+        single_case(linearization, [0, 3, 4, 5], expected);
     }
 }
