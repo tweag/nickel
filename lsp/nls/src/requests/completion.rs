@@ -6,7 +6,7 @@ use lsp_server::{ErrorCode, RequestId, Response, ResponseError};
 use lsp_types::{CompletionItem, CompletionParams};
 use nickel_lang::{
     identifier::Ident,
-    term::{Contract, MetaValue},
+    term::{MetaValue, Term},
     types::{AbsType, RowIteratorItem, Types},
 };
 use serde_json::Value;
@@ -39,22 +39,26 @@ fn find_record_fields(linearization: &Completed, id: usize) -> Option<Vec<Ident>
 }
 
 /// Find a record contract of the item with the specified id.
-fn find_record_contract(linearization: &Completed, id: usize) -> Option<Contract> {
+fn find_record_contract_fields(linearization: &Completed, id: usize) -> Option<Vec<Ident>> {
     let item = linearization.get_item(id)?;
     match &item.meta {
         Some(MetaValue { contracts, .. }) if item.id == id => {
-            contracts.iter().find_map(|contract| {
-                if let Types(AbsType::Record(..)) = contract.types {
-                    Some(contract.clone())
-                } else {
-                    None
+            contracts.iter().find_map(|contract| match &contract.types {
+                Types(AbsType::Record(row)) => Some(extract_ident(&row)),
+                Types(AbsType::Flat(term)) => {
+                    if let Term::Record(fields, ..) | Term::RecRecord(fields, ..) = term.as_ref() {
+                        Some(fields.keys().map(|ident| ident.clone()).collect())
+                    } else {
+                        None
+                    }
                 }
+                _ => None,
             })
         }
         _ if item.id == id => match item.kind {
             TermKind::Declaration(_, _, ValueState::Known(new_id))
             | TermKind::Usage(UsageState::Resolved(new_id)) => {
-                find_record_contract(&linearization, new_id)
+                find_record_contract_fields(&linearization, new_id)
             }
             _ => None,
         },
@@ -141,15 +145,9 @@ fn collect_record_info(
                     Some((extract_ident(&row), item.ty.clone()))
                 }
                 (TermKind::Declaration(_, _, ValueState::Known(body_id)), _) if name == item.id => {
-                    match find_record_contract(&linearization, *body_id) {
+                    match find_record_contract_fields(&linearization, *body_id) {
                         // Get record fields from contract metadata
-                        Some(contract) => {
-                            let fields = match &contract.types {
-                                Types(AbsType::Record(row)) => extract_ident(row),
-                                _ => Vec::new(),
-                            };
-                            Some((fields, item.ty.clone()))
-                        }
+                        Some(fields) => Some((fields, item.ty.clone())),
                         // Get record fields from lexical scoping
                         None => find_record_fields(&linearization, *body_id)
                             .map(|idents| (idents, item.ty.clone())),
