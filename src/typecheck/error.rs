@@ -2,7 +2,7 @@
 use super::{reporting, State, UnifType};
 use crate::{
     error::TypecheckError, identifier::Ident, label::ty_path, position::TermPos, term::RichTerm,
-    types::AbsType,
+    types::TypeF,
 };
 
 /// Error during the unification of two row types.
@@ -259,8 +259,8 @@ impl UnifError {
         loop {
             match curr {
                 UnifError::DomainMismatch(
-                    tyw1 @ UnifType::Concrete(AbsType::Arrow(_, _)),
-                    tyw2 @ UnifType::Concrete(AbsType::Arrow(_, _)),
+                    tyw1 @ UnifType::Concrete(TypeF::Arrow(_, _)),
+                    tyw2 @ UnifType::Concrete(TypeF::Arrow(_, _)),
                     err,
                 ) => {
                     tyws = tyws.or(Some((tyw1, tyw2)));
@@ -271,8 +271,8 @@ impl UnifError {
                     "typechecking::to_type_path(): domain mismatch error on a non arrow type"
                 ),
                 UnifError::CodomainMismatch(
-                    tyw1 @ UnifType::Concrete(AbsType::Arrow(_, _)),
-                    tyw2 @ UnifType::Concrete(AbsType::Arrow(_, _)),
+                    tyw1 @ UnifType::Concrete(TypeF::Arrow(_, _)),
+                    tyw2 @ UnifType::Concrete(TypeF::Arrow(_, _)),
                     err,
                 ) => {
                     tyws = tyws.or(Some((tyw1, tyw2)));
