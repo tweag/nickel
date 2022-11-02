@@ -26,7 +26,7 @@ fn find_record_fields(linearization: &Completed, id: usize) -> Option<Vec<Ident>
     let item = linearization.get_item(id)?;
     match item.kind {
         TermKind::Record(ref fields) if item.id == id => {
-            Some(fields.keys().map(|ident| ident.clone()).collect())
+            Some(fields.keys().cloned().collect())
         }
         TermKind::Declaration(_, _, ValueState::Known(new_id))
         | TermKind::Usage(UsageState::Resolved(new_id))
@@ -47,7 +47,7 @@ fn find_record_contract_fields(linearization: &Completed, id: usize) -> Option<V
                 Types(AbsType::Record(row)) => Some(extract_ident(&row)),
                 Types(AbsType::Flat(term)) => {
                     if let Term::Record(fields, ..) | Term::RecRecord(fields, ..) = term.as_ref() {
-                        Some(fields.keys().map(|ident| ident.clone()).collect())
+                        Some(fields.keys().cloned().collect())
                     } else {
                         None
                     }
