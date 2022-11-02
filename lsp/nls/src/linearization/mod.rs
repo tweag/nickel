@@ -184,7 +184,6 @@ impl Linearizer for AnalysisHost {
 
                     let id = id_gen.get_and_advance();
                     self.env.insert(ident.to_owned(), id);
-                    lin.env.insert(ident.to_owned(), id);
                     lin.push(LinearizationItem {
                         id,
                         ty: ty.clone(),
@@ -198,8 +197,6 @@ impl Linearizer for AnalysisHost {
                     let (ident, body) = matched.as_meta_field();
                     let id = id_gen.get_and_advance();
                     self.env.insert(ident.to_owned(), id);
-                    lin.env.insert(ident.to_owned(), id);
-
                     lin.push(LinearizationItem {
                         id,
                         // TODO: get type from pattern
@@ -244,7 +241,6 @@ impl Linearizer for AnalysisHost {
                     _ => unreachable!(),
                 };
                 self.env.insert(ident.to_owned(), id_gen.get());
-                lin.env.insert(ident.to_owned(), id_gen.get());
                 lin.push(LinearizationItem {
                     id: id_gen.get(),
                     ty: ty.clone(),
@@ -376,7 +372,6 @@ impl Linearizer for AnalysisHost {
         let Building {
             mut linearization,
             scope,
-            env,
         } = lin.into_inner();
 
         linearization.sort_by(
@@ -430,7 +425,7 @@ impl Linearizer for AnalysisHost {
                 ..item
             })
             .collect();
-        Linearization::new(Completed::new(lin_, scope, id_mapping, env))
+        Linearization::new(Completed::new(lin_, scope, id_mapping))
     }
 
     fn scope(&mut self) -> Self {

@@ -2,8 +2,6 @@ use std::collections::HashMap;
 
 use codespan::ByteIndex;
 use nickel_lang::{
-    environment::Environment,
-    identifier::Ident,
     term::MetaValue,
     typecheck::linearization::{LinearizationState, Scope},
 };
@@ -17,7 +15,6 @@ use super::{
 #[derive(Clone, Debug, Default)]
 pub struct Completed {
     pub linearization: Vec<LinearizationItem<Resolved>>,
-    pub lin_env: Environment<Ident, usize>,
     scope: HashMap<Scope, Vec<usize>>,
     id_to_index: HashMap<ID, usize>,
 }
@@ -27,13 +24,11 @@ impl Completed {
         linearization: Vec<LinearizationItem<Resolved>>,
         scope: HashMap<Scope, Vec<usize>>,
         id_to_index: HashMap<ID, usize>,
-        lin_env: Environment<Ident, usize>,
     ) -> Self {
         Self {
             linearization,
             scope,
             id_to_index,
-            lin_env,
         }
     }
 

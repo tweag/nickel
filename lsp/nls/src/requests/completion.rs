@@ -122,11 +122,11 @@ fn remove_duplicates(items: &Vec<CompletionItem>) -> Vec<CompletionItem> {
 }
 
 /// Search the linearization to find the record information associated with a
-/// partiular ID.
+/// partiular ID, and in the scope of a given linearization item.
 fn collect_record_info(
     linearization: &Completed,
     item: &LinearizationItem<Types>,
-    name: usize,
+    name: Ident,
 ) -> Vec<(Vec<Ident>, Types)> {
     linearization
         .get_in_scope(item)
@@ -135,10 +135,14 @@ fn collect_record_info(
             let (ty, _) = linearization.resolve_item_type_meta(item);
             match (&item.kind, ty) {
                 // Get record fields from static type info
-                (TermKind::Declaration(..), Types(AbsType::Record(row))) if name == item.id => {
+                (TermKind::Declaration(ident, ..), Types(AbsType::Record(row)))
+                    if name == *ident =>
+                {
                     Some((extract_ident(&row), item.ty.clone()))
                 }
-                (TermKind::Declaration(_, _, ValueState::Known(body_id)), _) if name == item.id => {
+                (TermKind::Declaration(ident, _, ValueState::Known(body_id)), _)
+                    if name == *ident =>
+                {
                     match find_record_contract_fields(&linearization, *body_id) {
                         // Get record fields from contract metadata
                         Some(fields) => Some((fields, item.ty.clone())),
@@ -161,7 +165,6 @@ fn get_completion_identifiers(
     linearization: &Completed,
     item: &LinearizationItem<Types>,
 ) -> Result<Vec<CompletionItem>, ResponseError> {
-    let lin_env = &linearization.lin_env;
     let in_scope = match trigger {
         // Record Completion
         Some(server::DOT_COMPL_TRIGGER) => {
@@ -170,24 +173,16 @@ fn get_completion_identifiers(
                 message: "Couldn't get identifier for record completion".to_owned(),
                 data: None,
             })?;
-            let ident = Ident::from(name);
-            let name_id = lin_env.get(&ident).cloned();
-            match name_id {
-                Some(name_id) => collect_record_info(linearization, item, name_id),
-                None => return Ok(Vec::new()),
-            }
+            let name = Ident::from(name);
+            collect_record_info(linearization, item, name)
         }
         Some(..) | None => {
             // This is also record completion, but it is in the form
             // <record var>.<partially-typed-field>
             // we also want to give completion based on <record var> in this case.
             if let Some(name) = get_identifier_before_field(source) {
-                let ident = Ident::from(name);
-                let name_id = lin_env.get(&ident).cloned();
-                match name_id {
-                    Some(name_id) => collect_record_info(linearization, item, name_id),
-                    None => return Ok(Vec::new()),
-                }
+                let name = Ident::from(name);
+                collect_record_info(linearization, item, name)
             } else {
                 // variable name completion
                 linearization
@@ -285,7 +280,7 @@ pub fn handle_completion(
 
 #[cfg(test)]
 mod tests {
-    use nickel_lang::{environment::Environment, position::TermPos};
+    use nickel_lang::position::TermPos;
 
     use super::*;
     use std::collections::{HashMap, HashSet};
@@ -355,8 +350,7 @@ mod tests {
                 .map(|(index, id)| (id, index))
                 .collect();
             let scope = HashMap::new();
-            let env = Environment::new();
-            Completed::new(linearization, scope, id_to_index, env)
+            Completed::new(linearization, scope, id_to_index)
         }
 
         // ids is an array of the ids from this linearization
@@ -435,4 +429,7 @@ mod tests {
         let linearization = vec![a, b, c, d, e, f, g, h, i];
         single_case(linearization, [0, 3, 4, 5], expected);
     }
+
+    #[test]
+    fn test_find_record_contract_fields() {}
 }
