@@ -180,7 +180,7 @@ impl CollectFreeVars for Types {
             | TypeF::Sym
             | TypeF::Var(_)
             | TypeF::Wildcard(_) => (),
-            TypeF::Forall {body: ty, ..} | TypeF::Dict(ty) | TypeF::Array(ty) => {
+            TypeF::Forall { body: ty, .. } | TypeF::Dict(ty) | TypeF::Array(ty) => {
                 ty.as_mut().collect_free_vars(set)
             }
             TypeF::Enum(erows) => erows.collect_free_vars(set),

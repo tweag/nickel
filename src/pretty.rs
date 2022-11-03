@@ -762,10 +762,10 @@ where
             Sym => allocator.text("Sym"),
             Flat(t) => t.pretty(allocator),
             Var(var) => allocator.as_string(var),
-            Forall {var, ref body, ..} => {
+            Forall { var, ref body, .. } => {
                 let mut curr = body.as_ref();
                 let mut foralls = vec![&var];
-                while let Types(Forall {var, ref body, ..}) = curr {
+                while let Types(Forall { var, ref body, .. }) = curr {
                     foralls.push(var);
                     curr = body;
                 }
@@ -832,7 +832,7 @@ where
             //     .append(tail.pretty(allocator))
             // }
             Arrow(dom, codom) => match dom.0 {
-                Arrow(..) | Forall {..} => dom
+                Arrow(..) | Forall { .. } => dom
                     .pretty(allocator)
                     .parens()
                     .append(allocator.softline())

@@ -138,10 +138,7 @@ pub fn get_uop_type(
             mk_typewrapper::array(TypeF::Str),
         ),
         // Dyn -> Array Dyn
-        UnaryOp::ValuesOf() => (
-            mk_typewrapper::dynamic(),
-            mk_typewrapper::array(TypeF::Dyn),
-        ),
+        UnaryOp::ValuesOf() => (mk_typewrapper::dynamic(), mk_typewrapper::array(TypeF::Dyn)),
         // Str -> Str
         UnaryOp::StrTrim() => (mk_typewrapper::str(), mk_typewrapper::str()),
         // Str -> Array Str

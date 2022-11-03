@@ -1,5 +1,5 @@
 //! Helpers for building `TypeWrapper`s.
-use super::{TypeF, EnumRowsF, RecordRowsF, RecordRowF, EnumRow, UnifType};
+use super::{EnumRow, EnumRowsF, RecordRowF, RecordRowsF, TypeF, UnifType};
 
 /// Multi-ary arrow constructor for types implementing `Into<TypeWrapper>`.
 #[macro_export]
@@ -56,7 +56,7 @@ macro_rules! mk_tyw_row {
                     types: Box::new($ty.into()),
                 },
                 tail: Box::new(mk_tyw_row!($(($ids, $tys)),* $(; $tail)?)),
-            }            
+            }
         )
     };
 }

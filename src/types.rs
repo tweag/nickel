@@ -407,10 +407,7 @@ impl RecordRows {
         let inner = match order {
             TraverseOrder::TopDown => self
                 .0
-                .try_map(
-                    |ty| Ok(Box::new(f(*ty, state)?)),
-                    |rrows| Ok(rrows),
-                )?
+                .try_map(|ty| Ok(Box::new(f(*ty, state)?)), |rrows| Ok(rrows))?
                 .try_map(
                     |ty| Ok(Box::new(ty.traverse(f, state, order)?)),
                     |rrows| Ok(Box::new(rrows.traverse(f, state, order)?)),
@@ -421,10 +418,7 @@ impl RecordRows {
                     |ty| Ok(Box::new(ty.traverse(f, state, order)?)),
                     |rrows| Ok(Box::new(rrows.traverse(f, state, order)?)),
                 )?
-                .try_map(
-                    |ty| Ok(Box::new(f(*ty, state)?)),
-                    |rrows| Ok(rrows),
-                )?,
+                .try_map(|ty| Ok(Box::new(f(*ty, state)?)), |rrows| Ok(rrows))?,
         };
 
         Ok(RecordRows(inner))
@@ -910,13 +904,13 @@ impl Types {
 impl Display for RecordRows {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.0 {
-            RecordRowsF::Extend {row, tail} => {
-               write!(f, "{}: {}", row.id, row.types)?;
+            RecordRowsF::Extend { row, tail } => {
+                write!(f, "{}: {}", row.id, row.types)?;
 
-               match tail.0 {
-                    RecordRowsF::Extend {..} => write!(f, ", {}", tail),
+                match tail.0 {
+                    RecordRowsF::Extend { .. } => write!(f, ", {}", tail),
                     _ => write!(f, "{}", tail),
-               }
+                }
             }
             RecordRowsF::Empty => Ok(()),
             RecordRowsF::TailVar(id) => write!(f, " ; {}", id),
@@ -928,13 +922,13 @@ impl Display for RecordRows {
 impl Display for EnumRows {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.0 {
-            EnumRowsF::Extend {row, tail} => {
-               write!(f, "`{}", row)?;
+            EnumRowsF::Extend { row, tail } => {
+                write!(f, "`{}", row)?;
 
-               match tail.0 {
-                    EnumRowsF::Extend {..} => write!(f, ", {}", tail),
+                match tail.0 {
+                    EnumRowsF::Extend { .. } => write!(f, ", {}", tail),
                     _ => write!(f, "{}", tail),
-               }
+                }
             }
             EnumRowsF::Empty => Ok(()),
             EnumRowsF::TailVar(id) => write!(f, " ; {}", id),

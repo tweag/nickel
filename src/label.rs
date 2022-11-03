@@ -44,7 +44,7 @@ pub mod ty_path {
 
     use crate::{
         identifier::Ident,
-        types::{TypeF, Types, RecordRowsF, RecordRowF},
+        types::{RecordRowF, RecordRowsF, TypeF, Types},
     };
 
     /// An element of a path type.
@@ -92,10 +92,10 @@ pub mod ty_path {
                 let repr = format!("{}", ty);
                 return (0, repr.len());
             }
-            (TypeF::Forall{..}, Some(_)) => {
+            (TypeF::Forall { .. }, Some(_)) => {
                 // The length of "forall" plus the final separating dot and whitespace ". "
                 let mut result = 8;
-                while let TypeF::Forall {var, body, ..} = &ty.0 {
+                while let TypeF::Forall { var, body, .. } = &ty.0 {
                     // The length of the identifier plus the preceding whitespace
                     result += var.to_string().len() + 1;
                     ty = body.as_ref();
@@ -153,13 +153,19 @@ pub mod ty_path {
                 let mut row = &rows.0;
                 loop {
                     match row {
-                        RecordRowsF::Extend { row: RecordRowF {id, types: ty}, tail: _ } if id == ident => {
+                        RecordRowsF::Extend {
+                            row: RecordRowF { id, types: ty },
+                            tail: _,
+                        } if id == ident => {
                             todo!()
                             // let (sub_start, sub_end) = span(path_it, ty);
                             // let full_offset = start_offset + format!("{}", id).len() + id_offset;
                             // break (full_offset + sub_start, full_offset + sub_end);
                         }
-                        RecordRowsF::Extend { row: RecordRowF {id, types: ty}, tail: _ } => {
+                        RecordRowsF::Extend {
+                            row: RecordRowF { id, types: ty },
+                            tail: _,
+                        } => {
                             todo!()
                             // // The last +1 is for the
                             // start_offset += format!("{}", id).len()
