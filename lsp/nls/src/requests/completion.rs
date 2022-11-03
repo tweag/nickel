@@ -124,7 +124,7 @@ fn remove_duplicates(items: &Vec<CompletionItem>) -> Vec<CompletionItem> {
 fn collect_record_info(
     linearization: &Completed,
     item: &LinearizationItem<Types>,
-    name: usize,
+    id: usize,
 ) -> Vec<(Vec<Ident>, Types)> {
     linearization
         .get_in_scope(item)
@@ -133,10 +133,10 @@ fn collect_record_info(
             let (ty, _) = linearization.resolve_item_type_meta(item);
             match (&item.kind, ty) {
                 // Get record fields from static type info
-                (TermKind::Declaration(..), Types(AbsType::Record(row))) if name == item.id => {
+                (TermKind::Declaration(..), Types(AbsType::Record(row))) if id == item.id => {
                     Some((extract_ident(&row), item.ty.clone()))
                 }
-                (TermKind::Declaration(_, _, ValueState::Known(body_id)), _) if name == item.id => {
+                (TermKind::Declaration(_, _, ValueState::Known(body_id)), _) if id == item.id => {
                     match find_record_contract_fields(&linearization, *body_id) {
                         // Get record fields from contract metadata
                         Some(fields) => Some((fields, item.ty.clone())),
@@ -168,8 +168,8 @@ fn get_completion_identifiers(
                 data: None,
             })?;
             let name = Ident::from(name);
-            if let Some(name) = item.env.get(&name).cloned() {
-                collect_record_info(linearization, item, name)
+            if let Some(id) = item.env.get(&name).copied() {
+                collect_record_info(linearization, item, id)
             } else {
                 return Ok(Vec::new());
             }
@@ -180,8 +180,8 @@ fn get_completion_identifiers(
             // we also want to give completion based on <record var> in this case.
             if let Some(name) = get_identifier_before_field(source) {
                 let name = Ident::from(name);
-                if let Some(name) = item.env.get(&name).cloned() {
-                    collect_record_info(linearization, item, name)
+                if let Some(id) = item.env.get(&name).copied() {
+                    collect_record_info(linearization, item, id)
                 } else {
                     return Ok(Vec::new());
                 }
@@ -244,15 +244,13 @@ pub fn handle_completion(
     // so we try to get the item just before the cursor.
     let locator = (file_id, ByteIndex((start - 1) as u32));
     let linearization = server.lin_cache_get(&file_id)?;
-    // Cloning to avoid mutable borrow and shared borrow at the same time,
-    // which won't compile
-    // let linearization = linearization.clone();
-
-    let item = linearization.item_at(&locator).cloned();
+    let item = linearization.item_at(&locator);
     Trace::enrich(&id, linearization);
 
-    let result = match &item {
+    let result = match item {
         Some(item) => {
+            debug!("found closest item: {:?}", item);
+
             let trigger = params.context.as_ref().and_then(|context| {
                 context
                     .trigger_character
@@ -271,7 +269,6 @@ pub fn handle_completion(
     result
         .map(|in_scope| {
             server.reply(Response::new_ok(id.clone(), in_scope));
-            debug!("found closest item: {:?}", item);
             Ok(())
         })
         .unwrap_or_else(|| {
