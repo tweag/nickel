@@ -77,4 +77,11 @@ pub mod compat {
             Term::Array(array, Default::default())
         )
     }
+
+    pub fn add() -> RichTerm {
+        op1(
+            UnaryOp::StaticAccess("add".into()),
+            Term::Var("compat".into()),
+        )
+    }
 }
