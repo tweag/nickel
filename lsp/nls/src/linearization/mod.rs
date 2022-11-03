@@ -197,7 +197,7 @@ impl Linearizer for AnalysisHost {
                     });
                 }
                 for matched in destruct.to_owned().inner() {
-                    let (ident, body) = matched.as_meta_field();
+                    let (ident, term) = matched.as_meta_field();
                     let id = id_gen.get_and_advance();
                     self.env.insert(ident.to_owned(), id);
                     lin.push(LinearizationItem {
@@ -212,7 +212,7 @@ impl Linearizer for AnalysisHost {
                             Vec::new(),
                             ValueState::Known(id),
                         ),
-                        meta: match &*body.term {
+                        meta: match &*term.term {
                             Term::MetaValue(meta) => Some(MetaValue {
                                 value: None,
                                 ..meta.clone()

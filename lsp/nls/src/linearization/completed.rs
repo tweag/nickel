@@ -12,7 +12,7 @@ use super::{
     LinearizationItem,
 };
 
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 pub struct Completed {
     pub linearization: Vec<LinearizationItem<Resolved>>,
     scope: HashMap<Scope, Vec<usize>>,

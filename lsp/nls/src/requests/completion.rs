@@ -37,7 +37,7 @@ fn find_record_fields(linearization: &Completed, id: usize) -> Option<Vec<Ident>
 }
 
 /// Find a record contract of the item with the specified id.
-fn find_record_contract_fields(linearization: &Completed, id: usize) -> Option<Vec<Ident>> {
+fn find_contract_record_fields(linearization: &Completed, id: usize) -> Option<Vec<Ident>> {
     let item = linearization.get_item(id)?;
     match &item.meta {
         Some(MetaValue { contracts, .. }) if item.id == id => {
@@ -56,7 +56,7 @@ fn find_record_contract_fields(linearization: &Completed, id: usize) -> Option<V
         _ if item.id == id => match item.kind {
             TermKind::Declaration(_, _, ValueState::Known(new_id))
             | TermKind::Usage(UsageState::Resolved(new_id)) => {
-                find_record_contract_fields(&linearization, new_id)
+                find_contract_record_fields(&linearization, new_id)
             }
             _ => None,
         },
@@ -137,7 +137,7 @@ fn collect_record_info(
                     Some((extract_ident(&row), item.ty.clone()))
                 }
                 (TermKind::Declaration(_, _, ValueState::Known(body_id)), _) if id == item.id => {
-                    match find_record_contract_fields(&linearization, *body_id) {
+                    match find_contract_record_fields(&linearization, *body_id) {
                         // Get record fields from contract metadata
                         Some(fields) => Some((fields, item.ty.clone())),
                         // Get record fields from lexical scoping
@@ -218,8 +218,7 @@ fn get_completion_identifiers(
             })
         })
         .collect();
-    let in_scope = remove_duplicates(&in_scope);
-    Ok(in_scope)
+    Ok(remove_duplicates(&in_scope))
 }
 
 pub fn handle_completion(
@@ -431,7 +430,4 @@ mod tests {
         let linearization = vec![a, b, c, d, e, f, g, h, i];
         single_case(linearization, [0, 3, 4, 5], expected);
     }
-
-    #[test]
-    fn test_find_record_contract_fields() {}
 }
