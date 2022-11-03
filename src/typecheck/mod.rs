@@ -1569,107 +1569,126 @@ fn has_wildcards(ty: &Types) -> bool {
     has_wildcard
 }
 
-/// Look for a binding in a row, or add a new one if it is not present and if allowed by [row
-/// constraints][RowConstr].
+/// Try to find a specific row inside record rows, or add it if permitted.
 ///
-/// The row may be given as a concrete type or as a unification variable.
+/// If the row is present, this function returns the corresponding type together with the tail
+/// corresponding to the other rows coming after the found one.
 ///
-/// # Return
+/// If the row is not present:
 ///
-/// The type newly bound to `id` in the row together with the tail of the new row. If `id` was
-/// already in `r`, it does not change the binding and return the corresponding type instead as a
-/// first component.
-fn rrow_add(
+/// - If the given record rows are extensible, i.e. they end with a free unification variable, this
+///   function adds a new row with the provided type `ty` (if allowed by [row
+///   constraints][RowConstr]). Returns `ty` together with the new tail (a fresh unification
+///   variable).
+/// - Otherwise, raise a missing row error.
+fn rrows_add(
     state: &mut State,
     id: &Ident,
     ty: Box<UnifType>,
     mut r: UnifRecordRows,
 ) -> Result<(Box<UnifType>, UnifRecordRows), RowUnifError> {
-    todo!()
-    // if let UnifType::UnifVar(p) = r {
-    //     r = state.table.root(p);
-    // }
-    // match r {
-    //     UnifType::Concrete(TypeF::Empty) | UnifType::Concrete(TypeF::Dyn) => {
-    //         Err(RowUnifError::MissingRow(id.clone()))
-    //     }
-    //     UnifType::Concrete(TypeF::RowExtend(id2, ty2, r2)) => {
-    //         if *id == id2 {
-    //             Ok((ty2, *r2))
-    //         } else {
-    //             let (extracted_type, subrow) = row_add(state, id, ty, *r2)?;
-    //             Ok((
-    //                 extracted_type,
-    //                 UnifType::Concrete(TypeF::RowExtend(id2, ty2, Box::new(subrow))),
-    //             ))
-    //         }
-    //     }
-    //     UnifType::UnifVar(root) => {
-    //         if let Some(set) = state.constr.get(&root) {
-    //             if set.contains(id) {
-    //                 return Err(RowUnifError::UnsatConstr(id.clone(), ty.map(|uty| *uty)));
-    //             }
-    //         }
-    //         let new_row = state.table.fresh_unif_var();
-    //         constraint(state, new_row.clone(), id.clone())?;
-    //         state.table.assign(
-    //             root,
-    //             UnifType::Concrete(TypeF::RowExtend(
-    //                 id.clone(),
-    //                 ty.clone(),
-    //                 Box::new(new_row.clone()),
-    //             )),
-    //         );
-    //         Ok((ty, new_row))
-    //     }
-    //     other => Err(RowUnifError::IllformedRow(other)),
-    // }
+    if let UnifRecordRows::UnifVar(p) = r {
+        r = state.table.root_rrows(p);
+    }
+
+    match r {
+        UnifRecordRows::Concrete(erows) => {
+            match erows {
+                RecordRowsF::Empty | RecordRowsF::TailDyn | RecordRowsF::TailVar(_) => Err(RowUnifError::MissingRow(id.clone())),
+                RecordRowsF::Extend {row, tail} => {
+                    if *id == row.id {
+                        Ok((row.types, *tail))
+                    } else {
+                        let (extracted_type, subrow) = rrows_add(state, id, ty, *tail)?;
+                        Ok((
+                            extracted_type,
+                            UnifRecordRows::Concrete(RecordRowsF::Extend {row, tail: Box::new(subrow)}),
+                        ))
+                    }
+                }
+            }
+        }
+        UnifRecordRows::UnifVar(uvar) => {
+            if state.constr.get(&uvar).map(|set| set.contains(id)).unwrap_or(false) {
+                return Err(RowUnifError::UnsatConstr(id.clone(), Some(*ty)));
+            }
+            let tail_var_id = state.table.fresh_rrows_var_id();
+            let new_tail = UnifRecordRows::Concrete(RecordRowsF::Extend {
+                    row: RecordRowF {
+                        id: id.clone(),
+                        types: ty.clone(),
+                    },
+                    tail: Box::new(UnifRecordRows::UnifVar(tail_var_id.clone())),
+                });
+
+            new_tail.constrain_fresh_rrows_var(state, tail_var_id.clone());
+
+            state.table.assign_rrows(
+                uvar,
+                new_tail,
+            );
+
+            Ok((ty, UnifRecordRows::UnifVar(tail_var_id)))
+        }
+        UnifRecordRows::Constant(_) => Err(RowUnifError::MissingRow(id.clone())),
+    }
 }
 
-fn erow_add(
+/// Try to find a specific row (ident) inside enum rows, or add it if permitted.
+///
+/// If the row is present, this function the tail corresponding to the remaining rows coming after
+/// the found one.
+///
+/// If the row is not present:
+///
+/// - If the given enum rows are extensible, i.e. they end with a free unification variable, this
+///   function adds a new row (if allowed by [row constraints][RowConstr]). Returns the new tail (a
+///   fresh unification variable).
+/// - Otherwise, raise a missing row error.
+fn erows_add(
     state: &mut State,
     id: &Ident,
     mut r: UnifEnumRows,
 ) -> Result<UnifEnumRows, RowUnifError> {
-    todo!()
-    // if let UnifType::UnifVar(p) = r {
-    //     r = state.table.root(p);
-    // }
-    // match r {
-    //     UnifType::Concrete(TypeF::Empty) | UnifType::Concrete(TypeF::Dyn) => {
-    //         Err(RowUnifError::MissingRow(id.clone()))
-    //     }
-    //     UnifType::Concrete(TypeF::RowExtend(id2, ty2, r2)) => {
-    //         if *id == id2 {
-    //             Ok((ty2, *r2))
-    //         } else {
-    //             let (extracted_type, subrow) = row_add(state, id, ty, *r2)?;
-    //             Ok((
-    //                 extracted_type,
-    //                 UnifType::Concrete(TypeF::RowExtend(id2, ty2, Box::new(subrow))),
-    //             ))
-    //         }
-    //     }
-    //     UnifType::UnifVar(root) => {
-    //         if let Some(set) = state.constr.get(&root) {
-    //             if set.contains(id) {
-    //                 return Err(RowUnifError::UnsatConstr(id.clone(), ty.map(|uty| *uty)));
-    //             }
-    //         }
-    //         let new_row = state.table.fresh_unif_var();
-    //         constraint(state, new_row.clone(), id.clone())?;
-    //         state.table.assign(
-    //             root,
-    //             UnifType::Concrete(TypeF::RowExtend(
-    //                 id.clone(),
-    //                 ty.clone(),
-    //                 Box::new(new_row.clone()),
-    //             )),
-    //         );
-    //         Ok((ty, new_row))
-    //     }
-    //     other => Err(RowUnifError::IllformedRow(other)),
-    // }
+    if let UnifEnumRows::UnifVar(p) = r {
+        r = state.table.root_erows(p);
+    }
+
+    match r {
+        UnifEnumRows::Concrete(erows) => {
+            match erows {
+                EnumRowsF::Empty | EnumRowsF::TailVar(_) => Err(RowUnifError::MissingRow(id.clone())),
+                EnumRowsF::Extend {row, tail} => {
+                    if *id == row {
+                        Ok(*tail)
+                    } else {
+                        let subrow = erows_add(state, id, *tail)?;
+                        Ok(UnifEnumRows::Concrete(EnumRowsF::Extend {row, tail: Box::new(subrow)}))
+                    }
+                }
+            }
+        }
+        UnifEnumRows::UnifVar(uvar) => {
+            if state.constr.get(&uvar).map(|set| set.contains(id)).unwrap_or(false) {
+                return Err(RowUnifError::UnsatConstr(id.clone(), None));
+            }
+            let tail_var_id = state.table.fresh_rrows_var_id();
+            let new_tail = UnifEnumRows::Concrete(EnumRowsF::Extend {
+                    row: id.clone(),
+                    tail: Box::new(UnifEnumRows::UnifVar(tail_var_id.clone())),
+                });
+
+            new_tail.constrain_fresh_erows_var(state, tail_var_id.clone());
+
+            state.table.assign_erows(
+                uvar,
+                new_tail,
+            );
+
+            Ok(UnifEnumRows::UnifVar(tail_var_id))
+        }
+        UnifEnumRows::Constant(_) => Err(RowUnifError::MissingRow(id.clone())),
+    }
 }
 
 /// Try to unify two types.
@@ -1795,9 +1814,6 @@ pub fn unify(
             )),
         },
         (UnifType::UnifVar(p1), UnifType::UnifVar(p2)) if p1 == p2 => Ok(()),
-        // The two following cases are not merged just to correctly distinguish between the
-        // expected type (first component of the tuple) and the inferred type when reporting a row
-        // unification error.
         (UnifType::UnifVar(p), uty) | (uty, UnifType::UnifVar(p))  => {
             state.table.assign_type(p, uty);
             Ok(())
@@ -1840,7 +1856,7 @@ pub fn unify_rrows(
                 Err(RowUnifError::MissingRow(id))
             }
             (RecordRowsF::Extend {row: UnifRecordRow {id, types}, tail }, r2 @ RecordRowsF::Extend {..}) => {
-                let (ty2, t2_tail) = rrow_add(state, &id, types.clone(), UnifRecordRows::Concrete(r2))?;
+                let (ty2, t2_tail) = rrows_add(state, &id, types.clone(), UnifRecordRows::Concrete(r2))?;
                 unify(state, ctxt, *types, *ty2).map_err(|err| RowUnifError::RowMismatch(id.clone(), Box::new(err)))?;
                 unify_rrows(state, ctxt, *tail, t2_tail)
             }
@@ -1876,7 +1892,7 @@ pub fn unify_erows(
             (EnumRowsF::Empty, EnumRowsF::Extend { row: ident, ..}) => Err(RowUnifError::ExtraRow(ident)),
             (EnumRowsF::Extend { row: ident, ..}, EnumRowsF::Empty) => Err(RowUnifError::MissingRow(ident)),
             (EnumRowsF::Extend {row: id, tail }, r2 @ EnumRowsF::Extend {..}) => {
-                let t2_tail = erow_add(state, &id, UnifEnumRows::Concrete(r2))?;
+                let t2_tail = erows_add(state, &id, UnifEnumRows::Concrete(r2))?;
                 unify_erows(state, ctxt, *tail, t2_tail)
             }
         }
@@ -2150,7 +2166,7 @@ impl UnifTable {
 /// String}`.
 pub type RowConstr = HashMap<usize, HashSet<Ident>>;
 
-/// Constrain record rows `rrows` to not contain a row declaration for `id`. Propagae those
+/// Constrain record rows `rrows` to not contain a row declaration for `id`. Propagate those
 /// constraint to potential record rows unification variable. Return an error if a row declaration
 /// with label `id` is encountered.
 fn constrain_rrows(state: &mut State, rrows: UnifRecordRows, id: Ident) -> Result<(), RowUnifError> {
