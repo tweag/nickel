@@ -164,7 +164,7 @@ Types: Types = {
 // A type with type variables fixed. See `parser::utils::fix_type_vars`.
 FixedType: Types = {
     <mut ty: Types> => {
-        fix_type_vars(&mut ty);
+        ty.fix_type_vars();
         ty
     }
 };

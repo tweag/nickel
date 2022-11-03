@@ -6,7 +6,7 @@ use utils::{build_record, elaborate_field_path, FieldPath, FieldPathElem};
 use crate::{
     position::{RawSpan, TermPos},
     term::{Contract, MergePriority, MetaValue, RecordAttrs, RichTerm, SharedTerm, Term},
-    types::{RecordRow, RecordRows, RecordRowsF, TypeF, Types, UnboundTypeVariableError},
+    types::{RecordRow, RecordRows, RecordRowsF, EnumRows, TypeF, Types, UnboundTypeVariableError},
 };
 
 use std::{borrow::Cow, collections::HashSet, convert::TryFrom};
@@ -89,7 +89,7 @@ impl TryFrom<UniTerm> for RichTerm {
             UniTermNode::Var(id) => RichTerm::new(Term::Var(id), pos),
             UniTermNode::Record(r) => RichTerm::try_from(r)?,
             UniTermNode::Types(mut ty) => {
-                fix_type_vars(&mut ty);
+                ty.fix_type_vars();
                 ty.contract().map_err(|UnboundTypeVariableError(id)| {
                     // We unwrap the position of the identifier, which must be set at this stage of parsing
                     let pos = id.pos;
@@ -266,7 +266,7 @@ impl TryFrom<UniRecord> for RichTerm {
                     ParseError::InvalidUniRecord(pos.unwrap(), tail_pos.unwrap(), pos.unwrap())
                 })
                 .and_then(|mut ty| {
-                    fix_type_vars(&mut ty);
+                    ty.fix_type_vars();
                     ty.contract().map_err(|UnboundTypeVariableError(id)| {
                         ParseError::UnboundTypeVariables(vec![id], pos.unwrap())
                     })
@@ -312,44 +312,53 @@ impl TryFrom<UniRecord> for Types {
     }
 }
 
-/// Post-process a type at the right hand side of an annotation by replacing each unbound type
-/// variable by a term variable with the same identifier seen as a custom contract
-/// (`TypeF::Var(id)` to `TypeF::Flat(Term::Var(id))`).
-///
-/// Since parsing is done bottom-up, and given the specification of the uniterm syntax for
-/// variables occurring in types, we often can't know right away if a such a variable occurrence
-/// will eventually be a type variable or a term variable seen as a custom contract.
-///
-/// Take for example `a -> b`. At this stage, `a` and `b` could be both variables referring to a
-/// contract (e.g. in `x | a -> b`) or a type variable (e.g. in `x | forall a b. a -> b`),
-/// depending on enclosing `forall`s. To handle both cases, we initially parse all variables inside
-/// types as type variables. When reaching the right-hand side of an annotation, because `forall`s
-/// can only bind locally in a type, we can then decide the actual nature of each occurrence. We
-/// thus recurse into the newly constructed type to change those type variables that are not
-/// actually bound by a `forall` to be term variables. This is the role of `fix_type_vars()`.
-///
-/// Once again because `forall`s only bind variables locally, and don't bind inside contracts, we
-/// don't have to recurse into contracts and this pass will only visit each node of the AST at most
-/// once in total.
-///
-/// There is one subtlety with unirecords, though. A unirecord can still be in interpreted as a
-/// record type later. Take the following example:
-///
-/// ```nickel
-/// let mk_pair : forall a b. a -> b -> {fst: a, snd: b} = <exp>
-/// ```
-///
-/// Since this unirecord will eventually be interpreted as a record type, we can't know yet when
-/// parsing `fst: a` if `a` will be a type variable or a term variable (while, for all other
-/// constructs, an annotation is a boundary that `forall` binders can't cross). In this example,
-/// there is indeed an enclosing forall binding `a`. With unirecords, before fixing type variables,
-/// we have to wait until we eventually convert the unirecord to a term (in which case we fix all the
-/// top-level annotations) or a type (in which case we do nothing: the enclosing type will trigger
-/// the fix once it's fully constructed). Fixing a unirecord prior to a conversion to a term is
-/// done by [`fix_field_types`].
-pub fn fix_type_vars(ty: &mut Types) {
-    fn fix_type_vars_aux(ty: &mut Types, mut bound_vars: Cow<HashSet<Ident>>) {
-        match ty.0 {
+pub(super) trait FixTypeVars {
+    /// Post-process a type at the right hand side of an annotation by replacing each unbound type
+    /// variable by a term variable with the same identifier seen as a custom contract
+    /// (`TypeF::Var(id)` to `TypeF::Flat(Term::Var(id))`).
+    ///
+    /// Since parsing is done bottom-up, and given the specification of the uniterm syntax for
+    /// variables occurring in types, we often can't know right away if a such a variable occurrence
+    /// will eventually be a type variable or a term variable seen as a custom contract.
+    ///
+    /// Take for example `a -> b`. At this stage, `a` and `b` could be both variables referring to a
+    /// contract (e.g. in `x | a -> b`) or a type variable (e.g. in `x | forall a b. a -> b`),
+    /// depending on enclosing `forall`s. To handle both cases, we initially parse all variables inside
+    /// types as type variables. When reaching the right-hand side of an annotation, because `forall`s
+    /// can only bind locally in a type, we can then decide the actual nature of each occurrence. We
+    /// thus recurse into the newly constructed type to change those type variables that are not
+    /// actually bound by a `forall` to be term variables. This is the role of `fix_type_vars()`.
+    ///
+    /// Once again because `forall`s only bind variables locally, and don't bind inside contracts, we
+    /// don't have to recurse into contracts and this pass will only visit each node of the AST at most
+    /// once in total.
+    ///
+    /// There is one subtlety with unirecords, though. A unirecord can still be in interpreted as a
+    /// record type later. Take the following example:
+    ///
+    /// ```nickel
+    /// let mk_pair : forall a b. a -> b -> {fst: a, snd: b} = <exp>
+    /// ```
+    ///
+    /// Since this unirecord will eventually be interpreted as a record type, we can't know yet when
+    /// parsing `fst: a` if `a` will be a type variable or a term variable (while, for all other
+    /// constructs, an annotation is a boundary that `forall` binders can't cross). In this example,
+    /// there is indeed an enclosing forall binding `a`. With unirecords, before fixing type variables,
+    /// we have to wait until we eventually convert the unirecord to a term (in which case we fix all the
+    /// top-level annotations) or a type (in which case we do nothing: the enclosing type will trigger
+    /// the fix once it's fully constructed). Fixing a unirecord prior to a conversion to a term is
+    /// done by [`fix_field_types`].
+    fn fix_type_vars(&mut self) {
+        self.fix_type_subvars(Cow::Owned(HashSet::new()))
+    }
+
+    /// Fix type vars, given a set of var bound by foralls enclosing this type.
+    fn fix_type_subvars(&mut self, bound_vars: Cow<HashSet<Ident>>);
+}
+
+impl FixTypeVars for Types {
+    fn fix_type_subvars(&mut self, mut bound_vars: Cow<HashSet<Ident>>) {
+        match self.0 {
             TypeF::Dyn
             | TypeF::Num
             | TypeF::Bool
@@ -358,44 +367,49 @@ pub fn fix_type_vars(ty: &mut Types) {
             | TypeF::Flat(_)
             | TypeF::Wildcard(_) => (),
             TypeF::Arrow(ref mut s, ref mut t) => {
-                fix_type_vars_aux(s.as_mut(), Cow::Borrowed(bound_vars.as_ref()));
-                fix_type_vars_aux(t.as_mut(), bound_vars);
+                (&mut *s).fix_type_subvars(Cow::Borrowed(bound_vars.as_ref()));
+                (&mut *t).fix_type_subvars(bound_vars);
             }
             TypeF::Var(ref mut id) => {
                 if !bound_vars.contains(id) {
                     let id = *id;
                     let pos = id.pos;
-                    ty.0 = TypeF::Flat(RichTerm::new(Term::Var(id), pos));
+                    self.0 = TypeF::Flat(RichTerm::new(Term::Var(id), pos));
                 }
             }
             TypeF::Forall {ref var, ref var_kind, ref mut body} => {
                 bound_vars.to_mut().insert(var.clone());
-                fix_type_vars_aux(&mut *body, bound_vars);
+                (&mut *body).fix_type_subvars(bound_vars);
             }
-            // TypeF::RowExtend(_, ref mut ty_opt, ref mut tail) => {
-            //     if let Some(ref mut ty) = *ty_opt {
-            //         fix_type_vars_aux(ty.as_mut(), Cow::Borrowed(bound_vars.as_ref()));
-            //     }
-            //
-            //     // We don't touch a row tail that is a type variable, because the typechecker
-            //     // relies on row types being well-formed, which the parser must ensure.
-            //     // Well-formedness requires that only type variables and `Dyn` may appear in a row
-            //     // tail position, so we don't turn such variables into term variables (having a
-            //     // contract in tail position doesn't make sense, in the current model at least,
-            //     // both for typechecking and at evaluation).
-            //     if !matches!((**tail).0, TypeF::Var(_)) {
-            //         fix_type_vars_aux(tail.as_mut(), bound_vars);
-            //     }
-            // }
             TypeF::Dict(ref mut ty) | TypeF::Array(ref mut ty) => {
-                fix_type_vars_aux(ty.as_mut(), bound_vars)
+                (&mut *ty).fix_type_subvars(bound_vars)
             }
-            TypeF::Enum(ref mut ty) => todo!(),
-            TypeF::Record(ref mut ty) => todo!(),
+            TypeF::Enum(ref mut erows) => erows.fix_type_subvars(bound_vars),
+            TypeF::Record(ref mut rrows) => rrows.fix_type_subvars(bound_vars),
         }
     }
+}
 
-    fix_type_vars_aux(ty, Cow::Owned(HashSet::new()))
+impl FixTypeVars for RecordRows {
+    fn fix_type_subvars(&mut self, bound_vars: Cow<HashSet<Ident>>) {
+        match self.0 {
+            RecordRowsF::Empty => (),
+            RecordRowsF::TailDyn => (),
+            // We can't have a contract in tail position, so we don't fix `TailVar`.
+            RecordRowsF::TailVar(_) => (),
+            RecordRowsF::Extend {ref mut row, ref mut tail} => {
+                row.types.fix_type_subvars(Cow::Borrowed(bound_vars.as_ref()));
+                tail.fix_type_subvars(bound_vars)
+            }
+        }
+    }
+}
+
+impl FixTypeVars for EnumRows {
+    fn fix_type_subvars(&mut self, bound_vars: Cow<HashSet<Ident>>) {
+        // An enum row doesn't contain any subtypes (beside other enum rows). No term variable can
+        // appear in it, so we don't have to traverse it at all.
+    }
 }
 
 /// Fix the type variables of types appearing as annotations of record fields. See
@@ -403,11 +417,11 @@ pub fn fix_type_vars(ty: &mut Types) {
 pub fn fix_field_types(rt: &mut RichTerm) {
     if let Term::MetaValue(ref mut m) = SharedTerm::make_mut(&mut rt.term) {
         if let Some(Contract { ref mut types, .. }) = m.types {
-            fix_type_vars(types);
+            types.fix_type_vars();
         }
 
         for ctr in m.contracts.iter_mut() {
-            fix_type_vars(&mut ctr.types);
+            ctr.types.fix_type_vars();
         }
     }
 }
