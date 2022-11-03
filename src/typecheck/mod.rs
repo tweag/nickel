@@ -172,10 +172,11 @@ impl<E: TermEnvironment + Clone> std::convert::TryInto<Types> for GenericUnifTyp
     }
 }
 
-// As opposed to `UnifType` and `UnifRecordRows` which can contain contract, and thus need the
-// additional environment parameter (see e.g. `from_record_rows`), we can convert enum rows
-// directly to unif enum rows without additional data: instead of implementing a function
-// `from_enum_rows`, we rather implement the more natural trait `From<EnumRows>`.
+// As opposed to `UnifType` and `UnifRecordRows` which can contain types and thus contracts, with
+// all the subtleties associated to contract equality checking (see `typecheck::eq` module), we can
+// convert enum rows directly to unifiable enum rows without additional data: instead of
+// implementing a function `from_enum_rows`, we rather implement the more natural trait
+// `From<EnumRows>`.
 impl From<EnumRows> for UnifEnumRows {
     fn from(erows: EnumRows) -> Self {
         UnifEnumRows::Concrete(
@@ -1413,14 +1414,15 @@ fn replace_wildcards_with_var(
     ty: Types,
     env: &SimpleTermEnvironment,
 ) -> UnifType {
-    fn replace_rrows(rrows: RecordRows) -> UnifRecordRows { todo!() }
-    fn replace_erows(erows: EnumRows) -> UnifEnumRows { todo!() }
+    fn replace_rrows(table: &mut UnifTable, wildcard_vars: &mut Vec<UnifType>, rrows: RecordRows, env: &SimpleTermEnvironment) -> UnifRecordRows {
+        UnifRecordRows::Concrete(rrows.0.map(|ty| Box::new(replace_wildcards_with_var(table, wildcard_vars, *ty, env)), |rrows| Box::new(replace_rrows(table, wildcard_vars, *rrows, env))))
+    }
 
     match ty.0 {
         TypeF::Wildcard(i) => get_wildcard_var(table, wildcard_vars, i),
         TypeF::Flat(t) => UnifType::Contract(t, env.clone()),
         _ => UnifType::Concrete(
-            ty.0.map(|ty| Box::new(replace_wildcards_with_var(table, wildcard_vars, *ty, env)), replace_rrows, replace_erows),
+            ty.0.map(|ty| Box::new(replace_wildcards_with_var(table, wildcard_vars, *ty, env)), |rrows| replace_rrows(table, wildcard_vars, rrows, env), UnifEnumRows::from),
         ),
     }
 }
