@@ -42,6 +42,7 @@ pub fn transform_no_free_vars(
                 rt = substitute_wildcards::transform_one(rt, wildcards);
             }
             // before anything, we have to desugar the syntax
+            let rt = inherit::transform_one(rt);
             let rt = desugar_destructuring::transform_one(rt);
             // We need to do contract generation before wrapping stuff in variables
             let rt = apply_contracts::transform_one(rt)?;

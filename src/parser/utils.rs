@@ -318,7 +318,11 @@ pub fn elaborate_field_path(
 
 /// Build a record from a list of field definitions. If a field is defined several times, the
 /// different definitions are merged.
-pub fn build_record<I>(fields: I, attrs: RecordAttrs) -> Term
+pub fn build_record<I>(
+    fields: I,
+    attrs: RecordAttrs,
+    inh: Vec<(Vec<Ident>, Option<RichTerm>)>,
+) -> Term
 where
     I: IntoIterator<Item = (FieldPathElem, RichTerm)> + Debug,
 {
@@ -390,7 +394,7 @@ where
         RecordData::new(static_fields, attrs, None),
         dynamic_fields,
         None,
-        vec![],
+        inh,
     )
 }
 

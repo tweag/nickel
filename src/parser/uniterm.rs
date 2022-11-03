@@ -297,7 +297,7 @@ impl TryFrom<UniRecord> for RichTerm {
                 })
                 .collect::<Result<Vec<_>, _>>()?;
 
-            Ok(RichTerm::from(build_record(elaborated, attrs)))
+            Ok(RichTerm::from(build_record(elaborated, attrs, vec![])))
         };
 
         result.map(|rt| rt.with_pos(pos))

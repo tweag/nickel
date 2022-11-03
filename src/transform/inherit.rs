@@ -6,6 +6,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
     match_sharedterm! {rt.term, with {
     Term::RecRecord(record, dyn_fields, deps, inh) => {
         let mut fields = record.clone();
+        println!("inherit len: {}", inh.len());
         let renaming: Vec<(Vec<_>, Vec<_>, Option<RichTerm>)> = inh.into_iter().map(|(ids, rt)| {
             if rt.is_some() {
                 // need a fresh var only for the record. a static access will be

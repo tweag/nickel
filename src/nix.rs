@@ -165,7 +165,7 @@ impl ToNickel for rnix::ast::Expr {
                     })
                     .collect();
 
-                RichTerm::from(build_record(fields, Default::default()))
+                build_record(fields, Default::default(), inherited).into()
             }
 
             // In nix it's allowed to define vars named `true`, `false` or `null`.
