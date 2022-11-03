@@ -460,23 +460,10 @@ pub mod record {
         where
             F: FnMut(Ident, RichTerm) -> RichTerm,
         {
-            self.filter_map_fields(|id, t| Some(f(id, t)))
-        }
-
-        /// Returns the record resulting from applying the provided function
-        /// to each field, and removing any field for which the function returns
-        /// None.
-        ///
-        /// Note that `f` is taken as `mut` in order to allow it to mutate
-        /// external state while iterating.
-        pub fn filter_map_fields<F>(self, mut f: F) -> Self
-        where
-            F: FnMut(Ident, RichTerm) -> Option<RichTerm>,
-        {
             let fields = self
                 .fields
                 .into_iter()
-                .filter_map(|(id, t)| f(id, t).map(|t| (id, t)))
+                .map(|(id, t)| (id, f(id, t)))
                 .collect();
             RecordData { fields, ..self }
         }

@@ -619,14 +619,12 @@ impl<R: ImportResolver> VirtualMachine<R> {
                             let f_as_var = f.body.closurize(&mut env, f.env);
 
                             // As for `ArrayMap` (see above), we closurize the content of fields
-                            let record = record.filter_map_fields(|id, t| {
-                                if is_empty_optional(&t, &env) { None } else {
-                                    let pos = t.pos.into_inherited();
-                                    let map_app = mk_app!(f_as_var.clone(), mk_term::string(id.label()), t)
-                                        .closurize(&mut shared_env, env.clone())
-                                        .with_pos(pos);
-                                    Some(map_app)
-                                }
+                            let record = record.map_fields_without_optionals(&env, |id, t| {
+                                let pos = t.pos.into_inherited();
+                                let map_app = mk_app!(f_as_var.clone(), mk_term::string(id.label()), t)
+                                    .closurize(&mut shared_env, env.clone())
+                                    .with_pos(pos);
+                                map_app
                             });
 
                             Ok(Closure {
@@ -1147,18 +1145,16 @@ impl<R: ImportResolver> VirtualMachine<R> {
                         Term::Record(record) if !record.fields.is_empty() => {
                             let mut shared_env = Environment::new();
 
-                            let record = record.filter_map_fields(|id, t| {
-                                if is_empty_optional(&t, &env) { None } else {
-                                    let stack_elem = Some(callstack::StackElem::Field {
-                                        id: id.clone(),
-                                        pos_record: pos,
-                                        pos_field: t.pos,
-                                        pos_access: pos_op,
-                                    });
-                                    let forced = mk_term::op1(UnaryOp::Force(stack_elem), t)
-                                        .closurize(&mut shared_env, env.clone());
-                                    Some(forced)
-                                }
+                            let record = record.map_fields_without_optionals(&env, |id, t| {
+                                let stack_elem = Some(callstack::StackElem::Field {
+                                    id: id.clone(),
+                                    pos_record: pos,
+                                    pos_field: t.pos,
+                                    pos_access: pos_op,
+                                });
+                                let forced = mk_term::op1(UnaryOp::Force(stack_elem), t)
+                                    .closurize(&mut shared_env, env.clone());
+                                forced
                             });
 
                             let terms = record.fields.clone().into_values();
@@ -2618,62 +2614,58 @@ impl PushPriority {
     fn push_into_record(&self, record: RecordData, env: &Environment, pos: TermPos) -> Closure {
         let mut new_env = Environment::new();
 
-        let record = record.filter_map_fields(|_, rt| {
-            if is_empty_optional(&rt, &env) {
-                None
-            } else {
-                // There is a subtlety with respect to overriding here. Take:
-                //
-                // ```nickel
-                // ({foo = bar + 1, bar = 1} | _push_default) & {bar = 2}
-                // ```
-                //
-                // In the example above, if we just map `$push_default` on the value of `foo` and
-                // closurize it into a new, normal thunk (non revertible), we lose the ability to
-                // override `foo` and we end up with the unexpected result `{foo = 2, bar = 2}`.
-                //
-                // What we want is that:
-                //
-                // ```nickel
-                // {foo = bar + 1, bar = 1} | _push_default
-                // ```
-                //
-                // is equivalent to writing:
-                //
-                // ```nickel
-                // {foo | default = bar + 1, bar | default = 1}
-                // ```
-                //
-                // For revertible thunks, we don't want to only map the push operator on the
-                // current cached value, but also on the original expression.
-                //
-                // To do so, we create a new independent copy of the original thunk by mapping the
-                // function over both expressions (in the sense of both the original expression and
-                // the cached expression). This logic is encapsulated by `Thunk::map`.
-                let pos = rt.pos;
+        let record = record.map_fields_without_optionals(&env, |_, rt| {
+            // There is a subtlety with respect to overriding here. Take:
+            //
+            // ```nickel
+            // ({foo = bar + 1, bar = 1} | _push_default) & {bar = 2}
+            // ```
+            //
+            // In the example above, if we just map `$push_default` on the value of `foo` and
+            // closurize it into a new, normal thunk (non revertible), we lose the ability to
+            // override `foo` and we end up with the unexpected result `{foo = 2, bar = 2}`.
+            //
+            // What we want is that:
+            //
+            // ```nickel
+            // {foo = bar + 1, bar = 1} | _push_default
+            // ```
+            //
+            // is equivalent to writing:
+            //
+            // ```nickel
+            // {foo | default = bar + 1, bar | default = 1}
+            // ```
+            //
+            // For revertible thunks, we don't want to only map the push operator on the
+            // current cached value, but also on the original expression.
+            //
+            // To do so, we create a new independent copy of the original thunk by mapping the
+            // function over both expressions (in the sense of both the original expression and
+            // the cached expression). This logic is encapsulated by `Thunk::map`.
+            let pos = rt.pos;
 
-                let thunk = match rt.as_ref() {
-                    Term::Var(id) => {
-                        env.get(id)
-                            .unwrap()
-                            .map(|Closure { ref body, ref env }| Closure {
-                                body: self.apply_push_op(body.clone()),
-                                env: env.clone(),
-                            })
-                    }
-                    _ => eval::lazy::Thunk::new(
-                        Closure {
-                            body: self.apply_push_op(rt),
+            let thunk = match rt.as_ref() {
+                Term::Var(id) => {
+                    env.get(id)
+                        .unwrap()
+                        .map(|Closure { ref body, ref env }| Closure {
+                            body: self.apply_push_op(body.clone()),
                             env: env.clone(),
-                        },
-                        eval::IdentKind::Record,
-                    ),
-                };
+                        })
+                }
+                _ => eval::lazy::Thunk::new(
+                    Closure {
+                        body: self.apply_push_op(rt),
+                        env: env.clone(),
+                    },
+                    eval::IdentKind::Record,
+                ),
+            };
 
-                let fresh_id = Ident::fresh();
-                new_env.insert(fresh_id.clone(), thunk);
-                Some(RichTerm::new(Term::Var(fresh_id), pos))
-            }
+            let fresh_id = Ident::fresh();
+            new_env.insert(fresh_id.clone(), thunk);
+            RichTerm::new(Term::Var(fresh_id), pos)
         });
 
         Closure {
@@ -2886,6 +2878,33 @@ fn eq(env: &mut Environment, c1: Closure, c2: Closure) -> EqResult {
             }
         }
         (_, _) => EqResult::Bool(false),
+    }
+}
+
+trait RecordDataExt {
+    fn map_fields_without_optionals<F>(self, env: &Environment, f: F) -> Self
+    where
+        F: FnMut(Ident, RichTerm) -> RichTerm;
+}
+
+impl RecordDataExt for RecordData {
+    /// Returns the record resulting from applying the provided function
+    /// to each field, and removing any field which is an empty optional
+    /// in the provided environment.
+    ///
+    /// Note that `f` is taken as `mut` in order to allow it to mutate
+    /// external state while iterating.
+    fn map_fields_without_optionals<F>(self, env: &Environment, mut f: F) -> Self
+    where
+        F: FnMut(Ident, RichTerm) -> RichTerm,
+    {
+        let fields = self
+            .fields
+            .into_iter()
+            .filter(|(_, t)| !is_empty_optional(t, env))
+            .map(|(id, t)| (id, f(id, t)))
+            .collect();
+        Self { fields, ..self }
     }
 }
 
