@@ -55,7 +55,7 @@ use crate::{
     identifier::Ident,
     term::{Contract, MetaValue, RichTerm, StrChunk, Term, TraverseOrder},
     types::{
-        EnumRow, EnumRows, EnumRowsF, RecordRow, RecordRowF, RecordRows, RecordRowsF, TypeF, Types,
+        EnumRow, EnumRows, EnumRowsF, RecordRowF, RecordRows, RecordRowsF, TypeF, Types,
         VarKind,
     },
     {mk_tyw_arrow, mk_tyw_enum, mk_tyw_enum_row, mk_tyw_record, mk_tyw_row},
@@ -88,7 +88,7 @@ pub type Wildcards = Vec<Types>;
 
 pub type VarId = usize;
 
-pub type GenericUnifRecordRow<E: TermEnvironment + Clone> = RecordRowF<Box<GenericUnifType<E>>>;
+pub type GenericUnifRecordRow<E> = RecordRowF<Box<GenericUnifType<E>>>;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum GenericUnifRecordRows<E: TermEnvironment + Clone> {
@@ -1456,19 +1456,21 @@ fn replace_wildcards_with_var(
         rrows: RecordRows,
         env: &SimpleTermEnvironment,
     ) -> UnifRecordRows {
-        UnifRecordRows::Concrete(rrows.0.map(
-            |ty| Box::new(replace_wildcards_with_var(table, wildcard_vars, *ty, env)),
-            |rrows| Box::new(replace_rrows(table, wildcard_vars, *rrows, env)),
+        UnifRecordRows::Concrete(rrows.0.map_state(
+            |ty, (table, wildcard_vars)| Box::new(replace_wildcards_with_var(table, wildcard_vars, *ty, env)),
+            |rrows, (table, wildcard_vars)| Box::new(replace_rrows(table, wildcard_vars, *rrows, env)),
+            &mut (table, wildcard_vars)
         ))
     }
 
     match ty.0 {
         TypeF::Wildcard(i) => get_wildcard_var(table, wildcard_vars, i),
         TypeF::Flat(t) => UnifType::Contract(t, env.clone()),
-        _ => UnifType::Concrete(ty.0.map(
-            |ty| Box::new(replace_wildcards_with_var(table, wildcard_vars, *ty, env)),
-            |rrows| replace_rrows(table, wildcard_vars, rrows, env),
-            UnifEnumRows::from,
+        _ => UnifType::Concrete(ty.0.map_state(
+            |ty, (table, wildcard_vars)| Box::new(replace_wildcards_with_var(table, wildcard_vars, *ty, env)),
+            |rrows, (table, wildcard_vars)| replace_rrows(table, wildcard_vars, rrows, env),
+            |erows, _| UnifEnumRows::from(erows),
+            &mut (table, wildcard_vars),
         )),
     }
 }
@@ -1794,10 +1796,10 @@ pub fn unify(
                 })
             }
             (TypeF::Flat(s), TypeF::Flat(t)) => Err(UnifError::IncomparableFlatTypes(s, t)),
-            (TypeF::Enum(erows1), TypeF::Enum(erows2)) => unify_erows(state, ctxt, erows1, erows2)
+            (TypeF::Enum(erows1), TypeF::Enum(erows2)) => unify_erows(state, ctxt, erows1.clone(), erows2.clone())
                 .map_err(|err| err.into_unif_err(mk_tyw_enum!(; erows1), mk_tyw_enum!(; erows2))),
             (TypeF::Record(rrows1), TypeF::Record(rrows2)) => {
-                unify_rrows(state, ctxt, rrows1, rrows2).map_err(|err| {
+                unify_rrows(state, ctxt, rrows1.clone(), rrows2.clone()).map_err(|err| {
                     err.into_unif_err(mk_tyw_record!(; rrows1), mk_tyw_record!(; rrows2))
                 })
             }
@@ -2253,49 +2255,6 @@ impl UnifTable {
 /// String}`.
 pub type RowConstr = HashMap<VarId, HashSet<Ident>>;
 
-/// Constrain record rows `rrows` to not contain a row declaration for `id`. Propagate those
-/// constraint to potential record rows unification variable. Return an error if a row declaration
-/// with label `id` is encountered.
-fn constrain_rrows(
-    state: &mut State,
-    rrows: UnifRecordRows,
-    id: Ident,
-) -> Result<(), RowUnifError> {
-    match rrows {
-        UnifRecordRows::UnifVar(p) => match state.table.root_rrows(p) {
-            ty @ UnifRecordRows::Concrete(_) => constrain_rrows(state, ty, id),
-            // Constraints only applies to row unification variables
-            UnifRecordRows::UnifVar(root) => {
-                if let Some(v) = state.constr.get_mut(&root) {
-                    v.insert(id);
-                } else {
-                    state.constr.insert(root, vec![id].into_iter().collect());
-                }
-                Ok(())
-            }
-            //TODO ROWS: previously ill formed row exception. Now that can't happen, but is it really ok
-            //to constrain on a existential variable without doing anything?
-            UnifRecordRows::Constant(_) => unimplemented!(),
-        },
-        UnifRecordRows::Concrete(RecordRowsF::Empty) => Ok(()),
-        UnifRecordRows::Concrete(RecordRowsF::Extend { row, tail }) => {
-            if row.id == id {
-                Err(RowUnifError::UnsatConstr(id, Some(*row.types)))
-            } else {
-                constrain_rrows(state, *tail, id)
-            }
-        }
-        UnifRecordRows::Concrete(RecordRowsF::TailVar(id)) => {
-            Err(RowUnifError::UnboundTypeVariable(id))
-        }
-        //TODO ROWS: previously ill formed row exception. Now that can't happen, but is it really ok
-        //to constrain on a existential variable without doing anything?
-        UnifRecordRows::Concrete(RecordRowsF::TailDyn) | UnifRecordRows::Constant(_) => {
-            unimplemented!()
-        }
-    }
-}
-
 trait ConstrainFreshRRowsVar {
     /// Add row constraints on a freshly instantiated type variable.
     ///
@@ -2501,7 +2460,7 @@ impl ConstrainFreshERowsVar for UnifEnumRows {
 pub fn constr_unify_rrows(
     constr: &mut RowConstr,
     var_id: VarId,
-    mut rrows: &UnifRecordRows,
+    rrows: &UnifRecordRows,
 ) -> Result<(), RowUnifError> {
     if let Some(p_constr) = constr.remove(&var_id) {
         match rrows {
@@ -2539,7 +2498,7 @@ pub fn constr_unify_rrows(
 pub fn constr_unify_erows(
     constr: &mut RowConstr,
     var_id: VarId,
-    mut erows: &UnifEnumRows,
+    erows: &UnifEnumRows,
 ) -> Result<(), RowUnifError> {
     if let Some(p_constr) = constr.remove(&var_id) {
         match erows {

@@ -128,9 +128,10 @@ pub fn to_type(
                 RecordRows(RecordRowsF::TailVar(cst_name(reported_names, names, c)))
             }
             UnifRecordRows::Concrete(t) => {
-                let mapped = t.map(
-                    |btyp| Box::new(to_type(table, reported_names, names, *btyp)),
-                    |rrows| Box::new(rrows_to_type(table, reported_names, names, *rrows)),
+                let mapped = t.map_state(
+                    |btyp, names| Box::new(to_type(table, reported_names, names, *btyp)),
+                    |rrows, names| Box::new(rrows_to_type(table, reported_names, names, *rrows)),
+                    names
                 );
                 RecordRows(mapped)
             }
@@ -168,10 +169,11 @@ pub fn to_type(
         },
         UnifType::Constant(c) => Types(TypeF::Var(cst_name(reported_names, names, c))),
         UnifType::Concrete(t) => {
-            let mapped = t.map(
-                |btyp| Box::new(to_type(table, reported_names, names, *btyp)),
-                |rrows| rrows_to_type(table, reported_names, names, rrows),
-                |erows| erows_to_type(table, reported_names, names, erows),
+            let mapped = t.map_state(
+                |btyp, names| Box::new(to_type(table, reported_names, names, *btyp)),
+                |rrows, names| rrows_to_type(table, reported_names, names, rrows),
+                |erows, names| erows_to_type(table, reported_names, names, erows),
+                names
             );
             Types(mapped)
         }

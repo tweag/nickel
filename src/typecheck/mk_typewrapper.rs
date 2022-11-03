@@ -1,5 +1,5 @@
 //! Helpers for building `TypeWrapper`s.
-use super::{EnumRow, EnumRowsF, RecordRowF, RecordRowsF, TypeF, UnifType};
+use super::{TypeF, UnifType};
 
 /// Multi-ary arrow constructor for types implementing `Into<TypeWrapper>`.
 #[macro_export]
