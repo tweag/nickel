@@ -1399,22 +1399,22 @@ impl ToDiagnostic<FileId> for TypecheckError {
                 let row_msg = |word, field, ty| format!("The type of the expression was {} to have the row `{}: {}`", word, field, ty);
                 let default_msg = |word, ty| format!("The type of the expression was {} to be `{}`", word, ty);
 
-                let note1 = if let TypeF::Record(rrows) = expd.0 {
+                let note1 = if let TypeF::Record(rrows) = &expd.0 {
                     match rrows.row_find_path(path.as_slice()) {
-                        Some(ty) => row_msg("expected", field, ty),
-                        None => default_msg("expected", expd),
+                        Some(ty) => row_msg("expected", &field, ty),
+                        None => default_msg("expected", &expd),
                     }
                 } else {
-                    default_msg("expected", expd)
+                    default_msg("expected", &expd)
                 };
 
-                let note2 = if let TypeF::Record(rrows) = actual.0 {
+                let note2 = if let TypeF::Record(rrows) = &actual.0 {
                     match rrows.row_find_path(path.as_slice()) {
-                        Some(ty) => row_msg("inferred", field, ty),
-                        None => default_msg("inferred", expd),
+                        Some(ty) => row_msg("inferred", &field, ty),
+                        None => default_msg("inferred", &expd),
                     }
                 } else {
-                    default_msg("inferred", expd)
+                    default_msg("inferred", &expd)
                 };
 
                 let mut diags = vec![Diagnostic::error()

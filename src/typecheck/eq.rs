@@ -457,14 +457,14 @@ fn type_eq_bounded<E: TermEnvironment>(
             (TypeF::Flat(t1), TypeF::Flat(t2)) => contract_eq_bounded(state, t1, env1, t2, env2),
             (
                 TypeF::Forall {
-                    var: i1,
+                    var: var1,
                     var_kind: var_kind1,
-                    body: tyw1,
+                    body: body1,
                 },
                 TypeF::Forall {
-                    var: i2,
+                    var: var2,
                     var_kind: var_kind2,
-                    body: tyw2,
+                    body: body2,
                 },
             ) => {
                 let cst_id = state.fresh_cst_id();
@@ -473,18 +473,21 @@ fn type_eq_bounded<E: TermEnvironment>(
                     return false;
                 }
 
+                let body1 = body1.clone();
+                let body2 = body2.clone();
+
                 let (uty1_subst, uty2_subst) = match var_kind1 {
                     VarKind::Type => (
-                        tyw1.subst_type(i1, &GenericUnifType::Constant(cst_id)),
-                        tyw2.subst_type(i2, &GenericUnifType::Constant(cst_id)),
+                        body1.subst_type(var1, &GenericUnifType::Constant(cst_id)),
+                        body2.subst_type(var2, &GenericUnifType::Constant(cst_id)),
                     ),
                     VarKind::RecordRows => (
-                        tyw1.subst_rrows(i1, &GenericUnifRecordRows::Constant(cst_id)),
-                        tyw2.subst_rrows(i2, &GenericUnifRecordRows::Constant(cst_id)),
+                        body1.subst_rrows(var1, &GenericUnifRecordRows::Constant(cst_id)),
+                        body2.subst_rrows(var2, &GenericUnifRecordRows::Constant(cst_id)),
                     ),
                     VarKind::EnumRows => (
-                        tyw1.subst_erows(i1, &UnifEnumRows::Constant(cst_id)),
-                        tyw2.subst_erows(i2, &UnifEnumRows::Constant(cst_id)),
+                        body1.subst_erows(var1, &UnifEnumRows::Constant(cst_id)),
+                        body2.subst_erows(var2, &UnifEnumRows::Constant(cst_id)),
                     ),
                 };
 

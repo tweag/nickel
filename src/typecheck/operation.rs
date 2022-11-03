@@ -63,10 +63,10 @@ pub fn get_uop_type(
         }
         // forall rows a. { id: a | rows} -> a
         UnaryOp::StaticAccess(id) => {
-            let row = UnifType::UnifVar(state.table.fresh_type_var_id());
-            let res = UnifType::UnifVar(state.table.fresh_type_var_id());
+            let rows = state.table.fresh_rrows_uvar();
+            let res = state.table.fresh_type_uvar();
 
-            (mk_tyw_record!((id.clone(), res.clone()); row), res)
+            (mk_tyw_record!((id.clone(), res.clone()); rows), res)
         }
         // forall a b. Array a -> (a -> b) -> Array b
         UnaryOp::ArrayMap() => {
@@ -160,10 +160,10 @@ pub fn get_uop_type(
         UnaryOp::ToStr() => (mk_typewrapper::dynamic(), mk_typewrapper::str()),
         // Str -> Num
         UnaryOp::NumFromStr() => (mk_typewrapper::str(), mk_typewrapper::num()),
-        // Str -> < | Dyn>
+        // Str -> < | a> for a rigid type variable a
         UnaryOp::EnumFromStr() => (
             mk_typewrapper::str(),
-            mk_tyw_enum!(; mk_typewrapper::dynamic()),
+            mk_tyw_enum!(; state.table.fresh_erows_const()),
         ),
         // Str -> Str -> Bool
         UnaryOp::StrIsMatch() => (

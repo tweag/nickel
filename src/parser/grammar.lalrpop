@@ -287,7 +287,7 @@ RecordOperationChain: RichTerm = {
 
 RecordRowTail: RecordRows = {
     <Ident> => RecordRows(RecordRowsF::TailVar(<>)),
-    "Dyn" => RecordRows(RecordRowsF::Dyn),
+    "Dyn" => RecordRows(RecordRowsF::TailDyn),
 };
 
 // A record, that can be later interpreted either as a record literal or as a
@@ -764,10 +764,10 @@ TypeAtom: Types = {
                 EnumRows(
                     match tail {
                         Some(id) => EnumRowsF::TailVar(id),
-                        None => EnumRowsF::RowEmpty(),
+                        None => EnumRowsF::Empty,
                     }
                 ),
-                |erows, row| EnumRows(EnumRowsF::Extend { row, None, tail: Box::new(erows) })
+                |erows, row| EnumRows(EnumRowsF::Extend { row, tail: Box::new(erows) })
             );
         Types(TypeF::Enum(ty))
     },

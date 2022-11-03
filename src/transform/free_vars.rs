@@ -61,8 +61,11 @@ impl CollectFreeVars for RichTerm {
             Term::Let(id, t1, t2, attrs) => {
                 let mut fresh = HashSet::new();
 
-                let t1_set = if attrs.rec { &mut fresh } else { free_vars };
-                t1.collect_free_vars(t1_set);
+                if attrs.rec {
+                    t1.collect_free_vars(&mut fresh);
+                } else {
+                    t1.collect_free_vars(free_vars);
+                }
 
                 t2.collect_free_vars(&mut fresh);
                 fresh.remove(id);

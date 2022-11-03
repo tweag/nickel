@@ -974,9 +974,9 @@ fn walk_rrows<L: Linearizer>(
         // don't check here for unbound type variables again.
         | RecordRowsF::TailVar(_)
         | RecordRowsF::TailDyn => Ok(()),
-        RecordRowsF::Extend { row, tail } => {
-            walk_type(state, ctxt, lin, linearizer, &*row.types)?;
-            walk_rrows(state, ctxt, lin, linearizer, &*tail)
+        RecordRowsF::Extend { ref row, ref tail } => {
+            walk_type(state, ctxt.clone(), lin, linearizer.scope(), &row.types)?;
+            walk_rrows(state, ctxt, lin, linearizer, tail)
         }
     }
 }
