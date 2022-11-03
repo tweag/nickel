@@ -428,7 +428,7 @@ impl<'a> Iterator for EnumRowsIterator<'a, EnumRows> {
 /// Retrieve the contract corresponding to a type variable occurrence in a type as a `RichTerm`.
 /// Helper used by the `subcontract` functions. `pol` is the polarity of the variable occurrence
 /// inside the original type.
-fn get_var(
+fn get_var_contract(
     vars: &HashMap<Ident, (RichTerm, RichTerm)>,
     id: &Ident,
     pol: bool,
@@ -557,7 +557,7 @@ impl RecordRows {
         let tail = match &rrows.0 {
             RecordRowsF::Empty => contract::empty_tail(),
             RecordRowsF::TailDyn => contract::dyn_tail(),
-            RecordRowsF::TailVar(id) => get_var(&h, id, false)?,
+            RecordRowsF::TailVar(id) => get_var_contract(&h, id, false)?,
             // Safety: the while above excludes that `tail` can have the form `Extend`.
             RecordRowsF::Extend { .. } => unreachable!(),
         };
@@ -662,7 +662,7 @@ impl Types {
                 t.subcontract(h, pol, sy)?
             ),
             TypeF::Flat(ref t) => t.clone(),
-            TypeF::Var(ref id) => get_var(&h, id, true)?,
+            TypeF::Var(ref id) => get_var_contract(&h, id, true)?,
             TypeF::Forall {
                 ref var, ref body, ..
             } => {
