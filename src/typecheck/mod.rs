@@ -126,7 +126,16 @@ impl<E: TermEnvironment + Clone> std::convert::TryInto<RecordRows> for GenericUn
     type Error = ();
 
     fn try_into(self) -> Result<RecordRows, ()> {
-        todo!() 
+        match self {
+            GenericUnifRecordRows::Concrete(rrows) => {
+                let converted: RecordRowsF<Box<Types>, Box<RecordRows>> = rrows.try_map(|uty| Ok(Box::new(GenericUnifType::try_into(*uty)?)), |urrows| {
+                    let rrows: RecordRows = (*urrows).try_into()?;
+                    Ok(Box::new(rrows))
+                })?;
+                Ok(RecordRows(converted))
+            }
+            _ => Err(()),
+        }
     }
 }
 
@@ -134,7 +143,13 @@ impl std::convert::TryInto<EnumRows> for UnifEnumRows {
     type Error = ();
 
     fn try_into(self) -> Result<EnumRows, ()> {
-        todo!() 
+        match self {
+            UnifEnumRows::Concrete(erows) => {
+                let converted: EnumRowsF<Box<EnumRows>> = erows.try_map(|erows| Ok(Box::new(UnifEnumRows::try_into(*erows)?)))?;
+                Ok(EnumRows(converted))
+            }
+            _ => Err(()),
+        }
     }
 }
 
@@ -162,7 +177,7 @@ impl UnifEnumRows {
     /// [`TypeWrapper::Contract`] which also stores a term environment, required for checking type
     /// equality involving contracts.
     pub fn from_enum_rows(erows: EnumRows) -> Self {
-        todo!() 
+        todo!()
     }
 
     pub fn iter<'a>(&'a self) -> EnumRowsIterator<'a, UnifEnumRows> {
