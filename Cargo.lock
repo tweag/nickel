@@ -1232,6 +1232,7 @@ dependencies = [
  "lsp-types",
  "nickel-lang",
  "pretty_assertions",
+ "regex",
  "serde",
  "serde_json",
  "structopt",

@@ -25,6 +25,8 @@ use crate::{
     trace::Trace,
 };
 
+pub const DOT_COMPL_TRIGGER: &'static str = ".";
+
 pub struct Server {
     pub connection: Connection,
     pub cache: Cache,
@@ -50,7 +52,7 @@ impl Server {
             definition_provider: Some(OneOf::Left(true)),
             references_provider: Some(OneOf::Left(true)),
             completion_provider: Some(CompletionOptions {
-                trigger_characters: Some(vec![]),
+                trigger_characters: Some(vec![String::from(DOT_COMPL_TRIGGER)]),
                 ..Default::default()
             }),
             document_symbol_provider: Some(OneOf::Left(true)),

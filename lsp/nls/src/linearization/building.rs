@@ -80,6 +80,7 @@ impl Building {
         for (ident, value) in record_fields.iter() {
             let id = self.id_gen().get_and_advance();
             self.push(LinearizationItem {
+                env: env.clone(),
                 id,
                 pos: ident.pos,
                 // temporary, the actual type is resolved later and the item retyped
