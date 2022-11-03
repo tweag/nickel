@@ -625,7 +625,7 @@ pub struct State<'a> {
     /// variable which introduced it, if any.
     ///
     /// Used for error reporting.
-    names: &'a mut HashMap<usize, Ident>,
+    names: &'a mut HashMap<VarId, Ident>,
     /// A mapping from wildcard ID to unification variable.
     wildcard_vars: &'a mut Vec<UnifType>,
 }
@@ -634,7 +634,7 @@ pub struct State<'a> {
 /// It is basically an owned-subset of the typecheking state.
 pub struct Extra {
     pub table: UnifTable,
-    pub names: HashMap<usize, Ident>,
+    pub names: HashMap<VarId, Ident>,
     pub wildcards: Vec<Types>,
 }
 
@@ -1737,48 +1737,10 @@ pub fn unify(
                 })
             }
             (TypeF::Flat(s), TypeF::Flat(t)) => Err(UnifError::IncomparableFlatTypes(s, t)),
-            // (r1, r2) if r1.is_row_type() && r2.is_row_type() => {
-            //     unify_rows(state, &ctxt, r1.clone(), r2.clone()).map_err(|err| {
-            //         err.into_unif_err(UnifType::Concrete(r1), UnifType::Concrete(r2))
-            //     })
-            // }
             (TypeF::Enum(erows1), TypeF::Enum(erows2)) => unify_erows(state, ctxt, erows1, erows2).map_err(|err| err.into_unif_err(mk_tyw_enum!(; erows1), mk_tyw_enum!(; erows2))),
-            // match (*uty1, *uty2) {
-            //     (UnifType::Concrete(r1), UnifType::Concrete(r2))
-            //         if r1.is_row_type() && r2.is_row_type() =>
-            //     {
-            //         unify_rows(state, &ctxt, r1.clone(), r2.clone())
-            //             .map_err(|err| err.into_unif_err(mk_tyw_enum!(; r1), mk_tyw_enum!(; r2)))
-            //     }
-            //     (UnifType::Concrete(r), _) if !r.is_row_type() => {
-            //         Err(UnifError::IllformedType(mk_tyw_enum!(; r)))
-            //     }
-            //     (_, UnifType::Concrete(r)) if !r.is_row_type() => {
-            //         Err(UnifError::IllformedType(mk_tyw_enum!(; r)))
-            //     }
-            //     (uty1, uty2) => unify(state, ctxt, uty1, uty2),
-            // },
             (TypeF::Record(rrows1), TypeF::Record(rrows2)) => unify_rrows(state, ctxt, rrows1, rrows2).map_err(|err| {
                          err.into_unif_err(mk_tyw_record!(; rrows1), mk_tyw_record!(; rrows2))
                      }),
-                // (UnifType::Concrete(r1), UnifType::Concrete(r2))
-                //     if r1.is_row_type() && r2.is_row_type() =>
-                // {
-                //     unify_rows(state, &ctxt, r1.clone(), r2.clone()).map_err(|err| {
-                //         err.into_unif_err(mk_tyw_record!(; r1), mk_tyw_record!(; r2))
-                //     })
-                // }
-                // (UnifType::Concrete(TypeF::Var(id)), _)
-                // | (_, UnifType::Concrete(TypeF::Var(id))) => {
-                //     Err(UnifError::UnboundTypeVariable(id))
-                // }
-                // (UnifType::Concrete(r), _) | (_, UnifType::Concrete(r))
-                //     if !r.is_row_type() =>
-                // {
-                //     Err(UnifError::IllformedType(mk_tyw_record!(; r)))
-                // }
-                // (uty1, uty2) => unify(state, ctxt, uty1, uty2),
-            // },
             (TypeF::Dict(t1), TypeF::Dict(t2)) => unify(state, &ctxt, *t1, *t2),
             (TypeF::Forall {var: var1, var_kind: var_kind1, body: body1}, TypeF::Forall {var: var2, var_kind: var_kind2, body: body2}) if var_kind1 == var_kind2 => {
 
@@ -2002,54 +1964,54 @@ impl UnifTable {
     }
 
     /// Assign a type to a unification variable.
-    pub fn assign_type(&mut self, var: usize, uty: UnifType) {
+    pub fn assign_type(&mut self, var: VarId, uty: UnifType) {
         debug_assert!(self.types[var].is_none());
         self.types[var] = Some(uty);
     }
 
     /// Assign a type to a unification variable.
-    pub fn assign_rrows(&mut self, var: usize, rrows: UnifRecordRows) {
+    pub fn assign_rrows(&mut self, var: VarId, rrows: UnifRecordRows) {
         debug_assert!(self.rrows[var].is_none());
         self.rrows[var] = Some(rrows);
     }
 
     /// Assign a type to a unification variable.
-    pub fn assign_erows(&mut self, var: usize, erows: UnifEnumRows) {
+    pub fn assign_erows(&mut self, var: VarId, erows: UnifEnumRows) {
         debug_assert!(self.erows[var].is_none());
         self.erows[var] = Some(erows);
     }
 
     /// Retrieve the current assignment of a unification variable.
-    pub fn get_type(&self, var: usize) -> Option<&UnifType> {
+    pub fn get_type(&self, var: VarId) -> Option<&UnifType> {
         self.types[var].as_ref()
     }
 
     /// Retrieve the current assignment of a unification variable.
-    pub fn get_rrows(&self, var: usize) -> Option<&UnifRecordRows> {
+    pub fn get_rrows(&self, var: VarId) -> Option<&UnifRecordRows> {
         self.rrows[var].as_ref()
     }
 
     /// Retrieve the current assignment of a unification variable.
-    pub fn get_erows(&self, var: usize) -> Option<&UnifEnumRows> {
+    pub fn get_erows(&self, var: VarId) -> Option<&UnifEnumRows> {
         self.erows[var].as_ref()
     }
 
     /// Create a fresh variable identifier and allocate a corresponding slot in the table.
-    fn fresh_type_var_id(&mut self) -> usize {
+    fn fresh_type_var_id(&mut self) -> VarId {
         let next = self.types.len();
         self.types.push(None);
         next
     }
 
     /// Create a fresh variable identifier and allocate a corresponding slot in the table.
-    fn fresh_rrows_var_id(&mut self) -> usize {
+    fn fresh_rrows_var_id(&mut self) -> VarId {
         let next = self.rrows.len();
         self.rrows.push(None);
         next
     }
 
     /// Create a fresh variable identifier and allocate a corresponding slot in the table.
-    fn fresh_erows_var_id(&mut self) -> usize {
+    fn fresh_erows_var_id(&mut self) -> VarId {
         let next = self.erows.len();
         self.erows.push(None);
         next
@@ -2090,12 +2052,12 @@ impl UnifTable {
     ///
     /// This corresponds to the find in union-find.
     // TODO This should be a union find like algorithm
-    pub fn root_type(&self, x: usize) -> UnifType {
+    pub fn root_type(&self, var_id: VarId) -> UnifType {
         // All queried variable must have been introduced by `new_var` and thus a corresponding entry
         // must always exist in `state`. If not, the typechecking algorithm is not correct, and we
         // panic.
-        match &self.types[x] {
-            None => UnifType::UnifVar(x),
+        match &self.types[var_id] {
+            None => UnifType::UnifVar(var_id),
             Some(UnifType::UnifVar(y)) => self.root_type(*y),
             Some(ty) => ty.clone(),
         }
@@ -2106,12 +2068,12 @@ impl UnifTable {
     ///
     /// This corresponds to the find in union-find.
     // TODO This should be a union find like algorithm
-    pub fn root_rrows(&self, x: usize) -> UnifRecordRows {
+    pub fn root_rrows(&self, var_id: VarId) -> UnifRecordRows {
         // All queried variable must have been introduced by `new_var` and thus a corresponding entry
         // must always exist in `state`. If not, the typechecking algorithm is not correct, and we
         // panic.
-        match &self.rrows[x] {
-            None => UnifRecordRows::UnifVar(x),
+        match &self.rrows[var_id] {
+            None => UnifRecordRows::UnifVar(var_id),
             Some(UnifRecordRows::UnifVar(y)) => self.root_rrows(*y),
             Some(ty) => ty.clone(),
         }
@@ -2122,12 +2084,12 @@ impl UnifTable {
     ///
     /// This corresponds to the find in union-find.
     // TODO This should be a union find like algorithm
-    pub fn root_erows(&self, x: usize) -> UnifEnumRows {
+    pub fn root_erows(&self, var_id: VarId) -> UnifEnumRows {
         // All queried variable must have been introduced by `new_var` and thus a corresponding entry
         // must always exist in `state`. If not, the typechecking algorithm is not correct, and we
         // panic.
-        match &self.erows[x] {
-            None => UnifEnumRows::UnifVar(x),
+        match &self.erows[var_id] {
+            None => UnifEnumRows::UnifVar(var_id),
             Some(UnifEnumRows::UnifVar(y)) => self.root_erows(*y),
             Some(ty) => ty.clone(),
         }
@@ -2137,7 +2099,7 @@ impl UnifTable {
     /// variables). The returned UID is guaranteed to be different from all the currently live
     /// variables. This is also the value that will be returned by the next call to `fresh_var()`,
     /// and is currently simply the length of the unification table.
-    pub fn type_uvars_count(&self) -> usize {
+    pub fn type_uvars_count(&self) -> VarId {
         self.types.len()
     }
 
@@ -2145,7 +2107,7 @@ impl UnifTable {
     /// variables). The returned UID is guaranteed to be different from all the currently live
     /// variables. This is also the value that will be returned by the next call to `fresh_var()`,
     /// and is currently simply the length of the unification table.
-    pub fn rrows_uvar_count(&self) -> usize {
+    pub fn rrows_uvar_count(&self) -> VarId {
         self.rrows.len()
     }
 
@@ -2153,7 +2115,7 @@ impl UnifTable {
     /// variables). The returned UID is guaranteed to be different from all the currently live
     /// variables. This is also the value that will be returned by the next call to `fresh_var()`,
     /// and is currently simply the length of the unification table.
-    pub fn erows_uvar_count(&self) -> usize {
+    pub fn erows_uvar_count(&self) -> VarId {
         self.erows.len()
     }
 }
@@ -2164,7 +2126,7 @@ impl UnifTable {
 /// `{ someId: SomeType | r }`). It is a set of identifiers that said row must NOT contain, to
 /// forbid ill-formed types with multiple declaration of the same id, for example `{ a: Num, a:
 /// String}`.
-pub type RowConstr = HashMap<usize, HashSet<Ident>>;
+pub type RowConstr = HashMap<VarId, HashSet<Ident>>;
 
 /// Constrain record rows `rrows` to not contain a row declaration for `id`. Propagate those
 /// constraint to potential record rows unification variable. Return an error if a row declaration
@@ -2219,7 +2181,7 @@ trait ConstrainFreshRRowsVar {
     /// preconditions are assumed:
     ///
     /// - `state.table.root_rrows(p) == p`
-    fn constrain_fresh_rrows_var(&self, state: &mut State, p: usize);
+    fn constrain_fresh_rrows_var(&self, state: &mut State, var_id: VarId);
 }
 
 trait ConstrainFreshERowsVar {
@@ -2239,22 +2201,22 @@ trait ConstrainFreshERowsVar {
     /// preconditions are assumed:
     ///
     /// - `state.table.root_rrows(p) == p`
-    fn constrain_fresh_erows_var(&self, state: &mut State, p: usize);
+    fn constrain_fresh_erows_var(&self, state: &mut State, var_id: VarId);
 }
 
 impl ConstrainFreshRRowsVar for UnifType {
-    fn constrain_fresh_rrows_var(&self, state: &mut State, p: usize) {
+    fn constrain_fresh_rrows_var(&self, state: &mut State, var_id: VarId) {
         match self {
                 UnifType::UnifVar(u) => match state.table.root_type(*u) {
                     UnifType::UnifVar(_) => (),
-                    ty => ty.constrain_fresh_rrows_var(state, p),
+                    ty => ty.constrain_fresh_rrows_var(state, var_id),
                 },
                 UnifType::Concrete(ty) => match ty {
                     TypeF::Arrow(uty1, uty2) => {
-                        uty1.constrain_fresh_rrows_var(state, p);
-                        uty2.constrain_fresh_rrows_var(state, p);
+                        uty1.constrain_fresh_rrows_var(state, var_id);
+                        uty2.constrain_fresh_rrows_var(state, var_id);
                     }
-                    TypeF::Forall {body, ..} => body.constrain_fresh_rrows_var(state, p),
+                    TypeF::Forall {body, ..} => body.constrain_fresh_rrows_var(state, var_id),
                     TypeF::Dyn
                     | TypeF::Num
                     | TypeF::Bool
@@ -2265,9 +2227,9 @@ impl ConstrainFreshRRowsVar for UnifType {
                     // There can be no record rows unification variable inside an enum type
                     | TypeF::Enum(_) => (),
                     | TypeF::Wildcard(_) => (),
-                    TypeF::Record(rrows) => rrows.constrain_fresh_rrows_var(state, p),
+                    TypeF::Record(rrows) => rrows.constrain_fresh_rrows_var(state, var_id),
                     TypeF::Array(uty)
-                    | TypeF::Dict(uty) => uty.constrain_fresh_rrows_var(state, p),
+                    | TypeF::Dict(uty) => uty.constrain_fresh_rrows_var(state, var_id),
                 },
                 UnifType::Constant(_) | UnifType::Contract(..) => (),
             }
@@ -2275,15 +2237,15 @@ impl ConstrainFreshRRowsVar for UnifType {
 }
 
 impl ConstrainFreshRRowsVar for UnifRecordRows {
-    fn constrain_fresh_rrows_var(&self, state: &mut State, p: usize) {
-        fn constrain_var(state: &mut State, mut constr: HashSet<Ident>, uty: &UnifRecordRows, p: usize) {
+    fn constrain_fresh_rrows_var(&self, state: &mut State, var_id: VarId) {
+        fn constrain_var(state: &mut State, mut constr: HashSet<Ident>, uty: &UnifRecordRows, var_id: VarId) {
             match uty {
-                UnifRecordRows::UnifVar(u) if p == *u && !constr.is_empty() => {
-                    state.constr.insert(p, constr);
+                UnifRecordRows::UnifVar(u) if var_id == *u && !constr.is_empty() => {
+                    state.constr.insert(var_id, constr);
                 }
                 UnifRecordRows::UnifVar(u) => match state.table.root_rrows(*u) {
                     UnifRecordRows::UnifVar(_) => (),
-                    rrows => constrain_var(state, constr, &rrows, p),
+                    rrows => constrain_var(state, constr, &rrows, var_id),
                 },
                 UnifRecordRows::Concrete(ty) => match ty {
                     RecordRowsF::Empty
@@ -2291,31 +2253,31 @@ impl ConstrainFreshRRowsVar for UnifRecordRows {
                     | RecordRowsF::TailVar(_) => (),
                     RecordRowsF::Extend {row, tail} => {
                         constr.insert(row.id.clone());
-                        row.types.constrain_fresh_rrows_var(state, p);
-                        constrain_var(state, constr, &*tail, p);
+                        row.types.constrain_fresh_rrows_var(state, var_id);
+                        constrain_var(state, constr, &*tail, var_id);
                     }
                 },
                 UnifRecordRows::Constant(_) => (),
             }
         }
 
-        constrain_var(state, HashSet::new(), self, p);
+        constrain_var(state, HashSet::new(), self, var_id);
     }
 }
 
 impl ConstrainFreshERowsVar for UnifType {
-    fn constrain_fresh_erows_var(&self, state: &mut State, p: usize) {
+    fn constrain_fresh_erows_var(&self, state: &mut State, var_id: VarId) {
         match self {
                 UnifType::UnifVar(u) => match state.table.root_type(*u) {
                     UnifType::UnifVar(_) => (),
-                    ty => ty.constrain_fresh_erows_var(state, p),
+                    ty => ty.constrain_fresh_erows_var(state, var_id),
                 },
                 UnifType::Concrete(ty) => match ty {
                     TypeF::Arrow(uty1, uty2) => {
-                        uty1.constrain_fresh_erows_var(state, p);
-                        uty2.constrain_fresh_erows_var(state, p);
+                        uty1.constrain_fresh_erows_var(state, var_id);
+                        uty2.constrain_fresh_erows_var(state, var_id);
                     }
-                    TypeF::Forall {body, ..} => body.constrain_fresh_erows_var(state, p),
+                    TypeF::Forall {body, ..} => body.constrain_fresh_erows_var(state, var_id),
                     TypeF::Dyn
                     | TypeF::Num
                     | TypeF::Bool
@@ -2324,10 +2286,10 @@ impl ConstrainFreshERowsVar for UnifType {
                     | TypeF::Flat(_)
                     | TypeF::Var(_)
                     | TypeF::Wildcard(_) => (),
-                    TypeF::Enum(erows) => erows.constrain_fresh_erows_var(state, p),
-                    TypeF::Record(rrows) => rrows.constrain_fresh_erows_var(state, p),
+                    TypeF::Enum(erows) => erows.constrain_fresh_erows_var(state, var_id),
+                    TypeF::Record(rrows) => rrows.constrain_fresh_erows_var(state, var_id),
                     TypeF::Array(uty)
-                    | TypeF::Dict(uty) => uty.constrain_fresh_erows_var(state, p),
+                    | TypeF::Dict(uty) => uty.constrain_fresh_erows_var(state, var_id),
                 },
                 UnifType::Constant(_) | UnifType::Contract(..) => (),
             }
@@ -2335,19 +2297,19 @@ impl ConstrainFreshERowsVar for UnifType {
 }
 
 impl ConstrainFreshERowsVar for UnifRecordRows {
-    fn constrain_fresh_erows_var(&self, state: &mut State, p: usize) {
+    fn constrain_fresh_erows_var(&self, state: &mut State, var_id: VarId) {
             match self {
                 UnifRecordRows::UnifVar(u) => match state.table.root_rrows(*u) {
                     UnifRecordRows::UnifVar(_) => (),
-                    rrows => rrows.constrain_fresh_erows_var(state, p),
+                    rrows => rrows.constrain_fresh_erows_var(state, var_id),
                 },
                 UnifRecordRows::Concrete(ty) => match ty {
                     RecordRowsF::Empty
                     | RecordRowsF::TailDyn
                     | RecordRowsF::TailVar(_) => (),
                     RecordRowsF::Extend {row, tail} => {
-                        row.types.constrain_fresh_erows_var(state, p);
-                        tail.constrain_fresh_erows_var(state, p);
+                        row.types.constrain_fresh_erows_var(state, var_id);
+                        tail.constrain_fresh_erows_var(state, var_id);
                     }
                 },
                 UnifRecordRows::Constant(_) => (),
@@ -2356,29 +2318,29 @@ impl ConstrainFreshERowsVar for UnifRecordRows {
 }
 
 impl ConstrainFreshERowsVar for UnifEnumRows {
-    fn constrain_fresh_erows_var(&self, state: &mut State, p: usize) {
-        fn constrain_var(state: &mut State, mut constr: HashSet<Ident>, uty: &UnifEnumRows, p: usize) {
+    fn constrain_fresh_erows_var(&self, state: &mut State, var_id: VarId) {
+        fn constrain_var(state: &mut State, mut constr: HashSet<Ident>, uty: &UnifEnumRows, var_id: VarId) {
             match uty {
-                UnifEnumRows::UnifVar(u) if p == *u && !constr.is_empty() => {
-                    state.constr.insert(p, constr);
+                UnifEnumRows::UnifVar(u) if var_id == *u && !constr.is_empty() => {
+                    state.constr.insert(var_id, constr);
                 }
                 UnifEnumRows::UnifVar(u) => match state.table.root_erows(*u) {
                     UnifEnumRows::UnifVar(_) => (),
-                    erows => constrain_var(state, constr, &erows, p),
+                    erows => constrain_var(state, constr, &erows, var_id),
                 },
                 UnifEnumRows::Concrete(ty) => match ty {
                     EnumRowsF::Empty
                     | EnumRowsF::TailVar(_) => (),
                     EnumRowsF::Extend {row, tail} => {
                         constr.insert(row.clone());
-                        constrain_var(state, constr, &*tail, p);
+                        constrain_var(state, constr, &*tail, var_id);
                     }
                 },
                 UnifEnumRows::Constant(_) => (),
             }
         }
 
-        constrain_var(state, HashSet::new(), self, p);
+        constrain_var(state, HashSet::new(), self, var_id);
     }
 }
 
@@ -2400,10 +2362,10 @@ impl ConstrainFreshERowsVar for UnifEnumRows {
 ///    `u` must inherit all the constraints of `p`.
 pub fn constr_unify_rrows(
     constr: &mut RowConstr,
-    p: usize,
+    var_id: VarId,
     mut rrows: &UnifRecordRows,
 ) -> Result<(), RowUnifError> {
-    if let Some(p_constr) = constr.remove(&p) {
+    if let Some(p_constr) = constr.remove(&var_id) {
             match rrows {
                 UnifRecordRows::Concrete(RecordRowsF::Extend {row, ..})
                     if p_constr.contains(&row.id) =>
@@ -2413,8 +2375,8 @@ pub fn constr_unify_rrows(
                         Some(UnifType::Concrete(TypeF::Record(rrows.clone()))),
                     ))
                 }
-                UnifRecordRows::Concrete(RecordRowsF::Extend {tail, ..}) => constr_unify_rrows(constr, p, tail),
-                UnifRecordRows::UnifVar(u) if *u != p => {
+                UnifRecordRows::Concrete(RecordRowsF::Extend {tail, ..}) => constr_unify_rrows(constr, var_id, tail),
+                UnifRecordRows::UnifVar(u) if *u != var_id => {
                     if let Some(u_constr) = constr.get_mut(u) {
                         u_constr.extend(p_constr.into_iter());
                     } else {
@@ -2437,10 +2399,10 @@ pub fn constr_unify_rrows(
 /// Same as `constr_unify_rrows`, but for enum rows.
 pub fn constr_unify_erows(
     constr: &mut RowConstr,
-    p: usize,
+    var_id: VarId,
     mut erows: &UnifEnumRows,
 ) -> Result<(), RowUnifError> {
-    if let Some(p_constr) = constr.remove(&p) {
+    if let Some(p_constr) = constr.remove(&var_id) {
             match erows {
                 UnifEnumRows::Concrete(EnumRowsF::Extend {row, ..})
                     if p_constr.contains(&row) =>
@@ -2450,8 +2412,8 @@ pub fn constr_unify_erows(
                         Some(UnifType::Concrete(TypeF::Enum(erows.clone()))),
                     ))
                 }
-                UnifEnumRows::Concrete(EnumRowsF::Extend {tail, ..}) => constr_unify_erows(constr, p, tail),
-                UnifEnumRows::UnifVar(u) if *u != p => {
+                UnifEnumRows::Concrete(EnumRowsF::Extend {tail, ..}) => constr_unify_erows(constr, var_id, tail),
+                UnifEnumRows::UnifVar(u) if *u != var_id => {
                     if let Some(u_constr) = constr.get_mut(u) {
                         u_constr.extend(p_constr.into_iter());
                     } else {
@@ -2472,7 +2434,7 @@ pub fn constr_unify_erows(
 fn get_wildcard_var(
     table: &mut UnifTable,
     wildcard_vars: &mut Vec<UnifType>,
-    id: usize,
+    id: VarId,
 ) -> UnifType {
     // If `id` is not in `wildcard_vars`, populate it with fresh vars up to `id`
     if id >= wildcard_vars.len() {
