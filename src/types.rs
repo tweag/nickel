@@ -305,7 +305,6 @@ impl<Ty, RRows> RecordRowsF<Ty, RRows> {
         let f_rrows_lifted = |rrows: RRows| -> Result<RRowsO, ()> { Ok(f_rrows(rrows)) };
         self.try_map(f_ty_lifted, f_rrows_lifted).unwrap()
     }
-
 }
 
 impl<ERows> EnumRowsF<ERows> {
@@ -396,11 +395,17 @@ impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
 }
 
 impl RecordRows {
-    fn traverse<FTy, S, E>(self, f: &mut FTy, state: &mut S, order: TraverseOrder) -> Result<RecordRows, E>
+    fn traverse<FTy, S, E>(
+        self,
+        f: &mut FTy,
+        state: &mut S,
+        order: TraverseOrder,
+    ) -> Result<RecordRows, E>
     where
-        FTy: FnMut(Types, &mut S) -> Result<Types, E> {
-            todo!()
-        }
+        FTy: FnMut(Types, &mut S) -> Result<Types, E>,
+    {
+        todo!()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -849,18 +854,30 @@ impl Types {
         FTy: FnMut(Types, &mut S) -> Result<Types, E>,
     {
         let inner = match order {
-            TraverseOrder::TopDown => self.0.try_map(|ty| Ok(Box::new(f(*ty, state)?)), |rrows| Ok(rrows), |erows| Ok(erows))?.try_map(
-                |ty| Ok(Box::new(ty.traverse(f, state, order)?)),
-                |rrows| rrows.traverse(f, state, order),
-                |erows| Ok(erows),
-            )?,
-            TraverseOrder::BottomUp => self.0
+            TraverseOrder::TopDown => self
+                .0
                 .try_map(
-                |ty| Ok(Box::new(ty.traverse(f, state, order)?)),
-                |rrows| rrows.traverse(f, state, order),
-                |erows| Ok(erows),
+                    |ty| Ok(Box::new(f(*ty, state)?)),
+                    |rrows| Ok(rrows),
+                    |erows| Ok(erows),
                 )?
-                .try_map(|ty| Ok(Box::new(f(*ty, state)?)), |rrows| Ok(rrows), |erows| Ok(erows))?
+                .try_map(
+                    |ty| Ok(Box::new(ty.traverse(f, state, order)?)),
+                    |rrows| rrows.traverse(f, state, order),
+                    |erows| Ok(erows),
+                )?,
+            TraverseOrder::BottomUp => self
+                .0
+                .try_map(
+                    |ty| Ok(Box::new(ty.traverse(f, state, order)?)),
+                    |rrows| rrows.traverse(f, state, order),
+                    |erows| Ok(erows),
+                )?
+                .try_map(
+                    |ty| Ok(Box::new(f(*ty, state)?)),
+                    |rrows| Ok(rrows),
+                    |erows| Ok(erows),
+                )?,
         };
 
         Ok(Types(inner))
@@ -869,13 +886,36 @@ impl Types {
 
 impl Display for RecordRows {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        todo!()
+        match self.0 {
+            RecordRowsF::Extend {row, tail} => {
+               write!(f, "{}: {}", row.id, row.types)?;
+
+               match tail.0 {
+                    RecordRowsF::Extend {..} => write!(f, ", {}", tail),
+                    _ => write!(f, "{}", tail),
+               }
+            }
+            RecordRowsF::Empty => Ok(()),
+            RecordRowsF::TailVar(id) => write!(f, " ; {}", id),
+            RecordRowsF::TailDyn => write!(f, " ; Dyn"),
+        }
     }
 }
 
 impl Display for EnumRows {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        todo!()
+        match self.0 {
+            EnumRowsF::Extend {row, tail} => {
+               write!(f, "`{}", row)?;
+
+               match tail.0 {
+                    EnumRowsF::Extend {..} => write!(f, ", {}", tail),
+                    _ => write!(f, "{}", tail),
+               }
+            }
+            EnumRowsF::Empty => Ok(()),
+            EnumRowsF::TailVar(id) => write!(f, " ; {}", id),
+        }
     }
 }
 
@@ -910,20 +950,6 @@ impl Display for Types {
             TypeF::Enum(row) => write!(f, "[|{}|]", row),
             TypeF::Record(row) => write!(f, "{{{}}}", row),
             TypeF::Dict(ty) => write!(f, "{{_: {}}}", ty),
-            // TypeF::RowExtend(id, ty_opt, tail) => {
-            //     if let Some(ty) = ty_opt {
-            //         write!(f, "{}: {}", id, ty)?;
-            //     } else {
-            //         write!(f, "`{}", id)?;
-            //     }
-            //
-            //     match tail.0 {
-            //         TypeF::RowEmpty => write!(f, "{}", tail),
-            //         TypeF::Var(_) => write!(f, " ; {}", tail),
-            //         TypeF::Dyn => write!(f, " ; Dyn"),
-            //         _ => write!(f, ", {}", tail),
-            //     }
-            // }
             TypeF::Arrow(dom, codom) => match dom.0 {
                 TypeF::Arrow(_, _) => write!(f, "({}) -> {}", dom, codom),
                 _ => write!(f, "{} -> {}", dom, codom),
