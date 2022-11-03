@@ -11,8 +11,10 @@ use lalrpop_util::ErrorRecovery;
 use crate::{
     eval::callstack::CallStack,
     identifier::Ident,
-    label,
-    label::ty_path,
+    label::{
+        self,
+        ty_path,
+    },
     parser,
     parser::{
         error::{LexicalError, ParseError as InternalParseError},
@@ -23,7 +25,10 @@ use crate::{
     repl,
     serialize::ExportFormat,
     term::RichTerm,
-    types::Types,
+    types::{
+        Types,
+        TypeF,
+    },
 };
 
 /// A general error occurring during either parsing or evaluation.
@@ -1389,14 +1394,27 @@ impl ToDiagnostic<FileId> for TypecheckError {
                 let path_str: Vec<String> = path.clone().into_iter().map(|ident| format!("{}", ident)).collect();
                 let field = path_str.join(".");
 
-                let note1 = match expd.row_find_path(path.as_slice()) {
-                    Some(ty) => format!("The type of the expression was expected to have the row `{}: {}`", field, ty),
-                    None => format!("The type of the expression was expected to be `{}`", expd)
+                //TODO: we should rather have RowMismatch hold a rows, instead of a general type,
+                //than doing this match.
+                let row_msg = |word, field, ty| format!("The type of the expression was {} to have the row `{}: {}`", word, field, ty);
+                let default_msg = |word, ty| format!("The type of the expression was {} to be `{}`", word, ty);
+
+                let note1 = if let TypeF::Record(rrows) = expd.0 {
+                    match rrows.row_find_path(path.as_slice()) {
+                        Some(ty) => row_msg("expected", field, ty),
+                        None => default_msg("expected", expd),
+                    }
+                } else {
+                    default_msg("expected", expd)
                 };
 
-                let note2 = match actual.row_find_path(path.as_slice()) {
-                    Some(ty) => format!("The type of the expression was inferred to have the row `{}: {}`", field, ty),
-                    None => format!("The type of the expression was inferred to be `{}`", actual)
+                let note2 = if let TypeF::Record(rrows) = actual.0 {
+                    match rrows.row_find_path(path.as_slice()) {
+                        Some(ty) => row_msg("inferred", field, ty),
+                        None => default_msg("inferred", expd),
+                    }
+                } else {
+                    default_msg("inferred", expd)
                 };
 
                 let mut diags = vec![Diagnostic::error()

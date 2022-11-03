@@ -20,7 +20,7 @@ use crate::{
         make as mk_term, record::RecordData, BinaryOp, Contract, MetaValue, RecordAttrs, RichTerm,
         StrChunk, Term, UnaryOp,
     },
-    types::{AbsType, Types},
+    types::{TypeF, Types},
 };
 
 /// Distinguish between the standard string separators `"`/`"` and the multi-line string separators
@@ -143,7 +143,7 @@ pub fn combine_match_annots(
         }
         (None, None) => MetaValue {
             contracts: vec![Contract {
-                types: Types(AbsType::Dyn().into()),
+                types: Types(TypeF::Dyn),
                 label: Label {
                     span,
                     ..Default::default()

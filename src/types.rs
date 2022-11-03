@@ -392,6 +392,10 @@ impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
     pub fn is_wildcard(&self) -> bool {
         matches!(self, TypeF::Wildcard(_))
     }
+
+    pub fn is_flat(&self) -> bool {
+        matches!(self, TypeF::Flat(_))
+    }
 }
 
 impl RecordRows {

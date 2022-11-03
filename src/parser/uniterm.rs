@@ -6,7 +6,7 @@ use utils::{build_record, elaborate_field_path, FieldPath, FieldPathElem};
 use crate::{
     position::{RawSpan, TermPos},
     term::{Contract, MergePriority, MetaValue, RecordAttrs, RichTerm, SharedTerm, Term},
-    types::{RecordRow, RecordRows, RowsF, TypeF, Types, UnboundTypeVariableError},
+    types::{RecordRow, RecordRows, RecordRowsF, TypeF, Types, UnboundTypeVariableError},
 };
 
 use std::{borrow::Cow, collections::HashSet, convert::TryFrom};
@@ -181,7 +181,7 @@ impl UniRecord {
             .try_fold(
                 self.tail
                     .map(|(tail, _)| tail)
-                    .unwrap_or(RecordRows(RowsF::Empty)),
+                    .unwrap_or(RecordRows(RecordRowsF::Empty)),
                 |acc: RecordRows, (mut path, rt)| {
                     // We don't support compound paths for types, yet.
                     if path.len() > 1 {
@@ -214,7 +214,7 @@ impl UniRecord {
                                         opt: false,
                                         priority: MergePriority::Neutral,
                                         value: None,
-                                    }) if contracts.is_empty() => Ok(RecordRows(RowsF::Extend {
+                                    }) if contracts.is_empty() => Ok(RecordRows(RecordRowsF::Extend {
                                         row: RecordRow {
                                             id,
                                             types: Box::new(ctrt.types),
@@ -368,9 +368,9 @@ pub fn fix_type_vars(ty: &mut Types) {
                     ty.0 = TypeF::Flat(RichTerm::new(Term::Var(id), pos));
                 }
             }
-            TypeF::Forall(ref id, ref mut ty) => {
-                bound_vars.to_mut().insert(id.clone());
-                fix_type_vars_aux(&mut *ty, bound_vars);
+            TypeF::Forall {ref var, ref var_kind, ref mut body} => {
+                bound_vars.to_mut().insert(var.clone());
+                fix_type_vars_aux(&mut *body, bound_vars);
             }
             // TypeF::RowExtend(_, ref mut ty_opt, ref mut tail) => {
             //     if let Some(ref mut ty) = *ty_opt {
