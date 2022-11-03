@@ -305,6 +305,7 @@ impl<Ty, RRows> RecordRowsF<Ty, RRows> {
         let f_rrows_lifted = |rrows: RRows| -> Result<RRowsO, ()> { Ok(f_rrows(rrows)) };
         self.try_map(f_ty_lifted, f_rrows_lifted).unwrap()
     }
+
 }
 
 impl<ERows> EnumRowsF<ERows> {
@@ -331,6 +332,75 @@ impl<ERows> EnumRowsF<ERows> {
         let f_erows_lifted = |erows: ERows| -> Result<ERowsO, ()> { Ok(f_erows(erows)) };
         self.try_map(f_erows_lifted).unwrap()
     }
+}
+
+impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
+    pub fn try_map<TyO, RRowsO, ERowsO, FTy, FRRows, FERows, E>(
+        self,
+        mut f: FTy,
+        mut f_rrows: FRRows,
+        mut f_erows: FERows,
+    ) -> Result<TypeF<TyO, RRowsO, ERowsO>, E>
+    where
+        FTy: FnMut(Ty) -> Result<TyO, E>,
+        FRRows: FnMut(RRows) -> Result<RRowsO, E>,
+        FERows: FnMut(ERows) -> Result<ERowsO, E>,
+    {
+        match self {
+            TypeF::Dyn => Ok(TypeF::Dyn),
+            TypeF::Num => Ok(TypeF::Num),
+            TypeF::Bool => Ok(TypeF::Bool),
+            TypeF::Str => Ok(TypeF::Str),
+            TypeF::Sym => Ok(TypeF::Sym),
+            TypeF::Flat(t) => Ok(TypeF::Flat(t)),
+            TypeF::Arrow(s, t) => Ok(TypeF::Arrow(f(s)?, f(t)?)),
+            TypeF::Var(i) => Ok(TypeF::Var(i)),
+            TypeF::Forall {
+                var,
+                var_kind,
+                body,
+            } => Ok(TypeF::Forall {
+                var,
+                var_kind,
+                body: f(body)?,
+            }),
+            TypeF::Enum(erows) => Ok(TypeF::Enum(f_erows(erows)?)),
+            TypeF::Record(rrows) => Ok(TypeF::Record(f_rrows(rrows)?)),
+            TypeF::Dict(t) => Ok(TypeF::Dict(f(t)?)),
+            TypeF::Array(t) => Ok(TypeF::Array(f(t)?)),
+            TypeF::Wildcard(i) => Ok(TypeF::Wildcard(i)),
+        }
+    }
+
+    pub fn map<TyO, RRowsO, ERowsO, FTy, FRRows, FERows>(
+        self,
+        mut f: FTy,
+        mut f_rrows: FRRows,
+        mut f_erows: FERows,
+    ) -> TypeF<TyO, RRowsO, ERowsO>
+    where
+        FTy: FnMut(Ty) -> TyO,
+        FRRows: FnMut(RRows) -> RRowsO,
+        FERows: FnMut(ERows) -> ERowsO,
+    {
+        let f_lifted = |ty: Ty| -> Result<TyO, ()> { Ok(f(ty)) };
+        let f_rrows_lifted = |rrows: RRows| -> Result<RRowsO, ()> { Ok(f_rrows(rrows)) };
+        let f_erows_lifted = |erows: ERows| -> Result<ERowsO, ()> { Ok(f_erows(erows)) };
+        self.try_map(f_lifted, f_rrows_lifted, f_erows_lifted)
+            .unwrap()
+    }
+
+    pub fn is_wildcard(&self) -> bool {
+        matches!(self, TypeF::Wildcard(_))
+    }
+}
+
+impl RecordRows {
+    fn traverse<FTy, S, E>(self, f: &mut FTy, state: &mut S, order: TraverseOrder) -> Result<RecordRows, E>
+    where
+        FTy: FnMut(Types, &mut S) -> Result<Types, E> {
+            todo!()
+        }
 }
 
 #[derive(Clone, Debug)]
@@ -511,18 +581,6 @@ impl EnumRows {
         matches!(self.0, EnumRowsF::TailVar(_))
     }
 
-    /// Apply a transformation on a whole type by mapping a faillible function `f` on each node in
-    /// manner as prescribed by the order.
-    /// `f` may return a generic error `E` and use the state `S` which is passed around.
-    pub fn traverse<FTy, S, E>(
-        self,
-        f: &mut FTy,
-        state: &mut S,
-        order: TraverseOrder,
-    ) -> Result<Self, E> {
-        todo!()
-    }
-
     pub fn iter<'a>(&'a self) -> EnumRowsIterator<'a, EnumRows> {
         EnumRowsIterator { erows: Some(self) }
     }
@@ -600,18 +658,6 @@ impl RecordRows {
     /// inserted during pretty pretting.
     pub fn fmt_is_atom(&self) -> bool {
         matches!(self.0, RecordRowsF::TailDyn | RecordRowsF::TailVar(_))
-    }
-
-    /// Apply a transformation on a whole type by mapping a faillible function `f` on each node in
-    /// manner as prescribed by the order.
-    /// `f` may return a generic error `E` and use the state `S` which is passed around.
-    pub fn traverse<FTy, S, E>(
-        self,
-        f: &mut FTy,
-        state: &mut S,
-        order: TraverseOrder,
-    ) -> Result<Self, E> {
-        todo!()
     }
 
     pub fn iter<'a>(&'a self) -> RecordRowsIterator<'a, Types, RecordRows> {
@@ -802,58 +848,22 @@ impl Types {
     where
         FTy: FnMut(Types, &mut S) -> Result<Types, E>,
     {
-        let ty = match order {
-            TraverseOrder::TopDown => f(self, state)?,
-            TraverseOrder::BottomUp => self,
+        let inner = match order {
+            TraverseOrder::TopDown => self.0.try_map(|ty| Ok(Box::new(f(*ty, state)?)), |rrows| Ok(rrows), |erows| Ok(erows))?.try_map(
+                |ty| Ok(Box::new(ty.traverse(f, state, order)?)),
+                |rrows| rrows.traverse(f, state, order),
+                |erows| Ok(erows),
+            )?,
+            TraverseOrder::BottomUp => self.0
+                .try_map(
+                |ty| Ok(Box::new(ty.traverse(f, state, order)?)),
+                |rrows| rrows.traverse(f, state, order),
+                |erows| Ok(erows),
+                )?
+                .try_map(|ty| Ok(Box::new(f(*ty, state)?)), |rrows| Ok(rrows), |erows| Ok(erows))?
         };
 
-        let abs_ty = match ty.0 {
-            TypeF::Dyn
-            | TypeF::Num
-            | TypeF::Bool
-            | TypeF::Str
-            | TypeF::Sym
-            | TypeF::Var(_)
-            | TypeF::Flat(_)
-            | TypeF::Wildcard(_) => Ok(ty.0),
-            TypeF::Forall {
-                var,
-                var_kind,
-                body,
-            } => (*body).traverse(f, state, order).map(|ty| TypeF::Forall {
-                var,
-                var_kind,
-                body: Box::new(ty),
-            }),
-            TypeF::Enum(erows) => erows.traverse(f, state, order).map(TypeF::Enum),
-            TypeF::Record(rrows) => rrows.traverse(f, state, order).map(TypeF::Record),
-            TypeF::Dict(ty_inner) => (*ty_inner)
-                .traverse(f, state, order)
-                .map(Box::new)
-                .map(TypeF::Dict),
-            TypeF::Array(ty_inner) => (*ty_inner)
-                .traverse(f, state, order)
-                .map(Box::new)
-                .map(TypeF::Array),
-            TypeF::Arrow(ty1, ty2) => {
-                let ty1 = (*ty1).traverse(f, state, order)?;
-                let ty2 = (*ty2).traverse(f, state, order)?;
-                Ok(TypeF::Arrow(Box::new(ty1), Box::new(ty2)))
-            } // TypeF::RowExtend(id, ty_row, tail) => {
-              //     let ty_row = ty_row
-              //         .map(|ty| (*ty).traverse(f, state, order))
-              //         .transpose()?;
-              //     let tail = (*tail).traverse(f, state, order)?;
-              //     Ok(TypeF::RowExtend(id, ty_row.map(Box::new), Box::new(tail)))
-              // }
-        }?;
-
-        let result = Types(abs_ty);
-
-        match order {
-            TraverseOrder::TopDown => Ok(result),
-            TraverseOrder::BottomUp => f(result, state),
-        }
+        Ok(Types(inner))
     }
 }
 
