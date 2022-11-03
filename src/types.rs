@@ -425,43 +425,23 @@ impl<'a> Iterator for EnumRowsIterator<'a, EnumRows> {
     }
 }
 
-// /// Concrete, recursive type for a Nickel type.
-// // #[derive(Clone, PartialEq, Debug)]
-// // pub struct Types(pub TypeF<Box<Types>>);
-//
-// /// An item as returned by an iterator over a row type.
-// ///
-// /// The parameter `T` is there because row iterators are implemented for different flavours of
-// /// [`TypeF`] (currently for [`Types`] and [`crate::typewrapper::TypeWrapper`]).
-// pub enum RowIteratorItem<'a, T> {
-//     /// A non-empty tail.
-//     Tail(&'a T),
-//     /// A row binding.
-//     Row(&'a Ident, Option<&'a T>),
-// }
-//
-// /// An iterator over a row type, returning items by reference.
-// pub struct RowIterator<'a, T> {
-//     pub(crate) next: Option<&'a T>,
-// }
-//
-// impl<'a> Iterator for RowIterator<'a, Types> {
-//     type Item = RowIteratorItem<'a, Types>;
-//
-//     fn next(&mut self) -> Option<Self::Item> {
-//         self.next.and_then(|next| match next {
-//             Types(TypeF::RowEmpty) => None,
-//             Types(TypeF::RowExtend(id, ty_row, tail)) => {
-//                 self.next = Some(tail);
-//                 Some(RowIteratorItem::Row(id, ty_row.as_ref().map(Box::as_ref)))
-//             }
-//             ty => {
-//                 self.next = None;
-//                 Some(RowIteratorItem::Tail(ty))
-//             }
-//         })
-//     }
-// }
+/// Retrieve the contract corresponding to a type variable occurrence in a type as a `RichTerm`.
+/// Helper used by the `subcontract` functions. `pol` is the polarity of the variable occurrence
+/// inside the original type.
+fn get_var(
+    vars: &HashMap<Ident, (RichTerm, RichTerm)>,
+    id: &Ident,
+    pol: bool,
+) -> Result<RichTerm, UnboundTypeVariableError> {
+    let (pos, neg) = vars
+        .get(id)
+        .ok_or_else(|| UnboundTypeVariableError(id.clone()))?;
+    if pol {
+        Ok(pos.clone())
+    } else {
+        Ok(neg.clone())
+    }
+}
 
 impl EnumRows {
     fn subcontract(
@@ -470,7 +450,58 @@ impl EnumRows {
         pol: bool,
         sy: &mut i32,
     ) -> Result<RichTerm, UnboundTypeVariableError> {
-        todo!()
+        use crate::stdlib::contract;
+
+        let mut cases = HashMap::new();
+        let mut has_tail = false;
+        let value_arg = Ident::from("x");
+        let label_arg = Ident::from("l");
+
+        for row in self.iter() {
+            match row {
+                EnumRowsIteratorItem::Row(id) => {
+                    cases.insert(id.clone(), mk_term::var(value_arg.clone()));
+                }
+                EnumRowsIteratorItem::TailVar(_) => {
+                    has_tail = true;
+                    break;
+                }
+            }
+        }
+
+        // If the enum type has a tail, the tail must be a universally quantified variable,
+        // and this means that the tag can be anything.
+        let case_body = if has_tail {
+            mk_term::var(value_arg.clone())
+        }
+        // Otherwise, we build a switch with all the tags as cases, which just returns the
+        // original argument, and a default case that blames.
+        //
+        // For example, for an enum type [| `foo, `bar, `baz |], the `case` function looks
+        // like:
+        //
+        // ```
+        // fun l x =>
+        //   switch {
+        //     `foo => x,
+        //     `bar => x,
+        //     `baz => x,
+        //     _ => $enum_fail l
+        //   } x
+        // ```
+        else {
+            RichTerm::from(Term::Switch(
+                mk_term::var(value_arg.clone()),
+                cases,
+                Some(mk_app!(
+                    contract::enum_fail(),
+                    mk_term::var(label_arg.clone())
+                )),
+            ))
+        };
+        let case = mk_fun!(label_arg, value_arg, case_body);
+
+        Ok(mk_app!(contract::enums(), case))
     }
 
     /// Determine if a type is an atom, that is a either an atom or a type delimited by specific
@@ -493,9 +524,7 @@ impl EnumRows {
     }
 
     pub fn iter<'a>(&'a self) -> EnumRowsIterator<'a, EnumRows> {
-        EnumRowsIterator {
-            erows: Some(self),
-        }
+        EnumRowsIterator { erows: Some(self) }
     }
 }
 
@@ -507,7 +536,35 @@ impl RecordRows {
         pol: bool,
         sy: &mut i32,
     ) -> Result<RichTerm, UnboundTypeVariableError> {
-        todo!()
+        use crate::stdlib::contract;
+
+        // We begin by building a record whose arguments are contracts
+        // derived from the types of the statically known fields.
+        let mut rrows = self;
+        let mut fcs = HashMap::new();
+
+        while let RecordRowsF::Extend {
+            row: RecordRowF { id, types: ty },
+            tail,
+        } = &rrows.0
+        {
+            fcs.insert(*id, ty.subcontract(h.clone(), pol, sy)?);
+            rrows = tail
+        }
+
+        // Now that we've dealt with the row extends, we just need to
+        // work out the tail.
+        let tail = match &rrows.0 {
+            RecordRowsF::Empty => contract::empty_tail(),
+            RecordRowsF::TailDyn => contract::dyn_tail(),
+            RecordRowsF::TailVar(id) => get_var(&h, id, false)?,
+            // Safety: the while above excludes that `tail` can have the form `Extend`.
+            RecordRowsF::Extend { .. } => unreachable!(),
+        };
+
+        let rec = RichTerm::from(Term::Record(fcs, Default::default()));
+
+        Ok(mk_app!(contract::record(), rec, tail))
     }
 
     /// Find a nested binding in a record row type. The nested field is given as a list of
@@ -589,21 +646,6 @@ impl Types {
         sy: &mut i32,
     ) -> Result<RichTerm, UnboundTypeVariableError> {
         use crate::stdlib::contract;
-
-        fn get_var(
-            vars: &HashMap<Ident, (RichTerm, RichTerm)>,
-            id: &Ident,
-            pol: bool,
-        ) -> Result<RichTerm, UnboundTypeVariableError> {
-            let (pos, neg) = vars
-                .get(id)
-                .ok_or_else(|| UnboundTypeVariableError(id.clone()))?;
-            if pol {
-                Ok(pos.clone())
-            } else {
-                Ok(neg.clone())
-            }
-        }
 
         let ctr = match self.0 {
             TypeF::Dyn => contract::dynamic(),
@@ -726,89 +768,7 @@ impl Types {
             // }
             // AbsType::Dict(ref ty) => {
             TypeF::Enum(ref erows) => erows.subcontract(h, pol, sy)?,
-            // AbsType::Enum(ref r) => {
-            //     let mut cases = HashMap::new();
-            //     let mut has_tail = false;
-            //     let value_arg = Ident::from("x");
-            //     let label_arg = Ident::from("l");
-            //
-            //     for row in r.iter_as_rows() {
-            //         match row {
-            //             RowIteratorItem::Row(id, _ty) => {
-            //                 debug_assert!(_ty.is_none());
-            //                 cases.insert(id.clone(), mk_term::var(value_arg.clone()));
-            //             }
-            //             RowIteratorItem::Tail(tail) => {
-            //                 // We only expect a type variable in tail position
-            //                 debug_assert!(matches!(tail, Types(AbsType::Var(_))));
-            //                 has_tail = true;
-            //                 break;
-            //             }
-            //         }
-            //     }
-            //
-            //     // If the enum type has a tail, the tail must be a universally quantified variable,
-            //     // and this means that the tag can be anything.
-            //     let case_body = if has_tail {
-            //         mk_term::var(value_arg.clone())
-            //     }
-            //     // Otherwise, we build a switch with all the tags as cases, which just returns the
-            //     // original argument, and a default case that blames.
-            //     //
-            //     // For example, for an enum type [| `foo, `bar, `baz |], the `case` function looks
-            //     // like:
-            //     //
-            //     // ```
-            //     // fun l x =>
-            //     //   switch {
-            //     //     `foo => x,
-            //     //     `bar => x,
-            //     //     `baz => x,
-            //     //     _ => $enum_fail l
-            //     //   } x
-            //     // ```
-            //     else {
-            //         RichTerm::from(Term::Switch(
-            //             mk_term::var(value_arg.clone()),
-            //             cases,
-            //             Some(mk_app!(
-            //                 contract::enum_fail(),
-            //                 mk_term::var(label_arg.clone())
-            //             )),
-            //         ))
-            //     };
-            //     let case = mk_fun!(label_arg, value_arg, case_body);
-            //
-            //     mk_app!(contract::enums(), case)
-            // }
             TypeF::Record(ref rrows) => rrows.subcontract(h, pol, sy)?,
-            // AbsType::Record(ref ty) => {
-            //     // We begin by building a record whose arguments are contracts
-            //     // derived from the types of the statically known fields.
-            //     let mut row = ty;
-            //     let mut fcs = HashMap::new();
-            //
-            //     while let AbsType::RowExtend(id, Some(ty), rest) = &row.0 {
-            //         fcs.insert(*id, ty.subcontract(h.clone(), pol, sy)?);
-            //         row = rest
-            //     }
-            //
-            //     // Now that we've dealt with the row extends, we just need to
-            //     // work out the tail.
-            //     let tail = match &row.0 {
-            //         AbsType::RowEmpty() => contract::empty_tail(),
-            //         AbsType::Dyn() => contract::dyn_tail(),
-            //         AbsType::Var(id) => get_var(&h, id, false)?,
-            //         ty => panic!(
-            //             "types::subcontract(): invalid row tail {:?}",
-            //             Types(ty.clone())
-            //         ),
-            //     };
-            //
-            //     let rec = RichTerm::from(Term::Record(fcs, Default::default()));
-            //
-            //     mk_app!(contract::record(), rec, tail)
-            // }
             TypeF::Dict(ref ty) => {
                 mk_app!(contract::dyn_record(), ty.subcontract(h, pol, sy)?)
             }
