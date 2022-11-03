@@ -1794,17 +1794,7 @@ pub fn unify(
         // The two following cases are not merged just to correctly distinguish between the
         // expected type (first component of the tuple) and the inferred type when reporting a row
         // unification error.
-        (UnifType::UnifVar(p), uty) => {
-            // TODO: only for row types
-            // constr_unify(state.constr, p, &uty)
-            //     .map_err(|err| err.into_unif_err(UnifType::UnifVar(p), uty.clone()))?;
-            state.table.assign_type(p, uty);
-            Ok(())
-        }
-        (uty, UnifType::UnifVar(p)) => {
-            //TODO: only for row types
-            // constr_unify(state.constr, p, &uty)
-            //     .map_err(|err| err.into_unif_err(uty.clone(), UnifType::UnifVar(p)))?;
+        (UnifType::UnifVar(p), uty) | (uty, UnifType::UnifVar(p))  => {
             state.table.assign_type(p, uty);
             Ok(())
         }
@@ -1848,39 +1838,22 @@ pub fn unify_rrows(
             (RecordRowsF::Extend {row: UnifRecordRow {id, types}, tail }, r2 @ RecordRowsF::Extend {..}) => {
                 let (ty2, t2_tail) = rrow_add(state, &id, types.clone(), UnifRecordRows::Concrete(r2))?;
                 unify(state, ctxt, *types, *ty2).map_err(|err| RowUnifError::RowMismatch(id.clone(), Box::new(err)))?;
-                unify_rrows(state, ctxt, *tail, t2_tail) 
-                // match (*tail, t2_tail) {
-                //     (UnifRecordRows::Concrete(r1_tail), UnifRecordRows::Concrete(r2_tail)) => {
-                //         unify_rrows(state, ctxt, r1_tail, r2_tail)
-                //     }
-                //     // If one of the tail is not a concrete type, it is either a unification variable
-                //     // or a constant (rigid type variable). `unify` already knows how to treat these
-                //     // cases, so we delegate the work. However it returns `UnifError` instead of
-                //     // `RowUnifError`, hence we have a bit of wrapping and unwrapping to do. Note that
-                //     // since we are unifying types with a constant or a unification variable somewhere,
-                //     // the only unification errors that should be possible are related to constants,
-                //     // row constraints, or type mismatches.
-                //     (t1_tail, t2_tail) => {
-                //         todo!()
-                //         // unify(state, ctxt, t1_tail, t2_tail).map_err(|err| match err {
-                //         //     UnifError::ConstMismatch(c1, c2) => RowUnifError::ConstMismatch(c1, c2),
-                //         //     UnifError::WithConst(c1, uty) => RowUnifError::WithConst(c1, uty),
-                //         //     UnifError::RowConflict(id, uty_opt, _, _) => {
-                //         //         RowUnifError::UnsatConstr(id, uty_opt)
-                //         //     },
-                //         //     UnifError::RowMismatch(id, _, _, unif_err) => {
-                //         //         RowUnifError::RowMismatch(id, unif_err)
-                //         //     },
-                //         //     err => panic!(
-                //         //         "typechecker::unify_rows(): unexpected error while unifying row tails {:?}",
-                //         //         err
-                //         //     ),
-                //         // })
-                //     }
-                // }
+                unify_rrows(state, ctxt, *tail, t2_tail)
             }
         }
-        _ => todo!(),
+        (UnifRecordRows::UnifVar(p), urrows) | (urrows, UnifRecordRows::UnifVar(p))  => {
+            constr_unify_rrows(state.constr, p, &urrows)?;
+            state.table.assign_rrows(p, urrows);
+            Ok(())
+        }
+        (UnifRecordRows::Constant(i1), UnifRecordRows::Constant(i2)) if i1 == i2 => Ok(()),
+        (UnifRecordRows::Constant(i1), UnifRecordRows::Constant(i2)) => {
+            Err(RowUnifError::ConstMismatch(i1, i2))
+        }
+        (urrows, UnifRecordRows::Constant(i)) | (UnifRecordRows::Constant(i), urrows) => {
+            //TODO ROWS: should we refactor RowUnifError as well?
+            Err(RowUnifError::WithConst(i, UnifType::Concrete(TypeF::Record(urrows))))
+        }
     }
 }
 
@@ -1903,9 +1876,21 @@ pub fn unify_erows(
                 unify_erows(state, ctxt, *tail, t2_tail)
             }
         }
-        _ => todo!(),
+        (UnifEnumRows::UnifVar(p), uerows) | (uerows, UnifEnumRows::UnifVar(p)) => {
+            constr_unify_erows(state.constr, p, &uerows)?;
+            state.table.assign_erows(p, uerows);
+            Ok(())
+        }
+        (UnifEnumRows::Constant(i1), UnifEnumRows::Constant(i2)) if i1 == i2 => Ok(()),
+        (UnifEnumRows::Constant(i1), UnifEnumRows::Constant(i2)) => {
+            Err(RowUnifError::ConstMismatch(i1, i2))
+        }
+        (uerows, UnifEnumRows::Constant(i)) | (UnifEnumRows::Constant(i), uerows) => {
+            //TODO ROWS: should we refactor RowUnifError as well?
+            Err(RowUnifError::WithConst(i, UnifType::Concrete(TypeF::Enum(uerows))))
+        }
     }
-    
+ 
 }
 
 /// Type of the parameter controlling instantiation of foralls.
@@ -2377,8 +2362,8 @@ impl ConstrainFreshERowsVar for UnifEnumRows {
     }
 }
 
-/// Check that unifying a variable with a type doesn't violate row constraints, and update the row
-/// constraints of the unified type accordingly if needed.
+/// Check that unifying a variable with a type doesn't violate record rows constraints, and update
+/// the row constraints of the unified type accordingly if needed.
 ///
 /// When a unification variable `Ptr(p)` is unified with a type `uty` which is either a row type or
 /// another unification variable which could be later unified with a row type itself, the following
@@ -2393,8 +2378,6 @@ impl ConstrainFreshERowsVar for UnifEnumRows {
 ///    don't constrain `u`, `u` could be unified later with a row type `{a : Str}` which violates
 ///    the original constraint on `p`. Thus, when unifying `p` with `u` or a row ending with `u`,
 ///    `u` must inherit all the constraints of `p`.
-///
-/// If `uty` is neither a row nor a unification variable, `constr_unify` immediately returns `Ok(())`.
 pub fn constr_unify_rrows(
     constr: &mut RowConstr,
     p: usize,
@@ -2412,6 +2395,43 @@ pub fn constr_unify_rrows(
                 }
                 UnifRecordRows::Concrete(RecordRowsF::Extend {tail, ..}) => constr_unify_rrows(constr, p, tail),
                 UnifRecordRows::UnifVar(u) if *u != p => {
+                    if let Some(u_constr) = constr.get_mut(u) {
+                        u_constr.extend(p_constr.into_iter());
+                    } else {
+                        constr.insert(*u, p_constr);
+                    }
+
+                    Ok(())
+                }
+                _ => Ok(()),
+            }
+        }
+    else {
+        Ok(())
+    }
+}
+
+/// Check that unifying a variable with a type doesn't violate enum rows constraints, and update
+/// the row constraints of the unified type accordingly if needed.
+///
+/// Same as `constr_unify_rrows`, but for enum rows.
+pub fn constr_unify_erows(
+    constr: &mut RowConstr,
+    p: usize,
+    mut erows: &UnifEnumRows,
+) -> Result<(), RowUnifError> {
+    if let Some(p_constr) = constr.remove(&p) {
+            match erows {
+                UnifEnumRows::Concrete(EnumRowsF::Extend {row, ..})
+                    if p_constr.contains(&row) =>
+                {
+                    Err(RowUnifError::UnsatConstr(
+                        row.clone(),
+                        Some(UnifType::Concrete(TypeF::Enum(erows.clone()))),
+                    ))
+                }
+                UnifEnumRows::Concrete(EnumRowsF::Extend {tail, ..}) => constr_unify_erows(constr, p, tail),
+                UnifEnumRows::UnifVar(u) if *u != p => {
                     if let Some(u_constr) = constr.get_mut(u) {
                         u_constr.extend(p_constr.into_iter());
                     } else {
