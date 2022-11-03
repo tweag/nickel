@@ -44,8 +44,8 @@ fn find_contract_record_fields(linearization: &Completed, id: usize) -> Option<V
             contracts.iter().find_map(|contract| match &contract.types {
                 Types(AbsType::Record(row)) => Some(extract_ident(&row)),
                 Types(AbsType::Flat(term)) => {
-                    if let Term::Record(fields, ..) | Term::RecRecord(fields, ..) = term.as_ref() {
-                        Some(fields.keys().cloned().collect())
+                    if let Term::Record(data, ..) | Term::RecRecord(data, ..) = term.as_ref() {
+                        Some(data.fields.keys().cloned().collect())
                     } else {
                         None
                     }
