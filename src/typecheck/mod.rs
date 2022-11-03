@@ -329,23 +329,20 @@ impl UnifRecordRows {
 
 impl UnifEnumRows {
     /// Extract the concrete type corresponding to a type wrapper. Free unification variables as well
-    /// as type constants are replaced with the type `Dyn`.
+    /// as type constants are replaced with the empty row.
     fn into_erows(self, table: &UnifTable) -> EnumRows {
-        todo!()
-        // match self {
-        //     UnifType::UnifVar(p) => match table.root(p) {
-        //         t @ UnifType::Concrete(_) => to_type(table, t),
-        //         _ => Types(TypeF::Dyn),
-        //     },
-        //     UnifType::Constant(_) => Types(TypeF::Dyn),
-        //     UnifType::Concrete(t) => {
-        //         let mapped = t.map(|btyp| Box::new(to_type(table, *btyp)));
-        //         Types(mapped)
-        //     }
-        //     UnifType::Contract(t, _) => Types(TypeF::Flat(t)),
-        // }
+        match self {
+            UnifEnumRows::UnifVar(p) => match table.root_erows(p) {
+                t @ UnifEnumRows::Concrete(_) => t.into_erows(table),
+                _ => EnumRows(EnumRowsF::Empty),
+            },
+            UnifEnumRows::Constant(_) => EnumRows(EnumRowsF::Empty),
+            UnifEnumRows::Concrete(t) => {
+                let mapped = t.map(|erows| Box::new(erows.into_erows(table)));
+                EnumRows(mapped)
+            }
+        }
     }
-
 }
 
 
