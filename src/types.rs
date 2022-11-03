@@ -265,14 +265,15 @@ pub struct Types(pub TypeF<Box<Types>, RecordRows, EnumRows>);
 
 impl<Ty, RRows> RecordRowsF<Ty, RRows> {
     // TODO: doc
-    pub fn try_map<TyO, RRowsO, FTy, FRRows, E>(
+    pub fn try_map_state<S, TyO, RRowsO, FTy, FRRows, E>(
         self,
+        state: &mut S,
         mut f_ty: FTy,
         mut f_rrows: FRRows,
     ) -> Result<RecordRowsF<TyO, RRowsO>, E>
     where
-        FTy: FnMut(Ty) -> Result<TyO, E>,
-        FRRows: FnMut(RRows) -> Result<RRowsO, E>,
+        FTy: FnMut(&mut S, Ty) -> Result<TyO, E>,
+        FRRows: FnMut(&mut S, RRows) -> Result<RRowsO, E>,
     {
         match self {
             RecordRowsF::Empty => Ok(RecordRowsF::Empty),
@@ -282,9 +283,9 @@ impl<Ty, RRows> RecordRowsF<Ty, RRows> {
             } => Ok(RecordRowsF::Extend {
                 row: RecordRowF {
                     id,
-                    types: f_ty(types)?,
+                    types: f_ty(state, types)?,
                 },
-                tail: f_rrows(tail)?,
+                tail: f_rrows(state, tail)?,
             }),
             RecordRowsF::TailDyn => Ok(RecordRowsF::TailDyn),
             RecordRowsF::TailVar(id) => Ok(RecordRowsF::TailVar(id)),
@@ -292,6 +293,37 @@ impl<Ty, RRows> RecordRowsF<Ty, RRows> {
     }
 
     // TODO: doc
+    pub fn try_map<TyO, RRowsO, FTy, FRRows, E>(
+        self,
+        mut f_ty: FTy,
+        mut f_rrows: FRRows,
+    ) -> Result<RecordRowsF<TyO, RRowsO>, E>
+    where
+        FTy: FnMut(Ty) -> Result<TyO, E>,
+        FRRows: FnMut(RRows) -> Result<RRowsO, E>,
+    {
+        let f_ty_lifted = |_: &mut (), rrow: Ty| -> Result<TyO, E> { f_ty(rrow) };
+        let f_rrows_lifted = |_: &mut (), rrows: RRows| -> Result<RRowsO, E> { f_rrows(rrows) };
+
+        self.try_map_state(&mut (), f_ty_lifted, f_rrows_lifted)
+    }
+
+    pub fn map_state<S, TyO, RRowsO, FTy, FRRows, E>(
+        self,
+        state: &mut S,
+        mut f_ty: FTy,
+        mut f_rrows: FRRows,
+    ) -> RecordRowsF<TyO, RRowsO>
+    where
+        FTy: FnMut(&mut S, Ty) -> TyO,
+        FRRows: FnMut(&mut S, RRows) -> RRowsO,
+    {
+        let f_ty_lifted = |state: &mut S, rrow: Ty| -> Result<TyO, ()> { Ok(f_ty(state, rrow)) };
+        let f_rrows_lifted = |state: &mut S, rrows: RRows| -> Result<RRowsO, ()> { Ok(f_rrows(state, rrows)) };
+
+        self.try_map_state(state, f_ty_lifted, f_rrows_lifted).unwrap()
+    }
+
     pub fn map<TyO, RRowsO, FTy, FRRows>(
         self,
         mut f_ty: FTy,
@@ -309,31 +341,85 @@ impl<Ty, RRows> RecordRowsF<Ty, RRows> {
 
 impl<ERows> EnumRowsF<ERows> {
     // TODO: doc
-    pub fn try_map<ERowsO, FERows, E>(self, mut f_erows: FERows) -> Result<EnumRowsF<ERowsO>, E>
+    pub fn try_map_state<S, ERowsO, FERows, E>(self, state: &mut S, mut f_erows: FERows) -> Result<EnumRowsF<ERowsO>, E>
     where
-        FERows: FnMut(ERows) -> Result<ERowsO, E>,
+        FERows: FnMut(&mut S, ERows) -> Result<ERowsO, E>,
     {
         match self {
             EnumRowsF::Empty => Ok(EnumRowsF::Empty),
             EnumRowsF::Extend { row, tail } => Ok(EnumRowsF::Extend {
                 row,
-                tail: f_erows(tail)?,
+                tail: f_erows(state, tail)?,
             }),
             EnumRowsF::TailVar(id) => Ok(EnumRowsF::TailVar(id)),
         }
     }
 
     // TODO: doc
+    pub fn try_map<ERowsO, FERows, E>(self, mut f_erows: FERows) -> Result<EnumRowsF<ERowsO>, E>
+    where
+        FERows: FnMut(ERows) -> Result<ERowsO, E>,
+    {
+        let f_erows_lifted = |_: &mut (), erows: ERows| -> Result<ERowsO, E> { f_erows(erows) };
+        self.try_map_state(&mut (), f_erows_lifted)
+    }
+
+    pub fn map_state<S, ERowsO, FERows>(self, state: &mut S, mut f_erows: FERows) -> EnumRowsF<ERowsO>
+    where
+        FERows: FnMut(&mut S, ERows) -> ERowsO,
+    {
+        let f_erows_lifted = |state: &mut S, erows: ERows| -> Result<ERowsO, ()> { Ok(f_erows(state, erows)) };
+        self.try_map_state(state, f_erows_lifted).unwrap()
+    }
+
     pub fn map<ERowsO, FERows>(self, mut f_erows: FERows) -> EnumRowsF<ERowsO>
     where
         FERows: FnMut(ERows) -> ERowsO,
     {
-        let f_erows_lifted = |erows: ERows| -> Result<ERowsO, ()> { Ok(f_erows(erows)) };
-        self.try_map(f_erows_lifted).unwrap()
+        let f_erows_lifted = |state: &mut (), erows: ERows| -> ERowsO { f_erows(erows) };
+        self.map_state(&mut (), f_erows_lifted)
     }
 }
 
 impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
+    pub fn try_map_state<S, TyO, RRowsO, ERowsO, FTy, FRRows, FERows, E>(
+        self,
+        state: &mut S,
+        mut f: FTy,
+        mut f_rrows: FRRows,
+        mut f_erows: FERows,
+    ) -> Result<TypeF<TyO, RRowsO, ERowsO>, E>
+    where
+        FTy: FnMut(&mut S, Ty) -> Result<TyO, E>,
+        FRRows: FnMut(&mut S, RRows) -> Result<RRowsO, E>,
+        FERows: FnMut(&mut S, ERows) -> Result<ERowsO, E>,
+    {
+        match self {
+            TypeF::Dyn => Ok(TypeF::Dyn),
+            TypeF::Num => Ok(TypeF::Num),
+            TypeF::Bool => Ok(TypeF::Bool),
+            TypeF::Str => Ok(TypeF::Str),
+            TypeF::Sym => Ok(TypeF::Sym),
+            TypeF::Flat(t) => Ok(TypeF::Flat(t)),
+            TypeF::Arrow(dom, codom) => Ok(TypeF::Arrow(f(state, dom)?, f(state, codom)?)),
+            TypeF::Var(i) => Ok(TypeF::Var(i)),
+            TypeF::Forall {
+                var,
+                var_kind,
+                body,
+            } => Ok(TypeF::Forall {
+                var,
+                var_kind,
+                body: f(state, body)?,
+            }),
+            TypeF::Enum(erows) => Ok(TypeF::Enum(f_erows(state, erows)?)),
+            TypeF::Record(rrows) => Ok(TypeF::Record(f_rrows(state, rrows)?)),
+            TypeF::Dict(t) => Ok(TypeF::Dict(f(state, t)?)),
+            TypeF::Array(t) => Ok(TypeF::Array(f(state, t)?)),
+            TypeF::Wildcard(i) => Ok(TypeF::Wildcard(i)),
+        }
+    }
+
     pub fn try_map<TyO, RRowsO, ERowsO, FTy, FRRows, FERows, E>(
         self,
         mut f: FTy,
@@ -345,30 +431,30 @@ impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
         FRRows: FnMut(RRows) -> Result<RRowsO, E>,
         FERows: FnMut(ERows) -> Result<ERowsO, E>,
     {
-        match self {
-            TypeF::Dyn => Ok(TypeF::Dyn),
-            TypeF::Num => Ok(TypeF::Num),
-            TypeF::Bool => Ok(TypeF::Bool),
-            TypeF::Str => Ok(TypeF::Str),
-            TypeF::Sym => Ok(TypeF::Sym),
-            TypeF::Flat(t) => Ok(TypeF::Flat(t)),
-            TypeF::Arrow(s, t) => Ok(TypeF::Arrow(f(s)?, f(t)?)),
-            TypeF::Var(i) => Ok(TypeF::Var(i)),
-            TypeF::Forall {
-                var,
-                var_kind,
-                body,
-            } => Ok(TypeF::Forall {
-                var,
-                var_kind,
-                body: f(body)?,
-            }),
-            TypeF::Enum(erows) => Ok(TypeF::Enum(f_erows(erows)?)),
-            TypeF::Record(rrows) => Ok(TypeF::Record(f_rrows(rrows)?)),
-            TypeF::Dict(t) => Ok(TypeF::Dict(f(t)?)),
-            TypeF::Array(t) => Ok(TypeF::Array(f(t)?)),
-            TypeF::Wildcard(i) => Ok(TypeF::Wildcard(i)),
-        }
+        let f_lifted = |_ : &mut (), ty: Ty| -> Result<TyO, E> { f(ty) };
+        let f_rrows_lifted = |_ : &mut (), rrows: RRows| -> Result<RRowsO, E> { f_rrows(rrows) };
+        let f_erows_lifted = |_ : &mut (), erows: ERows| -> Result<ERowsO, E> { f_erows(erows) };
+
+        self.try_map_state(&mut (), f_lifted, f_rrows_lifted, f_erows_lifted)
+    }
+
+    pub fn map_state<S, TyO, RRowsO, ERowsO, FTy, FRRows, FERows>(
+        self,
+        state: &mut S,
+        mut f: FTy,
+        mut f_rrows: FRRows,
+        mut f_erows: FERows,
+    ) -> TypeF<TyO, RRowsO, ERowsO>
+    where
+        FTy: FnMut(&mut S, Ty) -> TyO,
+        FRRows: FnMut(&mut S, RRows) -> RRowsO,
+        FERows: FnMut(&mut S, ERows) -> ERowsO,
+    {
+        let f_lifted = |state: &mut S, ty: Ty| -> Result<TyO, ()> { Ok(f(state, ty)) };
+        let f_rrows_lifted = |state: &mut S, rrows: RRows| -> Result<RRowsO, ()> { Ok(f_rrows(state, rrows)) };
+        let f_erows_lifted = |state: &mut S, erows: ERows| -> Result<ERowsO, ()> { Ok(f_erows(state, erows)) };
+        self.try_map_state(state, f_lifted, f_rrows_lifted, f_erows_lifted)
+            .unwrap()
     }
 
     pub fn map<TyO, RRowsO, ERowsO, FTy, FRRows, FERows>(
@@ -382,11 +468,10 @@ impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
         FRRows: FnMut(RRows) -> RRowsO,
         FERows: FnMut(ERows) -> ERowsO,
     {
-        let f_lifted = |ty: Ty| -> Result<TyO, ()> { Ok(f(ty)) };
-        let f_rrows_lifted = |rrows: RRows| -> Result<RRowsO, ()> { Ok(f_rrows(rrows)) };
-        let f_erows_lifted = |erows: ERows| -> Result<ERowsO, ()> { Ok(f_erows(erows)) };
-        self.try_map(f_lifted, f_rrows_lifted, f_erows_lifted)
-            .unwrap()
+        let f_lifted = |_: &mut (), ty: Ty| -> TyO { f(ty) };
+        let f_rrows_lifted = |_: &mut (), rrows: RRows| -> RRowsO { f_rrows(rrows) };
+        let f_erows_lifted = |_: &mut (), erows: ERows| -> ERowsO { f_erows(erows) };
+        self.map_state(&mut (), f_lifted, f_rrows_lifted, f_erows_lifted)
     }
 
     pub fn is_wildcard(&self) -> bool {
