@@ -341,15 +341,15 @@ impl<Ty, RRows> RecordRowsF<Ty, RRows> {
 
 impl<ERows> EnumRowsF<ERows> {
     // TODO: doc
-    pub fn try_map_state<S, ERowsO, FERows, E>(self, state: &mut S, mut f_erows: FERows) -> Result<EnumRowsF<ERowsO>, E>
+    pub fn try_map_state<ERowsO, FERows, S, E>(self, mut f_erows: FERows, state: &mut S) -> Result<EnumRowsF<ERowsO>, E>
     where
-        FERows: FnMut(&mut S, ERows) -> Result<ERowsO, E>,
+        FERows: FnMut(ERows, &mut S) -> Result<ERowsO, E>,
     {
         match self {
             EnumRowsF::Empty => Ok(EnumRowsF::Empty),
             EnumRowsF::Extend { row, tail } => Ok(EnumRowsF::Extend {
                 row,
-                tail: f_erows(state, tail)?,
+                tail: f_erows(tail, state)?,
             }),
             EnumRowsF::TailVar(id) => Ok(EnumRowsF::TailVar(id)),
         }
@@ -360,24 +360,24 @@ impl<ERows> EnumRowsF<ERows> {
     where
         FERows: FnMut(ERows) -> Result<ERowsO, E>,
     {
-        let f_erows_lifted = |_: &mut (), erows: ERows| -> Result<ERowsO, E> { f_erows(erows) };
-        self.try_map_state(&mut (), f_erows_lifted)
+        let f_erows_lifted = |erows: ERows, _: &mut ()| -> Result<ERowsO, E> { f_erows(erows) };
+        self.try_map_state(f_erows_lifted, &mut ())
     }
 
-    pub fn map_state<S, ERowsO, FERows>(self, state: &mut S, mut f_erows: FERows) -> EnumRowsF<ERowsO>
+    pub fn map_state<ERowsO, FERows, S>(self, mut f_erows: FERows, state: &mut S) -> EnumRowsF<ERowsO>
     where
-        FERows: FnMut(&mut S, ERows) -> ERowsO,
+        FERows: FnMut(ERows, &mut S) -> ERowsO,
     {
-        let f_erows_lifted = |state: &mut S, erows: ERows| -> Result<ERowsO, ()> { Ok(f_erows(state, erows)) };
-        self.try_map_state(state, f_erows_lifted).unwrap()
+        let f_erows_lifted = |erows: ERows, state: &mut S| -> Result<ERowsO, ()> { Ok(f_erows(erows, state)) };
+        self.try_map_state(f_erows_lifted, state).unwrap()
     }
 
     pub fn map<ERowsO, FERows>(self, mut f_erows: FERows) -> EnumRowsF<ERowsO>
     where
         FERows: FnMut(ERows) -> ERowsO,
     {
-        let f_erows_lifted = |state: &mut (), erows: ERows| -> ERowsO { f_erows(erows) };
-        self.map_state(&mut (), f_erows_lifted)
+        let f_erows_lifted = |erows: ERows, _: &mut ()| -> ERowsO { f_erows(erows) };
+        self.map_state(f_erows_lifted, &mut ())
     }
 }
 
@@ -627,12 +627,7 @@ fn get_var_contract(
 }
 
 impl EnumRows {
-    fn subcontract(
-        &self,
-        mut h: HashMap<Ident, (RichTerm, RichTerm)>,
-        pol: bool,
-        sy: &mut i32,
-    ) -> Result<RichTerm, UnboundTypeVariableError> {
+    fn subcontract(&self) -> Result<RichTerm, UnboundTypeVariableError> {
         use crate::stdlib::contract;
 
         let mut cases = HashMap::new();
@@ -657,6 +652,7 @@ impl EnumRows {
         let case_body = if has_tail {
             mk_term::var(value_arg.clone())
         }
+
         // Otherwise, we build a switch with all the tags as cases, which just returns the
         // original argument, and a default case that blames.
         //
@@ -926,7 +922,7 @@ impl Types {
             //     mk_app!(contract::record(), rec, tail)
             // }
             // AbsType::Dict(ref ty) => {
-            TypeF::Enum(ref erows) => erows.subcontract(h, pol, sy)?,
+            TypeF::Enum(ref erows) => erows.subcontract()?,
             TypeF::Record(ref rrows) => rrows.subcontract(h, pol, sy)?,
             TypeF::Dict(ref ty) => {
                 mk_app!(contract::dyn_record(), ty.subcontract(h, pol, sy)?)
