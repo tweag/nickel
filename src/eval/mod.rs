@@ -96,8 +96,8 @@ use crate::{
     identifier::Ident,
     match_sharedterm,
     term::{
-        make as mk_term, ArrayAttrs, BinaryOp, BindingType, LetAttrs, MetaValue, PendingContract,
-        RichTerm, SharedTerm, StrChunk, Term, UnaryOp,
+        make as mk_term, record::RecordData, ArrayAttrs, BinaryOp, BindingType, LetAttrs,
+        MetaValue, PendingContract, RichTerm, SharedTerm, StrChunk, Term, UnaryOp,
     },
     transform::Closurizable,
 };
@@ -399,7 +399,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                     self.stack.push_arg(
                         Closure {
                             body: RichTerm::new(
-                                Term::Record(cases.clone(), Default::default()),
+                                Term::Record(RecordData::with_fields(cases.clone())),
                                 pos,
                             ),
                             env: env.clone(),
@@ -514,15 +514,17 @@ impl<R: ImportResolver> VirtualMachine<R> {
                         }
                     }
                 }
-                Term::RecRecord(ts, dyn_fields, attrs, _) => {
-                    let rec_env = fixpoint::rec_env(ts.iter(), &env)?;
+                Term::RecRecord(record, dyn_fields, _) => {
+                    let rec_env = fixpoint::rec_env(record.fields.iter(), &env)?;
 
-                    ts.iter()
+                    record
+                        .fields
+                        .iter()
                         .try_for_each(|(_, rt)| fixpoint::patch_field(rt, &rec_env, &env))?;
 
-                    //TODO: We should probably avoid cloning the `ts` hashmap, using `match_sharedterm`
+                    //TODO: We should probably avoid cloning the record, using `match_sharedterm`
                     //instead of `match` in the main eval loop, if possible
-                    let static_part = RichTerm::new(Term::Record(ts.clone(), *attrs), pos);
+                    let static_part = RichTerm::new(Term::Record(record.clone()), pos);
 
                     // Transform the static part `{stat1 = val1, ..., statn = valn}` and the dynamic
                     // part `{exp1 = dyn_val1, ..., expm = dyn_valm}` to a sequence of extensions
@@ -731,8 +733,8 @@ pub enum EnvBuildError {
 /// Add the bindings of a record to an environment. Ignore the fields defined by interpolation.
 pub fn env_add_term(env: &mut Environment, rt: RichTerm) -> Result<(), EnvBuildError> {
     match_sharedterm! {rt.term, with {
-            Term::Record(bindings, _) | Term::RecRecord(bindings, ..) => {
-                let ext = bindings.into_iter().map(|(id, t)| {
+            Term::Record(record) | Term::RecRecord(record, ..) => {
+                let ext = record.fields.into_iter().map(|(id, t)| {
                     (
                         id,
                         Thunk::new(Closure::atomic_closure(t), IdentKind::Record),
@@ -841,29 +843,13 @@ pub fn subst(rt: RichTerm, initial_env: &Environment, env: &Environment) -> Rich
             let t = subst(t, initial_env, env);
             RichTerm::new(Term::Sealed(i, t, lbl), pos)
         }
-        Term::Record(map, attrs) => {
-            let map = map
-                .into_iter()
-                .map(|(id, t)| {
-                    (
-                        id,
-                        subst(t, initial_env, env),
-                    )
-                })
-                .collect();
+        Term::Record(record) => {
+            let record = record.map_fields(|_, t| subst(t, initial_env, env));
 
-            RichTerm::new(Term::Record(map, attrs), pos)
+            RichTerm::new(Term::Record(record), pos)
         }
-        Term::RecRecord(map, dyn_fields, attrs, deps) => {
-            let map = map
-                .into_iter()
-                .map(|(id, t)| {
-                    (
-                        id,
-                        subst(t, initial_env, env),
-                    )
-                })
-                .collect();
+        Term::RecRecord(record, dyn_fields, deps) => {
+            let record = record.map_fields(|_, t| subst(t, initial_env, env));
 
             let dyn_fields = dyn_fields
                 .into_iter()
@@ -875,7 +861,7 @@ pub fn subst(rt: RichTerm, initial_env: &Environment, env: &Environment) -> Rich
                 })
                 .collect();
 
-            RichTerm::new(Term::RecRecord(map, dyn_fields, attrs, deps), pos)
+            RichTerm::new(Term::RecRecord(record, dyn_fields, deps), pos)
         }
         Term::Array(ts, attrs) => {
             let ts = ts

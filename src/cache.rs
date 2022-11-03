@@ -4,6 +4,7 @@ use crate::error::{Error, ImportError, ParseError, ParseErrors, TypecheckError};
 use crate::parser::lexer::Lexer;
 use crate::position::TermPos;
 use crate::stdlib as nickel_stdlib;
+use crate::term::record::RecordData;
 use crate::term::{RichTerm, SharedTerm, Term};
 use crate::transform::import_resolution;
 use crate::typecheck::type_check;
@@ -567,20 +568,22 @@ impl Cache {
                     let pos = term.pos;
 
                     match SharedTerm::make_mut(&mut term.term) {
-                        Term::Record(ref mut map, _) => {
-                            let map_res: Result<_, UnboundTypeVariableError> = std::mem::take(map)
-                                .into_iter()
-                                .map(|(id, t)| Ok((id, transform::transform(t, wildcards)?)))
-                                .collect();
-                            *map = map_res.map_err(|err| {
+                        Term::Record(RecordData { ref mut fields, .. }) => {
+                            let map_res: Result<_, UnboundTypeVariableError> =
+                                std::mem::take(fields)
+                                    .into_iter()
+                                    .map(|(id, t)| Ok((id, transform::transform(t, wildcards)?)))
+                                    .collect();
+                            *fields = map_res.map_err(|err| {
                                 CacheError::Error(ImportError::ParseErrors(err.into(), pos))
                             })?;
                         }
-                        Term::RecRecord(ref mut map, ref mut dyn_fields, ..) => {
-                            let map_res: Result<_, UnboundTypeVariableError> = std::mem::take(map)
-                                .into_iter()
-                                .map(|(id, t)| Ok((id, transform::transform(t, wildcards)?)))
-                                .collect();
+                        Term::RecRecord(ref mut record, ref mut dyn_fields, ..) => {
+                            let map_res: Result<_, UnboundTypeVariableError> =
+                                std::mem::take(&mut record.fields)
+                                    .into_iter()
+                                    .map(|(id, t)| Ok((id, transform::transform(t, wildcards)?)))
+                                    .collect();
 
                             let dyn_fields_res: Result<_, UnboundTypeVariableError> =
                                 std::mem::take(dyn_fields)
@@ -593,7 +596,7 @@ impl Cache {
                                     })
                                     .collect();
 
-                            *map = map_res.map_err(|err| {
+                            record.fields = map_res.map_err(|err| {
                                 CacheError::Error(ImportError::ParseErrors(err.into(), pos))
                             })?;
                             *dyn_fields = dyn_fields_res.map_err(|err| {

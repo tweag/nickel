@@ -17,8 +17,8 @@ use crate::{
     mk_app, mk_fun,
     position::{RawSpan, TermPos},
     term::{
-        make as mk_term, BinaryOp, Contract, MetaValue, RecordAttrs, RichTerm, StrChunk, Term,
-        UnaryOp,
+        make as mk_term, record::RecordData, BinaryOp, Contract, MetaValue, RecordAttrs, RichTerm,
+        StrChunk, Term, UnaryOp,
     },
     types::{AbsType, Types},
 };
@@ -253,9 +253,9 @@ pub fn elaborate_field_path(
 
     let content = it.rev().fold(content, |acc, path_elem| match path_elem {
         FieldPathElem::Ident(id) => {
-            let mut map = HashMap::new();
-            map.insert(id, acc);
-            Term::Record(map, Default::default()).into()
+            let mut fields = HashMap::new();
+            fields.insert(id, acc);
+            Term::Record(RecordData::with_fields(fields)).into()
         }
         FieldPathElem::Expr(exp) => {
             let static_access = match exp.term.as_ref() {
@@ -275,11 +275,14 @@ pub fn elaborate_field_path(
 
             if let Some(static_access) = static_access {
                 let id = Ident::new_with_pos(static_access, exp.pos);
-                let mut map = HashMap::new();
-                map.insert(id, acc);
-                Term::Record(map, Default::default()).into()
+                let mut fields = HashMap::new();
+                fields.insert(id, acc);
+                Term::Record(RecordData::with_fields(fields)).into()
             } else {
-                let empty = Term::Record(HashMap::new(), Default::default());
+                let empty = Term::Record(RecordData {
+                    fields: HashMap::new(),
+                    attrs: Default::default(),
+                });
                 mk_app!(mk_term::op2(BinaryOp::DynExtend(), exp, empty), acc)
             }
         }
@@ -294,11 +297,11 @@ pub fn build_record<I>(fields: I, attrs: RecordAttrs) -> Term
 where
     I: IntoIterator<Item = (FieldPathElem, RichTerm)> + Debug,
 {
-    let mut static_map = HashMap::new();
+    let mut static_fields = HashMap::new();
     let mut dynamic_fields = Vec::new();
 
-    fn insert_static_field(static_map: &mut HashMap<Ident, RichTerm>, id: Ident, t: RichTerm) {
-        match static_map.entry(id) {
+    fn insert_static_field(static_fields: &mut HashMap<Ident, RichTerm>, id: Ident, t: RichTerm) {
+        match static_fields.entry(id) {
             Entry::Occupied(mut occpd) => {
                 // temporary putting null in the entry to take the previous value.
                 let prev = occpd.insert(Term::Null.into());
@@ -313,7 +316,7 @@ where
     }
 
     fields.into_iter().for_each(|field| match field {
-        (FieldPathElem::Ident(id), t) => insert_static_field(&mut static_map, id, t),
+        (FieldPathElem::Ident(id), t) => insert_static_field(&mut static_fields, id, t),
         (FieldPathElem::Expr(e), t) => {
             // Dynamic fields (whose name is defined by an interpolated string) have a different
             // semantics than fields whose name can be determined statically. However, static
@@ -330,16 +333,23 @@ where
                 Term::StrChunks(chunks) => {
                     let mut buffer = String::new();
 
-                    let is_static = chunks.iter().try_for_each(|chunk| match chunk {
-                        StrChunk::Literal(s) => {
-                            buffer.push_str(s);
-                            Ok(())
-                        }
-                        StrChunk::Expr(..) => Err(()),
-                    });
+                    let is_static = chunks
+                        .iter()
+                        .try_for_each(|chunk| match chunk {
+                            StrChunk::Literal(s) => {
+                                buffer.push_str(s);
+                                Ok(())
+                            }
+                            StrChunk::Expr(..) => Err(()),
+                        })
+                        .is_ok();
 
-                    if is_static.is_ok() {
-                        insert_static_field(&mut static_map, Ident::new_with_pos(buffer, e.pos), t)
+                    if is_static {
+                        insert_static_field(
+                            &mut static_fields,
+                            Ident::new_with_pos(buffer, e.pos),
+                            t,
+                        )
                     } else {
                         dynamic_fields.push((e, t));
                     }
@@ -351,7 +361,7 @@ where
         }
     });
 
-    Term::RecRecord(static_map, dynamic_fields, attrs, None)
+    Term::RecRecord(RecordData::new(static_fields, attrs), dynamic_fields, None)
 }
 
 /// Merge two fields by performing the merge of both their value and MetaValue if any.

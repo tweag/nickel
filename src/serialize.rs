@@ -2,8 +2,7 @@
 use crate::{
     error::SerializationError,
     eval::{self, is_empty_optional},
-    identifier::Ident,
-    term::{array::Array, ArrayAttrs, MetaValue, RecordAttrs, RichTerm, Term},
+    term::{array::Array, record::RecordData, ArrayAttrs, MetaValue, RichTerm, Term},
 };
 
 use serde::{
@@ -97,15 +96,12 @@ where
 
 /// Serializer for a record. Serialize fields in alphabetical order to get a deterministic output
 /// (by default, `HashMap`'s randomness implies a randomized order of fields in the output).
-pub fn serialize_record<S>(
-    map: &HashMap<Ident, RichTerm>,
-    _attrs: &RecordAttrs,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
+pub fn serialize_record<S>(record: &RecordData, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
-    let mut entries: Vec<(_, _)> = map
+    let mut entries: Vec<(_, _)> = record
+        .fields
         .iter()
         // Filtering out optional fields without a definition. All variable should have been
         // substituted at this point, so we pass an empty environment.
@@ -122,14 +118,12 @@ where
 }
 
 /// Deserialize for a record. Required to set the record attributes to default.
-pub fn deserialize_record<'de, D>(
-    deserializer: D,
-) -> Result<(HashMap<Ident, RichTerm>, RecordAttrs), D::Error>
+pub fn deserialize_record<'de, D>(deserializer: D) -> Result<RecordData, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let map: HashMap<Ident, RichTerm> = HashMap::deserialize(deserializer)?;
-    Ok((map, Default::default()))
+    let fields = HashMap::deserialize(deserializer)?;
+    Ok(RecordData::with_fields(fields))
 }
 
 /// Serialize for an Array. Required to hide the internal attributes.
@@ -196,8 +190,11 @@ pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), SerializationE
             Null if format == ExportFormat::Json || format == ExportFormat::Yaml => Ok(()),
             Null => Err(SerializationError::UnsupportedNull(format, t.clone())),
             Bool(_) | Num(_) | Str(_) | Enum(_) => Ok(()),
-            Record(map, _) => {
-                map.iter().try_for_each(|(_, t)| validate(format, t))?;
+            Record(record) => {
+                record
+                    .fields
+                    .iter()
+                    .try_for_each(|(_, t)| validate(format, t))?;
                 Ok(())
             }
             Array(array, _) => {

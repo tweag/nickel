@@ -35,7 +35,7 @@ fn check_dyn_vars(expr: &str, expected: Vec<Vec<&str>>) -> bool {
     free_vars::transform(&mut rt);
 
     match rt.term.into_owned() {
-        Term::RecRecord(_, dyns, _, deps) => {
+        Term::RecRecord(_, dyns, deps) => {
             let deps = deps.unwrap();
             dyns.len() == deps.dyn_fields.len() && dyn_free_vars_incl(&deps.dyn_fields, expected)
         }
@@ -48,13 +48,14 @@ fn check_stat_vars(expr: &str, expected: HashMap<&str, Vec<&str>>) -> bool {
     free_vars::transform(&mut rt);
 
     match rt.term.into_owned() {
-        Term::RecRecord(map, _, _, deps) => {
+        Term::RecRecord(record, _, deps) => {
             let deps = deps.unwrap();
             println!(
                 "-- comparing {:#?} **AND* {:#?}",
                 deps.stat_fields, expected
             );
-            map.len() == deps.stat_fields.len() && stat_free_vars_incl(&deps.stat_fields, expected)
+            record.fields.len() == deps.stat_fields.len()
+                && stat_free_vars_incl(&deps.stat_fields, expected)
         }
         _ => panic!("{} hasn't been parsed as a record", expr),
     }

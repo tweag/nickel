@@ -54,7 +54,7 @@ use crate::{
     identifier::Ident,
     mk_app, mk_fun,
     term::make as mk_term,
-    term::{RichTerm, Term, TraverseOrder},
+    term::{record::RecordData, RichTerm, Term, TraverseOrder},
 };
 
 use std::{collections::HashMap, fmt};
@@ -375,7 +375,7 @@ impl Types {
                     ),
                 };
 
-                let rec = RichTerm::from(Term::Record(fcs, Default::default()));
+                let rec = RichTerm::from(Term::Record(RecordData::with_fields(fcs)));
 
                 mk_app!(contract::record(), rec, tail)
             }

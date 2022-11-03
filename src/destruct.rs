@@ -4,6 +4,7 @@
 use crate::identifier::Ident;
 use crate::label::Label;
 use crate::position::RawSpan;
+use crate::term::record::RecordData;
 use crate::term::{Contract, MetaValue, RecordAttrs, RichTerm, Term};
 use crate::types::{AbsType, Types};
 
@@ -60,13 +61,13 @@ impl Destruct {
         MetaValue {
             contracts: vec![Contract {
                 types: Types(AbsType::Flat(
-                    Term::Record(
+                    Term::Record(RecordData::new(
                         self.inner()
                             .into_iter()
                             .map(|m| m.as_meta_field())
                             .collect(),
                         RecordAttrs { open },
-                    )
+                    ))
                     .into(),
                 )),
                 label,

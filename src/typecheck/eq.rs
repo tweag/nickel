@@ -268,17 +268,31 @@ fn contract_eq_bounded<E: TermEnvironment>(
                         .unwrap_or(false)
                 })
         }
-        (Record(m1, attrs1), Record(m2, attrs2)) => {
-            map_eq(contract_eq_bounded, state, m1, env1, m2, env2) && attrs1 == attrs2
+        (Record(r1), Record(r2)) => {
+            map_eq(
+                contract_eq_bounded,
+                state,
+                &r1.fields,
+                env1,
+                &r2.fields,
+                env2,
+            ) && r1.attrs == r2.attrs
         }
-        (RecRecord(m1, dyn_fields1, attrs1, _), RecRecord(m2, dyn_fields2, attrs2, _)) =>
+        (RecRecord(r1, dyn_fields1, _), RecRecord(r2, dyn_fields2, _)) =>
         // We only compare records whose field structure is statically known (i.e. without dynamic
         // fields).
         {
             dyn_fields1.is_empty()
                 && dyn_fields2.is_empty()
-                && map_eq(contract_eq_bounded, state, m1, env1, m2, env2)
-                && attrs1 == attrs2
+                && map_eq(
+                    contract_eq_bounded,
+                    state,
+                    &r1.fields,
+                    env1,
+                    &r2.fields,
+                    env2,
+                )
+                && r1.attrs == r2.attrs
         }
         (Array(ts1, attrs1), Array(ts2, attrs2)) => {
             ts1.len() == ts2.len()
