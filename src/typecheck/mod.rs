@@ -55,8 +55,7 @@ use crate::{
     identifier::Ident,
     term::{Contract, MetaValue, RichTerm, StrChunk, Term, TraverseOrder},
     types::{
-        EnumRow, EnumRows, EnumRowsF, RecordRowF, RecordRows, RecordRowsF, TypeF, Types,
-        VarKind,
+        EnumRow, EnumRows, EnumRowsF, RecordRowF, RecordRows, RecordRowsF, TypeF, Types, VarKind,
     },
     {mk_tyw_arrow, mk_tyw_enum, mk_tyw_enum_row, mk_tyw_record, mk_tyw_row},
 };
@@ -1457,9 +1456,13 @@ fn replace_wildcards_with_var(
         env: &SimpleTermEnvironment,
     ) -> UnifRecordRows {
         UnifRecordRows::Concrete(rrows.0.map_state(
-            |ty, (table, wildcard_vars)| Box::new(replace_wildcards_with_var(table, wildcard_vars, *ty, env)),
-            |rrows, (table, wildcard_vars)| Box::new(replace_rrows(table, wildcard_vars, *rrows, env)),
-            &mut (table, wildcard_vars)
+            |ty, (table, wildcard_vars)| {
+                Box::new(replace_wildcards_with_var(table, wildcard_vars, *ty, env))
+            },
+            |rrows, (table, wildcard_vars)| {
+                Box::new(replace_rrows(table, wildcard_vars, *rrows, env))
+            },
+            &mut (table, wildcard_vars),
         ))
     }
 
@@ -1467,7 +1470,9 @@ fn replace_wildcards_with_var(
         TypeF::Wildcard(i) => get_wildcard_var(table, wildcard_vars, i),
         TypeF::Flat(t) => UnifType::Contract(t, env.clone()),
         _ => UnifType::Concrete(ty.0.map_state(
-            |ty, (table, wildcard_vars)| Box::new(replace_wildcards_with_var(table, wildcard_vars, *ty, env)),
+            |ty, (table, wildcard_vars)| {
+                Box::new(replace_wildcards_with_var(table, wildcard_vars, *ty, env))
+            },
             |rrows, (table, wildcard_vars)| replace_rrows(table, wildcard_vars, rrows, env),
             |erows, _| UnifEnumRows::from(erows),
             &mut (table, wildcard_vars),
@@ -1796,8 +1801,11 @@ pub fn unify(
                 })
             }
             (TypeF::Flat(s), TypeF::Flat(t)) => Err(UnifError::IncomparableFlatTypes(s, t)),
-            (TypeF::Enum(erows1), TypeF::Enum(erows2)) => unify_erows(state, ctxt, erows1.clone(), erows2.clone())
-                .map_err(|err| err.into_unif_err(mk_tyw_enum!(; erows1), mk_tyw_enum!(; erows2))),
+            (TypeF::Enum(erows1), TypeF::Enum(erows2)) => {
+                unify_erows(state, ctxt, erows1.clone(), erows2.clone()).map_err(|err| {
+                    err.into_unif_err(mk_tyw_enum!(; erows1), mk_tyw_enum!(; erows2))
+                })
+            }
             (TypeF::Record(rrows1), TypeF::Record(rrows2)) => {
                 unify_rrows(state, ctxt, rrows1.clone(), rrows2.clone()).map_err(|err| {
                     err.into_unif_err(mk_tyw_record!(; rrows1), mk_tyw_record!(; rrows2))

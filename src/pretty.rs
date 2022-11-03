@@ -730,10 +730,7 @@ where
                 .append(allocator.space())
                 .append(allocator.as_string(id))
                 .braces(),
-            EnumRowsF::Extend {
-                row,
-                tail,
-            } => {
+            EnumRowsF::Extend { row, tail } => {
                 let builder = allocator.text("`").append(allocator.quote_if_needed(&row));
                 let builder = if let EnumRowsF::Extend { .. } = tail.0 {
                     builder

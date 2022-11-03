@@ -6,7 +6,7 @@ use utils::{build_record, elaborate_field_path, FieldPath, FieldPathElem};
 use crate::{
     position::{RawSpan, TermPos},
     term::{Contract, MergePriority, MetaValue, RecordAttrs, RichTerm, SharedTerm, Term},
-    types::{RecordRow, RecordRows, RecordRowsF, EnumRows, TypeF, Types, UnboundTypeVariableError},
+    types::{EnumRows, RecordRow, RecordRows, RecordRowsF, TypeF, Types, UnboundTypeVariableError},
 };
 
 use std::{borrow::Cow, collections::HashSet, convert::TryFrom};
@@ -214,13 +214,15 @@ impl UniRecord {
                                         opt: false,
                                         priority: MergePriority::Neutral,
                                         value: None,
-                                    }) if contracts.is_empty() => Ok(RecordRows(RecordRowsF::Extend {
-                                        row: RecordRow {
-                                            id,
-                                            types: Box::new(ctrt.types),
-                                        },
-                                        tail: Box::new(acc),
-                                    })),
+                                    }) if contracts.is_empty() => {
+                                        Ok(RecordRows(RecordRowsF::Extend {
+                                            row: RecordRow {
+                                                id,
+                                                types: Box::new(ctrt.types),
+                                            },
+                                            tail: Box::new(acc),
+                                        }))
+                                    }
                                     _ => {
                                         // Position of identifiers must always be set at this stage
                                         // (parsing)
@@ -377,7 +379,11 @@ impl FixTypeVars for Types {
                     self.0 = TypeF::Flat(RichTerm::new(Term::Var(id), pos));
                 }
             }
-            TypeF::Forall {ref var, ref var_kind, ref mut body} => {
+            TypeF::Forall {
+                ref var,
+                ref var_kind,
+                ref mut body,
+            } => {
                 bound_vars.to_mut().insert(var.clone());
                 (&mut *body).fix_type_subvars(bound_vars);
             }
@@ -397,8 +403,12 @@ impl FixTypeVars for RecordRows {
             RecordRowsF::TailDyn => (),
             // We can't have a contract in tail position, so we don't fix `TailVar`.
             RecordRowsF::TailVar(_) => (),
-            RecordRowsF::Extend {ref mut row, ref mut tail} => {
-                row.types.fix_type_subvars(Cow::Borrowed(bound_vars.as_ref()));
+            RecordRowsF::Extend {
+                ref mut row,
+                ref mut tail,
+            } => {
+                row.types
+                    .fix_type_subvars(Cow::Borrowed(bound_vars.as_ref()));
                 tail.fix_type_subvars(bound_vars)
             }
         }

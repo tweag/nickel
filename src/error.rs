@@ -11,10 +11,7 @@ use lalrpop_util::ErrorRecovery;
 use crate::{
     eval::callstack::CallStack,
     identifier::Ident,
-    label::{
-        self,
-        ty_path,
-    },
+    label::{self, ty_path},
     parser,
     parser::{
         error::{LexicalError, ParseError as InternalParseError},
@@ -25,10 +22,7 @@ use crate::{
     repl,
     serialize::ExportFormat,
     term::RichTerm,
-    types::{
-        Types,
-        TypeF,
-    },
+    types::{TypeF, Types},
 };
 
 /// A general error occurring during either parsing or evaluation.

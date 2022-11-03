@@ -319,9 +319,11 @@ impl<Ty, RRows> RecordRowsF<Ty, RRows> {
         FRRows: FnMut(RRows, &mut S) -> RRowsO,
     {
         let f_ty_lifted = |rrow: Ty, state: &mut S| -> Result<TyO, ()> { Ok(f_ty(rrow, state)) };
-        let f_rrows_lifted = |rrows: RRows, state: &mut S| -> Result<RRowsO, ()> { Ok(f_rrows(rrows, state)) };
+        let f_rrows_lifted =
+            |rrows: RRows, state: &mut S| -> Result<RRowsO, ()> { Ok(f_rrows(rrows, state)) };
 
-        self.try_map_state(f_ty_lifted, f_rrows_lifted, state).unwrap()
+        self.try_map_state(f_ty_lifted, f_rrows_lifted, state)
+            .unwrap()
     }
 
     pub fn map<TyO, RRowsO, FTy, FRRows>(
@@ -341,7 +343,11 @@ impl<Ty, RRows> RecordRowsF<Ty, RRows> {
 
 impl<ERows> EnumRowsF<ERows> {
     // TODO: doc
-    pub fn try_map_state<ERowsO, FERows, S, E>(self, mut f_erows: FERows, state: &mut S) -> Result<EnumRowsF<ERowsO>, E>
+    pub fn try_map_state<ERowsO, FERows, S, E>(
+        self,
+        mut f_erows: FERows,
+        state: &mut S,
+    ) -> Result<EnumRowsF<ERowsO>, E>
     where
         FERows: FnMut(ERows, &mut S) -> Result<ERowsO, E>,
     {
@@ -364,11 +370,16 @@ impl<ERows> EnumRowsF<ERows> {
         self.try_map_state(f_erows_lifted, &mut ())
     }
 
-    pub fn map_state<ERowsO, FERows, S>(self, mut f_erows: FERows, state: &mut S) -> EnumRowsF<ERowsO>
+    pub fn map_state<ERowsO, FERows, S>(
+        self,
+        mut f_erows: FERows,
+        state: &mut S,
+    ) -> EnumRowsF<ERowsO>
     where
         FERows: FnMut(ERows, &mut S) -> ERowsO,
     {
-        let f_erows_lifted = |erows: ERows, state: &mut S| -> Result<ERowsO, ()> { Ok(f_erows(erows, state)) };
+        let f_erows_lifted =
+            |erows: ERows, state: &mut S| -> Result<ERowsO, ()> { Ok(f_erows(erows, state)) };
         self.try_map_state(f_erows_lifted, state).unwrap()
     }
 
@@ -431,9 +442,9 @@ impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
         FRRows: FnMut(RRows) -> Result<RRowsO, E>,
         FERows: FnMut(ERows) -> Result<ERowsO, E>,
     {
-        let f_lifted = |ty: Ty, _ : &mut ()| -> Result<TyO, E> { f(ty) };
-        let f_rrows_lifted = |rrows: RRows, _ : &mut ()| -> Result<RRowsO, E> { f_rrows(rrows) };
-        let f_erows_lifted = |erows: ERows, _ : &mut ()| -> Result<ERowsO, E> { f_erows(erows) };
+        let f_lifted = |ty: Ty, _: &mut ()| -> Result<TyO, E> { f(ty) };
+        let f_rrows_lifted = |rrows: RRows, _: &mut ()| -> Result<RRowsO, E> { f_rrows(rrows) };
+        let f_erows_lifted = |erows: ERows, _: &mut ()| -> Result<ERowsO, E> { f_erows(erows) };
 
         self.try_map_state(f_lifted, f_rrows_lifted, f_erows_lifted, &mut ())
     }
@@ -451,8 +462,10 @@ impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
         FERows: FnMut(ERows, &mut S) -> ERowsO,
     {
         let f_lifted = |ty: Ty, state: &mut S| -> Result<TyO, ()> { Ok(f(ty, state)) };
-        let f_rrows_lifted = |rrows: RRows, state: &mut S| -> Result<RRowsO, ()> { Ok(f_rrows(rrows, state)) };
-        let f_erows_lifted = |erows: ERows, state: &mut S| -> Result<ERowsO, ()> { Ok(f_erows(erows, state)) };
+        let f_rrows_lifted =
+            |rrows: RRows, state: &mut S| -> Result<RRowsO, ()> { Ok(f_rrows(rrows, state)) };
+        let f_erows_lifted =
+            |erows: ERows, state: &mut S| -> Result<ERowsO, ()> { Ok(f_erows(erows, state)) };
         self.try_map_state(f_lifted, f_rrows_lifted, f_erows_lifted, state)
             .unwrap()
     }
@@ -507,7 +520,7 @@ impl RecordRows {
                 .try_map_state(
                     |ty, state| Ok(Box::new(ty.traverse(f, state, order)?)),
                     |rrows, state| Ok(Box::new(rrows.traverse(f, state, order)?)),
-                    state
+                    state,
                 )?
                 .try_map(|ty| Ok(Box::new(f(*ty, state)?)), |rrows| Ok(rrows))?,
         };
@@ -652,7 +665,6 @@ impl EnumRows {
         let case_body = if has_tail {
             mk_term::var(value_arg.clone())
         }
-
         // Otherwise, we build a switch with all the tags as cases, which just returns the
         // original argument, and a default case that blames.
         //
@@ -969,7 +981,7 @@ impl Types {
                     |ty, state| Ok(Box::new(ty.traverse(f, state, order)?)),
                     |rrows, state| rrows.traverse(f, state, order),
                     |erows, _| Ok(erows),
-                    state
+                    state,
                 )?,
             TraverseOrder::BottomUp => self
                 .0
@@ -977,7 +989,7 @@ impl Types {
                     |ty, state| Ok(Box::new(ty.traverse(f, state, order)?)),
                     |rrows, state| rrows.traverse(f, state, order),
                     |erows, _| Ok(erows),
-                    state
+                    state,
                 )?
                 .try_map(
                     |ty| Ok(Box::new(f(*ty, state)?)),

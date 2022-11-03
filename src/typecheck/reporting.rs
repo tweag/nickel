@@ -131,7 +131,7 @@ pub fn to_type(
                 let mapped = t.map_state(
                     |btyp, names| Box::new(to_type(table, reported_names, names, *btyp)),
                     |rrows, names| Box::new(rrows_to_type(table, reported_names, names, *rrows)),
-                    names
+                    names,
                 );
                 RecordRows(mapped)
             }
@@ -173,7 +173,7 @@ pub fn to_type(
                 |btyp, names| Box::new(to_type(table, reported_names, names, *btyp)),
                 |rrows, names| rrows_to_type(table, reported_names, names, rrows),
                 |erows, names| erows_to_type(table, reported_names, names, erows),
-                names
+                names,
             );
             Types(mapped)
         }
