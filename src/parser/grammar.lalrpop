@@ -328,7 +328,7 @@ Atom: UniTerm = {
     Bool => UniTerm::from(Term::Bool(<>)),
     AsUniTerm<StrChunks>,
     Ident => UniTerm::from(UniTermNode::Var(<>)),
-    UniRecord => UniTerm::from(UniTermNode::Record(<>)),
+    WithPos<UniRecord> => UniTerm::from(UniTermNode::Record(<>)),
     <EnumTag> => UniTerm::from(Term::Enum(<>)),
     "[" <terms: (<Term> ",")*> <last: Term?> "]" => {
         let terms = terms

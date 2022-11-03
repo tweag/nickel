@@ -39,37 +39,35 @@
       forEachRustChannel = fn: builtins.listToAttrs (builtins.map fn RUST_CHANNELS);
 
       cargoTOML = builtins.fromTOML (builtins.readFile ./Cargo.toml);
-      WasmBindgenCargoVersion = cargoTOML.dependencies.wasm-bindgen.version;
-      WasmBindgenVersion = builtins.substring 1 (builtins.stringLength WasmBindgenCargoVersion) WasmBindgenCargoVersion;
 
       version = "${cargoTOML.package.version}_${builtins.substring 0 8 self.lastModifiedDate}_${self.shortRev or "dirty"}";
 
       customOverlay = final: prev: {
-        wasm-bindgen-cli = prev.wasm-bindgen-cli.overrideAttrs (old: rec {
-          version = WasmBindgenVersion;
-          src =
-            let
-              tarball = final.fetchFromGitHub {
-                owner = "rustwasm";
-                repo = "wasm-bindgen";
-                rev = WasmBindgenVersion;
-                hash = "sha256:041mp2ls78iji4w1v3kka2bbcj0pjwy7svpslk2rhldkymhxmjhs";
-              };
-            in
-            final.runCommand "source" { } ''
-              cp -R ${tarball} $out
-              chmod -R +w $out
-              cp ${./wasm-bindgen-api-Cargo.lock} $out/Cargo.lock
-            '';
-          checkInputs = [ ];
-          cargoTestFlags = [ ];
-          cargoBuildFlags = [ "-p" old.pname ];
-          cargoDeps = old.cargoDeps.overrideAttrs (final.lib.const {
-            name = "${old.pname}-${version}-vendor.tar.gz";
-            inherit src;
-            outputHash = "sha256:0bykharc2iq7r0n51d5rdg9s8dq86r9mc6vvbqlp6i468kp8hdvn";
+        # The version of `wasm-bindgen` CLI *must* be the same as the `wasm-bindgen` Rust dependency in `Cargo.toml`.
+        # The definition of `wasm-bindgen-cli` in Nixpkgs does not allow overriding directly the attrset passed to `buildRustPackage`.
+        # We instead override the attrset that `buildRustPackage` generates and passes to `mkDerivation`.
+        # See https://discourse.nixos.org/t/is-it-possible-to-override-cargosha256-in-buildrustpackage/4393
+        wasm-bindgen-cli = prev.wasm-bindgen-cli.overrideAttrs (oldAttrs:
+          let
+            wasmBindgenCargoVersion = cargoTOML.dependencies.wasm-bindgen.version;
+            # Remove the pinning `=` prefix of the version
+            wasmBindgenVersion = builtins.substring 1 (builtins.stringLength wasmBindgenCargoVersion) wasmBindgenCargoVersion;
+          in
+          rec {
+            pname = "wasm-bindgen-cli";
+            version = wasmBindgenVersion;
+
+            src = final.fetchCrate {
+              inherit pname version;
+              sha256 = "sha256-+PWxeRL5MkIfJtfN3/DjaDlqRgBgWZMa6dBt1Q+lpd0=";
+            };
+
+            cargoDeps = oldAttrs.cargoDeps.overrideAttrs (final.lib.const {
+              # This `inherit src` is important, otherwise, the old `src` would be used here
+              inherit src;
+              outputHash = "sha256-GwLeA6xLt7I+NzRaqjwVpt1pzRex1/snq30DPv4FR+g=";
+            });
           });
-        });
       };
 
     in
@@ -185,7 +183,17 @@
           buildInputs =
             [ rust ]
             ++ missingSysPkgs
-            ++ (if !isDevShell then [ cargoHome ] else [ ]);
+            # cargoHome is used for a fully, hermetic, nixified build. This is
+            # what we want for e.g. nix-build. However, when hacking on Nickel,
+            # we rather provide the necessary tooling but let people use the
+            # native way (`cargo build`), because:
+            #
+            # - we don't care as much about hermeticity when iterating quickly
+            #   over the codebase
+            # - we get incremental build and a build order of magnitudes
+            #   faster
+            # - etc.
+            ++ (if isDevShell then [ pkgs.rust-analyzer ] else [ cargoHome ]);
 
           src = if isDevShell then null else self;
 

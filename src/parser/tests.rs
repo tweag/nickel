@@ -262,6 +262,20 @@ fn record_terms() {
     );
 }
 
+/// Regression test for [#876](https://github.com/tweag/nickel/issues/876)
+#[test]
+fn invalid_record_types() {
+    assert_matches!(
+        parse("let x | forall r. { n | Num; r } = {} in x"),
+        Err(ParseError::InvalidUniRecord(..))
+    );
+
+    assert_matches!(
+        parse("let x : forall r. { n = fun i => i; r } = {} in x"),
+        Err(ParseError::InvalidUniRecord(..))
+    );
+}
+
 #[test]
 fn string_lexing() {
     assert_eq!(

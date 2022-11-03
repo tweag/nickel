@@ -167,7 +167,7 @@ highlighting and NLS.
 1. *(optional)* make a symbolic link to the executable:
 
   ```console
-  ln -S nickel target/debug/nickel
+  ln --symbolic target/debug/nickel
   ```
 
 ### Tests

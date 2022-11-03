@@ -353,36 +353,31 @@ impl Types {
                 mk_app!(contract::enums(), case)
             }
             AbsType::Record(ref ty) => {
-                fn form(
-                    sy: &mut i32,
-                    pol: bool,
-                    ty: &Types,
-                    h: HashMap<Ident, (RichTerm, RichTerm)>,
-                ) -> Result<RichTerm, UnboundTypeVariableError> {
-                    let ctr = match &ty.0 {
-                        AbsType::RowEmpty() => contract::empty_tail(),
-                        AbsType::Dyn() => contract::dyn_tail(),
-                        AbsType::Var(id) => get_var(&h, id, false)?,
-                        AbsType::RowExtend(id, Some(ty), rest) => {
-                            let cont = form(sy, pol, rest.as_ref(), h.clone())?;
-                            let row_contr = ty.subcontract(h, pol, sy)?;
-                            mk_app!(
-                                contract::record_extend(),
-                                mk_term::string(format!("{}", id)),
-                                row_contr,
-                                cont
-                            )
-                        }
-                        ty => panic!(
-                            "types::contract_open(): invalid row type {}",
-                            Types(ty.clone())
-                        ),
-                    };
+                // We begin by building a record whose arguments are contracts
+                // derived from the types of the statically known fields.
+                let mut row = ty;
+                let mut fcs = HashMap::new();
 
-                    Ok(ctr)
+                while let AbsType::RowExtend(id, Some(ty), rest) = &row.0 {
+                    fcs.insert(*id, ty.subcontract(h.clone(), pol, sy)?);
+                    row = rest
                 }
 
-                mk_app!(contract::record(), form(sy, pol, ty, h)?)
+                // Now that we've dealt with the row extends, we just need to
+                // work out the tail.
+                let tail = match &row.0 {
+                    AbsType::RowEmpty() => contract::empty_tail(),
+                    AbsType::Dyn() => contract::dyn_tail(),
+                    AbsType::Var(id) => get_var(&h, id, false)?,
+                    ty => panic!(
+                        "types::subcontract(): invalid row tail {:?}",
+                        Types(ty.clone())
+                    ),
+                };
+
+                let rec = RichTerm::from(Term::Record(fcs, Default::default()));
+
+                mk_app!(contract::record(), rec, tail)
             }
             AbsType::Dict(ref ty) => {
                 mk_app!(contract::dyn_record(), ty.subcontract(h, pol, sy)?)
