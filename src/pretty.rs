@@ -1,7 +1,7 @@
 use crate::destruct::{self, Destruct};
 use crate::parser::lexer::KEYWORDS;
 use crate::term::{BinaryOp, MetaValue, RichTerm, Term, UnaryOp};
-use crate::types::{EnumRows, RecordRows, TypeF, Types};
+use crate::types::{EnumRows, EnumRowsF, RecordRowF, RecordRows, RecordRowsF, TypeF, Types};
 pub use pretty::{DocAllocator, DocBuilder, Pretty};
 use regex::Regex;
 use std::collections::HashMap;
@@ -722,7 +722,30 @@ where
     A: Clone + 'a,
 {
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
-        todo!()
+        match self.0 {
+            EnumRowsF::Empty => allocator.nil(),
+            EnumRowsF::TailVar(id) => allocator
+                .space()
+                .append(allocator.text(";"))
+                .append(allocator.space())
+                .append(allocator.as_string(id))
+                .braces(),
+            EnumRowsF::Extend {
+                row,
+                tail,
+            } => {
+                let builder = allocator.text("`").append(allocator.quote_if_needed(&row));
+                let builder = if let EnumRowsF::Extend { .. } = tail.0 {
+                    builder
+                        .append(allocator.text(","))
+                        .append(allocator.space())
+                } else {
+                    builder
+                };
+
+                builder.append(tail.pretty(allocator))
+            }
+        }
     }
 }
 
@@ -733,7 +756,40 @@ where
     A: Clone + 'a,
 {
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
-        todo!()
+        match self.0 {
+            RecordRowsF::Empty => allocator.nil(),
+            RecordRowsF::TailDyn => allocator
+                .space()
+                .append(allocator.text(";"))
+                .append(allocator.space())
+                .append(allocator.text("Dyn")),
+            RecordRowsF::TailVar(id) => allocator
+                .space()
+                .append(allocator.text(";"))
+                .append(allocator.space())
+                .append(allocator.as_string(id))
+                .braces(),
+            RecordRowsF::Extend {
+                row: RecordRowF { id, types },
+                tail,
+            } => {
+                let builder = allocator
+                    .quote_if_needed(&id)
+                    .append(allocator.text(":"))
+                    .append(allocator.space())
+                    .append(types.pretty(allocator));
+
+                let builder = if let RecordRowsF::Extend { .. } = tail.0 {
+                    builder
+                        .append(allocator.text(","))
+                        .append(allocator.space())
+                } else {
+                    builder
+                };
+
+                builder.append(tail.pretty(allocator))
+            }
+        }
     }
 }
 
@@ -783,15 +839,6 @@ where
             }
             Enum(erows) => erows.pretty(allocator).enclose("[|", "|]"),
             Record(rrows) => rrows.pretty(allocator).braces(),
-            // match &row.0 {
-            //     TypeF::Var(id) => allocator
-            //         .space()
-            //         .append(allocator.text(";"))
-            //         .append(allocator.space())
-            //         .append(allocator.as_string(id))
-            //         .braces(),
-            //     _ => row.pretty(allocator).braces(),
-            // },
             Dict(ty) => allocator
                 .line()
                 .append(allocator.text("_"))
@@ -801,36 +848,6 @@ where
                 .append(ty.pretty(allocator))
                 .append(allocator.line())
                 .braces(),
-            // RowExtend(id, ty_opt, tail) => {
-            //     let builder = if let Some(ty) = ty_opt {
-            //         allocator
-            //             .quote_if_needed(&id)
-            //             .append(allocator.text(":"))
-            //             .append(allocator.space())
-            //             .append(ty.pretty(allocator))
-            //     } else {
-            //         allocator.text("`").append(allocator.quote_if_needed(&id))
-            //     };
-            //
-            //     match tail.0 {
-            //         TypeF::RowEmpty() => builder,
-            //         TypeF::Var(_) => builder
-            //             .append(allocator.space())
-            //             .append(allocator.text(";"))
-            //             .append(allocator.space()),
-            //         TypeF::Dyn() => {
-            //             return builder
-            //                 .append(allocator.space())
-            //                 .append(allocator.text(";"))
-            //                 .append(allocator.space())
-            //                 .append(allocator.text("Dyn"))
-            //         }
-            //         _ => builder
-            //             .append(allocator.text(","))
-            //             .append(allocator.space()),
-            //     }
-            //     .append(tail.pretty(allocator))
-            // }
             Arrow(dom, codom) => match dom.0 {
                 Arrow(..) | Forall { .. } => dom
                     .pretty(allocator)
