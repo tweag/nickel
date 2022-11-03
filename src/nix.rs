@@ -40,9 +40,7 @@ impl ToNickel for BinOp {
             }
             Update => unimplemented!(),
 
-            // TODO: Should be fixed using a nickel function `compat.add` of type `a -> a -> a`
-            // using `str_concat` or `add` in respect to `typeof a`.
-            Add => make::op2(BinaryOp::Plus(), lhs, rhs),
+            Add => mk_app!(crate::stdlib::compat::add(), lhs, rhs),
             Sub => make::op2(BinaryOp::Sub(), lhs, rhs),
             Mul => make::op2(BinaryOp::Mult(), lhs, rhs),
             Div => make::op2(BinaryOp::Div(), lhs, rhs),
