@@ -2182,9 +2182,9 @@ fn constrain_rrows(state: &mut State, rrows: UnifRecordRows, id: Ident) -> Resul
                 }
                 Ok(())
             }
-            //TODO: previously ill formed row exception. Now that can't happen, but is it really ok
+            //TODO ROWS: previously ill formed row exception. Now that can't happen, but is it really ok
             //to constrain on a existential variable without doing anything?
-            UnifRecordRows::Constant(_) => Ok(()),
+            UnifRecordRows::Constant(_) => unimplemented!(),
         }
         UnifRecordRows::Concrete(RecordRowsF::Empty) => Ok(()),
         UnifRecordRows::Concrete(RecordRowsF::Extend {row, tail}) => {
@@ -2195,10 +2195,10 @@ fn constrain_rrows(state: &mut State, rrows: UnifRecordRows, id: Ident) -> Resul
             }
         }
         UnifRecordRows::Concrete(RecordRowsF::TailVar(id)) => Err(RowUnifError::UnboundTypeVariable(id)),
-        //TODO: previously ill formed row exception. Now that can't happen, but is it really ok
+        //TODO ROWS: previously ill formed row exception. Now that can't happen, but is it really ok
         //to constrain on a existential variable without doing anything?
         UnifRecordRows::Concrete(RecordRowsF::TailDyn)
-        | UnifRecordRows::Constant(_) => Ok(()),
+        | UnifRecordRows::Constant(_) => unimplemented!(),
     }
 }
 
