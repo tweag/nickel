@@ -55,6 +55,7 @@ use super::*;
 use crate::error::EvalError;
 use crate::label::Label;
 use crate::position::TermPos;
+use crate::term::record::RecordData;
 use crate::term::{
     make as mk_term, BinaryOp, Contract, MetaValue, RecordAttrs, RichTerm, SharedTerm, Term,
 };
@@ -361,7 +362,7 @@ pub fn merge(
         }
         // Merge put together the fields of records, and recursively merge
         // fields that are present in both terms
-        (Term::Record(mut m1, attrs1), Term::Record(mut m2, attrs2)) => {
+        (Term::Record(mut r1), Term::Record(mut r2)) => {
             /* Terms inside m1 and m2 may capture variables of resp. env1 and env2.  Morally, we
              * need to store closures, or a merge of closures, inside the resulting record.  We use
              * the same trick as in the evaluation of the operator DynExtend, and replace each such
@@ -370,19 +371,19 @@ pub fn merge(
             // Merging recursive record is the one operation that may override recursive fields. To
             // have the recursive fields depend on the updated values, we need to revert the thunks
             // first.
-            rev_thunks(m1.values_mut(), &mut env1);
-            rev_thunks(m2.values_mut(), &mut env2);
+            rev_thunks(r1.fields.values_mut(), &mut env1);
+            rev_thunks(r2.fields.values_mut(), &mut env2);
 
             // We save the original fields before they are potentially merged in order to patch
             // their environment in the final record (cf `fixpoint::patch_fields`). Note that we
             // are only cloning shared terms (`Rc`s) here.
-            let m1_values: Vec<_> = m1.values().cloned().collect();
-            let m2_values: Vec<_> = m2.values().cloned().collect();
+            let m1_values: Vec<_> = r1.fields.values().cloned().collect();
+            let m2_values: Vec<_> = r2.fields.values().cloned().collect();
 
-            let (left, center, right) = hashmap::split(m1, m2);
+            let (left, center, right) = hashmap::split(r1.fields, r2.fields);
 
             match mode {
-                MergeMode::Contract(mut lbl) if !attrs2.open && !left.is_empty() => {
+                MergeMode::Contract(mut lbl) if !r2.attrs.open && !left.is_empty() => {
                     let fields: Vec<String> =
                         left.keys().map(|field| format!("`{}`", field)).collect();
                     let plural = if fields.len() == 1 { "" } else { "s" };
@@ -426,7 +427,7 @@ pub fn merge(
 
             Ok(Closure {
                 body: RichTerm::new(
-                    Term::Record(m, RecordAttrs::merge(attrs1, attrs2)),
+                    Term::Record(RecordData::new(m, RecordAttrs::merge(r1.attrs, r2.attrs))),
                     final_pos,
                 ),
                 env,

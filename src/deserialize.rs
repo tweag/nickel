@@ -75,7 +75,7 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
                 variant: v.into_label(),
                 rich_term: None,
             }),
-            Term::Record(v, _) => visit_record(v, visitor),
+            Term::Record(record) => visit_record(record.fields, visitor),
             Term::Array(v, _) => visit_array(v, visitor),
             Term::MetaValue(_) => visitor.visit_unit(),
             other => Err(RustDeserializationError::UnimplementedType {
@@ -120,8 +120,8 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
     {
         let (variant, rich_term) = match unwrap_term(self)? {
             Term::Enum(ident) => (ident.into_label(), None),
-            Term::Record(v, _) => {
-                let mut iter = v.into_iter();
+            Term::Record(record) => {
+                let mut iter = record.fields.into_iter();
                 let (variant, value) = match iter.next() {
                     Some(v) => v,
                     None => {
@@ -296,7 +296,7 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
         V: Visitor<'de>,
     {
         match unwrap_term(self)? {
-            Term::Record(v, _) => visit_record(v, visitor),
+            Term::Record(record) => visit_record(record.fields, visitor),
             other => Err(RustDeserializationError::InvalidType {
                 expected: "Record".to_string(),
                 occurred: other.type_of().unwrap_or_else(|| "Other".to_string()),
@@ -316,7 +316,7 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
     {
         match unwrap_term(self)? {
             Term::Array(v, _) => visit_array(v, visitor),
-            Term::Record(v, _) => visit_record(v, visitor),
+            Term::Record(record) => visit_record(record.fields, visitor),
             other => Err(RustDeserializationError::InvalidType {
                 expected: "Record".to_string(),
                 occurred: other.type_of().unwrap_or_else(|| "Other".to_string()),
@@ -524,7 +524,7 @@ impl<'de> VariantAccess<'de> for VariantDeserializer {
         V: Visitor<'de>,
     {
         match self.rich_term.map(unwrap_term) {
-            Some(Ok(Term::Record(v, _))) => visit_record(v, visitor),
+            Some(Ok(Term::Record(record))) => visit_record(record.fields, visitor),
             Some(Ok(other)) => Err(RustDeserializationError::InvalidType {
                 expected: "Array variant".to_string(),
                 occurred: other.type_of().unwrap_or_else(|| "Other".to_string()),

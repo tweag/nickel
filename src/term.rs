@@ -42,6 +42,8 @@ use std::{
     rc::Rc,
 };
 
+use self::record::RecordData;
+
 /// The AST of a Nickel expression.
 ///
 /// Parsed terms also need to store their position in the source for error reporting.  This is why
@@ -98,13 +100,12 @@ pub enum Term {
     /// A record, mapping identifiers to terms.
     #[serde(serialize_with = "crate::serialize::serialize_record")]
     #[serde(deserialize_with = "crate::serialize::deserialize_record")]
-    Record(HashMap<Ident, RichTerm>, RecordAttrs),
+    Record(RecordData),
     /// A recursive record, where the fields can reference each others.
     #[serde(skip)]
     RecRecord(
-        HashMap<Ident, RichTerm>,
+        RecordData,
         Vec<(RichTerm, RichTerm)>, /* field whose name is defined by interpolation */
-        RecordAttrs,
         Option<RecordDeps>, /* dependency tracking between fields. None before the free var pass */
     ),
     /// A switch construct. The evaluation is done by the corresponding unary operator, but we
@@ -417,6 +418,58 @@ impl ArrayAttrs {
     }
 }
 
+pub mod record {
+    use super::{RecordAttrs, RichTerm};
+    use crate::identifier::Ident;
+    use std::collections::HashMap;
+
+    /// The base structure of a Nickel record.
+    ///
+    /// Used to group together fields common to both the [Record](Term::Record) and
+    /// [RecRecord](Term::RecRecord) terms.
+    #[derive(Clone, Debug, Default, PartialEq)]
+    pub struct RecordData {
+        /// Fields whose names are known statically.
+        pub fields: HashMap<Ident, RichTerm>,
+        /// Attributes which may be applied to a record.
+        pub attrs: RecordAttrs,
+    }
+
+    impl RecordData {
+        pub fn new(fields: HashMap<Ident, RichTerm>, attrs: RecordAttrs) -> Self {
+            RecordData { fields, attrs }
+        }
+
+        /// A record with no fields and the default set of attributes.
+        pub fn empty() -> Self {
+            Default::default()
+        }
+
+        /// A record with the provided fields & the default set of attributes.
+        pub fn with_fields(fields: HashMap<Ident, RichTerm>) -> Self {
+            let attrs = Default::default();
+            RecordData { fields, attrs }
+        }
+
+        /// Returns the record resulting from applying the provided function
+        /// to each field.
+        ///
+        /// Note that `f` is taken as `mut` in order to allow it to mutate
+        /// external state while iterating.
+        pub fn map_fields<F>(self, mut f: F) -> Self
+        where
+            F: FnMut(Ident, RichTerm) -> RichTerm,
+        {
+            let fields = self
+                .fields
+                .into_iter()
+                .map(|(id, t)| (id, f(id, t)))
+                .collect();
+            RecordData { fields, ..self }
+        }
+    }
+}
+
 #[derive(Debug, Default, Eq, PartialEq, Copy, Clone)]
 pub struct RecordAttrs {
     pub open: bool,
@@ -700,11 +753,11 @@ impl Term {
                     func(def)
                 }
             }
-            Record(ref mut static_map, _) => {
-                static_map.iter_mut().for_each(|(_, t)| func(t));
+            Record(ref mut r) => {
+                r.fields.iter_mut().for_each(|(_, t)| func(t));
             }
-            RecRecord(ref mut static_map, ref mut dyn_fields, ..) => {
-                static_map.iter_mut().for_each(|(_, t)| func(t));
+            RecRecord(ref mut r, ref mut dyn_fields, ..) => {
+                r.fields.iter_mut().for_each(|(_, t)| func(t));
                 dyn_fields.iter_mut().for_each(|(t1, t2)| {
                     func(t1);
                     func(t2);
@@ -857,8 +910,9 @@ impl Term {
     /// Return a deep string representation of a term, used for printing in the REPL
     pub fn deep_repr(&self) -> String {
         match self {
-            Term::Record(fields, _) | Term::RecRecord(fields, ..) => {
-                let fields_str: Vec<String> = fields
+            Term::Record(r) | Term::RecRecord(r, ..) => {
+                let fields_str: Vec<String> = r
+                    .fields
                     .iter()
                     .map(|(ident, term)| format!("{} = {}", ident, term.as_ref().deep_repr()))
                     .collect();
@@ -1547,23 +1601,20 @@ impl RichTerm {
                     pos,
                 )
             },
-            Term::Record(map, attrs) => {
-                // The annotation on `map_res` uses Result's corresponding trait to convert from
+            Term::Record(record) => {
+                // The annotation on `fields_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
-                let map_res: Result<HashMap<Ident, RichTerm>, E> = map
+                let fields_res: Result<HashMap<Ident, RichTerm>, E> = record.fields
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
                     .map(|(id, t)| t.traverse(f, state, order).map(|t_ok| (id.clone(), t_ok)))
                     .collect();
-                RichTerm::new(
-                    Term::Record(map_res?, attrs),
-                    pos,
-                )
+                RichTerm::new(Term::Record(RecordData::new(fields_res?, record.attrs)), pos)
             },
-            Term::RecRecord(map, dyn_fields, attrs, deps) => {
+            Term::RecRecord(record, dyn_fields, deps) => {
                 // The annotation on `map_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
-                let map_res: Result<HashMap<Ident, RichTerm>, E> = map
+                let static_fields_res: Result<HashMap<Ident, RichTerm>, E> = record.fields
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
                     .map(|(id, t)| Ok((id, t.traverse(f, state, order)?)))
@@ -1578,7 +1629,7 @@ impl RichTerm {
                     })
                     .collect();
                 RichTerm::new(
-                    Term::RecRecord(map_res?, dyn_fields_res?, attrs, deps),
+                    Term::RecRecord(RecordData::new(static_fields_res?, record.attrs), dyn_fields_res?, deps),
                     pos,
                 )
             },
@@ -1813,11 +1864,11 @@ pub mod make {
     macro_rules! mk_record {
         ( $( ($id:expr, $body:expr) ),* ) => {
             {
-                let mut map = std::collections::HashMap::new();
+                let mut fields = std::collections::HashMap::new();
                 $(
-                    map.insert($id.into(), $body.into());
+                    fields.insert($id.into(), $body.into());
                 )*
-                $crate::term::RichTerm::from($crate::term::Term::Record(map, Default::default()))
+                $crate::term::RichTerm::from($crate::term::Term::Record($crate::term::record::RecordData::new(fields, Default::default())))
             }
         };
     }

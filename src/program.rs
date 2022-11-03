@@ -300,9 +300,9 @@ mod doc {
             Term::MetaValue(MetaValue { doc: Some(md), .. }) => {
                 document.append(parse_documentation(header_level, arena, md, options))
             }
-            Term::Record(map, _) | Term::RecRecord(map, _, _, _) => {
+            Term::Record(record) | Term::RecRecord(record, _, _) => {
                 // Sorting fields for a determinstic output
-                let mut entries: Vec<(_, _)> = map.iter().collect();
+                let mut entries: Vec<(_, _)> = record.fields.iter().collect();
                 entries.sort_by_key(|(k, _)| *k);
 
                 for (ident, rt) in entries {
