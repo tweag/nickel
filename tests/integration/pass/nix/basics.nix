@@ -15,4 +15,24 @@
   (1 <= 1 == true)
   (1 > 1 == false)
   (1 >= 1 == true)
+
+  # booleans expr
+  (true && false == false)
+  (true || false == true)
+  (true -> true == true)
+  (true -> false == false)
+  (false -> true == true)
+  (false -> false == true)
+  (!false == true)
+  (false && true || true == true)
+  # (false && (true || true) == false) # TODO: what happen here?
+
+  # lists concataination
+  ([ 1 2 ] ++ [ 1 2 ] == [ 1 2 1 2 ])
+
+  # strings concataination
+  # ("hello" + " " + "world" == "hello world") # TODO: to be fixed
+
+  # if then else
+  ((if true then 1 else 2) == 1)
 ]
