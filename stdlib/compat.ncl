@@ -1,6 +1,14 @@
 {
 compat | doc "Nix compatibility layer. should not be used by Nickel program."
 = {
+
+  # the adition in Nix can be a string concataination.
+  # this function handle this behaviour.
+  add = fun a b =>
+    if %typeof% a == `Str && %typeof% b == `Str
+    then a ++ b
+    else a + b,
+
   with =
     let AssertFound = fun l val => if val.found 
       then val.value
