@@ -404,7 +404,30 @@ impl RecordRows {
     where
         FTy: FnMut(Types, &mut S) -> Result<Types, E>,
     {
-        todo!()
+        let inner = match order {
+            TraverseOrder::TopDown => self
+                .0
+                .try_map(
+                    |ty| Ok(Box::new(f(*ty, state)?)),
+                    |rrows| Ok(rrows),
+                )?
+                .try_map(
+                    |ty| Ok(Box::new(ty.traverse(f, state, order)?)),
+                    |rrows| Ok(Box::new(rrows.traverse(f, state, order)?)),
+                )?,
+            TraverseOrder::BottomUp => self
+                .0
+                .try_map(
+                    |ty| Ok(Box::new(ty.traverse(f, state, order)?)),
+                    |rrows| Ok(Box::new(rrows.traverse(f, state, order)?)),
+                )?
+                .try_map(
+                    |ty| Ok(Box::new(f(*ty, state)?)),
+                    |rrows| Ok(rrows),
+                )?,
+        };
+
+        Ok(RecordRows(inner))
     }
 }
 
