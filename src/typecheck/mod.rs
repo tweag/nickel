@@ -172,14 +172,19 @@ impl<E: TermEnvironment + Clone> std::convert::TryInto<Types> for GenericUnifTyp
     }
 }
 
-impl UnifEnumRows {
-    /// Create a TypeWrapper from a Types. Contracts are represented as the separate variant
-    /// [`TypeWrapper::Contract`] which also stores a term environment, required for checking type
-    /// equality involving contracts.
-    pub fn from_enum_rows(erows: EnumRows) -> Self {
-        todo!()
+// As opposed to `UnifType` and `UnifRecordRows` which can contain contract, and thus need the
+// additional environment parameter (see e.g. `from_record_rows`), we can convert enum rows
+// directly to unif enum rows without additional data: instead of implementing a function
+// `from_enum_rows`, we rather implement the more natural trait `From<EnumRows>`.
+impl From<EnumRows> for UnifEnumRows {
+    fn from(erows: EnumRows) -> Self {
+        UnifEnumRows::Concrete(
+            erows.0.map(|erows| Box::new(UnifEnumRows::from(*erows)))
+        )
     }
+}
 
+impl UnifEnumRows {
     pub fn iter<'a>(&'a self) -> EnumRowsIterator<'a, UnifEnumRows> {
         EnumRowsIterator {
             erows: Some(self),
@@ -298,7 +303,7 @@ impl<E: TermEnvironment + Clone> GenericUnifType<E> {
             ty => GenericUnifType::Concrete(
                 ty.map(|ty_| Box::new(GenericUnifType::from_type(*ty_, env)),
                        |rrows| GenericUnifRecordRows::from_record_rows(rrows, env),
-                       |erows| UnifEnumRows::from_enum_rows(erows),
+                       |erows| UnifEnumRows::from(erows),
             )),
         }
     }
