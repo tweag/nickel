@@ -2076,7 +2076,7 @@ fn instantiate_foralls(state: &mut State, mut ty: UnifType, inst: ForallInst) ->
                 }
             }
             VarKind::EnumRows => {
-                let fresh_uid = state.table.fresh_rrows_var_id();
+                let fresh_uid = state.table.fresh_erows_var_id();
                 let uvar = match inst {
                     ForallInst::Constant => UnifEnumRows::Constant(fresh_uid),
                     ForallInst::Ptr => UnifEnumRows::UnifVar(fresh_uid),
