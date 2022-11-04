@@ -63,7 +63,8 @@ use crate::{
         NumeralPriority, array::Array, make as mk_term,
     },
     types::{
-        Types, TypeF, EnumRows, EnumRowsF, RecordRows, RecordRowsF
+        Types, TypeF, EnumRows, EnumRowsF, RecordRows, RecordRowsF,
+        VarKind
     },
     position::TermPos,
     label::Label,
@@ -252,7 +253,10 @@ Forall: Types =
     "forall" <ids: Ident+> "." <ty: Types> => {
         ids.into_iter().rev().fold(
             ty,
-            |acc, var| Types(TypeF::Forall { var, var_kind: todo!(), body: Box::new(acc) })
+            // The variable kind will be determined during the `fix_type_vars`
+            // phase. For now, we put a random one (which is also the default
+            // one, for unused type variables)
+            |acc, var| Types(TypeF::Forall { var, var_kind: VarKind::Type, body: Box::new(acc) })
         )
     };
 
