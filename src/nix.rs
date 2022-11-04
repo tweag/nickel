@@ -32,7 +32,14 @@ impl ToNickel for BinOp {
             // TODO: Should be fixed using a nickel function `compat.concat` of type `a -> a -> a`
             // using `str_concat` or `array_concat` in respect to `typeof a`.
             Concat => make::op2(BinaryOp::ArrayConcat(), lhs, rhs),
-            IsSet => unimplemented!(),
+            IsSet => {
+                let rhs = if self.rhs().unwrap().kind() == rnix::SyntaxKind::NODE_IDENT {
+                    Term::Str(self.rhs().unwrap().to_string()).into()
+                } else {
+                    rhs
+                };
+                make::op2(BinaryOp::HasField(), rhs, lhs)
+            }
             Update => unimplemented!(),
 
             Add => make::op2(BinaryOp::Plus(), lhs, rhs),

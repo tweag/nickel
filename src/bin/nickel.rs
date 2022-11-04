@@ -9,8 +9,8 @@ use nickel_lang::{serialize, serialize::ExportFormat};
 use std::path::{Path, PathBuf};
 use std::{
     fs::{self, File},
-    process,
     io::Read,
+    process,
 };
 // use std::ffi::OsStr;
 use directories::BaseDirs;
