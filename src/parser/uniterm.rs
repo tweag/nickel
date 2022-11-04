@@ -519,8 +519,14 @@ impl FixTypeVars for RecordRows {
         match self.0 {
             RecordRowsF::Empty => (),
             RecordRowsF::TailDyn => (),
-            // We can't have a contract in tail position, so we don't fix `TailVar`.
-            RecordRowsF::TailVar(_) => (),
+            // We can't have a contract in tail position, so we don't fix `TailVar`. However, we
+            // have to set the correct kind for the corresponding forall binder.
+            RecordRowsF::TailVar(ref id) => {
+                if let Some(cell) = bound_vars.get(id) {
+                    cell.set_or_check_equal(VarKind::RecordRows)
+                        .expect("var kind mismatch");
+                }
+            }
             RecordRowsF::Extend {
                 ref mut row,
                 ref mut tail,
