@@ -2034,7 +2034,7 @@ mod tests {
     fn metavalue_flatten() {
         let mut inner = MetaValue::new();
         inner.types = Some(Contract {
-            types: Types(TypeF::Num()),
+            types: Types(TypeF::Num),
             label: Label::dummy(),
         });
         let outer = MetaValue::new();

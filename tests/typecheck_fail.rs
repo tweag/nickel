@@ -4,7 +4,7 @@ use nickel_lang::cache::resolvers::DummyResolver;
 use nickel_lang::error::TypecheckError;
 use nickel_lang::parser::{grammar, lexer};
 use nickel_lang::term::RichTerm;
-use nickel_lang::types::{AbsType, Types};
+use nickel_lang::types::{TypeF, Types};
 use nickel_lang::{typecheck, typecheck::Context};
 use nickel_lang_utilities::typecheck_fixture;
 
@@ -290,8 +290,8 @@ let g : Num = f 0 in
 g"#
         ),
         Err(TypecheckError::TypeMismatch(
-            Types(AbsType::Arrow(_, _)),
-            Types(AbsType::Dyn()),
+            Types(TypeF::Arrow(_, _)),
+            Types(TypeF::Dyn),
             _
         ))
     );
@@ -307,8 +307,8 @@ fn locally_different_flat_types() {
              foo : lib.Contract"
         ),
         Err(TypecheckError::TypeMismatch(
-            Types(AbsType::Flat(..)),
-            Types(AbsType::Flat(..)),
+            Types(TypeF::Flat(..)),
+            Types(TypeF::Flat(..)),
             _
         ))
     );
