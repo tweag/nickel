@@ -4,10 +4,7 @@ use log::debug;
 use nickel_lang::{
     identifier::Ident,
     term::{MetaValue, RichTerm, Term},
-    typecheck::{
-        linearization::{LinearizationState, Scope},
-        TypeWrapper,
-    },
+    typecheck::{linearization::LinearizationState, TypeWrapper},
     types::AbsType,
 };
 
@@ -24,25 +21,13 @@ use super::{
 #[derive(Default)]
 pub struct Building {
     pub linearization: Vec<LinearizationItem<Unresolved>>,
-    pub scope: HashMap<Scope, Vec<ID>>,
 }
 
 pub type ID = usize;
 
 impl Building {
     pub(super) fn push(&mut self, item: LinearizationItem<Unresolved>) {
-        self.scope
-            .remove(&item.scope)
-            .map(|mut s| {
-                s.push(item.id);
-                s
-            })
-            .or_else(|| Some(vec![item.id]))
-            .into_iter()
-            .for_each(|l| {
-                self.scope.insert(item.scope.clone(), l);
-            });
-        self.linearization.push(item);
+        self.linearization.push(item)
     }
 
     pub(super) fn add_usage(&mut self, decl: usize, usage: usize) {
@@ -74,7 +59,6 @@ impl Building {
         &mut self,
         record_fields: &HashMap<Ident, RichTerm>,
         record: usize,
-        scope: Scope,
         env: &mut Environment,
     ) {
         for (ident, value) in record_fields.iter() {
@@ -91,7 +75,6 @@ impl Building {
                     usages: Vec::new(),
                     value: ValueState::Unknown,
                 },
-                scope: scope.clone(),
                 meta: match value.term.as_ref() {
                     Term::MetaValue(meta @ MetaValue { .. }) => Some(MetaValue {
                         value: None,

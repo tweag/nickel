@@ -339,7 +339,6 @@ mod tests {
                 pos: TermPos::None,
                 ty: Types(AbsType::Dyn()),
                 kind,
-                scope: Vec::new(),
                 meta: None,
             }
         }
@@ -350,8 +349,7 @@ mod tests {
                 .enumerate()
                 .map(|(index, id)| (id, index))
                 .collect();
-            let scope = HashMap::new();
-            Completed::new(linearization, scope, id_to_index)
+            Completed::new(linearization, id_to_index)
         }
 
         // ids is an array of the ids from this linearization
