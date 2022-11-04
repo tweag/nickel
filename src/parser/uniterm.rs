@@ -381,7 +381,11 @@ impl FixTypeVars for Types {
             }
             TypeF::Forall {
                 ref var,
-                ref var_kind,
+                // TODO: pass a mutable ref to var_kind, and set the var kind while fixing type
+                // vars, depending on the position of type vars. Raise an error if the same type var
+                // appears in position with incompatible kinds (as a record rows and a type, for
+                // example).
+                var_kind: _,
                 ref mut body,
             } => {
                 bound_vars.to_mut().insert(var.clone());
@@ -416,7 +420,7 @@ impl FixTypeVars for RecordRows {
 }
 
 impl FixTypeVars for EnumRows {
-    fn fix_type_subvars(&mut self, bound_vars: Cow<HashSet<Ident>>) {
+    fn fix_type_subvars(&mut self, _bound_vars: Cow<HashSet<Ident>>) {
         // An enum row doesn't contain any subtypes (beside other enum rows). No term variable can
         // appear in it, so we don't have to traverse it at all.
     }
