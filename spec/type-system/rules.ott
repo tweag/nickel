@@ -379,5 +379,4 @@ max t_unif1 .. t_unifn = u_unif
 %----------------------- :: AppAbs
 %(\x.e1) e2 --> e1[e2/x]
 
-% don't need the max actually, we can just unify things.
-% remarque d'Alejandro sur le typage
+% Don't need the max actually, we can just unify things.
