@@ -1491,6 +1491,7 @@ fn replace_wildcards_with_var(
                 Box::new(replace_wildcards_with_var(table, wildcard_vars, *ty, env))
             },
             |rrows, (table, wildcard_vars)| replace_rrows(table, wildcard_vars, rrows, env),
+            // Enum rows contain neither wildcards nor contracts
             |erows, _| UnifEnumRows::from(erows),
             &mut (table, wildcard_vars),
         )),
