@@ -115,15 +115,14 @@ pub fn to_type(
         names: &mut NameReg,
         rrows: UnifRecordRows,
     ) -> RecordRows {
+        let rrows = rrows.into_root(table);
+
         match rrows {
-            UnifRecordRows::UnifVar(var_id) => match table.root_rrows(var_id) {
-                UnifRecordRows::UnifVar(var_id) => RecordRows(RecordRowsF::TailVar(var_name(
-                    reported_names,
-                    names,
-                    var_id,
-                ))),
-                rrows => rrows_to_type(table, reported_names, names, rrows),
-            },
+            UnifRecordRows::UnifVar(var_id) => RecordRows(RecordRowsF::TailVar(var_name(
+                reported_names,
+                names,
+                var_id,
+            ))),
             UnifRecordRows::Constant(c) => {
                 RecordRows(RecordRowsF::TailVar(cst_name(reported_names, names, c)))
             }
@@ -144,13 +143,12 @@ pub fn to_type(
         names: &mut NameReg,
         erows: UnifEnumRows,
     ) -> EnumRows {
+        let erows = erows.into_root(table);
+
         match erows {
-            UnifEnumRows::UnifVar(var_id) => match table.root_erows(var_id) {
-                UnifEnumRows::UnifVar(var_id) => {
-                    EnumRows(EnumRowsF::TailVar(var_name(reported_names, names, var_id)))
-                }
-                erows => erows_to_type(table, reported_names, names, erows),
-            },
+            UnifEnumRows::UnifVar(var_id) => {
+                EnumRows(EnumRowsF::TailVar(var_name(reported_names, names, var_id)))
+            }
             UnifEnumRows::Constant(c) => {
                 EnumRows(EnumRowsF::TailVar(cst_name(reported_names, names, c)))
             }
@@ -162,11 +160,10 @@ pub fn to_type(
         }
     }
 
+    let ty = ty.into_root(table);
+
     match ty {
-        UnifType::UnifVar(p) => match table.root_type(p) {
-            UnifType::UnifVar(p) => Types(TypeF::Var(var_name(reported_names, names, p))),
-            tyw => to_type(table, reported_names, names, tyw),
-        },
+        UnifType::UnifVar(p) => Types(TypeF::Var(var_name(reported_names, names, p))),
         UnifType::Constant(c) => Types(TypeF::Var(cst_name(reported_names, names, c))),
         UnifType::Concrete(t) => {
             let mapped = t.map_state(

@@ -365,7 +365,7 @@ impl UnifRecordRows {
         }
     }
 
-    fn into_root(self, table: &mut UnifTable) -> Self {
+    fn into_root(self, table: &UnifTable) -> Self {
         match self {
             UnifRecordRows::UnifVar(var_id) => table.root_rrows(var_id),
             urrows => urrows,
@@ -390,7 +390,7 @@ impl UnifEnumRows {
         }
     }
 
-    fn into_root(self, table: &mut UnifTable) -> Self {
+    fn into_root(self, table: &UnifTable) -> Self {
         match self {
             UnifEnumRows::UnifVar(var_id) => table.root_erows(var_id),
             uerows => uerows,
@@ -434,7 +434,7 @@ impl UnifType {
         }
     }
 
-    fn into_root(self, table: &mut UnifTable) -> Self {
+    fn into_root(self, table: &UnifTable) -> Self {
         match self {
             UnifType::UnifVar(var_id) => table.root_type(var_id),
             uty => uty,
@@ -1752,7 +1752,7 @@ fn erows_add(
             {
                 return Err(RowUnifError::UnsatConstr(id.clone(), None));
             }
-            let tail_var_id = state.table.fresh_rrows_var_id();
+            let tail_var_id = state.table.fresh_erows_var_id();
             let new_tail = UnifEnumRows::Concrete(EnumRowsF::Extend {
                 row: id.clone(),
                 tail: Box::new(UnifEnumRows::UnifVar(tail_var_id.clone())),
@@ -1995,8 +1995,8 @@ pub fn unify_erows(
                 (EnumRowsF::Extend { row: ident, .. }, EnumRowsF::Empty) => {
                     Err(RowUnifError::MissingRow(ident))
                 }
-                (EnumRowsF::Extend { row: id, tail }, r2 @ EnumRowsF::Extend { .. }) => {
-                    let t2_tail = erows_add(state, &id, UnifEnumRows::Concrete(r2))?;
+                (EnumRowsF::Extend { row: id, tail }, erows2 @ EnumRowsF::Extend { .. }) => {
+                    let t2_tail = erows_add(state, &id, UnifEnumRows::Concrete(erows2))?;
                     unify_erows(state, ctxt, *tail, t2_tail)
                 }
             }
