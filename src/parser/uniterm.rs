@@ -383,7 +383,7 @@ impl VarKindCell {
             }
             VarKindCellData {
                 var_kind: data,
-                state: VarKindCellState::Unset,
+                state: VarKindCellState::Set,
             } if *data == var_kind => Ok(()),
             _ => Err(VarKindMismatch),
         }
@@ -542,7 +542,7 @@ impl FixTypeVars for EnumRows {
         // variable.
         let mut iter = self
             .iter()
-            .take_while(|item| matches!(item, EnumRowsIteratorItem::Row(_)));
+            .skip_while(|item| matches!(item, EnumRowsIteratorItem::Row(_)));
         match iter.next() {
             Some(EnumRowsIteratorItem::TailVar(id)) => {
                 if let Some(cell) = bound_vars.get(id) {
@@ -551,8 +551,8 @@ impl FixTypeVars for EnumRows {
                 }
             }
             // unreachable(): we consumed all the rows item via the `take_while()` call above
-            // Additionally, a row iterator can't end without a tail
-            Some(EnumRowsIteratorItem::Row(_)) | None => unreachable!(),
+            Some(EnumRowsIteratorItem::Row(_)) => unreachable!(),
+            None => (),
         }
     }
 }

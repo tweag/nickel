@@ -364,6 +364,13 @@ impl UnifRecordRows {
             }
         }
     }
+
+    fn into_root(self, table: &mut UnifTable) -> Self {
+        match self {
+            UnifRecordRows::UnifVar(var_id) => table.root_rrows(var_id),
+            urrows => urrows,
+        }
+    }
 }
 
 impl UnifEnumRows {
@@ -380,6 +387,13 @@ impl UnifEnumRows {
                 let mapped = t.map(|erows| Box::new(erows.into_erows(table)));
                 EnumRows(mapped)
             }
+        }
+    }
+
+    fn into_root(self, table: &mut UnifTable) -> Self {
+        match self {
+            UnifEnumRows::UnifVar(var_id) => table.root_erows(var_id),
+            uerows => uerows,
         }
     }
 }
@@ -417,6 +431,13 @@ impl UnifType {
                 Types(mapped)
             }
             UnifType::Contract(t, _) => Types(TypeF::Flat(t)),
+        }
+    }
+
+    fn into_root(self, table: &mut UnifTable) -> Self {
+        match self {
+            UnifType::UnifVar(var_id) => table.root_type(var_id),
+            uty => uty,
         }
     }
 }
@@ -1248,11 +1269,7 @@ fn type_check_<L: Linearizer>(
                 }
             }
 
-            let root_ty = if let UnifType::UnifVar(p) = ty {
-                state.table.root_type(p)
-            } else {
-                ty.clone()
-            };
+            let root_ty = ty.clone().into_root(state.table);
 
             if let UnifType::Concrete(TypeF::Dict(rec_ty)) = root_ty {
                 // Checking for a dictionary
@@ -1641,13 +1658,11 @@ fn rrows_add(
     state: &mut State,
     id: &Ident,
     ty: Box<UnifType>,
-    mut r: UnifRecordRows,
+    rrows: UnifRecordRows,
 ) -> Result<(Box<UnifType>, UnifRecordRows), RowUnifError> {
-    if let UnifRecordRows::UnifVar(p) = r {
-        r = state.table.root_rrows(p);
-    }
+    let rrows = rrows.into_root(state.table);
 
-    match r {
+    match rrows {
         UnifRecordRows::Concrete(erows) => match erows {
             RecordRowsF::Empty | RecordRowsF::TailDyn | RecordRowsF::TailVar(_) => {
                 Err(RowUnifError::MissingRow(id.clone()))
@@ -1709,13 +1724,11 @@ fn rrows_add(
 fn erows_add(
     state: &mut State,
     id: &Ident,
-    mut r: UnifEnumRows,
+    uerows: UnifEnumRows,
 ) -> Result<UnifEnumRows, RowUnifError> {
-    if let UnifEnumRows::UnifVar(p) = r {
-        r = state.table.root_erows(p);
-    }
+    let uerows = uerows.into_root(state.table);
 
-    match r {
+    match uerows {
         UnifEnumRows::Concrete(erows) => match erows {
             EnumRowsF::Empty | EnumRowsF::TailVar(_) => Err(RowUnifError::MissingRow(id.clone())),
             EnumRowsF::Extend { row, tail } => {
@@ -1759,15 +1772,11 @@ fn erows_add(
 pub fn unify(
     state: &mut State,
     ctxt: &Context,
-    mut t1: UnifType,
-    mut t2: UnifType,
+    t1: UnifType,
+    t2: UnifType,
 ) -> Result<(), UnifError> {
-    if let UnifType::UnifVar(pt1) = t1 {
-        t1 = state.table.root_type(pt1);
-    }
-    if let UnifType::UnifVar(pt2) = t2 {
-        t2 = state.table.root_type(pt2);
-    }
+    let t1 = t1.into_root(state.table);
+    let t2 = t2.into_root(state.table);
 
     // t1 and t2 are roots of the type
     match (t1, t2) {
@@ -1887,6 +1896,9 @@ pub fn unify_rrows(
     urrows1: UnifRecordRows,
     urrows2: UnifRecordRows,
 ) -> Result<(), RowUnifError> {
+    let urrows1 = urrows1.into_root(state.table);
+    let urrows2 = urrows2.into_root(state.table);
+
     match (urrows1, urrows2) {
         (UnifRecordRows::Concrete(rrows1), UnifRecordRows::Concrete(rrows2)) => {
             match (rrows1, rrows2) {
@@ -1967,6 +1979,9 @@ pub fn unify_erows(
     uerows1: UnifEnumRows,
     uerows2: UnifEnumRows,
 ) -> Result<(), RowUnifError> {
+    let uerows1 = uerows1.into_root(state.table);
+    let uerows2 = uerows2.into_root(state.table);
+
     match (uerows1, uerows2) {
         (UnifEnumRows::Concrete(erows1), UnifEnumRows::Concrete(erows2)) => {
             match (erows1, erows2) {
@@ -2029,9 +2044,7 @@ enum ForallInst {
 /// - `ty`: the polymorphic type to instantiate
 /// - `inst`: the type of instantiation, either by a type constant or by a unification variable
 fn instantiate_foralls(state: &mut State, mut ty: UnifType, inst: ForallInst) -> UnifType {
-    if let UnifType::UnifVar(p) = ty {
-        ty = state.table.root_type(p);
-    }
+    ty = ty.into_root(state.table);
 
     while let UnifType::Concrete(TypeF::Forall {
         var,
