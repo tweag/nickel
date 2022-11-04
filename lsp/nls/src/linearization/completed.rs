@@ -38,7 +38,7 @@ impl Completed {
     ) -> Vec<&LinearizationItem<Resolved>> {
         env.iter()
             .filter_map(|(_, id)| self.get_item(*id))
-            .collect::<Vec<_>>()
+            .collect()
     }
 
     /// Finds the index of a linearization item for a given location
