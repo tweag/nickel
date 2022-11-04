@@ -4,10 +4,7 @@ use log::debug;
 use nickel_lang::{
     identifier::Ident,
     term::{MetaValue, RichTerm, Term},
-    typecheck::{
-        linearization::LinearizationState,
-        UnifType,
-    },
+    typecheck::{linearization::LinearizationState, UnifType},
     types::AbsType,
 };
 

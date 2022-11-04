@@ -1608,15 +1608,16 @@ pub fn infer_record_type(t: &Term, term_env: &SimpleTermEnvironment) -> UnifType
             ..
         }) if contracts.is_empty() => infer_record_type(rt.as_ref(), term_env),
         Term::Record(record) | Term::RecRecord(record, ..) => UnifType::from(TypeF::Record(
-            UnifRecordRows::Concrete(record.fields.iter().fold(RecordRowsF::Empty, |r, (id, rt)| {
-                RecordRowsF::Extend {
+            UnifRecordRows::Concrete(record.fields.iter().fold(
+                RecordRowsF::Empty,
+                |r, (id, rt)| RecordRowsF::Extend {
                     row: UnifRecordRow {
                         id: id.clone(),
                         types: Box::new(infer_record_type(rt.term.as_ref(), term_env)),
                     },
                     tail: Box::new(r.into()),
-                }
-            })),
+                },
+            )),
         )),
         t => UnifType::from_apparent_type(
             apparent_type(t, None, None),
