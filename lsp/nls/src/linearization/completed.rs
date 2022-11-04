@@ -37,9 +37,8 @@ impl Completed {
         LinearizationItem { env, .. }: &LinearizationItem<Resolved>,
     ) -> Vec<&LinearizationItem<Resolved>> {
         env.iter()
-            .map(|(_, id)| self.get_item(*id))
-            .collect::<Option<Vec<_>>>()
-            .unwrap_or_default()
+            .filter_map(|(_, id)| self.get_item(*id))
+            .collect::<Vec<_>>()
     }
 
     /// Finds the index of a linearization item for a given location
