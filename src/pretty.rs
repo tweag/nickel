@@ -728,8 +728,7 @@ where
                 .space()
                 .append(allocator.text(";"))
                 .append(allocator.space())
-                .append(allocator.as_string(id))
-                .braces(),
+                .append(allocator.as_string(id)),
             EnumRowsF::Extend { row, tail } => {
                 let builder = allocator.text("`").append(allocator.quote_if_needed(&row));
                 let builder = if let EnumRowsF::Extend { .. } = tail.0 {
@@ -764,8 +763,7 @@ where
                 .space()
                 .append(allocator.text(";"))
                 .append(allocator.space())
-                .append(allocator.as_string(id))
-                .braces(),
+                .append(allocator.as_string(id)),
             RecordRowsF::Extend {
                 row: RecordRowF { id, types },
                 tail,
