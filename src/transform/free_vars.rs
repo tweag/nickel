@@ -7,7 +7,7 @@ use crate::{
     destruct::{Destruct, Match},
     identifier::Ident,
     term::{RecordDeps, RichTerm, SharedTerm, StrChunk, Term},
-    types::{EnumRows, RecordRows, TypeF, Types},
+    types::{RecordRowF, RecordRows, RecordRowsF, TypeF, Types},
 };
 
 use std::collections::{HashMap, HashSet};
@@ -18,12 +18,12 @@ pub fn transform(rt: &mut RichTerm) {
 }
 
 pub trait CollectFreeVars {
-    fn collect_free_vars(&mut self, free_vars: &mut HashSet<Ident>);
+    /// Collect the free variables of a term inside the provided hashset. Doing so, fill the recursive
+    /// record dependencies data accordingly.
+    fn collect_free_vars(&mut self, working_set: &mut HashSet<Ident>);
 }
 
 impl CollectFreeVars for RichTerm {
-    /// Collect the free variables of a term inside the provided hashset. Doing so, fill the recursive
-    /// record dependencies data accordingly.
     fn collect_free_vars(&mut self, free_vars: &mut HashSet<Ident>) {
         match SharedTerm::make_mut(&mut self.term) {
             Term::Var(id) => {
@@ -186,7 +186,8 @@ impl CollectFreeVars for Types {
             TypeF::Forall { body: ty, .. } | TypeF::Dict(ty) | TypeF::Array(ty) => {
                 ty.as_mut().collect_free_vars(set)
             }
-            TypeF::Enum(erows) => erows.collect_free_vars(set),
+            // No term can appear anywhere in a enum row type, hence we can stop here.
+            TypeF::Enum(_) => (),
             TypeF::Record(rrows) => rrows.collect_free_vars(set),
             TypeF::Arrow(ty1, ty2) => {
                 ty1.as_mut().collect_free_vars(set);
@@ -199,13 +200,16 @@ impl CollectFreeVars for Types {
 
 impl CollectFreeVars for RecordRows {
     fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
-        todo!()
-    }
-}
-
-impl CollectFreeVars for EnumRows {
-    fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
-        todo!()
+        match &mut self.0 {
+            RecordRowsF::Empty | RecordRowsF::TailDyn | RecordRowsF::TailVar(_) => (),
+            RecordRowsF::Extend {
+                row: RecordRowF { types, .. },
+                tail,
+            } => {
+                types.collect_free_vars(set);
+                tail.collect_free_vars(set);
+            }
+        }
     }
 }
 
