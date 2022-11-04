@@ -33,3 +33,6 @@ latex.out/
 
 # amsthm
 *.thm
+
+# The tex file is generated from the OTT specification
+/type-system.tex
