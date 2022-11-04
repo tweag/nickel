@@ -1870,7 +1870,7 @@ pub fn unify(
             Err(UnifError::WithConst(i, ty))
         }
         (UnifType::Contract(t1, env1), UnifType::Contract(t2, env2))
-            if eq::contract_eq(state.table.type_uvars_count(), &t1, &env1, &t2, &env2) =>
+            if eq::contract_eq(state.table.max_uvars_count(), &t1, &env1, &t2, &env2) =>
         {
             Ok(())
         }
@@ -2230,28 +2230,17 @@ impl UnifTable {
         }
     }
 
-    /// Return the number of all variables currently allocated (unification and rigid type
-    /// variables). The returned UID is guaranteed to be different from all the currently live
-    /// variables. This is also the value that will be returned by the next call to `fresh_var()`,
-    /// and is currently simply the length of the unification table.
-    pub fn type_uvars_count(&self) -> VarId {
-        self.types.len()
-    }
+    /// Return a `VarId` greater than all of the variables currently allocated (unification and
+    /// rigid type variables, of all kinds, rows or types). The returned UID is guaranteed to be
+    /// different from all the currently live variables. This is currently simply the max of the
+    /// length of the various unification tables.
+    ///
+    /// Used inside [typecheck::eq] to generate temporary rigid type variables that are guaranteed
+    /// to not conflict with existing variables.
+    pub fn max_uvars_count(&self) -> VarId {
+        use std::cmp::max;
 
-    /// Return the number of all variables currently allocated (unification and rigid type
-    /// variables). The returned UID is guaranteed to be different from all the currently live
-    /// variables. This is also the value that will be returned by the next call to `fresh_var()`,
-    /// and is currently simply the length of the unification table.
-    pub fn rrows_uvar_count(&self) -> VarId {
-        self.rrows.len()
-    }
-
-    /// Return the number of all variables currently allocated (unification and rigid type
-    /// variables). The returned UID is guaranteed to be different from all the currently live
-    /// variables. This is also the value that will be returned by the next call to `fresh_var()`,
-    /// and is currently simply the length of the unification table.
-    pub fn erows_uvar_count(&self) -> VarId {
-        self.erows.len()
+        max(self.types.len(), max(self.rrows.len(), self.erows.len()))
     }
 }
 

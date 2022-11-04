@@ -156,11 +156,6 @@ impl State {
         result
     }
 
-    /// Create a fresh unique rigid type variable.
-    fn fresh_cst<E: TermEnvironment>(&mut self) -> GenericUnifType<E> {
-        GenericUnifType::Constant(self.fresh_cst_id())
-    }
-
     /// Try to consume one unit of gas for a variable substitution. Return true in case of success,
     /// or false if the gas was already at zero.
     fn use_gas(&mut self) -> bool {
