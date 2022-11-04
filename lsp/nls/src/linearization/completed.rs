@@ -39,7 +39,7 @@ impl Completed {
         env.iter()
             .map(|(_, id)| self.get_item(*id))
             .collect::<Option<Vec<_>>>()
-            .unwrap_or(Vec::new())
+            .unwrap_or_default()
     }
 
     /// Finds the index of a linearization item for a given location
