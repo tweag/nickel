@@ -506,24 +506,11 @@ impl RecordRows {
     where
         FTy: Fn(Types, &mut S) -> Result<Types, E>,
     {
-        let inner = match order {
-            TraverseOrder::TopDown => self
-                .0
-                .try_map(|ty| Ok(Box::new(f(*ty, state)?)), |rrows| Ok(rrows))?
-                .try_map_state(
-                    |ty, state| Ok(Box::new(ty.traverse(f, state, order)?)),
-                    |rrows, state| Ok(Box::new(rrows.traverse(f, state, order)?)),
-                    state,
-                )?,
-            TraverseOrder::BottomUp => self
-                .0
-                .try_map_state(
-                    |ty, state| Ok(Box::new(ty.traverse(f, state, order)?)),
-                    |rrows, state| Ok(Box::new(rrows.traverse(f, state, order)?)),
-                    state,
-                )?
-                .try_map(|ty| Ok(Box::new(f(*ty, state)?)), |rrows| Ok(rrows))?,
-        };
+        let inner = self.0.try_map_state(
+            |ty, state| Ok(Box::new(ty.traverse(f, state, order)?)),
+            |rrows, state| Ok(Box::new(rrows.traverse(f, state, order)?)),
+            state,
+        )?;
 
         Ok(RecordRows(inner))
     }
@@ -969,36 +956,28 @@ impl Types {
     where
         FTy: Fn(Types, &mut S) -> Result<Types, E>,
     {
-        let inner = match order {
-            TraverseOrder::TopDown => self
-                .0
-                .try_map(
-                    |ty| Ok(Box::new(f(*ty, state)?)),
-                    |rrows| Ok(rrows),
-                    |erows| Ok(erows),
-                )?
-                .try_map_state(
+        match order {
+            TraverseOrder::TopDown => {
+                let inner = f(self, state)?.0.try_map_state(
                     |ty, state| Ok(Box::new(ty.traverse(f, state, order)?)),
                     |rrows, state| rrows.traverse(f, state, order),
                     |erows, _| Ok(erows),
                     state,
-                )?,
-            TraverseOrder::BottomUp => self
-                .0
-                .try_map_state(
-                    |ty, state| Ok(Box::new(ty.traverse(f, state, order)?)),
-                    |rrows, state| rrows.traverse(f, state, order),
-                    |erows, _| Ok(erows),
-                    state,
-                )?
-                .try_map(
-                    |ty| Ok(Box::new(f(*ty, state)?)),
-                    |rrows| Ok(rrows),
-                    |erows| Ok(erows),
-                )?,
-        };
+                )?;
 
-        Ok(Types(inner))
+                Ok(Types(inner))
+            }
+            TraverseOrder::BottomUp => {
+                let traversed_depth_first = self.0.try_map_state(
+                    |ty, state| Ok(Box::new(ty.traverse(f, state, order)?)),
+                    |rrows, state| rrows.traverse(f, state, order),
+                    |erows, _| Ok(erows),
+                    state,
+                )?;
+
+                f(Types(traversed_depth_first), state)
+            }
+        }
     }
 }
 
