@@ -1,10 +1,7 @@
 use std::collections::HashMap;
 
 use codespan::ByteIndex;
-use nickel_lang::{
-    term::MetaValue,
-    typecheck::linearization::{LinearizationState, Scope},
-};
+use nickel_lang::{term::MetaValue, typecheck::linearization::LinearizationState};
 
 use super::{
     building::ID,
@@ -15,19 +12,16 @@ use super::{
 #[derive(Debug, Default)]
 pub struct Completed {
     pub linearization: Vec<LinearizationItem<Resolved>>,
-    scope: HashMap<Scope, Vec<usize>>,
     id_to_index: HashMap<ID, usize>,
 }
 
 impl Completed {
     pub fn new(
         linearization: Vec<LinearizationItem<Resolved>>,
-        scope: HashMap<Scope, Vec<usize>>,
         id_to_index: HashMap<ID, usize>,
     ) -> Self {
         Self {
             linearization,
-            scope,
             id_to_index,
         }
     }
@@ -40,14 +34,12 @@ impl Completed {
 
     pub fn get_in_scope(
         &self,
-        LinearizationItem { scope, .. }: &LinearizationItem<Resolved>,
+        LinearizationItem { env, .. }: &LinearizationItem<Resolved>,
     ) -> Vec<&LinearizationItem<Resolved>> {
-        let empty = Vec::with_capacity(0);
-        (0..scope.len())
-            .flat_map(|end| self.scope.get(&scope[..=end]).unwrap_or(&empty))
-            .map(|id| self.get_item(*id))
-            .flatten()
-            .collect()
+        env.iter()
+            .map(|(_, id)| self.get_item(*id))
+            .collect::<Option<Vec<_>>>()
+            .unwrap_or(Vec::new())
     }
 
     /// Finds the index of a linearization item for a given location

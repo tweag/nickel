@@ -7,7 +7,7 @@ use nickel_lang::{
     position::TermPos,
     term::{MetaValue, Term, UnaryOp},
     typecheck::{
-        linearization::{Linearization, Linearizer, Scope, ScopeId},
+        linearization::{Linearization, Linearizer},
         reporting::{to_type, NameReg},
         TypeWrapper,
     },
@@ -37,7 +37,6 @@ pub struct LinearizationItem<S: ResolutionState> {
     pub pos: TermPos,
     pub ty: S,
     pub kind: TermKind,
-    pub scope: Scope,
     pub meta: Option<MetaValue>,
 }
 
@@ -47,8 +46,6 @@ pub struct LinearizationItem<S: ResolutionState> {
 /// resolution
 pub struct AnalysisHost {
     env: Environment,
-    scope: Scope,
-    next_scope_id: ScopeId,
     meta: Option<MetaValue>,
     /// Indexing a record will store a reference to the record as
     /// well as its fields.
@@ -79,8 +76,6 @@ impl Default for AnalysisHost {
     fn default() -> Self {
         Self {
             env: Environment::new(),
-            scope: Default::default(),
-            next_scope_id: Default::default(),
             meta: Default::default(),
             record_fields: Default::default(),
             let_binding: Default::default(),
@@ -174,7 +169,6 @@ impl Linearizer for AnalysisHost {
 
                                 ty: ty.clone(),
                                 pos: ident.pos.clone(),
-                                scope: self.scope.clone(),
                                 kind: TermKind::Structure,
                                 meta: self.meta.take(),
                             });
@@ -191,7 +185,6 @@ impl Linearizer for AnalysisHost {
                         id,
                         ty,
                         pos: ident.pos,
-                        scope: self.scope.clone(),
                         kind: TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr),
                         meta: None,
                     });
@@ -206,7 +199,6 @@ impl Linearizer for AnalysisHost {
                         // TODO: get type from pattern
                         ty: TypeWrapper::Concrete(AbsType::Dyn()),
                         pos: ident.pos,
-                        scope: self.scope.clone(),
                         kind: TermKind::Declaration(
                             ident.to_owned(),
                             Vec::new(),
@@ -236,7 +228,6 @@ impl Linearizer for AnalysisHost {
 
                             ty: ty.clone(),
                             pos: ident.pos.clone(),
-                            scope: self.scope.clone(),
                             kind: TermKind::Structure,
                             meta: self.meta.take(),
                         });
@@ -251,7 +242,6 @@ impl Linearizer for AnalysisHost {
                     id: id_gen.get(),
                     ty,
                     pos: ident.pos,
-                    scope: self.scope.clone(),
                     kind: TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr),
                     meta: self.meta.take(),
                 });
@@ -269,7 +259,6 @@ impl Linearizer for AnalysisHost {
                     id: root_id,
                     pos: ident.pos,
                     ty: TypeWrapper::Concrete(AbsType::Dyn()),
-                    scope: self.scope.clone(),
                     kind: TermKind::Usage(UsageState::from(self.env.get(ident).copied())),
                     meta: self.meta.take(),
                 });
@@ -288,7 +277,6 @@ impl Linearizer for AnalysisHost {
                             id,
                             pos: accessor.pos,
                             ty: TypeWrapper::Concrete(AbsType::Dyn()),
-                            scope: self.scope.clone(),
                             kind: TermKind::Usage(UsageState::Deferred {
                                 parent: id - 1,
                                 child: accessor.to_owned(),
@@ -305,11 +293,10 @@ impl Linearizer for AnalysisHost {
                     pos,
                     ty,
                     kind: TermKind::Record(HashMap::new()),
-                    scope: self.scope.clone(),
                     meta: self.meta.take(),
                 });
 
-                lin.register_fields(&record.fields, id, self.scope.clone(), &mut self.env);
+                lin.register_fields(&record.fields, id, &mut self.env);
                 let mut field_names = record.fields.keys().cloned().collect::<Vec<_>>();
                 field_names.sort_unstable();
 
@@ -340,7 +327,6 @@ impl Linearizer for AnalysisHost {
                     id,
                     pos,
                     ty,
-                    scope: self.scope.clone(),
                     kind: TermKind::Structure,
                     meta: self.meta.take(),
                 })
@@ -379,10 +365,7 @@ impl Linearizer for AnalysisHost {
 
         lin.resolve_record_references(defers);
 
-        let Building {
-            mut linearization,
-            scope,
-        } = lin.into_inner();
+        let Building { mut linearization } = lin.into_inner();
 
         linearization.sort_by(
             |it1, it2| match (it1.pos.as_opt_ref(), it2.pos.as_opt_ref()) {
@@ -420,7 +403,6 @@ impl Linearizer for AnalysisHost {
                      pos,
                      ty,
                      kind,
-                     scope,
                      meta,
                  }| LinearizationItem {
                     ty: to_type(&table, &reported_names, &mut NameReg::new(), ty),
@@ -428,7 +410,6 @@ impl Linearizer for AnalysisHost {
                     id,
                     pos,
                     kind,
-                    scope,
                     meta,
                 },
             )
@@ -437,20 +418,12 @@ impl Linearizer for AnalysisHost {
                 ..item
             })
             .collect();
-        Linearization::new(Completed::new(lin_, scope, id_mapping))
+        Linearization::new(Completed::new(lin_, id_mapping))
     }
 
     fn scope(&mut self) -> Self {
-        let mut scope = self.scope.clone();
-        let (scope_id, next_scope_id) = self.next_scope_id.next();
-        self.next_scope_id = next_scope_id;
-
-        scope.push(scope_id);
-
         AnalysisHost {
-            scope,
             env: self.env.clone(),
-            next_scope_id: ScopeId::default(),
             meta: self.meta.clone(),
             record_fields: self.record_fields.as_mut().and_then(|(record, fields)| {
                 Some(*record).zip(fields.pop().map(|field| vec![field]))
@@ -461,16 +434,8 @@ impl Linearizer for AnalysisHost {
     }
 
     fn scope_meta(&mut self) -> Self {
-        let mut scope = self.scope.clone();
-        let (scope_id, next_scope_id) = self.next_scope_id.next();
-        self.next_scope_id = next_scope_id;
-
-        scope.push(scope_id);
-
         AnalysisHost {
-            scope,
             env: self.env.clone(),
-            next_scope_id: ScopeId::default(),
             // Metadata must be attached to the original scope of the value (`self`), while the new
             // scope for metadata should be clean.
             // In general, the scope for the metadata shouldn't interfere with any of the previous
