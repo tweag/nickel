@@ -103,8 +103,6 @@ pub enum EvalError {
 pub enum TypecheckError {
     /// An unbound identifier was referenced.
     UnboundIdentifier(Ident, TermPos),
-    /// An ill-formed type, such as a non-row type appearing in a row.
-    IllformedType(Types),
     /// A specific row was expected to be in the type of an expression, but was not.
     MissingRow(
         Ident,
@@ -1274,17 +1272,6 @@ impl ToDiagnostic<FileId> for TypecheckError {
                     EvalError::UnboundIdentifier(ident.clone(), *pos_opt)
                         .to_diagnostic(files, contract_id)
                 }
-            TypecheckError::IllformedType(ty) => {
-                let ty_fmted = format!("{}", ty);
-                let len = ty_fmted.len();
-
-                let label = Label::new(LabelStyle::Secondary, files.add("", ty_fmted), 0..len)
-                    .with_message("ill-formed type");
-
-                vec![Diagnostic::error()
-                    .with_message("ill-formed type")
-                    .with_labels(vec![label])]
-            }
             TypecheckError::MissingRow(ident, expd, actual, span_opt) =>
                 vec![Diagnostic::error()
                     .with_message(format!("type error: missing row `{}`", ident))

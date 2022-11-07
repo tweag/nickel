@@ -20,12 +20,6 @@ pub enum RowUnifError {
     RowMismatch(Ident, Box<UnifError>),
     /// Tried to unify an enum row and a record row.
     RowKindMismatch(Ident, Option<UnifType>, Option<UnifType>),
-    /// One of the row was ill-formed (typically, a tail was neither a row, a variable nor `Dyn`).
-    ///
-    /// This should probably not happen with proper restrictions on the parser and a correct
-    /// typechecking algorithm. We let it as an error for now, but it could be removed in the
-    /// future.
-    IllformedRow(UnifType),
     /// A [row constraint][super::RowConstr] was violated.
     UnsatConstr(Ident, Option<UnifType>),
     /// Tried to unify a type constant with another different type.
@@ -56,7 +50,6 @@ impl RowUnifError {
                 UnifError::RowKindMismatch(id, tyw1, tyw2)
             }
             RowUnifError::RowMismatch(id, err) => UnifError::RowMismatch(id, left, right, err),
-            RowUnifError::IllformedRow(tyw) => UnifError::IllformedRow(tyw),
             RowUnifError::UnsatConstr(id, tyw) => UnifError::RowConflict(id, tyw, left, right),
             RowUnifError::WithConst(c, tyw) => UnifError::WithConst(c, tyw),
             RowUnifError::ConstMismatch(c1, c2) => UnifError::ConstMismatch(c1, c2),
@@ -84,8 +77,6 @@ pub enum UnifError {
     ExtraRow(Ident, UnifType, UnifType),
     /// Tried to unify two rows, but the `Dyn` tail of the RHS was absent from the LHS.
     ExtraDynTail(UnifType, UnifType),
-    /// A row was ill-formed.
-    IllformedRow(UnifType),
     /// Tried to unify a unification variable with a row type violating the [row
     /// constraints][super::RowConstr] of the variable.
     RowConflict(Ident, Option<UnifType>, UnifType, UnifType),
@@ -94,9 +85,6 @@ pub enum UnifError {
     /// A flat type, which is an opaque type corresponding to custom contracts, contained a Nickel
     /// term different from a variable. Only a variables is a legal inner term of a flat type.
     IncomparableFlatTypes(RichTerm, RichTerm),
-    /// A generic type was ill-formed. Currently, this happens if a `StatRecord` or `Enum` type
-    /// does not contain a row type.
-    IllformedType(UnifType),
     /// An unbound type variable was referenced.
     UnboundTypeVariable(Ident),
     /// An error occurred when unifying the domains of two arrows.
@@ -172,12 +160,6 @@ impl UnifError {
             UnifError::IncomparableFlatTypes(rt1, rt2) => {
                 TypecheckError::IncomparableFlatTypes(rt1, rt2, pos_opt)
             }
-            UnifError::IllformedType(tyw) => TypecheckError::IllformedType(reporting::to_type(
-                state.table,
-                state.names,
-                names,
-                tyw,
-            )),
             UnifError::MissingRow(id, tyw1, tyw2) => TypecheckError::MissingRow(
                 id,
                 reporting::to_type(state.table, state.names, names, tyw1),
@@ -200,12 +182,6 @@ impl UnifError {
                 reporting::to_type(state.table, state.names, names, tyw2),
                 pos_opt,
             ),
-            UnifError::IllformedRow(tyw) => TypecheckError::IllformedType(reporting::to_type(
-                state.table,
-                state.names,
-                names,
-                tyw,
-            )),
             UnifError::RowConflict(id, tyw, left, right) => TypecheckError::RowConflict(
                 id,
                 tyw.map(|tyw| reporting::to_type(state.table, state.names, names, tyw)),
