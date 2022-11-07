@@ -300,6 +300,25 @@ mod tests {
     use std::collections::{HashMap, HashSet};
 
     #[test]
+    fn test_get_identifier_path() {
+        let tests = [
+            ("let person = {} in \n    a.b.c.d", vec!["a", "b", "c", "d"]),
+            ("   ab.dec", vec!["ab", "dec"]),
+            (
+                r##"let name = { sdf.clue.add.bar = 10 } in
+            name.sdf.clue.add.bar"##,
+                vec!["name", "sdf", "clue", "add", "bar"],
+            ),
+        ];
+        for (input, expected) in tests {
+            let actual = get_identifier_path(input);
+            let expected: Option<Vec<_>> =
+                Some(expected.iter().cloned().map(String::from).collect());
+            assert_eq!(actual, expected)
+        }
+    }
+
+    #[test]
     fn test_remove_duplicates() {
         fn completion_item(names: Vec<&str>) -> Vec<CompletionItem> {
             names
