@@ -265,7 +265,21 @@ pub struct RecordRows(pub RecordRowsF<Box<Types>, Box<RecordRows>>);
 pub struct Types(pub TypeF<Box<Types>, RecordRows, EnumRows>);
 
 impl<Ty, RRows> RecordRowsF<Ty, RRows> {
-    // TODO: doc
+    /// Map functions over the children nodes of record rows, when seen as a tree. The mutable
+    /// state ( `S`) is threaded through the calls to the mapped functions. Functions are fallible
+    /// and may return an error `E`, which causes `try_map_state` to return early with the same
+    /// error.
+    ///
+    /// If we put aside the state and the error (see [RecordRowsF::map), this function makes
+    /// `RecordRowsF` a functor (of arity 2). As hinted by the type signature, this function just
+    /// maps on "one-level" of recursion, so to speak. Take the instantiated version `RecordRows`,
+    /// and record rows of the form `{foo : T, bar: U, baz: V}`. Then, calling `try_map_state(f_ty,
+    /// f_rrows, state)` on these rows will map `f_ty` onto `T` and `f_rrows` onto `{bar : U, baz:
+    /// V}`.
+    ///
+    /// Note that `f_ty` isn't mapped onto `U` and `V` recursively: map isn't a recursive
+    /// operation. It's however a building block to express recursive operations: as an example,
+    /// see [RecordRows::traverse].
     pub fn try_map_state<TyO, RRowsO, FTy, FRRows, S, E>(
         self,
         mut f_ty: FTy,
@@ -293,7 +307,7 @@ impl<Ty, RRows> RecordRowsF<Ty, RRows> {
         }
     }
 
-    // TODO: doc
+    /// Variant of `try_map_state` without threaded state.
     pub fn try_map<TyO, RRowsO, FTy, FRRows, E>(
         self,
         mut f_ty: FTy,
@@ -309,6 +323,7 @@ impl<Ty, RRows> RecordRowsF<Ty, RRows> {
         self.try_map_state(f_ty_lifted, f_rrows_lifted, &mut ())
     }
 
+    /// Variant of `try_map_state` with infallible functions.
     pub fn map_state<TyO, RRowsO, FTy, FRRows, S>(
         self,
         mut f_ty: FTy,
@@ -327,6 +342,7 @@ impl<Ty, RRows> RecordRowsF<Ty, RRows> {
             .unwrap()
     }
 
+    /// Variant of `try_map_state` without threaded state and with infallible functions.
     pub fn map<TyO, RRowsO, FTy, FRRows>(
         self,
         mut f_ty: FTy,
@@ -343,14 +359,25 @@ impl<Ty, RRows> RecordRowsF<Ty, RRows> {
 }
 
 impl<ERows> EnumRowsF<ERows> {
-    // TODO: doc
+    /// Map functions over the tail of enum rows. The mutable state ( `S`) is threaded through the
+    /// calls to the mapped function. The function is fallible and may return an error `E`, which
+    /// causes `try_map_state` to return early with the same error.
+    ///
+    /// If we put aside the state and the error (see [EnumRowsF::map), this function makes
+    /// `EnumRowsF` a functor. As hinted by the type signature, this function just maps on
+    /// "one-level" of recursion, so to speak. Take the instantiated version `EnumRows`, and
+    /// enum rows of the form ``[| `foo, `bar, `baz |]``. Then, calling `try_map_state(f_erows,
+    /// state)` on these rows will map `f_erows` onto ``[| `bar, `baz |]``.
+    ///
+    /// Note that `f_erows` is just mapped once. Map isn't a recursive operation. It's however a
+    /// building block to express recursive operations: as an example, see [RecordRows::traverse].
     pub fn try_map_state<ERowsO, FERows, S, E>(
         self,
-        mut f_erows: FERows,
+        f_erows: FERows,
         state: &mut S,
     ) -> Result<EnumRowsF<ERowsO>, E>
     where
-        FERows: FnMut(ERows, &mut S) -> Result<ERowsO, E>,
+        FERows: FnOnce(ERows, &mut S) -> Result<ERowsO, E>,
     {
         match self {
             EnumRowsF::Empty => Ok(EnumRowsF::Empty),
@@ -362,7 +389,7 @@ impl<ERows> EnumRowsF<ERows> {
         }
     }
 
-    // TODO: doc
+    /// Variant of `try_map_state` without threaded state.
     pub fn try_map<ERowsO, FERows, E>(self, mut f_erows: FERows) -> Result<EnumRowsF<ERowsO>, E>
     where
         FERows: FnMut(ERows) -> Result<ERowsO, E>,
@@ -371,6 +398,7 @@ impl<ERows> EnumRowsF<ERows> {
         self.try_map_state(f_erows_lifted, &mut ())
     }
 
+    /// Variant of `try_map_state` with infallible functions.
     pub fn map_state<ERowsO, FERows, S>(
         self,
         mut f_erows: FERows,
@@ -384,6 +412,7 @@ impl<ERows> EnumRowsF<ERows> {
         self.try_map_state(f_erows_lifted, state).unwrap()
     }
 
+    /// Variant of `try_map_state` without threaded state and with infallible functions.
     pub fn map<ERowsO, FERows>(self, mut f_erows: FERows) -> EnumRowsF<ERowsO>
     where
         FERows: FnMut(ERows) -> ERowsO,
@@ -394,6 +423,24 @@ impl<ERows> EnumRowsF<ERows> {
 }
 
 impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
+    /// Map functions over the children nodes of a type, when seen as a tree. The mutable state (
+    /// `S`) is threaded through the calls to the mapped functions. Functions are fallible and may
+    /// return an error `E`, which causes `try_map_state` to return early with the same error.
+    ///
+    /// If we put aside the state and the error (see [RecordRowsF::map), this function makes
+    /// `TypeF` a functor (of arity 3). As hinted by the type signature, this function just
+    /// maps on "one-level" of recursion, so to speak.
+    ///
+    /// Take the instantiated version `Types`, and a type of the form `(Dyn -> Dyn) -> (Num ->
+    /// Dyn)`. Then, calling `try_map_state(f_ty, ..)` on this type rows will map `f_ty` onto `(Dyn
+    /// -> Dyn)` and `Num -> Dyn` because they are direct children of the root `Arrow` node.
+    ///
+    /// Note that `f_ty` isn't mapped onto `Dyn` and `Num` recursively: map isn't a recursive
+    /// operation. It's however a building block to express recursive operations: as an example,
+    /// see [RecordRows::traverse].
+    ///
+    /// Since `TypeF` may contain record rows and enum rows as well, `f_rrows` and `f_erows` are
+    /// required to know how to map on record and enum types respectively.
     pub fn try_map_state<TyO, RRowsO, ERowsO, FTy, FRRows, FERows, S, E>(
         self,
         mut f: FTy,
@@ -432,6 +479,7 @@ impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
         }
     }
 
+    /// Variant of `try_map_state` without threaded state.
     pub fn try_map<TyO, RRowsO, ERowsO, FTy, FRRows, FERows, E>(
         self,
         mut f: FTy,
@@ -450,6 +498,7 @@ impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
         self.try_map_state(f_lifted, f_rrows_lifted, f_erows_lifted, &mut ())
     }
 
+    /// Variant of `try_map_state` with infallible functions.
     pub fn map_state<TyO, RRowsO, ERowsO, FTy, FRRows, FERows, S>(
         self,
         mut f: FTy,
@@ -471,6 +520,7 @@ impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
             .unwrap()
     }
 
+    /// Variant of `try_map_state` without threaded state and with infallible functions.
     pub fn map<TyO, RRowsO, ERowsO, FTy, FRRows, FERows>(
         self,
         mut f: FTy,
@@ -860,8 +910,9 @@ impl Types {
         }
     }
 
-    /// Apply a transformation on a whole type by mapping a faillible function `f` on each node in
-    /// manner as prescribed by the order.
+    /// Apply a transformation on a whole type by mapping a faillible function `f` on each node as
+    /// prescribed by the order.
+    ///
     /// `f` may return a generic error `E` and use the state `S` which is passed around.
     pub fn traverse<FTy, S, E>(
         self,
