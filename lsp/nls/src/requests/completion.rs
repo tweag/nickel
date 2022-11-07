@@ -342,6 +342,11 @@ mod tests {
             ),
             ("name.class", vec!["name", "class"]),
             ("number", vec!["number"]),
+            ("", vec![""]), // maybe return an empty vector in this case?
+            (
+                r##"let x = {"fo京o" = {bar = 42}} in x."fo京o".foo"##,
+                vec!["x", "\"fo京o\"", "foo"],
+            ),
         ];
         for (input, expected) in tests {
             let actual = get_identifier_path(input);
