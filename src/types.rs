@@ -57,23 +57,127 @@ use crate::{
     term::{record::RecordData, RichTerm, Term, TraverseOrder},
 };
 
-use std::{collections::HashMap, fmt};
+use std::{
+    collections::HashMap,
+    fmt::{self, Display},
+};
+
+/// A record row, mapping an identifier to a type. A record type is a dictionary mapping
+/// identifiers to Nickel type. Record types are represented as sequences of `RecordRowF`, ending
+/// potentially with a type variable or `Dyn` in tail position.
+///
+/// # Type parameters
+///
+/// As other types with the `F` suffix, this type is parametrized by one or more recursive
+/// unfoldings (here, `Ty` for `TypeF`). See [`TypeF`] for more details.
+#[derive(Clone, PartialEq, Debug)]
+pub struct RecordRowF<Ty> {
+    id: Ident,
+    types: Ty,
+}
+
+/// An enum row, which is just an identifier. An enum type is a set of identifiers, represented as
+/// a sequence of `EnumRow`s, ending potentially with a type variable tail position.
+pub type EnumRow = Ident;
+
+/// Generic sequence of rows potentially with a type variable or `Dyn` in tail position. Depending
+/// on the instantiation of `R` and `R`s, `RowsF` can represent both enum rows or records rows.
+///
+/// # Type parameters
+/// - `R` is the type a row (in practice, an instantiation of `RecordRowF` or
+///   `EnumRow`)
+/// - `Rs`: as other types with the `F` suffix, this type is parametrized by one or more recursive
+///   unfoldings (here, `Rs` for `RowsF`). See [`TypeF`] for more details.
+#[derive(Clone, PartialEq, Debug)]
+pub enum RowsF<R, Rs> {
+    Empty,
+    Extend { row: R, tail: Rs },
+    TailVar(Ident),
+    TailDyn,
+}
 
 /// A Nickel type.
+///
+/// # Generic representation (functor)
+///
+/// A Nickel type is represented by a tree and is naturally defined in a recursive manner: for
+/// example, one would expect the constructor for function types (`Arrow`) to look like:
+///
+/// ```rust
+/// pub enum Types {
+///      Arrow(Box<Types>, Box<Types>),
+///      // ...
+/// }
+/// ```
+///
+/// However, `TypeF` is slightly different, in that it is parametrized by a generic type instead of
+/// using a concrete definition like `Box<Types>` (forget about rows for now):
+///
+/// ```rust
+/// pub enum TypeF<Ty /* , .. */> {
+///      Arrow(Ty, Ty),
+///      // ...
+/// }
+/// ```
+///
+/// `Ty` is also called recursive unfolding throughout the documentation. By defining `struct
+/// Types(TypeF<Box<Types>>)`, we get back the original, natural definition.
+///
+/// ## Motivation 1: variation on `Types`
+///
+/// Having a generic definition makes it possible to easily create other types with the _same
+/// shape_ as `Types` (seen as trees), but with enriched nodes. The typical use-case in Nickel is
+/// the variation on types used by the typechecker. During type inference, the typechecker operates
+/// on trees where each node can either be a concrete type, or a unification variable (a unknown
+/// type to be inferred). Instead of duplicating the whole definition of `Types` as well as all
+/// basic methods, we can simply have a different recursive definition:
+///
+/// ```rust
+///  pub enum UnifType {
+///    UnifVar(VarId),
+///    Concrete(TypeF<Box<UnifType> /*, .. */>),
+///    // ..
+///  }
+/// ```
+///
+/// We get something that look like normal Nickel types, except that each node can also be a
+/// unification variable as well.
+///
+/// ## Motivation 2: recursion schemes
+///
+/// This definition is actually in the style of recursion schemes. Pedantically, `TypeF` (hence the
+/// `F` suffix), but the formal details aren't so important: keep in mind that the `F` suffix means
+/// that the corresponding type definition where the recursive occurrences of subtrees (and enum
+/// rows and records rows as well) are replaced by generic parameters.
+///
+/// The usual motivation for recursion schemes is that they allow for elegant and simple definition
+/// of recursive transformation over trees (here, `TypeF`, and more general anything with `F`
+/// suffix) in term of simple appropriate chaining of `map` and folding/unfolding operations. A
+/// good example is the definition of `[Types::traverse]`. Although [`crate::term::Term`] isn't
+/// currently defined as functors per se, the way program transformation are written is in the same
+/// style as recursion schemes: we simply define the action of a transformation as a mapping on the
+/// current node, and let the traversal take care of the plumbing of recursion and reconstruction.
+///
+/// ## Type parameters
+///
+/// Here, `TypeF` also takes two additional type parameters for the recursive unfolding of record
+/// rows and enum rows. We have other, distinct recursive subcomponents (or subtrees) in our
+/// complete definition, but the approach is unchanged.
 #[derive(Clone, PartialEq, Debug)]
-pub enum AbsType<Ty> {
-    /// The dynamic unitype, affected to values which type is not statically known or enforced.
-    Dyn(),
+pub enum TypeF<Ty, RRows, ERows> {
+    /// The dynamic type, or unitype. Affected to values which actual type is not statically known
+    /// or checked.
+    Dyn,
     /// A floating point number.
-    Num(),
+    Num,
     /// A boolean.
-    Bool(),
+    Bool,
     /// A string literal.
-    Str(),
+    Str,
     /// A symbol.
     ///
     /// See [`crate::term::Term::Sealed`].
-    Sym(),
+    Sym,
     /// A type created from a user-defined contract.
     Flat(RichTerm),
     /// A function.
@@ -83,20 +187,11 @@ pub enum AbsType<Ty> {
     /// A forall binder.
     Forall(Ident, Ty),
 
-    /// An empty row, terminating a row type.
-    RowEmpty(),
-    /// A row type.
-    RowExtend(
-        Ident,
-        Option<Ty>, /* Type of the field, or None for enums */
-        Ty,         /* Tail (another row) */
-    ),
-    /// An enum type, wrapping a row type for enums.
-    Enum(Ty /* Row */),
-    /// A record type, wrapping a row type for records.
-    Record(Ty /* Row */),
+    /// An enum type, composed of a sequence of enum rows.
+    Enum(ERows),
+    /// A record type, composed of a sequence of record rows.
+    Record(RRows),
     /// A dictionary type.
-    // Dict will only have a default type, this is simpler for now, I don't think we lose much
     Dict(Ty),
     /// A parametrized array.
     Array(Ty),
@@ -104,61 +199,83 @@ pub enum AbsType<Ty> {
     Wildcard(usize),
 }
 
-impl<Ty> AbsType<Ty> {
-    pub fn try_map<To, F, E>(self, mut f: F) -> Result<AbsType<To>, E>
+// Concrete, recursive definition of Nickel types from the generic `XxxF` definitions. This is
+// "tying" the note. We have to put `Box` in the appropriate positions (otherwise, Rust will
+// complain that the type has an infinite size), but also avoid putting more than necessary.
+//
+// For example, `RecordRows` contains a `RecordRow`. The latter doesn't need to be boxed, because a
+// `RecordRow` itself potentially contains occurrences of `Types` and `RecordRows`, which need to
+// be boxed. Hence, we don't need to additionally box `RecordRow`.
+
+#[derive(Clone, PartialEq, Debug)]
+/// Concrete, recursive definition for enum rows.
+pub struct EnumRows(pub RowsF<EnumRow, Box<EnumRows>>);
+/// Concrete, recursive definition for a record row.
+pub type RecordRow = RecordRowF<Box<Types>>;
+#[derive(Clone, PartialEq, Debug)]
+/// Concrete, recursive definition for record rows.
+pub struct RecordRows(pub RowsF<RecordRow, Box<RecordRows>>);
+/// Concrete, recursive definition for a Nickel type.
+#[derive(Clone, PartialEq, Debug)]
+pub struct Types(pub TypeF<Box<Types>, RecordRows, EnumRows>);
+
+impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
+    // TODO: doc 
+    pub fn try_map<TyO, RRowsO, ERowsO, FTy, FRRows, FERows, E>(
+        self,
+        mut f: FTy,
+        mut f_rrows: FRRows,
+        mut f_erows: FERows,
+    ) -> Result<TypeF<TyO, RRowsO, ERowsO>, E>
     where
-        F: FnMut(Ty) -> Result<To, E>,
+        FTy: FnMut(Ty) -> Result<TyO, E>,
+        FRRows: FnMut(RRows) -> Result<RRowsO, E>,
+        FERows: FnMut(ERows) -> Result<ERowsO, E>,
     {
         match self {
-            AbsType::Dyn() => Ok(AbsType::Dyn()),
-            AbsType::Num() => Ok(AbsType::Num()),
-            AbsType::Bool() => Ok(AbsType::Bool()),
-            AbsType::Str() => Ok(AbsType::Str()),
-            AbsType::Sym() => Ok(AbsType::Sym()),
-            AbsType::Flat(t) => Ok(AbsType::Flat(t)),
-            AbsType::Arrow(s, t) => Ok(AbsType::Arrow(f(s)?, f(t)?)),
-            AbsType::Var(i) => Ok(AbsType::Var(i)),
-            AbsType::Forall(i, t) => Ok(AbsType::Forall(i, f(t)?)),
-            AbsType::RowEmpty() => Ok(AbsType::RowEmpty()),
-            AbsType::RowExtend(id, t1, t2) => {
-                let t1_mapped = match t1 {
-                    Some(ty) => Some(f(ty)?),
-                    None => None,
-                };
-
-                Ok(AbsType::RowExtend(id, t1_mapped, f(t2)?))
-            }
-            AbsType::Enum(t) => Ok(AbsType::Enum(f(t)?)),
-            AbsType::Record(t) => Ok(AbsType::Record(f(t)?)),
-            AbsType::Dict(t) => Ok(AbsType::Dict(f(t)?)),
-            AbsType::Array(t) => Ok(AbsType::Array(f(t)?)),
-            AbsType::Wildcard(i) => Ok(AbsType::Wildcard(i)),
+            TypeF::Dyn => Ok(TypeF::Dyn),
+            TypeF::Num => Ok(TypeF::Num),
+            TypeF::Bool => Ok(TypeF::Bool),
+            TypeF::Str => Ok(TypeF::Str),
+            TypeF::Sym => Ok(TypeF::Sym),
+            TypeF::Flat(t) => Ok(TypeF::Flat(t)),
+            TypeF::Arrow(s, t) => Ok(TypeF::Arrow(f(s)?, f(t)?)),
+            TypeF::Var(i) => Ok(TypeF::Var(i)),
+            TypeF::Forall(i, t) => Ok(TypeF::Forall(i, f(t)?)),
+            TypeF::Enum(t) => Ok(TypeF::Enum(todo!())),
+            TypeF::Record(t) => Ok(TypeF::Record(todo!())),
+            TypeF::Dict(t) => Ok(TypeF::Dict(f(t)?)),
+            TypeF::Array(t) => Ok(TypeF::Array(f(t)?)),
+            TypeF::Wildcard(i) => Ok(TypeF::Wildcard(i)),
         }
     }
 
-    pub fn map<To, F>(self, mut f: F) -> AbsType<To>
+    // TODO: doc
+    pub fn map<TyO, RRowsO, ERowsO, FTy, FRRows, FERows>(
+        self,
+        mut f: FTy,
+        mut f_rrows: FRRows,
+        mut f_erows: FERows,
+    ) -> TypeF<TyO, RRowsO, ERowsO>
     where
-        F: FnMut(Ty) -> To,
+        FTy: FnMut(Ty) -> TyO,
+        FRRows: FnMut(RRows) -> RRowsO,
+        FERows: FnMut(ERows) -> ERowsO,
     {
-        let f_lift = |ty: Ty| -> Result<To, ()> { Ok(f(ty)) };
-        self.try_map(f_lift).unwrap()
-    }
-
-    /// Determine if a type is a row type.
-    pub fn is_row_type(&self) -> bool {
-        matches!(
-            self,
-            AbsType::RowExtend(..) | AbsType::RowEmpty() | AbsType::Dyn()
-        )
+        let f_lifted = |ty: Ty| -> Result<TyO, ()> { Ok(f(ty)) };
+        let f_rrows_lifted = |rrows: RRows| -> Result<RRowsO, ()> { Ok(f_rrows(rrows)) };
+        let f_erows_lifted = |erows: ERows| -> Result<ERowsO, ()> { Ok(f_erows(erows)) };
+        self.try_map(f_lifted, f_rrows_lifted, f_erows_lifted)
+            .unwrap()
     }
 
     /// Determine if a type is a type defined by a Nickel term.
     pub fn is_flat(&self) -> bool {
-        matches!(self, AbsType::Flat(_))
+        matches!(self, TypeF::Flat(_))
     }
 
     pub fn is_wildcard(&self) -> bool {
-        matches!(self, AbsType::Wildcard(_))
+        matches!(self, TypeF::Wildcard(_))
     }
 }
 
@@ -185,41 +302,142 @@ impl From<UnboundTypeVariableError> for ParseErrors {
     }
 }
 
-/// Concrete, recursive type for a Nickel type.
-#[derive(Clone, PartialEq, Debug)]
-pub struct Types(pub AbsType<Box<Types>>);
+// /// Concrete, recursive type for a Nickel type.
+// // #[derive(Clone, PartialEq, Debug)]
+// // pub struct Types(pub TypeF<Box<Types>>);
+//
+// /// An item as returned by an iterator over a row type.
+// ///
+// /// The parameter `T` is there because row iterators are implemented for different flavours of
+// /// [`TypeF`] (currently for [`Types`] and [`crate::typewrapper::TypeWrapper`]).
+// pub enum RowIteratorItem<'a, T> {
+//     /// A non-empty tail.
+//     Tail(&'a T),
+//     /// A row binding.
+//     Row(&'a Ident, Option<&'a T>),
+// }
+//
+// /// An iterator over a row type, returning items by reference.
+// pub struct RowIterator<'a, T> {
+//     pub(crate) next: Option<&'a T>,
+// }
+//
+// impl<'a> Iterator for RowIterator<'a, Types> {
+//     type Item = RowIteratorItem<'a, Types>;
+//
+//     fn next(&mut self) -> Option<Self::Item> {
+//         self.next.and_then(|next| match next {
+//             Types(TypeF::RowEmpty) => None,
+//             Types(TypeF::RowExtend(id, ty_row, tail)) => {
+//                 self.next = Some(tail);
+//                 Some(RowIteratorItem::Row(id, ty_row.as_ref().map(Box::as_ref)))
+//             }
+//             ty => {
+//                 self.next = None;
+//                 Some(RowIteratorItem::Tail(ty))
+//             }
+//         })
+//     }
+// }
 
-/// An item as returned by an iterator over a row type.
-///
-/// The parameter `T` is there because row iterators are implemented for different flavours of
-/// [`AbsType`] (currently for [`Types`] and [`crate::typewrapper::TypeWrapper`]).
-pub enum RowIteratorItem<'a, T> {
-    /// A non-empty tail.
-    Tail(&'a T),
-    /// A row binding.
-    Row(&'a Ident, Option<&'a T>),
+impl EnumRows {
+    fn subcontract(
+        &self,
+        mut h: HashMap<Ident, (RichTerm, RichTerm)>,
+        pol: bool,
+        sy: &mut i32,
+    ) -> Result<RichTerm, UnboundTypeVariableError> {
+        todo!()
+    }
+
+    /// Determine if a type is an atom, that is a either an atom or a type delimited by specific
+    /// markers (such as a row type). Used in formatting to decide if parentheses need to be
+    /// inserted during pretty pretting.
+    pub fn fmt_is_atom(&self) -> bool {
+        matches!(self.0, RowsF::TailDyn | RowsF::TailVar(_))
+    }
+
+    /// Apply a transformation on a whole type by mapping a faillible function `f` on each node in
+    /// manner as prescribed by the order.
+    /// `f` may return a generic error `E` and use the state `S` which is passed around.
+    pub fn traverse<FTy, S, E>(
+        self,
+        f: &mut FTy,
+        state: &mut S,
+        order: TraverseOrder,
+    ) -> Result<Self, E> {
+        todo!()
+    }
 }
 
-/// An iterator over a row type, returning items by reference.
-pub struct RowIterator<'a, T> {
-    pub(crate) next: Option<&'a T>,
-}
+impl RecordRows {
+    // TODO: doc
+    fn subcontract(
+        &self,
+        mut h: HashMap<Ident, (RichTerm, RichTerm)>,
+        pol: bool,
+        sy: &mut i32,
+    ) -> Result<RichTerm, UnboundTypeVariableError> {
+        todo!()
+    }
 
-impl<'a> Iterator for RowIterator<'a, Types> {
-    type Item = RowIteratorItem<'a, Types>;
+    /// Find a binding in a record row type. Return `None` if there is no such binding, if the type
+    /// is not a row type, or if the row is an enum row.
+    pub fn row_find(&self, ident: &Ident) -> Option<Self> {
+        todo!()
+        //TODO: just use iterator stuff?
+        // match &self.0 {
+        //     TypeF::RowExtend(id, Some(ty), _) if *id == *ident => Some((**ty).clone()),
+        //     TypeF::RowExtend(_, _, tail) => tail.row_find(ident),
+        //     _ => None,
+        // }
+    }
 
-    fn next(&mut self) -> Option<Self::Item> {
-        self.next.and_then(|next| match next {
-            Types(AbsType::RowEmpty()) => None,
-            Types(AbsType::RowExtend(id, ty_row, tail)) => {
-                self.next = Some(tail);
-                Some(RowIteratorItem::Row(id, ty_row.as_ref().map(Box::as_ref)))
-            }
-            ty => {
-                self.next = None;
-                Some(RowIteratorItem::Tail(ty))
-            }
-        })
+    /// Find a nested binding in a record row type. The nested field is given as a list of
+    /// successive fields, that is, as a path. Return `None` if there is no such binding, if the
+    /// type is not a row type, or if the final row is an enum row.
+    ///
+    /// # Example
+    ///
+    /// - self: ` { {| a : { {| b : Num |} } |} }`
+    /// - path: `["a", "b"]`
+    /// - result: `Some(Num)`
+    pub fn row_find_path(&self, path: &[Ident]) -> Option<Self> {
+        todo!()
+        //TODO: just use iterator stuff?
+        // if path.is_empty() {
+        //     return None;
+        // }
+        //
+        // let next = self.row_find(&path[0]);
+        //
+        // if path.len() == 1 {
+        //     next
+        // } else {
+        //     match next {
+        //         Some(ty) => ty.row_find_path(&path[1..]),
+        //         _ => None,
+        //     }
+        // }
+    }
+
+    /// Determine if a type is an atom, that is a either an atom or a type delimited by specific
+    /// markers (such as a row type). Used in formatting to decide if parentheses need to be
+    /// inserted during pretty pretting.
+    pub fn fmt_is_atom(&self) -> bool {
+        matches!(self.0, RowsF::TailDyn | RowsF::TailVar(_))
+    }
+
+    /// Apply a transformation on a whole type by mapping a faillible function `f` on each node in
+    /// manner as prescribed by the order.
+    /// `f` may return a generic error `E` and use the state `S` which is passed around.
+    pub fn traverse<FTy, S, E>(
+        self,
+        f: &mut FTy,
+        state: &mut S,
+        order: TraverseOrder,
+    ) -> Result<Self, E> {
+        todo!()
     }
 }
 
@@ -264,22 +482,22 @@ impl Types {
         }
 
         let ctr = match self.0 {
-            AbsType::Dyn() => contract::dynamic(),
-            AbsType::Num() => contract::num(),
-            AbsType::Bool() => contract::bool(),
-            AbsType::Str() => contract::string(),
+            TypeF::Dyn => contract::dynamic(),
+            TypeF::Num => contract::num(),
+            TypeF::Bool => contract::bool(),
+            TypeF::Str => contract::string(),
             //TODO: optimization: have a specialized contract for `Array Dyn`, to avoid mapping an
             //always successful contract on each element.
-            AbsType::Array(ref ty) => mk_app!(contract::array(), ty.subcontract(h, pol, sy)?),
-            AbsType::Sym() => panic!("Are you trying to check a Sym at runtime?"),
-            AbsType::Arrow(ref s, ref t) => mk_app!(
+            TypeF::Array(ref ty) => mk_app!(contract::array(), ty.subcontract(h, pol, sy)?),
+            TypeF::Sym => panic!("Are you trying to check a Sym at runtime?"),
+            TypeF::Arrow(ref s, ref t) => mk_app!(
                 contract::func(),
                 s.subcontract(h.clone(), !pol, sy)?,
                 t.subcontract(h, pol, sy)?
             ),
-            AbsType::Flat(ref t) => t.clone(),
-            AbsType::Var(ref id) => get_var(&h, id, true)?,
-            AbsType::Forall(ref i, ref t) => {
+            TypeF::Flat(ref t) => t.clone(),
+            TypeF::Var(ref id) => get_var(&h, id, true)?,
+            TypeF::Forall(ref i, ref t) => {
                 let inst_var = mk_app!(
                     contract::forall_var(),
                     Term::SealingKey(*sy),
@@ -296,142 +514,191 @@ impl Types {
                 *sy += 1;
                 t.subcontract(h, pol, sy)?
             }
-            AbsType::RowEmpty() | AbsType::RowExtend(..) => contract::fail(),
-            AbsType::Enum(ref r) => {
-                let mut cases = HashMap::new();
-                let mut has_tail = false;
-                let value_arg = Ident::from("x");
-                let label_arg = Ident::from("l");
-
-                for row in r.iter_as_rows() {
-                    match row {
-                        RowIteratorItem::Row(id, _ty) => {
-                            debug_assert!(_ty.is_none());
-                            cases.insert(id.clone(), mk_term::var(value_arg.clone()));
-                        }
-                        RowIteratorItem::Tail(tail) => {
-                            // We only expect a type variable in tail position
-                            debug_assert!(matches!(tail, Types(AbsType::Var(_))));
-                            has_tail = true;
-                            break;
-                        }
-                    }
-                }
-
-                // If the enum type has a tail, the tail must be a universally quantified variable,
-                // and this means that the tag can be anything.
-                let case_body = if has_tail {
-                    mk_term::var(value_arg.clone())
-                }
-                // Otherwise, we build a switch with all the tags as cases, which just returns the
-                // original argument, and a default case that blames.
-                //
-                // For example, for an enum type [| `foo, `bar, `baz |], the `case` function looks
-                // like:
-                //
-                // ```
-                // fun l x =>
-                //   switch {
-                //     `foo => x,
-                //     `bar => x,
-                //     `baz => x,
-                //     _ => $enum_fail l
-                //   } x
-                // ```
-                else {
-                    RichTerm::from(Term::Switch(
-                        mk_term::var(value_arg.clone()),
-                        cases,
-                        Some(mk_app!(
-                            contract::enum_fail(),
-                            mk_term::var(label_arg.clone())
-                        )),
-                    ))
-                };
-                let case = mk_fun!(label_arg, value_arg, case_body);
-
-                mk_app!(contract::enums(), case)
-            }
-            AbsType::Record(ref ty) => {
-                // We begin by building a record whose arguments are contracts
-                // derived from the types of the statically known fields.
-                let mut row = ty;
-                let mut fcs = HashMap::new();
-
-                while let AbsType::RowExtend(id, Some(ty), rest) = &row.0 {
-                    fcs.insert(*id, ty.subcontract(h.clone(), pol, sy)?);
-                    row = rest
-                }
-
-                // Now that we've dealt with the row extends, we just need to
-                // work out the tail.
-                let tail = match &row.0 {
-                    AbsType::RowEmpty() => contract::empty_tail(),
-                    AbsType::Dyn() => contract::dyn_tail(),
-                    AbsType::Var(id) => get_var(&h, id, false)?,
-                    ty => panic!(
-                        "types::subcontract(): invalid row tail {:?}",
-                        Types(ty.clone())
-                    ),
-                };
-
-                let rec = RichTerm::from(Term::Record(RecordData::with_fields(fcs)));
-
-                mk_app!(contract::record(), rec, tail)
-            }
-            AbsType::Dict(ref ty) => {
+            //TODO: IMPLEMENT THAT
+            // AbsType::RowEmpty() | AbsType::RowExtend(..) => contract::fail(),
+            // AbsType::Enum(ref r) => {
+            //     let mut cases = HashMap::new();
+            //     let mut has_tail = false;
+            //     let value_arg = Ident::from("x");
+            //     let label_arg = Ident::from("l");
+            //
+            //     for row in r.iter_as_rows() {
+            //         match row {
+            //             RowIteratorItem::Row(id, _ty) => {
+            //                 debug_assert!(_ty.is_none());
+            //                 cases.insert(id.clone(), mk_term::var(value_arg.clone()));
+            //             }
+            //             RowIteratorItem::Tail(tail) => {
+            //                 // We only expect a type variable in tail position
+            //                 debug_assert!(matches!(tail, Types(AbsType::Var(_))));
+            //                 has_tail = true;
+            //                 break;
+            //             }
+            //         }
+            //     }
+            //
+            //     // If the enum type has a tail, the tail must be a universally quantified variable,
+            //     // and this means that the tag can be anything.
+            //     let case_body = if has_tail {
+            //         mk_term::var(value_arg.clone())
+            //     }
+            //     // Otherwise, we build a switch with all the tags as cases, which just returns the
+            //     // original argument, and a default case that blames.
+            //     //
+            //     // For example, for an enum type [| `foo, `bar, `baz |], the `case` function looks
+            //     // like:
+            //     //
+            //     // ```
+            //     // fun l x =>
+            //     //   switch {
+            //     //     `foo => x,
+            //     //     `bar => x,
+            //     //     `baz => x,
+            //     //     _ => $enum_fail l
+            //     //   } x
+            //     // ```
+            //     else {
+            //         RichTerm::from(Term::Switch(
+            //             mk_term::var(value_arg.clone()),
+            //             cases,
+            //             Some(mk_app!(
+            //                 contract::enum_fail(),
+            //                 mk_term::var(label_arg.clone())
+            //             )),
+            //         ))
+            //     };
+            //     let case = mk_fun!(label_arg, value_arg, case_body);
+            //
+            //     mk_app!(contract::enums(), case)
+            // }
+            // AbsType::Record(ref ty) => {
+            //     // We begin by building a record whose arguments are contracts
+            //     // derived from the types of the statically known fields.
+            //     let mut row = ty;
+            //     let mut fcs = HashMap::new();
+            //
+            //     while let AbsType::RowExtend(id, Some(ty), rest) = &row.0 {
+            //         fcs.insert(*id, ty.subcontract(h.clone(), pol, sy)?);
+            //         row = rest
+            //     }
+            //
+            //     // Now that we've dealt with the row extends, we just need to
+            //     // work out the tail.
+            //     let tail = match &row.0 {
+            //         AbsType::RowEmpty() => contract::empty_tail(),
+            //         AbsType::Dyn() => contract::dyn_tail(),
+            //         AbsType::Var(id) => get_var(&h, id, false)?,
+            //         ty => panic!(
+            //             "types::subcontract(): invalid row tail {:?}",
+            //             Types(ty.clone())
+            //         ),
+            //     };
+            //
+            //     let rec = RichTerm::from(Term::Record(RecordData::with_fields(fcs)));
+            //
+            //     mk_app!(contract::record(), rec, tail)
+            // }
+            // AbsType::Dict(ref ty) => {
+            TypeF::Enum(ref erows) => erows.subcontract(h, pol, sy)?,
+            // AbsType::Enum(ref r) => {
+            //     let mut cases = HashMap::new();
+            //     let mut has_tail = false;
+            //     let value_arg = Ident::from("x");
+            //     let label_arg = Ident::from("l");
+            //
+            //     for row in r.iter_as_rows() {
+            //         match row {
+            //             RowIteratorItem::Row(id, _ty) => {
+            //                 debug_assert!(_ty.is_none());
+            //                 cases.insert(id.clone(), mk_term::var(value_arg.clone()));
+            //             }
+            //             RowIteratorItem::Tail(tail) => {
+            //                 // We only expect a type variable in tail position
+            //                 debug_assert!(matches!(tail, Types(AbsType::Var(_))));
+            //                 has_tail = true;
+            //                 break;
+            //             }
+            //         }
+            //     }
+            //
+            //     // If the enum type has a tail, the tail must be a universally quantified variable,
+            //     // and this means that the tag can be anything.
+            //     let case_body = if has_tail {
+            //         mk_term::var(value_arg.clone())
+            //     }
+            //     // Otherwise, we build a switch with all the tags as cases, which just returns the
+            //     // original argument, and a default case that blames.
+            //     //
+            //     // For example, for an enum type [| `foo, `bar, `baz |], the `case` function looks
+            //     // like:
+            //     //
+            //     // ```
+            //     // fun l x =>
+            //     //   switch {
+            //     //     `foo => x,
+            //     //     `bar => x,
+            //     //     `baz => x,
+            //     //     _ => $enum_fail l
+            //     //   } x
+            //     // ```
+            //     else {
+            //         RichTerm::from(Term::Switch(
+            //             mk_term::var(value_arg.clone()),
+            //             cases,
+            //             Some(mk_app!(
+            //                 contract::enum_fail(),
+            //                 mk_term::var(label_arg.clone())
+            //             )),
+            //         ))
+            //     };
+            //     let case = mk_fun!(label_arg, value_arg, case_body);
+            //
+            //     mk_app!(contract::enums(), case)
+            // }
+            TypeF::Record(ref rrows) => rrows.subcontract(h, pol, sy)?,
+            // AbsType::Record(ref ty) => {
+            //     // We begin by building a record whose arguments are contracts
+            //     // derived from the types of the statically known fields.
+            //     let mut row = ty;
+            //     let mut fcs = HashMap::new();
+            //
+            //     while let AbsType::RowExtend(id, Some(ty), rest) = &row.0 {
+            //         fcs.insert(*id, ty.subcontract(h.clone(), pol, sy)?);
+            //         row = rest
+            //     }
+            //
+            //     // Now that we've dealt with the row extends, we just need to
+            //     // work out the tail.
+            //     let tail = match &row.0 {
+            //         AbsType::RowEmpty() => contract::empty_tail(),
+            //         AbsType::Dyn() => contract::dyn_tail(),
+            //         AbsType::Var(id) => get_var(&h, id, false)?,
+            //         ty => panic!(
+            //             "types::subcontract(): invalid row tail {:?}",
+            //             Types(ty.clone())
+            //         ),
+            //     };
+            //
+            //     let rec = RichTerm::from(Term::Record(fcs, Default::default()));
+            //
+            //     mk_app!(contract::record(), rec, tail)
+            // }
+            TypeF::Dict(ref ty) => {
                 mk_app!(contract::dyn_record(), ty.subcontract(h, pol, sy)?)
             }
-            AbsType::Wildcard(_) => contract::dynamic(),
+            TypeF::Wildcard(_) => contract::dynamic(),
         };
 
         Ok(ctr)
     }
 
-    /// Find a binding in a record row type. Return `None` if there is no such binding, if the type
-    /// is not a row type, or if the row is an enum row.
-    pub fn row_find(&self, ident: &Ident) -> Option<Self> {
-        match &self.0 {
-            AbsType::RowExtend(id, Some(ty), _) if *id == *ident => Some((**ty).clone()),
-            AbsType::RowExtend(_, _, tail) => tail.row_find(ident),
-            _ => None,
-        }
-    }
-
-    /// Find a nested binding in a record row type. The nested field is given as a list of
-    /// successive fields, that is, as a path. Return `None` if there is no such binding, if the
-    /// type is not a row type, or if the final row is an enum row.
-    ///
-    /// # Example
-    ///
-    /// - self: ` { {| a : { {| b : Num |} } |} }`
-    /// - path: `["a", "b"]`
-    /// - result: `Some(Num)`
-    pub fn row_find_path(&self, path: &[Ident]) -> Option<Self> {
-        if path.is_empty() {
-            return None;
-        }
-
-        let next = self.row_find(&path[0]);
-
-        if path.len() == 1 {
-            next
-        } else {
-            match next {
-                Some(ty) => ty.row_find_path(&path[1..]),
-                _ => None,
-            }
-        }
-    }
-
-    /// Determine if a type is an atom, that is a either an atom or a type delimited by specific
     /// markers (such as a row type). Used in formatting to decide if parentheses need to be
     /// inserted during pretty pretting.
     pub fn fmt_is_atom(&self) -> bool {
-        use AbsType::*;
+        use TypeF::*;
 
         match &self.0 {
-            Dyn() | Num() | Bool() | Str() | Var(_) => true,
+            Dyn | Num | Bool | Str | Var(_) => true,
             Flat(rt) if matches!(*rt.term, Term::Var(_)) => true,
             _ => false,
         }
@@ -440,14 +707,14 @@ impl Types {
     /// Apply a transformation on a whole type by mapping a faillible function `f` on each node in
     /// manner as prescribed by the order.
     /// `f` may return a generic error `E` and use the state `S` which is passed around.
-    pub fn traverse<F, S, E>(
-        self: Types,
-        f: &mut F,
+    pub fn traverse<FTy, S, E>(
+        self,
+        f: &mut FTy,
         state: &mut S,
         order: TraverseOrder,
-    ) -> Result<Types, E>
+    ) -> Result<Self, E>
     where
-        F: FnMut(Types, &mut S) -> Result<Types, E>,
+        FTy: FnMut(Types, &mut S) -> Result<Types, E>,
     {
         let ty = match order {
             TraverseOrder::TopDown => f(self, state)?,
@@ -455,46 +722,38 @@ impl Types {
         };
 
         let abs_ty = match ty.0 {
-            AbsType::Dyn()
-            | AbsType::Num()
-            | AbsType::Bool()
-            | AbsType::Str()
-            | AbsType::Sym()
-            | AbsType::Var(_)
-            | AbsType::RowEmpty()
-            | AbsType::Flat(_)
-            | AbsType::Wildcard(_) => Ok(ty.0),
-            AbsType::Forall(id, ty_inner) => (*ty_inner)
+            TypeF::Dyn
+            | TypeF::Num
+            | TypeF::Bool
+            | TypeF::Str
+            | TypeF::Sym
+            | TypeF::Var(_)
+            | TypeF::Flat(_)
+            | TypeF::Wildcard(_) => Ok(ty.0),
+            TypeF::Forall(id, ty_inner) => (*ty_inner)
                 .traverse(f, state, order)
-                .map(|ty| AbsType::Forall(id, Box::new(ty))),
-            AbsType::Enum(ty_inner) => (*ty_inner)
-                .traverse(f, state, order)
-                .map(Box::new)
-                .map(AbsType::Enum),
-            AbsType::Record(ty_inner) => (*ty_inner)
+                .map(|ty| TypeF::Forall(id, Box::new(ty))),
+            TypeF::Enum(erows) => erows.traverse(f, state, order).map(TypeF::Enum),
+            TypeF::Record(rrows) => rrows.traverse(f, state, order).map(TypeF::Record),
+            TypeF::Dict(ty_inner) => (*ty_inner)
                 .traverse(f, state, order)
                 .map(Box::new)
-                .map(AbsType::Record),
-            AbsType::Dict(ty_inner) => (*ty_inner)
+                .map(TypeF::Dict),
+            TypeF::Array(ty_inner) => (*ty_inner)
                 .traverse(f, state, order)
                 .map(Box::new)
-                .map(AbsType::Dict),
-            AbsType::Array(ty_inner) => (*ty_inner)
-                .traverse(f, state, order)
-                .map(Box::new)
-                .map(AbsType::Array),
-            AbsType::Arrow(ty1, ty2) => {
+                .map(TypeF::Array),
+            TypeF::Arrow(ty1, ty2) => {
                 let ty1 = (*ty1).traverse(f, state, order)?;
                 let ty2 = (*ty2).traverse(f, state, order)?;
-                Ok(AbsType::Arrow(Box::new(ty1), Box::new(ty2)))
-            }
-            AbsType::RowExtend(id, ty_row, tail) => {
-                let ty_row = ty_row
-                    .map(|ty| (*ty).traverse(f, state, order))
-                    .transpose()?;
-                let tail = (*tail).traverse(f, state, order)?;
-                Ok(AbsType::RowExtend(id, ty_row.map(Box::new), Box::new(tail)))
-            }
+                Ok(TypeF::Arrow(Box::new(ty1), Box::new(ty2)))
+            } // TypeF::RowExtend(id, ty_row, tail) => {
+              //     let ty_row = ty_row
+              //         .map(|ty| (*ty).traverse(f, state, order))
+              //         .transpose()?;
+              //     let tail = (*tail).traverse(f, state, order)?;
+              //     Ok(TypeF::RowExtend(id, ty_row.map(Box::new), Box::new(tail)))
+              // }
         }?;
 
         let result = Types(abs_ty);
@@ -505,24 +764,36 @@ impl Types {
         }
     }
 
-    /// Create an iterator on rows represented by this type.
-    ///
-    /// The iterator continues as long as the next item is of the form `RowExtend(..)`, and
-    /// stops once it reaches `RowEmpty` (which ends iteration), or something else which is not a
-    /// `RowExtend` (which produces a last item [`typecheck::RowIteratorItem::Tail`]).
-    pub fn iter_as_rows(&self) -> RowIterator<'_, Types> {
-        RowIterator { next: Some(self) }
+    // /// Create an iterator on rows represented by this type.
+    // ///
+    // /// The iterator continues as long as the next item is of the form `RowExtend(..)`, and
+    // /// stops once it reaches `RowEmpty` (which ends iteration), or something else which is not a
+    // /// `RowExtend` (which produces a last item [`typecheck::RowIteratorItem::Tail`]).
+    // pub fn iter_as_rows(&self) -> RowIterator<'_, Types> {
+    //     RowIterator { next: Some(self) }
+    // }
+}
+
+impl Display for RecordRows {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        todo!()
     }
 }
 
-impl fmt::Display for Types {
+impl Display for EnumRows {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        todo!()
+    }
+}
+
+impl Display for Types {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self.0 {
-            AbsType::Dyn() => write!(f, "Dyn"),
-            AbsType::Num() => write!(f, "Num"),
-            AbsType::Bool() => write!(f, "Bool"),
-            AbsType::Str() => write!(f, "Str"),
-            AbsType::Array(ty) => {
+            TypeF::Dyn => write!(f, "Dyn"),
+            TypeF::Num => write!(f, "Num"),
+            TypeF::Bool => write!(f, "Bool"),
+            TypeF::Str => write!(f, "Str"),
+            TypeF::Array(ty) => {
                 write!(f, "Array ")?;
 
                 if ty.fmt_is_atom() {
@@ -531,41 +802,40 @@ impl fmt::Display for Types {
                     write!(f, "({})", ty)
                 }
             }
-            AbsType::Sym() => write!(f, "Sym"),
-            AbsType::Flat(ref t) => write!(f, "{}", t.pretty_print_cap(32)),
-            AbsType::Var(var) => write!(f, "{}", var),
-            AbsType::Forall(i, ref ty) => {
+            TypeF::Sym => write!(f, "Sym"),
+            TypeF::Flat(ref t) => write!(f, "{}", t.pretty_print_cap(32)),
+            TypeF::Var(var) => write!(f, "{}", var),
+            TypeF::Forall(i, ref ty) => {
                 let mut curr: &Types = ty.as_ref();
                 write!(f, "forall {}", i)?;
-                while let Types(AbsType::Forall(i, ref ty)) = curr {
+                while let Types(TypeF::Forall(i, ref ty)) = curr {
                     write!(f, " {}", i)?;
                     curr = ty;
                 }
                 write!(f, ". {}", curr)
             }
-            AbsType::Enum(row) => write!(f, "[|{}|]", row),
-            AbsType::Record(row) => write!(f, "{{{}}}", row),
-            AbsType::Dict(ty) => write!(f, "{{_: {}}}", ty),
-            AbsType::RowEmpty() => Ok(()),
-            AbsType::RowExtend(id, ty_opt, tail) => {
-                if let Some(ty) = ty_opt {
-                    write!(f, "{}: {}", id, ty)?;
-                } else {
-                    write!(f, "`{}", id)?;
-                }
-
-                match tail.0 {
-                    AbsType::RowEmpty() => write!(f, "{}", tail),
-                    AbsType::Var(_) => write!(f, " ; {}", tail),
-                    AbsType::Dyn() => write!(f, " ; Dyn"),
-                    _ => write!(f, ", {}", tail),
-                }
-            }
-            AbsType::Arrow(dom, codom) => match dom.0 {
-                AbsType::Arrow(_, _) => write!(f, "({}) -> {}", dom, codom),
+            TypeF::Enum(row) => write!(f, "[|{}|]", row),
+            TypeF::Record(row) => write!(f, "{{{}}}", row),
+            TypeF::Dict(ty) => write!(f, "{{_: {}}}", ty),
+            // TypeF::RowExtend(id, ty_opt, tail) => {
+            //     if let Some(ty) = ty_opt {
+            //         write!(f, "{}: {}", id, ty)?;
+            //     } else {
+            //         write!(f, "`{}", id)?;
+            //     }
+            //
+            //     match tail.0 {
+            //         TypeF::RowEmpty => write!(f, "{}", tail),
+            //         TypeF::Var(_) => write!(f, " ; {}", tail),
+            //         TypeF::Dyn => write!(f, " ; Dyn"),
+            //         _ => write!(f, ", {}", tail),
+            //     }
+            // }
+            TypeF::Arrow(dom, codom) => match dom.0 {
+                TypeF::Arrow(_, _) => write!(f, "({}) -> {}", dom, codom),
                 _ => write!(f, "{} -> {}", dom, codom),
             },
-            AbsType::Wildcard(_) => write!(f, "_"),
+            TypeF::Wildcard(_) => write!(f, "_"),
         }
     }
 }
