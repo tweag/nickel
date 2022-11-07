@@ -21,6 +21,35 @@ use crate::{
     trace::{Enrich, Trace},
 };
 
+/// Follow the path to find record fields,
+/// route should be the reverse of the path we're following
+fn follow_path_to_record_fields(
+    linearization: &Completed,
+    id: usize,
+    route: Vec<Ident>,
+) -> Option<Vec<Ident>> {
+    let item = linearization.get_item(id)?;
+    match item.kind {
+        TermKind::Record(ref fields) if item.id == id => {
+            if route.is_empty() {
+                Some(fields.keys().cloned().collect())
+            } else {
+                let mut new_route = route.clone();
+                let name = new_route.pop()?;
+                let new_id = fields.get(&name)?;
+                follow_path_to_record_fields(&linearization, *new_id, new_route)
+            }
+        }
+        TermKind::Declaration(_, _, ValueState::Known(new_id))
+        | TermKind::Usage(UsageState::Resolved(new_id))
+            if item.id == id =>
+        {
+            follow_path_to_record_fields(linearization, new_id, route)
+        }
+        _ => None,
+    }
+}
+
 /// Find record fields for an item with the specified id.
 fn find_record_fields(linearization: &Completed, id: usize) -> Option<Vec<Ident>> {
     let item = linearization.get_item(id)?;
@@ -85,6 +114,8 @@ lazy_static! {
 
 /// Get the string chunks that make up an identifier path
 fn get_identifier_path(text: &str) -> Option<Vec<String>> {
+    // TODO: skip initial space in reverse, so that this function can generalize
+    // get_identifier_before_dot
     let result: Vec<_> = RE_SPACE.split(text).map(String::from).collect();
     let path = result
         .iter()
@@ -309,6 +340,8 @@ mod tests {
             name.sdf.clue.add.bar"##,
                 vec!["name", "sdf", "clue", "add", "bar"],
             ),
+            ("name.class", vec!["name", "class"]),
+            ("number", vec!["number"]),
         ];
         for (input, expected) in tests {
             let actual = get_identifier_path(input);
