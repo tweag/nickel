@@ -7,7 +7,7 @@ use lsp_types::{CompletionItem, CompletionParams};
 use nickel_lang::{
     identifier::Ident,
     term::MetaValue,
-    types::{AbsType, RowIteratorItem, Types},
+    types::{RecordRows, RecordRowsIteratorItem, TypeF, Types},
 };
 use serde_json::Value;
 
@@ -68,7 +68,7 @@ fn find_fields_from_contract(
     match &item.meta {
         Some(MetaValue { contracts, .. }) => {
             contracts.iter().find_map(|contract| match &contract.types {
-                Types(AbsType::Record(row)) => Some(find_fields_from_type(&row, path)),
+                Types(TypeF::Record(rrows)) => Some(find_fields_from_type(&rrows, path)),
                 _ => None,
             })
         }
@@ -83,19 +83,27 @@ fn find_fields_from_contract(
 }
 
 /// Extract the fields from a given record type.
-fn find_fields_from_type(ty: &Types, path: &mut Vec<Ident>) -> Vec<Ident> {
-    let current = path.pop();
-    ty.iter_as_rows()
-        .flat_map(|item| match (item, current) {
-            (RowIteratorItem::Row(ident, Some(Types(AbsType::Record(ty)))), Some(current))
-                if current == *ident =>
-            {
-                find_fields_from_type(ty, path)
-            }
-            (RowIteratorItem::Row(ident, _), None) => vec![ident.clone()],
-            _ => Vec::new(),
-        })
-        .collect::<Vec<_>>()
+fn find_fields_from_type(rrows: &RecordRows, path: &mut Vec<Ident>) -> Vec<Ident> {
+    if let Some(current) = path.pop() {
+        let type_of_current = rrows.iter().find_map(|item| match item {
+            RecordRowsIteratorItem::Row(row) if row.id == current => Some(row.types.clone()),
+            _ => None,
+        });
+
+        if let Some(Types(TypeF::Record(rrows_current))) = type_of_current {
+            find_fields_from_type(&rrows_current, path)
+        } else {
+            Vec::new()
+        }
+    } else {
+        rrows
+            .iter()
+            .filter_map(|item| match item {
+                RecordRowsIteratorItem::Row(row) => Some(row.id.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    }
 }
 
 lazy_static! {
@@ -170,8 +178,8 @@ fn collect_record_info(
             let (ty, _) = linearization.resolve_item_type_meta(item);
             match (&item.kind, ty) {
                 // Get record fields from static type info
-                (TermKind::Declaration(..), Types(AbsType::Record(row))) if id == item.id => {
-                    Some((find_fields_from_type(&row, path), item.ty.clone()))
+                (TermKind::Declaration(..), Types(TypeF::Record(rrows))) if id == item.id => {
+                    Some((find_fields_from_type(&rrows, path), item.ty.clone()))
                 }
                 (TermKind::Declaration(_, _, ValueState::Known(body_id)), _) if id == item.id => {
                     match find_fields_from_contract(&linearization, *body_id, path) {
@@ -339,8 +347,8 @@ mod tests {
             (
                 "Multiple let bindings with nested record index ",
                 r##"let name = { sdf.clue.add.bar = 10 } in
-                let other = name in 
-                let another = other in 
+                let other = name in
+                let another = other in
             name.sdf.clue.add.bar"##,
                 vec!["name", "sdf", "clue", "add", "bar"],
             ),
@@ -384,28 +392,18 @@ mod tests {
 
     #[test]
     fn test_extract_ident_with_path() {
-        let ty = Types(AbsType::RowExtend(
-            Ident::from("c2"),
-            Some(Box::new(Types(AbsType::Num()))),
-            Box::new(Types(AbsType::RowEmpty())),
-        ));
-        let ty = Types(AbsType::RowExtend(
-            Ident::from("c1"),
-            Some(Box::new(Types(AbsType::Num()))),
-            Box::new(ty),
-        ));
-        let ty = Types(AbsType::RowExtend(
-            Ident::from("b"),
-            Some(Box::new(Types(AbsType::Record(Box::new(ty))))),
-            Box::new(Types(AbsType::RowEmpty())),
-        ));
-        let ty = Types(AbsType::RowExtend(
-            Ident::from("a"),
-            Some(Box::new(Types(AbsType::Record(Box::new(ty))))),
-            Box::new(Types(AbsType::RowEmpty())),
-        ));
+        use nickel_lang::{mk_tyw_record, mk_tyw_row, types::RecordRowsF};
+        use std::convert::TryInto;
+
+        // Representing the type: {a: {b : {c1 : Num, c2: Num}}}
+        let c_record_type = mk_tyw_record!(("c1", TypeF::Num), ("c2", TypeF::Num));
+        let b_record_type = mk_tyw_record!(("b", c_record_type));
+        let a_record_type = mk_tyw_row!(("a", b_record_type));
+
         let mut path = vec![Ident::from("b"), Ident::from("a")];
-        let result = find_fields_from_type(&Box::new(ty), &mut path);
+        // unwrap: the conversion must succeed because we built a type without unification variable
+        // nor type constants
+        let result = find_fields_from_type(&Box::new(a_record_type.try_into().unwrap()), &mut path);
         let expected = vec![Ident::from("c1"), Ident::from("c2")];
         assert_eq!(
             result.iter().map(Ident::label).collect::<Vec<_>>(),
@@ -465,7 +463,7 @@ mod tests {
                 env: Environment::new(),
                 id,
                 pos: TermPos::None,
-                ty: Types(AbsType::Dyn()),
+                ty: Types(TypeF::Dyn),
                 kind,
                 meta: None,
             }

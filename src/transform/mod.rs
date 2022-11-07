@@ -5,7 +5,7 @@ use crate::{
     identifier::Ident,
     term::{Contract, RichTerm, Term, TraverseOrder},
     typecheck::Wildcards,
-    types::{AbsType, Types, UnboundTypeVariableError},
+    types::{TypeF, Types, UnboundTypeVariableError},
 };
 
 pub mod apply_contracts;
@@ -152,7 +152,7 @@ impl Closurizable for Types {
     /// Extract the underlying contract, closurize it and wrap it back as a flat type (an opaque
     /// type defined by a custom contract).
     fn closurize(self, env: &mut Environment, with_env: Environment) -> Types {
-        Types(AbsType::Flat(
+        Types(TypeF::Flat(
             self.contract().unwrap().closurize(env, with_env),
         ))
     }

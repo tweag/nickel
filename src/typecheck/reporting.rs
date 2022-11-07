@@ -73,36 +73,33 @@ fn select_uniq(name_reg: &mut NameReg, mut name: String, id: usize) -> Ident {
 }
 
 /// Either retrieve or generate a new fresh name for a unification variable for error reporting,
-/// and wrap it as a type variable. Constant are named `_a`, `_b`, .., `_a1`, `_b1`, .. and so on.
-fn var_to_type(names: &HashMap<usize, Ident>, name_reg: &mut NameReg, p: usize) -> Types {
-    let ident = name_reg.reg.get(&p).cloned().unwrap_or_else(|| {
+/// and wrap it as an identifier. Unification variables are named `_a`, `_b`, .., `_a1`, `_b1`, ..
+/// and so on.
+fn var_name(names: &HashMap<usize, Ident>, name_reg: &mut NameReg, p: usize) -> Ident {
+    name_reg.reg.get(&p).cloned().unwrap_or_else(|| {
         // Select a candidate name and add a "_" prefix
         let name = format!("_{}", mk_name(names, &mut name_reg.var_count, p));
         // Add a suffix to make it unique if it has already been picked
         select_uniq(name_reg, name, p)
-    });
-
-    Types(AbsType::Var(ident))
+    })
 }
 
 /// Either retrieve or generate a new fresh name for a constant for error reporting, and wrap it as
 /// type variable. Constant are named `a`, `b`, .., `a1`, `b1`, .. and so on.
-fn cst_to_type(names: &HashMap<usize, Ident>, name_reg: &mut NameReg, c: usize) -> Types {
-    let ident = name_reg.reg.get(&c).cloned().unwrap_or_else(|| {
+fn cst_name(names: &HashMap<usize, Ident>, name_reg: &mut NameReg, c: usize) -> Ident {
+    name_reg.reg.get(&c).cloned().unwrap_or_else(|| {
         // Select a candidate name
         let name = mk_name(names, &mut name_reg.cst_count, c);
         // Add a suffix to make it unique if it has already been picked
         select_uniq(name_reg, name, c)
-    });
-
-    Types(AbsType::Var(ident))
+    })
 }
 
-/// Extract a concrete type corresponding to a type wrapper for error reporting.
+/// Extract a concrete type corresponding to a unifiable type, for error reporting purpose.
 ///
 /// Similar [`crate::types::Types::from`], excepted that free unification variables and type
-/// constants are replaced by type variables which names are determined by the `var_to_type` and
-/// `cst_to_type`.
+/// constants are replaced by type variables which names are determined by the `var_name` and
+/// `cst_name`.
 ///
 /// Distinguishing occurrences of unification variables and type constants is more informative
 /// than having `Dyn` everywhere.
@@ -110,18 +107,73 @@ pub fn to_type(
     table: &UnifTable,
     reported_names: &HashMap<usize, Ident>,
     names: &mut NameReg,
-    ty: TypeWrapper,
+    ty: UnifType,
 ) -> Types {
+    fn rrows_to_type(
+        table: &UnifTable,
+        reported_names: &HashMap<usize, Ident>,
+        names: &mut NameReg,
+        rrows: UnifRecordRows,
+    ) -> RecordRows {
+        let rrows = rrows.into_root(table);
+
+        match rrows {
+            UnifRecordRows::UnifVar(var_id) => RecordRows(RecordRowsF::TailVar(var_name(
+                reported_names,
+                names,
+                var_id,
+            ))),
+            UnifRecordRows::Constant(c) => {
+                RecordRows(RecordRowsF::TailVar(cst_name(reported_names, names, c)))
+            }
+            UnifRecordRows::Concrete(t) => {
+                let mapped = t.map_state(
+                    |btyp, names| Box::new(to_type(table, reported_names, names, *btyp)),
+                    |rrows, names| Box::new(rrows_to_type(table, reported_names, names, *rrows)),
+                    names,
+                );
+                RecordRows(mapped)
+            }
+        }
+    }
+
+    fn erows_to_type(
+        table: &UnifTable,
+        reported_names: &HashMap<usize, Ident>,
+        names: &mut NameReg,
+        erows: UnifEnumRows,
+    ) -> EnumRows {
+        let erows = erows.into_root(table);
+
+        match erows {
+            UnifEnumRows::UnifVar(var_id) => {
+                EnumRows(EnumRowsF::TailVar(var_name(reported_names, names, var_id)))
+            }
+            UnifEnumRows::Constant(c) => {
+                EnumRows(EnumRowsF::TailVar(cst_name(reported_names, names, c)))
+            }
+            UnifEnumRows::Concrete(t) => {
+                let mapped =
+                    t.map(|erows| Box::new(erows_to_type(table, reported_names, names, *erows)));
+                EnumRows(mapped)
+            }
+        }
+    }
+
+    let ty = ty.into_root(table);
+
     match ty {
-        TypeWrapper::Ptr(p) => match table.root(p) {
-            TypeWrapper::Ptr(p) => var_to_type(reported_names, names, p),
-            tyw => to_type(table, reported_names, names, tyw),
-        },
-        TypeWrapper::Constant(c) => cst_to_type(reported_names, names, c),
-        TypeWrapper::Concrete(t) => {
-            let mapped = t.map(|btyp| Box::new(to_type(table, reported_names, names, *btyp)));
+        UnifType::UnifVar(p) => Types(TypeF::Var(var_name(reported_names, names, p))),
+        UnifType::Constant(c) => Types(TypeF::Var(cst_name(reported_names, names, c))),
+        UnifType::Concrete(t) => {
+            let mapped = t.map_state(
+                |btyp, names| Box::new(to_type(table, reported_names, names, *btyp)),
+                |rrows, names| rrows_to_type(table, reported_names, names, rrows),
+                |erows, names| erows_to_type(table, reported_names, names, erows),
+                names,
+            );
             Types(mapped)
         }
-        TypeWrapper::Contract(t, _) => Types(AbsType::Flat(t)),
+        UnifType::Contract(t, _) => Types(TypeF::Flat(t)),
     }
 }

@@ -4,12 +4,16 @@ use error::ParseError;
 use utils::{build_record, elaborate_field_path, FieldPath, FieldPathElem};
 
 use crate::{
+    environment::Environment,
     position::{RawSpan, TermPos},
     term::{Contract, MergePriority, MetaValue, RecordAttrs, RichTerm, SharedTerm, Term},
-    types::{AbsType, Types, UnboundTypeVariableError},
+    types::{
+        EnumRows, EnumRowsIteratorItem, RecordRow, RecordRows, RecordRowsF, TypeF, Types,
+        UnboundTypeVariableError, VarKind,
+    },
 };
 
-use std::{borrow::Cow, collections::HashSet, convert::TryFrom};
+use std::{cell::RefCell, convert::TryFrom};
 
 /// A node of the uniterm AST. We only define new variants for those constructs that are common to
 /// types and terms. Otherwise, we piggyback on the existing ASTs to avoid duplicating methods and
@@ -30,7 +34,7 @@ use std::{borrow::Cow, collections::HashSet, convert::TryFrom};
 ///
 /// As soon as this variable is used in a compound expression, the top-level rule tells us how to
 /// translate it. For example, if we see an arrow `a -> Num`, then we will convert it to a type
-/// variable, and return `UniTermNode::Types(AbsType::Arrow(..))` (there is actually a subtelty:
+/// variable, and return `UniTermNode::Types(TypeF::Arrow(..))` (there is actually a subtlety:
 /// see [`fix_type_vars`], but let's ignore it here). If, on the other hand, we enter the rule for
 /// an infix operator as in `a + 1`, `a` will be converted to a `Term::Var` and the resulting
 /// uniterm will be `UniTermNode::Term(Term::Op2(..))`.
@@ -72,10 +76,10 @@ impl TryFrom<UniTerm> for Types {
 
     fn try_from(ut: UniTerm) -> Result<Self, ParseError> {
         match ut.node {
-            UniTermNode::Var(id) => Ok(Types(AbsType::Var(id))),
+            UniTermNode::Var(id) => Ok(Types(TypeF::Var(id))),
             UniTermNode::Record(r) => Types::try_from(r),
             UniTermNode::Types(ty) => Ok(ty),
-            UniTermNode::Term(rt) => Ok(Types(AbsType::Flat(rt))),
+            UniTermNode::Term(rt) => Ok(Types(TypeF::Flat(rt))),
         }
     }
 }
@@ -89,7 +93,7 @@ impl TryFrom<UniTerm> for RichTerm {
             UniTermNode::Var(id) => RichTerm::new(Term::Var(id), pos),
             UniTermNode::Record(r) => RichTerm::try_from(r)?,
             UniTermNode::Types(mut ty) => {
-                fix_type_vars(&mut ty);
+                ty.fix_type_vars();
                 ty.contract().map_err(|UnboundTypeVariableError(id)| {
                     // We unwrap the position of the identifier, which must be set at this stage of parsing
                     let pos = id.pos;
@@ -144,7 +148,7 @@ impl From<UniRecord> for UniTerm {
 #[derive(Clone)]
 pub struct UniRecord {
     pub fields: Vec<(FieldPath, RichTerm)>,
-    pub tail: Option<(Types, TermPos)>,
+    pub tail: Option<(RecordRows, TermPos)>,
     pub attrs: RecordAttrs,
     pub pos: TermPos,
     /// The position of the final ellipsis `..`, if any. Used for error reporting. `pos_ellipsis`
@@ -171,7 +175,7 @@ impl UniRecord {
             return Err(InvalidRecordTypeError(TermPos::Original(raw_span)));
         }
 
-        let ty = self
+        let rrows = self
             .fields
             .into_iter()
             // Because we build row types as a linked list by folding on the original iterator, the
@@ -181,8 +185,8 @@ impl UniRecord {
             .try_fold(
                 self.tail
                     .map(|(tail, _)| tail)
-                    .unwrap_or(Types(AbsType::RowEmpty())),
-                |acc, (mut path, rt)| {
+                    .unwrap_or(RecordRows(RecordRowsF::Empty)),
+                |acc: RecordRows, (mut path, rt)| {
                     // We don't support compound paths for types, yet.
                     if path.len() > 1 {
                         let span = path
@@ -214,11 +218,15 @@ impl UniRecord {
                                         opt: false,
                                         priority: MergePriority::Neutral,
                                         value: None,
-                                    }) if contracts.is_empty() => Ok(Types(AbsType::RowExtend(
-                                        id,
-                                        Some(Box::new(ctrt.types)),
-                                        Box::new(acc),
-                                    ))),
+                                    }) if contracts.is_empty() => {
+                                        Ok(RecordRows(RecordRowsF::Extend {
+                                            row: RecordRow {
+                                                id,
+                                                types: Box::new(ctrt.types),
+                                            },
+                                            tail: Box::new(acc),
+                                        }))
+                                    }
                                     _ => {
                                         // Position of identifiers must always be set at this stage
                                         // (parsing)
@@ -235,7 +243,7 @@ impl UniRecord {
                     }
                 },
             )?;
-        Ok(Types(AbsType::Record(Box::new(ty))))
+        Ok(Types(TypeF::Record(rrows)))
     }
 
     pub fn with_pos(mut self, pos: TermPos) -> Self {
@@ -264,7 +272,7 @@ impl TryFrom<UniRecord> for RichTerm {
                     ParseError::InvalidUniRecord(pos.unwrap(), tail_pos.unwrap(), pos.unwrap())
                 })
                 .and_then(|mut ty| {
-                    fix_type_vars(&mut ty);
+                    ty.fix_type_vars();
                     ty.contract().map_err(|UnboundTypeVariableError(id)| {
                         ParseError::UnboundTypeVariables(vec![id], pos.unwrap())
                     })
@@ -305,95 +313,253 @@ impl TryFrom<UniRecord> for Types {
         } else {
             ur.clone()
                 .into_type_strict()
-                .or_else(|_| RichTerm::try_from(ur).map(|rt| Types(AbsType::Flat(rt))))
+                .or_else(|_| RichTerm::try_from(ur).map(|rt| Types(TypeF::Flat(rt))))
         }
     }
 }
 
-/// Post-process a type at the right hand side of an annotation by replacing each unbound type
-/// variable by a term variable with the same identifier seen as a custom contract
-/// (`AbsType::Var(id)` to `AbsType::Flat(Term::Var(id))`).
-///
-/// Since parsing is done bottom-up, and given the specification of the uniterm syntax for
-/// variables occurring in types, we often can't know right away if a such a variable occurrence
-/// will eventually be a type variable or a term variable seen as a custom contract.
-///
-/// Take for example `a -> b`. At this stage, `a` and `b` could be both variables referring to a
-/// contract (e.g. in `x | a -> b`) or a type variable (e.g. in `x | forall a b. a -> b`),
-/// depending on enclosing `forall`s. To handle both cases, we initially parse all variables inside
-/// types as type variables. When reaching the right-hand side of an annotation, because `forall`s
-/// can only bind locally in a type, we can then decide the actual nature of each occurrence. We
-/// thus recurse into the newly constructed type to change those type variables that are not
-/// actually bound by a `forall` to be term variables. This is the role of `fix_type_vars()`.
-///
-/// Once again because `forall`s only bind variables locally, and don't bind inside contracts, we
-/// don't have to recurse into contracts and this pass will only visit each node of the AST at most
-/// once in total.
-///
-/// There is one subtlety with unirecords, though. A unirecord can still be in interpreted as a
-/// record type later. Take the following example:
-///
-/// ```nickel
-/// let mk_pair : forall a b. a -> b -> {fst: a, snd: b} = <exp>
-/// ```
-///
-/// Since this unirecord will eventually be interpreted as a record type, we can't know yet when
-/// parsing `fst: a` if `a` will be a type variable or a term variable (while, for all other
-/// constructs, an annotation is a boundary that `forall` binders can't cross). In this example,
-/// there is indeed an enclosing forall binding `a`. With unirecords, before fixing type variables,
-/// we have to wait until we eventually convert the unirecord to a term (in which case we fix all the
-/// top-level annotations) or a type (in which case we do nothing: the enclosing type will trigger
-/// the fix once it's fully constructed). Fixing a unirecord prior to a conversion to a term is
-/// done by [`fix_field_types`].
-pub fn fix_type_vars(ty: &mut Types) {
-    fn fix_type_vars_aux(ty: &mut Types, mut bound_vars: Cow<HashSet<Ident>>) {
-        match ty.0 {
-            AbsType::Dyn()
-            | AbsType::Num()
-            | AbsType::Bool()
-            | AbsType::Str()
-            | AbsType::Sym()
-            | AbsType::RowEmpty()
-            | AbsType::Flat(_)
-            | AbsType::Wildcard(_) => (),
-            AbsType::Arrow(ref mut s, ref mut t) => {
-                fix_type_vars_aux(s.as_mut(), Cow::Borrowed(bound_vars.as_ref()));
-                fix_type_vars_aux(t.as_mut(), bound_vars);
-            }
-            AbsType::Var(ref mut id) => {
-                if !bound_vars.contains(id) {
-                    let id = *id;
-                    let pos = id.pos;
-                    ty.0 = AbsType::Flat(RichTerm::new(Term::Var(id), pos));
-                }
-            }
-            AbsType::Forall(ref id, ref mut ty) => {
-                bound_vars.to_mut().insert(id.clone());
-                fix_type_vars_aux(&mut *ty, bound_vars);
-            }
-            AbsType::RowExtend(_, ref mut ty_opt, ref mut tail) => {
-                if let Some(ref mut ty) = *ty_opt {
-                    fix_type_vars_aux(ty.as_mut(), Cow::Borrowed(bound_vars.as_ref()));
-                }
+#[derive(PartialEq, Eq, Copy, Clone)]
+pub(super) enum VarKindCellState {
+    /// The variable kind is yet to be determined.
+    Unset,
+    /// The variable kind that has been determined by an usage of the bound variable.
+    Set,
+}
 
-                // We don't touch a row tail that is a type variable, because the typechecker
-                // relies on row types being well-formed, which the parser must ensure.
-                // Well-formedness requires that only type variables and `Dyn` may appear in a row
-                // tail position, so we don't turn such variables into term variables (having a
-                // contract in tail position doesn't make sense, in the current model at least,
-                // both for typechecking and at evaluation).
-                if !matches!((**tail).0, AbsType::Var(_)) {
-                    fix_type_vars_aux(tail.as_mut(), bound_vars);
-                }
+/// Data stored in a `VarKindCell`.
+///
+/// We could have a simpler implementation using `std::cell::once_cell` (which [`VarKindCell`] is
+/// somehow emulating), but the latter is not stabilized yet. Used during the
+/// [FixTypeVars::fix_type_vars] phase.
+#[derive(PartialEq, Eq)]
+pub(super) struct VarKindCellData {
+    var_kind: VarKind,
+    state: VarKindCellState,
+}
+
+/// Cell providing shared mutable access to a var_kind. This is used to decide the kind of a
+/// variable associated to a forall in the `fix_type_vars` phase.
+///
+/// This cell provides interior mutability for [`VarKindCellData`]. It makes it possible to mutate
+/// the inner data when put in an environment, which only provides immutable references to its
+/// values.
+#[derive(PartialEq, Eq)]
+pub(super) struct VarKindCell(RefCell<VarKindCellData>);
+
+/// Error raised by [`VarKindCell`] when trying to set a variable kind which is different from the
+/// one already set.
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub(super) struct VarKindMismatch;
+
+/// Environment maintained during the `fix_type_vars` phase. Used both to determine if a variable
+/// is bound by an enclosing forall (if `env.get(var_id).is_some()`), and to provide a shared
+/// mutable variable kind that can be modified depending on the location of type variable
+/// occurrences.
+pub(super) type BoundVarEnv = Environment<Ident, VarKindCell>;
+
+impl VarKindCell {
+    /// Create a new `VarKindCell` with the `Unset` state. The kind is set to `VarKind::Type`,
+    /// meaning that unused type variables are given this kind by default.
+    pub(super) fn new() -> Self {
+        VarKindCell(RefCell::new(VarKindCellData {
+            var_kind: VarKind::Type,
+            state: VarKindCellState::Unset,
+        }))
+    }
+
+    /// Set the variable kind of the inner mutable reference if not set yet. If the variable kind
+    /// is already set, check that the variable kind of the cell and the one provided as an
+    /// argument are equals, or return `Err(_)` otherwise.
+    pub(super) fn set_or_check_equal(&self, var_kind: VarKind) -> Result<(), VarKindMismatch> {
+        match &mut *self.0.borrow_mut() {
+            VarKindCellData {
+                var_kind: data,
+                ref mut state,
+            } if *state == VarKindCellState::Unset => {
+                *data = var_kind;
+                *state = VarKindCellState::Set;
+                Ok(())
             }
-            AbsType::Dict(ref mut ty)
-            | AbsType::Array(ref mut ty)
-            | AbsType::Enum(ref mut ty)
-            | AbsType::Record(ref mut ty) => fix_type_vars_aux(ty.as_mut(), bound_vars),
+            VarKindCellData {
+                var_kind: data,
+                state: VarKindCellState::Set,
+            } if *data == var_kind => Ok(()),
+            _ => Err(VarKindMismatch),
         }
     }
 
-    fix_type_vars_aux(ty, Cow::Owned(HashSet::new()))
+    /// Return the current var_kind.
+    pub fn var_kind(&self) -> VarKind {
+        (*self.0.borrow()).var_kind
+    }
+}
+
+pub(super) trait FixTypeVars {
+    /// Post-process a type at the right hand side of an annotation by replacing each unbound type
+    /// variable by a term variable with the same identifier seen as a custom contract
+    /// (`TypeF::Var(id)` to `TypeF::Flat(Term::Var(id))`).
+    ///
+    /// Additionally, this passes determine the kind of a variable introduced by a forall binder.
+    ///
+    /// # Type variable fixing
+    ///
+    /// Since parsing is done bottom-up, and given the specification of the uniterm syntax for
+    /// variables occurring in types, we often can't know right away if a such a variable occurrence
+    /// will eventually be a type variable or a term variable seen as a custom contract.
+    ///
+    /// Take for example `a -> b`. At this stage, `a` and `b` could be both variables referring to a
+    /// contract (e.g. in `x | a -> b`) or a type variable (e.g. in `x | forall a b. a -> b`),
+    /// depending on enclosing `forall`s. To handle both cases, we initially parse all variables inside
+    /// types as type variables. When reaching the right-hand side of an annotation, because `forall`s
+    /// can only bind locally in a type, we can then decide the actual nature of each occurrence. We
+    /// thus recurse into the newly constructed type to change those type variables that are not
+    /// actually bound by a `forall` to be term variables. This is the role of `fix_type_vars()`.
+    ///
+    /// Once again because `forall`s only bind variables locally, and don't bind inside contracts, we
+    /// don't have to recurse into contracts and this pass will only visit each node of the AST at most
+    /// once in total.
+    ///
+    /// There is one subtlety with unirecords, though. A unirecord can still be in interpreted as a
+    /// record type later. Take the following example:
+    ///
+    /// ```nickel
+    /// let mk_pair : forall a b. a -> b -> {fst: a, snd: b} = <exp>
+    /// ```
+    ///
+    /// Since this unirecord will eventually be interpreted as a record type, we can't know yet when
+    /// parsing `fst: a` if `a` will be a type variable or a term variable (while, for all other
+    /// constructs, an annotation is a boundary that `forall` binders can't cross). In this example,
+    /// there is indeed an enclosing forall binding `a`. With unirecords, before fixing type variables,
+    /// we have to wait until we eventually convert the unirecord to a term (in which case we fix all the
+    /// top-level annotations) or a type (in which case we do nothing: the enclosing type will trigger
+    /// the fix once it's fully constructed). Fixing a unirecord prior to a conversion to a term is
+    /// done by [`fix_field_types`].
+    ///
+    /// # Variable kind
+    ///
+    /// Type variables can have different kind (cf [crate::types::VarKind]). The kind determines if
+    /// the variable is meant to be substituted for a type, record rows, or enum rows.
+    ///
+    /// During parsing, the kind is determined syntactically, depending on where the corresponding
+    /// bound occurrences occur:
+    ///
+    /// ```nickel
+    /// # occurs in type position
+    /// forall a. Num -> {_: Bar -> a}
+    /// # occurs in record rows position
+    /// forall a. Num -> {foo: Str ; a} -> {bar: Str ; a}
+    /// # occurs both in record rows and enum rows position
+    /// # this is inconsistent and will raise a parse error
+    /// forall a. [| `foo, `bar; a |] -> {foo : Str, bar: Str; a}
+    /// ```
+    fn fix_type_vars(&mut self) {
+        self.fix_type_vars_env(BoundVarEnv::new())
+    }
+
+    /// Fix type vars in a given environment of variables bound by foralls enclosing this type. The
+    /// environment maps bound variables to a reference to the variable kind of the corresponding
+    /// forall.
+    fn fix_type_vars_env(&mut self, bound_vars: BoundVarEnv);
+}
+
+impl FixTypeVars for Types {
+    fn fix_type_vars_env(&mut self, mut bound_vars: BoundVarEnv) {
+        match self.0 {
+            TypeF::Dyn
+            | TypeF::Num
+            | TypeF::Bool
+            | TypeF::Str
+            | TypeF::Sym
+            | TypeF::Flat(_)
+            | TypeF::Wildcard(_) => (),
+            TypeF::Arrow(ref mut s, ref mut t) => {
+                (&mut *s).fix_type_vars_env(bound_vars.clone());
+                (&mut *t).fix_type_vars_env(bound_vars);
+            }
+            TypeF::Var(ref mut id) => {
+                if let Some(cell) = bound_vars.get(id) {
+                    cell.set_or_check_equal(VarKind::Type)
+                        .expect("incompatible variable kinds");
+                } else {
+                    let id = *id;
+                    let pos = id.pos;
+                    self.0 = TypeF::Flat(RichTerm::new(Term::Var(id), pos));
+                }
+            }
+            TypeF::Forall {
+                ref var,
+                // TODO: pass a mutable ref to var_kind, and set the var kind while fixing type
+                // vars, depending on the position of type vars. Raise an error if the same type var
+                // appears in position with incompatible kinds (as a record rows and a type, for
+                // example).
+                ref mut var_kind,
+                ref mut body,
+            } => {
+                // We span a new VarKindCell and put it in the environment. The recursive calls to
+                // fix_type_vars will fill this cell with the correct kind, which we get afterwards
+                // to set the right value for `var_kind`.
+                bound_vars.insert(var.clone(), VarKindCell::new());
+                (&mut *body).fix_type_vars_env(bound_vars.clone());
+                // unwrap(): we just inseted a value for `var` above, and environment can never
+                // delete values.
+                *var_kind = bound_vars.get(var).unwrap().var_kind();
+            }
+            TypeF::Dict(ref mut ty) | TypeF::Array(ref mut ty) => {
+                (&mut *ty).fix_type_vars_env(bound_vars)
+            }
+            TypeF::Enum(ref mut erows) => erows.fix_type_vars_env(bound_vars),
+            TypeF::Record(ref mut rrows) => rrows.fix_type_vars_env(bound_vars),
+        }
+    }
+}
+
+impl FixTypeVars for RecordRows {
+    fn fix_type_vars_env(&mut self, bound_vars: BoundVarEnv) {
+        match self.0 {
+            RecordRowsF::Empty => (),
+            RecordRowsF::TailDyn => (),
+            // We can't have a contract in tail position, so we don't fix `TailVar`. However, we
+            // have to set the correct kind for the corresponding forall binder.
+            RecordRowsF::TailVar(ref id) => {
+                if let Some(cell) = bound_vars.get(id) {
+                    cell.set_or_check_equal(VarKind::RecordRows)
+                        .expect("var kind mismatch");
+                }
+            }
+            RecordRowsF::Extend {
+                ref mut row,
+                ref mut tail,
+            } => {
+                row.types.fix_type_vars_env(bound_vars.clone());
+                tail.fix_type_vars_env(bound_vars)
+            }
+        }
+    }
+}
+
+impl FixTypeVars for EnumRows {
+    fn fix_type_vars_env(&mut self, bound_vars: BoundVarEnv) {
+        // An enum row doesn't contain any subtypes (beside other enum rows). No term variable can
+        // appear in it, so we don't have to traverse for fixing type variables properly.
+        //
+        // However, the second task of the fix_type_vars phase is to determine the variable kind of
+        // forall binders: here, we do need to check if the fail of this enum is an enum row type
+        // variable.
+        let mut iter = self
+            .iter()
+            .skip_while(|item| matches!(item, EnumRowsIteratorItem::Row(_)));
+        match iter.next() {
+            Some(EnumRowsIteratorItem::TailVar(id)) => {
+                if let Some(cell) = bound_vars.get(id) {
+                    cell.set_or_check_equal(VarKind::EnumRows)
+                        .expect("var kind mismatch");
+                }
+            }
+            // unreachable(): we consumed all the rows item via the `take_while()` call above
+            Some(EnumRowsIteratorItem::Row(_)) => unreachable!(),
+            None => (),
+        }
+    }
 }
 
 /// Fix the type variables of types appearing as annotations of record fields. See
@@ -401,11 +567,11 @@ pub fn fix_type_vars(ty: &mut Types) {
 pub fn fix_field_types(rt: &mut RichTerm) {
     if let Term::MetaValue(ref mut m) = SharedTerm::make_mut(&mut rt.term) {
         if let Some(Contract { ref mut types, .. }) = m.types {
-            fix_type_vars(types);
+            types.fix_type_vars();
         }
 
         for ctr in m.contracts.iter_mut() {
-            fix_type_vars(&mut ctr.types);
+            ctr.types.fix_type_vars();
         }
     }
 }

@@ -45,6 +45,8 @@
 //!
 //! In non-strict mode, the type of let-bound expressions is inferred in a shallow way (see
 //! [`apparent_type`]).
+use crate::types::EnumRowsIterator;
+use crate::types::RecordRowsIterator;
 use crate::{
     cache::ImportResolver,
     destruct::*,
@@ -52,7 +54,9 @@ use crate::{
     error::TypecheckError,
     identifier::Ident,
     term::{Contract, MetaValue, RichTerm, StrChunk, Term, TraverseOrder},
-    types::{AbsType, RowIterator, RowIteratorItem, Types},
+    types::{
+        EnumRow, EnumRows, EnumRowsF, RecordRowF, RecordRows, RecordRowsF, TypeF, Types, VarKind,
+    },
     {mk_tyw_arrow, mk_tyw_enum, mk_tyw_enum_row, mk_tyw_record, mk_tyw_row},
 };
 
@@ -76,10 +80,494 @@ use error::*;
 use operation::{get_bop_type, get_nop_type, get_uop_type};
 
 /// The typing environment.
-pub type Environment = GenericEnvironment<Ident, TypeWrapper>;
+pub type Environment = GenericEnvironment<Ident, UnifType>;
 
 /// Mapping from wildcard ID to inferred type
 pub type Wildcards = Vec<Types>;
+/// Unification variable or type constants unique identifier.
+pub type VarId = usize;
+
+/// A unifiable record row.
+pub type GenericUnifRecordRow<E> = RecordRowF<Box<GenericUnifType<E>>>;
+
+/// Unifiable record rows. Same shape as [`crate::types::RecordRows`], but where each type is
+/// unifiable, and each tail may be a unification variable (or a constant).
+#[derive(Clone, PartialEq, Debug)]
+pub enum GenericUnifRecordRows<E: TermEnvironment + Clone> {
+    Concrete(RecordRowsF<Box<GenericUnifType<E>>, Box<GenericUnifRecordRows<E>>>),
+    Constant(VarId),
+    UnifVar(VarId),
+}
+
+/// Unifiable enum rows. Same shape as [`crate::types::EnumRows`] but where each tail may be a
+/// unification variable (or a constant).
+///
+/// Enum rows don't store any type (they are just a sequence of identifiers), so there is no
+/// `GenericUnifEnumRows` taking an additional `E` parameter.
+#[derive(Clone, PartialEq, Debug)]
+pub enum UnifEnumRows {
+    Concrete(EnumRowsF<Box<UnifEnumRows>>),
+    Constant(VarId),
+    UnifVar(VarId),
+}
+
+/// The types on which the unification algorithm operates, which may be either a concrete type, a
+/// type constant or a unification variable.
+///
+/// Contracts store an additional term environment for contract equality checking, which is
+/// represented by `E`. The typechecker always uses the same type for `E`. However, the evaluation
+/// phase may also resort to checking contract equality, using a different environment
+/// representation, hence the parametrization.
+#[derive(Clone, PartialEq, Debug)]
+pub enum GenericUnifType<E: TermEnvironment> {
+    /// A concrete type (like `Num` or `Str -> Str`).
+    Concrete(TypeF<Box<GenericUnifType<E>>, GenericUnifRecordRows<E>, UnifEnumRows>),
+    /// A contract, seen as an opaque type. In order to compute type equality between contracts or
+    /// between a contract and a type, we need to carry an additional environment. This is why we
+    /// don't reuse the variant from [`crate::types::TypeF`].
+    Contract(RichTerm, E),
+    /// A rigid type constant which cannot be unified with anything but itself.
+    Constant(VarId),
+    /// A unification variable.
+    UnifVar(VarId),
+}
+
+impl<E: TermEnvironment + Clone> std::convert::TryInto<RecordRows> for GenericUnifRecordRows<E> {
+    type Error = ();
+
+    fn try_into(self) -> Result<RecordRows, ()> {
+        match self {
+            GenericUnifRecordRows::Concrete(rrows) => {
+                let converted: RecordRowsF<Box<Types>, Box<RecordRows>> = rrows.try_map(
+                    |uty| Ok(Box::new(GenericUnifType::try_into(*uty)?)),
+                    |urrows| {
+                        let rrows: RecordRows = (*urrows).try_into()?;
+                        Ok(Box::new(rrows))
+                    },
+                )?;
+                Ok(RecordRows(converted))
+            }
+            _ => Err(()),
+        }
+    }
+}
+
+impl std::convert::TryInto<EnumRows> for UnifEnumRows {
+    type Error = ();
+
+    fn try_into(self) -> Result<EnumRows, ()> {
+        match self {
+            UnifEnumRows::Concrete(erows) => {
+                let converted: EnumRowsF<Box<EnumRows>> =
+                    erows.try_map(|erows| Ok(Box::new(UnifEnumRows::try_into(*erows)?)))?;
+                Ok(EnumRows(converted))
+            }
+            _ => Err(()),
+        }
+    }
+}
+
+impl<E: TermEnvironment + Clone> std::convert::TryInto<Types> for GenericUnifType<E> {
+    type Error = ();
+
+    fn try_into(self) -> Result<Types, ()> {
+        match self {
+            GenericUnifType::Concrete(ty) => {
+                let converted: TypeF<Box<Types>, RecordRows, EnumRows> = ty.try_map(
+                    |uty_boxed| {
+                        let ty: Types = (*uty_boxed).try_into()?;
+                        Ok(Box::new(ty))
+                    },
+                    GenericUnifRecordRows::try_into,
+                    UnifEnumRows::try_into,
+                )?;
+                Ok(Types(converted))
+            }
+            GenericUnifType::Contract(t, _) => Ok(Types(TypeF::Flat(t))),
+            _ => Err(()),
+        }
+    }
+}
+
+// As opposed to `UnifType` and `UnifRecordRows` which can contain types and thus contracts, with
+// all the subtleties associated with contract equality checking (see `typecheck::eq` module), we can
+// convert enum rows directly to unifiable enum rows without additional data: instead of
+// implementing a function `from_enum_rows`, we rather implement the more natural trait
+// `From<EnumRows>`.
+impl From<EnumRows> for UnifEnumRows {
+    fn from(erows: EnumRows) -> Self {
+        UnifEnumRows::Concrete(erows.0.map(|erows| Box::new(UnifEnumRows::from(*erows))))
+    }
+}
+
+impl UnifEnumRows {
+    /// Return an iterator producing immutable references to individual rows.
+    pub fn iter<'a>(&'a self) -> EnumRowsIterator<'a, UnifEnumRows> {
+        EnumRowsIterator { erows: Some(self) }
+    }
+}
+
+impl<E: TermEnvironment + Clone> GenericUnifRecordRows<E> {
+    /// Create `GenericUnifRecordRows` from `RecordRows`. Contracts are represented as the separate
+    /// variant [`GenericUnifType::Contract`] which also stores a term environment, required for
+    /// checking type equality involving contracts.
+    pub fn from_record_rows(rrows: RecordRows, env: &E) -> Self {
+        let f_rrow = |ty: Box<Types>| Box::new(GenericUnifType::from_type(*ty, env));
+        let f_rrows =
+            |rrows: Box<RecordRows>| Box::new(GenericUnifRecordRows::from_record_rows(*rrows, env));
+
+        GenericUnifRecordRows::Concrete(rrows.0.map(f_rrow, f_rrows))
+    }
+}
+
+impl<E: TermEnvironment> GenericUnifRecordRows<E> {
+    pub(super) fn iter<'a>(
+        &'a self,
+    ) -> RecordRowsIterator<'a, GenericUnifType<E>, GenericUnifRecordRows<E>> {
+        RecordRowsIterator {
+            rrows: Some(self),
+            ty: std::marker::PhantomData,
+        }
+    }
+}
+
+trait SubstType<E: TermEnvironment> {
+    fn subst_type(self, id: &Ident, to: &GenericUnifType<E>) -> Self;
+}
+
+trait SubstRRows<E: TermEnvironment> {
+    fn subst_rrows(self, id: &Ident, to: &GenericUnifRecordRows<E>) -> Self;
+}
+
+trait SubstERows {
+    fn subst_erows(self, id: &Ident, to: &UnifEnumRows) -> Self;
+}
+
+impl<E: TermEnvironment> SubstType<E> for GenericUnifType<E> {
+    fn subst_type(self, id: &Ident, to: &GenericUnifType<E>) -> Self {
+        match self {
+            GenericUnifType::Concrete(TypeF::Var(var_id)) if var_id == *id => to.clone(),
+            GenericUnifType::Concrete(t) => GenericUnifType::Concrete(t.map(
+                |ty| Box::new(ty.subst_type(id, to)),
+                |rrows| rrows.subst_type(id, to),
+                |erows| erows,
+            )),
+            _ => self,
+        }
+    }
+}
+
+impl<E: TermEnvironment> SubstType<E> for GenericUnifRecordRows<E> {
+    fn subst_type(self, id: &Ident, to: &GenericUnifType<E>) -> Self {
+        match self {
+            GenericUnifRecordRows::Concrete(rrows) => GenericUnifRecordRows::Concrete(rrows.map(
+                |ty| Box::new(ty.subst_type(id, to)),
+                |rrows| Box::new(rrows.subst_type(id, to)),
+            )),
+            _ => self,
+        }
+    }
+}
+
+impl<E: TermEnvironment> SubstRRows<E> for GenericUnifType<E> {
+    fn subst_rrows(self, id: &Ident, to: &GenericUnifRecordRows<E>) -> Self {
+        match self {
+            GenericUnifType::Concrete(t) => GenericUnifType::Concrete(t.map(
+                |ty| Box::new(ty.subst_rrows(id, to)),
+                |rrows| rrows.subst_rrows(id, to),
+                |erows| erows,
+            )),
+            _ => self,
+        }
+    }
+}
+
+impl<E: TermEnvironment> SubstRRows<E> for GenericUnifRecordRows<E> {
+    fn subst_rrows(self, id: &Ident, to: &GenericUnifRecordRows<E>) -> Self {
+        match self {
+            GenericUnifRecordRows::Concrete(RecordRowsF::TailVar(var_id)) if var_id == *id => {
+                to.clone()
+            }
+            GenericUnifRecordRows::Concrete(rrows) => GenericUnifRecordRows::Concrete(rrows.map(
+                |ty| Box::new(ty.subst_rrows(id, to)),
+                |rrows| Box::new(rrows.subst_rrows(id, to)),
+            )),
+            _ => self,
+        }
+    }
+}
+
+impl<E: TermEnvironment> SubstERows for GenericUnifType<E> {
+    fn subst_erows(self, id: &Ident, to: &UnifEnumRows) -> Self {
+        match self {
+            GenericUnifType::Concrete(t) => GenericUnifType::Concrete(t.map(
+                |ty| Box::new(ty.subst_erows(id, to)),
+                |rrows| rrows.subst_erows(id, to),
+                |erows| erows.subst_erows(id, to),
+            )),
+            _ => self,
+        }
+    }
+}
+
+impl<E: TermEnvironment> SubstERows for GenericUnifRecordRows<E> {
+    fn subst_erows(self, id: &Ident, to: &UnifEnumRows) -> Self {
+        match self {
+            GenericUnifRecordRows::Concrete(rrows) => GenericUnifRecordRows::Concrete(rrows.map(
+                |ty| Box::new(ty.subst_erows(id, to)),
+                |rrows| Box::new(rrows.subst_erows(id, to)),
+            )),
+            _ => self,
+        }
+    }
+}
+
+impl SubstERows for UnifEnumRows {
+    fn subst_erows(self, id: &Ident, to: &UnifEnumRows) -> Self {
+        match self {
+            UnifEnumRows::Concrete(EnumRowsF::TailVar(var_id)) if var_id == *id => to.clone(),
+            UnifEnumRows::Concrete(rrows) => {
+                UnifEnumRows::Concrete(rrows.map(|erows| Box::new(erows.subst_erows(id, to))))
+            }
+            _ => self,
+        }
+    }
+}
+
+impl<E: TermEnvironment + Clone> GenericUnifType<E> {
+    /// Create a [`GenericUnifType`] from a [`Types`]. Contracts are represented as the separate variant
+    /// [`GenericUnifType::Contract`] which also stores a term environment, required for checking type
+    /// equality involving contracts.
+    pub fn from_type(ty: Types, env: &E) -> Self {
+        match ty.0 {
+            TypeF::Flat(t) => GenericUnifType::Contract(t.clone(), env.clone()),
+            ty => GenericUnifType::Concrete(ty.map(
+                |ty_| Box::new(GenericUnifType::from_type(*ty_, env)),
+                |rrows| GenericUnifRecordRows::from_record_rows(rrows, env),
+                |erows| UnifEnumRows::from(erows),
+            )),
+        }
+    }
+}
+
+pub type UnifRecordRow = GenericUnifRecordRow<SimpleTermEnvironment>;
+pub type UnifRecordRows = GenericUnifRecordRows<SimpleTermEnvironment>;
+pub type UnifType = GenericUnifType<SimpleTermEnvironment>;
+
+impl UnifRecordRows {
+    /// Extract the concrete [`RecordRows`] corresponding to a [`UnifRecordRows`]. Free unification variables as well
+    /// as type constants are replaced with the empty row.
+    fn into_rrows(self, table: &UnifTable) -> RecordRows {
+        match self {
+            UnifRecordRows::UnifVar(p) => match table.root_rrows(p) {
+                t @ UnifRecordRows::Concrete(_) => t.into_rrows(table),
+                _ => RecordRows(RecordRowsF::Empty),
+            },
+            UnifRecordRows::Constant(_) => RecordRows(RecordRowsF::Empty),
+            UnifRecordRows::Concrete(t) => {
+                let mapped = t.map(
+                    |ty| Box::new(ty.into_type(table)),
+                    |rrows| Box::new(rrows.into_rrows(table)),
+                );
+                RecordRows(mapped)
+            }
+        }
+    }
+
+    /// Return the unification root associated with these record rows. If the rows are a unification
+    /// variable, return the result of `table.root_rrows`. Return `self` otherwise.
+    fn into_root(self, table: &UnifTable) -> Self {
+        match self {
+            UnifRecordRows::UnifVar(var_id) => table.root_rrows(var_id),
+            urrows => urrows,
+        }
+    }
+}
+
+impl UnifEnumRows {
+    /// Extract the concrete [`EnumRows`] corresponding to a [`UnifEnumRows`]. Free unification variables as well
+    /// as type constants are replaced with the empty row.
+    fn into_erows(self, table: &UnifTable) -> EnumRows {
+        match self {
+            UnifEnumRows::UnifVar(p) => match table.root_erows(p) {
+                t @ UnifEnumRows::Concrete(_) => t.into_erows(table),
+                _ => EnumRows(EnumRowsF::Empty),
+            },
+            UnifEnumRows::Constant(_) => EnumRows(EnumRowsF::Empty),
+            UnifEnumRows::Concrete(t) => {
+                let mapped = t.map(|erows| Box::new(erows.into_erows(table)));
+                EnumRows(mapped)
+            }
+        }
+    }
+
+    /// Return the unification root associated with these enum rows. If the rows are a unification
+    /// variable, return the result of `table.root_erows`. Return `self` otherwise.
+    fn into_root(self, table: &UnifTable) -> Self {
+        match self {
+            UnifEnumRows::UnifVar(var_id) => table.root_erows(var_id),
+            uerows => uerows,
+        }
+    }
+}
+
+impl UnifType {
+    /// Create a [`UnifType`] from an [`ApparentType`]. As for [`from_type`], this function requires
+    /// the current term environment.
+    pub fn from_apparent_type(at: ApparentType, env: &SimpleTermEnvironment) -> Self {
+        match at {
+            ApparentType::Annotated(ty) if has_wildcards(&ty) => {
+                GenericUnifType::Concrete(TypeF::Dyn)
+            }
+            ApparentType::Annotated(ty)
+            | ApparentType::Inferred(ty)
+            | ApparentType::Approximated(ty) => GenericUnifType::from_type(ty, env),
+            ApparentType::FromEnv(uty) => uty,
+        }
+    }
+
+    /// Extract the concrete type corresponding to a unifiable type. Free unification variables as well
+    /// as type constants are replaced with the type `Dyn`.
+    fn into_type(self, table: &UnifTable) -> Types {
+        match self {
+            UnifType::UnifVar(p) => match table.root_type(p) {
+                t @ UnifType::Concrete(_) => t.into_type(table),
+                _ => Types(TypeF::Dyn),
+            },
+            UnifType::Constant(_) => Types(TypeF::Dyn),
+            UnifType::Concrete(t) => {
+                let mapped = t.map(
+                    |btyp| Box::new(btyp.into_type(table)),
+                    |urrows| urrows.into_rrows(table),
+                    |uerows| uerows.into_erows(table),
+                );
+                Types(mapped)
+            }
+            UnifType::Contract(t, _) => Types(TypeF::Flat(t)),
+        }
+    }
+
+    /// Return the unification root associated with this type. If the type is a unification variable,
+    /// return the result of `table.root_type`. Return `self` otherwise.
+    fn into_root(self, table: &UnifTable) -> Self {
+        match self {
+            UnifType::UnifVar(var_id) => table.root_type(var_id),
+            uty => uty,
+        }
+    }
+}
+
+// This implementation assumes that `TypeF::Flat` is not possible. If a [`UnifType`] has been
+// correctly created from a type using `from_type`, this must be the case.
+impl From<TypeF<Box<UnifType>, UnifRecordRows, UnifEnumRows>> for UnifType {
+    fn from(ty: TypeF<Box<UnifType>, UnifRecordRows, UnifEnumRows>) -> Self {
+        debug_assert!(!matches!(ty, TypeF::Flat(_)));
+        UnifType::Concrete(ty)
+    }
+}
+
+impl From<RecordRowsF<Box<UnifType>, Box<UnifRecordRows>>> for UnifRecordRows {
+    fn from(rrows: RecordRowsF<Box<UnifType>, Box<UnifRecordRows>>) -> Self {
+        UnifRecordRows::Concrete(rrows)
+    }
+}
+
+impl From<EnumRowsF<Box<UnifEnumRows>>> for UnifEnumRows {
+    fn from(ty: EnumRowsF<Box<UnifEnumRows>>) -> Self {
+        UnifEnumRows::Concrete(ty)
+    }
+}
+
+/// Iterator items produced by [`GenericUnifRecordRowsIterator`].
+pub enum GenericUnifRecordRowsIteratorItem<'a, E: TermEnvironment> {
+    TailDyn,
+    TailVar(&'a Ident),
+    TailUnifVar(VarId),
+    TailConstant(VarId),
+    Row(RecordRowF<&'a GenericUnifType<E>>),
+}
+
+pub type UnifRecordRowsIteratorItem<'a> =
+    GenericUnifRecordRowsIteratorItem<'a, SimpleTermEnvironment>;
+
+impl<'a, E: TermEnvironment> Iterator
+    for RecordRowsIterator<'a, GenericUnifType<E>, GenericUnifRecordRows<E>>
+{
+    type Item = GenericUnifRecordRowsIteratorItem<'a, E>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.rrows.and_then(|next| match next {
+            GenericUnifRecordRows::Concrete(rrows) => match rrows {
+                RecordRowsF::Empty => {
+                    self.rrows = None;
+                    None
+                }
+                RecordRowsF::TailDyn => {
+                    self.rrows = None;
+                    Some(GenericUnifRecordRowsIteratorItem::TailDyn)
+                }
+                RecordRowsF::TailVar(id) => {
+                    self.rrows = None;
+                    Some(GenericUnifRecordRowsIteratorItem::TailVar(&id))
+                }
+                RecordRowsF::Extend { row, tail } => {
+                    self.rrows = Some(&*tail);
+                    Some(GenericUnifRecordRowsIteratorItem::Row(RecordRowF {
+                        id: row.id.clone(),
+                        types: row.types.as_ref(),
+                    }))
+                }
+            },
+            GenericUnifRecordRows::UnifVar(var_id) => {
+                self.rrows = None;
+                Some(GenericUnifRecordRowsIteratorItem::TailUnifVar(*var_id))
+            }
+            GenericUnifRecordRows::Constant(var_id) => {
+                self.rrows = None;
+                Some(GenericUnifRecordRowsIteratorItem::TailConstant(*var_id))
+            }
+        })
+    }
+}
+
+/// Iterator items produced by [`EnumRowsIterator`].
+pub enum UnifEnumRowsIteratorItem<'a> {
+    TailVar(&'a Ident),
+    TailUnifVar(VarId),
+    TailConstant(VarId),
+    Row(&'a EnumRow),
+}
+
+impl<'a> Iterator for EnumRowsIterator<'a, UnifEnumRows> {
+    type Item = UnifEnumRowsIteratorItem<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.erows.and_then(|next| match next {
+            UnifEnumRows::Concrete(erows) => match erows {
+                EnumRowsF::Empty => {
+                    self.erows = None;
+                    None
+                }
+                EnumRowsF::TailVar(id) => {
+                    self.erows = None;
+                    Some(UnifEnumRowsIteratorItem::TailVar(&id))
+                }
+                EnumRowsF::Extend { row, tail } => {
+                    self.erows = Some(&*tail);
+                    Some(UnifEnumRowsIteratorItem::Row(&row))
+                }
+            },
+            UnifEnumRows::UnifVar(var_id) => {
+                self.erows = None;
+                Some(UnifEnumRowsIteratorItem::TailUnifVar(*var_id))
+            }
+            UnifEnumRows::Constant(var_id) => {
+                self.erows = None;
+                Some(UnifEnumRowsIteratorItem::TailConstant(*var_id))
+            }
+        })
+    }
+}
 
 /// The typing context is a structure holding the scoped, environment-like data structures required
 /// to perform typechecking.
@@ -151,11 +639,11 @@ pub fn env_add_term(
     match term.as_ref() {
         Term::Record(record) | Term::RecRecord(record, ..) => {
             for (id, t) in &record.fields {
-                let tyw: TypeWrapper = TypeWrapper::from_apparent_type(
+                let uty: UnifType = UnifType::from_apparent_type(
                     apparent_type(t.as_ref(), Some(env), Some(resolver)),
                     term_env,
                 );
-                env.insert(id.clone(), tyw);
+                env.insert(id.clone(), uty);
             }
 
             Ok(())
@@ -174,7 +662,7 @@ pub fn env_add(
 ) {
     env.insert(
         id,
-        TypeWrapper::from_apparent_type(
+        UnifType::from_apparent_type(
             apparent_type(rt.as_ref(), Some(env), Some(resolver)),
             term_env,
         ),
@@ -193,16 +681,16 @@ pub struct State<'a> {
     /// variable which introduced it, if any.
     ///
     /// Used for error reporting.
-    names: &'a mut HashMap<usize, Ident>,
+    names: &'a mut HashMap<VarId, Ident>,
     /// A mapping from wildcard ID to unification variable.
-    wildcard_vars: &'a mut Vec<TypeWrapper>,
+    wildcard_vars: &'a mut Vec<UnifType>,
 }
 
 /// Immutable and owned data, required by the LSP to carry out specific analysis.
 /// It is basically an owned-subset of the typecheking state.
 pub struct Extra {
     pub table: UnifTable,
-    pub names: HashMap<usize, Ident>,
+    pub names: HashMap<VarId, Ident>,
     pub wildcards: Vec<Types>,
 }
 
@@ -285,7 +773,7 @@ fn walk<L: Linearizer>(
         lin,
         t,
         *pos,
-        TypeWrapper::from_apparent_type(
+        UnifType::from_apparent_type(
             apparent_type(t, Some(&ctxt.type_env), Some(state.resolver)),
             &ctxt.term_env,
         ),
@@ -444,8 +932,8 @@ fn walk<L: Linearizer>(
                 value: Some(t),
                 ..
                 } => {
-                    let tyw2 = TypeWrapper::from_type(ty2.clone(), &ctxt.term_env);
-                    let instantiated = instantiate_foralls(state, tyw2, ForallInst::Constant);
+                    let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
+                    let instantiated = instantiate_foralls(state, uty2, ForallInst::Constant);
                     type_check_(state, ctxt, lin, linearizer, t, instantiated)
                 }
                 MetaValue {value: Some(t), .. } =>  walk(state, ctxt, lin, linearizer, t),
@@ -460,7 +948,7 @@ fn walk<L: Linearizer>(
    }
 }
 
-/// Same as [`walk`] but operate on a type, which can contain terms as contracts (`AbsType::Flat`),
+/// Same as [`walk`] but operate on a type, which can contain terms as contracts (`TypeF::Flat`),
 /// instead of a term.
 fn walk_type<L: Linearizer>(
     state: &mut State,
@@ -470,30 +958,47 @@ fn walk_type<L: Linearizer>(
     ty: &Types,
 ) -> Result<(), TypecheckError> {
     match &ty.0 {
-       AbsType::Dyn()
-       | AbsType::Num()
-       | AbsType::Bool()
-       | AbsType::Str()
-       | AbsType::Sym()
+       TypeF::Dyn
+       | TypeF::Num
+       | TypeF::Bool
+       | TypeF::Str
+       | TypeF::Sym
        // Currently, the parser can't generate unbound type variables by construction. Thus we
        // don't check here for unbound type variables again.
-       | AbsType::Var(_)
-       | AbsType::Wildcard(_)
-       | AbsType::RowEmpty() => Ok(()),
-       AbsType::Arrow(ty1, ty2) => {
+       | TypeF::Var(_)
+       // An enum type can't contain a flat type inside.
+       | TypeF::Enum(_)
+       | TypeF::Wildcard(_) => Ok(()),
+       TypeF::Arrow(ty1, ty2) => {
            walk_type(state, ctxt.clone(), lin, linearizer.scope(), ty1.as_ref())?;
            walk_type(state, ctxt, lin, linearizer, ty2.as_ref())
        }
-       AbsType::RowExtend(_, ty_row, tail) => {
-         if let Some(ty_row) = ty_row { walk_type(state, ctxt.clone(), lin, linearizer.scope(), ty_row)? };
-         walk_type(state, ctxt, lin,linearizer, tail)
-       }
-       AbsType::Flat(t) => walk(state, ctxt, lin, linearizer, t),
-       AbsType::Enum(ty2)
-       | AbsType::Dict(ty2)
-       | AbsType::Record(ty2)
-       | AbsType::Array(ty2)
-       | AbsType::Forall(_, ty2) => walk_type(state, ctxt, lin, linearizer, ty2),
+       TypeF::Record(rrows) => walk_rrows(state, ctxt, lin, linearizer, rrows),
+       TypeF::Flat(t) => walk(state, ctxt, lin, linearizer, t),
+       TypeF::Dict(ty2)
+       | TypeF::Array(ty2)
+       | TypeF::Forall {body: ty2, ..} => walk_type(state, ctxt, lin, linearizer, ty2),
+    }
+}
+
+/// Same as [`walk_type`] but operate on record rows.
+fn walk_rrows<L: Linearizer>(
+    state: &mut State,
+    ctxt: Context,
+    lin: &mut Linearization<L::Building>,
+    mut linearizer: L,
+    rrows: &RecordRows,
+) -> Result<(), TypecheckError> {
+    match rrows.0 {
+        RecordRowsF::Empty
+        // Currently, the parser can't generate unbound type variables by construction. Thus we
+        // don't check here for unbound type variables again.
+        | RecordRowsF::TailVar(_)
+        | RecordRowsF::TailDyn => Ok(()),
+        RecordRowsF::Extend { ref row, ref tail } => {
+            walk_type(state, ctxt.clone(), lin, linearizer.scope(), &row.types)?;
+            walk_rrows(state, ctxt, lin, linearizer, tail)
+        }
     }
 }
 
@@ -502,13 +1007,13 @@ fn walk_type<L: Linearizer>(
 fn inject_pat_vars(pat: &Destruct, env: &mut Environment) {
     if let Destruct::Record { matches, rest, .. } = pat {
         if let Some(id) = rest {
-            env.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
+            env.insert(id.clone(), UnifType::Concrete(TypeF::Dyn));
         }
         matches.iter().for_each(|m| match m {
-            Match::Simple(id, ..) => env.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn())),
+            Match::Simple(id, ..) => env.insert(id.clone(), UnifType::Concrete(TypeF::Dyn)),
             Match::Assign(id, _, (bind_id, pat)) => {
                 let id = bind_id.as_ref().unwrap_or(id);
-                env.insert(id.clone(), TypeWrapper::Concrete(AbsType::Dyn()));
+                env.insert(id.clone(), UnifType::Concrete(TypeF::Dyn));
                 if !pat.is_empty() {
                     inject_pat_vars(pat, env);
                 }
@@ -536,7 +1041,7 @@ fn type_check_<L: Linearizer>(
     lin: &mut Linearization<L::Building>,
     mut linearizer: L,
     rt: &RichTerm,
-    ty: TypeWrapper,
+    ty: UnifType,
 ) -> Result<(), TypecheckError> {
     let RichTerm { term: t, pos } = rt;
     linearizer.add_term(lin, t, *pos, ty.clone());
@@ -573,10 +1078,10 @@ fn type_check_<L: Linearizer>(
                 })
         }
         Term::Fun(x, t) => {
-            let src = state.table.fresh_unif_var();
+            let src = state.table.fresh_type_uvar();
             // TODO what to do here, this makes more sense to me, but it means let x = foo in bar
             // behaves quite different to (\x.bar) foo, worth considering if it's ok to type these two differently
-            let trg = state.table.fresh_unif_var();
+            let trg = state.table.fresh_type_uvar();
             let arr = mk_tyw_arrow!(src.clone(), trg.clone());
             linearizer.retype_ident(lin, x, src.clone());
 
@@ -586,10 +1091,10 @@ fn type_check_<L: Linearizer>(
             type_check_(state, ctxt, lin, linearizer, t, trg)
         }
         Term::FunPattern(x, pat, t) => {
-            let src = state.table.fresh_unif_var();
+            let src = state.table.fresh_type_uvar();
             // TODO what to do here, this makes more sense to me, but it means let x = foo in bar
             // behaves quite different to (\x.bar) foo, worth considering if it's ok to type these two differently
-            let trg = state.table.fresh_unif_var();
+            let trg = state.table.fresh_type_uvar();
             let arr = mk_tyw_arrow!(src.clone(), trg.clone());
             if let Some(x) = x {
                 linearizer.retype_ident(lin, x, src.clone());
@@ -600,7 +1105,7 @@ fn type_check_<L: Linearizer>(
             type_check_(state, ctxt, lin, linearizer, t, trg)
         }
         Term::Array(terms, _) => {
-            let ty_elts = state.table.fresh_unif_var();
+            let ty_elts = state.table.fresh_type_uvar();
 
             unify(state, &ctxt, ty, mk_typewrapper::array(ty_elts.clone()))
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
@@ -670,7 +1175,7 @@ fn type_check_<L: Linearizer>(
             type_check_(state, ctxt, lin, linearizer, rt, ty)
         }
         Term::App(e, t) => {
-            let src = state.table.fresh_unif_var();
+            let src = state.table.fresh_type_uvar();
             let arr = mk_tyw_arrow!(src.clone(), ty);
 
             type_check_(state, ctxt.clone(), lin, linearizer.scope(), e, arr)?;
@@ -679,7 +1184,7 @@ fn type_check_<L: Linearizer>(
         Term::Switch(exp, cases, default) => {
             // Currently, if it has a default value, we typecheck the whole thing as
             // taking ANY enum, since it's more permissive and there's no loss of information
-            let res = state.table.fresh_unif_var();
+            let res = state.table.fresh_type_uvar();
 
             for case in cases.values() {
                 type_check_(
@@ -692,21 +1197,21 @@ fn type_check_<L: Linearizer>(
                 )?;
             }
 
-            let row = match default {
+            let erows = match default {
                 Some(t) => {
                     type_check_(state, ctxt.clone(), lin, linearizer.scope(), t, res.clone())?;
-                    state.table.fresh_unif_var()
+                    state.table.fresh_erows_uvar()
                 }
                 None => cases.iter().try_fold(
-                    mk_typewrapper::row_empty(),
-                    |acc, x| -> Result<TypeWrapper, TypecheckError> {
+                    EnumRowsF::Empty.into(),
+                    |acc, x| -> Result<UnifEnumRows, TypecheckError> {
                         Ok(mk_tyw_enum_row!(x.0.clone(); acc))
                     },
                 )?,
             };
 
             unify(state, &ctxt, ty, res).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            type_check_(state, ctxt, lin, linearizer, exp, mk_tyw_enum!(; row))
+            type_check_(state, ctxt, lin, linearizer, exp, mk_tyw_enum!(; erows))
         }
         Term::Var(x) => {
             let x_ty = ctxt
@@ -720,18 +1225,18 @@ fn type_check_<L: Linearizer>(
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Enum(id) => {
-            let row = state.table.fresh_unif_var();
+            let row = state.table.fresh_erows_uvar();
             unify(state, &ctxt, ty, mk_tyw_enum!(id.clone(); row))
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         // If some fields are defined dynamically, the only potential type that works is `{_ : a}`
         // for some `a`
         Term::RecRecord(record, dynamic, ..) if !dynamic.is_empty() => {
-            let ty_dyn = state.table.fresh_unif_var();
+            let ty_dict = state.table.fresh_type_uvar();
 
             for id in record.fields.keys() {
-                ctxt.type_env.insert(id.clone(), ty_dyn.clone());
-                linearizer.retype_ident(lin, id, ty_dyn.clone())
+                ctxt.type_env.insert(id.clone(), ty_dict.clone());
+                linearizer.retype_ident(lin, id, ty_dict.clone())
             }
 
             // We don't bind the fields in the term environment used to check for contract. See
@@ -746,11 +1251,11 @@ fn type_check_<L: Linearizer>(
                         lin,
                         linearizer.scope(),
                         t,
-                        ty_dyn.clone(),
+                        ty_dict.clone(),
                     )
                 })?;
 
-            unify(state, &ctxt, ty, mk_typewrapper::dyn_record(ty_dyn))
+            unify(state, &ctxt, ty, mk_typewrapper::dyn_record(ty_dict))
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Record(record) | Term::RecRecord(record, ..) => {
@@ -759,19 +1264,15 @@ fn type_check_<L: Linearizer>(
             // Fields defined by interpolation are ignored.
             if let Term::RecRecord(..) = t.as_ref() {
                 for (id, rt) in &record.fields {
-                    let tyw = binding_type(state, rt.as_ref(), &ctxt, true);
-                    ctxt.type_env.insert(id.clone(), tyw.clone());
-                    linearizer.retype_ident(lin, id, tyw);
+                    let uty = binding_type(state, rt.as_ref(), &ctxt, true);
+                    ctxt.type_env.insert(id.clone(), uty.clone());
+                    linearizer.retype_ident(lin, id, uty);
                 }
             }
 
-            let root_ty = if let TypeWrapper::Ptr(p) = ty {
-                state.table.root(p)
-            } else {
-                ty.clone()
-            };
+            let root_ty = ty.clone().into_root(state.table);
 
-            if let TypeWrapper::Concrete(AbsType::Dict(rec_ty)) = root_ty {
+            if let UnifType::Concrete(TypeF::Dict(rec_ty)) = root_ty {
                 // Checking for a dictionary
                 record
                     .fields
@@ -787,16 +1288,16 @@ fn type_check_<L: Linearizer>(
                         )
                     })
             } else {
-                let row = record.fields.iter().try_fold(
+                let rows = record.fields.iter().try_fold(
                     mk_tyw_row!(),
-                    |acc, (id, field)| -> Result<TypeWrapper, TypecheckError> {
+                    |acc, (id, field)| -> Result<UnifRecordRows, TypecheckError> {
                         // In the case of a recursive record, new types (either type variables or
-                        // annotations) have already be determined and put in the typing
-                        // ctxtironment, and we need to use the same.
+                        // annotations) have already be determined and put in the typing context,
+                        // and we need to use the same.
                         let ty = if let Term::RecRecord(..) = t.as_ref() {
                             ctxt.type_env.get(id).cloned().unwrap()
                         } else {
-                            state.table.fresh_unif_var()
+                            state.table.fresh_type_uvar()
                         };
 
                         type_check_(
@@ -812,7 +1313,7 @@ fn type_check_<L: Linearizer>(
                     },
                 )?;
 
-                unify(state, &ctxt, ty, mk_tyw_record!(; row))
+                unify(state, &ctxt, ty, mk_tyw_record!(; rows))
                     .map_err(|err| err.into_typecheck_err(state, rt.pos))
             }
         }
@@ -860,11 +1361,11 @@ fn type_check_<L: Linearizer>(
                     value: Some(t),
                     ..
                 } => {
-                    let tyw2 = TypeWrapper::from_type(ty2.clone(), &ctxt.term_env);
+                    let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
                     let instantiated =
-                        instantiate_foralls(state, tyw2.clone(), ForallInst::Constant);
+                        instantiate_foralls(state, uty2.clone(), ForallInst::Constant);
 
-                    unify(state, &ctxt, tyw2, ty)
+                    unify(state, &ctxt, uty2, ty)
                         .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
                     type_check_(state, ctxt, lin, linearizer, t, instantiated)
                 }
@@ -881,7 +1382,7 @@ fn type_check_<L: Linearizer>(
                         state,
                         &ctxt,
                         ty,
-                        TypeWrapper::from_type(ty2.clone(), &ctxt.term_env),
+                        UnifType::from_type(ty2.clone(), &ctxt.term_env),
                     )
                     .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
@@ -922,7 +1423,7 @@ fn type_check_<L: Linearizer>(
                 .resolver
                 .get(*file_id)
                 .expect("Internal error: resolved import not found during typechecking.");
-            let ty_import: TypeWrapper = TypeWrapper::from_apparent_type(
+            let ty_import: UnifType = UnifType::from_apparent_type(
                 apparent_type(t.as_ref(), Some(&ctxt.type_env), Some(state.resolver)),
                 &ctxt.term_env,
             );
@@ -947,31 +1448,54 @@ fn type_check_<L: Linearizer>(
 ///     * in non strict mode, wildcards are assigned `Dyn`.
 ///     * in strict mode, the wildcard is typechecked, and we return the unification variable
 ///       corresponding to it.
-fn binding_type(state: &mut State, t: &Term, ctxt: &Context, strict: bool) -> TypeWrapper {
+fn binding_type(state: &mut State, t: &Term, ctxt: &Context, strict: bool) -> UnifType {
     let ty_apt = apparent_type(t, Some(&ctxt.type_env), Some(state.resolver));
 
     match ty_apt {
         ApparentType::Annotated(ty) if strict => {
             replace_wildcards_with_var(state.table, state.wildcard_vars, ty, &ctxt.term_env)
         }
-        ApparentType::Approximated(_) if strict => state.table.fresh_unif_var(),
-        ty_apt => TypeWrapper::from_apparent_type(ty_apt, &ctxt.term_env),
+        ApparentType::Approximated(_) if strict => state.table.fresh_type_uvar(),
+        ty_apt => UnifType::from_apparent_type(ty_apt, &ctxt.term_env),
     }
 }
 
 /// Substitute wildcards in a type for their unification variable.
 fn replace_wildcards_with_var(
     table: &mut UnifTable,
-    wildcard_vars: &mut Vec<TypeWrapper>,
+    wildcard_vars: &mut Vec<UnifType>,
     ty: Types,
     env: &SimpleTermEnvironment,
-) -> TypeWrapper {
+) -> UnifType {
+    fn replace_rrows(
+        table: &mut UnifTable,
+        wildcard_vars: &mut Vec<UnifType>,
+        rrows: RecordRows,
+        env: &SimpleTermEnvironment,
+    ) -> UnifRecordRows {
+        UnifRecordRows::Concrete(rrows.0.map_state(
+            |ty, (table, wildcard_vars)| {
+                Box::new(replace_wildcards_with_var(table, wildcard_vars, *ty, env))
+            },
+            |rrows, (table, wildcard_vars)| {
+                Box::new(replace_rrows(table, wildcard_vars, *rrows, env))
+            },
+            &mut (table, wildcard_vars),
+        ))
+    }
+
     match ty.0 {
-        AbsType::Wildcard(i) => get_wildcard_var(table, wildcard_vars, i),
-        AbsType::Flat(t) => TypeWrapper::Contract(t, env.clone()),
-        _ => TypeWrapper::Concrete(
-            ty.0.map(|ty| Box::new(replace_wildcards_with_var(table, wildcard_vars, *ty, env))),
-        ),
+        TypeF::Wildcard(i) => get_wildcard_var(table, wildcard_vars, i),
+        TypeF::Flat(t) => UnifType::Contract(t, env.clone()),
+        _ => UnifType::Concrete(ty.0.map_state(
+            |ty, (table, wildcard_vars)| {
+                Box::new(replace_wildcards_with_var(table, wildcard_vars, *ty, env))
+            },
+            |rrows, (table, wildcard_vars)| replace_rrows(table, wildcard_vars, rrows, env),
+            // Enum rows contain neither wildcards nor contracts
+            |erows, _| UnifEnumRows::from(erows),
+            &mut (table, wildcard_vars),
+        )),
     }
 }
 
@@ -990,7 +1514,7 @@ pub enum ApparentType {
     /// The apparent type has been inferred from a simple expression.
     Inferred(Types),
     /// The term is a variable and its type was retrieved from the typing environment.
-    FromEnv(TypeWrapper),
+    FromEnv(UnifType),
     /// The apparent type wasn't trivial to determine, and an approximation (most of the time,
     /// `Dyn`) has been returned.
     Approximated(Types),
@@ -999,11 +1523,11 @@ pub enum ApparentType {
 impl From<ApparentType> for Types {
     fn from(at: ApparentType) -> Self {
         match at {
-            ApparentType::Annotated(ty) if has_wildcards(&ty) => Types(AbsType::Dyn()),
+            ApparentType::Annotated(ty) if has_wildcards(&ty) => Types(TypeF::Dyn),
             ApparentType::Annotated(ty)
             | ApparentType::Inferred(ty)
             | ApparentType::Approximated(ty) => ty,
-            ApparentType::FromEnv(tyw) => tyw.try_into().ok().unwrap_or(Types(AbsType::Dyn())),
+            ApparentType::FromEnv(uty) => uty.try_into().ok().unwrap_or(Types(TypeF::Dyn)),
         }
     }
 }
@@ -1041,17 +1565,17 @@ pub fn apparent_type(
         Term::MetaValue(MetaValue { value: Some(v), .. }) => {
             apparent_type(v.as_ref(), env, resolver)
         }
-        Term::Num(_) => ApparentType::Inferred(Types(AbsType::Num())),
-        Term::Bool(_) => ApparentType::Inferred(Types(AbsType::Bool())),
-        Term::SealingKey(_) => ApparentType::Inferred(Types(AbsType::Sym())),
-        Term::Str(_) | Term::StrChunks(_) => ApparentType::Inferred(Types(AbsType::Str())),
+        Term::Num(_) => ApparentType::Inferred(Types(TypeF::Num)),
+        Term::Bool(_) => ApparentType::Inferred(Types(TypeF::Bool)),
+        Term::SealingKey(_) => ApparentType::Inferred(Types(TypeF::Sym)),
+        Term::Str(_) | Term::StrChunks(_) => ApparentType::Inferred(Types(TypeF::Str)),
         Term::Array(..) => {
-            ApparentType::Approximated(Types(AbsType::Array(Box::new(Types(AbsType::Dyn())))))
+            ApparentType::Approximated(Types(TypeF::Array(Box::new(Types(TypeF::Dyn)))))
         }
         Term::Var(id) => env
             .and_then(|envs| envs.get(id).cloned())
             .map(ApparentType::FromEnv)
-            .unwrap_or(ApparentType::Approximated(Types(AbsType::Dyn()))),
+            .unwrap_or(ApparentType::Approximated(Types(TypeF::Dyn))),
         Term::ResolvedImport(f) => {
             if let Some(r) = resolver {
                 let t = r
@@ -1059,22 +1583,22 @@ pub fn apparent_type(
                     .expect("Internal error: resolved import not found during typechecking.");
                 apparent_type(&t.term, env, Some(r))
             } else {
-                ApparentType::Approximated(Types(AbsType::Dyn()))
+                ApparentType::Approximated(Types(TypeF::Dyn))
             }
         }
-        _ => ApparentType::Approximated(Types(AbsType::Dyn())),
+        _ => ApparentType::Approximated(Types(TypeF::Dyn)),
     }
 }
 
 /// Infer the type of a non annotated record by gathering the apparent type of the fields. It's
 /// currently used essentially to type the stdlib.
-pub fn infer_record_type(t: &Term, term_env: &SimpleTermEnvironment) -> TypeWrapper {
+pub fn infer_record_type(t: &Term, term_env: &SimpleTermEnvironment) -> UnifType {
     match t {
         // An explicit annotation must take precedence over this inference, so let's use it.
         t @ Term::MetaValue(MetaValue {
             types, contracts, ..
         }) if (types.is_some() || !contracts.is_empty()) => {
-            TypeWrapper::from_apparent_type(apparent_type(t, None, None), term_env)
+            UnifType::from_apparent_type(apparent_type(t, None, None), term_env)
         }
         // We unwrap meta-values without any type information. Otherwise, something like a
         // top-level module documentation would stop this function from doing its job.
@@ -1084,20 +1608,19 @@ pub fn infer_record_type(t: &Term, term_env: &SimpleTermEnvironment) -> TypeWrap
             contracts,
             ..
         }) if contracts.is_empty() => infer_record_type(rt.as_ref(), term_env),
-        Term::Record(record) | Term::RecRecord(record, ..) => {
-            AbsType::Record(Box::new(TypeWrapper::Concrete(record.fields.iter().fold(
-                AbsType::RowEmpty(),
-                |r, (id, rt)| {
-                    AbsType::RowExtend(
-                        id.clone(),
-                        Some(Box::new(infer_record_type(rt.term.as_ref(), term_env))),
-                        Box::new(r.into()),
-                    )
+        Term::Record(record) | Term::RecRecord(record, ..) => UnifType::from(TypeF::Record(
+            UnifRecordRows::Concrete(record.fields.iter().fold(
+                RecordRowsF::Empty,
+                |r, (id, rt)| RecordRowsF::Extend {
+                    row: UnifRecordRow {
+                        id: id.clone(),
+                        types: Box::new(infer_record_type(rt.term.as_ref(), term_env)),
+                    },
+                    tail: Box::new(r.into()),
                 },
-            ))))
-            .into()
-        }
-        t => TypeWrapper::from_apparent_type(
+            )),
+        )),
+        t => UnifType::from_apparent_type(
             apparent_type(t, None, None),
             &SimpleTermEnvironment::new(),
         ),
@@ -1122,216 +1645,129 @@ fn has_wildcards(ty: &Types) -> bool {
     has_wildcard
 }
 
-/// The types on which the unification algorithm operates, which may be either a concrete type, a
-/// type constant or a unification variable.
+/// Try to find a specific row inside record rows, or add it if permitted.
 ///
-/// Contracts store an additional term environment for contract equality checking, which is
-/// represented by `E`. The typechecker always uses the same type for `E`. However, the evaluation
-/// phase may also resort to checking contract equality, using a different environment
-/// representation, hence the parametrization.
-#[derive(Clone, PartialEq, Debug)]
-pub enum GenericTypeWrapper<E: TermEnvironment + Clone> {
-    /// A concrete type (like `Num` or `Str -> Str`).
-    Concrete(AbsType<Box<GenericTypeWrapper<E>>>),
-    /// A contract, seen as an opaque type. In order to compute type equality between contracts or
-    /// between a contract and a type, we need to carry an additional environment. This is why we
-    /// don't reuse the variant from [`crate::types::AbsType`].
-    Contract(RichTerm, E),
-    /// A rigid type constant which cannot be unified with anything but itself.
-    Constant(usize),
-    /// A unification variable.
-    Ptr(usize),
-}
-
-impl<E: TermEnvironment + Clone> std::convert::TryInto<Types> for GenericTypeWrapper<E> {
-    type Error = ();
-
-    fn try_into(self) -> Result<Types, ()> {
-        match self {
-            GenericTypeWrapper::Concrete(ty) => {
-                let converted: AbsType<Box<Types>> = ty.try_map(|tyw_boxed| {
-                    let ty: Types = (*tyw_boxed).try_into()?;
-                    Ok(Box::new(ty))
-                })?;
-                Ok(Types(converted))
-            }
-            GenericTypeWrapper::Contract(t, _) => Ok(Types(AbsType::Flat(t))),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<E: TermEnvironment + Clone> GenericTypeWrapper<E> {
-    /// Create a TypeWrapper from a Types. Contracts are represented as the separate variant
-    /// [`TypeWrapper::Contract`] which also stores a term environment, required for checking type
-    /// equality involving contracts.
-    pub fn from_type(ty: Types, env: &E) -> Self {
-        match ty.0 {
-            AbsType::Flat(t) => GenericTypeWrapper::Contract(t.clone(), env.clone()),
-            ty => GenericTypeWrapper::Concrete(
-                ty.map(|ty_| Box::new(GenericTypeWrapper::from_type(*ty_, env))),
-            ),
-        }
-    }
-
-    /// Substitute all the occurrences of a type variable for a typewrapper.
-    pub fn subst(self, id: Ident, to: GenericTypeWrapper<E>) -> GenericTypeWrapper<E> {
-        use self::GenericTypeWrapper::*;
-
-        match self {
-            Concrete(AbsType::Var(ref i)) if *i == id => to,
-            Concrete(AbsType::Forall(i, t)) => {
-                if i == id {
-                    Concrete(AbsType::Forall(i, t))
-                } else {
-                    let tt = *t;
-                    Concrete(AbsType::Forall(i, Box::new(tt.subst(id, to))))
-                }
-            }
-            Concrete(AbsType::Arrow(s, t)) => {
-                let fs = s.subst(id.clone(), to.clone());
-                let ft = t.subst(id, to);
-
-                Concrete(AbsType::Arrow(Box::new(fs), Box::new(ft)))
-            }
-            Concrete(AbsType::RowExtend(tag, ty, rest)) => Concrete(AbsType::RowExtend(
-                tag,
-                ty.map(|x| Box::new(x.subst(id.clone(), to.clone()))),
-                Box::new(rest.subst(id, to)),
-            )),
-            Concrete(AbsType::Enum(row)) => Concrete(AbsType::Enum(Box::new(row.subst(id, to)))),
-            Concrete(AbsType::Record(row)) => {
-                Concrete(AbsType::Record(Box::new(row.subst(id, to))))
-            }
-            Concrete(AbsType::Dict(def_ty)) => {
-                Concrete(AbsType::Dict(Box::new(def_ty.subst(id, to))))
-            }
-            Concrete(AbsType::Array(ty)) => Concrete(AbsType::Array(Box::new(ty.subst(id, to)))),
-            // Cases are spelled out instead of using a catch-all case `_ => ` to force
-            // contributors to patch this code when they add new types constructors.
-            Concrete(AbsType::Var(_))
-            | Concrete(AbsType::Dyn())
-            | Concrete(AbsType::Num())
-            | Concrete(AbsType::Bool())
-            | Concrete(AbsType::Str())
-            | Concrete(AbsType::Sym())
-            | Concrete(AbsType::Flat(_))
-            | Concrete(AbsType::RowEmpty())
-            | Concrete(AbsType::Wildcard(_))
-            | Contract(..)
-            | Constant(_)
-            | Ptr(_) => self,
-        }
-    }
-
-    /// Create an iterator on rows represented by this type.
-    ///
-    /// The iterator continues as long as the next item is of the form `RowExtend(..)`, and
-    /// stops once it reaches `RowEmpty` (which ends iteration), or something else which is not a
-    /// `RowExtend` (which produces a last item [`typecheck::RowIteratorItem::Tail`]).
-    pub fn iter_as_rows(&self) -> RowIterator<'_, GenericTypeWrapper<E>> {
-        RowIterator { next: Some(self) }
-    }
-}
-
-impl GenericTypeWrapper<SimpleTermEnvironment> {
-    /// Create a TypeWrapper from an apparent type. As for [`from_type`], this function requires
-    /// the current term environment.
-    pub fn from_apparent_type(at: ApparentType, env: &SimpleTermEnvironment) -> Self {
-        match at {
-            ApparentType::Annotated(ty) if has_wildcards(&ty) => {
-                GenericTypeWrapper::Concrete(AbsType::Dyn())
-            }
-            ApparentType::Annotated(ty)
-            | ApparentType::Inferred(ty)
-            | ApparentType::Approximated(ty) => GenericTypeWrapper::from_type(ty, env),
-            ApparentType::FromEnv(tyw) => tyw,
-        }
-    }
-}
-
-pub type TypeWrapper = GenericTypeWrapper<SimpleTermEnvironment>;
-
-// This implementation assumes that `AbsType::Flat` is not possible. If TypeWrappers have been
-// correctly created from a type using `from_type`, this must be the case.
-impl From<AbsType<Box<TypeWrapper>>> for TypeWrapper {
-    fn from(ty: AbsType<Box<TypeWrapper>>) -> Self {
-        debug_assert!(!matches!(ty, AbsType::Flat(_)));
-        TypeWrapper::Concrete(ty)
-    }
-}
-
-impl<'a, E: TermEnvironment> Iterator for RowIterator<'a, GenericTypeWrapper<E>> {
-    type Item = RowIteratorItem<'a, GenericTypeWrapper<E>>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.next.and_then(|next| match next {
-            GenericTypeWrapper::Concrete(AbsType::RowEmpty()) => None,
-            GenericTypeWrapper::Concrete(AbsType::RowExtend(id, ty_row, tail)) => {
-                self.next = Some(tail);
-                Some(RowIteratorItem::Row(id, ty_row.as_ref().map(Box::as_ref)))
-            }
-            ty => {
-                self.next = None;
-                Some(RowIteratorItem::Tail(ty))
-            }
-        })
-    }
-}
-
-/// Look for a binding in a row, or add a new one if it is not present and if allowed by [row
-/// constraints][RowConstr].
+/// If the row is present, this function returns the corresponding type together with the tail
+/// corresponding to the other rows coming after the found one.
 ///
-/// The row may be given as a concrete type or as a unification variable.
+/// If the row is not present:
 ///
-/// # Return
-///
-/// The type newly bound to `id` in the row together with the tail of the new row. If `id` was
-/// already in `r`, it does not change the binding and return the corresponding type instead as a
-/// first component.
-fn row_add(
+/// - If the given record rows are extensible, i.e. they end with a free unification variable, this
+///   function adds a new row with the provided type `ty` (if allowed by [row
+///   constraints][RowConstr]). Returns `ty` together with the new tail (a fresh unification
+///   variable).
+/// - Otherwise, raise a missing row error.
+fn rrows_add(
     state: &mut State,
     id: &Ident,
-    ty: Option<Box<TypeWrapper>>,
-    mut r: TypeWrapper,
-) -> Result<(Option<Box<TypeWrapper>>, TypeWrapper), RowUnifError> {
-    if let TypeWrapper::Ptr(p) = r {
-        r = state.table.root(p);
-    }
-    match r {
-        TypeWrapper::Concrete(AbsType::RowEmpty()) | TypeWrapper::Concrete(AbsType::Dyn()) => {
-            Err(RowUnifError::MissingRow(id.clone()))
-        }
-        TypeWrapper::Concrete(AbsType::RowExtend(id2, ty2, r2)) => {
-            if *id == id2 {
-                Ok((ty2, *r2))
-            } else {
-                let (extracted_type, subrow) = row_add(state, id, ty, *r2)?;
-                Ok((
-                    extracted_type,
-                    TypeWrapper::Concrete(AbsType::RowExtend(id2, ty2, Box::new(subrow))),
-                ))
+    ty: Box<UnifType>,
+    rrows: UnifRecordRows,
+) -> Result<(Box<UnifType>, UnifRecordRows), RowUnifError> {
+    let rrows = rrows.into_root(state.table);
+
+    match rrows {
+        UnifRecordRows::Concrete(erows) => match erows {
+            RecordRowsF::Empty | RecordRowsF::TailDyn | RecordRowsF::TailVar(_) => {
+                Err(RowUnifError::MissingRow(id.clone()))
             }
-        }
-        TypeWrapper::Ptr(root) => {
-            if let Some(set) = state.constr.get(&root) {
-                if set.contains(id) {
-                    return Err(RowUnifError::UnsatConstr(id.clone(), ty.map(|tyw| *tyw)));
+            RecordRowsF::Extend { row, tail } => {
+                if *id == row.id {
+                    Ok((row.types, *tail))
+                } else {
+                    let (extracted_type, subrow) = rrows_add(state, id, ty, *tail)?;
+                    Ok((
+                        extracted_type,
+                        UnifRecordRows::Concrete(RecordRowsF::Extend {
+                            row,
+                            tail: Box::new(subrow),
+                        }),
+                    ))
                 }
             }
-            let new_row = state.table.fresh_unif_var();
-            constraint(state, new_row.clone(), id.clone())?;
-            state.table.assign(
-                root,
-                TypeWrapper::Concrete(AbsType::RowExtend(
-                    id.clone(),
-                    ty.clone(),
-                    Box::new(new_row.clone()),
-                )),
-            );
-            Ok((ty, new_row))
+        },
+        UnifRecordRows::UnifVar(uvar) => {
+            if state
+                .constr
+                .get(&uvar)
+                .map(|set| set.contains(id))
+                .unwrap_or(false)
+            {
+                return Err(RowUnifError::UnsatConstr(id.clone(), Some(*ty)));
+            }
+            let tail_var_id = state.table.fresh_rrows_var_id();
+            let new_tail = UnifRecordRows::Concrete(RecordRowsF::Extend {
+                row: RecordRowF {
+                    id: id.clone(),
+                    types: ty.clone(),
+                },
+                tail: Box::new(UnifRecordRows::UnifVar(tail_var_id.clone())),
+            });
+
+            new_tail.constrain_fresh_rrows_var(state, tail_var_id.clone());
+
+            state.table.assign_rrows(uvar, new_tail);
+
+            Ok((ty, UnifRecordRows::UnifVar(tail_var_id)))
         }
-        other => Err(RowUnifError::IllformedRow(other)),
+        UnifRecordRows::Constant(_) => Err(RowUnifError::MissingRow(id.clone())),
+    }
+}
+
+/// Try to find a specific row (ident) inside enum rows, or add it if permitted.
+///
+/// If the row is present, this function returns the tail corresponding to the remaining rows coming after
+/// the found one.
+///
+/// If the row is not present:
+///
+/// - If the given enum rows are extensible, i.e. they end with a free unification variable, this
+///   function adds a new row (if allowed by [row constraints][RowConstr]). Returns the new tail (a
+///   fresh unification variable).
+/// - Otherwise, raise a missing row error.
+fn erows_add(
+    state: &mut State,
+    id: &Ident,
+    uerows: UnifEnumRows,
+) -> Result<UnifEnumRows, RowUnifError> {
+    let uerows = uerows.into_root(state.table);
+
+    match uerows {
+        UnifEnumRows::Concrete(erows) => match erows {
+            EnumRowsF::Empty | EnumRowsF::TailVar(_) => Err(RowUnifError::MissingRow(id.clone())),
+            EnumRowsF::Extend { row, tail } => {
+                if *id == row {
+                    Ok(*tail)
+                } else {
+                    let subrow = erows_add(state, id, *tail)?;
+                    Ok(UnifEnumRows::Concrete(EnumRowsF::Extend {
+                        row,
+                        tail: Box::new(subrow),
+                    }))
+                }
+            }
+        },
+        UnifEnumRows::UnifVar(uvar) => {
+            if state
+                .constr
+                .get(&uvar)
+                .map(|set| set.contains(id))
+                .unwrap_or(false)
+            {
+                return Err(RowUnifError::UnsatConstr(id.clone(), None));
+            }
+            let tail_var_id = state.table.fresh_erows_var_id();
+            let new_tail = UnifEnumRows::Concrete(EnumRowsF::Extend {
+                row: id.clone(),
+                tail: Box::new(UnifEnumRows::UnifVar(tail_var_id.clone())),
+            });
+
+            new_tail.constrain_fresh_erows_var(state, tail_var_id.clone());
+
+            state.table.assign_erows(uvar, new_tail);
+
+            Ok(UnifEnumRows::UnifVar(tail_var_id))
+        }
+        UnifEnumRows::Constant(_) => Err(RowUnifError::MissingRow(id.clone())),
     }
 }
 
@@ -1339,221 +1775,250 @@ fn row_add(
 pub fn unify(
     state: &mut State,
     ctxt: &Context,
-    mut t1: TypeWrapper,
-    mut t2: TypeWrapper,
+    t1: UnifType,
+    t2: UnifType,
 ) -> Result<(), UnifError> {
-    if let TypeWrapper::Ptr(pt1) = t1 {
-        t1 = state.table.root(pt1);
-    }
-    if let TypeWrapper::Ptr(pt2) = t2 {
-        t2 = state.table.root(pt2);
-    }
+    let t1 = t1.into_root(state.table);
+    let t2 = t2.into_root(state.table);
 
     // t1 and t2 are roots of the type
     match (t1, t2) {
         // If either type is a wildcard, unify with the associated type var
-        (TypeWrapper::Concrete(AbsType::Wildcard(id)), ty2)
-        | (ty2, TypeWrapper::Concrete(AbsType::Wildcard(id))) => {
+        (UnifType::Concrete(TypeF::Wildcard(id)), ty2)
+        | (ty2, UnifType::Concrete(TypeF::Wildcard(id))) => {
             let ty1 = get_wildcard_var(state.table, state.wildcard_vars, id);
             unify(state, ctxt, ty1, ty2)
         }
-        (TypeWrapper::Concrete(s1), TypeWrapper::Concrete(s2)) => match (s1, s2) {
-            (AbsType::Dyn(), AbsType::Dyn()) => Ok(()),
-            (AbsType::Num(), AbsType::Num()) => Ok(()),
-            (AbsType::Bool(), AbsType::Bool()) => Ok(()),
-            (AbsType::Str(), AbsType::Str()) => Ok(()),
-            (AbsType::Array(tyw1), AbsType::Array(tyw2)) => unify(state, ctxt, *tyw1, *tyw2),
-            (AbsType::Sym(), AbsType::Sym()) => Ok(()),
-            (AbsType::Arrow(s1s, s1t), AbsType::Arrow(s2s, s2t)) => {
+        (UnifType::Concrete(s1), UnifType::Concrete(s2)) => match (s1, s2) {
+            (TypeF::Dyn, TypeF::Dyn)
+            | (TypeF::Num, TypeF::Num)
+            | (TypeF::Bool, TypeF::Bool)
+            | (TypeF::Str, TypeF::Str)
+            | (TypeF::Sym, TypeF::Sym) => Ok(()),
+            (TypeF::Array(uty1), TypeF::Array(uty2)) => unify(state, ctxt, *uty1, *uty2),
+            (TypeF::Arrow(s1s, s1t), TypeF::Arrow(s2s, s2t)) => {
                 unify(state, ctxt, (*s1s).clone(), (*s2s).clone()).map_err(|err| {
                     UnifError::DomainMismatch(
-                        TypeWrapper::Concrete(AbsType::Arrow(s1s.clone(), s1t.clone())),
-                        TypeWrapper::Concrete(AbsType::Arrow(s2s.clone(), s2t.clone())),
+                        UnifType::Concrete(TypeF::Arrow(s1s.clone(), s1t.clone())),
+                        UnifType::Concrete(TypeF::Arrow(s2s.clone(), s2t.clone())),
                         Box::new(err),
                     )
                 })?;
                 unify(state, ctxt, (*s1t).clone(), (*s2t).clone()).map_err(|err| {
                     UnifError::CodomainMismatch(
-                        TypeWrapper::Concrete(AbsType::Arrow(s1s, s1t)),
-                        TypeWrapper::Concrete(AbsType::Arrow(s2s, s2t)),
+                        UnifType::Concrete(TypeF::Arrow(s1s, s1t)),
+                        UnifType::Concrete(TypeF::Arrow(s2s, s2t)),
                         Box::new(err),
                     )
                 })
             }
-            (AbsType::Flat(s), AbsType::Flat(t)) => Err(UnifError::IncomparableFlatTypes(s, t)),
-            (r1, r2) if r1.is_row_type() && r2.is_row_type() => {
-                unify_rows(state, &ctxt, r1.clone(), r2.clone()).map_err(|err| {
-                    err.into_unif_err(TypeWrapper::Concrete(r1), TypeWrapper::Concrete(r2))
+            (TypeF::Flat(s), TypeF::Flat(t)) => Err(UnifError::IncomparableFlatTypes(s, t)),
+            (TypeF::Enum(erows1), TypeF::Enum(erows2)) => {
+                unify_erows(state, ctxt, erows1.clone(), erows2.clone()).map_err(|err| {
+                    err.into_unif_err(mk_tyw_enum!(; erows1), mk_tyw_enum!(; erows2))
                 })
             }
-            (AbsType::Enum(tyw1), AbsType::Enum(tyw2)) => match (*tyw1, *tyw2) {
-                (TypeWrapper::Concrete(r1), TypeWrapper::Concrete(r2))
-                    if r1.is_row_type() && r2.is_row_type() =>
-                {
-                    unify_rows(state, &ctxt, r1.clone(), r2.clone())
-                        .map_err(|err| err.into_unif_err(mk_tyw_enum!(; r1), mk_tyw_enum!(; r2)))
-                }
-                (TypeWrapper::Concrete(r), _) if !r.is_row_type() => {
-                    Err(UnifError::IllformedType(mk_tyw_enum!(; r)))
-                }
-                (_, TypeWrapper::Concrete(r)) if !r.is_row_type() => {
-                    Err(UnifError::IllformedType(mk_tyw_enum!(; r)))
-                }
-                (tyw1, tyw2) => unify(state, ctxt, tyw1, tyw2),
-            },
-            (AbsType::Record(tyw1), AbsType::Record(tyw2)) => match (*tyw1, *tyw2) {
-                (TypeWrapper::Concrete(r1), TypeWrapper::Concrete(r2))
-                    if r1.is_row_type() && r2.is_row_type() =>
-                {
-                    unify_rows(state, &ctxt, r1.clone(), r2.clone()).map_err(|err| {
-                        err.into_unif_err(mk_tyw_record!(; r1), mk_tyw_record!(; r2))
-                    })
-                }
-                (TypeWrapper::Concrete(AbsType::Var(id)), _)
-                | (_, TypeWrapper::Concrete(AbsType::Var(id))) => {
-                    Err(UnifError::UnboundTypeVariable(id))
-                }
-                (TypeWrapper::Concrete(r), _) | (_, TypeWrapper::Concrete(r))
-                    if !r.is_row_type() =>
-                {
-                    Err(UnifError::IllformedType(mk_tyw_record!(; r)))
-                }
-                (tyw1, tyw2) => unify(state, ctxt, tyw1, tyw2),
-            },
-            (AbsType::Dict(t), AbsType::Dict(t2)) => unify(state, &ctxt, *t, *t2),
-            (AbsType::Forall(i1, t1t), AbsType::Forall(i2, t2t)) => {
-                // Very stupid (slow) implementation
-                let constant_type = state.table.fresh_const();
-
-                unify(
-                    state,
-                    &ctxt,
-                    t1t.subst(i1, constant_type.clone()),
-                    t2t.subst(i2, constant_type),
-                )
+            (TypeF::Record(rrows1), TypeF::Record(rrows2)) => {
+                unify_rrows(state, ctxt, rrows1.clone(), rrows2.clone()).map_err(|err| {
+                    err.into_unif_err(mk_tyw_record!(; rrows1), mk_tyw_record!(; rrows2))
+                })
             }
-            (AbsType::Var(ident), _) | (_, AbsType::Var(ident)) => {
+            (TypeF::Dict(t1), TypeF::Dict(t2)) => unify(state, &ctxt, *t1, *t2),
+            (
+                TypeF::Forall {
+                    var: var1,
+                    var_kind: var_kind1,
+                    body: body1,
+                },
+                TypeF::Forall {
+                    var: var2,
+                    var_kind: var_kind2,
+                    body: body2,
+                },
+            ) if var_kind1 == var_kind2 => {
+                // Very stupid (slow) implementation
+                let (substd1, substd2) = match var_kind1 {
+                    VarKind::Type => {
+                        let constant_type = state.table.fresh_type_const();
+                        (
+                            body1.subst_type(&var1, &constant_type),
+                            body2.subst_type(&var2, &constant_type),
+                        )
+                    }
+                    VarKind::RecordRows => {
+                        let constant_type = state.table.fresh_rrows_const();
+                        (
+                            body1.subst_rrows(&var1, &constant_type),
+                            body2.subst_rrows(&var2, &constant_type),
+                        )
+                    }
+                    VarKind::EnumRows => {
+                        let constant_type = state.table.fresh_erows_const();
+                        (
+                            body1.subst_erows(&var1, &constant_type),
+                            body2.subst_erows(&var2, &constant_type),
+                        )
+                    }
+                };
+
+                unify(state, &ctxt, substd1, substd2)
+            }
+            (TypeF::Var(ident), _) | (_, TypeF::Var(ident)) => {
                 Err(UnifError::UnboundTypeVariable(ident))
             }
             (ty1, ty2) => Err(UnifError::TypeMismatch(
-                TypeWrapper::Concrete(ty1),
-                TypeWrapper::Concrete(ty2),
+                UnifType::Concrete(ty1),
+                UnifType::Concrete(ty2),
             )),
         },
-        (TypeWrapper::Ptr(p1), TypeWrapper::Ptr(p2)) if p1 == p2 => Ok(()),
-        // The two following cases are not merged just to correctly distinguish between the
-        // expected type (first component of the tuple) and the inferred type when reporting a row
-        // unification error.
-        (TypeWrapper::Ptr(p), tyw) => {
-            constr_unify(state.constr, p, &tyw)
-                .map_err(|err| err.into_unif_err(TypeWrapper::Ptr(p), tyw.clone()))?;
-            state.table.assign(p, tyw);
+        (UnifType::UnifVar(p1), UnifType::UnifVar(p2)) if p1 == p2 => Ok(()),
+        (UnifType::UnifVar(p), uty) | (uty, UnifType::UnifVar(p)) => {
+            state.table.assign_type(p, uty);
             Ok(())
         }
-        (tyw, TypeWrapper::Ptr(p)) => {
-            constr_unify(state.constr, p, &tyw)
-                .map_err(|err| err.into_unif_err(tyw.clone(), TypeWrapper::Ptr(p)))?;
-            state.table.assign(p, tyw);
-            Ok(())
-        }
-        (TypeWrapper::Constant(i1), TypeWrapper::Constant(i2)) if i1 == i2 => Ok(()),
-        (TypeWrapper::Constant(i1), TypeWrapper::Constant(i2)) => {
-            Err(UnifError::ConstMismatch(i1, i2))
-        }
-        (ty, TypeWrapper::Constant(i)) | (TypeWrapper::Constant(i), ty) => {
+        (UnifType::Constant(i1), UnifType::Constant(i2)) if i1 == i2 => Ok(()),
+        (UnifType::Constant(i1), UnifType::Constant(i2)) => Err(UnifError::ConstMismatch(i1, i2)),
+        (ty, UnifType::Constant(i)) | (UnifType::Constant(i), ty) => {
             Err(UnifError::WithConst(i, ty))
         }
-        (TypeWrapper::Contract(t1, env1), TypeWrapper::Contract(t2, env2))
-            if eq::contract_eq(state.table.var_count(), &t1, &env1, &t2, &env2) =>
+        (UnifType::Contract(t1, env1), UnifType::Contract(t2, env2))
+            if eq::contract_eq(state.table.max_uvars_count(), &t1, &env1, &t2, &env2) =>
         {
             Ok(())
         }
-        (tyw1 @ TypeWrapper::Contract(..), tyw2) | (tyw1, tyw2 @ TypeWrapper::Contract(..)) => {
-            Err(UnifError::TypeMismatch(tyw1, tyw2))
+        (uty1 @ UnifType::Contract(..), uty2) | (uty1, uty2 @ UnifType::Contract(..)) => {
+            Err(UnifError::TypeMismatch(uty1, uty2))
         }
     }
 }
 
-/// Try to unify two row types. Return an [`RowUnifError::IllformedRow`] error if one of the given
-/// type is not a row type.
-pub fn unify_rows(
+/// Try to unify two record row types.
+pub fn unify_rrows(
     state: &mut State,
     ctxt: &Context,
-    t1: AbsType<Box<TypeWrapper>>,
-    t2: AbsType<Box<TypeWrapper>>,
+    urrows1: UnifRecordRows,
+    urrows2: UnifRecordRows,
 ) -> Result<(), RowUnifError> {
-    match (t1, t2) {
-        (AbsType::Var(id), _) | (_, AbsType::Var(id)) => Err(RowUnifError::UnboundTypeVariable(id)),
-        (AbsType::RowEmpty(), AbsType::RowEmpty()) | (AbsType::Dyn(), AbsType::Dyn()) => Ok(()),
-        (AbsType::RowEmpty(), AbsType::Dyn()) => Err(RowUnifError::ExtraDynTail()),
-        (AbsType::Dyn(), AbsType::RowEmpty()) => Err(RowUnifError::MissingDynTail()),
-        (AbsType::RowEmpty(), AbsType::RowExtend(ident, _, _))
-        | (AbsType::Dyn(), AbsType::RowExtend(ident, _, _)) => Err(RowUnifError::ExtraRow(ident)),
-        (AbsType::RowExtend(ident, _, _), AbsType::Dyn())
-        | (AbsType::RowExtend(ident, _, _), AbsType::RowEmpty()) => {
-            Err(RowUnifError::MissingRow(ident))
-        }
-        (AbsType::RowExtend(id, ty, t), r2 @ AbsType::RowExtend(_, _, _)) => {
-            let (ty2, t2_tail) = row_add(state, &id, ty.clone(), TypeWrapper::Concrete(r2))?;
-            match (ty, ty2) {
-                (None, None) => Ok(()),
-                (Some(ty), Some(ty2)) => unify(state, ctxt, *ty, *ty2)
-                    .map_err(|err| RowUnifError::RowMismatch(id.clone(), Box::new(err))),
-                (ty1, ty2) => Err(RowUnifError::RowKindMismatch(
-                    id,
-                    ty1.map(|t| *t),
-                    ty2.map(|t| *t),
-                )),
-            }?;
+    let urrows1 = urrows1.into_root(state.table);
+    let urrows2 = urrows2.into_root(state.table);
 
-            match (*t, t2_tail) {
-                (TypeWrapper::Concrete(r1_tail), TypeWrapper::Concrete(r2_tail)) => {
-                    unify_rows(state, ctxt, r1_tail, r2_tail)
+    match (urrows1, urrows2) {
+        (UnifRecordRows::Concrete(rrows1), UnifRecordRows::Concrete(rrows2)) => {
+            match (rrows1, rrows2) {
+                (RecordRowsF::TailVar(id), _) | (_, RecordRowsF::TailVar(id)) => {
+                    Err(RowUnifError::UnboundTypeVariable(id))
                 }
-                // If one of the tail is not a concrete type, it is either a unification variable
-                // or a constant (rigid type variable). `unify` already knows how to treat these
-                // cases, so we delegate the work. However it returns `UnifError` instead of
-                // `RowUnifError`, hence we have a bit of wrapping and unwrapping to do. Note that
-                // since we are unifying types with a constant or a unification variable somewhere,
-                // the only unification errors that should be possible are related to constants,
-                // row constraints, or type mismatches.
-                (t1_tail, t2_tail) => {
-                    unify(state, ctxt, t1_tail, t2_tail).map_err(|err| match err {
-                        UnifError::ConstMismatch(c1, c2) => RowUnifError::ConstMismatch(c1, c2),
-                        UnifError::WithConst(c1, tyw) => RowUnifError::WithConst(c1, tyw),
-                        UnifError::RowConflict(id, tyw_opt, _, _) => {
-                            RowUnifError::UnsatConstr(id, tyw_opt)
-                        },
-                        UnifError::RowMismatch(id, _, _, unif_err) => {
-                            RowUnifError::RowMismatch(id, unif_err)
-                        },
-                        err => panic!(
-                            "typechecker::unify_rows(): unexpected error while unifying row tails {:?}",
-                            err
-                        ),
-                    })
+                (RecordRowsF::Empty, RecordRowsF::Empty)
+                | (RecordRowsF::TailDyn, RecordRowsF::TailDyn) => Ok(()),
+                (RecordRowsF::Empty, RecordRowsF::TailDyn) => Err(RowUnifError::ExtraDynTail()),
+                (RecordRowsF::TailDyn, RecordRowsF::Empty) => Err(RowUnifError::MissingDynTail()),
+                (
+                    RecordRowsF::Empty,
+                    RecordRowsF::Extend {
+                        row: UnifRecordRow { id, .. },
+                        ..
+                    },
+                )
+                | (
+                    RecordRowsF::TailDyn,
+                    RecordRowsF::Extend {
+                        row: UnifRecordRow { id, .. },
+                        ..
+                    },
+                ) => Err(RowUnifError::ExtraRow(id)),
+                (
+                    RecordRowsF::Extend {
+                        row: UnifRecordRow { id, .. },
+                        ..
+                    },
+                    RecordRowsF::TailDyn,
+                )
+                | (
+                    RecordRowsF::Extend {
+                        row: UnifRecordRow { id, .. },
+                        ..
+                    },
+                    RecordRowsF::Empty,
+                ) => Err(RowUnifError::MissingRow(id)),
+                (
+                    RecordRowsF::Extend {
+                        row: UnifRecordRow { id, types },
+                        tail,
+                    },
+                    r2 @ RecordRowsF::Extend { .. },
+                ) => {
+                    let (ty2, t2_tail) =
+                        rrows_add(state, &id, types.clone(), UnifRecordRows::Concrete(r2))?;
+                    unify(state, ctxt, *types, *ty2)
+                        .map_err(|err| RowUnifError::RowMismatch(id.clone(), Box::new(err)))?;
+                    unify_rrows(state, ctxt, *tail, t2_tail)
                 }
             }
         }
-        (ty, _) if !ty.is_row_type() => Err(RowUnifError::IllformedRow(TypeWrapper::Concrete(ty))),
-        (_, ty) => Err(RowUnifError::IllformedRow(TypeWrapper::Concrete(ty))),
+        (UnifRecordRows::UnifVar(p), urrows) | (urrows, UnifRecordRows::UnifVar(p)) => {
+            constr_unify_rrows(state.constr, p, &urrows)?;
+            state.table.assign_rrows(p, urrows);
+            Ok(())
+        }
+        (UnifRecordRows::Constant(i1), UnifRecordRows::Constant(i2)) if i1 == i2 => Ok(()),
+        (UnifRecordRows::Constant(i1), UnifRecordRows::Constant(i2)) => {
+            Err(RowUnifError::ConstMismatch(i1, i2))
+        }
+        (urrows, UnifRecordRows::Constant(i)) | (UnifRecordRows::Constant(i), urrows) => {
+            //TODO ROWS: should we refactor RowUnifError as well?
+            Err(RowUnifError::WithConst(
+                i,
+                UnifType::Concrete(TypeF::Record(urrows)),
+            ))
+        }
     }
 }
 
-/// Extract the concrete type corresponding to a type wrapper. Free unification variables as well
-/// as type constants are replaced with the type `Dyn`.
-fn to_type(table: &UnifTable, ty: TypeWrapper) -> Types {
-    match ty {
-        TypeWrapper::Ptr(p) => match table.root(p) {
-            t @ TypeWrapper::Concrete(_) => to_type(table, t),
-            _ => Types(AbsType::Dyn()),
-        },
-        TypeWrapper::Constant(_) => Types(AbsType::Dyn()),
-        TypeWrapper::Concrete(t) => {
-            let mapped = t.map(|btyp| Box::new(to_type(table, *btyp)));
-            Types(mapped)
+/// Try to unify two enum row types.
+pub fn unify_erows(
+    state: &mut State,
+    ctxt: &Context,
+    uerows1: UnifEnumRows,
+    uerows2: UnifEnumRows,
+) -> Result<(), RowUnifError> {
+    let uerows1 = uerows1.into_root(state.table);
+    let uerows2 = uerows2.into_root(state.table);
+
+    match (uerows1, uerows2) {
+        (UnifEnumRows::Concrete(erows1), UnifEnumRows::Concrete(erows2)) => {
+            match (erows1, erows2) {
+                (EnumRowsF::TailVar(id), _) | (_, EnumRowsF::TailVar(id)) => {
+                    Err(RowUnifError::UnboundTypeVariable(id))
+                }
+                (EnumRowsF::Empty, EnumRowsF::Empty) => Ok(()),
+                (EnumRowsF::Empty, EnumRowsF::Extend { row: ident, .. }) => {
+                    Err(RowUnifError::ExtraRow(ident))
+                }
+                (EnumRowsF::Extend { row: ident, .. }, EnumRowsF::Empty) => {
+                    Err(RowUnifError::MissingRow(ident))
+                }
+                (EnumRowsF::Extend { row: id, tail }, erows2 @ EnumRowsF::Extend { .. }) => {
+                    let t2_tail = erows_add(state, &id, UnifEnumRows::Concrete(erows2))?;
+                    unify_erows(state, ctxt, *tail, t2_tail)
+                }
+            }
         }
-        TypeWrapper::Contract(t, _) => Types(AbsType::Flat(t)),
+        (UnifEnumRows::UnifVar(p), uerows) | (uerows, UnifEnumRows::UnifVar(p)) => {
+            constr_unify_erows(state.constr, p, &uerows)?;
+            state.table.assign_erows(p, uerows);
+            Ok(())
+        }
+        (UnifEnumRows::Constant(i1), UnifEnumRows::Constant(i2)) if i1 == i2 => Ok(()),
+        (UnifEnumRows::Constant(i1), UnifEnumRows::Constant(i2)) => {
+            Err(RowUnifError::ConstMismatch(i1, i2))
+        }
+        (uerows, UnifEnumRows::Constant(i)) | (UnifEnumRows::Constant(i), uerows) => {
+            //TODO ROWS: should we refactor RowUnifError as well?
+            Err(RowUnifError::WithConst(
+                i,
+                UnifType::Concrete(TypeF::Enum(uerows)),
+            ))
+        }
     }
 }
 
@@ -1577,26 +2042,56 @@ enum ForallInst {
 /// variable to be the same type.
 ///
 /// # Parameters
+///
 /// - `state`: the unification state
 /// - `ty`: the polymorphic type to instantiate
 /// - `inst`: the type of instantiation, either by a type constant or by a unification variable
-fn instantiate_foralls(state: &mut State, mut ty: TypeWrapper, inst: ForallInst) -> TypeWrapper {
-    if let TypeWrapper::Ptr(p) = ty {
-        ty = state.table.root(p);
-    }
+fn instantiate_foralls(state: &mut State, mut ty: UnifType, inst: ForallInst) -> UnifType {
+    ty = ty.into_root(state.table);
 
-    while let TypeWrapper::Concrete(AbsType::Forall(id, forall_ty)) = ty {
-        let fresh_id = state.table.fresh_var();
-        let var = match inst {
-            ForallInst::Constant => TypeWrapper::Constant(fresh_id),
-            ForallInst::Ptr => TypeWrapper::Ptr(fresh_id),
+    while let UnifType::Concrete(TypeF::Forall {
+        var,
+        var_kind,
+        body,
+    }) = ty
+    {
+        match var_kind {
+            VarKind::Type => {
+                let fresh_uid = state.table.fresh_type_var_id();
+                let uvar = match inst {
+                    ForallInst::Constant => UnifType::Constant(fresh_uid),
+                    ForallInst::Ptr => UnifType::UnifVar(fresh_uid),
+                };
+                state.names.insert(fresh_uid, var.clone());
+                ty = body.subst_type(&var, &uvar);
+            }
+            VarKind::RecordRows => {
+                let fresh_uid = state.table.fresh_rrows_var_id();
+                let uvar = match inst {
+                    ForallInst::Constant => UnifRecordRows::Constant(fresh_uid),
+                    ForallInst::Ptr => UnifRecordRows::UnifVar(fresh_uid),
+                };
+                state.names.insert(fresh_uid, var.clone());
+                ty = body.subst_rrows(&var, &uvar);
+
+                if inst == ForallInst::Ptr {
+                    ty.constrain_fresh_rrows_var(state, fresh_uid)
+                }
+            }
+            VarKind::EnumRows => {
+                let fresh_uid = state.table.fresh_erows_var_id();
+                let uvar = match inst {
+                    ForallInst::Constant => UnifEnumRows::Constant(fresh_uid),
+                    ForallInst::Ptr => UnifEnumRows::UnifVar(fresh_uid),
+                };
+                state.names.insert(fresh_uid, var.clone());
+                ty = body.subst_erows(&var, &uvar);
+
+                if inst == ForallInst::Ptr {
+                    ty.constrain_fresh_erows_var(state, fresh_uid)
+                }
+            }
         };
-        state.names.insert(fresh_id, id.clone());
-        ty = forall_ty.subst(id, var);
-
-        if inst == ForallInst::Ptr {
-            constrain_var(state, &ty, fresh_id)
-        }
     }
 
     ty
@@ -1607,63 +2102,169 @@ fn instantiate_foralls(state: &mut State, mut ty: TypeWrapper, inst: ForallInst)
 /// Map each unification variable to either another type variable or a concrete type it has been
 /// unified with. Each binding `(ty, var)` in this map should be thought of an edge in a
 /// unification graph.
-pub struct UnifTable(Vec<Option<TypeWrapper>>);
+///
+/// The unification table is really three separate tables, corresponding to the different kinds of
+/// types: standard types, record rows, and enum rows.
+#[derive(Default)]
+pub struct UnifTable {
+    types: Vec<Option<UnifType>>,
+    rrows: Vec<Option<UnifRecordRows>>,
+    erows: Vec<Option<UnifEnumRows>>,
+}
 
 impl UnifTable {
     pub fn new() -> Self {
-        UnifTable(Vec::new())
+        UnifTable::default()
     }
 
-    /// Assign a type to a unification variable.
-    pub fn assign(&mut self, var: usize, tyw: TypeWrapper) {
-        debug_assert!(self.0[var].is_none());
-        self.0[var] = Some(tyw);
+    /// Assign a type to a type unification variable.
+    pub fn assign_type(&mut self, var: VarId, uty: UnifType) {
+        debug_assert!(self.types[var].is_none());
+        self.types[var] = Some(uty);
     }
 
-    /// Retrieve the current assignment of a unification variable.
-    pub fn get(&self, var: usize) -> Option<&TypeWrapper> {
-        self.0[var].as_ref()
+    /// Assign record rows to a record rows unification variable.
+    pub fn assign_rrows(&mut self, var: VarId, rrows: UnifRecordRows) {
+        debug_assert!(self.rrows[var].is_none());
+        self.rrows[var] = Some(rrows);
     }
 
-    /// Create a fresh variable identifier and allocate a corresponding slot in the table.
-    fn fresh_var(&mut self) -> usize {
-        let next = self.0.len();
-        self.0.push(None);
+    /// Assign enum rows to an enum rows unification variable.
+    pub fn assign_erows(&mut self, var: VarId, erows: UnifEnumRows) {
+        debug_assert!(self.erows[var].is_none());
+        self.erows[var] = Some(erows);
+    }
+
+    /// Retrieve the current assignment of a type unification variable.
+    pub fn get_type(&self, var: VarId) -> Option<&UnifType> {
+        self.types[var].as_ref()
+    }
+
+    /// Retrieve the current assignment of a record rows unification variable.
+    pub fn get_rrows(&self, var: VarId) -> Option<&UnifRecordRows> {
+        self.rrows[var].as_ref()
+    }
+
+    /// Retrieve the current assignment of an enum rows unification variable.
+    pub fn get_erows(&self, var: VarId) -> Option<&UnifEnumRows> {
+        self.erows[var].as_ref()
+    }
+
+    /// Create a fresh type unification variable (or constant) identifier and allocate a
+    /// corresponding slot in the table.
+    fn fresh_type_var_id(&mut self) -> VarId {
+        let next = self.types.len();
+        self.types.push(None);
         next
     }
 
-    /// Create a fresh unification variable and allocate a corresponding slot in the table.
-    pub fn fresh_unif_var(&mut self) -> TypeWrapper {
-        TypeWrapper::Ptr(self.fresh_var())
+    /// Create a fresh record rows variable (or constant) identifier and allocate a corresponding
+    /// slot in the table.
+    fn fresh_rrows_var_id(&mut self) -> VarId {
+        let next = self.rrows.len();
+        self.rrows.push(None);
+        next
     }
 
-    /// Create a fresh type constant.
-    pub fn fresh_const(&mut self) -> TypeWrapper {
-        TypeWrapper::Constant(self.fresh_var())
+    /// Create a fresh enum rows variable (or constant) identifier and allocate a corresponding
+    /// slot in the table.
+    fn fresh_erows_var_id(&mut self) -> VarId {
+        let next = self.erows.len();
+        self.erows.push(None);
+        next
     }
 
-    /// Follow the links in the unification table to find the representative of the equivalence class
-    /// of unification variable `x`.
+    /// Create a fresh type unification variable and allocate a corresponding slot in the table.
+    pub fn fresh_type_uvar(&mut self) -> UnifType {
+        UnifType::UnifVar(self.fresh_type_var_id())
+    }
+
+    /// Create a fresh record rows unification variable and allocate a corresponding slot in the
+    /// table.
+    pub fn fresh_rrows_uvar(&mut self) -> UnifRecordRows {
+        UnifRecordRows::UnifVar(self.fresh_rrows_var_id())
+    }
+
+    /// Create a fresh enum rows unification variable and allocate a corresponding slot in the
+    /// table.
+    pub fn fresh_erows_uvar(&mut self) -> UnifEnumRows {
+        UnifEnumRows::UnifVar(self.fresh_erows_var_id())
+    }
+
+    /// Create a fresh type constant and allocate a corresponding slot in the table.
+    pub fn fresh_type_const(&mut self) -> UnifType {
+        UnifType::Constant(self.fresh_type_var_id())
+    }
+
+    /// Create a fresh record rows constant and allocate a corresponding slot in the table.
+    pub fn fresh_rrows_const(&mut self) -> UnifRecordRows {
+        UnifRecordRows::Constant(self.fresh_rrows_var_id())
+    }
+
+    /// Create a fresh enum rows constant and allocate a corresponding slot in the table.
+    pub fn fresh_erows_const(&mut self) -> UnifEnumRows {
+        UnifEnumRows::Constant(self.fresh_erows_var_id())
+    }
+
+    /// Follow the links in the unification table to find the representative of the equivalence
+    /// class of the type unification variable `x`.
     ///
     /// This corresponds to the find in union-find.
     // TODO This should be a union find like algorithm
-    pub fn root(&self, x: usize) -> TypeWrapper {
+    pub fn root_type(&self, var_id: VarId) -> UnifType {
         // All queried variable must have been introduced by `new_var` and thus a corresponding entry
         // must always exist in `state`. If not, the typechecking algorithm is not correct, and we
         // panic.
-        match &self.0[x] {
-            None => TypeWrapper::Ptr(x),
-            Some(TypeWrapper::Ptr(y)) => self.root(*y),
+        match &self.types[var_id] {
+            None => UnifType::UnifVar(var_id),
+            Some(UnifType::UnifVar(y)) => self.root_type(*y),
             Some(ty) => ty.clone(),
         }
     }
 
-    /// Return the number of all variables currently allocated (unification and rigid type
-    /// variables). The returned UID is guaranteed to be different from all the currently live
-    /// variables. This is also the value that will be returned by the next call to `fresh_var()`,
-    /// and is currently simply the length of the unification table.
-    pub fn var_count(&self) -> usize {
-        self.0.len()
+    /// Follow the links in the unification table to find the representative of the equivalence
+    /// class of the record rows unification variable `x`.
+    ///
+    /// This corresponds to the find in union-find.
+    // TODO This should be a union find like algorithm
+    pub fn root_rrows(&self, var_id: VarId) -> UnifRecordRows {
+        // All queried variable must have been introduced by `new_var` and thus a corresponding entry
+        // must always exist in `state`. If not, the typechecking algorithm is not correct, and we
+        // panic.
+        match &self.rrows[var_id] {
+            None => UnifRecordRows::UnifVar(var_id),
+            Some(UnifRecordRows::UnifVar(y)) => self.root_rrows(*y),
+            Some(ty) => ty.clone(),
+        }
+    }
+
+    /// Follow the links in the unification table to find the representative of the equivalence
+    /// class of the enum rows unification variable `x`.
+    ///
+    /// This corresponds to the find in union-find.
+    // TODO This should be a union find like algorithm
+    pub fn root_erows(&self, var_id: VarId) -> UnifEnumRows {
+        // All queried variable must have been introduced by `new_var` and thus a corresponding entry
+        // must always exist in `state`. If not, the typechecking algorithm is not correct, and we
+        // panic.
+        match &self.erows[var_id] {
+            None => UnifEnumRows::UnifVar(var_id),
+            Some(UnifEnumRows::UnifVar(y)) => self.root_erows(*y),
+            Some(ty) => ty.clone(),
+        }
+    }
+
+    /// Return a `VarId` greater than all of the variables currently allocated (unification and
+    /// rigid type variables, of all kinds, rows or types). The returned UID is guaranteed to be
+    /// different from all the currently live variables. This is currently simply the max of the
+    /// length of the various unification tables.
+    ///
+    /// Used inside [super::eq] to generate temporary rigid type variables that are guaranteed to
+    /// not conflict with existing variables.
+    pub fn max_uvars_count(&self) -> VarId {
+        use std::cmp::max;
+
+        max(self.types.len(), max(self.rrows.len(), self.erows.len()))
     }
 }
 
@@ -1673,164 +2274,294 @@ impl UnifTable {
 /// `{ someId: SomeType | r }`). It is a set of identifiers that said row must NOT contain, to
 /// forbid ill-formed types with multiple declaration of the same id, for example `{ a: Num, a:
 /// String}`.
-pub type RowConstr = HashMap<usize, HashSet<Ident>>;
+pub type RowConstr = HashMap<VarId, HashSet<Ident>>;
 
-/// Add a row constraint on a type.
-///
-/// See [`RowConstr`].
-fn constraint(state: &mut State, x: TypeWrapper, id: Ident) -> Result<(), RowUnifError> {
-    match x {
-        TypeWrapper::Ptr(p) => match state.table.root(p) {
-            ty @ TypeWrapper::Concrete(_) => constraint(state, ty, id),
-            TypeWrapper::Ptr(root) => {
-                if let Some(v) = state.constr.get_mut(&root) {
-                    v.insert(id);
-                } else {
-                    state.constr.insert(root, vec![id].into_iter().collect());
-                }
-                Ok(())
-            }
-            tyw @ TypeWrapper::Constant(_) | tyw @ TypeWrapper::Contract(..) => {
-                Err(RowUnifError::IllformedRow(tyw))
-            }
-        },
-        TypeWrapper::Concrete(AbsType::RowEmpty()) => Ok(()),
-        TypeWrapper::Concrete(AbsType::RowExtend(id2, tyw, t)) => {
-            if id2 == id {
-                Err(RowUnifError::UnsatConstr(id, tyw.map(|tyw| *tyw)))
-            } else {
-                constraint(state, *t, id)
-            }
+trait ConstrainFreshRRowsVar {
+    /// Add row constraints on a freshly instantiated type variable.
+    ///
+    /// When instantiating a quantified type variable with a unification variable, row constraints may
+    /// apply. For example, if we instantiate `forall a. {x: Num | a} -> Num` by replacing `a` with a
+    /// unification variable `UnifVar(p)`, this unification variable requires a constraint to avoid being
+    /// unified with a row type containing another declaration for the field `x`.
+    ///
+    /// This function traverses the type or rows `self`, looking for all occurrences of the
+    /// unification variable `p` in tail position of record rows to add the corresponding
+    /// constraints.
+    ///
+    /// # Preconditions
+    ///
+    /// Because `constraint_fresh_rrows_var` should be called on a fresh unification variable `p`,
+    /// the following precondition is assumed and required:
+    ///
+    /// - `state.table.root_rrows(p) == p`
+    fn constrain_fresh_rrows_var(&self, state: &mut State, var_id: VarId);
+}
+
+trait ConstrainFreshERowsVar {
+    /// Add row constraints on a freshly instantiated type variable.
+    ///
+    /// This function traverses the type or rows `self`, looking for all occurrences of the
+    /// unification variable `p` in tail position of enum rows, to add the corresponding
+    /// constraints.
+    ///
+    /// # Preconditions
+    ///
+    /// Because `constraint_fresh_erows_var` should be called on a fresh unification variable `p`,
+    /// the following precondition is assumed and required:
+    ///
+    /// - `state.table.root_erows(p) == p`
+    fn constrain_fresh_erows_var(&self, state: &mut State, var_id: VarId);
+}
+
+impl ConstrainFreshRRowsVar for UnifType {
+    fn constrain_fresh_rrows_var(&self, state: &mut State, var_id: VarId) {
+        match self {
+            UnifType::UnifVar(u) => match state.table.root_type(*u) {
+                UnifType::UnifVar(_) => (),
+                ty => ty.constrain_fresh_rrows_var(state, var_id),
+            },
+            UnifType::Concrete(ty) => match ty {
+                    TypeF::Arrow(uty1, uty2) => {
+                        uty1.constrain_fresh_rrows_var(state, var_id);
+                        uty2.constrain_fresh_rrows_var(state, var_id);
+                    }
+                    TypeF::Forall {body, ..} => body.constrain_fresh_rrows_var(state, var_id),
+                    TypeF::Dyn
+                    | TypeF::Num
+                    | TypeF::Bool
+                    | TypeF::Str
+                    | TypeF::Sym
+                    | TypeF::Flat(_)
+                    | TypeF::Var(_)
+                    // There can be no record rows unification variable inside an enum type
+                    | TypeF::Enum(_) => (),
+                    | TypeF::Wildcard(_) => (),
+                    TypeF::Record(rrows) => rrows.constrain_fresh_rrows_var(state, var_id),
+                    TypeF::Array(uty)
+                    | TypeF::Dict(uty) => uty.constrain_fresh_rrows_var(state, var_id),
+                },
+            UnifType::Constant(_) | UnifType::Contract(..) => (),
         }
-        other => Err(RowUnifError::IllformedRow(other)),
     }
 }
 
-/// Add row constraints on a freshly instantiated type variable.
-///
-/// When instantiating a quantified type variable with a unification variable, row constraints may
-/// apply. For example, if we instantiate `forall a. {x: Num | a} -> Num` by replacing `a` with a
-/// unification variable `Ptr(p)`, this unification variable requires a constraint to avoid being
-/// unified with a row type containing another declaration for the field `x`.
-///
-/// # Preconditions
-///
-/// Because `constraint_var` should be called on a fresh unification variable `p`, the following is
-/// assumed:
-/// - `state.table.root_of(p) == p`
-/// - `state.constr.get(&p) == None`
-fn constrain_var(state: &mut State, tyw: &TypeWrapper, p: usize) {
-    fn constrain_var_(state: &mut State, mut constr: HashSet<Ident>, tyw: &TypeWrapper, p: usize) {
-        match tyw {
-            TypeWrapper::Ptr(u) if p == *u && !constr.is_empty() => {
-                state.constr.insert(p, constr);
+impl ConstrainFreshRRowsVar for UnifRecordRows {
+    fn constrain_fresh_rrows_var(&self, state: &mut State, var_id: VarId) {
+        fn constrain_var(
+            state: &mut State,
+            mut constr: HashSet<Ident>,
+            uty: &UnifRecordRows,
+            var_id: VarId,
+        ) {
+            match uty {
+                UnifRecordRows::UnifVar(u) if var_id == *u && !constr.is_empty() => {
+                    state.constr.insert(var_id, constr);
+                }
+                UnifRecordRows::UnifVar(u) => match state.table.root_rrows(*u) {
+                    UnifRecordRows::UnifVar(_) => (),
+                    rrows => constrain_var(state, constr, &rrows, var_id),
+                },
+                UnifRecordRows::Concrete(ty) => match ty {
+                    RecordRowsF::Empty | RecordRowsF::TailDyn | RecordRowsF::TailVar(_) => (),
+                    RecordRowsF::Extend { row, tail } => {
+                        constr.insert(row.id.clone());
+                        row.types.constrain_fresh_rrows_var(state, var_id);
+                        constrain_var(state, constr, &*tail, var_id);
+                    }
+                },
+                UnifRecordRows::Constant(_) => (),
             }
-            TypeWrapper::Ptr(u) => match state.table.root(*u) {
-                TypeWrapper::Ptr(_) => (),
-                tyw => constrain_var_(state, constr, &tyw, p),
-            },
-            TypeWrapper::Concrete(ty) => match ty {
-                AbsType::Arrow(tyw1, tyw2) => {
-                    constrain_var_(state, HashSet::new(), tyw1.as_ref(), p);
-                    constrain_var_(state, HashSet::new(), tyw2.as_ref(), p);
-                }
-                AbsType::Forall(_, tyw) => constrain_var_(state, HashSet::new(), tyw.as_ref(), p),
-                AbsType::Dyn()
-                | AbsType::Num()
-                | AbsType::Bool()
-                | AbsType::Str()
-                | AbsType::Sym()
-                | AbsType::Flat(_)
-                | AbsType::RowEmpty()
-                | AbsType::Var(_)
-                | AbsType::Wildcard(_) => (),
-                AbsType::Array(tyw) => constrain_var_(state, HashSet::new(), tyw.as_ref(), p),
-                AbsType::RowExtend(id, tyw, rest) => {
-                    constr.insert(id.clone());
-                    tyw.iter()
-                        .for_each(|tyw| constrain_var_(state, HashSet::new(), tyw.as_ref(), p));
-                    constrain_var_(state, constr, rest, p)
-                }
-                AbsType::Enum(row) => constrain_var_(state, constr, row, p),
-                AbsType::Record(row) => constrain_var_(state, constr, row, p),
-                AbsType::Dict(tyw) => constrain_var_(state, constr, tyw, p),
-            },
-            TypeWrapper::Constant(_) | TypeWrapper::Contract(..) => (),
         }
-    }
 
-    constrain_var_(state, HashSet::new(), tyw, p);
+        constrain_var(state, HashSet::new(), self, var_id);
+    }
 }
 
-/// Check that unifying a variable with a type doesn't violate row constraints, and update the row
-/// constraints of the unified type accordingly if needed.
+impl ConstrainFreshERowsVar for UnifType {
+    fn constrain_fresh_erows_var(&self, state: &mut State, var_id: VarId) {
+        match self {
+            UnifType::UnifVar(u) => match state.table.root_type(*u) {
+                UnifType::UnifVar(_) => (),
+                ty => ty.constrain_fresh_erows_var(state, var_id),
+            },
+            UnifType::Concrete(ty) => match ty {
+                TypeF::Arrow(uty1, uty2) => {
+                    uty1.constrain_fresh_erows_var(state, var_id);
+                    uty2.constrain_fresh_erows_var(state, var_id);
+                }
+                TypeF::Forall { body, .. } => body.constrain_fresh_erows_var(state, var_id),
+                TypeF::Dyn
+                | TypeF::Num
+                | TypeF::Bool
+                | TypeF::Str
+                | TypeF::Sym
+                | TypeF::Flat(_)
+                | TypeF::Var(_)
+                | TypeF::Wildcard(_) => (),
+                TypeF::Enum(erows) => erows.constrain_fresh_erows_var(state, var_id),
+                TypeF::Record(rrows) => rrows.constrain_fresh_erows_var(state, var_id),
+                TypeF::Array(uty) | TypeF::Dict(uty) => {
+                    uty.constrain_fresh_erows_var(state, var_id)
+                }
+            },
+            UnifType::Constant(_) | UnifType::Contract(..) => (),
+        }
+    }
+}
+
+impl ConstrainFreshERowsVar for UnifRecordRows {
+    fn constrain_fresh_erows_var(&self, state: &mut State, var_id: VarId) {
+        match self {
+            UnifRecordRows::UnifVar(u) => match state.table.root_rrows(*u) {
+                UnifRecordRows::UnifVar(_) => (),
+                rrows => rrows.constrain_fresh_erows_var(state, var_id),
+            },
+            UnifRecordRows::Concrete(ty) => match ty {
+                RecordRowsF::Empty | RecordRowsF::TailDyn | RecordRowsF::TailVar(_) => (),
+                RecordRowsF::Extend { row, tail } => {
+                    row.types.constrain_fresh_erows_var(state, var_id);
+                    tail.constrain_fresh_erows_var(state, var_id);
+                }
+            },
+            UnifRecordRows::Constant(_) => (),
+        }
+    }
+}
+
+impl ConstrainFreshERowsVar for UnifEnumRows {
+    fn constrain_fresh_erows_var(&self, state: &mut State, var_id: VarId) {
+        fn constrain_var(
+            state: &mut State,
+            mut constr: HashSet<Ident>,
+            uty: &UnifEnumRows,
+            var_id: VarId,
+        ) {
+            match uty {
+                UnifEnumRows::UnifVar(u) if var_id == *u && !constr.is_empty() => {
+                    state.constr.insert(var_id, constr);
+                }
+                UnifEnumRows::UnifVar(u) => match state.table.root_erows(*u) {
+                    UnifEnumRows::UnifVar(_) => (),
+                    erows => constrain_var(state, constr, &erows, var_id),
+                },
+                UnifEnumRows::Concrete(ty) => match ty {
+                    EnumRowsF::Empty | EnumRowsF::TailVar(_) => (),
+                    EnumRowsF::Extend { row, tail } => {
+                        constr.insert(row.clone());
+                        constrain_var(state, constr, &*tail, var_id);
+                    }
+                },
+                UnifEnumRows::Constant(_) => (),
+            }
+        }
+
+        constrain_var(state, HashSet::new(), self, var_id);
+    }
+}
+
+/// Check that unifying a variable with a type doesn't violate record rows constraints, and update
+/// the row constraints of the unified type accordingly if needed.
 ///
-/// When a unification variable `Ptr(p)` is unified with a type `tyw` which is either a row type or
+/// When a unification variable `UnifVar(p)` is unified with a type `uty` which is either a row type or
 /// another unification variable which could be later unified with a row type itself, the following
 /// operations are required:
 ///
-/// 1. If `tyw` is a concrete row, check that it doesn't contain an identifier which is forbidden
+/// 1. If `uty` is a concrete row, check that it doesn't contain an identifier which is forbidden
 ///    by a row constraint on `p`.
 /// 2. If the type is either a unification variable or a row type ending with a unification
-///    variable `Ptr(u)`, we must add the constraints of `p` to the constraints of `u`. Indeed,
-///    take the following situation: `p` appears in a row type `{a: Num | p}`, hence has a
-///    constraint that it must not contain a field `a`. Then `p` is unified with a fresh type
-///    variable `u`. If we don't constrain `u`, `u` could be unified later with a row type `{a :
-///    Str}` which violates the original constraint on `p`. Thus, when unifying `p` with `u` or a
-///    row ending with `u`, `u` must inherit all the constraints of `p`.
-///
-/// If `tyw` is neither a row nor a unification variable, `constr_unify` immediately returns `Ok(())`.
-pub fn constr_unify(
+///    variable `u`, we must add the constraints of `p` to the constraints of `u`. Indeed, take the
+///    following situation: `p` appears in a row type `{a: Num | p}`, hence has a constraint that
+///    it must not contain a field `a`. Then `p` is unified with a fresh type variable `u`. If we
+///    don't constrain `u`, `u` could be unified later with a row type `{a : Str}` which violates
+///    the original constraint on `p`. Thus, when unifying `p` with `u` or a row ending with `u`,
+///    `u` must inherit all the constraints of `p`.
+pub fn constr_unify_rrows(
     constr: &mut RowConstr,
-    p: usize,
-    mut tyw: &TypeWrapper,
+    var_id: VarId,
+    rrows: &UnifRecordRows,
 ) -> Result<(), RowUnifError> {
-    if let Some(p_constr) = constr.remove(&p) {
-        loop {
-            match tyw {
-                TypeWrapper::Concrete(AbsType::RowExtend(ident, ty, _))
-                    if p_constr.contains(ident) =>
-                {
-                    break Err(RowUnifError::UnsatConstr(
-                        ident.clone(),
-                        ty.as_ref().map(|boxed| (**boxed).clone()),
-                    ))
-                }
-                TypeWrapper::Concrete(AbsType::RowExtend(_, _, tail)) => tyw = tail,
-                TypeWrapper::Ptr(u) if *u != p => {
-                    if let Some(u_constr) = constr.get_mut(u) {
-                        u_constr.extend(p_constr.into_iter());
-                    } else {
-                        constr.insert(*u, p_constr);
-                    }
-
-                    break Ok(());
-                }
-                _ => break Ok(()),
+    if let Some(p_constr) = constr.remove(&var_id) {
+        match rrows {
+            UnifRecordRows::Concrete(RecordRowsF::Extend { row, .. })
+                if p_constr.contains(&row.id) =>
+            {
+                Err(RowUnifError::UnsatConstr(
+                    row.id.clone(),
+                    Some(UnifType::Concrete(TypeF::Record(rrows.clone()))),
+                ))
             }
+            UnifRecordRows::Concrete(RecordRowsF::Extend { tail, .. }) => {
+                constr_unify_rrows(constr, var_id, tail)
+            }
+            UnifRecordRows::UnifVar(u) if *u != var_id => {
+                if let Some(u_constr) = constr.get_mut(u) {
+                    u_constr.extend(p_constr.into_iter());
+                } else {
+                    constr.insert(*u, p_constr);
+                }
+
+                Ok(())
+            }
+            _ => Ok(()),
         }
     } else {
         Ok(())
     }
 }
 
-/// Get the typevar associated with a given wildcard ID.
+/// Check that unifying a variable with a type doesn't violate enum rows constraints, and update
+/// the row constraints of the unified type accordingly if needed.
+///
+/// Same as `constr_unify_rrows`, but for enum rows.
+pub fn constr_unify_erows(
+    constr: &mut RowConstr,
+    var_id: VarId,
+    erows: &UnifEnumRows,
+) -> Result<(), RowUnifError> {
+    if let Some(p_constr) = constr.remove(&var_id) {
+        match erows {
+            UnifEnumRows::Concrete(EnumRowsF::Extend { row, .. }) if p_constr.contains(&row) => {
+                Err(RowUnifError::UnsatConstr(
+                    row.clone(),
+                    Some(UnifType::Concrete(TypeF::Enum(erows.clone()))),
+                ))
+            }
+            UnifEnumRows::Concrete(EnumRowsF::Extend { tail, .. }) => {
+                constr_unify_erows(constr, var_id, tail)
+            }
+            UnifEnumRows::UnifVar(u) if *u != var_id => {
+                if let Some(u_constr) = constr.get_mut(u) {
+                    u_constr.extend(p_constr.into_iter());
+                } else {
+                    constr.insert(*u, p_constr);
+                }
+
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    } else {
+        Ok(())
+    }
+}
+
+/// Get the type unification variable associated with a given wildcard ID.
 fn get_wildcard_var(
     table: &mut UnifTable,
-    wildcard_vars: &mut Vec<TypeWrapper>,
-    id: usize,
-) -> TypeWrapper {
+    wildcard_vars: &mut Vec<UnifType>,
+    id: VarId,
+) -> UnifType {
     // If `id` is not in `wildcard_vars`, populate it with fresh vars up to `id`
     if id >= wildcard_vars.len() {
-        wildcard_vars.extend((wildcard_vars.len()..=id).map(|_| table.fresh_unif_var()));
+        wildcard_vars.extend((wildcard_vars.len()..=id).map(|_| table.fresh_type_uvar()));
     }
     wildcard_vars[id].clone()
 }
 
 /// Convert a mapping from wildcard ID to type var, into a mapping from wildcard ID to concrete type.
-fn wildcard_vars_to_type(wildcard_vars: Vec<TypeWrapper>, table: &UnifTable) -> Wildcards {
+fn wildcard_vars_to_type(wildcard_vars: Vec<UnifType>, table: &UnifTable) -> Wildcards {
     wildcard_vars
         .into_iter()
-        .map(|var| to_type(table, var))
+        .map(|var| var.into_type(table))
         .collect()
 }

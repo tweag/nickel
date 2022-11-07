@@ -26,7 +26,7 @@ use crate::{
     label::Label,
     match_sharedterm,
     position::TermPos,
-    types::{AbsType, Types, UnboundTypeVariableError},
+    types::{TypeF, Types, UnboundTypeVariableError},
 };
 
 use codespan::FileId;
@@ -775,7 +775,7 @@ impl Term {
                 meta.contracts
                     .iter_mut()
                     .for_each(|Contract { types, .. }| {
-                        if let AbsType::Flat(ref mut rt) = types.0 {
+                        if let TypeF::Flat(ref mut rt) = types.0 {
                             func(rt)
                         }
                     });
@@ -1500,12 +1500,12 @@ impl RichTerm {
     /// `f` may return a generic error `E` and use the state `S` which is passed around.
     pub fn traverse<F, S, E>(
         self,
-        f: &mut F,
+        f: &F,
         state: &mut S,
         order: TraverseOrder,
     ) -> Result<RichTerm, E>
     where
-        F: FnMut(RichTerm, &mut S) -> Result<RichTerm, E>,
+        F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
     {
         let rt = match order {
             TraverseOrder::TopDown => f(self, state)?,
@@ -1663,7 +1663,7 @@ impl RichTerm {
             Term::MetaValue(meta) => {
                 let mut f_on_type = |ty: Types, s: &mut S| {
                     match ty.0 {
-                        AbsType::Flat(t) => t.traverse(f, s, order).map(|t| Types(AbsType::Flat(t))),
+                        TypeF::Flat(t) => t.traverse(f, s, order).map(|t| Types(TypeF::Flat(t))),
                         _ => Ok(ty),
                     }
                 };
@@ -2034,7 +2034,7 @@ mod tests {
     fn metavalue_flatten() {
         let mut inner = MetaValue::new();
         inner.types = Some(Contract {
-            types: Types(AbsType::Num()),
+            types: Types(TypeF::Num),
             label: Label::dummy(),
         });
         let outer = MetaValue::new();

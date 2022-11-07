@@ -149,11 +149,11 @@ impl State {
         }
     }
 
-    /// Create a fresh unique rigid type variable.
-    fn fresh_cst<E: TermEnvironment>(&mut self) -> GenericTypeWrapper<E> {
+    /// Create a fresh unique id for a rigid type variable.
+    fn fresh_cst_id(&mut self) -> VarId {
         let result = self.var_uid;
         self.var_uid += 1;
-        GenericTypeWrapper::Constant(result)
+        result
     }
 
     /// Try to consume one unit of gas for a variable substitution. Return true in case of success,
@@ -321,9 +321,9 @@ fn contract_eq_bounded<E: TermEnvironment>(
                 (None, None) => true,
                 (Some(ctr1), Some(ctr2)) => type_eq_bounded(
                     state,
-                    &GenericTypeWrapper::from_type(ctr1.types.clone(), env1), // &TypeWrapper::from(ctr1.types.clone()),
+                    &GenericUnifType::from_type(ctr1.types.clone(), env1), // &TypeWrapper::from(ctr1.types.clone()),
                     env1,
-                    &GenericTypeWrapper::from_type(ctr2.types.clone(), env2), // &TypeWrapper::from(ctr1.types.clone()),
+                    &GenericUnifType::from_type(ctr2.types.clone(), env2), // &TypeWrapper::from(ctr1.types.clone()),
                     env2,
                 ),
                 _ => false,
@@ -364,19 +364,17 @@ where
 /// Require the rows to be closed (i.e. the last element must be `RowEmpty`), otherwise `None` is
 /// returned. `None` is returned as well if a type encountered is not row, or if it is a enum row.
 fn rows_as_map<E: TermEnvironment>(
-    ty: &GenericTypeWrapper<E>,
-) -> Option<HashMap<Ident, &GenericTypeWrapper<E>>> {
-    let mut map = HashMap::new();
+    erows: &GenericUnifRecordRows<E>,
+) -> Option<HashMap<Ident, &GenericUnifType<E>>> {
+    let map: Option<HashMap<Ident, _>> = erows
+        .iter()
+        .map(|item| match item {
+            GenericUnifRecordRowsIteratorItem::Row(RecordRowF { id, types }) => Some((id, types)),
+            _ => None,
+        })
+        .collect();
 
-    ty.iter_as_rows().try_for_each(|item| match item {
-        RowIteratorItem::Row(id, Some(ty_row)) => {
-            map.insert(id.clone(), ty_row);
-            Some(())
-        }
-        _ => None,
-    })?;
-
-    Some(map)
+    map
 }
 
 /// Convert enum rows to a hashset.
@@ -384,18 +382,16 @@ fn rows_as_map<E: TermEnvironment>(
 /// Require the rows to be closed (i.e. the last element must be `RowEmpty`), otherwise `None` is
 /// returned. `None` is returned as well if a type encountered is not row type, or if it is a
 /// record row.
-fn rows_as_set<E: TermEnvironment>(ty: &GenericTypeWrapper<E>) -> Option<HashSet<Ident>> {
-    let mut set = HashSet::new();
+fn rows_as_set(erows: &UnifEnumRows) -> Option<HashSet<Ident>> {
+    let set: Option<HashSet<_>> = erows
+        .iter()
+        .map(|item| match item {
+            UnifEnumRowsIteratorItem::Row(id) => Some(id.clone()),
+            _ => None,
+        })
+        .collect();
 
-    ty.iter_as_rows().try_for_each(|item| match item {
-        RowIteratorItem::Row(id, None) => {
-            set.insert(id.clone());
-            Some(())
-        }
-        _ => None,
-    })?;
-
-    Some(set)
+    set
 }
 
 /// Perform the type equality comparison on types. Structurally recurse into type constructors and test
@@ -410,38 +406,37 @@ fn rows_as_set<E: TermEnvironment>(ty: &GenericTypeWrapper<E>) -> Option<HashSet
 /// typechecking, and we can just start from `0`.
 fn type_eq_bounded<E: TermEnvironment>(
     state: &mut State,
-    ty1: &GenericTypeWrapper<E>,
+    ty1: &GenericUnifType<E>,
     env1: &E,
-    ty2: &GenericTypeWrapper<E>,
+    ty2: &GenericUnifType<E>,
     env2: &E,
 ) -> bool {
     match (ty1, ty2) {
-        (GenericTypeWrapper::Concrete(s1), GenericTypeWrapper::Concrete(s2)) => match (s1, s2) {
-            (AbsType::Wildcard(id1), AbsType::Wildcard(id2)) => id1 == id2,
-            (AbsType::Dyn(), AbsType::Dyn())
-            | (AbsType::Num(), AbsType::Num())
-            | (AbsType::Bool(), AbsType::Bool())
-            | (AbsType::Sym(), AbsType::Sym())
-            | (AbsType::Str(), AbsType::Str()) => true,
-            (AbsType::Dict(tyw1), AbsType::Dict(tyw2))
-            | (AbsType::Array(tyw1), AbsType::Array(tyw2)) => {
+        (GenericUnifType::Concrete(s1), GenericUnifType::Concrete(s2)) => match (s1, s2) {
+            (TypeF::Wildcard(id1), TypeF::Wildcard(id2)) => id1 == id2,
+            (TypeF::Dyn, TypeF::Dyn)
+            | (TypeF::Num, TypeF::Num)
+            | (TypeF::Bool, TypeF::Bool)
+            | (TypeF::Sym, TypeF::Sym)
+            | (TypeF::Str, TypeF::Str) => true,
+            (TypeF::Dict(tyw1), TypeF::Dict(tyw2)) | (TypeF::Array(tyw1), TypeF::Array(tyw2)) => {
                 type_eq_bounded(state, tyw1, env1, tyw2, env2)
             }
-            (AbsType::Arrow(s1, t1), AbsType::Arrow(s2, t2)) => {
+            (TypeF::Arrow(s1, t1), TypeF::Arrow(s2, t2)) => {
                 type_eq_bounded(state, s1, env1, s2, env2)
                     && type_eq_bounded(state, t1, env1, t2, env2)
             }
-            (AbsType::Enum(tyw1), AbsType::Enum(tyw2)) => {
+            (TypeF::Enum(tyw1), TypeF::Enum(tyw2)) => {
                 let rows1 = rows_as_set(tyw1);
                 let rows2 = rows_as_set(tyw2);
                 rows1.is_some() && rows2.is_some() && rows1 == rows2
             }
-            (AbsType::Record(tyw1), AbsType::Record(tyw2)) => {
+            (TypeF::Record(tyw1), TypeF::Record(tyw2)) => {
                 fn type_eq_bounded_wrapper<E: TermEnvironment>(
                     state: &mut State,
-                    tyw1: &&GenericTypeWrapper<E>,
+                    tyw1: &&GenericUnifType<E>,
                     env1: &E,
-                    tyw2: &&GenericTypeWrapper<E>,
+                    tyw2: &&GenericUnifType<E>,
                     env2: &E,
                 ) -> bool {
                     type_eq_bounded(state, *tyw1, env1, *tyw2, env2)
@@ -454,32 +449,57 @@ fn type_eq_bounded<E: TermEnvironment>(
                     .map(|(m1, m2)| map_eq(type_eq_bounded_wrapper, state, &m1, env1, &m2, env2))
                     .unwrap_or(false)
             }
-            (AbsType::Flat(t1), AbsType::Flat(t2)) => {
-                contract_eq_bounded(state, t1, env1, t2, env2)
-            }
-            (AbsType::Forall(i1, tyw1), AbsType::Forall(i2, tyw2)) => {
-                let constant_type: GenericTypeWrapper<E> = state.fresh_cst();
+            (TypeF::Flat(t1), TypeF::Flat(t2)) => contract_eq_bounded(state, t1, env1, t2, env2),
+            (
+                TypeF::Forall {
+                    var: var1,
+                    var_kind: var_kind1,
+                    body: body1,
+                },
+                TypeF::Forall {
+                    var: var2,
+                    var_kind: var_kind2,
+                    body: body2,
+                },
+            ) => {
+                let cst_id = state.fresh_cst_id();
 
-                type_eq_bounded(
-                    state,
-                    &tyw1.clone().subst(i1.clone(), constant_type.clone()),
-                    env1,
-                    &tyw2.clone().subst(i2.clone(), constant_type),
-                    env2,
-                )
+                if var_kind1 != var_kind2 {
+                    return false;
+                }
+
+                let body1 = body1.clone();
+                let body2 = body2.clone();
+
+                let (uty1_subst, uty2_subst) = match var_kind1 {
+                    VarKind::Type => (
+                        body1.subst_type(var1, &GenericUnifType::Constant(cst_id)),
+                        body2.subst_type(var2, &GenericUnifType::Constant(cst_id)),
+                    ),
+                    VarKind::RecordRows => (
+                        body1.subst_rrows(var1, &GenericUnifRecordRows::Constant(cst_id)),
+                        body2.subst_rrows(var2, &GenericUnifRecordRows::Constant(cst_id)),
+                    ),
+                    VarKind::EnumRows => (
+                        body1.subst_erows(var1, &UnifEnumRows::Constant(cst_id)),
+                        body2.subst_erows(var2, &UnifEnumRows::Constant(cst_id)),
+                    ),
+                };
+
+                type_eq_bounded(state, &uty1_subst, env1, &uty2_subst, env2)
             }
             // We can't compare type variables without knowing what they are instantiated to, and
             // all type variables should have been substituted at this point, so we bail out.
             _ => false,
         },
-        (GenericTypeWrapper::Ptr(p1), GenericTypeWrapper::Ptr(p2)) => {
+        (GenericUnifType::UnifVar(p1), GenericUnifType::UnifVar(p2)) => {
             debug_assert!(
                 false,
                 "we shouldn't come across unification variables during type equality computation"
             );
             p1 == p2
         }
-        (GenericTypeWrapper::Constant(i1), GenericTypeWrapper::Constant(i2)) => i1 == i2,
+        (GenericUnifType::Constant(i1), GenericUnifType::Constant(i2)) => i1 == i2,
         _ => false,
     }
 }

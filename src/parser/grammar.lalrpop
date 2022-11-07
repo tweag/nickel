@@ -62,7 +62,10 @@ use crate::{
         MergePriority, Contract, NAryOp, RecordAttrs, SharedTerm,
         NumeralPriority, array::Array, make as mk_term,
     },
-    types::{Types, AbsType},
+    types::{
+        Types, TypeF, EnumRows, EnumRowsF, RecordRows, RecordRowsF,
+        VarKind
+    },
     position::TermPos,
     label::Label,
 };
@@ -162,7 +165,7 @@ Types: Types = {
 // A type with type variables fixed. See `parser::utils::fix_type_vars`.
 FixedType: Types = {
     <mut ty: Types> => {
-        fix_type_vars(&mut ty);
+        ty.fix_type_vars();
         ty
     }
 };
@@ -250,7 +253,10 @@ Forall: Types =
     "forall" <ids: Ident+> "." <ty: Types> => {
         ids.into_iter().rev().fold(
             ty,
-            |acc, id| Types(AbsType::Forall(id, Box::new(acc)))
+            // The variable kind will be determined during the `fix_type_vars`
+            // phase. For now, we put a random one (which is also the default
+            // one, for unused type variables)
+            |acc, var| Types(TypeF::Forall { var, var_kind: VarKind::Type, body: Box::new(acc) })
         )
     };
 
@@ -270,7 +276,7 @@ Applicative: UniTerm = {
 
 // The parametrized array type.
 TypeArray: Types = "Array" <AsType<RecordOperand>> =>
-    Types(AbsType::Array(Box::new(<>)));
+    Types(TypeF::Array(Box::new(<>)));
 
 RecordOperand: UniTerm = {
     Atom,
@@ -283,9 +289,9 @@ RecordOperationChain: RichTerm = {
     <t: AsTerm<RecordOperand>> "." <t_id: WithPos<StrChunks>> => mk_access(t_id, t),
 };
 
-RowTail: Types = {
-    <Ident> => Types(AbsType::Var(<>)),
-    "Dyn" => Types(AbsType::Dyn()),
+RecordRowTail: RecordRows = {
+    <Ident> => RecordRows(RecordRowsF::TailVar(<>)),
+    "Dyn" => RecordRows(RecordRowsF::TailDyn),
 };
 
 // A record, that can be later interpreted either as a record literal or as a
@@ -293,7 +299,7 @@ RowTail: Types = {
 UniRecord: UniRecord = {
    "{" <fields: (<RecordField> ",")*>
        <last_l: @L> <last: RecordLastField?> <last_r: @R>
-       <tail_l: @L> <tail: (";" RowTail)?> <tail_r: @R>
+       <tail_l: @L> <tail: (";" RecordRowTail)?> <tail_r: @R>
    "}" => {
         let (last_field, attrs) = match last {
             Some(RecordLastField::Field(f)) => (Some(f), Default::default()),
@@ -710,7 +716,7 @@ InfixExpr: UniTerm = {
 
     #[precedence(level="11")] #[assoc(side="right")]
     <s: AsType<InfixExpr>> "->" <t: AsType<InfixExpr>> =>
-        UniTerm::from(Types(AbsType::Arrow(Box::new(s), Box::new(t)))),
+        UniTerm::from(Types(TypeF::Arrow(Box::new(s), Box::new(t)))),
 }
 
 BOpPre: BinaryOp = {
@@ -742,10 +748,10 @@ NOpPre<ArgRule>: UniTerm = {
 }
 
 TypeBuiltin: Types = {
-    "Dyn" => Types(AbsType::Dyn()),
-    "Num" => Types(AbsType::Num()),
-    "Bool" => Types(AbsType::Bool()),
-    "Str" => Types(AbsType::Str()),
+    "Dyn" => Types(TypeF::Dyn),
+    "Num" => Types(TypeF::Num),
+    "Bool" => Types(TypeF::Bool),
+    "Str" => Types(TypeF::Str),
 }
 
 TypeAtom: Types = {
@@ -759,21 +765,21 @@ TypeAtom: Types = {
             // order for error reporting.
             .rev()
             .fold(
-                Types(
+                EnumRows(
                     match tail {
-                        Some(id) => AbsType::Var(id),
-                        None => AbsType::RowEmpty(),
+                        Some(id) => EnumRowsF::TailVar(id),
+                        None => EnumRowsF::Empty,
                     }
                 ),
-                |t, i| Types(AbsType::RowExtend(i, None, Box::new(t)))
+                |erows, row| EnumRows(EnumRowsF::Extend { row, tail: Box::new(erows) })
             );
-        Types(AbsType::Enum(Box::new(ty)))
+        Types(TypeF::Enum(ty))
     },
-    "{" "_" ":" <Types> "}" => Types(AbsType::Dict(Box::new(<>))),
+    "{" "_" ":" <Types> "}" => Types(TypeF::Dict(Box::new(<>))),
     "_" => {
         let id = *next_wildcard_id;
         *next_wildcard_id += 1;
-        Types(AbsType::Wildcard(id))
+        Types(TypeF::Wildcard(id))
     },
 }
 

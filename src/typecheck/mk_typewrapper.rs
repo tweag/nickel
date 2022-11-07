@@ -1,14 +1,14 @@
 //! Helpers for building `TypeWrapper`s.
-use super::{AbsType, TypeWrapper};
+use super::{TypeF, UnifType};
 
 /// Multi-ary arrow constructor for types implementing `Into<TypeWrapper>`.
 #[macro_export]
 macro_rules! mk_tyw_arrow {
     ($left:expr, $right:expr) => {
-        $crate::typecheck::TypeWrapper::Concrete(
-            $crate::types::AbsType::Arrow(
-                Box::new($crate::typecheck::TypeWrapper::from($left)),
-                Box::new($crate::typecheck::TypeWrapper::from($right))
+        $crate::typecheck::UnifType::Concrete(
+            $crate::types::TypeF::Arrow(
+                Box::new($crate::typecheck::UnifType::from($left)),
+                Box::new($crate::typecheck::UnifType::from($right))
             )
         )
     };
@@ -22,18 +22,17 @@ macro_rules! mk_tyw_arrow {
 #[macro_export]
 macro_rules! mk_tyw_enum_row {
     () => {
-        $crate::typecheck::TypeWrapper::from(AbsType::RowEmpty())
+        $crate::typecheck::UnifEnumRows::Concrete(EnumRowsF::Empty)
     };
     (; $tail:expr) => {
-        $crate::typecheck::TypeWrapper::from($tail)
+        $crate::typecheck::UnifEnumRows::from($tail)
     };
     ( $id:expr $(, $ids:expr )* $(; $tail:expr)?) => {
-        $crate::typecheck::TypeWrapper::Concrete(
-            $crate::types::AbsType::RowExtend(
-                Ident::from($id),
-                None,
-                Box::new(mk_tyw_enum_row!($( $ids ),* $(; $tail)?))
-            )
+        $crate::typecheck::UnifEnumRows::Concrete(
+            $crate::types::EnumRowsF::Extend {
+                row: Ident::from($id),
+                tail: Box::new(mk_tyw_enum_row!($( $ids ),* $(; $tail)?))
+            }
         )
     };
 }
@@ -44,18 +43,20 @@ macro_rules! mk_tyw_enum_row {
 #[macro_export]
 macro_rules! mk_tyw_row {
     () => {
-        $crate::typecheck::TypeWrapper::from(AbsType::RowEmpty())
+        $crate::typecheck::UnifRecordRows::Concrete(RecordRowsF::Empty)
     };
     (; $tail:expr) => {
-        $crate::typecheck::TypeWrapper::from($tail)
+        $crate::typecheck::UnifRecordRows::from($tail)
     };
     (($id:expr, $ty:expr) $(,($ids:expr, $tys:expr))* $(; $tail:expr)?) => {
-        $crate::typecheck::TypeWrapper::Concrete(
-            $crate::types::AbsType::RowExtend(
-                Ident::from($id),
-                Some(Box::new($ty.into())),
-                Box::new(mk_tyw_row!($(($ids, $tys)),* $(; $tail)?))
-            )
+        $crate::typecheck::UnifRecordRows::Concrete(
+            $crate::types::RecordRowsF::Extend {
+                row: $crate::typecheck::RecordRowF {
+                    id: Ident::from($id),
+                    types: Box::new($ty.into()),
+                },
+                tail: Box::new(mk_tyw_row!($(($ids, $tys)),* $(; $tail)?)),
+            }
         )
     };
 }
@@ -64,9 +65,9 @@ macro_rules! mk_tyw_row {
 #[macro_export]
 macro_rules! mk_tyw_enum {
     ($( $ids:expr ),* $(; $tail:expr)?) => {
-        $crate::typecheck::TypeWrapper::Concrete(
-            $crate::types::AbsType::Enum(
-                Box::new(mk_tyw_enum_row!($( $ids ),* $(; $tail)?))
+        $crate::typecheck::UnifType::Concrete(
+            $crate::types::TypeF::Enum(
+                mk_tyw_enum_row!($( $ids ),* $(; $tail)?)
             )
         )
     };
@@ -76,9 +77,9 @@ macro_rules! mk_tyw_enum {
 #[macro_export]
 macro_rules! mk_tyw_record {
     ($(($ids:expr, $tys:expr)),* $(; $tail:expr)?) => {
-        $crate::typecheck::TypeWrapper::Concrete(
-            $crate::types::AbsType::Record(
-                Box::new(mk_tyw_row!($(($ids, $tys)),* $(; $tail)?))
+        $crate::typecheck::UnifType::Concrete(
+            $crate::types::TypeF::Record(
+                mk_tyw_row!($(($ids, $tys)),* $(; $tail)?)
             )
         )
     };
@@ -87,24 +88,24 @@ macro_rules! mk_tyw_record {
 /// Generate an helper function to build a 0-ary type.
 macro_rules! generate_builder {
     ($fun:ident, $var:ident) => {
-        pub fn $fun() -> TypeWrapper {
-            TypeWrapper::Concrete(AbsType::$var())
+        pub fn $fun() -> UnifType {
+            UnifType::Concrete(TypeF::$var)
         }
     };
 }
 
-pub fn dyn_record<T>(ty: T) -> TypeWrapper
+pub fn dyn_record<T>(ty: T) -> UnifType
 where
-    T: Into<TypeWrapper>,
+    T: Into<UnifType>,
 {
-    TypeWrapper::Concrete(AbsType::Dict(Box::new(ty.into())))
+    UnifType::Concrete(TypeF::Dict(Box::new(ty.into())))
 }
 
-pub fn array<T>(ty: T) -> TypeWrapper
+pub fn array<T>(ty: T) -> UnifType
 where
-    T: Into<TypeWrapper>,
+    T: Into<UnifType>,
 {
-    TypeWrapper::Concrete(AbsType::Array(Box::new(ty.into())))
+    UnifType::Concrete(TypeF::Array(Box::new(ty.into())))
 }
 
 // dyn is a reserved keyword
@@ -113,4 +114,3 @@ generate_builder!(str, Str);
 generate_builder!(num, Num);
 generate_builder!(bool, Bool);
 generate_builder!(sym, Sym);
-generate_builder!(row_empty, RowEmpty);

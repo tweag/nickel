@@ -7,194 +7,209 @@ use crate::{
     destruct::{Destruct, Match},
     identifier::Ident,
     term::{RecordDeps, RichTerm, SharedTerm, StrChunk, Term},
-    types::{AbsType, Types},
+    types::{RecordRowF, RecordRows, RecordRowsF, TypeF, Types},
 };
 
 use std::collections::{HashMap, HashSet};
 
 /// Apply the full free var transformation on a term.
 pub fn transform(rt: &mut RichTerm) {
-    collect_free_vars(rt, &mut HashSet::new())
+    rt.collect_free_vars(&mut HashSet::new())
 }
 
-/// Collect the free variables of a term inside the provided hashset. Doing so, fill the recursive
-/// record dependencies data accordingly.
-fn collect_free_vars(rt: &mut RichTerm, free_vars: &mut HashSet<Ident>) {
-    match SharedTerm::make_mut(&mut rt.term) {
-        Term::Var(id) => {
-            free_vars.insert(id.clone());
-        }
-        Term::ParseError(_)
-        | Term::Null
-        | Term::Bool(_)
-        | Term::Num(_)
-        | Term::Str(_)
-        | Term::Lbl(_)
-        | Term::SealingKey(_)
-        | Term::Enum(_)
-        | Term::Import(_)
-        | Term::ResolvedImport(_) => (),
-        Term::Fun(id, t) => {
-            let mut fresh = HashSet::new();
+pub trait CollectFreeVars {
+    /// Collect the free variables of a term or type inside the provided hashset. Doing so, fill
+    /// the recursive record dependencies data accordingly.
+    fn collect_free_vars(&mut self, working_set: &mut HashSet<Ident>);
+}
 
-            collect_free_vars(t, &mut fresh);
-            fresh.remove(id);
+impl CollectFreeVars for RichTerm {
+    fn collect_free_vars(&mut self, free_vars: &mut HashSet<Ident>) {
+        match SharedTerm::make_mut(&mut self.term) {
+            Term::Var(id) => {
+                free_vars.insert(id.clone());
+            }
+            Term::ParseError(_)
+            | Term::Null
+            | Term::Bool(_)
+            | Term::Num(_)
+            | Term::Str(_)
+            | Term::Lbl(_)
+            | Term::SealingKey(_)
+            | Term::Enum(_)
+            | Term::Import(_)
+            | Term::ResolvedImport(_) => (),
+            Term::Fun(id, t) => {
+                let mut fresh = HashSet::new();
 
-            free_vars.extend(fresh);
-        }
-        Term::FunPattern(id, dest_pat, body) => {
-            let mut fresh = HashSet::new();
-
-            collect_free_vars(body, &mut fresh);
-            bind_pattern(dest_pat, &mut fresh);
-            if let Some(id) = id {
+                t.collect_free_vars(&mut fresh);
                 fresh.remove(id);
+
+                free_vars.extend(fresh);
             }
+            Term::FunPattern(id, dest_pat, body) => {
+                let mut fresh = HashSet::new();
 
-            free_vars.extend(fresh);
-        }
-        Term::Let(id, t1, t2, attrs) => {
-            let mut fresh = HashSet::new();
+                body.collect_free_vars(&mut fresh);
+                bind_pattern(dest_pat, &mut fresh);
+                if let Some(id) = id {
+                    fresh.remove(id);
+                }
 
-            if attrs.rec {
-                collect_free_vars(t1, &mut fresh);
-            } else {
-                collect_free_vars(t1, free_vars);
+                free_vars.extend(fresh);
             }
+            Term::Let(id, t1, t2, attrs) => {
+                let mut fresh = HashSet::new();
 
-            collect_free_vars(t2, &mut fresh);
-            fresh.remove(id);
+                if attrs.rec {
+                    t1.collect_free_vars(&mut fresh);
+                } else {
+                    t1.collect_free_vars(free_vars);
+                }
 
-            free_vars.extend(fresh);
-        }
-        Term::LetPattern(id, dest_pat, t1, t2) => {
-            let mut fresh = HashSet::new();
-
-            collect_free_vars(t1, free_vars);
-            collect_free_vars(t2, &mut fresh);
-            bind_pattern(dest_pat, &mut fresh);
-            if let Some(id) = id {
+                t2.collect_free_vars(&mut fresh);
                 fresh.remove(id);
-            }
 
-            free_vars.extend(fresh);
-        }
-        Term::App(t1, t2) => {
-            collect_free_vars(t1, free_vars);
-            collect_free_vars(t2, free_vars);
-        }
-        Term::Switch(t, cases, default) => {
-            collect_free_vars(t, free_vars);
-            for t in cases.values_mut().chain(default.iter_mut()) {
-                collect_free_vars(t, free_vars);
+                free_vars.extend(fresh);
             }
-        }
-        Term::Op1(_, t) => collect_free_vars(t, free_vars),
-        Term::Op2(_, t1, t2) => {
-            collect_free_vars(t1, free_vars);
-            collect_free_vars(t2, free_vars);
-        }
-        Term::OpN(_, ts) => {
-            for t in ts {
-                collect_free_vars(t, free_vars);
+            Term::LetPattern(id, dest_pat, t1, t2) => {
+                let mut fresh = HashSet::new();
+
+                t1.collect_free_vars(free_vars);
+                t2.collect_free_vars(&mut fresh);
+                bind_pattern(dest_pat, &mut fresh);
+                if let Some(id) = id {
+                    fresh.remove(id);
+                }
+
+                free_vars.extend(fresh);
             }
-        }
-        Term::Sealed(_, t, _) => collect_free_vars(t, free_vars),
-        Term::Record(record) => {
-            for t in record.fields.values_mut() {
-                collect_free_vars(t, free_vars);
+            Term::App(t1, t2) => {
+                t1.collect_free_vars(free_vars);
+                t2.collect_free_vars(free_vars);
             }
-        }
-        Term::RecRecord(record, dyn_fields, deps) => {
-            let rec_fields: HashSet<Ident> = record.fields.keys().cloned().collect();
-            let mut fresh = HashSet::new();
-            let mut new_deps = RecordDeps {
-                stat_fields: HashMap::with_capacity(record.fields.len()),
-                dyn_fields: Vec::with_capacity(dyn_fields.len()),
-            };
-
-            for (id, t) in record.fields.iter_mut() {
-                fresh.clear();
-
-                collect_free_vars(t, &mut fresh);
-                new_deps
-                    .stat_fields
-                    .insert(id.clone(), &fresh & &rec_fields);
-
-                free_vars.extend(&fresh - &rec_fields);
-            }
-            for (t1, t2) in dyn_fields.iter_mut() {
-                fresh.clear();
-
-                // Currently, the identifier part of a dynamic definition is not recursive, i.e.
-                // one can't write `{foo = "hey", "%{foo}" = 5}`. Hence, we add their free
-                // variables directly in the final set without taking them into account for
-                // recursive dependencies.
-                collect_free_vars(t1, free_vars);
-                collect_free_vars(t2, &mut fresh);
-                new_deps.dyn_fields.push(&fresh & &rec_fields);
-
-                free_vars.extend(&fresh - &rec_fields);
-            }
-
-            // Even if deps were previously filled (it shouldn't), we had to recompute the free
-            // variables anyway for the nodes higher up, because deps alone is not sufficient to
-            // reconstruct the full set of free variables. At this point, we override it in any
-            // case.
-            *deps = Some(new_deps);
-        }
-        Term::Array(ts, _) => {
-            for t in ts.make_mut().iter_mut() {
-                collect_free_vars(t, free_vars);
-            }
-        }
-        Term::StrChunks(chunks) => {
-            for chunk in chunks {
-                if let StrChunk::Expr(t, _) = chunk {
-                    collect_free_vars(t, free_vars)
+            Term::Switch(t, cases, default) => {
+                t.collect_free_vars(free_vars);
+                for t in cases.values_mut().chain(default.iter_mut()) {
+                    t.collect_free_vars(free_vars);
                 }
             }
-        }
-        Term::MetaValue(meta) => {
-            for ctr in meta.contracts.iter_mut().chain(meta.types.iter_mut()) {
-                collect_type_free_vars(&mut ctr.types, free_vars)
+            Term::Op1(_, t) => t.collect_free_vars(free_vars),
+            Term::Op2(_, t1, t2) => {
+                t1.collect_free_vars(free_vars);
+                t2.collect_free_vars(free_vars);
             }
+            Term::OpN(_, ts) => {
+                for t in ts {
+                    t.collect_free_vars(free_vars);
+                }
+            }
+            Term::Sealed(_, t, _) => t.collect_free_vars(free_vars),
+            Term::Record(record) => {
+                for t in record.fields.values_mut() {
+                    t.collect_free_vars(free_vars);
+                }
+            }
+            Term::RecRecord(record, dyn_fields, deps) => {
+                let rec_fields: HashSet<Ident> = record.fields.keys().cloned().collect();
+                let mut fresh = HashSet::new();
+                let mut new_deps = RecordDeps {
+                    stat_fields: HashMap::with_capacity(record.fields.len()),
+                    dyn_fields: Vec::with_capacity(dyn_fields.len()),
+                };
 
-            if let Some(ref mut t) = meta.value {
-                collect_free_vars(t, free_vars);
+                for (id, t) in record.fields.iter_mut() {
+                    fresh.clear();
+
+                    t.collect_free_vars(&mut fresh);
+                    new_deps
+                        .stat_fields
+                        .insert(id.clone(), &fresh & &rec_fields);
+
+                    free_vars.extend(&fresh - &rec_fields);
+                }
+                for (t1, t2) in dyn_fields.iter_mut() {
+                    fresh.clear();
+
+                    // Currently, the identifier part of a dynamic definition is not recursive, i.e.
+                    // one can't write `{foo = "hey", "%{foo}" = 5}`. Hence, we add their free
+                    // variables directly in the final set without taking them into account for
+                    // recursive dependencies.
+                    t1.collect_free_vars(free_vars);
+                    t2.collect_free_vars(&mut fresh);
+                    new_deps.dyn_fields.push(&fresh & &rec_fields);
+
+                    free_vars.extend(&fresh - &rec_fields);
+                }
+
+                // Even if deps were previously filled (it shouldn't), we had to recompute the free
+                // variables anyway for the nodes higher up, because deps alone is not sufficient to
+                // reconstruct the full set of free variables. At this point, we override it in any
+                // case.
+                *deps = Some(new_deps);
+            }
+            Term::Array(ts, _) => {
+                for t in ts.make_mut().iter_mut() {
+                    t.collect_free_vars(free_vars);
+                }
+            }
+            Term::StrChunks(chunks) => {
+                for chunk in chunks {
+                    if let StrChunk::Expr(t, _) = chunk {
+                        t.collect_free_vars(free_vars)
+                    }
+                }
+            }
+            Term::MetaValue(meta) => {
+                for ctr in meta.contracts.iter_mut().chain(meta.types.iter_mut()) {
+                    ctr.types.collect_free_vars(free_vars)
+                }
+
+                if let Some(ref mut t) = meta.value {
+                    t.collect_free_vars(free_vars);
+                }
             }
         }
     }
 }
 
-/// Collect the free variables of the potential terms inside a type (custom contracts) and insert
-/// them the provided hashset. Doing so, fill the recursive records dependencies data accordingly.
-fn collect_type_free_vars(ty: &mut Types, set: &mut HashSet<Ident>) {
-    match &mut ty.0 {
-        AbsType::Dyn()
-        | AbsType::Num()
-        | AbsType::Bool()
-        | AbsType::Str()
-        | AbsType::Sym()
-        | AbsType::Var(_)
-        | AbsType::RowEmpty()
-        | AbsType::Wildcard(_) => (),
-        AbsType::Forall(_, ty)
-        | AbsType::Enum(ty)
-        | AbsType::Record(ty)
-        | AbsType::Dict(ty)
-        | AbsType::Array(ty) => collect_type_free_vars(ty.as_mut(), set),
-        AbsType::Arrow(ty1, ty2) => {
-            collect_type_free_vars(ty1.as_mut(), set);
-            collect_type_free_vars(ty2.as_mut(), set);
-        }
-        AbsType::RowExtend(_, ty_opt, tail) => {
-            if let Some(ref mut ty) = ty_opt {
-                collect_type_free_vars(ty, set);
+impl CollectFreeVars for Types {
+    fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
+        match &mut self.0 {
+            TypeF::Dyn
+            | TypeF::Num
+            | TypeF::Bool
+            | TypeF::Str
+            | TypeF::Sym
+            | TypeF::Var(_)
+            | TypeF::Wildcard(_) => (),
+            TypeF::Forall { body: ty, .. } | TypeF::Dict(ty) | TypeF::Array(ty) => {
+                ty.as_mut().collect_free_vars(set)
             }
-            collect_type_free_vars(tail.as_mut(), set);
+            // No term can appear anywhere in a enum row type, hence we can stop here.
+            TypeF::Enum(_) => (),
+            TypeF::Record(rrows) => rrows.collect_free_vars(set),
+            TypeF::Arrow(ty1, ty2) => {
+                ty1.as_mut().collect_free_vars(set);
+                ty2.as_mut().collect_free_vars(set);
+            }
+            TypeF::Flat(ref mut rt) => rt.collect_free_vars(set),
         }
-        AbsType::Flat(ref mut rt) => collect_free_vars(rt, set),
+    }
+}
+
+impl CollectFreeVars for RecordRows {
+    fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
+        match &mut self.0 {
+            RecordRowsF::Empty | RecordRowsF::TailDyn | RecordRowsF::TailVar(_) => (),
+            RecordRowsF::Extend {
+                row: RecordRowF { types, .. },
+                tail,
+            } => {
+                types.collect_free_vars(set);
+                tail.collect_free_vars(set);
+            }
+        }
     }
 }
 
