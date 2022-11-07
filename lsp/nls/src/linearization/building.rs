@@ -5,7 +5,7 @@ use nickel_lang::{
     identifier::Ident,
     term::{MetaValue, RichTerm, Term},
     typecheck::{linearization::LinearizationState, UnifType},
-    types::AbsType,
+    types::TypeF,
 };
 
 use crate::linearization::interface::{TermKind, UsageState};
@@ -68,7 +68,7 @@ impl Building {
                 id,
                 pos: ident.pos,
                 // temporary, the actual type is resolved later and the item retyped
-                ty: UnifType::Concrete(AbsType::Dyn()),
+                ty: UnifType::Concrete(TypeF::Dyn),
                 kind: TermKind::RecordField {
                     record,
                     ident: ident.clone(),

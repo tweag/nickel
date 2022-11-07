@@ -11,7 +11,7 @@ use nickel_lang::{
         reporting::{to_type, NameReg},
         UnifType,
     },
-    types::AbsType,
+    types::TypeF,
 };
 
 use self::{
@@ -197,7 +197,7 @@ impl Linearizer for AnalysisHost {
                         env: self.env.clone(),
                         id,
                         // TODO: get type from pattern
-                        ty: UnifType::Concrete(AbsType::Dyn()),
+                        ty: UnifType::Concrete(TypeF::Dyn),
                         pos: ident.pos,
                         kind: TermKind::Declaration(
                             ident.to_owned(),
@@ -258,7 +258,7 @@ impl Linearizer for AnalysisHost {
                     env: self.env.clone(),
                     id: root_id,
                     pos: ident.pos,
-                    ty: UnifType::Concrete(AbsType::Dyn()),
+                    ty: UnifType::Concrete(TypeF::Dyn),
                     kind: TermKind::Usage(UsageState::from(self.env.get(ident).copied())),
                     meta: self.meta.take(),
                 });
@@ -276,7 +276,7 @@ impl Linearizer for AnalysisHost {
                             env: self.env.clone(),
                             id,
                             pos: accessor.pos,
-                            ty: UnifType::Concrete(AbsType::Dyn()),
+                            ty: UnifType::Concrete(TypeF::Dyn),
                             kind: TermKind::Usage(UsageState::Deferred {
                                 parent: id - 1,
                                 child: accessor.to_owned(),
@@ -389,7 +389,7 @@ impl Linearizer for AnalysisHost {
 
         fn transform_wildcard(wildcars: &Vec<Types>, t: Types) -> Types {
             match t {
-                Types(AbsType::Wildcard(i)) => wildcars.get(i).unwrap_or(&t).clone(),
+                Types(TypeF::Wildcard(i)) => wildcars.get(i).unwrap_or(&t).clone(),
                 _ => t,
             }
         }
