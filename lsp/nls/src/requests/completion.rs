@@ -80,6 +80,20 @@ lazy_static! {
     // This regexp must be the reverse of the regexp in the lexer (nickel_lang::parser::lexer)
     // to correctly parse identifiers.
     static ref RE: regex::Regex = regex::Regex::new(r"[_a-zA-Z0-9-']*[a-zA-Z]_?").unwrap();
+    static ref RE_SPACE: regex::Regex = regex::Regex::new(r"\s+").unwrap();
+}
+
+/// Get the string chunks that make up an identifier path
+fn get_identifier_path(text: &str) -> Option<Vec<String>> {
+    let result: Vec<_> = RE_SPACE.split(text).map(String::from).collect();
+    let path = result
+        .iter()
+        .rev()
+        .cloned()
+        .collect::<Vec<_>>()
+        .get(0)
+        .cloned()?;
+    Some(path.split(".").map(String::from).collect())
 }
 
 /// Get the identifier before the `.`, for record completion.
