@@ -253,6 +253,7 @@ pub enum TypeF<Ty, RRows, ERows> {
 // be boxed. Hence, we don't need to additionally box `RecordRow`.
 
 /// Concrete, recursive definition for enum rows.
+#[derive(Clone, PartialEq, Debug)]
 pub struct EnumRows(pub EnumRowsF<Box<EnumRows>>);
 /// Concrete, recursive definition for a record row.
 pub type RecordRow = RecordRowF<Box<Types>>;
