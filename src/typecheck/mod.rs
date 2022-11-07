@@ -84,11 +84,14 @@ pub type Environment = GenericEnvironment<Ident, UnifType>;
 
 /// Mapping from wildcard ID to inferred type
 pub type Wildcards = Vec<Types>;
-
+/// Unification variable or type constants unique identifier.
 pub type VarId = usize;
 
+/// A unifiable record row.
 pub type GenericUnifRecordRow<E> = RecordRowF<Box<GenericUnifType<E>>>;
 
+/// Unifiable record rows. Same shape as [`crate::types::RecordRows`], but where each type is
+/// unifiable, and each tail may be a unification variable (or a constant).
 #[derive(Clone, PartialEq, Debug)]
 pub enum GenericUnifRecordRows<E: TermEnvironment + Clone> {
     Concrete(RecordRowsF<Box<GenericUnifType<E>>, Box<GenericUnifRecordRows<E>>>),
@@ -96,6 +99,11 @@ pub enum GenericUnifRecordRows<E: TermEnvironment + Clone> {
     UnifVar(VarId),
 }
 
+/// Unifiable enum rows. Same shape as [`crate::types::EnumRows`] but where each tail may be a
+/// unification variable (or a constant).
+///
+/// Enum rows don't store any type (they are just a sequence of identifiers), so there is no
+/// `GenericUnifEnumRows` taking an additioinal `E` parameter.
 #[derive(Clone, PartialEq, Debug)]
 pub enum UnifEnumRows {
     Concrete(EnumRowsF<Box<UnifEnumRows>>),
@@ -193,6 +201,7 @@ impl From<EnumRows> for UnifEnumRows {
 }
 
 impl UnifEnumRows {
+    /// Return an iterator producing immutable references to individual rows.
     pub fn iter<'a>(&'a self) -> EnumRowsIterator<'a, UnifEnumRows> {
         EnumRowsIterator { erows: Some(self) }
     }
@@ -212,7 +221,7 @@ impl<E: TermEnvironment + Clone> GenericUnifRecordRows<E> {
 }
 
 impl<E: TermEnvironment> GenericUnifRecordRows<E> {
-    pub fn iter<'a>(
+    pub(super) fn iter<'a>(
         &'a self,
     ) -> RecordRowsIterator<'a, GenericUnifType<E>, GenericUnifRecordRows<E>> {
         RecordRowsIterator {
@@ -365,6 +374,8 @@ impl UnifRecordRows {
         }
     }
 
+    /// Return the unification root associated to these record rows. If the rows are a unification
+    /// variable, return the result of `table.root_rrows`. Return `self` otherwise.
     fn into_root(self, table: &UnifTable) -> Self {
         match self {
             UnifRecordRows::UnifVar(var_id) => table.root_rrows(var_id),
@@ -390,6 +401,8 @@ impl UnifEnumRows {
         }
     }
 
+    /// Return the unification root associated to these enum rows. If the rows are a unification
+    /// variable, return the result of `table.root_erows`. Return `self` otherwise.
     fn into_root(self, table: &UnifTable) -> Self {
         match self {
             UnifEnumRows::UnifVar(var_id) => table.root_erows(var_id),
@@ -413,7 +426,7 @@ impl UnifType {
         }
     }
 
-    /// Extract the concrete type corresponding to a type wrapper. Free unification variables as well
+    /// Extract the concrete type corresponding to a unifiable type. Free unification variables as well
     /// as type constants are replaced with the type `Dyn`.
     fn into_type(self, table: &UnifTable) -> Types {
         match self {
@@ -434,6 +447,8 @@ impl UnifType {
         }
     }
 
+    /// Return the unification root associated to this type. If the type is a unification variable,
+    /// return the result of `table.root_type`. Return `self` otherwise.
     fn into_root(self, table: &UnifTable) -> Self {
         match self {
             UnifType::UnifVar(var_id) => table.root_type(var_id),
@@ -463,6 +478,7 @@ impl From<EnumRowsF<Box<UnifEnumRows>>> for UnifEnumRows {
     }
 }
 
+/// Iterator items produced by [`GenericUnifRecordRowsIterator`].
 pub enum GenericUnifRecordRowsIteratorItem<'a, E: TermEnvironment> {
     TailDyn,
     TailVar(&'a Ident),
@@ -470,6 +486,7 @@ pub enum GenericUnifRecordRowsIteratorItem<'a, E: TermEnvironment> {
     TailConstant(VarId),
     Row(RecordRowF<&'a GenericUnifType<E>>),
 }
+
 pub type UnifRecordRowsIteratorItem<'a> =
     GenericUnifRecordRowsIteratorItem<'a, SimpleTermEnvironment>;
 
@@ -513,6 +530,7 @@ impl<'a, E: TermEnvironment> Iterator
     }
 }
 
+/// Iterator items produced by [`EnumRowsIterator`].
 pub enum UnifEnumRowsIteratorItem<'a> {
     TailVar(&'a Ident),
     TailUnifVar(VarId),
@@ -550,24 +568,6 @@ impl<'a> Iterator for EnumRowsIterator<'a, UnifEnumRows> {
         })
     }
 }
-
-// impl<'a, E: TermEnvironment> Iterator for RowIterator<'a, GenericUnifType<E>> {
-//     type Item = RowIteratorItem<'a, GenericUnifType<E>>;
-//
-//     fn next(&mut self) -> Option<Self::Item> {
-//         self.next.and_then(|next| match next {
-//             GenericUnifType::Concrete(TypeF::Empty) => None,
-//             GenericUnifType::Concrete(TypeF::RowExtend(id, ty_row, tail)) => {
-//                 self.next = Some(tail);
-//                 Some(RowIteratorItem::Row(id, ty_row.as_ref().map(Box::as_ref)))
-//             }
-//             ty => {
-//                 self.next = None;
-//                 Some(RowIteratorItem::Tail(ty))
-//             }
-//         })
-//     }
-// }
 
 /// The typing context is a structure holding the scoped, environment-like data structures required
 /// to perform typechecking.
@@ -981,6 +981,7 @@ fn walk_type<L: Linearizer>(
     }
 }
 
+/// Same as [`walk_type`] but operate on record rows.
 fn walk_rrows<L: Linearizer>(
     state: &mut State,
     ctxt: Context,
@@ -1973,8 +1974,7 @@ pub fn unify_rrows(
     }
 }
 
-/// Try to unify two row types. Return an [`RowUnifError::IllformedRow`] error if one of the given
-/// type is not a row type.
+/// Try to unify two enum row types.
 pub fn unify_erows(
     state: &mut State,
     ctxt: &Context,
@@ -2042,6 +2042,7 @@ enum ForallInst {
 /// variable to be the same type.
 ///
 /// # Parameters
+///
 /// - `state`: the unification state
 /// - `ty`: the polymorphic type to instantiate
 /// - `inst`: the type of instantiation, either by a type constant or by a unification variable
@@ -2101,6 +2102,9 @@ fn instantiate_foralls(state: &mut State, mut ty: UnifType, inst: ForallInst) ->
 /// Map each unification variable to either another type variable or a concrete type it has been
 /// unified with. Each binding `(ty, var)` in this map should be thought of an edge in a
 /// unification graph.
+///
+/// The unification table is really three separate tables, corresponding to the different kind of
+/// types: standard types, record rows, and enum rows.
 #[derive(Default)]
 pub struct UnifTable {
     types: Vec<Option<UnifType>>,
@@ -2113,92 +2117,97 @@ impl UnifTable {
         UnifTable::default()
     }
 
-    /// Assign a type to a unification variable.
+    /// Assign a type to a type unification variable.
     pub fn assign_type(&mut self, var: VarId, uty: UnifType) {
         debug_assert!(self.types[var].is_none());
         self.types[var] = Some(uty);
     }
 
-    /// Assign a type to a unification variable.
+    /// Assign record rows to a record rows unification variable.
     pub fn assign_rrows(&mut self, var: VarId, rrows: UnifRecordRows) {
         debug_assert!(self.rrows[var].is_none());
         self.rrows[var] = Some(rrows);
     }
 
-    /// Assign a type to a unification variable.
+    /// Assign enum rows to an enum rows unification variable.
     pub fn assign_erows(&mut self, var: VarId, erows: UnifEnumRows) {
         debug_assert!(self.erows[var].is_none());
         self.erows[var] = Some(erows);
     }
 
-    /// Retrieve the current assignment of a unification variable.
+    /// Retrieve the current assignment of a type unification variable.
     pub fn get_type(&self, var: VarId) -> Option<&UnifType> {
         self.types[var].as_ref()
     }
 
-    /// Retrieve the current assignment of a unification variable.
+    /// Retrieve the current assignment of a record rows unification variable.
     pub fn get_rrows(&self, var: VarId) -> Option<&UnifRecordRows> {
         self.rrows[var].as_ref()
     }
 
-    /// Retrieve the current assignment of a unification variable.
+    /// Retrieve the current assignment of an enum rows unification variable.
     pub fn get_erows(&self, var: VarId) -> Option<&UnifEnumRows> {
         self.erows[var].as_ref()
     }
 
-    /// Create a fresh variable identifier and allocate a corresponding slot in the table.
+    /// Create a fresh type unification variable (or constant) identifier and allocate a
+    /// corresponding slot in the table.
     fn fresh_type_var_id(&mut self) -> VarId {
         let next = self.types.len();
         self.types.push(None);
         next
     }
 
-    /// Create a fresh variable identifier and allocate a corresponding slot in the table.
+    /// Create a fresh record rows variable (or constant) identifier and allocate a corresponding
+    /// slot in the table.
     fn fresh_rrows_var_id(&mut self) -> VarId {
         let next = self.rrows.len();
         self.rrows.push(None);
         next
     }
 
-    /// Create a fresh variable identifier and allocate a corresponding slot in the table.
+    /// Create a fresh enum rows variable (or constant) identifier and allocate a corresponding
+    /// slot in the table.
     fn fresh_erows_var_id(&mut self) -> VarId {
         let next = self.erows.len();
         self.erows.push(None);
         next
     }
 
-    /// Create a fresh unification variable and allocate a corresponding slot in the table.
+    /// Create a fresh type unification variable and allocate a corresponding slot in the table.
     pub fn fresh_type_uvar(&mut self) -> UnifType {
         UnifType::UnifVar(self.fresh_type_var_id())
     }
 
-    /// Create a fresh unification variable and allocate a corresponding slot in the table.
+    /// Create a fresh record rows unification variable and allocate a corresponding slot in the
+    /// table.
     pub fn fresh_rrows_uvar(&mut self) -> UnifRecordRows {
         UnifRecordRows::UnifVar(self.fresh_rrows_var_id())
     }
 
-    /// Create a fresh unification variable and allocate a corresponding slot in the table.
+    /// Create a fresh enum rows unification variable and allocate a corresponding slot in the
+    /// table.
     pub fn fresh_erows_uvar(&mut self) -> UnifEnumRows {
         UnifEnumRows::UnifVar(self.fresh_erows_var_id())
     }
 
-    /// Create a fresh unification variable and allocate a corresponding slot in the table.
+    /// Create a fresh type constant and allocate a corresponding slot in the table.
     pub fn fresh_type_const(&mut self) -> UnifType {
         UnifType::Constant(self.fresh_type_var_id())
     }
 
-    /// Create a fresh unification variable and allocate a corresponding slot in the table.
+    /// Create a fresh record rows constant and allocate a corresponding slot in the table.
     pub fn fresh_rrows_const(&mut self) -> UnifRecordRows {
         UnifRecordRows::Constant(self.fresh_rrows_var_id())
     }
 
-    /// Create a fresh unification variable and allocate a corresponding slot in the table.
+    /// Create a fresh enum rows constant and allocate a corresponding slot in the table.
     pub fn fresh_erows_const(&mut self) -> UnifEnumRows {
         UnifEnumRows::Constant(self.fresh_erows_var_id())
     }
 
-    /// Follow the links in the unification table to find the representative of the equivalence class
-    /// of unification variable `x`.
+    /// Follow the links in the unification table to find the representative of the equivalence
+    /// class of the type unification variable `x`.
     ///
     /// This corresponds to the find in union-find.
     // TODO This should be a union find like algorithm
@@ -2213,8 +2222,8 @@ impl UnifTable {
         }
     }
 
-    /// Follow the links in the unification table to find the representative of the equivalence class
-    /// of unification variable `x`.
+    /// Follow the links in the unification table to find the representative of the equivalence
+    /// class of the record rows unification variable `x`.
     ///
     /// This corresponds to the find in union-find.
     // TODO This should be a union find like algorithm
@@ -2229,8 +2238,8 @@ impl UnifTable {
         }
     }
 
-    /// Follow the links in the unification table to find the representative of the equivalence class
-    /// of unification variable `x`.
+    /// Follow the links in the unification table to find the representative of the equivalence
+    /// class of the enum rows unification variable `x`.
     ///
     /// This corresponds to the find in union-find.
     // TODO This should be a union find like algorithm
@@ -2250,8 +2259,8 @@ impl UnifTable {
     /// different from all the currently live variables. This is currently simply the max of the
     /// length of the various unification tables.
     ///
-    /// Used inside [typecheck::eq] to generate temporary rigid type variables that are guaranteed
-    /// to not conflict with existing variables.
+    /// Used inside [super::eq] to generate temporary rigid type variables that are guaranteed to
+    /// not conflict with existing variables.
     pub fn max_uvars_count(&self) -> VarId {
         use std::cmp::max;
 
@@ -2275,13 +2284,14 @@ trait ConstrainFreshRRowsVar {
     /// unification variable `Ptr(p)`, this unification variable requires a constraint to avoid being
     /// unified with a row type containing another declaration for the field `x`.
     ///
-    /// This function traverses the type `ty`, looking for all occurrences of the unification variable
-    /// `p` inside a row type, to add the corresponding constraints.
+    /// This function traverses the type or rows `self`, looking for all occurrences of the
+    /// unification variable `p` in tail position of record rows to add the corresponding
+    /// constraints.
     ///
     /// # Preconditions
     ///
-    /// Because `constraint_var` should be called on a fresh unification variable `p`, the following
-    /// preconditions are assumed:
+    /// Because `constraint_fresh_rrows_var` should be called on a fresh unification variable `p`,
+    /// the following precondition is assumed and required:
     ///
     /// - `state.table.root_rrows(p) == p`
     fn constrain_fresh_rrows_var(&self, state: &mut State, var_id: VarId);
@@ -2290,20 +2300,16 @@ trait ConstrainFreshRRowsVar {
 trait ConstrainFreshERowsVar {
     /// Add row constraints on a freshly instantiated type variable.
     ///
-    /// When instantiating a quantified type variable with a unification variable, row constraints may
-    /// apply. For example, if we instantiate `forall a. {x: Num | a} -> Num` by replacing `a` with a
-    /// unification variable `Ptr(p)`, this unification variable requires a constraint to avoid being
-    /// unified with a row type containing another declaration for the field `x`.
-    ///
-    /// This function traverses the type `ty`, looking for all occurrences of the unification variable
-    /// `p` inside a row type, to add the corresponding constraints.
+    /// This function traverses the type or rows `self`, looking for all occurrences of the
+    /// unification variable `p` in tail position of enum rows, to add the corresponding
+    /// constraints.
     ///
     /// # Preconditions
     ///
-    /// Because `constraint_var` should be called on a fresh unification variable `p`, the following
-    /// preconditions are assumed:
+    /// Because `constraint_fresh_erows_var` should be called on a fresh unification variable `p`,
+    /// the following precondition is assumed and required:
     ///
-    /// - `state.table.root_rrows(p) == p`
+    /// - `state.table.root_erows(p) == p`
     fn constrain_fresh_erows_var(&self, state: &mut State, var_id: VarId);
 }
 
@@ -2539,7 +2545,7 @@ pub fn constr_unify_erows(
     }
 }
 
-/// Get the typevar associated with a given wildcard ID.
+/// Get the type unification variable associated with a given wildcard ID.
 fn get_wildcard_var(
     table: &mut UnifTable,
     wildcard_vars: &mut Vec<UnifType>,
