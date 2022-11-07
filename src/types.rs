@@ -173,8 +173,12 @@ pub enum VarKind {
 /// type to be inferred). Instead of duplicating the whole definition of `Types` as well as all
 /// basic methods, we can simply have a different recursive definition:
 ///
-/// ```rust
-///  pub enum UnifType {
+/// ```
+/// # // phony declarations to make this example pass the tests
+/// # type VarId = ();
+/// # type TypeF<T> = T;
+///
+/// pub enum UnifType {
 ///    UnifVar(VarId),
 ///    Concrete(TypeF<Box<UnifType> /*, .. */>),
 ///    // ..
