@@ -18,8 +18,8 @@ pub fn transform(rt: &mut RichTerm) {
 }
 
 pub trait CollectFreeVars {
-    /// Collect the free variables of a term inside the provided hashset. Doing so, fill the recursive
-    /// record dependencies data accordingly.
+    /// Collect the free variables of a term or type inside the provided hashset. Doing so, fill
+    /// the recursive record dependencies data accordingly.
     fn collect_free_vars(&mut self, working_set: &mut HashSet<Ident>);
 }
 
