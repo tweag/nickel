@@ -52,7 +52,7 @@ use crate::{
     error::TypecheckError,
     identifier::Ident,
     term::{Contract, MetaValue, RichTerm, StrChunk, Term, TraverseOrder},
-    types::{TypeF, RowsF, RecordRowF, RecordRow, EnumRow, RowIterator, RowIteratorItem, Types, RecordRows, EnumRows, VarKind},
+    types::{TypeF, RecordRowsF, EnumRowsF, RecordRowF, RecordRow, EnumRow, RowIterator, RowIteratorItem, Types, RecordRows, EnumRows, VarKind, TraverseType, TraverseEnumRows, TraverseRecordRows},
     {mk_tyw_arrow, mk_tyw_enum, mk_tyw_enum_row, mk_tyw_record, mk_tyw_row},
 };
 
@@ -87,14 +87,14 @@ pub type GenericUnifRecordRow<E : TermEnvironment + Clone> = RecordRowF<Box<Gene
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum GenericUnifRecordRows<E : TermEnvironment + Clone> {
-    Concrete(RowsF<GenericUnifRecordRow<E>, Box<GenericUnifRecordRows<E>>>),
+    Concrete(RecordRowsF<Box<GenericUnifType<E>>, Box<GenericUnifRecordRows<E>>>),
     Constant(VarId),
     UnifVar(VarId),
 }
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum UnifEnumRows {
-    Concrete(RowsF<EnumRow, Box<UnifEnumRows>>),
+    Concrete(EnumRowsF<Box<UnifEnumRows>>),
     Constant(VarId),
     UnifVar(VarId),
 }
@@ -169,7 +169,7 @@ impl<E: TermEnvironment + Clone> GenericUnifRecordRows<E> {
     /// [`TypeWrapper::Contract`] which also stores a term environment, required for checking type
     /// equality involving contracts.
     pub fn from_record_rows(rrows: RecordRows, env: &E) -> Self {
-        let f_rrow = |rrow : RecordRow| { RecordRowF { id: rrow.id, types: Box::new(GenericUnifType::from_type(*rrow.types, env)) } };
+        let f_rrow = |ty : Box<Types>| Box::new(GenericUnifType::from_type(*ty, env));
         let f_rrows = |rrows: Box<RecordRows>| { Box::new(GenericUnifRecordRows::from_record_rows(*rrows,env)) };
 
         GenericUnifRecordRows::Concrete(
@@ -178,103 +178,80 @@ impl<E: TermEnvironment + Clone> GenericUnifRecordRows<E> {
     }
 }
 
-trait Subst {
-    fn subst(self, id: &Ident, to: &Self) -> Self;
+trait SubstType<E: TermEnvironment + Clone> {
+    fn subst_type(self, id: &Ident, to: &GenericUnifType<E>) -> Self;
 }
 
-impl<E: TermEnvironment + Clone> Subst for GenericUnifRecordRows<E> {
-    fn subst(self, id: &Ident, to: &GenericUnifRecordRows<E>) -> GenericUnifRecordRows<E> {
-        use self::GenericUnifRecordRows::*;
+trait SubstRRows<E: TermEnvironment + Clone> {
+    fn subst_rrows(self, id: &Ident, to: &GenericUnifRecordRows<E>) -> Self;
+}
 
-        fn subst_rrows<E: TermEnvironment + Clone>(rrows: GenericUnifRecordRows<E>, id: &Ident, to: &GenericUnifType<E>) -> GenericUnifRecordRows<E> {
-            match rrows {
-                GenericUnifRecordRows::Concrete(RowsF::Empty)
-                | GenericUnifRecordRows::Concrete(RowsF::TailDyn)
-                | GenericUnifRecordRows::Concrete(RowsF::TailVar(_)) => rrows,
-                GenericUnifRecordRows::Concrete(RowsF::Extend { row, tail }) => GenericUnifRecordRows::Concrete(RowsF::Extend { row: RecordRowF { id: row.id, types: Box::new(row.types.subst(id, to)) }, tail: Box::new(subst_rrows(*tail, id, to)) }), 
-                _ => rrows,
-            }
-        }
+trait SubstERows {
+    fn subst_erows(self, id: &Ident, to: &UnifEnumRows) -> Self;
+}
 
+impl<E: TermEnvironment + Clone> SubstType<E> for GenericUnifType<E> {
+    fn subst_type(self, id: &Ident, to: &GenericUnifType<E>) -> Self {
         match self {
-            Concrete(TypeF::Var(ref i)) if *i == *id => to.clone(),
-            Concrete(TypeF::Forall {var, var_kind: VarKind::Type, body}) if var == *id => Concrete(TypeF::Forall {var, var_kind: VarKind::Type, body}),
-            Concrete(TypeF::Forall {var, var_kind, body}) => Concrete(TypeF::Forall {var, var_kind, body: Box::new((*body).subst(id, to))}),
-            Concrete(TypeF::Arrow(s, t)) => {
-                let fs = s.subst(id, to);
-                let ft = t.subst(id, to);
-
-                Concrete(TypeF::Arrow(Box::new(fs), Box::new(ft)))
-            }
-            Concrete(TypeF::Record(rrows)) => Concrete(TypeF::Record(subst_rrows(rrows, id, to))),
-            Concrete(TypeF::Dict(def_ty)) => {
-                Concrete(TypeF::Dict(Box::new(def_ty.subst(id, to))))
-            }
-            Concrete(TypeF::Array(ty)) => Concrete(TypeF::Array(Box::new(ty.subst(id, to)))),
-            // Cases are spelled out instead of using a catch-all case `_ => ` to force
-            // contributors to patch this code when they add new types constructors.
-            Concrete(TypeF::Var(_))
-            | Concrete(TypeF::Dyn)
-            | Concrete(TypeF::Num)
-            | Concrete(TypeF::Bool)
-            | Concrete(TypeF::Str)
-            | Concrete(TypeF::Sym)
-            | Concrete(TypeF::Flat(_))
-            | Concrete(TypeF::Wildcard(_))
-            | Contract(..)
-            | Constant(_)
-            // There can't be a standard type variable hiding inside an enum row.
-            | Concrete(TypeF::Enum(_))
-            | UnifVar(_) => self,
+            GenericUnifType::Concrete(TypeF::Var(var_id)) if var_id == *id => to.clone(),
+            GenericUnifType::Concrete(t) => GenericUnifType::Concrete(t.map(|ty| Box::new(ty.subst_type(id, to)), |rrows| rrows.subst_type(id, to), |erows| erows)),
+            _ => self
         }
     }
 }
 
-impl<E: TermEnvironment + Clone> Subst for GenericUnifType<E> {
-    /// Substitute all the occurrences of a type variable for a typewrapper.
-    fn subst(self, id: &Ident, to: &GenericUnifType<E>) -> GenericUnifType<E> {
-        use self::GenericUnifType::*;
-
-        fn subst_rrows<E: TermEnvironment + Clone>(rrows: GenericUnifRecordRows<E>, id: &Ident, to: &GenericUnifType<E>) -> GenericUnifRecordRows<E> {
-            match rrows {
-                GenericUnifRecordRows::Concrete(RowsF::Empty)
-                | GenericUnifRecordRows::Concrete(RowsF::TailDyn)
-                | GenericUnifRecordRows::Concrete(RowsF::TailVar(_)) => rrows,
-                GenericUnifRecordRows::Concrete(RowsF::Extend { row, tail }) => GenericUnifRecordRows::Concrete(RowsF::Extend { row: RecordRowF { id: row.id, types: Box::new(row.types.subst(id, to)) }, tail: Box::new(subst_rrows(*tail, id, to)) }), 
-                _ => rrows,
-            }
-        }
-
+impl<E: TermEnvironment + Clone> SubstType<E> for GenericUnifRecordRows<E> {
+    fn subst_type(self, id: &Ident, to: &GenericUnifType<E>) -> Self {
         match self {
-            Concrete(TypeF::Var(ref i)) if *i == *id => to.clone(),
-            Concrete(TypeF::Forall {var, var_kind: VarKind::Type, body}) if var == *id => Concrete(TypeF::Forall {var, var_kind: VarKind::Type, body}),
-            Concrete(TypeF::Forall {var, var_kind, body}) => Concrete(TypeF::Forall {var, var_kind, body: Box::new((*body).subst(id, to))}),
-            Concrete(TypeF::Arrow(s, t)) => {
-                let fs = s.subst(id, to);
-                let ft = t.subst(id, to);
+            GenericUnifRecordRows::Concrete(rrows) => GenericUnifRecordRows::Concrete(rrows.map(|ty| Box::new(ty.subst_type(id, to)), |rrows| Box::new(rrows.subst_type(id, to)))),
+            _ => self
+        }
+    }
+}
 
-                Concrete(TypeF::Arrow(Box::new(fs), Box::new(ft)))
-            }
-            Concrete(TypeF::Record(rrows)) => Concrete(TypeF::Record(subst_rrows(rrows, id, to))),
-            Concrete(TypeF::Dict(def_ty)) => {
-                Concrete(TypeF::Dict(Box::new(def_ty.subst(id, to))))
-            }
-            Concrete(TypeF::Array(ty)) => Concrete(TypeF::Array(Box::new(ty.subst(id, to)))),
-            // Cases are spelled out instead of using a catch-all case `_ => ` to force
-            // contributors to patch this code when they add new types constructors.
-            Concrete(TypeF::Var(_))
-            | Concrete(TypeF::Dyn)
-            | Concrete(TypeF::Num)
-            | Concrete(TypeF::Bool)
-            | Concrete(TypeF::Str)
-            | Concrete(TypeF::Sym)
-            | Concrete(TypeF::Flat(_))
-            | Concrete(TypeF::Wildcard(_))
-            | Contract(..)
-            | Constant(_)
-            // There can't be a standard type variable hiding inside an enum row.
-            | Concrete(TypeF::Enum(_))
-            | UnifVar(_) => self,
+impl<E: TermEnvironment + Clone> SubstRRows<E> for GenericUnifType<E> {
+    fn subst_rrows(self, id: &Ident, to: &GenericUnifRecordRows<E>) -> Self {
+        match self {
+            GenericUnifType::Concrete(t) => GenericUnifType::Concrete(t.map(|ty| Box::new(ty.subst_rrows(id, to)), |rrows| rrows.subst_rrows(id, to), |erows| erows)),
+            _ => self
+        }
+    }
+}
+
+impl<E: TermEnvironment + Clone> SubstRRows<E> for GenericUnifRecordRows<E> {
+    fn subst_rrows(self, id: &Ident, to: &GenericUnifRecordRows<E>) -> Self {
+        match self {
+            GenericUnifRecordRows::Concrete(RecordRowsF::TailVar(var_id)) if var_id == *id => to.clone(),
+            GenericUnifRecordRows::Concrete(rrows) => GenericUnifRecordRows::Concrete(rrows.map(|ty| Box::new(ty.subst_rrows(id, to)), |rrows| Box::new(rrows.subst_rrows(id, to)))),
+            _ => self
+        }
+    }
+}
+
+impl<E: TermEnvironment + Clone> SubstERows for GenericUnifType<E> {
+    fn subst_erows(self, id: &Ident, to: &UnifEnumRows) -> Self {
+        match self {
+            GenericUnifType::Concrete(t) => GenericUnifType::Concrete(t.map(|ty| Box::new(ty.subst_erows(id, to)), |rrows| rrows.subst_erows(id, to), |erows| erows.subst_erows(id, to))),
+            _ => self
+        }
+    }
+}
+
+impl<E: TermEnvironment + Clone> SubstERows for GenericUnifRecordRows<E> {
+    fn subst_erows(self, id: &Ident, to: &UnifEnumRows) -> Self {
+        match self {
+            GenericUnifRecordRows::Concrete(rrows) => GenericUnifRecordRows::Concrete(rrows.map(|ty| Box::new(ty.subst_erows(id, to)), |rrows| Box::new(rrows.subst_erows(id, to)))),
+            _ => self
+        }
+    }
+}
+
+impl SubstERows for UnifEnumRows {
+    fn subst_erows(self, id: &Ident, to: &UnifEnumRows) -> Self {
+        match self {
+            UnifEnumRows::Concrete(EnumRowsF::TailVar(var_id)) if var_id == *id => to.clone(),
+            UnifEnumRows::Concrete(rrows) => UnifEnumRows::Concrete(rrows.map(|erows| Box::new(erows.subst_erows(id, to)))),
+            _ => self
         }
     }
 }
