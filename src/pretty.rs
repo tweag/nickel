@@ -1,7 +1,7 @@
 use crate::destruct::{self, Destruct};
 use crate::parser::lexer::KEYWORDS;
 use crate::term::{BinaryOp, MetaValue, RichTerm, Term, UnaryOp};
-use crate::types::{AbsType, Types};
+use crate::types::{EnumRows, RecordRows, TypeF, Types};
 pub use pretty::{DocAllocator, DocBuilder, Pretty};
 use regex::Regex;
 use std::collections::HashMap;
@@ -715,6 +715,28 @@ where
     }
 }
 
+impl<'a, D, A> Pretty<'a, D, A> for EnumRows
+where
+    D: NickelAllocatorExt<'a, A>,
+    D::Doc: Clone,
+    A: Clone + 'a,
+{
+    fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
+        todo!()
+    }
+}
+
+impl<'a, D, A> Pretty<'a, D, A> for RecordRows
+where
+    D: NickelAllocatorExt<'a, A>,
+    D::Doc: Clone,
+    A: Clone + 'a,
+{
+    fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
+        todo!()
+    }
+}
+
 impl<'a, D, A> Pretty<'a, D, A> for Types
 where
     D: NickelAllocatorExt<'a, A>,
@@ -722,12 +744,12 @@ where
     A: Clone + 'a,
 {
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
-        use AbsType::*;
+        use TypeF::*;
         match self.0 {
-            Dyn() => allocator.text("Dyn"),
-            Num() => allocator.text("Num"),
-            Bool() => allocator.text("Bool"),
-            Str() => allocator.text("Str"),
+            Dyn => allocator.text("Dyn"),
+            Num => allocator.text("Num"),
+            Bool => allocator.text("Bool"),
+            Str => allocator.text("Str"),
             Array(ty) => allocator
                 .text("Array")
                 .group()
@@ -737,7 +759,7 @@ where
                 } else {
                     ty.pretty(allocator).nest(2).parens()
                 }),
-            Sym() => allocator.text("Sym"),
+            Sym => allocator.text("Sym"),
             Flat(t) => t.pretty(allocator),
             Var(var) => allocator.as_string(var),
             Forall(id, ref ty) => {
@@ -759,16 +781,17 @@ where
                     .append(allocator.line())
                     .append(curr.to_owned().pretty(allocator))
             }
-            Enum(row) => row.pretty(allocator).enclose("[|", "|]"),
-            Record(row) => match &row.0 {
-                AbsType::Var(id) => allocator
-                    .space()
-                    .append(allocator.text(";"))
-                    .append(allocator.space())
-                    .append(allocator.as_string(id))
-                    .braces(),
-                _ => row.pretty(allocator).braces(),
-            },
+            Enum(erows) => erows.pretty(allocator).enclose("[|", "|]"),
+            Record(rrows) => rrows.pretty(allocator).braces(),
+            // match &row.0 {
+            //     TypeF::Var(id) => allocator
+            //         .space()
+            //         .append(allocator.text(";"))
+            //         .append(allocator.space())
+            //         .append(allocator.as_string(id))
+            //         .braces(),
+            //     _ => row.pretty(allocator).braces(),
+            // },
             Dict(ty) => allocator
                 .line()
                 .append(allocator.text("_"))
@@ -778,37 +801,36 @@ where
                 .append(ty.pretty(allocator))
                 .append(allocator.line())
                 .braces(),
-            RowEmpty() => allocator.nil(),
-            RowExtend(id, ty_opt, tail) => {
-                let builder = if let Some(ty) = ty_opt {
-                    allocator
-                        .quote_if_needed(&id)
-                        .append(allocator.text(":"))
-                        .append(allocator.space())
-                        .append(ty.pretty(allocator))
-                } else {
-                    allocator.text("`").append(allocator.quote_if_needed(&id))
-                };
-
-                match tail.0 {
-                    AbsType::RowEmpty() => builder,
-                    AbsType::Var(_) => builder
-                        .append(allocator.space())
-                        .append(allocator.text(";"))
-                        .append(allocator.space()),
-                    AbsType::Dyn() => {
-                        return builder
-                            .append(allocator.space())
-                            .append(allocator.text(";"))
-                            .append(allocator.space())
-                            .append(allocator.text("Dyn"))
-                    }
-                    _ => builder
-                        .append(allocator.text(","))
-                        .append(allocator.space()),
-                }
-                .append(tail.pretty(allocator))
-            }
+            // RowExtend(id, ty_opt, tail) => {
+            //     let builder = if let Some(ty) = ty_opt {
+            //         allocator
+            //             .quote_if_needed(&id)
+            //             .append(allocator.text(":"))
+            //             .append(allocator.space())
+            //             .append(ty.pretty(allocator))
+            //     } else {
+            //         allocator.text("`").append(allocator.quote_if_needed(&id))
+            //     };
+            //
+            //     match tail.0 {
+            //         TypeF::RowEmpty() => builder,
+            //         TypeF::Var(_) => builder
+            //             .append(allocator.space())
+            //             .append(allocator.text(";"))
+            //             .append(allocator.space()),
+            //         TypeF::Dyn() => {
+            //             return builder
+            //                 .append(allocator.space())
+            //                 .append(allocator.text(";"))
+            //                 .append(allocator.space())
+            //                 .append(allocator.text("Dyn"))
+            //         }
+            //         _ => builder
+            //             .append(allocator.text(","))
+            //             .append(allocator.space()),
+            //     }
+            //     .append(tail.pretty(allocator))
+            // }
             Arrow(dom, codom) => match dom.0 {
                 Arrow(..) | Forall(..) => dom
                     .pretty(allocator)

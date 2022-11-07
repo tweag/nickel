@@ -6,7 +6,7 @@ use crate::label::Label;
 use crate::position::RawSpan;
 use crate::term::record::RecordData;
 use crate::term::{Contract, MetaValue, RecordAttrs, RichTerm, Term};
-use crate::types::{AbsType, Types};
+use crate::types::{TypeF, Types};
 
 /// A match field in a `Destruct` pattern.
 /// every field can contain a `MetaValue` either simply because they are annotated either because
@@ -60,7 +60,7 @@ impl Destruct {
         let open = self.is_open();
         MetaValue {
             contracts: vec![Contract {
-                types: Types(AbsType::Flat(
+                types: Types(TypeF::Flat(
                     Term::Record(RecordData::new(
                         self.inner()
                             .into_iter()

@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use crate::eval::lazy::Thunk;
 use crate::position::{RawSpan, TermPos};
-use crate::types::{AbsType, Types};
+use crate::types::{TypeF, Types};
 use codespan::Files;
 
 pub mod ty_path {
@@ -42,8 +42,10 @@ pub mod ty_path {
     //! indicating that the path leading to the subtype of interest goes through a record via a
     //! particular field.
 
-    use super::{AbsType, Types};
-    use crate::identifier::Ident;
+    use crate::{
+        identifier::Ident,
+        types::{TypeF, Types, RowsF, RecordRowF},
+    };
 
     /// An element of a path type.
     #[derive(Debug, Clone, PartialEq)]
@@ -90,10 +92,10 @@ pub mod ty_path {
                 let repr = format!("{}", ty);
                 return (0, repr.len());
             }
-            (AbsType::Forall(_, _), Some(_)) => {
+            (TypeF::Forall(_, _), Some(_)) => {
                 // The length of "forall" plus the final separating dot and whitespace ". "
                 let mut result = 8;
-                while let AbsType::Forall(id, body) = &ty.0 {
+                while let TypeF::Forall(id, body) = &ty.0 {
                     // The length of the identifier plus the preceding whitespace
                     result += id.to_string().len() + 1;
                     ty = body.as_ref();
@@ -105,7 +107,7 @@ pub mod ty_path {
         };
 
         match (&ty.0, path_it.next()) {
-            (AbsType::Arrow(dom, codom), Some(next)) => {
+            (TypeF::Arrow(dom, codom), Some(next)) => {
                 // The potential shift of the start position of the domain introduced by the couple
                 // of parentheses around the domain. Parentheses are added when printing a function
                 // type whose domain is itself a function.
@@ -113,7 +115,7 @@ pub mod ty_path {
                 // In this case, the position of the sub-type "Num -> Num" starts at 1 instead of
                 // 0.
                 let paren_offset = match dom.0 {
-                    AbsType::Arrow(_, _) => 1,
+                    TypeF::Arrow(_, _) => 1,
                     _ => 0,
                 };
 
@@ -140,7 +142,7 @@ pub mod ty_path {
                     _ => panic!(),
                 }
             }
-            (AbsType::Record(rows), Some(Elem::Field(ident))) => {
+            (TypeF::Record(rows), Some(Elem::Field(ident))) => {
                 // initial "{"
                 let mut start_offset = 1;
                 // middle ": " between the field name and the type
@@ -151,29 +153,31 @@ pub mod ty_path {
                 let mut row = &rows.0;
                 loop {
                     match row {
-                        AbsType::RowExtend(id, Some(ty), _) if id == ident => {
-                            let (sub_start, sub_end) = span(path_it, ty);
-                            let full_offset = start_offset + format!("{}", id).len() + id_offset;
-                            break (full_offset + sub_start, full_offset + sub_end);
+                        RowsF::Extend { row: RecordRowF {id, types: ty}, tail: _ } if id == ident => {
+                            todo!()
+                            // let (sub_start, sub_end) = span(path_it, ty);
+                            // let full_offset = start_offset + format!("{}", id).len() + id_offset;
+                            // break (full_offset + sub_start, full_offset + sub_end);
                         }
-                        AbsType::RowExtend(id, Some(ty), tail) => {
-                            // The last +1 is for the
-                            start_offset += format!("{}", id).len()
-                                + id_offset
-                                + format!("{}", ty).len()
-                                + end_offset;
-                            row = &tail.0;
+                        RowsF::Extend { row: RecordRowF {id, types: ty}, tail: _ } => {
+                            todo!()
+                            // // The last +1 is for the
+                            // start_offset += format!("{}", id).len()
+                            //     + id_offset
+                            //     + format!("{}", ty).len()
+                            //     + end_offset;
+                            // row = &tail.0;
                         }
                         _ => panic!(),
                     }
                 }
             }
-            (AbsType::Array(ty), Some(Elem::Array)) if *ty.as_ref() == Types(AbsType::Dyn()) =>
+            (TypeF::Array(ty), Some(Elem::Array)) if *ty.as_ref() == Types(TypeF::Dyn) =>
             // Dyn shouldn't be the target of any blame
             {
                 panic!("span(): unexpected blame of a dyn contract inside an array")
             }
-            (AbsType::Array(ty), Some(Elem::Array)) => {
+            (TypeF::Array(ty), Some(Elem::Array)) => {
                 // initial "Array "
                 let start_offset = 6;
                 let paren_offset = if ty.fmt_is_atom() { 0 } else { 1 };
@@ -253,7 +257,7 @@ impl Label {
     /// Generate a dummy label for testing purpose.
     pub fn dummy() -> Label {
         Label {
-            types: Rc::new(Types(AbsType::Num())),
+            types: Rc::new(Types(TypeF::Num)),
             tag: "testing".to_string(),
             span: RawSpan {
                 src_id: Files::new().add("<test>", String::from("empty")),
@@ -271,7 +275,7 @@ impl Label {
 impl Default for Label {
     fn default() -> Label {
         Label {
-            types: Rc::new(Types(AbsType::Dyn())),
+            types: Rc::new(Types(TypeF::Dyn)),
             tag: "".to_string(),
             span: RawSpan {
                 src_id: Files::new().add("<null>", String::from("")),

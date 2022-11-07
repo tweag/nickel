@@ -1,12 +1,12 @@
 //! Helpers for building `TypeWrapper`s.
-use super::{AbsType, TypeWrapper};
+use super::{TypeF, RowsF, RecordRowF, EnumRow, TypeWrapper};
 
 /// Multi-ary arrow constructor for types implementing `Into<TypeWrapper>`.
 #[macro_export]
 macro_rules! mk_tyw_arrow {
     ($left:expr, $right:expr) => {
         $crate::typecheck::TypeWrapper::Concrete(
-            $crate::types::AbsType::Arrow(
+            $crate::types::TypeF::Arrow(
                 Box::new($crate::typecheck::TypeWrapper::from($left)),
                 Box::new($crate::typecheck::TypeWrapper::from($right))
             )
@@ -22,18 +22,17 @@ macro_rules! mk_tyw_arrow {
 #[macro_export]
 macro_rules! mk_tyw_enum_row {
     () => {
-        $crate::typecheck::TypeWrapper::from(AbsType::RowEmpty())
+        $crate::typecheck::TypeWrapper::from(RowsF::Empty)
     };
     (; $tail:expr) => {
         $crate::typecheck::TypeWrapper::from($tail)
     };
     ( $id:expr $(, $ids:expr )* $(; $tail:expr)?) => {
         $crate::typecheck::TypeWrapper::Concrete(
-            $crate::types::AbsType::RowExtend(
-                Ident::from($id),
-                None,
-                Box::new(mk_tyw_enum_row!($( $ids ),* $(; $tail)?))
-            )
+            $crate::types::RowsF::Extend {
+                row: Ident::from($id),
+                tail: Box::new(mk_tyw_enum_row!($( $ids ),* $(; $tail)?))
+            }
         )
     };
 }
@@ -44,18 +43,18 @@ macro_rules! mk_tyw_enum_row {
 #[macro_export]
 macro_rules! mk_tyw_row {
     () => {
-        $crate::typecheck::TypeWrapper::from(AbsType::RowEmpty())
+        $crate::typecheck::TypeWrapper::from(RowsF::Empty)
     };
     (; $tail:expr) => {
         $crate::typecheck::TypeWrapper::from($tail)
     };
     (($id:expr, $ty:expr) $(,($ids:expr, $tys:expr))* $(; $tail:expr)?) => {
         $crate::typecheck::TypeWrapper::Concrete(
-            $crate::types::AbsType::RowExtend(
+            $crate::types::RowsF::Extend {
                 Ident::from($id),
-                Some(Box::new($ty.into())),
+                Some(Box::new($ty.into()),
                 Box::new(mk_tyw_row!($(($ids, $tys)),* $(; $tail)?))
-            )
+            }            
         )
     };
 }

@@ -52,7 +52,7 @@ use crate::{
     error::TypecheckError,
     identifier::Ident,
     term::{Contract, MetaValue, RichTerm, StrChunk, Term, TraverseOrder},
-    types::{AbsType, RowIterator, RowIteratorItem, Types},
+    types::{TypeF, RowsF, RecordRowF, EnumRow, RowIterator, RowIteratorItem, Types},
     {mk_tyw_arrow, mk_tyw_enum, mk_tyw_enum_row, mk_tyw_record, mk_tyw_row},
 };
 

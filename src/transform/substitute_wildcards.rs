@@ -11,7 +11,7 @@ use crate::{
     match_sharedterm,
     term::{Contract, MetaValue, RichTerm, Term, TraverseOrder},
     typecheck::Wildcards,
-    types::{AbsType, Types},
+    types::{TypeF, Types},
 };
 
 /// If the top-level node of the AST is a meta-value with a wildcard type annotation, replace
@@ -45,14 +45,14 @@ pub fn transform_one(rt: RichTerm, wildcards: &Wildcards) -> RichTerm {
 
 /// Get the inferred type for a wildcard, or Dyn if no type was inferred.
 fn get_wildcard_type(wildcards: &Wildcards, id: usize) -> Types {
-    wildcards.get(id).cloned().unwrap_or(Types(AbsType::Dyn()))
+    wildcards.get(id).cloned().unwrap_or(Types(TypeF::Dyn))
 }
 
 /// Recursively substitutes wildcards for their inferred type inside a given type.
 fn substitute_wildcards_recursively(ty: Types, wildcards: &Wildcards) -> Types {
     ty.traverse::<_, _, Infallible>(
         &mut |ty, _| {
-            if let Types(AbsType::Wildcard(id)) = ty {
+            if let Types(TypeF::Wildcard(id)) = ty {
                 Ok(get_wildcard_type(wildcards, id))
             } else {
                 Ok(ty)

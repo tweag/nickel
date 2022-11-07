@@ -6,7 +6,7 @@ use utils::{build_record, elaborate_field_path, FieldPath, FieldPathElem};
 use crate::{
     position::{RawSpan, TermPos},
     term::{Contract, MergePriority, MetaValue, RecordAttrs, RichTerm, SharedTerm, Term},
-    types::{AbsType, Types, UnboundTypeVariableError},
+    types::{RecordRow, RecordRows, RowsF, TypeF, Types, UnboundTypeVariableError},
 };
 
 use std::{borrow::Cow, collections::HashSet, convert::TryFrom};
@@ -30,7 +30,7 @@ use std::{borrow::Cow, collections::HashSet, convert::TryFrom};
 ///
 /// As soon as this variable is used in a compound expression, the top-level rule tells us how to
 /// translate it. For example, if we see an arrow `a -> Num`, then we will convert it to a type
-/// variable, and return `UniTermNode::Types(AbsType::Arrow(..))` (there is actually a subtelty:
+/// variable, and return `UniTermNode::Types(TypeF::Arrow(..))` (there is actually a subtelty:
 /// see [`fix_type_vars`], but let's ignore it here). If, on the other hand, we enter the rule for
 /// an infix operator as in `a + 1`, `a` will be converted to a `Term::Var` and the resulting
 /// uniterm will be `UniTermNode::Term(Term::Op2(..))`.
@@ -72,10 +72,10 @@ impl TryFrom<UniTerm> for Types {
 
     fn try_from(ut: UniTerm) -> Result<Self, ParseError> {
         match ut.node {
-            UniTermNode::Var(id) => Ok(Types(AbsType::Var(id))),
+            UniTermNode::Var(id) => Ok(Types(TypeF::Var(id))),
             UniTermNode::Record(r) => Types::try_from(r),
             UniTermNode::Types(ty) => Ok(ty),
-            UniTermNode::Term(rt) => Ok(Types(AbsType::Flat(rt))),
+            UniTermNode::Term(rt) => Ok(Types(TypeF::Flat(rt))),
         }
     }
 }
@@ -144,7 +144,7 @@ impl From<UniRecord> for UniTerm {
 #[derive(Clone)]
 pub struct UniRecord {
     pub fields: Vec<(FieldPath, RichTerm)>,
-    pub tail: Option<(Types, TermPos)>,
+    pub tail: Option<(RecordRows, TermPos)>,
     pub attrs: RecordAttrs,
     pub pos: TermPos,
     /// The position of the final ellipsis `..`, if any. Used for error reporting. `pos_ellipsis`
@@ -171,7 +171,7 @@ impl UniRecord {
             return Err(InvalidRecordTypeError(TermPos::Original(raw_span)));
         }
 
-        let ty = self
+        let rrows = self
             .fields
             .into_iter()
             // Because we build row types as a linked list by folding on the original iterator, the
@@ -181,8 +181,8 @@ impl UniRecord {
             .try_fold(
                 self.tail
                     .map(|(tail, _)| tail)
-                    .unwrap_or(Types(AbsType::RowEmpty())),
-                |acc, (mut path, rt)| {
+                    .unwrap_or(RecordRows(RowsF::Empty)),
+                |acc: RecordRows, (mut path, rt)| {
                     // We don't support compound paths for types, yet.
                     if path.len() > 1 {
                         let span = path
@@ -214,11 +214,13 @@ impl UniRecord {
                                         opt: false,
                                         priority: MergePriority::Neutral,
                                         value: None,
-                                    }) if contracts.is_empty() => Ok(Types(AbsType::RowExtend(
-                                        id,
-                                        Some(Box::new(ctrt.types)),
-                                        Box::new(acc),
-                                    ))),
+                                    }) if contracts.is_empty() => Ok(RecordRows(RowsF::Extend {
+                                        row: RecordRow {
+                                            id,
+                                            types: Box::new(ctrt.types),
+                                        },
+                                        tail: Box::new(acc),
+                                    })),
                                     _ => {
                                         // Position of identifiers must always be set at this stage
                                         // (parsing)
@@ -235,7 +237,7 @@ impl UniRecord {
                     }
                 },
             )?;
-        Ok(Types(AbsType::Record(Box::new(ty))))
+        Ok(Types(TypeF::Record(rrows)))
     }
 
     pub fn with_pos(mut self, pos: TermPos) -> Self {
@@ -305,14 +307,14 @@ impl TryFrom<UniRecord> for Types {
         } else {
             ur.clone()
                 .into_type_strict()
-                .or_else(|_| RichTerm::try_from(ur).map(|rt| Types(AbsType::Flat(rt))))
+                .or_else(|_| RichTerm::try_from(ur).map(|rt| Types(TypeF::Flat(rt))))
         }
     }
 }
 
 /// Post-process a type at the right hand side of an annotation by replacing each unbound type
 /// variable by a term variable with the same identifier seen as a custom contract
-/// (`AbsType::Var(id)` to `AbsType::Flat(Term::Var(id))`).
+/// (`TypeF::Var(id)` to `TypeF::Flat(Term::Var(id))`).
 ///
 /// Since parsing is done bottom-up, and given the specification of the uniterm syntax for
 /// variables occurring in types, we often can't know right away if a such a variable occurrence
@@ -348,48 +350,48 @@ impl TryFrom<UniRecord> for Types {
 pub fn fix_type_vars(ty: &mut Types) {
     fn fix_type_vars_aux(ty: &mut Types, mut bound_vars: Cow<HashSet<Ident>>) {
         match ty.0 {
-            AbsType::Dyn()
-            | AbsType::Num()
-            | AbsType::Bool()
-            | AbsType::Str()
-            | AbsType::Sym()
-            | AbsType::RowEmpty()
-            | AbsType::Flat(_)
-            | AbsType::Wildcard(_) => (),
-            AbsType::Arrow(ref mut s, ref mut t) => {
+            TypeF::Dyn
+            | TypeF::Num
+            | TypeF::Bool
+            | TypeF::Str
+            | TypeF::Sym
+            | TypeF::Flat(_)
+            | TypeF::Wildcard(_) => (),
+            TypeF::Arrow(ref mut s, ref mut t) => {
                 fix_type_vars_aux(s.as_mut(), Cow::Borrowed(bound_vars.as_ref()));
                 fix_type_vars_aux(t.as_mut(), bound_vars);
             }
-            AbsType::Var(ref mut id) => {
+            TypeF::Var(ref mut id) => {
                 if !bound_vars.contains(id) {
                     let id = *id;
                     let pos = id.pos;
-                    ty.0 = AbsType::Flat(RichTerm::new(Term::Var(id), pos));
+                    ty.0 = TypeF::Flat(RichTerm::new(Term::Var(id), pos));
                 }
             }
-            AbsType::Forall(ref id, ref mut ty) => {
+            TypeF::Forall(ref id, ref mut ty) => {
                 bound_vars.to_mut().insert(id.clone());
                 fix_type_vars_aux(&mut *ty, bound_vars);
             }
-            AbsType::RowExtend(_, ref mut ty_opt, ref mut tail) => {
-                if let Some(ref mut ty) = *ty_opt {
-                    fix_type_vars_aux(ty.as_mut(), Cow::Borrowed(bound_vars.as_ref()));
-                }
-
-                // We don't touch a row tail that is a type variable, because the typechecker
-                // relies on row types being well-formed, which the parser must ensure.
-                // Well-formedness requires that only type variables and `Dyn` may appear in a row
-                // tail position, so we don't turn such variables into term variables (having a
-                // contract in tail position doesn't make sense, in the current model at least,
-                // both for typechecking and at evaluation).
-                if !matches!((**tail).0, AbsType::Var(_)) {
-                    fix_type_vars_aux(tail.as_mut(), bound_vars);
-                }
+            // TypeF::RowExtend(_, ref mut ty_opt, ref mut tail) => {
+            //     if let Some(ref mut ty) = *ty_opt {
+            //         fix_type_vars_aux(ty.as_mut(), Cow::Borrowed(bound_vars.as_ref()));
+            //     }
+            //
+            //     // We don't touch a row tail that is a type variable, because the typechecker
+            //     // relies on row types being well-formed, which the parser must ensure.
+            //     // Well-formedness requires that only type variables and `Dyn` may appear in a row
+            //     // tail position, so we don't turn such variables into term variables (having a
+            //     // contract in tail position doesn't make sense, in the current model at least,
+            //     // both for typechecking and at evaluation).
+            //     if !matches!((**tail).0, TypeF::Var(_)) {
+            //         fix_type_vars_aux(tail.as_mut(), bound_vars);
+            //     }
+            // }
+            TypeF::Dict(ref mut ty) | TypeF::Array(ref mut ty) => {
+                fix_type_vars_aux(ty.as_mut(), bound_vars)
             }
-            AbsType::Dict(ref mut ty)
-            | AbsType::Array(ref mut ty)
-            | AbsType::Enum(ref mut ty)
-            | AbsType::Record(ref mut ty) => fix_type_vars_aux(ty.as_mut(), bound_vars),
+            TypeF::Enum(ref mut ty) => todo!(),
+            TypeF::Record(ref mut ty) => todo!(),
         }
     }
 
