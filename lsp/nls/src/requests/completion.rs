@@ -6,7 +6,7 @@ use lsp_server::{ErrorCode, RequestId, Response, ResponseError};
 use lsp_types::{CompletionItem, CompletionParams};
 use nickel_lang::{
     identifier::Ident,
-    term::{MetaValue, Term},
+    term::MetaValue,
     types::{AbsType, RowIteratorItem, Types},
 };
 use serde_json::Value;
@@ -23,7 +23,7 @@ use crate::{
 
 /// Follow the path to find record fields,
 /// route should be the reverse of the path we're following
-fn follow_path_to_record_fields(
+fn find_fields_from_term_kind(
     linearization: &Completed,
     id: usize,
     path: &Vec<Ident>,
@@ -37,7 +37,7 @@ fn follow_path_to_record_fields(
                 let mut new_route = path.clone();
                 let name = new_route.pop()?;
                 let new_id = fields.get(&name)?;
-                follow_path_to_record_fields(&linearization, *new_id, &new_route)
+                find_fields_from_term_kind(&linearization, *new_id, &new_route)
             }
         }
         TermKind::RecordField {
@@ -48,48 +48,30 @@ fn follow_path_to_record_fields(
         | TermKind::Usage(UsageState::Resolved(new_id))
             if item.id == id =>
         {
-            follow_path_to_record_fields(linearization, new_id, path)
-        }
-        _ => None,
-    }
-}
-
-/// Find record fields for an item with the specified id.
-fn find_record_fields(linearization: &Completed, id: usize) -> Option<Vec<Ident>> {
-    let item = linearization.get_item(id)?;
-    match item.kind {
-        TermKind::Record(ref fields) if item.id == id => Some(fields.keys().cloned().collect()),
-        TermKind::Declaration(_, _, ValueState::Known(new_id))
-        | TermKind::Usage(UsageState::Resolved(new_id))
-            if item.id == id =>
-        {
-            find_record_fields(linearization, new_id)
+            find_fields_from_term_kind(linearization, new_id, path)
         }
         _ => None,
     }
 }
 
 /// Find a record contract of the item with the specified id.
-fn find_contract_record_fields(linearization: &Completed, id: usize) -> Option<Vec<Ident>> {
+fn find_fields_from_contract(
+    linearization: &Completed,
+    id: usize,
+    path: &Vec<Ident>,
+) -> Option<Vec<Ident>> {
     let item = linearization.get_item(id)?;
     match &item.meta {
         Some(MetaValue { contracts, .. }) if item.id == id => {
             contracts.iter().find_map(|contract| match &contract.types {
-                Types(AbsType::Record(row)) => Some(extract_ident(&row)),
-                Types(AbsType::Flat(term)) => {
-                    if let Term::Record(data, ..) | Term::RecRecord(data, ..) = term.as_ref() {
-                        Some(data.fields.keys().cloned().collect())
-                    } else {
-                        None
-                    }
-                }
+                Types(AbsType::Record(row)) => Some(find_fields_from_type(&row, path)),
                 _ => None,
             })
         }
         _ if item.id == id => match item.kind {
             TermKind::Declaration(_, _, ValueState::Known(new_id))
             | TermKind::Usage(UsageState::Resolved(new_id)) => {
-                find_contract_record_fields(&linearization, new_id)
+                find_fields_from_contract(&linearization, new_id, path)
             }
             _ => None,
         },
@@ -97,27 +79,16 @@ fn find_contract_record_fields(linearization: &Completed, id: usize) -> Option<V
     }
 }
 
-/// Extract identifiers from a row type which forms a record.
-/// Ensure that ty is really a row type.
-fn extract_ident(ty: &Box<Types>) -> Vec<Ident> {
-    ty.iter_as_rows()
-        .filter_map(|item| match item {
-            RowIteratorItem::Row(ident, _) => Some(ident.clone()),
-            RowIteratorItem::Tail(..) => None,
-        })
-        .collect::<Vec<_>>()
-}
-
-fn extract_ident_with_path(ty: &Box<Types>, path: &Vec<Ident>) -> Vec<Ident> {
+fn find_fields_from_type(ty: &Box<Types>, path: &Vec<Ident>) -> Vec<Ident> {
     let mut path = path.clone();
     let current = path.pop();
     ty.iter_as_rows()
         .flat_map(|item| match (item, current) {
             (RowIteratorItem::Row(ident, Some(ty)), Some(current)) if current == *ident => {
                 if let Types(AbsType::Record(ty)) = ty {
-                    extract_ident_with_path(ty, &path)
+                    find_fields_from_type(ty, &path)
                 } else {
-                    extract_ident_with_path(&Box::new(ty.clone()), &path)
+                    find_fields_from_type(&Box::new(ty.clone()), &path)
                 }
             }
             (RowIteratorItem::Row(..), Some(_)) => Vec::new(),
@@ -137,8 +108,6 @@ lazy_static! {
 
 /// Get the string chunks that make up an identifier path
 fn get_identifier_path(text: &str) -> Option<Vec<String>> {
-    // TODO: skip initial space in reverse, so that this function can generalize
-    // get_identifier_before_dot
     let text: String = text
         .chars()
         .rev()
@@ -213,16 +182,16 @@ fn collect_record_info(
                 (TermKind::Declaration(..), Types(AbsType::Record(row)), Some(path))
                     if id == item.id =>
                 {
-                    Some((extract_ident_with_path(&row, path), item.ty.clone()))
+                    Some((find_fields_from_type(&row, path), item.ty.clone()))
                 }
                 (TermKind::Declaration(_, _, ValueState::Known(body_id)), _, Some(path))
                     if id == item.id =>
                 {
-                    match find_contract_record_fields(&linearization, *body_id) {
+                    match find_fields_from_contract(&linearization, *body_id, path) {
                         // Get record fields from contract metadata
                         Some(fields) => Some((fields, item.ty.clone())),
                         // Get record fields from lexical scoping
-                        None => follow_path_to_record_fields(&linearization, id, path)
+                        None => find_fields_from_term_kind(&linearization, id, path)
                             .map(|idents| (idents, item.ty.clone())),
                     }
                 }
@@ -432,7 +401,7 @@ mod tests {
             Box::new(Types(AbsType::RowEmpty())),
         ));
         let path = vec![Ident::from("b"), Ident::from("a")];
-        let result = extract_ident_with_path(&Box::new(ty), &path);
+        let result = find_fields_from_type(&Box::new(ty), &path);
         let expected = vec![Ident::from("c1"), Ident::from("c2")];
         assert_eq!(
             result.iter().map(Ident::label).collect::<Vec<_>>(),
@@ -517,7 +486,8 @@ mod tests {
             expected.sort();
             let completed = make_completed(linearization);
             for id in ids {
-                let mut actual = find_record_fields(&completed, id).expect("Expected Some");
+                let mut actual =
+                    find_fields_from_term_kind(&completed, id, &Vec::new()).expect("Expected Some");
                 actual.sort();
                 assert_eq!(actual, expected)
             }
