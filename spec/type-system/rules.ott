@@ -1,0 +1,382 @@
+defns
+Jstlc :: '' ::=
+defn
+Psi |- t1 <: t2 :: :: subtyping :: Sub_
+by
+
+a set_in Psi
+------------- :: ReflVar
+Psi |- a <: a
+
+A set_in Psi
+------------- :: ReflRowVar
+Psi |- A <: A
+
+------------------------------------------------------------- :: ReflForall
+Psi |- forall a1 ... an . t_mono <: forall a1 ... an . t_mono
+
+------------------------------------------------------------- :: ReflForallRow
+Psi |- forall A1 ... An . t_mono <: forall A1 ... An . t_mono
+
+Psi |- t3 <: t1
+Psi |- t2 <: t4
+--------------------------- :: Arrow
+Psi |- t1 -> t2 <: t3 -> t4
+
+t is_not_var
+--------------- :: Dyn
+Psi |- t <: Dyn
+
+Psi |- t <: u
+------------------------- :: Array
+Psi |- Array t <: Array u
+
+Psi |- t <: u
+------------------------- :: DynRecord1
+Psi |- {_ : t} <: {_ : u}
+
+Psi |- ti <: ui
+-------------------------------------------------------- :: Record
+Psi |- { l1 : t1, .., ln : tn} <: { l1 : u1, .., ln: un}
+
+Psi |- ti <: ui
+------------------------------------------------------------------------------------------ :: DynTail
+Psi |- { l1 : t1, .. , ln : tn, l'1 : t'1, .., l'm : t'm } <: { l1 : u1, .., ln: un | Dyn }
+
+Psi |- ti <: u
+--------------------------------------- :: DynRecord2
+Psi |- { l1 : t1, .., ln : tn} <: {_ : u}
+
+%Psi |- u
+%Psi |- t1[u/a] <: t2
+%------------------------- :: ForallLeft
+%Psi |- forall a. t1 <: t2
+%
+%%Psi |- {rows}'
+%Psi |- t1[rows/A] <: t2
+%------------------------- :: ForallRowLeft
+%Psi |- forall A. t1 <: t2
+%
+%Psi, a |- t1 <: t2
+%------------------------- :: ForallRight
+%Psi |- t1 <: forall a. t2
+
+%Psi, A |- t1 <: t2
+%------------------------- :: ForallRowRight
+%Psi |- t1 <: forall A. t2
+
+defn
+G |- e has_type t :: :: type :: T_
+  {{ com Well-typed expressions }}
+by
+
+x : t set_in G
+----------------- :: Var
+G |- x has_type t
+
+G, x : t1 |- e has_type t2
+--------------------------- :: Abs
+G |- \x.e has_type t1 -> t2
+
+%G |- e1 has_type t1 -> t2
+%G |- e2 has_type t1
+%------------------------- :: App
+%G |- e1 e2 has_type t2
+
+G |- e1 has_type t1
+G, x : t1 |- e2 has_type t2
+--------------------------------- :: Let
+G |- let x = e1 in e2 has_type t2
+
+G |- e has_type t_mono
+----------------------------------------- :: Gen
+G |- e has_type forall a1 ... an . t_mono
+
+G |- e has_type t_mono
+----------------------------------------- :: GenRow
+G |- e has_type forall A1 ... An . t_mono
+
+G |- e has_type forall a1 ... an . t_mono
+----------------------------------------- :: Inst
+G |- e has_type t_mono[u'/a]
+
+G |- e has_type forall A1 ... An . t_mono
+----------------------------------------- :: InstRow
+G |- e has_type t_mono[rows/A]
+
+G |- ei has_type ti
+----------------------------------------------------------- :: RecordI
+G |- {l1 = e1, .., ln = en} has_type {l1 : t1, .., ln : tn}
+
+G |- ei has_type t
+------------------------------------------- :: DynRecordI
+G |- {l1 = e1, .., ln = en} has_type {_: t}
+
+G |- e has_type {l1 : t1, .., ln : tn}
+-------------------------------------- :: Proj
+G |- e.li has_type ti
+
+G |- e has_type {_ : t}
+-------------------------------------- :: DynProj
+G |- e.l has_type t
+
+G |- e has_type <l1, .., ln>
+G |- ei has_type t
+----------------------------------------------------------- :: Case
+G |- case e of {l1 <- e1, .., ln <- en} has_type t
+
+G |- ei has_type t
+--------------------------------- :: ArrayI
+G |- [e1, .., en] has_type Array t
+
+G |- e has_type Array t
+---------------------- :: Head
+G |- head e has_type t
+
+G |- e has_type Array t
+--------------------------- :: Tail
+G |- tail e has_type Array t
+
+G |- e has_type t
+----------------------- :: Annot
+G |- (e : t) has_type t
+
+------------------- :: Dyn
+G |- e has_type Dyn
+
+% Should we put include the row weakening/embeding here, directly? Or use a
+% widening subtyping? I think we want to avoid widening, because it is really a
+% non-trivial phenomenon with respect to subtyping: without other subtyping
+% rules (beside standard arrow, covariance, etc.), it already makes the
+% subtyping relation non-trivial (!= identity).
+
+----------------------- :: Enum
+G |- ` l has_type <l, l1, .., ln>
+
+--------------------- :: Contract
+G |- e @ t has_type t
+
+defn
+G |- h infers_head t :: :: infers_head :: BidirInfHead_
+  by
+
+x : t set_in G
+-------------------- :: Var
+G |- x infers_head t
+
+G |- e infers {l1 : t1, .., ln : tn}
+-------------------------------------- :: Proj
+G |- e.li infers_head ti
+
+G |- e infers {_: t}
+---------------------- :: DynProj
+G |- e.l infers_head t
+
+%G |- e checks <l1, .., ln>
+%G |- ei infers t
+%------------------------------------------------ :: Case
+%G |- case e of {l1 <- e1, .., ln <- en} infers t
+
+G |- e infers Array t
+----------------------- :: Head
+G |- head e infers_head t
+
+G |- e infers Array t
+------------------------------- :: Tail
+G |- tail e infers_head Array t
+
+G |- e checks t
+-------------------------- :: Annot
+G |- (h : t) infers_head t
+
+-------------------------- :: Contract
+G |- e @ t infers_head t
+
+G |- h infers t_mono
+------------------------- :: Infer
+G |- h infers_head t_mono
+
+defn
+G |- e infers t :: :: infers :: BidirInf_
+  by
+
+G |- h e1 .. en inst_as t1, .., tn, t_mono
+G |- ei checks ti
+-------------------------------------------- :: App
+G |- h e1 .. en infers t_mono
+
+%G |- e1 inst_as t1 -> t2
+%G |- e2 checks t1
+%------------------ :: AppInst
+%G |- e1 e2 infers t2
+
+%G |- e infers {l1 : t1, .., ln : tn}
+%------------------------------------ :: Proj
+%G |- e.li infers ti
+
+%G |- e infers {_: t}
+%------------------------------------ :: DynProj
+%G |- e.l infers t
+
+G |- e checks <l1, .., ln>
+G |- ei infers t_mono
+----------------------------------------------------- :: Case
+G |- case e of {l1 <- e1, .., ln <- en} infers t_mono
+
+%G |- e infers Array t
+%--------------------- :: Head
+%G |- head e infers t
+%
+%G |- e infers Array t
+%-------------------------- :: Tail
+%G |- tail e infers Array t
+
+%G |- e checks t
+%--------------------- :: Annot
+%G |- (e : t) infers t
+
+%------------------- :: Contract
+%G |- e @ t infers t
+
+-------------------- :: Null
+G |- null infers Dyn
+
+defn
+G |- e checks t :: :: checks :: BidirCheck_
+  by
+
+G |- e checks t_mono
+-------------------------------------- :: Gen
+G |- e checks forall a1 ... an. t_mono
+
+G |- e checks t_mono
+-------------------------------------- :: GenRow
+G |- e checks forall A1 ... An. t_mono
+
+G, x : t1 |- e checks t2
+------------------------- :: Abs
+G |- \x.e checks t1 -> t2
+
+G |- e1 infers t
+G, x : t |- e2 checks t_mono
+----------------------------------- :: Let
+G |- let x = e1 in e2 checks t_mono
+
+G |- h e1 .. en inst_as t1, .., tn, t_mono
+G |- ei checks ti
+------------------------------------------ :: App
+G |- h e1 .. en checks t_mono
+
+G |- e checks <l1, .., ln>
+G |- ei checks t_mono
+----------------------------------------------------- :: Case
+G |- case e of {l1 <- e1, .., ln <- en} checks t_mono
+
+G |- ei checks ti
+-------------------------------------------------------- :: Record
+G |- {l1 = e1, .., ln = en} checks {l1 : t1, .., ln : tn}
+
+G |- ei checks t
+------------------------------------------- :: DynRecord
+G |- {l1 = e1, .., ln = en} checks {_: t}
+
+G |- ei checks t
+------------------------------ :: Array
+G |- [e1, .., en] checks Array t
+
+G |- e infers t_mono1
+Psi |- t_mono1 <: t_mono2
+------------------------- :: Sub
+G |- e checks t_mono2
+
+defn
+G |- e inst_as t1, .., tn, t_mono :: :: inst_as :: BidirInst_
+  by
+
+defn
+Psi , Ccontext constr_solves Ccontext' :: :: constr_solves :: ConstrSolves_
+  by
+
+----------------------------------------------------------- :: Refl
+Psi, Ccontext, t_unif <: t_unif constr_solves Ccontext
+
+-------------------------------------------------------- :: VarUnif
+Psi, Ccontext, d <: a constr_solves Ccontext, d = a
+
+-------------------------------------------------------- :: RowVarUnif
+Psi, Ccontext, d <: A constr_solves Ccontext, d = A
+
+-------------------------------------------------------------------------------------------- :: ForallUnif
+Psi, Ccontext, d <: forall a1 .. an . t_unif_mono constr_solves Ccontext, d = forall a1 .. an . t_unif_mono
+
+----------------------------------------------------------------------------------------------------------- :: ForallRowUnif
+Psi, Ccontext, d <: forall a1 .. an . t_unif_mono constr_solves Ccontext, d = forall a1 .. an . t_unif_mono
+
+-------------------------------------------------------------------------------------------------------------------- :: ArrowUnif
+Psi, Ccontext , d <: t_unif1 -> t_unif2 constr_solves Ccontext , ( t_unif1 <: d1 , d2 <: t_unif2 , d = d1 -> d2 )
+
+----------------------------------------------------------------------------------- :: ArrayUnif
+Psi, Ccontext, d <: Array t_unif constr_solves Ccontext, ( f <: t_unif, d = Array f )
+
+----------------------------------------------------------------------------------------------------------------------------- :: RecordUnif
+Psi, Ccontext , d <: {l1 : t1, .., li : ti} constr_solves Ccontext , (f1 <: t1, .. , fi <: ti , d = {l1 : f1, .., li : fi})
+
+-------------------------------------------------------------------------------------- :: DynRecordUnif
+Psi, Ccontext, d <: {_: t_unif} constr_solves Ccontext, ( d1 <: t_unif, d = {_ : d1} )
+
+------------------------------------------------------------ :: Var
+Psi, Ccontext , t_unif <: t_unif constr_solves Ccontext
+
+t_unif is_not_var
+t_unif is_not_unif_var
+-------------------------------------------------------- :: Dyn
+Psi, Ccontext, t_unif <: Dyn constr_solves Ccontext
+
+-------------------------------------------------------- :: LowerDyn
+Psi, Ccontext, Dyn <: d constr_solves Ccontext, d = Dyn
+
+------------------------------------------------------------------------------------ :: Array
+Psi, Ccontext, Array t_unif <: Array u_unif constr_solves Ccontext, t_unif <: u_unif
+
+% Etc for all forms d <: T a1 .. an
+
+------------------------------------------------------------------- :: DynRecord1
+Psi, Ccontext, {_: t} <: {_: u} constr_solves Ccontext, t <: u
+
+------------------------------------------------------------------------------------------------------------------- :: Record
+Psi, Ccontext , {l1 : t_unif1, .. , li : t_unifi} <: {l1 : u_unif1, .., li : u_unifi} constr_solves Ccontext , t_unif1 <: u_unif1, .. , t_unifi <: u_unifi
+
+------------------------------------------------------------------------------------------------------- :: DynRecord2
+Psi, Ccontext , { l1 : t1, .., li : ti} <: {_ : u} constr_solves Ccontext , t1 <: u , .. , ti <: u
+
+% forall C in Ccontext, C solved and C != t <: c
+Ccontext is_solved
+t_unifi is_not_unif_var
+max t1 .. tj = u_unif
+d <: t_unif' not_in Ccontext
+t_unif' <: d not_in Ccontext
+------------------------------------------------------------------------------------------------------------------------------------------------------- :: UpperBound
+Psi, Ccontext , ( t_unif1 <: d , .. , t_unifi <: d , d1 <: d , .. , dj <: d ) constr_solves Ccontext , ( d1 <: u_unif , .. , dj <: u_unif , d = u_unif )
+
+defn
+max t_unif1 .. t_unifn = u_unif :: :: max :: Max_
+by
+
+t_unif1 join .. join t_unifn = u_unif
+exists i. t_unifi = u_unif
+------------------------------------- :: Max
+max t_unif1 .. t_unifn = u_unif
+
+%defn
+%e --> e' :: :: Jeval :: E_
+% {{ com Small-step reduction }}
+%by
+%
+%e --> e'
+%-------------- :: App1
+%e e2 --> e' e2
+%
+%----------------------- :: AppAbs
+%(\x.e1) e2 --> e1[e2/x]
+
+% Don't need the max actually, we can just unify things.

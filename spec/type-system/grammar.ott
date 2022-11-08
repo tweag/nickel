@@ -1,0 +1,243 @@
+% Nickel types and expressions grammar
+
+metavar var, x, y, z ::=
+metavar uvar, d {{ tex {?a} }}, f {{ tex {?b} }} ::=
+metavar labels, l, l' ::=
+metavar typevar, a {{ tex \alpha }}, b {{ tex \beta }}, c {{ tex \gamma }} ::=
+metavar rowvar, A {{ tex \theta }}, B {{ tex \iota }} ::=
+indexvar i, j, k, n, m ::=
+
+grammar
+type_vars :: 'type_vars_' ::=
+ | a1 ... an :: :: Many
+
+row_vars :: 'row_vars_' ::=
+ | A1 ... An :: :: Many
+
+rows_notail {{ tex \rho }} :: 'rows_notail_' ::=
+ | empty                   ::  :: Empty
+ | l1 : t1 , ... , ln : tn  ::  :: Many
+ | rows_notail , l : t     ::  :: Append
+
+rows_enum_notail {{ tex \chi }} :: 'rows_enum_notail_' ::=
+ | empty                ::  :: Empty
+ | l1 , ... , ln        ::  :: Many
+ | rows_enum_notail , l ::  :: Append
+
+rows :: 'rows_' ::=
+ | rows_notail         ::   :: NoTail
+ | rows_notail '|' A   ::   :: Tail
+ | rows_notail '|' Dyn ::   :: DynTail
+
+rows_enum :: 'rows_enum_' ::=
+ | rows_enum_notail       ::   :: NoTail
+ | rows_enum_notail '|' A ::   :: Tail
+
+t_mono {{ tex \rho }} :: 't_mono_' ::=
+ | Dyn                        ::   :: Dyn
+ | a                          ::   :: TypeVar
+ | A                          ::   :: RowVar
+ | t1 -> t2                   ::   :: Fun
+ | { rows }                   ::   :: Record
+ | { _ : t }                  ::   :: DynRecord
+ | < rows_enum >              ::   :: Enum
+ | Array t                    ::   :: Array
+ | # e                        ::   :: Contract
+ | ( t_mono )                 :: S :: Parens
+% | t_mono [ t_mono' / a ]    :: M :: Subst
+% | t_mono [ rows / A ]       :: M :: SubstRow
+
+t {{ tex \sigma }}, u {{ tex \tau }} :: 't_' ::=
+ | t_mono                     ::   :: Monotype {{ tex [[t_mono]] }}
+ | forall type_vars . t_mono  ::   :: Forall {{ tex [[forall]][[type_vars]]{.}[[t_mono]] }}
+ | forall row_vars . t_mono   ::   :: ForallRow {{ tex [[forall]][[row_vars]]{.}[[t_mono]] }}
+ | ( t )                      :: S :: Parens
+ | t [ u / a ]                :: M :: Subst
+ | t [ rows / A ]             :: M :: SubstRow
+
+%t {{ tex \sigma }}, u {{ tex \tau }} :: 't_' ::=
+% | Dyn                        ::   :: Dyn
+% | a                          ::   :: TypeVar
+% | A                          ::   :: RowVar
+% | t1 -> t2                   ::   :: Fun
+% | { rows }                   ::   :: Record
+% | { _ : t }                  ::   :: DynRecord
+% | < rows_enum >              ::   :: Enum
+% | Array t                    ::   :: Array
+% | # e                        ::   :: Contract
+% | forall type_vars . t       ::   :: Forall {{ tex [[forall]][[type_vars]]{.}[[t]] }}
+% | forall row_vars . t        ::   :: ForallRow {{ tex [[forall]][[row_vars]]{.}[[t]] }}
+% | ( t )                      :: S :: Parens
+% | t [ u / a ]                :: M :: Subst
+% | t [ rows / A ]             :: M :: SubstRow
+
+rows_notail_unif {{ tex \rho }} :: 'rows_notail_unif_' ::=
+ | empty                             ::  :: Empty
+ | l1 : t_unif1 , ... , ln : t_unifn ::  :: Many
+ | rows_notail_unif , l : t_unif     ::  :: Append
+
+rows_unif :: 'rows_unif_' ::=
+ | rows_notail_unif         ::   :: NoTail
+ | rows_notail_unif '|' A   ::   :: Tail
+ | rows_notail_unif '|' Dyn ::   :: DynTail
+
+t_unif_mono {{ tex \rho }} :: 't_unif_mono_' ::=
+ | d                                ::   :: UnifVar
+ | Dyn                              ::   :: Dyn
+ | a                                ::   :: TypeVar
+ | A                                ::   :: RowVar
+ | t_unif -> u_unif                 ::   :: Fun
+ | { rows_unif }                    ::   :: Record
+ | { _ : t_unif }                   ::   :: DynRecord
+ | < rows_enum >                    ::   :: Enum
+ | Array t_unif                     ::   :: Array
+ | # e                              ::   :: Contract
+ | ( t_unif_mono )                  :: S :: Parens
+ | t_unif_mono [ u_unif_mono / a ] :: M :: Subst
+ | t_unif_mono [ rows_unif / A ]    :: M :: SubstRow
+
+t_unif {{ tex \sigma }}, u_unif {{ tex \tau }} :: 't_unif_' ::=
+ | t_unif_mono                     ::   :: Monotype {{ tex [[t_unif_mono]] }}
+ | forall type_vars . t_unif_mono  ::   :: Forall {{ tex [[forall]][[type_vars]]{.}[[t_unif_mono]] }}
+ | forall row_vars . t_unif_mono   ::   :: ForallRow {{ tex [[forall]][[row_vars]]{.}[[t_unif_mono]] }}
+ | ( t_unif )                      :: S :: Parens
+ | t_unif [ u_unif / a ]           :: M :: Subst
+ | t_unif [ rows_unif / A ]        :: M :: SubstRow
+ | t_unif1 join .. join t_unifn    :: M :: Join
+
+e :: 'e_' ::=
+ | null                                       ::   :: Null
+ | x                                          ::   :: Var
+ | h e1 ... en                                ::   :: App
+ | e . l                                      ::   :: Proj
+ | head e                                     ::   :: Head
+ | tail e                                     ::   :: Tail
+ | \ x . e                                    ::   :: Abs
+ | let pat = e1 in e2                         ::   :: Let
+ | case e of {l1 <- e1, .., ln <- en}         ::   :: Case
+ | ` l                                        ::   :: Enum
+ | { l1 = e1 , .. , ln = en }                 ::   :: Record
+ | [ e1 , .. , en ]                           ::   :: Array
+ | e : t                                      ::   :: Annot
+ | e @ t                                      ::   :: Contract
+ | ( e )                                      :: S :: Parens
+ | e [ e' / x ]                               :: M :: Subst
+
+h :: 'h_' ::=
+ | null                                       ::   :: Null
+ | x                                          ::   :: Var
+ | e . l                                      ::   :: Proj
+ | head e                                     ::   :: Head
+ | tail e                                     ::   :: Tail
+ | \ x . e                                    ::   :: Abs
+ | let pat = e1 in e2                         ::   :: Let
+ | case e of {l1 <- e1, .., ln <- en}         ::   :: Case
+ | ` l                                        ::   :: Enum
+ | { l1 = e1 , .. , ln = en }                 ::   :: Record
+ | [ e1 , .. , en ]                           ::   :: Array
+ | e : t                                      ::   :: Annot
+ | e @ t                                      ::   :: Contract
+ | ( h )                                      :: S :: Parens
+
+value, v :: 'v_' ::=
+  | \ x . e                    ::   :: Abs
+  | null                       ::   :: Null
+  | { l1 = v1 , .. , ln = vn } ::   :: Record
+  | [ v1 , .. , vn ]           ::   :: Array
+  | ` l                        ::   :: Enum
+
+whnf, w :: 'w_' ::=
+ | \ x . e                    ::   :: Abs
+ | null                       ::   :: Null
+ | ` l                        ::   :: Enum
+ | { l1 = e1 , .. , ln = en } ::   :: Record
+ | [ e1 , .. , en ]           ::   :: Array
+
+pat :: 'pat_' ::=
+ | x                              ::   :: Var
+%| { l1 = pat1 , .. , ln = patn } ::   :: Record
+%| [ pat1 , .., patn ]            ::   :: Array
+
+bindings :: 'bnd_' ::=
+ | x1 : t1 , ... , xn : tn ::   :: Many
+
+C, U :: 'constr_' ::=
+ | t_unif <: u_unif  ::   :: Sub
+ | d = t_unif        ::   :: Eq
+
+% FIXME: this mess of lists, contexts, recursive defs...
+% Makes LHS constr solving rule ambiguous
+
+constraints :: 'constr_list_' ::=
+ | C1 , ... , Cn   ::   :: Many
+ | ( constraints ) :: S :: Paren
+
+Ccontext {{ tex \Xi }} :: 'constr_ctxt_' ::=
+ | empty                  ::   :: Empty
+ | Ccontext , constraints ::   :: Append {{ tex \Xi, [[constraints]] }}
+ | ( Ccontext )           :: S :: Paren
+
+G {{ tex \Gamma }} :: 'ctx_' ::=
+ | empty        ::  :: Empty
+ | G , bindings ::  :: Append {{ tex \Gamma, [[bindings]] }}
+
+typebindings :: 'typebinding_' ::=
+ | a1 ... an :: :: Vars
+ | A1 ... An :: :: RowVars
+
+Psi {{ tex \Psi }} :: 'typectx_' ::=
+ | empty              ::  :: Empty
+ | Psi , typebindings ::  :: Append {{ tex \Psi, [[typebindings]] }}
+
+grammar
+formula :: 'formula_' ::=
+ | judgement                                   :: :: judgement
+ | bindings set_in G                           :: :: bindings
+ | typebindings set_in Psi                     :: :: typebindings
+ | n <= m                                      :: :: inequality
+ | t_unif is_not_var                           :: :: type_not_var
+ | t_unif is_not_unif_var                      :: :: type_not_unif_var
+ | C is_solved                                 :: :: constraint_is_solved
+ | Ccontext is_solved                          :: :: context_is_solved
+ | max t_unif1 ... t_unifn = t_unif            :: :: max_defined
+ | max t_unif1 ... t_unifn = bottom            :: :: max_undefined
+ | C not_in Ccontext                           :: :: constr_lacks
+ | t_unif = u_unif                             :: :: type_eq 
+ | exists i . formula                          :: :: exists
+
+terminals :: 'terminals_' ::=
+ | ->               ::  :: Arrow  {{ tex \to }}
+ | <-               ::  :: BindingArrow {{ tex \leftarrow }}
+ | \                ::  :: Lambda {{ tex \lambda }}
+ | forall           ::  :: Forall {{ tex \forall }}
+ | exists           ::  :: exists {{ tex \exists }}
+ | |-               ::  :: Entails {{ tex \vdash }}
+ | infers           ::  :: infers {{ tex {\color{red}\Rightarrow} }}
+ | constr_solves    ::  :: constr_solves {{ tex \twoheadrightarrow }}
+ | infers_head      ::  :: infers_head {{ tex {\color{red}\Rightarrow}^h }}
+ | checks           ::  :: checks {{ tex {\color{blue}\Leftarrow} }}
+ | checks_poly      ::  :: checks_poly {{ tex {\color{blue}\Leftarrow}^\forall }}
+ | inst_as          ::  :: inst_as {{ tex \rightsquigarrow }}
+ | has_type         ::  :: HasType {{ tex {:} }}
+ | set_in           ::  :: In       {{ tex \in }}
+ | -->              ::  :: Eval     {{ tex \longrightarrow }}
+ | rest             ::  :: Ellipsis {{ tex \ldots }}
+ | '|'              ::  :: RowTail  {{ tex \mid }}
+ | @                ::  :: Contract {{ tex \mathbin{@} }}
+ | <=               ::  :: LessOrEq {{ tex \leq }}
+ | is_not_var       ::  :: IsNotVar {{ tex \text{not a variable} }}
+ | is_not_unif_var  ::  :: IsNotUnifVar {{ tex {\neq {?a} } }}
+ | is_solved        ::  :: IsSolved {{ tex \text{is solved} }}
+ | bottom           ::  :: Bottom {{ tex \bot }}
+ | not_in           ::  :: NotIn {{ tex \not\in }}
+ | join             ::  :: Join {{ tex \lor }}
+ | meet             ::  :: Meet {{ tex \land }}
+
+subrules
+  t_mono <:: t_unif_mono
+  t <:: t_unif
+  v <:: e
+  h <:: e
+  whnf <:: e
+  rows <:: rows_unif
+  rows_notail <:: rows_notail_unif
