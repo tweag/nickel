@@ -21,12 +21,12 @@ use crate::{
     trace::{Enrich, Trace},
 };
 
-// General ideas: 
+// General ideas:
 // A path is the reverse of the list of identifiers that make up a record indexing operation.
 // e.g if we have a.b.c, the associated path would be vec![c, b, a]
 // Paths are used to guide the completion engine to handle nested records.
 
-/// Find the record field associated with a particular ID in the linearization 
+/// Find the record field associated with a particular ID in the linearization
 /// using lexical scoping rules.
 fn find_fields_from_term_kind(
     linearization: &Completed,
@@ -113,6 +113,7 @@ lazy_static! {
 
 /// Get the string chunks that make up an identifier path.
 fn get_identifier_path(text: &str) -> Option<Vec<String>> {
+    // skip any `.` at the end of the text
     let text: String = text
         .chars()
         .rev()
@@ -121,7 +122,11 @@ fn get_identifier_path(text: &str) -> Option<Vec<String>> {
         .chars()
         .rev()
         .collect();
+
     let result: Vec<_> = RE_SPACE.split(text.as_ref()).map(String::from).collect();
+    if result.is_empty() {
+        return None;
+    }
     let path = result
         .iter()
         .rev()
@@ -190,7 +195,7 @@ fn collect_record_info(
         .collect()
 }
 
-/// Generate possible completion identifiers given a source text, its linearization 
+/// Generate possible completion identifiers given a source text, its linearization
 /// and the current item the cursor points at.
 fn get_completion_identifiers(
     source: &str,
@@ -340,10 +345,9 @@ mod tests {
             ("name.class", vec!["name", "class"]),
             ("name.class.", vec!["name", "class"]),
             ("number", vec!["number"]),
-            ("", vec![""]), // TODO: return an empty vector in this case?
             (
                 r##"let x = {"fo京o" = {bar = 42}} in x."fo京o".foo"##,
-                vec!["x", "\"fo京o\"", "foo"], // TODO: Do we unqote unicode string?
+                vec!["x", "\"fo京o\"", "foo"],
             ),
             (
                 r##"let me : _ = { name = "gg", age = 23, a.b.c.d = 10 } in
@@ -467,8 +471,8 @@ mod tests {
             expected.sort();
             let completed = make_completed(linearization);
             for id in ids {
-                let mut actual =
-                    find_fields_from_term_kind(&completed, id, &mut Vec::new()).expect("Expected Some");
+                let mut actual = find_fields_from_term_kind(&completed, id, &mut Vec::new())
+                    .expect("Expected Some");
                 actual.sort();
                 assert_eq!(actual, expected)
             }
