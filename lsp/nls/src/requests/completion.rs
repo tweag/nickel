@@ -26,25 +26,29 @@ use crate::{
 fn follow_path_to_record_fields(
     linearization: &Completed,
     id: usize,
-    route: Vec<Ident>,
+    path: &Vec<Ident>,
 ) -> Option<Vec<Ident>> {
     let item = linearization.get_item(id)?;
     match item.kind {
         TermKind::Record(ref fields) if item.id == id => {
-            if route.is_empty() {
+            if path.is_empty() {
                 Some(fields.keys().cloned().collect())
             } else {
-                let mut new_route = route.clone();
+                let mut new_route = path.clone();
                 let name = new_route.pop()?;
                 let new_id = fields.get(&name)?;
-                follow_path_to_record_fields(&linearization, *new_id, new_route)
+                follow_path_to_record_fields(&linearization, *new_id, &new_route)
             }
         }
-        TermKind::Declaration(_, _, ValueState::Known(new_id))
+        TermKind::RecordField {
+            value: ValueState::Known(new_id),
+            ..
+        }
+        | TermKind::Declaration(_, _, ValueState::Known(new_id))
         | TermKind::Usage(UsageState::Resolved(new_id))
             if item.id == id =>
         {
-            follow_path_to_record_fields(linearization, new_id, route)
+            follow_path_to_record_fields(linearization, new_id, path)
         }
         _ => None,
     }
@@ -104,6 +108,25 @@ fn extract_ident(ty: &Box<Types>) -> Vec<Ident> {
         .collect::<Vec<_>>()
 }
 
+fn extract_ident_with_path(ty: &Box<Types>, path: &Vec<Ident>) -> Vec<Ident> {
+    let mut path = path.clone();
+    let current = path.pop();
+    ty.iter_as_rows()
+        .flat_map(|item| match (item, current) {
+            (RowIteratorItem::Row(ident, Some(ty)), Some(current)) if current == *ident => {
+                if let Types(AbsType::Record(ty)) = ty {
+                    extract_ident_with_path(ty, &path)
+                } else {
+                    extract_ident_with_path(&Box::new(ty.clone()), &path)
+                }
+            }
+            (RowIteratorItem::Row(..), Some(_)) => Vec::new(),
+            (RowIteratorItem::Row(ident, _), None) => vec![ident.clone()],
+            (RowIteratorItem::Tail(..), _) => Vec::new(),
+        })
+        .collect::<Vec<_>>()
+}
+
 lazy_static! {
     // unwrap is safe here because we know this is a correct regex.
     // This regexp must be the reverse of the regexp in the lexer (nickel_lang::parser::lexer)
@@ -116,7 +139,15 @@ lazy_static! {
 fn get_identifier_path(text: &str) -> Option<Vec<String>> {
     // TODO: skip initial space in reverse, so that this function can generalize
     // get_identifier_before_dot
-    let result: Vec<_> = RE_SPACE.split(text).map(String::from).collect();
+    let text: String = text
+        .chars()
+        .rev()
+        .skip_while(|c| *c == '.') // skip . (if any)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect();
+    let result: Vec<_> = RE_SPACE.split(text.as_ref()).map(String::from).collect();
     let path = result
         .iter()
         .rev()
@@ -170,23 +201,28 @@ fn collect_record_info(
     linearization: &Completed,
     item: &LinearizationItem<Types>,
     id: usize,
+    path: Option<Vec<Ident>>,
 ) -> Vec<(Vec<Ident>, Types)> {
     linearization
         .get_in_scope(item)
         .iter()
         .filter_map(|item| {
             let (ty, _) = linearization.resolve_item_type_meta(item);
-            match (&item.kind, ty) {
+            match (&item.kind, ty, &path) {
                 // Get record fields from static type info
-                (TermKind::Declaration(..), Types(AbsType::Record(row))) if id == item.id => {
-                    Some((extract_ident(&row), item.ty.clone()))
+                (TermKind::Declaration(..), Types(AbsType::Record(row)), Some(path))
+                    if id == item.id =>
+                {
+                    Some((extract_ident_with_path(&row, path), item.ty.clone()))
                 }
-                (TermKind::Declaration(_, _, ValueState::Known(body_id)), _) if id == item.id => {
+                (TermKind::Declaration(_, _, ValueState::Known(body_id)), _, Some(path))
+                    if id == item.id =>
+                {
                     match find_contract_record_fields(&linearization, *body_id) {
                         // Get record fields from contract metadata
                         Some(fields) => Some((fields, item.ty.clone())),
                         // Get record fields from lexical scoping
-                        None => find_record_fields(&linearization, *body_id)
+                        None => follow_path_to_record_fields(&linearization, id, path)
                             .map(|idents| (idents, item.ty.clone())),
                     }
                 }
@@ -207,16 +243,27 @@ fn get_completion_identifiers(
     let in_scope = match trigger {
         // Record Completion
         Some(server::DOT_COMPL_TRIGGER) => {
-            let name = get_identifier_before_dot(source).ok_or(ResponseError {
-                code: ErrorCode::InternalError as i32,
-                message: "Couldn't get identifier for record completion".to_owned(),
-                data: None,
-            })?;
-            let name = Ident::from(name);
-            if let Some(id) = item.env.get(&name).copied() {
-                collect_record_info(linearization, item, id)
+            // empty should return none
+            if let Some(path) = get_identifier_path(source) {
+                let mut path: Vec<_> = path.iter().rev().cloned().map(Ident::from).collect();
+                let name = path.pop().unwrap();
+                if let Some(id) = item.env.get(&name).copied() {
+                    collect_record_info(linearization, item, id, Some(path))
+                } else {
+                    return Ok(Vec::new());
+                }
             } else {
-                return Ok(Vec::new());
+                let name = get_identifier_before_dot(source).ok_or(ResponseError {
+                    code: ErrorCode::InternalError as i32,
+                    message: "Couldn't get identifier for record completion".to_owned(),
+                    data: None,
+                })?;
+                let name = Ident::from(name);
+                if let Some(id) = item.env.get(&name).copied() {
+                    collect_record_info(linearization, item, id, None)
+                } else {
+                    return Ok(Vec::new());
+                }
             }
         }
         Some(..) | None => {
@@ -226,7 +273,7 @@ fn get_completion_identifiers(
             if let Some(name) = get_identifier_before_field(source) {
                 let name = Ident::from(name);
                 if let Some(id) = item.env.get(&name).copied() {
-                    collect_record_info(linearization, item, id)
+                    collect_record_info(linearization, item, id, None)
                 } else {
                     return Ok(Vec::new());
                 }
@@ -341,11 +388,17 @@ mod tests {
                 vec!["name", "sdf", "clue", "add", "bar"],
             ),
             ("name.class", vec!["name", "class"]),
+            ("name.class.", vec!["name", "class"]),
             ("number", vec!["number"]),
-            ("", vec![""]), // maybe return an empty vector in this case?
+            ("", vec![""]), // TODO: return an empty vector in this case?
             (
                 r##"let x = {"fo京o" = {bar = 42}} in x."fo京o".foo"##,
-                vec!["x", "\"fo京o\"", "foo"],
+                vec!["x", "\"fo京o\"", "foo"], // TODO: Do we unqote unicode string?
+            ),
+            (
+                r##"let me : _ = { name = "gg", age = 23, a.b.c.d = 10 } in
+                    me.ca.cb"##,
+                vec!["me", "a", "b"],
             ),
         ];
         for (input, expected) in tests {
@@ -354,6 +407,37 @@ mod tests {
                 Some(expected.iter().cloned().map(String::from).collect());
             assert_eq!(actual, expected)
         }
+    }
+
+    #[test]
+    fn test_extract_ident_with_path() {
+        let ty = Types(AbsType::RowExtend(
+            Ident::from("c2"),
+            Some(Box::new(Types(AbsType::Num()))),
+            Box::new(Types(AbsType::RowEmpty())),
+        ));
+        let ty = Types(AbsType::RowExtend(
+            Ident::from("c1"),
+            Some(Box::new(Types(AbsType::Num()))),
+            Box::new(ty),
+        ));
+        let ty = Types(AbsType::RowExtend(
+            Ident::from("b"),
+            Some(Box::new(ty)),
+            Box::new(Types(AbsType::RowEmpty())),
+        ));
+        let ty = Types(AbsType::RowExtend(
+            Ident::from("a"),
+            Some(Box::new(ty)),
+            Box::new(Types(AbsType::RowEmpty())),
+        ));
+        let path = vec![Ident::from("b"), Ident::from("a")];
+        let result = extract_ident_with_path(&Box::new(ty), &path);
+        let expected = vec![Ident::from("c1"), Ident::from("c2")];
+        assert_eq!(
+            result.iter().map(Ident::label).collect::<Vec<_>>(),
+            expected.iter().map(Ident::label).collect::<Vec<_>>()
+        )
     }
 
     #[test]
