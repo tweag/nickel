@@ -3,13 +3,37 @@ use crate::conversion::State;
 pub use crate::conversion::ToNickel;
 use crate::identifier::Ident;
 use crate::mk_app;
-use crate::parser::utils::mk_span;
+use crate::parser::utils::{mk_span, FieldPathElem};
 use crate::term::make::{self, if_then_else};
 use crate::term::{record::RecordData, BinaryOp, UnaryOp};
 use crate::term::{MergePriority, MetaValue, RichTerm, Term};
 use codespan::FileId;
-use rnix::ast::{BinOp as NixBinOp, Str as NixStr, UnaryOp as NixUniOp};
+use rnix::ast::{BinOp as NixBinOp, Str as NixStr, UnaryOp as NixUniOp, Attr as NixAttr};
 use std::collections::HashMap;
+use std::iter::repeat_with;
+
+fn path_elem_from_nix(attr: NixAttr, state: &State) -> FieldPathElem {
+    match attr {
+        NixAttr::Ident(id) => FieldPathElem::Ident(id.to_string().into()),
+        NixAttr::Str(s) => FieldPathElem::Expr(s.translate(state)),
+        NixAttr::Dynamic(d) => FieldPathElem::Expr(d.expr().unwrap().translate(state)),
+    }
+}
+
+fn path_elem_rt(attr: NixAttr, state: &State) -> RichTerm {
+    match attr {
+        NixAttr::Ident(id) => Term::Str(id.to_string()).into(),
+        NixAttr::Str(s) => s.translate(state),
+        NixAttr::Dynamic(d) => d.expr().unwrap().translate(state),
+    }
+}
+
+fn path_rts_from_nix<T>(n: rnix::ast::Attrpath, state: &State) -> T
+where
+T: FromIterator<RichTerm>
+{
+    n.attrs().map(|a| path_elem_rt(a, state)).collect()
+}
 
 impl ToNickel for NixStr {
     fn translate(self, state: &State) -> RichTerm {
@@ -267,8 +291,12 @@ impl ToNickel for rnix::ast::Expr {
                         .into()
                     })
             }
-            Expr::Path(_) | Expr::HasAttr(_) => unimplemented!(), // TODO: What is the diff with
-                                                                  // Select / operator HasField?
+            Expr::HasAttr(n) => {
+                let path = path_rts_from_nix(n.attrpath().unwrap(), state);
+                let path = Term::Array(path, Default::default());
+                mk_app!(crate::stdlib::compat::has_field_path(), path, n.expr().unwrap().translate(state))
+            }
+            Expr::Path(_) => unimplemented!(), // TODO: What is the diff with select?
         }
         .with_pos(crate::position::TermPos::Original(span))
     }
