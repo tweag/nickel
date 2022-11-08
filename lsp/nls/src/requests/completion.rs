@@ -25,6 +25,7 @@ use crate::{
 // A path is the reverse of the list of identifiers that make up a record indexing operation.
 // e.g if we have a.b.c, the associated path would be vec![c, b, a]
 // Paths are used to guide the completion engine to handle nested records.
+// They also generalize the single record indexing case.
 
 /// Find the record field associated with a particular ID in the linearization
 /// using lexical scoping rules.
