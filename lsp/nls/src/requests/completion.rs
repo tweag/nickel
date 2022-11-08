@@ -21,8 +21,13 @@ use crate::{
     trace::{Enrich, Trace},
 };
 
-/// Follow the path to find record fields,
-/// route should be the reverse of the path we're following
+// General ideas: 
+// A path is the reverse of the list of identifiers that make up a record indexing operation.
+// e.g if we have a.b.c, the associated path would be vec![c, b, a]
+// Paths are used to guide the completion engine to handle nested records.
+
+/// Find the record field associated with a particular ID in the linearization 
+/// using lexical scoping rules.
 fn find_fields_from_term_kind(
     linearization: &Completed,
     id: usize,
@@ -53,7 +58,8 @@ fn find_fields_from_term_kind(
     }
 }
 
-/// Find a record contract of the item with the specified id.
+/// Find the record fields associated with an ID in the linearization using
+/// its contract information.
 fn find_fields_from_contract(
     linearization: &Completed,
     id: usize,
@@ -78,6 +84,7 @@ fn find_fields_from_contract(
     }
 }
 
+/// Extract the fields from a given record type.
 fn find_fields_from_type(ty: &Box<Types>, path: &mut Vec<Ident>) -> Vec<Ident> {
     let current = path.pop();
     ty.iter_as_rows()
@@ -104,7 +111,7 @@ lazy_static! {
     static ref RE_SPACE: regex::Regex = regex::Regex::new(r"\s+").unwrap();
 }
 
-/// Get the string chunks that make up an identifier path
+/// Get the string chunks that make up an identifier path.
 fn get_identifier_path(text: &str) -> Option<Vec<String>> {
     let text: String = text
         .chars()
@@ -183,8 +190,8 @@ fn collect_record_info(
         .collect()
 }
 
-/// Generate possible completion Identifiers given a source text, and its
-/// linearization.
+/// Generate possible completion identifiers given a source text, its linearization 
+/// and the current item the cursor points at.
 fn get_completion_identifiers(
     source: &str,
     trigger: Option<&str>,
@@ -209,8 +216,8 @@ fn get_completion_identifiers(
         }
         Some(..) | None => {
             // This is also record completion, but it is in the form
-            // <record var>.<partially-typed-field>
-            // we also want to give completion based on <record var> in this case.
+            // <record path>.<partially-typed-field>
+            // we also want to give completion based on <record path> in this case.
             if let Some(path) = get_identifier_before_field(source) {
                 let mut path: Vec<_> = path.iter().rev().cloned().map(Ident::from).collect();
                 let name = path.pop().unwrap();
