@@ -313,11 +313,9 @@ pub fn handle_completion(
 
 #[cfg(test)]
 mod tests {
-    use nickel_lang::position::TermPos;
-
-    use crate::linearization::Environment;
-
     use super::*;
+    use crate::linearization::Environment;
+    use nickel_lang::position::TermPos;
     use std::collections::{HashMap, HashSet};
 
     #[test]
@@ -389,12 +387,12 @@ mod tests {
         ));
         let ty = Types(AbsType::RowExtend(
             Ident::from("b"),
-            Some(Box::new(ty)),
+            Some(Box::new(Types(AbsType::Record(Box::new(ty))))),
             Box::new(Types(AbsType::RowEmpty())),
         ));
         let ty = Types(AbsType::RowExtend(
             Ident::from("a"),
-            Some(Box::new(ty)),
+            Some(Box::new(Types(AbsType::Record(Box::new(ty))))),
             Box::new(Types(AbsType::RowEmpty())),
         ));
         let mut path = vec![Ident::from("b"), Ident::from("a")];
