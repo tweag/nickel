@@ -87,16 +87,13 @@ fn find_fields_from_type(ty: &Box<Types>, path: &mut Vec<Ident>) -> Vec<Ident> {
     let current = path.pop();
     ty.iter_as_rows()
         .flat_map(|item| match (item, current) {
-            (RowIteratorItem::Row(ident, Some(ty)), Some(current)) if current == *ident => {
-                if let Types(AbsType::Record(ty)) = ty {
-                    find_fields_from_type(ty, path)
-                } else {
-                    find_fields_from_type(&Box::new(ty.clone()), path)
-                }
+            (RowIteratorItem::Row(ident, Some(Types(AbsType::Record(ty)))), Some(current))
+                if current == *ident =>
+            {
+                find_fields_from_type(ty, path)
             }
-            (RowIteratorItem::Row(..), Some(_)) => Vec::new(),
             (RowIteratorItem::Row(ident, _), None) => vec![ident.clone()],
-            (RowIteratorItem::Tail(..), _) => Vec::new(),
+            _ => Vec::new(),
         })
         .collect::<Vec<_>>()
 }
