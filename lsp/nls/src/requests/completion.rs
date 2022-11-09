@@ -36,7 +36,7 @@ fn find_fields_from_term_kind(
 ) -> Option<Vec<Ident>> {
     let item = linearization.get_item(id)?;
     match item.kind {
-        TermKind::Record(ref fields) if item.id == id => {
+        TermKind::Record(ref fields) => {
             if path.is_empty() {
                 Some(fields.keys().cloned().collect())
             } else {
@@ -50,9 +50,7 @@ fn find_fields_from_term_kind(
             ..
         }
         | TermKind::Declaration(_, _, ValueState::Known(new_id))
-        | TermKind::Usage(UsageState::Resolved(new_id))
-            if item.id == id =>
-        {
+        | TermKind::Usage(UsageState::Resolved(new_id)) => {
             find_fields_from_term_kind(linearization, new_id, path)
         }
         _ => None,
@@ -68,20 +66,19 @@ fn find_fields_from_contract(
 ) -> Option<Vec<Ident>> {
     let item = linearization.get_item(id)?;
     match &item.meta {
-        Some(MetaValue { contracts, .. }) if item.id == id => {
+        Some(MetaValue { contracts, .. }) => {
             contracts.iter().find_map(|contract| match &contract.types {
                 Types(AbsType::Record(row)) => Some(find_fields_from_type(&row, path)),
                 _ => None,
             })
         }
-        _ if item.id == id => match item.kind {
+        None => match item.kind {
             TermKind::Declaration(_, _, ValueState::Known(new_id))
             | TermKind::Usage(UsageState::Resolved(new_id)) => {
                 find_fields_from_contract(&linearization, new_id, path)
             }
             _ => None,
         },
-        _ => None,
     }
 }
 
@@ -351,7 +348,7 @@ mod tests {
                 vec!["x", "\"fo京o\"", "foo"],
             ),
             (
-                r##"let me : _ = { name = "gg", age = 23, a.b.c.d = 10 } in
+                r##"let me : _ = { name = "foo", time = 1800, a.b.c.d = 10 } in
                     me.ca.cb"##,
                 vec!["me", "a", "b"],
             ),
