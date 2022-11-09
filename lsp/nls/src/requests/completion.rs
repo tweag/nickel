@@ -134,7 +134,7 @@ fn get_identifiers_before_field(text: &str) -> Option<Vec<String>> {
         .rev()
         .collect();
 
-    get_identifier_path(&text[..])
+    get_identifier_path(&text.as_str())
 }
 
 fn remove_duplicates(items: &Vec<CompletionItem>) -> Vec<CompletionItem> {
