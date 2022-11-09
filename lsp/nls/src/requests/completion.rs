@@ -118,14 +118,11 @@ fn get_identifier_path(text: &str) -> Option<Vec<String>> {
     };
 
     let result: Vec<_> = RE_SPACE.split(text.as_ref()).map(String::from).collect();
-    if result.is_empty() {
-        return None;
-    }
     let path = result.iter().rev().next().cloned()?;
     Some(path.split(".").map(String::from).collect())
 }
 
-/// Get the identifier before `.<text>` for record completion.
+/// Get the identifiers before `.<text>` for record completion.
 fn get_identifiers_before_field(text: &str) -> Option<Vec<String>> {
     // Skip `<text>`
     let text: String = text
