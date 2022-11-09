@@ -2,7 +2,7 @@
 compat | doc "Nix compatibility layer. This library should not be used by Nickel program."
 = {
 
-  # the adition in Nix can be a string concataination.
+  # The addition in Nix can be a string concatenation.
   # this function handle this behaviour.
   add = fun a b =>
     if %typeof% a == `Str && %typeof% b == `Str
