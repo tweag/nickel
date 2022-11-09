@@ -194,6 +194,8 @@ fn get_completion_identifiers(
             // empty should return none
             if let Some(path) = get_identifier_path(source) {
                 let mut path: Vec<_> = path.iter().rev().cloned().map(Ident::from).collect();
+                // unwrap is safe here because we are guaranteed by `get_identifier_path`
+                // that it will return a non-empty vector
                 let name = path.pop().unwrap();
                 if let Some(id) = item.env.get(&name).copied() {
                     collect_record_info(linearization, item, id, &mut path)
@@ -210,6 +212,8 @@ fn get_completion_identifiers(
             // we also want to give completion based on <record path> in this case.
             if let Some(path) = get_identifiers_before_field(source) {
                 let mut path: Vec<_> = path.iter().rev().cloned().map(Ident::from).collect();
+                // unwrap is safe here because we are guaranteed by `get_identifiers_before_field`
+                // that it will return a non-empty vector
                 let name = path.pop().unwrap();
                 if let Some(id) = item.env.get(&name).copied() {
                     collect_record_info(linearization, item, id, &mut path)
