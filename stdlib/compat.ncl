@@ -1,5 +1,5 @@
 {
-compat | doc "Nix compatibility layer. should not be used by Nickel program."
+compat | doc "Nix compatibility layer. This library should not be used by Nickel program."
 = {
 
   # the adition in Nix can be a string concataination.
