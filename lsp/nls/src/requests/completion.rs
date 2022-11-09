@@ -83,7 +83,7 @@ fn find_fields_from_contract(
 }
 
 /// Extract the fields from a given record type.
-fn find_fields_from_type(ty: &Box<Types>, path: &mut Vec<Ident>) -> Vec<Ident> {
+fn find_fields_from_type(ty: &Types, path: &mut Vec<Ident>) -> Vec<Ident> {
     let current = path.pop();
     ty.iter_as_rows()
         .flat_map(|item| match (item, current) {
@@ -109,14 +109,13 @@ lazy_static! {
 /// Get the string chunks that make up an identifier path.
 fn get_identifier_path(text: &str) -> Option<Vec<String>> {
     // skip any `.` at the end of the text
-    let text: String = text
-        .chars()
-        .rev()
-        .skip_while(|c| *c == '.') // skip . (if any)
-        .collect::<String>()
-        .chars()
-        .rev()
-        .collect();
+    let text = {
+        let mut text = String::from(text);
+        while text.ends_with('.') {
+            text.pop();
+        }
+        text
+    };
 
     let result: Vec<_> = RE_SPACE.split(text.as_ref()).map(String::from).collect();
     if result.is_empty() {
@@ -347,7 +346,7 @@ mod tests {
             (
                 r##"let me : _ = { name = "foo", time = 1800, a.b.c.d = 10 } in
                     me.ca.cb"##,
-                vec!["me", "a", "b"],
+                vec!["me", "ca", "cb"],
             ),
         ];
         for (input, expected) in tests {
