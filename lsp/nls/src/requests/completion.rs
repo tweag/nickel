@@ -121,18 +121,12 @@ fn get_identifier_path(text: &str) -> Option<Vec<String>> {
     if result.is_empty() {
         return None;
     }
-    let path = result
-        .iter()
-        .rev()
-        .cloned()
-        .collect::<Vec<_>>()
-        .get(0)
-        .cloned()?;
+    let path = result.iter().rev().next().cloned()?;
     Some(path.split(".").map(String::from).collect())
 }
 
 /// Get the identifier before `.<text>` for record completion.
-fn get_identifier_before_field(text: &str) -> Option<Vec<String>> {
+fn get_identifiers_before_field(text: &str) -> Option<Vec<String>> {
     // Skip `<text>`
     let text: String = text
         .chars()
@@ -217,7 +211,7 @@ fn get_completion_identifiers(
             // This is also record completion, but it is in the form
             // <record path>.<partially-typed-field>
             // we also want to give completion based on <record path> in this case.
-            if let Some(path) = get_identifier_before_field(source) {
+            if let Some(path) = get_identifiers_before_field(source) {
                 let mut path: Vec<_> = path.iter().rev().cloned().map(Ident::from).collect();
                 let name = path.pop().unwrap();
                 if let Some(id) = item.env.get(&name).copied() {
@@ -329,31 +323,55 @@ mod tests {
     #[test]
     fn test_get_identifier_path() {
         let tests = [
-            ("let person = {} in \n    a.b.c.d", vec!["a", "b", "c", "d"]),
-            ("   ab.dec", vec!["ab", "dec"]),
             (
+                "Simple let binding with nested record index",
+                "let person = {} in \n    a.b.c.d",
+                vec!["a", "b", "c", "d"],
+            ),
+            ("Simple record index", "   ab.dec", vec!["ab", "dec"]),
+            (
+                "Multiple let bindings with nested record index ",
                 r##"let name = { sdf.clue.add.bar = 10 } in
+                let other = name in 
+                let another = other in 
             name.sdf.clue.add.bar"##,
                 vec!["name", "sdf", "clue", "add", "bar"],
             ),
-            ("name.class", vec!["name", "class"]),
-            ("name.class.", vec!["name", "class"]),
-            ("number", vec!["number"]),
             (
+                "Incomplete record with nested record index",
+                r##"{
+                    foo = let bar = {a.b.c.d = 10} in bar.a.b.c.d"##,
+                vec!["bar", "a", "b", "c", "d"],
+            ),
+            ("Simple record Index", "name.class", vec!["name", "class"]),
+            (
+                "Simple record Index ending with a dot",
+                "name.class.",
+                vec!["name", "class"],
+            ),
+            ("Single record variable", "number", vec!["number"]),
+            (
+                "Single record variable ending with a dot",
+                "number.",
+                vec!["number"],
+            ),
+            (
+                "Record binding with unicode string names for fields",
                 r##"let x = {"fo京o" = {bar = 42}} in x."fo京o".foo"##,
                 vec!["x", "\"fo京o\"", "foo"],
             ),
             (
+                "Typed record binding with nested record indexing",
                 r##"let me : _ = { name = "foo", time = 1800, a.b.c.d = 10 } in
                     me.ca.cb"##,
                 vec!["me", "ca", "cb"],
             ),
         ];
-        for (input, expected) in tests {
+        for (case_name, input, expected) in tests {
             let actual = get_identifier_path(input);
             let expected: Option<Vec<_>> =
                 Some(expected.iter().cloned().map(String::from).collect());
-            assert_eq!(actual, expected)
+            assert_eq!(actual, expected, "test failed: {}", case_name)
         }
     }
 
