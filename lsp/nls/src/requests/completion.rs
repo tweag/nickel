@@ -365,7 +365,7 @@ mod tests {
             (
                 "Record binding with unicode string names for fields",
                 r##"let x = {"fo京o" = {bar = 42}} in x."fo京o".foo"##,
-                vec!["x", "\"fo京o\"", "foo"],
+                vec!["x", "fo京o", "foo"],
             ),
             (
                 "Typed record binding with nested record indexing",
