@@ -165,7 +165,9 @@ impl ToNickel for rnix::ast::Expr {
                     })
                     .collect();
 
-                build_record(fields, Default::default(), inherited).into()
+                let rec = build_record(fields, Default::default(), inherited);
+                println!("{:#?}", rec);
+                rec.into()
             }
 
             // In nix it's allowed to define vars named `true`, `false` or `null`.

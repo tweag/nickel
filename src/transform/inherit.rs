@@ -4,14 +4,15 @@ use crate::term::{make, RichTerm, Term, UnaryOp};
 
 pub fn transform_one(rt: RichTerm) -> RichTerm {
     match_sharedterm! {rt.term, with {
-    Term::RecRecord(record, dyn_fields, deps, inh) => {
+    Term::RecRecord(record, dyn_fields, deps, inh) if inh.len() > 0 => {
         let mut fields = record.clone();
         println!("inherit len: {}", inh.len());
         let renaming: Vec<(Vec<_>, Vec<_>, Option<RichTerm>)> = inh.into_iter().map(|(ids, rt)| {
             if rt.is_some() {
                 // need a fresh var only for the record. a static access will be
                 // performed on it.
-                (ids, vec![Ident::fresh()], rt)
+                let var  = Ident::fresh();
+                (ids.clone(), ids.iter().map(|_| var.clone()).collect(), rt)
             } else {
                 (ids.clone(), ids.iter().map(|_| Ident::fresh()).collect(), None)
             }
