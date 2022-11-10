@@ -50,4 +50,4 @@ jobs:
 
     - name: Run all checks
       run: |
-        nix flake check
+        nix flake check --print-build-logs
