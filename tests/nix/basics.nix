@@ -31,7 +31,7 @@
   ([ 1 2 ] ++ [ 1 2 ] == [ 1 2 1 2 ])
 
   # strings concataination
-  # ("hello" + " " + "world" == "hello world") # TODO: to be fixed
+  ("hello" + " " + "world" == "hello world")
 
   # if then else
   ((if true then 1 else 2) == 1)
