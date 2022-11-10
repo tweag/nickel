@@ -29,8 +29,6 @@ impl ToNickel for BinOp {
         let lhs = self.lhs().unwrap().translate(state);
         let rhs = self.rhs().unwrap().translate(state);
         match self.operator().unwrap() {
-            // TODO: Should be fixed using a nickel function `compat.concat` of type `a -> a -> a`
-            // using `str_concat` or `array_concat` in respect to `typeof a`.
             Concat => make::op2(BinaryOp::ArrayConcat(), lhs, rhs),
             IsSet => {
                 let rhs = if self.rhs().unwrap().kind() == rnix::SyntaxKind::NODE_IDENT {
@@ -42,6 +40,8 @@ impl ToNickel for BinOp {
             }
             Update => unimplemented!(),
 
+            // TODO: Should be fixed using a nickel function `compat.add` of type `a -> a -> a`
+            // using `str_concat` or `add` in respect to `typeof a`.
             Add => make::op2(BinaryOp::Plus(), lhs, rhs),
             Sub => make::op2(BinaryOp::Sub(), lhs, rhs),
             Mul => make::op2(BinaryOp::Mult(), lhs, rhs),
