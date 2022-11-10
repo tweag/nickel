@@ -119,7 +119,15 @@ fn get_identifier_path(text: &str) -> Option<Vec<String>> {
 
     let result: Vec<_> = RE_SPACE.split(text.as_ref()).map(String::from).collect();
     let path = result.iter().rev().next().cloned()?;
-    Some(path.split(".").map(String::from).collect())
+    // Remove quotes from a record name
+    fn remove_quotes(name: &str) -> String {
+        if let (Some('"'), Some('"')) = (name.chars().next(), name.chars().last()) {
+            String::from(&name[1..name.len() - 1])
+        } else {
+            String::from(name)
+        }
+    }
+    Some(path.split(".").map(remove_quotes).collect())
 }
 
 /// Get the identifiers before `.<text>` for record completion.
@@ -357,7 +365,7 @@ mod tests {
             (
                 "Record binding with unicode string names for fields",
                 r##"let x = {"fo京o" = {bar = 42}} in x."fo京o".foo"##,
-                vec!["x", "\"fo京o\"", "foo"],
+                vec!["x", "fo京o", "foo"],
             ),
             (
                 "Typed record binding with nested record indexing",
