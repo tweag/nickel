@@ -26,7 +26,8 @@ use crate::{
 // e.g if we have a.b.c, the associated path would be vec![c, b, a]
 // Paths are used to guide the completion engine to handle nested record indexing.
 // They also generalize the single record indexing case.
-// TODO: add more docs
+// We follow the path by traversing a term, type or contract which represents a record
+// and stop when there is nothing else on the path
 
 /// Find the record field associated with a particular ID in the linearization
 /// using lexical scoping rules.
@@ -84,15 +85,25 @@ fn find_fields_from_contract(
     }
 }
 
+/// Find record field associated associated with a MetaValue.
+/// This can be gotten from the type or the contracts.
 fn find_fields_from_meta_value(
     meta_value: &MetaValue,
     path: &mut Vec<Ident>,
 ) -> Option<Vec<Ident>> {
-    match &meta_value.contracts.first()?.types {
-        Types(AbsType::Record(row)) => Some(find_fields_from_type(&row, path)),
-        Types(AbsType::Flat(term)) => find_fields_from_term(term, path),
-        _ => None,
-    }
+    Some(
+        meta_value
+            .contracts
+            .iter()
+            .chain(meta_value.types.iter())
+            .filter_map(|contract| match &contract.types {
+                Types(AbsType::Record(row)) => Some(find_fields_from_type(&row, path)),
+                Types(AbsType::Flat(term)) => find_fields_from_term(term, path),
+                _ => None,
+            })
+            .flatten()
+            .collect(),
+    )
 }
 
 /// Extract the fields from a given record type.
@@ -124,6 +135,7 @@ fn find_fields_from_type(rrows: &RecordRows, path: &mut Vec<Ident>) -> Vec<Ident
     }
 }
 
+/// Extract record fields from a record term.
 fn find_fields_from_term(term: &RichTerm, path: &mut Vec<Ident>) -> Option<Vec<Ident>> {
     let current = path.pop();
     match (term.as_ref(), current) {
@@ -132,13 +144,13 @@ fn find_fields_from_term(term: &RichTerm, path: &mut Vec<Ident>) -> Option<Vec<I
         }
         (Term::Record(data) | Term::RecRecord(data, ..), Some(name)) => {
             let term = data.fields.get(&name)?;
-            find_fields_from_term(term, path) 
+            find_fields_from_term(term, path)
         }
         (Term::MetaValue(meta_value), Some(ident)) => {
-            // We don't need to pop here, as meta wraps the record
+            // We don't need to pop here, as the metavalue wraps the actual record
             path.push(ident);
             find_fields_from_meta_value(meta_value, path)
-        },
+        }
         (Term::MetaValue(meta_value), None) => find_fields_from_meta_value(meta_value, path),
         _ => None,
     }
