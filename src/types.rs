@@ -886,13 +886,14 @@ impl Types {
         Ok(ctr)
     }
 
-    /// markers (such as a row type). Used in formatting to decide if parentheses need to be
-    /// inserted during pretty pretting.
+    /// Determine if a type is an atom, that is a either a primitive type (`Dyn`, `Num`, etc.) or a
+    /// type delimited by specific markers (such as a row type). Used in formatting to decide if
+    /// parentheses need to be inserted during pretty pretting.
     pub fn fmt_is_atom(&self) -> bool {
         use TypeF::*;
 
         match &self.0 {
-            Dyn | Num | Bool | Str | Var(_) => true,
+            Dyn | Num | Bool | Str | Var(_) | Record(_) | Enum(_) => true,
             Flat(rt) if matches!(*rt.term, Term::Var(_)) => true,
             _ => false,
         }
