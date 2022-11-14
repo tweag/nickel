@@ -225,13 +225,11 @@ fn imports() {
 fn interpolation_simple() {
     let mut chunks = vec![
         StrChunk::Literal(String::from("Hello")),
-        StrChunk::expr(
-            mk_term::op2(
-                BinaryOp::StrConcat(),
-                mk_term::string(", "),
-                mk_term::string("World!"),
-            ),
-        ),
+        StrChunk::expr(mk_term::op2(
+            BinaryOp::StrConcat(),
+            mk_term::string(", "),
+            mk_term::string("World!"),
+        )),
         StrChunk::Literal(String::from(" How")),
         StrChunk::expr(mk_term::if_then_else(
             Term::Bool(true),

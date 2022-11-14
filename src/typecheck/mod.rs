@@ -601,10 +601,7 @@ pub fn mk_initial_ctxt(initial_env: &[RichTerm]) -> Result<Context, EnvBuildErro
         .iter()
         .map(|rt| {
             if let Term::RecRecord(record, ..) = rt.as_ref() {
-                Ok(record
-                    .fields
-                    .iter()
-                    .map(|(id, rt)| (*id, rt.clone())))
+                Ok(record.fields.iter().map(|(id, rt)| (*id, rt.clone())))
             } else {
                 Err(EnvBuildError::NotARecord(rt.clone()))
             }

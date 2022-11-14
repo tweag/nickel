@@ -339,10 +339,10 @@ pub fn handle_completion(
         Some(item) => {
             debug!("found closest item: {:?}", item);
 
-            let trigger = params.context.as_ref().and_then(|context| {
-                context
-                    .trigger_character.as_deref()
-            });
+            let trigger = params
+                .context
+                .as_ref()
+                .and_then(|context| context.trigger_character.as_deref());
 
             let in_scope =
                 get_completion_identifiers(&text[..start], trigger, linearization, item)?;

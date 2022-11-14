@@ -59,7 +59,7 @@ pub struct Bench<'b> {
 }
 
 impl<'b> Bench<'b> {
-    pub fn bench(
+    pub fn new(
         name: &'b str,
         base_dir: &'b str,
         subpath: &'b str,

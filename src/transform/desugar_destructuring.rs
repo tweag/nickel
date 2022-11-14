@@ -180,12 +180,7 @@ fn destruct_term(x: Ident, pat: &Destruct, body: RichTerm) -> RichTerm {
                 pos,
             ),
             Match::Assign(f, _, (id, pat)) => desugar(RichTerm::new(
-                Term::LetPattern(
-                    *id,
-                    pat.clone(),
-                    op1(StaticAccess(*f), Term::Var(x)),
-                    t,
-                ),
+                Term::LetPattern(*id, pat.clone(), op1(StaticAccess(*f), Term::Var(x)), t),
                 pos,
             )),
         }),

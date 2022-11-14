@@ -46,12 +46,12 @@ impl Building {
     }
 
     pub(super) fn inform_declaration(&mut self, declaration: ID, value: ID) {
-        match self.linearization.get_mut(declaration) {
-            Some(LinearizationItem {
-                kind: TermKind::Declaration(_, _, value_state),
-                ..
-            }) => *value_state = ValueState::Known(value),
-            _ => (),
+        if let Some(LinearizationItem {
+            kind: TermKind::Declaration(_, _, value_state),
+            ..
+        }) = self.linearization.get_mut(declaration)
+        {
+            *value_state = ValueState::Known(value)
         }
     }
 

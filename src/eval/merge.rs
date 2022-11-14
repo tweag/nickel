@@ -384,7 +384,11 @@ pub fn merge(
             let m1_values: Vec<_> = r1.fields.values().cloned().collect();
             let m2_values: Vec<_> = r2.fields.values().cloned().collect();
 
-            let hashmap::SplitResult{left, center, right} = hashmap::split(r1.fields, r2.fields);
+            let hashmap::SplitResult {
+                left,
+                center,
+                right,
+            } = hashmap::split(r1.fields, r2.fields);
 
             match mode {
                 MergeMode::Contract(mut lbl) if !r2.attrs.open && !left.is_empty() => {
@@ -534,16 +538,13 @@ pub mod hashmap {
     pub struct SplitResult<K, V1, V2> {
         pub left: HashMap<K, V1>,
         pub center: HashMap<K, (V1, V2)>,
-        pub right: HashMap<K, V2>
+        pub right: HashMap<K, V2>,
     }
 
     /// Split two hashmaps m1 and m2 in three parts (left,center,right), where left holds bindings
     /// `(key,value)` where key is not in `m2.keys()`, right is the dual (keys of m2 that are not
     /// in m1), and center holds bindings for keys that are both in m1 and m2.
-    pub fn split<K, V1, V2>(
-        m1: HashMap<K, V1>,
-        m2: HashMap<K, V2>,
-    ) -> SplitResult<K, V1, V2>
+    pub fn split<K, V1, V2>(m1: HashMap<K, V1>, m2: HashMap<K, V2>) -> SplitResult<K, V1, V2>
     where
         K: std::hash::Hash + Eq,
     {
@@ -559,7 +560,11 @@ pub mod hashmap {
             }
         }
 
-        SplitResult{left, center, right}
+        SplitResult {
+            left,
+            center,
+            right,
+        }
     }
 
     #[cfg(test)]
@@ -572,7 +577,11 @@ pub mod hashmap {
             let m2 = HashMap::<isize, isize>::new();
 
             m1.insert(1, 1);
-            let (mut left, center, right) = split(m1, m2);
+            let SplitResult {
+                mut left,
+                center,
+                right,
+            } = split(m1, m2);
 
             if left.remove(&1) == Some(1)
                 && left.is_empty()
@@ -591,7 +600,11 @@ pub mod hashmap {
             let mut m2 = HashMap::new();
 
             m2.insert(1, 1);
-            let (left, center, mut right) = split(m1, m2);
+            let SplitResult {
+                left,
+                center,
+                mut right,
+            } = split(m1, m2);
 
             if right.remove(&1) == Some(1)
                 && right.is_empty()
@@ -613,7 +626,11 @@ pub mod hashmap {
 
             m1.insert(1, 1);
             m2.insert(1, 2);
-            let (left, mut center, right) = split(m1, m2);
+            let SplitResult {
+                left,
+                mut center,
+                right,
+            } = split(m1, m2);
 
             if center.remove(&1) == Some((1, 2))
                 && center.is_empty()
@@ -637,7 +654,11 @@ pub mod hashmap {
             m1.insert(2, 1);
             m2.insert(1, -1);
             m2.insert(3, -1);
-            let (mut left, mut center, mut right) = split(m1, m2);
+            let SplitResult {
+                mut left,
+                mut center,
+                mut right,
+            } = split(m1, m2);
 
             if left.remove(&2) == Some(1)
                 && center.remove(&1) == Some((1, -1))

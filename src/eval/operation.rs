@@ -621,7 +621,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                             // As for `ArrayMap` (see above), we closurize the content of fields
                             let record = record.map_fields_without_optionals(&env, |id, t| {
                                 let pos = t.pos.into_inherited();
-                                
+
                                 mk_app!(f_as_var.clone(), mk_term::string(id.label()), t)
                                     .closurize(&mut shared_env, env.clone())
                                     .with_pos(pos)
@@ -1152,7 +1152,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                                     pos_field: t.pos,
                                     pos_access: pos_op,
                                 });
-                                
+
                                 mk_term::op1(UnaryOp::Force(stack_elem), t)
                                     .closurize(&mut shared_env, env.clone())
                             });
@@ -2813,7 +2813,11 @@ fn eq(env: &mut Environment, c1: Closure, c2: Closure) -> EqResult {
         (Term::SealingKey(s1), Term::SealingKey(s2)) => EqResult::Bool(s1 == s2),
         (Term::Enum(id1), Term::Enum(id2)) => EqResult::Bool(id1 == id2),
         (Term::Record(r1), Term::Record(r2)) => {
-            let merge::hashmap::SplitResult{left, center, right} = merge::hashmap::split(r1.fields, r2.fields);
+            let merge::hashmap::SplitResult {
+                left,
+                center,
+                right,
+            } = merge::hashmap::split(r1.fields, r2.fields);
 
             // As for other record operations, we ignore optional fields without a definition.
             if !left.values().all(|rt| is_empty_optional(rt, &env1))

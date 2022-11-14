@@ -57,19 +57,18 @@ pub fn handle_to_definition(
     let location = match item.kind {
         TermKind::Usage(UsageState::Resolved(usage_id)) => {
             let definition = linearization.get_item(usage_id).unwrap();
-            let location = match definition.pos.unwrap() {
-                RawSpan {
-                    start: ByteIndex(start),
-                    end: ByteIndex(end),
-                    src_id,
-                } => Location {
-                    uri: Url::parse(&server.cache.name(src_id).to_string_lossy()).unwrap(),
-                    range: Range::from_codespan(
-                        &src_id,
-                        &(start as usize..end as usize),
-                        server.cache.files(),
-                    ),
-                },
+            let RawSpan {
+                start: ByteIndex(start),
+                end: ByteIndex(end),
+                src_id,
+            } = definition.pos.unwrap();
+            let location = Location {
+                uri: Url::parse(&server.cache.name(src_id).to_string_lossy()).unwrap(),
+                range: Range::from_codespan(
+                    &src_id,
+                    &(start as usize..end as usize),
+                    server.cache.files(),
+                ),
             };
             Some(location)
         }

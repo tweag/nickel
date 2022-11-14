@@ -336,8 +336,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                             thunk.set_evaluated();
                         }
                     }
-                    self.call_stack
-                        .enter_var(thunk.ident_kind(), *x, pos);
+                    self.call_stack.enter_var(thunk.ident_kind(), *x, pos);
                     thunk.into_closure()
                 }
                 Term::App(t1, t2) => {
