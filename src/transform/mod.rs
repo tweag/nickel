@@ -141,7 +141,7 @@ impl Closurizable for RichTerm {
             }
         };
 
-        env.insert(var.clone(), thunk);
+        env.insert(var, thunk);
         RichTerm::new(Term::Var(var), pos.into_inherited())
     }
 }

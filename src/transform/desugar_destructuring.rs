@@ -60,7 +60,7 @@ pub fn desugar_fun(rt: RichTerm) -> RichTerm {
             let t_pos = t_.pos;
             RichTerm::new(
                 Term::Fun(
-                    x.clone(),
+                    x,
                     RichTerm::new(Term::LetPattern(None, pat, Term::Var(x).into(), t_), t_pos /* TODO: should we use rt.pos? */),
                 ),
                 rt.pos,
@@ -112,9 +112,9 @@ pub fn desugar(rt: RichTerm) -> RichTerm {
                 let x = x.unwrap_or_else(Ident::fresh);
                 RichTerm::new(
                     Term::Let(
-                        x.clone(),
+                        x,
                         t_,
-                        destruct_term(x.clone(), &pat, bind_open_field(x, &pat, body)),
+                        destruct_term(x, &pat, bind_open_field(x, &pat, body)),
                         Default::default(),
                     ),
                     pos,
@@ -136,7 +136,7 @@ fn bind_open_field(x: Ident, pat: &Destruct, body: RichTerm) -> RichTerm {
             open: true,
             rest: Some(x),
             ..
-        } => (matches, x.clone()),
+        } => (matches, *x),
         Destruct::Record {
             matches,
             open: true,
@@ -172,8 +172,8 @@ fn destruct_term(x: Ident, pat: &Destruct, body: RichTerm) -> RichTerm {
         Destruct::Record { matches, .. } => matches.iter().fold(body, move |t, m| match m {
             Match::Simple(id, _) => RichTerm::new(
                 Term::Let(
-                    id.clone(),
-                    op1(StaticAccess(id.clone()), Term::Var(x.clone())),
+                    *id,
+                    op1(StaticAccess(*id), Term::Var(x)),
                     t,
                     Default::default(),
                 ),
@@ -181,9 +181,9 @@ fn destruct_term(x: Ident, pat: &Destruct, body: RichTerm) -> RichTerm {
             ),
             Match::Assign(f, _, (id, pat)) => desugar(RichTerm::new(
                 Term::LetPattern(
-                    id.clone(),
+                    *id,
                     pat.clone(),
-                    op1(StaticAccess(f.clone()), Term::Var(x.clone())),
+                    op1(StaticAccess(*f), Term::Var(x)),
                     t,
                 ),
                 pos,

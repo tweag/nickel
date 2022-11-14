@@ -114,7 +114,7 @@ impl From<eval::Environment> for SimpleTermEnvironment {
             .map(|(id, thunk)| {
                 let borrowed = thunk.borrow();
                 (
-                    id.clone(),
+                    *id,
                     (
                         borrowed.body.clone(),
                         SimpleTermEnvironment::from(borrowed.env.clone()),

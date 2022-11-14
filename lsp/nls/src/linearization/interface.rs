@@ -22,7 +22,7 @@ impl ResolutionState for Resolved {}
 /// 3. Records, listing their fields
 /// 4. wildcard (Structure) for any other kind of term.
 /// Can be extended later to represent Contracts, Records, etc.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TermKind {
     Declaration(Ident, Vec<ID>, ValueState),
     Usage(UsageState),
@@ -36,7 +36,7 @@ pub enum TermKind {
     Structure,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ValueState {
     Unknown,
     Known(ID),
@@ -52,7 +52,7 @@ impl ValueState {
 }
 /// Some usages cannot be fully resolved in a first pass (i.e. recursive record fields)
 /// In these cases we defer the resolution to a second pass during linearization
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UsageState {
     Unbound,
     Resolved(ID),

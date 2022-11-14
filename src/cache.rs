@@ -202,7 +202,7 @@ impl<E> CacheError<E> {
 /// retrieved from the cache.
 ///
 /// See [ImportResolver::resolve].
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ResolvedTerm {
     FromFile {
         path: PathBuf, /* the loaded path */
@@ -1030,7 +1030,7 @@ impl ImportResolver for Cache {
         };
 
         self.parse_multi(file_id, format)
-            .map_err(|err| ImportError::ParseErrors(err.into(), *pos))?;
+            .map_err(|err| ImportError::ParseErrors(err, *pos))?;
 
         Ok((ResolvedTerm::FromFile { path: path_buf }, file_id))
     }

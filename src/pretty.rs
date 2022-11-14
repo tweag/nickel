@@ -402,8 +402,7 @@ where
                 .text("let")
                 .append(allocator.space())
                 .append(
-                    opt_id
-                        .clone()
+                    (*opt_id)
                         .map(|id| {
                             allocator.as_string(id).append(if dst.is_empty() {
                                 allocator.nil()

@@ -162,7 +162,7 @@ impl WasmInitResult {
     /// Make a `WasmInitResult` result from an `InputError`.
     fn error(mut state: ReplState, error: InputError) -> Self {
         WasmInitResult {
-            msg: err_to_string(&mut state.0.cache_mut(), &error),
+            msg: err_to_string(state.0.cache_mut(), &error),
             tag: WasmResultTag::Error,
             state,
         }
@@ -278,7 +278,7 @@ pub fn diags_to_string(cache: &mut Cache, diags: &Vec<Diagnostic<FileId>>) -> St
     diags
         .iter()
         .try_for_each(|d| {
-            codespan_reporting::term::emit(&mut buffer, &config, cache.files_mut(), &d)
+            codespan_reporting::term::emit(&mut buffer, &config, cache.files_mut(), d)
         })
         .unwrap();
 

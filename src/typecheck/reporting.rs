@@ -68,7 +68,7 @@ fn select_uniq(name_reg: &mut NameReg, mut name: String, id: usize) -> Ident {
     }
 
     let ident = Ident::from(name);
-    name_reg.reg.insert(id, ident.clone());
+    name_reg.reg.insert(id, ident);
     ident
 }
 

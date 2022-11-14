@@ -10,7 +10,7 @@ use nickel_lang_utilities::parse;
 // }
 
 fn free_vars_eq(free_vars: &HashSet<Ident>, expected: Vec<&str>) -> bool {
-    let expected_set: HashSet<Ident> = expected.into_iter().map(|s| Ident::from(s)).collect();
+    let expected_set: HashSet<Ident> = expected.into_iter().map(Ident::from).collect();
     *free_vars == expected_set
 }
 

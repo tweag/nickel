@@ -1,6 +1,6 @@
 use crate::{identifier::Ident, position::RawSpan};
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum LexicalError {
     /// A closing brace '}' does not match an opening brace '{'.
     UnmatchedCloseBrace(usize),
@@ -12,7 +12,7 @@ pub enum LexicalError {
     Generic(usize, usize),
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum ParseError {
     /// A specific lexical error
     Lexical(LexicalError),

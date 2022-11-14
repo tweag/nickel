@@ -13,7 +13,7 @@ fn parse(s: &str) -> Result<RichTerm, ParseError> {
     let id = Files::new().add("<test>", String::from(s));
 
     super::grammar::TermParser::new()
-        .parse_term(id, Lexer::new(&s))
+        .parse_term(id, Lexer::new(s))
         .map_err(|errs| errs.errors.first().unwrap().clone())
 }
 

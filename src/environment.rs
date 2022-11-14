@@ -101,7 +101,7 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
         let mut env: Vec<NonNull<HashMap<K, V>>> = self
             .iter_layers()
             // SAFETY: all NonNull::new_unchecked comes from pointers created from Rc, so cannot be null
-            .map(|hmap| unsafe { NonNull::new_unchecked(Rc::as_ptr(&hmap) as *mut _) })
+            .map(|hmap| unsafe { NonNull::new_unchecked(Rc::as_ptr(hmap) as *mut _) })
             .collect();
         // SAFETY: by design, env cannot be empty, and coming from an Rc, it is well aligned and initialized
         let current_map = unsafe { env.pop().unwrap().as_ref() }.iter();
@@ -297,7 +297,7 @@ mod tests {
         env_base.insert(1, 'a');
         assert_eq!(env_base.iter_layers().count(), 1);
         assert_eq!(env_base.iter_layers().next().unwrap().get(&1), Some(&'a'));
-        assert_eq!(env_base.iter_layers().skip(1).next(), None);
+        assert_eq!(env_base.iter_layers().nth(1), None);
         let _ = env_base.clone();
         assert_eq!(env_base.iter_layers().count(), 1);
         env_base.insert(2, 'b');
@@ -336,8 +336,8 @@ mod tests {
         env2.insert(1, 'y');
         assert_eq!(env_base.iter_elems().count(), 3);
         assert_eq!(env2.iter_elems().count(), 3);
-        assert_eq!(env_base.iter_elems().skip(2).next(), Some((&1, &'z')));
-        assert_eq!(env2.iter_elems().skip(2).next(), Some((&1, &'y')));
+        assert_eq!(env_base.iter_elems().nth(2), Some((&1, &'z')));
+        assert_eq!(env2.iter_elems().nth(2), Some((&1, &'y')));
 
         let mut iter_elems_base = env_base.iter_elems();
         let _ = iter_elems_base.next();

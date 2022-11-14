@@ -225,7 +225,7 @@ where
             .map_err(|err| SerializationError::Other(err.to_string())),
         ExportFormat::Yaml => serde_yaml::to_writer(writer, &rt)
             .map_err(|err| SerializationError::Other(err.to_string())),
-        ExportFormat::Toml => toml::Value::try_from(&rt)
+        ExportFormat::Toml => toml::Value::try_from(rt)
             .map_err(|err| SerializationError::Other(err.to_string()))
             .and_then(|v| {
                 write!(writer, "{}", v).map_err(|err| SerializationError::Other(err.to_string()))
@@ -249,7 +249,7 @@ pub fn to_string(format: ExportFormat, rt: &RichTerm) -> Result<String, Serializ
         ExportFormat::Yaml => {
             serde_yaml::to_string(&rt).map_err(|err| SerializationError::Other(err.to_string()))
         }
-        ExportFormat::Toml => toml::Value::try_from(&rt)
+        ExportFormat::Toml => toml::Value::try_from(rt)
             .map(|v| format!("{}", v))
             .map_err(|err| SerializationError::Other(err.to_string())),
         ExportFormat::Raw => match rt.as_ref() {

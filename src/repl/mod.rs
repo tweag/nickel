@@ -150,7 +150,7 @@ impl ReplImpl {
             if let Some(id) = id {
                 typecheck::env_add(
                     &mut repl_impl.env.type_ctxt.type_env,
-                    id.clone(),
+                    id,
                     &t,
                     &repl_impl.env.type_ctxt.term_env,
                     repl_impl.vm.import_resolver(),
@@ -192,9 +192,9 @@ impl ReplImpl {
                 Ok(eval_function(&mut self.vm, t, &self.env.eval_env)?.into())
             }
             ExtendedTerm::ToplevelLet(id, t) => {
-                let t = prepare(self, Some(id.clone()), t)?;
+                let t = prepare(self, Some(id), t)?;
                 let local_env = self.env.eval_env.clone();
-                eval::env_add(&mut self.env.eval_env, id.clone(), t, local_env);
+                eval::env_add(&mut self.env.eval_env, id, t, local_env);
                 Ok(EvalResult::Bound(id))
             }
         }

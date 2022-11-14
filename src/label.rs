@@ -48,7 +48,7 @@ pub mod ty_path {
     };
 
     /// An element of a path type.
-    #[derive(Debug, Clone, PartialEq)]
+    #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum Elem {
         Domain,
         Codomain,

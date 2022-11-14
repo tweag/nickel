@@ -71,7 +71,7 @@ impl Building {
                 ty: UnifType::Concrete(TypeF::Dyn),
                 kind: TermKind::RecordField {
                     record,
-                    ident: ident.clone(),
+                    ident: *ident,
                     usages: Vec::new(),
                     value: ValueState::Unknown,
                 },
@@ -83,8 +83,8 @@ impl Building {
                     _ => None,
                 },
             });
-            env.insert(ident.clone(), id);
-            self.add_record_field(record, (ident.clone(), id))
+            env.insert(*ident, id);
+            self.add_record_field(record, (*ident, id))
         }
     }
 
@@ -157,7 +157,7 @@ impl Building {
             }) = parent_referenced
             {
                 debug!("parent references deferred usage");
-                unresolved.push(deferred.clone());
+                unresolved.push(deferred);
                 continue;
             }
 
@@ -171,7 +171,7 @@ impl Building {
             }) = parent_declaration
             {
                 debug!("parent references deferred usage");
-                unresolved.push(deferred.clone());
+                unresolved.push(deferred);
                 continue;
             }
 

@@ -316,7 +316,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                         .get(x)
                         .or_else(|| initial_env.get(x))
                         .cloned()
-                        .ok_or_else(|| EvalError::UnboundIdentifier(x.clone(), pos))?;
+                        .ok_or(EvalError::UnboundIdentifier(*x, pos))?;
                     std::mem::drop(env); // thunk may be a 1RC pointer
 
                     if thunk.state() != ThunkState::Evaluated {
@@ -337,7 +337,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                         }
                     }
                     self.call_stack
-                        .enter_var(thunk.ident_kind(), x.clone(), pos);
+                        .enter_var(thunk.ident_kind(), *x, pos);
                     thunk.into_closure()
                 }
                 Term::App(t1, t2) => {
@@ -372,10 +372,10 @@ impl<R: ImportResolver> VirtualMachine<R> {
                     // Patch the environment with the (x <- closure) binding
                     if *rec {
                         let thunk_ = thunk.clone();
-                        thunk.borrow_mut().env.insert(x.clone(), thunk_);
+                        thunk.borrow_mut().env.insert(*x, thunk_);
                     }
 
-                    env.insert(x.clone(), thunk);
+                    env.insert(*x, thunk);
                     Closure {
                         body: t.clone(),
                         env,
@@ -669,13 +669,13 @@ impl<R: ImportResolver> VirtualMachine<R> {
                 Term::Fun(x, t) => {
                     if let Some((thunk, pos_app)) = self.stack.pop_arg_as_thunk() {
                         self.call_stack.enter_fun(pos_app);
-                        env.insert(x.clone(), thunk);
+                        env.insert(*x, thunk);
                         Closure {
                             body: t.clone(),
                             env,
                         }
                     } else {
-                        return Ok((RichTerm::new(Term::Fun(x.clone(), t.clone()), pos), env));
+                        return Ok((RichTerm::new(Term::Fun(*x, t.clone()), pos), env));
                     }
                 }
                 // Otherwise, this is either an ill-formed application, or we are done

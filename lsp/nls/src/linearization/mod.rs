@@ -168,7 +168,7 @@ impl Linearizer for AnalysisHost {
                                 id: id_gen.get_and_advance(),
 
                                 ty: ty.clone(),
-                                pos: ident.pos.clone(),
+                                pos: ident.pos,
                                 kind: TermKind::Structure,
                                 meta: self.meta.take(),
                             });
@@ -227,7 +227,7 @@ impl Linearizer for AnalysisHost {
                             id: id_gen.get_and_advance(),
 
                             ty: ty.clone(),
-                            pos: ident.pos.clone(),
+                            pos: ident.pos,
                             kind: TermKind::Structure,
                             meta: self.meta.take(),
                         });
@@ -357,7 +357,7 @@ impl Linearizer for AnalysisHost {
             .iter()
             .filter_map(|item| match &item.kind {
                 TermKind::Usage(UsageState::Deferred { parent, child }) => {
-                    Some((item.id, *parent, child.clone()))
+                    Some((item.id, *parent, *child))
                 }
                 _ => None,
             })

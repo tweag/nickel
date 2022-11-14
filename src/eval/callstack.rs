@@ -9,7 +9,7 @@ use crate::{
 use codespan::FileId;
 
 /// A call stack, saving the history of function calls.
-#[derive(PartialEq, Clone, Default, Debug)]
+#[derive(PartialEq, Eq, Clone, Default, Debug)]
 pub struct CallStack(pub Vec<StackElem>);
 
 /// Basic description of a function call. Used for error reporting.
@@ -181,7 +181,7 @@ impl CallStack {
                         Some(CallDescr {
                             head: ref mut head @ None,
                             span: span_call,
-                        }) if pos.unwrap() <= *span_call => *head = Some(id.clone()),
+                        }) if pos.unwrap() <= *span_call => *head = Some(*id),
                         _ => (),
                     };
                 }

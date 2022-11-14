@@ -44,7 +44,7 @@ fn find_fields_from_term_kind(
             } else {
                 let name = path.pop()?;
                 let new_id = fields.get(&name)?;
-                find_fields_from_term_kind(&linearization, *new_id, path)
+                find_fields_from_term_kind(linearization, *new_id, path)
             }
         }
         TermKind::RecordField {
@@ -72,7 +72,7 @@ fn find_fields_from_contract(
         None => match item.kind {
             TermKind::Declaration(_, _, ValueState::Known(new_id))
             | TermKind::Usage(UsageState::Resolved(new_id)) => {
-                find_fields_from_contract(&linearization, new_id, path)
+                find_fields_from_contract(linearization, new_id, path)
             }
             _ => None,
         },
@@ -187,7 +187,7 @@ fn get_identifiers_before_field(text: &str) -> Option<Vec<String>> {
         .rev()
         .collect();
 
-    get_identifier_path(&text.as_str())
+    get_identifier_path(text.as_str())
 }
 
 fn remove_duplicates(items: &Vec<CompletionItem>) -> Vec<CompletionItem> {
@@ -219,11 +219,11 @@ fn collect_record_info(
                     Some((find_fields_from_type(&rrows, path), item.ty.clone()))
                 }
                 (TermKind::Declaration(_, _, ValueState::Known(body_id)), _) if id == item.id => {
-                    match find_fields_from_contract(&linearization, *body_id, path) {
+                    match find_fields_from_contract(linearization, *body_id, path) {
                         // Get record fields from contract metadata
                         Some(fields) => Some((fields, item.ty.clone())),
                         // Get record fields from lexical scoping
-                        None => find_fields_from_term_kind(&linearization, id, path)
+                        None => find_fields_from_term_kind(linearization, id, path)
                             .map(|idents| (idents, item.ty.clone())),
                     }
                 }
@@ -280,7 +280,7 @@ fn get_completion_identifiers(
                     .iter()
                     .filter_map(|i| match i.kind {
                         TermKind::Declaration(ref ident, _, _) => {
-                            Some((vec![ident.clone()], i.ty.clone()))
+                            Some((vec![*ident], i.ty.clone()))
                         }
                         _ => None,
                     })
@@ -341,9 +341,7 @@ pub fn handle_completion(
 
             let trigger = params.context.as_ref().and_then(|context| {
                 context
-                    .trigger_character
-                    .as_ref()
-                    .map(|trigger| trigger.as_str())
+                    .trigger_character.as_deref()
             });
 
             let in_scope =
