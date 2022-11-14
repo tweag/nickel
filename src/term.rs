@@ -266,7 +266,7 @@ pub mod array {
 
             // This condition is the same as `!Rc::is_unique(&mut self.inner)`, but that function
             // is not public.
-            if Rc::strong_count(&mut self.inner) != 1 || Rc::weak_count(&mut self.inner) != 0 {
+            if Rc::strong_count(&self.inner) != 1 || Rc::weak_count(&self.inner) != 0 {
                 self.inner = self.iter().cloned().collect::<Rc<[_]>>();
             }
 
@@ -516,6 +516,11 @@ pub struct PriorityIsNaN;
 
 // The following impl are ok because `NumeralPriority(NaN)` can't be constructed.
 impl Eq for NumeralPriority {}
+
+// We can't derive `Ord` because there is an `f64` inside
+// but it is actually an `Ord` because `NaN` is forbidden.
+// See `TryFrom` smart constructor.
+#[allow(clippy::derive_ord_xor_partial_ord)]
 impl Ord for NumeralPriority {
     fn cmp(&self, other: &Self) -> Ordering {
         // Ok: NaN is forbidden

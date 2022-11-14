@@ -917,7 +917,7 @@ impl Cache {
     /// Generate the initial typing context from the list of `file_ids` corresponding to the
     /// standard library parts.
     pub fn mk_type_ctxt(&self) -> Result<typecheck::Context, CacheError<Void>> {
-        let stdlib_terms_vec =
+        let stdlib_terms_vec: Vec<RichTerm> =
             self.stdlib_ids
                 .as_ref()
                 .map_or(Err(CacheError::NotParsed), |ids| {

@@ -320,7 +320,7 @@ pub enum ParseError {
 }
 
 /// An error occurring during the resolution of an import.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ImportError {
     /// An IO error occurred during an import.
     IOError(

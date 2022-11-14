@@ -595,7 +595,7 @@ pub enum EnvBuildError {
 }
 
 /// Populate the initial typing environment from a `Vec` of parsed files.
-pub fn mk_initial_ctxt(initial_env: &Vec<RichTerm>) -> Result<Context, EnvBuildError> {
+pub fn mk_initial_ctxt(initial_env: &[RichTerm]) -> Result<Context, EnvBuildError> {
     // Collect the bindings for each module, clone them and flatten the result to a single list.
     let bindings = initial_env
         .iter()
