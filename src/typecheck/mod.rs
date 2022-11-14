@@ -2281,7 +2281,7 @@ trait ConstrainFreshRRowsVar {
     ///
     /// When instantiating a quantified type variable with a unification variable, row constraints may
     /// apply. For example, if we instantiate `forall a. {x: Num | a} -> Num` by replacing `a` with a
-    /// unification variable `Ptr(p)`, this unification variable requires a constraint to avoid being
+    /// unification variable `UnifVar(p)`, this unification variable requires a constraint to avoid being
     /// unified with a row type containing another declaration for the field `x`.
     ///
     /// This function traverses the type or rows `self`, looking for all occurrences of the
