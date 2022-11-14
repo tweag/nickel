@@ -735,13 +735,6 @@ impl EnumRows {
         Ok(mk_app!(contract::enums(), case))
     }
 
-    /// Determine if a type is an atom, that is a either an atom or a type delimited by specific
-    /// markers (such as a row type). Used in formatting to decide if parentheses need to be
-    /// inserted during pretty pretting.
-    pub fn fmt_is_atom(&self) -> bool {
-        matches!(self.0, EnumRowsF::TailVar(_))
-    }
-
     pub fn iter<'a>(&'a self) -> EnumRowsIterator<'a, EnumRows> {
         EnumRowsIterator { erows: Some(self) }
     }
@@ -812,13 +805,6 @@ impl RecordRows {
                 _ => None,
             }
         }
-    }
-
-    /// Determine if a type is an atom, that is a either an atom or a type delimited by specific
-    /// markers (such as a row type). Used in formatting to decide if parentheses need to be
-    /// inserted during pretty pretting.
-    pub fn fmt_is_atom(&self) -> bool {
-        matches!(self.0, RecordRowsF::TailDyn | RecordRowsF::TailVar(_))
     }
 
     pub fn iter<'a>(&'a self) -> RecordRowsIterator<'a, Types, RecordRows> {
