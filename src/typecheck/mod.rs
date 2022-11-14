@@ -335,8 +335,8 @@ impl SubstERows for UnifEnumRows {
 }
 
 impl<E: TermEnvironment + Clone> GenericUnifType<E> {
-    /// Create a TypeWrapper from a Types. Contracts are represented as the separate variant
-    /// [`TypeWrapper::Contract`] which also stores a term environment, required for checking type
+    /// Create a [`GenericUnifType`] from a [`Types`]. Contracts are represented as the separate variant
+    /// [`GenericUnifType::Contract`] which also stores a term environment, required for checking type
     /// equality involving contracts.
     pub fn from_type(ty: Types, env: &E) -> Self {
         match ty.0 {
