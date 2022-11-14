@@ -358,9 +358,8 @@ pub(super) struct VarKindMismatch;
 pub(super) type BoundVarEnv = Environment<Ident, VarKindCell>;
 
 impl VarKindCell {
-    /// Create a new `VarKindCell` from a mutable reference to a `VarKind`. The kind set to
-    /// `VarKind::Type` by default, meaning that unused type variables are given this kind by
-    /// default.
+    /// Create a new `VarKindCell` with the `Unset` state. The kind is set to `VarKind::Type`,
+    /// meaning that unused type variables are given this kind by default.
     pub(super) fn new() -> Self {
         VarKindCell(RefCell::new(VarKindCellData {
             var_kind: VarKind::Type,
