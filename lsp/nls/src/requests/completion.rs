@@ -172,7 +172,7 @@ fn get_identifier_path(text: &str) -> Option<Vec<String>> {
             String::from(name)
         }
     }
-    Some(path.split(".").map(remove_quotes).collect())
+    Some(path.split('.').map(remove_quotes).collect())
 }
 
 /// Get the identifiers before `.<text>` for record completion.
