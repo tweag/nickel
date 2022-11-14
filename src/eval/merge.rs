@@ -363,11 +363,6 @@ pub fn merge(
         // Merge put together the fields of records, and recursively merge
         // fields that are present in both terms
         (Term::Record(mut r1), Term::Record(mut r2)) => {
-            /* Terms inside m1 and m2 may capture variables of resp. env1 and env2.  Morally, we
-             * need to store closures, or a merge of closures, inside the resulting record.  We use
-             * the same trick as in the evaluation of the operator DynExtend, and replace each such
-             * term by a variable bound to an appropriate closure in the environment
-             */
             // Merging recursive record is the one operation that may override recursive fields. To
             // have the recursive fields depend on the updated values, we need to revert the thunks
             // first.
@@ -501,13 +496,40 @@ fn merge_closurize(
     t2: RichTerm,
     env2: Environment,
 ) -> RichTerm {
+   fields_merge_closurize(env, t1, BindingType::Normal, env1, t2, BindingType::Normal, env2)
+}
+
+/// Take the current environment, two fields with their local environment and binding type, and
+/// return a term which is the closurized merge of the two.
+///
+/// The thunk allocated for the result is revertible if and only if at least one of the original
+/// thunk is (if one of the original value is overridable, then so is the merge of the two). In
+/// this case, the field dependencies are the union of the dependencies of each field.
+fn fields_merge_closurize(
+    env: &mut Environment,
+    t1: RichTerm,
+    binding_type1: BindingType,
+    env1: Environment,
+    t2: RichTerm,
+    binding_type2: BindingType,
+    env2: Environment,
+) -> RichTerm {
     let mut local_env = Environment::new();
     let body = RichTerm::from(Term::Op2(
         BinaryOp::Merge(),
         t1.closurize(&mut local_env, env1),
         t2.closurize(&mut local_env, env2),
     ));
-    body.closurize(env, local_env)
+
+    match (binding_type1, binding_type2) {
+        (BindingType::Revertible(deps1), BindingType::Revertible(deps2)) => todo!(),
+        (BindingType::Revertible(deps), _) | (_, BindingType::Revertible(deps)) => todo!(),
+        (BindingType::Normal, BindingType::Normal) => todo!(),
+    }
+}
+
+fn field_binding_type() {
+    todo!()
 }
 
 fn rev_thunks<'a, I: Iterator<Item = &'a mut RichTerm>>(map: I, env: &mut Environment) {
