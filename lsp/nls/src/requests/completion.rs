@@ -96,12 +96,11 @@ fn find_fields_from_meta_value(
             .contracts
             .iter()
             .chain(meta_value.types.iter())
-            .filter_map(|contract| match &contract.types {
-                Types(AbsType::Record(row)) => Some(find_fields_from_type(&row, path)),
-                Types(AbsType::Flat(term)) => find_fields_from_term(term, path),
-                _ => None,
+            .flat_map(|contract| match &contract.types {
+                Types(AbsType::Record(row)) => find_fields_from_type(&row, path),
+                Types(AbsType::Flat(term)) => find_fields_from_term(term, path).unwrap_or_default(),
+                _ => Vec::new(),
             })
-            .flatten()
             .collect(),
     )
 }
