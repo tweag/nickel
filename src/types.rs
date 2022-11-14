@@ -189,9 +189,9 @@ pub enum VarKind {
 /// ## Motivation 2: recursion schemes
 ///
 /// This definition is actually in the style of recursion schemes. Pedantically, `TypeF` (hence the
-/// `F` suffix), but the formal details aren't so important: keep in mind that the `F` suffix means
-/// that the recursive occurrences of subtrees (and enum
-/// rows and record rows as well) are replaced by generic parameters.
+/// `F` suffix) is a functor, but the formal details aren't so important: keep in mind that the `F`
+/// suffix means that the recursive occurrences of subtrees (and enum rows and record rows as well)
+/// are replaced by generic parameters.
 ///
 /// The usual motivation for recursion schemes is that they allow for elegant and simple definitions
 /// of recursive transformation over trees (here, `TypeF`, and more generally anything with an `F`
