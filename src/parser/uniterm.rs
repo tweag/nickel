@@ -34,7 +34,7 @@ use std::{cell::RefCell, convert::TryFrom};
 ///
 /// As soon as this variable is used in a compound expression, the top-level rule tells us how to
 /// translate it. For example, if we see an arrow `a -> Num`, then we will convert it to a type
-/// variable, and return `UniTermNode::Types(TypeF::Arrow(..))` (there is actually a subtelty:
+/// variable, and return `UniTermNode::Types(TypeF::Arrow(..))` (there is actually a subtlety:
 /// see [`fix_type_vars`], but let's ignore it here). If, on the other hand, we enter the rule for
 /// an infix operator as in `a + 1`, `a` will be converted to a `Term::Var` and the resulting
 /// uniterm will be `UniTermNode::Term(Term::Op2(..))`.
@@ -352,7 +352,7 @@ pub(super) struct VarKindCell(RefCell<VarKindCellData>);
 pub(super) struct VarKindMismatch;
 
 /// Environment maintained during the `fix_type_vars` phase. Used both to determine if a variable
-/// is bound by an eclosing forall (if `env.get(var_id).is_some()`), and to provide a shared
+/// is bound by an enclosing forall (if `env.get(var_id).is_some()`), and to provide a shared
 /// mutable variable kind that can be modified depending on the location of type variable
 /// occurrences.
 pub(super) type BoundVarEnv = Environment<Ident, VarKindCell>;
