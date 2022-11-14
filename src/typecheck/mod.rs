@@ -208,9 +208,9 @@ impl UnifEnumRows {
 }
 
 impl<E: TermEnvironment + Clone> GenericUnifRecordRows<E> {
-    /// Create a TypeWrapper from a Types. Contracts are represented as the separate variant
-    /// [`TypeWrapper::Contract`] which also stores a term environment, required for checking type
-    /// equality involving contracts.
+    /// Create `GenericUnifRecordRows` from `RecordRows`. Contracts are represented as the separate
+    /// variant [`GenericUnifType::Contract`] which also stores a term environment, required for
+    /// checking type equality involving contracts.
     pub fn from_record_rows(rrows: RecordRows, env: &E) -> Self {
         let f_rrow = |ty: Box<Types>| Box::new(GenericUnifType::from_type(*ty, env));
         let f_rrows =
