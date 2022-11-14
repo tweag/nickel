@@ -115,10 +115,7 @@ fn find_fields_from_type(rrows: &RecordRows, path: &mut Vec<Ident>) -> Vec<Ident
         match type_of_current {
             Some(Types(TypeF::Record(rrows_current))) =>  find_fields_from_type(&rrows_current, path), 
             Some(Types(TypeF::Flat(term))) => { 
-                match find_fields_from_term(&term, path) {
-                    Some(result) => result,
-                    None => Vec::new(),
-                }
+                find_fields_from_term(&term, path).unwrap_or_default()
             }
             _ => Vec::new()
         }
