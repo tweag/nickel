@@ -124,12 +124,12 @@ pub enum EnumRowsF<ERows> {
 
 /// The kind of a quantified type variable.
 ///
-/// Nickel uses several form of polymorphism. A type variable can be substituted for a type, as in
-/// `id : forall a. a -> a`, for record rows as in `acess_foo : forall a . {foo : Num; a} -> Num}`,
+/// Nickel uses several forms of polymorphism. A type variable can be substituted for a type, as in
+/// `id : forall a. a -> a`, for record rows as in `access_foo : forall a . {foo : Num; a} -> Num}`,
 /// or for enum rows. This information is implicit in the source syntax: we don't require users to
-/// write e.g. `forall a :: Type` or `forall a :: Rows`. But the kind of variable is required for
+/// write e.g. `forall a :: Type` or `forall a :: Rows`. But the kind of a variable is required for
 /// the typechecker. It is thus determined during parsing and stored as `VarKind` where type
-/// variable are introduced, that is, on forall quantifiers.
+/// variables are introduced, that is, on forall quantifiers.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum VarKind {
     Type,
