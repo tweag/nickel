@@ -91,18 +91,17 @@ fn find_fields_from_meta_value(
     meta_value: &MetaValue,
     path: &mut Vec<Ident>,
 ) -> Option<Vec<Ident>> {
-    Some(
-        meta_value
-            .contracts
-            .iter()
-            .chain(meta_value.types.iter())
-            .flat_map(|contract| match &contract.types {
-                Types(AbsType::Record(row)) => find_fields_from_type(&row, path),
-                Types(AbsType::Flat(term)) => find_fields_from_term(term, path).unwrap_or_default(),
-                _ => Vec::new(),
-            })
-            .collect(),
-    )
+    meta_value
+        .contracts
+        .iter()
+        .chain(meta_value.types.iter())
+        .flat_map(|contract| match &contract.types {
+            Types(AbsType::Record(row)) => find_fields_from_type(&row, path),
+            Types(AbsType::Flat(term)) => find_fields_from_term(term, path).unwrap_or_default(),
+            _ => Vec::new(),
+        })
+        .collect::<Vec<_>>()
+        .into()
 }
 
 /// Extract the fields from a given record type.
