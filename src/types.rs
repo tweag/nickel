@@ -784,7 +784,7 @@ impl RecordRows {
     ///
     /// # Example
     ///
-    /// - self: ` { {| a : { {| b : Num |} } |} }`
+    /// - self: ` {a : {b : Num }}`
     /// - path: `["a", "b"]`
     /// - result: `Some(Num)`
     pub fn row_find_path(&self, path: &[Ident]) -> Option<Types> {
