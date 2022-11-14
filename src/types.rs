@@ -114,7 +114,7 @@ pub enum RecordRowsF<Ty, RRows> {
 /// # Type parameters
 ///
 /// - `ERows` is the recursive unfolding of enum rows (the tail of this row sequence). In practice,
-///   a wrapper around of `EnumRowsF`.
+///   a wrapper around `EnumRowsF`.
 #[derive(Clone, PartialEq, Debug)]
 pub enum EnumRowsF<ERows> {
     Empty,
