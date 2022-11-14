@@ -103,7 +103,7 @@ pub enum GenericUnifRecordRows<E: TermEnvironment + Clone> {
 /// unification variable (or a constant).
 ///
 /// Enum rows don't store any type (they are just a sequence of identifiers), so there is no
-/// `GenericUnifEnumRows` taking an additioinal `E` parameter.
+/// `GenericUnifEnumRows` taking an additional `E` parameter.
 #[derive(Clone, PartialEq, Debug)]
 pub enum UnifEnumRows {
     Concrete(EnumRowsF<Box<UnifEnumRows>>),
@@ -190,7 +190,7 @@ impl<E: TermEnvironment + Clone> std::convert::TryInto<Types> for GenericUnifTyp
 }
 
 // As opposed to `UnifType` and `UnifRecordRows` which can contain types and thus contracts, with
-// all the subtleties associated to contract equality checking (see `typecheck::eq` module), we can
+// all the subtleties associated with contract equality checking (see `typecheck::eq` module), we can
 // convert enum rows directly to unifiable enum rows without additional data: instead of
 // implementing a function `from_enum_rows`, we rather implement the more natural trait
 // `From<EnumRows>`.
@@ -355,7 +355,7 @@ pub type UnifRecordRows = GenericUnifRecordRows<SimpleTermEnvironment>;
 pub type UnifType = GenericUnifType<SimpleTermEnvironment>;
 
 impl UnifRecordRows {
-    /// Extract the concrete type corresponding to a type wrapper. Free unification variables as well
+    /// Extract the concrete [`RecordRows`] corresponding to a [`UnifRecordRows`]. Free unification variables as well
     /// as type constants are replaced with the empty row.
     fn into_rrows(self, table: &UnifTable) -> RecordRows {
         match self {
@@ -374,7 +374,7 @@ impl UnifRecordRows {
         }
     }
 
-    /// Return the unification root associated to these record rows. If the rows are a unification
+    /// Return the unification root associated with these record rows. If the rows are a unification
     /// variable, return the result of `table.root_rrows`. Return `self` otherwise.
     fn into_root(self, table: &UnifTable) -> Self {
         match self {
@@ -385,7 +385,7 @@ impl UnifRecordRows {
 }
 
 impl UnifEnumRows {
-    /// Extract the concrete type corresponding to a type wrapper. Free unification variables as well
+    /// Extract the concrete [`EnumRows`] corresponding to a [`UnifEnumRows`]. Free unification variables as well
     /// as type constants are replaced with the empty row.
     fn into_erows(self, table: &UnifTable) -> EnumRows {
         match self {
@@ -401,7 +401,7 @@ impl UnifEnumRows {
         }
     }
 
-    /// Return the unification root associated to these enum rows. If the rows are a unification
+    /// Return the unification root associated with these enum rows. If the rows are a unification
     /// variable, return the result of `table.root_erows`. Return `self` otherwise.
     fn into_root(self, table: &UnifTable) -> Self {
         match self {
@@ -412,7 +412,7 @@ impl UnifEnumRows {
 }
 
 impl UnifType {
-    /// Create a TypeWrapper from an apparent type. As for [`from_type`], this function requires
+    /// Create a [`UnifType`] from an [`ApparentType`]. As for [`from_type`], this function requires
     /// the current term environment.
     pub fn from_apparent_type(at: ApparentType, env: &SimpleTermEnvironment) -> Self {
         match at {
@@ -447,7 +447,7 @@ impl UnifType {
         }
     }
 
-    /// Return the unification root associated to this type. If the type is a unification variable,
+    /// Return the unification root associated with this type. If the type is a unification variable,
     /// return the result of `table.root_type`. Return `self` otherwise.
     fn into_root(self, table: &UnifTable) -> Self {
         match self {
@@ -457,7 +457,7 @@ impl UnifType {
     }
 }
 
-// This implementation assumes that `TypeF::Flat` is not possible. If TypeWrappers have been
+// This implementation assumes that `TypeF::Flat` is not possible. If a [`UnifType`] has been
 // correctly created from a type using `from_type`, this must be the case.
 impl From<TypeF<Box<UnifType>, UnifRecordRows, UnifEnumRows>> for UnifType {
     fn from(ty: TypeF<Box<UnifType>, UnifRecordRows, UnifEnumRows>) -> Self {
@@ -1715,7 +1715,7 @@ fn rrows_add(
 
 /// Try to find a specific row (ident) inside enum rows, or add it if permitted.
 ///
-/// If the row is present, this function the tail corresponding to the remaining rows coming after
+/// If the row is present, this function returns the tail corresponding to the remaining rows coming after
 /// the found one.
 ///
 /// If the row is not present:
@@ -2103,7 +2103,7 @@ fn instantiate_foralls(state: &mut State, mut ty: UnifType, inst: ForallInst) ->
 /// unified with. Each binding `(ty, var)` in this map should be thought of an edge in a
 /// unification graph.
 ///
-/// The unification table is really three separate tables, corresponding to the different kind of
+/// The unification table is really three separate tables, corresponding to the different kinds of
 /// types: standard types, record rows, and enum rows.
 #[derive(Default)]
 pub struct UnifTable {
@@ -2462,7 +2462,7 @@ impl ConstrainFreshERowsVar for UnifEnumRows {
 /// Check that unifying a variable with a type doesn't violate record rows constraints, and update
 /// the row constraints of the unified type accordingly if needed.
 ///
-/// When a unification variable `Ptr(p)` is unified with a type `uty` which is either a row type or
+/// When a unification variable `UnifVar(p)` is unified with a type `uty` which is either a row type or
 /// another unification variable which could be later unified with a row type itself, the following
 /// operations are required:
 ///

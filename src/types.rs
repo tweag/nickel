@@ -185,21 +185,21 @@ pub enum VarKind {
 ///  }
 /// ```
 ///
-/// We get something that look like normal Nickel types, except that each node can also be a
+/// We get something that looks like normal Nickel types, except that each node can also be a
 /// unification variable as well.
 ///
 /// ## Motivation 2: recursion schemes
 ///
 /// This definition is actually in the style of recursion schemes. Pedantically, `TypeF` (hence the
 /// `F` suffix), but the formal details aren't so important: keep in mind that the `F` suffix means
-/// that the corresponding type definition where the recursive occurrences of subtrees (and enum
-/// rows and records rows as well) are replaced by generic parameters.
+/// that the recursive occurrences of subtrees (and enum
+/// rows and record rows as well) are replaced by generic parameters.
 ///
-/// The usual motivation for recursion schemes is that they allow for elegant and simple definition
-/// of recursive transformation over trees (here, `TypeF`, and more general anything with `F`
-/// suffix) in term of simple appropriate chaining of `map` and folding/unfolding operations. A
+/// The usual motivation for recursion schemes is that they allow for elegant and simple definitions
+/// of recursive transformation over trees (here, `TypeF`, and more generally anything with an `F`
+/// suffix) in terms of simple appropriate chaining of `map` and folding/unfolding operations. A
 /// good example is the definition of `[Types::traverse]`. Although [`crate::term::Term`] isn't
-/// currently defined as functors per se, the way program transformation are written is in the same
+/// currently defined using functors per se, the way program transformations are written is in the same
 /// style as recursion schemes: we simply define the action of a transformation as a mapping on the
 /// current node, and let the traversal take care of the plumbing of recursion and reconstruction.
 ///
@@ -210,7 +210,7 @@ pub enum VarKind {
 /// complete definition, but the approach is unchanged.
 #[derive(Clone, PartialEq, Debug)]
 pub enum TypeF<Ty, RRows, ERows> {
-    /// The dynamic type, or unitype. Affected to values which actual type is not statically known
+    /// The dynamic type, or unitype. Assigned to values whose actual type is not statically known
     /// or checked.
     Dyn,
     /// A floating point number.
@@ -249,8 +249,8 @@ pub enum TypeF<Ty, RRows, ERows> {
 }
 
 // Concrete, recursive definition of Nickel types from the generic `XxxF` definitions. This is
-// "tying" the note. We have to put `Box` in the appropriate positions (otherwise, Rust will
-// complain that the type has an infinite size), but also avoid putting more than necessary.
+// "tying" the knot. We have to put `Box` in the appropriate positions (otherwise, Rust will
+// complain that the type has an infinite size), but also avoid putting in more than necessary.
 //
 // For example, `RecordRows` contains a `RecordRow`. The latter doesn't need to be boxed, because a
 // `RecordRow` itself potentially contains occurrences of `Types` and `RecordRows`, which need to
@@ -914,7 +914,7 @@ impl Types {
         }
     }
 
-    /// Apply a transformation on a whole type by mapping a faillible function `f` on each node as
+    /// Apply a transformation on a whole type by mapping a fallible function `f` on each node as
     /// prescribed by the order.
     ///
     /// `f` may return a generic error `E` and use the state `S` which is passed around.
