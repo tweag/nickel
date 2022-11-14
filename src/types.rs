@@ -86,8 +86,6 @@ pub type EnumRowF = Ident;
 pub type EnumRow = EnumRowF;
 
 /// Generic sequence of record rows potentially with a type variable or `Dyn` in tail position.
-/// Depending on the instantiation of `R` and `R`s, `RowsF` can represent both enum rows or records
-/// rows.
 ///
 /// As other types with the `F` suffix, this type is parametrized by one or more recursive
 /// unfoldings. See [`TypeF`] for more details.
