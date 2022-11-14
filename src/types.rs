@@ -161,7 +161,7 @@ pub enum VarKind {
 /// }
 /// ```
 ///
-/// `Ty` is also called recursive unfolding throughout the documentation. By defining `struct
+/// `Ty` is also called a recursive unfolding throughout the documentation. By defining `struct
 /// Types(TypeF<Box<Types>>)`, we get back the original, natural definition.
 ///
 /// ## Motivation 1: variation on `Types`
