@@ -95,11 +95,11 @@ fn cst_name(names: &HashMap<usize, Ident>, name_reg: &mut NameReg, c: usize) -> 
     })
 }
 
-/// Extract a concrete type corresponding to a type wrapper for error reporting.
+/// Extract a concrete type corresponding to a unifiable type, for error reporting purpose.
 ///
 /// Similar [`crate::types::Types::from`], excepted that free unification variables and type
-/// constants are replaced by type variables which names are determined by the `var_to_type` and
-/// `cst_to_type`.
+/// constants are replaced by type variables which names are determined by the `var_name` and
+/// `cst_name`.
 ///
 /// Distinguishing occurrences of unification variables and type constants is more informative
 /// than having `Dyn` everywhere.
