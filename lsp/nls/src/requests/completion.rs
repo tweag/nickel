@@ -262,6 +262,10 @@ fn stdlib_completion(
     // Stdlib modules are represented by a record with a single field which is named
     // after the module name. Here, we try to get the ID of the
     // `TermKind::RecordField {..}` associated with that field, which defines the module.
+    // Also, because of the way the linearization algorithm works, we can be almost sure that
+    // the ID of this field is `1`, which will give us contant time access to it, but
+    // this might not always be the case (the algorithm can change), so we have to settle
+    // for a linear search here.
     let id = lin.linearization.iter().find_map(|item| match &item.kind {
         TermKind::Record(table) => table.get(&name),
         _ => None,
