@@ -200,8 +200,20 @@
                 pass_filenames = false;
                 entry =
                   "${pkgs.writeShellScript "clippy-hook" ''
+                    echo "CARGO_HOME"
+                    echo $CARGO_HOME
+                    echo "ls1"
+                    ls -laa
                     ${cargoHomeHookSetup}
+                    echo "CARGO_HOME"
+                    echo $CARGO_HOME
+                    echo "ls2"
+                    ls -laa
                     cargo clippy --workspace ${offlineOpts} -- --no-deps --deny warnings ${allowOpts}
+                    echo "CARGO_HOME"
+                    echo $CARGO_HOME
+                    echo "ls3"
+                    ls -laa
                   ''}";
               };
           };
