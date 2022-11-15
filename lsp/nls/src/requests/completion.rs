@@ -249,6 +249,7 @@ fn collect_record_info(
     }
 }
 
+/// Generate completion for a stdlib identifier.
 fn stdlib_completion(
     server: &Server,
     name: Ident,
@@ -258,6 +259,9 @@ fn stdlib_completion(
     let file_id = server.cache.get_submodule_file_id(module)?;
     let lin = server.lin_cache_get(&file_id).ok()?;
 
+    // Stdlib modules are represented by a record with a single field which is named
+    // after the module name. Here, we try to get the ID of the
+    // `TermKind::RecordField {..}` associated with that field, which defines the module.
     let id = lin.linearization.iter().find_map(|item| match &item.kind {
         TermKind::Record(table) => table.get(&name),
         _ => None,
