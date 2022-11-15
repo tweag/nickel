@@ -263,7 +263,7 @@ fn stdlib_completion(
     // after the module name. Here, we try to get the ID of the
     // `TermKind::RecordField {..}` associated with that field, which defines the module.
     // Also, because of the way the linearization algorithm works, we can be almost sure that
-    // the ID of this field is `1`, which will give us contant time access to it, but
+    // the ID of this field is `1`, which will give us constant time access to it, but
     // this might not always be the case (the algorithm can change), so we have to settle
     // for a linear search here.
     let id = lin.linearization.iter().find_map(|item| match &item.kind {
