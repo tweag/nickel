@@ -24,7 +24,7 @@ pub const INTERNALS: (&str, &str) = (
 
 /// Return the list `(name, source_code)` of all the stdlib modules.
 pub fn modules() -> Vec<(&'static str, &'static str)> {
-    // If you change the order of this, please also modify the 
+    // If you change the order of this, please also modify the
     // `get_module_id` function correspondinly
     vec![
         BUILTIN, CONTRACT, ARRAY, RECORD, STRING, NUM, FUNCTION, INTERNALS,
