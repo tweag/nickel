@@ -206,42 +206,86 @@ fn remove_duplicates(items: &Vec<CompletionItem>) -> Vec<CompletionItem> {
 /// partiular ID, and in the scope of a given linearization item.
 fn collect_record_info(
     linearization: &Completed,
-    item: &LinearizationItem<Types>,
     id: usize,
     path: &mut Vec<Ident>,
 ) -> Vec<(Vec<Ident>, Types)> {
-    linearization
-        .linearization
-        // .get_in_scope(item)
-        .iter()
-        .filter_map(|item| {
-            let (ty, _) = linearization.resolve_item_type_meta(item);
-            match (&item.kind, ty) {
-                // Get record fields from static type info
-                (TermKind::Declaration(..), Types(TypeF::Record(rrows))) if id == item.id => {
-                    Some((find_fields_from_type(&rrows, path), item.ty.clone()))
-                }
-                (TermKind::Declaration(_, _, ValueState::Known(body_id)), _) if id == item.id => {
-                    match find_fields_from_contract(linearization, *body_id, path) {
-                        // Get record fields from contract metadata
-                        Some(fields) => Some((fields, item.ty.clone())),
-                        // Get record fields from lexical scoping
-                        None => find_fields_from_term_kind(linearization, id, path)
-                            .map(|idents| (idents, item.ty.clone())),
+    if let Some(item) = linearization.get_item(id) {
+        let (ty, _) = linearization.resolve_item_type_meta(item);
+        match (&item.kind, ty) {
+            // Get record fields from static type info
+            (TermKind::Declaration(..), Types(AbsType::Record(row))) if id == item.id => {
+                vec![(find_fields_from_type(&row, path), item.ty.clone())]
+            }
+            (TermKind::Declaration(_, _, ValueState::Known(body_id)), _) if id == item.id => {
+                match find_fields_from_contract(&linearization, *body_id, path) {
+                    // Get record fields from contract metadata
+                    Some(fields) => vec![(fields, item.ty.clone())],
+                    // Get record fields from lexical scoping
+                    None => {
+                        if let Some(idents) = find_fields_from_term_kind(&linearization, id, path) {
+                            vec![(idents, item.ty.clone())]
+                        } else {
+                            return Vec::new();
+                        }
                     }
                 }
-                (
-                    TermKind::RecordField {
-                        value: ValueState::Known(value),
-                        ..
-                    },
-                    _,
-                ) if id == item.id => find_fields_from_term_kind(&linearization, *value, path)
-                    .map(|idents| (idents, item.ty.clone())),
-                _ => None,
             }
-        })
-        .collect()
+            (
+                TermKind::RecordField {
+                    value: ValueState::Known(value),
+                    ..
+                },
+                _,
+            ) if id == item.id => {
+                if let Some(idents) = find_fields_from_term_kind(&linearization, *value, path) {
+                    vec![(idents, item.ty.clone())]
+                } else {
+                    return Vec::new();
+                }
+            }
+            _ => return Vec::new(),
+        }
+    } else {
+        return Vec::new();
+    }
+}
+
+fn linearize_stdlib(server: &mut Server) -> Option<()> {
+    server.cache.load_stdlib().ok()?;
+    let cache = &mut server.cache;
+    let modules = [
+        StdlibModule::Builtin,
+        StdlibModule::Contract,
+        StdlibModule::Array,
+        StdlibModule::Record,
+        StdlibModule::String,
+        StdlibModule::Num,
+        StdlibModule::Function,
+        StdlibModule::Internals,
+    ];
+    for module in modules {
+        let file_id = cache.get_submodule_file_id(module)?;
+        cache
+            .typecheck_with_analysis(file_id, &server.initial_ctxt, &mut server.lin_cache)
+            .ok();
+    }
+    Some(())
+}
+
+fn stdlib_completion(
+    server: &Server,
+    name: Ident,
+    path: &mut Vec<Ident>,
+) -> Option<Vec<(Vec<Ident>, Types)>> {
+    let module = StdlibModule::from(name);
+    let file_id = server.cache.get_submodule_file_id(module)?;
+    let lin = server.lin_cache_get(&file_id).ok()?;
+
+    let id = lin.linearization.iter().find_map(|item| match &item.kind {
+        TermKind::Record(table) => table.get(&name),
+        _ => None,
+    })?;
+    Some(collect_record_info(lin, *id, path))
 }
 
 /// Generate possible completion identifiers given a source text, its linearization
@@ -263,32 +307,11 @@ fn get_completion_identifiers(
                 // that it will return a non-empty vector
                 let name = path.pop().unwrap();
                 if let Some(id) = item.env.get(&name).copied() {
-                    collect_record_info(linearization, item, id, &mut path)
+                    collect_record_info(linearization, id, &mut path)
+                } else if let Some(result) = stdlib_completion(server, name, &mut path) {
+                    result
                 } else {
-                    // We should be checking for stdlib terms here
-                    // 1. Get the cache
-                    // let cache = &mut server.cache;
-                    // 2. Based on the name we're currently on, typecheck the
-                    //    corresponding stdlib term and give us it's lin
-                    // 3. Find a record with a field name, same as ID, and
-                    //    return that as the item
-                    // 4. Use that id, item, linearization, and an apporioriate
-                    //    path to `collect_record_info`
-                    let module = StdlibModule::from(name);
-                    let file_id = server.cache.get_submodule_file_id(module).unwrap();
-                    let lin = server.lin_cache_get(&file_id).unwrap();
-
-                    let result = lin.linearization.iter().find_map(|item| match &item.kind {
-                        TermKind::Record(table) => {
-                            let id = table.get(&name)?;
-                            Some(id)
-                        }
-                        _ => None,
-                    });
-                    // unsafe for now
-                    let id = result.unwrap();
-                    let item = lin.get_item(*id).unwrap();
-                    collect_record_info(lin, item, *id, &mut path)
+                    return Ok(Vec::new());
                 }
             } else {
                 return Ok(Vec::new());
@@ -304,7 +327,9 @@ fn get_completion_identifiers(
                 // that it will return a non-empty vector
                 let name = path.pop().unwrap();
                 if let Some(id) = item.env.get(&name).copied() {
-                    collect_record_info(linearization, item, id, &mut path)
+                    collect_record_info(linearization, id, &mut path)
+                } else if let Some(result) = stdlib_completion(server, name, &mut path) {
+                    result
                 } else {
                     return Ok(Vec::new());
                 }
@@ -343,28 +368,6 @@ fn get_completion_identifiers(
         })
         .collect();
     Ok(remove_duplicates(&in_scope))
-}
-
-fn linearize_stdlib(server: &mut Server) -> Option<()> {
-    server.cache.load_stdlib().ok()?;
-    let cache = &mut server.cache;
-    let all = [
-        StdlibModule::Builtin,
-        StdlibModule::Contract,
-        StdlibModule::Array,
-        StdlibModule::Record,
-        StdlibModule::String,
-        StdlibModule::Num,
-        StdlibModule::Function,
-        StdlibModule::Internals,
-    ];
-    for module in all {
-        let file_id = cache.get_submodule_file_id(module)?;
-        cache
-            .typecheck_with_analysis(file_id, &server.initial_ctxt, &mut server.lin_cache)
-            .ok();
-    }
-    Some(())
 }
 
 pub fn handle_completion(

@@ -24,11 +24,14 @@ pub const INTERNALS: (&str, &str) = (
 
 /// Return the list `(name, source_code)` of all the stdlib modules.
 pub fn modules() -> Vec<(&'static str, &'static str)> {
+    // If you change the order of this, please also modify the 
+    // `get_module_id` function correspondinly
     vec![
         BUILTIN, CONTRACT, ARRAY, RECORD, STRING, NUM, FUNCTION, INTERNALS,
     ]
 }
 
+/// Represents a particular Nickel standard library module.
 #[derive(Copy, Clone)]
 pub enum StdlibModule {
     Builtin,
@@ -57,6 +60,7 @@ impl From<Ident> for StdlibModule {
     }
 }
 
+/// Get the index of the given module in the vector returned by [`modules`]
 pub fn get_module_id(name: StdlibModule) -> usize {
     match name {
         StdlibModule::Builtin => 0,

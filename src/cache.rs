@@ -831,6 +831,7 @@ impl Cache {
         self.terms.get(&file_id).map(|CachedTerm { term, .. }| term)
     }
 
+    /// Retrieve the FileId for a given standard libray module.
     pub fn get_submodule_file_id(&self, name: StdlibModule) -> Option<FileId> {
         let index = nickel_stdlib::get_module_id(name);
         let file = self.stdlib_ids.as_ref()?.get(index).copied()?;
