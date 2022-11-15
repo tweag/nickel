@@ -209,6 +209,7 @@
                   pass_filenames = false;
                   entry =
                     "${pkgs.writeShellScript "clippy-hook" ''
+                    export PATH="${pkgs.lib.makeLibraryPath missingSysPkgs}:$PATH"
                     ${cargoHomeHookSetup}
                     ${rust}/bin/cargo clippy --workspace ${offlineOpts} -- --no-deps --deny warnings ${allowOpts}
                   ''}";
