@@ -6,12 +6,14 @@ use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{CompletionItem, CompletionParams};
 use nickel_lang::{
     identifier::Ident,
+    stdlib::StdlibModule,
     term::{MetaValue, RichTerm, Term},
     types::{RecordRows, RecordRowsIteratorItem, TypeF, Types},
 };
 use serde_json::Value;
 
 use crate::{
+    cache::CacheExt,
     linearization::{
         completed::Completed,
         interface::{TermKind, UsageState, ValueState},
@@ -240,6 +242,7 @@ fn get_completion_identifiers(
     trigger: Option<&str>,
     linearization: &Completed,
     item: &LinearizationItem<Types>,
+    server: &Server,
 ) -> Result<Vec<CompletionItem>, ResponseError> {
     let in_scope = match trigger {
         // Record Completion
@@ -271,7 +274,26 @@ fn get_completion_identifiers(
                 if let Some(id) = item.env.get(&name).copied() {
                     collect_record_info(linearization, item, id, &mut path)
                 } else {
-                    return Ok(Vec::new());
+                    // We should be checking for stdlib terms here
+                    // 1. Get the cache
+                    // let cache = &mut server.cache;
+                    // 2. Based on the name we're currently on, typecheck the
+                    //    corresponding stdlib term and give us it's lin
+                    let module = StdlibModule::from(name);
+                    let file_id = server.cache.get_submodule_file_id(module).unwrap();
+                    let lin = server.lin_cache_get(&file_id).unwrap();
+                    // 3. Find a record with a field name, same as ID, and
+                    //    return that as the item
+                    let item = lin.linearization.iter().find(|item| match &item.kind {
+                        TermKind::Record(table) => table.get(&name).is_some(),
+                        _ => false,
+                    });
+                    // unsafe for now
+                    let item = item.unwrap();
+                    let id = item.id;
+                    // 4. Use that id, item, linearization, and an apporioriate
+                    //    path to `collect_record_info`
+                    collect_record_info(linearization, item, id, &mut path)
                 }
             } else {
                 // variable name completion
@@ -310,11 +332,34 @@ fn get_completion_identifiers(
     Ok(remove_duplicates(&in_scope))
 }
 
+fn linearize_stdlib(server: &mut Server) -> Option<()> {
+    server.cache.load_stdlib().ok()?;
+    let cache = &mut server.cache;
+    let all = [
+        StdlibModule::Builtin,
+        StdlibModule::Contract,
+        StdlibModule::Array,
+        StdlibModule::Record,
+        StdlibModule::String,
+        StdlibModule::Num,
+        StdlibModule::Function,
+        StdlibModule::Internals,
+    ];
+    for module in all {
+        let file_id = cache.get_submodule_file_id(module)?;
+        cache
+            .typecheck_with_analysis(file_id, &server.initial_ctxt, &mut server.lin_cache)
+            .ok();
+    }
+    Some(())
+}
+
 pub fn handle_completion(
     params: CompletionParams,
     id: RequestId,
     server: &mut Server,
 ) -> Result<(), ResponseError> {
+    linearize_stdlib(server).unwrap();
     let file_id = server
         .cache
         .id_of(params.text_document_position.text_document.uri.as_str())
@@ -345,7 +390,7 @@ pub fn handle_completion(
                 .and_then(|context| context.trigger_character.as_deref());
 
             let in_scope =
-                get_completion_identifiers(&text[..start], trigger, linearization, item)?;
+                get_completion_identifiers(&text[..start], trigger, linearization, item, &server)?;
 
             Some(in_scope)
         }

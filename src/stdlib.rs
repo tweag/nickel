@@ -1,5 +1,6 @@
 //! Load the Nickel standard library in strings at compile-time.
 
+use crate::identifier::Ident;
 use crate::term::make as mk_term;
 use crate::term::RichTerm;
 
@@ -26,6 +27,47 @@ pub fn modules() -> Vec<(&'static str, &'static str)> {
     vec![
         BUILTIN, CONTRACT, ARRAY, RECORD, STRING, NUM, FUNCTION, INTERNALS,
     ]
+}
+
+#[derive(Copy, Clone)]
+pub enum StdlibModule {
+    Builtin,
+    Contract,
+    Array,
+    Record,
+    String,
+    Num,
+    Function,
+    Internals,
+}
+
+impl From<Ident> for StdlibModule {
+    fn from(name: Ident) -> Self {
+        match name.label() {
+            "builtin" => StdlibModule::Builtin,
+            "contract" => StdlibModule::Contract,
+            "array" => StdlibModule::Array,
+            "record" => StdlibModule::Record,
+            "string" => StdlibModule::String,
+            "num" => StdlibModule::Num,
+            "function" => StdlibModule::Function,
+            "internals" => StdlibModule::Internals,
+            _ => StdlibModule::Array,
+        }
+    }
+}
+
+pub fn get_module_id(name: StdlibModule) -> usize {
+    match name {
+        StdlibModule::Builtin => 0,
+        StdlibModule::Contract => 1,
+        StdlibModule::Array => 2,
+        StdlibModule::Record => 3,
+        StdlibModule::String => 4,
+        StdlibModule::Num => 5,
+        StdlibModule::Function => 6,
+        StdlibModule::Internals => 7,
+    }
 }
 
 macro_rules! generate_accessor {

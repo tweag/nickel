@@ -3,7 +3,7 @@
 use crate::error::{Error, ImportError, ParseError, ParseErrors, TypecheckError};
 use crate::parser::lexer::Lexer;
 use crate::position::TermPos;
-use crate::stdlib as nickel_stdlib;
+use crate::stdlib::{self as nickel_stdlib, StdlibModule};
 use crate::term::record::RecordData;
 use crate::term::{RichTerm, SharedTerm, Term};
 use crate::transform::import_resolution;
@@ -829,6 +829,12 @@ impl Cache {
     /// Retrieve a reference to a cached term.
     pub fn get_ref(&self, file_id: FileId) -> Option<&RichTerm> {
         self.terms.get(&file_id).map(|CachedTerm { term, .. }| term)
+    }
+
+    pub fn get_submodule_file_id(&self, name: StdlibModule) -> Option<FileId> {
+        let index = nickel_stdlib::get_module_id(name);
+        let file = self.stdlib_ids.as_ref()?.get(index).copied()?;
+        Some(file)
     }
 
     /// Load and parse the standard library in the cache.
