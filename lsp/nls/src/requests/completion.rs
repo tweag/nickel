@@ -74,7 +74,7 @@ fn find_fields_from_contract(
 ) -> Option<Vec<Ident>> {
     let item = linearization.get_item(id)?;
     match &item.meta {
-        Some(meta_value) => find_fields_from_meta_value(meta_value, path),
+        Some(meta_value) => Some(find_fields_from_meta_value(meta_value, path)),
         None => match item.kind {
             TermKind::Declaration(_, _, ValueState::Known(new_id))
             | TermKind::Usage(UsageState::Resolved(new_id)) => {
@@ -87,10 +87,7 @@ fn find_fields_from_contract(
 
 /// Find record field associated associated with a MetaValue.
 /// This can be gotten from the type or the contracts.
-fn find_fields_from_meta_value(
-    meta_value: &MetaValue,
-    path: &mut Vec<Ident>,
-) -> Option<Vec<Ident>> {
+fn find_fields_from_meta_value(meta_value: &MetaValue, path: &mut Vec<Ident>) -> Vec<Ident> {
     meta_value
         .contracts
         .iter()
@@ -100,8 +97,7 @@ fn find_fields_from_meta_value(
             Types(AbsType::Flat(term)) => find_fields_from_term(term, path).unwrap_or_default(),
             _ => Vec::new(),
         })
-        .collect::<Vec<_>>()
-        .into()
+        .collect()
 }
 
 /// Extract the fields from a given record type.
@@ -144,9 +140,9 @@ fn find_fields_from_term(term: &RichTerm, path: &mut Vec<Ident>) -> Option<Vec<I
         (Term::MetaValue(meta_value), Some(ident)) => {
             // We don't need to pop here, as the metavalue wraps the actual record
             path.push(ident);
-            find_fields_from_meta_value(meta_value, path)
+            Some(find_fields_from_meta_value(meta_value, path))
         }
-        (Term::MetaValue(meta_value), None) => find_fields_from_meta_value(meta_value, path),
+        (Term::MetaValue(meta_value), None) => Some(find_fields_from_meta_value(meta_value, path)),
         _ => None,
     }
 }
