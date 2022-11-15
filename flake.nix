@@ -138,92 +138,82 @@
           '';
         };
 
-      buildNickel =
-        { channel ? "stable"
-        , isDevShell ? false
-        , target ? pkgs.rust.toRustTarget pkgs.stdenv.hostPlatform
-        ,
-        }:
-        let
-          rustProfile =
-            if isDevShell then "default"
-            else "minimal";
-
-          rust = mkRust { inherit rustProfile channel target; };
-
-          pre-commit-builder = { isHook }: pre-commit-hooks.lib.${system}.run {
-            src = self;
-            hooks = {
-              nixpkgs-fmt = {
-                enable = true;
-                excludes = [
-                  "lsp/client-extension/default.nix"
-                  "lsp/client-extension/node-env.nix"
-                  "lsp/client-extension/node-packages.nix"
-                ];
-              };
-
-              rustfmt = {
-                enable = true;
-                entry = pkgs.lib.mkForce "${rust}/bin/cargo-fmt fmt -- --check --color always";
-              };
-
-              markdownlint = {
-                enable = true;
-                excludes = [
-                  "notes/(.+)\\.md$"
-                  "^RELEASES\\.md$"
-                ];
-              };
-
-              custom-clippy =
-                let
-                  allow = [
-                    "clippy::new-without-default"
-                    "clippy::match_like_matches_macro"
-                  ];
-
-                  allowOpts = builtins.concatStringsSep " "
-                    (builtins.map (lint: "--allow \"${lint}\"") allow);
-
-                  # Clippy requires access to the crate registry because many lints require dependency information.
-                  # Similarly to `buildNickel`, we support 2 modes:
-                  # - when run as a shell hook, we want to be fast, so we let Cargo do incremental compilation, and download dependencies as needed.
-                  #   This is mainly used by developers, who care about speed at the expense of hermeticity.
-                  # - when run as a flake check, we want to be fully reproducible, so we Nixify Cargo dependency resolution.
-                  #   This is mainly used by CI, where the extra time is not such a big deal.
-                  offlineOpts = if isHook then "" else "--frozen --offline";
-
-                  # Since `pre-commit-hooks` does not execute the entries (commands) as part of a Nix derivation,
-                  # we have to do some extra setup work.
-                  # - `stdenv` provides standard environment similarly to `mkDerivation`, including a C compiler (`cc`) required by Rust.
-                  # - `cargoHome` provides Rust with the right `CARGO_HOME` environment variable to discover built dependencies.
-                  cargoHomeHookSetup = if isHook then "" else ''
-                    source ${pkgs.stdenv}/setup
-                    source ${cargoHome}/nix-support/setup-hook
-                  '';
-                in
-                {
-                  enable = true;
-                  files = "\\.rs$";
-                  pass_filenames = false;
-                  entry =
-                    "${pkgs.writeShellScript "clippy-hook" ''
-                    export PATH="${pkgs.lib.makeLibraryPath missingSysPkgs}:$PATH"
-                    ${cargoHomeHookSetup}
-                    ${rust}/bin/cargo clippy --workspace ${offlineOpts} -- --no-deps --deny warnings ${allowOpts}
-                  ''}";
-                };
+      pre-commit-builder =
+        { rust ? mkRust { }
+        , nickel ? buildNickel { inherit rust; }
+        , isHook
+        }: pre-commit-hooks.lib.${system}.run {
+          src = self;
+          hooks = {
+            nixpkgs-fmt = {
+              enable = true;
+              excludes = [
+                "lsp/client-extension/default.nix"
+                "lsp/client-extension/node-env.nix"
+                "lsp/client-extension/node-packages.nix"
+              ];
             };
-          };
 
-        in
+            rustfmt = {
+              enable = true;
+              entry = pkgs.lib.mkForce "${rust}/bin/cargo-fmt fmt -- --check --color always";
+            };
+
+            markdownlint = {
+              enable = true;
+              excludes = [
+                "notes/(.+)\\.md$"
+                "^RELEASES\\.md$"
+              ];
+            };
+
+            custom-clippy =
+              let
+                allow = [
+                  "clippy::new-without-default"
+                  "clippy::match_like_matches_macro"
+                ];
+
+                allowOpts = builtins.concatStringsSep " "
+                  (builtins.map (lint: "--allow \"${lint}\"") allow);
+
+                # Clippy requires access to the crate registry because many lints require dependency information.
+                # Similarly to `buildNickel`, we support 2 modes:
+                # - when run as a shell hook, we want to be fast, so we let Cargo do incremental compilation, and download dependencies as needed.
+                #   This is mainly used by developers, who care about speed at the expense of hermeticity.
+                # - when run as a flake check, we want to be fully reproducible, so we Nixify Cargo dependency resolution.
+                #   This is mainly used by CI, where the extra time is not such a big deal.
+                offlineOpts = if isHook then "" else "--frozen --offline";
+
+                # Since `pre-commit-hooks` does not execute the entries (commands) as part of a Nix derivation,
+                # we have to do some extra setup work.
+                # - `stdenv` provides standard environment similarly to `mkDerivation`, including a C compiler (`cc`) required by Rust.
+                # - `cargoHome` provides Rust with the right `CARGO_HOME` environment variable to discover built dependencies.
+                cargoHomeHookSetup = pkgs.lib.optionalString (! isHook) ''
+                  source ${nickel.inputDerivation}
+                  source $stdenv/setup
+                '';
+              in
+              {
+                enable = true;
+                files = "\\.rs$";
+                pass_filenames = false;
+                entry =
+                  "${pkgs.writeShellScript "clippy-hook" ''
+                    ${cargoHomeHookSetup}
+                    cargo clippy --workspace ${offlineOpts} -- --no-deps --deny warnings ${allowOpts}
+                  ''}";
+              };
+          };
+        };
+
+      buildNickel =
+        { rust ? mkRust { }, withCargoHome ? true }:
         pkgs.stdenv.mkDerivation {
           name = "nickel-${version}";
 
           buildInputs =
             [ rust ]
-            ++ missingSysPkgs
             # cargoHome is used for a fully, hermetic, nixified build. This is
             # what we want for e.g. nix-build. However, when hacking on Nickel,
             # we rather provide the necessary tooling but let people use the
@@ -234,9 +224,10 @@
             # - we get incremental build and a build order of magnitudes
             #   faster
             # - etc.
-            ++ (if isDevShell then [ pkgs.rust-analyzer pkgs.clippy ] else [ cargoHome ]);
+            ++ pkgs.lib.optional withCargoHome cargoHome
+            ++ missingSysPkgs;
 
-          src = if isDevShell then null else self;
+          src = self;
 
           buildPhase = ''
             cargo build --workspace --exclude nickel-repl --release --frozen --offline
@@ -246,9 +237,7 @@
 
           checkPhase = ''
             cargo test --release --frozen --offline
-          '' + (pkgs.lib.optionalString (channel == "stable") ''
-            cargo fmt --all -- --check
-          '');
+          '';
 
           installPhase = ''
             mkdir -p $out
@@ -257,27 +246,24 @@
             rm $out/.crates.toml
           '';
 
-          shellHook = (pre-commit-builder { isHook = true; }).shellHook + ''
-            echo "=== Nickel development shell ==="
-            echo "Info: Git hooks can be installed using \`pre-commit install\`"
-          '';
+        };
 
-          # Make the `pre-commit` available in the output derivation as it's used by the `checks` output
-          passthru = { pre-commit-inner = pre-commit-builder { isHook = false; }; };
+      makeDevShell = { rust }: pkgs.mkShell {
+        inputsFrom = [ (buildNickel { inherit rust; withCargoHome = false; }) ];
+        buildInputs = [ pkgs.rust-analyzer ];
 
-          RUST_SRC_PATH = "${rust}/lib/rustlib/src/rust/library";
-        }; # End of `buildNickel` implementation
+        shellHook = (pre-commit-builder { inherit rust; isHook = true; }).shellHook + ''
+          echo "=== Nickel development shell ==="
+          echo "Info: Git hooks can be installed using \`pre-commit install\`"
+        '';
+
+        RUST_SRC_PATH = "${rust}/lib/rustlib/src/rust/library";
+      };
 
       buildNickelWasm =
-        { channel ? "stable"
+        { rust ? mkRust { target = "wasm32-unknown-unknown"; }
         , optimize ? true
         }:
-        let
-          rust = mkRust {
-            inherit channel;
-            target = "wasm32-unknown-unknown";
-          };
-        in
         pkgs.stdenv.mkDerivation {
           name = "nickel-wasm-${version}";
 
@@ -366,7 +352,7 @@
       packages = {
         default = packages.build;
         build = buildNickel { };
-        buildWasm = buildNickelWasm { optimize = true; };
+        buildWasm = buildNickelWasm { };
         dockerImage = buildDocker packages.build; # TODO: docker image should be a passthru
         inherit vscodeExtension;
         inherit userManual;
@@ -378,18 +364,18 @@
       } // (forEachRustChannel
         (channel: {
           name = channel;
-          value = buildNickel { inherit channel; isDevShell = true; };
+          value = makeDevShell { rust = mkRust { inherit channel; rustProfile = "default"; }; };
         }
         ));
 
       checks = {
         # wasm-opt can take long: eschew optimizations in checks
-        wasm = buildNickelWasm { channel = "stable"; optimize = false; };
-        pre-commit = packages.default.pre-commit-inner;
+        wasm = buildNickelWasm { optimize = false; };
+        pre-commit = pre-commit-builder { isHook = false; };
       } // (forEachRustChannel (channel:
         {
           name = "nickel-against-${channel}-rust-channel";
-          value = buildNickel { inherit channel; };
+          value = buildNickel { rust = mkRust { inherit channel; }; };
         }
       ));
     }
