@@ -211,7 +211,8 @@ fn collect_record_info(
     path: &mut Vec<Ident>,
 ) -> Vec<(Vec<Ident>, Types)> {
     linearization
-        .get_in_scope(item)
+        .linearization
+        // .get_in_scope(item)
         .iter()
         .filter_map(|item| {
             let (ty, _) = linearization.resolve_item_type_meta(item);
@@ -229,6 +230,14 @@ fn collect_record_info(
                             .map(|idents| (idents, item.ty.clone())),
                     }
                 }
+                (
+                    TermKind::RecordField {
+                        value: ValueState::Known(value),
+                        ..
+                    },
+                    _,
+                ) if id == item.id => find_fields_from_term_kind(&linearization, *value, path)
+                    .map(|idents| (idents, item.ty.clone())),
                 _ => None,
             }
         })
@@ -256,7 +265,30 @@ fn get_completion_identifiers(
                 if let Some(id) = item.env.get(&name).copied() {
                     collect_record_info(linearization, item, id, &mut path)
                 } else {
-                    return Ok(Vec::new());
+                    // We should be checking for stdlib terms here
+                    // 1. Get the cache
+                    // let cache = &mut server.cache;
+                    // 2. Based on the name we're currently on, typecheck the
+                    //    corresponding stdlib term and give us it's lin
+                    // 3. Find a record with a field name, same as ID, and
+                    //    return that as the item
+                    // 4. Use that id, item, linearization, and an apporioriate
+                    //    path to `collect_record_info`
+                    let module = StdlibModule::from(name);
+                    let file_id = server.cache.get_submodule_file_id(module).unwrap();
+                    let lin = server.lin_cache_get(&file_id).unwrap();
+
+                    let result = lin.linearization.iter().find_map(|item| match &item.kind {
+                        TermKind::Record(table) => {
+                            let id = table.get(&name)?;
+                            Some(id)
+                        }
+                        _ => None,
+                    });
+                    // unsafe for now
+                    let id = result.unwrap();
+                    let item = lin.get_item(*id).unwrap();
+                    collect_record_info(lin, item, *id, &mut path)
                 }
             } else {
                 return Ok(Vec::new());
@@ -274,26 +306,7 @@ fn get_completion_identifiers(
                 if let Some(id) = item.env.get(&name).copied() {
                     collect_record_info(linearization, item, id, &mut path)
                 } else {
-                    // We should be checking for stdlib terms here
-                    // 1. Get the cache
-                    // let cache = &mut server.cache;
-                    // 2. Based on the name we're currently on, typecheck the
-                    //    corresponding stdlib term and give us it's lin
-                    let module = StdlibModule::from(name);
-                    let file_id = server.cache.get_submodule_file_id(module).unwrap();
-                    let lin = server.lin_cache_get(&file_id).unwrap();
-                    // 3. Find a record with a field name, same as ID, and
-                    //    return that as the item
-                    let item = lin.linearization.iter().find(|item| match &item.kind {
-                        TermKind::Record(table) => table.get(&name).is_some(),
-                        _ => false,
-                    });
-                    // unsafe for now
-                    let item = item.unwrap();
-                    let id = item.id;
-                    // 4. Use that id, item, linearization, and an apporioriate
-                    //    path to `collect_record_info`
-                    collect_record_info(linearization, item, id, &mut path)
+                    return Ok(Vec::new());
                 }
             } else {
                 // variable name completion
