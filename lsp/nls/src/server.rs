@@ -16,10 +16,14 @@ use lsp_types::{
     TextDocumentSyncOptions, WorkDoneProgressOptions,
 };
 
-use nickel_lang::cache::{Cache, ErrorTolerance};
 use nickel_lang::typecheck::Context;
+use nickel_lang::{
+    cache::{Cache, ErrorTolerance},
+    stdlib::StdlibModule,
+};
 
 use crate::{
+    cache::CacheExt,
     linearization::completed::Completed,
     requests::{completion, goto, hover, symbols},
     trace::Trace,
@@ -107,8 +111,31 @@ impl Server {
         ));
     }
 
+    fn linearize_stdlib(&mut self) -> Result<()> {
+        self.cache.load_stdlib().unwrap();
+        let cache = &mut self.cache;
+        let modules = [
+            StdlibModule::Builtin,
+            StdlibModule::Contract,
+            StdlibModule::Array,
+            StdlibModule::Record,
+            StdlibModule::String,
+            StdlibModule::Num,
+            StdlibModule::Function,
+            StdlibModule::Internals,
+        ];
+        for module in modules {
+            let file_id = cache.get_submodule_file_id(module).unwrap();
+            cache
+                .typecheck_with_analysis(file_id, &self.initial_ctxt, &mut self.lin_cache)
+                .unwrap();
+        }
+        Ok(())
+    }
+
     pub fn run(&mut self) -> Result<()> {
         trace!("Running...");
+        self.linearize_stdlib()?;
         while let Ok(msg) = self.connection.receiver.recv() {
             trace!("Message: {:#?}", msg);
             match msg {

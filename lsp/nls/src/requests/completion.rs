@@ -13,7 +13,6 @@ use nickel_lang::{
 use serde_json::Value;
 
 use crate::{
-    cache::CacheExt,
     linearization::{
         completed::Completed,
         interface::{TermKind, UsageState, ValueState},
@@ -250,28 +249,6 @@ fn collect_record_info(
     }
 }
 
-fn linearize_stdlib(server: &mut Server) -> Option<()> {
-    server.cache.load_stdlib().ok()?;
-    let cache = &mut server.cache;
-    let modules = [
-        StdlibModule::Builtin,
-        StdlibModule::Contract,
-        StdlibModule::Array,
-        StdlibModule::Record,
-        StdlibModule::String,
-        StdlibModule::Num,
-        StdlibModule::Function,
-        StdlibModule::Internals,
-    ];
-    for module in modules {
-        let file_id = cache.get_submodule_file_id(module)?;
-        cache
-            .typecheck_with_analysis(file_id, &server.initial_ctxt, &mut server.lin_cache)
-            .ok();
-    }
-    Some(())
-}
-
 fn stdlib_completion(
     server: &Server,
     name: Ident,
@@ -375,7 +352,6 @@ pub fn handle_completion(
     id: RequestId,
     server: &mut Server,
 ) -> Result<(), ResponseError> {
-    linearize_stdlib(server).unwrap();
     let file_id = server
         .cache
         .id_of(params.text_document_position.text_document.uri.as_str())
