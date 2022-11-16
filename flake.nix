@@ -4,10 +4,12 @@
   inputs.pre-commit-hooks.url = "github:cachix/pre-commit-hooks.nix";
   inputs.pre-commit-hooks.inputs.nixpkgs.follows = "nixpkgs";
   inputs.pre-commit-hooks.inputs.flake-utils.follows = "flake-utils";
-  inputs.rust-overlay.url = "github:oxalica/rust-overlay";
-  inputs.rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
-  inputs.rust-overlay.inputs.flake-utils.follows = "flake-utils";
   inputs.import-cargo.url = "github:edolstra/import-cargo";
+  # Use this fork rather than the official because of a not-yet-upstreamed bug fix for WASM
+  # See https://www.tweag.io/blog/2022-09-22-rust-nix/
+  inputs.cargo2nix.url = "github:torhovland/cargo2nix/wasm";
+  inputs.cargo2nix.inputs.nixpkgs.follows = "nixpkgs";
+  inputs.cargo2nix.inputs.flake-utils.follows = "flake-utils";
 
   nixConfig = {
     extra-substituters = [ "https://tweag-nickel.cachix.org" ];
@@ -19,8 +21,8 @@
     , nixpkgs
     , flake-utils
     , pre-commit-hooks
-    , rust-overlay
     , import-cargo
+    , cargo2nix
     }:
     let
       SYSTEMS = [
@@ -71,13 +73,29 @@
       };
 
     in
+
     flake-utils.lib.eachSystem SYSTEMS (system:
+
     let
       pkgs = import nixpkgs {
         inherit system;
         overlays = [
-          (import rust-overlay)
           customOverlay
+          cargo2nix.overlays.default
+        ];
+      };
+
+      # We need a different `pkgs` for WASM
+      # See https://www.tweag.io/blog/2022-09-22-rust-nix/
+      pkgsWasm = import nixpkgs {
+        inherit system;
+        crossSystem = {
+          system = "wasm32-wasi";
+          useLLVM = true;
+        };
+        overlays = [
+          customOverlay
+          cargo2nix.overlays.default
         ];
       };
 
@@ -98,45 +116,67 @@
 
       mkRust =
         { rustProfile ? "minimal"
-        , rustExtensions ? [
-            "rust-src"
-            "rust-analysis"
-            "rustfmt-preview"
-            "clippy-preview"
-          ]
-        , channel ? "stable"
+        , extraRustComponents ? [ "rust-src" "rust-analysis" "rustfmt-preview" "clippy-preview" ]
+        , rustChannel ? "stable"
+        , rustVersion ? "latest"
         , target ? pkgs.rust.toRustTarget pkgs.stdenv.hostPlatform
         }:
-        let
-          _rust =
-            if channel == "nightly" then
-              pkgs.rust-bin.selectLatestNightlyWith
-                (toolchain: toolchain.${rustProfile}.override {
-                  extensions = rustExtensions;
-                  targets = [ target ];
-                })
-            else
-              pkgs.rust-bin.${channel}.latest.${rustProfile}.override {
-                extensions = rustExtensions;
-                targets = [ target ];
-              };
-        in
-        pkgs.buildEnv {
-          name = _rust.name;
-          inherit (_rust) meta;
-          buildInputs = [ pkgs.makeWrapper ];
-          paths = [ _rust ];
-          pathsToLink = [ "/" "/bin" ];
-          # XXX: This is needed because cargo and clippy commands need to
-          # also be aware of other binaries in order to work properly.
-          # https://github.com/cachix/pre-commit-hooks.nix/issues/126
-          postBuild = ''
-            for i in $out/bin/*; do
-              wrapProgram "$i" --prefix PATH : "$out/bin"
-            done
-
-          '';
+        pkgs.rustBuilder.makePackageSet {
+          inherit rustProfile extraRustComponents rustChannel rustVersion target;
+          # TODO Generate and compare Cargo.nix in CI. Maybe pre-commit hook?
+          packageFun = import ./Cargo.nix;
         };
+
+      mkRustWasm =
+        { rustProfile ? "minimal"
+        , extraRustComponents ? [ "rust-src" "rust-analysis" "rustfmt-preview" "clippy-preview" ]
+        , rustChannel ? "stable"
+        , rustVersion ? "latest"
+        , target ? "wasm32-unknown-unknown"
+        }:
+        pkgsWasm.rustBuilder.makePackageSet {
+          inherit rustProfile extraRustComponents rustChannel rustVersion target;
+          # TODO Generate and compare Cargo.nix in CI. Maybe pre-commit hook?
+          # cargo2nix thinks we're building for wasm32-unknown-wasi now.
+          # We need to guide it to wasm32-unknown-unknown instead.
+          # See https://www.tweag.io/blog/2022-09-22-rust-nix/
+          packageFun = attrs: import ./Cargo.nix (attrs // {
+            hostPlatform = attrs.hostPlatform // {
+              parsed = attrs.hostPlatform.parsed // {
+                kernel.name = "unknown";
+              };
+            };
+          });
+        };
+
+      # _rust =
+      #   if channel == "nightly" then
+      #     pkgs.rust-bin.selectLatestNightlyWith
+      #       (toolchain: toolchain.${rustProfile}.override {
+      #         extensions = rustExtensions;
+      #         targets = [ target ];
+      #       })
+      #   else
+      #     pkgs.rust-bin.${channel}.latest.${rustProfile}.override {
+      #       extensions = rustExtensions;
+      #       targets = [ target ];
+      #     };
+      # pkgs.buildEnv {
+      #   name = _rust.name;
+      #   inherit (_rust) meta;
+      #   buildInputs = [ pkgs.makeWrapper ];
+      #   paths = [ _rust ];
+      #   pathsToLink = [ "/" "/bin" ];
+      #   # XXX: This is needed because cargo and clippy commands need to
+      #   # also be aware of other binaries in order to work properly.
+      #   # https://github.com/cachix/pre-commit-hooks.nix/issues/126
+      #   postBuild = ''
+      #     for i in $out/bin/*; do
+      #       wrapProgram "$i" --prefix PATH : "$out/bin"
+      #     done
+
+      #   '';
+      # };
 
       pre-commit-builder =
         { rust ? mkRust { }
@@ -225,44 +265,45 @@
 
       buildNickel =
         { rust ? mkRust { }, withCargoHome ? true }:
-        pkgs.stdenv.mkDerivation {
-          name = "nickel-${version}";
+        (rust.workspace.nickel-lang { }).bin;
+      # pkgs.stdenv.mkDerivation {
+      #   name = "nickel-${version}";
 
-          buildInputs =
-            [ rust ]
-            # cargoHome is used for a fully, hermetic, nixified build. This is
-            # what we want for e.g. nix-build. However, when hacking on Nickel,
-            # we rather provide the necessary tooling but let people use the
-            # native way (`cargo build`), because:
-            #
-            # - we don't care as much about hermeticity when iterating quickly
-            #   over the codebase
-            # - we get incremental build and a build order of magnitudes
-            #   faster
-            # - etc.
-            ++ pkgs.lib.optional withCargoHome cargoHome
-            ++ missingSysPkgs;
+      #   buildInputs =
+      #     [ rust ]
+      #     # cargoHome is used for a fully, hermetic, nixified build. This is
+      #     # what we want for e.g. nix-build. However, when hacking on Nickel,
+      #     # we rather provide the necessary tooling but let people use the
+      #     # native way (`cargo build`), because:
+      #     #
+      #     # - we don't care as much about hermeticity when iterating quickly
+      #     #   over the codebase
+      #     # - we get incremental build and a build order of magnitudes
+      #     #   faster
+      #     # - etc.
+      #     ++ pkgs.lib.optional withCargoHome cargoHome
+      #     ++ missingSysPkgs;
 
-          src = self;
+      #   src = self;
 
-          buildPhase = ''
-            cargo build --workspace --exclude nickel-repl --release --frozen --offline
-          '';
+      #   buildPhase = ''
+      #     cargo build --workspace --exclude nickel-repl --release --frozen --offline
+      #   '';
 
-          doCheck = true;
+      #   doCheck = true;
 
-          checkPhase = ''
-            cargo test --release --frozen --offline
-          '';
+      #   checkPhase = ''
+      #     cargo test --release --frozen --offline
+      #   '';
 
-          installPhase = ''
-            mkdir -p $out
-            cargo install --frozen --offline --path . --root $out
-            cargo install --frozen --offline --path lsp/nls --root $out
-            rm $out/.crates.toml
-          '';
+      #   installPhase = ''
+      #     mkdir -p $out
+      #     cargo install --frozen --offline --path . --root $out
+      #     cargo install --frozen --offline --path lsp/nls --root $out
+      #     rm $out/.crates.toml
+      #   '';
 
-        };
+      # };
 
       makeDevShell = { rust }: pkgs.mkShell {
         inputsFrom = [ (buildNickel { inherit rust; withCargoHome = false; }) ];
@@ -282,37 +323,38 @@
       };
 
       buildNickelWasm =
-        { rust ? mkRust { target = "wasm32-unknown-unknown"; }
+        { rust ? mkRustWasm { }
         , optimize ? true
         }:
-        pkgs.stdenv.mkDerivation {
-          name = "nickel-wasm-${version}";
+        (rust.workspace.nickel-repl { }).bin;
+      # pkgs.stdenv.mkDerivation {
+      #   name = "nickel-wasm-${version}";
 
-          src = self;
+      #   src = self;
 
-          buildInputs = [
-            rust
-            pkgs.wasm-pack
-            pkgs.wasm-bindgen-cli
-            pkgs.binaryen
-            cargoHome
-          ] ++ missingSysPkgs;
+      #   buildInputs = [
+      #     rust
+      #     pkgs.wasm-pack
+      #     pkgs.wasm-bindgen-cli
+      #     pkgs.binaryen
+      #     cargoHome
+      #   ] ++ missingSysPkgs;
 
-          buildPhase = ''
-            cd nickel-wasm-repl
-            wasm-pack build --mode no-install -- --no-default-features --frozen --offline
-            # Because of wasm-pack not using existing wasm-opt
-            # (https://github.com/rustwasm/wasm-pack/issues/869), we have to
-            # run wasm-opt manually
-            echo "[Nix build script] Manually running wasm-opt..."
-            wasm-opt ${if optimize then "-O4 " else "-O0"} pkg/nickel_repl_bg.wasm -o pkg/nickel_repl.wasm
-          '';
+      #   buildPhase = ''
+      #     cd nickel-wasm-repl
+      #     wasm-pack build --mode no-install -- --no-default-features --frozen --offline
+      #     # Because of wasm-pack not using existing wasm-opt
+      #     # (https://github.com/rustwasm/wasm-pack/issues/869), we have to
+      #     # run wasm-opt manually
+      #     echo "[Nix build script] Manually running wasm-opt..."
+      #     wasm-opt ${if optimize then "-O4 " else "-O0"} pkg/nickel_repl_bg.wasm -o pkg/nickel_repl.wasm
+      #   '';
 
-          installPhase = ''
-            mkdir -p $out
-            cp -r pkg $out/nickel-repl
-          '';
-        };
+      #   installPhase = ''
+      #     mkdir -p $out
+      #     cp -r pkg $out/nickel-repl
+      #   '';
+      # };
 
       buildDocker = nickel: pkgs.dockerTools.buildLayeredImage {
         name = "nickel";
@@ -371,6 +413,7 @@
     rec {
       packages = {
         default = packages.build;
+        # TODO `nix run .\#packages.x86_64-linux.default` no longer works because it tries to execute `bin/nickel-lang` rather than `bin/nickel`
         build = buildNickel { };
         buildWasm = buildNickelWasm { };
         dockerImage = buildDocker packages.build; # TODO: docker image should be a passthru
@@ -379,14 +422,15 @@
         inherit stdlibDoc;
       };
 
-      devShells = {
-        default = devShells.stable;
-      } // (forEachRustChannel
-        (channel: {
-          name = channel;
-          value = makeDevShell { rust = mkRust { inherit channel; rustProfile = "default"; }; };
-        }
-        ));
+      # TODO uncomment
+      # devShells = {
+      #   default = devShells.stable;
+      # } // (forEachRustChannel
+      #   (channel: {
+      #     name = channel;
+      #     value = makeDevShell { rust = mkRust { rustChannel = channel; rustProfile = "default"; }; };
+      #   }
+      #   ));
 
       checks = {
         # wasm-opt can take long: eschew optimizations in checks
@@ -396,7 +440,7 @@
       } // (forEachRustChannel (channel:
         {
           name = "nickel-against-${channel}-rust-channel";
-          value = buildNickel { rust = mkRust { inherit channel; }; };
+          value = buildNickel { rust = mkRust { rustChannel = channel; }; };
         }
       ));
     }
