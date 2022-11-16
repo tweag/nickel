@@ -59,12 +59,6 @@ fn find_fields_from_term_kind(
     }
 }
 
-// Some(MetaValue { contracts, .. }) => {
-//     contracts.iter().find_map(|contract| match &contract.types {
-//         Types(TypeF::Record(rrows)) => Some(find_fields_from_type(&rrows, path)),
-//         _ => None,
-//     })
-// }
 /// Find the record fields associated with an ID in the linearization using
 /// its contract information.
 fn find_fields_from_contract(
@@ -109,11 +103,13 @@ fn find_fields_from_type(rrows: &RecordRows, path: &mut Vec<Ident>) -> Vec<Ident
         });
 
         match type_of_current {
-            Some(Types(TypeF::Record(rrows_current))) =>  find_fields_from_type(&rrows_current, path), 
-            Some(Types(TypeF::Flat(term))) => { 
+            Some(Types(TypeF::Record(rrows_current))) => {
+                find_fields_from_type(&rrows_current, path)
+            }
+            Some(Types(TypeF::Flat(term))) => {
                 find_fields_from_term(&term, path).unwrap_or_default()
             }
-            _ => Vec::new()
+            _ => Vec::new(),
         }
     } else {
         rrows
