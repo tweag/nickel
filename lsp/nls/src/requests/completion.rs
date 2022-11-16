@@ -1,3 +1,5 @@
+use std::convert::TryFrom;
+
 use codespan::ByteIndex;
 use codespan_lsp::position_to_byte_index;
 use lazy_static::lazy_static;
@@ -255,7 +257,7 @@ fn stdlib_completion(
     name: Ident,
     path: &mut Vec<Ident>,
 ) -> Option<Vec<(Vec<Ident>, Types)>> {
-    let module = StdlibModule::from(name);
+    let module = StdlibModule::try_from(name).ok()?;
     let file_id = server.cache.get_submodule_file_id(module)?;
     let lin = server.lin_cache_get(&file_id).ok()?;
 

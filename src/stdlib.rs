@@ -47,8 +47,6 @@ pub const INTERNALS: (StdlibModule, &str, &str) = (
 
 /// Return the list `(name, source_code)` of all the stdlib modules.
 pub fn modules() -> Vec<(StdlibModule, &'static str, &'static str)> {
-    // If you change the order of this, please also modify the
-    // `get_module_id` function correspondinly
     vec![
         BUILTIN, CONTRACT, ARRAY, RECORD, STRING, NUM, FUNCTION, INTERNALS,
     ]
@@ -67,9 +65,11 @@ pub enum StdlibModule {
     Internals,
 }
 
-impl From<Ident> for StdlibModule {
-    fn from(name: Ident) -> Self {
-        match name.label() {
+impl TryFrom<Ident> for StdlibModule {
+    type Error = &'static str;
+
+    fn try_from(value: Ident) -> Result<Self, Self::Error> {
+        let module = match value.label() {
             "builtin" => StdlibModule::Builtin,
             "contract" => StdlibModule::Contract,
             "array" => StdlibModule::Array,
@@ -78,22 +78,9 @@ impl From<Ident> for StdlibModule {
             "num" => StdlibModule::Num,
             "function" => StdlibModule::Function,
             "internals" => StdlibModule::Internals,
-            _ => StdlibModule::Array,
-        }
-    }
-}
-
-/// Get the index of the given module in the vector returned by [`modules`]
-pub fn get_module_id(name: StdlibModule) -> usize {
-    match name {
-        StdlibModule::Builtin => 0,
-        StdlibModule::Contract => 1,
-        StdlibModule::Array => 2,
-        StdlibModule::Record => 3,
-        StdlibModule::String => 4,
-        StdlibModule::Num => 5,
-        StdlibModule::Function => 6,
-        StdlibModule::Internals => 7,
+            _ => return Err("Unknown stdlib module name"),
+        };
+        Ok(module)
     }
 }
 
