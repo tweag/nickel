@@ -210,45 +210,34 @@ fn collect_record_info(
     id: usize,
     path: &mut Vec<Ident>,
 ) -> Vec<(Vec<Ident>, Types)> {
-    if let Some(item) = linearization.get_item(id) {
-        let (ty, _) = linearization.resolve_item_type_meta(item);
-        match (&item.kind, ty) {
-            // Get record fields from static type info
-            (TermKind::Declaration(..), Types(TypeF::Record(row))) => {
-                vec![(find_fields_from_type(&row, path), item.ty.clone())]
-            }
-            (TermKind::Declaration(_, _, ValueState::Known(body_id)), _) => {
-                match find_fields_from_contract(&linearization, *body_id, path) {
-                    // Get record fields from contract metadata
-                    Some(fields) => vec![(fields, item.ty.clone())],
-                    // Get record fields from lexical scoping
-                    None => {
-                        if let Some(idents) = find_fields_from_term_kind(&linearization, id, path) {
-                            vec![(idents, item.ty.clone())]
-                        } else {
-                            return Vec::new();
-                        }
-                    }
+    linearization
+        .get_item(id)
+        .map(|item| {
+            let (ty, _) = linearization.resolve_item_type_meta(item);
+            match (&item.kind, ty) {
+                // Get record fields from static type info
+                (TermKind::Declaration(..), Types(TypeF::Record(row))) => {
+                    vec![(find_fields_from_type(&row, path), item.ty.clone())]
                 }
-            }
-            (
-                TermKind::RecordField {
-                    value: ValueState::Known(value),
-                    ..
-                },
-                _,
-            ) => {
-                if let Some(idents) = find_fields_from_term_kind(&linearization, *value, path) {
-                    vec![(idents, item.ty.clone())]
-                } else {
-                    return Vec::new();
+                (TermKind::Declaration(_, _, ValueState::Known(body_id)), _) => {
+                    find_fields_from_contract(&linearization, *body_id, path)
+                        .or_else(|| find_fields_from_term_kind(&linearization, id, path))
+                        .map(|idents| vec![(idents, item.ty.clone())])
+                        .unwrap_or_default()
                 }
+                (
+                    TermKind::RecordField {
+                        value: ValueState::Known(value),
+                        ..
+                    },
+                    _,
+                ) => find_fields_from_term_kind(&linearization, *value, path)
+                    .map(|idents| vec![(idents, item.ty.clone())])
+                    .unwrap_or_default(),
+                _ => Vec::new(),
             }
-            _ => return Vec::new(),
-        }
-    } else {
-        return Vec::new();
-    }
+        })
+        .unwrap_or_default()
 }
 
 /// Generate completion for a stdlib identifier.
