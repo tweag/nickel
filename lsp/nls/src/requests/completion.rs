@@ -6,7 +6,7 @@ use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{CompletionItem, CompletionParams};
 use nickel_lang::{
     identifier::Ident,
-    term::MetaValue,
+    term::{MetaValue, RichTerm, Term},
     types::{RecordRows, RecordRowsIteratorItem, TypeF, Types},
 };
 use serde_json::Value;
@@ -21,11 +21,13 @@ use crate::{
     trace::{Enrich, Trace},
 };
 
-// General ideas:
+// General idea:
 // A path is the reverse of the list of identifiers that make up a record indexing operation.
 // e.g if we have a.b.c, the associated path would be vec![c, b, a]
-// Paths are used to guide the completion engine to handle nested records.
+// Paths are used to guide the completion engine to handle nested record indexing.
 // They also generalize the single record indexing case.
+// We follow the path by traversing a term, type or contract which represents a record
+// and stop when there is nothing else on the path
 
 /// Find the record field associated with a particular ID in the linearization
 /// using lexical scoping rules.
@@ -66,12 +68,7 @@ fn find_fields_from_contract(
 ) -> Option<Vec<Ident>> {
     let item = linearization.get_item(id)?;
     match &item.meta {
-        Some(MetaValue { contracts, .. }) => {
-            contracts.iter().find_map(|contract| match &contract.types {
-                Types(TypeF::Record(rrows)) => Some(find_fields_from_type(&rrows, path)),
-                _ => None,
-            })
-        }
+        Some(meta_value) => Some(find_fields_from_meta_value(meta_value, path)),
         None => match item.kind {
             TermKind::Declaration(_, _, ValueState::Known(new_id))
             | TermKind::Usage(UsageState::Resolved(new_id)) => {
@@ -82,6 +79,21 @@ fn find_fields_from_contract(
     }
 }
 
+/// Find record field associated associated with a MetaValue.
+/// This can be gotten from the type or the contracts.
+fn find_fields_from_meta_value(meta_value: &MetaValue, path: &mut Vec<Ident>) -> Vec<Ident> {
+    meta_value
+        .contracts
+        .iter()
+        .chain(meta_value.types.iter())
+        .flat_map(|contract| match &contract.types {
+            Types(TypeF::Record(row)) => find_fields_from_type(&row, path),
+            Types(TypeF::Flat(term)) => find_fields_from_term(term, path).unwrap_or_default(),
+            _ => Vec::new(),
+        })
+        .collect()
+}
+
 /// Extract the fields from a given record type.
 fn find_fields_from_type(rrows: &RecordRows, path: &mut Vec<Ident>) -> Vec<Ident> {
     if let Some(current) = path.pop() {
@@ -90,10 +102,14 @@ fn find_fields_from_type(rrows: &RecordRows, path: &mut Vec<Ident>) -> Vec<Ident
             _ => None,
         });
 
-        if let Some(Types(TypeF::Record(rrows_current))) = type_of_current {
-            find_fields_from_type(&rrows_current, path)
-        } else {
-            Vec::new()
+        match type_of_current {
+            Some(Types(TypeF::Record(rrows_current))) => {
+                find_fields_from_type(&rrows_current, path)
+            }
+            Some(Types(TypeF::Flat(term))) => {
+                find_fields_from_term(&term, path).unwrap_or_default()
+            }
+            _ => Vec::new(),
         }
     } else {
         rrows
@@ -103,6 +119,27 @@ fn find_fields_from_type(rrows: &RecordRows, path: &mut Vec<Ident>) -> Vec<Ident
                 _ => None,
             })
             .collect::<Vec<_>>()
+    }
+}
+
+/// Extract record fields from a record term.
+fn find_fields_from_term(term: &RichTerm, path: &mut Vec<Ident>) -> Option<Vec<Ident>> {
+    let current = path.pop();
+    match (term.as_ref(), current) {
+        (Term::Record(data) | Term::RecRecord(data, ..), None) => {
+            Some(data.fields.keys().cloned().collect())
+        }
+        (Term::Record(data) | Term::RecRecord(data, ..), Some(name)) => {
+            let term = data.fields.get(&name)?;
+            find_fields_from_term(term, path)
+        }
+        (Term::MetaValue(meta_value), Some(ident)) => {
+            // We don't need to pop here, as the metavalue wraps the actual record
+            path.push(ident);
+            Some(find_fields_from_meta_value(meta_value, path))
+        }
+        (Term::MetaValue(meta_value), None) => Some(find_fields_from_meta_value(meta_value, path)),
+        _ => None,
     }
 }
 
