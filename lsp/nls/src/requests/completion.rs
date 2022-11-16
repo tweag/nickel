@@ -212,7 +212,7 @@ fn collect_record_info(
         let (ty, _) = linearization.resolve_item_type_meta(item);
         match (&item.kind, ty) {
             // Get record fields from static type info
-            (TermKind::Declaration(..), Types(AbsType::Record(row))) => {
+            (TermKind::Declaration(..), Types(TypeF::Record(row))) => {
                 vec![(find_fields_from_type(&row, path), item.ty.clone())]
             }
             (TermKind::Declaration(_, _, ValueState::Known(body_id)), _) => {
