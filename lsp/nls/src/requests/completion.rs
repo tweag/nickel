@@ -6,7 +6,7 @@ use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{CompletionItem, CompletionParams};
 use nickel_lang::{
     identifier::Ident,
-    term::MetaValue,
+    term::{MetaValue, RichTerm, Term},
     types::{RecordRows, RecordRowsIteratorItem, TypeF, Types},
 };
 use serde_json::Value;
@@ -93,8 +93,8 @@ fn find_fields_from_meta_value(meta_value: &MetaValue, path: &mut Vec<Ident>) ->
         .iter()
         .chain(meta_value.types.iter())
         .flat_map(|contract| match &contract.types {
-            Types(AbsType::Record(row)) => find_fields_from_type(&row, path),
-            Types(AbsType::Flat(term)) => find_fields_from_term(term, path).unwrap_or_default(),
+            Types(TypeF::Record(row)) => find_fields_from_type(&row, path),
+            Types(TypeF::Flat(term)) => find_fields_from_term(term, path).unwrap_or_default(),
             _ => Vec::new(),
         })
         .collect()
