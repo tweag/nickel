@@ -27,11 +27,13 @@
   # or may be specificaly an issue when we use inherit inside a let binding. this maybe due to
   # the order we desugar destructuring and inherits. Let bindings are transformed in Nickel destructuring
   # this to have recursive lets which don't exist in Nickel.
-  #(let
-  #  r1 = {a = 1;};
-  #  r2 = {inherit (r1) a; b = 2;};
-  #in
-  #{ inherit (r2) a b; } == { a = 1; b = 2; })
+  (
+    let
+      r1 = { a = 1; };
+      r2 = { inherit (r1) a; b = 2; };
+    in
+    { inherit (r2) a b; } == { a = 1; b = 2; }
+  )
   #(let
   #  r1 = {a = 1;};
   #  r2 = {inherit (r1) a; b = 2;};

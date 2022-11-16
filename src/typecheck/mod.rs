@@ -874,7 +874,7 @@ fn walk<L: Linearizer>(
                 walk(state, ctxt.clone(), lin, linearizer.scope(), case)
             })
         }
-        Term::RecRecord(record, dynamic, ..) => {
+        Term::RecRecord(record, dynamic, _, inh) => {
             for (id, field) in record.fields.iter() {
                 let binding_type = binding_type(
                     state,
@@ -892,6 +892,7 @@ fn walk<L: Linearizer>(
             record.fields
                 .values()
                 .chain(dynamic.iter().map(|(_, t)| t))
+                .chain(inh.iter().filter_map(|(_, t)| t.as_ref()))
                 .try_for_each(|t| -> Result<(), TypecheckError> {
                     walk(state, ctxt.clone(), lin, linearizer.scope(), t)
                 })

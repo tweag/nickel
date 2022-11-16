@@ -46,7 +46,11 @@ enum Command {
     /// translate Nix input to Nickel code.
     /// Only a POC, main target is to be able to run Nix code on nickel.
     /// May never be a complet source to source transformation.
-    Nixin,
+    Nixin {
+        /// Performs transformations on AST before the print.
+        #[structopt(long)]
+        transform: bool,
+    },
     /// Converts the parsed representation (AST) back to Nickel source code and prints it. Used for
     /// debugging purpose
     PprintAst {
@@ -115,7 +119,7 @@ fn main() {
 
         #[cfg(not(feature = "repl"))]
         eprintln!("error: this executable was not compiled with REPL support");
-    } else if let Some(Command::Nixin) = opts.command {
+    } else if let Some(Command::Nixin { transform }) = opts.command {
         use nickel_lang::cache::Cache;
         use nickel_lang::cache::ErrorTolerance;
         use nickel_lang::pretty::*;
@@ -135,6 +139,11 @@ fn main() {
         let allocator = BoxAllocator;
         let file_id = cache.add_source("<stdin>.nix", buf.as_bytes()).unwrap();
         let rt = nickel_lang::nix::parse(&cache, file_id).unwrap();
+        let rt = if transform {
+            nickel_lang::transform::transform(rt, None).unwrap()
+        } else {
+            rt
+        };
         let doc: DocBuilder<_, ()> = rt.pretty(&allocator);
         doc.render(80, &mut out).unwrap();
         println!("{}", String::from_utf8_lossy(&out).as_ref());
@@ -188,7 +197,7 @@ fn main() {
                 })
             }
             Some(Command::Typecheck) => program.typecheck(),
-            Some(Command::Repl { .. }) | Some(Command::Nixin) => unreachable!(),
+            Some(Command::Repl { .. }) | Some(Command::Nixin { .. }) => unreachable!(),
             #[cfg(feature = "doc")]
             Some(Command::Doc { ref output }) => output
                 .as_ref()
