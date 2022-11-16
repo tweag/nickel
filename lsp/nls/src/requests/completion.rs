@@ -273,25 +273,41 @@ fn get_completion_identifiers(
     item: &LinearizationItem<Types>,
     server: &Server,
 ) -> Result<Vec<CompletionItem>, ResponseError> {
+    fn complete(
+        item: &LinearizationItem<Types>,
+        name: Ident,
+        linearization: &Completed,
+        server: &Server,
+        path: &mut Vec<Ident>,
+    ) -> Vec<(Vec<Ident>, Types)> {
+        item.env
+            .get(&name)
+            .map(|id| collect_record_info(linearization, *id, path))
+            .or_else(|| stdlib_completion(server, name, path))
+            .unwrap_or_default()
+    }
+
+    /// Attach quotes to a non-ASCII string
+    fn adjust_name(name: String) -> String {
+        if name.is_ascii() {
+            name
+        } else {
+            format!("\"{}\"", name)
+        }
+    }
+
     let in_scope = match trigger {
         // Record Completion
         Some(server::DOT_COMPL_TRIGGER) => {
-            // empty should return none
-            if let Some(path) = get_identifier_path(source) {
-                let mut path: Vec<_> = path.iter().rev().cloned().map(Ident::from).collect();
-                // unwrap is safe here because we are guaranteed by `get_identifier_path`
-                // that it will return a non-empty vector
-                let name = path.pop().unwrap();
-                if let Some(id) = item.env.get(&name).copied() {
-                    collect_record_info(linearization, id, &mut path)
-                } else if let Some(result) = stdlib_completion(server, name, &mut path) {
-                    result
-                } else {
-                    return Ok(Vec::new());
-                }
-            } else {
-                return Ok(Vec::new());
-            }
+            get_identifier_path(source)
+                .map(|path| {
+                    let mut path: Vec<_> = path.iter().rev().cloned().map(Ident::from).collect();
+                    // unwrap is safe here because we are guaranteed by `get_identifier_path`
+                    // that it will return a non-empty vector
+                    let name = path.pop().unwrap();
+                    complete(item, name, linearization, server, &mut path)
+                })
+                .unwrap_or_default()
         }
         Some(..) | None => {
             // This is also record completion, but it is in the form
@@ -302,13 +318,7 @@ fn get_completion_identifiers(
                 // unwrap is safe here because we are guaranteed by `get_identifiers_before_field`
                 // that it will return a non-empty vector
                 let name = path.pop().unwrap();
-                if let Some(id) = item.env.get(&name).copied() {
-                    collect_record_info(linearization, id, &mut path)
-                } else if let Some(result) = stdlib_completion(server, name, &mut path) {
-                    result
-                } else {
-                    return Ok(Vec::new());
-                }
+                complete(item, name, linearization, server, &mut path)
             } else {
                 // variable name completion
                 linearization
@@ -324,15 +334,6 @@ fn get_completion_identifiers(
             }
         }
     };
-
-    /// Attach quotes to a non-ASCII string
-    fn adjust_name(name: String) -> String {
-        if name.is_ascii() {
-            name
-        } else {
-            format!("\"{}\"", name)
-        }
-    }
 
     let in_scope: Vec<_> = in_scope
         .iter()
