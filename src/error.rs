@@ -313,6 +313,10 @@ impl ToDiagnostic<FileId> for ParseErrors {
 /// An error occurring during parsing.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ParseError {
+    /// Temporary Nix error variant.
+    /// TODO: because parsing errors are almost the same between Nix and Nickel, Have a seamless
+    /// convertion from Nix errors to Nickel ones could be a good improvement.
+    NixParseError(FileId),
     /// Unexpected end of file.
     UnexpectedEOF(FileId, /* tokens expected by the parser */ Vec<String>),
     /// Unexpected token.

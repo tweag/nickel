@@ -1,333 +1,264 @@
 use crate::cache::Cache;
+use crate::convertion::ToNickel;
+use crate::mk_app;
 use crate::parser::utils::mk_span;
-use crate::term::{BinaryOp, UnaryOp};
+use crate::term::make::{self, if_then_else};
+use crate::term::{BinaryOp, RecordData, UnaryOp};
 use crate::term::{MergePriority, MetaValue, RichTerm, Term};
 use codespan::FileId;
 use rnix;
 use rnix::types::{BinOp, EntryHolder, TokenWrapper, TypedNode, UnaryOp as UniOp};
 use std::collections::HashMap;
 
-impl From<(UniOp, FileId)> for RichTerm {
-    fn from(op: (UniOp, FileId)) -> Self {
+impl ToNickel for UniOp {
+    fn translate(self, file_id: FileId) -> RichTerm {
         use rnix::types::UnaryOpKind::*;
-        let (op, file_id) = op;
-        let value = op.value().unwrap();
-        match op.operator() {
-            Negate => Term::Op2(
-                BinaryOp::Sub(),
-                Term::Num(0.).into(),
-                translate(value, file_id),
-            )
-            .into(),
-            Invert => Term::Op1(UnaryOp::BoolNot(), translate(value, file_id)).into(),
+        let value = self.value().unwrap().translate(file_id);
+        match self.operator() {
+            Negate => make::op2(BinaryOp::Sub(), Term::Num(0.), value),
+            Invert => make::op1(UnaryOp::BoolNot(), value),
         }
     }
 }
 
-impl From<(BinOp, FileId)> for RichTerm {
-    fn from(op: (BinOp, FileId)) -> Self {
+impl ToNickel for BinOp {
+    fn translate(self, file_id: FileId) -> RichTerm {
         use rnix::types::BinOpKind::*;
-        let (op, file_id) = op;
-        let lhs = op.lhs().unwrap();
-        let rhs = op.rhs().unwrap();
-        match op.operator().unwrap() {
-            // TODO: how to manage diff between strconcat and arrayconcat?
-            Concat => Term::Op2(
-                BinaryOp::ArrayConcat(),
-                translate(lhs, file_id),
-                translate(rhs, file_id),
-            )
-            .into(),
+        let lhs = self.lhs().unwrap().translate(file_id);
+        let rhs = self.rhs().unwrap().translate(file_id);
+        match self.operator().unwrap() {
+            // TODO: Should be fixed using a nickel function `compat.concat` of type `a -> a -> a`
+            // using `str_conct` or `array_concat` in respect to `typeof a`.
+            Concat => Term::Op2(BinaryOp::ArrayConcat(), lhs, rhs).into(),
             IsSet => unimplemented!(),
             Update => unimplemented!(),
 
-            Add => Term::Op2(
-                BinaryOp::Plus(),
-                translate(lhs, file_id),
-                translate(rhs, file_id),
-            )
-            .into(),
-            Sub => Term::Op2(
-                BinaryOp::Sub(),
-                translate(lhs, file_id),
-                translate(rhs, file_id),
-            )
-            .into(),
-            Mul => Term::Op2(
-                BinaryOp::Mult(),
-                translate(lhs, file_id),
-                translate(rhs, file_id),
-            )
-            .into(),
-            Div => Term::Op2(
-                BinaryOp::Div(),
-                translate(lhs, file_id),
-                translate(rhs, file_id),
-            )
-            .into(),
+            Add => make::op2(BinaryOp::Plus(), lhs, rhs),
+            Sub => make::op2(BinaryOp::Sub(), lhs, rhs),
+            Mul => make::op2(BinaryOp::Mult(), lhs, rhs),
+            Div => make::op2(BinaryOp::Div(), lhs, rhs),
 
-            Equal => Term::Op2(
-                BinaryOp::Eq(),
-                translate(lhs, file_id),
-                translate(rhs, file_id),
-            )
-            .into(),
-            Less => Term::Op2(
-                BinaryOp::LessThan(),
-                translate(lhs, file_id),
-                translate(rhs, file_id),
-            )
-            .into(),
-            More => Term::Op2(
-                BinaryOp::GreaterThan(),
-                translate(lhs, file_id),
-                translate(rhs, file_id),
-            )
-            .into(),
-            LessOrEq => Term::Op2(
-                BinaryOp::LessOrEq(),
-                translate(lhs, file_id),
-                translate(rhs, file_id),
-            )
-            .into(),
-            MoreOrEq => Term::Op2(
-                BinaryOp::GreaterOrEq(),
-                translate(lhs, file_id),
-                translate(rhs, file_id),
-            )
-            .into(),
-            NotEqual => Term::Op1(
-                UnaryOp::BoolNot(),
-                Term::Op2(
-                    BinaryOp::Eq(),
-                    translate(lhs, file_id),
-                    translate(rhs, file_id),
-                )
-                .into(),
-            )
-            .into(),
+            Equal => make::op2(BinaryOp::Eq(), lhs, rhs),
+            Less => make::op2(BinaryOp::LessThan(), lhs, rhs),
+            More => make::op2(BinaryOp::GreaterThan(), lhs, rhs),
+            LessOrEq => make::op2(BinaryOp::LessOrEq(), lhs, rhs),
+            MoreOrEq => make::op2(BinaryOp::GreaterOrEq(), lhs, rhs),
+            NotEqual => make::op1(UnaryOp::BoolNot(), make::op2(BinaryOp::Eq(), lhs, rhs)),
 
-            Implication => mk_app!(
-              make::op1(UnaryOp::Ite(), translate(lhs, file_id)),
-              translate(lhs, file_id),
-              make::bool(true)),
+            Implication => if_then_else(lhs, rhs, Term::Bool(true)),
 
-            And => Term::App(
-                Term::Op1(UnaryOp::BoolAnd(), translate(lhs, file_id)).into(),
-                translate(rhs, file_id),
-            )
-            .into(),
-            Or => Term::App(
-                Term::Op1(UnaryOp::BoolOr(), translate(lhs, file_id)).into(),
-                translate(rhs, file_id),
-            )
-            .into(),
+            And => mk_app!(Term::Op1(UnaryOp::BoolAnd(), lhs), rhs),
+            Or => mk_app!(Term::Op1(UnaryOp::BoolOr(), lhs), rhs),
         }
     }
 }
 
-fn translate(node: rnix::SyntaxNode, file_id: FileId) -> RichTerm {
-    use rnix::types::{self, ParsedType, Wrapper};
-    use rnix::value;
-    use rnix::SyntaxKind::*;
-    use std::convert::{TryFrom, TryInto};
-    let pos = node.text_range();
-    let span = mk_span(file_id, pos.start().into(), pos.end().into());
-    println!("{:?}", node);
-    let node: ParsedType = node.try_into().unwrap();
-    match node {
-        ParsedType::Error(_) => Term::ParseError.into(),
-        ParsedType::Root(n) => translate(n.inner().unwrap(), file_id),
-        ParsedType::Paren(n) => translate(n.inner().unwrap(), file_id),
-        ParsedType::Dynamic(n) => translate(n.inner().unwrap(), file_id),
-
-        ParsedType::Assert(n) => unimplemented!(),
-
-        ParsedType::Value(n) => match n.to_value().unwrap() {
-            value::Value::Float(v) => Term::Num(v).into(),
-            value::Value::Integer(v) => Term::Num(v as f64).into(),
-            value::Value::String(v) => Term::Str(v).into(),
-            // TODO: How to manage Paths in nickel?
-            value::Value::Path(a, v) => Term::Str(v).into(),
-        },
-        ParsedType::Str(n) => {
-            let parts = n.parts();
-            //TODO: Do we actualy need the `Term::Str` variant in nickel AST?
-            Term::StrChunks(
-                parts
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, c)| match c {
-                        rnix::value::StrPart::Literal(s) => crate::term::StrChunk::Literal(s),
-                        rnix::value::StrPart::Ast(a) => crate::term::StrChunk::Expr(
-                            translate(a.first_child().unwrap(), file_id),
-                            i,
-                        ),
-                    })
-                    .collect(),
-            )
-            .into()
-        }
-        ParsedType::List(n) => Term::Array(
-            n.items().map(|elm| translate(elm, file_id)).collect(),
-            Default::default(),
-        )
-        .into(),
-        ParsedType::AttrSet(n) => {
-            use crate::parser::utils::{build_record, elaborate_field_path, FieldPathElem};
-            let fields: Vec<(_, _)> = n
-                .entries()
-                .map(|kv| {
-                    let val = translate(kv.value().unwrap(), file_id);
-                    let p: Vec<_> = kv
-                        .key()
-                        .unwrap()
-                        .path()
-                        .map(|p| match p.kind() {
-                            NODE_IDENT => FieldPathElem::Ident(
-                                rnix::types::Ident::cast(p).unwrap().as_str().into(),
-                            ),
-                            _ => FieldPathElem::Expr(translate(p, file_id)),
-                        })
-                        .collect();
-                    elaborate_field_path(p, val)
-                })
-                .collect();
-            build_record(fields, Default::default()).into()
-        }
-
-        // In nix it's allowed to define vars named `true`, `false` or `null`.
-        // Concidering it a bad feature and something probably never used, this parser don't manage
-        // it. Right now it doesn't throw error when defining these vars but only ignore the
-        // definition.
-        ParsedType::Ident(n) => match n.as_str() {
-            "true" => Term::Bool(true),
-            "false" => Term::Bool(false),
-            "null" => Term::Null,
-            id => Term::Var(id.into()),
-        }
-        .into(),
-        ParsedType::LegacyLet(_) => unimplemented!(), // Probably useless to suport it in a short term.
-        ParsedType::LetIn(n) => {
-            use crate::destruct;
-            use crate::identifier::Ident;
-            let mut destruct_vec = Vec::new();
-            let mut fields = HashMap::new();
-            for kv in n.entries() {
-                // In `let` blocks, the key is suposed to be a single ident so `Path` exactly one
-                // element.
-                let id: Ident = types::Ident::cast(kv.key().unwrap().path().next().unwrap())
-                    .unwrap()
-                    .as_str()
-                    .into();
-                let rt = translate(kv.value().unwrap(), file_id);
-                destruct_vec.push(destruct::Match::Simple(id.clone(), Default::default()));
-                fields.insert(id.into(), rt);
+impl ToNickel for rnix::SyntaxNode {
+    fn translate(self, file_id: FileId) -> RichTerm {
+        use rnix::types::{self, ParsedType, Wrapper};
+        use rnix::value;
+        use rnix::SyntaxKind::*;
+        use std::convert::{TryFrom, TryInto};
+        let pos = self.text_range();
+        let span = mk_span(file_id, pos.start().into(), pos.end().into());
+        println!("{:?}: {}", self, self);
+        let node: ParsedType = self.try_into().unwrap();
+        match node {
+            ParsedType::Error(_) => {
+                Term::ParseError(crate::error::ParseError::NixParseError(file_id)).into()
             }
-            Term::LetPattern(
-                None,
-                destruct::Destruct::Record {
-                    matches: destruct_vec,
-                    open: false,
-                    rest: None,
-                    span,
-                },
-                Term::RecRecord(fields, vec![], Default::default(), None).into(),
-                translate(n.body().unwrap(), file_id),
-            )
-            .into()
-        }
-        ParsedType::With(n) => unimplemented!(),
+            ParsedType::Root(n) => n.inner().unwrap().translate(file_id),
+            ParsedType::Paren(n) => n.inner().unwrap().translate(file_id),
+            ParsedType::Dynamic(n) => n.inner().unwrap().translate(file_id),
 
-        ParsedType::Lambda(n) => {
-            let arg = n.arg().unwrap();
-            match arg.kind() {
-                NODE_IDENT => Term::Fun(
-                    arg.to_string().into(),
-                    translate(n.body().unwrap(), file_id),
-                ),
-                NODE_PATTERN => {
-                    use crate::destruct::*;
-                    let pat = rnix::types::Pattern::cast(arg).unwrap();
-                    let at = pat.at().map(|id| id.as_str().into());
-                    // TODO: manage default values:
-                    let matches = pat
-                        .entries()
-                        .map(|e| {
-                            let mv = if let Some(def) = e.default() {
-                                MetaValue {
-                                    value: Some(translate(def, file_id)),
-                                    priority: MergePriority::Default,
-                                    ..Default::default()
-                                }
-                            } else {
-                                Default::default()
-                            };
-                            Match::Simple(e.name().unwrap().as_str().into(), mv)
+            ParsedType::Assert(n) => unimplemented!(),
+
+            ParsedType::Value(n) => match n.to_value().unwrap() {
+                value::Value::Float(v) => Term::Num(v),
+                value::Value::Integer(v) => Term::Num(v as f64),
+                value::Value::String(v) => Term::Str(v),
+                // TODO: How to manage Paths in nickel?
+                value::Value::Path(a, v) => Term::Str(v),
+            }
+            .into(),
+            ParsedType::Str(n) => {
+                let parts = n.parts();
+                //TODO: Do we actualy need the `Term::Str` variant in nickel AST?
+                Term::StrChunks(
+                    parts
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, c)| match c {
+                            rnix::value::StrPart::Literal(s) => crate::term::StrChunk::Literal(s),
+                            rnix::value::StrPart::Ast(a) => crate::term::StrChunk::Expr(
+                                a.first_child().unwrap().translate(file_id),
+                                i,
+                            ),
                         })
-                        .collect();
-                    let dest = Destruct::Record {
-                        matches,
-                        open: pat.ellipsis(),
+                        .collect(),
+                )
+                .into()
+            }
+            ParsedType::List(n) => Term::Array(
+                n.items().map(|elm| elm.translate(file_id)).collect(),
+                Default::default(),
+            )
+            .into(),
+            ParsedType::AttrSet(n) => {
+                use crate::parser::utils::{build_record, elaborate_field_path, FieldPathElem};
+                let fields: Vec<(_, _)> = n
+                    .entries()
+                    .map(|kv| {
+                        let val = kv.value().unwrap().translate(file_id);
+                        let p: Vec<_> = kv
+                            .key()
+                            .unwrap()
+                            .path()
+                            .map(|p| match p.kind() {
+                                NODE_IDENT => FieldPathElem::Ident(
+                                    rnix::types::Ident::cast(p).unwrap().as_str().into(),
+                                ),
+                                _ => FieldPathElem::Expr(p.translate(file_id)),
+                            })
+                            .collect();
+                        elaborate_field_path(p, val)
+                    })
+                    .collect();
+                build_record(fields, Default::default()).into()
+            }
+
+            // In nix it's allowed to define vars named `true`, `false` or `null`.
+            // Concidering it a bad feature and something probably never used, this parser don't manage
+            // it. Right now it doesn't throw error when defining these vars but only ignore the
+            // definition.
+            ParsedType::Ident(n) => match n.as_str() {
+                "true" => Term::Bool(true),
+                "false" => Term::Bool(false),
+                "null" => Term::Null,
+                id => Term::Var(id.into()),
+            }
+            .into(),
+            ParsedType::LegacyLet(_) => unimplemented!(), // Probably useless to suport it in a short term.
+            ParsedType::LetIn(n) => {
+                use crate::destruct;
+                use crate::identifier::Ident;
+                let mut destruct_vec = Vec::new();
+                let mut fields = HashMap::new();
+                for kv in n.entries() {
+                    // In `let` blocks, the key is suposed to be a single ident so `Path` exactly one
+                    // element.
+                    let id: Ident = types::Ident::cast(kv.key().unwrap().path().next().unwrap())
+                        .unwrap()
+                        .as_str()
+                        .into();
+                    let rt = kv.value().unwrap().translate(file_id);
+                    destruct_vec.push(destruct::Match::Simple(id.clone(), Default::default()));
+                    fields.insert(id.into(), rt);
+                }
+                Term::LetPattern(
+                    None,
+                    destruct::Destruct::Record {
+                        matches: destruct_vec,
+                        open: false,
                         rest: None,
                         span,
-                    };
-                    Term::FunPattern(at, dest, translate(n.body().unwrap(), file_id)).into()
-                }
-                _ => unreachable!(),
+                    },
+                    Term::RecRecord(RecordData::with_fields(fields), vec![], None).into(),
+                    n.body().unwrap().translate(file_id),
+                )
+                .into()
             }
-            .into()
+            ParsedType::With(n) => unimplemented!(),
+
+            ParsedType::Lambda(n) => {
+                let arg = n.arg().unwrap();
+                match arg.kind() {
+                    NODE_IDENT => {
+                        Term::Fun(arg.to_string().into(), n.body().unwrap().translate(file_id))
+                    }
+                    NODE_PATTERN => {
+                        use crate::destruct::*;
+                        let pat = rnix::types::Pattern::cast(arg).unwrap();
+                        let at = pat.at().map(|id| id.as_str().into());
+                        // TODO: manage default values:
+                        let matches = pat
+                            .entries()
+                            .map(|e| {
+                                let mv = if let Some(def) = e.default() {
+                                    MetaValue {
+                                        value: Some(def.translate(file_id)),
+                                        priority: MergePriority::Bottom,
+                                        ..Default::default()
+                                    }
+                                } else {
+                                    Default::default()
+                                };
+                                Match::Simple(e.name().unwrap().as_str().into(), mv)
+                            })
+                            .collect();
+                        let dest = Destruct::Record {
+                            matches,
+                            open: pat.ellipsis(),
+                            rest: None,
+                            span,
+                        };
+                        Term::FunPattern(at, dest, n.body().unwrap().translate(file_id)).into()
+                    }
+                    _ => unreachable!(),
+                }
+                .into()
+            }
+
+            ParsedType::Apply(n) => Term::App(
+                n.lambda().unwrap().translate(file_id),
+                n.value().unwrap().translate(file_id),
+            )
+            .into(),
+            ParsedType::IfElse(n) => Term::App(
+                Term::App(
+                    Term::Op1(UnaryOp::Ite(), n.condition().unwrap().translate(file_id)).into(),
+                    n.body().unwrap().translate(file_id),
+                )
+                .into(),
+                n.else_body().unwrap().translate(file_id),
+            )
+            .into(),
+            ParsedType::BinOp(n) => n.translate(file_id),
+            ParsedType::UnaryOp(n) => n.translate(file_id),
+            ParsedType::Select(n) => match ParsedType::try_from(n.index().unwrap()).unwrap() {
+                ParsedType::Ident(id) => Term::Op1(
+                    UnaryOp::StaticAccess(id.as_str().into()),
+                    n.set().unwrap().translate(file_id),
+                )
+                .into(),
+                _ => Term::Op2(
+                    BinaryOp::DynAccess(),
+                    n.index().unwrap().translate(file_id),
+                    n.set().unwrap().translate(file_id),
+                )
+                .into(),
+            },
+            ParsedType::OrDefault(n) => unimplemented!(),
+
+            // TODO: what are these?
+            ParsedType::PatBind(_) | ParsedType::PathWithInterpol(_) => {
+                unimplemented!()
+            }
+
+            // Is not a `RichTerm` so is transformed as part of actual ones.
+            ParsedType::Pattern(_)
+            | ParsedType::PatEntry(_)
+            | ParsedType::Inherit(..)
+            | ParsedType::InheritFrom(..)
+            | ParsedType::Key(..)
+            | ParsedType::KeyValue(..) => unreachable!(),
         }
-
-        ParsedType::Apply(n) => Term::App(
-            translate(n.lambda().unwrap(), file_id),
-            translate(n.value().unwrap(), file_id),
-        )
-        .into(),
-        ParsedType::IfElse(n) => Term::App(
-            Term::App(
-                Term::Op1(UnaryOp::Ite(), translate(n.condition().unwrap(), file_id)).into(),
-                translate(n.body().unwrap(), file_id),
-            )
-            .into(),
-            translate(n.else_body().unwrap(), file_id),
-        )
-        .into(),
-        ParsedType::BinOp(n) => (n, file_id).into(),
-        ParsedType::UnaryOp(n) => (n, file_id).into(),
-        ParsedType::Select(n) => match ParsedType::try_from(n.index().unwrap()).unwrap() {
-            ParsedType::Ident(id) => Term::Op1(
-                UnaryOp::StaticAccess(id.as_str().into()),
-                translate(n.set().unwrap(), file_id),
-            )
-            .into(),
-            _ => Term::Op2(
-                BinaryOp::DynAccess(),
-                translate(n.index().unwrap(), file_id),
-                translate(n.set().unwrap(), file_id),
-            )
-            .into(),
-        },
-        ParsedType::OrDefault(n) => unimplemented!(),
-
-        // TODO: what are these?
-        ParsedType::PatBind(_) | ParsedType::PathWithInterpol(_) => {
-            unimplemented!()
-        }
-
-        // Is not a `RichTerm` so is transformed as part of actual ones.
-        ParsedType::Pattern(_)
-        | ParsedType::PatEntry(_)
-        | ParsedType::Inherit(..)
-        | ParsedType::InheritFrom(..)
-        | ParsedType::Key(..)
-        | ParsedType::KeyValue(..) => unreachable!(),
+        .with_pos(crate::position::TermPos::Original(span))
     }
-    .with_pos(crate::position::TermPos::Original(span))
 }
 
 pub fn parse(cache: &Cache, file_id: FileId) -> Result<RichTerm, rnix::parser::ParseError> {
     let source = cache.files().source(file_id);
     let nixast = rnix::parse(source).as_result()?;
-    Ok(translate(nixast.node(), file_id))
+    Ok(nixast.node().translate(file_id))
 }
