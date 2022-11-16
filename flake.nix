@@ -190,7 +190,15 @@
                 # - `stdenv` provides standard environment similarly to `mkDerivation`, including a C compiler (`cc`) required by Rust.
                 # - `cargoHome` provides Rust with the right `CARGO_HOME` environment variable to discover built dependencies.
                 cargoHomeHookSetup = pkgs.lib.optionalString (! isHook) ''
+                  echo "CARGO_HOME"
+                  echo $CARGO_HOME
+                  echo "ls11"
+                  ls -laa
                   source ${nickel.inputDerivation}
+                  echo "CARGO_HOME"
+                  echo $CARGO_HOME
+                  echo "ls12"
+                  ls -laa
                   source $stdenv/setup
                 '';
               in
