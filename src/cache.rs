@@ -68,7 +68,7 @@ pub struct Cache {
     /// The table storing parsed terms corresponding to the entries of the file database.
     terms: HashMap<FileId, CachedTerm>,
     /// The list of ids corresponding to the stdlib modules
-    stdlib_ids: Option<Vec<FileId>>,
+    stdlib_ids: Option<HashMap<StdlibModule, FileId>>,
     /// The inferred type of wildcards for each `FileId`.
     wildcards: HashMap<FileId, Wildcards>,
     /// Whether processing should try to continue even in case of errors. Needed by the NLS.
@@ -832,9 +832,8 @@ impl Cache {
     }
 
     /// Retrieve the FileId for a given standard libray module.
-    pub fn get_submodule_file_id(&self, name: StdlibModule) -> Option<FileId> {
-        let index = nickel_stdlib::get_module_id(name);
-        let file = self.stdlib_ids.as_ref()?.get(index).copied()?;
+    pub fn get_submodule_file_id(&self, module: StdlibModule) -> Option<FileId> {
+        let file = self.stdlib_ids.as_ref()?.get(&module).copied()?;
         Some(file)
     }
 
@@ -844,12 +843,17 @@ impl Cache {
             return Ok(CacheOp::Cached(()));
         }
 
-        let file_ids: Vec<FileId> = nickel_stdlib::modules()
+        let file_ids: HashMap<StdlibModule, FileId> = nickel_stdlib::modules()
             .into_iter()
-            .map(|(name, content)| self.add_string(OsString::from(name), String::from(content)))
+            .map(|(module, name, content)| {
+                (
+                    module,
+                    self.add_string(OsString::from(name), String::from(content)),
+                )
+            })
             .collect();
 
-        for file_id in file_ids.iter() {
+        for (_, file_id) in file_ids.iter() {
             self.parse(*file_id)?;
         }
         self.stdlib_ids.replace(file_ids);
@@ -881,7 +885,7 @@ impl Cache {
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
         if let Some(ids) = self.stdlib_ids.as_ref().cloned() {
             ids.iter()
-                .try_fold(CacheOp::Cached(()), |cache_op, file_id| {
+                .try_fold(CacheOp::Cached(()), |cache_op, (_, file_id)| {
                     match self.typecheck(*file_id, initial_ctxt)? {
                         done @ CacheOp::Done(()) => Ok(done),
                         _ => Ok(cache_op),
@@ -909,7 +913,7 @@ impl Cache {
             .cloned()
             .expect("cache::prepare_stdlib(): stdlib has been loaded but stdlib_ids is None")
             .into_iter()
-            .try_for_each(|file_id| self.transform_inner(file_id).map(|_| ()))
+            .try_for_each(|(_, file_id)| self.transform_inner(file_id).map(|_| ()))
             .map_err(|cache_err| {
                 cache_err
                     .unwrap_error("cache::prepare_stdlib(): expected standard library to be parsed")
@@ -930,7 +934,7 @@ impl Cache {
                 .map_or(Err(CacheError::NotParsed), |ids| {
                     Ok(ids
                         .iter()
-                        .map(|file_id| {
+                        .map(|(_, file_id)| {
                             self.get_owned(*file_id).expect(
                                 "cache::mk_type_env(): can't build environment, stdlib not parsed",
                             )
@@ -945,7 +949,7 @@ impl Cache {
     pub fn mk_eval_env(&self) -> Result<eval::Environment, CacheError<Void>> {
         if let Some(ids) = self.stdlib_ids.as_ref().cloned() {
             let mut eval_env = eval::Environment::new();
-            ids.iter().for_each(|file_id| {
+            ids.iter().for_each(|(_, file_id)| {
                 let result = eval::env_add_term(
                     &mut eval_env,
                     self.get_owned(*file_id).expect(

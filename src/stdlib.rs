@@ -4,26 +4,49 @@ use crate::identifier::Ident;
 use crate::term::make as mk_term;
 use crate::term::RichTerm;
 
-pub const BUILTIN: (&str, &str) = (
+pub const BUILTIN: (StdlibModule, &str, &str) = (
+    StdlibModule::Builtin,
     "<stdlib/builtin.ncl>",
     include_str!("../stdlib/builtin.ncl"),
 );
-pub const CONTRACT: (&str, &str) = (
+pub const CONTRACT: (StdlibModule, &str, &str) = (
+    StdlibModule::Contract,
     "<stdlib/contract.ncl>",
     include_str!("../stdlib/contract.ncl"),
 );
-pub const ARRAY: (&str, &str) = ("<stdlib/array>", include_str!("../stdlib/array.ncl"));
-pub const RECORD: (&str, &str) = ("<stdlib/record>", include_str!("../stdlib/record.ncl"));
-pub const STRING: (&str, &str) = ("<stdlib/string>", include_str!("../stdlib/string.ncl"));
-pub const NUM: (&str, &str) = ("<stdlib/num>", include_str!("../stdlib/num.ncl"));
-pub const FUNCTION: (&str, &str) = ("<stdlib/function>", include_str!("../stdlib/function.ncl"));
-pub const INTERNALS: (&str, &str) = (
+pub const ARRAY: (StdlibModule, &str, &str) = (
+    StdlibModule::Array,
+    "<stdlib/array>",
+    include_str!("../stdlib/array.ncl"),
+);
+pub const RECORD: (StdlibModule, &str, &str) = (
+    StdlibModule::Record,
+    "<stdlib/record>",
+    include_str!("../stdlib/record.ncl"),
+);
+pub const STRING: (StdlibModule, &str, &str) = (
+    StdlibModule::String,
+    "<stdlib/string>",
+    include_str!("../stdlib/string.ncl"),
+);
+pub const NUM: (StdlibModule, &str, &str) = (
+    StdlibModule::Num,
+    "<stdlib/num>",
+    include_str!("../stdlib/num.ncl"),
+);
+pub const FUNCTION: (StdlibModule, &str, &str) = (
+    StdlibModule::Function,
+    "<stdlib/function>",
+    include_str!("../stdlib/function.ncl"),
+);
+pub const INTERNALS: (StdlibModule, &str, &str) = (
+    StdlibModule::Internals,
     "<stdlib/internals>",
     include_str!("../stdlib/internals.ncl"),
 );
 
 /// Return the list `(name, source_code)` of all the stdlib modules.
-pub fn modules() -> Vec<(&'static str, &'static str)> {
+pub fn modules() -> Vec<(StdlibModule, &'static str, &'static str)> {
     // If you change the order of this, please also modify the
     // `get_module_id` function correspondinly
     vec![
@@ -32,7 +55,7 @@ pub fn modules() -> Vec<(&'static str, &'static str)> {
 }
 
 /// Represents a particular Nickel standard library module.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum StdlibModule {
     Builtin,
     Contract,
