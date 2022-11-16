@@ -212,10 +212,10 @@ fn collect_record_info(
         let (ty, _) = linearization.resolve_item_type_meta(item);
         match (&item.kind, ty) {
             // Get record fields from static type info
-            (TermKind::Declaration(..), Types(AbsType::Record(row))) if id == item.id => {
+            (TermKind::Declaration(..), Types(AbsType::Record(row))) => {
                 vec![(find_fields_from_type(&row, path), item.ty.clone())]
             }
-            (TermKind::Declaration(_, _, ValueState::Known(body_id)), _) if id == item.id => {
+            (TermKind::Declaration(_, _, ValueState::Known(body_id)), _) => {
                 match find_fields_from_contract(&linearization, *body_id, path) {
                     // Get record fields from contract metadata
                     Some(fields) => vec![(fields, item.ty.clone())],
@@ -235,7 +235,7 @@ fn collect_record_info(
                     ..
                 },
                 _,
-            ) if id == item.id => {
+            ) => {
                 if let Some(idents) = find_fields_from_term_kind(&linearization, *value, path) {
                     vec![(idents, item.ty.clone())]
                 } else {
