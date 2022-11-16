@@ -10,8 +10,8 @@ use nickel_lang::{serialize, serialize::ExportFormat};
 use std::path::{Path, PathBuf};
 use std::{
     fs::{self, File},
-    process,
     io::Read,
+    process,
 };
 // use std::ffi::OsStr;
 use directories::BaseDirs;
@@ -121,7 +121,7 @@ fn main() {
         let mut out: Vec<u8> = Vec::new();
         opts.file
             .map(std::fs::File::open)
-            .map(|f| f.unwrap().read_to_string(&mut buf))
+            .map(|f| f.and_then(|mut f| f.read_to_string(&mut buf)))
             .unwrap_or(std::io::stdin().read_to_string(&mut buf))
             .unwrap_or_else(|err| {
                 eprintln!("Error when reading input: {}", err);
