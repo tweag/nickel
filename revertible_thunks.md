@@ -89,4 +89,9 @@ let x_encoded = {
 }
 ```
 
+## The issue
 
+In term of `self` functions, I previously assumed that we could only have
+"one-level" functions in some sense, that doens't pass self around `fun self =>
+...`. Or, put differently, where each subterms using `self` share the same
+environment.
