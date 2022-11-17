@@ -48,7 +48,7 @@ pub fn get_uop_type(
             let row = UnifEnumRows::UnifVar(row_var_id);
 
             let domain = mk_tyw_enum!(; row.clone());
-            let codomain = mk_tyw_enum!(id.clone(); row);
+            let codomain = mk_tyw_enum!(*id; row);
 
             // The codomain is the only type which can impose a constraint on the fresh row
             // unification variable, namely that it can't contain `id`.
@@ -66,7 +66,7 @@ pub fn get_uop_type(
             let rows = state.table.fresh_rrows_uvar();
             let res = state.table.fresh_type_uvar();
 
-            (mk_tyw_record!((id.clone(), res.clone()); rows), res)
+            (mk_tyw_record!((*id, res.clone()); rows), res)
         }
         // forall a b. Array a -> (a -> b) -> Array b
         UnaryOp::ArrayMap() => {

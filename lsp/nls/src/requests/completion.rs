@@ -87,7 +87,7 @@ fn find_fields_from_meta_value(meta_value: &MetaValue, path: &mut Vec<Ident>) ->
         .iter()
         .chain(meta_value.types.iter())
         .flat_map(|contract| match &contract.types {
-            Types(TypeF::Record(row)) => find_fields_from_type(&row, path),
+            Types(TypeF::Record(row)) => find_fields_from_type(row, path),
             Types(TypeF::Flat(term)) => find_fields_from_term(term, path).unwrap_or_default(),
             _ => Vec::new(),
         })
@@ -115,7 +115,7 @@ fn find_fields_from_type(rrows: &RecordRows, path: &mut Vec<Ident>) -> Vec<Ident
         rrows
             .iter()
             .filter_map(|item| match item {
-                RecordRowsIteratorItem::Row(row) => Some(row.id.clone()),
+                RecordRowsIteratorItem::Row(row) => Some(row.id),
                 _ => None,
             })
             .collect::<Vec<_>>()

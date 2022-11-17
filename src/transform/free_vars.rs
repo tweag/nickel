@@ -27,7 +27,7 @@ impl CollectFreeVars for RichTerm {
     fn collect_free_vars(&mut self, free_vars: &mut HashSet<Ident>) {
         match SharedTerm::make_mut(&mut self.term) {
             Term::Var(id) => {
-                free_vars.insert(id.clone());
+                free_vars.insert(*id);
             }
             Term::ParseError(_)
             | Term::Null
@@ -124,7 +124,7 @@ impl CollectFreeVars for RichTerm {
                     t.collect_free_vars(&mut fresh);
                     new_deps
                         .stat_fields
-                        .insert(id.clone(), &fresh & &rec_fields);
+                        .insert(*id, &fresh & &rec_fields);
 
                     free_vars.extend(&fresh - &rec_fields);
                 }

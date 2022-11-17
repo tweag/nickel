@@ -386,7 +386,7 @@ fn rows_as_set(erows: &UnifEnumRows) -> Option<HashSet<Ident>> {
     let set: Option<HashSet<_>> = erows
         .iter()
         .map(|item| match item {
-            UnifEnumRowsIteratorItem::Row(id) => Some(id.clone()),
+            UnifEnumRowsIteratorItem::Row(id) => Some(*id),
             _ => None,
         })
         .collect();
