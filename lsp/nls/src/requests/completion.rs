@@ -205,24 +205,19 @@ fn remove_duplicates(items: &Vec<CompletionItem>) -> Vec<CompletionItem> {
 
 /// Search the linearization to find the record information associated with a
 /// partiular ID, and in the scope of a given linearization item.
-fn collect_record_info(
-    linearization: &Completed,
-    id: usize,
-    path: &mut Vec<Ident>,
-) -> Vec<(Vec<Ident>, Types)> {
+fn collect_record_info(linearization: &Completed, id: usize, path: &mut Vec<Ident>) -> Vec<Ident> {
     linearization
         .get_item(id)
         .map(|item| {
             let (ty, _) = linearization.resolve_item_type_meta(item);
             match (&item.kind, ty) {
                 // Get record fields from static type info
-                (TermKind::Declaration(..), Types(TypeF::Record(row))) => {
-                    vec![(find_fields_from_type(&row, path), item.ty.clone())]
+                (TermKind::Declaration(..), Types(TypeF::Record(rrows))) => {
+                    find_fields_from_type(&rrows, path)
                 }
                 (TermKind::Declaration(_, _, ValueState::Known(body_id)), _) => {
                     find_fields_from_contract(&linearization, *body_id, path)
                         .or_else(|| find_fields_from_term_kind(&linearization, id, path))
-                        .map(|idents| vec![(idents, item.ty.clone())])
                         .unwrap_or_default()
                 }
                 (
@@ -231,9 +226,7 @@ fn collect_record_info(
                         ..
                     },
                     _,
-                ) => find_fields_from_term_kind(&linearization, *value, path)
-                    .map(|idents| vec![(idents, item.ty.clone())])
-                    .unwrap_or_default(),
+                ) => find_fields_from_term_kind(&linearization, *value, path).unwrap_or_default(),
                 _ => Vec::new(),
             }
         })
@@ -241,11 +234,7 @@ fn collect_record_info(
 }
 
 /// Generate completion for a stdlib identifier.
-fn stdlib_completion(
-    server: &Server,
-    name: Ident,
-    path: &mut Vec<Ident>,
-) -> Option<Vec<(Vec<Ident>, Types)>> {
+fn stdlib_completion(server: &Server, name: Ident, path: &mut Vec<Ident>) -> Option<Vec<Ident>> {
     let module = StdlibModule::try_from(name).ok()?;
     let file_id = server.cache.get_submodule_file_id(module)?;
     let lin = server.lin_cache_get(&file_id).ok()?;
@@ -279,7 +268,7 @@ fn get_completion_identifiers(
         linearization: &Completed,
         server: &Server,
         path: &mut Vec<Ident>,
-    ) -> Vec<(Vec<Ident>, Types)> {
+    ) -> Vec<Ident> {
         item.env
             .get(&name)
             .map(|id| collect_record_info(linearization, *id, path))
@@ -325,9 +314,7 @@ fn get_completion_identifiers(
                     .get_in_scope(item)
                     .iter()
                     .filter_map(|i| match i.kind {
-                        TermKind::Declaration(ref ident, _, _) => {
-                            Some((vec![*ident], i.ty.clone()))
-                        }
+                        TermKind::Declaration(ref ident, _, _) => Some(ident.clone()),
                         _ => None,
                     })
                     .collect::<Vec<_>>()
@@ -337,11 +324,9 @@ fn get_completion_identifiers(
 
     let in_scope: Vec<_> = in_scope
         .iter()
-        .flat_map(|(idents, _)| {
-            idents.iter().map(|ident| CompletionItem {
-                label: adjust_name(ident.into_label()),
-                ..Default::default()
-            })
+        .map(|ident| CompletionItem {
+            label: adjust_name(ident.into_label()),
+            ..Default::default()
         })
         .collect();
     Ok(remove_duplicates(&in_scope))
