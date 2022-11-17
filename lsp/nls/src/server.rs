@@ -113,7 +113,6 @@ impl Server {
         let cache = &mut self.cache;
         let modules: Vec<_> = stdlib::modules()
             .iter()
-            .map(|(module, _, _)| module)
             .copied()
             .collect();
         for module in modules {

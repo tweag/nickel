@@ -4,51 +4,17 @@ use crate::identifier::Ident;
 use crate::term::make as mk_term;
 use crate::term::RichTerm;
 
-pub const BUILTIN: (StdlibModule, &str, &str) = (
-    StdlibModule::Builtin,
-    "<stdlib/builtin.ncl>",
-    include_str!("../stdlib/builtin.ncl"),
-);
-pub const CONTRACT: (StdlibModule, &str, &str) = (
-    StdlibModule::Contract,
-    "<stdlib/contract.ncl>",
-    include_str!("../stdlib/contract.ncl"),
-);
-pub const ARRAY: (StdlibModule, &str, &str) = (
-    StdlibModule::Array,
-    "<stdlib/array>",
-    include_str!("../stdlib/array.ncl"),
-);
-pub const RECORD: (StdlibModule, &str, &str) = (
-    StdlibModule::Record,
-    "<stdlib/record>",
-    include_str!("../stdlib/record.ncl"),
-);
-pub const STRING: (StdlibModule, &str, &str) = (
-    StdlibModule::String,
-    "<stdlib/string>",
-    include_str!("../stdlib/string.ncl"),
-);
-pub const NUM: (StdlibModule, &str, &str) = (
-    StdlibModule::Num,
-    "<stdlib/num>",
-    include_str!("../stdlib/num.ncl"),
-);
-pub const FUNCTION: (StdlibModule, &str, &str) = (
-    StdlibModule::Function,
-    "<stdlib/function>",
-    include_str!("../stdlib/function.ncl"),
-);
-pub const INTERNALS: (StdlibModule, &str, &str) = (
-    StdlibModule::Internals,
-    "<stdlib/internals>",
-    include_str!("../stdlib/internals.ncl"),
-);
-
 /// Return the list `(name, source_code)` of all the stdlib modules.
-pub fn modules() -> Vec<(StdlibModule, &'static str, &'static str)> {
-    vec![
-        BUILTIN, CONTRACT, ARRAY, RECORD, STRING, NUM, FUNCTION, INTERNALS,
+pub fn modules() -> [StdlibModule; 8] {
+    [
+        StdlibModule::Builtin,
+        StdlibModule::Contract,
+        StdlibModule::Array,
+        StdlibModule::Record,
+        StdlibModule::String,
+        StdlibModule::Num,
+        StdlibModule::Function,
+        StdlibModule::Internals,
     ]
 }
 
@@ -63,6 +29,34 @@ pub enum StdlibModule {
     Num,
     Function,
     Internals,
+}
+
+impl StdlibModule {
+    pub fn file_name(&self) -> &'static str {
+        match self {
+            StdlibModule::Builtin => "<stdlib/builtin.ncl>",
+            StdlibModule::Contract => "<stdlib/contract.ncl>",
+            StdlibModule::Array => "<stdlib/array.ncl>",
+            StdlibModule::Record => "<stdlib/record.ncl>",
+            StdlibModule::String => "<stdlib/string.ncl>",
+            StdlibModule::Num => "<stdlib/num.ncl>",
+            StdlibModule::Function => "<stdlib/function.ncl>",
+            StdlibModule::Internals => "<stdlib/internals.ncl>",
+        }
+    }
+
+    pub const fn content(&self) -> &'static str {
+        match self {
+            StdlibModule::Builtin => include_str!("../stdlib/builtin.ncl"),
+            StdlibModule::Contract => include_str!("../stdlib/contract.ncl"),
+            StdlibModule::Array => include_str!("../stdlib/array.ncl"),
+            StdlibModule::Record => include_str!("../stdlib/record.ncl"),
+            StdlibModule::String => include_str!("../stdlib/string.ncl"),
+            StdlibModule::Num => include_str!("../stdlib/num.ncl"),
+            StdlibModule::Function => include_str!("../stdlib/function.ncl"),
+            StdlibModule::Internals => include_str!("../stdlib/internals.ncl"),
+        }
+    }
 }
 
 pub struct UnknownStdlibModule;

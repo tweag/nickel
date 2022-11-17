@@ -845,7 +845,9 @@ impl Cache {
 
         let file_ids: HashMap<StdlibModule, FileId> = nickel_stdlib::modules()
             .into_iter()
-            .map(|(module, name, content)| {
+            .map(|module| {
+                let name = module.file_name();
+                let content = module.content();
                 (
                     module,
                     self.add_string(OsString::from(name), String::from(content)),
