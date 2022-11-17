@@ -1,9 +1,9 @@
-{
+({
     foo = "Overridden",
-} & ({
-  config.output = {},
 } & {
+  config.output = {},
+}) & {
   foo | default = "blub",
 
   config.output.value = foo,
-})
+}
