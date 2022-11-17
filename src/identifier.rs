@@ -89,6 +89,12 @@ where
     }
 }
 
+// False-positive Clippy error: if we apply this suggestion,
+// we end up with an implementation of `From<Ident> for String`.
+// Then setting `F = Ident` in the implementation above gives
+// `From<Ident> for Ident` which is incoherent with the
+// blanket implementation of `From<T> for T`.
+#[allow(clippy::from_over_into)]
 impl Into<String> for Ident {
     fn into(self) -> String {
         self.into_label()

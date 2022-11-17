@@ -20,7 +20,7 @@ fn parse(s: &str) -> Option<RichTerm> {
     let id = Files::new().add("<test>", String::from(s));
 
     grammar::TermParser::new()
-        .parse_term(id, lexer::Lexer::new(&s))
+        .parse_term(id, lexer::Lexer::new(s))
         .map(RichTerm::without_pos)
         .map_err(|err| println!("{:?}", err))
         .ok()
@@ -35,7 +35,7 @@ fn identity_over_values() {
     assert_eq!(Ok(boolean.clone()), eval_no_import(boolean.into()));
 
     let lambda = mk_fun!("x", mk_app!(mk_term::var("x"), mk_term::var("x")));
-    assert_eq!(Ok(lambda.as_ref().clone()), eval_no_import(lambda.into()));
+    assert_eq!(Ok(lambda.as_ref().clone()), eval_no_import(lambda));
 }
 
 #[test]
@@ -225,14 +225,11 @@ fn imports() {
 fn interpolation_simple() {
     let mut chunks = vec![
         StrChunk::Literal(String::from("Hello")),
-        StrChunk::expr(
-            mk_term::op2(
-                BinaryOp::StrConcat(),
-                mk_term::string(", "),
-                mk_term::string("World!"),
-            )
-            .into(),
-        ),
+        StrChunk::expr(mk_term::op2(
+            BinaryOp::StrConcat(),
+            mk_term::string(", "),
+            mk_term::string("World!"),
+        )),
         StrChunk::Literal(String::from(" How")),
         StrChunk::expr(mk_term::if_then_else(
             Term::Bool(true),

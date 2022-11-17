@@ -55,7 +55,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                     if should_share(&t.term) {
                         let fresh_var = Ident::fresh();
                         let pos_t = t.pos;
-                        bindings.push((fresh_var.clone(), t, BindingType::Normal));
+                        bindings.push((fresh_var, t, BindingType::Normal));
                         RichTerm::new(Term::Var(fresh_var), pos_t)
                     } else {
                         t
@@ -88,7 +88,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                     // rather that the dependencies haven't been computed. In the latter
                     // case, we must be conservative and assume the field is potentially
                     // recursive.
-                    let is_non_rec = (&field_deps).as_ref().map(|deps| deps.is_empty()).unwrap_or(false);
+                    let is_non_rec = field_deps.as_ref().map(|deps| deps.is_empty()).unwrap_or(false);
                     if is_non_rec {
                         BindingType::Normal
                     } else {
@@ -103,9 +103,9 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                         let fresh_var = Ident::fresh();
                         let pos_t = t.pos;
                         let field_deps = deps.as_ref().and_then(|deps| deps.stat_fields.get(&id)).cloned();
-                        let is_non_rec = (&field_deps).as_ref().map(|deps| deps.is_empty()).unwrap_or(false);
+                        let is_non_rec = field_deps.as_ref().map(|deps| deps.is_empty()).unwrap_or(false);
                         let btype = mk_binding_type(field_deps);
-                        bindings.push((fresh_var.clone(), t, btype));
+                        bindings.push((fresh_var, t, btype));
 
                         RichTerm::new(Term::Var(fresh_var), pos_t)
                     } else {
@@ -122,7 +122,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                             let pos_t = t.pos;
                             let field_deps = deps.as_ref().and_then(|deps| deps.dyn_fields.get(index)).cloned();
                             let btype = mk_binding_type(field_deps);
-                            bindings.push((fresh_var.clone(), t, btype));
+                            bindings.push((fresh_var, t, btype));
                             (id_t, RichTerm::new(Term::Var(fresh_var), pos_t))
                         } else {
                             (id_t, t)
@@ -141,7 +141,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                         if should_share(&t.term) {
                             let fresh_var = Ident::fresh();
                             let pos_t = t.pos;
-                            bindings.push((fresh_var.clone(), t, BindingType::Normal));
+                            bindings.push((fresh_var, t, BindingType::Normal));
                             RichTerm::new(Term::Var(fresh_var), pos_t)
                         } else {
                             t
@@ -156,7 +156,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                     let fresh_var = Ident::fresh();
                     let t = meta.value.take().unwrap();
                     meta.value
-                        .replace(RichTerm::new(Term::Var(fresh_var.clone()), t.pos));
+                        .replace(RichTerm::new(Term::Var(fresh_var), t.pos));
                     let inner = RichTerm::new(Term::MetaValue(meta), pos);
                     let attrs = LetAttrs {
                         binding_type: BindingType::Normal,

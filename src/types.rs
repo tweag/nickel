@@ -70,7 +70,7 @@ use std::{
 ///
 /// As other types with the `F` suffix, this type is parametrized by one or more recursive
 /// unfoldings (here, `Ty` for `TypeF`). See [`TypeF`] for more details.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct RecordRowF<Ty> {
     pub id: Ident,
     pub types: Ty,
@@ -96,7 +96,7 @@ pub type EnumRow = EnumRowF;
 ///   wrapper around an instantiation of `TypeF`.
 /// - `RRows` is the recursive unfolding of record rows (the tail of this row sequence). In
 ///   practice, a wrapper around an instantiation of `RecordRowsF`.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum RecordRowsF<Ty, RRows> {
     Empty,
     Extend { row: RecordRowF<Ty>, tail: RRows },
@@ -113,7 +113,7 @@ pub enum RecordRowsF<Ty, RRows> {
 ///
 /// - `ERows` is the recursive unfolding of enum rows (the tail of this row sequence). In practice,
 ///   a wrapper around `EnumRowsF`.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum EnumRowsF<ERows> {
     Empty,
     Extend { row: EnumRowF, tail: ERows },
@@ -623,7 +623,7 @@ impl<'a> Iterator for RecordRowsIterator<'a, Types, RecordRows> {
             RecordRowsF::Extend { ref row, ref tail } => {
                 self.rrows = Some(tail);
                 Some(RecordRowsIteratorItem::Row(RecordRowF {
-                    id: row.id.clone(),
+                    id: row.id,
                     types: row.types.as_ref(),
                 }))
             }
@@ -651,7 +651,7 @@ impl<'a> Iterator for EnumRowsIterator<'a, EnumRows> {
             }
             EnumRowsF::TailVar(ref id) => {
                 self.erows = None;
-                Some(EnumRowsIteratorItem::TailVar(&id))
+                Some(EnumRowsIteratorItem::TailVar(id))
             }
             EnumRowsF::Extend { ref row, ref tail } => {
                 self.erows = Some(tail);
@@ -669,9 +669,7 @@ fn get_var_contract(
     id: &Ident,
     pol: bool,
 ) -> Result<RichTerm, UnboundTypeVariableError> {
-    let (pos, neg) = vars
-        .get(id)
-        .ok_or_else(|| UnboundTypeVariableError(id.clone()))?;
+    let (pos, neg) = vars.get(id).ok_or(UnboundTypeVariableError(*id))?;
     if pol {
         Ok(pos.clone())
     } else {
@@ -691,7 +689,7 @@ impl EnumRows {
         for row in self.iter() {
             match row {
                 EnumRowsIteratorItem::Row(id) => {
-                    cases.insert(id.clone(), mk_term::var(value_arg.clone()));
+                    cases.insert(*id, mk_term::var(value_arg));
                 }
                 EnumRowsIteratorItem::TailVar(_) => {
                     has_tail = true;
@@ -703,7 +701,7 @@ impl EnumRows {
         // If the enum type has a tail, the tail must be a universally quantified variable,
         // and this means that the tag can be anything.
         let case_body = if has_tail {
-            mk_term::var(value_arg.clone())
+            mk_term::var(value_arg)
         }
         // Otherwise, we build a switch with all the tags as cases, which just returns the
         // original argument, and a default case that blames.
@@ -722,12 +720,9 @@ impl EnumRows {
         // ```
         else {
             RichTerm::from(Term::Switch(
-                mk_term::var(value_arg.clone()),
+                mk_term::var(value_arg),
                 cases,
-                Some(mk_app!(
-                    contract::enum_fail(),
-                    mk_term::var(label_arg.clone())
-                )),
+                Some(mk_app!(contract::enum_fail(), mk_term::var(label_arg))),
             ))
         };
         let case = mk_fun!(label_arg, value_arg, case_body);
@@ -735,7 +730,7 @@ impl EnumRows {
         Ok(mk_app!(contract::enums(), case))
     }
 
-    pub fn iter<'a>(&'a self) -> EnumRowsIterator<'a, EnumRows> {
+    pub fn iter(&self) -> EnumRowsIterator<EnumRows> {
         EnumRowsIterator { erows: Some(self) }
     }
 }
@@ -807,7 +802,7 @@ impl RecordRows {
         }
     }
 
-    pub fn iter<'a>(&'a self) -> RecordRowsIterator<'a, Types, RecordRows> {
+    pub fn iter(&self) -> RecordRowsIterator<Types, RecordRows> {
         RecordRowsIterator {
             rrows: Some(self),
             ty: std::marker::PhantomData,
@@ -871,7 +866,7 @@ impl Types {
                     Term::Bool(pol)
                 );
 
-                h.insert(var.clone(), (inst_var, inst_tail));
+                h.insert(*var, (inst_var, inst_tail));
                 *sy += 1;
                 body.subcontract(h, pol, sy)?
             }

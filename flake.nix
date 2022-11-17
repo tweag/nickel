@@ -138,51 +138,98 @@
           '';
         };
 
-      buildNickel =
-        { channel ? "stable"
-        , isDevShell ? false
-        , target ? pkgs.rust.toRustTarget pkgs.stdenv.hostPlatform
-        ,
-        }:
-        let
-          rustProfile =
-            if isDevShell then "default"
-            else "minimal";
-
-          rust = mkRust { inherit rustProfile channel target; };
-
-          pre-commit = pre-commit-hooks.lib.${system}.run {
-            src = self;
-            hooks = {
-              nixpkgs-fmt = {
-                enable = true;
-                excludes = [
-                  "lsp/client-extension/default.nix"
-                  "lsp/client-extension/node-env.nix"
-                  "lsp/client-extension/node-packages.nix"
-                ];
-              };
-              rustfmt = {
-                enable = true;
-                entry = pkgs.lib.mkForce "${rust}/bin/cargo-fmt fmt -- --check --color always";
-              };
-              markdownlint = {
-                enable = true;
-                excludes = [
-                  "notes/(.+)\\.md$"
-                  "^RELEASES\\.md$"
-                ];
-              };
+      pre-commit-builder =
+        { rust ? mkRust { }
+        , nickel ? buildNickel { inherit rust; }
+        , isHermetic
+        }: pre-commit-hooks.lib.${system}.run {
+          src = self;
+          hooks = {
+            nixpkgs-fmt = {
+              enable = true;
+              excludes = [
+                "lsp/client-extension/default.nix"
+                "lsp/client-extension/node-env.nix"
+                "lsp/client-extension/node-packages.nix"
+              ];
             };
-          };
 
-        in
+            rustfmt = {
+              enable = true;
+              entry = pkgs.lib.mkForce "${rust}/bin/cargo-fmt fmt -- --check --color always";
+            };
+
+            markdownlint = {
+              enable = true;
+              excludes = [
+                "notes/(.+)\\.md$"
+                "^RELEASES\\.md$"
+              ];
+            };
+
+            # The default `clippy` pre-commit-hook is too standard, hence we create our own.
+            # Compared to the default `clippy` hook, we customize the following:
+            # - custom Clippy options
+            # - in case of hermetic run (mostly used by CI), we reuse the Nixified Rust dependencies from `nickel`
+            custom-clippy =
+              let
+                allow = [
+                  "clippy::new-without-default"
+                  "clippy::match_like_matches_macro"
+                ];
+
+                allowOpts = builtins.concatStringsSep " "
+                  (builtins.map (lint: "--allow \"${lint}\"") allow);
+
+                # Clippy requires access to the crate registry because many lints require dependency information.
+                # Similarly to `buildNickel`, we support 2 modes:
+                # - when run as a shell hook, we want to be fast, so we let Cargo do incremental compilation, and download dependencies as needed.
+                #   This is mainly used by developers, who care about speed at the expense of hermeticity.
+                # - when run as a flake check, we want to be fully reproducible, so we Nixify Cargo dependency resolution.
+                #   This is mainly used by CI, where the extra time is not such a big deal.
+                offlineOpts = pkgs.lib.optionalString isHermetic "--frozen --offline";
+
+                # When running in hermetic mode, all Rust dependencies must be already present.
+                # Hence we can't just call `cargo` directly, as it would try to download dependencies.
+                # Hence we do the following:
+                # - `source ${nickel.inputDerivation}` to set the environment variables `buildInputs` and `stdenv` just like in a Nickel build.
+                #   The `buildInputs` will contain the path to Nixified Rust dependencies (a.k.a. `cargoHome`), as well as other build inputs, like `Security` for Darwin.
+                #   ⚠️ This will also completely unset `PATH`, and *update* various environment variables used in downstream scripts, like `TMPDIR`.
+                # - `source $stdenv/setup` does a lot of Nix magic, including loading in the `PATH` everything in the `buildInputs` environment variable.
+                #
+                # 💡 The other commands are needed for Darwin builds to undo some changes of `source ${nickel.inputDerivation}`.
+                #    For Linux, these extra commands are unnecessary (because their value is "updated" from `/build` to `/build`), though harmless.
+                nickelBuildInputsSetup = pkgs.lib.optionalString isHermetic ''
+                  nix_build_top=$NIX_BUILD_TOP
+                  source ${nickel.inputDerivation}
+                  NIX_BUILD_TOP=$nix_build_top
+                  TEMP=$nix_build_top
+                  TEMPDIR=$nix_build_top
+                  TMP=$nix_build_top
+                  TMPDIR=$nix_build_top
+                  source $stdenv/setup
+                '';
+              in
+              {
+                enable = true;
+                files = "\\.rs$";
+                pass_filenames = false;
+                entry =
+                  "${pkgs.writeShellScript "clippy-hook" ''
+                    ${nickelBuildInputsSetup}
+                    cargo clippy --workspace ${offlineOpts} -- --no-deps --deny warnings ${allowOpts}
+                  ''}";
+              };
+          };
+        };
+
+      buildNickel =
+        { rust ? mkRust { }, withCargoHome ? true }:
         pkgs.stdenv.mkDerivation {
           name = "nickel-${version}";
 
           buildInputs =
             [ rust ]
-            ++ missingSysPkgs
             # cargoHome is used for a fully, hermetic, nixified build. This is
             # what we want for e.g. nix-build. However, when hacking on Nickel,
             # we rather provide the necessary tooling but let people use the
@@ -193,9 +240,10 @@
             # - we get incremental build and a build order of magnitudes
             #   faster
             # - etc.
-            ++ (if isDevShell then [ pkgs.rust-analyzer ] else [ cargoHome ]);
+            ++ pkgs.lib.optional withCargoHome cargoHome
+            ++ missingSysPkgs;
 
-          src = if isDevShell then null else self;
+          src = self;
 
           buildPhase = ''
             cargo build --workspace --exclude nickel-repl --release --frozen --offline
@@ -205,9 +253,7 @@
 
           checkPhase = ''
             cargo test --release --frozen --offline
-          '' + (pkgs.lib.optionalString (channel == "stable") ''
-            cargo fmt --all -- --check
-          '');
+          '';
 
           installPhase = ''
             mkdir -p $out
@@ -216,26 +262,24 @@
             rm $out/.crates.toml
           '';
 
-          shellHook = pre-commit.shellHook + ''
-            echo "=== Nickel development shell ==="
-            echo "Info: Git hooks can be installed using \`pre-commit install\`"
-          '';
-
-          passthru = { inherit rust pre-commit; };
-
-          RUST_SRC_PATH = "${rust}/lib/rustlib/src/rust/library";
         };
 
+      makeDevShell = { rust }: pkgs.mkShell {
+        inputsFrom = [ (buildNickel { inherit rust; withCargoHome = false; }) ];
+        buildInputs = [ pkgs.rust-analyzer ];
+
+        shellHook = (pre-commit-builder { inherit rust; isHermetic = false; }).shellHook + ''
+          echo "=== Nickel development shell ==="
+          echo "Info: Git hooks can be installed using \`pre-commit install\`"
+        '';
+
+        RUST_SRC_PATH = "${rust}/lib/rustlib/src/rust/library";
+      };
+
       buildNickelWasm =
-        { channel ? "stable"
+        { rust ? mkRust { target = "wasm32-unknown-unknown"; }
         , optimize ? true
         }:
-        let
-          rust = mkRust {
-            inherit channel;
-            target = "wasm32-unknown-unknown";
-          };
-        in
         pkgs.stdenv.mkDerivation {
           name = "nickel-wasm-${version}";
 
@@ -324,7 +368,7 @@
       packages = {
         default = packages.build;
         build = buildNickel { };
-        buildWasm = buildNickelWasm { optimize = true; };
+        buildWasm = buildNickelWasm { };
         dockerImage = buildDocker packages.build; # TODO: docker image should be a passthru
         inherit vscodeExtension;
         inherit userManual;
@@ -336,18 +380,18 @@
       } // (forEachRustChannel
         (channel: {
           name = channel;
-          value = buildNickel { inherit channel; isDevShell = true; };
+          value = makeDevShell { rust = mkRust { inherit channel; rustProfile = "default"; }; };
         }
         ));
 
       checks = {
         # wasm-opt can take long: eschew optimizations in checks
-        wasm = buildNickelWasm { channel = "stable"; optimize = false; };
-        pre-commit = packages.default.pre-commit;
+        wasm = buildNickelWasm { optimize = false; };
+        pre-commit = pre-commit-builder { isHermetic = true; };
       } // (forEachRustChannel (channel:
         {
           name = "nickel-against-${channel}-rust-channel";
-          value = buildNickel { inherit channel; };
+          value = buildNickel { rust = mkRust { inherit channel; }; };
         }
       ));
     }

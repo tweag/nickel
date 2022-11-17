@@ -35,7 +35,7 @@ pub fn transform_no_free_vars(
     wildcards: Option<&Wildcards>,
 ) -> Result<RichTerm, UnboundTypeVariableError> {
     let rt = rt.traverse(
-        &mut |mut rt: RichTerm, _| -> Result<RichTerm, UnboundTypeVariableError> {
+        &|mut rt: RichTerm, _| -> Result<RichTerm, UnboundTypeVariableError> {
             // Start by substituting any wildcard with its inferred type
             if let Some(wildcards) = wildcards {
                 rt = substitute_wildcards::transform_one(rt, wildcards);
@@ -52,7 +52,7 @@ pub fn transform_no_free_vars(
 
     Ok(rt
         .traverse(
-            &mut |rt: RichTerm, _| -> Result<RichTerm, ()> {
+            &|rt: RichTerm, _| -> Result<RichTerm, ()> {
                 let rt = share_normal_form::transform_one(rt);
                 Ok(rt)
             },
@@ -141,7 +141,7 @@ impl Closurizable for RichTerm {
             }
         };
 
-        env.insert(var.clone(), thunk);
+        env.insert(var, thunk);
         RichTerm::new(Term::Var(var), pos.into_inherited())
     }
 }

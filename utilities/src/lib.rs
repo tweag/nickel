@@ -27,7 +27,7 @@ pub fn parse(s: &str) -> Result<RichTerm, ParseError> {
     let id = Files::new().add("<test>", String::from(s));
 
     grammar::TermParser::new()
-        .parse_term(id, lexer::Lexer::new(&s))
+        .parse_term(id, lexer::Lexer::new(s))
         .map_err(|errs| errs.errors.first().unwrap().clone())
 }
 
@@ -59,7 +59,7 @@ pub struct Bench<'b> {
 }
 
 impl<'b> Bench<'b> {
-    pub fn bench(
+    pub fn new(
         name: &'b str,
         base_dir: &'b str,
         subpath: &'b str,

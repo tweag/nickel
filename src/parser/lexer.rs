@@ -322,7 +322,7 @@ pub const KEYWORDS: &[&str] = &[
 ];
 
 /// The tokens in string mode.
-#[derive(Logos, Debug, PartialEq, Clone)]
+#[derive(Logos, Debug, PartialEq, Eq, Clone)]
 pub enum StringToken<'input> {
     #[error]
     Error,
@@ -344,7 +344,7 @@ pub enum StringToken<'input> {
 }
 
 /// The tokens in multiline string mode.
-#[derive(Logos, Debug, PartialEq, Clone)]
+#[derive(Logos, Debug, PartialEq, Eq, Clone)]
 pub enum MultiStringToken<'input> {
     #[error]
     Error,

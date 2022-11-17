@@ -266,7 +266,7 @@ pub mod array {
 
             // This condition is the same as `!Rc::is_unique(&mut self.inner)`, but that function
             // is not public.
-            if Rc::strong_count(&mut self.inner) != 1 || Rc::weak_count(&mut self.inner) != 0 {
+            if Rc::strong_count(&self.inner) != 1 || Rc::weak_count(&self.inner) != 0 {
                 self.inner = self.iter().cloned().collect::<Rc<[_]>>();
             }
 
@@ -516,6 +516,11 @@ pub struct PriorityIsNaN;
 
 // The following impl are ok because `NumeralPriority(NaN)` can't be constructed.
 impl Eq for NumeralPriority {}
+
+// We can't derive `Ord` because there is an `f64` inside
+// but it is actually an `Ord` because `NaN` is forbidden.
+// See `TryFrom` smart constructor.
+#[allow(clippy::derive_ord_xor_partial_ord)]
 impl Ord for NumeralPriority {
     fn cmp(&self, other: &Self) -> Ordering {
         // Ok: NaN is forbidden
@@ -715,7 +720,7 @@ impl MetaValue {
 
 /// A chunk of a string with interpolated expressions inside. Same as `Either<String,
 /// RichTerm>` but with explicit constructor names.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum StrChunk<E> {
     /// A string literal.
     Literal(String),
@@ -791,7 +796,7 @@ impl Term {
             OpN(_, ref mut terms) => terms.iter_mut().for_each(|t| {
                 func(t);
             }),
-            Array(ref mut terms, _) => terms.make_mut().iter_mut().for_each(|t| func(t)),
+            Array(ref mut terms, _) => terms.make_mut().iter_mut().for_each(func),
             StrChunks(chunks) => chunks.iter_mut().for_each(|chunk| match chunk {
                 StrChunk::Literal(_) => (),
                 StrChunk::Expr(e, _) => func(e),
@@ -1310,7 +1315,7 @@ impl UnaryOp {
 }
 
 /// Primitive binary operators
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BinaryOp {
     /// Addition of numerals.
     Plus(),
@@ -1414,7 +1419,7 @@ impl BinaryOp {
 
 /// Primitive n-ary operators. Unary and binary operator make up for most of operators and are
 /// hence special cased. `NAryOp` handles strict operations of arity greater than 2.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NAryOp {
     /// Replace a substring by another one in a string.
     StrReplace(),
@@ -1558,7 +1563,7 @@ impl RichTerm {
                 let cases_res: Result<HashMap<Ident, RichTerm>, E> = cases
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(id, t)| t.traverse(f, state, order).map(|t_ok| (id.clone(), t_ok)))
+                    .map(|(id, t)| t.traverse(f, state, order).map(|t_ok| (id, t_ok)))
                     .collect();
 
                 let default = default.map(|t| t.traverse(f, state, order)).transpose()?;
@@ -1607,7 +1612,7 @@ impl RichTerm {
                 let fields_res: Result<HashMap<Ident, RichTerm>, E> = record.fields
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(id, t)| t.traverse(f, state, order).map(|t_ok| (id.clone(), t_ok)))
+                    .map(|(id, t)| t.traverse(f, state, order).map(|t_ok| (id, t_ok)))
                     .collect();
                 RichTerm::new(Term::Record(RecordData::new(fields_res?, record.attrs)), pos)
             },
@@ -1673,7 +1678,7 @@ impl RichTerm {
                     .into_iter()
                     .map(|ctr| {
                         let Contract {types, label} = ctr;
-                        types.traverse(&mut f_on_type, state, order).map(|types| Contract { types, label })
+                        types.traverse(&f_on_type, state, order).map(|types| Contract { types, label })
                     })
                     .collect();
                 let contracts = contracts?;
@@ -1682,7 +1687,7 @@ impl RichTerm {
                     .types
                     .map(|ctr| {
                         let Contract {types, label} = ctr;
-                        types.traverse(&mut f_on_type, state, order).map(|types| Contract { types, label })
+                        types.traverse(&f_on_type, state, order).map(|types| Contract { types, label })
                     })
                     .transpose()?;
 
@@ -1904,13 +1909,13 @@ pub mod make {
     macro_rules! mk_array {
         ( $( $terms:expr ),* ; $attrs:expr ) => {
             {
-                let ts = $crate::term::array::Array::new(std::rc::Rc::new([$( crate::term::RichTerm::from($terms) ),*]));
+                let ts = $crate::term::array::Array::new(std::rc::Rc::new([$( $crate::term::RichTerm::from($terms) ),*]));
                 $crate::term::RichTerm::from(Term::Array(ts, $attrs))
             }
         };
         ( $( $terms:expr ),* ) => {
             {
-                let ts = $crate::term::array::Array::new(std::rc::Rc::new([$( crate::term::RichTerm::from($terms) ),*]));
+                let ts = $crate::term::array::Array::new(std::rc::Rc::new([$( $crate::term::RichTerm::from($terms) ),*]));
                 $crate::term::RichTerm::from(Term::Array(ts, ArrayAttrs::default()))
             }
         };

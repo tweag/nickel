@@ -15,8 +15,8 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a RichTerm)>>(
                 let thunk = env
                     .get(var_id)
                     .cloned()
-                    .ok_or_else(|| EvalError::UnboundIdentifier(var_id.clone(), rt.pos))?;
-                Ok((id.clone(), thunk))
+                    .ok_or(EvalError::UnboundIdentifier(*var_id, rt.pos))?;
+                Ok((*id, thunk))
             }
             _ => {
                 // If we are in this branch, `rt` must be a constant after the share normal form
@@ -26,7 +26,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a RichTerm)>>(
                     body: rt.clone(),
                     env: Environment::new(),
                 };
-                Ok((id.clone(), Thunk::new(closure, IdentKind::Let)))
+                Ok((*id, Thunk::new(closure, IdentKind::Let)))
             }
         })
         .collect()
@@ -48,7 +48,7 @@ pub fn patch_field(
         let mut thunk = env
             .get(var_id)
             .cloned()
-            .ok_or_else(|| EvalError::UnboundIdentifier(var_id.clone(), rt.pos))?;
+            .ok_or(EvalError::UnboundIdentifier(*var_id, rt.pos))?;
 
         let deps = thunk.deps();
 

@@ -44,7 +44,7 @@ pub fn handle(
 
     Trace::enrich(&id, linearization);
 
-    if item == None {
+    if item.is_none() {
         server.reply(Response::new_ok(id, Value::Null));
         return Ok(());
     }

@@ -150,7 +150,7 @@ impl ReplImpl {
             if let Some(id) = id {
                 typecheck::env_add(
                     &mut repl_impl.env.type_ctxt.type_env,
-                    id.clone(),
+                    id,
                     &t,
                     &repl_impl.env.type_ctxt.term_env,
                     repl_impl.vm.import_resolver(),
@@ -192,9 +192,9 @@ impl ReplImpl {
                 Ok(eval_function(&mut self.vm, t, &self.env.eval_env)?.into())
             }
             ExtendedTerm::ToplevelLet(id, t) => {
-                let t = prepare(self, Some(id.clone()), t)?;
+                let t = prepare(self, Some(id), t)?;
                 let local_env = self.env.eval_env.clone();
-                eval::env_add(&mut self.env.eval_env, id.clone(), t, local_env);
+                eval::env_add(&mut self.env.eval_env, id, t, local_env);
                 Ok(EvalResult::Bound(id))
             }
         }
@@ -272,7 +272,7 @@ impl Repl for ReplImpl {
         // We need to `traverse` the term, in case the type depends on inner terms that also contain wildcards
         let term = term
             .traverse(
-                &mut |rt: RichTerm, _| -> Result<RichTerm, std::convert::Infallible> {
+                &|rt: RichTerm, _| -> Result<RichTerm, std::convert::Infallible> {
                     Ok(transform::substitute_wildcards::transform_one(
                         rt, &wildcards,
                     ))

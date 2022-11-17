@@ -500,7 +500,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                             .into_iter()
                             // Ignore optional fields without definitions.
                             .filter_map(|(_, t)| {
-                                (!is_empty_optional(&t, &env)).then(|| t)
+                                (!is_empty_optional(&t, &env)).then_some(t)
                             })
                             .collect();
                         Ok(Closure {
@@ -621,10 +621,10 @@ impl<R: ImportResolver> VirtualMachine<R> {
                             // As for `ArrayMap` (see above), we closurize the content of fields
                             let record = record.map_fields_without_optionals(&env, |id, t| {
                                 let pos = t.pos.into_inherited();
-                                let map_app = mk_app!(f_as_var.clone(), mk_term::string(id.label()), t)
+
+                                mk_app!(f_as_var.clone(), mk_term::string(id.label()), t)
                                     .closurize(&mut shared_env, env.clone())
-                                    .with_pos(pos);
-                                map_app
+                                    .with_pos(pos)
                             });
 
                             Ok(Closure {
@@ -1024,7 +1024,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
 
                     let param = Ident::fresh();
                     let matcher = Term::Fun(
-                        param.clone(),
+                        param,
                         RichTerm::new(
                             Term::Op1(
                                 UnaryOp::StrIsMatchCompiled(re.into()),
@@ -1051,7 +1051,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
 
                     let param = Ident::fresh();
                     let matcher = Term::Fun(
-                        param.clone(),
+                        param,
                         RichTerm::new(
                             Term::Op1(
                                 UnaryOp::StrMatchCompiled(re.into()),
@@ -1147,14 +1147,14 @@ impl<R: ImportResolver> VirtualMachine<R> {
 
                             let record = record.map_fields_without_optionals(&env, |id, t| {
                                 let stack_elem = Some(callstack::StackElem::Field {
-                                    id: id.clone(),
+                                    id,
                                     pos_record: pos,
                                     pos_field: t.pos,
                                     pos_access: pos_op,
                                 });
-                                let forced = mk_term::op1(UnaryOp::Force(stack_elem), t)
-                                    .closurize(&mut shared_env, env.clone());
-                                forced
+
+                                mk_term::op1(UnaryOp::Force(stack_elem), t)
+                                    .closurize(&mut shared_env, env.clone())
                             });
 
                             let terms = record.fields.clone().into_values();
@@ -2009,7 +2009,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
 
                                 let mut env = env1.clone();
                                 // TODO: Is there a cheaper way to "merge" two environements?
-                                env.extend(env2.iter_elems().map(|(k, v)| (k.clone(), v.clone())));
+                                env.extend(env2.iter_elems().map(|(k, v)| (*k, v.clone())));
 
                                 // We have two sets of contracts from the LHS and RHS arrays.
                                 // - Common contracts between the two sides can be put into
@@ -2614,7 +2614,7 @@ impl PushPriority {
     fn push_into_record(&self, record: RecordData, env: &Environment, pos: TermPos) -> Closure {
         let mut new_env = Environment::new();
 
-        let record = record.map_fields_without_optionals(&env, |_, rt| {
+        let record = record.map_fields_without_optionals(env, |_, rt| {
             // There is a subtlety with respect to overriding here. Take:
             //
             // ```nickel
@@ -2664,7 +2664,7 @@ impl PushPriority {
             };
 
             let fresh_id = Ident::fresh();
-            new_env.insert(fresh_id.clone(), thunk);
+            new_env.insert(fresh_id, thunk);
             RichTerm::new(Term::Var(fresh_id), pos)
         });
 
@@ -2813,11 +2813,15 @@ fn eq(env: &mut Environment, c1: Closure, c2: Closure) -> EqResult {
         (Term::SealingKey(s1), Term::SealingKey(s2)) => EqResult::Bool(s1 == s2),
         (Term::Enum(id1), Term::Enum(id2)) => EqResult::Bool(id1 == id2),
         (Term::Record(r1), Term::Record(r2)) => {
-            let (left, center, right) = merge::hashmap::split(r1.fields, r2.fields);
+            let merge::hashmap::SplitResult {
+                left,
+                center,
+                right,
+            } = merge::hashmap::split(r1.fields, r2.fields);
 
             // As for other record operations, we ignore optional fields without a definition.
-            if !left.values().all(|rt| is_empty_optional(&rt, &env1))
-                || !right.values().all(|rt| is_empty_optional(&rt, &env2))
+            if !left.values().all(|rt| is_empty_optional(rt, &env1))
+                || !right.values().all(|rt| is_empty_optional(rt, &env2))
             {
                 EqResult::Bool(false)
             } else if center.is_empty() {

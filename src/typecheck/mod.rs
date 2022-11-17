@@ -202,7 +202,7 @@ impl From<EnumRows> for UnifEnumRows {
 
 impl UnifEnumRows {
     /// Return an iterator producing immutable references to individual rows.
-    pub fn iter<'a>(&'a self) -> EnumRowsIterator<'a, UnifEnumRows> {
+    pub fn iter(&self) -> EnumRowsIterator<UnifEnumRows> {
         EnumRowsIterator { erows: Some(self) }
     }
 }
@@ -221,9 +221,7 @@ impl<E: TermEnvironment + Clone> GenericUnifRecordRows<E> {
 }
 
 impl<E: TermEnvironment> GenericUnifRecordRows<E> {
-    pub(super) fn iter<'a>(
-        &'a self,
-    ) -> RecordRowsIterator<'a, GenericUnifType<E>, GenericUnifRecordRows<E>> {
+    pub(super) fn iter(&self) -> RecordRowsIterator<GenericUnifType<E>, GenericUnifRecordRows<E>> {
         RecordRowsIterator {
             rrows: Some(self),
             ty: std::marker::PhantomData,
@@ -340,11 +338,11 @@ impl<E: TermEnvironment + Clone> GenericUnifType<E> {
     /// equality involving contracts.
     pub fn from_type(ty: Types, env: &E) -> Self {
         match ty.0 {
-            TypeF::Flat(t) => GenericUnifType::Contract(t.clone(), env.clone()),
+            TypeF::Flat(t) => GenericUnifType::Contract(t, env.clone()),
             ty => GenericUnifType::Concrete(ty.map(
                 |ty_| Box::new(GenericUnifType::from_type(*ty_, env)),
                 |rrows| GenericUnifRecordRows::from_record_rows(rrows, env),
-                |erows| UnifEnumRows::from(erows),
+                UnifEnumRows::from,
             )),
         }
     }
@@ -508,12 +506,12 @@ impl<'a, E: TermEnvironment> Iterator
                 }
                 RecordRowsF::TailVar(id) => {
                     self.rrows = None;
-                    Some(GenericUnifRecordRowsIteratorItem::TailVar(&id))
+                    Some(GenericUnifRecordRowsIteratorItem::TailVar(id))
                 }
                 RecordRowsF::Extend { row, tail } => {
-                    self.rrows = Some(&*tail);
+                    self.rrows = Some(tail);
                     Some(GenericUnifRecordRowsIteratorItem::Row(RecordRowF {
-                        id: row.id.clone(),
+                        id: row.id,
                         types: row.types.as_ref(),
                     }))
                 }
@@ -550,11 +548,11 @@ impl<'a> Iterator for EnumRowsIterator<'a, UnifEnumRows> {
                 }
                 EnumRowsF::TailVar(id) => {
                     self.erows = None;
-                    Some(UnifEnumRowsIteratorItem::TailVar(&id))
+                    Some(UnifEnumRowsIteratorItem::TailVar(id))
                 }
                 EnumRowsF::Extend { row, tail } => {
-                    self.erows = Some(&*tail);
-                    Some(UnifEnumRowsIteratorItem::Row(&row))
+                    self.erows = Some(tail);
+                    Some(UnifEnumRowsIteratorItem::Row(row))
                 }
             },
             UnifEnumRows::UnifVar(var_id) => {
@@ -595,16 +593,13 @@ pub enum EnvBuildError {
 }
 
 /// Populate the initial typing environment from a `Vec` of parsed files.
-pub fn mk_initial_ctxt(initial_env: &Vec<RichTerm>) -> Result<Context, EnvBuildError> {
+pub fn mk_initial_ctxt(initial_env: &[RichTerm]) -> Result<Context, EnvBuildError> {
     // Collect the bindings for each module, clone them and flatten the result to a single list.
     let bindings = initial_env
         .iter()
         .map(|rt| {
             if let Term::RecRecord(record, ..) = rt.as_ref() {
-                Ok(record
-                    .fields
-                    .iter()
-                    .map(|(id, rt)| (id.clone(), rt.clone())))
+                Ok(record.fields.iter().map(|(id, rt)| (*id, rt.clone())))
             } else {
                 Err(EnvBuildError::NotARecord(rt.clone()))
             }
@@ -619,7 +614,7 @@ pub fn mk_initial_ctxt(initial_env: &Vec<RichTerm>) -> Result<Context, EnvBuildE
         .collect();
 
     let type_env = bindings
-        .map(|(id, rt)| (id.clone(), infer_record_type(rt.as_ref(), &term_env)))
+        .map(|(id, rt)| (id, infer_record_type(rt.as_ref(), &term_env)))
         .collect();
 
     Ok(Context { type_env, term_env })
@@ -643,7 +638,7 @@ pub fn env_add_term(
                     apparent_type(t.as_ref(), Some(env), Some(resolver)),
                     term_env,
                 );
-                env.insert(id.clone(), uty);
+                env.insert(*id, uty);
             }
 
             Ok(())
@@ -794,7 +789,7 @@ fn walk<L: Linearizer>(
         | Term::ResolvedImport(_) => Ok(()),
         Term::Var(x) => ctxt.type_env
             .get(x)
-            .ok_or_else(|| TypecheckError::UnboundIdentifier(x.clone(), *pos))
+            .ok_or(TypecheckError::UnboundIdentifier(*x, *pos))
             .map(|_| ()),
         Term::StrChunks(chunks) => {
             chunks
@@ -810,12 +805,12 @@ fn walk<L: Linearizer>(
         }
         Term::Fun(id, t) => {
             // The parameter of an un-annotated function is assigned the type `Dyn`.
-            ctxt.type_env.insert(id.clone(), mk_typewrapper::dynamic());
+            ctxt.type_env.insert(*id, mk_typewrapper::dynamic());
             walk(state, ctxt, lin, linearizer, t)
         }
         Term::FunPattern(id, pat, t) => {
             if let Some(id) = id {
-                ctxt.type_env.insert(id.clone(), binding_type(state, t.as_ref(), &ctxt, false));
+                ctxt.type_env.insert(*id, binding_type(state, t.as_ref(), &ctxt, false));
             }
 
             inject_pat_vars(pat, &mut ctxt.type_env);
@@ -836,17 +831,17 @@ fn walk<L: Linearizer>(
             // allocate all the term environments inside an arena, local to each statically typed
             // block, and use bare references to represent cycles. Then everything would be cleaned
             // at the end of the block.
-            ctxt.term_env.0.insert(x.clone(), (re.clone(), ctxt.term_env.clone()));
+            ctxt.term_env.0.insert(*x, (re.clone(), ctxt.term_env.clone()));
 
             if attrs.rec {
-                ctxt.type_env.insert(x.clone(), ty_let.clone());
+                ctxt.type_env.insert(*x, ty_let.clone());
             }
 
             linearizer.retype_ident(lin, x, ty_let.clone());
             walk(state, ctxt.clone(), lin, linearizer.scope(), re)?;
 
             if !attrs.rec {
-                ctxt.type_env.insert(x.clone(), ty_let);
+                ctxt.type_env.insert(*x, ty_let);
             }
 
             walk(state, ctxt, lin, linearizer, rt)
@@ -857,7 +852,7 @@ fn walk<L: Linearizer>(
 
             if let Some(x) = x {
                 linearizer.retype_ident(lin, x, ty_let.clone());
-                ctxt.type_env.insert(x.clone(), ty_let);
+                ctxt.type_env.insert(*x, ty_let);
             }
 
             inject_pat_vars(pat, &mut ctxt.type_env);
@@ -883,7 +878,7 @@ fn walk<L: Linearizer>(
                     &ctxt,
                     false,
                 );
-                ctxt.type_env.insert(id.clone(), binding_type.clone());
+                ctxt.type_env.insert(*id, binding_type.clone());
                 linearizer.retype_ident(lin, id, binding_type);
             }
 
@@ -1007,13 +1002,13 @@ fn walk_rrows<L: Linearizer>(
 fn inject_pat_vars(pat: &Destruct, env: &mut Environment) {
     if let Destruct::Record { matches, rest, .. } = pat {
         if let Some(id) = rest {
-            env.insert(id.clone(), UnifType::Concrete(TypeF::Dyn));
+            env.insert(*id, UnifType::Concrete(TypeF::Dyn));
         }
         matches.iter().for_each(|m| match m {
-            Match::Simple(id, ..) => env.insert(id.clone(), UnifType::Concrete(TypeF::Dyn)),
+            Match::Simple(id, ..) => env.insert(*id, UnifType::Concrete(TypeF::Dyn)),
             Match::Assign(id, _, (bind_id, pat)) => {
                 let id = bind_id.as_ref().unwrap_or(id);
-                env.insert(id.clone(), UnifType::Concrete(TypeF::Dyn));
+                env.insert(*id, UnifType::Concrete(TypeF::Dyn));
                 if !pat.is_empty() {
                     inject_pat_vars(pat, env);
                 }
@@ -1087,7 +1082,7 @@ fn type_check_<L: Linearizer>(
 
             unify(state, &ctxt, ty, arr).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
-            ctxt.type_env.insert(x.clone(), src);
+            ctxt.type_env.insert(*x, src);
             type_check_(state, ctxt, lin, linearizer, t, trg)
         }
         Term::FunPattern(x, pat, t) => {
@@ -1098,7 +1093,7 @@ fn type_check_<L: Linearizer>(
             let arr = mk_tyw_arrow!(src.clone(), trg.clone());
             if let Some(x) = x {
                 linearizer.retype_ident(lin, x, src.clone());
-                ctxt.type_env.insert(x.clone(), src);
+                ctxt.type_env.insert(*x, src);
             }
             inject_pat_vars(pat, &mut ctxt.type_env);
             unify(state, &ctxt, ty, arr).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
@@ -1135,10 +1130,10 @@ fn type_check_<L: Linearizer>(
             // `Let` case in `walk`.
             ctxt.term_env
                 .0
-                .insert(x.clone(), (re.clone(), ctxt.term_env.clone()));
+                .insert(*x, (re.clone(), ctxt.term_env.clone()));
 
             if attrs.rec {
-                ctxt.type_env.insert(x.clone(), ty_let.clone());
+                ctxt.type_env.insert(*x, ty_let.clone());
             }
 
             linearizer.retype_ident(lin, x, ty_let.clone());
@@ -1152,7 +1147,7 @@ fn type_check_<L: Linearizer>(
             )?;
 
             if !attrs.rec {
-                ctxt.type_env.insert(x.clone(), ty_let);
+                ctxt.type_env.insert(*x, ty_let);
             }
             type_check_(state, ctxt, lin, linearizer, rt, ty)
         }
@@ -1169,7 +1164,7 @@ fn type_check_<L: Linearizer>(
 
             if let Some(x) = x {
                 linearizer.retype_ident(lin, x, ty_let.clone());
-                ctxt.type_env.insert(x.clone(), ty_let);
+                ctxt.type_env.insert(*x, ty_let);
             }
             inject_pat_vars(pat, &mut ctxt.type_env);
             type_check_(state, ctxt, lin, linearizer, rt, ty)
@@ -1205,7 +1200,7 @@ fn type_check_<L: Linearizer>(
                 None => cases.iter().try_fold(
                     EnumRowsF::Empty.into(),
                     |acc, x| -> Result<UnifEnumRows, TypecheckError> {
-                        Ok(mk_tyw_enum_row!(x.0.clone(); acc))
+                        Ok(mk_tyw_enum_row!(*x.0; acc))
                     },
                 )?,
             };
@@ -1218,7 +1213,7 @@ fn type_check_<L: Linearizer>(
                 .type_env
                 .get(x)
                 .cloned()
-                .ok_or_else(|| TypecheckError::UnboundIdentifier(x.clone(), *pos))?;
+                .ok_or(TypecheckError::UnboundIdentifier(*x, *pos))?;
 
             let instantiated = instantiate_foralls(state, x_ty, ForallInst::Ptr);
             unify(state, &ctxt, ty, instantiated)
@@ -1226,7 +1221,7 @@ fn type_check_<L: Linearizer>(
         }
         Term::Enum(id) => {
             let row = state.table.fresh_erows_uvar();
-            unify(state, &ctxt, ty, mk_tyw_enum!(id.clone(); row))
+            unify(state, &ctxt, ty, mk_tyw_enum!(*id; row))
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         // If some fields are defined dynamically, the only potential type that works is `{_ : a}`
@@ -1235,7 +1230,7 @@ fn type_check_<L: Linearizer>(
             let ty_dict = state.table.fresh_type_uvar();
 
             for id in record.fields.keys() {
-                ctxt.type_env.insert(id.clone(), ty_dict.clone());
+                ctxt.type_env.insert(*id, ty_dict.clone());
                 linearizer.retype_ident(lin, id, ty_dict.clone())
             }
 
@@ -1265,7 +1260,7 @@ fn type_check_<L: Linearizer>(
             if let Term::RecRecord(..) = t.as_ref() {
                 for (id, rt) in &record.fields {
                     let uty = binding_type(state, rt.as_ref(), &ctxt, true);
-                    ctxt.type_env.insert(id.clone(), uty.clone());
+                    ctxt.type_env.insert(*id, uty.clone());
                     linearizer.retype_ident(lin, id, uty);
                 }
             }
@@ -1309,7 +1304,7 @@ fn type_check_<L: Linearizer>(
                             ty.clone(),
                         )?;
 
-                        Ok(mk_tyw_row!((id.clone(), ty); acc))
+                        Ok(mk_tyw_row!((*id, ty); acc))
                     },
                 )?;
 
@@ -1613,7 +1608,7 @@ pub fn infer_record_type(t: &Term, term_env: &SimpleTermEnvironment) -> UnifType
                 RecordRowsF::Empty,
                 |r, (id, rt)| RecordRowsF::Extend {
                     row: UnifRecordRow {
-                        id: id.clone(),
+                        id: *id,
                         types: Box::new(infer_record_type(rt.term.as_ref(), term_env)),
                     },
                     tail: Box::new(r.into()),
@@ -1632,7 +1627,7 @@ fn has_wildcards(ty: &Types) -> bool {
     let mut has_wildcard = false;
     ty.clone()
         .traverse::<_, _, std::convert::Infallible>(
-            &mut |ty, has_wildcard| {
+            &|ty, has_wildcard| {
                 if ty.0.is_wildcard() {
                     *has_wildcard = true;
                 }
@@ -1668,7 +1663,7 @@ fn rrows_add(
     match rrows {
         UnifRecordRows::Concrete(erows) => match erows {
             RecordRowsF::Empty | RecordRowsF::TailDyn | RecordRowsF::TailVar(_) => {
-                Err(RowUnifError::MissingRow(id.clone()))
+                Err(RowUnifError::MissingRow(*id))
             }
             RecordRowsF::Extend { row, tail } => {
                 if *id == row.id {
@@ -1692,24 +1687,24 @@ fn rrows_add(
                 .map(|set| set.contains(id))
                 .unwrap_or(false)
             {
-                return Err(RowUnifError::UnsatConstr(id.clone(), Some(*ty)));
+                return Err(RowUnifError::UnsatConstr(*id, Some(*ty)));
             }
             let tail_var_id = state.table.fresh_rrows_var_id();
             let new_tail = UnifRecordRows::Concrete(RecordRowsF::Extend {
                 row: RecordRowF {
-                    id: id.clone(),
+                    id: *id,
                     types: ty.clone(),
                 },
-                tail: Box::new(UnifRecordRows::UnifVar(tail_var_id.clone())),
+                tail: Box::new(UnifRecordRows::UnifVar(tail_var_id)),
             });
 
-            new_tail.constrain_fresh_rrows_var(state, tail_var_id.clone());
+            new_tail.constrain_fresh_rrows_var(state, tail_var_id);
 
             state.table.assign_rrows(uvar, new_tail);
 
             Ok((ty, UnifRecordRows::UnifVar(tail_var_id)))
         }
-        UnifRecordRows::Constant(_) => Err(RowUnifError::MissingRow(id.clone())),
+        UnifRecordRows::Constant(_) => Err(RowUnifError::MissingRow(*id)),
     }
 }
 
@@ -1733,7 +1728,7 @@ fn erows_add(
 
     match uerows {
         UnifEnumRows::Concrete(erows) => match erows {
-            EnumRowsF::Empty | EnumRowsF::TailVar(_) => Err(RowUnifError::MissingRow(id.clone())),
+            EnumRowsF::Empty | EnumRowsF::TailVar(_) => Err(RowUnifError::MissingRow(*id)),
             EnumRowsF::Extend { row, tail } => {
                 if *id == row {
                     Ok(*tail)
@@ -1753,21 +1748,21 @@ fn erows_add(
                 .map(|set| set.contains(id))
                 .unwrap_or(false)
             {
-                return Err(RowUnifError::UnsatConstr(id.clone(), None));
+                return Err(RowUnifError::UnsatConstr(*id, None));
             }
             let tail_var_id = state.table.fresh_erows_var_id();
             let new_tail = UnifEnumRows::Concrete(EnumRowsF::Extend {
-                row: id.clone(),
-                tail: Box::new(UnifEnumRows::UnifVar(tail_var_id.clone())),
+                row: *id,
+                tail: Box::new(UnifEnumRows::UnifVar(tail_var_id)),
             });
 
-            new_tail.constrain_fresh_erows_var(state, tail_var_id.clone());
+            new_tail.constrain_fresh_erows_var(state, tail_var_id);
 
             state.table.assign_erows(uvar, new_tail);
 
             Ok(UnifEnumRows::UnifVar(tail_var_id))
         }
-        UnifEnumRows::Constant(_) => Err(RowUnifError::MissingRow(id.clone())),
+        UnifEnumRows::Constant(_) => Err(RowUnifError::MissingRow(*id)),
     }
 }
 
@@ -1814,7 +1809,7 @@ pub fn unify(
             }
             (TypeF::Flat(s), TypeF::Flat(t)) => Err(UnifError::IncomparableFlatTypes(s, t)),
             (TypeF::Enum(erows1), TypeF::Enum(erows2)) => {
-                unify_erows(state, ctxt, erows1.clone(), erows2.clone()).map_err(|err| {
+                unify_erows(state, erows1.clone(), erows2.clone()).map_err(|err| {
                     err.into_unif_err(mk_tyw_enum!(; erows1), mk_tyw_enum!(; erows2))
                 })
             }
@@ -1823,7 +1818,7 @@ pub fn unify(
                     err.into_unif_err(mk_tyw_record!(; rrows1), mk_tyw_record!(; rrows2))
                 })
             }
-            (TypeF::Dict(t1), TypeF::Dict(t2)) => unify(state, &ctxt, *t1, *t2),
+            (TypeF::Dict(t1), TypeF::Dict(t2)) => unify(state, ctxt, *t1, *t2),
             (
                 TypeF::Forall {
                     var: var1,
@@ -1861,7 +1856,7 @@ pub fn unify(
                     }
                 };
 
-                unify(state, &ctxt, substd1, substd2)
+                unify(state, ctxt, substd1, substd2)
             }
             (TypeF::Var(ident), _) | (_, TypeF::Var(ident)) => {
                 Err(UnifError::UnboundTypeVariable(ident))
@@ -1950,7 +1945,7 @@ pub fn unify_rrows(
                     let (ty2, t2_tail) =
                         rrows_add(state, &id, types.clone(), UnifRecordRows::Concrete(r2))?;
                     unify(state, ctxt, *types, *ty2)
-                        .map_err(|err| RowUnifError::RowMismatch(id.clone(), Box::new(err)))?;
+                        .map_err(|err| RowUnifError::RowMismatch(id, Box::new(err)))?;
                     unify_rrows(state, ctxt, *tail, t2_tail)
                 }
             }
@@ -1977,7 +1972,6 @@ pub fn unify_rrows(
 /// Try to unify two enum row types.
 pub fn unify_erows(
     state: &mut State,
-    ctxt: &Context,
     uerows1: UnifEnumRows,
     uerows2: UnifEnumRows,
 ) -> Result<(), RowUnifError> {
@@ -1999,7 +1993,7 @@ pub fn unify_erows(
                 }
                 (EnumRowsF::Extend { row: id, tail }, erows2 @ EnumRowsF::Extend { .. }) => {
                     let t2_tail = erows_add(state, &id, UnifEnumRows::Concrete(erows2))?;
-                    unify_erows(state, ctxt, *tail, t2_tail)
+                    unify_erows(state, *tail, t2_tail)
                 }
             }
         }
@@ -2062,7 +2056,7 @@ fn instantiate_foralls(state: &mut State, mut ty: UnifType, inst: ForallInst) ->
                     ForallInst::Constant => UnifType::Constant(fresh_uid),
                     ForallInst::Ptr => UnifType::UnifVar(fresh_uid),
                 };
-                state.names.insert(fresh_uid, var.clone());
+                state.names.insert(fresh_uid, var);
                 ty = body.subst_type(&var, &uvar);
             }
             VarKind::RecordRows => {
@@ -2071,7 +2065,7 @@ fn instantiate_foralls(state: &mut State, mut ty: UnifType, inst: ForallInst) ->
                     ForallInst::Constant => UnifRecordRows::Constant(fresh_uid),
                     ForallInst::Ptr => UnifRecordRows::UnifVar(fresh_uid),
                 };
-                state.names.insert(fresh_uid, var.clone());
+                state.names.insert(fresh_uid, var);
                 ty = body.subst_rrows(&var, &uvar);
 
                 if inst == ForallInst::Ptr {
@@ -2084,7 +2078,7 @@ fn instantiate_foralls(state: &mut State, mut ty: UnifType, inst: ForallInst) ->
                     ForallInst::Constant => UnifEnumRows::Constant(fresh_uid),
                     ForallInst::Ptr => UnifEnumRows::UnifVar(fresh_uid),
                 };
-                state.names.insert(fresh_uid, var.clone());
+                state.names.insert(fresh_uid, var);
                 ty = body.subst_erows(&var, &uvar);
 
                 if inst == ForallInst::Ptr {
@@ -2364,9 +2358,9 @@ impl ConstrainFreshRRowsVar for UnifRecordRows {
                 UnifRecordRows::Concrete(ty) => match ty {
                     RecordRowsF::Empty | RecordRowsF::TailDyn | RecordRowsF::TailVar(_) => (),
                     RecordRowsF::Extend { row, tail } => {
-                        constr.insert(row.id.clone());
+                        constr.insert(row.id);
                         row.types.constrain_fresh_rrows_var(state, var_id);
-                        constrain_var(state, constr, &*tail, var_id);
+                        constrain_var(state, constr, tail, var_id);
                     }
                 },
                 UnifRecordRows::Constant(_) => (),
@@ -2447,8 +2441,8 @@ impl ConstrainFreshERowsVar for UnifEnumRows {
                 UnifEnumRows::Concrete(ty) => match ty {
                     EnumRowsF::Empty | EnumRowsF::TailVar(_) => (),
                     EnumRowsF::Extend { row, tail } => {
-                        constr.insert(row.clone());
-                        constrain_var(state, constr, &*tail, var_id);
+                        constr.insert(*row);
+                        constrain_var(state, constr, tail, var_id);
                     }
                 },
                 UnifEnumRows::Constant(_) => (),
@@ -2486,7 +2480,7 @@ pub fn constr_unify_rrows(
                 if p_constr.contains(&row.id) =>
             {
                 Err(RowUnifError::UnsatConstr(
-                    row.id.clone(),
+                    row.id,
                     Some(UnifType::Concrete(TypeF::Record(rrows.clone()))),
                 ))
             }
@@ -2520,9 +2514,9 @@ pub fn constr_unify_erows(
 ) -> Result<(), RowUnifError> {
     if let Some(p_constr) = constr.remove(&var_id) {
         match erows {
-            UnifEnumRows::Concrete(EnumRowsF::Extend { row, .. }) if p_constr.contains(&row) => {
+            UnifEnumRows::Concrete(EnumRowsF::Extend { row, .. }) if p_constr.contains(row) => {
                 Err(RowUnifError::UnsatConstr(
-                    row.clone(),
+                    *row,
                     Some(UnifType::Concrete(TypeF::Enum(erows.clone()))),
                 ))
             }

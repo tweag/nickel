@@ -162,7 +162,7 @@ impl WasmInitResult {
     /// Make a `WasmInitResult` result from an `InputError`.
     fn error(mut state: ReplState, error: InputError) -> Self {
         WasmInitResult {
-            msg: err_to_string(&mut state.0.cache_mut(), &error),
+            msg: err_to_string(state.0.cache_mut(), &error),
             tag: WasmResultTag::Error,
             state,
         }
@@ -209,13 +209,13 @@ impl WasmInputResult {
         WasmInputResult {
             msg,
             tag: WasmResultTag::Error,
-            errors: JsValue::from_serde(&errors).unwrap(),
+            errors: serde_wasm_bindgen::to_value(&errors).unwrap(),
         }
     }
 
     /// Generate a serializable empty list.
     fn empty_errors() -> JsValue {
-        JsValue::from_serde(&Vec::<WasmErrorDiagnostic>::new()).unwrap()
+        serde_wasm_bindgen::to_value(&Vec::<WasmErrorDiagnostic>::new()).unwrap()
     }
 }
 
@@ -271,14 +271,14 @@ impl TryInto<ExportFormat> for WasmExportFormat {
 }
 
 /// Render error diagnostics as a string.
-pub fn diags_to_string(cache: &mut Cache, diags: &Vec<Diagnostic<FileId>>) -> String {
+pub fn diags_to_string(cache: &mut Cache, diags: &[Diagnostic<FileId>]) -> String {
     let mut buffer = Ansi::new(Cursor::new(Vec::new()));
     let config = codespan_reporting::term::Config::default();
 
     diags
         .iter()
         .try_for_each(|d| {
-            codespan_reporting::term::emit(&mut buffer, &config, cache.files_mut(), &d)
+            codespan_reporting::term::emit(&mut buffer, &config, cache.files_mut(), d)
         })
         .unwrap();
 

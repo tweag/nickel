@@ -47,7 +47,7 @@ macro_rules! deserialize_number_round {
 }
 
 /// An error occurred during deserialization to Rust.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum RustDeserializationError {
     InvalidType { expected: String, occurred: String },
     MissingValue,

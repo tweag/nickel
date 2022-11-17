@@ -9,7 +9,7 @@ use crate::{
 use codespan::FileId;
 
 /// A call stack, saving the history of function calls.
-#[derive(PartialEq, Clone, Default, Debug)]
+#[derive(PartialEq, Eq, Clone, Default, Debug)]
 pub struct CallStack(pub Vec<StackElem>);
 
 /// Basic description of a function call. Used for error reporting.
@@ -181,7 +181,7 @@ impl CallStack {
                         Some(CallDescr {
                             head: ref mut head @ None,
                             span: span_call,
-                        }) if pos.unwrap() <= *span_call => *head = Some(id.clone()),
+                        }) if pos.unwrap() <= *span_call => *head = Some(*id),
                         _ => (),
                     };
                 }
@@ -217,6 +217,11 @@ impl CallStack {
     /// Return the length of the callstack. Wrapper for `callstack.0.len()`.
     pub fn len(&self) -> usize {
         self.0.len()
+    }
+
+    /// Return whether the callstack is empty.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 
     /// Truncate the callstack at a certain size. Used e.g. to quickly drop the elements introduced

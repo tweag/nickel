@@ -120,7 +120,7 @@ impl Linearizer for AnalysisHost {
                     pos
                 });
 
-                for field in lin.linearization.get_mut(record + offset).into_iter() {
+                if let Some(field) = lin.linearization.get_mut(record + offset) {
                     debug!("{:?}", field.kind);
                     let usage_offset = if matches!(term, Term::Var(_)) {
                         debug!(
@@ -168,7 +168,7 @@ impl Linearizer for AnalysisHost {
                                 id: id_gen.get_and_advance(),
 
                                 ty: ty.clone(),
-                                pos: ident.pos.clone(),
+                                pos: ident.pos,
                                 kind: TermKind::Structure,
                                 meta: self.meta.take(),
                             });
@@ -227,7 +227,7 @@ impl Linearizer for AnalysisHost {
                             id: id_gen.get_and_advance(),
 
                             ty: ty.clone(),
-                            pos: ident.pos.clone(),
+                            pos: ident.pos,
                             kind: TermKind::Structure,
                             meta: self.meta.take(),
                         });
@@ -357,7 +357,7 @@ impl Linearizer for AnalysisHost {
             .iter()
             .filter_map(|item| match &item.kind {
                 TermKind::Usage(UsageState::Deferred { parent, child }) => {
-                    Some((item.id, *parent, child.clone()))
+                    Some((item.id, *parent, *child))
                 }
                 _ => None,
             })
@@ -387,7 +387,7 @@ impl Linearizer for AnalysisHost {
                 id_mapping.insert(*id, index);
             });
 
-        fn transform_wildcard(wildcars: &Vec<Types>, t: Types) -> Types {
+        fn transform_wildcard(wildcars: &[Types], t: Types) -> Types {
             match t {
                 Types(TypeF::Wildcard(i)) => wildcars.get(i).unwrap_or(&t).clone(),
                 _ => t,

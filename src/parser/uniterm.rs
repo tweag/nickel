@@ -390,7 +390,7 @@ impl VarKindCell {
 
     /// Return the current var_kind.
     pub fn var_kind(&self) -> VarKind {
-        (*self.0.borrow()).var_kind
+        self.0.borrow().var_kind
     }
 }
 
@@ -473,8 +473,8 @@ impl FixTypeVars for Types {
             | TypeF::Flat(_)
             | TypeF::Wildcard(_) => (),
             TypeF::Arrow(ref mut s, ref mut t) => {
-                (&mut *s).fix_type_vars_env(bound_vars.clone());
-                (&mut *t).fix_type_vars_env(bound_vars);
+                (*s).fix_type_vars_env(bound_vars.clone());
+                (*t).fix_type_vars_env(bound_vars);
             }
             TypeF::Var(ref mut id) => {
                 if let Some(cell) = bound_vars.get(id) {
@@ -498,14 +498,14 @@ impl FixTypeVars for Types {
                 // We span a new VarKindCell and put it in the environment. The recursive calls to
                 // fix_type_vars will fill this cell with the correct kind, which we get afterwards
                 // to set the right value for `var_kind`.
-                bound_vars.insert(var.clone(), VarKindCell::new());
-                (&mut *body).fix_type_vars_env(bound_vars.clone());
+                bound_vars.insert(*var, VarKindCell::new());
+                (*body).fix_type_vars_env(bound_vars.clone());
                 // unwrap(): we just inseted a value for `var` above, and environment can never
                 // delete values.
                 *var_kind = bound_vars.get(var).unwrap().var_kind();
             }
             TypeF::Dict(ref mut ty) | TypeF::Array(ref mut ty) => {
-                (&mut *ty).fix_type_vars_env(bound_vars)
+                (*ty).fix_type_vars_env(bound_vars)
             }
             TypeF::Enum(ref mut erows) => erows.fix_type_vars_env(bound_vars),
             TypeF::Record(ref mut rrows) => rrows.fix_type_vars_env(bound_vars),

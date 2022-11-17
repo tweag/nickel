@@ -25,7 +25,7 @@ use crate::{
     trace::Trace,
 };
 
-pub const DOT_COMPL_TRIGGER: &'static str = ".";
+pub const DOT_COMPL_TRIGGER: &str = ".";
 
 pub struct Server {
     pub connection: Connection,

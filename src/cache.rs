@@ -202,7 +202,7 @@ impl<E> CacheError<E> {
 /// retrieved from the cache.
 ///
 /// See [ImportResolver::resolve].
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ResolvedTerm {
     FromFile {
         path: PathBuf, /* the loaded path */
@@ -917,7 +917,7 @@ impl Cache {
     /// Generate the initial typing context from the list of `file_ids` corresponding to the
     /// standard library parts.
     pub fn mk_type_ctxt(&self) -> Result<typecheck::Context, CacheError<Void>> {
-        let stdlib_terms_vec =
+        let stdlib_terms_vec: Vec<RichTerm> =
             self.stdlib_ids
                 .as_ref()
                 .map_or(Err(CacheError::NotParsed), |ids| {
@@ -1030,7 +1030,7 @@ impl ImportResolver for Cache {
         };
 
         self.parse_multi(file_id, format)
-            .map_err(|err| ImportError::ParseErrors(err.into(), *pos))?;
+            .map_err(|err| ImportError::ParseErrors(err, *pos))?;
 
         Ok((ResolvedTerm::FromFile { path: path_buf }, file_id))
     }

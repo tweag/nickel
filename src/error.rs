@@ -208,7 +208,7 @@ pub enum TypecheckError {
     ),
 }
 
-#[derive(Debug, PartialEq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct ParseErrors {
     pub errors: Vec<ParseError>,
 }
@@ -273,7 +273,7 @@ impl ToDiagnostic<FileId> for ParseErrors {
 }
 
 /// An error occurring during parsing.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ParseError {
     /// Unexpected end of file.
     UnexpectedEOF(FileId, /* tokens expected by the parser */ Vec<String>),
@@ -320,7 +320,7 @@ pub enum ParseError {
 }
 
 /// An error occurring during the resolution of an import.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ImportError {
     /// An IO error occurred during an import.
     IOError(
@@ -348,11 +348,11 @@ pub enum SerializationError {
 }
 
 /// A general I/O error, occurring when reading a source file or writing an export.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct IOError(pub String);
 
 /// An error occurring during an REPL session.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ReplError {
     UnknownCommand(String),
     MissingArg {
@@ -1269,7 +1269,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
             TypecheckError::UnboundIdentifier(ident, pos_opt) =>
             // Use the same diagnostic as `EvalError::UnboundIdentifier` for consistency.
                 {
-                    EvalError::UnboundIdentifier(ident.clone(), *pos_opt)
+                    EvalError::UnboundIdentifier(*ident, *pos_opt)
                         .to_diagnostic(files, contract_id)
                 }
             TypecheckError::MissingRow(ident, expd, actual, span_opt) =>
@@ -1365,7 +1365,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
                 // nested field (e.g. `pkg.subpkg1.meta.url`) and only show once the row mismatch
                 // error followed by the underlying error.
                 let mut err = (*err_).clone();
-                let mut path = vec![ident.clone()];
+                let mut path = vec![*ident];
 
                 while let TypecheckError::RowMismatch(id_next, _, _, next, _) = *err {
                     path.push(id_next);

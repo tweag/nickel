@@ -97,8 +97,7 @@ fn parse_and_typecheck(server: &mut Server, uri: Url, file_id: FileId) -> Result
 
     let diagnostics = diagnostics
         .into_iter()
-        .map(|d| lsp_types::Diagnostic::from_codespan(d, server.cache.files_mut()))
-        .flatten()
+        .flat_map(|d| lsp_types::Diagnostic::from_codespan(d, server.cache.files_mut()))
         .collect();
 
     server.notify(lsp_server::Notification::new(
