@@ -1678,7 +1678,7 @@ impl RichTerm {
                     .into_iter()
                     .map(|ctr| {
                         let Contract {types, label} = ctr;
-                        types.traverse(&mut f_on_type, state, order).map(|types| Contract { types, label })
+                        types.traverse(&f_on_type, state, order).map(|types| Contract { types, label })
                     })
                     .collect();
                 let contracts = contracts?;
@@ -1687,7 +1687,7 @@ impl RichTerm {
                     .types
                     .map(|ctr| {
                         let Contract {types, label} = ctr;
-                        types.traverse(&mut f_on_type, state, order).map(|types| Contract { types, label })
+                        types.traverse(&f_on_type, state, order).map(|types| Contract { types, label })
                     })
                     .transpose()?;
 

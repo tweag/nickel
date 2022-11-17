@@ -44,9 +44,7 @@ where
 
     // If an import is resolved, then stack it.
     let transformed = rt.traverse(
-        &mut |rt: RichTerm,
-              state: &mut ImportsResolutionState<R>|
-         -> Result<RichTerm, ImportError> {
+        &|rt: RichTerm, state: &mut ImportsResolutionState<R>| -> Result<RichTerm, ImportError> {
             let rt = transform_one(rt, state.resolver, &state.parent)?;
 
             if let Term::ResolvedImport(file_id) = rt.term.as_ref() {

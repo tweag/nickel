@@ -202,7 +202,7 @@ impl From<EnumRows> for UnifEnumRows {
 
 impl UnifEnumRows {
     /// Return an iterator producing immutable references to individual rows.
-    pub fn iter<'a>(&'a self) -> EnumRowsIterator<'a, UnifEnumRows> {
+    pub fn iter(&self) -> EnumRowsIterator<UnifEnumRows> {
         EnumRowsIterator { erows: Some(self) }
     }
 }
@@ -221,9 +221,7 @@ impl<E: TermEnvironment + Clone> GenericUnifRecordRows<E> {
 }
 
 impl<E: TermEnvironment> GenericUnifRecordRows<E> {
-    pub(super) fn iter<'a>(
-        &'a self,
-    ) -> RecordRowsIterator<'a, GenericUnifType<E>, GenericUnifRecordRows<E>> {
+    pub(super) fn iter(&self) -> RecordRowsIterator<GenericUnifType<E>, GenericUnifRecordRows<E>> {
         RecordRowsIterator {
             rrows: Some(self),
             ty: std::marker::PhantomData,
@@ -1629,7 +1627,7 @@ fn has_wildcards(ty: &Types) -> bool {
     let mut has_wildcard = false;
     ty.clone()
         .traverse::<_, _, std::convert::Infallible>(
-            &mut |ty, has_wildcard| {
+            &|ty, has_wildcard| {
                 if ty.0.is_wildcard() {
                     *has_wildcard = true;
                 }
@@ -1811,7 +1809,7 @@ pub fn unify(
             }
             (TypeF::Flat(s), TypeF::Flat(t)) => Err(UnifError::IncomparableFlatTypes(s, t)),
             (TypeF::Enum(erows1), TypeF::Enum(erows2)) => {
-                unify_erows(state, ctxt, erows1.clone(), erows2.clone()).map_err(|err| {
+                unify_erows(state, erows1.clone(), erows2.clone()).map_err(|err| {
                     err.into_unif_err(mk_tyw_enum!(; erows1), mk_tyw_enum!(; erows2))
                 })
             }
@@ -1974,7 +1972,6 @@ pub fn unify_rrows(
 /// Try to unify two enum row types.
 pub fn unify_erows(
     state: &mut State,
-    ctxt: &Context,
     uerows1: UnifEnumRows,
     uerows2: UnifEnumRows,
 ) -> Result<(), RowUnifError> {
@@ -1996,7 +1993,7 @@ pub fn unify_erows(
                 }
                 (EnumRowsF::Extend { row: id, tail }, erows2 @ EnumRowsF::Extend { .. }) => {
                     let t2_tail = erows_add(state, &id, UnifEnumRows::Concrete(erows2))?;
-                    unify_erows(state, ctxt, *tail, t2_tail)
+                    unify_erows(state, *tail, t2_tail)
                 }
             }
         }

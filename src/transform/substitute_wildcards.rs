@@ -51,7 +51,7 @@ fn get_wildcard_type(wildcards: &Wildcards, id: usize) -> Types {
 /// Recursively substitutes wildcards for their inferred type inside a given type.
 fn substitute_wildcards_recursively(ty: Types, wildcards: &Wildcards) -> Types {
     ty.traverse::<_, _, Infallible>(
-        &mut |ty, _| {
+        &|ty, _| {
             if let Types(TypeF::Wildcard(id)) = ty {
                 Ok(get_wildcard_type(wildcards, id))
             } else {

@@ -122,9 +122,7 @@ impl CollectFreeVars for RichTerm {
                     fresh.clear();
 
                     t.collect_free_vars(&mut fresh);
-                    new_deps
-                        .stat_fields
-                        .insert(*id, &fresh & &rec_fields);
+                    new_deps.stat_fields.insert(*id, &fresh & &rec_fields);
 
                     free_vars.extend(&fresh - &rec_fields);
                 }

@@ -272,7 +272,7 @@ impl Repl for ReplImpl {
         // We need to `traverse` the term, in case the type depends on inner terms that also contain wildcards
         let term = term
             .traverse(
-                &mut |rt: RichTerm, _| -> Result<RichTerm, std::convert::Infallible> {
+                &|rt: RichTerm, _| -> Result<RichTerm, std::convert::Infallible> {
                     Ok(transform::substitute_wildcards::transform_one(
                         rt, &wildcards,
                     ))

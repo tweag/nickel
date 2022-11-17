@@ -669,9 +669,7 @@ fn get_var_contract(
     id: &Ident,
     pol: bool,
 ) -> Result<RichTerm, UnboundTypeVariableError> {
-    let (pos, neg) = vars
-        .get(id)
-        .ok_or(UnboundTypeVariableError(*id))?;
+    let (pos, neg) = vars.get(id).ok_or(UnboundTypeVariableError(*id))?;
     if pol {
         Ok(pos.clone())
     } else {
@@ -724,10 +722,7 @@ impl EnumRows {
             RichTerm::from(Term::Switch(
                 mk_term::var(value_arg),
                 cases,
-                Some(mk_app!(
-                    contract::enum_fail(),
-                    mk_term::var(label_arg)
-                )),
+                Some(mk_app!(contract::enum_fail(), mk_term::var(label_arg))),
             ))
         };
         let case = mk_fun!(label_arg, value_arg, case_body);
@@ -735,7 +730,7 @@ impl EnumRows {
         Ok(mk_app!(contract::enums(), case))
     }
 
-    pub fn iter<'a>(&'a self) -> EnumRowsIterator<'a, EnumRows> {
+    pub fn iter(&self) -> EnumRowsIterator<EnumRows> {
         EnumRowsIterator { erows: Some(self) }
     }
 }
@@ -807,7 +802,7 @@ impl RecordRows {
         }
     }
 
-    pub fn iter<'a>(&'a self) -> RecordRowsIterator<'a, Types, RecordRows> {
+    pub fn iter(&self) -> RecordRowsIterator<Types, RecordRows> {
         RecordRowsIterator {
             rrows: Some(self),
             ty: std::marker::PhantomData,
