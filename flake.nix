@@ -141,7 +141,7 @@
       pre-commit-builder =
         { rust ? mkRust { }
         , nickel ? buildNickel { inherit rust; }
-        , isHook
+        , isHermetic
         }: pre-commit-hooks.lib.${system}.run {
           src = self;
           hooks = {
@@ -167,6 +167,10 @@
               ];
             };
 
+            # The default `clippy` pre-commit-hook is too standard, hence we create our own.
+            # Compared to the default `clippy` hook, we customize the following:
+            # - custom Clippy options
+            # - in case of hermetic run (mostly used by CI), we reuse the Nixified Rust dependencies from `nickel`
             custom-clippy =
               let
                 allow = [
@@ -183,22 +187,26 @@
                 #   This is mainly used by developers, who care about speed at the expense of hermeticity.
                 # - when run as a flake check, we want to be fully reproducible, so we Nixify Cargo dependency resolution.
                 #   This is mainly used by CI, where the extra time is not such a big deal.
-                offlineOpts = if isHook then "" else "--frozen --offline";
+                offlineOpts = pkgs.lib.optionalString isHermetic "--frozen --offline";
 
-                # Since `pre-commit-hooks` does not execute the entries (commands) as part of a Nix derivation,
-                # we have to do some extra setup work.
-                # - `stdenv` provides standard environment similarly to `mkDerivation`, including a C compiler (`cc`) required by Rust.
-                # - `cargoHome` provides Rust with the right `CARGO_HOME` environment variable to discover built dependencies.
-                cargoHomeHookSetup = pkgs.lib.optionalString (! isHook) ''
-                  echo "CARGO_HOME"
-                  echo $CARGO_HOME
-                  echo "ls11"
-                  ls -laa
+                # When running in hermetic mode, all Rust dependencies must be already present.
+                # Hence we can't just call `cargo` directly, as it would try to download dependencies.
+                # Hence we do the following:
+                # - `source ${nickel.inputDerivation}` to set the environment variables `buildInputs` and `stdenv` just like in a Nickel build.
+                #   The `buildInputs` will contain the path to Nixified Rust dependencies (a.k.a. `cargoHome`), as well as other build inputs, like `Security` for Darwin.
+                #   ⚠️ This will also completely unset `PATH`, and *update* various environment variables used in downstream scripts, like `TMPDIR`.
+                # - `source $stdenv/setup` does a lot of Nix magic, including loading in the `PATH` everything in the `buildInputs` environment variable.
+                #
+                # 💡 The other commands are needed for Darwin builds to undo some changes of `source ${nickel.inputDerivation}`.
+                #    For Linux, these extra commands are unnecessary (because their value is "updated" from `/build` to `/build`), though harmless.
+                nickelBuildInputsSetup = pkgs.lib.optionalString isHermetic ''
+                  nix_build_top=$NIX_BUILD_TOP
                   source ${nickel.inputDerivation}
-                  echo "CARGO_HOME"
-                  echo $CARGO_HOME
-                  echo "ls12"
-                  ls -laa
+                  NIX_BUILD_TOP=$nix_build_top
+                  TEMP=$nix_build_top
+                  TEMPDIR=$nix_build_top
+                  TMP=$nix_build_top
+                  TMPDIR=$nix_build_top
                   source $stdenv/setup
                 '';
               in
@@ -208,20 +216,8 @@
                 pass_filenames = false;
                 entry =
                   "${pkgs.writeShellScript "clippy-hook" ''
-                    echo "CARGO_HOME"
-                    echo $CARGO_HOME
-                    echo "ls1"
-                    ls -laa
-                    ${cargoHomeHookSetup}
-                    echo "CARGO_HOME"
-                    echo $CARGO_HOME
-                    echo "ls2"
-                    ls -laa
+                    ${nickelBuildInputsSetup}
                     cargo clippy --workspace ${offlineOpts} -- --no-deps --deny warnings ${allowOpts}
-                    echo "CARGO_HOME"
-                    echo $CARGO_HOME
-                    echo "ls3"
-                    ls -laa
                   ''}";
               };
           };
@@ -272,7 +268,7 @@
         inputsFrom = [ (buildNickel { inherit rust; withCargoHome = false; }) ];
         buildInputs = [ pkgs.rust-analyzer ];
 
-        shellHook = (pre-commit-builder { inherit rust; isHook = true; }).shellHook + ''
+        shellHook = (pre-commit-builder { inherit rust; isHermetic = false; }).shellHook + ''
           echo "=== Nickel development shell ==="
           echo "Info: Git hooks can be installed using \`pre-commit install\`"
         '';
@@ -391,7 +387,7 @@
       checks = {
         # wasm-opt can take long: eschew optimizations in checks
         wasm = buildNickelWasm { optimize = false; };
-        pre-commit = pre-commit-builder { isHook = false; };
+        pre-commit = pre-commit-builder { isHermetic = true; };
       } // (forEachRustChannel (channel:
         {
           name = "nickel-against-${channel}-rust-channel";
