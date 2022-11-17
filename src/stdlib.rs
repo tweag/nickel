@@ -65,8 +65,10 @@ pub enum StdlibModule {
     Internals,
 }
 
+pub struct UnknownStdlibModule;
+
 impl TryFrom<Ident> for StdlibModule {
-    type Error = &'static str;
+    type Error = UnknownStdlibModule;
 
     fn try_from(value: Ident) -> Result<Self, Self::Error> {
         let module = match value.label() {
@@ -78,7 +80,7 @@ impl TryFrom<Ident> for StdlibModule {
             "num" => StdlibModule::Num,
             "function" => StdlibModule::Function,
             "internals" => StdlibModule::Internals,
-            _ => return Err("Unknown stdlib module name"),
+            _ => return Err(UnknownStdlibModule),
         };
         Ok(module)
     }
