@@ -279,10 +279,7 @@ pub fn elaborate_field_path(
                 fields.insert(id, acc);
                 Term::Record(RecordData::with_fields(fields)).into()
             } else {
-                let empty = Term::Record(RecordData {
-                    fields: HashMap::new(),
-                    attrs: Default::default(),
-                });
+                let empty = Term::Record(RecordData::empty());
                 mk_app!(mk_term::op2(BinaryOp::DynExtend(), exp, empty), acc)
             }
         }

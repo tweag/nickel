@@ -1915,7 +1915,7 @@ pub mod make {
                 $(
                     fields.insert($id.into(), $body.into());
                 )*
-                $crate::term::RichTerm::from($crate::term::Term::Record($crate::term::record::RecordData::new(fields, Default::default())))
+                $crate::term::RichTerm::from($crate::term::Term::Record($crate::term::record::RecordData::with_fields(fields)))
             }
         };
     }
