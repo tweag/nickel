@@ -433,7 +433,7 @@ pub fn merge(
                     // about them anymore, and dependencies are stored at the level of revertible
                     // thunks directly.
                     Term::RecRecord(
-                        RecordData::new(m, RecordAttrs::merge(r1.attrs, r2.attrs)),
+                        RecordData::new(m, RecordAttrs::merge(r1.attrs, r2.attrs), None),
                         Vec::new(),
                         None,
                     ),
