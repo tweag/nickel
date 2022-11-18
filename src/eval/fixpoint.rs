@@ -33,7 +33,8 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a RichTerm)>>(
 }
 
 /// Update the environment of the content of a recursive record field by extending it with a
-/// recursive environment.
+/// recursive environment. When seeing revertible thunks as a memoizing device for functions, this
+/// step correspond to function application (see documentation of [crate::eval::lazy::ThunkData]).
 ///
 /// For each field, retrieve the set set of dependencies from the corresponding thunk in the
 /// environment, and only add those dependencies to the environment. This avoid retaining
@@ -50,16 +51,7 @@ pub fn patch_field(
             .cloned()
             .ok_or(EvalError::UnboundIdentifier(*var_id, rt.pos))?;
 
-        let deps = thunk.deps();
-
-        match deps {
-            ThunkDeps::Known(deps) => thunk
-                .borrow_mut()
-                .env
-                .extend(rec_env.iter().filter(|(id, _)| deps.contains(id)).cloned()),
-            ThunkDeps::Unknown => thunk.borrow_mut().env.extend(rec_env.iter().cloned()),
-            ThunkDeps::Empty => (),
-        };
+        thunk.build_cached(rec_env);
     }
 
     // Thanks to the share normal form transformation, the content is either a constant or a

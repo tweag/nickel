@@ -1,6 +1,9 @@
 //! Thunks and associated devices used to implement lazy evaluation.
 use super::{Closure, IdentKind};
-use crate::{identifier::Ident, term::FieldDeps};
+use crate::{
+    identifier::Ident,
+    term::{FieldDeps, RichTerm, Term},
+};
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashSet;
 use std::rc::{Rc, Weak};
@@ -105,7 +108,7 @@ pub enum InnerThunkData {
     Standard(Closure),
     Revertible {
         orig: Rc<Closure>,
-        cached: Rc<Closure>,
+        cached: Option<Closure>,
         deps: FieldDeps,
     },
 }
@@ -126,10 +129,123 @@ impl ThunkData {
         ThunkData {
             inner: InnerThunkData::Revertible {
                 orig: rc.clone(),
-                cached: rc,
+                cached: None,
                 deps,
             },
             state: ThunkState::Suspended,
+        }
+    }
+
+    /// Build the cached value of a revertible thunk in a given recursive environment.
+    ///
+    /// # Invariant
+    ///
+    /// This function must be called **exactly once** on a revertible thunk, after the initial
+    /// construction. It's part of its initialization. Calling it on a revertible thunks a second
+    /// time, with a `cached` value which is not set to `None`, will panic.
+    ///
+    /// Non-revertible thunks are not concerned: this function has no effect on them, even if
+    /// called repeatedly.
+    ///
+    /// This function is equivalent to calling TODO: FILL NAME, with generated variables pointing
+    /// to each thunk as arguments. The only difference is that `build_cached` avoid the creation
+    /// of an intermediate redex `(fun id1 .. id n => orig) %1 .. %n`, and perform the application
+    /// in one step.
+    pub fn build_cached(&mut self, rec_env: &[(Ident, Thunk)]) {
+        match self.inner {
+            InnerThunkData::Standard(_) => (),
+            InnerThunkData::Revertible {
+                ref mut cached,
+                ref orig,
+                ref deps,
+            } => {
+                // `build_cached_value` must be called exactly once on a revertible thunk. This is
+                // an invariant that MUST be maintained by the interpreter.
+                //
+                // `cached` set to `None` solely exists because we need to first allocate all the
+                // revertible thunks corresponding to a recursive record, and only then we can
+                // patch them (build the cached value) in a second step, but they should be
+                // logically seen as one construction operation.
+                assert!(
+                    cached.is_none(),
+                    "tried to build the cached value of a revertible thunk, but was already set"
+                );
+
+                let mut new_cached = Closure::clone(&*orig);
+
+                match deps {
+                    Some(deps) if deps.is_empty() => (),
+                    Some(deps) => new_cached
+                        .env
+                        .extend(rec_env.iter().filter(|(id, _)| deps.contains(id)).cloned()),
+                    None => new_cached.env.extend(rec_env.iter().cloned()),
+                };
+
+                *cached = Some(new_cached);
+            }
+        }
+    }
+
+    //build_cached ~ cached = build_cached_as_app(self, rec_env.iter())
+
+    // build_cached(rev_thunk, rec_env ~ arguments) ~> "app" (rev_thunk, rec_env)
+    // build_cached_as_app(..)
+    // (fun x y z ... => (original expr of rev_thunk) (rec_env filter by thunk deps)
+    //
+    pub fn build_cached_as_app<
+        'a,
+        I: DoubleEndedIterator<Item = (&'a Ident, &'a RichTerm)> + Clone,
+    >(
+        &mut self,
+        args: I,
+    ) {
+        match self.inner {
+            InnerThunkData::Standard(_) => (),
+            InnerThunkData::Revertible {
+                ref mut cached,
+                ref orig,
+                ref deps,
+            } => {
+                // `build_cached_app` must be called exactly once on a revertible thunk. This is an
+                // invariant that MUST be maintained by the interpreter.
+                //
+                // `cached` set to `None` solely exists because we need to first allocate all the
+                // revertible thunks corresponding to a recursive record, and only then we can
+                // patch them (build the cached value) in a second step, but they should be
+                // logically seen as one construction operation.
+                assert!(
+                    cached.is_none(),
+                    "tried to build the applied version of cached value of a revertible thunk, but was already set"
+                );
+
+                let Closure { body, env } = Closure::clone(orig);
+
+                // Only keep arguments that actually appear free in the revertible thunk's body.
+                //
+                // It would be better to have the `match` outside of the filtering closure, because
+                // it is independent from the identifier, but Rust's closures make this hard to
+                // type (require dyn trait objects or boxing). Given the size of `deps`, and the
+                // overhead of dyn trait objects, it doesn't seem worth the trouble.
+                let filtered = args.filter(|(ident, _)| match deps {
+                    Some(deps) if deps.is_empty() => false,
+                    Some(deps) => deps.contains(ident),
+                    None => true,
+                });
+
+                // Build a list of the arguments that the function will need in the same order as
+                // the original iterator. If the identifiers inside `args` are `a`, `b` and `c`, in
+                // that order, we want to build `fun a => (fun b (fun c => body))`. We thus need a
+                // reverse fold.
+                let as_function = filtered.clone().map(|(id, _)| id).rfold(body, |built, id| {
+                    RichTerm::from(Term::Fun(id.clone(), built))
+                });
+                // Apply the freshly built function to the corresponding arguments.
+                let applied = filtered.fold(as_function, |built, (_, rt)| {
+                    RichTerm::from(Term::App(built, rt.clone()))
+                });
+
+                *cached = Some(Closure { body: applied, env });
+            }
         }
     }
 
@@ -137,7 +253,18 @@ impl ThunkData {
     pub fn closure(&self) -> &Closure {
         match self.inner {
             InnerThunkData::Standard(ref closure) => closure,
-            InnerThunkData::Revertible { ref cached, .. } => cached,
+            // Nothing should peek into a revertible thunks before the cached value has been
+            // constructed by [`build_cached_value`]. This is an invariant that MUST be maintained
+            // by the interpreter.
+            //
+            // `cached` set to `None` solely exists because we need to first allocate all the
+            // revertible thunks corresponding to a recursive record, and only then can we patch
+            // them (build the cached value) in a second step. But calling to
+            // [`ThunkData::new_rev`] followed by [`ThunkData::build_cached_value`] should be logically
+            // seen as just one construction operation.
+            InnerThunkData::Revertible { ref cached, .. } => cached
+                .as_ref()
+                .expect("tried to get data from a revertible thunk without a cached value"),
         }
     }
 
@@ -145,7 +272,11 @@ impl ThunkData {
     pub fn closure_mut(&mut self) -> &mut Closure {
         match self.inner {
             InnerThunkData::Standard(ref mut closure) => closure,
-            InnerThunkData::Revertible { ref mut cached, .. } => Rc::make_mut(cached),
+            InnerThunkData::Revertible {
+                ref mut cached,
+                ref mut orig,
+                ..
+            } => cached.as_mut().unwrap_or_else(|| Rc::make_mut(orig)),
         }
     }
 
@@ -153,9 +284,17 @@ impl ThunkData {
     pub fn into_closure(self) -> Closure {
         match self.inner {
             InnerThunkData::Standard(closure) => closure,
-            InnerThunkData::Revertible { orig, cached, .. } => {
-                std::mem::drop(orig);
-                Rc::try_unwrap(cached).unwrap_or_else(|rc| (*rc).clone())
+            // Nothing should access the cached value of a revertible thunks before the cached
+            // value has been constructed. This is an invariant that MUST be maintained by the
+            // interpreter
+            //
+            // `cached` set to `None` solely exists because we need to first allocate all the
+            // revertible thunks corresponding to a recursive record, and only then can we patch
+            // them (build the cached value) in a second step. But calling to
+            // [`ThunkData::new_rev`] followed by [`ThunkData::build_cached_value`] should be logically
+            // seen as just one construction operation.
+            InnerThunkData::Revertible { cached, .. } => {
+                cached.expect("tried to get data from a revertible thunk without a cached value")
             }
         }
     }
@@ -164,7 +303,7 @@ impl ThunkData {
     pub fn update(&mut self, new: Closure) {
         match self.inner {
             InnerThunkData::Standard(ref mut closure) => *closure = new,
-            InnerThunkData::Revertible { ref mut cached, .. } => *cached = Rc::new(new),
+            InnerThunkData::Revertible { ref mut cached, .. } => *cached = Some(new),
         }
 
         self.state = ThunkState::Evaluated;
@@ -186,7 +325,7 @@ impl ThunkData {
             } => Rc::new(RefCell::new(ThunkData {
                 inner: InnerThunkData::Revertible {
                     orig: Rc::clone(orig),
-                    cached: Rc::clone(orig),
+                    cached: None,
                     deps: deps.clone(),
                 },
                 state: ThunkState::Suspended,
@@ -213,7 +352,7 @@ impl ThunkData {
             } => ThunkData {
                 inner: InnerThunkData::Revertible {
                     orig: Rc::new(f(orig)),
-                    cached: Rc::new(f(cached)),
+                    cached: cached.as_ref().map(f),
                     deps: deps.clone(),
                 },
                 state: self.state,
@@ -331,6 +470,10 @@ impl Thunk {
             data: ThunkData::revert(&self.data),
             ident_kind: self.ident_kind,
         }
+    }
+
+    pub fn build_cached(&mut self, rec_env: &[(Ident, Thunk)]) {
+        self.data.borrow_mut().build_cached(rec_env)
     }
 
     /// Map a function over the content of the thunk to create a new, fresh independent thunk. If
