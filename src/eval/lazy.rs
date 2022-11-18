@@ -34,7 +34,7 @@ pub struct ThunkData {
 /// - A standard thunk, that is destructively updated once and for all
 /// - A revertible thunk, that can be restored to its original expression. Used to implement
 ///   recursive merging of records and overriding (see the
-///   [RFC overriding](https://github.com/tweag/nickel/pull/330)). A revertible thunks optionally
+///   [RFC overriding](https://github.com/tweag/nickel/pull/330)). A revertible thunk optionally
 ///   stores the set of recusive fields it depends on (see [`crate::transform::free_vars`]).
 ///
 /// # Revertible thunks
@@ -52,7 +52,7 @@ pub struct ThunkData {
 /// is really a builtin representation of `fun self => {foo = self.bar + self.baz + 1, bar = 2, baz
 /// = 1}`. The interpreter computes a fixpoint when evaluating a `RecRecord` away to a `Record`,
 /// equivalent to `let rec fixpoint = repr fixpoint in fixpoint`. We use a different vocabulary and
-/// representations, but this is what we essentially do. We're just hiding the details from the
+/// representation, but this is what we essentially do. We're just hiding the details from the
 /// user and pretend recursive records are data that can be used as a normal record, because it's
 /// both simple and natural (for the user).
 ///
@@ -60,9 +60,9 @@ pub struct ThunkData {
 /// functional representation, and re-compute the fixpoint at each record operation, such as field
 /// access. While correct, this would be wasteful, because the result of the fixpoint computations
 /// is actually the same throughout most record operations (put differently, `self` doesn't
-/// change). But we can't just store the computed `fixpoint` either in a normal thunk and forget
+/// change). But we can't just store the computed `fixpoint` in a normal thunk and forget
 /// about the original function, because upon merge, and more specifically upon recursive
-/// overriding happen, we do need to compute a new fixpoint.
+/// overriding, we do need to compute a new fixpoint.
 ///
 /// Revertible thunks are a simple **memoization device** for the `fun self => ...` functional
 /// representation of a recursive record. First, note that there are several different but
@@ -81,7 +81,7 @@ pub struct ThunkData {
 /// {foo = fun bar baz => bar + baz + 1, bar = 2, bar 1}
 /// ```
 ///
-/// All those representations are isomorphic, in that modulo basic fee variable analysis, we can
+/// All those representations are isomorphic, in that, modulo basic free variable analysis, we can
 /// get from one to another mechanically. Pushing the functions down the fields is better because
 /// it reveals more static information about the record (such as the list of fields) without having
 /// to provide any argument first. Then, splitting `self` and removing the function altogether when
