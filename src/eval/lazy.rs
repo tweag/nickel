@@ -35,8 +35,71 @@ pub struct ThunkData {
 /// - A revertible thunk, that can be restored to its original expression. Used to implement
 ///   recursive merging of records and overriding (see the
 ///   [RFC overriding](https://github.com/tweag/nickel/pull/330)). A revertible thunks optionally
-///   stores the set of recusive fields it depends on. See the [`crate::transform::free_vars`] for more
-///   details.
+///   stores the set of recusive fields it depends on (see [`crate::transform::free_vars`]).
+///
+/// # Revertible thunks
+///
+/// Recursive records are better understood as being functions. For example, the recursive record:
+///
+/// ```nickel
+/// {
+///   foo = bar + baz + 1,
+///   bar = 2,
+///   baz = 1,
+/// }
+/// ```
+///
+/// is really a builtin representation of `fun self => {foo = self.bar + self.baz + 1, bar = 2, baz
+/// = 1}`. The interpreter computes a fixpoint when evaluating a `RecRecord` away to a `Record`,
+/// equivalent to `let rec fixpoint = repr fixpoint in fixpoint`. We use a different vocabulary and
+/// representations, but this is what we essentially do. We're just hiding the details from the
+/// user and pretend recursive records are data that can be used as a normal record, because it's
+/// both simple and natural (for the user).
+///
+/// A naive representation of recursive records could be to always keep recursive records in their
+/// functional representation, and re-compute the fixpoint at each record operation, such as field
+/// access. While correct, this would be wasteful, because the result of the fixpoint computations
+/// is actually the same throughout most record operations (put differently, `self` doesn't
+/// change). But we can't just store the computed `fixpoint` either in a normal thunk and forget
+/// about the original function, because upon merge, and more specifically upon recursive
+/// overriding happen, we do need to compute a new fixpoint.
+///
+/// Revertible thunks are a simple **memoization device** for the `fun self => ...` functional
+/// representation of a recursive record. First, note that there are several different but
+/// equivalent ways of encoding the example above as a function:
+///
+/// ```nickel
+/// fun self => { foo = self.bar + self.baz + 1, bar = 2, baz = 1 }
+///
+/// # pushing the function down the fields
+/// {foo = fun self => self.bar + 1, bar = fun self => 2, baz = fun self => 1}
+///
+/// # removing unused arguments
+/// {foo = fun self => self.bar + 1, bar = 2, baz = 1}
+///
+/// # splitting the self argument
+/// {foo = fun bar baz => bar + baz + 1, bar = 2, bar 1}
+/// ```
+///
+/// All those representations are isomorphic, in that modulo basic fee variable analysis, we can
+/// get from one to another mechanically. Pushing the functions down the fields is better because
+/// it reveals more static information about the record (such as the list of fields) without having
+/// to provide any argument first. Then, splitting `self` and removing the function altogether when
+/// the field doesn't depend on other fields is more precise with respect to dependency tracking
+/// (this has an important positive memory impact, see [ThunkDeps]).
+///
+/// In practice, Nickel uses the last representation. Fields that don't have any free variable
+/// intersecting with the name of the other fields are allocated as normal thunks that will only be
+/// evaluated at most once. Fields with actual dependencies are stored in revertible thunks, where
+/// the `orig` field stores the body of the function (in our example the expression `bar + baz +
+/// 1`), and the cached version is the application to `self` computed when we evaluated the
+/// recursive record to a normal record. The function arguments (that is, the intersection of the
+/// free variables of the expression with the set of fields) are stored inside `deps`. `deps`
+/// represent the other fields a specific field is depending on, and are guaranteed to appear free
+/// inside `orig`.
+///
+/// In fact, unless there is an unbound identifier, `deps` should be exactly the set of free
+/// variables of `orig`.
 #[derive(Clone, Debug, PartialEq)]
 pub enum InnerThunkData {
     Standard(Closure),
