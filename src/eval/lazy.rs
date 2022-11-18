@@ -64,7 +64,7 @@ pub struct ThunkData {
 /// about the original function, because upon merge, and more specifically upon recursive
 /// overriding, we do need to compute a new fixpoint.
 ///
-/// Revertible thunks are a simple **memoization device** for the `fun self => ...` functional
+/// Revertible thunks are a **memoization device** for the `fun self => ...` functional
 /// representation of a recursive record. First, note that there are several different but
 /// equivalent ways of encoding the example above as a function:
 ///
