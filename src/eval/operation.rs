@@ -657,7 +657,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             let f_as_var = f.body.closurize(&mut self.cache, &mut env, f.env);
 
                             // As for `ArrayMap` (see above), we closurize the content of fields
-                            let record = record.map_fields_without_optionals(&env, |id, t| {
+                            let record = record.map_fields_without_optionals(&self.cache, &env, |id, t| {
                                 let pos = t.pos.into_inherited();
 
                                 mk_app!(f_as_var.clone(), mk_term::string(id.label()), t)
@@ -1187,7 +1187,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         Term::Record(record) if !record.fields.is_empty() => {
                             let mut shared_env = Environment::<C>::new();
 
-                            let record = record.map_fields_without_optionals(&env, |id, t| {
+                            let record = record.map_fields_without_optionals(&self.cache, &env, |id, t| {
                                 let stack_elem = Some(callstack::StackElem::Field {
                                     id,
                                     pos_record: pos,
@@ -2666,7 +2666,7 @@ impl PushPriority {
     fn push_into_record<C: Cache>(&self, cache: &mut C, record: RecordData, env: &Environment<C>, pos: TermPos) -> Closure<C> {
         let mut new_env = Environment::<C>::new();
 
-        let record = record.map_fields_without_optionals(env, |_, rt| {
+        let record = record.map_fields_without_optionals(cache, env, |_, rt| {
             // There is a subtlety with respect to overriding here. Take:
             //
             // ```nickel
@@ -2699,16 +2699,21 @@ impl PushPriority {
 
             let thunk = match rt.as_ref() {
                 Term::Var(id) => {
-                    env.get(id)
-                        .unwrap()
-                        .map(|Closure { ref body, ref env }| Closure {
-                            body: self.apply_push_op(body.clone()),
-                            env: env.clone(),
-                        },
-                        eval::IdentKind::Record,
-                        crate::term::BindingType::Normal,
-                    ),
-                };
+                    let idx= env.get(id).unwrap();
+                    cache.map_at_index(idx, |Closure { ref body, ref env }| Closure {
+                        body: self.apply_push_op(body.clone()),
+                        env: env.clone(),
+                    })
+                }
+                _ => cache.add(
+                    Closure {
+                        body: self.apply_push_op(rt),
+                        env: env.clone(),
+                    },
+                    eval::IdentKind::Record,
+                    crate::term::BindingType::Normal,
+                ),
+            };
 
             let fresh_id = Ident::fresh();
             new_env.insert(fresh_id, thunk);
@@ -2957,7 +2962,7 @@ fn eq<C: Cache>(
 }
 
 trait RecordDataExt {
-    fn map_fields_without_optionals<F>(self, env: &Environment, f: F) -> Self
+    fn map_fields_without_optionals<F, C: Cache>(self, cache: &C, env: &Environment<C>, f: F) -> Self
     where
         F: FnMut(Ident, RichTerm) -> RichTerm;
 }
@@ -2969,14 +2974,14 @@ impl RecordDataExt for RecordData {
     ///
     /// Note that `f` is taken as `mut` in order to allow it to mutate
     /// external state while iterating.
-    fn map_fields_without_optionals<F>(self, env: &Environment, mut f: F) -> Self
+    fn map_fields_without_optionals<F, C: Cache>(self, cache: &C, env: &Environment<C>, mut f: F) -> Self
     where
         F: FnMut(Ident, RichTerm) -> RichTerm,
     {
         let fields = self
             .fields
             .into_iter()
-            .filter(|(_, t)| !is_empty_optional(t, env))
+            .filter(|(_, t)| !is_empty_optional(cache, t, env))
             .map(|(id, t)| (id, f(id, t)))
             .collect();
         Self { fields, ..self }
