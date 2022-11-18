@@ -1955,6 +1955,42 @@ impl<R: ImportResolver> VirtualMachine<R> {
                     ))
                 }
             },
+            BinaryOp::DiffRecordFields() => match_sharedterm! {t1,
+                with {
+                    Term::Record(r1) => match_sharedterm! {t2,
+                        with {
+                            Term::Record(r2) => {
+                                let mut r1 = r1;
+                                r1.fields.retain(|k, _| !r2.fields.contains_key(k));
+                                Ok(Closure {
+                                    body: RichTerm::new(Term::Record(r1), fst_pos),
+                                    env: env1
+                                })
+                            }
+                        } else {
+                            Err(EvalError::TypeError(
+                                String::from("Record"),
+                                String::from("%record_diff_fields%, 2nd argument"),
+                                snd_pos,
+                                RichTerm {
+                                    term: t2,
+                                    pos: pos2
+                                }
+                            ))
+                        }
+                    }
+                } else {
+                    Err(EvalError::TypeError(
+                        String::from("Record"),
+                        String::from("%record_diff_fields%, 1st argument"),
+                        fst_pos,
+                        RichTerm {
+                            term: t1,
+                            pos: pos1,
+                        }
+                    ))
+                }
+            },
             BinaryOp::HasField() => match_sharedterm! {t1, with {
                     Term::Str(id) => {
                         if let Term::Record(record) = &*t2 {

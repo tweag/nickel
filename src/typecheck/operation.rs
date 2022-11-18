@@ -304,6 +304,12 @@ pub fn get_bop_type(
                 mk_typewrapper::dyn_record(res),
             )
         }
+        // Dyn -> Dyn -> Dyn
+        BinaryOp::DiffRecordFields() => (
+            mk_typewrapper::dynamic(),
+            mk_typewrapper::dynamic(),
+            mk_typewrapper::dynamic(),
+        ),
         // forall a. Str -> {_: a} -> Bool
         BinaryOp::HasField() => {
             let ty_elt = UnifType::UnifVar(state.table.fresh_type_var_id());

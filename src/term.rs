@@ -1370,6 +1370,11 @@ pub enum BinaryOp {
     DynRemove(),
     /// Access the field of record. The field name is given as an arbitrary Nickel expression.
     DynAccess(),
+    /// Return a new record containing all the fields of the first argument which are
+    /// not featured in the second argument.
+    ///
+    /// Preserves the polymorphic tail of the first argument, if one is set.
+    DiffRecordFields(),
     /// Test if a record has a specific field.
     HasField(),
     /// Concatenate two arrays.

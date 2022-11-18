@@ -47,23 +47,11 @@
 
   "$record" = fun field_contracts tail_contract l t =>
     if %typeof% t == `Record then
-      # Returns the sub-record of `l` containing only those
-      # fields which are not present in `r`.
-      let field_diff = fun l r => array.foldl
-        (fun acc f =>
-          if %has_field% f r then
-            acc
-          else
-            %record_insert% f acc (l."%{f}"))
-        {}
-        (%fields% l)
-      in
-
-      let contracts_not_in_t = field_diff field_contracts t in
+      let contracts_not_in_t = %record_diff_fields% field_contracts t in
       let missing_fields = %fields% contracts_not_in_t in
 
       if %length% missing_fields == 0 then
-        let tail_fields = field_diff t field_contracts in
+        let tail_fields = %record_diff_fields% t field_contracts in
         let fields_with_contracts = array.foldl
           (fun acc f =>
             if %has_field% f field_contracts then

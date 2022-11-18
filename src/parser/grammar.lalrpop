@@ -736,6 +736,7 @@ BOpPre: BinaryOp = {
     "str_contains" => BinaryOp::StrContains(),
     "record_insert" => BinaryOp::DynExtend(),
     "record_remove" => BinaryOp::DynRemove(),
+    "record_diff_fields" => BinaryOp::DiffRecordFields(),
 }
 
 NOpPre<ArgRule>: UniTerm = {
@@ -878,6 +879,7 @@ extern {
         "record_map" => Token::Normal(NormalToken::RecordMap),
         "record_insert" => Token::Normal(NormalToken::RecordInsert),
         "record_remove" => Token::Normal(NormalToken::RecordRemove),
+        "record_diff_fields" => Token::Normal(NormalToken::RecordDiffFields),
         "seq" => Token::Normal(NormalToken::Seq),
         "deep_seq" => Token::Normal(NormalToken::DeepSeq),
         "head" => Token::Normal(NormalToken::Head),
