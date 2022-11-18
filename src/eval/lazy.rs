@@ -35,7 +35,7 @@ pub struct ThunkData {
 /// - A revertible thunk, that can be restored to its original expression. Used to implement
 ///   recursive merging of records and overriding (see the
 ///   [RFC overriding](https://github.com/tweag/nickel/pull/330)). A revertible thunk optionally
-///   stores the set of recusive fields it depends on (see [`crate::transform::free_vars`]).
+///   stores the set of recursive fields it depends on (see [`crate::transform::free_vars`]).
 ///
 /// # Revertible thunks
 ///
@@ -72,10 +72,10 @@ pub struct ThunkData {
 /// fun self => { foo = self.bar + self.baz + 1, bar = 2, baz = 1 }
 ///
 /// # pushing the function down the fields
-/// {foo = fun self => self.bar + 1, bar = fun self => 2, baz = fun self => 1}
+/// {foo = fun self => self.bar + self.baz + 1, bar = fun self => 2, baz = fun self => 1}
 ///
 /// # removing unused arguments
-/// {foo = fun self => self.bar + 1, bar = 2, baz = 1}
+/// {foo = fun self => self.bar + self.baz + 1, bar = 2, baz = 1}
 ///
 /// # splitting the self argument
 /// {foo = fun bar baz => bar + baz + 1, bar = 2, bar 1}
