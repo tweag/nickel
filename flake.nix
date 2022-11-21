@@ -266,7 +266,12 @@
 
       makeDevShell = { rust }: pkgs.mkShell {
         inputsFrom = [ (buildNickel { inherit rust; withCargoHome = false; }) ];
-        buildInputs = [ pkgs.rust-analyzer ];
+        buildInputs = [
+          pkgs.rust-analyzer
+          pkgs.nodejs
+          pkgs.node2nix
+          pkgs.nodePackages.markdownlint-cli
+        ];
 
         shellHook = (pre-commit-builder { inherit rust; isHermetic = false; }).shellHook + ''
           echo "=== Nickel development shell ==="
@@ -328,8 +333,7 @@
           pname = "nls-client";
           outputs = [ "vsix" "out" ];
           nativeBuildInputs = with pkgs; [
-            nodePackages.typescript
-            # Required by `keytar`, which is a dependency of `vsce`.
+            # `vsce` depends on `keytar`, which depends on `pkg-config` and `libsecret`
             pkg-config
             libsecret
           ];

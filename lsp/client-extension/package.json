@@ -44,8 +44,8 @@
     }
   },
   "scripts": {
-    "compile": "tsc -b",
-    "watch": "tsc -b -w",
+    "compile": "tsc --build",
+    "watch": "tsc --build --watch",
     "lint": "eslint ./src --ext .ts,.tsx",
     "test": "sh ./scripts/e2e.sh"
   },
@@ -64,6 +64,7 @@
     "@vscode/test-electron": "^1.6.2",
     "eslint": "^7.26.0",
     "mocha": "^8.3.2",
-    "typescript": "^4.5.3"
+    "typescript": "^4.5.3",
+    "vsce": "^2.14.0"
   }
 }
