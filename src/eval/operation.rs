@@ -2679,6 +2679,68 @@ impl<R: ImportResolver> VirtualMachine<R> {
                     )),
                 }
             }
+            NAryOp::RecordUnsealTail() => {
+                let mut args = args.into_iter();
+                let (
+                    Closure {
+                        body:
+                            RichTerm {
+                                term: a1,
+                                pos: pos1,
+                            },
+                        ..
+                    },
+                    fst_pos,
+                ) = args.next().unwrap();
+                let (
+                    Closure {
+                        body:
+                            RichTerm {
+                                term: a2,
+                                pos: pos2,
+                            },
+                        ..
+                    },
+                    snd_pos,
+                ) = args.next().unwrap();
+                let (
+                    Closure {
+                        body: RichTerm { term: a3, .. },
+                        env: env3,
+                    },
+                    _,
+                ) = args.next().unwrap();
+                debug_assert!(args.next().is_none());
+
+                match (&*a1, &*a2, &*a3) {
+                    (Term::SealingKey(s), Term::Lbl(l), Term::Record(r)) => r
+                        .clone()
+                        .sealed_tail
+                        .and_then(|t| t.unseal(s).cloned())
+                        .ok_or_else(|| {
+                            EvalError::BlameError(l.clone(), std::mem::take(&mut self.call_stack))
+                        })
+                        .map(|t| Closure { body: t, env: env3 }),
+                    (Term::SealingKey(..), _, _) => Err(EvalError::TypeError(
+                        String::from("Label"),
+                        String::from("%record_unseal_tail%, 2nd arg"),
+                        snd_pos,
+                        RichTerm {
+                            term: a2,
+                            pos: pos2,
+                        },
+                    )),
+                    (_, _, _) => Err(EvalError::TypeError(
+                        String::from("Record"),
+                        String::from("%record_unseal_tail%, 3rd arg"),
+                        fst_pos,
+                        RichTerm {
+                            term: a1,
+                            pos: pos1,
+                        },
+                    )),
+                }
+            }
         }
     }
 }

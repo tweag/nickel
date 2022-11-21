@@ -776,6 +776,8 @@ NOpPre<ArgRule>: UniTerm = {
         UniTerm::from(mk_opn!(NAryOp::StrSubstr(), t1, t2, t3)),
     "record_seal_tail" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> <t4: ArgRule> =>
         UniTerm::from(mk_opn!(NAryOp::RecordSealTail(), t1, t2, t3, t4)),
+    "record_unseal_tail" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
+        UniTerm::from(mk_opn!(NAryOp::RecordUnsealTail(), t1, t2, t3)),
 }
 
 TypeBuiltin: Types = {
@@ -911,6 +913,7 @@ extern {
         "record_insert" => Token::Normal(NormalToken::RecordInsert),
         "record_remove" => Token::Normal(NormalToken::RecordRemove),
         "record_seal_tail" => Token::Normal(NormalToken::RecordSealTail),
+        "record_unseal_tail" => Token::Normal(NormalToken::RecordUnsealTail),
         "seq" => Token::Normal(NormalToken::Seq),
         "deep_seq" => Token::Normal(NormalToken::DeepSeq),
         "head" => Token::Normal(NormalToken::Head),

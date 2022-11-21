@@ -1539,6 +1539,14 @@ pub enum NAryOp {
     ///   - a [record](Term::Record), which is the record we wish to seal the tail into,
     ///   - the [term](Term) that we wish to seal.
     RecordSealTail(),
+    /// Unseals a term from the tail of a record and returns it.
+    ///
+    /// Takes three arguments:
+    ///   - the [sealing key](Term::SealingKey), which was used to seal the tail,
+    ///   - a [label](Term::Label) which will be used to assign blame correctly if
+    ///     something goes wrong while unsealing,
+    ///   - the [record](Term::Record) whose tail we wish to unseal.
+    RecordUnsealTail(),
 }
 
 impl NAryOp {
@@ -1547,7 +1555,8 @@ impl NAryOp {
             NAryOp::StrReplace()
             | NAryOp::StrReplaceRegex()
             | NAryOp::StrSubstr()
-            | NAryOp::MergeContract() => 3,
+            | NAryOp::MergeContract()
+            | NAryOp::RecordUnsealTail() => 3,
             NAryOp::RecordSealTail() => 4,
         }
     }
@@ -1565,6 +1574,7 @@ impl fmt::Display for NAryOp {
             NAryOp::StrSubstr() => write!(f, "substring"),
             NAryOp::MergeContract() => write!(f, "mergeContract"),
             NAryOp::RecordSealTail() => write!(f, "%record_seal_tail%"),
+            NAryOp::RecordUnsealTail() => write!(f, "%record_unseal_tail%"),
         }
     }
 }
