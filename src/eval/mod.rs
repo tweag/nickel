@@ -759,6 +759,7 @@ impl<C: Cache> Closure<C> {
     }
 }
 
+#[allow(type_alias_bounds)] // TODO: Look into this warning.
 pub type Environment<C: Cache> = GenericEnvironment<Ident, C::Index>;
 
 /// Raised when trying to build an environment from a term which is not a record.

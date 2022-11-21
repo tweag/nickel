@@ -51,7 +51,7 @@ macro_rules! mk_tyw_row {
     (($id:expr, $ty:expr) $(,($ids:expr, $tys:expr))* $(; $tail:expr)?) => {
         $crate::typecheck::UnifRecordRows::Concrete(
             $crate::types::RecordRowsF::Extend {
-                row: $crate::typecheck::RecordRowF {
+                row: $crate::types::RecordRowF {
                     id: Ident::from($id),
                     types: Box::new($ty.into()),
                 },

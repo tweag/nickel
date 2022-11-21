@@ -6,8 +6,7 @@ use crate::{
         cache::{CBNCache, Cache},
         is_empty_optional,
     },
-    identifier::Ident,
-    term::{array::Array, record::RecordData, ArrayAttrs, MetaValue, RecordAttrs, RichTerm, Term},
+    term::{array::Array, record::RecordData, ArrayAttrs, MetaValue, RichTerm, Term},
 };
 
 use serde::{

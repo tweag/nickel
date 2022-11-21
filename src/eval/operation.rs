@@ -86,12 +86,10 @@ pub enum OperationCont<C: Cache> {
 impl<C: Cache> Clone for OperationCont<C> {
     fn clone(&self) -> Self {
         match self {
-            Self::Op1(uop, tpos) => Self::Op1(uop.clone(), tpos.clone()),
-            Self::Op2First(bop, clos, tpos) => {
-                Self::Op2First(bop.clone(), clos.clone(), tpos.clone())
-            }
+            Self::Op1(uop, tpos) => Self::Op1(uop.clone(), *tpos),
+            Self::Op2First(bop, clos, tpos) => Self::Op2First(bop.clone(), clos.clone(), *tpos),
             Self::Op2Second(bop, clos, tpos1, tpos2) => {
-                Self::Op2Second(bop.clone(), clos.clone(), tpos1.clone(), tpos2.clone())
+                Self::Op2Second(bop.clone(), clos.clone(), *tpos1, *tpos2)
             }
             Self::OpN {
                 op,
@@ -101,7 +99,7 @@ impl<C: Cache> Clone for OperationCont<C> {
             } => Self::OpN {
                 op: op.clone(),
                 evaluated: evaluated.clone(),
-                current_pos: current_pos.clone(),
+                current_pos: *current_pos,
                 pending: pending.clone(),
             },
         }

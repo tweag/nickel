@@ -85,6 +85,7 @@ impl Default for MergeMode {
 ///
 /// In [`MergeMode::Contract`] mode, `t1` must be the value and `t2` must be the contract. It is
 /// important as `merge` is not commutative in this mode.
+#[allow(clippy::too_many_arguments)] // TODO: Is it worth to pack the inputs in an ad-hoc struct?
 pub fn merge<C: Cache>(
     cache: &mut C,
     t1: RichTerm,

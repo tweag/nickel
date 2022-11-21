@@ -92,11 +92,11 @@ impl Cache for CBNCache {
     }
 
     fn patch<F: FnOnce(&mut Closure<Self>)>(&mut self, mut idx: Self::Index, f: F) {
-        f(&mut *idx.borrow_mut());
+        f(&mut idx.borrow_mut());
     }
 
     fn get_then<T, F: FnOnce(&Closure<Self>) -> T>(&self, idx: Self::Index, f: F) -> T {
-        f(&*idx.borrow())
+        f(&idx.borrow())
     }
 
     fn update(&mut self, clos: Closure<Self>, uidx: Self::UpdateIndex) {
